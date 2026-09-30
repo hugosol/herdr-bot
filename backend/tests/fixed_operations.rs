@@ -34,6 +34,7 @@ fn config_with_operations(
                 working_directory: stop_working_directory.to_path_buf(),
             },
         },
+        mdns: omp_bot::MdnsConfig::default(),
     }
 }
 

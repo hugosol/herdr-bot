@@ -41,6 +41,9 @@ async fn main() -> anyhow::Result<()> {
         local_addr.port()
     );
 
+    // TCP 监听绑定成功后发布 mDNS：端口取实际监听端口，局域网设备于是能用固定主机名访问。
+    let mdns = omp_bot::mdns::publish(&config.mdns, local_addr.port());
+
     if !omp_bot::console_available() {
         eprintln!(
             "[omp-bot] 提示：本次启动没有连接控制台。脚本中依赖控制台输入的命令（例如现有脚本末尾的 \
@@ -50,10 +53,18 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let app = omp_bot::app(&config);
-    axum::serve(listener, app)
+    let serve_result = axum::serve(listener, app)
         .await
-        .context("Axum 服务异常退出")?;
-    Ok(())
+        .context("Axum 服务异常退出");
+
+    // 进程正常退出时 best-effort 关闭 mDNS responder；关机路径不特殊注销记录（见 ADR 0001）。
+    // 这里不引入信号处理，也不等待脚本：服务退出不牵连脚本、不牵连执行资格。
+    if let Some(mdns) = mdns {
+        mdns.shutdown();
+        println!("[omp-bot] mDNS 发布已关闭");
+    }
+
+    serve_result
 }
 
 /// 解析 `--config <path>`；缺省使用当前目录下的 `omp-bot.toml`。

@@ -7,6 +7,10 @@
 //! 配置决定。客户端只能提交操作名：请求面是封闭的，其他操作名、怪路径，以及携带命令、脚本
 //! 路径或参数的请求都会被拒绝，且拒绝不产生任何脚本执行副作用。
 //!
+//! 另有 `POST /api/shutdown`：无参数调用即触发本机 Windows 优雅关机（见 [`shutdown`]）。
+//! 它与固定操作**完全解耦**——不获取执行资格、不排队、不执行“停止”脚本，因此脚本操作执行期间
+//! 它照样被接受；它的请求面同样封闭，带查询串或请求体的调用被拒绝且不触发任何动作。
+//!
 //! 同一实例内任意时刻至多一个脚本操作在执行：两个操作共用一个执行资格，资格从操作被接受到脚本
 //! 确认结束一直持有，期间到达的其他请求直接得到忙碌结果（HTTP 409 `operation-in-progress`），
 //! 既不等待也不在之后补做。互斥范围限单个后端实例，覆盖整个脚本执行期间，不覆盖脚本另开的长期进程。
@@ -15,7 +19,9 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod config;
+pub mod mdns;
 pub mod operations;
+pub mod shutdown;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,10 +37,12 @@ use serde::Serialize;
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
-pub use config::{Config, OperationBinding, Operations};
+pub use config::{Config, MdnsConfig, OperationBinding, Operations};
 pub use operations::{ScriptOperation, console_available};
+pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
+use shutdown::ShutdownOutcome;
 
 /// 操作请求的请求体读取上限。操作请求不接受请求体，任何请求体都注定被拒绝，
 /// 因此只要够读完空请求体即可，不必为一个越界请求缓冲任意大的内容。
@@ -54,10 +62,22 @@ pub struct AppState {
     /// 覆盖整个脚本执行期间（不是只到进程创建完成），而且由**执行这次操作的任务**持有，
     /// 与提交它的 HTTP 连接无关：连接断开时资格继续被持有到脚本确认结束。
     execution: Arc<Mutex<()>>,
+    /// 关机动作接缝。交付运行时是真实的 Win32 动作（[`SystemPowerOff`]），自动化测试注入记录型
+    /// 实现；关机路径**只**经由它，因此它不接触上面那一个执行资格。
+    power_off: Arc<dyn PowerOff>,
 }
 
-/// 构造交付运行时使用的应用：固定操作接口 + 打包页面。
+/// 构造交付运行时使用的应用：固定操作接口 + 关机端点 + 打包页面。
 pub fn app(config: &Config) -> Router {
+    app_with_power_off(config, Arc::new(SystemPowerOff))
+}
+
+/// 构造使用**指定**关机动作的应用。
+///
+/// 交付运行时用 [`app`]（真实的 Win32 动作）；自动化测试用本函数注入记录型动作，于是测试里
+/// `POST /api/shutdown` 的语义（200 / 500、请求面拒绝）能被完整驱动，却永远不会真的关机。
+/// 两个构造函数注册的路由完全一致：关机端点不是能力接口，也不由任何配置或前端决定是否可用。
+pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Router {
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -68,6 +88,7 @@ pub fn app(config: &Config) -> Router {
             config.operations.stop.working_directory.clone(),
         ),
         execution: Arc::new(Mutex::new(())),
+        power_off,
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -78,6 +99,8 @@ pub fn app(config: &Config) -> Router {
         // 只有这两个操作名可用；执行目标与工作目录只来自服务端配置。
         .route("/api/operations/start", post(start_operation))
         .route("/api/operations/stop", post(stop_operation))
+        // 关机永远注册：只要服务在运行，无参数 POST 就能触发本机优雅关机。
+        .route("/api/shutdown", post(shutdown))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
@@ -150,6 +173,53 @@ async fn start_operation(State(state): State<AppState>, request: Request) -> Res
 /// “停止”操作：执行配置绑定的关闭批处理。
 async fn stop_operation(State(state): State<AppState>, request: Request) -> Response {
     run_fixed_operation(request, "stop", &state.stop_operation, &state.execution).await
+}
+
+/// 关机成功的结果类别（HTTP 200）；失败类别是 HTTP 500 的 `shutdown-failed`，两者互相区分。
+const SHUTDOWN_ISSUED: &str = "shutdown-issued";
+
+/// 一次成功的关机请求：只说明“关机已发出”。
+#[derive(Debug, Serialize)]
+struct ShutdownResponse {
+    /// 结果类别：`shutdown-issued`。
+    outcome: &'static str,
+}
+
+/// “关机”：无参数 POST 触发本机优雅关机。
+///
+/// 与固定操作的执行资格**完全解耦**：不获取、不释放、不排队，也不执行“停止”脚本，因此脚本操作
+/// 执行期间它照样被接受，也不改变忙碌语义。关机动作是同步的：`Ok` 回 200（关机已发出），
+/// 失败回 500 `shutdown-failed`，原始错误只写诊断输出。
+async fn shutdown(State(state): State<AppState>, request: Request) -> Response {
+    // 请求面与其他操作一样封闭，且拒绝发生在调用动作之前：被拒绝的请求不触发任何关机动作。
+    if let Some(rejection) = reject_unclosed_request(request).await {
+        return rejection;
+    }
+
+    match state.power_off.power_off() {
+        Ok(()) => {
+            shutdown::report(&ShutdownOutcome::Invoked);
+            (StatusCode::OK, Json(ShutdownResponse { outcome: SHUTDOWN_ISSUED })).into_response()
+        }
+        Err(failure) => {
+            shutdown::report(&ShutdownOutcome::Failed(failure));
+            shutdown_failed()
+        }
+    }
+}
+
+/// 关机动作失败的响应：与请求面拒绝同一个响应形状（只给类别，不回显任何执行目标或原始错误），
+/// 但语义是“请求被接受、动作失败”，因此不复用请求拒绝的诊断输出——类别事实由
+/// [`shutdown::report`] 的 `failed` 一行给出。
+fn shutdown_failed() -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(RejectedResponse {
+            code: "shutdown-failed",
+            message: "关机动作失败：本机没有接受这次关机。",
+        }),
+    )
+        .into_response()
 }
 
 /// 两个固定操作共用的执行路径。

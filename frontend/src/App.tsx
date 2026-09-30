@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
+import { ShutdownControl } from './ShutdownControl'
 
 type PanelState =
   | { kind: 'idle' }
@@ -30,6 +31,8 @@ type Feedback = {
 
 export default function App() {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
+  // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
+  const [shutdownTakeover, setShutdownTakeover] = useState(false)
 
   async function submit(operation: OperationName) {
     setState({ kind: 'running', operation })
@@ -61,7 +64,7 @@ export default function App() {
           className="operation"
           data-testid="start-button"
           onClick={() => submit('start')}
-          disabled={pending !== null}
+          disabled={pending !== null || shutdownTakeover}
         >
           启动
         </button>
@@ -70,11 +73,13 @@ export default function App() {
           className="operation"
           data-testid="stop-button"
           onClick={() => submit('stop')}
-          disabled={pending !== null}
+          disabled={pending !== null || shutdownTakeover}
         >
           停止
         </button>
       </div>
+
+      <ShutdownControl onTakeoverChange={setShutdownTakeover} />
 
       {pending !== null && (
         <p className="pending" data-testid="pending-hint" role="status">

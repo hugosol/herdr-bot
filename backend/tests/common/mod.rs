@@ -219,6 +219,7 @@ pub fn config(script: &Path, working_directory: &Path) -> omp_bot::Config {
             start: binding(),
             stop: binding(),
         },
+        mdns: omp_bot::MdnsConfig::default(),
     }
 }
 
@@ -261,11 +262,18 @@ pub struct TestServer {
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
     pub async fn start(config: &omp_bot::Config) -> Self {
+        Self::start_app(omp_bot::app(config)).await
+    }
+
+    /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。
+    ///
+    /// 与 `start` 完全同一形态（真实监听端口 + 每个请求独立 TCP 连接），只是装配好的应用由调用者
+    /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `omp_bot::app` / `omp_bot::app_with_power_off`。
+    pub async fn start_app(app: axum::Router) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("绑定测试监听端口");
         let addr = listener.local_addr().expect("读取测试监听地址");
-        let app = omp_bot::app(config);
         let serving = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });

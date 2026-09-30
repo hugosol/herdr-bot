@@ -83,6 +83,177 @@ h1 {
   border-left: 0.35rem solid #8a93a1;
 }
 
+/* 关机按钮：与“启动/停止”分开摆，因为关机是两个独立动作之外的系统级动作。 */
+.shutdown {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: 1px solid #c14b3a;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #ff9d8c;
+  cursor: pointer;
+}
+
+/* 整屏接管：不透明覆盖层，盖住底层页面（接管期间“启动/停止”同时被禁用）。 */
+.shutdown-takeover {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  box-sizing: border-box;
+  padding: 2rem;
+  background: #0b0d10;
+  color: #f2f4f8;
+  text-align: center;
+}
+
+.shutdown-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1rem;
+}
+
+/* 确认页：内容居中。 */
+.shutdown-screen--confirm {
+  align-items: center;
+  justify-content: center;
+}
+
+/* 倒计时：数字占满剩余高度并居中，取消按钮因此被推到屏幕底部。 */
+.shutdown-screen--counting {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shutdown-countdown-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.shutdown-kicker {
+  margin: 0;
+  color: #8a93a1;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.shutdown-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+}
+
+.shutdown-note {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 1.05rem;
+}
+
+/* 超大倒计时数字：窄屏也一眼可读。 */
+.shutdown-count {
+  font-size: clamp(5rem, 28vw, 14rem);
+  font-weight: 800;
+  line-height: 1;
+  color: #ff9d8c;
+}
+
+.shutdown-actions {
+  display: flex;
+  gap: 1rem;
+  width: min(100%, 28rem);
+}
+
+.shutdown-action {
+  padding: 0.85rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 0;
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+
+.shutdown-action--ghost {
+  background: #2b313a;
+  color: #e8ecf2;
+}
+
+.shutdown-action--danger {
+  background: #c14b3a;
+  color: #ffffff;
+}
+
+/* 确认页的两个按钮平分宽度，并加大点按面积。 */
+.shutdown-actions .shutdown-action {
+  flex: 1;
+  padding: 1.25rem;
+  font-size: 1.15rem;
+}
+
+/* 取消关机：固定在屏幕底部、拇指可达，点按面积加大。 */
+.shutdown-cancel {
+  width: min(100%, 28rem);
+  padding: 1.5rem;
+  font-size: 1.25rem;
+}
+
+/* 结果页与“正在发出指令”页：内容居中，返回按钮同样固定在底部。 */
+.shutdown-screen--outcome {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shutdown-outcome-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* 三类结果各自配色：已发出=绿、明确失败=红、无法确认=中性灰（不是失败）。 */
+.shutdown-screen--outcome[data-outcome='sent'] {
+  --result-accent: #4caf50;
+  --result-text: #b6f0c0;
+}
+
+.shutdown-screen--outcome[data-outcome='failed'] {
+  --result-accent: #c14b3a;
+  --result-text: #ffd9d1;
+}
+
+.shutdown-screen--outcome[data-outcome='unconfirmed'] {
+  --result-accent: #8a93a1;
+  --result-text: #e8ecf2;
+}
+
+/* 结果框：沿用结果反馈的左侧色条约定，窄屏也一眼可辨。 */
+.shutdown-outcome {
+  box-sizing: border-box;
+  width: min(100%, 28rem);
+  padding: 1.5rem;
+  border: 1px solid #2b313a;
+  border-left: 0.5rem solid var(--result-accent, #2b313a);
+  border-radius: 0.75rem;
+  background: #14161a;
+  text-align: left;
+}
+
+.shutdown-outcome .shutdown-title {
+  color: var(--result-text, #f2f4f8);
+}
+
+.shutdown-outcome .shutdown-note {
+  margin-top: 0.5rem;
+  line-height: 1.6;
+}
+
 /* 执行中提示：与结果反馈分开显示，用不同的底色和边框区分。 */
 .pending {
   margin: 1.5rem 0 0;

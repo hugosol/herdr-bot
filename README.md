@@ -1,10 +1,16 @@
-# omp-bot：脚本控制面板（首版）
+# omp-bot：脚本控制面板
 
 在 Windows 上手动启动的网页控制面板：本机浏览器与同一局域网内的手机访问**同一个服务**，
-用固定按钮操作预先配置好的批处理脚本。控制面板只反馈脚本调用情况，不检查后台程序是否就绪。
+用固定按钮操作预先配置好的批处理脚本，也可以用一个固定主机名打开页面、并从页面关闭这台电脑。
+控制面板只反馈脚本调用情况，不检查后台程序是否就绪。
 
-首版范围见 [`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md) 与
-[`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
+- 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
+  [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
+- 本版新增（mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
+  [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
+  决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
+  [ADR 0002](docs/adr/0002-shutdown-button-default-on-client-countdown-no-auth.md)、
+  [ADR 0003](docs/adr/0003-shutdown-uses-exitwindowsex-forceifhung.md)；术语见 [`GLOSSARY.md`](GLOSSARY.md)。
 
 ## 目录结构
 
@@ -13,8 +19,10 @@
 | `backend/` | Rust/Axum 服务：提供打包页面与操作接口 |
 | `backend/src/config.rs` | 服务端配置：监听地址、固定操作绑定（脚本 + 工作目录） |
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
+| `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
+| `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
-| `frontend/` | React 前端源码（Vite） |
+| `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -60,23 +68,65 @@ backend\target\release\omp-bot.exe --config 其他配置.toml
 
 ## 访问（本机与局域网）
 
-启动后控制台会打印监听地址与局域网访问提示：
+启动后控制台会打印三个入口：mDNS 主机名、本机地址与 IP 兜底提示。
 
 ```
 [omp-bot] 监听：http://0.0.0.0:8787/
 [omp-bot] 局域网设备请访问 http://<本机局域网 IPv4>:8787（ipconfig 查看地址）
+[omp-bot] mDNS 状态：published host=omp-bot.local. address=192.168.5.4 port=8787 url=http://omp-bot.local:8787/
 ```
 
-- 本机：`http://127.0.0.1:8787/`
-- 局域网设备：`http://<本机局域网 IPv4>:8787/`（用 `ipconfig` 查看地址，例如 `192.168.5.4`）
+| 入口 | 地址 | 用途 |
+|---|---|---|
+| 本机 | `http://127.0.0.1:8787/` | 在这台电脑上看页面，任何情况下都可用 |
+| 局域网设备（推荐） | `http://omp-bot.local:8787/` | 名字固定：换 Wi-Fi、重启路由器或 DHCP 重分配后也不用改地址 |
+| 局域网设备（兜底） | `http://<本机局域网 IPv4>:8787/` | mDNS 解析不了时用（原因见下一节） |
+
+### mDNS 主机名 `omp-bot.local`（推荐入口）
+
+控制面板启动时会在自己进程里发布 mDNS 主机名 `omp-bot.local`（以及 `_http._tcp` 服务记录），
+局域网设备用 `http://omp-bot.local:<端口>/` 就能打开同一个页面。发布地址默认是本机主路由的 IPv4
+（自动排除回环与 `169.254.0.0/16`），也可以用 `[mdns] address` 指定；端口取实际监听端口——以启动日志
+`published` 那一行为准：
+
+```
+[omp-bot] mDNS 状态：published host=omp-bot.local. address=<IPv4> port=<端口> url=http://omp-bot.local:<端口>/
+```
+
+**`.local` 能不能解析，取决于客户端和网络，不由本服务决定**——用这条路线前先看这段：
+
+- **Windows**：`.local` 由系统的 mDNS 解析器处理，能否解析受系统解析策略与是否装了 Bonjour 之类的
+  解析器影响。**本机（开发/验收这台）装了 Apple Bonjour，实测可解析**；没有 Bonjour 的 Windows 机器
+  **不保证**能解析。
+- **Android 13 之前的设备**不原生支持 mDNS 解析；Android 13+ 才具备系统级 `.local` 解析能力。
+- **网络**：启用组播/客户端隔离（AP 隔离）、访客网络、公司网络的客户端隔离会挡住 mDNS 组播，
+  名字也就解析不到。
+- 结论：**能解析就用名字，解析不了就用 IP 兜底**。三条入口同时有效；本机 `127.0.0.1` 永远可用，
+  mDNS 发布失败或被关掉也不会影响 IP 入口。
+
+#### IP 兜底的具体做法
+
+1. 在电脑上查局域网地址：
+
+   ```bat
+   ipconfig
+   ```
+
+   取**无线局域网适配器 WLAN**（或以太网）那一节的 `IPv4 地址`（例如 `192.168.5.4`）；也可以直接从
+   启动日志的 `published … address=<IPv4>` 一行读出发布的地址。
+2. 手机连**与电脑同一个 Wi-Fi**（不要用访客网络或热点），浏览器打开 `http://<上一步的 IPv4>:8787/`。
+3. 这个地址不是固定的：换 Wi-Fi、重启路由器或 DHCP 重新分配后会变，变了重新 `ipconfig` 确认即可；
+   端口固定为配置里的 `8787`。**不要在手机上用 `127.0.0.1`**（那指向手机自己）。
 
 页面与操作接口**同源同端口**，都由这一个服务提供：手机不需要单独访问前端开发服务器，也不需要额外的
-端口转发；照常打开页面即可，按钮请求打到同一地址的 `/api/operations/start`、`/api/operations/stop`。
+端口转发；照常打开页面即可，按钮请求打到同一地址的 `/api/operations/start`、`/api/operations/stop`，
+关机按钮打到 `/api/shutdown`。
 
 ### 用手机操作（步骤与预期结果）
 
 真机连通与真机操作只能由**真实手机**确认，自动化验证（Chromium 窄屏仿真）不构成真机结论；当前状态
-见[人工验收移交](#人工验收移交p2--p4未验收)。
+见[人工验收移交](#人工验收移交p2--p4未验收)。手机浏览器也可以直接打开 `http://omp-bot.local:8787/`
+（见上一节；解析不了就照下面的 IP 步骤做）。
 
 1. 电脑侧按“构建”“手动启动”启动控制面板，确认控制台打印了监听地址。
 2. 在电脑上查局域网地址：
@@ -133,6 +183,32 @@ working_directory = 'E:\Developer\myhub\my-streaming'
   并且不会执行任何脚本。
 - 命令执行发生在后端所在的这台电脑上，不在手机或浏览器上。
 - 运行中的服务不会自动重读配置，改完配置需要重启。
+
+### `[mdns]` 配置（可选）
+
+mDNS 发布只有两个开关，**整段可以缺省**（不写 `[mdns]` 就等于默认值：启用、地址自动选）：
+
+```toml
+[mdns]
+enabled = true             # 缺省就是 true：不写这一段也会发布
+address = "192.168.5.4"    # 可选：指定要发布的 IPv4；缺省自动选主路由地址
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `enabled` | `true` | `false` 时完全不发布 mDNS 记录，启动日志给出 `mDNS 状态：disabled`；HTTP 服务与 IP 入口照常可用 |
+| `address` | 自动选 | 指定要发布的 IPv4。**适用场景**：多网卡/多网段，或自动选出的地址不是你想让手机用的那块网卡（自动选择只取主路由 IPv4，排除回环与 `169.254.0.0/16`） |
+
+- `address` 必须是**本机网卡上真实存在的地址**：值本身不可发布（回环、`169.254.0.0/16`）→ 启动日志
+  `no-address`；不在本机网卡上（即使是非回环公网地址）→ 启动日志 `error`。两种情况都**跳过发布**，
+  HTTP 与 IP 入口照常可用（本次交付实测见下文「交付验证记录（v2，2026-09-30）」）。
+- 主机名固定为 `omp-bot.local`，**没有**改名配置项。局域网里已有别的设备占用这个名字时**不改名**：
+  注册前探测到占用 → 不发布并告警（启动日志 `conflict phase=preprobe`）；注册后才发现被改名 → 立即注销
+  记录并告警（`conflict phase=renamed`）。**绝不发布** `omp-bot-2.local` 之类的名字。
+- 配置解析保持 `deny_unknown_fields`：`[mdns]` 里写错字段名会启动失败并给出解析错误，不会静默忽略。
+- 关掉 mDNS 只影响“名字入口”，不影响 IP 入口，也不影响页面与任何接口（含关机端点）。
+- 诊断类别固定为 `published` / `disabled` / `no-address` / `conflict` / `error`（行首 `[omp-bot] mDNS 状态：`），
+  发布结果因此可以直接从启动输出断言。
 
 ### 默认绑定与改绑
 
@@ -342,6 +418,64 @@ grep -rniE "timeout|tokio::time|\.kill\(|start_kill|kill_on_drop|abort\(|Duratio
 全零 GUID，即“让 Windows 决定”），每个 Python 进程各有自己的 `conhost.exe`。是否与用户心目中的
 “原有窗口行为”（例如经典 conhost 独立窗口）一致，需要人工验收确认（见[人工验收移交](#人工验收移交p2--p4未验收)）。
 
+## 关机
+
+页面有一个“关机”按钮（是否显示由前端构建期常量决定，默认显示）。它关的是**整台 Windows 电脑**，
+而不是后台程序——与“停止”是两个不同的动作（见 [`GLOSSARY.md`](GLOSSARY.md)）。
+
+### 页面流程与三类反馈
+
+1. 点“关机”→ 整屏确认页（“确定要关闭电脑？”）；接管期间底层的“启动/停止”不可操作。
+2. 点确认页的“关机”→ 全屏倒计时，默认 **10 秒**，每秒递减；期间点底部“取消关机”即回到初始状态。
+3. **倒计时归零才**发出本次流程**唯一一次** `POST /api/shutdown`。此前取消、**刷新或关闭页面**都不发送
+   任何请求（刷新/关闭页面等于取消，这是明确接受的取舍）。
+4. 请求发出后按三类结果反馈，三者互斥：
+
+| 反馈 | 触发条件 | 页面文案 |
+|---|---|---|
+| 已发出 | HTTP 200（`{"outcome":"shutdown-issued"}`） | “关机指令已发出” |
+| 明确失败 | HTTP 500（`{"code":"shutdown-failed"}`） | “关机没有成功” |
+| 结果无法确认 | 请求没有响应（连不上、连接被中断、超过 10 000 ms 的等待上限） | “结果无法确认”——**不当作失败，也不自动重试** |
+
+机器可读标识（浏览器自动化据此断言类别，不依赖文案）：`[data-testid=shutdown-button]`、
+`[data-testid=shutdown-takeover][data-phase=confirm|counting|requesting|sent|failed|unconfirmed]`、
+`[data-testid=shutdown-confirm]`、`[data-testid=shutdown-countdown][data-seconds]`、
+`[data-testid=shutdown-cancel]`、`[data-testid=shutdown-result][data-outcome=sent|failed|unconfirmed]`。
+
+倒计时秒数、按钮是否显示、等待响应的上限都是**前端构建期常量**，都在 `frontend/src/config.ts`：
+`SHUTDOWN_COUNTDOWN_SECONDS = 10`、`SHUTDOWN_BUTTON_VISIBLE = true`、`SHUTDOWN_RESPONSE_TIMEOUT_MS = 10000`。
+改它们要重新 `npm --prefix frontend run build`。后端**没有** `[shutdown]` 配置段。
+
+### 后端行为（`POST /api/shutdown`）
+
+- **端点永远注册**：只要服务在运行，无参数 `POST /api/shutdown` 就会触发本机 Windows 优雅关机。
+  上面那个“是否显示按钮”的常量只隐藏按钮，**不关闭端点**，也没有运行时开关。
+- 请求面封闭：带查询串或请求体 → `400 {"code":"unexpected-parameters",…}`，且不触发任何关机动作；
+  `/api/` 下其他路径照旧 `404 unknown-operation` / `404 unknown-endpoint`。
+- 成功 → `200 {"outcome":"shutdown-issued"}`；动作失败 → `500 {"code":"shutdown-failed","message":"关机动作失败：本机没有接受这次关机。"}`
+  （失败的系统原始错误只写诊断输出，不进响应体）。
+- 关机走 Windows 自己的流程：先启用进程的 `SeShutdownPrivilege`，再调用
+  `ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG, …)`——Windows 先通知各应用保存/退出，对超过系统等待
+  仍不响应的进程才强制结束，然后断电；调用失败**如实回报**，不静默改走强制关机。
+  诊断输出：`[omp-bot] 关机状态：invoked` 或 `[omp-bot] 关机状态：failed step=privilege|exit-windows-ex error=<原始错误>`。
+- 与“启动/停止”**完全解耦**：不获取执行资格、不排队、不执行“停止”脚本，脚本正在执行时也能关机；
+  关机也不结束那个脚本、不释放它的执行资格。关机**不注销** mDNS 记录（下次启动重新发布的记录会刷新
+  客户端缓存）。
+
+### 安全边界：无认证，且监听局域网
+
+> **`POST /api/shutdown` 没有认证。** 任何能连到这个端口的设备都可以**绕过页面的确认与倒计时**，
+> 直接调用它立即关机。页面上的 10 秒倒计时只是**防误触的 UX 安全网**，不是服务端强制。
+
+- 服务监听 `0.0.0.0`（非回环）：同一个局域网里能访问这台电脑的设备都能打开页面并调用**所有**接口，
+  包括关机端点——它不需要任何口令、令牌或会话。
+- 现有的 Windows 防火墙规则决定**谁能连上端口**，但它不做身份区分。本机实测（`netsh advfirewall
+  firewall show rule name=omp-bot`）：两条**入站允许**规则（TCP 与 UDP）、任意端口、程序为
+  `omp-bot.exe`、配置文件 `公用`；而本机 WLAN 当前的网络类别正是“公用”（`Get-NetConnectionProfile`），
+  因此这条规则覆盖本机地址——**同一个 Wi-Fi 里的任何设备都在放行范围内**。
+- 因此这条边界就是“**仅可信局域网**”：不要暴露到公网、不要用不信任的 Wi-Fi/访客网络，也不要做端口
+  转发。要收回访问只能改防火墙放行范围或换网络；本版没有运行时开关，也没有口令。
+
 ## 测试
 
 ```bat
@@ -366,6 +500,25 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
 **验证限度**：有限等待不能单独证明“永不超时”，它证明的是这段等待里没有任何阈值行为；
 “不存在自动终止策略”另行由上面的执行生命周期检查补强。
 
+本版（mDNS 与关机）新增的测试：
+
+- `backend/tests/shutdown.rs`：关机端点的契约（8 个用例）——空 POST → 200 `shutdown-issued` 且动作恰好
+  一次；带查询串/请求体 → 400 `unexpected-parameters` 且 0 次调用；动作失败 → 500 `shutdown-failed`
+  且系统错误详情不进响应体；脚本占着执行资格时关机照样被接受，且不结束脚本、不释放资格、不执行
+  “停止”脚本；端点永远注册（换 HTTP 方法得 405 而不是 404）。**这些用例全部注入记录型关机动作，
+  自动化里绝不会真的关机。**
+- `backend/tests/mdns_conflict.rs`：`omp-bot.local` 被占用时不改名、不发布，面板照常服务；以及注册后
+  被改名时立即注销（第二个用例借环境开关强制走这条兜底路径）。
+- `backend/tests/mdns_failure.rs`：`[mdns] address` 不在本机网卡上时只告警、跳过发布，HTTP 照常服务。
+- `backend/src/mdns.rs`、`backend/src/config.rs` 的内联单测：地址选择（`[mdns] address` 优先、未设置时
+  取主路由地址而非 WSL/链路本地、回环与 `169.254.0.0/16` 永不发布）与 `[mdns]` 段的缺省值/拼错字段名。
+
+### 诊断用环境开关（不是用户配置）
+
+`OMP_BOT_MDNS_SKIP_PREPROBE`：设置后跳过注册前的冲突预探测，用于验证“注册后被改名”的兜底路径
+（`backend/tests/mdns_conflict.rs` 的第二个用例就是这么跑的）。不设置即正常走预探测；**正常使用与日常
+排查都不需要它**——它不是配置项，也不出现在 `omp-bot.toml` 里。
+
 ## 首版限制
 
 - **无身份验证**：任何能连上监听端口的设备都可以调用操作接口。只在可信局域网内使用，
@@ -377,8 +530,10 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   验收或使用前先确认 `8899`/`8888` 没有被无关程序占用（`netstat -ano | findstr LISTENING | findstr "8899 8888"`）。
 - 脚本未结束时不会自动终止；卡住需要在 Windows 上人工处理（重启控制面板不能证明旧脚本已结束），
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
+- 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
+  见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
 
-## 交付验证记录（2026-09-30）
+## 交付验证记录（首版，2026-09-30）
 
 按本文档实际执行一次并观测。自动化验证主要使用隔离夹具配置
 （`fixtures\operations\*`，见[隔离夹具](#隔离夹具fixtures的用途)）；此外为验证“退出码 1”修复，
@@ -486,3 +641,138 @@ Wi-Fi → 打开 `http://<IPv4>:8787/` → 点按两个按钮）。请逐条确�
 
 P2 与 P4 在用户逐条确认前保持**未验收**；上表自动化检查已全部执行，但它们只证明控制面板一侧的行为
 与证据已备好，不证明真机连通、真机操作，也不替代对现有脚本实际控制与窗口行为的人工确认。
+
+## 交付验证记录（v2，2026-09-30）
+
+按本文档 v2 的新增内容实际构建并启动一次**默认配置**的控制面板并逐项核对；原始观测与截图见
+[`.scratch/omp-bot-v2/evidence/07-delivery/`](.scratch/omp-bot-v2/evidence/07-delivery/delivery-checks.txt)
+目录（本节表格是 `delivery-checks.txt` 的摘要）。**本次核对没有对生产关机端点发过任何请求**：
+页面只走到确认页就点“返回”，没有进入倒计时；关机端点本身的行为由注入记录型动作的契约测试验证
+（不会真的关机）。
+
+| 步骤 | 执行的命令 | 观测结果 |
+|---|---|---|
+| 前端构建 | `npm --prefix frontend install`、`npm --prefix frontend run build` | `up to date in 216ms`；`tsc --noEmit && vite build`：20 modules，`backend/static/index.html` 0.40 kB、`assets/index-Cxv-kr9h.css` 3.54 kB、`assets/index-DZovPMgF.js` 225.99 kB |
+| 后端构建 | `cargo build --release --manifest-path backend\Cargo.toml` | `Finished release profile [optimized]`（9.82 s），`backend\target\release\omp-bot.exe`（2 916 352 B） |
+| 启动（默认 `omp-bot.toml`，**没有** `[mdns]` 段） | `backend\target\release\omp-bot.exe` | 打印绑定、监听与 `[omp-bot] mDNS 状态：published host=omp-bot.local. address=192.168.5.4 port=8787 url=http://omp-bot.local:8787/`——默认开启 mDNS 并发布了主机名 |
+| 三个入口 | `curl -D -` 对 `http://127.0.0.1:8787/`、`http://omp-bot.local:8787/`、`http://192.168.5.4:8787/` | 三者都 `200 OK`、`content-type: text/html`、408 B（同一构建产物） |
+| 本机解析（**不等于手机解析**） | `Resolve-DnsName -Type A`、`ping`、`dns-sd -G v4 omp-bot.local`、`dns-sd -B _http._tcp local` | 分别得到 `A 192.168.5.4`、ping 通、`Add … omp-bot.local. 192.168.5.4`、服务实例 `omp-bot` |
+| `[mdns] enabled = false` | 另起实例（`evidence/07-delivery/cfg-mdns-disabled.toml`，监听 8788） | `[omp-bot] mDNS 状态：disabled（… 未发布任何 mDNS 记录）`；同实例 `curl` 得 `200`、408 B |
+| `[mdns] address` 非本机地址 | 另起实例（`cfg-mdns-foreign-address.toml`，监听 8789，`address = "203.0.113.7"`） | `[omp-bot] mDNS 状态：error（… 不是本机网卡上的地址 …）`；跳过发布，同实例 `curl` 得 `200`、408 B |
+| 关机端点契约（**不触碰真实动作**） | `cargo test --manifest-path backend\Cargo.toml --test shutdown` | `test result: ok. 8 passed; 0 failed`（空 POST→200 且动作恰好一次；带参数→400 且 0 次；失败→500 `shutdown-failed`；脚本占资格时仍被接受；不跑停止脚本、不动资格；换方法得 405 而不是 404） |
+| 交付二进制链入系统关机 API | `grep -a -c "ExitWindowsEx" backend\target\release\omp-bot.exe` | `2`（PE 导入表中存在该导入；本次只查导入表，**不执行**它） |
+| 页面关机入口（真实 Chromium 390×844，`http://omp-bot.local:8787/`） | 点“关机”→ 点“返回” | 初始按钮 = `启动 | 停止 | 关机`、`operation-result` 为 `idle`；点击后 `shutdown-takeover` 的 `data-phase=confirm`、`shutdown-confirm` 文案为“关机 / 确定要关闭电脑？ / 关机后需要重新开机。 / 返回 / 关机”、底层按钮 `启动:disabled=true \| 停止:disabled=true`；点“返回”后接管消失、恢复 `idle`；**整个过程 `/api/shutdown` 请求数 = 0**。截图：`browser-01-idle.png`、`browser-02-confirm.png`、`browser-03-after-back.png` |
+| 防火墙与网络类别 | `netsh advfirewall firewall show rule name=omp-bot`、`Get-NetConnectionProfile` | 两条入站允许规则（TCP、UDP、任意端口、程序 `omp-bot.exe`、配置文件 `公用`）；WLAN（`ZTE-1007 3`）网络类别为 `Public`，因此该规则覆盖本机地址——这是“仅可信局域网”边界的依据 |
+
+自动化证据的界限：上表证明的是控制面板一侧的行为、构建产物与端点契约；**本机解析是这台装有 Bonjour 的
+电脑上的解析，不是手机解析**；`ExitWindowsEx` 从未在自动化里真实执行。
+
+## 人工验收移交（v2，未验收）
+
+契约在本版保留**两项人工验收**：**真实手机解析 `omp-bot.local` 并打开控制面板**（P1）与**真实断电一次**（P8）。
+在用户逐条确认之前一律记为**未验收**。本节的自动化证据只证明控制面板一侧的行为与证据已备好，
+**不构成**这两项的结论，也没有用替身替代真实行为。
+
+### P1：真实手机解析 `omp-bot.local` 并打开控制面板（未验收）
+
+前置：电脑上的控制面板已启动（默认 `omp-bot.toml` 即可）；手机与电脑连**同一个普通家庭 Wi-Fi**
+（不要访客网络或热点，也别开 VPN/代理）。
+
+1. 看启动日志的 mDNS 行，记下发布的地址与端口：
+
+   ```
+   [omp-bot] mDNS 状态：published host=omp-bot.local. address=<IPv4> port=<端口> url=http://omp-bot.local:<端口>/
+   ```
+
+2. 电脑上先确认解析（这一步只代表**这台电脑**，手机上成不成要看第 3 步）：
+
+   ```bat
+   ping omp-bot.local
+   ```
+
+3. 手机浏览器打开 `http://omp-bot.local:<端口>/`。
+   - **预期看到**：标题“omp-bot 控制面板”、一行范围说明、两个大按钮（“启动”“停止”）与“关机”按钮，
+     结果框显示“尚未提交操作。”——与用 IP 打开的是同一个页面。
+4. 手机解析不了（转圈、超时、找不到服务器）时：按 [IP 兜底的具体做法](#ip-兜底的具体做法) 用
+   `http://<IPv4>:<端口>/` 打开，并记录手机型号、系统版本与所用 Wi-Fi——它们决定命中上文「mDNS 主机名
+   `omp-bot.local`」一节里的哪一条限制。
+
+请逐条确认：
+
+- [ ] 手机能用 `http://omp-bot.local:<端口>/` 打开控制面板（不是只有 IP 才能打开）。
+- [ ] 页面上的“启动”“停止”“关机”三个按钮都可见、可点按，不需要放大或横屏。
+- [ ] 名字入口与 IP 入口打开的是同一个页面（同一份内容）。
+- [ ] 若名字解析失败，IP 兜底照常能用（这不算失败，但请记录失败原因的种类）。
+- [ ] 只有在你亲自确认之后，才把本条记为“已验收”。
+
+证据位置（真机确认前均为**待确认**）：
+
+- 本机（电脑）解析观测：`.scratch/omp-bot-v2/evidence/07-delivery/delivery-checks.txt` §4
+  （`Resolve-DnsName` / `ping` / `dns-sd -G v4` / `dns-sd -B`）——这是**电脑上的**解析，不是手机。
+- 三个入口的 HTTP 观测与页面断言/截图：同文件 §3、§8 与 `evidence/07-delivery/browser-0*.png`。
+- mDNS 状态类别与地址选择：`evidence/01-03-mdns/*.toml`（可原样重跑）、
+  `evidence/07-delivery/run-mdns-disabled.log`、`run-mdns-foreign-address.log`。
+- **限制**：没有任何手机侧证据。真实手机解析属人工验收，本目录没有、也不应伪造这一证据。
+
+### P8：真实断电一次（未验收）
+
+前置：确认这台电脑可以接受关机（先保存好工作）；不需要先执行“启动/停止”脚本。
+
+1. 在**控制台窗口**启动控制面板（默认 `omp-bot.toml`）。
+2. 在页面（本机或手机都行）点“关机”→ 确认页点“关机”→ 等 10 秒倒计时归零。
+   - 归零前点“取消关机”或刷新/关闭页面：**不会**发送请求、电脑不会关，这是预期行为。
+3. 倒计时归零后，页面应显示“关机指令已发出”；随后 Windows 开始通知各应用保存/退出，对超时未响应的
+   进程才强制结束，然后断电。
+4. 恢复后，在启动面板的那个控制台窗口里核对诊断输出：
+
+   ```
+   [omp-bot] 关机状态：invoked
+   ```
+
+请逐条确认：
+
+- [ ] 归零后页面显示的是“关机指令已发出”（不是“关机没有成功”，也不是“结果无法确认”）。
+- [ ] 各应用收到系统的关闭流程、有机会保存；超时未响应的进程才被强制结束。
+- [ ] 机器最终确实断电（之后能重新开机）。
+- [ ] 关机前**没有**执行“停止”脚本：后台 Python 程序不是被 `shutdown-all.bat` 停掉的。
+- [ ] 若出现“关机没有成功”或 `[omp-bot] 关机状态：failed step=privilege|exit-windows-ex error=…`，
+      请把原始错误一并记录后再复验（这说明本次关机没有发出）。
+- [ ] 只有在你亲自做完这一次之后，才把本条记为“已验收”。
+
+预期结果：页面反馈“关机指令已发出”，Windows 走自己的关闭流程，机器断电；恢复后重启控制面板即可
+（关机不注销 mDNS 记录，下次启动会重新发布）。
+
+证据位置（人工确认前均为**待确认**）：
+
+- 端点契约与三类结果：`backend/tests/shutdown.rs`（8 个用例，注入记录型动作，**不会真的关机**）
+  与 `.scratch/omp-bot-v2/evidence/07-delivery/delivery-checks.txt` §7。
+- 提权与执行策略：`backend/src/shutdown.rs`（`enable_shutdown_privilege` + `ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG)`）、
+  [ADR 0003](docs/adr/0003-shutdown-uses-exitwindowsex-forceifhung.md)；交付二进制导入表含 `ExitWindowsEx`
+  （`delivery-checks.txt` §6）。
+- 提权可成功启用：原型验证记录 [`.scratch/omp-bot-v2/prototype-verification.md`](.scratch/omp-bot-v2/prototype-verification.md)
+  （本机 `SeShutdownPrivilege` 为“已禁用”，`AdjustTokenPrivileges` 可成功启用）——原型证据，不替代真实断电。
+- **限制**：`ExitWindowsEx` 本身从未在自动化里被执行；真实断电只做这一次人工验收。
+
+### 尚未验收的声明（v2）
+
+P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（同机解析、契约测试、浏览器断言）与首版一样，
+只证明控制面板一侧的行为与证据已备好，既不代表真机解析通过，也不代表真实断电通过。
+
+## 本次特性（v2）的证据索引
+
+每条结论的证据位置按票汇总在
+[`.scratch/omp-bot-v2/evidence/README.md`](.scratch/omp-bot-v2/evidence/README.md)（含“哪些是一次性、
+已删除”的说明），供最终移交逐条核对。要点：
+
+- **票 01–03（mDNS）**：`backend/src/mdns.rs` / `backend/src/config.rs` 的内联单测、
+  `backend/tests/mdns_conflict.rs`、`backend/tests/mdns_failure.rs`；本次交付的解析观测与 `[mdns]` 行为日志
+  在 `evidence/07-delivery/`（`delivery-checks.txt`、`run-mdns-disabled.log`、`run-mdns-foreign-address.log`）；
+  一次性运行配置在 `evidence/01-03-mdns/`。
+- **票 04（关机端点与 Windows 动作）**：`backend/tests/shutdown.rs`（8 用例）；二进制导入表观测见
+  `evidence/07-delivery/delivery-checks.txt` §6。
+- **票 05（关机接管界面）**：`evidence/05-shutdown-takeover-ui/*.png`（初始态、整屏确认、倒计时、窄屏各一张）；
+  逐条点击断言在票 05 的回报里，未另行落盘。
+- **票 06（关机请求与三类反馈）**：`evidence/06-shutdown-request/*.webp`（`sent` / `failed` / `unconfirmed` /
+  忙碌中）；一次性 harness 的夹具调用记录与网络记录已随该目录删除，**未入库**。
+- **票 07（本文档）**：`evidence/07-delivery/`（构建/启动输出、三个入口、解析观测、页面断言与截图）。
+- **两项人工验收（真机解析、真实断电）没有任何自动化证据**：它们等你的逐条确认。

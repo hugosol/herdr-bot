@@ -56,6 +56,7 @@ fn config(start_script: &Path, working_directory: &Path) -> omp_bot::Config {
             start: binding(),
             stop: binding(),
         },
+        mdns: omp_bot::MdnsConfig::default(),
     }
 }
 
