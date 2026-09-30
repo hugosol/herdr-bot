@@ -27,3 +27,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Rust 构建产物
+/backend/target
+
+# 前端构建产物：由同一个 Axum 服务提供的打包页面（frontend 执行 npm run build 生成）
+/backend/static
+
+# 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）
+/fixtures/runtime/

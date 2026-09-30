@@ -1,0 +1,18 @@
+# omp-bot 控制面板运行配置。
+#
+# 脚本目标与工作目录只来自这份服务端配置，不作为 HTTP 请求参数：
+# 客户端只能请求执行“启动”这个固定操作，无法替换命令、脚本路径或工作目录。
+
+# 监听地址：0.0.0.0 表示同时接受本机与局域网访问（非仅回环）。
+# 请勿与后台程序使用的端口冲突（关闭脚本会强制终止 8899、8888 端口上的进程）。
+listen_addr = "0.0.0.0:8787"
+
+[operations.start]
+# 启动批处理；执行工作目录为它所在的目录，脚本内的相对路径按原方式解析。
+script = 'E:\Developer\myhub\my-streaming\start-all.bat'
+working_directory = 'E:\Developer\myhub\my-streaming'
+
+[operations.stop]
+# 关闭批处理；同样以它所在的目录为执行工作目录。
+script = 'E:\Developer\myhub\my-streaming\shutdown-all.bat'
+working_directory = 'E:\Developer\myhub\my-streaming'

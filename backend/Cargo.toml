@@ -1,0 +1,19 @@
+[package]
+name = "omp-bot"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "omp-bot 脚本控制面板后端：Axum 服务，提供打包页面与固定脚本操作"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "sync"] }
+toml = "0.9"
+tower-http = { version = "0.6", features = ["fs"] }
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util"] }
+tower = { version = "0.5", features = ["util"] }
