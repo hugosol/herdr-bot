@@ -8,7 +8,7 @@
 //! 失败分支：只告警、跳过 mDNS 发布、HTTP 服务照常启动。
 //!
 //! 解析/浏览观测用测试进程自己的 mDNS daemon。若本机同时有别的测试占用 `omp-bot.local`（票 02 的
-//! 用例），观测不会失真：控制面板的记录必然携带它配置的地址与自己实际监听的端口，而两者都被断言
+//! 用例），观测不会失真：omp-bot 主界面的记录必然携带它配置的地址与自己实际监听的端口，而两者都被断言
 //! 不得出现在线上，因此“记录是谁发的”始终可区分。
 
 mod common;
@@ -25,7 +25,7 @@ use omp_bot::mdns::{HOSTNAME, SERVICE_TYPE};
 /// 失败地址：RFC 5737 TEST-NET-1，文档保留地址，本机不可能拥有它。
 const UNOWNED_ADDRESS: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 
-/// 受测的真实控制面板进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
+/// 受测的真实 omp-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -61,7 +61,7 @@ impl Panel {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("启动控制面板二进制");
+            .expect("启动 omp-bot 主界面进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -118,7 +118,7 @@ impl Panel {
             .expect("监听端口是数字")
     }
 
-    /// 进程是否仍在运行：mDNS 失败不得让控制面板退出。
+    /// 进程是否仍在运行：mDNS 失败不得让 omp-bot 主界面退出。
     fn is_running(&mut self) -> bool {
         self.child
             .try_wait()
@@ -210,7 +210,7 @@ fn browse_http_instances(duration: Duration) -> Vec<(String, u16)> {
 
 /// 一次最小 HTTP/1.1 请求：直接经 TCP 连端口，不经过页面、按钮或任何前端代码。
 fn http_request(addr: SocketAddr, request: &str) -> (String, String) {
-    let mut stream = TcpStream::connect(addr).expect("连接控制面板");
+    let mut stream = TcpStream::connect(addr).expect("连接 omp-bot 主界面");
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
         .expect("设置读取超时");
@@ -232,9 +232,9 @@ fn assert_page_serves(panel: &Panel, entries: &[Ipv4Addr]) {
             addr,
             &format!("GET / HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"),
         );
-        assert!(status.contains("200"), "入口 {entry} 打不开控制面板：{status}");
+        assert!(status.contains("200"), "入口 {entry} 打不开 omp-bot 主界面：{status}");
         assert!(
-            body.contains("<title>omp-bot 控制面板</title>"),
+            body.contains("<title>omp-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
         );
     }
@@ -302,7 +302,7 @@ fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
         panel.log_text()
     );
 
-    // 验收 3：失败路径不发布任何 mDNS 记录——控制面板的身份（配置地址、实际端口）都不在线上。
+    // 验收 3：失败路径不发布任何 mDNS 记录——omp-bot 主界面的身份（配置地址、实际端口）都不在线上。
     let resolved = resolved_addresses(HOSTNAME);
     assert!(
         !resolved.contains(&IpAddr::V4(UNOWNED_ADDRESS)),
@@ -311,10 +311,10 @@ fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
     let instances = browse_http_instances(Duration::from_secs(3));
     assert!(
         instances.iter().all(|(_, port)| *port != panel.port),
-        "失败路径发布了控制面板实例：{instances:?}"
+        "失败路径发布了 omp-bot 主界面实例：{instances:?}"
     );
 
     eprintln!("omp-bot.local 解析到的地址：{resolved:?}（为空表示完全解析不到）");
     eprintln!("_http._tcp 浏览结果：{instances:?}");
-    eprintln!("受测控制面板的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
 }

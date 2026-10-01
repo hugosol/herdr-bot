@@ -1,7 +1,11 @@
 import { useState } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
+import { isAwaitingOnline } from './sessionOrdering'
+import { SessionsPanel } from './SessionsPanel'
+import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
+import { useSessionFeedSnapshot } from './useSessionFeed'
 
 type PanelState =
   | { kind: 'idle' }
@@ -22,6 +26,9 @@ const OPERATION_LABELS: Record<OperationName, string> = {
  */
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
+/** omp-bot 主界面的两个分区：控制面板承载固定操作，会话列表呈现各会话的 keepAlive 与 agent 状态。 */
+type TabKey = 'control' | 'sessions'
+
 type Feedback = {
   kind: FeedbackKind
   text: string
@@ -29,10 +36,24 @@ type Feedback = {
   failure?: FailureKind
 }
 
-export default function App() {
+/**
+ * omp-bot 主界面。
+ *
+ * `sessionFeed` 是注入给「会话列表」的数据源；不传时用空数据源（页面显示引导空态）。
+ * 运行时由 `main.tsx` 注入真实 SSE 数据源；组件本身不依赖全局 `EventSource`，因此组件测试
+ * 可以用假数据源直接驱动。
+ */
+export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?: SessionFeed } = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
+  // 分区选择只属于这个组件：单页无路由，不做 roving tabindex——两个 tab 都是原生按钮，
+  // Tab 键依次聚焦、Enter/Space 触发点击即可切换。
+  const [tab, setTab] = useState<TabKey>('control')
   // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
   const [shutdownTakeover, setShutdownTakeover] = useState(false)
+  // 跨 tab 圆点看的是「当前是否还有会话在等待用户输入」：页面自己订阅数据源，
+  // 与人停在哪个 tab 无关，也不因为切 tab 而被清掉。
+  const { sessions } = useSessionFeedSnapshot(sessionFeed)
+  const hasWaitingSession = sessions.some(isAwaitingOnline)
 
   async function submit(operation: OperationName) {
     setState({ kind: 'running', operation })
@@ -52,54 +73,117 @@ export default function App() {
 
   return (
     <main className="panel">
-      <h1>omp-bot 控制面板</h1>
+      <h1>omp-bot</h1>
 
-      <p className="scope-note">
-        本页面只反馈脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
-      </p>
-
-      <div className="operations">
+      {/* 双 tab 外壳：整页恰两个分区，打开时默认停在「控制面板」。
+          两个 tab 是原生按钮——Tab 键逐个聚焦、Enter/Space 切换；
+          不实现方向键与 roving tabindex（明确偏离 WAI-ARIA APG，依赖原生行为）。 */}
+      <div className="tabs" role="tablist" aria-label="omp-bot 主界面分区">
         <button
           type="button"
-          className="operation"
-          data-testid="start-button"
-          onClick={() => submit('start')}
-          disabled={pending !== null || shutdownTakeover}
+          role="tab"
+          id="tab-control"
+          className={tab === 'control' ? 'tab is-active' : 'tab'}
+          data-testid="tab-control"
+          aria-selected={tab === 'control'}
+          aria-controls="panel-control"
+          onClick={() => setTab('control')}
         >
-          启动
+          控制面板
         </button>
         <button
           type="button"
-          className="operation"
-          data-testid="stop-button"
-          onClick={() => submit('stop')}
-          disabled={pending !== null || shutdownTakeover}
+          role="tab"
+          id="tab-sessions"
+          className={tab === 'sessions' ? 'tab is-active' : 'tab'}
+          data-testid="tab-sessions"
+          aria-selected={tab === 'sessions'}
+          aria-controls="panel-sessions"
+          onClick={() => setTab('sessions')}
         >
-          停止
+          会话列表
+          {/* 跨 tab 圆点：等待组非空时亮起，让停在控制面板的人也知道有会话在等接话。
+              无计数（圆点不带文本）、不自动切换、点 tab 不清零——它只反映数据源当前这一帧。 */}
+          {hasWaitingSession ? (
+            <span
+              className="tab__indicator"
+              data-testid="tab-sessions-indicator"
+              role="img"
+              aria-label="有会话等待输入"
+              title="有会话等待输入"
+            />
+          ) : null}
         </button>
       </div>
 
-      <ShutdownControl onTakeoverChange={setShutdownTakeover} />
-
-      {pending !== null && (
-        <p className="pending" data-testid="pending-hint" role="status">
-          正在执行{OPERATION_LABELS[pending]}脚本……本次操作尚未结束。
+      {/* 分区内容常驻、只切换可见性：切走再切回不会丢掉已提交操作的结果反馈，
+          关机的整屏接管也不会被切 tab 打断。 */}
+      <div
+        id="panel-control"
+        role="tabpanel"
+        aria-labelledby="tab-control"
+        className="tabpanel"
+        data-testid="panel-control"
+        hidden={tab !== 'control'}
+      >
+        <p className="scope-note">
+          本页面只反馈脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
         </p>
-      )}
 
-      {/* 结果反馈：只在请求结束后出现（执行中另由 pending 提示），因此与执行中提示不是同一类反馈。
-          data-outcome 是机器可读的结果类别，data-failure 是失败子类别。 */}
-      {feedback !== null && (
-        <p
-          className="status"
-          data-testid="operation-result"
-          data-outcome={feedback.kind}
-          data-failure={feedback.failure}
-          role="status"
-        >
-          {feedback.text}
-        </p>
-      )}
+        <div className="operations">
+          <button
+            type="button"
+            className="operation"
+            data-testid="start-button"
+            onClick={() => submit('start')}
+            disabled={pending !== null || shutdownTakeover}
+          >
+            启动
+          </button>
+          <button
+            type="button"
+            className="operation"
+            data-testid="stop-button"
+            onClick={() => submit('stop')}
+            disabled={pending !== null || shutdownTakeover}
+          >
+            停止
+          </button>
+        </div>
+
+        <ShutdownControl onTakeoverChange={setShutdownTakeover} />
+
+        {pending !== null && (
+          <p className="pending" data-testid="pending-hint" role="status">
+            正在执行{OPERATION_LABELS[pending]}脚本……本次操作尚未结束。
+          </p>
+        )}
+
+        {/* 结果反馈：只在请求结束后出现（执行中另由 pending 提示），因此与执行中提示不是同一类反馈。
+            data-outcome 是机器可读的结果类别，data-failure 是失败子类别。 */}
+        {feedback !== null && (
+          <p
+            className="status"
+            data-testid="operation-result"
+            data-outcome={feedback.kind}
+            data-failure={feedback.failure}
+            role="status"
+          >
+            {feedback.text}
+          </p>
+        )}
+      </div>
+
+      <div
+        id="panel-sessions"
+        role="tabpanel"
+        aria-labelledby="tab-sessions"
+        className="tabpanel"
+        data-testid="panel-sessions"
+        hidden={tab !== 'sessions'}
+      >
+        <SessionsPanel feed={sessionFeed} />
+      </div>
     </main>
   )
 }

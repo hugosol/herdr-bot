@@ -1,6 +1,8 @@
 //! 手动启动入口：读取配置，绑定非回环监听地址，提供页面与操作接口。
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Context;
 
@@ -22,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("绑定监听地址失败：{}", config.listen_addr))?;
     let local_addr = listener.local_addr().context("读取监听地址失败")?;
 
-    println!("[omp-bot] 控制面板已启动");
+    println!("[omp-bot] 主界面已启动");
     println!("[omp-bot] 配置文件：{}", config_path.display());
     for (label, binding) in [
         ("启动", &config.operations.start),
@@ -48,14 +50,31 @@ async fn main() -> anyhow::Result<()> {
         eprintln!(
             "[omp-bot] 提示：本次启动没有连接控制台。脚本中依赖控制台输入的命令（例如现有脚本末尾的 \
              timeout）会以非交互方式失败，操作结果会如实显示为该退出码；要与手动运行脚本一致，\
-             请在控制台窗口中启动控制面板。"
+             请在控制台窗口中启动 omp-bot 主界面。"
         );
     }
 
-    let app = omp_bot::app(&config);
-    let serve_result = axum::serve(listener, app)
-        .await
-        .context("Axum 服务异常退出");
+    // 会话表由主入口持有：同一份表既要交给应用，也要交给后台过期扫描，因此不用 `omp_bot::app`
+    // 的内部空表。监听已经绑定成功，从这里开始按固定节奏把超时的在线会话翻为离线。
+    let sessions = Arc::new(omp_bot::sessions::SessionsState::new());
+    let app = omp_bot::app_with_sessions(
+        &config,
+        Arc::new(omp_bot::SystemPowerOff),
+        Arc::clone(&sessions),
+    );
+    // 过期扫描跟随进程的生命周期：句柄不保留（丢弃句柄只是让任务脱管，任务本身继续跑），
+    // 服务器关停时随运行时一起结束。
+    omp_bot::sessions::spawn_expiry_scan(sessions);
+
+    // 会话事件的写入来源校验要拿到 TCP 对端地址，因此交给服务的是带连接信息的 make-service：
+    // 只有它会把 `ConnectInfo<SocketAddr>` 放进请求，缺了它写入端点在运行时取不到来源。
+    // 读取路径（页面与 SSE）不读连接信息，这一层装配对它们没有可见影响。
+    let serve_result = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .context("Axum 服务异常退出");
 
     // 进程正常退出时 best-effort 关闭 mDNS responder；关机路径不特殊注销记录（见 ADR 0001）。
     // 这里不引入信号处理，也不等待脚本：服务退出不牵连脚本、不牵连执行资格。

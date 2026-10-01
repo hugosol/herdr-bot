@@ -1,6 +1,6 @@
-//! mDNS 主机名发布：让局域网设备用固定的 `omp-bot.local` 打开同一个控制面板。
+//! mDNS 主机名发布：让局域网设备用固定的 `omp-bot.local` 打开同一个 omp-bot 主界面。
 //!
-//! 发布者是控制面板后端进程内的常驻 mDNS responder（`mdns-sd`），与 Axum 服务并列运行；它发布的
+//! 发布者是 omp-bot 主界面后端进程内的常驻 mDNS responder（`mdns-sd`），与 Axum 服务并列运行；它发布的
 //! 是一个主机名（`omp-bot.local.` 的 A 记录）和一个 `_http._tcp` 服务实例（端口取实际监听端口，
 //! TXT 放访问路径与版本），因此 IP 入口始终保留为兜底。
 //!
@@ -36,7 +36,7 @@ pub const HOST_LABEL: &str = "omp-bot";
 /// 发布的完整主机名。`mdns-sd` 要求主机名以 `.local.` 结尾（漏写会直接报错）。
 pub const HOSTNAME: &str = "omp-bot.local.";
 
-/// 服务类型：控制面板是一个 HTTP 服务。
+/// 服务类型：omp-bot 主界面是一个 HTTP 服务。
 pub const SERVICE_TYPE: &str = "_http._tcp.local.";
 
 /// 服务实例名。
@@ -231,7 +231,7 @@ fn unregister_on_name_change(daemon: &ServiceDaemon) -> mdns_sd::Result<()> {
             let _ = watcher.unregister(SERVICE_FULLNAME);
             eprintln!(
                 "{DIAGNOSTIC_PREFIX}conflict phase=renamed original={original} renamed={renamed}\
-                 （注册后才发现名字被占用：mdns-sd 已改名，控制面板立即注销该记录、不改名发布；\
+                 （注册后才发现名字被占用：mdns-sd 已改名，omp-bot 主界面立即注销该记录、不改名发布；\
                  HTTP 服务照常运行，IP 入口可用）",
                 original = change.original,
                 renamed = change.new_name,

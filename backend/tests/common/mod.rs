@@ -270,12 +270,25 @@ impl TestServer {
     /// 与 `start` 完全同一形态（真实监听端口 + 每个请求独立 TCP 连接），只是装配好的应用由调用者
     /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `omp_bot::app` / `omp_bot::app_with_power_off`。
     pub async fn start_app(app: axum::Router) -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        Self::start_app_on("127.0.0.1:0".parse().expect("回环测试监听地址"), app).await
+    }
+
+    /// 在**指定**地址的临时端口上启动给定的应用。
+    ///
+    /// 用于让请求的 TCP 对端地址取到回环之外的地址：绑定本机某个网卡地址后再连它，同机访问的源
+    /// 地址就是那个网卡地址——正是扩展经 `omp-bot.local` 连进来时服务端看到的样子。
+    pub async fn start_app_on(bind: SocketAddr, app: axum::Router) -> Self {
+        let listener = tokio::net::TcpListener::bind(bind)
             .await
             .expect("绑定测试监听端口");
         let addr = listener.local_addr().expect("读取测试监听地址");
         let serving = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
+            // 与交付运行时同一份装配：会话事件写入的来源校验靠连接信息拿到 TCP 对端地址。
+            let _ = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await;
         });
         TestServer { addr, serving }
     }
@@ -320,6 +333,32 @@ pub async fn post_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
         .await
         .expect("发送操作请求");
     stream.flush().await.expect("发送操作请求");
+
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("读取响应");
+    parse_response(&raw)
+}
+
+/// 经一条新的 TCP 连接提交一次**带 JSON 请求体**的 POST。
+///
+/// 与 `post_over_tcp` 同一形态（真实 TCP、不经过任何前端代码），只是请求面从空请求体换成
+/// `Content-Type: application/json` 加一段请求体：会话事件接口的请求面就是一条 JSON 事件。
+pub async fn post_json_over_tcp(addr: SocketAddr, path: &str, body: &str) -> HttpResponse {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("连接测试服务器");
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("发送请求");
+    stream.flush().await.expect("发送请求");
 
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).await.expect("读取响应");

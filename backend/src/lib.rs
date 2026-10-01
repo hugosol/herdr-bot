@@ -1,7 +1,14 @@
-//! omp-bot 脚本控制面板后端。
+//! omp-bot 主界面后端。
 //!
-//! 同一个 Axum 服务提供两件东西：打包后的 React 页面（静态资源）与固定操作 HTTP interface。
-//! 页面与操作接口同源同端口，本机与局域网设备访问同一服务。
+//! 同一个 Axum 服务提供三件东西：打包后的 React 页面（静态资源）、固定操作 HTTP interface，
+//! 以及会话事件 HTTP interface。页面与接口同源同端口，本机与局域网设备访问同一服务。
+//!
+//! 会话事件接口（见 [`sessions`]）的写入侧是 `POST /api/sessions/events`：扩展上报会话的
+//! register / heartbeat / state / unregister，服务端把它们写进**进程内**会话表；同一路径的读侧
+//! 长连接由浏览器订阅会话变化。写入只接受本机来源（TCP 对端为回环或本机网卡地址），其余得到
+//! `403 forbidden`；读侧对局域网全开、不引入 token。在线与否只由服务端按 30s 判定，后台过期扫描把
+//! 超时的在线会话翻为离线并作为可见变化推给浏览器，离线行保留到显式 `unregister`（扫描节奏与启动位置
+//! 见 [`sessions`]）。会话表与固定操作、关机路径完全解耦——写事件既不取执行资格，也不接触任何脚本。
 //!
 //! 操作接口只暴露“启动”和“停止”两个固定操作，它们执行哪个脚本、用什么工作目录只由服务端
 //! 配置决定。客户端只能提交操作名：请求面是封闭的，其他操作名、怪路径，以及携带命令、脚本
@@ -21,6 +28,7 @@
 pub mod config;
 pub mod mdns;
 pub mod operations;
+pub mod sessions;
 pub mod shutdown;
 
 use std::path::{Path, PathBuf};
@@ -32,7 +40,7 @@ use axum::body::to_bytes;
 use axum::extract::{Path as UrlPath, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, post};
+use axum::routing::{any, get, post};
 use serde::Serialize;
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
@@ -65,9 +73,16 @@ pub struct AppState {
     /// 关机动作接缝。交付运行时是真实的 Win32 动作（[`SystemPowerOff`]），自动化测试注入记录型
     /// 实现；关机路径**只**经由它，因此它不接触上面那一个执行资格。
     power_off: Arc<dyn PowerOff>,
+    /// 进程内会话表：扩展写事件到这里，浏览器读路径从这里订阅。
+    ///
+    /// 它与固定操作、关机路径完全解耦：会话写入既不取执行资格，也不接触任何脚本。
+    pub sessions: Arc<sessions::SessionsState>,
 }
 
-/// 构造交付运行时使用的应用：固定操作接口 + 关机端点 + 打包页面。
+/// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
+///
+/// 交付运行时不用本函数，而是用 [`app_with_sessions`] 自己持有会话表（于是能把同一份表交给后台过期
+/// 扫描，见 `omp_bot::sessions::spawn_expiry_scan`）；本函数固定空表，供只关心路由形状的调用方使用。
 pub fn app(config: &Config) -> Router {
     app_with_power_off(config, Arc::new(SystemPowerOff))
 }
@@ -77,7 +92,21 @@ pub fn app(config: &Config) -> Router {
 /// 交付运行时用 [`app`]（真实的 Win32 动作）；自动化测试用本函数注入记录型动作，于是测试里
 /// `POST /api/shutdown` 的语义（200 / 500、请求面拒绝）能被完整驱动，却永远不会真的关机。
 /// 两个构造函数注册的路由完全一致：关机端点不是能力接口，也不由任何配置或前端决定是否可用。
+/// 会话表用新建的空表（见 [`app_with_sessions`]）。
 pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Router {
+    app_with_sessions(config, power_off, Arc::new(sessions::SessionsState::new()))
+}
+
+/// 构造使用**指定**关机动作与**指定**会话表的应用。
+///
+/// 交付运行时（`main.rs`）用本函数持有会话表，并把同一份表交给后台过期扫描；需要观察会话变化的
+/// 调用方（会话过期扫描的自动化测试等）注入自己持有的会话表，于是写入的可见变化可以被订阅到，
+/// 而路由注册与交付运行时完全一致。
+pub fn app_with_sessions(
+    config: &Config,
+    power_off: Arc<dyn PowerOff>,
+    sessions: Arc<sessions::SessionsState>,
+) -> Router {
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -89,6 +118,7 @@ pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Rout
         ),
         execution: Arc::new(Mutex::new(())),
         power_off,
+        sessions,
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -101,6 +131,11 @@ pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Rout
         .route("/api/operations/stop", post(stop_operation))
         // 关机永远注册：只要服务在运行，无参数 POST 就能触发本机优雅关机。
         .route("/api/shutdown", post(shutdown))
+        // 会话事件：同一路径上写入（POST，扩展上报的唯一入口）与只读长连接（GET，SSE）各占一半。
+        .route(
+            "/api/sessions/events",
+            get(sessions::sse_session_events).post(sessions::post_session_event),
+        )
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde::Deserialize;
 
-/// 控制面板运行配置。
+/// omp-bot 主界面运行配置。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -48,7 +48,7 @@ fn mdns_enabled_by_default() -> bool {
     true
 }
 
-/// 控制面板允许执行的固定操作集合：只有“启动”与“停止”两个，目标只能来自配置。
+/// omp-bot 主界面允许执行的固定操作集合：只有“启动”与“停止”两个，目标只能来自配置。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Operations {

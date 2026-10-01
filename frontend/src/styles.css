@@ -24,6 +24,244 @@ h1 {
   font-size: 1.5rem;
 }
 
+/* ---------- 双 tab 外壳 ---------- */
+
+/* 两个分区共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #2b313a;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 0;
+  border-bottom: 0.2rem solid transparent;
+  background: transparent;
+  color: #8a93a1;
+  cursor: pointer;
+}
+
+.tab.is-active {
+  border-bottom-color: #4caf50;
+  color: #f2f4f8;
+}
+
+/* 跨 tab 圆点：跟在标签文字后的小圆点，无计数、不撑高标签，也不影响无障碍名以外的文本。 */
+.tab__indicator {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background: #ffd995;
+  vertical-align: super;
+}
+
+.tabpanel[hidden] {
+  display: none;
+}
+
+/* ---------- 会话列表：卡片流 ---------- */
+
+/* 每会话一张卡竖排；卡片顺序由前端按 tier 排定（见 sessionOrdering.ts）。 */
+.session-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* 等待组：在线的等待用户输入会话聚成置顶一组，用左侧色条从卡片流里拎出来。 */
+.session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.session-group--waiting {
+  padding: 0.75rem;
+  border-left: 0.2rem solid #ffd995;
+  border-radius: 0.5rem;
+  background: #221f19;
+}
+
+.session-group__heading {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: #ffd995;
+}
+
+/* 组头一行放「等待用户输入」与刚结束轮次的计数；N=0 时只剩标题。 */
+.session-group__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.session-group__note {
+  font-size: 0.85rem;
+  color: #ffd995;
+}
+
+/* 「知道了」只清强调、不收起等待组，所以是组头里的小按钮而不是整块操作区。 */
+.session-group__dismiss {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  border: 1px solid #4a4234;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #ffd995;
+  cursor: pointer;
+}
+
+.session-card {
+  box-sizing: border-box;
+  padding: 1rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.75rem;
+  background: #1d2128;
+}
+
+/* 离线卡片压暗并去掉实线边框：与仍在线、可能实时刷新的卡片区分开。 */
+.session-card.is-offline {
+  opacity: 0.65;
+  border-style: dashed;
+}
+
+/* 等待组内的卡片：保持实线并加深底色，强调这一张正等着接话。 */
+.session-card.is-waiting {
+  background: #2a2620;
+}
+
+/* 刚结束一轮（working → awaiting-input）的卡片再压一道强调色：与组内其他等待者区分开。 */
+.session-card.is-just-ended {
+  border-color: #ffd995;
+}
+
+.session-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* keepAlive 灯：绿=在线、灰=离线；只表示会话是否还在，与 agent 状态无关。 */
+.session-card__dot {
+  flex: none;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+}
+
+.session-card__dot--online {
+  background: #4caf50;
+}
+
+.session-card__dot--offline {
+  background: #6b7280;
+}
+
+.session-card__name {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.session-card__offline {
+  flex: none;
+  margin-left: auto;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #3a4048;
+  color: #c7ced9;
+  font-size: 0.8rem;
+}
+
+/* agent 状态：与 keepAlive 分开一行显示，按三态配色；未知时用中性色。 */
+.session-card__state {
+  margin: 0.6rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.session-card__state[data-state='awaiting-input'] {
+  color: #ffd995;
+}
+
+.session-card__state[data-state='working'] {
+  color: #a9d0f0;
+}
+
+.session-card__state[data-state='idle'] {
+  color: #a9b1bd;
+}
+
+.session-card__state[data-state='unknown'] {
+  color: #8a93a1;
+  font-weight: 400;
+}
+
+/* cwd 与 model：次要信息，model 缺省时整段只剩 cwd。 */
+.session-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0 0;
+  color: #8a93a1;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.session-card__model {
+  color: #a9b1bd;
+}
+
+/* 断线降级：留在会话列表内的说明块，明说下面是过期快照而不是实况。 */
+.session-stale {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border-left: 0.2rem solid #d79b2a;
+  border-radius: 0.5rem;
+  background: #241f16;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.session-stale strong {
+  color: #ffe9bd;
+}
+
+.session-stale span {
+  color: #c9b48a;
+}
+
+/* 引导空态：面板已就绪、尚无会话接入时唯一的内容，沿用暗色块明确“不是出错”。 */
+.session-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #1d2128;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.session-empty strong {
+  color: #f2f4f8;
+}
+
+.session-empty span {
+  color: #a9b1bd;
+}
+
 .scope-note {
   margin: 0 0 1.5rem;
   font-size: 0.9rem;

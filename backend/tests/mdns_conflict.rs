@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use mdns_sd::{DaemonEvent, HostnameResolutionEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 use omp_bot::mdns::{HOSTNAME, INSTANCE_NAME, SERVICE_FULLNAME, SERVICE_TYPE};
 
-/// 受控占名用的服务端口：与受测控制面板的实际监听端口必然不同，因此线上实例的端口能指认发布者是谁。
+/// 受控占名用的服务端口：与受测 omp-bot 主界面的实际监听端口必然不同，因此线上实例的端口能指认发布者是谁。
 const OCCUPIER_PORT: u16 = 18788;
 
 /// 绕过预探测、强制注册的诊断逃生舱（与 `backend/src/mdns.rs` 的 `SKIP_PREPROBE_ENV` 同名）。
@@ -36,7 +36,7 @@ struct Occupier {
 }
 
 impl Occupier {
-    /// 发布同名记录并等到它真正播出去（收到 `Announce`）才返回：否则受测控制面板的预探测可能赶在
+    /// 发布同名记录并等到它真正播出去（收到 `Announce`）才返回：否则受测 omp-bot 主界面的预探测可能赶在
     /// 占用者上线之前跑完，得到“名字空闲”的假阴性。
     fn start(address: Ipv4Addr) -> Self {
         let daemon = ServiceDaemon::new().expect("创建占用者 daemon");
@@ -69,7 +69,7 @@ impl Drop for Occupier {
     }
 }
 
-/// 受测的真实控制面板进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
+/// 受测的真实 omp-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -106,7 +106,7 @@ impl Panel {
             // 诊断逃生舱不继承自测试进程：用例要验收的正是“有预探测”的那条路径。
             command.env_remove(SKIP_PREPROBE_ENV);
         }
-        let mut child = command.spawn().expect("启动控制面板二进制");
+        let mut child = command.spawn().expect("启动 omp-bot 主界面进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -267,7 +267,7 @@ fn browse_http_instances(duration: Duration) -> Vec<(String, u16)> {
 
 /// 一次最小 HTTP/1.1 GET：直接经 TCP 连端口，不经过页面、按钮或任何前端代码。
 fn http_get(addr: SocketAddr, path: &str) -> (String, String) {
-    let mut stream = TcpStream::connect(addr).expect("连接控制面板");
+    let mut stream = TcpStream::connect(addr).expect("连接 omp-bot 主界面");
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("设置读取超时");
@@ -283,9 +283,9 @@ fn http_get(addr: SocketAddr, path: &str) -> (String, String) {
 fn assert_panel_serves(panel: &Panel, address: Ipv4Addr) {
     for entry in [Ipv4Addr::LOCALHOST, address] {
         let (status, body) = http_get(SocketAddr::new(IpAddr::V4(entry), panel.port), "/");
-        assert!(status.contains("200"), "入口 {entry} 打不开控制面板：{status}");
+        assert!(status.contains("200"), "入口 {entry} 打不开 omp-bot 主界面：{status}");
         assert!(
-            body.contains("<title>omp-bot 控制面板</title>"),
+            body.contains("<title>omp-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
         );
     }
@@ -330,15 +330,15 @@ fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves(
     );
     assert!(
         instances.iter().all(|(_, port)| *port != panel.port),
-        "被占名时控制面板不得发布任何服务实例：{instances:?}"
+        "被占名时 omp-bot 主界面不得发布任何服务实例：{instances:?}"
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测控制面板的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
     drop(occupier);
 }
 
-/// 验收 3：绕过预探测强制注册、随后被 mdns-sd 改名时，控制面板立即注销该记录并告警。
+/// 验收 3：绕过预探测强制注册、随后被 mdns-sd 改名时，omp-bot 主界面立即注销该记录并告警。
 #[test]
 fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() {
     let _serial = serial_guard();
@@ -368,6 +368,6 @@ fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() 
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测控制面板的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
     drop(occupier);
 }
