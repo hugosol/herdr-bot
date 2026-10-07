@@ -29,6 +29,56 @@ afterEach(() => {
 })
 
 describe('主界面接线（真实 SSE 数据源）', () => {
+  it('停留在会话列表时，自动关机提醒立即可见且可取消，无需切换 tab', async () => {
+    // 契约：自动安排使用全局提醒。可能的违规是提醒位于隐藏 tab 内：DOM 存在却不可见。
+    // 保留 App、真实 SSE 映射及关机命令客户端，只替换外部事件和 HTTP 传输。
+    const serverTime = Date.now()
+    const selected = { phase: 'none', monitoredSessionIds: ['a'], serverTime }
+    const cancelled = { phase: 'cancelled', monitoredSessionIds: [], arrangementId: 'automatic-a', serverTime }
+    const fetchDouble = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/shutdown/monitor') {
+        return new Response(JSON.stringify({ outcome: 'selected', shutdown: selected }))
+      }
+      if (url === '/api/shutdown/cancel') {
+        return new Response(JSON.stringify({ outcome: 'cancelled', shutdown: cancelled }))
+      }
+      throw new Error('自动触发不应由浏览器提交开始命令：' + url)
+    })
+    vi.stubGlobal('fetch', fetchDouble)
+    const feed = createSseSessionFeed({ eventSourceFactory: (url) => new FakeSessionEventSource(url) })
+    render(<App sessionFeed={feed} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('tab-sessions'))
+    const source = FakeSessionEventSource.instances.at(-1)!
+    act(() => source.emit('snapshot', {
+      sessions: [wireSession('a', '会话甲')],
+      shutdown: { phase: 'none', monitoredSessionIds: [], serverTime },
+    }))
+    await user.click(screen.getByTestId('monitor-button'))
+    act(() => {
+      source.emit('upsert', { session: wireSession('a', '会话甲', { state: 'awaiting-input' }) })
+      source.emit('shutdown', { shutdown: {
+        phase: 'counting-down', monitoredSessionIds: [], arrangementId: 'automatic-a',
+        deadline: serverTime + 30_000, serverTime,
+      } })
+    })
+
+    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
+    expect(screen.getByRole('dialog', { name: '关机' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '取消关机' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '取消关机' }))
+    expect(screen.getByTestId('shutdown-result')).toBeVisible()
+    expect(screen.getByTestId('shutdown-result')).toHaveTextContent('取消成功')
+    await user.click(screen.getByTestId('shutdown-result-back'))
+    expect(screen.queryByRole('dialog', { name: '关机' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('panel-sessions')).toBeVisible()
+    expect(fetchDouble.mock.calls.map(([url]) => url)).toEqual([
+      '/api/shutdown/monitor', '/api/shutdown/cancel',
+    ])
+  })
+
   it('打开即实况：帧驱动会话列表收敛，断线保留快照并标过期，重连后自动对齐', async () => {
     // 组件不得直接依赖全局 EventSource：真用它就当场抛错。真实接线走注入的工厂，默认工厂只在
     // `main.tsx` 的运行时里生效。

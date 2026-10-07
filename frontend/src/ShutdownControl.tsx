@@ -6,6 +6,8 @@ import { NOT_CANCELLABLE, cancelShutdown, startShutdown } from './shutdownApi'
 import { remainingSeconds, type ShutdownView } from './shutdownView'
 
 type ShutdownControlProps = {
+  /** 手动关机按钮只在控制面板显示；全局提醒不受 tab 可见性影响。 */
+  showButton: boolean
   /** 后端权威的关机状态（共享观察流的首帧与 `shutdown` 事件）。 */
   shutdown: ShutdownView
   /** 观察流健康度：中断时本地显示的剩余时间可能已经过期。 */
@@ -37,7 +39,7 @@ type Command =
  * 取消只有拿到服务端「取消已生效」的证据才算成功；没有回应时保留提醒并明确「电脑仍可能关机」，
  * 且绝不自动重发。确认页与结果页的「返回」都是纯前端事件。
  */
-export function ShutdownControl({ shutdown, connection, onTakeoverChange }: ShutdownControlProps) {
+export function ShutdownControl({ showButton, shutdown, connection, onTakeoverChange }: ShutdownControlProps) {
   const [confirming, setConfirming] = useState(false)
   const [command, setCommand] = useState<Command>({ kind: 'idle' })
   // 命令回执里的权威状态：开始被接受、取消被确认时立刻用它显示，直到观察流给出更新的一份。
@@ -153,7 +155,7 @@ export function ShutdownControl({ shutdown, connection, onTakeoverChange }: Shut
 
   return (
     <>
-      {SHUTDOWN_BUTTON_VISIBLE && (
+      {showButton && SHUTDOWN_BUTTON_VISIBLE && (
         <button
           type="button"
           className="shutdown"

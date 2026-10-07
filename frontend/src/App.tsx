@@ -137,12 +137,6 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
           </button>
         </div>
 
-        <ShutdownControl
-          shutdown={shutdown}
-          connection={connection}
-          onTakeoverChange={setShutdownTakeover}
-        />
-
         {pending !== null && (
           <p className="pending" data-testid="pending-hint" role="status">
             正在执行{OPERATION_LABELS[pending]}脚本……本次操作尚未结束。
@@ -174,6 +168,14 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
       >
         <SessionsPanel feed={sessionFeed} />
       </div>
+
+      {/* 全局关机提醒不能位于 hidden 的 tab 容器内；手动入口仍只在控制面板可见。 */}
+      <ShutdownControl
+        showButton={tab === 'control'}
+        shutdown={shutdown}
+        connection={connection}
+        onTakeoverChange={setShutdownTakeover}
+      />
     </main>
   )
 }
