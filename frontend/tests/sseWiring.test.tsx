@@ -60,12 +60,12 @@ describe('主界面接线（真实 SSE 数据源）', () => {
     expect(screen.getAllByTestId('session-card')).toHaveLength(2)
     expect(screen.queryByTestId('connection-banner')).not.toBeInTheDocument()
 
-    // 增量把「会话甲」推到等待用户输入：等待组置顶、tab 圆点亮起，页面从未被刷新。
+    // 增量把「会话甲」推到等待用户输入：等待组置顶，页面从未被刷新；tab 不因此出现任何提示。
     act(() => {
       source.emit('upsert', { session: wireSession('a', '会话甲', { state: 'awaiting-input' }) })
     })
     expect(screen.getByTestId('waiting-group')).toBeInTheDocument()
-    expect(screen.getByTestId('tab-sessions-indicator')).toBeInTheDocument()
+    expect(screen.getByTestId('tab-sessions').children).toHaveLength(0)
 
     // 断线：保留最后一帧（不出现空列表闪烁），并在会话列表内标注可能过期。
     act(() => source.fail())

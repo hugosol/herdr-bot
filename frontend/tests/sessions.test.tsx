@@ -5,13 +5,14 @@ import { describe, expect, it } from 'vitest'
 
 import App from '../src/App'
 import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/sessionFeed'
+import { NO_SHUTDOWN } from '../src/shutdownView'
 
 /**
  * 假数据源：会话列表的组件测试只通过注入的数据源驱动，不接触全局 EventSource——
  * 页面在 jsdom 里没有任何 EventSource，组件若直接依赖它就会当场失败。
  */
 function feedOf(sessions: SessionView[]): SessionFeed {
-  const snapshot = { sessions, connection: 'live' as const }
+  const snapshot: SessionFeedSnapshot = { sessions, connection: 'live', shutdown: NO_SHUTDOWN }
   return { subscribe: () => () => {}, getSnapshot: () => snapshot }
 }
 
@@ -43,9 +44,9 @@ describe('会话列表（卡片流）', () => {
     expect(within(card).getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\omp-bot')
     expect(within(card).getByTestId('session-model')).toHaveTextContent('claude-sonnet-4-5')
 
-    // 不显示最后活动时间：卡片的可见文本恰是这几项字段，多出任何一项都会让这条断言失败。
+    // 不显示最后活动时间：卡片的可见文本恰是这几项字段加上「完成后关机」按钮，多出任何一项都会让这条断言失败。
     expect(card.textContent?.replace(/\s+/g, '')).toBe(
-      '会话桥契约梳理工作中E:\\Developer\\myhub\\omp-botclaude-sonnet-4-5',
+      '会话桥契约梳理工作中E:\\Developer\\myhub\\omp-botclaude-sonnet-4-5完成后关机',
     )
   })
 
@@ -114,6 +115,46 @@ describe('会话列表（卡片流）', () => {
     expect(state).not.toHaveTextContent('空闲')
   })
 
+  it('工作中、等待用户输入、离线三种会话同时在场时，agent 状态、keepAlive、会话名与身份字段仍可查看', async () => {
+    const waiting: SessionView = {
+      ...WORKING,
+      sessionId: 'waiting-1',
+      sessionName: '等待会话',
+      state: 'awaiting-input',
+    }
+    const offline: SessionView = { ...WORKING, sessionId: 'offline-1', sessionName: '离线会话', online: false }
+
+    await showSessions([WORKING, waiting, offline])
+
+    const cards = screen.getAllByTestId('session-card')
+    // 展示顺序：等待置顶 → 工作中 → 离线沉底。
+    expect(cards.map((card) => within(card).getByTestId('session-name').textContent)).toEqual([
+      '等待会话',
+      '会话桥契约梳理',
+      '离线会话',
+    ])
+    // agent 状态与 keepAlive 是两条独立信息，三类会话各自如实呈现。
+    expect(cards.map((card) => card.dataset['state'])).toEqual(['awaiting-input', 'working', 'working'])
+    expect(cards.map((card) => card.dataset['keepalive'])).toEqual(['online', 'online', 'offline'])
+    expect(cards.map((card) => within(card).getByTestId('session-state').textContent)).toEqual([
+      '等待用户输入',
+      '工作中',
+      '工作中',
+    ])
+    expect(cards.map((card) => within(card).getByTestId('keepalive-dot').getAttribute('aria-label'))).toEqual([
+      '在线',
+      '在线',
+      '离线',
+    ])
+    expect(within(cards[2]).getByTestId('offline-tag')).toHaveTextContent('已离线')
+
+    // 会话身份与其他普通字段一张都不少。
+    for (const card of cards) {
+      expect(within(card).getByTestId('session-cwd')).toBeVisible()
+      expect(within(card).getByTestId('session-model')).toBeVisible()
+    }
+  })
+
   it('无会话时显示引导空态：面板已就绪、尚无会话接入，且不渲染任何卡片', async () => {
     await showSessions([])
 
@@ -125,7 +166,7 @@ describe('会话列表（卡片流）', () => {
   })
 
   it('数据源推送新快照时卡片流随之更新', async () => {
-    let snapshot: SessionFeedSnapshot = { sessions: [], connection: 'live' }
+    let snapshot: SessionFeedSnapshot = { sessions: [], connection: 'live', shutdown: NO_SHUTDOWN }
     const listeners = new Set<() => void>()
     const feed: SessionFeed = {
       subscribe: (onChange) => {
@@ -140,12 +181,12 @@ describe('会话列表（卡片流）', () => {
     await user.click(screen.getByTestId('tab-sessions'))
     expect(screen.getByTestId('sessions-empty')).toBeVisible()
 
-    snapshot = { sessions: [WORKING], connection: 'live' }
+    snapshot = { sessions: [WORKING], connection: 'live', shutdown: NO_SHUTDOWN }
     await act(async () => listeners.forEach((notify) => notify()))
     expect(screen.getByTestId('session-card')).toBeVisible()
     expect(screen.queryByTestId('sessions-empty')).toBeNull()
 
-    snapshot = { sessions: [], connection: 'interrupted' }
+    snapshot = { sessions: [], connection: 'interrupted', shutdown: NO_SHUTDOWN }
     await act(async () => listeners.forEach((notify) => notify()))
     expect(screen.getByTestId('sessions-empty')).toBeVisible()
     expect(screen.queryAllByTestId('session-card')).toHaveLength(0)

@@ -1,15 +1,17 @@
 /**
- * 「会话列表」的真实数据源：浏览器端 SSE 长连接（读路径，接缝 S1）。
+ * 「会话列表」与后端关机状态的真实数据源：浏览器端 SSE 长连接（读路径，接缝 S1）。
  *
- * 服务端每次（重）连的第一帧都是全量 `snapshot`，之后只推 `upsert`/`remove` 增量；断线期间错过的事件
- * 不补，重连即收敛。因此这里**没有任何轮询、时钟或退避逻辑**：重连交给浏览器 `EventSource` 自己的
- * 重试（服务端给了 `retry: 2s`），前端只负责把收到的帧映射成视图。
+ * 服务端每次（重）连的第一帧都是全量 `snapshot`（会话 + 关机状态），之后只推 `upsert`/`remove` 会话
+ * 增量与 `shutdown` 关机状态事件；断线期间错过的事件不补，重连即收敛。因此这里**没有任何轮询、时钟或
+ * 退避逻辑**：重连交给浏览器 `EventSource` 自己的重试（服务端给了 `retry: 2s`），前端只负责把收到的帧
+ * 映射成视图。
  *
  * 组件不直接接触全局 `EventSource`——它们只消费 [`SessionFeed`] 契约；真实接线在本模块，由
  * `main.tsx` 注入给页面。`EventSource` 的构造因此是可注入的：jsdom 里没有它，接线测试用假实现驱动
  * 同一段帧映射代码。
  */
 
+import { NO_SHUTDOWN, toShutdownView, type ShutdownView } from './shutdownView'
 import type { AgentState, ConnectionStatus, SessionFeed, SessionFeedSnapshot, SessionView } from './sessionFeed'
 
 /** 一帧命名事件的载荷：SSE 的 `data:` 字段。 */
@@ -39,14 +41,23 @@ export const SESSION_EVENTS_URL = '/api/sessions/events'
 
 const defaultEventSourceFactory: SessionEventSourceFactory = (url) => new EventSource(url)
 
-/** 尚未收到任何帧时的快照：无会话、连接正常。 */
-const EMPTY_SNAPSHOT: SessionFeedSnapshot = { sessions: [], connection: 'live' }
+/** 尚未收到任何帧时的快照：无会话、连接正常、还没有后端关机状态。 */
+const EMPTY_SNAPSHOT: SessionFeedSnapshot = {
+  sessions: [],
+  connection: 'live',
+  shutdown: NO_SHUTDOWN,
+}
 
-const STATE_VALUES = new Set<string>(['idle', 'working', 'awaiting-input'])
+/** agent 状态的封闭取值：未知取值都当作「尚未同步到状态」。 */
+const STATE_VALUES: Record<string, true> = {
+  idle: true,
+  working: true,
+  'awaiting-input': true,
+}
 
 /** 把 wire 上的 agent 状态收进视图的封闭三值；缺省或未知取值都当作「尚未同步到状态」。 */
 function toAgentState(value: unknown): AgentState | undefined {
-  return typeof value === 'string' && STATE_VALUES.has(value) ? (value as AgentState) : undefined
+  return typeof value === 'string' && STATE_VALUES[value] === true ? (value as AgentState) : undefined
 }
 
 /**
@@ -115,11 +126,16 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
 
   /**
    * 只改连接健康度：会话列表明明还在手上，断线不该把它丢掉（既不空列表闪烁，也不假装实况）。
-   * 状态没变就不发布——同一份数据必须保持同一引用。
+   * 关机状态同理照旧保留。状态没变就不发布——同一份数据必须保持同一引用。
    */
   function setConnection(connection: ConnectionStatus) {
     if (snapshot.connection === connection) return
-    publish({ sessions: snapshot.sessions, connection })
+    publish({ sessions: snapshot.sessions, connection, shutdown: snapshot.shutdown })
+  }
+
+  /** 只改关机状态：会话那一半照旧，因此同一条流上的两类变化互不覆盖。 */
+  function publishShutdown(shutdown: ShutdownView) {
+    publish({ sessions: snapshot.sessions, connection: snapshot.connection, shutdown })
   }
 
   function handleFrame(name: string, data: string) {
@@ -136,7 +152,9 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
         if (session === null) return
         sessions.push(session)
       }
-      publish({ sessions, connection: 'live' })
+      // 关机状态与关它同一帧。它读不懂时保留上一份状态：会话那一半仍然有效，丢掉它比少一次关机状态更新更糟。
+      const shutdown = toShutdownView(payload.shutdown, Date.now()) ?? snapshot.shutdown
+      publish({ sessions, connection: 'live', shutdown })
       return
     }
 
@@ -149,7 +167,7 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
         at === -1
           ? [...snapshot.sessions, session]
           : snapshot.sessions.map((known, index) => (index === at ? session : known))
-      publish({ sessions, connection: 'live' })
+      publish({ sessions, connection: 'live', shutdown: snapshot.shutdown })
       return
     }
 
@@ -158,7 +176,15 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
       if (typeof sessionId !== 'string') return
       const sessions = snapshot.sessions.filter((known) => known.sessionId !== sessionId)
       if (sessions.length === snapshot.sessions.length) return
-      publish({ sessions, connection: 'live' })
+      publish({ sessions, connection: 'live', shutdown: snapshot.shutdown })
+      return
+    }
+
+    if (name === 'shutdown') {
+      // 关机变化携带**完整**关机状态，因此这里只做「收下这份状态」这一件事。
+      const shutdown = toShutdownView(payload.shutdown, Date.now())
+      if (shutdown === null) return
+      publishShutdown(shutdown)
     }
   }
 
@@ -168,6 +194,7 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
     opened.addEventListener('snapshot', (event) => handleFrame('snapshot', event.data))
     opened.addEventListener('upsert', (event) => handleFrame('upsert', event.data))
     opened.addEventListener('remove', (event) => handleFrame('remove', event.data))
+    opened.addEventListener('shutdown', (event) => handleFrame('shutdown', event.data))
     // 连接健康度只有两件事：一次错误即降级（浏览器随后自行重连），一次成功即恢复实况。
     // 这里不重连、不退避、不排定时器——重连后的收敛由服务端的首帧快照负责。
     opened.addEventListener('error', () => setConnection('interrupted'))

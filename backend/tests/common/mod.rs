@@ -8,6 +8,8 @@
 
 #![allow(dead_code)]
 
+pub mod sse;
+
 use std::fs;
 use std::net::SocketAddr;
 use std::os::windows::process::CommandExt;
@@ -207,8 +209,18 @@ fn copy_dir(from: &Path, to: &Path) {
 /// 服务端配置：把某个夹具批处理绑定为“启动”操作，并使用配置的工作目录。
 ///
 /// 只驱动“启动”的测试不需要区分两个操作，因此“停止”先绑定同一个目标；
-/// 需要两个不同目标的测试自己改写 `operations.stop`。
+/// 需要两个不同目标的测试自己改写 `operations.stop`。关机倒计时取配置缺省的 10 秒；
+/// 需要驱动实际到期的用例用 [`config_with_countdown`]。
 pub fn config(script: &Path, working_directory: &Path) -> omp_bot::Config {
+    config_with_countdown(script, working_directory, 10)
+}
+
+/// 与 [`config`] 同形，但显式指定关机倒计时秒数（驱动到期用例用它把等待压到最短的合法值）。
+pub fn config_with_countdown(
+    script: &Path,
+    working_directory: &Path,
+    countdown_seconds: u32,
+) -> omp_bot::Config {
     let binding = || omp_bot::OperationBinding {
         script: script.to_path_buf(),
         working_directory: working_directory.to_path_buf(),
@@ -220,6 +232,10 @@ pub fn config(script: &Path, working_directory: &Path) -> omp_bot::Config {
             stop: binding(),
         },
         mdns: omp_bot::MdnsConfig::default(),
+        shutdown: omp_bot::ShutdownConfig {
+            countdown_seconds: omp_bot::CountdownSeconds::new(countdown_seconds)
+                .expect("测试用的倒计时秒数必须合法"),
+        },
     }
 }
 

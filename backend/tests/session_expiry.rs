@@ -20,8 +20,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{HttpResponse, TestServer, post_json_over_tcp};
+use omp_bot::observation::Observation;
 use omp_bot::sessions::{
-    EXPIRY_SCAN_INTERVAL, Frame, ONLINE_WINDOW, SessionView, SessionsState, spawn_expiry_scan,
+    EXPIRY_SCAN_INTERVAL, ONLINE_WINDOW, SessionView, SessionsState, spawn_expiry_scan,
 };
 use omp_bot::{PowerOff, PowerOffFailure};
 use serde_json::json;
@@ -40,19 +41,22 @@ impl PowerOff for NeverPowerOff {
 struct SessionServer {
     server: TestServer,
     sessions: Arc<SessionsState>,
-    frames: broadcast::Receiver<Frame>,
+    shutdown: Arc<omp_bot::countdown::ShutdownState>,
+    frames: broadcast::Receiver<Observation>,
 }
 
 impl SessionServer {
     async fn start() -> Self {
         let config = common::config(Path::new("unused.bat"), Path::new("."));
         let sessions = Arc::new(SessionsState::new());
-        let frames = sessions.subscribe();
-        let app =
-            omp_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+        let frames = sessions.observation().subscribe();
+        // 与交付运行时同一份装配：后台维护循环要拿到的正是这里生成的关机句柄。
+        let (app, state) =
+            omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
+            shutdown: state.shutdown,
             frames,
         }
     }
@@ -77,7 +81,7 @@ impl SessionServer {
     }
 
     /// 取走此刻已发布的全部帧。
-    fn drain_frames(&mut self) -> Vec<Frame> {
+    fn drain_frames(&mut self) -> Vec<Observation> {
         let mut frames = Vec::new();
         while let Ok(frame) = self.frames.try_recv() {
             frames.push(frame);
@@ -87,7 +91,7 @@ impl SessionServer {
 
     /// 取走「本次写入/扫描必然已经发布」的那一帧：事件在返回响应之前就已广播，因此读到响应就必然
     /// 能收到。
-    fn take_frame(&mut self) -> Frame {
+    fn take_frame(&mut self) -> Observation {
         let mut frames = self.drain_frames();
         assert_eq!(frames.len(), 1, "本次应恰好发布一帧：{frames:?}");
         frames.remove(0)
@@ -101,15 +105,14 @@ impl SessionServer {
 
     /// 当前全部会话的视图（与读路径首帧同一份快照，在线与否按**当前时刻**现算）。
     async fn snapshot(&self) -> Vec<SessionView> {
-        let (_, snapshot) = self.sessions.subscribe_with_snapshot().await;
-        snapshot
+        self.sessions.snapshot().await
     }
 }
 
 /// 取出一帧 upsert 的会话视图。
-fn upsert(frame: Frame) -> SessionView {
-    let Frame::Upsert(view) = frame else {
-        panic!("应发布一帧 upsert：{frame:?}");
+fn upsert(frame: Observation) -> SessionView {
+    let Observation::SessionUpsert(view) = frame else {
+        panic!("应发布一帧会话 upsert：{frame:?}");
     };
     view
 }
@@ -228,7 +231,7 @@ async fn an_offline_row_is_retained_until_unregister_and_a_restart_starts_empty(
 
     // unregister 是唯一的移除入口：移除后行不再存在，扫描也不再对它有话可说。
     assert_accepted(&server.post(&unregister("sess-keep")).await);
-    let Frame::Remove { session_id } = server.take_frame() else {
+    let Observation::SessionRemove { session_id } = server.take_frame() else {
         panic!("unregister 应发布一帧 remove");
     };
     assert_eq!(session_id, "sess-keep");
@@ -263,7 +266,7 @@ async fn the_background_scan_flips_a_stale_session_offline_until_unregister() {
     let registered = upsert(server.take_frame());
     assert!(registered.online);
 
-    spawn_expiry_scan(Arc::clone(&server.sessions));
+    spawn_expiry_scan(Arc::clone(&server.sessions), Arc::clone(&server.shutdown));
 
     // 判定窗口内不得翻转，因此等它必须等过 30s；上界给它 35s + 5s 余量，超时即以可读的方式失败。
     let frame = tokio::time::timeout(
@@ -307,7 +310,7 @@ async fn the_background_scan_flips_a_stale_session_offline_until_unregister() {
 
     // 显式注销才是行的终点。
     assert_accepted(&server.post(&unregister("sess-slow")).await);
-    let Frame::Remove { session_id } = server.take_frame() else {
+    let Observation::SessionRemove { session_id } = server.take_frame() else {
         panic!("unregister 应发布一帧 remove");
     };
     assert_eq!(session_id, "sess-slow");

@@ -1,7 +1,15 @@
-import { useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { isAwaitingOnline, sortByTier } from './sessionOrdering'
-import type { AgentState, KeepAlive, SessionFeed, SessionFeedSnapshot, SessionView } from './sessionFeed'
+import type { AgentState, KeepAlive, SessionFeed, SessionView } from './sessionFeed'
+import {
+  COUNTDOWN_ACTIVE,
+  NOT_ELIGIBLE,
+  UNKNOWN_SESSION,
+  cancelShutdown,
+  setMonitoring,
+} from './shutdownApi'
+import type { ShutdownView } from './shutdownView'
 import { useSessionFeedSnapshot } from './useSessionFeed'
 
 /** agent 状态在界面上的中文名。 */
@@ -17,6 +25,17 @@ const KEEPALIVE_LABELS: Record<KeepAlive, string> = {
   offline: '离线',
 }
 
+/**
+ * 一次监听命令的本地结果。
+ *
+ * 只有「未确认」与「明确拒绝」需要在这里留下说明：目标选中值是否已经成立由**后端权威集合**决定
+ * （按钮的选中态跟着观察流走），本地绝不乐观翻转，也不把没有回应记成成功。
+ */
+type MonitorStatus = { kind: 'refused'; code: string } | { kind: 'unconfirmed' }
+
+/** 全局清空入口的本地结果：同样只有拿到后端证据才算成功。 */
+type ClearStatus = 'idle' | 'clearing' | 'cleared' | 'refused' | 'unconfirmed'
+
 /** 会话名回退：`<cwd 目录名> · <sessionId 前 8 位>`。 */
 function sessionDisplayName(session: SessionView): string {
   const named = session.sessionName?.trim()
@@ -27,24 +46,28 @@ function sessionDisplayName(session: SessionView): string {
 
 type SessionCardProps = {
   session: SessionView
-  /** 是否属于置顶等待组：在线的等待用户输入会话，卡片据此高亮。 */
+  /** 是否属于置顶等待组：在线的等待用户输入会话，卡片用普通等待状态样式。 */
   waiting: boolean
-  /** 是否刚发生 `working → awaiting-input`：等待组内额外高亮这一张。 */
-  justEnded: boolean
+  /** 完成后关机监听控件要渲染的全部信息；`null` 表示这个会话当前不提供监听按钮。 */
+  monitoring: {
+    selected: boolean
+    note: string | null
+    status: MonitorStatus | null
+    busy: boolean
+    onToggle: (selected: boolean) => void
+  } | null
 }
 
-function SessionCard({ session, waiting, justEnded }: SessionCardProps) {
+function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
   const keepAlive = session.online ? 'online' : 'offline'
   const state = session.state ?? 'unknown'
-  const emphasis = `${waiting ? ' is-waiting' : ''}${justEnded ? ' is-just-ended' : ''}`
   return (
     <article
-      className={`session-card${session.online ? '' : ' is-offline'}${emphasis}`}
+      className={`session-card${session.online ? '' : ' is-offline'}${waiting ? ' is-waiting' : ''}`}
       data-testid="session-card"
       data-keepalive={keepAlive}
       data-state={state}
       data-waiting={waiting ? 'true' : undefined}
-      data-just-ended={justEnded ? 'true' : undefined}
     >
       <header className="session-card__head">
         <span
@@ -77,64 +100,138 @@ function SessionCard({ session, waiting, justEnded }: SessionCardProps) {
           </span>
         ) : null}
       </p>
+
+      {monitoring === null ? null : (
+        <div className="session-card__monitoring">
+          <button
+            type="button"
+            className={`monitor-button${monitoring.selected ? ' is-selected' : ''}`}
+            data-testid="monitor-button"
+            data-selected={monitoring.selected ? 'true' : 'false'}
+            aria-pressed={monitoring.selected}
+            disabled={monitoring.busy}
+            onClick={() => monitoring.onToggle(!monitoring.selected)}
+          >
+            {monitoring.selected ? '完成后关机：已选择' : '完成后关机'}
+          </button>
+          {monitoring.note === null ? null : (
+            <p className="monitor-note" data-testid="monitor-note" role="status">
+              {monitoring.note}
+            </p>
+          )}
+          {monitoring.status === null ? null : (
+            <p
+              className="monitor-status"
+              data-testid="monitor-status"
+              data-outcome={monitoring.status.kind}
+              data-code={monitoring.status.kind === 'refused' ? monitoring.status.code : undefined}
+              role="status"
+            >
+              {monitoring.status.kind === 'unconfirmed'
+                ? '未确认：没有收到服务端的答复，无法确认这次监听命令是否生效；页面不会自动重发。'
+                : monitoring.status.code === NOT_ELIGIBLE
+                  ? '服务端拒绝：该会话当前不在线或不在工作中，不能开始监听。'
+                  : monitoring.status.code === COUNTDOWN_ACTIVE
+                    ? '服务端拒绝：已有活动倒计时，期间不接受新增监听。'
+                    : monitoring.status.code === UNKNOWN_SESSION
+                      ? '服务端拒绝：该会话尚未注册。'
+                      : '服务端明确拒绝这次监听命令。'}
+            </p>
+          )}
+        </div>
+      )}
     </article>
   )
 }
 
-/** 判定「刚结束一轮」所需的基线：上一帧快照本身（判断前后是否都处于实况）与各会话的状态。 */
-type FeedObservation = {
-  snapshot: SessionFeedSnapshot | null
-  states: Map<string, AgentState | undefined>
-}
-
 /**
- * 「会话列表」的卡片流：每个会话一张卡，等待用户输入的会话聚成置顶组；组头给出自上次
- * 点「知道了」以来刚结束轮次的会话数。
+ * 「会话列表」的卡片流：每个会话一张卡，等待用户输入的会话聚成置顶组。
  *
  * 组件不直接依赖全局 `EventSource`——数据源在 `SessionFeed` 契约后面（真实 SSE 客户端在
  * `sseSessionFeed.ts`，运行时由 `main.tsx` 注入），测试用假数据源或假 `EventSource` 驱动同一段代码。
+ *
+ * 「完成后关机」按钮的选中态**只**来自后端权威集合（观察流的 `monitoredSessionIds`），提交的是明确的
+ * 目标选中值，因此本地不做乐观翻转；没有回应时只标记未确认，不自动重发。
  */
 export function SessionsPanel({ feed }: { feed: SessionFeed }) {
   const snapshot = useSessionFeedSnapshot(feed)
+  const [status, setStatus] = useState<Record<string, MonitorStatus>>({})
+  // 正在提交命令的会话：只禁用那一个按钮，其他会话照常可用。
+  const [busy, setBusy] = useState<string | null>(null)
+  const [clearing, setClearing] = useState<ClearStatus>('idle')
+  // 命令回执里的权威状态：服务端刚确认过，先用它显示，直到观察流给出更新的一份。
+  const [bridge, setBridge] = useState<ShutdownView | null>(null)
 
-  // 「刚结束一轮」= 自上次点「知道了」以来观察到 `working → awaiting-input` 的会话集合。
-  // 它是状态而不是纯派生值：点「知道了」要清空它，而清空必须能触发重渲染。
-  const [endedRounds, setEndedRounds] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const observation = useRef<FeedObservation>({ snapshot: null, states: new Map() })
+  // 观察流给出新状态后，命令回执就不再顶替它：后端状态始终是唯一权威。
+  useEffect(() => {
+    setBridge(null)
+  }, [snapshot.shutdown])
 
-  // 提示只由真实迁移派生，且只派生一次：每来一帧推进一次观察，只有当上一帧与这一帧都处在
-  // 实况（`connection === 'live'`）时才结算迁移。首帧（还没有基线）、断线帧与重连后的快照
-  // 都只重建基线，于是 snapshot/重连不计 N、也不补发提示；同值帧状态没变，同样不结算。
-  // 用 ref 而不是 effect：判定与渲染在同一次完成，StrictMode 的重复渲染不会重复记账。
-  if (observation.current.snapshot !== snapshot) {
-    const previous = observation.current
-    observation.current = {
-      snapshot,
-      states: new Map(snapshot.sessions.map((session) => [session.sessionId, session.state])),
-    }
-
-    if (previous.snapshot?.connection === 'live' && snapshot.connection === 'live') {
-      const ended = snapshot.sessions
-        .filter(
-          (session) => session.state === 'awaiting-input' && previous.states.get(session.sessionId) === 'working',
-        )
-        .map((session) => session.sessionId)
-      if (ended.length > 0) {
-        setEndedRounds((previousEnded) => new Set([...previousEnded, ...ended]))
-      }
-    }
-  }
-
+  const shutdown = bridge ?? snapshot.shutdown
   const ordered = sortByTier(snapshot.sessions)
   const waiting = ordered.filter(isAwaitingOnline)
   const rest = ordered.filter((session) => !isAwaitingOnline(session))
-  // 组头 N 与卡片高亮同源：都取「等待组 ∩ 刚结束」，因此 N 恒等于高亮卡片的张数，
-  // 也只数在线会话——离线（含原等待者）不在等待组里，自然不计入。
-  const freshWaiting = waiting.filter((session) => endedRounds.has(session.sessionId))
 
-  /** 「知道了」只清强调：清空 N 与高亮；等待组与 `awaiting-input` 状态不属于强调，保持不变。 */
-  function acknowledgeEndedRounds() {
-    setEndedRounds((previousEnded) => (previousEnded.size === 0 ? previousEnded : new Set<string>()))
+  const monitored = new Set(shutdown.monitoredSessionIds)
+  // 活动倒计时期间不接受新增监听，界面因此也不提供这个入口。
+  const locked = shutdown.phase === 'counting-down' || shutdown.phase === 'executing'
+
+  /** 某个会话的监听控件信息；返回 `null` 表示当前不提供按钮。 */
+  function monitoringFor(session: SessionView) {
+    const selected = monitored.has(session.sessionId)
+    if (locked) return null
+    // 在线且工作中的会话可以新增监听；已经在集合里的会话即便进入等待用户输入也保留可撤销的按钮。
+    if (!selected && !(session.online && session.state === 'working')) return null
+
+    const stillWaitingForOthers =
+      selected &&
+      session.state === 'awaiting-input' &&
+      [...monitored].some((id) => {
+        if (id === session.sessionId) return false
+        const other = snapshot.sessions.find((candidate) => candidate.sessionId === id)
+        return other !== undefined && other.state !== 'awaiting-input'
+      })
+
+    return {
+      selected,
+      note: stillWaitingForOthers
+        ? '已等待用户输入，正在等待其他被监听会话；它们都等待后才会开始关机倒计时。'
+        : null,
+      status: status[session.sessionId] ?? null,
+      busy: busy === session.sessionId,
+      onToggle: (next: boolean) => void toggleMonitoring(session.sessionId, next),
+    }
+  }
+
+  async function toggleMonitoring(sessionId: string, selected: boolean) {
+    setBusy(sessionId)
+    // 新的监听动作之后，上一次清空的说明不再代表当前状态。
+    setClearing('idle')
+    const result = await setMonitoring(sessionId, selected)
+    setBusy(null)
+    if (result.kind === 'accepted') {
+      // 后端确认过这次目标选中值：先用回执里的权威集合显示，绝不凭本地翻转。
+      setBridge(result.shutdown)
+      setStatus((current) => {
+        const next = { ...current }
+        delete next[sessionId]
+        return next
+      })
+      return
+    }
+    setStatus((current) => ({
+      ...current,
+      [sessionId]:
+        result.kind === 'rejected' ? { kind: 'refused', code: result.code } : { kind: 'unconfirmed' },
+    }))
+  }
+
+  async function clearMonitoring() {
+    setClearing('clearing')
+    const result = await cancelShutdown()
+    // 只有服务端确认取消生效才算清空成功；没有回应只说未确认，且不自动重发。
+    if (result.kind === 'cancelled') setBridge(result.shutdown)
+    setClearing(result.kind === 'cancelled' ? 'cleared' : result.kind)
   }
 
   return (
@@ -145,6 +242,57 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
           <strong>与 omp-bot 的连接已中断</strong>
           <span>下面是最后一次收到的快照，可能已经过期；连接恢复后会自动对齐。</span>
         </div>
+      ) : null}
+
+      {/* 全局清空入口：只在有监听且没有倒计时时出现（倒计时会消耗整组监听），
+          因此它是「取消关机并清空监听」这一全局意图，而不是某个会话的撤销，也不是结果页的返回。 */}
+      {monitored.size === 0 ? null : (
+        <section className="monitoring-bar" data-testid="monitoring-bar" aria-label="完成后关机监听">
+          <p className="monitoring-bar__summary" data-testid="monitoring-summary">
+            已完成监听的会话：{monitored.size} 个。全部成员都等待用户输入后，后端会开始关机倒计时。
+          </p>
+          <button
+            type="button"
+            className="monitoring-bar__clear"
+            data-testid="monitoring-clear"
+            disabled={clearing === 'clearing'}
+            onClick={() => void clearMonitoring()}
+          >
+            {clearing === 'clearing' ? '正在清空…' : '取消关机并清空监听'}
+          </button>
+        </section>
+      )}
+
+      {/* 清空的结果说明单独占一处：集合清空后入口本身会收起，但「服务端已确认」这条证据要留下。 */}
+      {clearing === 'cleared' ? (
+        <p
+          className="monitoring-bar__status"
+          data-testid="monitoring-clear-status"
+          data-outcome="cleared"
+          role="status"
+        >
+          服务端已确认：监听集合已清空，没有关机安排。
+        </p>
+      ) : null}
+      {clearing === 'refused' ? (
+        <p
+          className="monitoring-bar__status"
+          data-testid="monitoring-clear-status"
+          data-outcome="refused"
+          role="status"
+        >
+          取消没有生效：服务端明确拒绝，电脑仍可能按当前安排关闭。
+        </p>
+      ) : null}
+      {clearing === 'unconfirmed' ? (
+        <p
+          className="monitoring-bar__status"
+          data-testid="monitoring-clear-status"
+          data-outcome="unconfirmed"
+          role="status"
+        >
+          清空未确认，电脑仍可能关机：没有收到服务端的确认，页面不会自动重发。
+        </p>
       ) : null}
 
       {snapshot.sessions.length === 0 ? (
@@ -160,40 +308,27 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
               data-testid="waiting-group"
               aria-labelledby="waiting-group-heading"
             >
-              <header className="session-group__head">
-                <h2 className="session-group__heading" id="waiting-group-heading" data-testid="waiting-group-heading">
-                  等待用户输入
-                </h2>
-                {/* N=0 时组头只显示「等待用户输入」：计数与「知道了」只在真有刚结束的轮次时出现。 */}
-                {freshWaiting.length === 0 ? null : (
-                  <>
-                    <span className="session-group__note" data-testid="waiting-group-note">
-                      {freshWaiting.length} 个刚结束轮次
-                    </span>
-                    <button
-                      type="button"
-                      className="session-group__dismiss"
-                      data-testid="waiting-group-dismiss"
-                      onClick={acknowledgeEndedRounds}
-                    >
-                      知道了
-                    </button>
-                  </>
-                )}
-              </header>
+              <h2 className="session-group__heading" id="waiting-group-heading" data-testid="waiting-group-heading">
+                等待用户输入
+              </h2>
               {waiting.map((session) => (
                 <SessionCard
                   key={session.sessionId}
                   session={session}
                   waiting
-                  justEnded={freshWaiting.includes(session)}
+                  monitoring={monitoringFor(session)}
                 />
               ))}
             </section>
           )}
 
           {rest.map((session) => (
-            <SessionCard key={session.sessionId} session={session} waiting={false} justEnded={false} />
+            <SessionCard
+              key={session.sessionId}
+              session={session}
+              waiting={false}
+              monitoring={monitoringFor(session)}
+            />
           ))}
         </>
       )}

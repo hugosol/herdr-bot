@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import App from '../src/App'
 import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/sessionFeed'
+import { NO_SHUTDOWN } from '../src/shutdownView'
 
 /** 造一个会话；只写这条用例关心的字段，其余走缺省值。 */
 function session(sessionId: string, sessionName: string, rest: Partial<SessionView> = {}): SessionView {
@@ -20,15 +21,15 @@ function session(sessionId: string, sessionName: string, rest: Partial<SessionVi
 
 /** 不可变数据源：一次渲染到底。 */
 function staticFeed(sessions: SessionView[]): SessionFeed {
-  const snapshot: SessionFeedSnapshot = { sessions, connection: 'live' }
+  const snapshot: SessionFeedSnapshot = { sessions, connection: 'live', shutdown: NO_SHUTDOWN }
   return { subscribe: () => () => {}, getSnapshot: () => snapshot }
 }
 
 /**
- * 可变数据源：可以在用例中途推送新快照，用来观察迁移（working → awaiting-input、会话转离线）引起的重排与圆点变化。
+ * 可变数据源：可以在用例中途推送新快照，用来观察迁移（working → awaiting-input、会话转离线）引起的重排与分组变化。
  */
 function liveFeed(sessions: SessionView[]) {
-  let snapshot: SessionFeedSnapshot = { sessions, connection: 'live' }
+  let snapshot: SessionFeedSnapshot = { sessions, connection: 'live', shutdown: NO_SHUTDOWN }
   const listeners = new Set<() => void>()
   const feed: SessionFeed = {
     subscribe: (onChange) => {
@@ -38,7 +39,7 @@ function liveFeed(sessions: SessionView[]) {
     getSnapshot: () => snapshot,
   }
   const push = async (next: SessionView[]) => {
-    snapshot = { sessions: next, connection: 'live' }
+    snapshot = { sessions: next, connection: 'live', shutdown: NO_SHUTDOWN }
     await act(async () => listeners.forEach((notify) => notify()))
   }
   return { feed, push }
@@ -75,7 +76,7 @@ describe('等待组与 tier 排序', () => {
     ])
   })
 
-  it('在线的等待输入会话聚成置顶「等待用户输入」组并高亮，组内只有在线会话', async () => {
+  it('在线的等待输入会话聚成置顶「等待用户输入」组，组内只有在线会话', async () => {
     await showSessions([
       session('working-1', '工作中', { state: 'working' }),
       session('waiting-online', '在线等待输入', { state: 'awaiting-input' }),
@@ -89,43 +90,40 @@ describe('等待组与 tier 排序', () => {
     expect(board.firstElementChild).toBe(group)
     expect(within(group).getByTestId('waiting-group-heading')).toHaveTextContent('等待用户输入')
 
-    // 组内只有在线的等待者，且被高亮标记。
+    // 组内只有在线的等待者，且带普通等待状态标记。
     const grouped = within(group).getAllByTestId('session-card')
     expect(grouped).toHaveLength(1)
     expect(within(grouped[0]).getByTestId('session-name')).toHaveTextContent('在线等待输入')
     expect(grouped[0]).toHaveAttribute('data-waiting', 'true')
 
-    // 组外两张卡都不带高亮：离线等待者虽保留 awaiting-input 状态，仍不属于等待组。
+    // 组外两张卡都不带等待标记：离线等待者虽保留 awaiting-input 状态，仍不属于等待组。
     for (const card of screen.getAllByTestId('session-card')) {
       if (card === grouped[0]) continue
       expect(card).not.toHaveAttribute('data-waiting', 'true')
     }
   })
 
-  it('刚发生 working → awaiting-input 的会话额外高亮；首次快照就是等待输入的会话只进等待组', async () => {
-    const { feed, push } = liveFeed([
-      session('just-ended', '刚结束轮次', { state: 'working' }),
-      session('already-waiting', '早已等待', { state: 'awaiting-input' }),
-    ])
-    const user = userEvent.setup()
-    render(<App sessionFeed={feed} />)
-    await user.click(screen.getByTestId('tab-sessions'))
-    expect(screen.getAllByTestId('session-card').map((card) => card.dataset['justEnded'])).toEqual([
-      undefined,
-      undefined,
+  it('在线等待、在线工作中、在线空闲、离线四类示例各一张时，等待会话置顶成组，其余按工作中 → 空闲 → 离线排列', async () => {
+    await showSessions([
+      session('offline', '离线会话', { online: false, state: 'working' }),
+      session('idle', '空闲会话'),
+      session('working', '工作中会话', { state: 'working' }),
+      session('waiting', '等待会话', { state: 'awaiting-input' }),
     ])
 
-    await push([
-      session('just-ended', '刚结束轮次', { state: 'awaiting-input' }),
-      session('already-waiting', '早已等待', { state: 'awaiting-input' }),
+    // 注册顺序故意与展示顺序不同：展示顺序完全由 tier 决定。
+    expect(screen.getAllByTestId('session-name').map((node) => node.textContent)).toEqual([
+      '等待会话',
+      '工作中会话',
+      '空闲会话',
+      '离线会话',
     ])
 
+    // 等待会话单独在置顶组里，其余三张都在组外。
     const group = screen.getByTestId('waiting-group')
-    const [justEnded, alreadyWaiting] = within(group).getAllByTestId('session-card')
-    expect(within(justEnded).getByTestId('session-name')).toHaveTextContent('刚结束轮次')
-    expect(within(alreadyWaiting).getByTestId('session-name')).toHaveTextContent('早已等待')
-    expect(justEnded).toHaveAttribute('data-just-ended', 'true')
-    expect(alreadyWaiting).not.toHaveAttribute('data-just-ended', 'true')
+    expect(screen.getByTestId('session-board').firstElementChild).toBe(group)
+    expect(within(group).getAllByTestId('session-name').map((node) => node.textContent)).toEqual(['等待会话'])
+    expect(within(group).getAllByTestId('session-card')).toHaveLength(1)
   })
 
   it('等待中的会话转为离线后下沉末位、标「已离线」并保留最后已知状态，同时退出等待组', async () => {
@@ -156,57 +154,78 @@ describe('等待组与 tier 排序', () => {
   })
 })
 
-describe('跨 tab 圆点', () => {
-  it('存在在线等待输入会话时「会话列表」tab 显示圆点：无计数、不自动切换、点 tab 也不清零', async () => {
+describe('轮次结束不产生强调', () => {
+  it('工作中转为等待用户输入后，等待组不显示轮次计数与「知道了」，卡片也没有刚结束轮次专属标记', async () => {
+    const { feed, push } = liveFeed([
+      session('ends', '转为等待的会话', { state: 'working' }),
+      session('still-working', '仍在工作', { state: 'working' }),
+    ])
     const user = userEvent.setup()
-    render(
-      <App
-        sessionFeed={staticFeed([
-          session('waiting-online', '在线等待输入', { state: 'awaiting-input' }),
-          session('working', '工作中', { state: 'working' }),
-        ])}
-      />,
-    )
+    render(<App sessionFeed={feed} />)
+    await user.click(screen.getByTestId('tab-sessions'))
 
-    const sessionsTab = screen.getByTestId('tab-sessions')
-    const dot = within(sessionsTab).getByTestId('tab-sessions-indicator')
-    expect(dot).toHaveAttribute('aria-label', '有会话等待输入')
-    // 无计数：圆点自身不携带任何文本。
-    expect(dot).toHaveTextContent('')
-    expect(sessionsTab).toHaveTextContent('会话列表')
+    await push([
+      session('ends', '转为等待的会话', { state: 'awaiting-input' }),
+      session('still-working', '仍在工作', { state: 'working' }),
+    ])
 
-    // 不自动切换：圆点出现时页面仍停在「控制面板」。
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('panel-control')).toBeVisible()
-    expect(screen.getByTestId('panel-sessions')).not.toBeVisible()
+    // 组里只有标题这一行：没有「N 个刚结束轮次」，也没有「知道了」。
+    const group = screen.getByTestId('waiting-group')
+    expect(within(group).getByTestId('waiting-group-heading')).toHaveTextContent('等待用户输入')
+    expect(within(group).queryByTestId('waiting-group-note')).toBeNull()
+    expect(screen.queryByTestId('waiting-group-dismiss')).toBeNull()
+    expect(screen.queryByRole('button', { name: '知道了' })).toBeNull()
+    expect(within(group).queryAllByRole('button')).toHaveLength(0)
+    // 改名保留旧强调也会被这条挡住：组头一段文字里不该出现轮次计数或确认按钮的文案。
+    expect(group.textContent).not.toContain('个刚结束轮次')
+    expect(group.textContent).not.toContain('知道了')
 
-    // 点 tab 不清零：切进、切回，圆点都还在。
-    await user.click(sessionsTab)
-    expect(within(screen.getByTestId('tab-sessions')).getByTestId('tab-sessions-indicator')).toBeVisible()
-    await user.click(screen.getByTestId('tab-control'))
-    expect(within(screen.getByTestId('tab-sessions')).getByTestId('tab-sessions-indicator')).toBeVisible()
+    // 卡片没有任何「刚结束轮次」专属标记；普通等待状态样式与状态文案保留。
+    const ended = within(group).getByTestId('session-card')
+    expect(ended).not.toHaveAttribute('data-just-ended')
+    expect(ended.className).not.toMatch(/just-ended/)
+    expect(ended).toHaveAttribute('data-waiting', 'true')
+    expect(ended.className).toMatch(/is-waiting/)
+    expect(within(ended).getByTestId('session-state')).toHaveTextContent('等待用户输入')
+
+    // 另一张仍工作中的卡片照常留在等待组之外。
+    const working = screen.getAllByTestId('session-card').find((card) => card.dataset['state'] === 'working')
+    expect(working).toBeDefined()
+    expect(within(working!).getByTestId('session-name')).toHaveTextContent('仍在工作')
   })
+})
 
-  it('圆点只为在线等待输入会话亮起：无此类会话时不显示，离线等待者不算', async () => {
+describe('会话列表 tab 不显示等待提示', () => {
+  it('存在在线等待用户输入会话时，tab 仍只有文字：没有黄点、没有提示元素，等待组照常出现', async () => {
     const { feed, push } = liveFeed([
       session('working', '工作中', { state: 'working' }),
       session('offline-waiting', '离线等待输入', { online: false, state: 'awaiting-input' }),
     ])
+    const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
-    expect(screen.queryByTestId('tab-sessions-indicator')).toBeNull()
 
-    // 停在控制面板也能看见圆点出现。
+    // 基线：只有离线等待者，tab 没有任何提示。
+    const sessionsTab = screen.getByTestId('tab-sessions')
+    expect(sessionsTab.textContent).toBe('会话列表')
+    expect(sessionsTab.children).toHaveLength(0)
+
+    // 等待者转为在线等待输入：旧行为会在这里点亮 tab 黄点。
     await push([
       session('working', '工作中', { state: 'working' }),
       session('waiting', '等待输入', { state: 'awaiting-input' }),
     ])
-    expect(screen.getByTestId('tab-sessions-indicator')).toBeVisible()
+
+    // tab 仍然只有标签文字：没有黄点、没有计数，也没有任何挂在 tab 上的提示元素。
+    expect(sessionsTab.textContent).toBe('会话列表')
+    expect(sessionsTab.children).toHaveLength(0)
+    expect(screen.queryByTestId('tab-sessions-indicator')).toBeNull()
+    // 无障碍名恰是标签本身：提示即使挂在 tab 旁边（tablist 里）也会被这两条挡住。
+    expect(screen.getByRole('tab', { name: '会话列表' })).toBe(sessionsTab)
+    expect(within(screen.getByRole('tablist')).getAllByRole('tab')).toHaveLength(2)
     expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
 
-    await push([
-      session('working', '工作中', { state: 'working' }),
-      session('waiting', '等待输入', { online: false, state: 'awaiting-input' }),
-    ])
-    expect(screen.queryByTestId('tab-sessions-indicator')).toBeNull()
+    // 场景确实到达了条件：会话列表里的等待组非空，等待者就在里面。
+    await user.click(sessionsTab)
+    expect(within(screen.getByTestId('waiting-group')).getByTestId('session-name')).toHaveTextContent('等待输入')
   })
 })

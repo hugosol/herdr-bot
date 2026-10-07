@@ -1,5 +1,5 @@
 /**
- * 会话列表的数据源契约（接缝 S3）。
+ * 会话列表与关机状态的数据源契约（接缝 S3）。
  *
  * 「会话列表」由**注入的数据源**驱动：组件只消费这里的接口，绝不直接接触全局
  * `EventSource`。这样组件测试可以用假数据源驱动 UI，真实 SSE 接线（`sseSessionFeed.ts`）
@@ -7,7 +7,12 @@
  *
  * 字段与 wire 视图一致：`state`/`sessionName`/`model` 缺省即「未知」或「隐藏」，
  * 不用哨兵值；`online` 是 keepAlive（在线/离线），与 agent 状态正交。
+ *
+ * 后端权威的关机状态（`shutdown`）走同一条观察流，因此也在这一份快照里：页面用它展示提醒与结果，
+ * 不自己计时、也不自己决定到期执行。
  */
+
+import { NO_SHUTDOWN, type ShutdownView } from './shutdownView'
 
 /** keepAlive：会话是否仍在线；由服务端按心跳过期判定，与 agent 是否在跑是两回事。 */
 export type KeepAlive = 'online' | 'offline'
@@ -38,10 +43,17 @@ export type SessionView = {
  */
 export type ConnectionStatus = 'live' | 'interrupted'
 
-/** 数据源当前暴露的一帧：会话快照 + 连接状态。 */
+/**
+ * 数据源当前暴露的一帧：会话快照 + 连接状态 + 后端权威的关机状态。
+ *
+ * 关机状态与会话走**同一条**观察流（ADR 0005）：一条连接、首帧同时给出两者、关机变化以独立的命名事件
+ * 携带完整状态。因此这里没有第二条连接或第二套读取约定。
+ */
 export type SessionFeedSnapshot = {
   sessions: SessionView[]
   connection: ConnectionStatus
+  /** 后端权威的关机状态：调用者据此展示提醒、取消与结果，而不是自己计时。 */
+  shutdown: ShutdownView
 }
 
 /**
@@ -56,8 +68,12 @@ export type SessionFeed = {
   getSnapshot(): SessionFeedSnapshot
 }
 
-/** 尚未接线时的空快照：无会话、连接正常。 */
-const EMPTY_SNAPSHOT: SessionFeedSnapshot = { sessions: [], connection: 'live' }
+/** 尚未接线时的空快照：无会话、连接正常、还没有任何后端关机状态。 */
+const EMPTY_SNAPSHOT: SessionFeedSnapshot = {
+  sessions: [],
+  connection: 'live',
+  shutdown: NO_SHUTDOWN,
+}
 
 /**
  * 空数据源：组件在没人注入数据源时的默认值（页面显示引导空态）。

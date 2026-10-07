@@ -51,17 +51,6 @@ h1 {
   color: #f2f4f8;
 }
 
-/* 跨 tab 圆点：跟在标签文字后的小圆点，无计数、不撑高标签，也不影响无障碍名以外的文本。 */
-.tab__indicator {
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-left: 0.4rem;
-  border-radius: 50%;
-  background: #ffd995;
-  vertical-align: super;
-}
-
 .tabpanel[hidden] {
   display: none;
 }
@@ -97,30 +86,6 @@ h1 {
   color: #ffd995;
 }
 
-/* 组头一行放「等待用户输入」与刚结束轮次的计数；N=0 时只剩标题。 */
-.session-group__head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.session-group__note {
-  font-size: 0.85rem;
-  color: #ffd995;
-}
-
-/* 「知道了」只清强调、不收起等待组，所以是组头里的小按钮而不是整块操作区。 */
-.session-group__dismiss {
-  margin-left: auto;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.85rem;
-  border: 1px solid #4a4234;
-  border-radius: 0.5rem;
-  background: transparent;
-  color: #ffd995;
-  cursor: pointer;
-}
-
 .session-card {
   box-sizing: border-box;
   padding: 1rem;
@@ -138,11 +103,6 @@ h1 {
 /* 等待组内的卡片：保持实线并加深底色，强调这一张正等着接话。 */
 .session-card.is-waiting {
   background: #2a2620;
-}
-
-/* 刚结束一轮（working → awaiting-input）的卡片再压一道强调色：与组内其他等待者区分开。 */
-.session-card.is-just-ended {
-  border-color: #ffd995;
 }
 
 .session-card__head {
@@ -219,6 +179,96 @@ h1 {
 
 .session-card__model {
   color: #a9b1bd;
+}
+
+/* 完成后关机监听：未选中的次要按钮；已选中时换成醒目的实心色，一眼能看出这个会话在等它结束。 */
+.session-card__monitoring {
+  margin-top: 0.75rem;
+}
+
+.monitor-button {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #232830;
+  color: #d6dbe4;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.monitor-button:hover:enabled {
+  border-color: #55606f;
+}
+
+.monitor-button[data-selected='true'] {
+  border-color: #d79b2a;
+  background: #4a3a15;
+  color: #ffe9bd;
+  font-weight: 600;
+}
+
+.monitor-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* 已选中的等待者：说明它在等哪些成员结束，倒计时为什么还没开始。 */
+.monitor-note {
+  margin: 0.5rem 0 0;
+  color: #c9b48a;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* 监听命令的未确认 / 被拒绝说明：都不是「已选中」。 */
+.monitor-status {
+  margin: 0.5rem 0 0;
+  color: #e0a3a3;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* 全局清空入口：与每个会话的撤销按钮、结果页的返回各占一处，文案也各自写明意图。 */
+.monitoring-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border-left: 0.2rem solid #d79b2a;
+  border-radius: 0.5rem;
+  background: #241f16;
+}
+
+.monitoring-bar__summary {
+  margin: 0;
+  color: #ffe9bd;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.monitoring-bar__clear {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #6b5a33;
+  border-radius: 0.5rem;
+  background: #332a17;
+  color: #ffe9bd;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.monitoring-bar__clear:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.monitoring-bar__status {
+  flex-basis: 100%;
+  margin: 0;
+  color: #c9b48a;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 /* 断线降级：留在会话列表内的说明块，明说下面是过期快照而不是实况。 */
@@ -455,8 +505,8 @@ h1 {
   gap: 1rem;
 }
 
-/* 三类结果各自配色：已发出=绿、明确失败=红、无法确认=中性灰（不是失败）。 */
-.shutdown-screen--outcome[data-outcome='sent'] {
+/* 四类结果各自配色：已发出=绿、明确失败=红、取消生效=中性蓝、无法确认=中性灰（不是失败）。 */
+.shutdown-screen--outcome[data-outcome='issued'] {
   --result-accent: #4caf50;
   --result-text: #b6f0c0;
 }
@@ -466,9 +516,36 @@ h1 {
   --result-text: #ffd9d1;
 }
 
+.shutdown-screen--outcome[data-outcome='cancelled'] {
+  --result-accent: #4a6b8a;
+  --result-text: #dbe8f6;
+}
+
 .shutdown-screen--outcome[data-outcome='unconfirmed'] {
   --result-accent: #8a93a1;
   --result-text: #e8ecf2;
+}
+
+/* 执行已开始：既不是成功也不是失败，用与未确认相同的警示色系。 */
+.shutdown-screen--outcome[data-outcome='executing'] {
+  --result-accent: #d8b44a;
+  --result-text: #f0e2b6;
+}
+
+/* 未确认与过期提醒：底色与结果框一致，但用可读的整段文字说明“电脑仍可能关机”。 */
+.shutdown-warning {
+  box-sizing: border-box;
+  max-width: min(100%, 28rem);
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #6b6234;
+  border-left: 0.35rem solid #d8b44a;
+  border-radius: 0.6rem;
+  background: #221f14;
+  color: #f0e2b6;
+  font-size: 1rem;
+  line-height: 1.6;
+  text-align: left;
 }
 
 /* 结果框：沿用结果反馈的左侧色条约定，窄屏也一眼可辨。 */

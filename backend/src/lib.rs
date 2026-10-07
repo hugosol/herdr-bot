@@ -14,9 +14,18 @@
 //! 配置决定。客户端只能提交操作名：请求面是封闭的，其他操作名、怪路径，以及携带命令、脚本
 //! 路径或参数的请求都会被拒绝，且拒绝不产生任何脚本执行副作用。
 //!
-//! 另有 `POST /api/shutdown`：无参数调用即触发本机 Windows 优雅关机（见 [`shutdown`]）。
-//! 它与固定操作**完全解耦**——不获取执行资格、不排队、不执行“停止”脚本，因此脚本操作执行期间
-//! 它照样被接受；它的请求面同样封闭，带查询串或请求体的调用被拒绝且不触发任何动作。
+//! 另有两条关机命令：`POST /api/shutdown/start`（手动确认后的开始意图）与
+//! `POST /api/shutdown/cancel`（全局取消）。它们不直接关机：开始意图只在后端建立一个**权威倒计时**
+//! （见 [`countdown`]），到期后由后端自己调用本机 Windows 优雅关机（见 [`shutdown`]）。
+//! 关机与固定操作**完全解耦**——不获取执行资格、不排队、不执行“停止”脚本，因此脚本操作执行期间
+//! 它照样被接受；两条命令的请求面同样封闭，带查询串或请求体的调用被拒绝且不产生任何副作用。
+//!
+//! 还有一条 `POST /api/shutdown/monitor`：为某个会话设置或撤销**完成后关机监听**（明确的目标选中值，
+//! 不按当前状态翻转）。集合与自动触发规则同样由 [`countdown`] 在一把锁内裁定：只有当前在线且工作中的
+//! 未监听会话可新增，集合非空且全部成员当前等待用户输入才成立唯一的自动安排。
+//!
+//! 浏览器读取会话与关机状态用同一条只读长连接（见 [`observation`]）：首帧同时给出会话快照与关机状态，
+//! 之后关机变化以独立命名事件携带完整状态。没有第二条关机观察连接。
 //!
 //! 同一实例内任意时刻至多一个脚本操作在执行：两个操作共用一个执行资格，资格从操作被接受到脚本
 //! 确认结束一直持有，期间到达的其他请求直接得到忙碌结果（HTTP 409 `operation-in-progress`），
@@ -26,7 +35,9 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod config;
+pub mod countdown;
 pub mod mdns;
+pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
@@ -41,16 +52,16 @@ use axum::extract::{Path as UrlPath, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
-pub use config::{Config, MdnsConfig, OperationBinding, Operations};
+pub use config::{Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, ShutdownConfig};
+pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
 pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
-use shutdown::ShutdownOutcome;
 
 /// 操作请求的请求体读取上限。操作请求不接受请求体，任何请求体都注定被拒绝，
 /// 因此只要够读完空请求体即可，不必为一个越界请求缓冲任意大的内容。
@@ -70,13 +81,15 @@ pub struct AppState {
     /// 覆盖整个脚本执行期间（不是只到进程创建完成），而且由**执行这次操作的任务**持有，
     /// 与提交它的 HTTP 连接无关：连接断开时资格继续被持有到脚本确认结束。
     execution: Arc<Mutex<()>>,
-    /// 关机动作接缝。交付运行时是真实的 Win32 动作（[`SystemPowerOff`]），自动化测试注入记录型
-    /// 实现；关机路径**只**经由它，因此它不接触上面那一个执行资格。
-    power_off: Arc<dyn PowerOff>,
     /// 进程内会话表：扩展写事件到这里，浏览器读路径从这里订阅。
     ///
     /// 它与固定操作、关机路径完全解耦：会话写入既不取执行资格，也不接触任何脚本。
     pub sessions: Arc<sessions::SessionsState>,
+    /// 后端权威的关机倒计时：手动开始意图建立安排，到期由后端自己调用 [`PowerOff`]。
+    ///
+    /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
+    /// 实际关机动作接缝由它持有（注入的记录型实现只用于自动化与人工验收的安全外壳）。
+    pub shutdown: Arc<countdown::ShutdownState>,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -101,12 +114,30 @@ pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Rout
 ///
 /// 交付运行时（`main.rs`）用本函数持有会话表，并把同一份表交给后台过期扫描；需要观察会话变化的
 /// 调用方（会话过期扫描的自动化测试等）注入自己持有的会话表，于是写入的可见变化可以被订阅到，
-/// 而路由注册与交付运行时完全一致。
+/// 而路由注册与交付运行时完全一致。关机倒计时用注入的同一个动作接缝，时长取启动期配置。
 pub fn app_with_sessions(
     config: &Config,
     power_off: Arc<dyn PowerOff>,
     sessions: Arc<sessions::SessionsState>,
 ) -> Router {
+    app_with_state(config, power_off, sessions).0
+}
+
+/// 与 [`app_with_sessions`] 完全同一份装配，但把运行状态（[`AppState`]）一并交回调用者。
+///
+/// 交付运行时（`main.rs`）与安全外壳用它拿到关机倒计时的句柄，再交给时钟驱动的维护循环
+/// （`omp_bot::sessions::spawn_expiry_scan`）；于是「过期扫描 + 监听重判」的接线与用例看到的
+/// 是同一份，不需要为测试另造一条装配。
+pub fn app_with_state(
+    config: &Config,
+    power_off: Arc<dyn PowerOff>,
+    sessions: Arc<sessions::SessionsState>,
+) -> (Router, AppState) {
+    let shutdown = countdown::ShutdownState::new(
+        Arc::clone(&sessions),
+        Arc::clone(&power_off),
+        config.shutdown.countdown_seconds.duration(),
+    );
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -117,30 +148,36 @@ pub fn app_with_sessions(
             config.operations.stop.working_directory.clone(),
         ),
         execution: Arc::new(Mutex::new(())),
-        power_off,
         sessions,
+        shutdown,
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
     // "/" 由目录索引提供 index.html；页面没有前端路由，未知路径即 404。
     let page = ServeDir::new(static_dir());
 
-    Router::new()
+    let router = Router::new()
         // 只有这两个操作名可用；执行目标与工作目录只来自服务端配置。
         .route("/api/operations/start", post(start_operation))
         .route("/api/operations/stop", post(stop_operation))
-        // 关机永远注册：只要服务在运行，无参数 POST 就能触发本机优雅关机。
-        .route("/api/shutdown", post(shutdown))
-        // 会话事件：同一路径上写入（POST，扩展上报的唯一入口）与只读长连接（GET，SSE）各占一半。
+        // 关机命令永远注册：开始意图只建立后端权威倒计时，取消是全局清空意图。
+        // 两条命令都不直接关机，也没有绕过倒计时的即时关机别名。
+        .route("/api/shutdown/start", post(start_shutdown))
+        .route("/api/shutdown/cancel", post(cancel_shutdown))
+        // 完成后关机监听：设置或撤销某个会话的明确目标选中值。
+        .route("/api/shutdown/monitor", post(monitor_shutdown))
+        // 会话与关机的只读长连接：同一路径上写入（POST，扩展上报的唯一入口）与读取（GET，SSE）各占一半。
         .route(
             "/api/sessions/events",
-            get(sessions::sse_session_events).post(sessions::post_session_event),
+            get(observation::sse_observation).post(sessions::post_session_event),
         )
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
         .fallback_service(page)
-        .with_state(state)
+        .with_state(state.clone());
+
+    (router, state)
 }
 
 /// 打包页面所在目录：前端构建产物（`frontend` 的 `npm run build` 输出）。
@@ -210,51 +247,162 @@ async fn stop_operation(State(state): State<AppState>, request: Request) -> Resp
     run_fixed_operation(request, "stop", &state.stop_operation, &state.execution).await
 }
 
-/// 关机成功的结果类别（HTTP 200）；失败类别是 HTTP 500 的 `shutdown-failed`，两者互相区分。
-const SHUTDOWN_ISSUED: &str = "shutdown-issued";
-
-/// 一次成功的关机请求：只说明“关机已发出”。
-#[derive(Debug, Serialize)]
-struct ShutdownResponse {
-    /// 结果类别：`shutdown-issued`。
-    outcome: &'static str,
-}
-
-/// “关机”：无参数 POST 触发本机优雅关机。
+/// “手动关机”：确认后提交开始意图，进入后端权威倒计时。
 ///
-/// 与固定操作的执行资格**完全解耦**：不获取、不释放、不排队，也不执行“停止”脚本，因此脚本操作
-/// 执行期间它照样被接受，也不改变忙碌语义。关机动作是同步的：`Ok` 回 200（关机已发出），
-/// 失败回 500 `shutdown-failed`，原始错误只写诊断输出。
-async fn shutdown(State(state): State<AppState>, request: Request) -> Response {
-    // 请求面与其他操作一样封闭，且拒绝发生在调用动作之前：被拒绝的请求不触发任何关机动作。
+/// 它与固定操作的执行资格**完全解耦**：不获取、不释放、不排队，也不执行“停止”脚本，因此脚本操作
+/// 执行期间它照样被接受。回执只说明开始意图被接受（`outcome` 是安排当前阶段），**不**表示关机指令
+/// 已经发出；到期执行由后端自己负责（见 [`countdown`]）。
+async fn start_shutdown(State(state): State<AppState>, request: Request) -> Response {
+    // 请求面与其他命令一样封闭，且拒绝发生在建立安排之前：被拒绝的请求不产生任何关机意图。
     if let Some(rejection) = reject_unclosed_request(request).await {
         return rejection;
     }
 
-    match state.power_off.power_off() {
-        Ok(()) => {
-            shutdown::report(&ShutdownOutcome::Invoked);
-            (StatusCode::OK, Json(ShutdownResponse { outcome: SHUTDOWN_ISSUED })).into_response()
-        }
-        Err(failure) => {
-            shutdown::report(&ShutdownOutcome::Failed(failure));
-            shutdown_failed()
-        }
-    }
-}
-
-/// 关机动作失败的响应：与请求面拒绝同一个响应形状（只给类别，不回显任何执行目标或原始错误），
-/// 但语义是“请求被接受、动作失败”，因此不复用请求拒绝的诊断输出——类别事实由
-/// [`shutdown::report`] 的 `failed` 一行给出。
-fn shutdown_failed() -> Response {
+    let view = state.shutdown.start_manual().await;
+    let outcome = view.phase;
     (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(RejectedResponse {
-            code: "shutdown-failed",
-            message: "关机动作失败：本机没有接受这次关机。",
+        StatusCode::OK,
+        Json(StartAccepted {
+            outcome,
+            shutdown: view,
         }),
     )
         .into_response()
+}
+
+/// “取消关机”：全局清空当前监听集合，并撤销当前尚可取消的倒计时。
+///
+/// 取消作用于**收到请求时**的当前安排，不按调用者看到的安排标识校验（已批准的取舍）。执行已经开始时
+/// 得到明确拒绝（HTTP 409 `shutdown-not-cancellable`），前端不得把它显示成取消成功。
+async fn cancel_shutdown(State(state): State<AppState>, request: Request) -> Response {
+    if let Some(rejection) = reject_unclosed_request(request).await {
+        return rejection;
+    }
+
+    match state.shutdown.cancel().await {
+        CancelOutcome::Cancelled => (
+            StatusCode::OK,
+            Json(CancelAccepted {
+                outcome: CancelOutcome::Cancelled,
+                shutdown: state.shutdown.snapshot().await,
+            }),
+        )
+            .into_response(),
+        CancelOutcome::NotCancellable => rejected(
+            StatusCode::CONFLICT,
+            "shutdown-not-cancellable",
+            "关机执行已经开始：这次取消不会生效，电脑仍可能关闭。",
+        ),
+    }
+}
+
+/// 一次成功的开始意图：结果类别是安排当前阶段，另附命令之后的权威关机状态。
+#[derive(Debug, Serialize)]
+struct StartAccepted {
+    /// 结果类别：`counting-down`（开始意图已被接受）或 `executing`（到期执行已经开始）。
+    outcome: ShutdownPhase,
+    /// 命令之后的权威关机状态（与观察流下发的是同一份内容）。
+    shutdown: ShutdownView,
+}
+
+/// 一次成功的取消：结果类别固定，另附命令之后的权威关机状态。
+#[derive(Debug, Serialize)]
+struct CancelAccepted {
+    /// 结果类别：`cancelled`。
+    outcome: CancelOutcome,
+    /// 命令之后的权威关机状态（与观察流下发的是同一份内容）。
+    shutdown: ShutdownView,
+}
+
+/// “完成后关机监听”：为一个会话提交明确的**目标选中值**（选中或撤销），不按当前状态翻转。
+///
+/// 资格按**命令到达时**的当前会话状态裁定（P7、P44）：页面曾经看到「工作中」不参与判定。被拒绝时给出
+/// 明确的类别码（`unknown-session` / `session-not-eligible` / `shutdown-in-progress`），与「没有回应」
+/// 的未确认互不混淆（P47）。回执里的关机状态是命令之后的权威集合，因此调用者不必猜自己有没有被接受。
+async fn monitor_shutdown(State(state): State<AppState>, request: Request) -> Response {
+    // 请求面是封闭的：目标会话与目标选中值只来自请求体；拒绝发生在改动集合之前。
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return rejected(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "监听命令不接受查询参数：目标会话与目标选中值只来自请求体。",
+        );
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = match to_bytes(body, MAX_REQUEST_BODY_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return rejected(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "监听命令请求体超过 8KB 上限。",
+            );
+        }
+    };
+
+    let Ok(command) = serde_json::from_slice::<MonitoringCommand>(&bytes) else {
+        return rejected(
+            StatusCode::BAD_REQUEST,
+            "invalid-monitoring",
+            "监听命令无法解析：请发送 {sessionId, selected} 形式的合法命令。",
+        );
+    };
+
+    match state
+        .shutdown
+        .set_monitoring(&command.session_id, command.selected)
+        .await
+    {
+        Ok(shutdown) => (
+            StatusCode::OK,
+            Json(MonitoringAccepted {
+                outcome: if command.selected { SELECTED } else { UNSELECTED },
+                shutdown,
+            }),
+        )
+            .into_response(),
+        Err(MonitorRefusal::UnknownSession) => rejected(
+            StatusCode::NOT_FOUND,
+            "unknown-session",
+            "该会话尚未注册：监听只针对当前存在的会话。",
+        ),
+        Err(MonitorRefusal::NotEligible) => rejected(
+            StatusCode::CONFLICT,
+            "session-not-eligible",
+            "该会话当前不满足新增监听的条件：只有在线且工作中的会话可以开始监听。",
+        ),
+        Err(MonitorRefusal::CountdownActive) => rejected(
+            StatusCode::CONFLICT,
+            "shutdown-in-progress",
+            "已有活动倒计时：期间不接受新增监听，需要先取消当前安排。",
+        ),
+    }
+}
+
+/// 一次监听命令的请求体：明确的目标会话与明确的目标选中值。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MonitoringCommand {
+    /// 目标会话身份。
+    session_id: String,
+    /// 目标选中值：`true` 开始监听，`false` 撤销监听。
+    selected: bool,
+}
+
+/// 监听命令被接受的结果类别：目标选中值已经成立（重申同一目标值也算成立）。
+const SELECTED: &'static str = "selected";
+
+/// 监听命令被接受的结果类别：未选中已经成立。
+const UNSELECTED: &'static str = "unselected";
+
+/// 一次成功的监听命令：结果类别是目标选中值，另附命令之后的权威关机状态。
+#[derive(Debug, Serialize)]
+struct MonitoringAccepted {
+    /// 结果类别：`selected` 或 `unselected`。
+    outcome: &'static str,
+    /// 命令之后的权威关机状态（含当前监听集合，与观察流下发的是同一份内容）。
+    shutdown: ShutdownView,
 }
 
 /// 两个固定操作共用的执行路径。

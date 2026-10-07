@@ -15,7 +15,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::sessions::{Frame, ONLINE_WINDOW, SessionsState, is_online};
+use omp_bot::observation::Observation;
+use omp_bot::sessions::{ONLINE_WINDOW, SessionsState, is_online};
 use omp_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
@@ -32,14 +33,14 @@ impl PowerOff for NeverPowerOff {
 /// 一个用例独占的服务：真实监听端口的应用，加上可订阅的同一份会话表。
 struct SessionServer {
     server: TestServer,
-    frames: broadcast::Receiver<Frame>,
+    frames: broadcast::Receiver<Observation>,
 }
 
 impl SessionServer {
     async fn start() -> Self {
         let config = common::config(Path::new("unused.bat"), Path::new("."));
         let sessions = Arc::new(SessionsState::new());
-        let frames = sessions.subscribe();
+        let frames = sessions.observation().subscribe();
         let app =
             omp_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
@@ -54,7 +55,7 @@ impl SessionServer {
     }
 
     /// 取走当前已发布的全部帧。
-    fn drain_frames(&mut self) -> Vec<Frame> {
+    fn drain_frames(&mut self) -> Vec<Observation> {
         let mut frames = Vec::new();
         while let Ok(frame) = self.frames.try_recv() {
             frames.push(frame);
@@ -63,7 +64,7 @@ impl SessionServer {
     }
 
     /// 取走写入之后必然已经发布的那一帧：写入在返回响应之前发出，所以读到响应就必然能收到。
-    fn take_frame(&mut self) -> Frame {
+    fn take_frame(&mut self) -> Observation {
         let mut frames = self.drain_frames();
         assert_eq!(frames.len(), 1, "本次写入应恰好发布一帧：{frames:?}");
         frames.remove(0)
@@ -101,9 +102,9 @@ fn assert_rejected(response: &HttpResponse, status: u16, code: &str) {
 }
 
 /// 取出一帧 upsert 的会话视图，并断言它恰好是契约里的形状。
-fn upsert_view(frame: Frame) -> Value {
-    let Frame::Upsert(view) = frame else {
-        panic!("应发布一帧 upsert：{frame:?}");
+fn upsert_view(frame: Observation) -> Value {
+    let Observation::SessionUpsert(view) = frame else {
+        panic!("应发布一帧会话 upsert：{frame:?}");
     };
     serde_json::to_value(view).expect("会话视图必须可序列化")
 }
@@ -335,7 +336,7 @@ async fn unregister_removes_the_row_and_a_later_register_builds_a_new_one() {
     assert_outcome(&response, "accepted");
     assert_eq!(
         server.take_frame(),
-        Frame::Remove {
+        Observation::SessionRemove {
             session_id: "s1".to_string()
         }
     );

@@ -57,14 +57,14 @@ async fn main() -> anyhow::Result<()> {
     // 会话表由主入口持有：同一份表既要交给应用，也要交给后台过期扫描，因此不用 `omp_bot::app`
     // 的内部空表。监听已经绑定成功，从这里开始按固定节奏把超时的在线会话翻为离线。
     let sessions = Arc::new(omp_bot::sessions::SessionsState::new());
-    let app = omp_bot::app_with_sessions(
+    let (app, state) = omp_bot::app_with_state(
         &config,
         Arc::new(omp_bot::SystemPowerOff),
         Arc::clone(&sessions),
     );
-    // 过期扫描跟随进程的生命周期：句柄不保留（丢弃句柄只是让任务脱管，任务本身继续跑），
-    // 服务器关停时随运行时一起结束。
-    omp_bot::sessions::spawn_expiry_scan(sessions);
+    // 时钟驱动的会话维护跟随进程的生命周期：句柄不保留（丢弃句柄只是让任务脱管，任务本身继续跑），
+    // 服务器关停时随运行时一起结束。它同时负责「心跳过期 → 移出完成后关机监听」这一遍重判。
+    omp_bot::sessions::spawn_expiry_scan(sessions, Arc::clone(&state.shutdown));
 
     // 会话事件的写入来源校验要拿到 TCP 对端地址，因此交给服务的是带连接信息的 make-service：
     // 只有它会把 `ConnectInfo<SocketAddr>` 放进请求，缺了它写入端点在运行时取不到来源。

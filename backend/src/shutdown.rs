@@ -40,6 +40,8 @@ pub enum PowerOffFailure {
     Privilege(String),
     /// 系统拒绝了这次关机（`ExitWindowsEx` 返回 FALSE）：动作**没有**改走强制路径。
     Rejected(String),
+    /// 动作没能送回结果（执行它的任务没有正常结束）：结果无法确认，按失败处理。
+    Internal(String),
 }
 
 impl PowerOffFailure {
@@ -48,13 +50,16 @@ impl PowerOffFailure {
         match self {
             PowerOffFailure::Privilege(_) => "privilege",
             PowerOffFailure::Rejected(_) => "exit-windows-ex",
+            PowerOffFailure::Internal(_) => "internal",
         }
     }
 
     /// 系统的原始错误文本；只用于诊断输出。
     pub fn message(&self) -> &str {
         match self {
-            PowerOffFailure::Privilege(message) | PowerOffFailure::Rejected(message) => message,
+            PowerOffFailure::Privilege(message)
+            | PowerOffFailure::Rejected(message)
+            | PowerOffFailure::Internal(message) => message,
         }
     }
 }
@@ -232,11 +237,23 @@ mod tests {
             "系统拒绝必须带失败步骤与原始错误：{refused}"
         );
 
+        let internal = diagnostic(&ShutdownOutcome::Failed(PowerOffFailure::Internal(
+            "join error".to_string(),
+        )));
+        assert!(
+            internal.contains("关机状态：failed step=internal error=join error"),
+            "没能送回结果的执行必须留下自己的失败步骤：{internal}"
+        );
+
         assert_ne!(
             privilege, refused,
             "两种失败步骤的类别必须互相区分（它们是不同的动作失败原因）"
         );
-        for line in [&privilege, &refused] {
+        assert_ne!(
+            refused, internal,
+            "系统拒绝与内部故障必须互相区分"
+        );
+        for line in [&privilege, &refused, &internal] {
             assert!(
                 !line.contains("invoked"),
                 "失败不得报成成功类别：{line}"

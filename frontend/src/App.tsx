@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
-import { isAwaitingOnline } from './sessionOrdering'
 import { SessionsPanel } from './SessionsPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
@@ -50,10 +49,8 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
   const [tab, setTab] = useState<TabKey>('control')
   // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
   const [shutdownTakeover, setShutdownTakeover] = useState(false)
-  // 跨 tab 圆点看的是「当前是否还有会话在等待用户输入」：页面自己订阅数据源，
-  // 与人停在哪个 tab 无关，也不因为切 tab 而被清掉。
-  const { sessions } = useSessionFeedSnapshot(sessionFeed)
-  const hasWaitingSession = sessions.some(isAwaitingOnline)
+  // 后端权威的关机状态与观察流健康度：与「会话列表」同一条观察流，因此同一次订阅就够。
+  const { shutdown, connection } = useSessionFeedSnapshot(sessionFeed)
 
   async function submit(operation: OperationName) {
     setState({ kind: 'running', operation })
@@ -102,17 +99,6 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
           onClick={() => setTab('sessions')}
         >
           会话列表
-          {/* 跨 tab 圆点：等待组非空时亮起，让停在控制面板的人也知道有会话在等接话。
-              无计数（圆点不带文本）、不自动切换、点 tab 不清零——它只反映数据源当前这一帧。 */}
-          {hasWaitingSession ? (
-            <span
-              className="tab__indicator"
-              data-testid="tab-sessions-indicator"
-              role="img"
-              aria-label="有会话等待输入"
-              title="有会话等待输入"
-            />
-          ) : null}
         </button>
       </div>
 
@@ -151,7 +137,11 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
           </button>
         </div>
 
-        <ShutdownControl onTakeoverChange={setShutdownTakeover} />
+        <ShutdownControl
+          shutdown={shutdown}
+          connection={connection}
+          onTakeoverChange={setShutdownTakeover}
+        />
 
         {pending !== null && (
           <p className="pending" data-testid="pending-hint" role="status">
