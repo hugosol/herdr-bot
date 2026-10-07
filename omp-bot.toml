@@ -21,4 +21,4 @@ working_directory = 'E:\Developer\myhub\my-streaming'
 # 合法整数范围 1..=4294967295；零、负数、小数、超过上界或拼错的字段名会让启动明确失败。
 # 改了它要重启后端（没有热加载）。
 [shutdown]
-countdown_seconds = 30
+countdown_seconds = 10
