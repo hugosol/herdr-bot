@@ -2,11 +2,11 @@
 
 ### Issue tracker
 
-Issues and specs are tracked as local Markdown under `.scratch/<feature>/`. Before fetching or publishing tickets, read `docs/agents/issue-tracker.md`.
+Issues and specs are tracked as local Markdown under `.scratch/<feature>/`, with decision tickets using the `open`/`claimed`/`resolved` lifecycle. Before fetching or publishing tickets, read `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Decision and implementation tickets use separate default status vocabularies. Before assigning ticket statuses, read `docs/agents/triage-labels.md`.
+Implementation tickets use `needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`, with `in-progress`/`closed` tracking execution. Before assigning ticket statuses, read `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

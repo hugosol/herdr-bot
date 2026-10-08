@@ -1,37 +1,15 @@
 # Triage Labels
 
-This project uses two distinct ticket systems with separate status vocabularies.
-For local Markdown tickets, record the applicable value in the `Status:` line.
+These labels apply only to implementation tickets. For decision-ticket states, read the Wayfinding operations in `issue-tracker.md`.
 
-## Decision tickets (wayfinder)
+| Role            | Label in our tracker | Meaning                                  |
+| --------------- | -------------------- | ---------------------------------------- |
+| needs-triage    | needs-triage         | Maintainer needs to evaluate this item   |
+| needs-info      | needs-info           | Waiting on reporter for more information |
+| ready-for-agent | ready-for-agent      | Fully specified, ready for an AFK agent  |
+| ready-for-human | ready-for-human      | Requires human implementation            |
+| wontfix         | wontfix              | Will not be actioned                     |
 
-Planning artifacts in `.scratch/<feature>/decision/`. Each asks what to decide; its lighthouse document records the decision.
+When a skill names a triage role, use its mapped label. Edit the "Label in our tracker" column to match existing labels.
 
-| Status | Meaning |
-|--------|---------|
-| `open` | Not yet claimed by an agent |
-| `claimed` | Agent is actively working on this decision |
-| `resolved` | Decision made and recorded; no implementation code has been written as part of this ticket |
-
-Decision tickets are planning work. A resolved decision means the decision is locked, not that implementation exists.
-
-## Implementation tickets (to-tickets)
-
-Tracer-bullet vertical slices in `.scratch/<feature>/implementation/`, delivering working, testable behaviour.
-
-| Status | Meaning |
-|--------|---------|
-| `ready-for-agent` | Fully specified, ready for an AFK agent to implement |
-| `ready-for-human` | Requires human implementation |
-| `in-progress` | Agent is actively implementing |
-| `closed` | Code implemented, tested, and merged |
-
-## Shared (both ticket types)
-
-| Status | Meaning |
-|--------|---------|
-| `needs-triage` | Maintainer needs to evaluate this item |
-| `needs-info` | Waiting on reporter for more information |
-| `wontfix` | Will not be actioned |
-
-When a skill names a status role, use the corresponding string from the appropriate table. Keep decision and implementation status vocabularies separate.
+Implementation progress uses `in-progress` while being implemented and `closed` when implemented, tested, and merged.
