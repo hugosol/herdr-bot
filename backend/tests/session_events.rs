@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
 use omp_bot::observation::Observation;
-use omp_bot::sessions::{ONLINE_WINDOW, SessionsState, is_online};
+use omp_bot::sessions::{SessionPolicy, SessionsState};
 use omp_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
@@ -109,18 +109,45 @@ fn upsert_view(frame: Observation) -> Value {
     serde_json::to_value(view).expect("会话视图必须可序列化")
 }
 
-/// 在线判定窗口：同一判定式供快照与过期扫描共用，边界是 30s 且含 30s 本身。
+/// 生命周期阈值只有一处：缺省策略的在线有效期是 10 秒、离线保留期是 30 秒，
+/// 两个边界都含在**保留**一侧——恰好等于阈值的登记仍在窗口内，超过 1 毫秒才翻或清除。
 #[test]
-fn online_window_is_inclusive_at_thirty_seconds() {
+fn the_default_windows_are_inclusive_at_their_boundaries() {
+    let policy = SessionPolicy::default();
+    assert_eq!(
+        policy.online(),
+        Duration::from_secs(10),
+        "缺省在线有效期"
+    );
+    assert_eq!(
+        policy.retention(),
+        Duration::from_secs(30),
+        "缺省离线保留期"
+    );
+    assert_eq!(
+        policy.expiry(),
+        Duration::from_secs(40),
+        "清除阈值是两个窗口之和"
+    );
+
     let last_seen = Instant::now();
-    assert!(is_online(last_seen, last_seen), "刚写入必然在线");
+    assert!(policy.is_online(last_seen, last_seen), "刚写入必然在线");
     assert!(
-        is_online(last_seen, last_seen + ONLINE_WINDOW),
-        "恰 30s 仍在线"
+        policy.is_online(last_seen, last_seen + Duration::from_secs(10)),
+        "恰 10s 仍在线"
     );
     assert!(
-        !is_online(last_seen, last_seen + ONLINE_WINDOW + Duration::from_millis(1)),
-        "超过 30s 即离线"
+        !policy.is_online(last_seen, last_seen + Duration::from_secs(10) + Duration::from_millis(1)),
+        "超过 10s 即离线"
+    );
+
+    assert!(
+        !policy.is_expired(last_seen, last_seen + Duration::from_secs(40)),
+        "恰 40s 仍保留登记"
+    );
+    assert!(
+        policy.is_expired(last_seen, last_seen + Duration::from_secs(40) + Duration::from_millis(1)),
+        "超过 40s 由维护清除"
     );
 }
 

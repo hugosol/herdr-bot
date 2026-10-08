@@ -9,7 +9,6 @@ import {
   cancelShutdown,
   setMonitoring,
 } from './shutdownApi'
-import type { ShutdownView } from './shutdownView'
 import { useSessionFeedSnapshot } from './useSessionFeed'
 
 /** agent 状态在界面上的中文名。 */
@@ -28,12 +27,12 @@ const KEEPALIVE_LABELS: Record<KeepAlive, string> = {
 /**
  * 一次监听命令的本地结果。
  *
- * 只有「未确认」与「明确拒绝」需要在这里留下说明：目标选中值是否已经成立由**后端权威集合**决定
- * （按钮的选中态跟着观察流走），本地绝不乐观翻转，也不把没有回应记成成功。
+ * 只有「已被接受」「未确认」与「明确拒绝」三种归宿需要在这里留下说明：目标选中值是否已经成立由
+ * **后端权威集合**决定（按钮的选中态跟着观察流走），本地绝不乐观翻转，也不把没有回应记成成功。
  */
-type MonitorStatus = { kind: 'refused'; code: string } | { kind: 'unconfirmed' }
+type MonitorStatus = { kind: 'accepted' } | { kind: 'refused'; code: string } | { kind: 'unconfirmed' }
 
-/** 全局清空入口的本地结果：同样只有拿到后端证据才算成功。 */
+/** 全局清空入口的本地结果：同样只有拿到服务端确认才算这次命令被接受。 */
 type ClearStatus = 'idle' | 'clearing' | 'cleared' | 'refused' | 'unconfirmed'
 
 /** 会话名回退：`<cwd 目录名> · <sessionId 前 8 位>`。 */
@@ -61,6 +60,9 @@ type SessionCardProps = {
 function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
   const keepAlive = session.online ? 'online' : 'offline'
   const state = session.state ?? 'unknown'
+  // 离线的登记仍在列表里，但它的 agent 状态只是**最后上报值**：与「过期」一起呈现，
+  // 不能被读成当前完成证据（等待用户输入也不等于现在轮次结束）。
+  const lastReported = !session.online && session.state !== undefined
   return (
     <article
       className={`session-card${session.online ? '' : ' is-offline'}${waiting ? ' is-waiting' : ''}`}
@@ -87,9 +89,19 @@ function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
           </span>
         )}
       </header>
-      <p className="session-card__state" data-testid="session-state" data-state={state}>
+      <p
+        className="session-card__state"
+        data-testid="session-state"
+        data-state={state}
+        data-reported={session.online ? 'current' : 'last-reported'}
+      >
         {session.state !== undefined ? STATE_LABELS[session.state] : '状态同步中…'}
       </p>
+      {lastReported ? (
+        <span className="session-card__last-reported" data-testid="last-reported-tag">
+          最后上报
+        </span>
+      ) : null}
       <p className="session-card__meta">
         <span className="session-card__cwd" data-testid="session-cwd">
           {session.cwd}
@@ -129,13 +141,15 @@ function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
             >
               {monitoring.status.kind === 'unconfirmed'
                 ? '未确认：没有收到服务端的答复，无法确认这次监听命令是否生效；页面不会自动重发。'
-                : monitoring.status.code === NOT_ELIGIBLE
-                  ? '服务端拒绝：该会话当前不在线或不在工作中，不能开始监听。'
-                  : monitoring.status.code === COUNTDOWN_ACTIVE
-                    ? '服务端拒绝：已有活动倒计时，期间不接受新增监听。'
-                    : monitoring.status.code === UNKNOWN_SESSION
-                      ? '服务端拒绝：该会话尚未注册。'
-                      : '服务端明确拒绝这次监听命令。'}
+                : monitoring.status.kind === 'accepted'
+                  ? '服务端已接受这次监听命令；这次命令的归宿是「已接受」。选中态以观察流为准，尚未更新的展示保持不变。'
+                  : monitoring.status.code === NOT_ELIGIBLE
+                    ? '服务端拒绝：该会话当前不在线或不在工作中，不能开始监听。'
+                    : monitoring.status.code === COUNTDOWN_ACTIVE
+                      ? '服务端拒绝：已有活动倒计时，期间不接受新增监听。'
+                      : monitoring.status.code === UNKNOWN_SESSION
+                        ? '服务端拒绝：该会话尚未注册。'
+                        : '服务端明确拒绝这次监听命令。'}
             </p>
           )}
         </div>
@@ -151,7 +165,8 @@ function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
  * `sseSessionFeed.ts`，运行时由 `main.tsx` 注入），测试用假数据源或假 `EventSource` 驱动同一段代码。
  *
  * 「完成后关机」按钮的选中态**只**来自后端权威集合（观察流的 `monitoredSessionIds`），提交的是明确的
- * 目标选中值，因此本地不做乐观翻转；没有回应时只标记未确认，不自动重发。
+ * 目标选中值，因此本地不做乐观翻转；命令回执只反馈本次命令的归宿（已被接受／未确认／明确拒绝），
+ * 不拿来填补选中态，也不自动重发。
  */
 export function SessionsPanel({ feed }: { feed: SessionFeed }) {
   const snapshot = useSessionFeedSnapshot(feed)
@@ -159,18 +174,25 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
   // 正在提交命令的会话：只禁用那一个按钮，其他会话照常可用。
   const [busy, setBusy] = useState<string | null>(null)
   const [clearing, setClearing] = useState<ClearStatus>('idle')
-  // 命令回执里的权威状态：服务端刚确认过，先用它显示，直到观察流给出更新的一份。
-  const [bridge, setBridge] = useState<ShutdownView | null>(null)
 
-  // 观察流给出新状态后，命令回执就不再顶替它：后端状态始终是唯一权威。
-  useEffect(() => {
-    setBridge(null)
-  }, [snapshot.shutdown])
-
-  const shutdown = bridge ?? snapshot.shutdown
+  // 业务快照只有一个来源：共享观察流。命令回执只反馈这次命令的归宿（见 `status`／`clearing`），
+  // 不参与展示——独立通道的迟到回执因此不可能覆盖较新的观察结果。
+  const shutdown = snapshot.shutdown
   const ordered = sortByTier(snapshot.sessions)
   const waiting = ordered.filter(isAwaitingOnline)
   const rest = ordered.filter((session) => !isAwaitingOnline(session))
+
+  // 观察流下一次给出关机状态时，「已接受」这条归宿说明就被权威事实取代：它只是回执，不是业务状态。
+  useEffect(() => {
+    setStatus((current) => {
+      if (!Object.values(current).some((value) => value.kind === 'accepted')) return current
+      const next: Record<string, MonitorStatus> = {}
+      for (const [sessionId, value] of Object.entries(current)) {
+        if (value.kind !== 'accepted') next[sessionId] = value
+      }
+      return next
+    })
+  }, [snapshot.shutdown])
 
   const monitored = new Set(shutdown.monitoredSessionIds)
   // 活动倒计时期间不接受新增监听，界面因此也不提供这个入口。
@@ -210,13 +232,8 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
     const result = await setMonitoring(sessionId, selected)
     setBusy(null)
     if (result.kind === 'accepted') {
-      // 后端确认过这次目标选中值：先用回执里的权威集合显示，绝不凭本地翻转。
-      setBridge(result.shutdown)
-      setStatus((current) => {
-        const next = { ...current }
-        delete next[sessionId]
-        return next
-      })
+      // 这次命令被服务端接受：只反馈归宿，选中态仍等观察流的权威集合，绝不凭本地翻转。
+      setStatus((current) => ({ ...current, [sessionId]: { kind: 'accepted' } }))
       return
     }
     setStatus((current) => ({
@@ -229,8 +246,7 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
   async function clearMonitoring() {
     setClearing('clearing')
     const result = await cancelShutdown()
-    // 只有服务端确认取消生效才算清空成功；没有回应只说未确认，且不自动重发。
-    if (result.kind === 'cancelled') setBridge(result.shutdown)
+    // 只有服务端确认取消生效才算这次命令被接受；没有回应只说未确认，且不自动重发。
     setClearing(result.kind === 'cancelled' ? 'cleared' : result.kind)
   }
 
@@ -263,7 +279,7 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
         </section>
       )}
 
-      {/* 清空的结果说明单独占一处：集合清空后入口本身会收起，但「服务端已确认」这条证据要留下。 */}
+      {/* 清空的结果说明单独占一处：集合清空后入口本身会收起，但「服务端已确认」这条归宿要留下。 */}
       {clearing === 'cleared' ? (
         <p
           className="monitoring-bar__status"
@@ -271,7 +287,7 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
           data-outcome="cleared"
           role="status"
         >
-          服务端已确认：监听集合已清空，没有关机安排。
+          服务端已确认这次取消；这次命令的归宿是「已接受」。监听集合与关机安排以观察流为准。
         </p>
       ) : null}
       {clearing === 'refused' ? (

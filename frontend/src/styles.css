@@ -166,6 +166,18 @@ h1 {
   font-weight: 400;
 }
 
+/* 「最后上报」标记：离线的 agent 状态只是最后上报值，不是当前事实。 */
+.session-card__last-reported {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.5rem;
+  background: #3a4048;
+  color: #c7ced9;
+  font-size: 0.75rem;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
 /* cwd 与 model：次要信息，model 缺省时整段只剩 cwd。 */
 .session-card__meta {
   display: flex;

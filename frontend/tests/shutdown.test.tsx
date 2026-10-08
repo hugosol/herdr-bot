@@ -122,11 +122,9 @@ describe('手动关机走后端权威倒计时', () => {
     await user.click(screen.getByTestId('shutdown-confirm-button'))
     expect(calls).toEqual(['/api/shutdown/start'])
 
-    // 回执里的权威状态立刻显示成倒计时：10 秒的安排（测试期间可能已经过去不到 1 秒）。
-    expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
-    const shown = Number(screen.getByTestId('shutdown-countdown').getAttribute('data-seconds'))
-    expect(shown).toBeGreaterThanOrEqual(9)
-    expect(shown).toBeLessThanOrEqual(10)
+    // 回执被接受：页面只反馈这次开始的归宿；倒计时必须等观察流给出（P42、P43）。
+    expect(screen.getByTestId('shutdown-start-accepted')).toBeVisible()
+    expect(screen.queryByTestId('shutdown-countdown')).toBeNull()
   })
 
   it('打开页面就能看到后端已有的安排与剩余时间，本地归零不发请求也不声称已关机', async () => {
@@ -161,22 +159,23 @@ describe('手动关机走后端权威倒计时', () => {
     expect(calls).toEqual([])
   })
 
-  it('取消只在后端给出「取消已生效」的证据之后才显示成功', async () => {
+  it('取消被服务端确认后只反馈归宿；「取消成功」要等观察流给出', async () => {
     const cancel = deferredReply()
     recordingFetch((url) =>
       url === '/api/shutdown/cancel'
         ? cancel.promise
         : jsonResponse(200, { outcome: 'counting-down', shutdown: countingDown(30, Date.now()) }),
     )
-    const { feed } = shutdownFeed(countingDown(30, Date.now()))
+    const { feed, push } = shutdownFeed(countingDown(30, Date.now()))
     const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
 
     await user.click(screen.getByTestId('shutdown-cancel'))
-    // 请求在途：没有任何成功。
+    // 请求在途：没有归宿说明，也没有任何成功。
     expect(screen.queryByTestId('shutdown-result')).toBeNull()
+    expect(screen.queryByTestId('shutdown-accepted')).toBeNull()
 
-    // 后端确认取消生效（回执 200 + 权威状态）：这才显示成功。
+    // 服务端确认取消生效（回执 200）：只反馈这次操作的归宿，安排仍按观察流显示倒计时。
     await act(async () => {
       cancel.settle(
         jsonResponse(200, {
@@ -185,6 +184,12 @@ describe('手动关机走后端权威倒计时', () => {
         }),
       )
     })
+    expect(screen.getByTestId('shutdown-accepted')).toHaveTextContent('已确认这次取消')
+    expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
+    expect(screen.queryByTestId('shutdown-result')).toBeNull()
+
+    // 观察流随后给出「取消已生效」：这才是显示「取消成功」的事实来源。
+    await push(cancelled(Date.now()))
     expect(screen.getByTestId('shutdown-result')).toHaveAttribute('data-outcome', 'cancelled')
     expect(screen.getByTestId('shutdown-result')).toHaveTextContent('取消成功')
   })
@@ -306,6 +311,81 @@ describe('手动关机走后端权威倒计时', () => {
       await vi.advanceTimersByTimeAsync(2_000)
     })
     expect(screen.getByTestId('shutdown-count')).toHaveTextContent('3')
+  })
+})
+
+describe('命令回执只反馈归宿，业务展示只随观察流更新（P42、P43）', () => {
+  it('观察已给出取消结果后，迟到的合法开始回执不把关机安排拉回倒计时', async () => {
+    const start = deferredReply()
+    recordingFetch(() => start.promise)
+    const { feed, push } = shutdownFeed()
+    const user = userEvent.setup()
+    render(<App sessionFeed={feed} />)
+
+    // 提交开始意图；它的回执被拖住，观察流先给出更晚的事实：这次安排已经被取消。
+    await user.click(screen.getByTestId('shutdown-button'))
+    await user.click(screen.getByTestId('shutdown-confirm-button'))
+    await push(cancelled(Date.now()))
+    expect(screen.getByTestId('shutdown-result')).toHaveAttribute('data-outcome', 'cancelled')
+
+    // 迟到的旧回执到达：它只说明那次开始意图的归宿，不得把关机安排拉回倒计时。
+    // 回执里的时刻更早（serverTime 与观察流不构成严格递增版本），页面也不靠它排序。
+    await act(async () => {
+      start.settle(
+        jsonResponse(200, {
+          outcome: 'counting-down',
+          shutdown: { ...countingDown(30, Date.now()), serverTime: SERVER_TIME - 120_000 },
+        }),
+      )
+    })
+    expect(screen.getByTestId('shutdown-result')).toHaveAttribute('data-outcome', 'cancelled')
+    expect(screen.queryByTestId('shutdown-countdown')).toBeNull()
+  })
+
+  it('回执先到、观察尚未更新时业务展示不翻转，只反馈这次开始已被接受', async () => {
+    recordingFetch(() =>
+      jsonResponse(200, { outcome: 'counting-down', shutdown: countingDown(30, Date.now()) }),
+    )
+    const { feed } = shutdownFeed()
+    const user = userEvent.setup()
+    render(<App sessionFeed={feed} />)
+
+    await user.click(screen.getByTestId('shutdown-button'))
+    await user.click(screen.getByTestId('shutdown-confirm-button'))
+
+    // 回执自称安排已经在倒计时，但观察流还没给出它：不得据此显示倒计时或取消入口。
+    expect(screen.queryByTestId('shutdown-countdown')).toBeNull()
+    expect(screen.queryByTestId('shutdown-cancel')).toBeNull()
+
+    // 反馈只说明这次操作的归宿：服务端已接受。
+    const accepted = screen.getByTestId('shutdown-accepted')
+    expect(accepted).toHaveAttribute('data-outcome', 'accepted')
+    expect(accepted).toHaveTextContent('已接受这次开始意图')
+  })
+
+  it('断线期间被确认的取消只反馈归宿，最后的安排与过期标注都保留', async () => {
+    const cancel = deferredReply()
+    recordingFetch((url) =>
+      url === '/api/shutdown/cancel' ? cancel.promise : jsonResponse(200, {}),
+    )
+    const { feed, push } = shutdownFeed(countingDown(20, Date.now()))
+    render(<App sessionFeed={feed} />)
+
+    // 观察连接中断：保留最后一份安排，并标注它可能已经过期。
+    await push(countingDown(20, Date.now()), 'interrupted')
+    expect(screen.getByTestId('shutdown-stale')).toBeVisible()
+
+    // 命令照样发得出去，服务端也确认了取消生效。
+    fireEvent.click(screen.getByTestId('shutdown-cancel'))
+    await act(async () => {
+      cancel.settle(jsonResponse(200, { outcome: 'cancelled', shutdown: cancelled(Date.now()) }))
+    })
+
+    // 业务展示仍是断线前最后观察到的那份安排，过期标注也还在；回执只反馈这次取消的归宿。
+    expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
+    expect(screen.getByTestId('shutdown-stale')).toBeVisible()
+    expect(screen.getByTestId('shutdown-accepted')).toHaveTextContent('已确认这次取消')
+    expect(screen.queryByTestId('shutdown-result')).toBeNull()
   })
 })
 

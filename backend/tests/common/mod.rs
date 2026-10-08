@@ -236,6 +236,9 @@ pub fn config_with_countdown(
             countdown_seconds: omp_bot::CountdownSeconds::new(countdown_seconds)
                 .expect("测试用的倒计时秒数必须合法"),
         },
+        // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
+        // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
+        sessions: omp_bot::SessionsConfig::default(),
     }
 }
 

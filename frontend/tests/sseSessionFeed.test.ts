@@ -16,6 +16,11 @@ function wireSession(sessionId: string, overrides: Record<string, unknown> = {})
   }
 }
 
+/** 一帧 `snapshot` 的载荷：会话快照 + **同一帧**里的权威关机状态（真实后端两半都带）。 */
+function snapshot(payload: { sessions: unknown[] }) {
+  return { ...payload, shutdown: { phase: 'none', serverTime: 0, monitoredSessionIds: [] } }
+}
+
 /** 建立一条订阅并返回新开的假连接（页面的真实路径：订阅即连线）。 */
 function subscribed() {
   const feed = createSseSessionFeed({
@@ -37,11 +42,11 @@ describe('SSE 数据源接线', () => {
     expect(source.url).toBe('/api/sessions/events')
     expect(feed.getSnapshot().sessions).toEqual([])
 
-    source.emit('snapshot', { sessions: [wireSession('a'), wireSession('b')] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('a'), wireSession('b')] }))
     expect(feed.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['a', 'b'])
 
     // 重连后的快照是「重置」而不是合并：断线期间注销的会话不能留在列表里。
-    source.emit('snapshot', { sessions: [wireSession('b')] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('b')] }))
     expect(feed.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['b'])
 
     unsubscribe()
@@ -50,7 +55,7 @@ describe('SSE 数据源接线', () => {
 
   it('upsert 就地更新已存在的会话、追加未知的会话，并保持注册顺序', () => {
     const { feed, source } = subscribed()
-    source.emit('snapshot', { sessions: [wireSession('a'), wireSession('b', { state: 'idle' })] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('a'), wireSession('b', { state: 'idle' })] }))
 
     // 已存在的会话就地在原位更新（服务端按注册顺序下发，增量不该把行挪位）。
     source.emit('upsert', { session: wireSession('a', { state: 'awaiting-input' }) })
@@ -66,7 +71,7 @@ describe('SSE 数据源接线', () => {
 
   it('remove 按 sessionId 只删掉那一行', () => {
     const { feed, source } = subscribed()
-    source.emit('snapshot', { sessions: [wireSession('a'), wireSession('b'), wireSession('c')] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('a'), wireSession('b'), wireSession('c')] }))
 
     source.emit('remove', { sessionId: 'b' })
     expect(feed.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['a', 'c'])
@@ -79,16 +84,19 @@ describe('SSE 数据源接线', () => {
   it('视图字段按契约映射：state 缺省或未知即「尚未同步」，online=false 即离线', () => {
     const { feed, source } = subscribed()
 
-    source.emit('snapshot', {
-      sessions: [
-        // state 缺省：视图里就没有 state（界面据此显示中性占位「状态同步中…」）。
-        { sessionId: 'a', cwd: 'E:\\a', online: true },
-        // online 缺省按离线处理；非法状态值当作未知，不写进视图。
-        { sessionId: 'b', cwd: 'E:\\b', state: 'paused' },
-        // 可空字段原样带过（空白会话名由界面回退显示，数据源不做展示层加工）。
-        { sessionId: 'c', cwd: 'E:\\c', online: false, sessionName: '  ', model: 'claude-sonnet-4-5', state: 'idle' },
-      ],
-    })
+    source.emit(
+      'snapshot',
+      snapshot({
+        sessions: [
+          // state 缺省：视图里就没有 state（界面据此显示中性占位「状态同步中…」）。
+          { sessionId: 'a', cwd: 'E:\\a', online: true },
+          // online 缺省按离线处理；非法状态值当作未知，不写进视图。
+          { sessionId: 'b', cwd: 'E:\\b', state: 'paused' },
+          // 可空字段原样带过（空白会话名由界面回退显示，数据源不做展示层加工）。
+          { sessionId: 'c', cwd: 'E:\\c', online: false, sessionName: '  ', model: 'claude-sonnet-4-5', state: 'idle' },
+        ],
+      }),
+    )
 
     expect(feed.getSnapshot().sessions).toEqual([
       { sessionId: 'a', cwd: 'E:\\a', online: true },
@@ -106,11 +114,12 @@ describe('SSE 数据源接线', () => {
 
   it('坏帧（解析失败或视图缺必需字段）被忽略，不清空也不污染已有视图', () => {
     const { feed, source } = subscribed()
-    source.emit('snapshot', { sessions: [wireSession('a')] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('a')] }))
     const before = feed.getSnapshot()
 
     source.emitRaw('snapshot', '{ 这不是 JSON')
-    source.emit('snapshot', { sessions: [wireSession('b', { cwd: undefined })] })
+    // 视图缺必需字段：整帧不认（这里补上合法的关机状态，让被拒的原因确实是这一行会话）。
+    source.emit('snapshot', snapshot({ sessions: [wireSession('b', { cwd: undefined })] }))
     source.emitRaw('upsert', 'null')
     source.emit('remove', {})
 
@@ -121,7 +130,7 @@ describe('SSE 数据源接线', () => {
     vi.useFakeTimers()
     try {
       const { feed, source } = subscribed()
-      source.emit('snapshot', { sessions: [wireSession('a')] })
+      source.emit('snapshot', snapshot({ sessions: [wireSession('a')] }))
 
       source.fail()
       const interrupted = feed.getSnapshot()
@@ -135,10 +144,14 @@ describe('SSE 数据源接线', () => {
       expect(source.closed).toBe(false)
       expect(feed.getSnapshot()).toBe(interrupted)
 
-      // 浏览器按服务端给的 retry 自行重连；服务端首帧快照即完成收敛。
+      // 浏览器按服务端给的 retry 自行重连：`open` 只说这条连接又通了，读数仍是断线前那一份，
+      // 因此它**不是**恢复证据，连接健康度与展示都不动。
       source.open()
+      expect(feed.getSnapshot()).toBe(interrupted)
+
+      // 一份完整的首帧快照才完成收敛。
+      source.emit('snapshot', snapshot({ sessions: [wireSession('a'), wireSession('b')] }))
       expect(feed.getSnapshot().connection).toBe('live')
-      source.emit('snapshot', { sessions: [wireSession('a'), wireSession('b')] })
       expect(feed.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['a', 'b'])
     } finally {
       vi.useRealTimers()
@@ -151,7 +164,7 @@ describe('SSE 数据源接线', () => {
     const initial = feed.getSnapshot()
     expect(feed.getSnapshot()).toBe(initial)
 
-    source.emit('snapshot', { sessions: [wireSession('a')] })
+    source.emit('snapshot', snapshot({ sessions: [wireSession('a')] }))
     const afterFrame = feed.getSnapshot()
     expect(afterFrame).not.toBe(initial)
     expect(feed.getSnapshot()).toBe(afterFrame)

@@ -18,7 +18,8 @@ use std::time::Duration;
 use axum::extract::connect_info::MockConnectInfo;
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::sessions::{ONLINE_WINDOW, SessionsState};
+use omp_bot::clock::ManualClock;
+use omp_bot::sessions::{SessionPolicy, SessionsState};
 use omp_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 
@@ -60,17 +61,35 @@ struct MonitoringServer {
     double: Arc<RecordingPowerOff>,
     shutdown: Arc<omp_bot::countdown::ShutdownState>,
     sessions: Arc<SessionsState>,
+    /// 受控时刻；`None` 表示这个装配走真实挂钟（用于「必须真的等窗口过去」的用例）。
+    clock: Option<Arc<ManualClock>>,
 }
 
 impl MonitoringServer {
-    /// 用指定的倒计时秒数装配应用（其余取测试缺省配置）。
+    /// 用指定的倒计时秒数装配应用（真实挂钟，其余取测试缺省配置）。
     async fn start(countdown_seconds: u32) -> Self {
+        Self::start_with(countdown_seconds, None).await
+    }
+
+    /// 受控时刻的装配：窗口边界由用例推进，不需要真的等。
+    async fn start_on_controlled_clock(countdown_seconds: u32) -> Self {
+        Self::start_with(countdown_seconds, Some(Arc::new(ManualClock::new()))).await
+    }
+
+    /// 用指定的倒计时秒数与（可选的）受控时刻装配应用。
+    async fn start_with(countdown_seconds: u32, clock: Option<Arc<ManualClock>>) -> Self {
         let config = common::config_with_countdown(
             Path::new("unused.bat"),
             Path::new("."),
             countdown_seconds,
         );
-        let sessions = Arc::new(SessionsState::new());
+        let sessions = match &clock {
+            Some(clock) => Arc::new(SessionsState::with_policy_and_clock(
+                SessionPolicy::default(),
+                clock.clone(),
+            )),
+            None => Arc::new(SessionsState::new()),
+        };
         let double = RecordingPowerOff::new();
         let (app, state) = omp_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
@@ -78,15 +97,30 @@ impl MonitoringServer {
             double,
             shutdown: state.shutdown,
             sessions,
+            clock,
         }
     }
 
-    /// 启动交付运行时那份时钟驱动的维护循环（过期扫描 + 监听重判）。
+    /// 启动交付运行时那份时钟驱动的维护循环（一遍维护 + 监听重判）。
     fn spawn_maintenance(&self) {
         omp_bot::sessions::spawn_expiry_scan(
             Arc::clone(&self.sessions),
             Arc::clone(&self.shutdown),
         );
+    }
+
+    /// 跑一遍维护（与 `spawn_expiry_scan` 每 5 秒那一遍是同一对调用）。
+    async fn maintain(&self) {
+        self.sessions.scan_expired().await;
+        self.shutdown.sessions_changed().await;
+    }
+
+    /// 推进受控时刻；只有 [`MonitoringServer::start_on_controlled_clock`] 的装配可以调用。
+    fn advance(&self, by: Duration) {
+        self.clock
+            .as_ref()
+            .expect("本用例不是受控时刻的装配")
+            .advance(by);
     }
 
     fn addr(&self) -> SocketAddr {
@@ -771,43 +805,53 @@ async fn the_global_clear_empties_the_whole_set_atomically() {
     assert_eq!(server.double.calls(), 0, "清空不等于关机，也不触发安排");
 }
 
-/// 验收 P15、P17、P7、P44（真实 keepAlive 判定）：最后一个成员心跳过期即被移出集合，不形成安排。
+/// 验收 P25：已监听成员进入离线后仍在监听集合里，并阻塞自动触发——在线窗口结束不移出监听。
 ///
-/// 慢用例：过期的判定窗口是 30s，等它必须真的等过窗口，不能用注入时刻代替（视图的在线与否按当前时刻
-/// 现算）。用例因此跑交付运行时同一份后台维护循环，并给 surviving 的成员持续心跳。
+/// 跑的是交付运行时同一份后台维护循环（每 5 秒一遍、真实挂钟），因此「离线」这一可见变化来自维护，
+/// 而集合仍含该身份；离线成员的最后上报状态不作当前完成证据。
 #[tokio::test]
-async fn an_expired_last_member_leaves_the_set_without_forming_an_arrangement() {
+async fn an_offline_member_stays_in_the_set_and_blocks_automatic_shutdown() {
     let server = MonitoringServer::start(10).await;
     assert_accepted(&server.register("a").await);
     assert_accepted(&server.state("a", "working").await);
     assert_selected(&server.monitor("a", true).await, "a");
 
-    // 观察连接在集合已经是 {a} 之后建立，因此「集合变空」必然是后来发生的一次可见变化。
+    // 观察连接在集合已经是 {a} 之后建立，因此后面的每一帧都是它之后发生的可见变化。
     let mut observer = server.observe().await;
-    assert_eq!(monitored_ids(&observer.first_shutdown()), vec!["a".to_string()]);
+    assert_eq!(
+        monitored_ids(&observer.first_shutdown()),
+        vec!["a".to_string()]
+    );
     server.spawn_maintenance();
 
     let started = std::time::Instant::now();
-    let emptied = observer
-        .set_until_within(&[], ONLINE_WINDOW + Duration::from_secs(15))
+    let stale = observer
+        .sessions_until_offline("a", Duration::from_secs(10 + 10))
         .await;
     assert!(
-        started.elapsed() > ONLINE_WINDOW,
-        "不得在 30s 判定窗口内移出成员：实际 {:?}",
+        started.elapsed() > Duration::from_secs(10),
+        "不得在 10 秒在线有效期内提前翻为离线：实际 {:?}",
         started.elapsed()
     );
     assert_eq!(
-        emptied["phase"],
-        json!("none"),
-        "移出最后一个成员只清空集合，不形成安排：{emptied}"
+        stale["state"],
+        json!("working"),
+        "过期只改 keepAlive：{stale}"
     );
-    assert_eq!(server.double.calls(), 0, "零调用");
 
-    // 离线成员不能新增监听（后端按当前资格裁定），权威集合保持空。
-    assert_refused(&server.monitor("a", true).await, 409, "session-not-eligible");
-    assert!(server.authoritative_set().await.is_empty());
+    // 在线窗口结束不移出监听：身份仍在集合里，且它阻塞自动触发。
+    let after = server.authoritative().await;
+    assert_eq!(
+        monitored_ids(&after),
+        vec!["a".to_string()],
+        "离线成员必须留在监听集合里：{after}"
+    );
+    assert_eq!(after["phase"], json!("none"), "离线成员阻塞自动触发：{after}");
+    assert_eq!(server.double.calls(), 0, "没有任何关机调用");
 
-    // 恢复在线也不自动加入监听：移出就是移出。
+    // 离线成员仍是同一个监听成员：重申选中值是确认，不是新增，也不需要重新选择。
+    assert_selected(&server.monitor("a", true).await, "a");
+    // 保留期内恢复在线：原监听意图继续有效（不需要再次 selected=true）。
     assert_accepted(&server.heartbeat("a").await);
     let restored = server.observe().await.first_sessions();
     assert_eq!(
@@ -815,93 +859,313 @@ async fn an_expired_last_member_leaves_the_set_without_forming_an_arrangement() 
         json!(true),
         "心跳把会话恢复在线：{restored:?}"
     );
+    assert_eq!(
+        monitored_ids(&server.authoritative().await),
+        vec!["a".to_string()],
+        "恢复在线后原监听仍在"
+    );
+    assert_eq!(server.double.calls(), 0, "恢复在线本身不触发关机");
+}
+
+/// 验收 P26：任一离线监听成员都阻塞自动触发，即使它最后上报的是等待用户输入。
+///
+/// 参数化被阻塞成员的最后上报状态；算例里保持 A 在线且等待用户输入——唯一不满足条件的原因就是 B 离线。
+#[tokio::test]
+async fn an_offline_member_blocks_the_automatic_shutdown_even_when_it_awaits_input() {
+    for blocked_state in ["awaiting-input", "working"] {
+        let server = MonitoringServer::start_on_controlled_clock(10).await;
+        assert_accepted(&server.register("a").await);
+        assert_accepted(&server.state("a", "working").await);
+        assert_accepted(&server.register("b").await);
+        assert_accepted(&server.state("b", "working").await);
+        assert_selected(&server.monitor("a", true).await, "a");
+        assert_selected(&server.monitor("b", true).await, "b");
+        // B 的最后上报状态就是它停机前的状态：此后不再上报。
+        assert_accepted(&server.state("b", blocked_state).await);
+
+        // 先让两个会话都过期，再把 A 心跳回在线并让它进入「等待用户输入」：
+        // 从这一刻起，唯一不满足自动条件的只能是 B 离线。
+        server.advance(Duration::from_secs(11));
+        assert_accepted(&server.heartbeat("a").await);
+        assert_accepted(&server.state("a", "awaiting-input").await);
+        server.maintain().await;
+
+        let observed = server.authoritative().await;
+        assert_eq!(
+            observed["phase"],
+            json!("none"),
+            "B（最后状态 {blocked_state}）离线必须阻塞自动触发：{observed}"
+        );
+        assert_eq!(server.double.calls(), 0, "没有关机调用");
+        assert_eq!(
+            monitored_ids(&observed),
+            vec!["a".to_string(), "b".to_string()],
+            "离线成员保留在集合里：{observed}"
+        );
+
+        let sessions = server.observe().await.first_sessions();
+        assert_eq!(
+            session_of(&sessions, "a")["online"],
+            json!(true),
+            "算例必须保持 A 在线：{sessions:?}"
+        );
+        assert_eq!(
+            session_of(&sessions, "a")["state"],
+            json!("awaiting-input"),
+            "算例里 A 必须是等待用户输入：{sessions:?}"
+        );
+        let b = session_of(&sessions, "b");
+        assert_eq!(b["online"], json!(false), "{b}");
+        assert_eq!(
+            b["state"],
+            json!(blocked_state),
+            "最后一次上报的状态原样保留：{b}"
+        );
+
+        // 反过来证明阻塞确实来自 B：把 B 的登记注销掉，剩下的 A 立刻满足条件。
+        assert_accepted(&server.unregister("b").await);
+        assert_eq!(
+            server.authoritative().await["phase"],
+            json!("counting-down"),
+            "移出离线成员后，只剩 A 就应当立即开始倒计时"
+        );
+    }
+}
+
+/// 验收 P30：登记清除、注销、撤销分别移出成员后，剩余集合按**同一条件**重判。
+///
+/// 参数化三种移出原因与剩余成员 A 的三种情形：A 在线且等待用户输入时触发倒计时（并消耗整组监听）；
+/// A 工作中或离线时不触发，且 A 仍留在集合里——不采用「移出一个成员就取消整组」的规则。
+#[tokio::test]
+async fn removing_a_member_rejudges_the_remaining_set_for_every_reason() {
+    for reason in ["cleared", "unregistered", "unselected"] {
+        for remaining in ["awaiting-input", "working", "offline"] {
+            let server = MonitoringServer::start_on_controlled_clock(10).await;
+            // B 先注册并被监听；20 秒后 A 注册并被监听（于是「清除 B」时 A 还在保留期内）。
+            assert_accepted(&server.register("b").await);
+            assert_accepted(&server.state("b", "working").await);
+            assert_selected(&server.monitor("b", true).await, "b");
+            server.advance(Duration::from_secs(20));
+            assert_accepted(&server.register("a").await);
+            assert_accepted(&server.state("a", "working").await);
+            assert_selected(&server.monitor("a", true).await, "a");
+            assert_accepted(
+                &server
+                    .state("a", if remaining == "working" { "working" } else { "awaiting-input" })
+                    .await,
+            );
+
+            // 让「离线」这个情形真的离线（A 的在线窗口 10 秒）。
+            if remaining == "offline" {
+                server.advance(Duration::from_secs(11));
+            }
+
+            match reason {
+                "cleared" => {
+                    // 推进到 B 超过两个窗口之和（41 秒），A 仍在保留期内。
+                    server.advance(Duration::from_secs(if remaining == "offline" { 10 } else { 21 }));
+                    if remaining != "offline" {
+                        // 保持 A 在线（也保持它最后一次上报的等待／工作状态）。
+                        assert_accepted(&server.heartbeat("a").await);
+                    }
+                    server.maintain().await;
+                    assert!(
+                        server
+                            .observe()
+                            .await
+                            .first_sessions()
+                            .iter()
+                            .all(|session| session["sessionId"] != json!("b")),
+                        "B 的登记必须已被清除"
+                    );
+                }
+                "unregistered" => {
+                    assert_accepted(&server.unregister("b").await);
+                }
+                "unselected" => {
+                    assert_unselected(&server.monitor("b", false).await, "b");
+                }
+                other => panic!("未知的移出原因：{other}"),
+            }
+
+            let observed = server.authoritative().await;
+            match remaining {
+                "awaiting-input" => {
+                    assert_eq!(
+                        observed["phase"],
+                        json!("counting-down"),
+                        "移出 B（原因 {reason}）后，剩下的 A 在线等待用户输入应立即开始倒计时：{observed}"
+                    );
+                    assert!(
+                        monitored_ids(&observed).is_empty(),
+                        "开始倒计时即消耗整组监听：{observed}"
+                    );
+                }
+                _ => {
+                    assert_eq!(
+                        observed["phase"],
+                        json!("none"),
+                        "剩余的 A 为 {remaining} 时（原因 {reason}）不触发：{observed}"
+                    );
+                    assert_eq!(
+                        monitored_ids(&observed),
+                        vec!["a".to_string()],
+                        "移出 B 不改动其余成员的监听意图（原因 {reason}）：{observed}"
+                    );
+                }
+            }
+            assert_eq!(server.double.calls(), 0, "倒计时中还没有关机调用");
+        }
+    }
+}
+
+/// 验收 P31：清除、注销、撤销分别移出**最后一个**监听成员时，空集合不触发安排，安全 adapter 无调用。
+#[tokio::test]
+async fn removing_the_last_member_never_starts_a_countdown() {
+    for reason in ["cleared", "unregistered", "unselected"] {
+        let server = MonitoringServer::start_on_controlled_clock(10).await;
+        assert_accepted(&server.register("only").await);
+        assert_accepted(&server.state("only", "working").await);
+        assert_selected(&server.monitor("only", true).await, "only");
+
+        match reason {
+            "cleared" => {
+                server.advance(Duration::from_secs(41));
+                server.maintain().await;
+            }
+            "unregistered" => {
+                assert_accepted(&server.unregister("only").await);
+            }
+            "unselected" => {
+                assert_unselected(&server.monitor("only", false).await, "only");
+            }
+            other => panic!("未知的移出原因：{other}"),
+        }
+
+        let observed = server.authoritative().await;
+        assert!(
+            monitored_ids(&observed).is_empty(),
+            "最后一个成员被移出（原因 {reason}）后集合为空：{observed}"
+        );
+        assert_eq!(
+            observed["phase"],
+            json!("none"),
+            "空集合不触发安排（原因 {reason}）：{observed}"
+        );
+        // 给可能的异步裁定留一点时间：空集合之后也不该冒出安排。
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            server.double.calls(),
+            0,
+            "空集合在任何原因下都不得调用关机（原因 {reason}）"
+        );
+        assert_eq!(server.authoritative().await["phase"], json!("none"));
+    }
+}
+
+/// 验收 P40（受控交错）：登记删除与新增／撤销监听**并发**发出时，集合里不留下指向不存在登记的身份，
+/// 也不依赖再过一遍维护修复。
+///
+/// 每一轮都把「注销」与「监听命令」同时发出（两种次序都可能发生）：命令必须有明确归宿
+/// （登记在命令处理期间消失时，监听命令如实回 `404 unknown-session` / `409 session-not-eligible`，
+/// 而不是先收下再留成幽灵成员），且两条命令都完成之后集合里绝不能出现这个已经不存在的身份。
+///
+/// 说明：命令内部「读取资格快照」与「提交新增」之间只有微秒级窗口，外部 seam 无法为它精确排序；
+/// 每一种**可确定**的次序由下一条用例逐条覆盖，而本用例断言的是并发之下必须成立的不变量。
+#[tokio::test]
+async fn interleaved_removals_and_monitoring_commands_leave_no_ghost_member() {
+    let server = MonitoringServer::start(10).await;
+    for selected in [true, false] {
+        for round in 0..8 {
+            let id = format!("race-{selected}-{round}");
+            assert_accepted(&server.register(&id).await);
+            assert_accepted(&server.state(&id, "working").await);
+            if !selected {
+                // 撤销路径的前提：这一身份先被监听。
+                assert_selected(&server.monitor(&id, true).await, &id);
+            }
+
+            let (unregistered, monitored) =
+                tokio::join!(server.unregister(&id), server.monitor(&id, selected));
+            assert_accepted(&unregistered);
+            assert!(
+                matches!(monitored.status, 200 | 404 | 409),
+                "监听命令必须有明确归宿：{} {}",
+                monitored.status,
+                monitored.body
+            );
+
+            // 不等下一周期：这一刻的权威集合就不该含这个已经不存在的身份。
+            let observed = server.authoritative_set().await;
+            assert!(
+                !observed.contains(&id),
+                "第 {round} 轮（selected={selected}）留下了幽灵成员：{observed:?}"
+            );
+
+            // 那一遍维护之后仍然干净。
+            server.maintain().await;
+            assert!(
+                !server.authoritative_set().await.contains(&id),
+                "维护之后仍留下幽灵成员（selected={selected}）"
+            );
+        }
+    }
     assert!(
         server.authoritative_set().await.is_empty(),
-        "恢复在线的成员不自动回到监听集合"
+        "所有登记都已删除，集合里不该剩下任何身份"
     );
 }
 
-/// 验收 P15、P16、P30（真实 keepAlive 判定）：成员心跳过期即被移出，剩余非空集合全等待时立即形成唯一
-/// 安排；安排启动之后成员的离线与注销都不撤销它，同一安排仍然到期执行一次。
+/// 验收 P40（可确定的每一种次序）：登记删除、写入与监听命令交错之后，集合里都不留下该身份。
 ///
-/// 慢用例：两段 30s 判定窗口串起来（先等 b 过期，再等 a 过期），因此约需 80s。
+/// 逐条走完：注销后立刻读取、注销后再新增监听、注销后写入、重新注册后清除那一遍维护、
+/// 清除后重新注册。每一步都在**外部 seam** 上观察，且不等待下一周期修复。
 #[tokio::test]
-async fn an_expired_member_is_removed_and_the_remaining_set_arranges_shutdown() {
-    // 倒计时比「等 a 过期」更长，于是「安排启动后成员离线」这件事真的发生在窗口内。
-    let server = MonitoringServer::start(45).await;
-    assert_accepted(&server.register("a").await);
-    assert_accepted(&server.state("a", "working").await);
-    assert_accepted(&server.register("b").await);
-    assert_accepted(&server.state("b", "working").await);
-    assert_selected(&server.monitor("a", true).await, "a");
-    assert_selected(&server.monitor("b", true).await, "b");
-    // a 已经等待用户输入，b 仍在工作：自动条件不成立。
-    assert_accepted(&server.state("a", "awaiting-input").await);
-    assert_eq!(server.authoritative().await["phase"], json!("none"));
+async fn a_removed_registration_never_leaves_a_monitored_identity() {
+    let server = MonitoringServer::start_on_controlled_clock(10).await;
 
-    // a 持续心跳（保持在线），b 不再心跳：b 会被既有 keepAlive 判定移出。
-    let addr = server.addr();
-    let keeper = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            post_json_over_tcp(
-                addr,
-                "/api/sessions/events",
-                &json!({"sessionId": "a", "kind": "heartbeat", "data": {}}).to_string(),
-            )
-            .await;
-        }
-    });
-    server.spawn_maintenance();
-    let mut observer = server.observe().await;
-
-    // b 从未进入等待用户输入，唯一能让集合变成「全部等待」的原因就是它被移出。
-    let started = std::time::Instant::now();
-    let arranged = observer
-        .shutdown_until_within("counting-down", ONLINE_WINDOW + Duration::from_secs(20))
-        .await;
+    // 1) 先监听再注销：注销在同一条命令内就把成员移出（不等待维护）。
+    assert_accepted(&server.register("gone").await);
+    assert_accepted(&server.state("gone", "working").await);
+    assert_selected(&server.monitor("gone", true).await, "gone");
+    assert_accepted(&server.unregister("gone").await);
     assert!(
-        started.elapsed() > ONLINE_WINDOW,
-        "移出必须来自 30s 判定窗口，而不是别的原因：实际 {:?}",
-        started.elapsed()
+        server.authoritative_set().await.is_empty(),
+        "注销必须立即移出成员"
     );
+
+    // 2) 注销之后再新增监听：登记不存在 → 明确拒绝，且不产生成员。
+    assert_refused(&server.monitor("gone", true).await, 404, "unknown-session");
     assert!(
-        monitored_ids(&arranged).is_empty(),
-        "形成安排即消耗整组监听：{arranged}"
-    );
-    assert_eq!(server.double.calls(), 0, "倒计时中还没有关机调用");
-
-    let b = session_of(&server.observe().await.first_sessions(), "b");
-    assert_eq!(b["online"], json!(false), "b 是被 keepAlive 判为离线的：{b}");
-    assert_eq!(
-        b["state"],
-        json!("working"),
-        "b 一直在工作，从来没结束过：{b}"
+        server.authoritative_set().await.is_empty(),
+        "被拒绝的监听不得留下身份"
     );
 
-    // 安排启动之后：a 不再心跳（离线），随后被注销——同一安排都不该被自动取消。
-    keeper.abort();
-    let offline = observer
-        .sessions_until_offline("a", ONLINE_WINDOW + Duration::from_secs(15))
-        .await;
-    assert_eq!(offline["state"], json!("awaiting-input"), "{offline}");
-    let unchanged = server.authoritative().await;
-    assert_eq!(
-        unchanged["arrangementId"], arranged["arrangementId"],
-        "成员离线不改变活动安排：{unchanged}"
-    );
-    assert_eq!(unchanged["deadline"], arranged["deadline"]);
-    assert_eq!(unchanged["phase"], json!("counting-down"));
-    assert_accepted(&server.unregister("a").await);
+    // 3) 注销之后再写入：心跳与状态都是未知会话，集合不受影响。
+    assert_eq!(server.heartbeat("gone").await.status, 404);
+    assert_eq!(server.state("gone", "awaiting-input").await.status, 404);
+    assert!(server.authoritative_set().await.is_empty());
 
-    // 同一安排到期执行一次。
-    let issued = observer
-        .shutdown_until_within("issued", Duration::from_secs(30))
-        .await;
-    assert_eq!(server.double.calls(), 1, "到期恰好调用一次：{issued}");
-    assert_eq!(issued["arrangementId"], arranged["arrangementId"]);
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(server.double.calls(), 1, "再次确认只有一次调用");
+    // 4) 重新注册同一身份并监听，随后由维护清除：那一次维护完成后集合里不再有该身份。
+    assert_accepted(&server.register("gone").await);
+    assert_accepted(&server.state("gone", "working").await);
+    assert_selected(&server.monitor("gone", true).await, "gone");
+    server.advance(Duration::from_secs(41));
+    server.maintain().await;
+    assert!(
+        server.authoritative_set().await.is_empty(),
+        "清除登记的那一遍维护同步移出成员"
+    );
+    let sessions = server.observe().await.first_sessions();
+    assert!(sessions.is_empty(), "登记已被清除：{sessions:?}");
+
+    // 5) 清除之后再用同一身份注册：登记回来了，但不会自动恢复已经移出的监听。
+    assert_accepted(&server.register("gone").await);
+    assert_accepted(&server.state("gone", "working").await);
+    assert!(
+        server.authoritative_set().await.is_empty(),
+        "重新注册不恢复已移出的监听"
+    );
 }
 
 /// 代表**不是这台机器**的局域网设备的来源地址：RFC 5737 的 TEST-NET-3 文档地址，本机不可能拥有它。

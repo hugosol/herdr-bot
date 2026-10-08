@@ -7,10 +7,10 @@
 //! 覆盖：`text/event-stream` 只读长连接与首帧 `retry`、首帧必为全量 `snapshot`、会话视图字段恰为契约
 //! 那一组（`pid`/`sessionFile` 不下发、`state` 缺省即省略）、快照按注册顺序升序、纯心跳与同值状态不产生
 //! 帧、新注册与注销的增量、重连（含带 `Last-Event-ID` 的重连）仍以完整快照收敛、写入进行中的读者不靠
-//! 游标也收敛到最新视图、`Lagged` 后重发快照而不是追赶历史、空白期的 keep-alive，以及超过 30s 没有写入
-//! 时快照直接现算出**离线**。
+//! 游标也收敛到最新视图、`Lagged` 后重发快照而不是追赶历史、空白期的 keep-alive，以及超过缺省在线
+//! 有效期（10s）没有写入时快照直接现算出**离线**。
 //!
-//! 除最后一个用例（约 32s，真实挂钟推进）外，每个用例都是秒级。
+//! 除最后一个用例（约 15s，真实挂钟推进）外，每个用例都是秒级。
 
 mod common;
 
@@ -488,12 +488,11 @@ async fn a_lagged_subscriber_gets_a_fresh_snapshot_instead_of_the_missed_increme
     );
 }
 
-/// 慢用例（约 32s）：读路径与**时间**有关的两件事都由真实挂钟推进，无法用假时钟覆盖——
-/// 服务端的在线判定用的是 `std::time::Instant`。
+/// 慢用例（约 15s）：读路径与**时间**有关的两件事都由真实挂钟推进。
 ///
 /// - 空白期只有注释帧（keep-alive，约 15s），会话内容不因心跳改变；
-/// - 最后一次写入起超过 30s 后，新连接的快照直接说**离线**：离线由共用判定式现算，
-///   不依赖任何过期扫描先跑过一轮，行本身保留（只有 unregister 才移除）。
+/// - 最后一次写入起超过缺省在线有效期（10s）后，新连接的快照直接说**离线**：离线由共用判定式现算，
+///   不依赖任何维护先跑过一轮，行本身保留（登记仍在离线保留期内）。
 #[tokio::test]
 async fn an_idle_read_path_keeps_alive_and_reports_stale_sessions_as_offline() {
     let server = SseServer::start().await;
@@ -526,16 +525,16 @@ async fn an_idle_read_path_keeps_alive_and_reports_stale_sessions_as_offline() {
         "keep-alive 约 15s 一次，不得提前到 14s 以内"
     );
 
-    tokio::time::sleep_until(registered_at + Duration::from_secs(32)).await;
+    tokio::time::sleep_until(registered_at + Duration::from_secs(12)).await;
     let mut after = server.connect().await;
     let stale = after.next_frame().await;
     stale.named("snapshot");
     let sessions = snapshot_sessions(&stale);
-    assert_eq!(sessions.len(), 1, "离线行保留到 unregister：{sessions:?}");
+    assert_eq!(sessions.len(), 1, "离线行保留到登记被清除：{sessions:?}");
     assert_eq!(
         sessions[0]["online"],
         json!(false),
-        "超过 30s 没有写入即离线（快照现算）：{sessions:?}"
+        "超过缺省在线有效期 10s 没有写入即离线（快照现算）：{sessions:?}"
     );
     assert!(
         sessions[0].get("state").is_none(),

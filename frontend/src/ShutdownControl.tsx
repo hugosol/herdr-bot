@@ -19,15 +19,18 @@ type ShutdownControlProps = {
 /**
  * 一次命令的本地状态。
  *
- * 它只记录「我们发过什么、得到了什么答复」，绝不冒充后端状态：后端状态只有一个来源（观察流与命令
- * 回执），无回应只是「未确认」，不是接受、不是拒绝，也不是取消成功。
+ * 它只记录「我们发过什么、得到了什么答复」，绝不冒充后端状态：会话、监听集合与关机安排只有一个来源
+ * （共享观察流）。无回应只是「未确认」；`*-accepted` 也只说明这次操作的归宿是「已被服务端接受」，
+ * 不是把回执里的安排写进展示。
  */
 type Command =
   | { kind: 'idle' }
   | { kind: 'starting' }
+  | { kind: 'start-accepted' }
   | { kind: 'start-unconfirmed' }
   | { kind: 'start-refused'; code: string }
   | { kind: 'cancelling' }
+  | { kind: 'cancel-accepted' }
   | { kind: 'cancel-unconfirmed' }
   | { kind: 'cancel-refused'; code: string }
 
@@ -36,25 +39,21 @@ type Command =
  *
  * 倒计时由**后端**拥有（ADR 0005）：这里只按服务端的截止时间与服务端时间显示剩余秒数，本地归零不发
  * 任何关机请求，也不声称电脑已经关闭；取消窗口同样由后端裁定，因此本地显示归零时取消入口仍然可用。
- * 取消只有拿到服务端「取消已生效」的证据才算成功；没有回应时保留提醒并明确「电脑仍可能关机」，
- * 且绝不自动重发。确认页与结果页的「返回」都是纯前端事件。
+ * 命令回执只反馈本次操作的归宿（接受／明确拒绝／未确认），**不**拿来填补业务事实：安排与监听集合
+ * 只随共享观察流更新，因此迟到的回执不会覆盖较新的观察结果。没有回应时保留提醒并明确「电脑仍可能
+ * 关机」，且绝不自动重发。确认页与结果页的「返回」都是纯前端事件。
  */
 export function ShutdownControl({ showButton, shutdown, connection, onTakeoverChange }: ShutdownControlProps) {
   const [confirming, setConfirming] = useState(false)
   const [command, setCommand] = useState<Command>({ kind: 'idle' })
-  // 命令回执里的权威状态：开始被接受、取消被确认时立刻用它显示，直到观察流给出更新的一份。
-  const [bridge, setBridge] = useState<ShutdownView | null>(null)
   // 已经被本页关掉的终局（`阶段:安排标识`）：返回是纯前端事件，不影响后端与其他前端。
   const [dismissed, setDismissed] = useState<string | null>(null)
   // 显示用的“现在”；剩余时间按服务端时钟换算，本机时钟偏差不影响它。
   const [now, setNow] = useState(() => Date.now())
 
-  const view = bridge ?? shutdown
-
-  // 观察流给出新状态后，命令回执就不再顶替它：后端状态始终是唯一权威。
-  useEffect(() => {
-    setBridge(null)
-  }, [shutdown])
+  // 业务快照只有一个来源：共享观察流。命令回执只反馈这次操作的归宿（见 `command`），
+  // 不参与展示——独立通道的迟到回执因此不可能覆盖较新的观察结果。
+  const view = shutdown
 
   const counting = view.phase === 'counting-down' || view.phase === 'executing'
   const seconds = remainingSeconds(view, now)
@@ -72,6 +71,8 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
     (view.phase === 'issued' || view.phase === 'failed' || view.phase === 'cancelled') &&
     dismissed !== key
 
+  // 命令屏只描述这次操作本身的归宿；业务屏（下面的 `finished`／执行中／倒计时）优先于它，
+  // 所以迟到的回执不会把展示切回旧状态。
   let screen = 'none'
   if (confirming) screen = 'confirm'
   else if (finished) screen = view.phase
@@ -80,10 +81,21 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
   else if (view.phase === 'counting-down') screen = seconds > 0 ? 'counting' : 'waiting'
   else if (command.kind === 'starting') screen = 'starting'
   else if (command.kind === 'cancelling') screen = 'cancelling'
+  else if (command.kind === 'start-accepted') screen = 'start-accepted'
+  else if (command.kind === 'cancel-accepted') screen = 'cancel-accepted'
   else if (command.kind === 'start-unconfirmed') screen = 'start-unconfirmed'
   else if (command.kind === 'start-refused') screen = 'start-refused'
   else if (command.kind === 'cancel-unconfirmed') screen = 'cancel-unconfirmed'
   else if (command.kind === 'cancel-refused') screen = 'cancel-refused'
+
+  // 观察流下一次给出安排时，这条「已接受」说明就被权威事实取代：它只是回执，不是业务状态。
+  useEffect(() => {
+    setCommand((current) =>
+      current.kind === 'start-accepted' || current.kind === 'cancel-accepted'
+        ? { kind: 'idle' }
+        : current,
+    )
+  }, [shutdown])
 
   const visible = screen !== 'none'
   useEffect(() => {
@@ -95,8 +107,7 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
     setCommand({ kind: 'starting' })
     const result = await startShutdown()
     if (result.kind === 'accepted') {
-      setBridge(result.shutdown)
-      setCommand({ kind: 'idle' })
+      setCommand({ kind: 'start-accepted' })
     } else if (result.kind === 'rejected') {
       setCommand({ kind: 'start-refused', code: result.code })
     } else {
@@ -108,9 +119,7 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
     setCommand({ kind: 'cancelling' })
     const result = await cancelShutdown()
     if (result.kind === 'cancelled') {
-      // 服务端确认取消生效：立刻按它给的权威状态显示成功，直到观察流给出更新的一份。
-      setBridge(result.shutdown)
-      setCommand({ kind: 'idle' })
+      setCommand({ kind: 'cancel-accepted' })
     } else if (result.kind === 'refused') {
       setCommand({ kind: 'cancel-refused', code: result.code })
     } else {
@@ -121,6 +130,24 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
   const cancelUnconfirmed = command.kind === 'cancel-unconfirmed'
   const cancelRefused = command.kind === 'cancel-refused'
   const stale = connection === 'interrupted'
+
+  /**
+   * 「已接受」这条归宿说明：它只说这次操作被服务端接受了，不描述安排本身。
+   * 倒计时屏里也要显示它——取消被确认时安排可能还在倒计时（观察流尚未更新）。
+   */
+  const acceptedNote =
+    command.kind === 'start-accepted'
+      ? '服务端已接受这次开始意图；这次操作的归宿是「已接受」。关机安排以观察流为准，尚未更新的展示保持不变。'
+      : command.kind === 'cancel-accepted'
+        ? '服务端已确认这次取消；这次操作的归宿是「已接受」。关机安排以观察流为准，尚未更新的展示保持不变。'
+        : null
+
+  const acceptedNotes =
+    acceptedNote === null ? null : (
+      <p className="shutdown-note" data-testid="shutdown-accepted" data-outcome="accepted" role="status">
+        {acceptedNote}
+      </p>
+    )
 
   /** 取消入口：只有倒计时阶段才有；执行已经开始之后不再提供。 */
   const cancelButton = (screen === 'counting' || screen === 'waiting') && (
@@ -224,6 +251,7 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
                     连接已中断：这里的剩余时间可能已经过期，请稍后重新打开页面确认。
                   </p>
                 )}
+                {acceptedNotes}
                 {cancelNotes}
               </div>
               {cancelButton}
@@ -304,6 +332,32 @@ export function ShutdownControl({ showButton, shutdown, connection, onTakeoverCh
                 </h2>
                 <p className="shutdown-note">等待服务端答复。</p>
               </div>
+            </div>
+          )}
+
+          {(screen === 'start-accepted' || screen === 'cancel-accepted') && (
+            <div
+              className="shutdown-screen shutdown-screen--outcome"
+              data-testid={screen === 'start-accepted' ? 'shutdown-start-accepted' : 'shutdown-cancel-accepted'}
+              data-phase={screen}
+              data-outcome="accepted"
+            >
+              <div className="shutdown-outcome-body">
+                <div className="shutdown-outcome">
+                  <h2 className="shutdown-title">
+                    {screen === 'start-accepted' ? '开始已被接受' : '取消已被确认'}
+                  </h2>
+                  {acceptedNotes}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="shutdown-action shutdown-action--ghost shutdown-cancel"
+                data-testid="shutdown-result-back"
+                onClick={() => setCommand({ kind: 'idle' })}
+              >
+                返回
+              </button>
             </div>
           )}
 

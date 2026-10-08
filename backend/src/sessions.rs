@@ -9,10 +9,15 @@
 //! `register` 是**唯一**的建行入口且幂等——重复注册不新起行，只刷新注册时间与展示字段快照；
 //! 非 `register` 事件引用未知会话时得到 `404 unknown-session`（扩展据此判别 omp-bot 重启过）。
 //!
-//! 在线与否只由服务端判定：[`is_online`] 是唯一判定式，[`ONLINE_WINDOW`] 是唯一的阈值常量，
-//! 快照（读路径）与过期扫描共用，避免两处阈值分叉。过期扫描（[`SessionsState::scan_expired`]，
-//! 节奏见 [`EXPIRY_SCAN_INTERVAL`]）把超时的在线行翻为离线并广播这一可见变化；离线行保留、不老化，
-//! 只在显式 `unregister` 时移除。
+//! 在线与否只由服务端判定：[`SessionPolicy::is_online`] 是唯一判定式，[`SessionPolicy`] 是唯一的阈值来源
+//! （启动期由 `[sessions]` 配置给出，缺省在线有效期 10 秒、离线保留期 30 秒），快照（读路径）、写入与
+//! 维护扫描共用，避免阈值在两处分叉。
+//! 维护扫描（[`SessionsState::scan_expired`]，节奏见 [`EXPIRY_SCAN_INTERVAL`]）把超过在线有效期的行翻为
+//! 离线并广播这一可见变化，把超过两个窗口之和的行清除并广播移除；离线行在保留期内保留、不老化，
+//! 保留期结束后由这一遍清除，显式 `unregister` 则立即移除。
+//!
+//! 时刻只从一个地方取：[`Clock`](crate::clock::Clock)。生产路径是进程单调时钟，于是快照、写入与维护
+//! 看到的是同一个「现在」；受控时钟把验收里的阈值变成精确时刻。
 //!
 //! 写入侧做的是**来源校验、建行、改行与错误分类**：写入只接受本机来源（TCP 对端为回环或本机网卡
 //! 地址，见 [`is_local_source`]），否则 `403 forbidden`——这是会话写入的访问边界（局域网设备不能
@@ -41,26 +46,86 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use crate::clock::{Clock, SystemClock};
 use crate::observation::{Hub, Observation};
 use crate::{AppState, MAX_REQUEST_BODY_BYTES, rejected};
 
-/// 在线判定窗口：最后一次写入起 30s 内视为在线。
-///
-/// 快照（读路径）与过期扫描共用这一个常量，阈值不会在两处分叉。
-pub const ONLINE_WINDOW: Duration = Duration::from_secs(30);
+/// 缺省在线有效期（秒）：最后一次写入起 10 秒内视为在线。
+pub const DEFAULT_ONLINE_SECONDS: u32 = 10;
 
-/// 会话是否在线：`now - last_seen <= 30s`。
+/// 缺省离线保留期（秒）：上报过期后登记仍保留 30 秒供观察与恢复。
+pub const DEFAULT_OFFLINE_RETENTION_SECONDS: u32 = 30;
+
+/// 会话登记的两阶段生命周期：在线有效期 + 离线保留期。
 ///
-/// 只有服务端判定在线/离线：任何被接受的写事件刷新 `last_seen`，快照与过期扫描都经本函数现算。
-pub fn is_online(last_seen: Instant, now: Instant) -> bool {
-    now.saturating_duration_since(last_seen) <= ONLINE_WINDOW
+/// 两个窗口都以**最后一次被接受的写入**为起点（[`SessionRow::last_seen`]），不另存「首次发现离线」
+/// 的时刻：上报年龄 `age <= online` 在线；`online < age <= online + retention` 离线但保留；
+/// `age > online + retention` 由维护清除。
+///
+/// 阈值只有这一处：快照（读路径）、写入与维护扫描都经它判定；两个窗口的和用饱和加法，
+/// 因此两个合法窗口相加不会溢出。交付运行时的这一份由启动期配置构建一次
+/// （[`crate::config::SessionsConfig::policy`]），无热加载。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionPolicy {
+    /// 在线有效期。
+    online: Duration,
+    /// 离线保留期。
+    retention: Duration,
 }
 
-/// 过期扫描的节奏：后台任务每 5s 遍历一次内存会话表。
+impl SessionPolicy {
+    /// 由两个已确定的窗口组成一条策略。
+    pub const fn new(online: Duration, retention: Duration) -> Self {
+        Self { online, retention }
+    }
+
+    /// 由两个以秒为单位的窗口组成一条策略（启动期配置的取值单位）。
+    pub const fn from_seconds(online: u32, retention: u32) -> Self {
+        Self::new(
+            Duration::from_secs(online as u64),
+            Duration::from_secs(retention as u64),
+        )
+    }
+
+    /// 在线有效期。
+    pub const fn online(&self) -> Duration {
+        self.online
+    }
+
+    /// 离线保留期。
+    pub const fn retention(&self) -> Duration {
+        self.retention
+    }
+
+    /// 两个窗口之和：上报年龄超过它的登记由维护清除。
+    pub const fn expiry(&self) -> Duration {
+        self.online.saturating_add(self.retention)
+    }
+
+    /// 会话是否在线：上报年龄不超过在线有效期（边界含在在线一侧）。
+    pub fn is_online(&self, last_seen: Instant, now: Instant) -> bool {
+        now.saturating_duration_since(last_seen) <= self.online
+    }
+
+    /// 登记是否已超过两个窗口之和：恰好等于阈值时仍保留，只有超过它才由维护清除。
+    pub fn is_expired(&self, last_seen: Instant, now: Instant) -> bool {
+        now.saturating_duration_since(last_seen) > self.expiry()
+    }
+}
+
+impl Default for SessionPolicy {
+    /// 缺省策略：在线 10 秒、离线保留 30 秒。
+    fn default() -> Self {
+        Self::from_seconds(DEFAULT_ONLINE_SECONDS, DEFAULT_OFFLINE_RETENTION_SECONDS)
+    }
+}
+
+/// 维护扫描的节奏：后台任务每 5s 遍历一次内存会话表。
 ///
-/// 它与 [`ONLINE_WINDOW`] 一起给出「离线」这一可见变化的上界：最后一次写入起最迟
-/// `ONLINE_WINDOW + EXPIRY_SCAN_INTERVAL`（35s）就会出现离线的 `upsert`（进程死亡另加这一个扫描
-/// 周期，最坏约 45s）。节奏不再收紧——更频繁的扫描只让上界变小，不改变判定。
+/// 它与 [`SessionPolicy`] 一起给出「离线」与「清除」这两个可见变化的上界：最后一次写入起最迟
+/// `online + EXPIRY_SCAN_INTERVAL` 出现离线的 `upsert`，最迟 `online + retention + EXPIRY_SCAN_INTERVAL`
+/// 出现清除的 `remove`（缺省策略即约 15s 与约 45s）。节奏不再收紧——更频繁的扫描只让上界变小，
+/// 不改变判定。
 pub const EXPIRY_SCAN_INTERVAL: Duration = Duration::from_secs(5);
 
 /// agent 状态：恰三个值的封闭枚举。
@@ -104,8 +169,8 @@ pub struct SessionView {
 /// 会话表里的一行：展示字段、存下备查的字段，以及生命周期字段。
 ///
 /// `session_file` 与 `pid` 只存下来便于诊断，不下发；`registered_at` 每次 `register` 刷新，
-/// 即「注册顺序」的依据；`online` 与 [`is_online`] 的判定保持一致，同时是「这个值已经广播过」的标记
-/// （见 [`SessionsState::scan_expired`]）——视图里的在线与否仍按 [`SessionRow::view`] 现算。
+/// 即「注册顺序」的依据；`online` 与 [`SessionPolicy::is_online`] 的判定保持一致，同时是「这个值已经
+/// 广播过」的标记（见 [`SessionsState::scan_expired`]）——视图里的在线与否仍按 [`SessionRow::view`] 现算。
 struct SessionRow {
     session_id: String,
     cwd: String,
@@ -122,15 +187,15 @@ struct SessionRow {
 impl SessionRow {
     /// 从当前行取出浏览器可见视图。
     ///
-    /// `online` 按 [`is_online`] 现算（与快照同一判定），因此过期扫描还没来得及把旗标翻成离线时，
+    /// `online` 按 [`SessionPolicy::is_online`] 现算（与写入、维护同一判定），因此维护还没把旗标翻过来时，
     /// 视图也不会假「在线」。
-    fn view(&self, now: Instant) -> SessionView {
+    fn view(&self, now: Instant, policy: SessionPolicy) -> SessionView {
         SessionView {
             session_id: self.session_id.clone(),
             session_name: self.session_name.clone(),
             cwd: self.cwd.clone(),
             model: self.model.clone(),
-            online: is_online(self.last_seen, now),
+            online: policy.is_online(self.last_seen, now),
             state: self.state,
         }
     }
@@ -142,7 +207,14 @@ impl SessionRow {
 /// 版本位、前端不需要重放。临界区只做 map 读写与广播发送，**绝不跨 `.await` 持锁**。
 ///
 /// 发布走共享观察流（[`Hub`]）：会话与关机状态合用同一条读连接，因此这里不再自己持有通道。
+///
+/// 时刻（[`Clock`]）与窗口（[`SessionPolicy`]）都是构造时注入一次的：交付运行时用启动期配置读到的
+/// 窗口与进程单调时钟（`[sessions]` 缺省即 10／30），验收用受控策略与受控时刻，两条路径跑的是同一份判定。
 pub struct SessionsState {
+    /// 在线有效期与离线保留期：写死在实例里，没有热加载。
+    policy: SessionPolicy,
+    /// 唯一的时刻来源。
+    clock: Arc<dyn Clock>,
     inner: Mutex<Inner>,
     hub: Arc<Hub>,
 }
@@ -156,25 +228,56 @@ struct Inner {
 /// 顺序的唯一依据是 `registered_at`（每次 `register` 刷新），因此重注册会把该行移到末位；同一瞬间
 /// 注册的两行按 `sessionId` 升序，顺序于是不随 `HashMap` 的迭代顺序变化。tier 排序（在线等待输入置顶、
 /// 离线沉底）是前端的事，服务端只给注册顺序。
-fn snapshot_locked(inner: &Inner, now: Instant) -> Vec<SessionView> {
+fn snapshot_locked(inner: &Inner, now: Instant, policy: SessionPolicy) -> Vec<SessionView> {
     let mut rows: Vec<&SessionRow> = inner.rows.values().collect();
     rows.sort_by(|left, right| {
         left.registered_at
             .cmp(&right.registered_at)
             .then_with(|| left.session_id.cmp(&right.session_id))
     });
-    rows.into_iter().map(|row| row.view(now)).collect()
+    rows.into_iter().map(|row| row.view(now, policy)).collect()
 }
 
 impl SessionsState {
-    /// 空会话表与空观察流：omp-bot 启动时没有任何会话，v1 不落盘。
+    /// 缺省策略（在线 10 秒、离线保留 30 秒，等于缺省 `[sessions]` 段）与进程单调时钟上的空会话表。
+    ///
+    /// 交付运行时不用它，而是用 [`SessionsState::with_policy`] 注入启动期配置读到的窗口；这里保留缺省
+    /// 策略的入口，供只需要缺省窗口的调用方与用例使用。v1 不落盘。
     pub fn new() -> Self {
+        Self::with_policy(SessionPolicy::default())
+    }
+
+    /// 使用指定窗口策略、进程单调时钟的空会话表：启动期配置读入一次，此后不再重新读取。
+    ///
+    /// 交付运行时（`main.rs`）与 [`crate::app_with_power_off`] 都用 `config.sessions.policy()` 建表，
+    /// 因此实例里只有一份启动期读到的窗口。
+    pub fn with_policy(policy: SessionPolicy) -> Self {
+        Self::with_policy_and_clock(policy, Arc::new(SystemClock))
+    }
+
+    /// 使用指定窗口策略与指定时刻来源的空会话表。
+    ///
+    /// 时刻注入是内部组织（见 [`crate::clock`]）：受控时刻让验收把窗口边界变成精确时刻，
+    /// 交付运行时的装配与它完全同一份判定。
+    pub fn with_policy_and_clock(policy: SessionPolicy, clock: Arc<dyn Clock>) -> Self {
         Self {
+            policy,
+            clock,
             inner: Mutex::new(Inner {
                 rows: HashMap::new(),
             }),
             hub: Arc::new(Hub::new()),
         }
+    }
+
+    /// 本实例生效的窗口策略。
+    pub fn policy(&self) -> SessionPolicy {
+        self.policy
+    }
+
+    /// 唯一的时刻来源：快照、写入与维护都经它取「现在」。
+    fn now(&self) -> Instant {
+        self.clock.now()
     }
 
     /// 共享观察流的发布端：读路径从这里订阅，关机安排也把同一份通道交给它的读连接。
@@ -184,41 +287,57 @@ impl SessionsState {
 
     /// 当前全部会话的最新视图，按注册顺序升序。
     ///
-    /// 在线与否按 [`is_online`] 现算，因此订阅者落后太多时重发的快照不会假「在线」，也不需要过期
-    /// 扫描先跑过一轮。
+    /// 在线与否按 [`SessionPolicy::is_online`] 现算，因此订阅者落后太多时重发的快照不会假「在线」，
+    /// 也不需要维护扫描先跑过一轮。已被维护清除的登记不在其中。
     pub async fn snapshot(&self) -> Vec<SessionView> {
-        let now = Instant::now();
+        let now = self.now();
         let inner = self.inner.lock().await;
-        snapshot_locked(&inner, now)
+        snapshot_locked(&inner, now, self.policy)
     }
 
-    /// 把与 [`is_online`] 判定不一致的行翻正，并把这次可见变化广播出去。
+    /// 跑一遍维护：把与判定不一致的行翻正、把超过两个窗口之和的登记清除，并广播这些可见变化。
     ///
-    /// 判定只有一处：[`is_online`]（30s 窗口）。扫描只做「把行的 `online` 旗标对齐到这个判定」，
-    /// 因此不会出现第二处阈值，也不会对仍在窗口内的行误翻。
+    /// 判定只有一处（[`SessionPolicy`]）：扫描只做「把行的 `online` 旗标对齐到在线判定」与
+    /// 「清除上报年龄超过 `online + retention` 的行」，因此不会出现第二处阈值，也不会对仍在窗口内的行
+    /// 误翻或误删。
     ///
-    /// `now` 由调用方**注入**：生产路径每 [`EXPIRY_SCAN_INTERVAL`] 传当前时刻，自动化用例直接把时刻
-    /// 推进到窗口之外，于是过期的观察不需要真的等 30s 过去。
+    /// 时刻来自实例自己的时钟（生产路径即当前时刻），因此这一遍与写入、快照看到的是同一个「现在」；
+    /// 受控时钟让过期与清除的观察不需要真的等窗口过去。
     ///
     /// 只广播**变化**：窗口内的行什么也不发，已经翻过的行再扫一遍也不重复发——行自己的 `online` 就是
     /// 「这个值已经广播过」的标记。反过来，刷新与恢复在线是写入路径的事：任何被接受的写事件都把
     /// `last_seen` 与 `online` 一起刷到当下。
     ///
-    /// 离线行不老化、不移除：行只在收到 `unregister` 时消失（v1 也不落盘）。
-    pub async fn scan_expired(&self, now: Instant) {
+    /// 清除是**唯一**的自动移除路径（超过两个窗口之和），显式 `unregister` 则立即移除；离线行本身在保留期
+    /// 内不老化、不移除。
+    pub async fn scan_expired(&self) {
+        let policy = self.policy;
+        let now = self.now();
         // 整次扫描在一把锁内完成：map 读写与广播发送都不跨 `.await`，广播顺序与可见变化的发生顺序一致。
         let mut inner = self.inner.lock().await;
         let mut flipped = Vec::new();
-        for row in inner.rows.values_mut() {
-            let online = is_online(row.last_seen, now);
+        let mut expired = Vec::new();
+        for (session_id, row) in inner.rows.iter_mut() {
+            if policy.is_expired(row.last_seen, now) {
+                // 超过两个窗口之和：登记被清除，只发布移除（不先发一帧「离线」再发移除）。
+                expired.push(session_id.clone());
+                continue;
+            }
+            let online = policy.is_online(row.last_seen, now);
             if row.online == online {
                 continue;
             }
             row.online = online;
-            flipped.push(row.view(now));
+            flipped.push(row.view(now, policy));
+        }
+        for session_id in &expired {
+            inner.rows.remove(session_id);
         }
         for view in flipped {
             self.hub.publish(Observation::SessionUpsert(view));
+        }
+        for session_id in expired {
+            self.hub.publish(Observation::SessionRemove { session_id });
         }
     }
 
@@ -227,8 +346,9 @@ impl SessionsState {
     /// 返回 `None` 表示这是引用未知会话的非 `register` 事件：调用方据此回 `404 unknown-session`，
     /// 且**不建行**（`register` 是唯一建行入口）。
     async fn apply(&self, event: SessionEvent) -> Option<Applied> {
+        let policy = self.policy;
         // 一次事件只取一次时间：注册时间与最后写入时间取自同一刻。
-        let now = Instant::now();
+        let now = self.now();
         // 整次事件在一把锁内完成：map 读写与广播发送都不跨 `.await`。
         let mut inner = self.inner.lock().await;
 
@@ -244,7 +364,7 @@ impl SessionsState {
                 let frame = match inner.rows.get_mut(&session_id) {
                     // 幂等重注册：不新起行，只刷新注册时间与展示字段快照。
                     Some(row) => {
-                        let before = row.view(now);
+                        let before = row.view(now, policy);
                         row.cwd = cwd;
                         row.session_name = session_name;
                         row.session_file = session_file;
@@ -254,7 +374,7 @@ impl SessionsState {
                         row.last_seen = now;
                         row.online = true;
                         // `register` 不带状态，因此已有状态原样保留：重注册不让面板回到「状态同步中」。
-                        let after = row.view(now);
+                        let after = row.view(now, policy);
                         (after != before).then_some(Observation::SessionUpsert(after))
                     }
                     None => {
@@ -270,7 +390,7 @@ impl SessionsState {
                             online: true,
                             registered_at: now,
                         };
-                        let frame = Observation::SessionUpsert(row.view(now));
+                        let frame = Observation::SessionUpsert(row.view(now, policy));
                         inner.rows.insert(session_id, row);
                         Some(frame)
                     }
@@ -281,20 +401,20 @@ impl SessionsState {
                 let online_count = inner
                     .rows
                     .values()
-                    .filter(|row| is_online(row.last_seen, now))
+                    .filter(|row| policy.is_online(row.last_seen, now))
                     .count();
                 Some(Applied::Registered { online_count })
             }
             SessionEvent::Heartbeat { session_id, data } => {
                 let row = inner.rows.get_mut(&session_id)?;
-                let before = row.view(now);
+                let before = row.view(now, policy);
                 row.last_seen = now;
                 row.online = true;
                 // 心跳携带的状态与 `state` 事件同一处理：同值即无变化，不广播。
                 if let Some(value) = data.value {
                     row.state = Some(value);
                 }
-                let after = row.view(now);
+                let after = row.view(now, policy);
                 if after != before {
                     self.hub.publish(Observation::SessionUpsert(after));
                 }
@@ -302,11 +422,11 @@ impl SessionsState {
             }
             SessionEvent::State { session_id, data } => {
                 let row = inner.rows.get_mut(&session_id)?;
-                let before = row.view(now);
+                let before = row.view(now, policy);
                 row.last_seen = now;
                 row.online = true;
                 row.state = Some(data.value);
-                let after = row.view(now);
+                let after = row.view(now, policy);
                 if after != before {
                     self.hub.publish(Observation::SessionUpsert(after));
                 }
@@ -321,16 +441,17 @@ impl SessionsState {
     }
 }
 
-/// 启动时钟驱动的会话维护：每 [`EXPIRY_SCAN_INTERVAL`] 跑一遍过期扫描，随后让关机域重判监听集合。
+/// 启动时钟驱动的会话维护：每 [`EXPIRY_SCAN_INTERVAL`] 跑一遍维护，随后让关机域重判监听集合。
 ///
 /// 由主入口在监听绑定成功之后调用，router 构造不 spawn 任何任务：构造一个应用不产生后台行为，
-/// 扫描是「服务已经在监听」之后的事。
+/// 维护是「服务已经在监听」之后的事。
 ///
-/// 两件事必须成对发生：扫描把超时的在线会话翻为离线并广播，重判随后把离线成员移出监听集合——监视集合
-/// 里不该留着一个心跳已经过期的成员。**没有事件**的那些变化（keepAlive 过期）只有靠这一遍才会被发现；
-/// 有事件的路径由写入端点自己立即重判，不依赖这里的节奏。
+/// 两件事必须成对发生：维护这一遍把超过在线有效期的行翻为离线、把超过两个窗口之和的登记清除并广播，
+/// 重判随后按**当前登记**校正监听集合——登记已经不存在的成员必须同步移出，而仅仅离线的成员要保留。
+/// **没有事件**的那些变化（上报过期与登记清除）只有靠这一遍才会被发现；有事件的路径由写入端点自己
+/// 立即重判，不依赖这里的节奏。
 ///
-/// 扫描是纯内存遍历（没有 I/O、没有 `Result`），构造上不可失败，因此循环里没有错误分支，也不需要
+/// 维护是纯内存遍历（没有 I/O、没有 `Result`），构造上不可失败，因此循环里没有错误分支，也不需要
 /// watchdog；服务器关停时随运行时一起结束。
 pub fn spawn_expiry_scan(
     sessions: Arc<SessionsState>,
@@ -340,7 +461,7 @@ pub fn spawn_expiry_scan(
         let mut ticker = tokio::time::interval(EXPIRY_SCAN_INTERVAL);
         loop {
             ticker.tick().await;
-            sessions.scan_expired(Instant::now()).await;
+            sessions.scan_expired().await;
             shutdown.sessions_changed().await;
         }
     })

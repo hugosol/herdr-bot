@@ -37,6 +37,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     println!("[omp-bot] 打包页面：{}", static_dir.display());
+    println!(
+        "[omp-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
+        config.sessions.online_timeout_seconds.get(),
+        config.sessions.offline_retention_seconds.get()
+    );
     println!("[omp-bot] 监听：http://{local_addr}/");
     println!(
         "[omp-bot] 局域网设备请访问 http://<本机局域网 IPv4>:{}（ipconfig 查看地址）",
@@ -56,7 +61,10 @@ async fn main() -> anyhow::Result<()> {
 
     // 会话表由主入口持有：同一份表既要交给应用，也要交给后台过期扫描，因此不用 `omp_bot::app`
     // 的内部空表。监听已经绑定成功，从这里开始按固定节奏把超时的在线会话翻为离线。
-    let sessions = Arc::new(omp_bot::sessions::SessionsState::new());
+    // 两个窗口只在这里从启动期配置读入一次（没有热加载），因此运行中改写文件不改变本实例的判定。
+    let sessions = Arc::new(omp_bot::sessions::SessionsState::with_policy(
+        config.sessions.policy(),
+    ));
     let (app, state) = omp_bot::app_with_state(
         &config,
         Arc::new(omp_bot::SystemPowerOff),

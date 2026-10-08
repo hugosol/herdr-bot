@@ -10,12 +10,14 @@
 //! - **取消与到期只有一个胜者**：取消在关机执行开始之前生效就阻止本次实际关机；执行已经开始
 //!   （阶段推进到 [`ShutdownPhase::Executing`]）就不再允许取消，前端也就不能显示取消成功。
 //!
-//! **完成后关机监听的集合与自动触发**也在这里、在同一把锁内裁定（契约 P7–P22）：
+//! **完成后关机监听的集合与自动触发**也在这里、在同一把锁内裁定（契约 P7–P22、P25–P31）：
 //!
 //! - 只有**当前**在线且工作中的未监听会话可新增监听；设置提交的是明确目标值，不盲目翻转。
-//! - 会话状态可能变化时（写入事件之后、keepAlive 过期扫描之后）按最新快照重判：离线或已注销的成员
-//!   被移出，其余成员**当前**是否都等待用户输入决定要不要形成安排——不保存「曾经结束过一次」的资格。
-//! - 集合非空且全部成员当前等待用户输入时形成唯一安排并**消耗整组监听**；移出最后一个成员只清空集合。
+//! - 会话状态可能变化时（写入事件之后、会话维护跑过一遍之后）按最新快照重判：**登记已不存在**的成员
+//!   被移出，其余成员**当前**是否都在线并等待用户输入决定要不要形成安排——不保存「曾经结束过一次」
+//!   的资格。仅仅离线（登记仍在保留期内）的成员保留在集合里并阻塞自动触发。
+//! - 集合非空且全部成员当前都在线并等待用户输入时形成唯一安排并**消耗整组监听**；移出最后一个成员
+//!   只清空集合。
 //! - 已有活动安排时会话重新工作、离线或注销都不撤销它，倒计时期间也不接受新增监听。
 //!
 //! 最近一次关机结果保留到新安排替代或进程重启：取消、指令已发出与实际失败都是终局阶段，仍然可读；
@@ -208,7 +210,11 @@ impl ShutdownState {
     /// [`MonitorRefusal::CountdownActive`]。已经监听的会话再次提交选中值只是重申（不反向翻转、也不重置
     /// 任何安排）；提交未选中值表示撤销，撤销未监听的会话是无副作用的重申。
     ///
-    /// 集合变化后在同一把锁内立即重判：撤销可能让仅剩的非空集合立即形成安排（P16）。
+    /// 新增会在暂存之后**核对一次**：命令处理期间登记可能被清除或注销，这时集合里不能留下不存在的身份
+    /// （P40）。核对失败就撤销这次尚未发布的暂存改动，并按当前事实给出拒绝——因此没有任何观察者
+    /// 看到过幽灵成员，也不需要等下一遍维护修复。
+    ///
+    /// 集合变化后在同一把锁内立即重判：撤销或新增都可能让非空集合立即形成安排（P30、P31）。
     pub async fn set_monitoring(
         self: &Arc<Self>,
         session_id: &str,
@@ -216,40 +222,69 @@ impl ShutdownState {
     ) -> Result<ShutdownView, MonitorRefusal> {
         // 资格与状态都按「命令到达时」的当前快照裁定：页面曾经看到什么不参与判定。
         let views = self.sessions.snapshot().await;
-        let (view, created) = {
+
+        // 这次命令的集合改动；此时还没有发布任何帧，因此失败时可以原样撤销。
+        let added = {
             let mut inner = self.inner.lock().await;
             let server_time = epoch_millis();
-            let Some(row) = views.iter().find(|session| session.session_id == session_id) else {
+            let Some(row) = views
+                .iter()
+                .find(|session| session.session_id == session_id)
+            else {
                 return Err(MonitorRefusal::UnknownSession);
             };
 
-            let changed = if selected {
+            if selected {
                 if inner.monitored.contains(session_id) {
                     // 重申同一个目标值：集合不变，也不重置任何安排。
-                    false
-                } else if inner.active.is_some() {
-                    return Err(MonitorRefusal::CountdownActive);
-                } else if !row.online || row.state != Some(StateValue::Working) {
-                    return Err(MonitorRefusal::NotEligible);
-                } else {
-                    inner.monitored.insert(session_id.to_string());
-                    true
+                    return Ok(view_locked(&inner, server_time));
                 }
+                if inner.active.is_some() {
+                    return Err(MonitorRefusal::CountdownActive);
+                }
+                if !row.online || row.state != Some(StateValue::Working) {
+                    return Err(MonitorRefusal::NotEligible);
+                }
+                inner.monitored.insert(session_id.to_string());
+                true
+            } else if inner.monitored.remove(session_id) {
+                false
             } else {
-                inner.monitored.remove(session_id)
-            };
+                // 撤销一个没有在监听的会话：无副作用的重申。
+                return Ok(view_locked(&inner, server_time));
+            }
+        };
 
-            let (view, created) = if changed {
-                // 集合变了：同一把锁内重判，移出与自动触发都不会漏。
-                let (judged, created) = self.judge_locked(&mut inner, &views, server_time);
-                // 集合变化**本身**也是一次可见变化：重判没有额外变化时，仍要下发当前集合，
-                // 否则其他前端看不到这次新增或撤销。
-                let view = judged.unwrap_or_else(|| view_locked(&inner, server_time));
-                self.hub.publish(Observation::Shutdown(view.clone()));
-                (view, created)
-            } else {
-                (view_locked(&inner, server_time), None)
-            };
+        // 新增之后核对一次：集合里不能留下在这次命令处理期间已经不存在的登记。
+        let views = if added {
+            let verified = self.sessions.snapshot().await;
+            match verified
+                .iter()
+                .find(|session| session.session_id == session_id)
+            {
+                Some(row) if row.online && row.state == Some(StateValue::Working) => verified,
+                Some(_) => {
+                    self.discard_pending_addition(session_id).await;
+                    return Err(MonitorRefusal::NotEligible);
+                }
+                None => {
+                    self.discard_pending_addition(session_id).await;
+                    return Err(MonitorRefusal::UnknownSession);
+                }
+            }
+        } else {
+            views
+        };
+
+        let (view, created) = {
+            let mut inner = self.inner.lock().await;
+            let server_time = epoch_millis();
+            // 集合变了：同一把锁内重判，移出与自动触发都不会漏。
+            let (judged, created) = self.judge_locked(&mut inner, &views, server_time);
+            // 集合变化**本身**也是一次可见变化：重判没有额外变化时，仍要下发当前集合，
+            // 否则其他前端看不到这次新增或撤销。
+            let view = judged.unwrap_or_else(|| view_locked(&inner, server_time));
+            self.hub.publish(Observation::Shutdown(view.clone()));
             (view, created)
         };
 
@@ -259,11 +294,17 @@ impl ShutdownState {
         Ok(view)
     }
 
+    /// 撤销一次还没有发布的暂存新增：登记在命令处理期间消失了，集合里不留幽灵成员。
+    async fn discard_pending_addition(&self, session_id: &str) {
+        let mut inner = self.inner.lock().await;
+        inner.monitored.remove(session_id);
+    }
+
     /// 会话状态可能已经变化：按最新快照重判一次监听集合。
     ///
-    /// 写入路径在每次被接受的会话事件之后调用它，keepAlive 过期扫描在每遍扫描之后调用它；因此
-    /// 「没有事件的那些变化」（心跳过期）也会被发现。没有监听成员时什么也不用看——空集合既不触发
-    /// 安排，也没有可移出的成员。
+    /// 写入路径在每次被接受的会话事件之后调用它，会话维护（过期、清除）在每遍之后调用它；因此
+    /// 「没有事件的那些变化」（上报过期、登记被清除）也会被发现。没有监听成员时什么也不用看——
+    /// 空集合既不触发安排，也没有可移出的成员。
     pub async fn sessions_changed(self: &Arc<Self>) -> Option<ShutdownView> {
         {
             let inner = self.inner.lock().await;
@@ -287,7 +328,7 @@ impl ShutdownState {
         published
     }
 
-    /// 在锁内按给定快照重判：移出不再合格的成员，条件满足就形成唯一安排。
+    /// 在锁内按给定快照重判：移出登记已不存在的成员，条件满足就形成唯一安排。
     ///
     /// 返回（要下发的完整关机状态, 新建的安排标识）；第一项为 `None` 表示没有可见变化。
     fn judge_locked(
@@ -301,23 +342,27 @@ impl ShutdownState {
             return (None, None);
         }
 
-        // 移出离线与已注销的成员：它们的「完成」无从判定，留着只会让集合永远等下去。
+        // 移出**登记已不存在**的成员：登记被清除、明确注销或用户撤销监听之后，集合里不留它。
+        // 仅仅离线（上报过期但登记仍在保留期内）的成员保留在集合里，它阻塞自动触发而不是被移出。
         let before = inner.monitored.len();
         inner
             .monitored
-            .retain(|id| views.iter().any(|session| &session.session_id == id && session.online));
+            .retain(|id| views.iter().any(|session| &session.session_id == id));
         let removed = inner.monitored.len() != before;
 
-        // 自动触发条件：集合**非空**，且全部成员**当前**都等待用户输入。
-        let all_awaiting_input = !inner.monitored.is_empty()
+        // 自动触发条件：集合**非空**，且全部成员**当前都在线并等待用户输入**。
+        // 离线成员不满足条件（哪怕它最后上报的是等待用户输入）；成员的历史状态不参与判定。
+        let all_ready = !inner.monitored.is_empty()
             && inner.monitored.iter().all(|id| {
                 views.iter().any(|session| {
-                    &session.session_id == id && session.state == Some(StateValue::AwaitingInput)
+                    &session.session_id == id
+                        && session.online
+                        && session.state == Some(StateValue::AwaitingInput)
                 })
             });
 
-        if !all_awaiting_input {
-            // 空集合（含「移出最后一个成员」）不形成安排；成员恢复工作也只是不满足条件，
+        if !all_ready {
+            // 空集合（含「移出最后一个成员」）不形成安排；成员离线或恢复工作也只是不满足条件，
             // 不保存「曾经结束过一次」的资格。
             return match removed {
                 true => (Some(view_locked(inner, server_time)), None),

@@ -1,64 +1,69 @@
-//! 在线／离线判定与过期扫描（`scan_expired` / `spawn_expiry_scan`）。
+//! 会话登记的两阶段生命周期：在线有效期 + 离线保留期（契约 P8–P11、P18、P20）。
 //!
-//! 每个用例都经 [`TestServer`] 的真实监听端口写入，因此驱动的是交付运行时同一份路由与同一份会话表；
-//! 会话表由用例自己持有，于是「过期扫描把在线翻为离线」这件事能同时从两侧观察：订阅到的可见变化（帧）
-//! 与会话表本身（快照）。
+//! 走交付运行时同一份装配：会话事件经真实 TCP 写入，登记经真实 SSE 读取（页面收到的就是这些帧），
+//! 时刻来自受控时钟（[`ManualClock`]）。因此窗口边界是精确的 t=10 / t=11 / t=40 / t=41，
+//! 期望值全部是独立字面值（默认策略：在线 10 秒、离线保留 30 秒），不由实现推算。
 //!
-//! 过期**判定**只有一处（[`is_online`] 与 30s 常量），扫描只做一件事：把与判定不一致的旗标翻正并广播。
-//! 前三个用例把时刻**注入** `scan_expired`，于是过期的观察不需要真的等 30s 过去，秒级完成；最后一个
-//! 用例跑真实挂钟上的后台任务（判定窗口 30s 起、最迟 35s），因为「写入把离线行恢复在线」这件事只在
-//! 真实时间下成立：视图的在线与否由当前时刻现算，注入的未来时刻只影响那一帧，不改变行的时间线。
-//!
-//! 覆盖：判定窗口内侧（含边界）不翻、超过窗口翻一次且不重复广播、离线不改写 agent 状态、离线行保留
-//! （不老化、不因扫描移除）、`unregister` 是唯一的移除入口、omp-bot 重启（新的会话表）即清空，以及
-//! 后台扫描任务把超时会话在 `last_seen` 起 ≤35s 内翻为离线、写入随后把它恢复在线。
+//! 覆盖：边界内含在在线一侧、超过在线有效期但仍在保留期内离线且保留最后上报的 agent 状态、
+//! 恰好等于两个窗口之和仍保留、超过两者之和由维护清除并发布移除、重复维护不复活、
+//! 任何被接受的写入都重新计时、`unregister` 立即删除且重启即清空、清除不碰隔离的对话文件、
+//! 以及交付运行时那份真实每 5 秒维护循环在默认策略下的离线与清除发布上界。
 
 mod common;
 
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{HttpResponse, TestServer, post_json_over_tcp};
-use omp_bot::observation::Observation;
-use omp_bot::sessions::{
-    EXPIRY_SCAN_INTERVAL, ONLINE_WINDOW, SessionView, SessionsState, spawn_expiry_scan,
-};
-use omp_bot::{PowerOff, PowerOffFailure};
-use serde_json::json;
-use tokio::sync::broadcast;
+use common::sse::SseConnection;
+use common::{HttpResponse, TempDir, TestServer, post_json_over_tcp};
+use omp_bot::PowerOff;
+use omp_bot::PowerOffFailure;
+use omp_bot::clock::ManualClock;
+use omp_bot::countdown::ShutdownState;
+use omp_bot::sessions::{EXPIRY_SCAN_INTERVAL, SessionPolicy, SessionsState, spawn_expiry_scan};
+use serde_json::{Value, json};
 
-/// 过期扫描用例绝不接触关机路径；这个动作只会在路由接错时立刻把用例打失败。
+/// 会话维护用例绝不接触关机路径；这个动作只会在路由接错时立刻把用例打失败。
 struct NeverPowerOff;
 
 impl PowerOff for NeverPowerOff {
     fn power_off(&self) -> Result<(), PowerOffFailure> {
-        panic!("会话过期用例不应触发关机");
+        panic!("会话生命周期用例不应触发关机");
     }
 }
 
-/// 一个用例独占的服务：真实监听端口的应用，加上用例持有的同一份会话表与其订阅。
-struct SessionServer {
+/// 受控时刻下的服务：会话表由用例持有，因此「那一遍维护」由用例自己驱动，观察走真 TCP／SSE。
+struct LifecycleServer {
     server: TestServer,
     sessions: Arc<SessionsState>,
-    shutdown: Arc<omp_bot::countdown::ShutdownState>,
-    frames: broadcast::Receiver<Observation>,
+    shutdown: Arc<ShutdownState>,
+    clock: Arc<ManualClock>,
 }
 
-impl SessionServer {
+impl LifecycleServer {
+    /// 默认策略（10／30 秒）＋受控时刻的实例。
     async fn start() -> Self {
+        let clock = Arc::new(ManualClock::new());
         let config = common::config(Path::new("unused.bat"), Path::new("."));
-        let sessions = Arc::new(SessionsState::new());
-        let frames = sessions.observation().subscribe();
-        // 与交付运行时同一份装配：后台维护循环要拿到的正是这里生成的关机句柄。
+        let sessions = Arc::new(SessionsState::with_policy_and_clock(
+            SessionPolicy::default(),
+            clock.clone(),
+        ));
         let (app, state) =
             omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
             shutdown: state.shutdown,
-            frames,
+            clock,
         }
+    }
+
+    /// 把受控时刻向前推进：窗口边界因此可以精确取到。
+    fn advance(&self, by: Duration) {
+        self.clock.advance(by);
     }
 
     /// 经真 TCP 提交一条会话事件。
@@ -66,55 +71,34 @@ impl SessionServer {
         post_json_over_tcp(self.server.addr(), "/api/sessions/events", body).await
     }
 
-    /// 以注入的时刻跑一遍过期扫描；时刻由调用方决定，因此过期的观察不需要真的等 30s。
-    async fn scan(&self, now: Instant) {
-        self.sessions.scan_expired(now).await;
-    }
-
-    /// 推进到「最后写入之后刚好超过判定窗口」再扫一遍。
+    /// 跑一遍维护：过期行翻为离线、超过两个窗口的行清除，随后重判监听集合。
     ///
-    /// 注入的时刻是「此刻 + 30s + 1s」，而任何一次写入的 `last_seen` 都不晚于此刻，因此这一遍扫描
-    /// 必然把该行判为离线。
-    async fn scan_past_the_window(&self) {
-        self.scan(Instant::now() + ONLINE_WINDOW + Duration::from_secs(1))
-            .await;
+    /// 与 `spawn_expiry_scan` 每 [`EXPIRY_SCAN_INTERVAL`] 跑的那一遍是同一对调用。
+    async fn maintain(&self) {
+        self.sessions.scan_expired().await;
+        self.shutdown.sessions_changed().await;
     }
 
-    /// 取走此刻已发布的全部帧。
-    fn drain_frames(&mut self) -> Vec<Observation> {
-        let mut frames = Vec::new();
-        while let Ok(frame) = self.frames.try_recv() {
-            frames.push(frame);
-        }
-        frames
+    /// 建一条观察连接并读掉首帧。
+    async fn observe(&self) -> SseConnection {
+        let mut connection =
+            SseConnection::open(self.server.addr(), "/api/sessions/events", &[]).await;
+        let first = connection.next_frame().await;
+        first.named("snapshot");
+        connection
     }
 
-    /// 取走「本次写入/扫描必然已经发布」的那一帧：事件在返回响应之前就已广播，因此读到响应就必然
-    /// 能收到。
-    fn take_frame(&mut self) -> Observation {
-        let mut frames = self.drain_frames();
-        assert_eq!(frames.len(), 1, "本次应恰好发布一帧：{frames:?}");
-        frames.remove(0)
+    /// 从一条新的观察连接首帧读取当前会话列表（页面同一条读取路径）。
+    async fn read_sessions(&self) -> Vec<Value> {
+        let mut connection =
+            SseConnection::open(self.server.addr(), "/api/sessions/events", &[]).await;
+        let first = connection.next_frame().await;
+        first.named("snapshot");
+        first.json()["sessions"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
     }
-
-    /// 断言本次写入或扫描没有产生任何可见变化。
-    fn assert_no_frame(&mut self) {
-        let frames = self.drain_frames();
-        assert!(frames.is_empty(), "不应发布任何帧：{frames:?}");
-    }
-
-    /// 当前全部会话的视图（与读路径首帧同一份快照，在线与否按**当前时刻**现算）。
-    async fn snapshot(&self) -> Vec<SessionView> {
-        self.sessions.snapshot().await
-    }
-}
-
-/// 取出一帧 upsert 的会话视图。
-fn upsert(frame: Observation) -> SessionView {
-    let Observation::SessionUpsert(view) = frame else {
-        panic!("应发布一帧会话 upsert：{frame:?}");
-    };
-    view
 }
 
 /// 断言一次成功回执（HTTP 200）。
@@ -122,199 +106,339 @@ fn assert_accepted(response: &HttpResponse) {
     assert_eq!(response.status, 200, "响应体：{}", response.body);
 }
 
-fn register(id: &str) -> String {
-    json!({ "sessionId": id, "kind": "register", "data": { "cwd": "C:/work/omp" } }).to_string()
+/// 首帧会话列表里的某个会话；缺了就是用例失败。
+fn session_of(sessions: &[Value], session_id: &str) -> Value {
+    sessions
+        .iter()
+        .find(|session| session["sessionId"] == json!(session_id))
+        .cloned()
+        .unwrap_or_else(|| panic!("会话列表里应有 {session_id}：{sessions:?}"))
 }
 
-fn heartbeat(id: &str) -> String {
-    json!({ "sessionId": id, "kind": "heartbeat", "data": {} }).to_string()
+fn register(session_id: &str, session_file: Option<&str>) -> String {
+    let mut data = serde_json::Map::new();
+    data.insert("cwd".to_string(), json!("C:/work/omp"));
+    if let Some(session_file) = session_file {
+        data.insert("sessionFile".to_string(), json!(session_file));
+    }
+    json!({ "sessionId": session_id, "kind": "register", "data": data }).to_string()
 }
 
-fn state(id: &str, value: &str) -> String {
-    json!({ "sessionId": id, "kind": "state", "data": { "value": value } }).to_string()
+fn heartbeat(session_id: &str) -> String {
+    json!({ "sessionId": session_id, "kind": "heartbeat", "data": {} }).to_string()
 }
 
-fn unregister(id: &str) -> String {
-    json!({ "sessionId": id, "kind": "unregister" }).to_string()
+fn state(session_id: &str, value: &str) -> String {
+    json!({ "sessionId": session_id, "kind": "state", "data": { "value": value } }).to_string()
 }
 
-/// 判定窗口内侧（含 30s 边界）不翻，超过窗口翻一次，且只翻一次：翻转后的行再扫（无论推进多远）
-/// 都不重复广播。
+fn unregister(session_id: &str) -> String {
+    json!({ "sessionId": session_id, "kind": "unregister" }).to_string()
+}
+
+/// 读到指定的命名事件为止（跳过 keep-alive 注释帧）；超时即用例失败。
 ///
-/// 离线只改 keepAlive，不改写 agent 状态：翻转后的视图仍带着此前的状态。
-#[tokio::test]
-async fn an_expired_row_flips_to_offline_once_without_touching_its_state() {
-    let mut server = SessionServer::start().await;
-    // 写入不晚于这一刻，因此「此刻 + 30s」落在判定窗口内侧（含边界）。
-    let before_write = Instant::now();
-    assert_accepted(&server.post(&register("sess-flip")).await);
-    let registered = upsert(server.take_frame());
-    assert!(registered.online, "刚注册的行在线：{registered:?}");
-    assert_accepted(&server.post(&state("sess-flip", "working")).await);
-    let working = upsert(server.take_frame());
-    assert_eq!(format!("{:?}", working.state), "Some(Working)");
-
-    server.scan(before_write + ONLINE_WINDOW).await;
-    server.assert_no_frame();
-
-    server.scan_past_the_window().await;
-    let offline = upsert(server.take_frame());
-    assert_eq!(offline.session_id, "sess-flip");
-    assert!(!offline.online, "超过窗口的行必须判为离线：{offline:?}");
-    assert_eq!(
-        format!("{:?}", offline.state),
-        "Some(Working)",
-        "离线只改 keepAlive，不改写 agent 状态"
-    );
-
-    // 已经翻过的行不重复广播：同一时刻再扫、把时刻推进到十分钟后也都不再发帧。
-    server
-        .scan(Instant::now() + ONLINE_WINDOW + Duration::from_secs(1))
-        .await;
-    server.scan(Instant::now() + Duration::from_secs(600)).await;
-    server.assert_no_frame();
-}
-
-/// 任何被接受的写事件都把行自己的 `online` 旗标一并翻回在线。
-///
-/// 这个旗标就是扫描「这个值已经广播过」的依据：旗标与判定分叉，扫描就会在下一轮把它当成新变化再广播
-/// 一帧。这里用注入时刻制造「旗标为离线、时间却在窗口内」的局面（真实时间下不可能构造），于是三种写
-/// 事件各自都要在写入之后立刻让紧接着的扫描无话可说。
-#[tokio::test]
-async fn any_accepted_write_flips_the_rows_online_flag_back() {
-    let mut server = SessionServer::start().await;
-    assert_accepted(&server.post(&register("sess-flag")).await);
-    server.take_frame();
-
-    let writes = [
-        ("heartbeat", heartbeat("sess-flag")),
-        ("register", register("sess-flag")),
-        ("state", state("sess-flag", "working")),
-    ];
-    for (kind, body) in writes {
-        server.scan_past_the_window().await;
-        let offline = upsert(server.take_frame());
-        assert!(
-            !offline.online,
-            "{kind} 之前该行应已被判为离线：{offline:?}"
-        );
-
-        assert_accepted(&server.post(&body).await);
-        // 写入自身可能发帧（例如状态真变化），先清掉；要紧的是随后的扫描。
-        server.drain_frames();
-
-        server.scan(Instant::now()).await;
-        server.assert_no_frame();
+/// 慢用例里两个窗口串起来约 45 秒，期间必然出现 keep-alive，因此不能只取「下一帧」。
+async fn next_named_event_within(
+    connection: &mut SseConnection,
+    expected: &str,
+    timeout: Duration,
+) -> Value {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Some(frame) = connection.next_frame_within(remaining).await else {
+            panic!("等待 {expected} 帧超时（{timeout:?}）");
+        };
+        if frame.event.is_none() {
+            continue;
+        }
+        frame.named(expected);
+        return frame.json();
     }
 }
 
-/// 离线行保留、不老化、不设上界：扫描不产生 `remove`，行只在显式 `unregister` 时消失。
+/// 验收 P8、P9：上报年龄恰好等于在线有效期时仍为在线，超过一秒即离线；
+/// `working` 与 `awaiting-input` 的最后上报状态各自保持，不由过期改写。
 ///
-/// omp-bot 重启（另一份全新的会话表）后该行不再存在——v1 不落盘。
+/// 期望值取自默认策略的独立字面值（10 秒在线有效期），时刻由受控时钟精确驱动。
 #[tokio::test]
-async fn an_offline_row_is_retained_until_unregister_and_a_restart_starts_empty() {
-    let mut server = SessionServer::start().await;
-    assert_accepted(&server.post(&register("sess-keep")).await);
-    server.take_frame();
+async fn a_registration_stays_online_through_the_online_window_and_then_keeps_its_last_state() {
+    let server = LifecycleServer::start().await;
+    assert_accepted(&server.post(&register("sess-working", None)).await);
+    assert_accepted(&server.post(&state("sess-working", "working")).await);
+    assert_accepted(&server.post(&register("sess-awaiting", None)).await);
+    assert_accepted(&server.post(&state("sess-awaiting", "awaiting-input")).await);
 
-    server.scan_past_the_window().await;
-    let offline = upsert(server.take_frame());
-    assert!(!offline.online);
-
-    // 翻过之后等十分钟也不会被老化掉：没有帧，行还在。
-    server.scan(Instant::now() + Duration::from_secs(600)).await;
-    server.assert_no_frame();
-    let snapshot = server.snapshot().await;
-    assert_eq!(snapshot.len(), 1, "离线行保留在表里：{snapshot:?}");
-    assert_eq!(snapshot[0].session_id, "sess-keep");
-    assert_eq!(snapshot[0].cwd, "C:/work/omp");
-
-    // unregister 是唯一的移除入口：移除后行不再存在，扫描也不再对它有话可说。
-    assert_accepted(&server.post(&unregister("sess-keep")).await);
-    let Observation::SessionRemove { session_id } = server.take_frame() else {
-        panic!("unregister 应发布一帧 remove");
-    };
-    assert_eq!(session_id, "sess-keep");
-    server.scan_past_the_window().await;
-    server.assert_no_frame();
-    assert!(server.snapshot().await.is_empty(), "行已随 unregister 移除");
-
-    // 另一份全新的会话表就是「omp-bot 重启」：内存态不落盘，重启即清空。
-    let restarted = SessionServer::start().await;
-    assert!(restarted.snapshot().await.is_empty(), "重启后没有残留会话");
-    let response = restarted.post(&heartbeat("sess-keep")).await;
+    // t=10：年龄恰好等于在线有效期，仍在在线一侧。
+    server.advance(Duration::from_secs(10));
+    let sessions = server.read_sessions().await;
     assert_eq!(
-        response.status, 404,
-        "重启后旧会话是未知会话：{}",
-        response.body
+        session_of(&sessions, "sess-working")["online"],
+        json!(true),
+        "恰好等于在线有效期仍必须在线：{sessions:?}"
+    );
+    assert_eq!(
+        session_of(&sessions, "sess-awaiting")["online"],
+        json!(true),
+        "边界对所有会话同样成立：{sessions:?}"
+    );
+
+    // t=11：超过在线有效期一秒，读取为离线；登记仍在，最后上报的 agent 状态原样保留。
+    server.advance(Duration::from_secs(1));
+    let sessions = server.read_sessions().await;
+    assert_eq!(sessions.len(), 2, "离线只是上报过期，登记仍保留：{sessions:?}");
+    let working = session_of(&sessions, "sess-working");
+    assert_eq!(working["online"], json!(false), "超过窗口一秒即离线：{working}");
+    assert_eq!(
+        working["state"],
+        json!("working"),
+        "过期不得改写最后上报的 agent 状态：{working}"
+    );
+    let awaiting = session_of(&sessions, "sess-awaiting");
+    assert_eq!(awaiting["online"], json!(false));
+    assert_eq!(
+        awaiting["state"],
+        json!("awaiting-input"),
+        "等待用户输入同样按最后上报值保留：{awaiting}"
     );
 }
 
-/// 慢用例（判定窗口 30s 起、最迟 35s）：后台扫描任务由真实挂钟推进，无法用注入时刻覆盖。
-///
-/// 一次跑完在线／离线的整条生命周期：
-/// - 最后一次写入起 ≤35s（判定窗口 30s + 扫描节奏 5s）出现离线的 `upsert`，且不得在 30s 内提前翻；
-/// - 离线行保留在快照里（`online` 为假），不是被移除；
-/// - 任何被接受的写入把离线行恢复在线，且这次 true 变化本身就是一次可见变化（广播一帧）；
-/// - 写事件把行自己的 `online` 旗标一并翻正，因此紧接着的扫描不再发一帧重复的「恢复在线」；
-/// - `unregister` 移除行，之后扫描不再有任何变化。
+/// 验收 P20：新 register 还没有 agent 状态时，外部读取为在线、agent 状态缺省——
+/// 既不填 `awaiting-input`，也不冒充离线。
 #[tokio::test]
-async fn the_background_scan_flips_a_stale_session_offline_until_unregister() {
-    let mut server = SessionServer::start().await;
-    let before_register = Instant::now();
-    assert_accepted(&server.post(&register("sess-slow")).await);
-    let registered = upsert(server.take_frame());
-    assert!(registered.online);
+async fn a_new_registration_without_a_state_reads_online_with_no_agent_state() {
+    let server = LifecycleServer::start().await;
+    assert_accepted(&server.post(&register("sess-fresh", None)).await);
 
-    spawn_expiry_scan(Arc::clone(&server.sessions), Arc::clone(&server.shutdown));
+    let sessions = server.read_sessions().await;
+    let fresh = session_of(&sessions, "sess-fresh");
+    assert_eq!(fresh["online"], json!(true), "刚注册的登记在线：{fresh}");
+    assert!(
+        fresh.get("state").is_none(),
+        "还没有状态时必须省略 state，而不是填它：{fresh}"
+    );
+    assert_ne!(
+        fresh["state"],
+        json!("awaiting-input"),
+        "状态同步中不得被当成轮次结束：{fresh}"
+    );
+}
 
-    // 判定窗口内不得翻转，因此等它必须等过 30s；上界给它 35s + 5s 余量，超时即以可读的方式失败。
-    let frame = tokio::time::timeout(
-        ONLINE_WINDOW + EXPIRY_SCAN_INTERVAL + Duration::from_secs(5),
-        server.frames.recv(),
+/// 验收 P10、P11：默认策略下 t=40 维护后登记仍在且离线，t=41 维护后读取无该登记、
+/// 观察流发布移除；重复维护不复活记录。
+///
+/// 计时只取最后有效上报：离线是在 t=40 观察到的，但清除仍在 t=41 发生（而不是从「首次发现离线」再等一个窗口）。
+#[tokio::test]
+async fn maintenance_retains_through_both_windows_and_clears_one_second_later() {
+    let server = LifecycleServer::start().await;
+    assert_accepted(&server.post(&register("sess-bounded", None)).await);
+    // 刚写入：维护无话可说（窗口内不发布任何可见变化）。
+    server.maintain().await;
+    assert_eq!(server.read_sessions().await.len(), 1);
+
+    let mut observer = server.observe().await;
+
+    // t=40：恰好等于两个窗口之和（10 + 30），登记仍保留、可观察为离线。
+    server.advance(Duration::from_secs(40));
+    server.maintain().await;
+    let flipped = observer.next_event("upsert").await;
+    assert_eq!(
+        flipped.json()["session"]["online"],
+        json!(false),
+        "超过在线有效期即离线：{flipped:?}"
+    );
+    let retained = server.read_sessions().await;
+    assert_eq!(retained.len(), 1, "恰好等于两个窗口之和仍保留登记：{retained:?}");
+    assert_eq!(session_of(&retained, "sess-bounded")["online"], json!(false));
+
+    // t=41：超过两个窗口之和一秒，维护清除登记并发布移除。
+    server.advance(Duration::from_secs(1));
+    server.maintain().await;
+    let removed = observer.next_event("remove").await;
+    assert_eq!(
+        removed.json()["sessionId"],
+        json!("sess-bounded"),
+        "清除必须向观察者发布移除：{removed:?}"
+    );
+    assert!(
+        server.read_sessions().await.is_empty(),
+        "清除之后读取不到该登记"
+    );
+
+    // 重复维护不复活记录，也不再发布任何帧。
+    server.maintain().await;
+    server.advance(Duration::from_secs(3600));
+    server.maintain().await;
+    observer
+        .assert_no_named_frame_within(Duration::from_millis(300))
+        .await;
+    assert!(server.read_sessions().await.is_empty());
+}
+
+/// 任何被接受的写入都重新计时：先过期、再写入，读取回到在线；紧接着的维护不再重复发布。
+#[tokio::test]
+async fn any_accepted_write_restarts_the_registration_window() {
+    let server = LifecycleServer::start().await;
+    assert_accepted(&server.post(&register("sess-write", None)).await);
+    assert_accepted(&server.post(&state("sess-write", "working")).await);
+
+    let mut observer = server.observe().await;
+    for write in [
+        ("heartbeat", heartbeat("sess-write")),
+        ("state", state("sess-write", "awaiting-input")),
+        ("register", register("sess-write", None)),
+    ] {
+        let (kind, body) = write;
+        // 先把它推到窗口之外：读取离线。
+        server.advance(Duration::from_secs(11));
+        server.maintain().await;
+        let offline = observer.next_event("upsert").await;
+        assert_eq!(
+            offline.json()["session"]["online"],
+            json!(false),
+            "{kind} 之前该登记应已过期：{offline:?}"
+        );
+
+        // 写入重新计时：读取回到在线。
+        assert_accepted(&server.post(&body).await);
+        let online = observer.next_event("upsert").await;
+        assert_eq!(
+            online.json()["session"]["online"],
+            json!(true),
+            "{kind} 必须重新开始同一条有效期：{online:?}"
+        );
+
+        // 刚写过就维护：无话可说，也不重复发布。
+        server.maintain().await;
+        observer
+            .assert_no_named_frame_within(Duration::from_millis(200))
+            .await;
+        assert_eq!(
+            session_of(&server.read_sessions().await, "sess-write")["online"],
+            json!(true)
+        );
+    }
+}
+
+/// 验收 P18：清除登记不删除、也不改写所关联的 agent 对话文件。
+///
+/// 隔离目录里的文件由用例自己写，随后经 register 的 `sessionFile` 关联；清除之后逐字节比对。
+#[tokio::test]
+async fn clearing_a_registration_leaves_the_isolated_conversation_file_untouched() {
+    let dir = TempDir::new("isolated conversation");
+    let conversation = dir.path().join("conversation.jsonl");
+    let original = "{\"turn\":1,\"text\":\"第一轮\"}\r\n{\"turn\":2}\r\n";
+    fs::write(&conversation, original).expect("写隔离对话文件");
+
+    let server = LifecycleServer::start().await;
+    assert_accepted(
+        &server
+            .post(&register("sess-file", Some(&conversation.to_string_lossy())))
+            .await,
+    );
+    server.advance(Duration::from_secs(41));
+    server.maintain().await;
+    assert!(server.read_sessions().await.is_empty(), "登记已被清除");
+
+    let after = fs::read_to_string(&conversation).expect("清除之后对话文件仍必须存在");
+    assert_eq!(after, original, "清除登记不得改写对话文件内容");
+}
+
+/// `unregister` 立即删除登记（不等窗口），omp-bot 重启（另一份全新的会话表）即清空。
+#[tokio::test]
+async fn unregister_removes_immediately_and_a_restart_starts_empty() {
+    let server = LifecycleServer::start().await;
+    assert_accepted(&server.post(&register("sess-gone", None)).await);
+    let mut observer = server.observe().await;
+
+    assert_accepted(&server.post(&unregister("sess-gone")).await);
+    let removed = observer.next_event("remove").await;
+    assert_eq!(removed.json()["sessionId"], json!("sess-gone"));
+    assert!(server.read_sessions().await.is_empty(), "注销立即删除登记");
+
+    // 注销之后没有登记：心跳是未知会话，不隐式建行。
+    let response = server.post(&heartbeat("sess-gone")).await;
+    assert_eq!(
+        response.status, 404,
+        "未知登记的心跳必须被拒绝：{}",
+        response.body
+    );
+
+    // 另一份全新的会话表就是「omp-bot 重启」：内存态不落盘，重启即清空。
+    let restarted = LifecycleServer::start().await;
+    assert!(restarted.read_sessions().await.is_empty(), "重启后没有残留会话");
+}
+
+/// 慢用例（真实挂钟，默认策略：10 秒在线 / 30 秒保留）：交付运行时那份**每 5 秒**的维护循环
+/// 在超过在线有效期后发布离线、在超过两个窗口之和后约一个扫描周期内发布清除。
+///
+/// 这一遍跑的是后台任务本身（[`spawn_expiry_scan`]），不是把时刻注入某一次扫描；删除也不由前端计时。
+#[tokio::test]
+async fn the_real_maintenance_loop_publishes_offline_then_removal_after_the_default_windows() {
+    let config = common::config(Path::new("unused.bat"), Path::new("."));
+    let sessions = Arc::new(SessionsState::new());
+    let (app, state) =
+        omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+    let server = TestServer::start_app(app).await;
+
+    let registered_at = Instant::now();
+    let response = post_json_over_tcp(
+        server.addr(),
+        "/api/sessions/events",
+        &register("sess-loop", None),
     )
-    .await
-    .expect("后台扫描应在 35s 内把超时会话翻为离线")
-    .expect("会话表的广播通道不应关闭");
-    let offline = upsert(frame);
-    assert_eq!(offline.session_id, "sess-slow");
-    assert!(!offline.online, "后台扫描必须翻为离线：{offline:?}");
+    .await;
+    assert_accepted(&response);
 
-    let elapsed = before_register.elapsed();
-    assert!(
-        elapsed > ONLINE_WINDOW,
-        "不得在 30s 判定窗口内翻转：实际 {elapsed:?}"
-    );
-    assert!(
-        elapsed <= ONLINE_WINDOW + EXPIRY_SCAN_INTERVAL + Duration::from_secs(1),
-        "离线 upsert 的上界是 30s + 5s 节奏（另加 1s 调度余量）：实际 {elapsed:?}"
+    spawn_expiry_scan(Arc::clone(&sessions), Arc::clone(&state.shutdown));
+
+    let mut observer = SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+    let first = observer.next_frame().await;
+    first.named("snapshot");
+    assert_eq!(
+        first.json()["sessions"][0]["online"],
+        json!(true),
+        "刚注册的会话在线：{first:?}"
     );
 
-    // 离线行保留在表里（此刻是真实时间，所以快照也如实说「离线」）。
-    let stale = server.snapshot().await;
-    assert_eq!(stale.len(), 1, "超时只翻 keepAlive，不移除行：{stale:?}");
-    assert!(!stale[0].online, "过期行不得假「在线」：{stale:?}");
+    // 离线上界 = 在线有效期 10s + 扫描节奏 5s（另加调度余量）；也不得在窗口内提前翻。
+    let offline = next_named_event_within(
+        &mut observer,
+        "upsert",
+        Duration::from_secs(10 + 5 + 5),
+    )
+    .await;
+    assert_eq!(offline["session"]["online"], json!(false), "{offline:?}");
+    let staleness = registered_at.elapsed();
+    assert!(
+        staleness > Duration::from_secs(10),
+        "不得在 10 秒在线有效期内提前翻为离线：实际 {staleness:?}"
+    );
+    assert!(
+        staleness <= Duration::from_secs(10) + EXPIRY_SCAN_INTERVAL + Duration::from_secs(2),
+        "离线发布的默认上界是 10s + 5s 节奏：实际 {staleness:?}"
+    );
 
-    // 一次写入把离线行恢复在线，且「恢复在线」本身就是可见变化。
-    assert_accepted(&server.post(&heartbeat("sess-slow")).await);
-    let restored = upsert(server.take_frame());
-    assert_eq!(restored.session_id, "sess-slow", "恢复在线不得换行");
-    assert!(restored.online, "写入必须把离线行恢复在线：{restored:?}");
+    // 清除上界 = 两个窗口之和 40s + 扫描节奏 5s；观察流给出移除帧，读取随之为空。
+    let removed = next_named_event_within(
+        &mut observer,
+        "remove",
+        Duration::from_secs(30 + 5 + 5),
+    )
+    .await;
+    assert_eq!(removed["sessionId"], json!("sess-loop"));
+    let lifetime = registered_at.elapsed();
+    assert!(
+        lifetime > Duration::from_secs(40),
+        "不得在两个窗口之和内清除登记：实际 {lifetime:?}"
+    );
+    assert!(
+        lifetime <= Duration::from_secs(40) + EXPIRY_SCAN_INTERVAL + Duration::from_secs(2),
+        "清除发布的默认上界是 40s + 5s 节奏：实际 {lifetime:?}"
+    );
 
-    // 写入已经把这个旗标翻正，所以紧接着的扫描不该再发一帧重复的「恢复在线」。
-    server.scan(Instant::now()).await;
-    server.assert_no_frame();
-    let online = server.snapshot().await;
-    assert_eq!(online.len(), 1);
-    assert!(online[0].online, "恢复在线后快照如实说「在线」：{online:?}");
-
-    // 显式注销才是行的终点。
-    assert_accepted(&server.post(&unregister("sess-slow")).await);
-    let Observation::SessionRemove { session_id } = server.take_frame() else {
-        panic!("unregister 应发布一帧 remove");
-    };
-    assert_eq!(session_id, "sess-slow");
-    assert!(server.snapshot().await.is_empty());
-    server.scan_past_the_window().await;
-    server.assert_no_frame();
+    let mut reader = SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+    let snapshot = reader.next_frame().await;
+    assert_eq!(snapshot.json()["sessions"], json!([]));
 }

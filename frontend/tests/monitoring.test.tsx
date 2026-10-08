@@ -84,6 +84,21 @@ const WORKING: SessionView = {
 /** 在线、等待用户输入的会话。 */
 const WAITING: SessionView = { ...WORKING, sessionId: 'sess-2', sessionName: '等待会话', state: 'awaiting-input' }
 
+/** 离线（上报过期但登记仍在）、最后上报为工作中的会话。 */
+const OFFLINE: SessionView = {
+  ...WORKING,
+  sessionId: 'sess-offline',
+  sessionName: '离线会话',
+  online: false,
+}
+
+/** 离线、未被监听的会话：用作「离线不能新增」的对照。 */
+const OFFLINE_UNMONITORED: SessionView = {
+  ...OFFLINE,
+  sessionId: 'sess-offline-plain',
+  sessionName: '离线未监听',
+}
+
 /** 打开页面并切到「会话列表」tab。 */
 async function showSessions(sessions: SessionView[], shutdown: ShutdownView = NO_SHUTDOWN) {
   const { feed, push } = feedOf(sessions, shutdown)
@@ -108,10 +123,52 @@ afterEach(() => {
 })
 
 describe('完成后关机监听的选择与撤销', () => {
-  it('选中与撤销都提交明确目标值，并且只依后端确认变色', async () => {
+  it('观察已给出较新的集合后，迟到的合法监听回执不让选中展示回退', async () => {
+    const select = deferredReply()
+    recordingFetch(() => select.promise)
+    const { user, push } = await showSessions([WORKING])
+
+    // 提交选中；回执被拖住，观察流先给出更晚的事实：倒计时已经开始，监听集合被消耗为空。
+    await user.click(monitorButton('工作中会话').getByTestId('monitor-button'))
+    await push(shutdownWith([], 'counting-down'))
+    expect(screen.queryByTestId('monitor-button')).toBeNull()
+
+    // 迟到的旧回执到达：它只说明那次命令的归宿，不得让监听展示回退到倒计时之前。
+    await act(async () => {
+      select.settle(
+        jsonResponse(200, {
+          outcome: 'selected',
+          shutdown: { monitoredSessionIds: ['sess-1'], phase: 'none', serverTime: SERVER_TIME },
+        }),
+      )
+    })
+    expect(screen.queryByTestId('monitor-button')).toBeNull()
+    expect(screen.queryByTestId('monitoring-bar')).toBeNull()
+  })
+
+  it('监听回执先到、观察尚未更新时按钮不乐观变色，只反馈这次命令的归宿', async () => {
+    recordingFetch(() =>
+      jsonResponse(200, {
+        outcome: 'selected',
+        shutdown: { monitoredSessionIds: ['sess-1'], phase: 'none', serverTime: SERVER_TIME },
+      }),
+    )
+    const { user } = await showSessions([WORKING])
+
+    await user.click(screen.getByTestId('monitor-button'))
+
+    // 观察流还没给出新集合：按钮不得按回执变色。
+    expect(screen.getByTestId('monitor-button')).toHaveAttribute('data-selected', 'false')
+    expect(screen.queryByTestId('monitoring-bar')).toBeNull()
+    // 反馈只说明这次命令已被接受。
+    const status = screen.getByTestId('monitor-status')
+    expect(status).toHaveAttribute('data-outcome', 'accepted')
+    expect(status).toHaveTextContent('已接受这次监听命令')
+  })
+  it('选中与撤销都提交明确目标值，并且只依观察流的确认变色', async () => {
     const select = deferredReply()
     const calls = recordingFetch(() => select.promise)
-    const { user } = await showSessions([WORKING])
+    const { user, push } = await showSessions([WORKING])
 
     const button = monitorButton('工作中会话').getByTestId('monitor-button')
     expect(button).toHaveAttribute('data-selected', 'false')
@@ -128,7 +185,7 @@ describe('完成后关机监听的选择与撤销', () => {
       'false',
     )
 
-    // 后端确认之后才变色：权威集合里出现这个会话。
+    // 命令被接受：回执只反馈归宿，回执里的集合不参与展示。
     await act(async () => {
       select.settle(
         jsonResponse(200, {
@@ -143,10 +200,17 @@ describe('完成后关机监听的选择与撤销', () => {
     })
     expect(monitorButton('工作中会话').getByTestId('monitor-button')).toHaveAttribute(
       'data-selected',
+      'false',
+    )
+
+    // 观察流给出权威集合之后才变色。
+    await push(shutdownWith(['sess-1']))
+    expect(monitorButton('工作中会话').getByTestId('monitor-button')).toHaveAttribute(
+      'data-selected',
       'true',
     )
 
-    // 再次点击提交明确的「未选中」目标值，确认后才解除选中。
+    // 再次点击提交明确的「未选中」目标值。
     const revoke = deferredReply()
     vi.stubGlobal(
       'fetch',
@@ -174,7 +238,8 @@ describe('完成后关机监听的选择与撤销', () => {
         }),
       )
     })
-    // 这个会话已经不再监听，而它仍在工作：按钮回到未选中的可新增状态。
+    // 观察流给出清空后的集合：这个会话已经不再监听，而它仍在工作，按钮回到未选中的可新增状态。
+    await push(shutdownWith([]))
     expect(monitorButton('工作中会话').getByTestId('monitor-button')).toHaveAttribute(
       'data-selected',
       'false',
@@ -206,7 +271,7 @@ describe('完成后关机监听的选择与撤销', () => {
   it('A 已等待、B 仍工作时：A 的已选按钮仍可撤销，并说明在等其他被监听会话', async () => {
     const select = deferredReply()
     recordingFetch(() => select.promise)
-    const { user } = await showSessions(
+    const { user, push } = await showSessions(
       [WORKING, WAITING],
       shutdownWith(['sess-1', 'sess-2']),
     )
@@ -233,7 +298,11 @@ describe('完成后关机监听的选择与撤销', () => {
         }),
       )
     })
-    // 撤销之后这个会话既不在集合里、又不是工作中：入口与说明一起消失。
+    // 回执被接受并不改变展示：撤销后的集合仍要由观察流给出。
+    expect(waitingCard.getByTestId('monitor-button')).toHaveAttribute('data-selected', 'true')
+
+    // 观察流给出撤销后的权威集合：这个会话既不在集合里、又不是工作中，入口与说明一起消失。
+    await push(shutdownWith(['sess-1']))
     expect(monitorButton('等待会话').queryByTestId('monitor-button')).toBeNull()
     expect(monitorButton('等待会话').queryByTestId('monitor-note')).toBeNull()
   })
@@ -264,13 +333,65 @@ describe('完成后关机监听的选择与撤销', () => {
     expect(screen.queryByTestId('monitoring-bar')).toBeNull()
     expect(screen.queryByTestId('monitor-note')).toBeNull()
   })
+
+  it('离线但仍被监听的成员保留显式撤销入口：只反馈归宿，选中态与剩余集合随观察更新', async () => {
+    const revoke = deferredReply()
+    const calls = recordingFetch(() => revoke.promise)
+    // 两个已监听成员（一个在线工作中、一个离线），外加一个离线但未监听的对照。
+    const { user, push } = await showSessions(
+      [WORKING, OFFLINE, OFFLINE_UNMONITORED],
+      shutdownWith(['sess-1', 'sess-offline']),
+    )
+
+    // 离线已监听成员：撤销入口可用且显示为已选中 —— 不能因离线隐藏撤销能力。
+    const offlineCard = monitorButton('离线会话')
+    const offlineButton = offlineCard.getByTestId('monitor-button')
+    expect(offlineButton).toBeVisible()
+    expect(offlineButton).toBeEnabled()
+    expect(offlineButton).toHaveAttribute('data-selected', 'true')
+
+    // 对照：离线但未被监听的成员没有新增入口（离线不满足新增资格）。
+    expect(monitorButton('离线未监听').queryByTestId('monitor-button')).toBeNull()
+
+    // 剩余集合的展示：两个成员。
+    expect(screen.getByTestId('monitoring-summary')).toHaveTextContent('2 个')
+
+    // 提交明确的「未选中」目标值。
+    await user.click(offlineButton)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/api/shutdown/monitor')
+    expect(calls[0].body).toBe(JSON.stringify({ sessionId: 'sess-offline', selected: false }))
+
+    // 回执只反馈本次命令的归宿，不凭本地翻转选中态。
+    await act(async () => {
+      revoke.settle(
+        jsonResponse(200, {
+          outcome: 'unselected',
+          shutdown: { monitoredSessionIds: ['sess-1'], phase: 'none', serverTime: SERVER_TIME },
+        }),
+      )
+    })
+    expect(monitorButton('离线会话').getByTestId('monitor-button')).toHaveAttribute(
+      'data-selected',
+      'true',
+    )
+    expect(monitorButton('离线会话').getByTestId('monitor-status')).toHaveAttribute(
+      'data-outcome',
+      'accepted',
+    )
+
+    // 观察流给出撤销后的权威集合：离线成员的选择态与剩余集合展示一起改变。
+    await push(shutdownWith(['sess-1']))
+    expect(monitorButton('离线会话').queryByTestId('monitor-button')).toBeNull()
+    expect(screen.getByTestId('monitoring-summary')).toHaveTextContent('1 个')
+  })
 })
 
 describe('全局清空监听', () => {
-  it('清空入口与单会话撤销、结果页返回分开，且只在后端确认后显示成功', async () => {
+  it('清空入口与单会话撤销、结果页返回分开，归宿只说明这次命令被接受', async () => {
     const clearing = deferredReply()
     const calls = recordingFetch(() => clearing.promise)
-    const { user } = await showSessions([WORKING, WAITING], shutdownWith(['sess-1', 'sess-2']))
+    const { user, push } = await showSessions([WORKING, WAITING], shutdownWith(['sess-1', 'sess-2']))
 
     const bar = screen.getByTestId('monitoring-bar')
     expect(bar).toHaveTextContent('2 个')
@@ -281,10 +402,10 @@ describe('全局清空监听', () => {
     await user.click(within(bar).getByTestId('monitoring-clear'))
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('/api/shutdown/cancel')
-    // 请求在途：还没有任何成功文案。
+    // 请求在途：还没有任何归宿说明。
     expect(screen.queryByTestId('monitoring-clear-status')).toBeNull()
 
-    // 只有服务端确认取消生效之后才显示成功：回执带它自己的权威空集合。
+    // 服务端确认取消生效（回执 200）：只反馈这次命令的归宿，集合仍按观察流显示。
     await act(async () => {
       clearing.settle(
         jsonResponse(200, {
@@ -296,8 +417,13 @@ describe('全局清空监听', () => {
     const status = screen.getByTestId('monitoring-clear-status')
     expect(status).toHaveAttribute('data-outcome', 'cleared')
     expect(status).toHaveTextContent('服务端已确认')
-    // 集合已空：清空入口随之收起，成功说明保留。
+    // 归宿说明不冒充业务事实：集合仍按观察流显示那两个成员。
+    expect(screen.getByTestId('monitoring-bar')).toHaveTextContent('2 个')
+
+    // 观察流给出清空后的权威集合：清空入口随之收起，归宿说明保留。
+    await push(shutdownWith([]))
     expect(screen.queryByTestId('monitoring-bar')).toBeNull()
+    expect(screen.getByTestId('monitoring-clear-status')).toBeVisible()
   })
 
   it('清空没有回应时说明未确认，且不自动重发', async () => {
@@ -354,6 +480,39 @@ describe('监听命令的未确认与明确拒绝', () => {
     })
     expect(calls).toHaveLength(1)
     expect(screen.getByTestId('monitor-status')).toHaveAttribute('data-outcome', 'unconfirmed')
+  })
+
+  it('回执缺少可确认数据时不宣称成功，也不拿提交目标或回执里的集合充数', async () => {
+    recordingFetch(() =>
+      jsonResponse(200, {
+        // 200，但正文里没有可确认的目标值；只有回执带来的集合与页面刚刚提交过的目标值。
+        shutdown: { monitoredSessionIds: ['sess-1'], phase: 'none', serverTime: SERVER_TIME },
+      }),
+    )
+    const { user } = await showSessions([WORKING])
+
+    await user.click(screen.getByTestId('monitor-button'))
+
+    const status = screen.getByTestId('monitor-status')
+    expect(status).toHaveAttribute('data-outcome', 'unconfirmed')
+    expect(status).toHaveTextContent('未确认')
+    expect(screen.getByTestId('monitor-button')).toHaveAttribute('data-selected', 'false')
+    expect(screen.queryByTestId('monitoring-bar')).toBeNull()
+  })
+
+  it('未注册的会话被拒绝时给出 404 的类别，与 409 类别互不混淆', async () => {
+    recordingFetch(() =>
+      jsonResponse(404, { code: 'unknown-session', message: '该会话尚未注册' }),
+    )
+    const { user } = await showSessions([WORKING])
+
+    await user.click(screen.getByTestId('monitor-button'))
+
+    const status = screen.getByTestId('monitor-status')
+    expect(status).toHaveAttribute('data-outcome', 'refused')
+    expect(status).toHaveAttribute('data-code', 'unknown-session')
+    expect(status).toHaveTextContent('该会话尚未注册')
+    expect(screen.getByTestId('monitor-button')).toHaveAttribute('data-selected', 'false')
   })
 
   it('服务端明确拒绝时给出可机器读取的类别，与未确认区分', async () => {

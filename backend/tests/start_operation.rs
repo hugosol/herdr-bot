@@ -58,6 +58,7 @@ fn config(start_script: &Path, working_directory: &Path) -> omp_bot::Config {
         },
         mdns: omp_bot::MdnsConfig::default(),
         shutdown: omp_bot::ShutdownConfig::default(),
+        sessions: omp_bot::SessionsConfig::default(),
     }
 }
 

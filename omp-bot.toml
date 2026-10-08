@@ -22,3 +22,11 @@ working_directory = 'E:\Developer\myhub\my-streaming'
 # 改了它要重启后端（没有热加载）。
 [shutdown]
 countdown_seconds = 10
+
+# 会话登记的两个窗口（可选，缺省在线 10 秒、离线保留 30 秒）：都从最后一次被后端接受的
+# register／heartbeat／state 写入起算，两个字段可以分别缺省。
+# 合法整数范围 1..=4294967295；零、负数、小数、超过上界或拼错的字段／段名会让启动明确失败。
+# 改了它要重启后端（没有热加载）；运行中改写文件不改变已启动的实例。
+# [sessions]
+# online_timeout_seconds = 10
+# offline_retention_seconds = 30

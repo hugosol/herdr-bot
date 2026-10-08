@@ -1,23 +1,31 @@
-//! 真实 omp-bot 进程的关机安排生命周期（P35、P45）。
+//! 真实独立进程的关机安排生命周期（契约 P19；ADR 0005）。
 //!
-//! 这里用**真实二进制**（`env!("CARGO_BIN_EXE_omp-bot")`）：只有真正的进程启动才能证明「安排不持久化、
-//! 重启即清空」与「配置只在启动期读取一次，运行中改写文件不生效」。
+//! 这里启动的是**安全壳**（`examples/safe_shutdown_shell.rs`）：与交付运行时同一份路由与装配，但关机
+//! 动作是记录型替身，**不接触任何系统调用**。本票的全部真实进程验证都复用这条既有 adapter；交付二进制
+//! 只接受真实 Win32 关机动作，因此不由它驱动关机安排（它的启动与配置路径由 `session_window_config.rs`
+//! 与 `mdns_*.rs` 覆盖）。
 //!
-//! **绝不真的关机**：用例只用很长的倒计时（600 / 3600 秒），并在这些安排到期之前结束进程，因此到期
-//! 路径不会被触发。到期路径本身由 `tests/shutdown.rs` 与 `tests/monitoring.rs` 用记录型替身覆盖。
+//! 只有真正的独立进程启动才能证明「登记、监听意图与安排都不持久化、重启即清空」与「倒计时时长只在
+//! 启动期读取一次，运行中改写文件不生效」：这些都是进程内状态，跨进程不可恢复。到期输出本身由
+//! `tests/shutdown.rs`、`tests/monitoring.rs` 与 `tests/countdown_independence.rs` 用记录型替身覆盖，
+//! 这里用长倒计时让进程总是在到期之前结束。
 
 mod common;
 
+use std::ffi::OsStr;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use common::sse::SseConnection;
 use common::{HttpResponse, TempDir, post_json_over_tcp, post_over_tcp};
 use serde_json::{Value, json};
+
+/// 安全壳在它的 stdout 上记录每一次关机动作调用；本票的用例都断言这个标记**从未**出现。
+const SHUTDOWN_CALL_MARKER: &str = "记录到关机动作调用";
 
 /// 用例的倒计时：远大于用例本身的时长，因此进程总是在到期之前被结束。
 const RESTART_COUNTDOWN_SECONDS: u32 = 3600;
@@ -26,7 +34,7 @@ const RESTART_COUNTDOWN_SECONDS: u32 = 3600;
 const STARTUP_COUNTDOWN_SECONDS: u32 = 600;
 const REWRITTEN_COUNTDOWN_SECONDS: u32 = 1200;
 
-/// 受测的真实 omp-bot 进程。
+/// 受测的真实独立进程（安全壳：记录型关机替身）。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -35,16 +43,16 @@ struct Panel {
 }
 
 impl Panel {
-    /// 用给定配置文件启动真实二进制；返回时已经拿到它实际监听的端口。
+    /// 用给定配置文件启动安全壳；返回时已经拿到它实际监听的端口。
     fn start(config_path: &Path, name: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omp-bot"))
+        let mut child = Command::new(SAFE_SHELL_BINARY.as_path())
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("启动 omp-bot 主界面进程");
+            .expect("启动安全壳进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -138,13 +146,18 @@ impl Panel {
         serde_json::from_str::<Value>(&response.body).expect("回执必须是 JSON")["shutdown"].clone()
     }
 
-    /// 建立一条观察连接并读掉首帧，返回首帧里的关机状态。
+    /// 建立一条观察连接并读掉首帧，返回首帧的快照（含会话列表与关机状态）。
     async fn observe(&self) -> Value {
         let mut connection = SseConnection::open(self.addr(), "/api/sessions/events", &[]).await;
         assert_eq!(connection.status, 200, "读路径必须可用");
         let first = connection.next_frame().await;
         first.named("snapshot");
-        first.json()["shutdown"].clone()
+        first.json()
+    }
+
+    /// 进程自启动以来是否记录过任何一次关机动作调用（安全 adapter 的调用证据）。
+    fn shutdown_calls(&self) -> bool {
+        self.log_text().contains(SHUTDOWN_CALL_MARKER)
     }
 
     fn is_running(&mut self) -> bool {
@@ -175,6 +188,65 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
             log.lock().expect("写入日志").extend_from_slice(&buffer[..read]);
         }
     });
+}
+
+/// 安全壳可执行文件的位置：与本次测试可执行文件同一次构建的 examples 产物。
+///
+/// 每次都就地构建一次（已经是最新时只是一次约 50ms 的空转）：`cargo test --test <目标>` 并**不会**编译
+/// examples，只按存在性判断就会驱动上一次构建留下的旧二进制——那样本目标看到的就不是当前源码。
+static SAFE_SHELL_BINARY: LazyLock<PathBuf> = LazyLock::new(|| {
+    let test_exe = std::env::current_exe().expect("当前测试可执行文件路径");
+    let profile_dir = test_exe
+        .parent()
+        .and_then(Path::parent)
+        .expect("测试可执行文件位于 <target>/<profile>/deps 下")
+        .to_path_buf();
+    let binary = profile_dir
+        .join("examples")
+        .join(format!("safe_shutdown_shell{}", std::env::consts::EXE_SUFFIX));
+    build_safe_shell(&profile_dir);
+    assert!(
+        binary.is_file(),
+        "构建安全壳之后仍找不到产物：{}",
+        binary.display()
+    );
+    binary
+});
+
+/// 就地构建安全壳：目标目录与本次测试可执行文件所在的 profile 保持一致（含 `--release` 与自定义
+/// `--target-dir` 的情形），因此构建出的产物就在 [`SAFE_SHELL_BINARY`] 会找的位置。
+fn build_safe_shell(profile_dir: &Path) {
+    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+    command
+        .arg("build")
+        .arg("--example")
+        .arg("safe_shutdown_shell")
+        .current_dir(env!("CARGO_MANIFEST_DIR"));
+    if profile_dir.file_name() == Some(OsStr::new("release")) {
+        command.arg("--release");
+    }
+    if let Some(target_root) = profile_dir.parent() {
+        command.arg("--target-dir").arg(target_root);
+    }
+    let output = command
+        .output()
+        .expect("运行 cargo build --example safe_shutdown_shell");
+    assert!(
+        output.status.success(),
+        "构建安全壳失败：{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// 首帧快照里的关机状态（与增量 `shutdown` 事件同一个字段名）。
+fn shutdown_of(frame: &Value) -> Value {
+    frame["shutdown"].clone()
+}
+
+/// 首帧快照里的会话列表。
+fn sessions_of(frame: &Value) -> Vec<Value> {
+    frame["sessions"].as_array().cloned().unwrap_or_default()
 }
 
 /// 写一份只发布本地回环、关闭 mDNS、两个固定操作都指向安全夹具的配置。
@@ -212,51 +284,91 @@ fn arranged_millis(view: &Value) -> u64 {
         - view["serverTime"].as_u64().expect("服务端时间必须可读")
 }
 
-/// 验收 P35：后端进程重启后监听与倒计时均为空——安排只属于当前进程。
+/// 验收 P19：旧实例有登记与活动倒计时时，新进程的首帧没有任何登记、没有任何安排，也不恢复任何
+/// 过期意图。开始倒计时会消耗整组监听，因此监听意图由下一个独立场景覆盖，不构造两者同时存在的
+/// 不可达状态。
 #[tokio::test]
-async fn restarting_the_real_process_clears_the_arrangement() {
+async fn restarting_the_process_clears_registrations_and_the_active_arrangement() {
     let dir = TempDir::new("shutdown restart");
     let config_path = write_config(&dir, RESTART_COUNTDOWN_SECONDS);
 
+    // 旧实例：一条在线、工作中的登记，以及一次已经开始的倒计时（组织内状态只属于这个进程）。
     let mut first = Panel::start(&config_path, "shutdown restart a");
-    let response = first.start_request().await;
-    let arranged = arrangement_of(&response);
-    assert_eq!(arranged["phase"], serde_json::json!("counting-down"));
+    first.register_working("sess-a").await;
+    let arranged = arrangement_of(&first.start_request().await);
+    assert_eq!(arranged["phase"], json!("counting-down"));
     assert_eq!(
         arranged_millis(&arranged),
         u64::from(RESTART_COUNTDOWN_SECONDS) * 1000,
         "启动期配置的时长必须如实生效：{arranged}"
     );
+    let snapshot = first.observe().await;
     assert_eq!(
-        first.observe().await["phase"],
-        serde_json::json!("counting-down"),
-        "同一进程的观察者能看到这个安排"
+        shutdown_of(&snapshot)["phase"],
+        json!("counting-down"),
+        "同一进程的观察者能看到这个安排：{snapshot}"
     );
+    assert_eq!(
+        sessions_of(&snapshot).len(),
+        1,
+        "旧实例里有这条登记：{snapshot}"
+    );
+    assert!(!first.shutdown_calls(), "倒计时远未到期：安全 adapter 不得被调用");
 
-    // 结束进程（安排随之消失），再用**同一份配置**启动一个新进程。
+    // 结束进程，再用**同一份配置**启动一个新进程。
     first.stop();
     assert!(!first.is_running(), "进程必须已经结束");
 
     let mut restarted = Panel::start(&config_path, "shutdown restart b");
-    let first_frame = restarted.observe().await;
+    let frame = restarted.observe().await;
+    let shutdown = shutdown_of(&frame);
+    assert_eq!(shutdown["phase"], json!("none"), "重启后的首帧不得恢复任何旧安排：{frame}");
+    assert!(
+        shutdown.get("arrangementId").is_none() && shutdown.get("deadline").is_none(),
+        "首帧的可观察字段只有「没有安排」：{frame}"
+    );
+    assert!(sessions_of(&frame).is_empty(), "重启后不得恢复旧登记：{frame}");
     assert_eq!(
-        first_frame["phase"],
-        serde_json::json!("none"),
-        "重启后的首帧不得恢复任何旧安排：{first_frame}"
+        shutdown["monitoredSessionIds"],
+        json!([]),
+        "重启后不得恢复旧监听意图：{frame}"
+    );
+
+    // 旧登记不存在：普通上报与监听命令都按未知身份拒绝，因此旧意图不会被隐式复活。
+    assert_rejected(
+        &restarted
+            .post_json(
+                "/api/sessions/events",
+                json!({"sessionId": "sess-a", "kind": "heartbeat", "data": {}}),
+            )
+            .await,
+        404,
+        "unknown-session",
+    );
+    assert_rejected(
+        &restarted
+            .post_json(
+                "/api/shutdown/monitor",
+                json!({"sessionId": "sess-a", "selected": true}),
+            )
+            .await,
+        404,
+        "unknown-session",
     );
     assert!(
-        first_frame.get("arrangementId").is_none() && first_frame.get("deadline").is_none(),
-        "首帧的可观察字段只有「没有安排」：{first_frame}"
+        !restarted.shutdown_calls(),
+        "重启后的进程同样不得调用安全 adapter"
     );
     assert!(restarted.is_running(), "重启后的进程必须正常服务");
     restarted.stop();
 }
 
-/// 验收 P35（完成后关机监听）：真实进程里分别建立监听集合与自动倒计时，重启后首帧都为空。
+/// 验收 P19（监听意图与自动安排）：真实进程里分别建立监听集合与自动倒计时，重启后首帧都为空。
 ///
-/// 监听集合与自动倒计时都只属于当前进程：重启不恢复旧监听，也不恢复旧安排。
+/// 监听集合与自动倒计时都只属于当前进程：重启不恢复旧监听，也不恢复旧安排，而且**不会**把旧安排
+/// 补执行一次（倒计时很长，每个进程都在到期之前结束）。
 #[tokio::test]
-async fn restarting_the_real_process_clears_monitoring_and_the_automatic_arrangement() {
+async fn restarting_the_process_clears_monitoring_and_the_automatic_arrangement() {
     let dir = TempDir::new("monitoring restart");
     let config_path = write_config(&dir, RESTART_COUNTDOWN_SECONDS);
 
@@ -269,20 +381,25 @@ async fn restarting_the_real_process_clears_monitoring_and_the_automatic_arrange
         json!(["sess-a"]),
         "监听命令之后权威集合里应有这个会话：{monitored}"
     );
-    assert_eq!(first.observe().await["monitoredSessionIds"], json!(["sess-a"]));
+    let snapshot = first.observe().await;
+    assert_eq!(shutdown_of(&snapshot)["monitoredSessionIds"], json!(["sess-a"]));
+    assert_eq!(sessions_of(&snapshot).len(), 1, "旧实例里有这条登记：{snapshot}");
+    assert!(!first.shutdown_calls(), "没有安排：安全 adapter 不得被调用");
 
     first.stop();
     assert!(!first.is_running(), "进程必须已经结束");
 
-    // 重启后：首帧没有旧监听。
+    // 重启后：首帧没有旧监听，也没有旧登记。
     let mut restarted = Panel::start(&config_path, "monitoring restart b");
     let empty = restarted.observe().await;
-    assert_eq!(empty["phase"], json!("none"), "重启后不得恢复旧安排：{empty}");
+    let shutdown = shutdown_of(&empty);
+    assert_eq!(shutdown["phase"], json!("none"), "重启后不得恢复旧安排：{empty}");
     assert_eq!(
-        empty["monitoredSessionIds"],
+        shutdown["monitoredSessionIds"],
         json!([]),
         "重启后不得恢复旧监听：{empty}"
     );
+    assert!(sessions_of(&empty).is_empty(), "重启后不得恢复旧登记：{empty}");
 
     // 同一个新进程里再建立一次**自动倒计时**（成员进入等待用户输入即触发）。
     restarted.register_working("sess-a").await;
@@ -295,7 +412,7 @@ async fn restarting_the_real_process_clears_monitoring_and_the_automatic_arrange
         )
         .await;
     assert_eq!(awaiting.status, 200, "状态上报应被接受：{}", awaiting.body);
-    let arranged = restarted.observe().await;
+    let arranged = shutdown_of(&restarted.observe().await);
     assert_eq!(
         arranged["phase"],
         json!("counting-down"),
@@ -306,26 +423,40 @@ async fn restarting_the_real_process_clears_monitoring_and_the_automatic_arrange
         json!([]),
         "形成安排即消耗整组监听：{arranged}"
     );
+    assert!(!restarted.shutdown_calls(), "倒计时远未到期：安全 adapter 不得被调用");
 
-    // 再次重启：旧安排也不恢复，而且**不会**被重新执行（倒计时很长，进程在到期前就结束）。
+    // 再次重启：旧安排也不恢复，而且不会被补执行一次。
     restarted.stop();
     let mut final_process = Panel::start(&config_path, "monitoring restart c");
     let first_frame = final_process.observe().await;
+    let shutdown = shutdown_of(&first_frame);
     assert_eq!(
-        first_frame["phase"],
+        shutdown["phase"],
         json!("none"),
         "重启后不得恢复旧倒计时：{first_frame}"
     );
-    assert_eq!(first_frame["monitoredSessionIds"], json!([]));
+    assert_eq!(shutdown["monitoredSessionIds"], json!([]));
+    assert!(sessions_of(&first_frame).is_empty());
     assert!(
-        first_frame.get("arrangementId").is_none() && first_frame.get("deadline").is_none(),
+        shutdown.get("arrangementId").is_none() && shutdown.get("deadline").is_none(),
         "首帧的可观察字段只有「没有安排」：{first_frame}"
+    );
+    assert!(
+        !final_process.shutdown_calls(),
+        "跨进程不得补执行任何旧安排：安全 adapter 必须零调用"
     );
     assert!(final_process.is_running(), "重启后的进程必须正常服务");
     final_process.stop();
 }
 
-/// 验收 P45：倒计时时长只在启动期读取一次——运行中改写配置文件不生效。
+/// 一次命令必须被拒绝为给定状态码与类别。
+fn assert_rejected(response: &HttpResponse, status: u16, code: &str) {
+    assert_eq!(response.status, status, "响应体：{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).expect("拒绝体必须是 JSON");
+    assert_eq!(body["code"], json!(code), "响应体：{}", response.body);
+}
+
+/// 既有行为：倒计时时长只在启动期读取一次——运行中改写配置文件不生效（不热加载）。
 #[tokio::test]
 async fn a_running_process_keeps_the_countdown_it_started_with() {
     let dir = TempDir::new("shutdown no hot reload");

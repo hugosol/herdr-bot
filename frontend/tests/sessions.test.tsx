@@ -191,4 +191,100 @@ describe('会话列表（卡片流）', () => {
     expect(screen.getByTestId('sessions-empty')).toBeVisible()
     expect(screen.queryAllByTestId('session-card')).toHaveLength(0)
   })
+
+  it('离线登记的最后上报状态被标为「最后上报」，不当作当前事实', async () => {
+    const offlineWaiting: SessionView = {
+      ...WORKING,
+      sessionId: 'offline-waiting',
+      sessionName: '离线等待会话',
+      online: false,
+      state: 'awaiting-input',
+    }
+    const offlineWorking: SessionView = {
+      ...WORKING,
+      sessionId: 'offline-working',
+      sessionName: '离线工作会话',
+      online: false,
+      state: 'working',
+    }
+
+    await showSessions([WORKING, offlineWaiting, offlineWorking])
+
+    const cards = screen.getAllByTestId('session-card')
+    const online = cards[0]
+    expect(within(online).getByTestId('session-state')).toHaveAttribute('data-reported', 'current')
+    expect(within(online).queryByTestId('last-reported-tag')).toBeNull()
+
+    // 离线卡：状态仍然显示（不隐藏登记），但带「最后上报」标记，不能被读成当前完成证据。
+    for (const card of [cards[1], cards[2]]) {
+      expect(card).toHaveAttribute('data-keepalive', 'offline')
+      const state = within(card).getByTestId('session-state')
+      expect(state).toHaveAttribute('data-reported', 'last-reported')
+      expect(within(card).getByTestId('last-reported-tag')).toBeVisible()
+      expect(within(card).getByTestId('offline-tag')).toBeVisible()
+    }
+  })
+
+  it('在线 working、离线 working、离线 awaiting-input 与在线状态缺省混合展示，离线记录不被隐藏', async () => {
+    const onlineWorking: SessionView = {
+      ...WORKING,
+      sessionId: 'online-working',
+      sessionName: '在线工作会话',
+      state: 'working',
+    }
+    const offlineWorking: SessionView = {
+      ...WORKING,
+      sessionId: 'offline-working',
+      sessionName: '离线工作会话',
+      online: false,
+      state: 'working',
+    }
+    const offlineWaiting: SessionView = {
+      ...WORKING,
+      sessionId: 'offline-waiting',
+      sessionName: '离线等待会话',
+      online: false,
+      state: 'awaiting-input',
+    }
+    const onlineUnsynced: SessionView = {
+      sessionId: 'online-unsynced',
+      sessionName: '在线未同步会话',
+      cwd: 'E:\\Developer\\myhub\\omp-bot',
+      online: true,
+    }
+
+    await showSessions([onlineWorking, offlineWorking, offlineWaiting, onlineUnsynced])
+
+    // 四种登记一张都不少：离线登记同样在列表里；展示顺序为 工作中 → 状态未知 → 离线（末位）。
+    const cards = screen.getAllByTestId('session-card')
+    expect(cards.map((card) => within(card).getByTestId('session-name').textContent)).toEqual([
+      '在线工作会话',
+      '在线未同步会话',
+      '离线工作会话',
+      '离线等待会话',
+    ])
+    const [onlineWorkingCard, unsyncedCard, offlineWorkingCard, offlineWaitingCard] = cards
+
+    expect(onlineWorkingCard).toHaveAttribute('data-keepalive', 'online')
+    expect(onlineWorkingCard).toHaveAttribute('data-state', 'working')
+    expect(offlineWorkingCard).toHaveAttribute('data-keepalive', 'offline')
+    expect(offlineWorkingCard).toHaveAttribute('data-state', 'working')
+    expect(offlineWaitingCard).toHaveAttribute('data-keepalive', 'offline')
+    expect(offlineWaitingCard).toHaveAttribute('data-state', 'awaiting-input')
+
+    // 在线状态缺省与离线是两回事：它是「状态同步中…」，且没有离线标记。
+    expect(unsyncedCard).toHaveAttribute('data-keepalive', 'online')
+    expect(unsyncedCard).toHaveAttribute('data-state', 'unknown')
+    expect(within(unsyncedCard).getByTestId('session-state')).toHaveTextContent('状态同步中…')
+    expect(within(unsyncedCard).queryByTestId('offline-tag')).toBeNull()
+    expect(within(unsyncedCard).queryByTestId('last-reported-tag')).toBeNull()
+
+    // 离线的两个登记都带「最后上报」标记，在线状态缺省的那个不冒充等待用户输入。
+    expect(within(offlineWorkingCard).getByTestId('last-reported-tag')).toBeVisible()
+    expect(within(offlineWaitingCard).getByTestId('last-reported-tag')).toBeVisible()
+    expect(within(unsyncedCard).getByTestId('session-state')).not.toHaveTextContent('等待用户输入')
+
+    // 置顶的等待组只含**在线**的等待用户输入会话：离线的旧等待不算当前完成，因此这里不出现等待组。
+    expect(screen.queryByTestId('waiting-group')).toBeNull()
+  })
 })

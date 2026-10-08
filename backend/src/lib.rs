@@ -6,9 +6,11 @@
 //! 会话事件接口（见 [`sessions`]）的写入侧是 `POST /api/sessions/events`：扩展上报会话的
 //! register / heartbeat / state / unregister，服务端把它们写进**进程内**会话表；同一路径的读侧
 //! 长连接由浏览器订阅会话变化。写入只接受本机来源（TCP 对端为回环或本机网卡地址），其余得到
-//! `403 forbidden`；读侧对局域网全开、不引入 token。在线与否只由服务端按 30s 判定，后台过期扫描把
-//! 超时的在线会话翻为离线并作为可见变化推给浏览器，离线行保留到显式 `unregister`（扫描节奏与启动位置
-//! 见 [`sessions`]）。会话表与固定操作、关机路径完全解耦——写事件既不取执行资格，也不接触任何脚本。
+//! `403 forbidden`；读侧对局域网全开、不引入 token。在线与否只由服务端按**两个窗口**判定
+//! （缺省在线有效期 10 秒、离线保留期 30 秒，见 [`sessions::SessionPolicy`]）：后台维护把超过在线
+//! 有效期的会话翻为离线、把超过两个窗口之和的登记清除，两者都作为可见变化推给浏览器；离线登记在
+//! 保留期内保留，显式 `unregister` 立即移除（维护节奏与启动位置见 [`sessions`]）。会话表与固定操作、
+//! 关机路径完全解耦——写事件既不取执行资格，也不接触任何脚本。
 //!
 //! 操作接口只暴露“启动”和“停止”两个固定操作，它们执行哪个脚本、用什么工作目录只由服务端
 //! 配置决定。客户端只能提交操作名：请求面是封闭的，其他操作名、怪路径，以及携带命令、脚本
@@ -34,6 +36,7 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
+pub mod clock;
 pub mod config;
 pub mod countdown;
 pub mod mdns;
@@ -56,9 +59,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
-pub use config::{Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, ShutdownConfig};
+pub use config::{
+    Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, SessionWindowSeconds,
+    SessionsConfig, ShutdownConfig,
+};
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
+pub use sessions::SessionPolicy;
 pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
@@ -105,16 +112,22 @@ pub fn app(config: &Config) -> Router {
 /// 交付运行时用 [`app`]（真实的 Win32 动作）；自动化测试用本函数注入记录型动作，于是测试里
 /// `POST /api/shutdown` 的语义（200 / 500、请求面拒绝）能被完整驱动，却永远不会真的关机。
 /// 两个构造函数注册的路由完全一致：关机端点不是能力接口，也不由任何配置或前端决定是否可用。
-/// 会话表用新建的空表（见 [`app_with_sessions`]）。
+/// 会话表用新建的空表，窗口取启动期配置的 `[sessions]`（见 [`app_with_sessions`]）。
 pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Router {
-    app_with_sessions(config, power_off, Arc::new(sessions::SessionsState::new()))
+    app_with_sessions(
+        config,
+        power_off,
+        Arc::new(sessions::SessionsState::with_policy(config.sessions.policy())),
+    )
 }
 
 /// 构造使用**指定**关机动作与**指定**会话表的应用。
 ///
 /// 交付运行时（`main.rs`）用本函数持有会话表，并把同一份表交给后台过期扫描；需要观察会话变化的
 /// 调用方（会话过期扫描的自动化测试等）注入自己持有的会话表，于是写入的可见变化可以被订阅到，
-/// 而路由注册与交付运行时完全一致。关机倒计时用注入的同一个动作接缝，时长取启动期配置。
+/// 而路由注册与交付运行时完全一致。调用方持有的会话表自带窗口策略——交付运行时与 [`app_with_power_off`]
+/// 都用 `config.sessions.policy()` 建表，因此实例里只有一份启动期读到的窗口。关机倒计时用注入的同一个
+/// 动作接缝，时长取启动期配置。
 pub fn app_with_sessions(
     config: &Config,
     power_off: Arc<dyn PowerOff>,

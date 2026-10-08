@@ -20,6 +20,14 @@ function wireSession(sessionId: string, sessionName: string, overrides: Record<s
   }
 }
 
+/** 一帧 `snapshot` 的载荷：会话快照 + **同一帧**里的权威关机状态（真实后端两半都带）。 */
+function snapshot(sessions: unknown[]) {
+  return {
+    sessions,
+    shutdown: { phase: 'none', monitoredSessionIds: [] as string[], serverTime: Date.now() },
+  }
+}
+
 beforeEach(() => {
   resetFakeEventSources()
 })
@@ -69,6 +77,13 @@ describe('主界面接线（真实 SSE 数据源）', () => {
     expect(screen.getByRole('dialog', { name: '关机' })).toBeVisible()
     expect(screen.getByRole('button', { name: '取消关机' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: '取消关机' }))
+    // 命令被服务端确认：只反馈这次取消的归宿，安排仍按观察流显示。
+    expect(screen.getByTestId('shutdown-accepted')).toHaveTextContent('已确认这次取消')
+    expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
+    // 观察流给出「取消已生效」：这才是显示「取消成功」的事实来源。
+    act(() => {
+      source.emit('shutdown', { shutdown: cancelled })
+    })
     expect(screen.getByTestId('shutdown-result')).toBeVisible()
     expect(screen.getByTestId('shutdown-result')).toHaveTextContent('取消成功')
     await user.click(screen.getByTestId('shutdown-result-back'))
@@ -104,7 +119,7 @@ describe('主界面接线（真实 SSE 数据源）', () => {
     expect(screen.getByTestId('sessions-empty')).toBeInTheDocument()
 
     act(() => {
-      source.emit('snapshot', { sessions: [wireSession('a', '会话甲'), wireSession('b', '会话乙')] })
+      source.emit('snapshot', snapshot([wireSession('a', '会话甲'), wireSession('b', '会话乙')]))
     })
     expect(screen.queryByTestId('sessions-empty')).not.toBeInTheDocument()
     expect(screen.getAllByTestId('session-card')).toHaveLength(2)
@@ -128,9 +143,10 @@ describe('主界面接线（真实 SSE 数据源）', () => {
     // 浏览器自行重连：首帧快照即收敛——注销的「会话乙」消失、新会话出现，降级标记收回。
     act(() => {
       source.open()
-      source.emit('snapshot', {
-        sessions: [wireSession('a', '会话甲', { state: 'awaiting-input' }), wireSession('c', '会话丙')],
-      })
+      source.emit(
+        'snapshot',
+        snapshot([wireSession('a', '会话甲', { state: 'awaiting-input' }), wireSession('c', '会话丙')]),
+      )
     })
     expect(screen.queryByTestId('connection-banner')).not.toBeInTheDocument()
     expect(screen.getAllByTestId('session-name').map((name) => name.textContent)).toEqual(['会话甲', '会话丙'])

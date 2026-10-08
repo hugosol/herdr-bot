@@ -13,6 +13,8 @@
 //! cargo run --example safe_shutdown_shell -- --config <path> [--outcome ok|failed]
 //! ```
 //!
+//! 它也是自动化真实进程验证启动的进程：`backend/tests/manual_shutdown_process.rs` 用同一个安全壳
+//! 证明「登记、监听意图与安排都不跨进程恢复」，因此那里同样只驱动这个记录型替身，绝不调用真实关机。
 //! 它不是生产开关：真实二进制不认识这些参数，也不会因为这里的存在而改变行为。
 
 use std::path::PathBuf;
@@ -58,10 +60,17 @@ async fn main() -> anyhow::Result<()> {
         "[omp-bot] 倒计时配置：{} 秒",
         config.shutdown.countdown_seconds.get()
     );
+    println!(
+        "[omp-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
+        config.sessions.online_timeout_seconds.get(),
+        config.sessions.offline_retention_seconds.get()
+    );
     println!("[omp-bot] 到期结果：{}", if fails { "failed" } else { "ok" });
     println!("[omp-bot] 监听：http://{local_addr}/");
 
-    let sessions = Arc::new(omp_bot::sessions::SessionsState::new());
+    let sessions = Arc::new(omp_bot::sessions::SessionsState::with_policy(
+        config.sessions.policy(),
+    ));
     let power_off = Arc::new(RecordingPowerOff {
         calls: AtomicUsize::new(0),
         fails,

@@ -36,6 +36,7 @@ fn config_with_operations(
         },
         mdns: omp_bot::MdnsConfig::default(),
         shutdown: omp_bot::ShutdownConfig::default(),
+        sessions: omp_bot::SessionsConfig::default(),
     }
 }
 

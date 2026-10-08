@@ -6,13 +6,16 @@
  * 退避逻辑**：重连交给浏览器 `EventSource` 自己的重试（服务端给了 `retry: 2s`），前端只负责把收到的帧
  * 映射成视图。
  *
+ * 断线只降级、不丢数据：最后一帧原样保留并在页面上标注可能过期，恢复**只**由一份完整的 `snapshot`
+ * 首帧完成（`open` 事件与任何增量都不算恢复证据，见 `handleFrame`）。
+ *
  * 组件不直接接触全局 `EventSource`——它们只消费 [`SessionFeed`] 契约；真实接线在本模块，由
  * `main.tsx` 注入给页面。`EventSource` 的构造因此是可注入的：jsdom 里没有它，接线测试用假实现驱动
  * 同一段帧映射代码。
  */
 
 import { NO_SHUTDOWN, toShutdownView, type ShutdownView } from './shutdownView'
-import type { AgentState, ConnectionStatus, SessionFeed, SessionFeedSnapshot, SessionView } from './sessionFeed'
+import type { AgentState, SessionFeed, SessionFeedSnapshot, SessionView } from './sessionFeed'
 
 /** 一帧命名事件的载荷：SSE 的 `data:` 字段。 */
 export type SessionFrameEvent = { data: string }
@@ -87,6 +90,23 @@ function toSessionView(value: unknown): SessionView | null {
   }
 }
 
+/**
+ * 把一帧 `snapshot` 的 `sessions` 收成视图；缺任一行读不懂的会返回 `null`（整帧不认）。
+ *
+ * 一份快照是**整份**视图：它既要能整体替换手上的展示，也要作为「这是当前实况」的证据，
+ * 因此不接受半份数据（见 `handleFrame` 的 `snapshot` 分支）。
+ */
+function toSessionViews(raw: unknown): SessionView[] | null {
+  if (!Array.isArray(raw)) return null
+  const sessions: SessionView[] = []
+  for (const item of raw) {
+    const session = toSessionView(item)
+    if (session === null) return null
+    sessions.push(session)
+  }
+  return sessions
+}
+
 /** 解析一帧的 JSON 载荷；解析不了（或不是对象）即当这一帧没来过。 */
 function parsePayload(data: string): Record<string, unknown> | null {
   try {
@@ -125,12 +145,15 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
   }
 
   /**
-   * 只改连接健康度：会话列表明明还在手上，断线不该把它丢掉（既不空列表闪烁，也不假装实况）。
+   * 一次连接错误：会话列表明明还在手上，断线不该把它丢掉（既不空列表闪烁，也不假装实况）。
    * 关机状态同理照旧保留。状态没变就不发布——同一份数据必须保持同一引用。
+   *
+   * 恢复实况**不**在这里：`open` 只说这条连接又通了，手上的读数仍可能是断线前的旧数据。
+   * 唯一的恢复证据是一份完整的 `snapshot` 首帧（见 `handleFrame`）。
    */
-  function setConnection(connection: ConnectionStatus) {
-    if (snapshot.connection === connection) return
-    publish({ sessions: snapshot.sessions, connection, shutdown: snapshot.shutdown })
+  function noteInterrupted() {
+    if (snapshot.connection === 'interrupted') return
+    publish({ sessions: snapshot.sessions, connection: 'interrupted', shutdown: snapshot.shutdown })
   }
 
   /** 只改关机状态：会话那一半照旧，因此同一条流上的两类变化互不覆盖。 */
@@ -143,20 +166,20 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
     if (payload === null) return
 
     if (name === 'snapshot') {
-      const raw = payload.sessions
-      if (!Array.isArray(raw)) return
-      const sessions: SessionView[] = []
-      for (const item of raw) {
-        const session = toSessionView(item)
-        // 整帧不完整就整帧不认：半份快照既会凭空少行、也会把上一份好数据换掉，比「当作没收到」糟。
-        if (session === null) return
-        sessions.push(session)
-      }
-      // 关机状态与关它同一帧。它读不懂时保留上一份状态：会话那一半仍然有效，丢掉它比少一次关机状态更新更糟。
-      const shutdown = toShutdownView(payload.shutdown, Date.now()) ?? snapshot.shutdown
+      // 一份**完整**快照是唯一能给出「当前实况」的帧：会话与关机两部分都要读得懂。缺一半就整帧不认——
+      // 半份快照既会凭空少行，也会把上一份好数据换成「新会话 + 旧关机状态」这种谁也不是的状态；
+      // 它同时是断线后恢复实况的**唯一**证据（P45）。
+      const sessions = toSessionViews(payload.sessions)
+      if (sessions === null) return
+      const shutdown = toShutdownView(payload.shutdown, Date.now())
+      if (shutdown === null) return
       publish({ sessions, connection: 'live', shutdown })
       return
     }
+
+    // 断线期间除了上面的完整首帧，任何帧都不改变展示：手上那份快照原样保留并继续标注可能过期。
+    // 增量各只覆盖一个域，都不能替代一次完整恢复（P45）。
+    if (snapshot.connection === 'interrupted') return
 
     if (name === 'upsert') {
       const session = toSessionView(payload.session)
@@ -167,7 +190,7 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
         at === -1
           ? [...snapshot.sessions, session]
           : snapshot.sessions.map((known, index) => (index === at ? session : known))
-      publish({ sessions, connection: 'live', shutdown: snapshot.shutdown })
+      publish({ sessions, connection: snapshot.connection, shutdown: snapshot.shutdown })
       return
     }
 
@@ -176,7 +199,7 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
       if (typeof sessionId !== 'string') return
       const sessions = snapshot.sessions.filter((known) => known.sessionId !== sessionId)
       if (sessions.length === snapshot.sessions.length) return
-      publish({ sessions, connection: 'live', shutdown: snapshot.shutdown })
+      publish({ sessions, connection: snapshot.connection, shutdown: snapshot.shutdown })
       return
     }
 
@@ -195,10 +218,9 @@ export function createSseSessionFeed(options: SseSessionFeedOptions = {}): Sessi
     opened.addEventListener('upsert', (event) => handleFrame('upsert', event.data))
     opened.addEventListener('remove', (event) => handleFrame('remove', event.data))
     opened.addEventListener('shutdown', (event) => handleFrame('shutdown', event.data))
-    // 连接健康度只有两件事：一次错误即降级（浏览器随后自行重连），一次成功即恢复实况。
-    // 这里不重连、不退避、不排定时器——重连后的收敛由服务端的首帧快照负责。
-    opened.addEventListener('error', () => setConnection('interrupted'))
-    opened.addEventListener('open', () => setConnection('live'))
+    // 连接健康度：一次错误即降级（浏览器随后自行重连），一次完整的 `snapshot` 首帧即恢复实况。
+    // 这里不重连、不退避、不排定时器，也不监听 `open`——重连后的收敛由服务端的完整首帧负责。
+    opened.addEventListener('error', () => noteInterrupted())
   }
 
   function disconnect() {
