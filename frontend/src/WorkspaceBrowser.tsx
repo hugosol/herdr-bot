@@ -756,6 +756,11 @@ export function WorkspaceBrowser({
             {blockedReason}
           </p>
         )}
+        {commitAvailable && commitMessage.trim() === '' && !commitRunning && (
+          <p className="commit-bar__hint" data-testid="commit-message-required">
+            请输入提交信息后即可 Commit。
+          </p>
+        )}
         {!commitAvailable && blockedReason === null && (
           <p className="commit-bar__hint" data-testid="commit-unavailable">
             {gitStatus.pendingCount === 0

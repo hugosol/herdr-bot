@@ -70,6 +70,10 @@ describe('文件列表：workspace 登记', () => {
     expect(within(list).getAllByTestId('workspace-item')).toHaveLength(2)
     expect(within(list).getByText('C:\\work\\alpha')).toBeVisible()
     expect(within(list).getByText('D:\\projects\\beta')).toBeVisible()
+    // 整行就是浏览入口：路径与角标位于同一个按钮内，不再有独立的「浏览」按钮。
+    const row = within(list).getByRole('button', { name: '浏览 C:\\work\\alpha' })
+    expect(row).toHaveTextContent('C:\\work\\alpha')
+    expect(within(list).queryByRole('button', { name: '浏览' })).toBeNull()
     expect(calls[0]).toMatchObject({ url: '/api/workspaces', method: 'GET' })
     expect(document.querySelector('input[type="file"]')).toBeNull()
   })
@@ -215,7 +219,9 @@ describe('文件列表：workspace 登记', () => {
     await openFileList(user)
     await screen.findByText('C:\\work\\alpha')
 
-    await user.click(screen.getByRole('button', { name: '取消登记 C:\\work\\alpha' }))
+    const removeButton = screen.getByRole('button', { name: '取消登记 C:\\work\\alpha' })
+    expect(removeButton).toHaveTextContent('×')
+    await user.click(removeButton)
 
     const feedback = await screen.findByTestId('workspace-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'success')

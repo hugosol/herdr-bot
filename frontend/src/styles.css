@@ -13,10 +13,25 @@ body {
   color: #f2f4f8;
 }
 
+#root {
+  width: 100%;
+  min-width: 0;
+}
+
 .panel {
   box-sizing: border-box;
   width: min(100%, 32rem);
+  max-width: 100%;
+  /* flex 项默认 min-width:auto；不加这一行时，任何一个过宽子元素都会把整个
+     居中的面板撑宽并向左溢出，而负的左侧无法滚动到，手机上看不到最左端。 */
+  min-width: 0;
+  /* #root 现在是满宽的定位容器，面板自身仍需要在桌面端水平居中。 */
+  margin-inline: auto;
   padding: 1.5rem;
+}
+
+.tabpanel {
+  min-width: 0;
 }
 
 h1 {
@@ -171,12 +186,38 @@ h1 {
 
 .workspace-item {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.35rem;
   border: 1px solid #2b313a;
   border-radius: 0.5rem;
   background: #1d2128;
+}
+
+/* 整行浏览入口：路径、角标和空白区域共同组成一个按钮，不再单独显示「浏览」。 */
+.workspace-item__open {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-item__open:hover:enabled {
+  background: #252b33;
+}
+
+.workspace-item__open:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .workspace-item__path {
@@ -187,34 +228,29 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* 取消登记只显示一个叉号；保留 44px 触摸目标，避免手机上误触。 */
 .workspace-item__remove {
+  display: grid;
+  place-items: center;
   flex: none;
-  padding: 0.45rem 0.7rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
   border: 1px solid #6b3a33;
-  border-radius: 0.5rem;
+  border-radius: 0.45rem;
   background: #33201c;
   color: #ffb3a6;
-  font-size: 0.9rem;
+  font-size: 1.25rem;
+  line-height: 1;
   cursor: pointer;
+}
+
+.workspace-item__remove:hover:enabled {
+  border-color: #a45245;
+  background: #3d2621;
 }
 
 .workspace-item__remove:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.workspace-item__open {
-  flex: none;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid #37506b;
-  border-radius: 0.5rem;
-  background: #1d2a38;
-  color: #a9d0f0;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.workspace-item__open:disabled {
   opacity: 0.6;
   cursor: progress;
 }
@@ -256,6 +292,8 @@ h1 {
 /* 文件列表比固定操作需要更宽的左右布局；其他 tab 仍保持窄面板。 */
 .panel--wide {
   width: min(100%, 72rem);
+  max-width: 100%;
+  min-width: 0;
   /* 浏览布局比固定操作高：从顶部开始排布，避免居中把标题和工具栏推到视口外。 */
   min-height: calc(100vh - 2rem);
   align-self: flex-start;
@@ -266,6 +304,8 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .browser-toolbar {
@@ -301,10 +341,11 @@ h1 {
 }
 
 .browser-toolbar__branch {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   color: #a9d0f0;
   font-size: 0.9rem;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* workspace 内部子 tab：只有 Git 工作区出现；普通目录仍只有浏览。 */
@@ -849,6 +890,8 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .file-view__header {
@@ -895,6 +938,7 @@ h1 {
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+  max-width: 100%;
 }
 
 .diff-lines,
@@ -985,6 +1029,8 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .browser-mobile__back {

@@ -301,8 +301,7 @@ export function FileListPanel({
           <ul className="workspace-list" data-testid="workspace-list">
             {workspaces.map((registration) => (
               <li key={registration.path} className="workspace-item" data-testid="workspace-item">
-                <code className="workspace-item__path">{registration.path}</code>
-                {badgeFor(registration.path)}
+                {/* 整行就是浏览入口：路径与角标都在按钮内部，点击行内任一非取消区域都会进入 workspace。 */}
                 <button
                   type="button"
                   className="workspace-item__open"
@@ -311,16 +310,18 @@ export function FileListPanel({
                   disabled={pending !== null}
                   onClick={() => setOpenWorkspace(registration.path)}
                 >
-                  浏览
+                  <code className="workspace-item__path">{registration.path}</code>
+                  {badgeFor(registration.path)}
                 </button>
                 <button
                   type="button"
                   className="workspace-item__remove"
                   aria-label={`取消登记 ${registration.path}`}
+                  title={`取消登记 ${registration.path}`}
                   disabled={pending !== null}
                   onClick={() => void remove(registration)}
                 >
-                  取消登记
+                  ×
                 </button>
               </li>
             ))}

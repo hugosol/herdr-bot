@@ -223,13 +223,18 @@ describe('经审查复核的整仓 Commit', () => {
     const button = screen.getByTestId('commit-button')
     expect(button).toHaveTextContent('Commit')
     expect(button).toBeDisabled()
+    expect(screen.getByTestId('commit-message-required')).toHaveTextContent(
+      '请输入提交信息后即可 Commit',
+    )
 
     await user.type(screen.getByTestId('commit-message'), '   ')
     expect(button).toBeDisabled()
+    expect(screen.getByTestId('commit-message-required')).toBeVisible()
 
     await user.clear(screen.getByTestId('commit-message'))
     await user.type(screen.getByTestId('commit-message'), 'reviewed message')
     expect(button).toBeEnabled()
+    expect(screen.queryByTestId('commit-message-required')).toBeNull()
 
     // 工作区干净时没有可提交变更，按钮禁用并明确说明。
     status = gitStatus({ changes: [], pendingCount: 0 })
