@@ -605,6 +605,63 @@ h1 {
   color: #e8ecf2;
 }
 
+/* 远端检查与 Sync：显式检查入口、最近检查时间、逐态主按钮与真实数量。 */
+.sync-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #2f3945;
+}
+
+.sync-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.sync-bar__upstream,
+.sync-bar__checked {
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.sync-bar__button {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.45rem;
+  background: #1d2128;
+  color: #e8ecf2;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.sync-bar__button--primary {
+  border-color: #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sync-bar__button:disabled {
+  border-color: #3a4048;
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.sync-bar__state {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 一句确认消息 + 确认/取消；覆盖层只在门禁期间出现。 */
 .commit-confirm {
   position: fixed;

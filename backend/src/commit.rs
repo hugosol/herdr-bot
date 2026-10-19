@@ -45,6 +45,13 @@ impl RepositoryLocks {
                 .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
         )
     }
+
+    /// 立即尝试取得一个实际仓库的写操作资格；拿不到时返回 `None`，不等待、不排队。
+    ///
+    /// Commit 与 Sync 都经这里取得同一份资格，因此同一仓库的混合并发不会重叠。
+    pub(crate) fn try_qualify(&self, root: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        self.for_repository(root).try_lock_owned().ok()
+    }
 }
 
 /// 一次提交请求的归宿；页面根据它区分“已提交”“审查失效”“被阻塞”和“执行失败/超时”。
@@ -79,19 +86,25 @@ pub fn execute(
     review_token: &str,
     timeout: Duration,
     locks: &RepositoryLocks,
+    sync_state: &crate::sync::SyncState,
 ) -> CommitOutcome {
     let root = match git::worktree_root(registered_root, timeout) {
         Ok(Some(root)) => root,
         Ok(None) => return CommitOutcome::NotRepository,
         Err(error) => return CommitOutcome::Failed(error),
     };
-    let key = workspaces::display_path(&root);
-    let repository_lock = locks.for_repository(&key);
-    let Ok(permit) = repository_lock.try_lock_owned() else {
+    let Some(permit) = locks.try_qualify(&workspaces::display_path(&root)) else {
         return CommitOutcome::Busy;
     };
 
-    let outcome = execute_locked(&root, registered_root, message, review_token, timeout);
+    let outcome = execute_locked(
+        &root,
+        registered_root,
+        message,
+        review_token,
+        timeout,
+        sync_state,
+    );
     retain_qualification_if_unconfirmed(permit, outcome)
 }
 
@@ -114,8 +127,9 @@ fn execute_locked(
     message: &str,
     review_token: &str,
     timeout: Duration,
+    sync_state: &crate::sync::SyncState,
 ) -> CommitOutcome {
-    let status: GitStatus = match git::status(registered_root, timeout) {
+    let status: GitStatus = match git::status(registered_root, timeout, sync_state) {
         Ok(status) => status,
         Err(error) => return CommitOutcome::Failed(error),
     };

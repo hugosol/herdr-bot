@@ -47,6 +47,7 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
+pub mod sync;
 pub mod watch;
 pub mod workspaces;
 
@@ -124,6 +125,8 @@ pub struct AppState {
     pub git_timeout: Duration,
     /// 同一实际仓库的 Git 写操作资格；与固定操作的执行资格完全独立。
     pub repository_locks: Arc<commit::RepositoryLocks>,
+    /// 本实例成功检查远端的时间记录；只由显式检查与 Sync 前检查写入，本地事件不会触发 fetch。
+    pub sync_state: Arc<sync::SyncState>,
     /// workspace 文件事件监听与按 workspace 合并的自动刷新通知。
     ///
     /// 每个已登记 workspace 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
@@ -200,6 +203,7 @@ pub fn app_with_state(
         preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
         repository_locks: Arc::new(commit::RepositoryLocks::new()),
+        sync_state: Arc::new(sync::SyncState::new()),
         workspace_watch: Arc::new(watch::WorkspaceWatchManager::new(
             config.workspaces.refresh_interval_seconds.duration(),
         )),
@@ -239,6 +243,13 @@ pub fn app_with_state(
         .route("/api/workspaces/diff", get(workspace_change_diff))
         // 经审查复核的整仓提交：确认后重查审查版本，再暂存全部符合 Git 规则的最终变更并提交。
         .route("/api/workspaces/commit", post(commit_workspace))
+        // 按需检查远端：真实 fetch 当前分支的既有 upstream，并记录最近检查时间。
+        .route(
+            "/api/workspaces/check-remote",
+            post(check_workspace_remote),
+        )
+        // 按既有 upstream 与 Git 配置同步：检查远端 → pull → 按需 push。
+        .route("/api/workspaces/sync", post(sync_workspace))
         // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
         .route("/api/workspaces/overview", get(workspaces_overview))
         // 自动更新的只读长连接：真实文件系统事件按 workspace 合并后通知页面重新读取；
@@ -644,7 +655,10 @@ async fn workspaces_overview(State(state): State<AppState>) -> Response {
         Err(error) => return workspace_error_response(error),
     };
     let timeout = state.git_timeout;
-    match tokio::task::spawn_blocking(move || git::overview(&workspaces, timeout)).await {
+    let sync_state = Arc::clone(&state.sync_state);
+    match tokio::task::spawn_blocking(move || git::overview(&workspaces, timeout, &sync_state))
+        .await
+    {
         Ok(workspaces) => (
             StatusCode::OK,
             Json(WorkspaceOverviewResponse { workspaces }),
@@ -685,7 +699,8 @@ async fn workspace_git_status(
         Err(response) => return response,
     };
     let timeout = state.git_timeout;
-    match tokio::task::spawn_blocking(move || git::status(&registered, timeout)).await {
+    let sync_state = Arc::clone(&state.sync_state);
+    match tokio::task::spawn_blocking(move || git::status(&registered, timeout, &sync_state)).await {
         Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(Err(error)) => git_error_response(error),
         Err(_) => rejected_owned(
@@ -915,6 +930,7 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
     };
     let timeout = state.git_timeout;
     let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
     let response_workspace = registered.clone();
     let message = request.message;
     let review_token = request.review_token;
@@ -927,6 +943,7 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
                 &review_token,
                 timeout,
                 &locks,
+                &sync_state,
             )
         })
         .await;
@@ -1000,6 +1017,198 @@ fn commit_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "commit-result-unavailable",
             "提交任务异常结束，无法确认执行结果；请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+/// 一次“只有 workspace”的 POST 请求体；检查远端与 Sync 都只接收服务器目录。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceTargetRequest {
+    workspace: String,
+}
+
+/// 读取检查远端/Sync 的请求体；请求面封闭，不接受查询串或未知字段。
+async fn workspace_target(request: Request) -> Result<String, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "该命令不接受查询参数：workspace 只来自请求体。".to_string(),
+        ));
+    }
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "请求体超过 64KB 上限。".to_string(),
+            )
+        })?;
+    let request: WorkspaceTargetRequest = serde_json::from_slice(&bytes).map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            "无法解析请求：请发送 {\"workspace\":\"服务器目录\"} 形式的 JSON。".to_string(),
+        )
+    })?;
+    if request.workspace.trim().is_empty() {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请指定要操作的已登记 workspace。".to_string(),
+        ));
+    }
+    Ok(request.workspace)
+}
+
+/// “检查远端”：真实 fetch 当前分支已有 upstream 的远端，成功后返回刷新后的完整 Git 状态。
+///
+/// 检查不要求工作区干净，也不修改工作树、索引或本地分支；普通目录、detached HEAD 与没有远端
+/// upstream 的状态分别明确拒绝。检查与 Commit/Sync 共用同一份仓库写操作资格。
+async fn check_workspace_remote(State(state): State<AppState>, request: Request) -> Response {
+    let workspace = match workspace_target(request).await {
+        Ok(workspace) => workspace,
+        Err(response) => return response,
+    };
+    let registered = match registered_workspace(&state, &workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
+    let outcome = tokio::task::spawn_blocking(move || {
+        sync::check(&registered, timeout, &locks, &sync_state)
+    })
+    .await;
+    match outcome {
+        Ok(sync::CheckOutcome::Checked(status)) => (StatusCode::OK, Json(status)).into_response(),
+        Ok(sync::CheckOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可检查的远端。".to_string(),
+        ),
+        Ok(sync::CheckOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次检查没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(sync::CheckOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "sync-blocked", reason)
+        }
+        Ok(sync::CheckOutcome::NoUpstream) => rejected_owned(
+            StatusCode::CONFLICT,
+            "no-upstream",
+            "当前分支没有配置 upstream：无法确定要检查的远端；本功能不会代替你配置 upstream。"
+                .to_string(),
+        ),
+        Ok(sync::CheckOutcome::Failed(error)) => git_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "检查远端的任务异常结束，无法确认远端状态。".to_string(),
+        ),
+    }
+}
+
+/// “按既有 upstream 同步”：检查远端 → pull → 按需 push。
+///
+/// 页面与直接请求都拒绝普通目录、脏工作区、detached HEAD、冲突或未完成流程，以及没有远端
+/// upstream 的状态。执行放在独立任务里：客户端断线不会取消已接受的同步，也不会重放。
+async fn sync_workspace(State(state): State<AppState>, request: Request) -> Response {
+    let workspace = match workspace_target(request).await {
+        Ok(workspace) => workspace,
+        Err(response) => return response,
+    };
+    let registered = match registered_workspace(&state, &workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
+    let response_workspace = registered.clone();
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let outcome = tokio::task::spawn_blocking(move || {
+            sync::execute(&registered, timeout, &locks, &sync_state)
+        })
+        .await;
+        let response = sync_response(response_workspace, outcome);
+        let _ = sender.send(response);
+    });
+
+    match receiver.await {
+        Ok(response) => response,
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "sync-result-unavailable",
+            "本次同步没有送回结果：无法确认执行结果，请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+fn sync_response(
+    workspace: String,
+    outcome: Result<sync::SyncOutcome, tokio::task::JoinError>,
+) -> Response {
+    match outcome {
+        Ok(sync::SyncOutcome::Synced(mut accepted)) => {
+            accepted.workspace = workspace;
+            (StatusCode::OK, Json(accepted)).into_response()
+        }
+        Ok(sync::SyncOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Sync。".to_string(),
+        ),
+        Ok(sync::SyncOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次请求没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(sync::SyncOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "sync-blocked", reason)
+        }
+        Ok(sync::SyncOutcome::Dirty) => rejected_owned(
+            StatusCode::CONFLICT,
+            "sync-dirty-worktree",
+            "工作区有未提交变更：Sync 只对干净工作区可用；本功能不会 stash 或隐式提交。".to_string(),
+        ),
+        Ok(sync::SyncOutcome::NoUpstream) => rejected_owned(
+            StatusCode::CONFLICT,
+            "no-upstream",
+            "当前分支没有配置 upstream：Sync 不可用；本功能不会配置 upstream 或发布分支。"
+                .to_string(),
+        ),
+        Ok(sync::SyncOutcome::Failed {
+            step,
+            error,
+            completed,
+        }) => {
+            let mut message = format!("同步在 {step} 步骤失败：{}", error.message());
+            if !completed.is_empty() {
+                message.push_str(&format!(
+                    " 已完成的步骤（{}）不会被自动撤销。",
+                    completed.join(" → ")
+                ));
+            }
+            let status = match &error {
+                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            };
+            rejected_owned(status, error.code(), message)
+        }
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "sync-result-unavailable",
+            "同步任务异常结束，无法确认执行结果；请按实际仓库状态核对。".to_string(),
         ),
     }
 }
