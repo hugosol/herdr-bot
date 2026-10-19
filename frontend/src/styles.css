@@ -656,6 +656,18 @@ h1 {
   font-weight: 600;
 }
 
+/* 自动更新失效或连接中断：明说内容可能过期，并保留手动读取入口。 */
+.watch-warning {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #d69a2d;
+  border-radius: 0.35rem;
+  background: #342c1c;
+  color: #ffe9bd;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
 /* 变更列表：只呈现待提交项；删除项仍在列表中，但浏览树只显示磁盘上存在的文件。 */
 .changes {
   display: flex;

@@ -47,8 +47,10 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
+pub mod watch;
 pub mod workspaces;
 
+use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,9 +61,12 @@ use axum::body::to_bytes;
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path as UrlPath, Query, Request, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
@@ -119,6 +124,10 @@ pub struct AppState {
     pub git_timeout: Duration,
     /// 同一实际仓库的 Git 写操作资格；与固定操作的执行资格完全独立。
     pub repository_locks: Arc<commit::RepositoryLocks>,
+    /// workspace 文件事件监听与按 workspace 合并的自动刷新通知。
+    ///
+    /// 每个已登记 workspace 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
+    pub workspace_watch: Arc<watch::WorkspaceWatchManager>,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -191,6 +200,9 @@ pub fn app_with_state(
         preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
         repository_locks: Arc::new(commit::RepositoryLocks::new()),
+        workspace_watch: Arc::new(watch::WorkspaceWatchManager::new(
+            config.workspaces.refresh_interval_seconds.duration(),
+        )),
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -229,6 +241,9 @@ pub fn app_with_state(
         .route("/api/workspaces/commit", post(commit_workspace))
         // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
         .route("/api/workspaces/overview", get(workspaces_overview))
+        // 自动更新的只读长连接：真实文件系统事件按 workspace 合并后通知页面重新读取；
+        // 同一 workspace 的所有观察者共享一条监听，监听失效会明确下发错误而不是保持静默。
+        .route("/api/workspaces/watch", get(watch_workspaces))
         .route("/api/workspaces/remove", post(unregister_workspace))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
@@ -492,7 +507,14 @@ async fn list_workspaces(State(state): State<AppState>) -> Response {
 /// “登记 workspace”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
 async fn register_workspace(State(state): State<AppState>, request: Request) -> Response {
     match workspace_path(request).await {
-        Ok(path) => workspace_list_response(state.workspaces.register(&path).await),
+        Ok(path) => match state.workspaces.register(&path).await {
+            Ok(workspaces) => {
+                // 新登记的 workspace 立即开始监听；监听失败会作为健康错误交给观察连接。
+                state.workspace_watch.reconcile(&workspaces).await;
+                workspace_list_response(Ok(workspaces))
+            }
+            Err(error) => workspace_error_response(error),
+        },
         Err(rejection) => rejection,
     }
 }
@@ -500,7 +522,13 @@ async fn register_workspace(State(state): State<AppState>, request: Request) -> 
 /// “取消登记”：只移除登记项，不删除目录或文件。
 async fn unregister_workspace(State(state): State<AppState>, request: Request) -> Response {
     match workspace_path(request).await {
-        Ok(path) => workspace_list_response(state.workspaces.unregister(&path).await),
+        Ok(path) => match state.workspaces.unregister(&path).await {
+            Ok(workspaces) => {
+                state.workspace_watch.reconcile(&workspaces).await;
+                workspace_list_response(Ok(workspaces))
+            }
+            Err(error) => workspace_error_response(error),
+        },
         Err(rejection) => rejection,
     }
 }
@@ -666,6 +694,52 @@ async fn workspace_git_status(
             "读取 Git 状态的任务异常结束，无法确认当前分支与待提交变更。".to_string(),
         ),
     }
+}
+
+/// “订阅自动更新”：一条只读 SSE 长连接。
+///
+/// 首帧是全部被监听 workspace 的快照（实际生效的间隔、健康与最近刷新），之后同一 workspace 的所有
+/// 观察者共享同一条监听与同一份节流状态，只收到合并后的刷新通知或监听健康变化。
+/// 这里只下发本地事件；远端状态仍需页面显式检查，不因本连接自动 fetch。
+async fn watch_workspaces(State(state): State<AppState>) -> Response {
+    let workspaces = match state.workspaces.list().await {
+        Ok(workspaces) => workspaces,
+        Err(error) => return workspace_error_response(error),
+    };
+    // 先订阅再对齐监听：对齐期间新建立的监听健康与刷新都不会漏掉。
+    let receiver = state.workspace_watch.subscribe();
+    state.workspace_watch.reconcile(&workspaces).await;
+    let manager = Arc::clone(&state.workspace_watch);
+    let first = manager.snapshot().await;
+
+    let stream = stream::unfold(
+        (receiver, Some(first)),
+        move |(mut receiver, pending)| {
+            let manager = Arc::clone(&manager);
+            async move {
+                let snapshot = match pending {
+                    Some(snapshot) => snapshot,
+                    None => match receiver.recv().await {
+                        Ok(frame) => {
+                            return Some((
+                                Ok::<Event, Infallible>(watch::frame_event(frame)),
+                                (receiver, None),
+                            ))
+                        }
+                        Err(RecvError::Lagged(_)) => manager.snapshot().await,
+                        Err(RecvError::Closed) => return None,
+                    },
+                };
+                Some((
+                    Ok(watch::snapshot_event(snapshot)),
+                    (receiver, None),
+                ))
+            }
+        },
+    );
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response()
 }
 
 fn git_error_response(error: git::GitError) -> Response {
