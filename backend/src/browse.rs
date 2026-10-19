@@ -353,6 +353,14 @@ pub(crate) fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError
     Ok(canonical)
 }
 
+/// 校验相对路径写法并规范化成 `/` 分隔的文本；不读取文件系统。
+///
+/// 所有公开读取入口在读取前都用它确认路径不会越出 workspace 根，因此 `diff` 的旧侧路径
+/// 也走同一份规则，而不是因为来自 Git 历史就跳过边界检查。
+pub(crate) fn normalize_relative(relative: &str) -> Result<String, BrowseError> {
+    Ok(relative_components(relative)?.join("/"))
+}
+
 /// 校验相对路径写法，返回逐级分量；任何可能逃出根的写法都在这里拒绝。
 fn relative_components(relative: &str) -> Result<Vec<String>, BrowseError> {
     let trimmed = relative.trim();
@@ -563,7 +571,7 @@ fn map_metadata_error(error: io::Error) -> BrowseError {
 }
 
 /// 按内容识别文本：只接受完整有效的 UTF-8，且拒绝 NUL 字节与大量控制字符。
-fn classify_text(bytes: &[u8]) -> Result<String, &'static str> {
+pub(crate) fn classify_text(bytes: &[u8]) -> Result<String, &'static str> {
     // 不做 BOM 剥离：返回的文本必须与文件字节一一对应，BOM 只是开头的合法 UTF-8 字符。
     if bytes.contains(&0) {
         return Err("文件包含 NUL 字节，不是可文本预览的文本。");

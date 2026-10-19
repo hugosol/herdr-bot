@@ -215,6 +215,8 @@ pub fn app_with_state(
         .route("/api/workspaces/file", get(read_workspace_file))
         // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
         .route("/api/workspaces/git-status", get(workspace_git_status))
+        // 单个变更的审查 diff：旧侧是 HEAD，新侧是最终本地内容；两侧各自应用预览上限。
+        .route("/api/workspaces/diff", get(workspace_change_diff))
         // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
         .route("/api/workspaces/overview", get(workspaces_overview))
         .route("/api/workspaces/remove", post(unregister_workspace))
@@ -662,6 +664,77 @@ fn git_error_response(error: git::GitError) -> Response {
         }
     };
     rejected_owned(status, error.code(), error.message())
+}
+
+fn diff_error_response(error: git::DiffError) -> Response {
+    match error {
+        git::DiffError::Browse(error) => browse_error_response(error),
+        git::DiffError::Git(error) => git_error_response(error),
+    }
+}
+
+/// 一次审查 diff 请求的查询参数：登记路径、新路径与可选的 Git 旧路径。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiffQuery {
+    workspace: String,
+    path: String,
+    #[serde(default)]
+    old_path: Option<String>,
+}
+
+/// “读取审查 diff”：旧侧取当前分支最新本地提交，新侧取最终本地文件。
+///
+/// 新增、删除、已识别重命名与部分暂存都使用同一入口；旧路径只用于定位 Git 历史内容，仍先经过
+/// workspace 根边界检查。任一侧超限或二进制时返回明确限制，不返回完整内容。
+async fn workspace_change_diff(
+    State(state): State<AppState>,
+    query: Result<Query<DiffQuery>, QueryRejection>,
+) -> Response {
+    let Query(query) = match query {
+        Ok(query) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "审查 diff 需要 `workspace` 与 `path` 参数，可选 `oldPath`，且不接受其他参数。"
+                    .to_string(),
+            );
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    if query.path.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-query",
+            "审查 diff 需要非空的 `path` 参数。".to_string(),
+        );
+    }
+
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let limit = state.preview_limit_bytes;
+    match tokio::task::spawn_blocking(move || {
+        git::change_diff(&registered, &query.path, query.old_path.as_deref(), limit)
+    })
+    .await
+    {
+        Ok(Ok(diff)) => (StatusCode::OK, Json(diff)).into_response(),
+        Ok(Err(error)) => diff_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取审查 diff 的任务异常结束，无法确认旧新内容。".to_string(),
+        ),
+    }
 }
 
 /// 校验查询面：缺失、重复或未知参数都以 JSON 类别拒绝，不猜测请求意图。

@@ -6,7 +6,7 @@
 
 **Blocked by:** 03: 准确定位 Git 待提交变更.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 依据已批准的 [contract](../contract.md) 与 [spec](../spec.md)，通过 S1/S2 验收。内部读取方法和文本识别细节可按项目惯例决定，但不能改变完整审查范围或读取边界。
 
@@ -40,3 +40,33 @@ P21 全部覆盖与测试归 04。P47 的空树审查由本票提供，但首提
 ## Verification boundaries
 
 采用真实隔离仓库、独立预期与实际浏览器，不修改用户工作仓库。宽窄屏自动验证不能代替手机实机 H1；本票完成自身自动工作后提供可复用截图和场景，08 汇总证据。
+
+## Comments
+
+### 实现完成，等待集成（2026-10-19）
+
+- 实现提交：`b01d01c`（当前票据分支）。尚未合入 `dev`，因此状态保持 `in-progress`，由独立集成子代理
+  验证并合入后再关闭。
+- 自动检查：
+  - `cargo test --test workspace_diff` → `4 passed`：真实部分暂存仓库（HEAD `beta`、索引 `STAGED`、最终
+    `STAGED/FINAL`，另有与 HEAD 不同的远端跟踪引用）证明旧侧是 HEAD，而不是索引或远端；新增/删除、
+    已识别改名旧路径、无首次提交空树比较；32 字节精确边界、两侧各自超限组合、两侧二进制；根外/遍历/
+    绝对路径、真实符号链接、Windows 目录联接、根替换、旧路径遍历、未登记 workspace 与封闭查询面；
+    请求前后索引语义与文件字节不变。
+  - 后端突变验证：临时把旧侧改成索引对象，HEAD→最终内容用例因旧侧返回 `STAGED` 而不是 `beta` 失败；
+    还原后 4 例通过。
+  - `cargo test --test workspace_git_status` → `7 passed`（状态/分支/角标回归，确认 `worktree_root` 抽取
+    未改变普通目录、父仓库子目录与损坏元数据行为）。
+  - `cargo test --no-fail-fast` → `222 passed / 30 suites`。
+  - `npm test` → `16 files / 113 tests passed`；新增 `tests/diffReview.test.tsx` 8 例，覆盖宽屏左右对照、
+    重命名旧路径、增删空侧、HTML/script 纯文本、超限/二进制不渲染完整 diff、内部视图与顶层 tab 上下文、
+    窄屏统一 diff、明确返回与精确滚动恢复。
+  - 前端突变验证：临时把 `complete:false` 也渲染成 diff 行，超限/二进制两例失败；还原后 8 例通过。
+  - `npm run build`（`tsc --noEmit && vite build`）成功。
+- 真实 Chromium 证据：`.scratch/workspace-file-browser/evidence/04-review-final-content-diffs/`
+  （隔离真实 Git 仓库与登记文件，未执行关机或远端操作）。桌面 `1024×800` 左列表右 diff、默认左右对照；
+  23 项列表滚动并往返内部视图/顶层 tab 后选择、diff 与 `scrollTop=260` 保留；旧侧/新侧超限、二进制与
+  HTML/script 纯文本均经计算样式与 DOM 核对；窄屏 `390×844` 默认统一 diff、明确返回、滚动精确恢复。
+  连续读取前后 `.git/index`、`ls-files --stage`、已暂存/未暂存 diff 与所有文件字节 SHA-256 不变。
+- 已知限制：宽屏/窄屏证据来自无头 Chromium，窄屏为视口仿真；手机实机触摸、diff 滚动与返回手感仍为
+  human-led H1，由 08 汇总后交用户确认。Commit/Sync、审查版本复核、文件事件刷新与冲突恢复属于后续票。
