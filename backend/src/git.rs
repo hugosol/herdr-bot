@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::browse;
+use crate::sync::{self, SyncFacts, SyncState};
 use crate::workspaces::{self, RegisteredWorkspace};
 
 /// 超时后等待子进程确认结束的宽限；超过它仍未确认终止时，调用方必须保留仓库资格。
@@ -79,6 +80,8 @@ pub struct GitStatus {
     /// 页面与直接请求都必须阻止普通 Commit 的仓库级原因；没有阻塞时为 `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blocked_reason: Option<String>,
+    /// 当前分支既有 upstream 与最近已知的 ahead/behind；状态读取本身不访问网络。
+    pub sync: SyncFacts,
 }
 
 /// 登记列表中一个 workspace 的角标概览。
@@ -103,10 +106,11 @@ pub struct WorkspaceSummary {
 pub fn overview(
     registered: &[RegisteredWorkspace],
     timeout: Duration,
+    sync_state: &SyncState,
 ) -> Vec<WorkspaceSummary> {
     registered
         .iter()
-        .map(|workspace| match status(&workspace.path, timeout) {
+        .map(|workspace| match status(&workspace.path, timeout, sync_state) {
             Ok(status) => WorkspaceSummary {
                 path: workspace.path.clone(),
                 repository: status.repository,
@@ -202,7 +206,11 @@ impl GitError {
 ///
 /// 先重新核对登记根（边界与只读语义与浏览一致），再判断它是否是一个工作树根；普通目录返回
 /// `repository: false`，不会运行 `git status`，也就不会把父仓库的变更误当成该 workspace 的变更。
-pub fn status(registered_root: &str, timeout: Duration) -> Result<GitStatus, GitError> {
+pub fn status(
+    registered_root: &str,
+    timeout: Duration,
+    sync_state: &SyncState,
+) -> Result<GitStatus, GitError> {
     let Some(root) = worktree_root(registered_root, timeout)? else {
         return Ok(plain_workspace(registered_root));
     };
@@ -236,6 +244,7 @@ pub fn status(registered_root: &str, timeout: Duration) -> Result<GitStatus, Git
         timeout,
     )?;
     let blocked_reason = blocked_reason(&root, &changes, detached, timeout)?;
+    let sync = sync::facts(&root, branch.as_deref(), detached, timeout, sync_state)?;
 
     Ok(GitStatus {
         workspace: registered_root.to_string(),
@@ -247,6 +256,7 @@ pub fn status(registered_root: &str, timeout: Duration) -> Result<GitStatus, Git
         changes,
         review_token: Some(review_token),
         blocked_reason,
+        sync,
     })
 }
 
@@ -261,6 +271,7 @@ fn plain_workspace(registered_root: &str) -> GitStatus {
         pending_count: 0,
         review_token: None,
         blocked_reason: None,
+        sync: SyncFacts::default(),
     }
 }
 
@@ -302,7 +313,10 @@ pub(crate) fn worktree_root(
 }
 
 /// 当前分支名；detached HEAD 用 `detached: true` 表示，而不是编造一个分支名。
-fn current_branch(root: &Path, timeout: Duration) -> Result<(Option<String>, bool), GitError> {
+pub(crate) fn current_branch(
+    root: &Path,
+    timeout: Duration,
+) -> Result<(Option<String>, bool), GitError> {
     let output = run_git(
         root,
         &["symbolic-ref", "--short", "--quiet", "HEAD"],

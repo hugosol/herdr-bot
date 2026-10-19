@@ -26,6 +26,7 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
 | `backend/src/git.rs` | Git workspace 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
+| `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
 | `backend/src/watch.rs` | workspace 本地文件/Git 元数据监听、按 workspace 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
@@ -301,7 +302,7 @@ command_timeout_seconds = 300
 |---|---|---|
 | `command_timeout_seconds` | `300` | 每条 Git 命令允许执行的最长时间（秒） |
 
-- 时限覆盖状态读取、diff、暂存、提交以及后续同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
+- 时限覆盖状态读取、diff、暂存、提交、远端检查以及同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
   （包括 hook 派生出的子进程），停止本次执行并中断后续步骤；页面明确显示这是本功能时限，并保留取消前
   已有的 Git 输出，不伪造 Git 退出消息。
 - 终止尚未确认时，该仓库的写操作资格继续被持有，后来的 Commit 不会与它重叠；确认终止后才释放。
@@ -334,7 +335,7 @@ command_timeout_seconds = 300
 
 登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
 内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff，并在审查版本仍未
-失效时执行整仓 Commit；Sync 由后续票提供。
+失效时执行整仓 Commit；工作区干净时也可按当前分支的既有 upstream 检查远端并 Sync。
 
 - **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。目录按需展开；选择变更后右侧显示从当前分支最新
   本地提交到最终本地内容的差异，默认左右对照。
@@ -362,7 +363,9 @@ command_timeout_seconds = 300
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
   与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
   不伪装成空目录或干净仓库。
-- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 仍需显式检查。
+- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 只来自显式
+  “检查远端”或 Sync 前检查，并显示最近检查时间。未检查时页面明确显示“尚未检查”，不把本地远端跟踪
+  引用当成实时状态。
 
 **待提交集合**（`GET /api/workspaces/git-status`）：
 
@@ -391,8 +394,12 @@ command_timeout_seconds = 300
   `binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。
 - `GET /api/workspaces/git-status?workspace=<登记路径>` 返回
   `{"workspace":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
-  "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}]}`。
-  普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时是明确错误，不是干净状态。
+  "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}],
+  "sync":{"upstream":{"remote":"…","branch":"…","short":"…"}|null,"ahead":N|null,"behind":N|null,
+  "remoteCheckedAt":毫秒|null}}`。普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时
+  是明确错误，不是干净状态。`sync` 只描述本地最近已知的远端跟踪事实：本读取**不发起 fetch**，
+  `remoteCheckedAt` 为 `null` 表示本实例尚未成功检查远端，`ahead`/`behind` 为 `null` 表示跟踪引用或
+  首次提交尚不可用。
 - `GET /api/workspaces/diff?workspace=<登记路径>&path=<相对新路径>`（重命名再加
   `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
   `{"workspace":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
@@ -450,6 +457,54 @@ Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Comm
 失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
 `commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
 `git-command-failed`、`workspace-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
+
+### 按现有 upstream 安全 Sync
+
+工作区干净时，变更视图显示 Sync 主按钮、当前分支的既有 upstream、最近检查时间与已知 ahead/behind：
+
+| 状态 | 页面与操作 |
+|---|---|
+| 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作区同步 |
+| 干净、有 upstream、已知 ahead/behind 非零 | Sync 可用；显示待拉取与待推送数量 |
+| 干净、已知已同步 | 主按钮禁用以“已同步”显示；仍可主动检查远端 |
+| 干净、远端尚未检查 | Sync 禁用并说明原因；“检查远端”可执行 |
+| 干净、没有 upstream | 显示限制；不提供 Publish Branch，也不隐式配置 upstream |
+| detached HEAD、冲突或未完成流程 | Sync 与 Commit 均禁用并显示仓库级原因 |
+
+1. “检查远端”执行一次真实的 `git fetch <upstream.remote>`，更新本地远端跟踪引用并记录最近检查时间。
+   普通文件事件、页面读取和自动刷新都不会触发 fetch；未检查时页面不会把旧引用说成实时状态。
+2. Sync 只弹出一句确认与“确认同步 / 取消”。取消不发送任何请求，因此没有 fetch、pull、push 或其他
+   Git 写入。
+3. 确认后服务端重新核对目录、当前分支、既有 upstream、干净工作区与阻塞状态，再按
+   **fetch → pull → 按需 push** 执行。fetch 使用当前分支 upstream 指向的远端；pull 与 push 不附加
+   远端、分支或策略参数，完全遵循仓库已有的 merge/rebase/ff-only 与 push 配置。
+4. 只有 pull 后仍存在本地待推送提交时才执行 `git push`；只有 behind 时不会产生无意义推送。不 stash、
+   不隐式 commit、不强推、不配置 upstream、不修改 Git 配置。
+5. 任一步失败立即停止后续步骤，页面显示 Git 返回的纯文本诊断（含 HTML/script 也不会执行）。已经生效
+   的步骤不会被自动撤销：例如 pull 成功后 push 被拒绝，本地已拉取/合并的提交与引用保持实际状态，页面
+   刷新后显示仍需推送的数量，不宣称事务回滚。
+6. Sync 与 Commit 共用同一实际仓库的写操作资格：Sync/Sync、Commit/Sync 与路径别名并发都不会重叠；
+   后到者得到 `git-write-in-progress`，不等待、不排队。连接断开不取消已接受的 Sync；命令超时且终止
+   未确认时资格继续保持。
+7. 每条 Git 命令都受 `[git] command_timeout_seconds` 限制；超时消息明确说明这是本功能时限并保留取消前
+   已有的 Git 输出，不伪造 Git 退出诊断。
+8. 沿用服务器现有的身份与凭据：`GIT_TERMINAL_PROMPT=0`，不新开终端或网页凭据流程；需要交互的凭据、
+   编辑器或签名条件会明确失败或按配置超时。
+9. 只同步登记根自身的工作树；不递归同步嵌套仓库或子模块内部仓库，它们的 HEAD、索引与内部工作区保持
+   原样。父仓库自身已跟踪的 gitlink 变化仍按普通提交/同步事实处理。
+
+接口：
+
+- `POST /api/workspaces/check-remote`，JSON `{"workspace":"服务器目录"}`。成功返回刷新后的完整 Git 状态
+  （与 `GET /api/workspaces/git-status` 同形）。失败类别例如 `not-a-repository`、`no-upstream`、
+  `sync-blocked`、`git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`。
+- `POST /api/workspaces/sync`，JSON `{"workspace":"服务器目录"}`。成功返回
+  `{"workspace":"…","outcome":"synced","branch":"…","upstream":{"remote":"…","branch":"…","short":"…"},
+  "ahead":N,"behind":N,"remoteCheckedAt":毫秒,"pulled":N,"pushed":N,
+  "steps":[{"step":"fetch|pull|push","outcome":"completed|skipped"}]}`。
+  失败类别例如 `not-a-repository`、`sync-dirty-worktree`、`sync-blocked`、`no-upstream`、
+  `git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`；失败消息会指出
+  失败步骤，并在已有步骤完成时说明它们不会被自动撤销。
 
 ### 默认绑定与改绑
 

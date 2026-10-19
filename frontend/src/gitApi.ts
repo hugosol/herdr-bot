@@ -14,6 +14,26 @@ export type GitChange = {
   kind: ChangeKind
 }
 
+/** 当前分支已有的 upstream；`short` 是 Git 的简短写法（如 `upstream/feature`）。 */
+export type UpstreamRef = {
+  remote: string
+  branch: string
+  short: string
+}
+
+/**
+ * 远端同步事实。
+ *
+ * `ahead`/`behind` 来自最近已知的本地远端跟踪引用；`remoteCheckedAt` 是服务端最后一次成功检查
+ * 远端的时刻（Unix 毫秒）。`null` 表示尚未检查，页面不能把它当成实时或已同步。
+ */
+export type SyncFacts = {
+  upstream: UpstreamRef | null
+  ahead: number | null
+  behind: number | null
+  remoteCheckedAt: number | null
+}
+
 /** 一个 workspace 的 Git 状态；普通目录是 `repository: false`。 */
 export type GitStatus = {
   workspace: string
@@ -27,6 +47,8 @@ export type GitStatus = {
   reviewToken?: string
   /** 仓库级阻塞原因；存在时 Commit 不可用。 */
   blockedReason?: string | null
+  /** 远端同步事实；缺失时按“远端尚未检查”处理。 */
+  sync?: SyncFacts
 }
 
 /** 一次已确认提交的回执。 */
@@ -49,6 +71,20 @@ export type CommitResult =
   | { kind: 'ok'; value: CommitAccepted }
   | { kind: 'rejected'; code: string; message: string }
   | { kind: 'unreachable' }
+
+/** 一次成功同步的回执；`pulled`/`pushed` 是本次实际整合与推送的提交数。 */
+export type SyncAccepted = {
+  workspace: string
+  outcome: 'synced'
+  branch: string
+  upstream: UpstreamRef
+  ahead: number
+  behind: number
+  remoteCheckedAt: number
+  pulled: number
+  pushed: number
+  steps: { step: string; outcome: string }[]
+}
 
 /** 文件列表上的角标概览；不可访问的项带 `error`，普通目录没有待提交数量。 */
 export type WorkspaceSummary = {
@@ -94,6 +130,30 @@ function isGitChange(value: unknown): value is GitChange {
   return true
 }
 
+function isUpstreamRef(value: unknown): value is UpstreamRef {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('remote' in value) || typeof value.remote !== 'string') return false
+  if (!('branch' in value) || typeof value.branch !== 'string') return false
+  if (!('short' in value) || typeof value.short !== 'string') return false
+  return true
+}
+
+function isOptionalCount(value: unknown): value is number | null {
+  return value === null || typeof value === 'number'
+}
+
+function isSyncFacts(value: unknown): value is SyncFacts {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('upstream' in value)) return false
+  if (value.upstream !== null && !isUpstreamRef(value.upstream)) return false
+  if (!('ahead' in value) || !isOptionalCount(value.ahead)) return false
+  if (!('behind' in value) || !isOptionalCount(value.behind)) return false
+  if (!('remoteCheckedAt' in value) || !isOptionalCount(value.remoteCheckedAt)) {
+    return false
+  }
+  return true
+}
+
 function isGitStatus(value: unknown): value is GitStatus {
   if (typeof value !== 'object' || value === null) return false
   if (!('workspace' in value) || typeof value.workspace !== 'string') return false
@@ -120,6 +180,9 @@ function isGitStatus(value: unknown): value is GitStatus {
   ) {
     return false
   }
+  if ('sync' in value && value.sync !== undefined && !isSyncFacts(value.sync)) {
+    return false
+  }
   // 项数必须与集合一致；不一致的答复不能冒充可用状态。
   return value.pendingCount === value.changes.length
 }
@@ -134,6 +197,31 @@ function isCommitAccepted(value: unknown): value is CommitAccepted {
     if (typeof value.branch !== 'string') return false
   }
   return true
+}
+
+function isSyncAccepted(value: unknown): value is SyncAccepted {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('outcome' in value) || value.outcome !== 'synced') return false
+  if (!('branch' in value) || typeof value.branch !== 'string') return false
+  if (!('upstream' in value) || !isUpstreamRef(value.upstream)) return false
+  if (!('ahead' in value) || typeof value.ahead !== 'number') return false
+  if (!('behind' in value) || typeof value.behind !== 'number') return false
+  if (!('remoteCheckedAt' in value) || typeof value.remoteCheckedAt !== 'number') {
+    return false
+  }
+  if (!('pulled' in value) || typeof value.pulled !== 'number') return false
+  if (!('pushed' in value) || typeof value.pushed !== 'number') return false
+  if (!('steps' in value) || !Array.isArray(value.steps)) return false
+  return value.steps.every(
+    (step) =>
+      typeof step === 'object' &&
+      step !== null &&
+      'step' in step &&
+      typeof step.step === 'string' &&
+      'outcome' in step &&
+      typeof step.outcome === 'string',
+  )
 }
 
 function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
@@ -235,6 +323,40 @@ export function commitWorkspace(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspace, message, reviewToken }),
+    },
+  )
+}
+
+/**
+ * 主动检查当前分支的既有 upstream：服务端真实 fetch 并返回刷新后的完整 Git 状态。
+ *
+ * 只发送一次 POST；网络中断返回 `unreachable`，由调用方按实际状态重新读取，不自动重试。
+ */
+export function checkWorkspaceRemote(workspace: string): Promise<GitResult<GitStatus>> {
+  return gitRequest(
+    '/api/workspaces/check-remote',
+    (payload) => (isGitStatus(payload) ? payload : null),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace }),
+    },
+  )
+}
+
+/**
+ * 按既有 upstream 同步：服务端重新检查远端，再 pull 并按需 push。
+ *
+ * 页面不提供分支或远端参数；执行目标由服务端按当前分支的既有配置决定。
+ */
+export function syncWorkspace(workspace: string): Promise<GitResult<SyncAccepted>> {
+  return gitRequest(
+    '/api/workspaces/sync',
+    (payload) => (isSyncAccepted(payload) ? payload : null),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace }),
     },
   )
 }

@@ -21,8 +21,10 @@ import {
   type DiffSide,
 } from './diffApi'
 import {
+  checkWorkspaceRemote,
   commitWorkspace,
   fetchGitStatus,
+  syncWorkspace,
   type ChangeKind,
   type GitChange,
   type GitStatus,
@@ -175,6 +177,13 @@ export function WorkspaceBrowser({
   const [commitFeedback, setCommitFeedback] = useState<
     { tone: 'success' | 'error' | 'unconfirmed'; text: string } | null
   >(null)
+  // 远端检查与同步：检查是可重复的显式读取；同步只发送一次写请求，确认后才能发起。
+  const [remoteChecking, setRemoteChecking] = useState(false)
+  const [syncConfirming, setSyncConfirming] = useState(false)
+  const [syncRunning, setSyncRunning] = useState(false)
+  const [syncFeedback, setSyncFeedback] = useState<
+    { tone: 'success' | 'error' | 'unconfirmed'; text: string } | null
+  >(null)
 
   const narrow = useNarrowLayout()
   const watchGeneration = watch?.generation ?? 0
@@ -195,6 +204,9 @@ export function WorkspaceBrowser({
   const scrollPositions = useRef(new Map<string, number>())
   const activePreviously = useRef(active)
   const seenWatchGeneration = useRef(watchGeneration)
+  // 异步写操作返回时只更新仍属于同一个 workspace 的页面；切换 workspace 不能把旧结果贴到新目录。
+  const workspaceRef = useRef(workspace)
+  workspaceRef.current = workspace
 
   const loadDirectory = useCallback(
     async (path: string) => {
@@ -348,6 +360,10 @@ export function WorkspaceBrowser({
     setCommitConfirming(false)
     setCommitRunning(false)
     setCommitFeedback(null)
+    setRemoteChecking(false)
+    setSyncConfirming(false)
+    setSyncRunning(false)
+    setSyncFeedback(null)
     changesScrollPosition.current = 0
     scrollPositions.current = new Map()
     void loadDirectory('')
@@ -472,7 +488,64 @@ export function WorkspaceBrowser({
     gitStatus.pendingCount > 0 &&
     gitStatus.reviewToken !== undefined
   const canSubmitCommit =
-    commitAvailable && commitMessage.trim() !== '' && !commitRunning
+    commitAvailable &&
+    commitMessage.trim() !== '' &&
+    !commitRunning &&
+    !remoteChecking &&
+    !syncRunning
+
+  // 远端事实只来自后端返回的最近已知状态；未检查、未知 ahead/behind 分别给出原因，不把缓存说成实时。
+  const sync = gitStatus?.sync
+  const upstream = sync?.upstream ?? null
+  const remoteCheckedAt = sync?.remoteCheckedAt ?? null
+  const syncCounts =
+    sync !== undefined && sync.ahead !== null && sync.behind !== null
+      ? { ahead: sync.ahead, behind: sync.behind }
+      : null
+  const worktreeClean =
+    gitStatus !== null && gitStatus.repository && gitStatus.pendingCount === 0
+  const checkAvailable =
+    gitStatus !== null &&
+    gitStatus.repository &&
+    upstream !== null &&
+    !remoteChecking &&
+    !syncRunning
+  let syncButtonLabel = 'Sync'
+  let syncStateHint: string
+  if (blockedReason !== null) {
+    syncStateHint = blockedReason
+  } else if (!worktreeClean) {
+    syncStateHint = '工作区有未提交变更：Sync 只对干净工作区可用。'
+  } else if (upstream === null) {
+    syncStateHint =
+      '当前分支没有 upstream：Sync 不可用；本功能不会配置 upstream 或发布分支。'
+  } else if (remoteCheckedAt === null || syncCounts === null) {
+    syncStateHint = '远端尚未检查：请先检查远端；Sync 前必定重新检查。'
+  } else if (syncCounts.ahead === 0 && syncCounts.behind === 0) {
+    syncButtonLabel = '已同步'
+    syncStateHint = '最近已知远端状态与本地一致，当前没有需要同步的提交。'
+  } else {
+    syncStateHint = `待拉取 ${syncCounts.behind} 个提交，待推送 ${syncCounts.ahead} 个提交。`
+  }
+  const syncAvailable =
+    worktreeClean &&
+    upstream !== null &&
+    remoteCheckedAt !== null &&
+    syncCounts !== null &&
+    (syncCounts.ahead > 0 || syncCounts.behind > 0) &&
+    blockedReason === null &&
+    !remoteChecking &&
+    !syncRunning
+  const syncButtonState =
+    !worktreeClean ||
+    upstream === null ||
+    remoteCheckedAt === null ||
+    syncCounts === null ||
+    blockedReason !== null
+      ? 'disabled'
+      : syncCounts.ahead === 0 && syncCounts.behind === 0
+        ? 'synced'
+        : 'ready'
 
   /**
    * 确认后只发送一次提交请求。
@@ -517,6 +590,74 @@ export function WorkspaceBrowser({
     await refresh()
   }
 
+  /**
+   * 主动检查远端：只发送一次请求。成功时用服务端刚读取的事实替换当前状态，并显示真实检查时间；
+   * 明确拒绝原样显示 Git 诊断；观察中断显示未确认并重新读取实际状态，绝不自动重试。
+   */
+  async function runCheckRemote() {
+    if (!checkAvailable) return
+    const target = workspace
+    setRemoteChecking(true)
+    setSyncFeedback(null)
+    const result = await checkWorkspaceRemote(target)
+    if (workspaceRef.current !== target) return
+    setRemoteChecking(false)
+
+    if (result.kind === 'ok') {
+      setGitStatus(result.value)
+      setGitError(null)
+      const facts = result.value.sync
+      setSyncFeedback({
+        tone: 'success',
+        text: `远端已检查：待拉取 ${facts?.behind ?? 0} 个提交，待推送 ${facts?.ahead ?? 0} 个提交。`,
+      })
+      return
+    }
+    if (result.kind === 'rejected') {
+      setSyncFeedback({ tone: 'error', text: result.message })
+    } else {
+      setSyncFeedback({
+        tone: 'unconfirmed',
+        text:
+          '未确认：没有收到远端检查结果；页面不会自动重试，已重新读取本地可见的实际状态。',
+      })
+    }
+    await loadGitStatus()
+  }
+
+  /**
+   * 确认后只发送一次同步请求。
+   *
+   * 成功、明确拒绝与观察中断分别呈现；每一种归宿结束后都重新读取当前事实，但绝不自动重发写入。
+   */
+  async function runSync() {
+    setSyncConfirming(false)
+    if (!syncAvailable) return
+    const target = workspace
+    setSyncRunning(true)
+    setSyncFeedback(null)
+    const result = await syncWorkspace(target)
+    if (workspaceRef.current !== target) return
+    setSyncRunning(false)
+
+    if (result.kind === 'ok') {
+      setSyncFeedback({
+        tone: 'success',
+        text: `已同步（${result.value.upstream.short}）：拉取 ${result.value.pulled} 个提交，推送 ${result.value.pushed} 个提交。`,
+      })
+    } else if (result.kind === 'rejected') {
+      setSyncFeedback({ tone: 'error', text: result.message })
+    } else {
+      setSyncFeedback({
+        tone: 'unconfirmed',
+        text:
+          '未确认：没有收到同步响应，同步可能已经执行；页面不会自动重试，已按实际仓库状态刷新。',
+      })
+    }
+    // 拒绝、失败或断线后都用当前事实刷新；不能把确认前的状态继续当成结果。
+    await refresh()
+  }
+
   function commitBar(): ReactNode {
     if (gitStatus === null || !gitStatus.repository) return null
     return (
@@ -545,7 +686,7 @@ export function WorkspaceBrowser({
             onChange={(event) => setCommitMessage(event.target.value)}
             autoComplete="off"
             spellCheck={false}
-            disabled={commitRunning}
+            disabled={commitRunning || syncRunning}
           />
           <button
             type="submit"
@@ -555,6 +696,56 @@ export function WorkspaceBrowser({
           >
             {commitRunning ? '提交中……' : 'Commit'}
           </button>
+        </div>
+        <div className="sync-bar" data-testid="sync-bar">
+          <div className="sync-bar__row">
+            <span className="sync-bar__upstream" data-testid="sync-upstream">
+              {upstream === null ? 'upstream：未配置' : `upstream：${upstream.short}`}
+            </span>
+            <span
+              className="sync-bar__checked"
+              data-testid="remote-checked-at"
+              data-checked-at={remoteCheckedAt ?? undefined}
+            >
+              {remoteCheckedAt === null
+                ? '最近检查：尚未检查'
+                : `最近检查：${new Date(remoteCheckedAt).toLocaleString()}`}
+            </span>
+            <button
+              type="button"
+              className="sync-bar__button"
+              data-testid="check-remote-button"
+              disabled={!checkAvailable}
+              onClick={() => void runCheckRemote()}
+            >
+              {remoteChecking ? '检查中……' : '检查远端'}
+            </button>
+            {worktreeClean && (
+              <button
+                type="button"
+                className="sync-bar__button sync-bar__button--primary"
+                data-testid="sync-button"
+                data-state={syncButtonState}
+                disabled={!syncAvailable}
+                onClick={() => setSyncConfirming(true)}
+              >
+                {syncRunning ? '同步中……' : syncButtonLabel}
+              </button>
+            )}
+          </div>
+          <p className="sync-bar__state" data-testid="sync-state">
+            {syncStateHint}
+          </p>
+          {syncFeedback !== null && (
+            <p
+              className="commit-bar__feedback"
+              data-testid="sync-feedback"
+              data-tone={syncFeedback.tone}
+              role={syncFeedback.tone === 'success' ? 'status' : 'alert'}
+            >
+              {syncFeedback.text}
+            </p>
+          )}
         </div>
         {blockedReason !== null && (
           <p
@@ -1301,6 +1492,39 @@ export function WorkspaceBrowser({
               onClick={() => void runCommit()}
             >
               确认提交
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sync 的确认门禁同样只有一句消息；当前分支、upstream 与数量已由变更界面承载。 */}
+      {syncConfirming && (
+        <div
+          className="commit-confirm"
+          data-testid="sync-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label="确认同步"
+        >
+          <p className="commit-confirm__question">
+            确认按当前分支的既有 upstream 检查远端、拉取并在需要时推送？
+          </p>
+          <div className="commit-confirm__actions">
+            <button
+              type="button"
+              className="commit-confirm__cancel"
+              data-testid="sync-cancel"
+              onClick={() => setSyncConfirming(false)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="commit-confirm__go"
+              data-testid="sync-confirm"
+              onClick={() => void runSync()}
+            >
+              确认同步
             </button>
           </div>
         </div>
