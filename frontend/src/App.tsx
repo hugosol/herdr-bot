@@ -6,6 +6,7 @@ import { SessionsPanel } from './SessionsPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
+import type { WorkspaceWatchFeed } from './workspaceWatch'
 
 type PanelState =
   | { kind: 'idle' }
@@ -54,7 +55,13 @@ type Feedback = {
  * 运行时由 `main.tsx` 注入真实 SSE 数据源；组件本身不依赖全局 `EventSource`，因此组件测试
  * 可以用假数据源直接驱动。
  */
-export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?: SessionFeed } = {}) {
+export default function App({
+  sessionFeed = EMPTY_SESSION_FEED,
+  workspaceWatchFeed,
+}: {
+  sessionFeed?: SessionFeed
+  workspaceWatchFeed?: WorkspaceWatchFeed
+} = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
   // 每次打开或整页刷新都从会话列表开始：这里没有读取任何持久化的 tab 状态。
   const [tab, setTab] = useState<TabKey>('sessions')
@@ -162,7 +169,7 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
         data-testid="panel-files"
         hidden={tab !== 'files'}
       >
-        <FileListPanel active={tab === 'files'} />
+        <FileListPanel active={tab === 'files'} watchFeed={workspaceWatchFeed} />
       </div>
 
       <div

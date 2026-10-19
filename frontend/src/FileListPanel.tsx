@@ -5,6 +5,7 @@ import {
   fetchWorkspaceOverview,
   type WorkspaceSummary,
 } from './gitApi'
+import { useWorkspaceWatch } from './useWorkspaceWatch'
 import {
   fetchWorkspaces,
   registerWorkspace,
@@ -12,6 +13,10 @@ import {
   type WorkspaceRegistration,
   type WorkspaceResult,
 } from './workspaceApi'
+import {
+  describeWatchProblem,
+  type WorkspaceWatchFeed,
+} from './workspaceWatch'
 
 type Feedback = {
   kind: 'success' | 'error'
@@ -32,7 +37,14 @@ function describeFailure(result: WorkspaceResult, action: string): string {
  * 每次进入这个顶层入口都重新读取后端列表，因此另一台设备新增的登记会在这里出现；登记成功
  * 只表示后端已经持久化，取消登记只移除登记项。
  */
-export function FileListPanel({ active }: { active: boolean }) {
+export function FileListPanel({
+  active,
+  watchFeed,
+}: {
+  active: boolean
+  watchFeed?: WorkspaceWatchFeed
+}) {
+  const watch = useWorkspaceWatch(watchFeed, active)
   const [workspaces, setWorkspaces] = useState<WorkspaceRegistration[] | null>(null)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -87,6 +99,16 @@ export function FileListPanel({ active }: { active: boolean }) {
       cancelled = true
     }
   }, [active, loadOverview])
+
+  // 自动更新通知到达时只重读角标概览：事件已由后端按 workspace 合并，页面不再自行节流。
+  const watchRevision = watch.workspaces.reduce(
+    (sum, entry) => sum + entry.generation,
+    0,
+  )
+  useEffect(() => {
+    if (!active || openWorkspace !== null || watchRevision === 0) return
+    void loadOverview()
+  }, [active, openWorkspace, watchRevision, loadOverview])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -161,12 +183,30 @@ export function FileListPanel({ active }: { active: boolean }) {
     )
   }
 
+  // 列表上的监听问题只针对当前登记项：取消登记后残留的旧健康状态不应继续困扰页面。
+  const registeredPaths = new Set((workspaces ?? []).map((registration) => registration.path))
+  const failedWatch =
+    watch.workspaces.find(
+      (entry) => entry.health === 'error' && registeredPaths.has(entry.workspace),
+    ) ?? null
+  const listProblem =
+    workspaces === null || workspaces.length === 0
+      ? null
+      : describeWatchProblem(watch.connection, failedWatch, failedWatch?.workspace)
+
   if (openWorkspace !== null) {
+    const watchEntry =
+      watch.workspaces.find((entry) => entry.workspace === openWorkspace) ?? null
     return (
       <section className="workspaces" data-testid="file-list">
         <WorkspaceBrowser
           workspace={openWorkspace}
           active={active}
+          watch={{
+            entry: watchEntry,
+            connection: watch.connection,
+            generation: watchEntry?.generation ?? 0,
+          }}
           onBack={() => {
             setOpenWorkspace(null)
             void loadOverview()
@@ -182,6 +222,16 @@ export function FileListPanel({ active }: { active: boolean }) {
         这里的路径指 omp-bot 服务所在电脑上的目录，不是手机或浏览器所在设备。
         登记成功后由后端保存，本机与局域网设备共享；取消登记不会删除目录或文件。
       </p>
+
+      {listProblem !== null && (
+        <p
+          className="watch-warning"
+          data-testid={listProblem.kind === 'listener' ? 'watch-error' : 'watch-stale'}
+          role="alert"
+        >
+          {listProblem.text}
+        </p>
+      )}
 
       <form className="workspace-form" onSubmit={(event) => void submit(event)}>
         <label className="workspace-form__label" htmlFor="workspace-path">

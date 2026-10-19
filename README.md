@@ -26,6 +26,7 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
 | `backend/src/git.rs` | Git workspace 状态：当前分支、待提交变更、重命名/冲突类别与角标计数；只读查询 |
+| `backend/src/watch.rs` | workspace 本地文件/Git 元数据监听、按 workspace 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
@@ -34,6 +35,7 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览与 Git 变更内部子 tab、待提交着色与祖先目录提示 |
 | `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
 | `frontend/src/gitApi.ts` | Git 状态与 workspace 角标概览客户端，含响应形状校验 |
+| `frontend/src/workspaceWatch.ts` | 自动更新 SSE 数据源：首帧监听快照、合并后的刷新通知与监听健康 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -259,12 +261,15 @@ workspace 登记列表由后端以文件持久保存，本机与局域网设备�
 registry_file = 'E:\data\omp-bot-workspaces.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
 preview_limit_bytes = 1048576
+# 每个 workspace 自动刷新合并事件的最小间隔；缺省 10 秒。
+refresh_interval_seconds = 10
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `registry_file` | `workspaces.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
 | `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
+| `refresh_interval_seconds` | `10` | 每个 workspace 合并文件事件并自动刷新的最小间隔（秒） |
 
 - 登记文件不存在表示“还没有任何登记”，不是读取错误；列表在真实进程重启后仍然保留。
 - 登记成功只表示登记文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或文件内容
@@ -275,6 +280,8 @@ preview_limit_bytes = 1048576
 - 取消登记只移除登记项，不删除目录或文件；目录在登记后被外部删除时仍可取消登记。
 - `preview_limit_bytes` 必须是正整数；零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，
   不会静默回退到 1 MiB。缺省值只在字段或整段缺失时使用。
+- `refresh_interval_seconds` 必须是正整数秒；零、负数、小数、字符串或拼错的字段名同样让**启动明确失败**，
+  不会静默回退到 10 秒。缺省值只在字段或整段缺失时使用；运行中改写配置不会改变已启动实例。
 - 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
   就只显示大小与上限说明。
 
@@ -316,9 +323,18 @@ preview_limit_bytes = 1048576
   二进制文件给出“不可文本预览”原因。内容以纯文本显示，HTML/script 不会被执行。
 - **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。超限文件只显示大小与上限，不加载
   完整内容；二进制与超限都不影响文件在目录中的可见性。
-- **刷新**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会重新读取当前目录、所选文件与 Git 状态；
-  不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。目录或文件在外部被删除、Git 状态读取失败
-  时，页面显示明确错误，不伪装成空目录或干净仓库。
+- **自动刷新**：后端监听每个已登记 workspace 的本地文件（Git 工作树还监听工作区之外的元数据目录），
+  事件按 workspace 合并后经只读 SSE 通知页面重新读取；普通目录的外部增删改也会反映到浏览与角标。
+  没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
+  `[workspaces] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
+  间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 workspace 监听与节流，不会各自放大刷新。
+- **刷新边界**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件与
+  Git 状态，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
+- **监听健康**：监听建立失败、workspace 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
+  “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
+  与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
+  不伪装成空目录或干净仓库。
+- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 仍需显式检查。
 
 **待提交集合**（`GET /api/workspaces/git-status`）：
 
@@ -352,6 +368,11 @@ preview_limit_bytes = 1048576
 - `GET /api/workspaces/overview` 返回每个登记项的角标事实：
   `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
   普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+- `GET /api/workspaces/watch` 是自动更新的只读 SSE 长连接。首帧 `snapshot` 给出实际生效的
+  `intervalSeconds` 与每个 workspace 的监听视图
+  `{"workspace":"…","health":"live|error","message":"…","lastRefreshAt":…,"generation":N}`；
+  之后同一 workspace 的所有观察者共享合并后的 `refresh`（`{"workspace":"…","at":…,"generation":N}`）
+  与 `health` 变化。`error`/监听失败只让页面标注可能过期，不自动重启监听、不触发远端 fetch。
 
 失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
 `path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。

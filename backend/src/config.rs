@@ -53,6 +53,9 @@ pub struct WorkspacesConfig {
     /// 单个文件文本预览的大小上限；缺省 1 MiB。超限只返回限制说明，不加载完整内容。
     #[serde(default = "preview_limit_bytes_by_default")]
     pub preview_limit_bytes: PreviewLimitBytes,
+    /// 每个 workspace 自动刷新合并事件的最小间隔；缺省 10 秒。
+    #[serde(default = "refresh_interval_seconds_by_default")]
+    pub refresh_interval_seconds: RefreshIntervalSeconds,
 }
 
 impl Default for WorkspacesConfig {
@@ -60,6 +63,7 @@ impl Default for WorkspacesConfig {
         Self {
             registry_file: registry_file_by_default(),
             preview_limit_bytes: preview_limit_bytes_by_default(),
+            refresh_interval_seconds: refresh_interval_seconds_by_default(),
         }
     }
 }
@@ -107,6 +111,52 @@ impl<'de> Deserialize<'de> for PreviewLimitBytes {
     {
         let bytes = u64::deserialize(deserializer)?;
         Self::new(bytes).map_err(de::Error::custom)
+    }
+}
+
+/// 缺省的每 workspace 自动刷新最小间隔：10 秒。
+pub const DEFAULT_REFRESH_INTERVAL_SECONDS: u32 = 10;
+
+/// `[workspaces] refresh_interval_seconds` 的缺省值：10 秒。
+fn refresh_interval_seconds_by_default() -> RefreshIntervalSeconds {
+    RefreshIntervalSeconds(DEFAULT_REFRESH_INTERVAL_SECONDS)
+}
+
+/// 每个 workspace 自动刷新合并事件的最小间隔（秒）：合法范围 1..=4294967295。
+///
+/// 零会让窗口立刻结束、节流形同虚设；负数、小数、字符串与超过上界的值都无法解析成这个类型。
+/// 每种非法情形都让**启动失败**，不静默回退到缺省值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RefreshIntervalSeconds(u32);
+
+impl RefreshIntervalSeconds {
+    /// 构造一个合法的最小刷新间隔；零不是合法间隔。
+    pub fn new(seconds: u32) -> Result<Self, &'static str> {
+        if seconds == 0 {
+            Err("refresh_interval_seconds 必须是 1 至 4294967295 的整数秒，0 不是合法的刷新间隔")
+        } else {
+            Ok(Self(seconds))
+        }
+    }
+
+    /// 间隔秒数本身（1..=4294967295）。
+    pub fn get(self) -> u32 {
+        self.0
+    }
+
+    /// 秒数对应的时长。
+    pub fn duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for RefreshIntervalSeconds {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let seconds = u32::deserialize(deserializer)?;
+        Self::new(seconds).map_err(de::Error::custom)
     }
 }
 
@@ -460,6 +510,74 @@ working_directory = 'C:\work'
         assert!(
             Config::from_toml(&raw).is_err(),
             "负预览上限必须导致解析失败"
+        );
+    }
+
+    #[test]
+    fn legacy_config_without_refresh_interval_defaults_to_ten_seconds() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.workspaces.refresh_interval_seconds.get(),
+            DEFAULT_REFRESH_INTERVAL_SECONDS,
+            "缺省 [workspaces] 段时自动刷新最小间隔取 10 秒"
+        );
+
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'x.json'\n");
+        let config = Config::from_toml(&raw).expect("只有 registry_file 的配置必须可解析");
+        assert_eq!(
+            config.workspaces.refresh_interval_seconds.get(),
+            DEFAULT_REFRESH_INTERVAL_SECONDS,
+            "缺少 refresh_interval_seconds 字段时取 10 秒"
+        );
+    }
+
+    #[test]
+    fn explicit_refresh_interval_is_read_verbatim() {
+        let raw =
+            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 25\n");
+        let config = Config::from_toml(&raw).expect("合法自动刷新间隔必须可解析");
+        assert_eq!(config.workspaces.refresh_interval_seconds.get(), 25);
+        assert_eq!(
+            config.workspaces.refresh_interval_seconds.duration(),
+            Duration::from_secs(25)
+        );
+    }
+
+    #[test]
+    fn refresh_interval_accepts_the_legal_lower_bound() {
+        let raw =
+            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 1\n");
+        let config = Config::from_toml(&raw).expect("最小合法自动刷新间隔必须可解析");
+        assert_eq!(config.workspaces.refresh_interval_seconds.get(), 1);
+    }
+
+    #[test]
+    fn zero_refresh_interval_is_rejected_instead_of_falling_back() {
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 0\n");
+        let error = Config::from_toml(&raw).expect_err("零自动刷新间隔必须导致解析失败");
+        assert!(
+            error.to_string().contains("refresh_interval_seconds"),
+            "解析错误应指出间隔非法，实际：{error}"
+        );
+    }
+
+    #[test]
+    fn negative_refresh_interval_is_rejected() {
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = -1\n");
+        assert!(
+            Config::from_toml(&raw).is_err(),
+            "负自动刷新间隔必须导致解析失败"
+        );
+    }
+
+    #[test]
+    fn refresh_interval_with_wrong_type_is_rejected() {
+        let raw =
+            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = '10s'\n");
+        let error = Config::from_toml(&raw).expect_err("非整数自动刷新间隔必须导致解析失败");
+        assert!(
+            error.to_string().contains("refresh_interval_seconds"),
+            "解析错误应指出出错的字段，实际：{error}"
         );
     }
 
