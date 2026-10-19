@@ -1,6 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { WorkspaceBrowser } from './WorkspaceBrowser'
+import {
+  fetchWorkspaceOverview,
+  type WorkspaceSummary,
+} from './gitApi'
 import {
   fetchWorkspaces,
   registerWorkspace,
@@ -37,6 +41,29 @@ export function FileListPanel({ active }: { active: boolean }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   // 当前进入的 workspace；顶层 tab 往返期间保持，返回列表时才清除。
   const [openWorkspace, setOpenWorkspace] = useState<string | null>(null)
+  // 每个 workspace 的待提交项数；只有后端确认过的事实才进入这里。
+  const [summaries, setSummaries] = useState<Map<string, WorkspaceSummary> | null>(null)
+  const [overviewFailure, setOverviewFailure] = useState<string | null>(null)
+  const overviewSequence = useRef(0)
+
+  const loadOverview = useCallback(async () => {
+    const sequence = overviewSequence.current + 1
+    overviewSequence.current = sequence
+    const result = await fetchWorkspaceOverview()
+    if (overviewSequence.current !== sequence) return
+    if (result.kind === 'ok') {
+      setSummaries(new Map(result.value.map((summary) => [summary.path, summary])))
+      setOverviewFailure(null)
+    } else {
+      // 读取失败时清除旧角标：不能继续把上一次的计数显示成当前事实。
+      setSummaries(null)
+      setOverviewFailure(
+        result.kind === 'rejected'
+          ? result.message
+          : '无法确认待提交数量：请求没有得到可用响应。',
+      )
+    }
+  }, [])
 
   // 进入文件列表时读取后端共享列表；切走时取消尚未落地的读取结果。
   useEffect(() => {
@@ -55,10 +82,11 @@ export function FileListPanel({ active }: { active: boolean }) {
         setListFailure(describeFailure(result, '列表读取'))
       }
     })
+    void loadOverview()
     return () => {
       cancelled = true
     }
-  }, [active])
+  }, [active, loadOverview])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -77,6 +105,7 @@ export function FileListPanel({ active }: { active: boolean }) {
       setListFailure(null)
       setPath('')
       setFeedback({ kind: 'success', text: `已登记：${candidate}` })
+      void loadOverview()
     } else {
       setFeedback({ kind: 'error', text: describeFailure(result, '登记') })
     }
@@ -94,9 +123,42 @@ export function FileListPanel({ active }: { active: boolean }) {
         kind: 'success',
         text: `已取消登记：${registration.path}（目录与文件未删除）。`,
       })
+      void loadOverview()
     } else {
       setFeedback({ kind: 'error', text: describeFailure(result, '取消登记') })
     }
+  }
+
+  function badgeFor(path: string) {
+    const summary = summaries?.get(path)
+    if (summary === undefined) return null
+    if (summary.error !== undefined) {
+      return (
+        <span
+          className="workspace-badge workspace-badge--error"
+          data-testid="workspace-badge"
+          title={summary.error}
+        >
+          待提交状态不可用
+        </span>
+      )
+    }
+    if (
+      !summary.repository ||
+      summary.pendingCount === undefined ||
+      summary.pendingCount === 0
+    ) {
+      return null
+    }
+    return (
+      <span
+        className="workspace-badge"
+        data-testid="workspace-badge"
+        data-conflict={summary.conflict ? 'true' : undefined}
+      >
+        {summary.pendingCount} 项待提交
+      </span>
+    )
   }
 
   if (openWorkspace !== null) {
@@ -105,7 +167,10 @@ export function FileListPanel({ active }: { active: boolean }) {
         <WorkspaceBrowser
           workspace={openWorkspace}
           active={active}
-          onBack={() => setOpenWorkspace(null)}
+          onBack={() => {
+            setOpenWorkspace(null)
+            void loadOverview()
+          }}
         />
       </section>
     )
@@ -171,6 +236,12 @@ export function FileListPanel({ active }: { active: boolean }) {
         </p>
       )}
 
+      {overviewFailure !== null && workspaces !== null && workspaces.length > 0 && (
+        <p className="workspace-error" data-testid="workspace-overview-error" role="alert">
+          {overviewFailure}
+        </p>
+      )}
+
       {workspaces !== null &&
         (workspaces.length === 0 ? (
           <p className="workspaces__empty" data-testid="workspace-empty">
@@ -181,6 +252,7 @@ export function FileListPanel({ active }: { active: boolean }) {
             {workspaces.map((registration) => (
               <li key={registration.path} className="workspace-item" data-testid="workspace-item">
                 <code className="workspace-item__path">{registration.path}</code>
+                {badgeFor(registration.path)}
                 <button
                   type="button"
                   className="workspace-item__open"

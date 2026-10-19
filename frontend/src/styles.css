@@ -219,6 +219,30 @@ h1 {
   cursor: progress;
 }
 
+/* 待提交角标：只显示后端确认的项数；读取失败用独立色，不伪装成 0。 */
+.workspace-badge {
+  flex: none;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid #37506b;
+  border-radius: 999px;
+  background: #1d2a38;
+  color: #a9d0f0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.workspace-badge[data-conflict='true'] {
+  border-color: #8a5a2b;
+  background: #33281c;
+  color: #ffd995;
+}
+
+.workspace-badge--error {
+  border-color: #6b3a33;
+  background: #33201c;
+  color: #ffd9d1;
+}
+
 .workspace-form__input:focus-visible,
 .workspace-register:focus-visible,
 .workspace-item__open:focus-visible,
@@ -274,6 +298,42 @@ h1 {
   color: #a9b1bd;
   font-size: 0.9rem;
   overflow-wrap: anywhere;
+}
+
+.browser-toolbar__branch {
+  flex: none;
+  color: #a9d0f0;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* workspace 内部子 tab：只有 Git 工作区出现；普通目录仍只有浏览。 */
+.browser-views {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #2b313a;
+}
+
+.browser-view {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #a9b1bd;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-view.is-active {
+  color: #f2f4f8;
+  border-bottom-color: #4caf50;
+}
+
+.browser-view:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
 }
 
 .browser-layout {
@@ -346,6 +406,45 @@ h1 {
   font-weight: 600;
 }
 
+/* Git 待提交颜色：新增绿、修改与已识别重命名蓝、删除红、冲突独立警告色。
+   祖先目录一律蓝色，不继承子文件的绿或红。 */
+.change-added {
+  color: #7ee787;
+}
+
+.change-modified {
+  color: #79c0ff;
+}
+
+.change-deleted {
+  color: #ff7b72;
+}
+
+.change-conflicted {
+  color: #ffa657;
+}
+
+.change-directory {
+  color: #79c0ff;
+}
+
+/* 选中行的背景保留，但待提交颜色不能被选中态覆盖。 */
+.tree-row--file.is-selected.change-added {
+  color: #7ee787;
+}
+
+.tree-row--file.is-selected.change-modified {
+  color: #79c0ff;
+}
+
+.tree-row--file.is-selected.change-deleted {
+  color: #ff7b72;
+}
+
+.tree-row--file.is-selected.change-conflicted {
+  color: #ffa657;
+}
+
 .tree-row__caret {
   flex: none;
   width: 1rem;
@@ -410,6 +509,79 @@ h1 {
 
 .browser-error--inline {
   margin: 0.35rem 0 0.35rem 1rem;
+}
+
+/* 变更列表：只呈现待提交项；删除项仍在列表中，但浏览树只显示磁盘上存在的文件。 */
+.changes {
+  box-sizing: border-box;
+  min-height: 24rem;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.5rem;
+  background: #1d2128;
+}
+
+.change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.35rem;
+}
+
+.change-row:hover {
+  background: #252b33;
+}
+
+.change-row__path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.change-row__old {
+  opacity: 0.85;
+}
+
+.change-row__note,
+.change-row__warning {
+  flex: none;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.change-row__note {
+  border: 1px solid #37506b;
+  color: #a9d0f0;
+}
+
+.change-row__warning {
+  border: 1px solid #8a5a2b;
+  background: #33281c;
+  color: #ffd995;
+}
+
+/* 冲突警告不能与普通修改混淆：独立底色与左侧警示条。 */
+.change-conflict-warning {
+  margin: 0 0 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-left: 0.35rem solid #d8b44a;
+  border-radius: 0.35rem;
+  background: #33281c;
+  color: #ffe9bd;
+  font-size: 0.92rem;
 }
 
 .file-view {

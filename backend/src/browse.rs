@@ -318,7 +318,9 @@ pub fn read_file(
 }
 
 /// 核对登记根当前仍是原来的真实目录，并且没有被替换成链接或目录联接。
-fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError> {
+///
+/// Git 状态查询复用同一份边界核对：状态读取同样以登记根为边界，不跟随被替换的根。
+pub(crate) fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError> {
     let root = PathBuf::from(registered_root);
     if !root.is_absolute() {
         return Err(BrowseError::WorkspaceUnavailable(

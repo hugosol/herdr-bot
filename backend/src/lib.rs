@@ -40,6 +40,7 @@ pub mod browse;
 pub mod clock;
 pub mod config;
 pub mod countdown;
+pub mod git;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
@@ -212,6 +213,10 @@ pub fn app_with_state(
         // 只读浏览：列一个目录的直接子项、读取单个文件内容。两者都从登记根重新核对边界。
         .route("/api/workspaces/entries", get(list_workspace_entries))
         .route("/api/workspaces/file", get(read_workspace_file))
+        // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
+        .route("/api/workspaces/git-status", get(workspace_git_status))
+        // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
+        .route("/api/workspaces/overview", get(workspaces_overview))
         .route("/api/workspaces/remove", post(unregister_workspace))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
@@ -577,6 +582,86 @@ async fn read_workspace_file(
             "读取文件的任务异常结束，无法确认文件内容。".to_string(),
         ),
     }
+}
+
+/// 一次 Git 状态请求的查询参数：只需要登记路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitStatusQuery {
+    workspace: String,
+}
+
+/// workspace 列表上的角标概览：每个登记项的待提交项数或明确错误。
+#[derive(Debug, Serialize)]
+struct WorkspaceOverviewResponse {
+    workspaces: Vec<git::WorkspaceSummary>,
+}
+
+/// “读取 workspace 概览”：为登记列表中每个 workspace 给出角标所需的事实。
+async fn workspaces_overview(State(state): State<AppState>) -> Response {
+    let workspaces = match state.workspaces.list().await {
+        Ok(workspaces) => workspaces,
+        Err(error) => return workspace_error_response(error),
+    };
+    match tokio::task::spawn_blocking(move || git::overview(&workspaces)).await {
+        Ok(workspaces) => (
+            StatusCode::OK,
+            Json(WorkspaceOverviewResponse { workspaces }),
+        )
+            .into_response(),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取 workspace 概览的任务异常结束，无法确认待提交数量。".to_string(),
+        ),
+    }
+}
+
+/// “读取 Git 状态”：当前分支与待提交变更；普通目录返回 `repository: false`。
+async fn workspace_git_status(
+    State(state): State<AppState>,
+    query: Result<Query<GitStatusQuery>, QueryRejection>,
+) -> Response {
+    let Query(query) = match query {
+        Ok(query) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "读取 Git 状态需要 `workspace` 参数，且不接受其他参数。".to_string(),
+            )
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || git::status(&registered)).await {
+        Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
+        Ok(Err(error)) => git_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取 Git 状态的任务异常结束，无法确认当前分支与待提交变更。".to_string(),
+        ),
+    }
+}
+
+fn git_error_response(error: git::GitError) -> Response {
+    let status = match &error {
+        git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    rejected_owned(status, error.code(), error.message())
 }
 
 /// 校验查询面：缺失、重复或未知参数都以 JSON 类别拒绝，不猜测请求意图。
