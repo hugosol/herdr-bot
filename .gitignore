@@ -14,7 +14,6 @@ dist-ssr
 
 # Codebase memory index artifact (regenerated locally)
 .codebase-memory/
-.scratch/
 .omp/
 
 # Editor directories and files
