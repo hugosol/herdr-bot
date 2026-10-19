@@ -1,0 +1,267 @@
+/**
+ * 文件列表自动更新的真实数据源：后端只读 SSE 长连接。
+ *
+ * 服务端为每个 workspace 合并本地文件事件，按最小间隔下发 `refresh`；`health` 明确报告监听失效。
+ * 页面只消费「可以重新读取」的通知与健康状态，不把本地通知当成远端状态，也不因它自动 fetch。
+ *
+ * 首帧 `snapshot` 是整份监听视图（实际间隔、每个 workspace 的健康与最近刷新）。连接错误只降级为
+ * 「可能已过期」，恢复实况的唯一证据是又一份完整 `snapshot`；`refresh`/`health` 增量不构成恢复证据。
+ */
+
+import type { ConnectionStatus } from './sessionFeed'
+
+export type WorkspaceWatchHealth = 'live' | 'error'
+
+/** 后端下发的单个 workspace 监听视图。 */
+export type WorkspaceWatchEntry = {
+  workspace: string
+  health: WorkspaceWatchHealth
+  /** 监听失败原因；正常监听时缺省。 */
+  message?: string
+  /** 最近一次自动刷新通知的服务端 Unix 毫秒时间；尚未刷新时缺省。 */
+  lastRefreshAt?: number
+  /** 服务端累计的刷新代数；同一 workspace 的观察者看到同一个值。 */
+  generation: number
+}
+
+/** 数据源当前暴露的一帧监听视图。 */
+export type WorkspaceWatchSnapshot = {
+  connection: ConnectionStatus
+  intervalSeconds: number
+  workspaces: WorkspaceWatchEntry[]
+}
+
+/**
+ * 自动更新数据源。形状与 `useSyncExternalStore` 对齐；`getSnapshot` 在数据未变化时必须返回同一引用。
+ */
+export type WorkspaceWatchFeed = {
+  subscribe(onChange: () => void): () => void
+  getSnapshot(): WorkspaceWatchSnapshot
+}
+
+/** 尚未接线时的空视图：没有监听项，也不产生任何自动刷新。 */
+const EMPTY_SNAPSHOT: WorkspaceWatchSnapshot = {
+  connection: 'live',
+  intervalSeconds: 10,
+  workspaces: [],
+}
+
+export const EMPTY_WORKSPACE_WATCH: WorkspaceWatchFeed = {
+  subscribe: () => () => {},
+  getSnapshot: () => EMPTY_SNAPSHOT,
+}
+
+/** 默认端点：与页面同源，开发时由 Vite 代理转发到本机后端。 */
+export const WORKSPACE_WATCH_URL = '/api/workspaces/watch'
+
+/** 本模块用到的 `EventSource` 子集：真实实现与测试假实现都能满足它。 */
+export type WorkspaceWatchSource = {
+  addEventListener(type: string, listener: (event: { data: string }) => void): void
+  close(): void
+}
+
+export type WorkspaceWatchSourceFactory = (url: string) => WorkspaceWatchSource
+
+const defaultSourceFactory: WorkspaceWatchSourceFactory = (url) => new EventSource(url)
+
+function parsePayload(data: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(data)
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+function isGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function parseEntry(value: unknown): WorkspaceWatchEntry | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  if (typeof record.workspace !== 'string' || record.workspace === '') return null
+  if (record.health !== 'live' && record.health !== 'error') return null
+  if (!isGeneration(record.generation)) return null
+  if (record.message !== undefined && typeof record.message !== 'string') return null
+  if (
+    record.lastRefreshAt !== undefined &&
+    (typeof record.lastRefreshAt !== 'number' || !Number.isFinite(record.lastRefreshAt))
+  ) {
+    return null
+  }
+  return {
+    workspace: record.workspace,
+    health: record.health,
+    generation: record.generation,
+    ...(record.message === undefined ? {} : { message: record.message }),
+    ...(record.lastRefreshAt === undefined
+      ? {}
+      : { lastRefreshAt: record.lastRefreshAt }),
+  }
+}
+
+function parseSnapshot(payload: Record<string, unknown>): WorkspaceWatchSnapshot | null {
+  const interval = payload.intervalSeconds
+  if (typeof interval !== 'number' || !Number.isInteger(interval) || interval < 1) return null
+  if (!Array.isArray(payload.workspaces)) return null
+  const workspaces: WorkspaceWatchEntry[] = []
+  for (const item of payload.workspaces) {
+    const entry = parseEntry(item)
+    if (entry === null) return null
+    workspaces.push(entry)
+  }
+  return { connection: 'live', intervalSeconds: interval, workspaces }
+}
+
+export type CreateWorkspaceWatchOptions = {
+  url?: string
+  /** 连接的构造方式；缺省用真实 `EventSource`，测试注入假实现。 */
+  eventSourceFactory?: WorkspaceWatchSourceFactory
+}
+
+/**
+ * 建立真实数据源：第一个订阅者出现时连线，最后一个退订时关闭。
+ *
+ * 退订后重置为初始视图：重新进入文件列表时会重新订阅并等待新的完整快照，不把上一次连接的
+ * 健康状态当成当前事实。
+ */
+export function createWorkspaceWatchFeed(
+  options: CreateWorkspaceWatchOptions = {},
+): WorkspaceWatchFeed {
+  const url = options.url ?? WORKSPACE_WATCH_URL
+  const createSource = options.eventSourceFactory ?? defaultSourceFactory
+
+  let snapshot: WorkspaceWatchSnapshot = EMPTY_SNAPSHOT
+  let source: WorkspaceWatchSource | null = null
+  const subscribers = new Set<() => void>()
+
+  function publish(next: WorkspaceWatchSnapshot) {
+    snapshot = next
+    for (const notify of subscribers) notify()
+  }
+
+  function noteInterrupted() {
+    if (snapshot.connection === 'interrupted') return
+    publish({ ...snapshot, connection: 'interrupted' })
+  }
+
+  function upsertEntry(entry: WorkspaceWatchEntry) {
+    const index = snapshot.workspaces.findIndex(
+      (known) => known.workspace === entry.workspace,
+    )
+    const workspaces =
+      index === -1
+        ? [...snapshot.workspaces, entry]
+        : snapshot.workspaces.map((known, position) =>
+            position === index ? entry : known,
+          )
+    publish({ ...snapshot, workspaces })
+  }
+
+  function handleFrame(name: string, data: string) {
+    const payload = parsePayload(data)
+    if (payload === null) return
+
+    if (name === 'snapshot') {
+      const next = parseSnapshot(payload)
+      if (next === null) return
+      publish(next)
+      return
+    }
+
+    // 断线期间的增量不是恢复证据：手上市价可能已经过期，等完整快照再收敛。
+    if (snapshot.connection === 'interrupted') return
+
+    if (name === 'refresh') {
+      const workspace = payload.workspace
+      const at = payload.at
+      const generation = payload.generation
+      if (typeof workspace !== 'string' || workspace === '') return
+      if (typeof at !== 'number' || !Number.isFinite(at) || !isGeneration(generation)) return
+      const existing = snapshot.workspaces.find((entry) => entry.workspace === workspace)
+      upsertEntry({
+        workspace,
+        health: existing?.health ?? 'live',
+        generation,
+        lastRefreshAt: at,
+        ...(existing?.message === undefined ? {} : { message: existing.message }),
+      })
+      return
+    }
+
+    if (name === 'health') {
+      const workspace = payload.workspace
+      if (typeof workspace !== 'string' || workspace === '') return
+      if (payload.health !== 'live' && payload.health !== 'error') return
+      if (!isGeneration(payload.generation)) return
+      if (payload.message !== undefined && typeof payload.message !== 'string') return
+      const existing = snapshot.workspaces.find((entry) => entry.workspace === workspace)
+      upsertEntry({
+        workspace,
+        health: payload.health,
+        generation: payload.generation,
+        ...(payload.health === 'error' && typeof payload.message === 'string'
+          ? { message: payload.message }
+          : {}),
+        ...(existing?.lastRefreshAt === undefined
+          ? {}
+          : { lastRefreshAt: existing.lastRefreshAt }),
+      })
+    }
+  }
+
+  function connect() {
+    const opened = createSource(url)
+    source = opened
+    opened.addEventListener('snapshot', (event) => handleFrame('snapshot', event.data))
+    opened.addEventListener('refresh', (event) => handleFrame('refresh', event.data))
+    opened.addEventListener('health', (event) => handleFrame('health', event.data))
+    // 一次连接错误即降级；浏览器自行重连，恢复只由完整 snapshot 首帧完成。
+    opened.addEventListener('error', () => noteInterrupted())
+  }
+
+  return {
+    subscribe(onChange) {
+      subscribers.add(onChange)
+      if (subscribers.size === 1) connect()
+      return () => {
+        subscribers.delete(onChange)
+        if (subscribers.size > 0) return
+        source?.close()
+        source = null
+        snapshot = EMPTY_SNAPSHOT
+      }
+    },
+    getSnapshot: () => snapshot,
+  }
+}
+
+/** 页面上的自动更新问题：监听失效优先于连接中断；两者都不表示手动读取不可用。 */
+export type WorkspaceWatchProblem = {
+  kind: 'listener' | 'connection'
+  text: string
+}
+
+export function describeWatchProblem(
+  connection: ConnectionStatus,
+  entry: WorkspaceWatchEntry | null,
+  subject?: string,
+): WorkspaceWatchProblem | null {
+  if (connection === 'interrupted') {
+    return {
+      kind: 'connection',
+      text: '自动更新连接已中断，当前内容可能已过期；恢复连接后会自动对齐，仍可手动刷新读取当前事实。',
+    }
+  }
+  if (entry?.health === 'error') {
+    const prefix = subject === undefined ? '' : `${subject}：`
+    return {
+      kind: 'listener',
+      text: `${prefix}自动更新已停止：${entry.message ?? '无法继续监听文件变化。'} 当前内容可能已过期；仍可使用“刷新”手动读取最新状态。`,
+    }
+  }
+  return null
+}

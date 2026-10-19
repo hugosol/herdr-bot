@@ -134,6 +134,15 @@ foreach ($target in $targets) {
     $endedByMarker = -not (Test-Path -LiteralPath $marker)
     Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
 
+    if ($endedByMarker) {
+        # 夹具看到标记后先写结束记录、再退出；给它一个短暂的退出窗口，
+        # 避免在 cmd.exe 尚未退出的瞬间把它误记为 force-killed。
+        $exitDeadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $exitDeadline -and (Test-FixtureProcessAlive -ProcessId $fixturePid)) {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
     if (-not (Test-FixtureProcessAlive -ProcessId $fixturePid)) {
         Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
         if ($endedByMarker) { $actions += "$name=ended-by-stop-marker" }

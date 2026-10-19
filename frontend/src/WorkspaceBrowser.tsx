@@ -21,6 +21,11 @@ import {
   type DiffSide,
 } from './diffApi'
 import { fetchGitStatus, type ChangeKind, type GitChange, type GitStatus } from './gitApi'
+import type { ConnectionStatus } from './sessionFeed'
+import {
+  describeWatchProblem,
+  type WorkspaceWatchEntry,
+} from './workspaceWatch'
 
 /** 窄屏断点：与 styles.css 的浏览器布局断点保持一致。 */
 const NARROW_LAYOUT_MAX_WIDTH = 720
@@ -123,10 +128,16 @@ function previewPane(file: FileView) {
 export function WorkspaceBrowser({
   workspace,
   active,
+  watch,
   onBack,
 }: {
   workspace: string
   active: boolean
+  watch?: {
+    entry: WorkspaceWatchEntry | null
+    connection: ConnectionStatus
+    generation: number
+  }
   onBack: () => void
 }) {
   const [entries, setEntries] = useState<Map<string, BrowseEntry[]>>(() => new Map())
@@ -152,6 +163,11 @@ export function WorkspaceBrowser({
   const [changesShowingDiff, setChangesShowingDiff] = useState(false)
 
   const narrow = useNarrowLayout()
+  const watchGeneration = watch?.generation ?? 0
+  const watchProblem = describeWatchProblem(
+    watch?.connection ?? 'live',
+    watch?.entry ?? null,
+  )
   const gitSequence = useRef(0)
   const diffSequence = useRef(0)
   const directorySequences = useRef(new Map<string, number>())
@@ -164,6 +180,7 @@ export function WorkspaceBrowser({
   const changesScrollPosition = useRef(0)
   const scrollPositions = useRef(new Map<string, number>())
   const activePreviously = useRef(active)
+  const seenWatchGeneration = useRef(watchGeneration)
 
   const loadDirectory = useCallback(
     async (path: string) => {
@@ -326,6 +343,13 @@ export function WorkspaceBrowser({
     }
     activePreviously.current = active
   }, [active])
+
+  // 后端合并后的刷新通知只决定「何时重新读取」；读取本身与手动刷新完全相同，不另设缓存。
+  useEffect(() => {
+    if (watchGeneration === seenWatchGeneration.current) return
+    seenWatchGeneration.current = watchGeneration
+    void refreshLatest.current()
+  }, [watchGeneration])
 
   // 换一个文件时从内容顶部开始显示；否则上一份长内容的滚动位置会让新文件看起来是空白的。
   useEffect(() => {
@@ -980,6 +1004,16 @@ export function WorkspaceBrowser({
           {refreshing ? '刷新中……' : '刷新'}
         </button>
       </header>
+
+      {watchProblem !== null && (
+        <p
+          className="watch-warning"
+          data-testid={watchProblem.kind === 'listener' ? 'watch-error' : 'watch-stale'}
+          role="alert"
+        >
+          {watchProblem.text}
+        </p>
+      )}
 
       {gitError !== null && (
         <p className="browser-error" data-testid="git-status-error" role="alert">
