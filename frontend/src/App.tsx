@@ -109,7 +109,7 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
   const feedback = feedbackFor(state)
 
   return (
-    <main className="panel">
+    <main className={tab === 'files' ? 'panel panel--wide' : 'panel'}>
       <h1>omp-bot</h1>
 
       {/* 三 tab 外壳：会话列表 → 文件列表 → 控制面板，打开时默认停在会话列表。

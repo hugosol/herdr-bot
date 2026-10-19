@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
+import { WorkspaceBrowser } from './WorkspaceBrowser'
 import {
   fetchWorkspaces,
   registerWorkspace,
@@ -34,6 +35,8 @@ export function FileListPanel({ active }: { active: boolean }) {
   const [path, setPath] = useState('')
   const [pending, setPending] = useState<'register' | `remove:${string}` | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  // 当前进入的 workspace；顶层 tab 往返期间保持，返回列表时才清除。
+  const [openWorkspace, setOpenWorkspace] = useState<string | null>(null)
 
   // 进入文件列表时读取后端共享列表；切走时取消尚未落地的读取结果。
   useEffect(() => {
@@ -94,6 +97,18 @@ export function FileListPanel({ active }: { active: boolean }) {
     } else {
       setFeedback({ kind: 'error', text: describeFailure(result, '取消登记') })
     }
+  }
+
+  if (openWorkspace !== null) {
+    return (
+      <section className="workspaces" data-testid="file-list">
+        <WorkspaceBrowser
+          workspace={openWorkspace}
+          active={active}
+          onBack={() => setOpenWorkspace(null)}
+        />
+      </section>
+    )
   }
 
   return (
@@ -166,6 +181,16 @@ export function FileListPanel({ active }: { active: boolean }) {
             {workspaces.map((registration) => (
               <li key={registration.path} className="workspace-item" data-testid="workspace-item">
                 <code className="workspace-item__path">{registration.path}</code>
+                <button
+                  type="button"
+                  className="workspace-item__open"
+                  aria-label={`浏览 ${registration.path}`}
+                  data-testid="open-workspace"
+                  disabled={pending !== null}
+                  onClick={() => setOpenWorkspace(registration.path)}
+                >
+                  浏览
+                </button>
                 <button
                   type="button"
                   className="workspace-item__remove"
