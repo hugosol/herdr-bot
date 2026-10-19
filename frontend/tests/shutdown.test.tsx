@@ -108,6 +108,9 @@ describe('手动关机走后端权威倒计时', () => {
     const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
 
+    // 手动入口只在控制面板可见；页面默认停在会话列表。
+    await user.click(screen.getByTestId('tab-control'))
+
     // 确认页：返回是纯前端事件，不形成安排，也不发送开始／取消／清结果命令（P19、P42）。
     await user.click(screen.getByTestId('shutdown-button'))
     expect(screen.getByTestId('shutdown-confirm')).toBeVisible()
@@ -262,6 +265,7 @@ describe('手动关机走后端权威倒计时', () => {
     const { feed } = shutdownFeed()
     render(<App sessionFeed={feed} />)
 
+    fireEvent.click(screen.getByTestId('tab-control'))
     fireEvent.click(screen.getByTestId('shutdown-button'))
     fireEvent.click(screen.getByTestId('shutdown-confirm-button'))
     await act(async () => {
@@ -322,6 +326,8 @@ describe('命令回执只反馈归宿，业务展示只随观察流更新（P42�
     const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
 
+    await user.click(screen.getByTestId('tab-control'))
+
     // 提交开始意图；它的回执被拖住，观察流先给出更晚的事实：这次安排已经被取消。
     await user.click(screen.getByTestId('shutdown-button'))
     await user.click(screen.getByTestId('shutdown-confirm-button'))
@@ -350,6 +356,7 @@ describe('命令回执只反馈归宿，业务展示只随观察流更新（P42�
     const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
 
+    await user.click(screen.getByTestId('tab-control'))
     await user.click(screen.getByTestId('shutdown-button'))
     await user.click(screen.getByTestId('shutdown-confirm-button'))
 

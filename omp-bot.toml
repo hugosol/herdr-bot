@@ -30,3 +30,9 @@ countdown_seconds = 10
 # [sessions]
 # online_timeout_seconds = 10
 # offline_retention_seconds = 30
+
+# workspace 登记列表的持久文件（可选，缺省为当前工作目录下的 workspaces.json）。
+# 登记列表由后端保存，本机与局域网设备共享；取消登记不删除目录或文件。
+# 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
+# [workspaces]
+# registry_file = 'workspaces.json'
