@@ -36,7 +36,6 @@ function mockFetch(handler: Handler): URL[] {
 }
 
 const ROOT_ENTRIES: BrowseEntry[] = [
-  { name: '.git', path: '.git', kind: 'directory' },
   { name: '.gitignore', path: '.gitignore', kind: 'file', size: 10 },
   { name: '.hidden.txt', path: '.hidden.txt', kind: 'file', size: 6 },
   { name: 'ignored.log', path: 'ignored.log', kind: 'file', size: 7 },
@@ -64,13 +63,8 @@ const MANY_ENTRIES: BrowseEntry[] = Array.from({ length: 60 }, (_, index) => {
   return { name, path: `many/${name}`, kind: 'file', size: 5 } satisfies BrowseEntry
 })
 
-const GIT_ENTRIES: BrowseEntry[] = [
-  { name: 'HEAD', path: '.git/HEAD', kind: 'file', size: 21 },
-]
-
 const DIRECTORIES: Record<string, BrowseEntry[]> = {
   '': ROOT_ENTRIES,
-  '.git': GIT_ENTRIES,
   src: SRC_ENTRIES,
   many: MANY_ENTRIES,
 }
@@ -103,13 +97,6 @@ const FILES: Record<string, FileView> = {
     name: 'ignored.log',
     size: 7,
     preview: { kind: 'text', content: 'ignored' },
-  },
-  '.git/HEAD': {
-    workspace: WORKSPACE,
-    path: '.git/HEAD',
-    name: 'HEAD',
-    size: 21,
-    preview: { kind: 'text', content: 'ref: refs/heads/main\n' },
   },
   'src/main.ts': {
     workspace: WORKSPACE,
@@ -263,12 +250,10 @@ describe('workspace 只读文件浏览', () => {
       WORKSPACE,
       {
         '': [
-          { name: '.git', path: '.git', kind: 'directory' },
           { name: '.gitignore', path: '.gitignore', kind: 'file', size: 10 },
           { name: 'empty', path: 'empty', kind: 'directory' },
           { name: 'kept', path: 'kept', kind: 'directory' },
         ],
-        '.git': GIT_ENTRIES,
         empty: [],
         kept: [{ name: 'tracked.txt', path: 'kept/tracked.txt', kind: 'file', size: 7 }],
       },
@@ -310,6 +295,7 @@ describe('workspace 只读文件浏览', () => {
       '已按 Git 忽略规则隐藏',
     )
     expect(screen.queryByTestId('entry:ignored.log')).toBeNull()
+    expect(screen.queryByTestId('entry:.git')).toBeNull()
     expect(screen.getByTestId('entry:.gitignore')).toBeVisible()
 
     await user.click(screen.getByTestId('entry:empty'))
@@ -395,14 +381,14 @@ describe('workspace 只读文件浏览', () => {
     ).toHaveLength(readsBefore)
   })
 
-  it('列出隐藏文件、忽略文件与 Git 元数据，并按内容读取无后缀文本', async () => {
+  it('列出隐藏文件与忽略规则文件，并按内容读取无后缀文本', async () => {
     const user = userEvent.setup()
     const calls = mockFetch(standardHandler)
 
     render(<App />)
     await openWorkspace(user)
 
-    for (const name of ['.git', '.gitignore', '.hidden.txt', 'ignored.log', 'README']) {
+    for (const name of ['.gitignore', '.hidden.txt', 'ignored.log', 'README']) {
       expect(screen.getByTestId(`entry:${name}`)).toBeVisible()
     }
 
@@ -421,9 +407,8 @@ describe('workspace 只读文件浏览', () => {
     await user.click(screen.getByTestId('entry:ignored.log'))
     expect(await screen.findByTestId('file-text')).toHaveTextContent('ignored')
 
-    await user.click(screen.getByTestId('entry:.git'))
-    await user.click(await screen.findByTestId('entry:.git/HEAD'))
-    expect(await screen.findByTestId('file-text')).toHaveTextContent('ref: refs/heads/main')
+    await user.click(screen.getByTestId('entry:.gitignore'))
+    expect(await screen.findByTestId('file-text')).toHaveTextContent('ignored.log')
 
     const fileRequest = calls.find(
       (url) =>

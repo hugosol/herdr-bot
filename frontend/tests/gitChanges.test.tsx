@@ -37,13 +37,11 @@ function mockFetch(handler: Handler): URL[] {
 
 const DIRECTORIES: Record<string, BrowseEntry[]> = {
   '': [
-    { name: '.git', path: '.git', kind: 'directory' },
     { name: '.gitignore', path: '.gitignore', kind: 'file', size: 10 },
     { name: 'ignored.log', path: 'ignored.log', kind: 'file', size: 7 },
     { name: 'plain.txt', path: 'plain.txt', kind: 'file', size: 5 },
     { name: 'src', path: 'src', kind: 'directory' },
   ],
-  '.git': [{ name: 'HEAD', path: '.git/HEAD', kind: 'file', size: 21 }],
   src: [
     { name: 'added.txt', path: 'src/added.txt', kind: 'file', size: 4 },
     { name: 'conflicted.txt', path: 'src/conflicted.txt', kind: 'file', size: 5 },
@@ -178,7 +176,7 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
     expect(screen.getByTestId('browser-view-browse')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('browser-view-changes')).toHaveTextContent('变更（6）')
 
-    // 文件颜色按类别落在浏览树；忽略文件、普通文件与 Git 元数据没有待提交色。
+    // 文件颜色按类别落在浏览树；ignored 文件与 Git 元数据不出现在树中。
     expect(await screen.findByTestId('entry:src')).toHaveAttribute('data-change', 'directory')
     await user.click(screen.getByTestId('entry:src'))
     expect(await screen.findByTestId('entry:src/added.txt')).toHaveAttribute(
@@ -217,11 +215,10 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
     )
 
     expect(screen.queryByTestId('entry:ignored.log')).toBeNull()
+    expect(screen.queryByTestId('entry:.git')).toBeNull()
     expect(screen.getByTestId('ignored-hidden-notice')).toHaveTextContent(
       '已按 Git 忽略规则隐藏',
     )
-    await user.click(screen.getByTestId('entry:.git'))
-    expect(await screen.findByTestId('entry:.git/HEAD')).not.toHaveAttribute('data-change')
 
     await user.click(screen.getByTestId('browser-view-changes'))
     const list = await screen.findByTestId('change-list')

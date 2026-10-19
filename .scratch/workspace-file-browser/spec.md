@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-> **2026-10-20 行为修订**：Git workspace 的文件浏览树改用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录；普通目录仍完整反映磁盘。`.gitignore`、`.git` 元数据、未被忽略的隐藏文件和已跟踪文件继续可见。整棵目录树只在进入 workspace 与手动刷新时读取；文件事件与返回页面只更新 Git 状态。此修订取代下文与该行为冲突的旧描述。
+> **2026-10-20 行为修订**：Git workspace 的文件浏览树改用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录，并省略 `.git` 元数据；普通目录仍完整反映磁盘。`.gitignore`、未被忽略的隐藏文件和已跟踪文件继续可见。整棵目录树只在进入 workspace 与手动刷新时读取；文件事件与返回页面只更新 Git 状态。此修订取代下文与该行为冲突的旧描述。
 
 ## Problem Statement
 
@@ -18,7 +18,7 @@ Status: ready-for-agent
 
 文件列表先展示由后端文件持久保存、电脑和手机共享的 workspace 登记列表。workspace 是服务器上的已登记目录，可以是普通目录，也可以对应一个 Git 工作树。取消登记不删除文件。一个 Git workspace 只管理自身仓库，不递归管理嵌套仓库或子模块中的变更。
 
-进入 workspace 后提供文件浏览视图；Git workspace 另提供变更视图。浏览树按 Git 原生忽略规则省略被忽略的未跟踪路径，普通目录完整反映磁盘；保留 `.gitignore`、`.git` 元数据、未被忽略的隐藏文件和已跟踪文件。浏览视图展示只读内容，并以 Git 状态颜色及祖先目录提示定位变更；变更视图只展示待提交变更，提供文件 diff、常驻提交信息输入框和状态驱动的 Commit / Sync 主按钮。电脑使用左列表右内容布局，手机使用逐层进入与返回的布局。
+进入 workspace 后提供文件浏览视图；Git workspace 另提供变更视图。浏览树按 Git 原生忽略规则省略被忽略的未跟踪路径与 `.git` 元数据，普通目录完整反映磁盘；保留 `.gitignore`、未被忽略的隐藏文件和已跟踪文件。浏览视图展示只读内容，并以 Git 状态颜色及祖先目录提示定位变更；变更视图只展示待提交变更，提供文件 diff、常驻提交信息输入框和状态驱动的 Commit / Sync 主按钮。电脑使用左列表右内容布局，手机使用逐层进入与返回的布局。
 
 Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存全部符合 Git 规则的变更并提交，不自动推送。Sync 仅在工作区干净时按当前分支已有 upstream 与 Git 配置拉取、推送。任一步 Git 操作失败即中断后续步骤，弹窗显示 Git 返回的提示。冲突或未完成 Git 流程阻止普通提交同步，由用户在外部工具处理后返回。
 
@@ -44,7 +44,7 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 16. As an omp-bot user, I want each Git workspace to manage only its own repository, so that whole-repository actions do not recursively operate on nested repositories.
 17. As an omp-bot user, I want workspace badges to show the number of pending file changes rather than directories or changed lines, so that I can find repositories needing attention.
 18. As an omp-bot user, I want 文件浏览视图 and 变更视图 to be separate internal tabs, so that reading all files and reviewing a submission have distinct purposes.
-19. As an omp-bot user, I want the browsing tree to keep hidden files, `.gitignore` and Git metadata while omitting Git-ignored untracked paths in Git workspaces, so that the tree matches Git's own ignore semantics without losing repository context.
+19. As an omp-bot user, I want the browsing tree to keep hidden files and `.gitignore` while omitting Git-ignored untracked paths and `.git` metadata in Git workspaces, so that the tree matches Git's own semantics without exposing repository internals.
 20. As an omp-bot user, I want selecting a file in the browsing tree to show its read-only contents, so that browsing cannot accidentally edit the repository.
 21. As an omp-bot user, I want links pointing outside the workspace boundary not to be followed, so that a registered root does not silently expose another directory.
 22. As a Git workspace user, I want new non-ignored files displayed in green, so that pending additions are easy to find before staging.
@@ -54,7 +54,7 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 26. As a Git workspace user, I want the ignore-rules file itself treated like an ordinary changed file, so that edits to repository rules are reviewable and committable.
 27. As a Git workspace user, I want deleted files absent from the browsing tree but present in the changes list, so that the tree reflects disk contents without hiding deletions from review.
 28. As a Git workspace user, I want deletion-only changes to remain discoverable through existing ancestor directory hints, so that deletions do not disappear from tree-level awareness.
-29. As a Git workspace user, I want Git metadata excluded from ordinary worktree change coloring and counts, so that internal repository activity is not presented as a pending commit.
+29. As a Git workspace user, I want `.git` metadata omitted from the browsing tree and excluded from ordinary worktree change coloring and counts, so that internal repository activity is neither exposed nor presented as a pending commit.
 30. As a Git workspace user, I want the changes list to contain all tracked changes and non-ignored untracked files that the whole-repository commit will include, so that the review matches the operation's scope.
 31. As a Git workspace user, I want Git's native ignore rules respected without force-adding ignored files, so that the browser behaves consistently with my repository.
 32. As a Git workspace user, I want already tracked files to remain included even if they later match ignore rules, so that the browser does not invent a second ignore policy.
@@ -123,7 +123,7 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 - 登记入口采用服务器路径输入与有效性校验；登记列表跨设备共享、跨后端重启保留；移除仅取消登记。
 - 普通目录与 Git 工作区均可登记。Git workspace 的仓库操作根为该工作树根；一个 workspace 不聚合多个仓库。
 - 普通目录只有文件浏览视图；不出现可执行的 Commit / Sync 或 Git 变更视图。
-- Git workspace 的浏览树使用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录；普通目录不过滤。两种 workspace 都保留隐藏文件、忽略规则文件与 Git 元数据；Git 元数据可只读浏览，但不参与普通待提交变更、着色与角标。
+- Git workspace 的浏览树使用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录，并省略 `.git` 元数据；普通目录不过滤。两种 workspace 都保留隐藏文件与忽略规则文件；`.git` 元数据不参与普通待提交变更、着色与角标。
 - 已跟踪文件即使匹配忽略规则也仍显示；忽略查询使用仓库及其嵌套 `.gitignore`、`.git/info/exclude` 和全局 excludes，不自行解析规则。嵌套仓库与子模块内部不递归应用父仓库的忽略集合。
 - 读取范围限制在所选已登记 workspace 内；不跟随指向根外的符号链接或 Windows 目录联接，显示目标与不可进入原因。
 - 不递归提交、同步或管理嵌套仓库、子模块的内部变更；不把它们的内部文件作为所属仓库的普通新增内容提交。

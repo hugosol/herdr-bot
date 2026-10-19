@@ -111,24 +111,26 @@ pub fn overview(
 ) -> Vec<WorkspaceSummary> {
     registered
         .iter()
-        .map(|workspace| match status(&workspace.path, timeout, sync_state) {
-            Ok(status) => WorkspaceSummary {
-                path: workspace.path.clone(),
-                repository: status.repository,
-                branch: status.branch,
-                pending_count: status.repository.then_some(status.pending_count),
-                conflict: status.conflict,
-                error: None,
+        .map(
+            |workspace| match status(&workspace.path, timeout, sync_state) {
+                Ok(status) => WorkspaceSummary {
+                    path: workspace.path.clone(),
+                    repository: status.repository,
+                    branch: status.branch,
+                    pending_count: status.repository.then_some(status.pending_count),
+                    conflict: status.conflict,
+                    error: None,
+                },
+                Err(error) => WorkspaceSummary {
+                    path: workspace.path.clone(),
+                    repository: false,
+                    branch: None,
+                    pending_count: None,
+                    conflict: false,
+                    error: Some(error.message()),
+                },
             },
-            Err(error) => WorkspaceSummary {
-                path: workspace.path.clone(),
-                repository: false,
-                branch: None,
-                pending_count: None,
-                conflict: false,
-                error: Some(error.message()),
-            },
-        })
+        )
         .collect()
 }
 
@@ -611,11 +613,7 @@ fn worktree_side(
 
 /// 当前分支是否已有首次提交；`rev-parse --verify --quiet` 在无 HEAD 时以 1 结束。
 pub(crate) fn head_exists(root: &Path, timeout: Duration) -> Result<bool, GitError> {
-    let output = run_git(
-        root,
-        &["rev-parse", "--verify", "--quiet", "HEAD"],
-        timeout,
-    )?;
+    let output = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"], timeout)?;
     if output.status.success() {
         return Ok(true);
     }
@@ -671,11 +669,7 @@ fn blob_size(root: &Path, oid: &str, timeout: Duration) -> Result<u64, GitError>
 
 /// 当前 HEAD 提交标识；仓库尚无首次提交时为 `None`。
 pub(crate) fn head_oid(root: &Path, timeout: Duration) -> Result<Option<String>, GitError> {
-    let verify = run_git(
-        root,
-        &["rev-parse", "--verify", "--quiet", "HEAD"],
-        timeout,
-    )?;
+    let verify = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"], timeout)?;
     if !verify.status.success() {
         if verify.status.code() == Some(1) {
             return Ok(None);
@@ -784,9 +778,8 @@ fn hash_pending_content(
     }
 
     hasher.write(b"file");
-    let mut file = fs::File::open(&full).map_err(|error| {
-        GitError::Failed(format!("无法读取待提交文件 {relative}：{error}"))
-    })?;
+    let mut file = fs::File::open(&full)
+        .map_err(|error| GitError::Failed(format!("无法读取待提交文件 {relative}：{error}")))?;
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let read = file.read(&mut buffer).map_err(|error| {
@@ -812,8 +805,7 @@ pub(crate) fn blocked_reason(
     let mut reasons = Vec::new();
     if detached {
         reasons.push(
-            "当前处于 detached HEAD：普通 Commit 不可用；请在外部工具检出分支后再试。"
-                .to_string(),
+            "当前处于 detached HEAD：普通 Commit 不可用；请在外部工具检出分支后再试。".to_string(),
         );
     }
     if changes
@@ -827,11 +819,7 @@ pub(crate) fn blocked_reason(
     if !git_dir.status.success() {
         return Err(command_failed("git rev-parse --absolute-git-dir", &git_dir));
     }
-    let git_dir = PathBuf::from(
-        String::from_utf8_lossy(&git_dir.stdout)
-            .trim()
-            .to_string(),
-    );
+    let git_dir = PathBuf::from(String::from_utf8_lossy(&git_dir.stdout).trim().to_string());
     for (marker, label) in [
         ("MERGE_HEAD", "merge"),
         ("rebase-merge", "rebase"),
@@ -861,11 +849,7 @@ pub(crate) fn blocked_reason(
 /// 输出由独立线程持续读取，避免子进程写满管道后阻塞。达到时限时结束整棵进程树：
 /// 先 `taskkill /T /F`，再等待直接子进程确认退出。只有当直接子进程结束、且输出线程都已结束时，
 /// 才把这次终止视为已确认；否则返回 `confirmed: false`，调用方必须保持仓库资格。
-pub(crate) fn run_git(
-    root: &Path,
-    args: &[&str],
-    timeout: Duration,
-) -> Result<Output, GitError> {
+pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<Output, GitError> {
     let command = format!("git {}", args.join(" "));
     let mut child = Command::new("git")
         .arg("--no-optional-locks")
@@ -948,8 +932,12 @@ pub(crate) fn run_git(
         }
     }
 
-    let stdout = stdout_receiver.recv_timeout(OUTPUT_DRAIN).unwrap_or_default();
-    let stderr = stderr_receiver.recv_timeout(OUTPUT_DRAIN).unwrap_or_default();
+    let stdout = stdout_receiver
+        .recv_timeout(OUTPUT_DRAIN)
+        .unwrap_or_default();
+    let stderr = stderr_receiver
+        .recv_timeout(OUTPUT_DRAIN)
+        .unwrap_or_default();
     if stdout_receiver.try_recv().is_ok() || stderr_receiver.try_recv().is_ok() {
         confirmed = false;
     }

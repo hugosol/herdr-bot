@@ -160,7 +160,12 @@ fn tree_entry_names(tree: &Value, path: &str) -> Vec<String> {
         .as_array()
         .expect("entries 必须是数组")
         .iter()
-        .map(|entry| entry["name"].as_str().expect("目录项必须有 name").to_string())
+        .map(|entry| {
+            entry["name"]
+                .as_str()
+                .expect("目录项必须有 name")
+                .to_string()
+        })
         .collect()
 }
 
@@ -198,7 +203,17 @@ async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_director
     git(&root, &["init", "-q"]);
     git(&root, &["config", "user.email", "tree@example.test"]);
     git(&root, &["config", "user.name", "Tree Test"]);
-    git(&root, &["add", ".gitignore", "kept/.gitignore", "kept/tracked.txt", "visible.txt", ".hidden.txt"]);
+    git(
+        &root,
+        &[
+            "add",
+            ".gitignore",
+            "kept/.gitignore",
+            "kept/tracked.txt",
+            "visible.txt",
+            ".hidden.txt",
+        ],
+    );
     git(&root, &["commit", "-qm", "fixture"]);
 
     let registry = dir.path().join("workspaces.json");
@@ -211,7 +226,7 @@ async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_director
     assert_eq!(tree["ignoredHidden"], json!(true));
 
     let root_entries = tree_entry_names(&tree, "");
-    for expected in [".gitignore", ".git", ".hidden.txt", "visible.txt", "kept", "empty"] {
+    for expected in [".gitignore", ".hidden.txt", "visible.txt", "kept", "empty"] {
         assert!(
             root_entries.iter().any(|name| name == expected),
             "根目录必须保留 {expected}：{root_entries:?}"
@@ -220,6 +235,19 @@ async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_director
     assert!(
         !root_entries.iter().any(|name| name == "ignored"),
         "整棵 ignored 目录不应出现：{root_entries:?}"
+    );
+    assert!(
+        !root_entries.iter().any(|name| name == ".git"),
+        "Git 元数据不应出现在浏览树：{root_entries:?}"
+    );
+    assert!(
+        tree["directories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|directory| !directory["path"].as_str().unwrap_or("").starts_with(".git")),
+        "不应遍历 .git 元数据：{}",
+        tree
     );
 
     let kept_entries = tree_entry_names(&tree, "kept");
@@ -273,7 +301,11 @@ async fn plain_directory_tree_keeps_gitignore_like_files_unfiltered() {
     register(&server, &root).await;
 
     let response = get_over_tcp(server.addr(), &tree_url(&root)).await;
-    assert_eq!(response.status, 200, "普通目录整树读取应成功：{}", response.body);
+    assert_eq!(
+        response.status, 200,
+        "普通目录整树读取应成功：{}",
+        response.body
+    );
     let tree = body(&response);
     assert_eq!(tree["ignoredHidden"], json!(false));
     let root_entries = tree_entry_names(&tree, "");

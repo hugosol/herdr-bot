@@ -33,12 +33,16 @@ export type SideBySideRow = {
 /**
  * 按行切分，末尾换行不额外产生一行；空文本是 0 行。
  *
+ * CRLF 先归一化为 LF：工作区文件在 Windows 上可能是 CRLF，而 Git 对象保存 LF；
+ * Git 会按文本属性/autocrlf 把两者视为同一行内容。如果不先归一化，每行末尾的 `\r`
+ * 会让所有行都被误判为修改。
+ *
  * 这里不比较“文件末尾是否有换行”这一字节事实：预览与 diff 都以可见行为单位，
  * 而且两侧都经过同一规则，展示不会因此伪造或隐藏整行内容。
  */
 export function splitLines(text: string): string[] {
   if (text === '') return []
-  const lines = text.split('\n')
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
   if (lines[lines.length - 1] === '') lines.pop()
   return lines
 }

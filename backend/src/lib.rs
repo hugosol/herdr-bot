@@ -38,9 +38,9 @@
 
 pub mod browse;
 pub mod clock;
+pub mod commit;
 pub mod config;
 pub mod countdown;
-pub mod commit;
 pub mod git;
 pub mod mdns;
 pub mod observation;
@@ -151,7 +151,9 @@ pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Rout
     app_with_sessions(
         config,
         power_off,
-        Arc::new(sessions::SessionsState::with_policy(config.sessions.policy())),
+        Arc::new(sessions::SessionsState::with_policy(
+            config.sessions.policy(),
+        )),
     )
 }
 
@@ -246,10 +248,7 @@ pub fn app_with_state(
         // 经审查复核的整仓提交：确认后重查审查版本，再暂存全部符合 Git 规则的最终变更并提交。
         .route("/api/workspaces/commit", post(commit_workspace))
         // 按需检查远端：真实 fetch 当前分支的既有 upstream，并记录最近检查时间。
-        .route(
-            "/api/workspaces/check-remote",
-            post(check_workspace_remote),
-        )
+        .route("/api/workspaces/check-remote", post(check_workspace_remote))
         // 按既有 upstream 与 Git 配置同步：检查远端 → pull → 按需 push。
         .route("/api/workspaces/sync", post(sync_workspace))
         // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
@@ -444,7 +443,11 @@ async fn monitor_shutdown(State(state): State<AppState>, request: Request) -> Re
         Ok(shutdown) => (
             StatusCode::OK,
             Json(MonitoringAccepted {
-                outcome: if command.selected { SELECTED } else { UNSELECTED },
+                outcome: if command.selected {
+                    SELECTED
+                } else {
+                    UNSELECTED
+                },
                 shutdown,
             }),
         )
@@ -570,8 +573,7 @@ async fn workspace_path(request: Request) -> Result<String, Response> {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析 workspace 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。"
-                .to_string(),
+            "无法解析 workspace 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
         )
     })?;
     Ok(body.path)
@@ -605,9 +607,8 @@ async fn read_workspace_tree(
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
-                "读取 workspace 目录树需要唯一的 `workspace` 参数，且不接受其他参数。"
-                    .to_string(),
-            )
+                "读取 workspace 目录树需要唯一的 `workspace` 参数，且不接受其他参数。".to_string(),
+            );
         }
     };
     if query.workspace.trim().is_empty() {
@@ -733,7 +734,7 @@ async fn workspace_git_status(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
                 "读取 Git 状态需要 `workspace` 参数，且不接受其他参数。".to_string(),
-            )
+            );
         }
     };
     if query.workspace.trim().is_empty() {
@@ -749,7 +750,8 @@ async fn workspace_git_status(
     };
     let timeout = state.git_timeout;
     let sync_state = Arc::clone(&state.sync_state);
-    match tokio::task::spawn_blocking(move || git::status(&registered, timeout, &sync_state)).await {
+    match tokio::task::spawn_blocking(move || git::status(&registered, timeout, &sync_state)).await
+    {
         Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(Err(error)) => git_error_response(error),
         Err(_) => rejected_owned(
@@ -776,31 +778,25 @@ async fn watch_workspaces(State(state): State<AppState>) -> Response {
     let manager = Arc::clone(&state.workspace_watch);
     let first = manager.snapshot().await;
 
-    let stream = stream::unfold(
-        (receiver, Some(first)),
-        move |(mut receiver, pending)| {
-            let manager = Arc::clone(&manager);
-            async move {
-                let snapshot = match pending {
-                    Some(snapshot) => snapshot,
-                    None => match receiver.recv().await {
-                        Ok(frame) => {
-                            return Some((
-                                Ok::<Event, Infallible>(watch::frame_event(frame)),
-                                (receiver, None),
-                            ))
-                        }
-                        Err(RecvError::Lagged(_)) => manager.snapshot().await,
-                        Err(RecvError::Closed) => return None,
-                    },
-                };
-                Some((
-                    Ok(watch::snapshot_event(snapshot)),
-                    (receiver, None),
-                ))
-            }
-        },
-    );
+    let stream = stream::unfold((receiver, Some(first)), move |(mut receiver, pending)| {
+        let manager = Arc::clone(&manager);
+        async move {
+            let snapshot = match pending {
+                Some(snapshot) => snapshot,
+                None => match receiver.recv().await {
+                    Ok(frame) => {
+                        return Some((
+                            Ok::<Event, Infallible>(watch::frame_event(frame)),
+                            (receiver, None),
+                        ));
+                    }
+                    Err(RecvError::Lagged(_)) => manager.snapshot().await,
+                    Err(RecvError::Closed) => return None,
+                },
+            };
+            Some((Ok(watch::snapshot_event(snapshot)), (receiver, None)))
+        }
+    });
     Sse::new(stream)
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
         .into_response()
@@ -1129,10 +1125,9 @@ async fn check_workspace_remote(State(state): State<AppState>, request: Request)
     let timeout = state.git_timeout;
     let locks = Arc::clone(&state.repository_locks);
     let sync_state = Arc::clone(&state.sync_state);
-    let outcome = tokio::task::spawn_blocking(move || {
-        sync::check(&registered, timeout, &locks, &sync_state)
-    })
-    .await;
+    let outcome =
+        tokio::task::spawn_blocking(move || sync::check(&registered, timeout, &locks, &sync_state))
+            .await;
     match outcome {
         Ok(sync::CheckOutcome::Checked(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(sync::CheckOutcome::NotRepository) => rejected_owned(
@@ -1225,7 +1220,8 @@ fn sync_response(
         Ok(sync::SyncOutcome::Dirty) => rejected_owned(
             StatusCode::CONFLICT,
             "sync-dirty-worktree",
-            "工作区有未提交变更：Sync 只对干净工作区可用；本功能不会 stash 或隐式提交。".to_string(),
+            "工作区有未提交变更：Sync 只对干净工作区可用；本功能不会 stash 或隐式提交。"
+                .to_string(),
         ),
         Ok(sync::SyncOutcome::NoUpstream) => rejected_owned(
             StatusCode::CONFLICT,
@@ -1301,9 +1297,9 @@ fn browse_error_response(error: browse::BrowseError) -> Response {
         BrowseError::WorkspaceNotRegistered | BrowseError::PathNotFound => StatusCode::NOT_FOUND,
         BrowseError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
         BrowseError::PathOutside | BrowseError::Link { .. } => StatusCode::FORBIDDEN,
-        BrowseError::NotADirectory
-        | BrowseError::NotAFile
-        | BrowseError::InvalidPath(_) => StatusCode::BAD_REQUEST,
+        BrowseError::NotADirectory | BrowseError::NotAFile | BrowseError::InvalidPath(_) => {
+            StatusCode::BAD_REQUEST
+        }
         BrowseError::ReadFailed(_) | BrowseError::GitIgnoreFailed(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
@@ -1314,11 +1310,9 @@ fn browse_error_response(error: browse::BrowseError) -> Response {
 /// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表，失败不伪装成空列表。
 fn workspace_list_response(result: Result<Vec<RegisteredWorkspace>, WorkspaceError>) -> Response {
     match result {
-        Ok(workspaces) => (
-            StatusCode::OK,
-            Json(WorkspaceListResponse { workspaces }),
-        )
-            .into_response(),
+        Ok(workspaces) => {
+            (StatusCode::OK, Json(WorkspaceListResponse { workspaces })).into_response()
+        }
         Err(error) => workspace_error_response(error),
     }
 }
@@ -1506,9 +1500,6 @@ async fn unknown_api_request(UrlPath(path): UrlPath<String>) -> Response {
 /// 或执行任务没能送回结果（`500`，内部故障）。
 /// 这些路径都不接受请求、不排队，也从不接触服务端配置绑定的脚本。
 fn rejected(status: StatusCode, code: &'static str, message: &'static str) -> Response {
-    eprintln!(
-        "[omp-bot] 请求被拒绝：{code}（HTTP {}）",
-        status.as_u16()
-    );
+    eprintln!("[omp-bot] 请求被拒绝：{code}（HTTP {}）", status.as_u16());
     (status, Json(RejectedResponse { code, message })).into_response()
 }

@@ -301,6 +301,11 @@ pub fn read_tree(
                 let mut children = Vec::new();
                 let mut entries = Vec::with_capacity(view.entries.len());
                 for entry in view.entries {
+                    // Git workspace 的 `.git` 元数据不作为浏览内容展示；普通目录中同名的文件
+                    // 仍按普通文件处理，不改变普通目录语义。
+                    if ignored.is_some() && entry.name.eq_ignore_ascii_case(".git") {
+                        continue;
+                    }
                     // `.gitignore` 是仓库规则本身，即使被某条规则匹配也保留在当前可见层级。
                     // 若它的父目录整体被忽略，整棵子树仍按 ignored 目录跳过。
                     if entry.name == ".gitignore" {
