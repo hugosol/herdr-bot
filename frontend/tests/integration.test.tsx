@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
+import { treeResponse } from './treeResponse'
 import type {
   ConnectionStatus,
   SessionFeed,
@@ -108,6 +109,9 @@ function workspaceHandler(state: BackendState) {
         pendingCount: state.changes.length,
         reviewToken: `token:${state.branch}:${state.changes.length}`,
       })
+    }
+    if (url.pathname === '/api/workspaces/tree') {
+      return jsonResponse(200, treeResponse(WORKSPACE, { '': state.entries }))
     }
     if (url.pathname === '/api/workspaces/entries') {
       return jsonResponse(200, {
@@ -235,7 +239,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     expect(calls.some((call) => call.url.pathname === '/api/operations/start')).toBe(true)
   })
 
-  it('节流窗口内进入 workspace、回到页面与手动刷新都立即读取当前事实', async () => {
+  it('节流窗口内回到页面只更新分支，手动刷新才读取新目录树', async () => {
     const state: BackendState = {
       entries: [{ name: 'README', path: 'README', kind: 'file', size: 16 }],
       branch: 'main',
@@ -245,26 +249,28 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    // 进入 workspace：立即读取当前目录与当前分支。
+    // 进入 workspace：读取一次完整目录树与当前分支。
     await openWorkspace(user)
     await screen.findByTestId('entry:README')
     expect(screen.getByTestId('browser-branch')).toHaveTextContent('分支：main')
 
-    // 节流窗口内（没有收到任何自动刷新通知）外部改变文件与分支；
-    // 从会话列表回到文件列表必须立即显示当前事实，而不是旧缓存。
+    // 外部改变文件与分支后从会话列表返回：只更新 Git 状态，目录树保持进入时的快照。
     state.entries = [{ name: 'NEXT', path: 'NEXT', kind: 'file', size: 4 }]
     state.branch = 'feature'
     await user.click(screen.getByTestId('tab-sessions'))
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('entry:NEXT')
-    expect(screen.queryByTestId('entry:README')).toBeNull()
-    expect(screen.getByTestId('browser-branch')).toHaveTextContent('分支：feature')
+    await waitFor(() =>
+      expect(screen.getByTestId('browser-branch')).toHaveTextContent('分支：feature'),
+    )
+    expect(screen.getByTestId('entry:README')).toBeVisible()
+    expect(screen.queryByTestId('entry:NEXT')).toBeNull()
 
-    // 再次外部改变；在窗口内点按“刷新”同样立即取得新查询结果。
+    // 只有手动刷新会重新读取目录树，并同时取得新的 Git 状态。
     state.entries = [{ name: 'THIRD', path: 'THIRD', kind: 'file', size: 5 }]
     state.branch = 'feature-2'
     await user.click(screen.getByTestId('browser-refresh'))
     await screen.findByTestId('entry:THIRD')
+    expect(screen.queryByTestId('entry:README')).toBeNull()
     expect(screen.queryByTestId('entry:NEXT')).toBeNull()
     expect(screen.getByTestId('browser-branch')).toHaveTextContent('分支：feature-2')
   })
@@ -282,7 +288,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
       if (url.pathname === '/api/workspaces/git-status') {
         return jsonResponse(500, { code: 'read-failed', message: 'Git 元数据不可读。' })
       }
-      if (url.pathname === '/api/workspaces/entries') {
+      if (url.pathname === '/api/workspaces/tree') {
         return jsonResponse(500, { code: 'read-failed', message: '目录不可读。' })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })

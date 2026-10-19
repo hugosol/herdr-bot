@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
 import type { GitChange, GitStatus, WorkspaceSummary } from '../src/gitApi'
+import { treeResponse } from './treeResponse'
 
 const WORKSPACE = 'C:\\work\\repository'
 
@@ -51,6 +52,12 @@ const DIRECTORIES: Record<string, BrowseEntry[]> = {
     { name: 'renamed-new.txt', path: 'src/renamed-new.txt', kind: 'file', size: 7 },
   ],
   'src/nested': [{ name: 'deep.txt', path: 'src/nested/deep.txt', kind: 'file', size: 4 }],
+}
+
+// Git workspace 的整树响应已经省略 ignored.log；前端只展示后端给出的过滤结果。
+const VISIBLE_DIRECTORIES: Record<string, BrowseEntry[]> = {
+  ...DIRECTORIES,
+  '': DIRECTORIES[''].filter((entry) => entry.name !== 'ignored.log'),
 }
 
 const CHANGES: GitChange[] = [
@@ -115,6 +122,17 @@ function standardHandler(url: URL, status: () => GitStatus): Response | undefine
   }
   if (url.pathname === '/api/workspaces/git-status') {
     return jsonResponse(200, status())
+  }
+  if (url.pathname === '/api/workspaces/tree') {
+    const current = status()
+    return jsonResponse(
+      200,
+      treeResponse(
+        WORKSPACE,
+        current.repository ? VISIBLE_DIRECTORIES : DIRECTORIES,
+        current.repository,
+      ),
+    )
   }
   if (url.pathname === '/api/workspaces/entries') {
     return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
@@ -198,7 +216,10 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
       'data-change',
     )
 
-    expect(screen.getByTestId('entry:ignored.log')).not.toHaveAttribute('data-change')
+    expect(screen.queryByTestId('entry:ignored.log')).toBeNull()
+    expect(screen.getByTestId('ignored-hidden-notice')).toHaveTextContent(
+      '已按 Git 忽略规则隐藏',
+    )
     await user.click(screen.getByTestId('entry:.git'))
     expect(await screen.findByTestId('entry:.git/HEAD')).not.toHaveAttribute('data-change')
 

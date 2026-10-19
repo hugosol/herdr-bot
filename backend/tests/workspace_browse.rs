@@ -60,6 +60,13 @@ fn file_url(workspace: &Path, path: &str) -> String {
     )
 }
 
+fn tree_url(workspace: &Path) -> String {
+    format!(
+        "/api/workspaces/tree?workspace={}",
+        encode(&workspace.to_string_lossy())
+    )
+}
+
 fn body(response: &HttpResponse) -> Value {
     serde_json::from_str(&response.body).expect("响应必须是 JSON")
 }
@@ -143,6 +150,20 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     files
 }
 
+fn tree_entry_names(tree: &Value, path: &str) -> Vec<String> {
+    tree["directories"]
+        .as_array()
+        .expect("directories 必须是数组")
+        .iter()
+        .find(|directory| directory["path"] == json!(path))
+        .unwrap_or_else(|| panic!("目录树必须包含 {path:?}：{tree}"))["entries"]
+        .as_array()
+        .expect("entries 必须是数组")
+        .iter()
+        .map(|entry| entry["name"].as_str().expect("目录项必须有 name").to_string())
+        .collect()
+}
+
 fn git(root: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .arg("-C")
@@ -156,6 +177,109 @@ fn git(root: &Path, args: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+#[tokio::test]
+async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_directories() {
+    let dir = TempDir::new("workspace tree git ignores");
+    let root = dir.path().join("project");
+    fs::create_dir_all(root.join("ignored")).expect("创建 ignored 目录");
+    fs::create_dir_all(root.join("kept")).expect("创建 kept 目录");
+    fs::create_dir_all(root.join("empty")).expect("创建空目录");
+    fs::write(root.join(".gitignore"), "ignored/\n*.log\n").unwrap();
+    fs::write(root.join("ignored").join("dependency.txt"), "dependency").unwrap();
+    fs::write(root.join("kept").join(".gitignore"), "local.tmp\n").unwrap();
+    fs::write(root.join("kept").join("tracked.txt"), "tracked").unwrap();
+    fs::write(root.join("kept").join("scratch.log"), "ignored sibling").unwrap();
+    fs::write(root.join("kept").join("local.tmp"), "nested ignored").unwrap();
+    fs::write(root.join("visible.txt"), "visible").unwrap();
+    fs::write(root.join(".hidden.txt"), "hidden").unwrap();
+
+    git(&root, &["init", "-q"]);
+    git(&root, &["config", "user.email", "tree@example.test"]);
+    git(&root, &["config", "user.name", "Tree Test"]);
+    git(&root, &["add", ".gitignore", "kept/.gitignore", "kept/tracked.txt", "visible.txt", ".hidden.txt"]);
+    git(&root, &["commit", "-qm", "fixture"]);
+
+    let registry = dir.path().join("workspaces.json");
+    let server = TestServer::start(&config_with_registry(&registry)).await;
+    register(&server, &root).await;
+
+    let response = get_over_tcp(server.addr(), &tree_url(&root)).await;
+    assert_eq!(response.status, 200, "整树读取应成功：{}", response.body);
+    let tree = body(&response);
+    assert_eq!(tree["ignoredHidden"], json!(true));
+
+    let root_entries = tree_entry_names(&tree, "");
+    for expected in [".gitignore", ".git", ".hidden.txt", "visible.txt", "kept", "empty"] {
+        assert!(
+            root_entries.iter().any(|name| name == expected),
+            "根目录必须保留 {expected}：{root_entries:?}"
+        );
+    }
+    assert!(
+        !root_entries.iter().any(|name| name == "ignored"),
+        "整棵 ignored 目录不应出现：{root_entries:?}"
+    );
+
+    let kept_entries = tree_entry_names(&tree, "kept");
+    assert!(kept_entries.iter().any(|name| name == "tracked.txt"));
+    assert!(kept_entries.iter().any(|name| name == ".gitignore"));
+    assert!(!kept_entries.iter().any(|name| name == "scratch.log"));
+    assert!(!kept_entries.iter().any(|name| name == "local.tmp"));
+    assert_eq!(
+        tree_entry_names(&tree, "empty"),
+        Vec::<String>::new(),
+        "未被忽略的空目录必须保留"
+    );
+    assert!(
+        tree["directories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|directory| directory["path"] != json!("ignored")),
+        "不应遍历 ignored 目录：{}",
+        tree
+    );
+}
+
+#[tokio::test]
+async fn broken_git_metadata_fails_the_whole_tree_instead_of_showing_ignored_content() {
+    let dir = TempDir::new("workspace tree broken git");
+    let root = dir.path().join("project");
+    fs::create_dir_all(&root).expect("创建目录");
+    fs::write(root.join(".git"), "gitdir: C:\\missing\\metadata\n").unwrap();
+    fs::write(root.join("visible.txt"), "visible").unwrap();
+
+    let registry = dir.path().join("workspaces.json");
+    let server = TestServer::start(&config_with_registry(&registry)).await;
+    register(&server, &root).await;
+
+    let response = get_over_tcp(server.addr(), &tree_url(&root)).await;
+    assert_rejected(&response, 500, "git-ignore-failed");
+}
+
+#[tokio::test]
+async fn plain_directory_tree_keeps_gitignore_like_files_unfiltered() {
+    let dir = TempDir::new("workspace tree plain");
+    let root = dir.path().join("project");
+    fs::create_dir_all(&root).expect("创建普通目录");
+    fs::write(root.join(".gitignore"), "ignored.txt\n").unwrap();
+    fs::write(root.join("ignored.txt"), "plain file").unwrap();
+    fs::write(root.join("visible.txt"), "visible").unwrap();
+
+    let registry = dir.path().join("workspaces.json");
+    let server = TestServer::start(&config_with_registry(&registry)).await;
+    register(&server, &root).await;
+
+    let response = get_over_tcp(server.addr(), &tree_url(&root)).await;
+    assert_eq!(response.status, 200, "普通目录整树读取应成功：{}", response.body);
+    let tree = body(&response);
+    assert_eq!(tree["ignoredHidden"], json!(false));
+    let root_entries = tree_entry_names(&tree, "");
+    assert!(root_entries.iter().any(|name| name == ".gitignore"));
+    assert!(root_entries.iter().any(|name| name == "ignored.txt"));
+    assert!(root_entries.iter().any(|name| name == "visible.txt"));
 }
 
 #[tokio::test]

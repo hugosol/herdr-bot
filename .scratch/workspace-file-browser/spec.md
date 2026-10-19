@@ -2,6 +2,8 @@
 
 Status: ready-for-agent
 
+> **2026-10-20 行为修订**：Git workspace 的文件浏览树改用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录；普通目录仍完整反映磁盘。`.gitignore`、`.git` 元数据、未被忽略的隐藏文件和已跟踪文件继续可见。整棵目录树只在进入 workspace 与手动刷新时读取；文件事件与返回页面只更新 Git 状态。此修订取代下文与该行为冲突的旧描述。
+
 ## Problem Statement
 
 用户需要在电脑浏览器与同一可信局域网内的手机上，查看 omp-bot 服务所在电脑的项目文件，定位尚未提交的变更，并完成整个仓库的提交和当前分支同步，而不必切换到桌面 Git GUI 或终端。
@@ -16,11 +18,11 @@ Status: ready-for-agent
 
 文件列表先展示由后端文件持久保存、电脑和手机共享的 workspace 登记列表。workspace 是服务器上的已登记目录，可以是普通目录，也可以对应一个 Git 工作树。取消登记不删除文件。一个 Git workspace 只管理自身仓库，不递归管理嵌套仓库或子模块中的变更。
 
-进入 workspace 后提供文件浏览视图；Git workspace 另提供变更视图。浏览视图展示完整目录树和只读内容，并以 Git 状态颜色及祖先目录提示定位变更；变更视图只展示待提交变更，提供文件 diff、常驻提交信息输入框和状态驱动的 Commit / Sync 主按钮。电脑使用左列表右内容布局，手机使用逐层进入与返回的布局。
+进入 workspace 后提供文件浏览视图；Git workspace 另提供变更视图。浏览树按 Git 原生忽略规则省略被忽略的未跟踪路径，普通目录完整反映磁盘；保留 `.gitignore`、`.git` 元数据、未被忽略的隐藏文件和已跟踪文件。浏览视图展示只读内容，并以 Git 状态颜色及祖先目录提示定位变更；变更视图只展示待提交变更，提供文件 diff、常驻提交信息输入框和状态驱动的 Commit / Sync 主按钮。电脑使用左列表右内容布局，手机使用逐层进入与返回的布局。
 
 Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存全部符合 Git 规则的变更并提交，不自动推送。Sync 仅在工作区干净时按当前分支已有 upstream 与 Git 配置拉取、推送。任一步 Git 操作失败即中断后续步骤，弹窗显示 Git 返回的提示。冲突或未完成 Git 流程阻止普通提交同步，由用户在外部工具处理后返回。
 
-文件系统变化触发有节流的本地状态刷新，默认最小自动刷新间隔 10 秒且可配置；远端状态按需检查。文本自动识别并只读展示，默认单文件预览上限 1 MiB 且可配置；不能预览的文件仍正常参与变更展示与提交。
+文件系统变化触发有节流的 Git 状态刷新，默认最小自动刷新间隔 10 秒且可配置；目录树只在进入 workspace 和手动刷新时读取。远端状态按需检查。文本自动识别并只读展示，默认单文件预览上限 1 MiB 且可配置；不能预览的文件仍正常参与变更展示与提交。
 
 ## User Stories
 
@@ -42,13 +44,13 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 16. As an omp-bot user, I want each Git workspace to manage only its own repository, so that whole-repository actions do not recursively operate on nested repositories.
 17. As an omp-bot user, I want workspace badges to show the number of pending file changes rather than directories or changed lines, so that I can find repositories needing attention.
 18. As an omp-bot user, I want 文件浏览视图 and 变更视图 to be separate internal tabs, so that reading all files and reviewing a submission have distinct purposes.
-19. As an omp-bot user, I want the browsing tree to include hidden, ignored and Git metadata files, so that browsing is not silently filtered by submission rules.
+19. As an omp-bot user, I want the browsing tree to keep hidden files, `.gitignore` and Git metadata while omitting Git-ignored untracked paths in Git workspaces, so that the tree matches Git's own ignore semantics without losing repository context.
 20. As an omp-bot user, I want selecting a file in the browsing tree to show its read-only contents, so that browsing cannot accidentally edit the repository.
 21. As an omp-bot user, I want links pointing outside the workspace boundary not to be followed, so that a registered root does not silently expose another directory.
 22. As a Git workspace user, I want new non-ignored files displayed in green, so that pending additions are easy to find before staging.
 23. As a Git workspace user, I want modified files displayed in blue, so that I can distinguish changes from additions.
 24. As a Git workspace user, I want ancestor directories containing pending changes displayed in blue up to the level immediately below the workspace root, so that I can follow changes through a collapsed tree.
-25. As a Git workspace user, I want ignored untracked files visible but without pending-change coloring, so that browsing remains complete without implying they will be committed.
+25. As a Git workspace user, I want ignored untracked paths omitted from the browsing tree, so that the tree follows Git's ignore rules and does not imply they will be committed.
 26. As a Git workspace user, I want the ignore-rules file itself treated like an ordinary changed file, so that edits to repository rules are reviewable and committable.
 27. As a Git workspace user, I want deleted files absent from the browsing tree but present in the changes list, so that the tree reflects disk contents without hiding deletions from review.
 28. As a Git workspace user, I want deletion-only changes to remain discoverable through existing ancestor directory hints, so that deletions do not disappear from tree-level awareness.
@@ -86,10 +88,10 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 60. As a Git workspace user, I want Commit and Sync disabled with an explanation during conflicts or unfinished Git workflows, so that ordinary actions do not bypass required recovery.
 61. As a Git workspace user, I want external conflict resolution and workflow completion reflected after refresh, so that I can resume normal actions without an in-browser conflict editor.
 62. As a Git workspace user, I want detached HEAD and missing-upstream limitations explained rather than implicitly repaired, so that the browser does not change repository configuration for me.
-63. As an omp-bot user, I want local file and Git metadata events to trigger status updates, so that external tools' changes become visible without continuous manual refresh.
-64. As an omp-bot operator, I want a configurable per-workspace automatic refresh interval defaulting to 10 seconds, so that bursts of filesystem activity have bounded refresh cost.
-65. As an omp-bot user, I want events within the refresh window merged with a trailing refresh, so that the final change is not dropped and continuous writes cannot postpone updates indefinitely.
-66. As an omp-bot user, I want manual refresh, workspace entry, operation completion and pre-commit verification to bypass automatic-refresh throttling, so that deliberate actions use current information.
+63. As an omp-bot user, I want local file and Git metadata events to trigger Git status updates, so that external tools' changes become visible without constantly rereading the directory tree.
+64. As an omp-bot operator, I want a configurable per-workspace automatic status refresh interval defaulting to 10 seconds, so that bursts of filesystem activity have bounded refresh cost.
+65. As an omp-bot user, I want events within the refresh window merged with a trailing status refresh, so that the final change is not dropped and continuous writes cannot postpone updates indefinitely.
+66. As an omp-bot user, I want workspace entry and manual refresh to read the full tree once, with later deliberate refresh available on demand, so that directory browsing is stable and predictable.
 67. As a Git workspace user, I want remote checking explicit, with the last check time visible and a fresh check before Sync, so that cached ahead/behind counts are not mistaken for live remote knowledge.
 68. As an omp-bot user, I want text detected from content without a mandatory extension whitelist and rendered as plain text, so that extensionless files are readable without executing their contents.
 69. As an omp-bot operator, I want the single-file preview limit configurable with a default of 1 MiB, so that content rendering has an explicit size boundary.
@@ -121,7 +123,8 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 - 登记入口采用服务器路径输入与有效性校验；登记列表跨设备共享、跨后端重启保留；移除仅取消登记。
 - 普通目录与 Git 工作区均可登记。Git workspace 的仓库操作根为该工作树根；一个 workspace 不聚合多个仓库。
 - 普通目录只有文件浏览视图；不出现可执行的 Commit / Sync 或 Git 变更视图。
-- 浏览展示所有文件，包括隐藏文件、被忽略文件、忽略规则文件与 Git 元数据。Git 元数据可只读浏览，但不参与普通待提交变更、着色与角标。
+- Git workspace 的浏览树使用 Git 原生忽略规则，省略被忽略的未跟踪文件和目录；普通目录不过滤。两种 workspace 都保留隐藏文件、忽略规则文件与 Git 元数据；Git 元数据可只读浏览，但不参与普通待提交变更、着色与角标。
+- 已跟踪文件即使匹配忽略规则也仍显示；忽略查询使用仓库及其嵌套 `.gitignore`、`.git/info/exclude` 和全局 excludes，不自行解析规则。嵌套仓库与子模块内部不递归应用父仓库的忽略集合。
 - 读取范围限制在所选已登记 workspace 内；不跟随指向根外的符号链接或 Windows 目录联接，显示目标与不可进入原因。
 - 不递归提交、同步或管理嵌套仓库、子模块的内部变更；不把它们的内部文件作为所属仓库的普通新增内容提交。
 
@@ -184,10 +187,10 @@ Commit 在一句确认消息之后检查审查版本是否仍有效，再暂存�
 
 ### 本地刷新与远端检查
 
-- Git 不是通用文件变化推送源；监听工作区和相关 Git 元数据变化后，再查询本地 Git 状态并更新展示。
-- 自动刷新按 workspace 合并事件，最小刷新间隔默认 10 秒、后端可配置。没有等待窗口时尽快刷新；窗口内事件记为待刷新，窗口结束补一次，连续写入不能使刷新无限延期。
-- 手动刷新、进入 workspace、回到页面、Git 操作完成后的刷新，以及提交前复核，不受自动刷新节流限制；提交前不使用尚未过期的缓存代替查询。
-- 普通目录也应反映外部文件增删改，不依赖 Git 状态作为唯一目录事实。
+- Git 不是通用文件变化推送源；监听工作区和相关 Git 元数据变化后，再查询本地 Git 状态并更新展示；此过程不重读目录树。
+- 自动刷新按 workspace 合并事件，最小刷新间隔默认 10 秒、后端可配置。没有等待窗口时尽快刷新；窗口内事件记为待刷新，窗口结束补一次，连续写入不能使刷新无限延期。自动刷新只更新 Git 状态。
+- 进入 workspace 读取一次完整目录树；之后只有手动刷新会重新读取目录树。回到页面、Git 操作完成后的刷新以及提交前复核都不重读目录树；提交前仍不使用尚未过期的缓存代替查询。
+- 普通目录也只在进入 workspace 和手动刷新时更新目录树，不依赖文件事件自动重读。
 - 本地文件事件不触发持续自动 fetch。远端提供明确检查入口，Sync 前必定检查，展示最近检查时间；ahead/behind 基于最近已知远端状态，不承诺实时远端通知。
 
 ### 信任边界与既有决策

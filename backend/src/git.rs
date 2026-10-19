@@ -13,6 +13,7 @@
 //! 状态；只有登记根确实不是工作树根时，才返回 `repository: false` 的普通目录结果。冲突只来自 Git
 //! 的未合并文件条目，普通命令失败与单纯 ahead/behind 不会被标记为冲突。
 
+use std::collections::HashSet;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read};
@@ -310,6 +311,52 @@ pub(crate) fn worktree_root(
         return Ok(None);
     }
     Ok(Some(root))
+}
+
+/// 读取当前工作树根下被 Git 忽略的未跟踪路径。
+///
+/// 使用 Git 自己的 `ls-files --others --ignored --exclude-standard --directory -z`：
+/// 因此仓库与嵌套 `.gitignore`、`.git/info/exclude` 和全局 excludes 都由 Git 解释，调用方不解析规则。
+/// `--directory` 会直接给出可整棵跳过的 ignored 目录；包含 tracked 文件的目录不会被误报为可跳过。
+/// 普通目录返回 `None`，不运行任何 Git 命令。
+pub(crate) fn ignored_paths(
+    registered_root: &str,
+    timeout: Duration,
+) -> Result<Option<HashSet<String>>, GitError> {
+    let Some(root) = worktree_root(registered_root, timeout)? else {
+        return Ok(None);
+    };
+    let output = run_git(
+        &root,
+        &[
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+            "-z",
+        ],
+        timeout,
+    )?;
+    if !output.status.success() {
+        return Err(command_failed(
+            "git ls-files --others --ignored --exclude-standard --directory -z",
+            &output,
+        ));
+    }
+
+    let mut paths = HashSet::new();
+    for raw in output.stdout.split(|byte| *byte == 0) {
+        if raw.is_empty() {
+            continue;
+        }
+        let value = String::from_utf8_lossy(raw);
+        let path = value.trim_end_matches('/').replace('\\', "/");
+        if !path.is_empty() {
+            paths.insert(path);
+        }
+    }
+    Ok(Some(paths))
 }
 
 /// 当前分支名；detached HEAD 用 `detached: true` 表示，而不是编造一个分支名。

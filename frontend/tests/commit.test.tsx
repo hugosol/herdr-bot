@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
+import { treeResponse } from './treeResponse'
 import type { ChangeDiff, DiffSide } from '../src/diffApi'
 import type { GitChange, GitStatus, WorkspaceSummary } from '../src/gitApi'
 
@@ -148,6 +149,9 @@ function standardHandler(
     }
     if (url.pathname === '/api/workspaces/git-status') {
       return jsonResponse(200, status())
+    }
+    if (url.pathname === '/api/workspaces/tree') {
+      return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
     }
     if (url.pathname === '/api/workspaces/entries') {
       return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))

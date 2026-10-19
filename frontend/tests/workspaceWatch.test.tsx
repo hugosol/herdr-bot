@@ -6,6 +6,7 @@ import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
 import { createWorkspaceWatchFeed } from '../src/workspaceWatch'
 import { FakeWorkspaceEventSource, resetFakeWorkspaceEventSources } from './fakeWorkspaceEventSource'
+import { treeResponse } from './treeResponse'
 
 const WORKSPACE = 'C:\\work\\project'
 
@@ -52,6 +53,9 @@ function standardHandler(fixture: Fixture) {
         conflict: false,
         pendingCount: fixture.changes.length,
       })
+    }
+    if (url.pathname === '/api/workspaces/tree') {
+      return jsonResponse(200, treeResponse(WORKSPACE, { '': fixture.entries }))
     }
     if (url.pathname === '/api/workspaces/entries') {
       return jsonResponse(200, {
@@ -134,7 +138,7 @@ afterEach(() => {
 })
 
 describe('workspace 自动刷新与监听健康', () => {
-  it('真实文件事件通知到达后自动重新读取目录，无需点击刷新', async () => {
+  it('文件事件只重读 Git 状态，手动刷新才重读目录树', async () => {
     const user = userEvent.setup()
     const fixture: Fixture = {
       entries: [README],
@@ -147,15 +151,35 @@ describe('workspace 自动刷新与监听健康', () => {
     const source = await openWorkspace(user)
 
     expect(screen.queryByTestId('entry:new.txt')).toBeNull()
+    const treeReadsBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/tree',
+    ).length
+    const statusReadsBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/git-status',
+    ).length
+
     fixture.entries = [
       README,
       { name: 'new.txt', path: 'new.txt', kind: 'file', size: 7 },
     ]
     emit(source, 'refresh', { workspace: WORKSPACE, at: 100, generation: 1 })
 
+    await waitFor(() =>
+      expect(
+        calls.filter((url) => url.pathname === '/api/workspaces/git-status').length,
+      ).toBeGreaterThan(statusReadsBefore),
+    )
+    // 自动事件不接触目录树：新文件只有手动刷新后才出现。
+    expect(screen.queryByTestId('entry:new.txt')).toBeNull()
+    expect(
+      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+    ).toHaveLength(treeReadsBefore)
+
+    await user.click(screen.getByTestId('browser-refresh'))
     expect(await screen.findByTestId('entry:new.txt')).toBeVisible()
-    const entryReads = calls.filter((url) => url.pathname === '/api/workspaces/entries')
-    expect(entryReads.length).toBeGreaterThan(1)
+    expect(
+      calls.filter((url) => url.pathname === '/api/workspaces/tree').length,
+    ).toBeGreaterThan(treeReadsBefore)
   })
 
   it('workspace 列表的待提交角标随合并后的刷新通知更新', async () => {
@@ -242,14 +266,14 @@ describe('workspace 自动刷新与监听健康', () => {
     await waitFor(() => expect(screen.queryByTestId('watch-stale')).toBeNull())
   })
 
-  it('普通目录的自动刷新同样生效，不依赖 Git 状态', async () => {
+  it('普通目录的文件事件也不重读树，手动刷新才更新', async () => {
     const user = userEvent.setup()
     const fixture: Fixture = {
       entries: [README],
       pendingCount: 0,
       changes: [],
     }
-    mockFetch((url) => {
+    const calls = mockFetch((url) => {
       if (url.pathname === '/api/workspaces/git-status') {
         return jsonResponse(200, {
           workspace: WORKSPACE,
@@ -266,12 +290,29 @@ describe('workspace 自动刷新与监听健康', () => {
     const feed = watchFeed()
     render(<App workspaceWatchFeed={feed} />)
     const source = await openWorkspace(user)
+    const treeReadsBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/tree',
+    ).length
+    const statusReadsBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/git-status',
+    ).length
 
     fixture.entries = [
       README,
       { name: 'plain.txt', path: 'plain.txt', kind: 'file', size: 6 },
     ]
     emit(source, 'refresh', { workspace: WORKSPACE, at: 400, generation: 1 })
+    await waitFor(() =>
+      expect(
+        calls.filter((url) => url.pathname === '/api/workspaces/git-status').length,
+      ).toBeGreaterThan(statusReadsBefore),
+    )
+    expect(screen.queryByTestId('entry:plain.txt')).toBeNull()
+    expect(
+      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+    ).toHaveLength(treeReadsBefore)
+
+    await user.click(screen.getByTestId('browser-refresh'))
     expect(await screen.findByTestId('entry:plain.txt')).toBeVisible()
   })
 })

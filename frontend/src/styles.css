@@ -545,6 +545,18 @@ h1 {
   font-size: 0.95rem;
 }
 
+/* 忽略过滤提示：只在本次树读取确实隐藏了路径时出现，不做成可切换开关。 */
+.browser-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 0.3rem solid #55606f;
+  border-radius: 0.35rem;
+  background: #1d2128;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .browser-error {
   margin: 0;
   padding: 0.75rem;

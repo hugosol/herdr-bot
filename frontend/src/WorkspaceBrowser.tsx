@@ -8,8 +8,8 @@ import {
 } from 'react'
 
 import {
-  fetchDirectory,
   fetchFile,
+  fetchTree,
   type BrowseEntry,
   type BrowseResult,
   type FileView,
@@ -150,13 +150,15 @@ export function WorkspaceBrowser({
 }) {
   const [entries, setEntries] = useState<Map<string, BrowseEntry[]>>(() => new Map())
   const [directoryErrors, setDirectoryErrors] = useState<Map<string, string>>(() => new Map())
-  const [loadingDirectories, setLoadingDirectories] = useState<Set<string>>(() => new Set())
+  const [ignoredHidden, setIgnoredHidden] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [file, setFile] = useState<FileView | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // 进入 workspace 时预读整棵目录树；展开目录只切换显示，不再等待网络。
+  const [treeLoading, setTreeLoading] = useState(false)
   const [mobilePath, setMobilePath] = useState('')
   const [mobileShowingContent, setMobileShowingContent] = useState(false)
   // Git 状态与内部视图：普通目录只有浏览，不会出现变更视图或分支信息。
@@ -193,7 +195,11 @@ export function WorkspaceBrowser({
   )
   const gitSequence = useRef(0)
   const diffSequence = useRef(0)
-  const directorySequences = useRef(new Map<string, number>())
+  // 整树预读的代际：切换 workspace 时，旧请求返回后不得补写新树。
+  const treeRun = useRef(0)
+  // 同一时刻只跑一轮整树扫描；扫描期间的刷新合并为结束后的一次补跑，避免反复从头开始。
+  const treeInFlight = useRef<Promise<void> | null>(null)
+  const treeReloadRequested = useRef(false)
   const fileSequence = useRef(0)
   const desktopTreeRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -208,44 +214,70 @@ export function WorkspaceBrowser({
   const workspaceRef = useRef(workspace)
   workspaceRef.current = workspace
 
-  const loadDirectory = useCallback(
-    async (path: string) => {
-      const sequence = (directorySequences.current.get(path) ?? 0) + 1
-      directorySequences.current.set(path, sequence)
-      setLoadingDirectories((previous) => new Set(previous).add(path))
+  /**
+   * 一次读取完整目录树。
+   *
+   * 后端在 Git workspace 中已经按 Git 原生忽略规则过滤；这里只替换前端快照。
+   * 同一时间只跑一次请求，扫描期间收到的刷新合并为结束后的一次补跑。
+   */
+  const loadEntireTree = useCallback(async () => {
+    if (treeInFlight.current !== null) {
+      treeReloadRequested.current = true
+      return treeInFlight.current
+    }
 
-      const result = await fetchDirectory(workspace, path)
-      if (directorySequences.current.get(path) !== sequence) return
+    const scanTree = async (run: number) => {
+      const result = await fetchTree(workspace)
+      if (treeRun.current !== run || workspaceRef.current !== workspace) return
 
-      setLoadingDirectories((previous) => {
-        const next = new Set(previous)
-        next.delete(path)
-        return next
-      })
       if (result.kind === 'ok') {
-        setEntries((previous) => new Map(previous).set(path, result.value.entries))
-        setDirectoryErrors((previous) => {
-          const next = new Map(previous)
-          next.delete(path)
-          return next
-        })
+        const nextEntries = new Map<string, BrowseEntry[]>()
+        const nextErrors = new Map<string, string>()
+        for (const directory of result.value.directories) {
+          nextEntries.set(directory.path, directory.entries)
+          if (directory.error !== undefined) {
+            nextErrors.set(directory.path, directory.error.message)
+          }
+        }
+        setEntries(nextEntries)
+        setDirectoryErrors(nextErrors)
+        setIgnoredHidden(result.value.ignoredHidden)
       } else {
-        // 读取失败时清除该目录的旧内容：不能继续把上一次的结果显示成当前事实。
-        setEntries((previous) => {
-          const next = new Map(previous)
-          next.delete(path)
-          return next
-        })
-        setDirectoryErrors((previous) =>
-          new Map(previous).set(
-            path,
-            failureMessage(result, path === '' ? '根目录' : `目录 ${path}`),
-          ),
+        // 根目录或 Git 忽略查询失败：不能把旧树继续显示成当前事实。
+        setEntries(new Map())
+        setDirectoryErrors(
+          new Map([['', failureMessage(result, '完整目录树')]]),
         )
+        setIgnoredHidden(false)
+        setSelectedPath(null)
+        setFile(null)
+        setFileError(null)
+        setFileLoading(false)
+        setMobileShowingContent(false)
       }
-    },
-    [workspace],
-  )
+    }
+
+    const promise = (async () => {
+      setTreeLoading(true)
+      while (true) {
+        treeReloadRequested.current = false
+        const run = treeRun.current + 1
+        treeRun.current = run
+        await scanTree(run)
+        if (treeRun.current !== run) break
+        if (!treeReloadRequested.current) break
+      }
+    })()
+
+    treeInFlight.current = promise
+    const settle = () => {
+      if (treeInFlight.current !== promise) return
+      treeInFlight.current = null
+      setTreeLoading(false)
+    }
+    void promise.then(settle, settle)
+    return promise
+  }, [workspace])
 
   const loadFile = useCallback(
     async (path: string) => {
@@ -325,23 +357,23 @@ export function WorkspaceBrowser({
   )
 
   const refresh = useCallback(async () => {
-    const paths = new Set(entries.keys())
-    paths.add('')
     setRefreshing(true)
-    await Promise.all([...paths].map((path) => loadDirectory(path)).concat(loadGitStatus()))
+    await Promise.all([loadEntireTree(), loadGitStatus()])
     if (selectedPath !== null) await loadFile(selectedPath)
     const currentChange = selectedChangeRef.current
     if (currentChange !== null) await loadChangeDiff(currentChange)
     setRefreshing(false)
-  }, [entries, selectedPath, loadDirectory, loadFile, loadGitStatus, loadChangeDiff])
+  }, [selectedPath, loadEntireTree, loadFile, loadGitStatus, loadChangeDiff])
 
-  const refreshLatest = useRef(refresh)
-  refreshLatest.current = refresh
-
-  // 打开 workspace（或切换 workspace）时从根目录重新读取，并清空上一份临时浏览状态。
+  // 打开 workspace（或切换 workspace）时读取一次完整目录树，并清空上一份临时浏览状态。
   useEffect(() => {
+    // 切换 workspace 时立即作废旧代际；新 workspace 另起一轮，不复用旧树的尾随刷新。
+    treeRun.current += 1
+    treeInFlight.current = null
+    treeReloadRequested.current = false
     setEntries(new Map())
     setDirectoryErrors(new Map())
+    setIgnoredHidden(false)
     setExpanded(new Set())
     setSelectedPath(null)
     setFile(null)
@@ -366,24 +398,40 @@ export function WorkspaceBrowser({
     setSyncFeedback(null)
     changesScrollPosition.current = 0
     scrollPositions.current = new Map()
-    void loadDirectory('')
+    void loadEntireTree()
     void loadGitStatus()
-  }, [workspace, loadDirectory, loadGitStatus])
+  }, [workspace, loadEntireTree, loadGitStatus])
 
-  // 从其他顶层 tab 回到文件列表时，重新读取当前目录与所选文件，保留展开、选择与滚动。
+  // 从其他顶层 tab 回到文件列表时只更新 Git 状态；完整目录树仅由手动刷新重读。
   useEffect(() => {
     if (active && !activePreviously.current) {
-      void refreshLatest.current()
+      void loadGitStatus()
     }
     activePreviously.current = active
-  }, [active])
+  }, [active, loadGitStatus])
 
-  // 后端合并后的刷新通知只决定「何时重新读取」；读取本身与手动刷新完全相同，不另设缓存。
+  // 文件事件只更新 Git 状态，不自动重读目录树；需要新的目录快照时由用户按刷新。
   useEffect(() => {
     if (watchGeneration === seenWatchGeneration.current) return
     seenWatchGeneration.current = watchGeneration
-    void refreshLatest.current()
-  }, [watchGeneration])
+    void loadGitStatus()
+  }, [watchGeneration, loadGitStatus])
+
+  // 手动刷新或忽略规则变化后，当前文件可能已不在过滤后的树中：清除选择，避免树中无此项、
+  // 右侧仍显示旧内容。entries 含根节点才说明当前树的快照已经落地。
+  useEffect(() => {
+    if (selectedPath === null || !entries.has('')) return
+    const parent = selectedPath.includes('/')
+      ? selectedPath.slice(0, selectedPath.lastIndexOf('/'))
+      : ''
+    const siblings = entries.get(parent)
+    if (siblings?.some((entry) => entry.path === selectedPath)) return
+    setSelectedPath(null)
+    setFile(null)
+    setFileError(null)
+    setFileLoading(false)
+    setMobileShowingContent(false)
+  }, [entries, selectedPath])
 
   // 换一个文件时从内容顶部开始显示；否则上一份长内容的滚动位置会让新文件看起来是空白的。
   useEffect(() => {
@@ -446,21 +494,18 @@ export function WorkspaceBrowser({
   }
 
   function toggleDirectory(path: string) {
-    const willExpand = !expanded.has(path)
     setExpanded((previous) => {
       const next = new Set(previous)
       if (next.has(path)) next.delete(path)
       else next.add(path)
       return next
     })
-    if (willExpand && !entries.has(path)) void loadDirectory(path)
   }
 
   function openMobileDirectory(path: string) {
     rememberMobileScroll()
     setMobilePath(path)
     setMobileShowingContent(false)
-    if (!entries.has(path)) void loadDirectory(path)
   }
 
   function goMobileUp() {
@@ -470,7 +515,6 @@ export function WorkspaceBrowser({
       : ''
     setMobilePath(parent)
     setMobileShowingContent(false)
-    if (!entries.has(parent)) void loadDirectory(parent)
   }
 
   const blockedReason =
@@ -1105,18 +1149,7 @@ export function WorkspaceBrowser({
         </p>
       )
     }
-    if (entries.get(path) === undefined) {
-      if (!loadingDirectories.has(path)) return null
-      return (
-        <p
-          className="browser-loading"
-          data-testid={path === '' ? 'directory-loading' : `directory-loading:${path}`}
-          role="status"
-        >
-          正在读取目录……
-        </p>
-      )
-    }
+    if (entries.get(path) === undefined) return null
     return content
   }
 
@@ -1134,24 +1167,14 @@ export function WorkspaceBrowser({
       )
     }
     const directoryEntries = entries.get(path)
-    if (directoryEntries === undefined) {
-      return loadingDirectories.has(path) ? (
-        <p
-          className="browser-loading"
-          data-testid={path === '' ? 'directory-loading' : `directory-loading:${path}`}
-          role="status"
-        >
-          正在读取目录……
-        </p>
-      ) : null
-    }
+    if (directoryEntries === undefined) return null
     if (directoryEntries.length === 0) {
       return (
         <p
           className="browser-empty"
           data-testid={path === '' ? 'directory-empty' : `directory-empty:${path}`}
         >
-          此目录为空。
+          {ignoredHidden ? '此目录没有未忽略的内容。' : '此目录为空。'}
         </p>
       )
     }
@@ -1244,7 +1267,7 @@ export function WorkspaceBrowser({
           className="browser-empty"
           data-testid={path === '' ? 'directory-empty' : `directory-empty:${path}`}
         >
-          此目录为空。
+          {ignoredHidden ? '此目录没有未忽略的内容。' : '此目录为空。'}
         </p>
       )
     }
@@ -1408,6 +1431,16 @@ export function WorkspaceBrowser({
       {/* 浏览与变更两个内部视图都保持挂载，只切换可见性：切走再切回时选择、展开与滚动位置
           仍由同一个组件实例持有，不因重新挂载而丢失。 */}
       <div className="browser-pane" hidden={view !== 'browse'}>
+        {treeLoading && (
+          <p className="browser-loading" data-testid="tree-loading" role="status">
+            正在加载完整目录树……
+          </p>
+        )}
+        {ignoredHidden && !treeLoading && (
+          <p className="browser-note" data-testid="ignored-hidden-notice">
+            已按 Git 忽略规则隐藏被忽略的文件和目录。
+          </p>
+        )}
         {narrow ? (
           <div className="browser-mobile" data-testid="browser-mobile">
             {mobileShowingContent ? (

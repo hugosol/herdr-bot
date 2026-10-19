@@ -6,6 +6,8 @@ Approval: 接缝选择、约束审视、验收模式三个审批门均已由用�
 
 本文是已批准的决策契约，不表示功能已实现或验收已完成。承诺的完成状态由交付工作、自动检查结果及必要的用户确认推导，不手工维护状态列；交付归属由 `/to-tickets` 回填到实现票并引用承诺编号。
 
+> **2026-10-20 修订**：Git workspace 的浏览树改为按 Git 原生忽略规则省略 ignored 未跟踪路径；普通目录仍完整反映磁盘。`.gitignore`、`.git` 元数据、未被忽略的隐藏文件和 tracked 文件继续可见。目录树只在进入 workspace 与手动刷新时读取；文件事件和返回页面只更新 Git 状态。P12、P17、P39–P41 已按此行为改写。
+
 ## Promises
 
 Coverage 中的“自动”由 agent 负责，包括真实浏览器与隔离环境验证；不是仅运行模拟检查。唯一人工例外为手机实机交互体验，在对应 Coverage 单元格标记为 **human-led H1**。同一 H1 的检查和证据按相关单元格合并交付，不扩展成人工验证 Git 正确性或人工修复实现的责任。
@@ -25,12 +27,12 @@ Coverage 中的“自动”由 agent 负责，包括真实浏览器与隔离环�
 |P9|取消登记不删除目录或文件。|自动：取消前后独立读取原目录与文件内容。|[story 13](spec.md#user-stories)|S2|
 |P10|普通目录只有可用的浏览能力，没有可执行的 Git 提交同步。|自动：页面无可用 Git 操作；直接请求不能绕过资格检查产生 Git 写入。|[stories 15,18](spec.md#user-stories)；inferred-required：不能仅依赖按钮限制|S1,S2|
 |P11|整仓操作不递归管理嵌套仓库或子模块内部变更。|自动：真实隔离嵌套仓库与子模块前后状态；子模块内部文件不作为父仓库普通文件提交，父仓库自身已跟踪的 gitlink 引用变化仍正常纳入。|[story 16](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)；inferred-required：区分父仓库引用与子仓库内容|S2|
-|P12|浏览完整反映磁盘文件，包括隐藏文件、被忽略文件、忽略规则文件和 Git 元数据。|自动：目录输出与独立创建的真实目录集合核对，页面选择对应文件读取。|[stories 19,20](spec.md#user-stories)|S1,S2|
+|P12|Git workspace 浏览树按 Git 原生忽略规则省略 ignored 未跟踪路径；普通目录完整反映磁盘。两种 workspace 都保留隐藏文件、忽略规则文件和 Git 元数据。|自动：真实 Git 仓库核对 Git 忽略集合与页面；普通目录与独立创建的真实目录集合核对；`.gitignore`、`.git`、隐藏文件、tracked 文件和空目录保留。|[stories 19,20](spec.md#user-stories)|S1,S2|
 |P13|浏览与审查不改变文件内容或真实暂存状态。|自动：读取、diff 和重命名展示前后，独立核对文件与索引状态；允许 Git 正常只读查询所需的非语义缓存活动，不把它当作暂存操作。|[stories 20,37,46](spec.md#user-stories)；inferred-required：只读含暂存语义不变|S2|
 |P14|任何公开读取都不能越出所选已登记 workspace。|自动：直接请求根外路径、遍历路径、符号链接、Windows 目录联接和路径替换反例；根外链接显示目标与不可进入原因，不读取其内容。|[story 21](spec.md#user-stories)；inferred-required：约束作用于实际读取入口|S1,S2|
 |P15|文件新增绿色、修改及已识别重命名蓝色、删除红色，不显示普通 A/M/D 状态字母。|自动：实际浏览器的明确样例，颜色与独立指定状态对应；两个视图一致。|[stories 22,23,35,36,39](spec.md#user-stories)|S1|
 |P16|包含待提交变更的现存祖先目录显示蓝色，传播到 workspace 根下一级。|自动：多层新增及删除样例；即使文件已删除，存在的祖先仍提示变化；不将所有目录染成子文件颜色。|[stories 24,28](spec.md#user-stories)|S1,S2|
-|P17|被忽略的未跟踪文件可见但不呈现待提交着色，忽略规则文件自身按普通变更处理。|自动：真实忽略规则、新增与修改样例，独立核对 Git 集合及两视图。|[stories 25,26](spec.md#user-stories)|S1,S2|
+|P17|被忽略的未跟踪路径不出现在浏览树；忽略规则文件自身按普通文件与普通变更处理。|自动：真实忽略规则、嵌套规则、tracked 文件和 ignored 目录样例，独立核对 Git 集合及浏览树。|[stories 25,26](spec.md#user-stories)|S1,S2|
 |P18|删除文件只出现在变更列表，不在浏览树伪造仍存在的文件。|自动：真实删除后的两视图对照。|[story 27](spec.md#user-stories)|S1,S2|
 |P19|Git 元数据不计入普通待提交着色、目录变更提示及角标。|自动：仅元数据变化的明确样例，同时确认元数据仍能只读浏览。|[story 29](spec.md#user-stories)|S1,S2|
 |P20|待提交集合准确遵循 Git 跟踪与忽略规则。|自动：真实 Git 样例覆盖 tracked 修改/删除、未忽略 untracked、ignored untracked、后来匹配忽略的 tracked；最终提交树与独立预期核对，不强添 ignored。|[stories 30,31,32](spec.md#user-stories)|S2|
@@ -52,9 +54,9 @@ Coverage 中的“自动”由 agent 负责，包括真实浏览器与隔离环�
 |P36|后续失败不自动撤销已成功步骤，也不宣称流程整体回滚。|自动：暂存后 hook 拒绝 commit、pull 成功后远端拒绝 push，核对实际索引、提交和引用与页面反馈。|[story 59](spec.md#user-stories)|S1,S2|
 |P37|冲突或未完成 Git 流程阻止普通 Commit/Sync，外部完成后刷新恢复。|自动：真实 merge/rebase 等冲突及已解决但流程未完样例，直接请求同样拒绝；普通命令失败不误标为文件冲突。|[stories 60,61](spec.md#user-stories)；inferred-required：后端资格检查|S1,S2|
 |P38|detached HEAD 与无 upstream 明确提示限制，不隐式修复配置或发布分支。|自动：真实仓库状态、按钮反馈与操作前后配置不变；无 upstream 不妨碍正常本地 Commit。|[story 62](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)|S1,S2|
-|P39|工作区与相关 Git 元数据的文件事件触发本地状态更新，普通目录也反映外部增删改。|自动：真实进程、真实目录写入与 Git 外部操作，观察更新；模拟通知不代替监听实际生效证据。|[story 63](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)|S2|
-|P40|每 workspace 自动刷新默认最小间隔 10 秒且可配置，事件合并后仍最终刷新。|自动：独立事件时序覆盖窗口首尾、连续写入、多个观察者；可控时间证明节流，真实进程证明监听；不把最小间隔错误承诺为 Git 查询必在 10 秒内完成。|[stories 64,65](spec.md#user-stories)|S2|
-|P41|进入或回到页面、手动刷新、操作后及提交前检查不受自动刷新缓存节流限制。|自动：窗口内交错操作，观察当前文件/分支与预提交检查实际结果，而非只断言刷新函数被调用。|[story 66](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)|S1,S2|
+|P39|工作区与相关 Git 元数据的文件事件触发 Git 状态更新；目录树快照只在进入 workspace 与手动刷新时重读。|自动：真实进程、真实目录写入与 Git 外部操作，观察 Git 状态更新且目录树请求数不增加；模拟通知不代替监听实际生效证据。|[story 63](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)|S2|
+|P40|每 workspace 的 Git 状态自动刷新默认最小间隔 10 秒且可配置，事件合并后仍最终刷新；目录树不参与自动刷新。|自动：独立事件时序覆盖窗口首尾、连续写入、多个观察者；可控时间证明节流，真实进程证明监听与目录树请求数不变；不把最小间隔错误承诺为 Git 查询必在 10 秒内完成。|[stories 64,65](spec.md#user-stories)|S2|
+|P41|进入 workspace 读取一次完整目录树；进入或回到页面、操作后及提交前检查不受自动刷新缓存节流限制，但只有手动刷新会重读目录树。|自动：窗口内交错操作，观察 Git 状态与预提交检查实际结果，并核对只有手动刷新增加整树请求；而非只断言刷新函数被调用。|[story 66](spec.md#user-stories)；[Implementation Decisions](spec.md#implementation-decisions)|S1,S2|
 |P42|远端按需检查，Sync 前必查，并明确最近检查时间而非宣称实时。|自动：隔离远端独立前进、本地引用和页面检查时间；本地文件事件不造成持续自动 fetch。|[story 67](spec.md#user-stories)|S1,S2|
 |P43|按内容识别文本且只作纯文本展示，不强制后缀白名单或执行内容。|自动：无后缀文本、伪文本后缀二进制、含 HTML/script 的文件及 Git 诊断，实际浏览器确认不执行。|[story 68](spec.md#user-stories)|S1,S2|
 |P44|文本与 diff 预览使用可配置大小上限，默认 1 MiB；diff 两侧各自适用。|自动：精确边界及越界字节大小，旧侧超限/新侧很小及相反情况；任意一侧超限不渲染完整 diff，明确说明，二进制给出不可文本预览原因。|[stories 69,70](spec.md#user-stories)；已批准 B3|S1,S2|

@@ -11,9 +11,11 @@
 //! 预览（P43、P44）：文本按内容识别，不依赖后缀；超过配置上限的文件只返回大小与上限说明，绝不读取
 //! 完整内容；二进制文件返回不可文本预览的原因，但仍保留文件元数据。
 
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use serde::Serialize;
 
@@ -53,6 +55,43 @@ pub struct DirectoryView {
     /// 被读取目录相对根的路径；根目录是空字符串。
     pub path: String,
     pub entries: Vec<BrowseEntry>,
+}
+
+/// 整树读取中某个子目录的明确读取错误；其它目录仍可正常浏览。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeErrorView {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl From<BrowseError> for TreeErrorView {
+    fn from(error: BrowseError) -> Self {
+        Self {
+            code: error.code(),
+            message: error.message(),
+        }
+    }
+}
+
+/// 整树读取中的一个目录节点。读取失败的目录保留节点与错误，不伪装成空目录。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeDirectoryView {
+    pub path: String,
+    pub entries: Vec<BrowseEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<TreeErrorView>,
+}
+
+/// 一次完整目录树读取的结果。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceTreeView {
+    pub workspace: String,
+    pub directories: Vec<TreeDirectoryView>,
+    /// 本次是否因为 Git 忽略规则隐藏了至少一个路径；用于页面提示和空目录文案。
+    pub ignored_hidden: bool,
 }
 
 /// 单个文件的内容预览。
@@ -106,6 +145,8 @@ pub enum BrowseError {
     InvalidPath(String),
     /// 实际读取失败；不伪装成空内容。
     ReadFailed(io::Error),
+    /// Git 忽略查询失败；整树读取失败，不静默回退显示 ignored 内容。
+    GitIgnoreFailed(String),
 }
 
 impl BrowseError {
@@ -121,6 +162,7 @@ impl BrowseError {
             Self::Link { .. } => "path-is-link",
             Self::InvalidPath(_) => "invalid-path",
             Self::ReadFailed(_) => "read-failed",
+            Self::GitIgnoreFailed(_) => "git-ignore-failed",
         }
     }
 
@@ -142,6 +184,9 @@ impl BrowseError {
             }
             Self::InvalidPath(reason) => format!("路径写法不可接受：{reason}"),
             Self::ReadFailed(error) => format!("读取 workspace 内容失败：{error}"),
+            Self::GitIgnoreFailed(reason) => {
+                format!("读取 Git 忽略规则失败，无法生成完整预览树：{reason}")
+            }
         }
     }
 }
@@ -234,6 +279,81 @@ pub fn list_directory(registered_root: &str, relative: &str) -> Result<Directory
         path: parent,
         entries,
     })
+}
+
+/// 读取完整目录树；Git workspace 使用 Git 原生忽略集合过滤，普通目录保持完整。
+///
+/// 一次请求只计算一次忽略集合，然后按目录逐层读取。根目录读取失败是整次请求失败；子目录读取失败
+/// 保留该目录节点与明确错误，其它目录继续返回，避免一个坏目录拖垮整个 workspace。
+pub fn read_tree(
+    registered_root: &str,
+    git_timeout: Duration,
+) -> Result<WorkspaceTreeView, BrowseError> {
+    let ignored = crate::git::ignored_paths(registered_root, git_timeout)
+        .map_err(|error| BrowseError::GitIgnoreFailed(error.message()))?;
+    let mut directories = Vec::new();
+    let mut pending = VecDeque::from([String::new()]);
+    let mut ignored_hidden = false;
+
+    while let Some(path) = pending.pop_front() {
+        match list_directory(registered_root, &path) {
+            Ok(view) => {
+                let mut children = Vec::new();
+                let mut entries = Vec::with_capacity(view.entries.len());
+                for entry in view.entries {
+                    // `.gitignore` 是仓库规则本身，即使被某条规则匹配也保留在当前可见层级。
+                    // 若它的父目录整体被忽略，整棵子树仍按 ignored 目录跳过。
+                    if entry.name == ".gitignore" {
+                        entries.push(entry);
+                        continue;
+                    }
+                    if ignored
+                        .as_ref()
+                        .is_some_and(|paths| is_ignored(&entry.path, paths))
+                    {
+                        ignored_hidden = true;
+                        continue;
+                    }
+                    if entry.kind == EntryKind::Directory {
+                        children.push(entry.path.clone());
+                    }
+                    entries.push(entry);
+                }
+                pending.extend(children);
+                directories.push(TreeDirectoryView {
+                    path,
+                    entries,
+                    error: None,
+                });
+            }
+            Err(error) if path.is_empty() => return Err(error),
+            Err(error) => directories.push(TreeDirectoryView {
+                path,
+                entries: Vec::new(),
+                error: Some(TreeErrorView::from(error)),
+            }),
+        }
+    }
+
+    Ok(WorkspaceTreeView {
+        workspace: registered_root.to_string(),
+        directories,
+        ignored_hidden,
+    })
+}
+
+/// 判断相对路径是否被 Git 忽略：命中自身或任一祖先目录都算忽略。
+fn is_ignored(path: &str, ignored: &HashSet<String>) -> bool {
+    let mut candidate = path;
+    loop {
+        if ignored.contains(candidate) {
+            return true;
+        }
+        match candidate.rfind('/') {
+            Some(index) => candidate = &candidate[..index],
+            None => return false,
+        }
+    }
 }
 
 /// 读取单个文件；大小上限在读取内容之前应用，超限时不加载完整内容。

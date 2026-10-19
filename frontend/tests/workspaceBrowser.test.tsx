@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 import type { BrowseEntry, DirectoryListing, FileView } from '../src/browseApi'
+import { treeResponse } from './treeResponse'
 
 const WORKSPACE = 'C:\\work\\project'
 
@@ -170,6 +171,9 @@ function standardHandler(url: URL): Response | undefined {
       pendingCount: 0,
     })
   }
+  if (url.pathname === '/api/workspaces/tree') {
+    return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+  }
   if (url.pathname === '/api/workspaces/entries') {
     return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
   }
@@ -198,6 +202,199 @@ afterEach(() => {
 })
 
 describe('workspace 只读文件浏览', () => {
+  it('进入 workspace 时一次读取整树，展开目录不再发起读取', async () => {
+    const user = userEvent.setup()
+    const calls = mockFetch(standardHandler)
+
+    render(<App />)
+    await openWorkspace(user)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tree-loading')).toBeNull()
+    })
+    const treeReads = calls.filter((url) => url.pathname === '/api/workspaces/tree')
+    expect(treeReads).toHaveLength(1)
+
+    await user.click(screen.getByTestId('entry:src'))
+    expect(await screen.findByTestId('entry:src/main.ts')).toBeVisible()
+    expect(
+      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+    ).toHaveLength(1)
+  })
+
+  it('整树读取期间的刷新合并为补跑，不取消当前读取', async () => {
+    const user = userEvent.setup()
+    let settleRoot: (response: Response) => void = () => {}
+    const deferredRoot = new Promise<Response>((resolve) => {
+      settleRoot = resolve
+    })
+    let treeCalls = 0
+    const calls = mockFetch((url) => {
+      if (url.pathname === '/api/workspaces/tree') {
+        treeCalls += 1
+        if (treeCalls === 1) return deferredRoot
+        return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+      }
+      return standardHandler(url)
+    })
+
+    render(<App />)
+    await user.click(screen.getByTestId('tab-files'))
+    await screen.findByTestId('workspace-list')
+    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('workspace-browser')
+    expect(screen.getByTestId('tree-loading')).toBeVisible()
+    expect(treeCalls).toBe(1)
+
+    // 当前整树读取尚未完成时点刷新：应合并为尾随刷新，而不是并行再开一轮。
+    await user.click(screen.getByTestId('browser-refresh'))
+    expect(treeCalls).toBe(1)
+    expect(calls.filter((url) => url.pathname === '/api/workspaces/tree')).toHaveLength(1)
+
+    settleRoot(jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES)))
+    await waitFor(() => expect(screen.queryByTestId('tree-loading')).toBeNull())
+    expect(await screen.findByTestId('entry:README')).toBeVisible()
+    expect(treeCalls).toBe(2)
+  })
+
+  it('Git 整树省略 ignored 路径，显示隐藏提示并使用未忽略空态', async () => {
+    const user = userEvent.setup()
+    const filteredTree = treeResponse(
+      WORKSPACE,
+      {
+        '': [
+          { name: '.git', path: '.git', kind: 'directory' },
+          { name: '.gitignore', path: '.gitignore', kind: 'file', size: 10 },
+          { name: 'empty', path: 'empty', kind: 'directory' },
+          { name: 'kept', path: 'kept', kind: 'directory' },
+        ],
+        '.git': GIT_ENTRIES,
+        empty: [],
+        kept: [{ name: 'tracked.txt', path: 'kept/tracked.txt', kind: 'file', size: 7 }],
+      },
+      true,
+    )
+    mockFetch((url) => {
+      if (url.pathname === '/api/workspaces') {
+        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      }
+      if (url.pathname === '/api/workspaces/overview') {
+        return jsonResponse(200, {
+          workspaces: [{ path: WORKSPACE, repository: true, conflict: false, pendingCount: 0 }],
+        })
+      }
+      if (url.pathname === '/api/workspaces/git-status') {
+        return jsonResponse(200, {
+          workspace: WORKSPACE,
+          repository: true,
+          branch: 'main',
+          detached: false,
+          changes: [],
+          conflict: false,
+          pendingCount: 0,
+        })
+      }
+      if (url.pathname === '/api/workspaces/tree') {
+        return jsonResponse(200, filteredTree)
+      }
+      return undefined
+    })
+
+    render(<App />)
+    await user.click(screen.getByTestId('tab-files'))
+    await screen.findByTestId('workspace-list')
+    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('workspace-browser')
+
+    expect(await screen.findByTestId('ignored-hidden-notice')).toHaveTextContent(
+      '已按 Git 忽略规则隐藏',
+    )
+    expect(screen.queryByTestId('entry:ignored.log')).toBeNull()
+    expect(screen.getByTestId('entry:.gitignore')).toBeVisible()
+
+    await user.click(screen.getByTestId('entry:empty'))
+    expect(await screen.findByTestId('directory-empty:empty')).toHaveTextContent(
+      '此目录没有未忽略的内容。',
+    )
+
+    await user.click(screen.getByTestId('entry:kept'))
+    expect(await screen.findByTestId('entry:kept/tracked.txt')).toBeVisible()
+  })
+
+  it('手动刷新后隐藏当前文件时清除选择与内容', async () => {
+    const user = userEvent.setup()
+    let rootEntries: BrowseEntry[] = [{ name: 'README', path: 'README', kind: 'file', size: 16 }]
+    mockFetch((url) => {
+      if (url.pathname === '/api/workspaces') {
+        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      }
+      if (url.pathname === '/api/workspaces/overview') {
+        return jsonResponse(200, {
+          workspaces: [{ path: WORKSPACE, repository: true, conflict: false, pendingCount: 0 }],
+        })
+      }
+      if (url.pathname === '/api/workspaces/git-status') {
+        return jsonResponse(200, {
+          workspace: WORKSPACE,
+          repository: true,
+          branch: 'main',
+          detached: false,
+          changes: [],
+          conflict: false,
+          pendingCount: 0,
+        })
+      }
+      if (url.pathname === '/api/workspaces/tree') {
+        return jsonResponse(200, treeResponse(WORKSPACE, { '': rootEntries }, true))
+      }
+      if (url.pathname === '/api/workspaces/file') {
+        const path = url.searchParams.get('path') ?? ''
+        return path === 'README' ? jsonResponse(200, FILES.README) : undefined
+      }
+      return undefined
+    })
+
+    render(<App />)
+    await openWorkspace(user)
+    await user.click(screen.getByTestId('entry:README'))
+    expect(await screen.findByTestId('file-text')).toHaveTextContent('extensionless text')
+
+    rootEntries = [{ name: 'NEXT', path: 'NEXT', kind: 'file', size: 4 }]
+    await user.click(screen.getByTestId('browser-refresh'))
+    expect(await screen.findByTestId('entry:NEXT')).toBeVisible()
+    expect(screen.queryByTestId('entry:README')).toBeNull()
+    expect(screen.queryByTestId('file-view')).toBeNull()
+    expect(screen.queryByTestId('file-text')).toBeNull()
+  })
+
+  it('从其他顶层 tab 返回时保留目录树快照，不自动重读', async () => {
+    const user = userEvent.setup()
+    const calls = mockFetch(standardHandler)
+
+    render(<App />)
+    await openWorkspace(user)
+    await waitFor(() => expect(screen.queryByTestId('tree-loading')).toBeNull())
+    const readsBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/tree',
+    ).length
+    const statusBefore = calls.filter(
+      (url) => url.pathname === '/api/workspaces/git-status',
+    ).length
+
+    await user.click(screen.getByTestId('tab-sessions'))
+    await user.click(screen.getByTestId('tab-files'))
+
+    await waitFor(() =>
+      expect(
+        calls.filter((url) => url.pathname === '/api/workspaces/git-status').length,
+      ).toBeGreaterThan(statusBefore),
+    )
+    expect(screen.getByTestId('entry:README')).toBeVisible()
+    expect(
+      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+    ).toHaveLength(readsBefore)
+  })
+
   it('列出隐藏文件、忽略文件与 Git 元数据，并按内容读取无后缀文本', async () => {
     const user = userEvent.setup()
     const calls = mockFetch(standardHandler)
@@ -262,13 +459,13 @@ describe('workspace 只读文件浏览', () => {
       if (url.pathname === '/api/workspaces') {
         return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
       }
-      if (url.pathname === '/api/workspaces/entries') {
+      if (url.pathname === '/api/workspaces/tree') {
         return failDirectories
           ? jsonResponse(404, {
               code: 'workspace-unavailable',
               message: 'workspace 目录已不存在或无法访问：拒绝访问。',
             })
-          : jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
+          : jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
       }
       if (url.pathname === '/api/workspaces/file') {
         return jsonResponse(404, {
@@ -363,6 +560,12 @@ describe('workspace 只读文件浏览', () => {
       if (url.pathname === '/api/workspaces') {
         return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
       }
+      if (url.pathname === '/api/workspaces/tree') {
+        return jsonResponse(
+          200,
+          treeResponse(WORKSPACE, { ...DIRECTORIES, '': rootEntries }),
+        )
+      }
       if (url.pathname === '/api/workspaces/entries') {
         const path = url.searchParams.get('path') ?? ''
         const entries = path === '' ? rootEntries : (DIRECTORIES[path] ?? [])
@@ -443,7 +646,7 @@ describe('workspace 只读文件浏览', () => {
       if (url.pathname === '/api/workspaces') {
         return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
       }
-      if (url.pathname === '/api/workspaces/entries') {
+      if (url.pathname === '/api/workspaces/tree') {
         return Promise.reject(new Error('connection reset'))
       }
       return undefined

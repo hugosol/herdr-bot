@@ -234,7 +234,9 @@ pub fn app_with_state(
             "/api/workspaces",
             get(list_workspaces).post(register_workspace),
         )
-        // 只读浏览：列一个目录的直接子项、读取单个文件内容。两者都从登记根重新核对边界。
+        // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
+        // 整树读取对 Git workspace 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
+        .route("/api/workspaces/tree", get(read_workspace_tree))
         .route("/api/workspaces/entries", get(list_workspace_entries))
         .route("/api/workspaces/file", get(read_workspace_file))
         // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
@@ -582,6 +584,53 @@ struct BrowseQuery {
     workspace: String,
     #[serde(default)]
     path: String,
+}
+
+/// 整树读取的查询参数：只需要登记路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceTreeQuery {
+    workspace: String,
+}
+
+/// “读整棵树”：一次返回过滤后的目录快照。Git workspace 按 Git 原生忽略规则省略 ignored 路径；
+/// 普通目录完整返回。子目录读取失败随响应带回，根目录或 Git 忽略查询失败则整次请求明确失败。
+async fn read_workspace_tree(
+    State(state): State<AppState>,
+    query: Result<Query<WorkspaceTreeQuery>, QueryRejection>,
+) -> Response {
+    let query = match query {
+        Ok(Query(query)) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "读取 workspace 目录树需要唯一的 `workspace` 参数，且不接受其他参数。"
+                    .to_string(),
+            )
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    match tokio::task::spawn_blocking(move || browse::read_tree(&registered, timeout)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取目录树的任务异常结束，无法确认目录内容。".to_string(),
+        ),
+    }
 }
 
 /// “列目录”：返回该目录的直接子项；隐藏文件、忽略文件和 Git 元数据都不过滤。
@@ -1255,7 +1304,9 @@ fn browse_error_response(error: browse::BrowseError) -> Response {
         BrowseError::NotADirectory
         | BrowseError::NotAFile
         | BrowseError::InvalidPath(_) => StatusCode::BAD_REQUEST,
-        BrowseError::ReadFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        BrowseError::ReadFailed(_) | BrowseError::GitIgnoreFailed(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     };
     rejected_owned(status, error.code(), error.message())
 }

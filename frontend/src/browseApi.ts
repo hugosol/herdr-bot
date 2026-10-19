@@ -1,8 +1,8 @@
 /**
  * workspace 只读浏览接口客户端。
  *
- * 目录与文件读取都以已登记的 workspace 路径 + 相对路径定位；后端负责边界检查。页面不缓存目录
- * 内容：进入 workspace、回到页面、手动刷新都重新请求当前事实。
+ * 目录与文件读取都以已登记的 workspace 路径 + 相对路径定位；后端负责边界检查。页面在进入
+ * workspace 时读取一次整树快照，之后只有手动刷新会重读；单目录与单文件入口保留给直接读取。
  */
 
 export type EntryKind = 'directory' | 'file' | 'link'
@@ -21,6 +21,25 @@ export type DirectoryListing = {
   workspace: string
   path: string
   entries: BrowseEntry[]
+}
+
+/** 整树读取中某个目录的明确错误；其它目录仍可正常显示。 */
+export type TreeDirectoryError = {
+  code: string
+  message: string
+}
+
+export type TreeDirectory = {
+  path: string
+  entries: BrowseEntry[]
+  error?: TreeDirectoryError
+}
+
+/** 一次整树读取：目录路径 → 直接子项；ignoredHidden 表示本次是否隐藏了 ignored 路径。 */
+export type WorkspaceTree = {
+  workspace: string
+  directories: TreeDirectory[]
+  ignoredHidden: boolean
 }
 
 /** 文本、二进制与超限三种预览；只有文本带内容。 */
@@ -97,6 +116,35 @@ function isPreview(value: unknown): value is FilePreview {
   return false
 }
 
+function isTreeDirectory(value: unknown): value is TreeDirectory {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('path' in value) || typeof value.path !== 'string') return false
+  if (!('entries' in value) || !Array.isArray(value.entries)) return false
+  if (!value.entries.every(isEntry)) return false
+  if ('error' in value && value.error !== undefined) {
+    return (
+      typeof value.error === 'object' &&
+      value.error !== null &&
+      'code' in value.error &&
+      typeof value.error.code === 'string' &&
+      'message' in value.error &&
+      typeof value.error.message === 'string'
+    )
+  }
+  return true
+}
+
+function isWorkspaceTree(value: unknown): value is WorkspaceTree {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('ignoredHidden' in value) || typeof value.ignoredHidden !== 'boolean') return false
+  return (
+    'directories' in value &&
+    Array.isArray(value.directories) &&
+    value.directories.every(isTreeDirectory)
+  )
+}
+
 function isFileView(value: unknown): value is FileView {
   if (typeof value !== 'object' || value === null) return false
   if (!('workspace' in value) || typeof value.workspace !== 'string') return false
@@ -154,6 +202,12 @@ export function fetchDirectory(
   path: string,
 ): Promise<BrowseResult<DirectoryListing>> {
   return browseRequest(browseUrl('entries', workspace, path), isDirectoryListing)
+}
+
+/** 一次读取完整目录树；Git workspace 的 ignored 路径已由后端省略。 */
+export function fetchTree(workspace: string): Promise<BrowseResult<WorkspaceTree>> {
+  const params = new URLSearchParams({ workspace })
+  return browseRequest(`/api/workspaces/tree?${params.toString()}`, isWorkspaceTree)
 }
 
 /** 读取单个文件元数据与内容预览。 */
