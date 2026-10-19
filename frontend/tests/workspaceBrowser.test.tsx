@@ -154,6 +154,22 @@ function standardHandler(url: URL): Response | undefined {
   if (url.pathname === '/api/workspaces') {
     return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
   }
+  if (url.pathname === '/api/workspaces/overview') {
+    return jsonResponse(200, {
+      workspaces: [{ path: WORKSPACE, repository: false, conflict: false }],
+    })
+  }
+  if (url.pathname === '/api/workspaces/git-status') {
+    return jsonResponse(200, {
+      workspace: WORKSPACE,
+      repository: false,
+      branch: null,
+      detached: false,
+      changes: [],
+      conflict: false,
+      pendingCount: 0,
+    })
+  }
   if (url.pathname === '/api/workspaces/entries') {
     return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
   }

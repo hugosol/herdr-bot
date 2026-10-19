@@ -25,13 +25,15 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
 | `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
+| `backend/src/git.rs` | Git workspace 状态：当前分支、待提交变更、重命名/冲突类别与角标计数；只读查询 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
-| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、取消登记与进入浏览 |
-| `frontend/src/WorkspaceBrowser.tsx` | workspace 只读浏览界面：电脑左树右内容、窄屏逐层进入与返回 |
+| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、待提交角标、取消登记与进入浏览 |
+| `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览与 Git 变更内部子 tab、待提交着色与祖先目录提示 |
 | `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
+| `frontend/src/gitApi.ts` | Git 状态与 workspace 角标概览客户端，含响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -297,16 +299,16 @@ preview_limit_bytes = 1048576
 `POST /api/workspaces/remove` 取消登记（同一请求体）。成功响应都是当前完整列表：
 `{"workspaces":[{"path":"…"}]}`；失败响应是 `{"code":"…","message":"…"}`。
 
-### 进入 workspace：只读文件浏览
+### 进入 workspace：只读浏览与 Git 待提交变更
 
-登记项旁的“浏览”进入该 workspace 的只读文件浏览视图。普通目录与 Git 工作区共用同一界面；本票只提供
-浏览，不显示可用的变更视图或 Commit / Sync 控件。
+登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
+内部子 tab，并在工具栏显示当前分支。本阶段只定位待提交变更，不开放 diff、Commit 或 Sync。
 
 - **电脑**：左侧目录树、右侧文件内容。目录按需展开；选择文件后右侧显示只读内容。
 - **窄屏（≤ 720px）**：逐层进入目录；选择文件后进入内容视图，并可用“返回文件列表”回到原目录，列表滚动
   位置会恢复。
 - **完整目录**：输出与磁盘真实内容一致，隐藏文件、被 Git 忽略的文件、`.gitignore` 与 `.git` 元数据都不会
-  被过滤；`.git` 内的文件可只读打开，但不参与任何提交或着色逻辑。
+  被过滤；`.git` 内的文件可只读打开，但不参与任何普通待提交着色或角标。
 - **边界**：只读取已登记 workspace 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
   目录联接与其他 reparse point 都会被拒绝；链接条目在目录中显示目标与不可进入原因，目标内容不会被读取。
   登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。
@@ -314,16 +316,45 @@ preview_limit_bytes = 1048576
   二进制文件给出“不可文本预览”原因。内容以纯文本显示，HTML/script 不会被执行。
 - **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。超限文件只显示大小与上限，不加载
   完整内容；二进制与超限都不影响文件在目录中的可见性。
-- **刷新**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会重新读取当前目录与所选文件；不把旧结果当作
-  当前事实。目录或文件在外部被删除后，页面显示明确错误。
+- **刷新**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会重新读取当前目录、所选文件与 Git 状态；
+  不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。目录或文件在外部被删除、Git 状态读取失败
+  时，页面显示明确错误，不伪装成空目录或干净仓库。
 
-接口：`GET /api/workspaces/entries?workspace=<登记路径>&path=<相对目录>` 返回
-`{"workspace":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
-"linkTarget":"…","linkReason":"…"}]}`；`GET /api/workspaces/file?workspace=<登记路径>&path=<相对文件>` 返回
-`{"workspace":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
-`binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。失败响应同样是
-`{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、`path-not-found`、
-`workspace-unavailable`、`read-failed`。
+**待提交集合**（`GET /api/workspaces/git-status`）：
+
+- 包含已跟踪文件的修改与删除（已暂存和未暂存合并观察），以及未忽略的未跟踪文件；排除被忽略的未跟踪文件。
+  已跟踪、后来才匹配忽略规则的文件仍然包含；忽略规则文件自身按普通文件处理，不 force-add 被忽略文件。
+- 只把登记根**自身**当作工作树根：登记根是父仓库的子目录时按其普通目录处理，不聚合父仓库变更；不递归
+  管理嵌套仓库或子模块内部变更。
+- Git 已识别的暂存重命名显示为一项蓝色变更（旧路径 → 新路径）；尚未被 Git 识别的文件系统改名保持删除加
+  新增。查询不会为了识别重命名而暂存或修改真实索引。
+- 颜色：新增绿、修改与已识别重命名蓝、删除红；冲突使用独立橙色警告，不与普通修改混淆。两个视图使用同一
+  份状态快照，因此颜色一致。界面不显示普通 `A/M/D` 状态字母。
+- 祖先目录只要包含待提交变更（包括已删除路径）就显示蓝色，并传播到 workspace 根下一级；目录不会继承子
+  文件的绿色或红色。删除项只在变更列表出现，浏览树不伪造仍然存在的文件。
+- 角标按待提交变更项计数：同一文件暂存加未暂存只计一次，已识别重命名计一次，未识别删除加新增计两次；
+  不计目录或 diff 行数。Git 识别结果变化可以改变项数。
+- 冲突只来自 Git 的未合并文件条目；普通 Git 命令失败或单纯 ahead/behind 分叉不会被标成文件冲突。
+  detached HEAD 明确显示为 `HEAD（已分离）`。
+
+接口：
+
+- `GET /api/workspaces/entries?workspace=<登记路径>&path=<相对目录>` 返回
+  `{"workspace":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
+  "linkTarget":"…","linkReason":"…"}]}`。
+- `GET /api/workspaces/file?workspace=<登记路径>&path=<相对文件>` 返回
+  `{"workspace":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
+  `binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。
+- `GET /api/workspaces/git-status?workspace=<登记路径>` 返回
+  `{"workspace":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
+  "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}]}`。
+  普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时是明确错误，不是干净状态。
+- `GET /api/workspaces/overview` 返回每个登记项的角标事实：
+  `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
+  普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+
+失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
+`path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
 
 ### 默认绑定与改绑
 
@@ -1465,3 +1496,52 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
   （H1）仍由 08 汇总证据后交用户确认。Git 变更、diff、Commit/Sync 与文件事件刷新属于后续票。
 
 
+
+## 变更记录：Git 待提交变更定位（2026-10-19）
+
+本次在已登记 workspace 上新增只读 Git 状态与「文件浏览 / 变更」内部子 tab；完整回答哪些变更待提交，
+但不开放 diff、Commit 或 Sync。普通目录仍只有浏览。
+
+- **改了什么**：
+  - 新增 `backend/src/git.rs`：只读查询登记根自身的工作树根身份、当前分支与待提交变更。集合遵循 Git
+    原生规则：已跟踪修改/删除（已暂存与未暂存合并）与未忽略的未跟踪文件；排除 ignored untracked，保留
+    后来匹配忽略规则的已跟踪文件；不 force-add，也不为识别重命名而修改真实索引。未暂存文件系统改名保持
+    Git 的删除加新增；Git 已识别的暂存改名显示为旧路径 → 新路径的一项。冲突只来自未合并文件条目，普通
+    命令失败与单纯 ahead/behind 不会被标成冲突。登记根不是工作树根时按普通目录处理，不聚合父仓库。
+  - 新增 `GET /api/workspaces/git-status?workspace=…` 与 `GET /api/workspaces/overview`。后者为文件列表
+    提供每个 workspace 的角标项数或明确错误；普通目录没有待提交数量，读取失败不会伪装成 0 项。
+  - 前端新增 `gitApi.ts`；`WorkspaceBrowser` 增加当前分支、Git workspace 的内部子 tab、两视图一致的待
+    提交颜色、祖先目录蓝色提示与冲突警告；`FileListPanel` 显示 `N 项待提交` 角标。删除项只出现在变更
+    列表，浏览树仍只反映磁盘内容；忽略文件与 Git 元数据可浏览但不参与着色或角标。
+  - README 的 workspace 章节与接口说明同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_git_status` → `7 passed`：真实 Git 的 tracked 修改/删除、未忽略 untracked、
+    ignored untracked、后来匹配忽略的 tracked、忽略规则文件自身；真实未暂存改名与暂存后识别改名，前后
+    核对 `git ls-files --stage` / `git diff --cached` / `git diff` 语义不变；同一文件暂存+未暂存只计一次；
+    真实 merge 冲突为独立类别且解决后消失；外部切分支与 detached HEAD；ahead/behind 分叉不报告冲突；
+    普通目录、仓库子目录、登记目录消失与未登记路径的明确结果；角标的固定期望（暂存+未暂存一次、识别
+    重命名一次、未识别删加两次、新目录内文件一次、仅 Git 元数据变化为零）与概览错误项；
+    `.git/HEAD` 损坏时状态接口与概览都明确报错，不返回干净仓库或零计数。
+  - 后端突变验证：临时把 `A` 分类改成 `modified`，`pending_set_follows_git_tracking_and_ignore_rules`
+    因 `staged-new.txt` 未显示为 `added` 失败；还原后 7 例全部通过。
+  - 前端 `npm test` → `15 files / 105 tests passed`；新增 `tests/gitChanges.test.tsx` 6 例，覆盖分支与
+    内部子 tab、两视图颜色与祖先提示、删除项只在变更列表、忽略文件/`.git` 无着色、冲突独立警告、主动
+    刷新反映外部切分支、状态读取失败不冒充干净、普通目录无 Git 入口，以及角标固定期望与概览失败。
+  - 前端突变验证：临时把祖先目录提示收窄为精确路径、把冲突色合并为普通修改蓝，两处都被新增用例抓住；
+    还原后通过。`npm run build`（`tsc --noEmit && vite build`）成功。
+  - `cargo test --no-fail-fast`（全部测试目标）→ 全部通过（`218 passed` / `29 suites`，含既有 mDNS、会话、
+    关机与浏览用例）。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、隔离登记文件、真实后端进程；未执行关机）：
+  - 浏览树计算颜色：新增绿 `rgb(126, 231, 135)`、修改/识别重命名/祖先目录蓝 `rgb(121, 192, 255)`、
+    删除红 `rgb(255, 123, 114)`、冲突橙 `rgb(255, 166, 87)`；忽略文件、`.git/HEAD` 与无变更目录保持
+    默认色。删除项不在树中，`src` 与 `src/nested` 仍为蓝色。
+  - 变更列表逐项类别与颜色一致；识别重命名显示 `src/old-name.txt → src/renamed.txt` 一项；冲突提示条
+    「冲突不是普通修改」；页面没有 Commit / Sync。
+  - 页面打开期间外部执行 `git merge --abort` 与 `git switch -c feature`，主动刷新后分支显示
+    `分支：feature`、变更数 `6 → 5`、冲突警告消失；返回列表角标 `5 项待提交`。
+  - 状态/概览查询前后 `git ls-files --stage` 与 `git diff --cached --binary` 的 SHA-256 相同。
+  - 窄屏 `390×844` 的两个视图颜色一致。截图与细节见
+    [`.scratch/workspace-file-browser/evidence/03-discover-git-changes/`](.scratch/workspace-file-browser/evidence/03-discover-git-changes/)。
+- **限制与未由本票承担的范围**：真实浏览器证据来自无头 Chromium 与仿真窄屏，手机实机触摸/软键盘体验
+  （H1）仍由 08 汇总后交用户确认。Git 识别结果可能随仓库内容变化；本票如实采用当前结果，不保证所有
+  改名都会被识别。diff、Commit、Sync、文件事件自动刷新与冲突恢复流程属于后续票。
