@@ -6,7 +6,7 @@
 
 **Blocked by:** 02: 在 workspace 边界内只读浏览完整目录.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 依据已批准的 [contract](../contract.md) 与 [spec](../spec.md)，在 S1/S2 上用真实 Git 与真实浏览器验收；不为私有集合或颜色计算新增契约接缝。
 
@@ -34,3 +34,19 @@ P15/P16/P17/P18/P19/P23/P24 的全部覆盖和测试归 03。P23 在真实改名
 ## Verification boundaries
 
 使用独立预期、隔离真实 Git 仓库和真实文件集合，不用固定模拟 Git 输出证明语义。S1 的颜色需在真实浏览器观察；S2 核对实际状态。最终提交树测试归 05，不作为本票反向依赖。04/05 尚未完成时，本票不提供虚假可用的 diff 或 Commit。
+
+## Comments
+
+### 实现完成，等待集成（2026-10-19）
+
+- 实现提交：`84e2904`（当前票据分支）。尚未合入 `dev`，因此状态保持 `in-progress`，由独立集成子代理
+  验证并合入后再关闭。
+- 自动检查：`cargo test --test workspace_git_status` → `7 passed`；
+  `cargo test --no-fail-fast` → `218 passed / 29 suites`；`npm test` → `15 files / 105 tests passed`；
+  `npm run build` → 成功。新增用例覆盖真实 Git 的 tracked/ignored/rename/conflict 语义、只读索引核对、
+  分支切换与 detached HEAD、角标固定期望、Git 元数据损坏时的明确错误，以及前端两视图颜色、祖先提示、
+  忽略文件/元数据无着色、冲突警告、分支刷新与状态读取失败。
+- 真实 Chromium 证据：`.scratch/workspace-file-browser/evidence/03-discover-git-changes/`
+  （隔离真实 Git 仓库与登记文件，未执行关机或推送）。
+- 已知限制：未实现 diff / Commit / Sync / 文件事件自动刷新（属于后续票）；手机实机触摸体验仍为
+  human-led H1，不由本票宣称通过。
