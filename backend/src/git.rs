@@ -14,17 +14,27 @@
 //! 的未合并文件条目，普通命令失败与单纯 ahead/behind 不会被标记为冲突。
 
 use std::fs;
-use std::io;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
 use crate::browse;
 use crate::workspaces::{self, RegisteredWorkspace};
 
+/// 超时后等待子进程确认结束的宽限；超过它仍未确认终止时，调用方必须保留仓库资格。
+const TERMINATION_CONFIRMATION: Duration = Duration::from_secs(5);
+
+/// 等待子进程输出读取线程的宽限；派生进程可能仍持有管道。
+const OUTPUT_DRAIN: Duration = Duration::from_secs(2);
+
 /// 一个待提交变更的类别；只用于页面着色，不是 Git 的 A/M/D 字母。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChangeKind {
     Added,
@@ -61,6 +71,14 @@ pub struct GitStatus {
     pub conflict: bool,
     /// 待提交变更项数：一项变更计一次；目录与 diff 行数不参与。
     pub pending_count: usize,
+    /// 本次展示的审查版本标识；提交请求必须带回同一个标识，才能证明提交针对的是这份审查。
+    ///
+    /// 标识由分支、HEAD、索引、待提交路径与完整内容共同决定，不受预览上限影响。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_token: Option<String>,
+    /// 页面与直接请求都必须阻止普通 Commit 的仓库级原因；没有阻塞时为 `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
 }
 
 /// 登记列表中一个 workspace 的角标概览。
@@ -82,10 +100,13 @@ pub struct WorkspaceSummary {
 }
 
 /// 读取整个登记列表的概览；单个 workspace 的失败只影响它自己的条目，不会伪装成空列表。
-pub fn overview(registered: &[RegisteredWorkspace]) -> Vec<WorkspaceSummary> {
+pub fn overview(
+    registered: &[RegisteredWorkspace],
+    timeout: Duration,
+) -> Vec<WorkspaceSummary> {
     registered
         .iter()
-        .map(|workspace| match status(&workspace.path) {
+        .map(|workspace| match status(&workspace.path, timeout) {
             Ok(status) => WorkspaceSummary {
                 path: workspace.path.clone(),
                 repository: status.repository,
@@ -115,6 +136,15 @@ pub enum GitError {
     GitUnavailable(String),
     /// Git 命令失败；保留 Git 返回的诊断，不伪装成干净状态。
     Failed(String),
+    /// Git 命令超过本功能配置的执行时限；`confirmed` 表示是否已确认命令及其派生进程结束。
+    ///
+    /// 这是本功能取消的命令，不是 Git 自己给出的退出结果；`output` 保留取消前已有的输出。
+    TimedOut {
+        command: String,
+        timeout: Duration,
+        output: String,
+        confirmed: bool,
+    },
 }
 
 impl GitError {
@@ -123,6 +153,7 @@ impl GitError {
             Self::WorkspaceUnavailable(_) => "workspace-unavailable",
             Self::GitUnavailable(_) => "git-unavailable",
             Self::Failed(_) => "git-command-failed",
+            Self::TimedOut { .. } => "git-timeout",
         }
     }
 
@@ -131,7 +162,39 @@ impl GitError {
             Self::WorkspaceUnavailable(reason) => reason.clone(),
             Self::GitUnavailable(reason) => reason.clone(),
             Self::Failed(reason) => reason.clone(),
+            Self::TimedOut {
+                command,
+                timeout,
+                output,
+                confirmed,
+            } => {
+                let termination = if *confirmed {
+                    "已停止本次执行。".to_string()
+                } else {
+                    "终止尚未确认；在该仓库上的后续写操作不会被允许重叠执行。".to_string()
+                };
+                let existing = if output.trim().is_empty() {
+                    "取消前没有收到 Git 输出。".to_string()
+                } else {
+                    format!("取消前已有的输出：{}", output.trim())
+                };
+                format!(
+                    "{command} 超过本功能配置的 {} 秒执行上限，{termination}{existing}",
+                    timeout.as_secs()
+                )
+            }
         }
+    }
+
+    /// 命令超时且尚未确认其派生进程已停止；调用方必须保持仓库资格。
+    pub fn termination_unconfirmed(&self) -> bool {
+        matches!(
+            self,
+            Self::TimedOut {
+                confirmed: false,
+                ..
+            }
+        )
     }
 }
 
@@ -139,12 +202,12 @@ impl GitError {
 ///
 /// 先重新核对登记根（边界与只读语义与浏览一致），再判断它是否是一个工作树根；普通目录返回
 /// `repository: false`，不会运行 `git status`，也就不会把父仓库的变更误当成该 workspace 的变更。
-pub fn status(registered_root: &str) -> Result<GitStatus, GitError> {
-    let Some(root) = worktree_root(registered_root)? else {
+pub fn status(registered_root: &str, timeout: Duration) -> Result<GitStatus, GitError> {
+    let Some(root) = worktree_root(registered_root, timeout)? else {
         return Ok(plain_workspace(registered_root));
     };
 
-    let (branch, detached) = current_branch(&root)?;
+    let (branch, detached) = current_branch(&root, timeout)?;
     let status = run_git(
         &root,
         &[
@@ -153,7 +216,9 @@ pub fn status(registered_root: &str) -> Result<GitStatus, GitError> {
             "-z",
             "--untracked-files=all",
             "--ignored=no",
+            "--ignore-submodules=dirty",
         ],
+        timeout,
     )?;
     if !status.status.success() {
         return Err(command_failed("git status", &status));
@@ -162,6 +227,15 @@ pub fn status(registered_root: &str) -> Result<GitStatus, GitError> {
     let conflict = changes
         .iter()
         .any(|change| change.kind == ChangeKind::Conflicted);
+    let review_token = review_token(
+        &root,
+        branch.as_deref(),
+        detached,
+        &changes,
+        &status.stdout,
+        timeout,
+    )?;
+    let blocked_reason = blocked_reason(&root, &changes, detached, timeout)?;
 
     Ok(GitStatus {
         workspace: registered_root.to_string(),
@@ -171,6 +245,8 @@ pub fn status(registered_root: &str) -> Result<GitStatus, GitError> {
         pending_count: changes.len(),
         conflict,
         changes,
+        review_token: Some(review_token),
+        blocked_reason,
     })
 }
 
@@ -183,6 +259,8 @@ fn plain_workspace(registered_root: &str) -> GitStatus {
         changes: Vec::new(),
         conflict: false,
         pending_count: 0,
+        review_token: None,
+        blocked_reason: None,
     }
 }
 
@@ -190,7 +268,10 @@ fn plain_workspace(registered_root: &str) -> GitStatus {
 ///
 /// 与状态查询共用同一份判断：登记根是父仓库的子目录、或自身没有 Git 元数据时都按普通目录
 /// 处理，不会聚合父仓库或其它仓库的 Git 事实。根被替换、消失或无法访问是明确错误。
-fn worktree_root(registered_root: &str) -> Result<Option<PathBuf>, GitError> {
+pub(crate) fn worktree_root(
+    registered_root: &str,
+    timeout: Duration,
+) -> Result<Option<PathBuf>, GitError> {
     let root = browse::checked_root(registered_root)
         .map_err(|error| GitError::WorkspaceUnavailable(error.message()))?;
 
@@ -205,7 +286,7 @@ fn worktree_root(registered_root: &str) -> Result<Option<PathBuf>, GitError> {
         }
     }
 
-    let top_level = run_git(&root, &["rev-parse", "--show-toplevel"])?;
+    let top_level = run_git(&root, &["rev-parse", "--show-toplevel"], timeout)?;
     if !top_level.status.success() {
         return Err(command_failed("git rev-parse --show-toplevel", &top_level));
     }
@@ -221,8 +302,12 @@ fn worktree_root(registered_root: &str) -> Result<Option<PathBuf>, GitError> {
 }
 
 /// 当前分支名；detached HEAD 用 `detached: true` 表示，而不是编造一个分支名。
-fn current_branch(root: &Path) -> Result<(Option<String>, bool), GitError> {
-    let output = run_git(root, &["symbolic-ref", "--short", "--quiet", "HEAD"])?;
+fn current_branch(root: &Path, timeout: Duration) -> Result<(Option<String>, bool), GitError> {
+    let output = run_git(
+        root,
+        &["symbolic-ref", "--short", "--quiet", "HEAD"],
+        timeout,
+    )?;
     if output.status.success() {
         let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if name.is_empty() {
@@ -323,6 +408,7 @@ pub fn change_diff(
     path: &str,
     old_path: Option<&str>,
     preview_limit: u64,
+    timeout: Duration,
 ) -> Result<ChangeDiff, DiffError> {
     // 路径写法先于任何读取被校验；旧路径同样不能借历史内容绕过根边界。
     let new_relative = browse::normalize_relative(path)?;
@@ -340,13 +426,13 @@ pub fn change_diff(
         None => new_relative.clone(),
     };
 
-    let Some(root) = worktree_root(registered_root)? else {
+    let Some(root) = worktree_root(registered_root, timeout)? else {
         return Err(DiffError::Git(GitError::Failed(
             "该 workspace 不是 Git 工作树根，没有可审查的本地提交差异。".to_string(),
         )));
     };
 
-    let old = head_side(&root, &old_relative, preview_limit)?;
+    let old = head_side(&root, &old_relative, preview_limit, timeout)?;
     let new = worktree_side(registered_root, &new_relative, preview_limit)?;
 
     if matches!((&old, &new), (DiffSide::Absent, DiffSide::Absent)) {
@@ -368,12 +454,17 @@ pub fn change_diff(
 }
 
 /// HEAD 一侧的内容；仓库尚无首次提交时按空树处理，返回明确的 `Absent`。
-fn head_side(root: &Path, path: &str, preview_limit: u64) -> Result<DiffSide, DiffError> {
-    if !head_exists(root)? {
+fn head_side(
+    root: &Path,
+    path: &str,
+    preview_limit: u64,
+    timeout: Duration,
+) -> Result<DiffSide, DiffError> {
+    if !head_exists(root, timeout)? {
         return Ok(DiffSide::Absent);
     }
 
-    let listing = run_git(root, &["ls-tree", "-z", "HEAD", "--", path])?;
+    let listing = run_git(root, &["ls-tree", "-z", "HEAD", "--", path], timeout)?;
     if !listing.status.success() {
         return Err(command_failed("git ls-tree HEAD", &listing).into());
     }
@@ -388,7 +479,7 @@ fn head_side(root: &Path, path: &str, preview_limit: u64) -> Result<DiffSide, Di
         });
     }
 
-    let size = blob_size(root, &oid)?;
+    let size = blob_size(root, &oid, timeout)?;
     if size > preview_limit {
         return Ok(DiffSide::TooLarge {
             reason: format!(
@@ -399,7 +490,7 @@ fn head_side(root: &Path, path: &str, preview_limit: u64) -> Result<DiffSide, Di
         });
     }
 
-    let blob = run_git(root, &["cat-file", "blob", &oid])?;
+    let blob = run_git(root, &["cat-file", "blob", &oid], timeout)?;
     if !blob.status.success() {
         return Err(command_failed("git cat-file blob", &blob).into());
     }
@@ -458,8 +549,12 @@ fn worktree_side(
 }
 
 /// 当前分支是否已有首次提交；`rev-parse --verify --quiet` 在无 HEAD 时以 1 结束。
-fn head_exists(root: &Path) -> Result<bool, GitError> {
-    let output = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+pub(crate) fn head_exists(root: &Path, timeout: Duration) -> Result<bool, GitError> {
+    let output = run_git(
+        root,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        timeout,
+    )?;
     if output.status.success() {
         return Ok(true);
     }
@@ -502,8 +597,8 @@ fn ls_tree_entry(output: &[u8], expected: &str) -> Result<Option<(String, String
     Ok(None)
 }
 
-fn blob_size(root: &Path, oid: &str) -> Result<u64, GitError> {
-    let output = run_git(root, &["cat-file", "-s", oid])?;
+fn blob_size(root: &Path, oid: &str, timeout: Duration) -> Result<u64, GitError> {
+    let output = run_git(root, &["cat-file", "-s", oid], timeout)?;
     if !output.status.success() {
         return Err(command_failed("git cat-file -s", &output));
     }
@@ -513,14 +608,214 @@ fn blob_size(root: &Path, oid: &str) -> Result<u64, GitError> {
         .map_err(|_| GitError::Failed("无法解析 Git 对象大小：返回内容不是整数。".to_string()))
 }
 
-fn run_git(root: &Path, args: &[&str]) -> Result<Output, GitError> {
-    Command::new("git")
+/// 当前 HEAD 提交标识；仓库尚无首次提交时为 `None`。
+pub(crate) fn head_oid(root: &Path, timeout: Duration) -> Result<Option<String>, GitError> {
+    let verify = run_git(
+        root,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        timeout,
+    )?;
+    if !verify.status.success() {
+        if verify.status.code() == Some(1) {
+            return Ok(None);
+        }
+        return Err(command_failed("git rev-parse --verify HEAD", &verify));
+    }
+    let oid = String::from_utf8_lossy(&verify.stdout).trim().to_string();
+    if oid.is_empty() {
+        return Err(GitError::Failed(
+            "Git 没有给出 HEAD 提交标识，无法确认审查版本。".to_string(),
+        ));
+    }
+    Ok(Some(oid))
+}
+
+/// 一个审查版本的标识。
+///
+/// 它覆盖分支之外的全部提交依据：HEAD、完整索引、待提交路径集合，以及每个待提交路径的最终内容
+/// （重命名同时包含旧路径）。内容哈希直接读取文件，不经过预览上限，因此超限与二进制变化同样会使
+/// 旧标识失效；嵌套仓库与子模块只记录其 gitlink 提交，不递归其内部文件。
+fn review_token(
+    root: &Path,
+    branch: Option<&str>,
+    detached: bool,
+    changes: &[GitChange],
+    status_output: &[u8],
+    timeout: Duration,
+) -> Result<String, GitError> {
+    let mut hasher = DefaultHasher::new();
+    branch.hash(&mut hasher);
+    detached.hash(&mut hasher);
+    status_output.hash(&mut hasher);
+    head_oid(root, timeout)?.hash(&mut hasher);
+
+    let index = run_git(root, &["ls-files", "--stage", "-z"], timeout)?;
+    if !index.status.success() {
+        return Err(command_failed("git ls-files --stage", &index));
+    }
+    index.stdout.hash(&mut hasher);
+
+    for change in changes {
+        change.path.hash(&mut hasher);
+        change.old_path.hash(&mut hasher);
+        change.kind.hash(&mut hasher);
+        hash_pending_content(root, &change.path, &mut hasher, timeout)?;
+    }
+
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+/// 把待提交路径的最终内容写入审查哈希；不跟随链接，也不递归嵌套仓库内部。
+fn hash_pending_content(
+    root: &Path,
+    relative: &str,
+    hasher: &mut DefaultHasher,
+    timeout: Duration,
+) -> Result<(), GitError> {
+    let relative = relative.trim_end_matches('/');
+    hasher.write(b"path\0");
+    let full = root.join(relative);
+    let metadata = match fs::symlink_metadata(&full) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            hasher.write(b"absent");
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(GitError::Failed(format!(
+                "无法读取待提交路径 {relative}：{error}"
+            )));
+        }
+    };
+
+    if metadata.file_type().is_symlink() {
+        let target = fs::read_link(&full).map_err(|error| {
+            GitError::Failed(format!("无法读取链接 {relative} 的目标：{error}"))
+        })?;
+        hasher.write(b"link");
+        target.as_os_str().hash(hasher);
+        return Ok(());
+    }
+
+    if metadata.is_dir() {
+        if fs::symlink_metadata(full.join(".git")).is_ok() {
+            hasher.write(b"gitlink");
+            let head = run_git(
+                &full,
+                &["rev-parse", "--verify", "--quiet", "HEAD"],
+                timeout,
+            )?;
+            if head.status.success() {
+                hasher.write(&head.stdout);
+            } else if head.status.code() == Some(1) {
+                hasher.write(b"unborn");
+            } else {
+                return Err(command_failed(
+                    "git rev-parse --verify HEAD（嵌套仓库）",
+                    &head,
+                ));
+            }
+            return Ok(());
+        }
+        // `git status -uall` 不会把普通目录作为待提交项；这里只记录空目录事实，不递归。
+        hasher.write(b"directory");
+        return Ok(());
+    }
+
+    hasher.write(b"file");
+    let mut file = fs::File::open(&full).map_err(|error| {
+        GitError::Failed(format!("无法读取待提交文件 {relative}：{error}"))
+    })?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| {
+            GitError::Failed(format!("读取待提交文件 {relative} 失败：{error}"))
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.write(&buffer[..read]);
+    }
+    Ok(())
+}
+
+/// 普通 Commit 的仓库级阻塞原因：detached HEAD、未解决冲突、未完成的 Git 流程。
+///
+/// 普通命令失败与单纯分支分叉不进入这里。冲突解决但流程尚未结束时仍由流程标记阻塞。
+pub(crate) fn blocked_reason(
+    root: &Path,
+    changes: &[GitChange],
+    detached: bool,
+    timeout: Duration,
+) -> Result<Option<String>, GitError> {
+    let mut reasons = Vec::new();
+    if detached {
+        reasons.push(
+            "当前处于 detached HEAD：普通 Commit 不可用；请在外部工具检出分支后再试。"
+                .to_string(),
+        );
+    }
+    if changes
+        .iter()
+        .any(|change| change.kind == ChangeKind::Conflicted)
+    {
+        reasons.push("存在未解决的冲突文件：请在外部工具解决冲突后再试。".to_string());
+    }
+
+    let git_dir = run_git(root, &["rev-parse", "--absolute-git-dir"], timeout)?;
+    if !git_dir.status.success() {
+        return Err(command_failed("git rev-parse --absolute-git-dir", &git_dir));
+    }
+    let git_dir = PathBuf::from(
+        String::from_utf8_lossy(&git_dir.stdout)
+            .trim()
+            .to_string(),
+    );
+    for (marker, label) in [
+        ("MERGE_HEAD", "merge"),
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase/am"),
+        ("CHERRY_PICK_HEAD", "cherry-pick"),
+        ("REVERT_HEAD", "revert"),
+        ("sequencer", "多步提交"),
+    ] {
+        match fs::symlink_metadata(git_dir.join(marker)) {
+            Ok(_) => reasons.push(format!(
+                "存在未完成的 {label} 流程：请在外部工具完成或撤销后再试。"
+            )),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(GitError::Failed(format!(
+                    "无法确认 Git 流程状态（{marker}）：{error}"
+                )));
+            }
+        }
+    }
+
+    Ok((!reasons.is_empty()).then(|| reasons.join("；")))
+}
+
+/// 运行一条 Git 命令，并保证它不会无限期占用仓库。
+///
+/// 输出由独立线程持续读取，避免子进程写满管道后阻塞。达到时限时结束整棵进程树：
+/// 先 `taskkill /T /F`，再等待直接子进程确认退出。只有当直接子进程结束、且输出线程都已结束时，
+/// 才把这次终止视为已确认；否则返回 `confirmed: false`，调用方必须保持仓库资格。
+pub(crate) fn run_git(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<Output, GitError> {
+    let command = format!("git {}", args.join(" "));
+    let mut child = Command::new("git")
         .arg("--no-optional-locks")
         .arg("-C")
         .arg(root)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 GitError::GitUnavailable(
@@ -529,17 +824,121 @@ fn run_git(root: &Path, args: &[&str]) -> Result<Output, GitError> {
             } else {
                 GitError::Failed(format!("无法运行 git：{error}"))
             }
-        })
+        })?;
+
+    let stdout = child.stdout.take().expect("stdout 已设为管道");
+    let stderr = child.stderr.take().expect("stderr 已设为管道");
+    let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let (stderr_sender, stderr_receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = stdout_sender.send(read_all(stdout));
+    });
+    thread::spawn(move || {
+        let _ = stderr_sender.send(read_all(stderr));
+    });
+
+    let deadline = Instant::now() + timeout;
+    let timed_out = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = stdout_receiver
+                    .recv_timeout(OUTPUT_DRAIN)
+                    .unwrap_or_default();
+                let stderr = stderr_receiver
+                    .recv_timeout(OUTPUT_DRAIN)
+                    .unwrap_or_default();
+                return Ok(Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                let now = Instant::now();
+                if now >= deadline {
+                    break true;
+                }
+                let remaining = deadline.saturating_duration_since(now);
+                thread::sleep(remaining.min(Duration::from_millis(20)));
+            }
+            Err(error) => {
+                return Err(GitError::Failed(format!("无法等待 git 结束：{error}")));
+            }
+        }
+    };
+    debug_assert!(timed_out);
+
+    let mut confirmed = terminate_tree(child.id());
+    let confirmation_deadline = Instant::now() + TERMINATION_CONFIRMATION;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < confirmation_deadline => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Ok(None) => {
+                confirmed = false;
+                break;
+            }
+            Err(_) => {
+                confirmed = false;
+                break;
+            }
+        }
+    }
+
+    let stdout = stdout_receiver.recv_timeout(OUTPUT_DRAIN).unwrap_or_default();
+    let stderr = stderr_receiver.recv_timeout(OUTPUT_DRAIN).unwrap_or_default();
+    if stdout_receiver.try_recv().is_ok() || stderr_receiver.try_recv().is_ok() {
+        confirmed = false;
+    }
+    let output = output_text(&stdout, &stderr);
+    Err(GitError::TimedOut {
+        command,
+        timeout,
+        output,
+        confirmed,
+    })
 }
 
-fn command_failed(command: &str, output: &Output) -> GitError {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let detail = if stderr.is_empty() {
+/// 结束 Git 进程及其派生进程；返回是否成功发出了整棵进程树的终止请求。
+fn terminate_tree(pid: u32) -> bool {
+    Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn read_all(mut reader: impl Read) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let _ = reader.read_to_end(&mut bytes);
+    bytes
+}
+
+pub(crate) fn command_failed(command: &str, output: &Output) -> GitError {
+    let detail = output_text(&output.stdout, &output.stderr);
+    let detail = if detail.is_empty() {
         format!("退出码 {:?}", output.status.code())
     } else {
-        stderr
+        detail
     };
     GitError::Failed(format!("{command} 失败：{detail}"))
+}
+
+/// 把 Git 的输出按纯文本合并；stdout 与 stderr 都保留，便于页面显示已发生的事实。
+pub(crate) fn output_text(stdout: &[u8], stderr: &[u8]) -> String {
+    let stdout = String::from_utf8_lossy(stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => stderr,
+        (false, true) => stdout,
+        (false, false) => format!("{stdout}\n{stderr}"),
+    }
 }
 
 /// 解析 `git status --porcelain=v1 -z`。

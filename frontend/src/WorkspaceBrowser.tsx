@@ -20,7 +20,13 @@ import {
   type ChangeDiff,
   type DiffSide,
 } from './diffApi'
-import { fetchGitStatus, type ChangeKind, type GitChange, type GitStatus } from './gitApi'
+import {
+  commitWorkspace,
+  fetchGitStatus,
+  type ChangeKind,
+  type GitChange,
+  type GitStatus,
+} from './gitApi'
 import type { ConnectionStatus } from './sessionFeed'
 import {
   describeWatchProblem,
@@ -161,6 +167,14 @@ export function WorkspaceBrowser({
   const [changeDiffError, setChangeDiffError] = useState<string | null>(null)
   const [changeDiffLoading, setChangeDiffLoading] = useState(false)
   const [changesShowingDiff, setChangesShowingDiff] = useState(false)
+  // 提交信息属于当前页面：内部视图与顶层 tab 往返都保持，整页刷新才丢弃。
+  const [commitMessage, setCommitMessage] = useState('')
+  const [commitConfirming, setCommitConfirming] = useState(false)
+  const [commitRunning, setCommitRunning] = useState(false)
+  // 提交反馈只描述这一次请求的归宿；成功、明确拒绝与观察中断必须分开。
+  const [commitFeedback, setCommitFeedback] = useState<
+    { tone: 'success' | 'error' | 'unconfirmed'; text: string } | null
+  >(null)
 
   const narrow = useNarrowLayout()
   const watchGeneration = watch?.generation ?? 0
@@ -330,6 +344,10 @@ export function WorkspaceBrowser({
     setChangeDiff(null)
     setChangeDiffError(null)
     setChangesShowingDiff(false)
+    setCommitMessage('')
+    setCommitConfirming(false)
+    setCommitRunning(false)
+    setCommitFeedback(null)
     changesScrollPosition.current = 0
     scrollPositions.current = new Map()
     void loadDirectory('')
@@ -437,6 +455,135 @@ export function WorkspaceBrowser({
     setMobilePath(parent)
     setMobileShowingContent(false)
     if (!entries.has(parent)) void loadDirectory(parent)
+  }
+
+  const blockedReason =
+    gitStatus?.blockedReason ??
+    (gitStatus?.detached
+      ? '当前处于 detached HEAD：普通 Commit 不可用。'
+      : gitStatus?.conflict
+        ? '存在未解决的冲突文件：请在外部工具解决冲突后再试。'
+        : null)
+  const commitAvailable =
+    gitStatus !== null &&
+    gitStatus.repository &&
+    !gitStatus.detached &&
+    !blockedReason &&
+    gitStatus.pendingCount > 0 &&
+    gitStatus.reviewToken !== undefined
+  const canSubmitCommit =
+    commitAvailable && commitMessage.trim() !== '' && !commitRunning
+
+  /**
+   * 确认后只发送一次提交请求。
+   *
+   * 成功、明确拒绝与观察中断分别呈现；每一种归宿结束后都重新读取当前事实，但绝不自动重发写入。
+   */
+  async function runCommit() {
+    setCommitConfirming(false)
+    const token = gitStatus?.reviewToken
+    if (!commitAvailable || token === undefined || commitMessage.trim() === '') {
+      setCommitFeedback({ tone: 'error', text: '提交信息不能为空。' })
+      return
+    }
+
+    setCommitRunning(true)
+    setCommitFeedback(null)
+    const submitted = commitMessage
+    const result = await commitWorkspace(workspace, submitted, token)
+    setCommitRunning(false)
+
+    if (result.kind === 'ok') {
+      setCommitFeedback({
+        tone: 'success',
+        text: `已提交 ${result.value.commit.slice(0, 8)}：${result.value.message}`,
+      })
+    } else if (result.kind === 'rejected') {
+      setCommitFeedback({
+        tone: 'error',
+        text:
+          result.code === 'review-invalid'
+            ? `${result.message} 提交信息已保留，请重新审查后再次确认。`
+            : result.message,
+      })
+    } else {
+      setCommitFeedback({
+        tone: 'unconfirmed',
+        text:
+          '未确认：没有收到提交响应，提交可能已经执行；页面不会自动重试，已按实际仓库状态刷新。',
+      })
+    }
+    // 拒绝、失败或断线后都用当前事实刷新；不能把旧审查状态继续当成结果。
+    await refresh()
+  }
+
+  function commitBar(): ReactNode {
+    if (gitStatus === null || !gitStatus.repository) return null
+    return (
+      <form
+        className="commit-bar"
+        data-testid="commit-bar"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (commitMessage.trim() === '') {
+            setCommitFeedback({ tone: 'error', text: '提交信息不能为空。' })
+            return
+          }
+          if (canSubmitCommit) setCommitConfirming(true)
+        }}
+      >
+        <label className="commit-bar__label" htmlFor="commit-message">
+          提交信息
+        </label>
+        <div className="commit-bar__row">
+          <input
+            id="commit-message"
+            className="commit-bar__input"
+            data-testid="commit-message"
+            type="text"
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={commitRunning}
+          />
+          <button
+            type="submit"
+            className="commit-bar__button"
+            data-testid="commit-button"
+            disabled={!canSubmitCommit}
+          >
+            {commitRunning ? '提交中……' : 'Commit'}
+          </button>
+        </div>
+        {blockedReason !== null && (
+          <p
+            className="commit-bar__blocked"
+            data-testid="git-blocked-reason"
+            role="alert"
+          >
+            {blockedReason}
+          </p>
+        )}
+        {!commitAvailable && blockedReason === null && (
+          <p className="commit-bar__hint" data-testid="commit-unavailable">
+            {gitStatus.pendingCount === 0
+              ? '当前没有待提交变更。'
+              : '当前没有可用的审查版本，无法提交。'}
+          </p>
+        )}
+        {commitFeedback !== null && (
+          <p
+            className="commit-bar__feedback"
+            data-testid="commit-feedback"
+            data-tone={commitFeedback.tone}
+            role={commitFeedback.tone === 'success' ? 'status' : 'alert'}
+          >
+            {commitFeedback.text}
+          </p>
+        )}
+      </form>
+    )
   }
 
   // 两个视图共用同一个状态快照：浏览树的颜色、祖先提示与变更列表都来自这份 changes。
@@ -663,6 +810,7 @@ export function WorkspaceBrowser({
       if (changesShowingDiff && selectedChange !== null) {
         return (
           <div className="browser-mobile" data-testid="changes-mobile">
+            {commitBar()}
             <button
               type="button"
               className="browser-mobile__back"
@@ -677,6 +825,7 @@ export function WorkspaceBrowser({
       }
       return (
         <div className="browser-mobile" data-testid="changes-mobile">
+          {commitBar()}
           <div
             className="browser-mobile__list"
             data-testid="changes-list-scroll"
@@ -690,19 +839,22 @@ export function WorkspaceBrowser({
     }
 
     return (
-      <div className="changes-layout" data-testid="changes-layout">
-        <div
-          className="changes-list"
-          data-testid="changes-list-scroll"
-          ref={changesListRef}
-          onScroll={rememberChangesScroll}
-        >
-          {changesList()}
+      <>
+        {commitBar()}
+        <div className="changes-layout" data-testid="changes-layout">
+          <div
+            className="changes-list"
+            data-testid="changes-list-scroll"
+            ref={changesListRef}
+            onScroll={rememberChangesScroll}
+          >
+            {changesList()}
+          </div>
+          <div className="changes-detail" data-testid="changes-detail">
+            {diffPane()}
+          </div>
         </div>
-        <div className="changes-detail" data-testid="changes-detail">
-          {diffPane()}
-        </div>
-      </div>
+      </>
     )
   }
 
@@ -1021,6 +1173,16 @@ export function WorkspaceBrowser({
         </p>
       )}
 
+      {gitStatus?.repository && blockedReason !== null && (
+        <p
+          className="browser-error"
+          data-testid="git-blocked-reason-summary"
+          role="alert"
+        >
+          {blockedReason}
+        </p>
+      )}
+
       {/* Git workspace 才有的内部子 tab；普通目录只保留浏览，不出现空的变更入口。 */}
       {gitStatus?.repository && (
         <div className="browser-views" role="tablist" aria-label="workspace 视图">
@@ -1105,6 +1267,42 @@ export function WorkspaceBrowser({
       {gitStatus?.repository && (
         <div className="browser-pane" hidden={view !== 'changes'}>
           {changesView()}
+        </div>
+      )}
+
+      {/*
+        确认门禁只有一句消息与确认/取消：workspace、分支、文件数、提交信息与清单已经由
+        变更界面承载，不在弹框里重复。取消只关闭门禁，不发送任何写请求。
+      */}
+      {commitConfirming && (
+        <div
+          className="commit-confirm"
+          data-testid="commit-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label="确认提交"
+        >
+          <p className="commit-confirm__question">
+            确认提交当前审查版本中的全部待提交变更？
+          </p>
+          <div className="commit-confirm__actions">
+            <button
+              type="button"
+              className="commit-confirm__cancel"
+              data-testid="commit-cancel"
+              onClick={() => setCommitConfirming(false)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="commit-confirm__go"
+              data-testid="commit-confirm"
+              onClick={() => void runCommit()}
+            >
+              确认提交
+            </button>
+          </div>
         </div>
       )}
     </section>

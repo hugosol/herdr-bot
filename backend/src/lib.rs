@@ -40,6 +40,7 @@ pub mod browse;
 pub mod clock;
 pub mod config;
 pub mod countdown;
+pub mod commit;
 pub mod git;
 pub mod mdns;
 pub mod observation;
@@ -70,8 +71,8 @@ use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
 pub use config::{
-    Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, SessionWindowSeconds,
-    SessionsConfig, ShutdownConfig, WorkspacesConfig,
+    CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig, OperationBinding,
+    Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig, WorkspacesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -119,6 +120,10 @@ pub struct AppState {
     ///
     /// 浏览读取只读；上限只影响内容预览，不影响目录列表与文件元数据。
     pub preview_limit_bytes: u64,
+    /// 每条 Git 命令的执行时限（启动期配置，缺省 300 秒）。
+    pub git_timeout: Duration,
+    /// 同一实际仓库的 Git 写操作资格；与固定操作的执行资格完全独立。
+    pub repository_locks: Arc<commit::RepositoryLocks>,
     /// workspace 文件事件监听与按 workspace 合并的自动刷新通知。
     ///
     /// 每个已登记 workspace 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
@@ -193,6 +198,8 @@ pub fn app_with_state(
             config.workspaces.registry_file.clone(),
         )),
         preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
+        git_timeout: config.git.command_timeout_seconds.duration(),
+        repository_locks: Arc::new(commit::RepositoryLocks::new()),
         workspace_watch: Arc::new(watch::WorkspaceWatchManager::new(
             config.workspaces.refresh_interval_seconds.duration(),
         )),
@@ -230,6 +237,8 @@ pub fn app_with_state(
         .route("/api/workspaces/git-status", get(workspace_git_status))
         // 单个变更的审查 diff：旧侧是 HEAD，新侧是最终本地内容；两侧各自应用预览上限。
         .route("/api/workspaces/diff", get(workspace_change_diff))
+        // 经审查复核的整仓提交：确认后重查审查版本，再暂存全部符合 Git 规则的最终变更并提交。
+        .route("/api/workspaces/commit", post(commit_workspace))
         // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
         .route("/api/workspaces/overview", get(workspaces_overview))
         // 自动更新的只读长连接：真实文件系统事件按 workspace 合并后通知页面重新读取；
@@ -634,7 +643,8 @@ async fn workspaces_overview(State(state): State<AppState>) -> Response {
         Ok(workspaces) => workspaces,
         Err(error) => return workspace_error_response(error),
     };
-    match tokio::task::spawn_blocking(move || git::overview(&workspaces)).await {
+    let timeout = state.git_timeout;
+    match tokio::task::spawn_blocking(move || git::overview(&workspaces, timeout)).await {
         Ok(workspaces) => (
             StatusCode::OK,
             Json(WorkspaceOverviewResponse { workspaces }),
@@ -674,7 +684,8 @@ async fn workspace_git_status(
         Ok(registered) => registered,
         Err(response) => return response,
     };
-    match tokio::task::spawn_blocking(move || git::status(&registered)).await {
+    let timeout = state.git_timeout;
+    match tokio::task::spawn_blocking(move || git::status(&registered, timeout)).await {
         Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(Err(error)) => git_error_response(error),
         Err(_) => rejected_owned(
@@ -734,6 +745,7 @@ async fn watch_workspaces(State(state): State<AppState>) -> Response {
 fn git_error_response(error: git::GitError) -> Response {
     let status = match &error {
         git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
         git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
@@ -797,8 +809,15 @@ async fn workspace_change_diff(
         Err(response) => return response,
     };
     let limit = state.preview_limit_bytes;
+    let timeout = state.git_timeout;
     match tokio::task::spawn_blocking(move || {
-        git::change_diff(&registered, &query.path, query.old_path.as_deref(), limit)
+        git::change_diff(
+            &registered,
+            &query.path,
+            query.old_path.as_deref(),
+            limit,
+            timeout,
+        )
     })
     .await
     {
@@ -808,6 +827,179 @@ async fn workspace_change_diff(
             StatusCode::INTERNAL_SERVER_ERROR,
             "git-command-failed",
             "读取审查 diff 的任务异常结束，无法确认旧新内容。".to_string(),
+        ),
+    }
+}
+
+/// 一次提交请求：服务器目录、非空提交信息，以及页面展示的审查版本标识。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceCommitRequest {
+    workspace: String,
+    message: String,
+    review_token: String,
+}
+
+/// 一次真实提交成功后的回执：只有 Git 确认创建了新的 HEAD 才返回。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCommitResponse {
+    workspace: String,
+    outcome: &'static str,
+    commit: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
+    message: String,
+}
+
+/// “经审查复核的整仓提交”。
+///
+/// 页面与直接请求都拒绝空信息、普通目录、阻塞状态和失效审查；被拒绝的请求不会产生 Git 写入。
+/// 请求被接受后，执行放在独立任务里：客户端断线不会取消已经开始的提交，也不会在别处重放。
+async fn commit_workspace(State(state): State<AppState>, request: Request) -> Response {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "提交请求不接受查询参数：workspace、提交信息与审查版本只来自请求体。".to_string(),
+        );
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = match to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "payload-too-large",
+                "提交请求体超过 64KB 上限。".to_string(),
+            );
+        }
+    };
+    let request: WorkspaceCommitRequest = match serde_json::from_slice(&bytes) {
+        Ok(request) => request,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-request",
+                "无法解析提交请求：请发送 {\"workspace\":\"服务器目录\",\"message\":\"提交信息\",\"reviewToken\":\"审查版本\"} 形式的 JSON。"
+                    .to_string(),
+            );
+        }
+    };
+    if request.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请指定要提交的已登记 workspace。".to_string(),
+        );
+    }
+    if request.message.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "empty-message",
+            "提交信息不能为空；本次没有执行任何 Git 写入。".to_string(),
+        );
+    }
+    if request.review_token.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "review-required",
+            "缺少审查版本标识；请先读取并确认当前审查版本。".to_string(),
+        );
+    }
+
+    let registered = match registered_workspace(&state, &request.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let response_workspace = registered.clone();
+    let message = request.message;
+    let review_token = request.review_token;
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let outcome = tokio::task::spawn_blocking(move || {
+            commit::execute(
+                &registered,
+                &message,
+                &review_token,
+                timeout,
+                &locks,
+            )
+        })
+        .await;
+        let response = commit_response(response_workspace, outcome);
+        // 连接已经断开时接收端不存在，结果丢弃；已经开始的提交不会被取消或重放。
+        let _ = sender.send(response);
+    });
+
+    match receiver.await {
+        Ok(response) => response,
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commit-result-unavailable",
+            "本次提交没有送回结果：无法确认执行结果，请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+fn commit_response(
+    workspace: String,
+    outcome: Result<commit::CommitOutcome, tokio::task::JoinError>,
+) -> Response {
+    match outcome {
+        Ok(commit::CommitOutcome::Committed {
+            commit,
+            branch,
+            message,
+        }) => (
+            StatusCode::OK,
+            Json(WorkspaceCommitResponse {
+                workspace,
+                outcome: "committed",
+                commit,
+                branch,
+                message,
+            }),
+        )
+            .into_response(),
+        Ok(commit::CommitOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Commit。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次请求没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "commit-blocked", reason)
+        }
+        Ok(commit::CommitOutcome::ReviewInvalid(message)) => {
+            rejected_owned(StatusCode::CONFLICT, "review-invalid", message)
+        }
+        Ok(commit::CommitOutcome::NothingToCommit) => rejected_owned(
+            StatusCode::CONFLICT,
+            "nothing-to-commit",
+            "当前没有待提交变更：本次没有执行 Git 写入。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Failed(error)) => {
+            let status = match &error {
+                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            };
+            rejected_owned(status, error.code(), error.message())
+        }
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commit-result-unavailable",
+            "提交任务异常结束，无法确认执行结果；请按实际仓库状态核对。".to_string(),
         ),
     }
 }

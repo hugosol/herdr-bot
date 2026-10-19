@@ -287,6 +287,28 @@ refresh_interval_seconds = 10
 - 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
   就只显示大小与上限说明。
 
+### `[git]` 配置（可选）
+
+本功能发起的每条 Git 命令都有执行时限；整段可缺省：
+
+```toml
+[git]
+# 每条 Git 命令的执行上限（秒）；缺省 300。
+command_timeout_seconds = 300
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `command_timeout_seconds` | `300` | 每条 Git 命令允许执行的最长时间（秒） |
+
+- 时限覆盖状态读取、diff、暂存、提交以及后续同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
+  （包括 hook 派生出的子进程），停止本次执行并中断后续步骤；页面明确显示这是本功能时限，并保留取消前
+  已有的 Git 输出，不伪造 Git 退出消息。
+- 终止尚未确认时，该仓库的写操作资格继续被持有，后来的 Commit 不会与它重叠；确认终止后才释放。
+- 合法整数范围是 `1..=4294967295`；缺段或缺少字段取 300 秒。零、负数、小数、字符串或拼错的字段名
+  都会让**启动明确失败**，不会静默回退。
+- 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
+
 ### 文件列表与 workspace 登记
 
 主界面三个顶层入口按“会话列表 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
@@ -311,8 +333,8 @@ refresh_interval_seconds = 10
 ### 进入 workspace：只读浏览与 Git 待提交变更
 
 登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
-内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff；Commit / Sync 仍由
-后续票提供。
+内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff，并在审查版本仍未
+失效时执行整仓 Commit；Sync 由后续票提供。
 
 - **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。目录按需展开；选择变更后右侧显示从当前分支最新
   本地提交到最终本地内容的差异，默认左右对照。
@@ -382,6 +404,9 @@ refresh_interval_seconds = 10
 - `GET /api/workspaces/overview` 返回每个登记项的角标事实：
   `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
   普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+- Git 状态与审查结果还带 `reviewToken`（当前审查版本标识）与可选的 `blockedReason`（仓库级阻塞原因）。
+  `reviewToken` 覆盖分支、HEAD、完整索引、待提交路径集合与每个路径的完整最终内容；预览上限不会截断它。
+  提交请求必须原样带回它。
 - `GET /api/workspaces/watch` 是自动更新的只读 SSE 长连接。首帧 `snapshot` 给出实际生效的
   `intervalSeconds` 与每个 workspace 的监听视图
   `{"workspace":"…","health":"live|error","message":"…","lastRefreshAt":…,"generation":N}`；
@@ -390,6 +415,41 @@ refresh_interval_seconds = 10
 
 失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
 `path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
+
+### 经审查复核的整仓 Commit
+
+Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Commit` 主按钮：
+
+1. 提交信息必须非空；页面在信息为空时禁用按钮，直接请求也会以 `empty-message` 拒绝。
+2. 点按 `Commit` 只弹出**一句**确认消息与“确认提交 / 取消”。取消不发送写请求，因此没有 Git 写入。
+   弹框不重复列出 workspace、分支、文件数、提交信息或文件清单。
+3. 确认后，服务端用当前事实重新计算审查版本，并与页面展示的 `reviewToken` 比较。分支、HEAD、索引
+   （包括外部暂存）、待提交路径集合或完整内容任何一处变化都会拒绝**当次**提交并返回 `review-invalid`；
+   页面保留提交信息、刷新实际变更，用户必须重新审查并再次确认。旧审查不能向另一分支提交。
+4. 复核通过后执行 `git add --all`，再执行 `git commit -m <信息>`。已经存在的部分暂存不会缩小范围；被忽略
+   的未跟踪文件不会被强加；只创建本地提交，不自动 push，也不修改 Git 配置。
+5. 同一实际仓库的写操作串行：不同调用者或同一路径的别名同时提交时，后到者得到 `git-write-in-progress`，
+   不等待、不排队。资格由执行持有：连接断开不会取消已接受的提交；命令超时且终止未确认时，资格继续保持，
+   不会与后续写操作重叠。workspace Git 资格与固定操作的执行资格互不相同。
+6. 任一步失败立即中断后续步骤，且不撤销已经成功的步骤：暂存成功后 hook 拒绝 commit，索引仍保留已暂存
+   内容，页面显示 Git 返回的纯文本诊断（不执行其中的 HTML/script）。普通命令失败不会被误标为文件冲突。
+7. detached HEAD、未解决冲突，以及未完成的 merge/rebase/cherry-pick/revert 流程会禁用 Commit 并在页面
+   与直接请求中说明原因；冲突解决但流程尚未结束时仍然阻塞。用户在外部完成或撤销流程后，刷新即恢复。
+   没有 upstream 不妨碍本地 Commit，也不会隐式配置 upstream。
+8. 已初始化但没有首次提交的仓库按空树审查：已暂存与未忽略的未跟踪文件都显示为新增，Commit 创建首个提交。
+   本功能不提供 `git init`。
+9. 嵌套仓库与子模块不递归管理：父仓库只记录其 gitlink 提交，内部文件不会作为父仓库普通内容提交；父仓库
+   自身已跟踪的 gitlink 引用变化仍正常纳入。父仓库提交不会改写子仓库/嵌套仓库内部工作区。
+10. Git 沿用服务器现有的身份、凭据与策略：`git commit -m` 不打开编辑器，`GIT_TERMINAL_PROMPT=0` 禁止在
+    没有终端时等待输入；签名或凭据条件无法满足时明确失败或按 `[git] command_timeout_seconds` 超时，不新开
+    终端/网页凭据流程，也不覆盖 Git 配置伪造成功。
+
+接口：`POST /api/workspaces/commit`，JSON
+`{"workspace":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
+成功返回 `{"workspace":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
+失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
+`commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
+`git-command-failed`、`workspace-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
 
 ### 默认绑定与改绑
 
@@ -1636,3 +1696,60 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
 - **限制与未由本票承担的范围**：宽屏与窄屏证据来自无头 Chromium，窄屏为视口仿真；手机实机触摸、diff
   滚动与返回手感仍属于 human-led H1，由 08 汇总后交用户确认。Commit / Sync、审查版本复核、文件事件
   自动刷新与冲突恢复流程属于后续票。
+
+## 变更记录：经审查复核的整仓 Commit（2026-10-19）
+
+本次在变更视图加入常驻提交信息与 `Commit` 主按钮：一句确认后重新核对页面展示的审查版本，再暂存整仓
+符合 Git 规则的最终变更并创建本地提交；不自动 push。Sync 仍由后续票提供。
+
+- **改了什么**：
+  - `backend/src/git.rs` 为 `GitStatus` 增加 `reviewToken` 与 `blockedReason`。`reviewToken` 覆盖分支、
+    HEAD、完整索引、待提交路径集合与每个路径的完整最终内容（直接读文件，不受预览上限影响）；嵌套仓库
+    与子模块只记录 gitlink 提交，不递归内部文件。冲突、detached HEAD 与未完成的 merge/rebase/…/revert
+    流程作为仓库级阻塞原因明确返回；普通命令失败不会被标成冲突。状态与 diff 查询同样应用
+    `--ignore-submodules=dirty`，子模块内部脏文件不产生父仓库变更。
+  - 新增 `backend/src/commit.rs` 与 `POST /api/workspaces/commit`：空信息、普通目录、阻塞状态、失效审查、
+    干净仓库与同仓库并发写都明确拒绝；复核通过后 `git add --all` + `git commit -m`，既有部分暂存不会
+    缩小范围，ignored untracked 不会被强加，失败与超时都保留已成功步骤和 Git 输出。每个实际仓库按规范化
+    工作树根持有独立写资格，路径别名共用同一资格；请求断开不取消已接受执行，终止未确认时资格继续保持。
+  - 所有 Git 命令改为可配置时限（`[git] command_timeout_seconds`，缺省 300 秒）：超时结束 Git 及其派生
+    进程树，页面显示本功能时限与已有输出；超时不是 Git 退出消息。
+  - 前端 `gitApi.ts` 增加提交客户端；`WorkspaceBrowser` 增加常驻提交信息、状态驱动的 Commit 按钮、一句
+    确认/取消门禁、成功/拒绝/未确认反馈与阻塞原因。提交信息在内部视图与顶层 tab 往返中保留；确认后失败
+    仍保留信息并刷新实际内容，必须重新审查确认。窄屏下输入框与确认按钮保持 44px 触摸目标。
+  - `omp-bot.toml` 与 README 的配置、workspace、接口与变更记录同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_commit` → `19 passed`：真实隔离仓库、bare 远端与 hooks 覆盖完整待提交
+    集合与最终提交树（tracked 修改/删除、后来匹配忽略的 tracked、未忽略 untracked、ignored 不强加）、
+    部分暂存不缩小范围、不 push；同路径同数量内容变化、外部暂存、HEAD 变化、切分支、超限/二进制内容
+    变化都使审查失效且不写入；空信息/未知字段/查询参数被拒绝；hook 拒绝保留索引并返回纯文本诊断；无 HEAD
+    首提交；普通目录、detached HEAD、未解决冲突、冲突已解决但 merge 未完与外部 abort 恢复；嵌套仓库与
+    子模块 gitlink 范围且不改内部工作区；并发、断线、路径别名、超时与派生进程终止、资格独立于固定操作；
+    缺失目录/被文件替换；无 upstream 可本地提交且配置不变；编辑器不打开、签名失败、凭据不交互；预览限制
+    不改变提交树；干净仓库拒绝空提交。
+  - `cargo test --lib commit::tests` → `2 passed`：终止未确认时资格保持、已确认或普通结果释放资格。
+  - `cargo test --no-fail-fast` → 除一次既有 `fixture_behavior::long_running_fixture_stays_running_until_the_stop_entry_point`
+    在满载并行下被夹具自带结束脚本强制结束外，其余全部测试目标通过；该用例单独重跑通过。本票新增的
+    19 个集成用例与 2 个单元用例全部通过。
+  - `npm test` → `17 files / 126 tests passed`；新增 `tests/commit.test.tsx` 13 例，覆盖常驻输入与空信息、
+    tab/内部视图往返、一句确认与取消无写、成功、失效后保留信息并再次确认、响应中断未确认、执行中切 tab、
+    重载不重放、HTML/script 纯文本、超时文字、普通目录/detached/冲突阻塞。
+  - `npm run build`（`tsc --noEmit && vite build`）成功。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、bare 远端、真实交付后端进程；未执行关机）：
+  - 桌面 `1024×720`：常驻提交信息与 Commit、一句确认框；取消后 HEAD、索引与远端引用均未变化。
+  - 真实 `pre-commit` hook 拒绝：页面显示 Git 返回的 `<script>…</script>` 字面量，反馈区域内无 `script`/
+    `img` 元素且 `window.__pwned` 未定义；HEAD 不变，暂存内容保留。
+  - 确认前把同路径同数量的文件内容从 A 改成 B：以 `review-invalid` 拒绝，提交信息保留，刷新后显示实际
+    内容；HEAD/索引/远端未变化。
+  - 重新审查后确认：提交 `98dc4b34…`，提交树包含 `.gitignore`、`added.txt`、`tracked.txt`，删除与部分
+    暂存范围正确，`ignored.log` 不在树中；远端保持 `4a04214…`（未 push）。
+  - Commit 执行中切到会话列表再返回：执行未取消，返回显示真实成功结果；整页重载：默认回到会话列表，
+    `rev-list --count HEAD` 只增加一次，随后变更视图显示实际干净状态。
+  - 窄屏 `390×844`：提交信息与 Commit 在变更列表上方，输入框高 44px；确认/取消按钮均 44×112px；窄屏
+    提交成功并显示空变更列表。
+  - 截图与逐项 CLI 核对见
+    [`.scratch/workspace-file-browser/evidence/05-commit-reviewed-repository/`](.scratch/workspace-file-browser/evidence/05-commit-reviewed-repository/)。
+- **限制与未由本票承担的范围**：真实手机触摸与软键盘体验（H1）仍未确认；窄屏截图只是 agent 准备的证据。
+  外部进程不受本服务原子锁定，确认后的复核保留规格接受的竞争窗口。Sync、文件事件自动刷新与冲突恢复
+  流程属于后续票。真实环境中未能让系统 `taskkill` 失败以制造“终止未确认”的进程级样例；该分支由单元
+  测试验证资格保持，并以真实超时执行中的重叠请求验证不重叠，仍如实列为未覆盖的进程级场景。
