@@ -186,6 +186,22 @@ async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
     git(&root, &["add", "--all"]);
     git(&root, &["commit", "--quiet", "-m", "initial"]);
 
+    // 另造一个与 HEAD 不同的远端跟踪引用：若实现错误地比较远端→本地，旧侧会变成 REMOTE。
+    git(&root, &["switch", "--quiet", "-c", "remote-side"]);
+    fs::write(root.join("review.txt"), "alpha\nREMOTE\n").unwrap();
+    git(&root, &["commit", "--quiet", "-am", "remote side"]);
+    let remote_commit = git_stdout(&root, &["rev-parse", "HEAD"]).trim().to_string();
+    git(
+        &root,
+        &["update-ref", "refs/remotes/origin/main", &remote_commit],
+    );
+    git(&root, &["switch", "--quiet", "main"]);
+    let remote_review = git_stdout(&root, &["show", "refs/remotes/origin/main:review.txt"]);
+    assert_ne!(
+        remote_review, head_review,
+        "远端跟踪引用的内容必须与 HEAD 不同，才能区分两种比较基准"
+    );
+
     // 真实部分暂存：索引里是 STAGED 内容，最终本地文件还有一段未暂存内容。
     // 若实现错误地比较 index→工作区，旧侧会变成 STAGED 而不是 HEAD 的 beta。
     let staged_review = "alpha\nSTAGED\n";
@@ -222,6 +238,11 @@ async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
         payload["old"]["content"],
         json!(staged_review),
         "diff 旧侧必须是 HEAD，而不是索引内容"
+    );
+    assert_ne!(
+        payload["old"]["content"],
+        json!(remote_review),
+        "diff 旧侧必须是 HEAD，而不是远端跟踪引用"
     );
 
     // 新增：HEAD 没有该路径，旧侧明确不存在；新侧是完整新增文本。
