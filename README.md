@@ -6,7 +6,9 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 
 - 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
   [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
-- 本版新增（mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
+- 当前新增（三个顶层入口、workspace 登记列表）：[`.scratch/workspace-file-browser/spec.md`](.scratch/workspace-file-browser/spec.md)、
+  [`.scratch/workspace-file-browser/contract.md`](.scratch/workspace-file-browser/contract.md)。
+- 较早版本（mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
   [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
   决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
   [ADR 0002](docs/adr/0002-shutdown-button-default-on-client-countdown-no-auth.md)、
@@ -21,10 +23,22 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/` | Rust/Axum 服务：提供打包页面与操作接口 |
 | `backend/src/config.rs` | 服务端配置：监听地址、固定操作绑定（脚本 + 工作目录） |
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
+| `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
+| `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
+| `backend/src/git.rs` | Git workspace 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
+| `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
+| `backend/src/watch.rs` | workspace 本地文件/Git 元数据监听、按 workspace 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
+| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、待提交角标、取消登记与进入浏览 |
+| `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览、Git 变更列表与左右/统一 diff、待提交着色与祖先目录提示 |
+| `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
+| `frontend/src/gitApi.ts` | Git 状态与 workspace 角标概览客户端，含响应形状校验 |
+| `frontend/src/workspaceWatch.ts` | 自动更新 SSE 数据源：首帧监听快照、合并后的刷新通知与监听健康 |
+| `frontend/src/diff.ts` | 行级统一 diff 与左右对照配对（纯文本，不解析 HTML） |
+| `frontend/src/diffApi.ts` | 审查 diff 客户端与响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -142,14 +156,17 @@ omp-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `omp-bot.lo
    端口固定为配置里的 `8787`。**不要在手机上用 `127.0.0.1`**（那指向手机自己）。
 3. 手机连接**与电脑同一个 Wi-Fi**（不要用访客网络或热点）。
 4. 手机浏览器打开 `http://<上一步的 IPv4>:8787/`。
-   - **预期看到**：标题“omp-bot”、一行范围说明（页面只反馈脚本调用情况）、两个大按钮
-     （“启动”“停止”），结果框显示“尚未提交操作。”。
-5. 点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时**两个按钮同时变灰、点不动**；
-   脚本结束后显示本次调用结果。从**控制台窗口**启动面板时，默认绑定的现有脚本会显示“执行完成”
-   （约 5 秒，脚本自身的等待会真正执行）；若面板是在没有控制台的环境里启动的，则会如实显示
-   “执行失败：脚本以退出码 1 结束”，原因见[现有脚本接入的已知现象](#现有脚本接入的已知现象)。
+   - **预期看到**：标题“omp-bot”、三个等宽入口（“会话列表”“文件列表”“控制面板”），默认停在
+     “会话列表”。
+5. 点按“控制面板”，再点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时
+   **两个按钮同时变灰、点不动**；脚本结束后显示本次调用结果。从**控制台窗口**启动面板时，
+   默认绑定的现有脚本会显示“执行完成”（约 5 秒，脚本自身的等待会真正执行）；若面板是在没有控制台
+   的环境里启动的，则会如实显示“执行失败：脚本以退出码 1 结束”，原因见
+   [现有脚本接入的已知现象](#现有脚本接入的已知现象)。
 6. 点按“停止”：同样先“执行中”、后结果；停止之后可以再次点按“启动”，会再次真实调用脚本
    （不检查服务是否已运行，也不做状态去重）。
+7. 点按“文件列表”：输入**服务器电脑上的**目录绝对路径（不是手机上的目录），点按“登记”；成功只会在
+   后端持久保存之后显示。点按某个登记项的“取消登记”只移除登记，不删除目录或文件。
 
 手机打不开页面时：
 
@@ -236,6 +253,265 @@ offline_retention_seconds = 30
   正常判定，不溢出、不提前过期。
 - 运行中的实例不会因为改写配置文件而改变已加载的窗口；新值只在**重启后**生效。
 - 阈值语义与可见行为见[会话登记的生命周期](#会话登记的生命周期会话列表)。
+
+### `[workspaces]` 配置（可选）
+
+workspace 登记列表由后端以文件持久保存，本机与局域网设备读取同一份；整段可缺省：
+
+```toml
+[workspaces]
+# 登记文件位置；缺省为进程工作目录下的 workspaces.json。
+registry_file = 'E:\data\omp-bot-workspaces.json'
+# 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
+preview_limit_bytes = 1048576
+# 每个 workspace 自动刷新合并事件的最小间隔；缺省 10 秒。
+refresh_interval_seconds = 10
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `registry_file` | `workspaces.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
+| `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
+| `refresh_interval_seconds` | `10` | 每个 workspace 合并文件事件并自动刷新的最小间隔（秒） |
+
+- 登记文件不存在表示“还没有任何登记”，不是读取错误；列表在真实进程重启后仍然保留。
+- 登记成功只表示登记文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或文件内容
+  损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；`GET /api/workspaces` 再次读取与重启后
+  看到的仍是原内容。
+- 登记路径必须是服务器上的**绝对**路径，且指向真实存在的目录；普通目录与 Git 工作树根目录都可登记。
+  登记不初始化 Git，也不扫描或聚合嵌套仓库。
+- 取消登记只移除登记项，不删除目录或文件；目录在登记后被外部删除时仍可取消登记。
+- `preview_limit_bytes` 必须是正整数；零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，
+  不会静默回退到 1 MiB。缺省值只在字段或整段缺失时使用。
+- `refresh_interval_seconds` 必须是正整数秒；零、负数、小数、字符串或拼错的字段名同样让**启动明确失败**，
+  不会静默回退到 10 秒。缺省值只在字段或整段缺失时使用；运行中改写配置不会改变已启动实例。
+- 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
+  就只显示大小与上限说明。
+
+### `[git]` 配置（可选）
+
+本功能发起的每条 Git 命令都有执行时限；整段可缺省：
+
+```toml
+[git]
+# 每条 Git 命令的执行上限（秒）；缺省 300。
+command_timeout_seconds = 300
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `command_timeout_seconds` | `300` | 每条 Git 命令允许执行的最长时间（秒） |
+
+- 时限覆盖状态读取、diff、暂存、提交、远端检查以及同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
+  （包括 hook 派生出的子进程），停止本次执行并中断后续步骤；页面明确显示这是本功能时限，并保留取消前
+  已有的 Git 输出，不伪造 Git 退出消息。
+- 终止尚未确认时，该仓库的写操作资格继续被持有，后来的 Commit 不会与它重叠；确认终止后才释放。
+- 合法整数范围是 `1..=4294967295`；缺段或缺少字段取 300 秒。零、负数、小数、字符串或拼错的字段名
+  都会让**启动明确失败**，不会静默回退。
+- 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
+
+### 文件列表与 workspace 登记
+
+主界面三个顶层入口按“会话列表 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
+不恢复上次 tab。三个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
+
+> **可信局域网提醒**：本功能没有登录或来源认证，沿用“仅可信局域网”的部署前提。任何能访问本服务
+> 端口的设备都可以读取已登记 workspace 中的文件内容（包括敏感文件），并可以触发已开放的
+> Commit / Sync 写操作。会话事件写入的同机来源校验只限制那一类写入，**不等于认证**，也不会限制
+> 手机使用文件浏览与 Git 操作。本版没有增加登录、多用户权限或公网部署能力，也没有任意命令、脚本
+> 或终端入口；不要把本服务暴露到公网或不可信网络。
+
+“文件列表”tab 的登记流程：
+
+1. 在“服务器目录路径”中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
+   页面不提供客户端文件选择器。
+2. 点按“登记”。后端校验路径并持久保存；只有保存成功后页面才显示“已登记”。
+3. 已登记的 workspace 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
+   登记。
+4. 每个登记项的“取消登记”只移除登记，不删除目录或文件。
+
+失败反馈保持明确：非法路径、重复登记、存储读取/写入失败或登记文件损坏都会显示后端返回的类别说明；
+请求没有得到响应时页面显示“无法确认”，既不当成成功，也不当成失败或空列表。
+
+接口：`GET /api/workspaces` 读取列表，`POST /api/workspaces` 登记（JSON `{"path":"服务器绝对路径"}`），
+`POST /api/workspaces/remove` 取消登记（同一请求体）。成功响应都是当前完整列表：
+`{"workspaces":[{"path":"…"}]}`；失败响应是 `{"code":"…","message":"…"}`。
+
+### 进入 workspace：只读浏览与 Git 待提交变更
+
+登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
+内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff，并在审查版本仍未
+失效时执行整仓 Commit；工作区干净时也可按当前分支的既有 upstream 检查远端并 Sync。
+
+- **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。进入 workspace 与手动刷新时一次读取完整目录树，
+  展开目录只切换显示；选择变更后右侧显示从当前分支最新本地提交到最终本地内容的差异，默认左右对照。
+- **窄屏（≤ 720px）**：逐层进入目录或变更；选择文件/变更后进入内容视图，并可用明确返回按钮回到原列表，
+  列表滚动位置会恢复。diff 默认统一显示。
+- **完整目录**：普通目录输出与磁盘真实内容一致。Git workspace 使用 Git 原生忽略规则省略 ignored 未跟踪
+  路径，并省略 `.git` 元数据；`.gitignore`、未被忽略的隐藏文件、tracked 文件与未被忽略的空目录继续显示。
+  文件事件与返回页面只更新 Git 状态，目录树只在进入 workspace 和手动刷新时重读。
+- **边界**：只读取已登记 workspace 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
+  目录联接与其他 reparse point 都会被拒绝；链接条目在目录中显示目标与不可进入原因，目标内容不会被读取。
+  登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。新增的 diff 入口使用
+  同一份边界检查，Git 旧路径也不能绕过它。
+- **内容识别**：按内容识别文本（完整 UTF-8、无 NUL 字节），不要求后缀；无后缀文本可读，伪文本后缀的
+  二进制文件给出“不可文本预览”原因。内容与 diff 都以纯文本显示，HTML/script 不会被执行。
+- **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。文件预览在读取内容前应用上限；
+  diff 对旧侧与新侧分别应用同一个上限。任一侧超限或二进制时不渲染完整 diff，明确说明限制；超限或二进制
+  不改变文件/变更的可见性、着色、计数或后续提交资格。
+- **自动刷新**：后端监听每个已登记 workspace 的本地文件（Git 工作树还监听工作区之外的元数据目录），
+  事件按 workspace 合并后经只读 SSE 通知页面重新读取；普通目录的外部增删改也会反映到浏览与角标。
+  没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
+  `[workspaces] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
+  间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 workspace 监听与节流，不会各自放大刷新。
+- **刷新边界**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件、
+  Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
+- **监听健康**：监听建立失败、workspace 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
+  “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
+  与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
+  不伪装成空目录或干净仓库。
+- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 只来自显式
+  “检查远端”或 Sync 前检查，并显示最近检查时间。未检查时页面明确显示“尚未检查”，不把本地远端跟踪
+  引用当成实时状态。
+
+**待提交集合**（`GET /api/workspaces/git-status`）：
+
+- 包含已跟踪文件的修改与删除（已暂存和未暂存合并观察），以及未忽略的未跟踪文件；排除被忽略的未跟踪文件。
+  已跟踪、后来才匹配忽略规则的文件仍然包含；忽略规则文件自身按普通文件处理，不 force-add 被忽略文件。
+- 只把登记根**自身**当作工作树根：登记根是父仓库的子目录时按其普通目录处理，不聚合父仓库变更；不递归
+  管理嵌套仓库或子模块内部变更。
+- Git 已识别的暂存重命名显示为一项蓝色变更（旧路径 → 新路径）；尚未被 Git 识别的文件系统改名保持删除加
+  新增。查询不会为了识别重命名而暂存或修改真实索引。
+- 颜色：新增绿、修改与已识别重命名蓝、删除红；冲突使用独立橙色警告，不与普通修改混淆。两个视图使用同一
+  份状态快照，因此颜色一致。界面不显示普通 `A/M/D` 状态字母。
+- 祖先目录只要包含待提交变更（包括已删除路径）就显示蓝色，并传播到 workspace 根下一级；目录不会继承子
+  文件的绿色或红色。删除项只在变更列表出现，浏览树不伪造仍然存在的文件。
+- 角标按待提交变更项计数：同一文件暂存加未暂存只计一次，已识别重命名计一次，未识别删除加新增计两次；
+  不计目录或 diff 行数。Git 识别结果变化可以改变项数。
+- 冲突只来自 Git 的未合并文件条目；普通 Git 命令失败或单纯 ahead/behind 分叉不会被标成文件冲突。
+  detached HEAD 明确显示为 `HEAD（已分离）`。
+
+接口：
+
+- `GET /api/workspaces/entries?workspace=<登记路径>&path=<相对目录>` 返回
+  `{"workspace":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
+  "linkTarget":"…","linkReason":"…"}]}`。
+- `GET /api/workspaces/file?workspace=<登记路径>&path=<相对文件>` 返回
+  `{"workspace":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
+  `binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。
+- `GET /api/workspaces/git-status?workspace=<登记路径>` 返回
+  `{"workspace":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
+  "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}],
+  "sync":{"upstream":{"remote":"…","branch":"…","short":"…"}|null,"ahead":N|null,"behind":N|null,
+  "remoteCheckedAt":毫秒|null}}`。普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时
+  是明确错误，不是干净状态。`sync` 只描述本地最近已知的远端跟踪事实：本读取**不发起 fetch**，
+  `remoteCheckedAt` 为 `null` 表示本实例尚未成功检查远端，`ahead`/`behind` 为 `null` 表示跟踪引用或
+  首次提交尚不可用。
+- `GET /api/workspaces/diff?workspace=<登记路径>&path=<相对新路径>`（重命名再加
+  `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
+  `{"workspace":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
+  旧侧取当前分支最新本地提交（没有首次提交时为空树），新侧取最终本地文件；已暂存与未暂存内容合并
+  观察，不使用索引作为旧侧，也不比较远端。每一侧的形状与文件预览一致：`text`（带 `content`、`size`）、
+  `binary`（带 `reason`、`size`）、`too-large`（带 `reason`、`size`、`limit`，不含内容），或 `absent`
+  （新增文件的旧侧、删除文件的新侧）。任一非文本侧使 `complete:false`，页面不渲染完整 diff。
+  新增路径与 `oldPath` 都执行同一份根边界检查；旧路径来自 Git 历史也不能绕过它。
+- `GET /api/workspaces/overview` 返回每个登记项的角标事实：
+  `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
+  普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+- Git 状态与审查结果还带 `reviewToken`（当前审查版本标识）与可选的 `blockedReason`（仓库级阻塞原因）。
+  `reviewToken` 覆盖分支、HEAD、完整索引、待提交路径集合与每个路径的完整最终内容；预览上限不会截断它。
+  提交请求必须原样带回它。
+- `GET /api/workspaces/watch` 是自动更新的只读 SSE 长连接。首帧 `snapshot` 给出实际生效的
+  `intervalSeconds` 与每个 workspace 的监听视图
+  `{"workspace":"…","health":"live|error","message":"…","lastRefreshAt":…,"generation":N}`；
+  之后同一 workspace 的所有观察者共享合并后的 `refresh`（`{"workspace":"…","at":…,"generation":N}`）
+  与 `health` 变化。`error`/监听失败只让页面标注可能过期，不自动重启监听、不触发远端 fetch。
+
+失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
+`path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
+
+### 经审查复核的整仓 Commit
+
+Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Commit` 主按钮：
+
+1. 提交信息必须非空；页面在信息为空时禁用按钮，直接请求也会以 `empty-message` 拒绝。
+2. 点按 `Commit` 只弹出**一句**确认消息与“确认提交 / 取消”。取消不发送写请求，因此没有 Git 写入。
+   弹框不重复列出 workspace、分支、文件数、提交信息或文件清单。
+3. 确认后，服务端用当前事实重新计算审查版本，并与页面展示的 `reviewToken` 比较。分支、HEAD、索引
+   （包括外部暂存）、待提交路径集合或完整内容任何一处变化都会拒绝**当次**提交并返回 `review-invalid`；
+   页面保留提交信息、刷新实际变更，用户必须重新审查并再次确认。旧审查不能向另一分支提交。
+4. 复核通过后执行 `git add --all`，再执行 `git commit -m <信息>`。已经存在的部分暂存不会缩小范围；被忽略
+   的未跟踪文件不会被强加；只创建本地提交，不自动 push，也不修改 Git 配置。
+5. 同一实际仓库的写操作串行：不同调用者或同一路径的别名同时提交时，后到者得到 `git-write-in-progress`，
+   不等待、不排队。资格由执行持有：连接断开不会取消已接受的提交；命令超时且终止未确认时，资格继续保持，
+   不会与后续写操作重叠。workspace Git 资格与固定操作的执行资格互不相同。
+6. 任一步失败立即中断后续步骤，且不撤销已经成功的步骤：暂存成功后 hook 拒绝 commit，索引仍保留已暂存
+   内容，页面显示 Git 返回的纯文本诊断（不执行其中的 HTML/script）。普通命令失败不会被误标为文件冲突。
+7. detached HEAD、未解决冲突，以及未完成的 merge/rebase/cherry-pick/revert 流程会禁用 Commit 并在页面
+   与直接请求中说明原因；冲突解决但流程尚未结束时仍然阻塞。用户在外部完成或撤销流程后，刷新即恢复。
+   没有 upstream 不妨碍本地 Commit，也不会隐式配置 upstream。
+8. 已初始化但没有首次提交的仓库按空树审查：已暂存与未忽略的未跟踪文件都显示为新增，Commit 创建首个提交。
+   本功能不提供 `git init`。
+9. 嵌套仓库与子模块不递归管理：父仓库只记录其 gitlink 提交，内部文件不会作为父仓库普通内容提交；父仓库
+   自身已跟踪的 gitlink 引用变化仍正常纳入。父仓库提交不会改写子仓库/嵌套仓库内部工作区。
+10. Git 沿用服务器现有的身份、凭据与策略：`git commit -m` 不打开编辑器，`GIT_TERMINAL_PROMPT=0` 禁止在
+    没有终端时等待输入；签名或凭据条件无法满足时明确失败或按 `[git] command_timeout_seconds` 超时，不新开
+    终端/网页凭据流程，也不覆盖 Git 配置伪造成功。
+
+接口：`POST /api/workspaces/commit`，JSON
+`{"workspace":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
+成功返回 `{"workspace":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
+失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
+`commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
+`git-command-failed`、`workspace-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
+
+### 按现有 upstream 安全 Sync
+
+工作区干净时，变更视图显示 Sync 主按钮、当前分支的既有 upstream、最近检查时间与已知 ahead/behind：
+
+| 状态 | 页面与操作 |
+|---|---|
+| 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作区同步 |
+| 干净、有 upstream、已知 ahead/behind 非零 | Sync 可用；显示待拉取与待推送数量 |
+| 干净、已知已同步 | 主按钮禁用以“已同步”显示；仍可主动检查远端 |
+| 干净、远端尚未检查 | Sync 禁用并说明原因；“检查远端”可执行 |
+| 干净、没有 upstream | 显示限制；不提供 Publish Branch，也不隐式配置 upstream |
+| detached HEAD、冲突或未完成流程 | Sync 与 Commit 均禁用并显示仓库级原因 |
+
+1. “检查远端”执行一次真实的 `git fetch <upstream.remote>`，更新本地远端跟踪引用并记录最近检查时间。
+   普通文件事件、页面读取和自动刷新都不会触发 fetch；未检查时页面不会把旧引用说成实时状态。
+2. Sync 只弹出一句确认与“确认同步 / 取消”。取消不发送任何请求，因此没有 fetch、pull、push 或其他
+   Git 写入。
+3. 确认后服务端重新核对目录、当前分支、既有 upstream、干净工作区与阻塞状态，再按
+   **fetch → pull → 按需 push** 执行。fetch 使用当前分支 upstream 指向的远端；pull 与 push 不附加
+   远端、分支或策略参数，完全遵循仓库已有的 merge/rebase/ff-only 与 push 配置。
+4. 只有 pull 后仍存在本地待推送提交时才执行 `git push`；只有 behind 时不会产生无意义推送。不 stash、
+   不隐式 commit、不强推、不配置 upstream、不修改 Git 配置。
+5. 任一步失败立即停止后续步骤，页面显示 Git 返回的纯文本诊断（含 HTML/script 也不会执行）。已经生效
+   的步骤不会被自动撤销：例如 pull 成功后 push 被拒绝，本地已拉取/合并的提交与引用保持实际状态，页面
+   刷新后显示仍需推送的数量，不宣称事务回滚。
+6. Sync 与 Commit 共用同一实际仓库的写操作资格：Sync/Sync、Commit/Sync 与路径别名并发都不会重叠；
+   后到者得到 `git-write-in-progress`，不等待、不排队。连接断开不取消已接受的 Sync；命令超时且终止
+   未确认时资格继续保持。
+7. 每条 Git 命令都受 `[git] command_timeout_seconds` 限制；超时消息明确说明这是本功能时限并保留取消前
+   已有的 Git 输出，不伪造 Git 退出诊断。
+8. 沿用服务器现有的身份与凭据：`GIT_TERMINAL_PROMPT=0`，不新开终端或网页凭据流程；需要交互的凭据、
+   编辑器或签名条件会明确失败或按配置超时。
+9. 只同步登记根自身的工作树；不递归同步嵌套仓库或子模块内部仓库，它们的 HEAD、索引与内部工作区保持
+   原样。父仓库自身已跟踪的 gitlink 变化仍按普通提交/同步事实处理。
+
+接口：
+
+- `POST /api/workspaces/check-remote`，JSON `{"workspace":"服务器目录"}`。成功返回刷新后的完整 Git 状态
+  （与 `GET /api/workspaces/git-status` 同形）。失败类别例如 `not-a-repository`、`no-upstream`、
+  `sync-blocked`、`git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`。
+- `POST /api/workspaces/sync`，JSON `{"workspace":"服务器目录"}`。成功返回
+  `{"workspace":"…","outcome":"synced","branch":"…","upstream":{"remote":"…","branch":"…","short":"…"},
+  "ahead":N,"behind":N,"remoteCheckedAt":毫秒,"pulled":N,"pushed":N,
+  "steps":[{"step":"fetch|pull|push","outcome":"completed|skipped"}]}`。
+  失败类别例如 `not-a-repository`、`sync-dirty-worktree`、`sync-blocked`、`no-upstream`、
+  `git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`；失败消息会指出
+  失败步骤，并在已有步骤完成时说明它们不会被自动撤销。
 
 ### 默认绑定与改绑
 
@@ -1279,4 +1555,301 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
 - **未由本次改动承担的范围**：扩展的重试、失败预算、自动重注册与心跳频率**未修改**，本次也不声称任何新的
   恢复保证；到期执行与真实断电不在本票范围；观察连接版本／重放协议、新观察连接与扩展恢复策略均未引入。
 
+## 变更记录：三入口导航与 workspace 登记列表（2026-10-19）
 
+本次改**前端导航与新的 workspace 登记能力**；固定操作、会话生命周期、关机安排与既有 ADR 边界不变。
+
+- **改了什么**：
+  - 顶层入口调整为「会话列表 → 文件列表 → 控制面板」；打开与整页刷新默认会话列表，不恢复上次 tab。
+    三个入口等宽，都有可见选中态与键盘焦点；Tab 可逐个聚焦，Enter/Space 触发，方向键在三个入口之间
+    循环切换并同步焦点；左右滑动不切换顶层 tab。控制面板名称与既有功能不变。
+  - 新增「文件列表」tab：输入**服务器电脑上的**绝对目录路径并登记。页面没有客户端文件选择器；登记列表
+    由后端持久保存，电脑与手机共享；取消登记只移除登记项，不删除目录或文件。
+  - 新增 `backend/src/workspaces.rs`：登记文件缺省为进程工作目录下的 `workspaces.json`，可用
+    `[workspaces] registry_file` 改到别处。登记先写临时文件并落盘、再原子替换；成功只表示持久化已经完成。
+    登记文件不存在是空列表；读取失败、损坏内容与写入失败都是明确错误，不会伪装成空列表，也不会覆盖
+    原文件。路径必须是服务器上的绝对路径且指向真实存在的目录（普通目录或 Git 工作树根目录均可）；
+    登记不初始化 Git，也不扫描、聚合嵌套仓库。
+  - 新增 `GET /api/workspaces`（读取）、`POST /api/workspaces`（登记）、`POST /api/workspaces/remove`
+    （取消登记）；请求体为 `{"path":"服务器绝对路径"}`，成功响应为当前完整列表
+    `{"workspaces":[{"path":"…"}]}`，失败响应为 `{"code":"…","message":"…"}`。
+- **自动检查**：
+  - `cargo test --test workspace_registry`（在 `backend/` 执行）→ `7 passed`：普通目录与真实 Git 工作树根目录
+    登记、非法路径/文件/相对路径/重复登记的明确拒绝、两个独立 TCP 调用者读取同一列表、真实进程重启后
+    列表仍在、取消登记前后文件内容逐字节不变、登记文件损坏/不可读/只读写入失败的隔离验证与重启复核。
+  - 突变验证（临时改生产代码、确认对应用例失败、再还原并核对 `sha256`）：损坏/读取失败被当成空列表、
+    跳过目录校验、吞掉写入失败，三种违反都被本票用例抓住；`workspaces.rs` 已还原
+    （`sha256=c9602fbd…`）。
+  - `cargo test --lib`（在 `backend/` 执行）→ `31 passed`（含 `[workspaces]` 缺省、显式路径与拼错字段名三例）。
+  - `cargo test --no-fail-fast`（在 `backend/` 执行）→ 全部测试目标通过（合计 `197 passed`；含既有
+    `mdns_conflict`、`no_auto_termination` 等全量并行目标），退出码 0。
+  - `npm --prefix frontend run test` → `13 files / 90 tests passed`；本票新增三 tab 导航与文件列表交互用例，
+    并迁移了依赖“默认控制面板/两个 tab”的旧导航检查。`npm --prefix frontend run build` → 成功
+    （`tsc --noEmit && vite build`）。
+  - 前端突变验证：答复到达前提前显示登记成功、把列表读取失败显示为空列表，两种违反都被本票用例抓住；
+    `FileListPanel.tsx` 已还原（`sha256=dfbcefe5…`）。
+- **真实 Chromium smoke**（隔离目录、隔离登记文件、真实后端进程；未执行真实关机）：
+  - 桌面 `1280×800` 三个入口宽度 `135.65625 / 135.671875 / 135.65625 px`，窄屏 `390×844` 为
+    `111.328125 / 111.34375 / 111.328125 px`；默认会话列表，刷新后仍为会话列表。
+  - 键盘：Tab 依次聚焦会话列表、文件列表、控制面板；Enter/Space 切换；方向键循环切换并同步焦点；
+    对 tablist 派发真实 `TouchEvent` 左右滑动后选中项不变。
+  - 登记真实目录 `alpha` 与真实 `git init` 的 `gitrepo` 均成功；不存在的路径显示“该路径在服务器上不存在。”；
+    两个浏览器 tab 读取到同一份列表；后端进程重启后列表仍在。
+  - 取消登记 `alpha` 后页面显示“已取消登记…（目录与文件未删除）”，独立读取 `alpha/note.txt` 与
+    `alpha/nested/inner.txt` 内容逐字节未变；登记文件只剩 `gitrepo`。
+- **未由本次改动承担的范围**：workspace 文件浏览、Git 变更、Commit/Sync 与事件刷新属于同一 spec 的后续
+  实现票；手机实机触摸体验（H1）不由本票宣称通过。真实浏览器窄屏检查只是 Chromium 仿真，不构成真机结论。
+
+## 变更记录：workspace 只读文件浏览（2026-10-19）
+
+本次新增进入已登记 workspace、浏览完整目录并只读查看文件内容；普通目录与 Git 工作区共用浏览能力，
+本票不开放 Git 变更视图或 Commit / Sync 写入口。
+
+- **改了什么**：
+  - 新增 `backend/src/browse.rs`：列目录（隐藏文件、忽略文件、`.gitignore` 与 `.git` 元数据都不过滤）与
+    单文件读取。每次读取都重新核对登记根与每个路径分量；绝对路径、`..` 遍历、盘符/UNC/备用数据流、
+    末尾会被 Windows 改写的空格与点、符号链接、目录联接及其他 reparse point 都被拒绝；根目录被替换成
+    链接/文件或删除时返回明确错误，不伪装成空目录。
+  - 文本按内容识别（完整 UTF-8、无 NUL、控制字符有限），不依赖后缀；二进制返回不可文本预览原因。
+    `[workspaces] preview_limit_bytes`（缺省 1 MiB）在读取内容之前生效：超限只返回大小与上限，不加载
+    完整内容；恰好等于上限的文件完整预览。
+  - 新增 `GET /api/workspaces/entries?workspace=…&path=…` 与 `GET /api/workspaces/file?workspace=…&path=…`；
+    失败响应沿用 `{"code":"…","message":"…"}`（如 `path-outside-workspace`、`path-is-link`、
+    `path-not-found`、`workspace-unavailable`、`read-failed`）。
+  - 新增 `frontend/src/WorkspaceBrowser.tsx` 与 `browseApi.ts`：电脑左树右内容；窄屏逐层进入目录、从文件
+    内容明确返回并恢复列表滚动。登记项新增“浏览”入口；顶层 tab 往返保留 workspace、展开状态、所选文件
+    与浏览滚动，回到页面或点按“刷新”重新读取当前事实。
+  - `omp-bot.toml` 与 README 补充预览上限配置；启动日志打印实际生效的上限。
+- **自动检查**（在 `backend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_browse` → `8 passed`：真实目录集合与隐藏/忽略/`.git` 元数据一致并在页面
+    夹具中可选择读取；遍历/绝对路径/UNC/末尾空格与点反例；真实目录联接、真实（WSL 创建的 NTFS reparse
+    point）符号链接与文件符号链接均被拒绝且不读取根外内容；子目录与根被替换、删除时明确报错；读取前后
+    文件字节、真实 Git 索引语义与待提交状态不变；文本按内容识别、二进制原因、64 字节边界、默认 1 MiB
+    精确边界；超限文件在独占共享模式下仍只读元数据而不打开内容。
+  - `cargo test --lib config::tests` → `25 passed`：旧配置缺 `[workspaces]`/新字段仍可解析并取默认
+    1048576；显式覆盖生效；零、负数、字符串类型与拼错字段名分别被拒绝。
+  - `cargo test`（全部测试目标）→ 全部通过；`npm test` → `14 files / 99 tests passed`；
+    `npm run build`（`tsc --noEmit && vite build`）→ 成功。
+  - 前端新增 `tests/workspaceBrowser.test.tsx` 9 例，覆盖完整目录读取、无 Git 控件、二进制/超限说明、
+    目录与文件读取失败、跨顶层 tab 状态与滚动保留、窄屏进入/返回/滚动恢复、HTML 纯文本、根外链接提示
+    与无响应不伪装空目录。
+- **真实 Chromium smoke**（隔离真实目录、隔离登记文件、真实后端进程；未执行关机）：
+  - 桌面 `1280×900`：左树右内容（树右边界 `644`、内容左边界 `656` CSS px）；展开目录后树
+    `scrollHeight=2770 > clientHeight=583`，选择 `many/020.txt` 后右侧显示对应内容并保留滚动。
+  - 跨顶层 tab：切到会话列表再回文件列表，workspace、展开的 `src`/`many`、所选 `README` 与树
+    `scrollTop=200` 全部保留。
+  - 窄屏 `390×844`：只渲染逐层进入布局；进入 `many`、打开 `many/015.txt`、返回后列表
+    `scrollTop=300` 精确恢复；目录返回再进入同样恢复 300；跨顶层 tab 后目录与滚动也保留。
+  - `src/page.html` 中的 `<script>window.__pwned=1</script>` 只作为文本显示，页面里没有执行标记，
+    只有应用自身的打包脚本；`huge.txt` 显示 `1048577` 字节超过 `1048576` 上限且未加载内容；
+    `binary.bin` 显示 NUL 字节原因；根外目录联接显示目标与不可进入原因且没有进入按钮。
+  - 外部删除所选文件、子目录与 workspace 根后，页面分别显示明确错误，不显示空目录。
+  - 截图见
+    [`.scratch/workspace-file-browser/evidence/02-browse-workspace-files/`](.scratch/workspace-file-browser/evidence/02-browse-workspace-files/)。
+- **限制与未由本票承担的范围**：标准 Windows 符号链接创建需要管理员权限或开发者模式；本机以真实
+  Windows 目录联接 + WSL 在 NTFS 上创建的真实 reparse point 符号链接完成证据（测试输出
+  `native=false`）。目录联接的目标显示已验证；WSL 符号链接的目标本身无法由 Windows `read_link`
+  读取，页面显示“目标不可读取”，因此标准 Windows 符号链接的目标文本未单独观察。手机实机触摸体验
+  （H1）仍由 08 汇总证据后交用户确认。Git 变更、diff、Commit/Sync 与文件事件刷新属于后续票。
+
+
+
+## 变更记录：Git 待提交变更定位（2026-10-19）
+
+本次在已登记 workspace 上新增只读 Git 状态与「文件浏览 / 变更」内部子 tab；完整回答哪些变更待提交，
+但不开放 diff、Commit 或 Sync。普通目录仍只有浏览。
+
+- **改了什么**：
+  - 新增 `backend/src/git.rs`：只读查询登记根自身的工作树根身份、当前分支与待提交变更。集合遵循 Git
+    原生规则：已跟踪修改/删除（已暂存与未暂存合并）与未忽略的未跟踪文件；排除 ignored untracked，保留
+    后来匹配忽略规则的已跟踪文件；不 force-add，也不为识别重命名而修改真实索引。未暂存文件系统改名保持
+    Git 的删除加新增；Git 已识别的暂存改名显示为旧路径 → 新路径的一项。冲突只来自未合并文件条目，普通
+    命令失败与单纯 ahead/behind 不会被标成冲突。登记根不是工作树根时按普通目录处理，不聚合父仓库。
+  - 新增 `GET /api/workspaces/git-status?workspace=…` 与 `GET /api/workspaces/overview`。后者为文件列表
+    提供每个 workspace 的角标项数或明确错误；普通目录没有待提交数量，读取失败不会伪装成 0 项。
+  - 前端新增 `gitApi.ts`；`WorkspaceBrowser` 增加当前分支、Git workspace 的内部子 tab、两视图一致的待
+    提交颜色、祖先目录蓝色提示与冲突警告；`FileListPanel` 显示 `N 项待提交` 角标。删除项只出现在变更
+    列表，浏览树仍只反映磁盘内容；忽略文件与 Git 元数据可浏览但不参与着色或角标。
+  - README 的 workspace 章节与接口说明同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_git_status` → `7 passed`：真实 Git 的 tracked 修改/删除、未忽略 untracked、
+    ignored untracked、后来匹配忽略的 tracked、忽略规则文件自身；真实未暂存改名与暂存后识别改名，前后
+    核对 `git ls-files --stage` / `git diff --cached` / `git diff` 语义不变；同一文件暂存+未暂存只计一次；
+    真实 merge 冲突为独立类别且解决后消失；外部切分支与 detached HEAD；ahead/behind 分叉不报告冲突；
+    普通目录、仓库子目录、登记目录消失与未登记路径的明确结果；角标的固定期望（暂存+未暂存一次、识别
+    重命名一次、未识别删加两次、新目录内文件一次、仅 Git 元数据变化为零）与概览错误项；
+    `.git/HEAD` 损坏时状态接口与概览都明确报错，不返回干净仓库或零计数。
+  - 后端突变验证：临时把 `A` 分类改成 `modified`，`pending_set_follows_git_tracking_and_ignore_rules`
+    因 `staged-new.txt` 未显示为 `added` 失败；还原后 7 例全部通过。
+  - 前端 `npm test` → `15 files / 105 tests passed`；新增 `tests/gitChanges.test.tsx` 6 例，覆盖分支与
+    内部子 tab、两视图颜色与祖先提示、删除项只在变更列表、忽略文件/`.git` 无着色、冲突独立警告、主动
+    刷新反映外部切分支、状态读取失败不冒充干净、普通目录无 Git 入口，以及角标固定期望与概览失败。
+  - 前端突变验证：临时把祖先目录提示收窄为精确路径、把冲突色合并为普通修改蓝，两处都被新增用例抓住；
+    还原后通过。`npm run build`（`tsc --noEmit && vite build`）成功。
+  - `cargo test --no-fail-fast`（全部测试目标）→ 全部通过（`218 passed` / `29 suites`，含既有 mDNS、会话、
+    关机与浏览用例）。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、隔离登记文件、真实后端进程；未执行关机）：
+  - 浏览树计算颜色：新增绿 `rgb(126, 231, 135)`、修改/识别重命名/祖先目录蓝 `rgb(121, 192, 255)`、
+    删除红 `rgb(255, 123, 114)`、冲突橙 `rgb(255, 166, 87)`；忽略文件、`.git/HEAD` 与无变更目录保持
+    默认色。删除项不在树中，`src` 与 `src/nested` 仍为蓝色。
+  - 变更列表逐项类别与颜色一致；识别重命名显示 `src/old-name.txt → src/renamed.txt` 一项；冲突提示条
+    「冲突不是普通修改」；页面没有 Commit / Sync。
+  - 页面打开期间外部执行 `git merge --abort` 与 `git switch -c feature`，主动刷新后分支显示
+    `分支：feature`、变更数 `6 → 5`、冲突警告消失；返回列表角标 `5 项待提交`。
+  - 状态/概览查询前后 `git ls-files --stage` 与 `git diff --cached --binary` 的 SHA-256 相同。
+  - 窄屏 `390×844` 的两个视图颜色一致。截图与细节见
+    [`.scratch/workspace-file-browser/evidence/03-discover-git-changes/`](.scratch/workspace-file-browser/evidence/03-discover-git-changes/)。
+- **限制与未由本票承担的范围**：真实浏览器证据来自无头 Chromium 与仿真窄屏，手机实机触摸/软键盘体验
+  （H1）仍由 08 汇总后交用户确认。Git 识别结果可能随仓库内容变化；本票如实采用当前结果，不保证所有
+  改名都会被识别。diff、Commit、Sync、文件事件自动刷新与冲突恢复流程属于后续票。
+
+## 变更记录：审查最终内容与完整 diff（2026-10-19）
+
+本次让 Git workspace 的变更视图逐个审查从当前分支最新本地提交到最终本地内容的 diff；新增、删除、
+部分暂存与 Git 已识别重命名都使用同一份事实。Commit / Sync 仍由后续票提供。
+
+- **改了什么**：
+  - `backend/src/git.rs` 新增 `change_diff`：旧侧只取 `HEAD`（尚无首次提交时按空树处理），新侧读取最终
+    本地文件，合并观察已暂存与未暂存内容；索引与远端都不作为旧侧。Git 已识别重命名通过 `oldPath`
+    定位 HEAD 中的旧路径；新增与删除分别用 `absent` 明确表示空的一侧。
+  - 新增 `GET /api/workspaces/diff`，两侧各自应用 `[workspaces] preview_limit_bytes`（默认 1 MiB）：
+    超限时在读取完整内容之前停止，二进制给出不可文本 diff 原因，`complete:false` 时不渲染完整 diff。
+    该入口先校验新路径与旧路径写法，再核对登记根；新侧复用浏览读取（链接、目录联接、根替换均拒绝），
+    旧侧只从核对过工作树根的 Git 对象库读取。`git ls-tree` / `git cat-file` 不写索引、不暂存、不改文件。
+  - 前端新增 `diff.ts`（行级 LCS 与左右配对）和 `diffApi.ts`；变更列表成为选择入口，电脑左侧列表、右侧
+    diff 并默认左右对照；窄屏默认统一 diff，提供明确返回并恢复列表滚动位置。切换内部视图或顶层 tab 保留
+    所选变更、diff 与滚动位置。diff 内容只作为文本节点渲染，不解析 HTML。
+  - README 的目录结构、workspace 章节与接口说明同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_diff` → `4 passed`：真实部分暂存仓库（HEAD `beta`、索引 `STAGED`、最终
+    `STAGED/FINAL`，另有与 HEAD 不同的远端跟踪引用 `origin/main`）证明旧侧是 HEAD，而不是索引或远端；
+    未暂存新增与删除分别可审查；已识别改名读取旧路径；无首次提交仓库按空树比较且待提交项仍为绿色新增；32 字节精确边界、旧侧超限/新侧很小、
+    旧侧很小/新侧超限、两侧二进制；根外路径、遍历、绝对路径、真实符号链接、Windows 目录联接、根替换、
+    旧路径遍历、未登记 workspace 与封闭查询面都被拒绝且不泄露根外内容；请求前后 `.git/index`、
+    `ls-files --stage`、已暂存/未暂存 diff 与所有文件字节的 SHA-256 完全不变。
+  - `cargo test --test workspace_git_status` → `7 passed`：状态、分支、待提交集合与角标回归；确认抽出
+    `worktree_root` 后普通目录、父仓库子目录与损坏 Git 元数据的行为未改变。
+  - `cargo test --no-fail-fast` → `222 passed / 30 suites`（含既有 mDNS、会话、关机、浏览与 Git 状态用例；
+    0 failed）。
+  - `npm test` → `16 files / 113 tests passed`；新增 `tests/diffReview.test.tsx` 8 例，覆盖宽屏左右对照、
+    重命名旧路径、新增/删除空的一侧、HTML/script 纯文本、超限与二进制不渲染完整 diff、内部视图与顶层
+    tab 往返上下文、窄屏统一 diff、明确返回与精确滚动恢复。
+  - 前端突变验证：临时把 `complete:false` 也渲染成 diff 行，超限与二进制两例失败；还原后 8 例通过。
+    后端突变验证：临时把旧侧从 HEAD 改成索引对象，`diff_reads_head_to_final_content_without_touching_index_or_files`
+    因旧侧返回 `STAGED` 而不是 `beta` 失败；还原后 4 例通过。
+    `npm run build`（`tsc --noEmit && vite build`）成功。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、隔离登记文件、真实后端进程；未执行关机）：
+  - 桌面 `1024×800`：左列表右 diff，默认 `data-mode="side-by-side"`；`src/modified.txt` 旧侧显示 HEAD 的
+    `beta`，新侧显示 `STAGED` 与 `FINAL`；`src/new-name.txt` 标题为
+    `src/old-name.txt → src/new-name.txt`，旧侧读 HEAD 旧路径。
+  - 列表 23 项时 `scrollHeight=789 > clientHeight=518`，滚动到 `260` 后仍可选择并显示 diff；切换
+    「文件浏览 / 变更」与「会话列表 / 文件列表」后，所选变更、diff 与 `scrollTop=260` 均保留。
+  - `src/limit-old.txt`（旧侧 4 950 000 字节）与 `src/limit-new.txt`（新侧 4 950 000 字节）分别显示超过
+    1 048 576 字节上限、未加载完整内容；`src/binary.txt` 显示 NUL 字节原因；两者都没有 `diff-view`，但
+    变更行、类别着色与角标（`变更（23）`）不变。
+  - `src/script.html` 的 `<script>` 与 `onerror` 图片标签作为字面量文本显示，diff 容器 HTML 已转义，
+    `window.__pwned` 未定义且没有 `img` 元素；唯一 `script` 元素是应用自身打包脚本。
+  - 窄屏 `390×844`：默认列表，进入后 `data-mode="unified"`，显示 `- beta / - gamma / + STAGED / + FINAL`
+    与「返回变更列表」；返回后列表 `scrollTop` 从 `260` 精确恢复为 `260`。
+  - 连续读取目录、文件与四类 diff 前后，`.git/index` 与 `git ls-files --stage` / `git diff --cached
+    --binary` / `git diff --binary` 及所有文件字节的 SHA-256 全部相同（`unchanged: true`）。
+  - 截图与细节见
+    [`.scratch/workspace-file-browser/evidence/04-review-final-content-diffs/`](.scratch/workspace-file-browser/evidence/04-review-final-content-diffs/)。
+- **限制与未由本票承担的范围**：宽屏与窄屏证据来自无头 Chromium，窄屏为视口仿真；手机实机触摸、diff
+  滚动与返回手感仍属于 human-led H1，由 08 汇总后交用户确认。Commit / Sync、审查版本复核、文件事件
+  自动刷新与冲突恢复流程属于后续票。
+
+## 变更记录：经审查复核的整仓 Commit（2026-10-19）
+
+本次在变更视图加入常驻提交信息与 `Commit` 主按钮：一句确认后重新核对页面展示的审查版本，再暂存整仓
+符合 Git 规则的最终变更并创建本地提交；不自动 push。Sync 仍由后续票提供。
+
+- **改了什么**：
+  - `backend/src/git.rs` 为 `GitStatus` 增加 `reviewToken` 与 `blockedReason`。`reviewToken` 覆盖分支、
+    HEAD、完整索引、待提交路径集合与每个路径的完整最终内容（直接读文件，不受预览上限影响）；嵌套仓库
+    与子模块只记录 gitlink 提交，不递归内部文件。冲突、detached HEAD 与未完成的 merge/rebase/…/revert
+    流程作为仓库级阻塞原因明确返回；普通命令失败不会被标成冲突。状态与 diff 查询同样应用
+    `--ignore-submodules=dirty`，子模块内部脏文件不产生父仓库变更。
+  - 新增 `backend/src/commit.rs` 与 `POST /api/workspaces/commit`：空信息、普通目录、阻塞状态、失效审查、
+    干净仓库与同仓库并发写都明确拒绝；复核通过后 `git add --all` + `git commit -m`，既有部分暂存不会
+    缩小范围，ignored untracked 不会被强加，失败与超时都保留已成功步骤和 Git 输出。每个实际仓库按规范化
+    工作树根持有独立写资格，路径别名共用同一资格；请求断开不取消已接受执行，终止未确认时资格继续保持。
+  - 所有 Git 命令改为可配置时限（`[git] command_timeout_seconds`，缺省 300 秒）：超时结束 Git 及其派生
+    进程树，页面显示本功能时限与已有输出；超时不是 Git 退出消息。
+  - 前端 `gitApi.ts` 增加提交客户端；`WorkspaceBrowser` 增加常驻提交信息、状态驱动的 Commit 按钮、一句
+    确认/取消门禁、成功/拒绝/未确认反馈与阻塞原因。提交信息在内部视图与顶层 tab 往返中保留；确认后失败
+    仍保留信息并刷新实际内容，必须重新审查确认。窄屏下输入框与确认按钮保持 44px 触摸目标。
+  - `omp-bot.toml` 与 README 的配置、workspace、接口与变更记录同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_commit` → `19 passed`：真实隔离仓库、bare 远端与 hooks 覆盖完整待提交
+    集合与最终提交树（tracked 修改/删除、后来匹配忽略的 tracked、未忽略 untracked、ignored 不强加）、
+    部分暂存不缩小范围、不 push；同路径同数量内容变化、外部暂存、HEAD 变化、切分支、超限/二进制内容
+    变化都使审查失效且不写入；空信息/未知字段/查询参数被拒绝；hook 拒绝保留索引并返回纯文本诊断；无 HEAD
+    首提交；普通目录、detached HEAD、未解决冲突、冲突已解决但 merge 未完与外部 abort 恢复；嵌套仓库与
+    子模块 gitlink 范围且不改内部工作区；并发、断线、路径别名、超时与派生进程终止、资格独立于固定操作；
+    缺失目录/被文件替换；无 upstream 可本地提交且配置不变；编辑器不打开、签名失败、凭据不交互；预览限制
+    不改变提交树；干净仓库拒绝空提交。
+  - `cargo test --lib commit::tests` → `2 passed`：终止未确认时资格保持、已确认或普通结果释放资格。
+  - `cargo test --no-fail-fast` → 除一次既有 `fixture_behavior::long_running_fixture_stays_running_until_the_stop_entry_point`
+    在满载并行下被夹具自带结束脚本强制结束外，其余全部测试目标通过；该用例单独重跑通过。本票新增的
+    19 个集成用例与 2 个单元用例全部通过。
+  - `npm test` → `17 files / 126 tests passed`；新增 `tests/commit.test.tsx` 13 例，覆盖常驻输入与空信息、
+    tab/内部视图往返、一句确认与取消无写、成功、失效后保留信息并再次确认、响应中断未确认、执行中切 tab、
+    重载不重放、HTML/script 纯文本、超时文字、普通目录/detached/冲突阻塞。
+  - `npm run build`（`tsc --noEmit && vite build`）成功。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、bare 远端、真实交付后端进程；未执行关机）：
+  - 桌面 `1024×720`：常驻提交信息与 Commit、一句确认框；取消后 HEAD、索引与远端引用均未变化。
+  - 真实 `pre-commit` hook 拒绝：页面显示 Git 返回的 `<script>…</script>` 字面量，反馈区域内无 `script`/
+    `img` 元素且 `window.__pwned` 未定义；HEAD 不变，暂存内容保留。
+  - 确认前把同路径同数量的文件内容从 A 改成 B：以 `review-invalid` 拒绝，提交信息保留，刷新后显示实际
+    内容；HEAD/索引/远端未变化。
+  - 重新审查后确认：提交 `98dc4b34…`，提交树包含 `.gitignore`、`added.txt`、`tracked.txt`，删除与部分
+    暂存范围正确，`ignored.log` 不在树中；远端保持 `4a04214…`（未 push）。
+  - Commit 执行中切到会话列表再返回：执行未取消，返回显示真实成功结果；整页重载：默认回到会话列表，
+    `rev-list --count HEAD` 只增加一次，随后变更视图显示实际干净状态。
+  - 窄屏 `390×844`：提交信息与 Commit 在变更列表上方，输入框高 44px；确认/取消按钮均 44×112px；窄屏
+    提交成功并显示空变更列表。
+  - 截图与逐项 CLI 核对见
+    [`.scratch/workspace-file-browser/evidence/05-commit-reviewed-repository/`](.scratch/workspace-file-browser/evidence/05-commit-reviewed-repository/)。
+- **限制与未由本票承担的范围**：真实手机触摸与软键盘体验（H1）仍未确认；窄屏截图只是 agent 准备的证据。
+  外部进程不受本服务原子锁定，确认后的复核保留规格接受的竞争窗口。Sync、文件事件自动刷新与冲突恢复
+  流程属于后续票。真实环境中未能让系统 `taskkill` 失败以制造“终止未确认”的进程级样例；该分支由单元
+  测试验证资格保持，并以真实超时执行中的重叠请求验证不重叠，仍如实列为未覆盖的进程级场景。
+
+## 变更记录：跨流程验收与手机 H1 证据包（2026-10-19）
+
+本次完成 01–07 的跨流程验收：文件功能与既有固定操作、会话、全局关机互不破坏；主动刷新不由节流缓存
+代替查询；本地事件不触发持续远端 fetch；独立调用者可浏览并执行约定 Git 操作，而会话写入的同机来源
+边界保持不变。新增代码只用于验收用例与 H1 证据，不改变产品实现。
+
+- **自动检查**：
+  - 新增 `backend/tests/workspace_integration.rs`（3 例）：P42 真实监听期间文件与 Git 元数据事件
+    不 fetch（远端独立前进后本地跟踪引用与检查时间不变，显式检查才更新）；P46 受控局域网来源可浏览、
+    读取文件并 Commit，非本机会话写入仍返回 `403 forbidden` 且不改动会话，封闭请求面没有命令/脚本/
+    终端入口；P3 真实监听存在时固定操作、会话写入、关机开始/取消命令仍按原语义工作，记录型关机动作
+    零调用 → `3 passed`。
+  - 新增 `frontend/tests/integration.test.tsx`（4 例）：全局关机提醒在三个顶层 tab 均可见且切 tab 不
+    发命令；文件功能存在时固定操作仍执行；节流窗口内进入 workspace、回到页面与手动刷新都立即显示
+    外部改变的文件与分支；读取失败不伪装成空目录或干净仓库。
+  - `cargo test --no-fail-fast` → `286 passed / 34 suites`（0 failed）；`npm --prefix frontend run test`
+    → `21 files / 150 tests passed`；`npm --prefix frontend run build` → 成功。
+  - 首次与前端构建并发运行时 `mdns_conflict` / `mdns_failure` 曾因静态页面目录正在替换而得到 404；
+    构建完成后单独重跑 `3 passed`，不是产品回归。
+- **真实 Chromium smoke**（隔离目录、隔离仓库与 bare 远端、真实交付进程；未执行关机、未推送业务远端）：
+  - 窄屏 `390×844`：三个入口各 `116.66 px`；浏览树包含隐藏/忽略/`.git` 文件，删除项只在变更列表；
+    变更颜色为新增绿、修改/识别重命名蓝、删除红；统一 diff 92 行可滚动。
+  - Commit：输入框与按钮均高 44px，确认/取消按钮均 `112×44`；取消无写入；确认前外部改内容得到
+    `review-invalid`，HEAD 不变且提交信息保留；重新确认后提交树与忽略/删除范围正确，未 push。
+  - Sync：检查远端只更新跟踪引用；取消无拉取；确认后 fast-forward 拉取 1 个提交且不产生无意义推送。
+  - P41：第一个本地事件 23ms 自动刷新；窗口内第二个事件 1.5s 后仍未自动显示，回到页面后 81ms 显示；
+    手动刷新 56ms 显示；重新进入 workspace 14ms 显示。长变更列表 `scrollTop=300` 在 diff 返回后保持 300。
+  - P42：4 次本地事件后远端跟踪引用仍为旧值且 `remoteCheckedAt=null`；显式“检查远端”后才更新。
+  - 宽屏 `1280×900`：左树右内容、左右对照 diff（180/180 行）。
+- **H1 交接**：唯一手机实机验收包在
+  [`.scratch/workspace-file-browser/evidence/08-verify-integration-and-mobile-acceptance/`](.scratch/workspace-file-browser/evidence/08-verify-integration-and-mobile-acceptance/)，
+  含 22 张真实 Chromium 截图、可重复执行的隔离场景脚本、局域网访问步骤（本次 WLAN IPv4
+  `192.168.5.3`）、逐项触摸/返回/滚动/软键盘/确认取消检查清单，以及待用户填写手机型号、系统与浏览器。
+  当前状态为 **未验收**；本票保持 in-progress，等待用户确认。
+- **限制**：真实手机触摸与软键盘体验仍未确认，窄屏截图只是 `390×844` 视口仿真；未执行真实关机；
+  Git 结果只针对隔离 bare 远端，未向业务远端推送。可信局域网无认证提醒已补入“文件列表与 workspace
+  登记”一节。

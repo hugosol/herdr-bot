@@ -36,32 +36,44 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
+pub mod browse;
 pub mod clock;
+pub mod commit;
 pub mod config;
 pub mod countdown;
+pub mod git;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
+pub mod sync;
+pub mod watch;
+pub mod workspaces;
 
+use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::Router;
 use axum::body::to_bytes;
-use axum::extract::{Path as UrlPath, Request, State};
+use axum::extract::rejection::QueryRejection;
+use axum::extract::{Path as UrlPath, Query, Request, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
 pub use config::{
-    Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, SessionWindowSeconds,
-    SessionsConfig, ShutdownConfig,
+    CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig, OperationBinding,
+    Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig, WorkspacesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -69,10 +81,14 @@ pub use sessions::SessionPolicy;
 pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
+use workspaces::{RegisteredWorkspace, WorkspaceError};
 
 /// 操作请求的请求体读取上限。操作请求不接受请求体，任何请求体都注定被拒绝，
 /// 因此只要够读完空请求体即可，不必为一个越界请求缓冲任意大的内容。
 const MAX_REQUEST_BODY_BYTES: usize = 8 * 1024;
+
+/// workspace 命令的请求体上限：只含一个服务器目录路径。
+const MAX_WORKSPACE_REQUEST_BYTES: usize = 64 * 1024;
 
 /// 提供给 HTTP handler 的运行状态：只有服务端配置绑定的两个固定操作，以及两个操作共用的执行资格。
 #[derive(Clone)]
@@ -97,6 +113,24 @@ pub struct AppState {
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
     /// 实际关机动作接缝由它持有（注入的记录型实现只用于自动化与人工验收的安全外壳）。
     pub shutdown: Arc<countdown::ShutdownState>,
+    /// workspace 登记列表：由后端以文件持久保存，电脑与手机共享同一份。
+    ///
+    /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
+    pub workspaces: Arc<workspaces::Workspaces>,
+    /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
+    ///
+    /// 浏览读取只读；上限只影响内容预览，不影响目录列表与文件元数据。
+    pub preview_limit_bytes: u64,
+    /// 每条 Git 命令的执行时限（启动期配置，缺省 300 秒）。
+    pub git_timeout: Duration,
+    /// 同一实际仓库的 Git 写操作资格；与固定操作的执行资格完全独立。
+    pub repository_locks: Arc<commit::RepositoryLocks>,
+    /// 本实例成功检查远端的时间记录；只由显式检查与 Sync 前检查写入，本地事件不会触发 fetch。
+    pub sync_state: Arc<sync::SyncState>,
+    /// workspace 文件事件监听与按 workspace 合并的自动刷新通知。
+    ///
+    /// 每个已登记 workspace 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
+    pub workspace_watch: Arc<watch::WorkspaceWatchManager>,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -117,7 +151,9 @@ pub fn app_with_power_off(config: &Config, power_off: Arc<dyn PowerOff>) -> Rout
     app_with_sessions(
         config,
         power_off,
-        Arc::new(sessions::SessionsState::with_policy(config.sessions.policy())),
+        Arc::new(sessions::SessionsState::with_policy(
+            config.sessions.policy(),
+        )),
     )
 }
 
@@ -163,6 +199,16 @@ pub fn app_with_state(
         execution: Arc::new(Mutex::new(())),
         sessions,
         shutdown,
+        workspaces: Arc::new(workspaces::Workspaces::new(
+            config.workspaces.registry_file.clone(),
+        )),
+        preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
+        git_timeout: config.git.command_timeout_seconds.duration(),
+        repository_locks: Arc::new(commit::RepositoryLocks::new()),
+        sync_state: Arc::new(sync::SyncState::new()),
+        workspace_watch: Arc::new(watch::WorkspaceWatchManager::new(
+            config.workspaces.refresh_interval_seconds.duration(),
+        )),
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -184,6 +230,33 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
+        // workspace 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
+        // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
+        .route(
+            "/api/workspaces",
+            get(list_workspaces).post(register_workspace),
+        )
+        // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
+        // 整树读取对 Git workspace 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
+        .route("/api/workspaces/tree", get(read_workspace_tree))
+        .route("/api/workspaces/entries", get(list_workspace_entries))
+        .route("/api/workspaces/file", get(read_workspace_file))
+        // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
+        .route("/api/workspaces/git-status", get(workspace_git_status))
+        // 单个变更的审查 diff：旧侧是 HEAD，新侧是最终本地内容；两侧各自应用预览上限。
+        .route("/api/workspaces/diff", get(workspace_change_diff))
+        // 经审查复核的整仓提交：确认后重查审查版本，再暂存全部符合 Git 规则的最终变更并提交。
+        .route("/api/workspaces/commit", post(commit_workspace))
+        // 按需检查远端：真实 fetch 当前分支的既有 upstream，并记录最近检查时间。
+        .route("/api/workspaces/check-remote", post(check_workspace_remote))
+        // 按既有 upstream 与 Git 配置同步：检查远端 → pull → 按需 push。
+        .route("/api/workspaces/sync", post(sync_workspace))
+        // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
+        .route("/api/workspaces/overview", get(workspaces_overview))
+        // 自动更新的只读长连接：真实文件系统事件按 workspace 合并后通知页面重新读取；
+        // 同一 workspace 的所有观察者共享一条监听，监听失效会明确下发错误而不是保持静默。
+        .route("/api/workspaces/watch", get(watch_workspaces))
+        .route("/api/workspaces/remove", post(unregister_workspace))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
@@ -370,7 +443,11 @@ async fn monitor_shutdown(State(state): State<AppState>, request: Request) -> Re
         Ok(shutdown) => (
             StatusCode::OK,
             Json(MonitoringAccepted {
-                outcome: if command.selected { SELECTED } else { UNSELECTED },
+                outcome: if command.selected {
+                    SELECTED
+                } else {
+                    UNSELECTED
+                },
                 shutdown,
             }),
         )
@@ -416,6 +493,848 @@ struct MonitoringAccepted {
     outcome: &'static str,
     /// 命令之后的权威关机状态（含当前监听集合，与观察流下发的是同一份内容）。
     shutdown: ShutdownView,
+}
+
+/// workspace 登记列表的响应：当前完整列表（登记与取消登记也返回同一形状）。
+#[derive(Debug, Serialize)]
+struct WorkspaceListResponse {
+    workspaces: Vec<RegisteredWorkspace>,
+}
+
+/// workspace 请求的明确失败：机器可读类别 + 面向使用者的说明。
+#[derive(Debug, Serialize)]
+struct WorkspaceErrorResponse {
+    code: &'static str,
+    message: String,
+}
+
+/// 一次 workspace 命令的请求体：服务器上的目录路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspacePathRequest {
+    path: String,
+}
+
+/// “列出 workspace 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
+async fn list_workspaces(State(state): State<AppState>) -> Response {
+    workspace_list_response(state.workspaces.list().await)
+}
+
+/// “登记 workspace”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
+async fn register_workspace(State(state): State<AppState>, request: Request) -> Response {
+    match workspace_path(request).await {
+        Ok(path) => match state.workspaces.register(&path).await {
+            Ok(workspaces) => {
+                // 新登记的 workspace 立即开始监听；监听失败会作为健康错误交给观察连接。
+                state.workspace_watch.reconcile(&workspaces).await;
+                workspace_list_response(Ok(workspaces))
+            }
+            Err(error) => workspace_error_response(error),
+        },
+        Err(rejection) => rejection,
+    }
+}
+
+/// “取消登记”：只移除登记项，不删除目录或文件。
+async fn unregister_workspace(State(state): State<AppState>, request: Request) -> Response {
+    match workspace_path(request).await {
+        Ok(path) => match state.workspaces.unregister(&path).await {
+            Ok(workspaces) => {
+                state.workspace_watch.reconcile(&workspaces).await;
+                workspace_list_response(Ok(workspaces))
+            }
+            Err(error) => workspace_error_response(error),
+        },
+        Err(rejection) => rejection,
+    }
+}
+
+/// 读取 workspace 命令的请求体；请求面封闭（不接受查询串或未知字段）。
+async fn workspace_path(request: Request) -> Result<String, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "workspace 命令不接受查询参数：路径只来自请求体。".to_string(),
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "workspace 请求体超过 64KB 上限。".to_string(),
+            )
+        })?;
+    let body: WorkspacePathRequest = serde_json::from_slice(&bytes).map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            "无法解析 workspace 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
+        )
+    })?;
+    Ok(body.path)
+}
+
+/// 一次只读浏览请求的查询参数：登记路径 + 可选相对路径（空字符串表示根目录）。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BrowseQuery {
+    workspace: String,
+    #[serde(default)]
+    path: String,
+}
+
+/// 整树读取的查询参数：只需要登记路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceTreeQuery {
+    workspace: String,
+}
+
+/// “读整棵树”：一次返回过滤后的目录快照。Git workspace 按 Git 原生忽略规则省略 ignored 路径；
+/// 普通目录完整返回。子目录读取失败随响应带回，根目录或 Git 忽略查询失败则整次请求明确失败。
+async fn read_workspace_tree(
+    State(state): State<AppState>,
+    query: Result<Query<WorkspaceTreeQuery>, QueryRejection>,
+) -> Response {
+    let query = match query {
+        Ok(Query(query)) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "读取 workspace 目录树需要唯一的 `workspace` 参数，且不接受其他参数。".to_string(),
+            );
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    match tokio::task::spawn_blocking(move || browse::read_tree(&registered, timeout)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取目录树的任务异常结束，无法确认目录内容。".to_string(),
+        ),
+    }
+}
+
+/// “列目录”：返回该目录的直接子项；隐藏文件、忽略文件和 Git 元数据都不过滤。
+async fn list_workspace_entries(
+    State(state): State<AppState>,
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Response {
+    let query = match browse_query(query) {
+        Ok(query) => query,
+        Err(rejection) => return rejection,
+    };
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let path = query.path;
+    match tokio::task::spawn_blocking(move || browse::list_directory(&registered, &path)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取目录的任务异常结束，无法确认目录内容。".to_string(),
+        ),
+    }
+}
+
+/// “读文件”：返回文件元数据与内容预览；超限或二进制不返回内容，但仍返回元数据。
+async fn read_workspace_file(
+    State(state): State<AppState>,
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Response {
+    let query = match browse_query(query) {
+        Ok(query) => query,
+        Err(rejection) => return rejection,
+    };
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let path = query.path;
+    let limit = state.preview_limit_bytes;
+    match tokio::task::spawn_blocking(move || browse::read_file(&registered, &path, limit)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取文件的任务异常结束，无法确认文件内容。".to_string(),
+        ),
+    }
+}
+
+/// 一次 Git 状态请求的查询参数：只需要登记路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitStatusQuery {
+    workspace: String,
+}
+
+/// workspace 列表上的角标概览：每个登记项的待提交项数或明确错误。
+#[derive(Debug, Serialize)]
+struct WorkspaceOverviewResponse {
+    workspaces: Vec<git::WorkspaceSummary>,
+}
+
+/// “读取 workspace 概览”：为登记列表中每个 workspace 给出角标所需的事实。
+async fn workspaces_overview(State(state): State<AppState>) -> Response {
+    let workspaces = match state.workspaces.list().await {
+        Ok(workspaces) => workspaces,
+        Err(error) => return workspace_error_response(error),
+    };
+    let timeout = state.git_timeout;
+    let sync_state = Arc::clone(&state.sync_state);
+    match tokio::task::spawn_blocking(move || git::overview(&workspaces, timeout, &sync_state))
+        .await
+    {
+        Ok(workspaces) => (
+            StatusCode::OK,
+            Json(WorkspaceOverviewResponse { workspaces }),
+        )
+            .into_response(),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取 workspace 概览的任务异常结束，无法确认待提交数量。".to_string(),
+        ),
+    }
+}
+
+/// “读取 Git 状态”：当前分支与待提交变更；普通目录返回 `repository: false`。
+async fn workspace_git_status(
+    State(state): State<AppState>,
+    query: Result<Query<GitStatusQuery>, QueryRejection>,
+) -> Response {
+    let Query(query) = match query {
+        Ok(query) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "读取 Git 状态需要 `workspace` 参数，且不接受其他参数。".to_string(),
+            );
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let sync_state = Arc::clone(&state.sync_state);
+    match tokio::task::spawn_blocking(move || git::status(&registered, timeout, &sync_state)).await
+    {
+        Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
+        Ok(Err(error)) => git_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取 Git 状态的任务异常结束，无法确认当前分支与待提交变更。".to_string(),
+        ),
+    }
+}
+
+/// “订阅自动更新”：一条只读 SSE 长连接。
+///
+/// 首帧是全部被监听 workspace 的快照（实际生效的间隔、健康与最近刷新），之后同一 workspace 的所有
+/// 观察者共享同一条监听与同一份节流状态，只收到合并后的刷新通知或监听健康变化。
+/// 这里只下发本地事件；远端状态仍需页面显式检查，不因本连接自动 fetch。
+async fn watch_workspaces(State(state): State<AppState>) -> Response {
+    let workspaces = match state.workspaces.list().await {
+        Ok(workspaces) => workspaces,
+        Err(error) => return workspace_error_response(error),
+    };
+    // 先订阅再对齐监听：对齐期间新建立的监听健康与刷新都不会漏掉。
+    let receiver = state.workspace_watch.subscribe();
+    state.workspace_watch.reconcile(&workspaces).await;
+    let manager = Arc::clone(&state.workspace_watch);
+    let first = manager.snapshot().await;
+
+    let stream = stream::unfold((receiver, Some(first)), move |(mut receiver, pending)| {
+        let manager = Arc::clone(&manager);
+        async move {
+            let snapshot = match pending {
+                Some(snapshot) => snapshot,
+                None => match receiver.recv().await {
+                    Ok(frame) => {
+                        return Some((
+                            Ok::<Event, Infallible>(watch::frame_event(frame)),
+                            (receiver, None),
+                        ));
+                    }
+                    Err(RecvError::Lagged(_)) => manager.snapshot().await,
+                    Err(RecvError::Closed) => return None,
+                },
+            };
+            Some((Ok(watch::snapshot_event(snapshot)), (receiver, None)))
+        }
+    });
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response()
+}
+
+fn git_error_response(error: git::GitError) -> Response {
+    let status = match &error {
+        git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
+        git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    rejected_owned(status, error.code(), error.message())
+}
+
+fn diff_error_response(error: git::DiffError) -> Response {
+    match error {
+        git::DiffError::Browse(error) => browse_error_response(error),
+        git::DiffError::Git(error) => git_error_response(error),
+    }
+}
+
+/// 一次审查 diff 请求的查询参数：登记路径、新路径与可选的 Git 旧路径。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiffQuery {
+    workspace: String,
+    path: String,
+    #[serde(default)]
+    old_path: Option<String>,
+}
+
+/// “读取审查 diff”：旧侧取当前分支最新本地提交，新侧取最终本地文件。
+///
+/// 新增、删除、已识别重命名与部分暂存都使用同一入口；旧路径只用于定位 Git 历史内容，仍先经过
+/// workspace 根边界检查。任一侧超限或二进制时返回明确限制，不返回完整内容。
+async fn workspace_change_diff(
+    State(state): State<AppState>,
+    query: Result<Query<DiffQuery>, QueryRejection>,
+) -> Response {
+    let Query(query) = match query {
+        Ok(query) => query,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+                "审查 diff 需要 `workspace` 与 `path` 参数，可选 `oldPath`，且不接受其他参数。"
+                    .to_string(),
+            );
+        }
+    };
+    if query.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        );
+    }
+    if query.path.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-query",
+            "审查 diff 需要非空的 `path` 参数。".to_string(),
+        );
+    }
+
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let limit = state.preview_limit_bytes;
+    let timeout = state.git_timeout;
+    match tokio::task::spawn_blocking(move || {
+        git::change_diff(
+            &registered,
+            &query.path,
+            query.old_path.as_deref(),
+            limit,
+            timeout,
+        )
+    })
+    .await
+    {
+        Ok(Ok(diff)) => (StatusCode::OK, Json(diff)).into_response(),
+        Ok(Err(error)) => diff_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "读取审查 diff 的任务异常结束，无法确认旧新内容。".to_string(),
+        ),
+    }
+}
+
+/// 一次提交请求：服务器目录、非空提交信息，以及页面展示的审查版本标识。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceCommitRequest {
+    workspace: String,
+    message: String,
+    review_token: String,
+}
+
+/// 一次真实提交成功后的回执：只有 Git 确认创建了新的 HEAD 才返回。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCommitResponse {
+    workspace: String,
+    outcome: &'static str,
+    commit: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
+    message: String,
+}
+
+/// “经审查复核的整仓提交”。
+///
+/// 页面与直接请求都拒绝空信息、普通目录、阻塞状态和失效审查；被拒绝的请求不会产生 Git 写入。
+/// 请求被接受后，执行放在独立任务里：客户端断线不会取消已经开始的提交，也不会在别处重放。
+async fn commit_workspace(State(state): State<AppState>, request: Request) -> Response {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "提交请求不接受查询参数：workspace、提交信息与审查版本只来自请求体。".to_string(),
+        );
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = match to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "payload-too-large",
+                "提交请求体超过 64KB 上限。".to_string(),
+            );
+        }
+    };
+    let request: WorkspaceCommitRequest = match serde_json::from_slice(&bytes) {
+        Ok(request) => request,
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "invalid-request",
+                "无法解析提交请求：请发送 {\"workspace\":\"服务器目录\",\"message\":\"提交信息\",\"reviewToken\":\"审查版本\"} 形式的 JSON。"
+                    .to_string(),
+            );
+        }
+    };
+    if request.workspace.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请指定要提交的已登记 workspace。".to_string(),
+        );
+    }
+    if request.message.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "empty-message",
+            "提交信息不能为空；本次没有执行任何 Git 写入。".to_string(),
+        );
+    }
+    if request.review_token.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "review-required",
+            "缺少审查版本标识；请先读取并确认当前审查版本。".to_string(),
+        );
+    }
+
+    let registered = match registered_workspace(&state, &request.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
+    let response_workspace = registered.clone();
+    let message = request.message;
+    let review_token = request.review_token;
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let outcome = tokio::task::spawn_blocking(move || {
+            commit::execute(
+                &registered,
+                &message,
+                &review_token,
+                timeout,
+                &locks,
+                &sync_state,
+            )
+        })
+        .await;
+        let response = commit_response(response_workspace, outcome);
+        // 连接已经断开时接收端不存在，结果丢弃；已经开始的提交不会被取消或重放。
+        let _ = sender.send(response);
+    });
+
+    match receiver.await {
+        Ok(response) => response,
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commit-result-unavailable",
+            "本次提交没有送回结果：无法确认执行结果，请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+fn commit_response(
+    workspace: String,
+    outcome: Result<commit::CommitOutcome, tokio::task::JoinError>,
+) -> Response {
+    match outcome {
+        Ok(commit::CommitOutcome::Committed {
+            commit,
+            branch,
+            message,
+        }) => (
+            StatusCode::OK,
+            Json(WorkspaceCommitResponse {
+                workspace,
+                outcome: "committed",
+                commit,
+                branch,
+                message,
+            }),
+        )
+            .into_response(),
+        Ok(commit::CommitOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Commit。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次请求没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "commit-blocked", reason)
+        }
+        Ok(commit::CommitOutcome::ReviewInvalid(message)) => {
+            rejected_owned(StatusCode::CONFLICT, "review-invalid", message)
+        }
+        Ok(commit::CommitOutcome::NothingToCommit) => rejected_owned(
+            StatusCode::CONFLICT,
+            "nothing-to-commit",
+            "当前没有待提交变更：本次没有执行 Git 写入。".to_string(),
+        ),
+        Ok(commit::CommitOutcome::Failed(error)) => {
+            let status = match &error {
+                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            };
+            rejected_owned(status, error.code(), error.message())
+        }
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commit-result-unavailable",
+            "提交任务异常结束，无法确认执行结果；请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+/// 一次“只有 workspace”的 POST 请求体；检查远端与 Sync 都只接收服务器目录。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceTargetRequest {
+    workspace: String,
+}
+
+/// 读取检查远端/Sync 的请求体；请求面封闭，不接受查询串或未知字段。
+async fn workspace_target(request: Request) -> Result<String, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "该命令不接受查询参数：workspace 只来自请求体。".to_string(),
+        ));
+    }
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "请求体超过 64KB 上限。".to_string(),
+            )
+        })?;
+    let request: WorkspaceTargetRequest = serde_json::from_slice(&bytes).map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            "无法解析请求：请发送 {\"workspace\":\"服务器目录\"} 形式的 JSON。".to_string(),
+        )
+    })?;
+    if request.workspace.trim().is_empty() {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请指定要操作的已登记 workspace。".to_string(),
+        ));
+    }
+    Ok(request.workspace)
+}
+
+/// “检查远端”：真实 fetch 当前分支已有 upstream 的远端，成功后返回刷新后的完整 Git 状态。
+///
+/// 检查不要求工作区干净，也不修改工作树、索引或本地分支；普通目录、detached HEAD 与没有远端
+/// upstream 的状态分别明确拒绝。检查与 Commit/Sync 共用同一份仓库写操作资格。
+async fn check_workspace_remote(State(state): State<AppState>, request: Request) -> Response {
+    let workspace = match workspace_target(request).await {
+        Ok(workspace) => workspace,
+        Err(response) => return response,
+    };
+    let registered = match registered_workspace(&state, &workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
+    let outcome =
+        tokio::task::spawn_blocking(move || sync::check(&registered, timeout, &locks, &sync_state))
+            .await;
+    match outcome {
+        Ok(sync::CheckOutcome::Checked(status)) => (StatusCode::OK, Json(status)).into_response(),
+        Ok(sync::CheckOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可检查的远端。".to_string(),
+        ),
+        Ok(sync::CheckOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次检查没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(sync::CheckOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "sync-blocked", reason)
+        }
+        Ok(sync::CheckOutcome::NoUpstream) => rejected_owned(
+            StatusCode::CONFLICT,
+            "no-upstream",
+            "当前分支没有配置 upstream：无法确定要检查的远端；本功能不会代替你配置 upstream。"
+                .to_string(),
+        ),
+        Ok(sync::CheckOutcome::Failed(error)) => git_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git-command-failed",
+            "检查远端的任务异常结束，无法确认远端状态。".to_string(),
+        ),
+    }
+}
+
+/// “按既有 upstream 同步”：检查远端 → pull → 按需 push。
+///
+/// 页面与直接请求都拒绝普通目录、脏工作区、detached HEAD、冲突或未完成流程，以及没有远端
+/// upstream 的状态。执行放在独立任务里：客户端断线不会取消已接受的同步，也不会重放。
+async fn sync_workspace(State(state): State<AppState>, request: Request) -> Response {
+    let workspace = match workspace_target(request).await {
+        Ok(workspace) => workspace,
+        Err(response) => return response,
+    };
+    let registered = match registered_workspace(&state, &workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let timeout = state.git_timeout;
+    let locks = Arc::clone(&state.repository_locks);
+    let sync_state = Arc::clone(&state.sync_state);
+    let response_workspace = registered.clone();
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let outcome = tokio::task::spawn_blocking(move || {
+            sync::execute(&registered, timeout, &locks, &sync_state)
+        })
+        .await;
+        let response = sync_response(response_workspace, outcome);
+        let _ = sender.send(response);
+    });
+
+    match receiver.await {
+        Ok(response) => response,
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "sync-result-unavailable",
+            "本次同步没有送回结果：无法确认执行结果，请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+fn sync_response(
+    workspace: String,
+    outcome: Result<sync::SyncOutcome, tokio::task::JoinError>,
+) -> Response {
+    match outcome {
+        Ok(sync::SyncOutcome::Synced(mut accepted)) => {
+            accepted.workspace = workspace;
+            (StatusCode::OK, Json(accepted)).into_response()
+        }
+        Ok(sync::SyncOutcome::NotRepository) => rejected_owned(
+            StatusCode::CONFLICT,
+            "not-a-repository",
+            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Sync。".to_string(),
+        ),
+        Ok(sync::SyncOutcome::Busy) => rejected_owned(
+            StatusCode::CONFLICT,
+            "git-write-in-progress",
+            "该仓库已有 Git 写操作在执行：本次请求没有被接受，也不会在它结束后补做。".to_string(),
+        ),
+        Ok(sync::SyncOutcome::Blocked(reason)) => {
+            rejected_owned(StatusCode::CONFLICT, "sync-blocked", reason)
+        }
+        Ok(sync::SyncOutcome::Dirty) => rejected_owned(
+            StatusCode::CONFLICT,
+            "sync-dirty-worktree",
+            "工作区有未提交变更：Sync 只对干净工作区可用；本功能不会 stash 或隐式提交。"
+                .to_string(),
+        ),
+        Ok(sync::SyncOutcome::NoUpstream) => rejected_owned(
+            StatusCode::CONFLICT,
+            "no-upstream",
+            "当前分支没有配置 upstream：Sync 不可用；本功能不会配置 upstream 或发布分支。"
+                .to_string(),
+        ),
+        Ok(sync::SyncOutcome::Failed {
+            step,
+            error,
+            completed,
+        }) => {
+            let mut message = format!("同步在 {step} 步骤失败：{}", error.message());
+            if !completed.is_empty() {
+                message.push_str(&format!(
+                    " 已完成的步骤（{}）不会被自动撤销。",
+                    completed.join(" → ")
+                ));
+            }
+            let status = match &error {
+                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            };
+            rejected_owned(status, error.code(), message)
+        }
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "sync-result-unavailable",
+            "同步任务异常结束，无法确认执行结果；请按实际仓库状态核对。".to_string(),
+        ),
+    }
+}
+
+/// 校验查询面：缺失、重复或未知参数都以 JSON 类别拒绝，不猜测请求意图。
+fn browse_query(
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Result<BrowseQuery, Response> {
+    let Query(query) = query.map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-query",
+            "读取 workspace 需要 `workspace` 参数与可选的 `path` 参数，且不接受其他参数。"
+                .to_string(),
+        )
+    })?;
+    if query.workspace.trim().is_empty() {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        ));
+    }
+    Ok(query)
+}
+
+/// 按登记列表核对 workspace；未登记与登记文件读取失败都明确返回，不继续读取文件系统。
+async fn registered_workspace(state: &AppState, requested: &str) -> Result<String, Response> {
+    match state.workspaces.list().await {
+        Ok(workspaces) => match browse::registered_root(&workspaces, requested) {
+            Ok(root) => Ok(root.to_string()),
+            Err(error) => Err(browse_error_response(error)),
+        },
+        Err(error) => Err(workspace_error_response(error)),
+    }
+}
+
+fn browse_error_response(error: browse::BrowseError) -> Response {
+    use browse::BrowseError;
+    let status = match &error {
+        BrowseError::WorkspaceNotRegistered | BrowseError::PathNotFound => StatusCode::NOT_FOUND,
+        BrowseError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        BrowseError::PathOutside | BrowseError::Link { .. } => StatusCode::FORBIDDEN,
+        BrowseError::NotADirectory | BrowseError::NotAFile | BrowseError::InvalidPath(_) => {
+            StatusCode::BAD_REQUEST
+        }
+        BrowseError::ReadFailed(_) | BrowseError::GitIgnoreFailed(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    rejected_owned(status, error.code(), error.message())
+}
+
+/// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表，失败不伪装成空列表。
+fn workspace_list_response(result: Result<Vec<RegisteredWorkspace>, WorkspaceError>) -> Response {
+    match result {
+        Ok(workspaces) => {
+            (StatusCode::OK, Json(WorkspaceListResponse { workspaces })).into_response()
+        }
+        Err(error) => workspace_error_response(error),
+    }
+}
+
+fn workspace_error_response(error: WorkspaceError) -> Response {
+    let status = match &error {
+        WorkspaceError::AlreadyRegistered => StatusCode::CONFLICT,
+        WorkspaceError::NotRegistered => StatusCode::NOT_FOUND,
+        WorkspaceError::Unreadable(_)
+        | WorkspaceError::Corrupt(_)
+        | WorkspaceError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        WorkspaceError::Required
+        | WorkspaceError::NotAbsolute
+        | WorkspaceError::NotFound
+        | WorkspaceError::NotADirectory
+        | WorkspaceError::Inaccessible(_) => StatusCode::BAD_REQUEST,
+    };
+    rejected_owned(status, error.code(), error.message())
+}
+
+fn rejected_owned(status: StatusCode, code: &'static str, message: String) -> Response {
+    (status, Json(WorkspaceErrorResponse { code, message })).into_response()
 }
 
 /// 两个固定操作共用的执行路径。
@@ -581,9 +1500,6 @@ async fn unknown_api_request(UrlPath(path): UrlPath<String>) -> Response {
 /// 或执行任务没能送回结果（`500`，内部故障）。
 /// 这些路径都不接受请求、不排队，也从不接触服务端配置绑定的脚本。
 fn rejected(status: StatusCode, code: &'static str, message: &'static str) -> Response {
-    eprintln!(
-        "[omp-bot] 请求被拒绝：{code}（HTTP {}）",
-        status.as_u16()
-    );
+    eprintln!("[omp-bot] 请求被拒绝：{code}（HTTP {}）", status.as_u16());
     (status, Json(RejectedResponse { code, message })).into_response()
 }

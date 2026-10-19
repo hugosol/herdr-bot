@@ -13,10 +13,25 @@ body {
   color: #f2f4f8;
 }
 
+#root {
+  width: 100%;
+  min-width: 0;
+}
+
 .panel {
   box-sizing: border-box;
   width: min(100%, 32rem);
+  max-width: 100%;
+  /* flex 项默认 min-width:auto；不加这一行时，任何一个过宽子元素都会把整个
+     居中的面板撑宽并向左溢出，而负的左侧无法滚动到，手机上看不到最左端。 */
+  min-width: 0;
+  /* #root 现在是满宽的定位容器，面板自身仍需要在桌面端水平居中。 */
+  margin-inline: auto;
   padding: 1.5rem;
+}
+
+.tabpanel {
+  min-width: 0;
 }
 
 h1 {
@@ -24,9 +39,9 @@ h1 {
   font-size: 1.5rem;
 }
 
-/* ---------- 双 tab 外壳 ---------- */
+/* ---------- 三 tab 外壳 ---------- */
 
-/* 两个分区共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
+/* 三个入口等宽共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
 .tabs {
   display: flex;
   gap: 0.25rem;
@@ -35,7 +50,9 @@ h1 {
 }
 
 .tab {
-  flex: 1;
+  /* flex-basis 为 0 且三个入口同形：宽度只由面板决定，不随文字长度变化。 */
+  flex: 1 1 0;
+  min-width: 0;
   padding: 0.75rem 0.5rem;
   font-size: 1rem;
   font-weight: 600;
@@ -51,8 +68,1029 @@ h1 {
   color: #f2f4f8;
 }
 
+.tab:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
+}
+
 .tabpanel[hidden] {
   display: none;
+}
+
+/* ---------- 文件列表：workspace 登记 ---------- */
+
+.workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.workspace-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.workspace-form__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #d6dbe4;
+}
+
+.workspace-form__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.workspace-form__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #f2f4f8;
+  font-size: 1rem;
+}
+
+.workspace-form__input::placeholder {
+  color: #6b7280;
+}
+
+.workspace-register {
+  flex: none;
+  padding: 0.75rem 1.1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #2f7d32;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workspace-register:disabled {
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.workspace-feedback,
+.workspace-error,
+.workspaces__loading {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.workspace-feedback[data-kind='success'] {
+  border-left: 0.35rem solid #2f7d32;
+  color: #b6f0c0;
+}
+
+.workspace-feedback[data-kind='error'],
+.workspace-error {
+  border-left: 0.35rem solid #c14b3a;
+  color: #ffd9d1;
+}
+
+.workspaces__loading {
+  color: #a9b1bd;
+}
+
+.workspaces__heading {
+  margin: 0.5rem 0 0;
+  font-size: 1.1rem;
+}
+
+.workspaces__empty {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #1d2128;
+  color: #a9b1bd;
+}
+
+.workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspace-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.5rem;
+  background: #1d2128;
+}
+
+/* 整行浏览入口：路径、角标和空白区域共同组成一个按钮，不再单独显示「浏览」。 */
+.workspace-item__open {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-item__open:hover:enabled {
+  background: #252b33;
+}
+
+.workspace-item__open:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.workspace-item__path {
+  flex: 1;
+  min-width: 0;
+  color: #d6dbe4;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+/* 取消登记只显示一个叉号；保留 44px 触摸目标，避免手机上误触。 */
+.workspace-item__remove {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid #6b3a33;
+  border-radius: 0.45rem;
+  background: #33201c;
+  color: #ffb3a6;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-item__remove:hover:enabled {
+  border-color: #a45245;
+  background: #3d2621;
+}
+
+.workspace-item__remove:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* 待提交角标：只显示后端确认的项数；读取失败用独立色，不伪装成 0。 */
+.workspace-badge {
+  flex: none;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid #37506b;
+  border-radius: 999px;
+  background: #1d2a38;
+  color: #a9d0f0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.workspace-badge[data-conflict='true'] {
+  border-color: #8a5a2b;
+  background: #33281c;
+  color: #ffd995;
+}
+
+.workspace-badge--error {
+  border-color: #6b3a33;
+  background: #33201c;
+  color: #ffd9d1;
+}
+
+.workspace-form__input:focus-visible,
+.workspace-register:focus-visible,
+.workspace-item__open:focus-visible,
+.workspace-item__remove:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: 2px;
+}
+
+/* ---------- workspace 只读文件浏览 ---------- */
+
+/* 文件列表比固定操作需要更宽的左右布局；其他 tab 仍保持窄面板。 */
+.panel--wide {
+  width: min(100%, 72rem);
+  max-width: 100%;
+  min-width: 0;
+  /* 浏览布局比固定操作高：从顶部开始排布，避免居中把标题和工具栏推到视口外。 */
+  min-height: calc(100vh - 2rem);
+  align-self: flex-start;
+  margin-block: 1rem;
+}
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.browser-toolbar__button {
+  flex: none;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-toolbar__button:disabled {
+  color: #8a93a1;
+  cursor: progress;
+}
+
+.browser-toolbar__workspace {
+  flex: 1;
+  min-width: 0;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.browser-toolbar__branch {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: #a9d0f0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* workspace 内部子 tab：只有 Git 工作区出现；普通目录仍只有浏览。 */
+.browser-views {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #2b313a;
+}
+
+.browser-view {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #a9b1bd;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-view.is-active {
+  color: #f2f4f8;
+  border-bottom-color: #4caf50;
+}
+
+.browser-view:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
+}
+
+.browser-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+/* 浏览树、变更列表与内容区各自滚动：外层 tab 或内部视图切换时 DOM 保持挂载，滚动位置随组件保留。 */
+.browser-tree,
+.browser-content,
+.browser-mobile__list,
+.changes-list,
+.changes-detail {
+  box-sizing: border-box;
+  min-height: 24rem;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.5rem;
+  background: #1d2128;
+}
+
+/* 内部视图只切换可见性：隐藏的浏览/变更分区不占版面，但保留自己的状态与滚动位置。 */
+.browser-pane[hidden] {
+  display: none;
+}
+
+.tree-list,
+.mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-item,
+.mobile-item {
+  margin: 0;
+  min-width: 0;
+}
+
+.tree-row,
+.mobile-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-row:hover,
+.mobile-row:hover {
+  background: #252b33;
+}
+
+.tree-row:focus-visible,
+.mobile-row:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
+}
+
+.tree-row--directory {
+  font-weight: 600;
+}
+
+/* Git 待提交颜色：新增绿、修改与已识别重命名蓝、删除红、冲突独立警告色。
+   祖先目录一律蓝色，不继承子文件的绿或红。 */
+.change-added {
+  color: #7ee787;
+}
+
+.change-modified {
+  color: #79c0ff;
+}
+
+.change-deleted {
+  color: #ff7b72;
+}
+
+.change-conflicted {
+  color: #ffa657;
+}
+
+.change-directory {
+  color: #79c0ff;
+}
+
+/* 选中行的背景保留，但待提交颜色不能被选中态覆盖。 */
+.tree-row--file.is-selected.change-added {
+  color: #7ee787;
+}
+
+.tree-row--file.is-selected.change-modified {
+  color: #79c0ff;
+}
+
+.tree-row--file.is-selected.change-deleted {
+  color: #ff7b72;
+}
+
+.tree-row--file.is-selected.change-conflicted {
+  color: #ffa657;
+}
+
+.tree-row__caret {
+  flex: none;
+  width: 1rem;
+  color: #8a93a1;
+}
+
+.tree-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tree-row--file.is-selected {
+  background: #2b3a2d;
+  color: #d9ffdc;
+}
+
+.tree-row--link,
+.mobile-row--link {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: #25231d;
+  color: #c9c2b4;
+  cursor: default;
+}
+
+.tree-row__link-target {
+  color: #e2c98a;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.tree-row__link-reason {
+  color: #a9b1bd;
+  font-size: 0.82rem;
+}
+
+.mobile-row__hint {
+  flex: none;
+  color: #8a93a1;
+}
+
+.browser-loading,
+.browser-empty,
+.browser-placeholder {
+  margin: 0;
+  padding: 0.75rem;
+  color: #a9b1bd;
+  font-size: 0.95rem;
+}
+
+/* 忽略过滤提示：只在本次树读取确实隐藏了路径时出现，不做成可切换开关。 */
+.browser-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 0.3rem solid #55606f;
+  border-radius: 0.35rem;
+  background: #1d2128;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.browser-error {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #c14b3a;
+  border-radius: 0.35rem;
+  background: #33201c;
+  color: #ffd9d1;
+  font-size: 0.95rem;
+}
+
+.browser-error--inline {
+  margin: 0.35rem 0 0.35rem 1rem;
+}
+
+/* 提交信息与主按钮常驻在变更列表上方；阻塞原因与本次请求的归宿紧随其后。 */
+.commit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #2f3945;
+  border-radius: 0.6rem;
+  background: #161a20;
+}
+
+.commit-bar__label {
+  color: #a9b1bd;
+  font-size: 0.85rem;
+}
+
+.commit-bar__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.commit-bar__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.45rem;
+  background: #0e1116;
+  color: #f2f4f8;
+  font-size: 1rem;
+}
+
+.commit-bar__input:disabled {
+  color: #8a93a1;
+}
+
+.commit-bar__button {
+  flex: none;
+  min-width: 7rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #2f7d32;
+  border-radius: 0.45rem;
+  background: #2f7d32;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.commit-bar__button:disabled {
+  border-color: #3a4048;
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.commit-bar__blocked,
+.commit-bar__hint,
+.commit-bar__feedback {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.commit-bar__blocked {
+  color: #ffd995;
+}
+
+.commit-bar__hint {
+  color: #8a93a1;
+}
+
+.commit-bar__feedback[data-tone='success'] {
+  color: #9fe3a7;
+}
+
+.commit-bar__feedback[data-tone='error'] {
+  color: #ffd9d1;
+}
+
+.commit-bar__feedback[data-tone='unconfirmed'] {
+  color: #e8ecf2;
+}
+
+/* 远端检查与 Sync：显式检查入口、最近检查时间、逐态主按钮与真实数量。 */
+.sync-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #2f3945;
+}
+
+.sync-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.sync-bar__upstream,
+.sync-bar__checked {
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.sync-bar__button {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.45rem;
+  background: #1d2128;
+  color: #e8ecf2;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.sync-bar__button--primary {
+  border-color: #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sync-bar__button:disabled {
+  border-color: #3a4048;
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.sync-bar__state {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 一句确认消息 + 确认/取消；覆盖层只在门禁期间出现。 */
+.commit-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: rgba(6, 8, 11, 0.88);
+  color: #f2f4f8;
+}
+
+.commit-confirm__question {
+  margin: 0;
+  max-width: 24rem;
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.commit-confirm__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.commit-confirm__cancel,
+.commit-confirm__go {
+  min-width: 7rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.45rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.commit-confirm__cancel {
+  border: 1px solid #3d4653;
+  background: #1d2128;
+  color: #e8ecf2;
+}
+
+.commit-confirm__go {
+  border: 1px solid #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 自动更新失效或连接中断：明说内容可能过期，并保留手动读取入口。 */
+.watch-warning {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #d69a2d;
+  border-radius: 0.35rem;
+  background: #342c1c;
+  color: #ffe9bd;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* 变更列表：只呈现待提交项；删除项仍在列表中，但浏览树只显示磁盘上存在的文件。 */
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* 电脑：左变更列表、右 diff；两侧各自滚动。 */
+.changes-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.changes-detail {
+  min-width: 0;
+}
+
+.change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-item {
+  margin: 0;
+  min-width: 0;
+}
+
+/* 变更行本身是选择入口：保留纯文本与类别颜色，不引入状态字母或第二套视觉。 */
+.change-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.change-row:hover {
+  background: #252b33;
+}
+
+.change-row:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
+}
+
+.change-row.is-selected {
+  background: #25303c;
+}
+
+/* 按钮会重置文字颜色；变更类别颜色必须在变更行上重新声明，两个视图才保持同一含义。 */
+.change-row.change-added {
+  color: #7ee787;
+}
+
+.change-row.change-modified {
+  color: #79c0ff;
+}
+
+.change-row.change-deleted {
+  color: #ff7b72;
+}
+
+.change-row.change-conflicted {
+  color: #ffa657;
+}
+
+.change-row__path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.change-row__old {
+  opacity: 0.85;
+}
+
+.change-row__note,
+.change-row__warning {
+  flex: none;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.change-row__note {
+  border: 1px solid #37506b;
+  color: #a9d0f0;
+}
+
+.change-row__warning {
+  border: 1px solid #8a5a2b;
+  background: #33281c;
+  color: #ffd995;
+}
+
+/* 冲突警告不能与普通修改混淆：独立底色与左侧警示条。 */
+.change-conflict-warning {
+  margin: 0 0 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-left: 0.35rem solid #d8b44a;
+  border-radius: 0.35rem;
+  background: #33281c;
+  color: #ffe9bd;
+  font-size: 0.92rem;
+}
+
+.file-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.file-view__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #2b313a;
+}
+
+.file-view__path {
+  min-width: 0;
+  color: #d6dbe4;
+  overflow-wrap: anywhere;
+}
+
+.file-view__size {
+  color: #8a93a1;
+  font-size: 0.85rem;
+}
+
+.file-view__text {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-view__limited {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #b58a2f;
+  border-radius: 0.35rem;
+  background: #2b261a;
+  color: #f0dfb0;
+}
+
+/* diff 只渲染文本节点：内容来自文件或 Git，任何标签都按字符显示，不交给 HTML 解析。 */
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.diff-lines,
+.diff-side-by-side {
+  min-width: 0;
+  border: 1px solid #2b313a;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 3rem 3rem 1.25rem minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0.1rem 0.25rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-line__number {
+  color: #7f8a99;
+  text-align: right;
+  user-select: none;
+}
+
+.diff-line__marker {
+  color: #a9b1bd;
+  text-align: center;
+  user-select: none;
+}
+
+.diff-line__text {
+  min-width: 0;
+}
+
+.diff-line--removed {
+  background: #3a1f1c;
+  color: #ffb4ab;
+}
+
+.diff-line--added {
+  background: #16301b;
+  color: #a8e6b0;
+}
+
+.diff-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: #2b313a;
+}
+
+.diff-cell {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0.1rem 0.25rem;
+  background: #14161a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-cell--removed {
+  background: #3a1f1c;
+  color: #ffb4ab;
+}
+
+.diff-cell--added {
+  background: #16301b;
+  color: #a8e6b0;
+}
+
+.diff-cell--empty {
+  background: #171a1f;
+}
+
+.browser-current-path {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.browser-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.browser-mobile__back {
+  align-self: flex-start;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-mobile__back:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: 2px;
+}
+
+/* 窄屏：面板保持单列宽度，逐层进入的列表自己滚动，返回时恢复位置。 */
+@media (max-width: 720px) {
+  .panel,
+  .panel--wide {
+    width: min(100%, 32rem);
+    padding: 1rem;
+  }
+
+  .browser-toolbar__workspace {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .browser-mobile__list {
+    min-height: 60vh;
+    max-height: 60vh;
+  }
+}
+
+/* 窄屏：路径输入与登记按钮上下排列，按钮占满宽度，触摸目标保持足够大。 */
+@media (max-width: 420px) {
+  .workspace-form__row {
+    flex-direction: column;
+  }
+
+  .workspace-register {
+    width: 100%;
+    padding: 0.85rem 1.1rem;
+  }
 }
 
 /* ---------- 会话列表：卡片流 ---------- */

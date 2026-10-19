@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
+import { FileListPanel } from './FileListPanel'
 import { SessionsPanel } from './SessionsPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
+import type { WorkspaceWatchFeed } from './workspaceWatch'
 
 type PanelState =
   | { kind: 'idle' }
@@ -25,8 +27,19 @@ const OPERATION_LABELS: Record<OperationName, string> = {
  */
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
-/** omp-bot 主界面的两个分区：控制面板承载固定操作，会话列表呈现各会话的 keepAlive 与 agent 状态。 */
-type TabKey = 'control' | 'sessions'
+/**
+ * omp-bot 主界面的三个顶层入口，按频繁程度排列：会话列表 → 文件列表 → 控制面板。
+ * 打开或整页刷新永远从会话列表开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
+ */
+const TAB_ORDER = ['sessions', 'files', 'control'] as const
+
+type TabKey = (typeof TAB_ORDER)[number]
+
+const TAB_LABELS: Record<TabKey, string> = {
+  sessions: '会话列表',
+  files: '文件列表',
+  control: '控制面板',
+}
 
 type Feedback = {
   kind: FeedbackKind
@@ -42,15 +55,49 @@ type Feedback = {
  * 运行时由 `main.tsx` 注入真实 SSE 数据源；组件本身不依赖全局 `EventSource`，因此组件测试
  * 可以用假数据源直接驱动。
  */
-export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?: SessionFeed } = {}) {
+export default function App({
+  sessionFeed = EMPTY_SESSION_FEED,
+  workspaceWatchFeed,
+}: {
+  sessionFeed?: SessionFeed
+  workspaceWatchFeed?: WorkspaceWatchFeed
+} = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
-  // 分区选择只属于这个组件：单页无路由，不做 roving tabindex——两个 tab 都是原生按钮，
-  // Tab 键依次聚焦、Enter/Space 触发点击即可切换。
-  const [tab, setTab] = useState<TabKey>('control')
+  // 每次打开或整页刷新都从会话列表开始：这里没有读取任何持久化的 tab 状态。
+  const [tab, setTab] = useState<TabKey>('sessions')
+  // 三个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
+  const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
   const [shutdownTakeover, setShutdownTakeover] = useState(false)
   // 后端权威的关机状态与观察流健康度：与「会话列表」同一条观察流，因此同一次订阅就够。
   const { shutdown, connection } = useSessionFeedSnapshot(sessionFeed)
+
+  function selectAdjacentTab(event: KeyboardEvent<HTMLDivElement>) {
+    const index = TAB_ORDER.indexOf(tab)
+    let nextIndex: number
+    switch (event.key) {
+      case 'ArrowRight':
+        nextIndex = (index + 1) % TAB_ORDER.length
+        break
+      case 'ArrowLeft':
+        nextIndex = (index - 1 + TAB_ORDER.length) % TAB_ORDER.length
+        break
+      case 'Home':
+        nextIndex = 0
+        break
+      case 'End':
+        nextIndex = TAB_ORDER.length - 1
+        break
+      default:
+        return
+    }
+
+    // 方向键只属于顶层入口：阻止页面滚动，并同步选中态与焦点。
+    event.preventDefault()
+    const next = TAB_ORDER[nextIndex]
+    setTab(next)
+    tabRefs.current[next]?.focus()
+  }
 
   async function submit(operation: OperationName) {
     setState({ kind: 'running', operation })
@@ -69,41 +116,62 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
   const feedback = feedbackFor(state)
 
   return (
-    <main className="panel">
+    <main className={tab === 'files' ? 'panel panel--wide' : 'panel'}>
       <h1>omp-bot</h1>
 
-      {/* 双 tab 外壳：整页恰两个分区，打开时默认停在「控制面板」。
-          两个 tab 是原生按钮——Tab 键逐个聚焦、Enter/Space 切换；
-          不实现方向键与 roving tabindex（明确偏离 WAI-ARIA APG，依赖原生行为）。 */}
-      <div className="tabs" role="tablist" aria-label="omp-bot 主界面分区">
-        <button
-          type="button"
-          role="tab"
-          id="tab-control"
-          className={tab === 'control' ? 'tab is-active' : 'tab'}
-          data-testid="tab-control"
-          aria-selected={tab === 'control'}
-          aria-controls="panel-control"
-          onClick={() => setTab('control')}
-        >
-          控制面板
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-sessions"
-          className={tab === 'sessions' ? 'tab is-active' : 'tab'}
-          data-testid="tab-sessions"
-          aria-selected={tab === 'sessions'}
-          aria-controls="panel-sessions"
-          onClick={() => setTab('sessions')}
-        >
-          会话列表
-        </button>
+      {/* 三 tab 外壳：会话列表 → 文件列表 → 控制面板，打开时默认停在会话列表。
+          三个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
+          方向键在三个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="omp-bot 主界面分区"
+        onKeyDown={selectAdjacentTab}
+      >
+        {TAB_ORDER.map((key) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`tab-${key}`}
+            className={tab === key ? 'tab is-active' : 'tab'}
+            data-testid={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            ref={(node) => {
+              tabRefs.current[key] = node
+            }}
+            onClick={() => setTab(key)}
+          >
+            {TAB_LABELS[key]}
+          </button>
+        ))}
       </div>
 
       {/* 分区内容常驻、只切换可见性：切走再切回不会丢掉已提交操作的结果反馈，
           关机的整屏接管也不会被切 tab 打断。 */}
+      <div
+        id="panel-sessions"
+        role="tabpanel"
+        aria-labelledby="tab-sessions"
+        className="tabpanel"
+        data-testid="panel-sessions"
+        hidden={tab !== 'sessions'}
+      >
+        <SessionsPanel feed={sessionFeed} />
+      </div>
+
+      <div
+        id="panel-files"
+        role="tabpanel"
+        aria-labelledby="tab-files"
+        className="tabpanel"
+        data-testid="panel-files"
+        hidden={tab !== 'files'}
+      >
+        <FileListPanel active={tab === 'files'} watchFeed={workspaceWatchFeed} />
+      </div>
+
       <div
         id="panel-control"
         role="tabpanel"
@@ -156,17 +224,6 @@ export default function App({ sessionFeed = EMPTY_SESSION_FEED }: { sessionFeed?
             {feedback.text}
           </p>
         )}
-      </div>
-
-      <div
-        id="panel-sessions"
-        role="tabpanel"
-        aria-labelledby="tab-sessions"
-        className="tabpanel"
-        data-testid="panel-sessions"
-        hidden={tab !== 'sessions'}
-      >
-        <SessionsPanel feed={sessionFeed} />
       </div>
 
       {/* 全局关机提醒不能位于 hidden 的 tab 容器内；手动入口仍只在控制面板可见。 */}

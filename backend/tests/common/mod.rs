@@ -239,6 +239,10 @@ pub fn config_with_countdown(
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
         sessions: omp_bot::SessionsConfig::default(),
+        // workspace 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
+        workspaces: omp_bot::WorkspacesConfig::default(),
+        // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
+        git: omp_bot::GitConfig::default(),
     }
 }
 
@@ -358,6 +362,28 @@ pub async fn post_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
     parse_response(&raw)
 }
 
+/// 经一条新的 TCP 连接提交一次裸 GET：只带路径，没有查询串、没有请求体。
+///
+/// 与 [`post_over_tcp`] 同一形态（真实 TCP、不经过任何前端代码），用于只读列表的独立观察。
+pub async fn get_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("连接测试服务器");
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("发送读取请求");
+    stream.flush().await.expect("发送读取请求");
+
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("读取响应");
+    parse_response(&raw)
+}
+
 /// 经一条新的 TCP 连接提交一次**带 JSON 请求体**的 POST。
 ///
 /// 与 `post_over_tcp` 同一形态（真实 TCP、不经过任何前端代码），只是请求面从空请求体换成
@@ -414,6 +440,40 @@ impl OpenRequest {
 
     /// 客户端主动中止连接：关闭 socket，不再读取属于这次请求的任何响应，
     /// 也不发任何“取消”请求——断线只是断线。
+    pub fn abort(self) {
+        drop(self.stream);
+    }
+}
+
+/// 一条已经发出带 JSON 请求体的 POST、但尚未读取任何响应的连接。
+///
+/// 用于制造“提交请求已被服务端接受，客户端在结果返回前断线”的真实情形。
+pub struct OpenJsonRequest {
+    stream: tokio::net::TcpStream,
+}
+
+impl OpenJsonRequest {
+    /// 经一条新的 TCP 连接提交 JSON POST，但不等待响应。
+    pub async fn submit(addr: SocketAddr, path: &str, body: &str) -> Self {
+        use tokio::io::AsyncWriteExt;
+
+        let mut stream = tokio::net::TcpStream::connect(addr)
+            .await
+            .expect("连接测试服务器");
+        let request = format!(
+            "POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .expect("发送请求");
+        stream.flush().await.expect("发送请求");
+        OpenJsonRequest { stream }
+    }
+
+    /// 客户端主动中止连接，不读取属于这次请求的任何响应。
     pub fn abort(self) {
         drop(self.stream);
     }

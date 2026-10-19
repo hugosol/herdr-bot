@@ -30,3 +30,20 @@ countdown_seconds = 10
 # [sessions]
 # online_timeout_seconds = 10
 # offline_retention_seconds = 30
+
+# workspace 登记列表的持久文件（可选，缺省为当前工作目录下的 workspaces.json）。
+# 登记列表由后端保存，本机与局域网设备共享；取消登记不删除目录或文件。
+# 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
+# [workspaces]
+# registry_file = 'workspaces.json'
+# 单文件文本预览上限（可选，缺省 1048576 字节 = 1 MiB）。
+# 超限文件只显示大小与上限，不加载完整内容；零、负数、小数或字符串会让启动明确失败。
+# preview_limit_bytes = 1048576
+# 每个 workspace 自动刷新合并事件的最小间隔（可选，缺省 10 秒）。
+# 没有等待窗口时立即刷新；窗口内的事件合并成一次补刷新。零、负数、小数或字符串会让启动明确失败。
+# refresh_interval_seconds = 10
+
+# 每条 Git 命令的执行时限（可选，缺省 300 秒）。
+# 超时停止本次执行并中断后续步骤，页面标明这是本功能时限；零、负数、小数或字符串会让启动明确失败。
+# [git]
+# command_timeout_seconds = 300

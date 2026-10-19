@@ -255,6 +255,9 @@ describe('未确认的取消与传输故障（P28、P50）', () => {
     )
     const { source } = mountPage(0)
 
+    // 手动入口只在控制面板可见；页面默认停在会话列表。
+    fireEvent.click(page(0).getByTestId('tab-control'))
+
     // 开始意图没有回应：只标记未确认，一次请求。
     fireEvent.click(page(0).getByTestId('shutdown-button'))
     fireEvent.click(page(0).getByTestId('shutdown-confirm-button'))
@@ -327,6 +330,7 @@ describe('未确认与明确拒绝互不混淆（P47）', () => {
     const calls = recordingFetch(() => Promise.reject(new Error('传输中断')))
     mountPage(0)
 
+    fireEvent.click(page(0).getByTestId('tab-control'))
     fireEvent.click(page(0).getByTestId('shutdown-button'))
     fireEvent.click(page(0).getByTestId('shutdown-confirm-button'))
     await flush()

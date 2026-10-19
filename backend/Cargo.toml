@@ -13,6 +13,8 @@ axum = "0.8"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 if-addrs = "0.15"
 mdns-sd = "0.21"
+# 真实文件系统事件监听：监听库只在本模块使用，事件仍然经公开 SSE 通知页面重新读取。
+notify = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "sync", "time"] }
