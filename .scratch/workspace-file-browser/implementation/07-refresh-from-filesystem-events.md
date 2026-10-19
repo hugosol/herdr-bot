@@ -6,7 +6,7 @@
 
 **Blocked by:** 03: 准确定位 Git 待提交变更.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 依据已批准的 [contract](../contract.md) 与 [spec](../spec.md)，通过 S1/S2 验收。04–06 不是本票前置条件；本票可以与 diff/Commit/Sync 链路并行推进，不提前固定监听库或更新传输协议。
 
@@ -32,3 +32,17 @@ P39/P40/P52 全部覆盖与测试归 07。P41 的节流窗口交错自动测试�
 ## Verification boundaries
 
 以真实文件系统、Git 元数据和交付进程为外部证据，节流时间期望独立于 implementation。真实浏览器观察更新与监听健康反馈；不修改用户工作仓库、不推送业务远端、不执行真实关机。不得借监听失败增加新的恢复、轮询远端或 telemetry 产品范围。
+
+## Comments
+
+### 集成合并与回归（2026-10-19）
+
+- 合并 `ec16f5c`（dev 上的 04 集成提交）到本票分支，仅 `README.md` 冲突；按两侧意图合并：模块表同时保留
+  `git.rs` 的 diff 说明与 `watch.rs`、`workspaceWatch.ts` 与 `diff.ts`/`diffApi.ts`；浏览章节同时保留 04 的
+  diff 预览上限/纯文本说明与 07 的自动刷新、刷新边界、监听健康、远端边界。合并提交 `8e46f84`。
+- 全局测试首轮在既有夹具结束脚本上暴露竞态：`stop-fixtures.ps1` 见到停止标记被消费后立即检查/强杀，
+  夹具的 `cmd.exe` 尚在退出时被误记为 `force-killed`。在标记被消费后增加有界退出等待（`f134ebf`），
+  保持“标记结束优先、超时才强杀”的原语义。
+- 回归：`cargo test` → 30 个测试目标、240 项全部通过；`npm test` → 18 个文件、123 项通过；
+  `npm run build`（`tsc --noEmit && vite build`）成功。`ec16f5c` 已是本分支祖先，宿主合入 `dev` 时为快进。
+  尚未合入 `dev`，状态保持 `in-progress`，合入后关闭。
