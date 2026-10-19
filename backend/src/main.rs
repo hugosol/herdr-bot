@@ -46,6 +46,10 @@ async fn main() -> anyhow::Result<()> {
         "[omp-bot] workspace 登记文件：{}",
         config.workspaces.registry_file.display()
     );
+    println!(
+        "[omp-bot] 单文件预览上限：{} 字节",
+        config.workspaces.preview_limit_bytes.get()
+    );
     println!("[omp-bot] 监听：http://{local_addr}/");
     println!(
         "[omp-bot] 局域网设备请访问 http://<本机局域网 IPv4>:{}（ipconfig 查看地址）",

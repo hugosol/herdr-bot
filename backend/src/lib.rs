@@ -36,6 +36,7 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
+pub mod browse;
 pub mod clock;
 pub mod config;
 pub mod countdown;
@@ -52,7 +53,8 @@ use std::sync::Arc;
 use axum::Json;
 use axum::Router;
 use axum::body::to_bytes;
-use axum::extract::{Path as UrlPath, Request, State};
+use axum::extract::rejection::QueryRejection;
+use axum::extract::{Path as UrlPath, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
@@ -106,6 +108,10 @@ pub struct AppState {
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
     pub workspaces: Arc<workspaces::Workspaces>,
+    /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
+    ///
+    /// 浏览读取只读；上限只影响内容预览，不影响目录列表与文件元数据。
+    pub preview_limit_bytes: u64,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -175,6 +181,7 @@ pub fn app_with_state(
         workspaces: Arc::new(workspaces::Workspaces::new(
             config.workspaces.registry_file.clone(),
         )),
+        preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -202,6 +209,9 @@ pub fn app_with_state(
             "/api/workspaces",
             get(list_workspaces).post(register_workspace),
         )
+        // 只读浏览：列一个目录的直接子项、读取单个文件内容。两者都从登记根重新核对边界。
+        .route("/api/workspaces/entries", get(list_workspace_entries))
+        .route("/api/workspaces/file", get(read_workspace_file))
         .route("/api/workspaces/remove", post(unregister_workspace))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
@@ -507,6 +517,113 @@ async fn workspace_path(request: Request) -> Result<String, Response> {
         )
     })?;
     Ok(body.path)
+}
+
+/// 一次只读浏览请求的查询参数：登记路径 + 可选相对路径（空字符串表示根目录）。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BrowseQuery {
+    workspace: String,
+    #[serde(default)]
+    path: String,
+}
+
+/// “列目录”：返回该目录的直接子项；隐藏文件、忽略文件和 Git 元数据都不过滤。
+async fn list_workspace_entries(
+    State(state): State<AppState>,
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Response {
+    let query = match browse_query(query) {
+        Ok(query) => query,
+        Err(rejection) => return rejection,
+    };
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let path = query.path;
+    match tokio::task::spawn_blocking(move || browse::list_directory(&registered, &path)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取目录的任务异常结束，无法确认目录内容。".to_string(),
+        ),
+    }
+}
+
+/// “读文件”：返回文件元数据与内容预览；超限或二进制不返回内容，但仍返回元数据。
+async fn read_workspace_file(
+    State(state): State<AppState>,
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Response {
+    let query = match browse_query(query) {
+        Ok(query) => query,
+        Err(rejection) => return rejection,
+    };
+    let registered = match registered_workspace(&state, &query.workspace).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let path = query.path;
+    let limit = state.preview_limit_bytes;
+    match tokio::task::spawn_blocking(move || browse::read_file(&registered, &path, limit)).await {
+        Ok(Ok(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取文件的任务异常结束，无法确认文件内容。".to_string(),
+        ),
+    }
+}
+
+/// 校验查询面：缺失、重复或未知参数都以 JSON 类别拒绝，不猜测请求意图。
+fn browse_query(
+    query: Result<Query<BrowseQuery>, QueryRejection>,
+) -> Result<BrowseQuery, Response> {
+    let Query(query) = query.map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-query",
+            "读取 workspace 需要 `workspace` 参数与可选的 `path` 参数，且不接受其他参数。"
+                .to_string(),
+        )
+    })?;
+    if query.workspace.trim().is_empty() {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-required",
+            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+        ));
+    }
+    Ok(query)
+}
+
+/// 按登记列表核对 workspace；未登记与登记文件读取失败都明确返回，不继续读取文件系统。
+async fn registered_workspace(state: &AppState, requested: &str) -> Result<String, Response> {
+    match state.workspaces.list().await {
+        Ok(workspaces) => match browse::registered_root(&workspaces, requested) {
+            Ok(root) => Ok(root.to_string()),
+            Err(error) => Err(browse_error_response(error)),
+        },
+        Err(error) => Err(workspace_error_response(error)),
+    }
+}
+
+fn browse_error_response(error: browse::BrowseError) -> Response {
+    use browse::BrowseError;
+    let status = match &error {
+        BrowseError::WorkspaceNotRegistered | BrowseError::PathNotFound => StatusCode::NOT_FOUND,
+        BrowseError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        BrowseError::PathOutside | BrowseError::Link { .. } => StatusCode::FORBIDDEN,
+        BrowseError::NotADirectory
+        | BrowseError::NotAFile
+        | BrowseError::InvalidPath(_) => StatusCode::BAD_REQUEST,
+        BrowseError::ReadFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    rejected_owned(status, error.code(), error.message())
 }
 
 /// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表，失败不伪装成空列表。

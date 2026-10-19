@@ -24,11 +24,14 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/config.rs` | 服务端配置：监听地址、固定操作绑定（脚本 + 工作目录） |
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
 | `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
+| `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
-| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取与取消登记 |
+| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、取消登记与进入浏览 |
+| `frontend/src/WorkspaceBrowser.tsx` | workspace 只读浏览界面：电脑左树右内容、窄屏逐层进入与返回 |
+| `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -252,11 +255,14 @@ workspace 登记列表由后端以文件持久保存，本机与局域网设备�
 [workspaces]
 # 登记文件位置；缺省为进程工作目录下的 workspaces.json。
 registry_file = 'E:\data\omp-bot-workspaces.json'
+# 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
+preview_limit_bytes = 1048576
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `registry_file` | `workspaces.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
+| `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
 
 - 登记文件不存在表示“还没有任何登记”，不是读取错误；列表在真实进程重启后仍然保留。
 - 登记成功只表示登记文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或文件内容
@@ -265,6 +271,10 @@ registry_file = 'E:\data\omp-bot-workspaces.json'
 - 登记路径必须是服务器上的**绝对**路径，且指向真实存在的目录；普通目录与 Git 工作树根目录都可登记。
   登记不初始化 Git，也不扫描或聚合嵌套仓库。
 - 取消登记只移除登记项，不删除目录或文件；目录在登记后被外部删除时仍可取消登记。
+- `preview_limit_bytes` 必须是正整数；零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，
+  不会静默回退到 1 MiB。缺省值只在字段或整段缺失时使用。
+- 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
+  就只显示大小与上限说明。
 
 ### 文件列表与 workspace 登记
 
@@ -286,6 +296,34 @@ registry_file = 'E:\data\omp-bot-workspaces.json'
 接口：`GET /api/workspaces` 读取列表，`POST /api/workspaces` 登记（JSON `{"path":"服务器绝对路径"}`），
 `POST /api/workspaces/remove` 取消登记（同一请求体）。成功响应都是当前完整列表：
 `{"workspaces":[{"path":"…"}]}`；失败响应是 `{"code":"…","message":"…"}`。
+
+### 进入 workspace：只读文件浏览
+
+登记项旁的“浏览”进入该 workspace 的只读文件浏览视图。普通目录与 Git 工作区共用同一界面；本票只提供
+浏览，不显示可用的变更视图或 Commit / Sync 控件。
+
+- **电脑**：左侧目录树、右侧文件内容。目录按需展开；选择文件后右侧显示只读内容。
+- **窄屏（≤ 720px）**：逐层进入目录；选择文件后进入内容视图，并可用“返回文件列表”回到原目录，列表滚动
+  位置会恢复。
+- **完整目录**：输出与磁盘真实内容一致，隐藏文件、被 Git 忽略的文件、`.gitignore` 与 `.git` 元数据都不会
+  被过滤；`.git` 内的文件可只读打开，但不参与任何提交或着色逻辑。
+- **边界**：只读取已登记 workspace 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
+  目录联接与其他 reparse point 都会被拒绝；链接条目在目录中显示目标与不可进入原因，目标内容不会被读取。
+  登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。
+- **内容识别**：按内容识别文本（完整 UTF-8、无 NUL 字节），不要求后缀；无后缀文本可读，伪文本后缀的
+  二进制文件给出“不可文本预览”原因。内容以纯文本显示，HTML/script 不会被执行。
+- **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。超限文件只显示大小与上限，不加载
+  完整内容；二进制与超限都不影响文件在目录中的可见性。
+- **刷新**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会重新读取当前目录与所选文件；不把旧结果当作
+  当前事实。目录或文件在外部被删除后，页面显示明确错误。
+
+接口：`GET /api/workspaces/entries?workspace=<登记路径>&path=<相对目录>` 返回
+`{"workspace":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
+"linkTarget":"…","linkReason":"…"}]}`；`GET /api/workspaces/file?workspace=<登记路径>&path=<相对文件>` 返回
+`{"workspace":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
+`binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。失败响应同样是
+`{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、`path-not-found`、
+`workspace-unavailable`、`read-failed`。
 
 ### 默认绑定与改绑
 
@@ -1373,5 +1411,57 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
     `alpha/nested/inner.txt` 内容逐字节未变；登记文件只剩 `gitrepo`。
 - **未由本次改动承担的范围**：workspace 文件浏览、Git 变更、Commit/Sync 与事件刷新属于同一 spec 的后续
   实现票；手机实机触摸体验（H1）不由本票宣称通过。真实浏览器窄屏检查只是 Chromium 仿真，不构成真机结论。
+
+## 变更记录：workspace 只读文件浏览（2026-10-19）
+
+本次新增进入已登记 workspace、浏览完整目录并只读查看文件内容；普通目录与 Git 工作区共用浏览能力，
+本票不开放 Git 变更视图或 Commit / Sync 写入口。
+
+- **改了什么**：
+  - 新增 `backend/src/browse.rs`：列目录（隐藏文件、忽略文件、`.gitignore` 与 `.git` 元数据都不过滤）与
+    单文件读取。每次读取都重新核对登记根与每个路径分量；绝对路径、`..` 遍历、盘符/UNC/备用数据流、
+    末尾会被 Windows 改写的空格与点、符号链接、目录联接及其他 reparse point 都被拒绝；根目录被替换成
+    链接/文件或删除时返回明确错误，不伪装成空目录。
+  - 文本按内容识别（完整 UTF-8、无 NUL、控制字符有限），不依赖后缀；二进制返回不可文本预览原因。
+    `[workspaces] preview_limit_bytes`（缺省 1 MiB）在读取内容之前生效：超限只返回大小与上限，不加载
+    完整内容；恰好等于上限的文件完整预览。
+  - 新增 `GET /api/workspaces/entries?workspace=…&path=…` 与 `GET /api/workspaces/file?workspace=…&path=…`；
+    失败响应沿用 `{"code":"…","message":"…"}`（如 `path-outside-workspace`、`path-is-link`、
+    `path-not-found`、`workspace-unavailable`、`read-failed`）。
+  - 新增 `frontend/src/WorkspaceBrowser.tsx` 与 `browseApi.ts`：电脑左树右内容；窄屏逐层进入目录、从文件
+    内容明确返回并恢复列表滚动。登记项新增“浏览”入口；顶层 tab 往返保留 workspace、展开状态、所选文件
+    与浏览滚动，回到页面或点按“刷新”重新读取当前事实。
+  - `omp-bot.toml` 与 README 补充预览上限配置；启动日志打印实际生效的上限。
+- **自动检查**（在 `backend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_browse` → `8 passed`：真实目录集合与隐藏/忽略/`.git` 元数据一致并在页面
+    夹具中可选择读取；遍历/绝对路径/UNC/末尾空格与点反例；真实目录联接、真实（WSL 创建的 NTFS reparse
+    point）符号链接与文件符号链接均被拒绝且不读取根外内容；子目录与根被替换、删除时明确报错；读取前后
+    文件字节、真实 Git 索引语义与待提交状态不变；文本按内容识别、二进制原因、64 字节边界、默认 1 MiB
+    精确边界；超限文件在独占共享模式下仍只读元数据而不打开内容。
+  - `cargo test --lib config::tests` → `25 passed`：旧配置缺 `[workspaces]`/新字段仍可解析并取默认
+    1048576；显式覆盖生效；零、负数、字符串类型与拼错字段名分别被拒绝。
+  - `cargo test`（全部测试目标）→ 全部通过；`npm test` → `14 files / 99 tests passed`；
+    `npm run build`（`tsc --noEmit && vite build`）→ 成功。
+  - 前端新增 `tests/workspaceBrowser.test.tsx` 9 例，覆盖完整目录读取、无 Git 控件、二进制/超限说明、
+    目录与文件读取失败、跨顶层 tab 状态与滚动保留、窄屏进入/返回/滚动恢复、HTML 纯文本、根外链接提示
+    与无响应不伪装空目录。
+- **真实 Chromium smoke**（隔离真实目录、隔离登记文件、真实后端进程；未执行关机）：
+  - 桌面 `1280×900`：左树右内容（树右边界 `644`、内容左边界 `656` CSS px）；展开目录后树
+    `scrollHeight=2770 > clientHeight=583`，选择 `many/020.txt` 后右侧显示对应内容并保留滚动。
+  - 跨顶层 tab：切到会话列表再回文件列表，workspace、展开的 `src`/`many`、所选 `README` 与树
+    `scrollTop=200` 全部保留。
+  - 窄屏 `390×844`：只渲染逐层进入布局；进入 `many`、打开 `many/015.txt`、返回后列表
+    `scrollTop=300` 精确恢复；目录返回再进入同样恢复 300；跨顶层 tab 后目录与滚动也保留。
+  - `src/page.html` 中的 `<script>window.__pwned=1</script>` 只作为文本显示，页面里没有执行标记，
+    只有应用自身的打包脚本；`huge.txt` 显示 `1048577` 字节超过 `1048576` 上限且未加载内容；
+    `binary.bin` 显示 NUL 字节原因；根外目录联接显示目标与不可进入原因且没有进入按钮。
+  - 外部删除所选文件、子目录与 workspace 根后，页面分别显示明确错误，不显示空目录。
+  - 截图见
+    [`.scratch/workspace-file-browser/evidence/02-browse-workspace-files/`](.scratch/workspace-file-browser/evidence/02-browse-workspace-files/)。
+- **限制与未由本票承担的范围**：标准 Windows 符号链接创建需要管理员权限或开发者模式；本机以真实
+  Windows 目录联接 + WSL 在 NTFS 上创建的真实 reparse point 符号链接完成证据（测试输出
+  `native=false`）。目录联接的目标显示已验证；WSL 符号链接的目标本身无法由 Windows `read_link`
+  读取，页面显示“目标不可读取”，因此标准 Windows 符号链接的目标文本未单独观察。手机实机触摸体验
+  （H1）仍由 08 汇总证据后交用户确认。Git 变更、diff、Commit/Sync 与文件事件刷新属于后续票。
 
 

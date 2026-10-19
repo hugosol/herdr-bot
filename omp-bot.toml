@@ -36,3 +36,6 @@ countdown_seconds = 10
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
 # [workspaces]
 # registry_file = 'workspaces.json'
+# 单文件文本预览上限（可选，缺省 1048576 字节 = 1 MiB）。
+# 超限文件只显示大小与上限，不加载完整内容；零、负数、小数或字符串会让启动明确失败。
+# preview_limit_bytes = 1048576

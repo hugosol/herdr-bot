@@ -50,12 +50,16 @@ pub struct WorkspacesConfig {
     /// 登记文件路径；缺省 `workspaces.json`。
     #[serde(default = "registry_file_by_default")]
     pub registry_file: PathBuf,
+    /// 单个文件文本预览的大小上限；缺省 1 MiB。超限只返回限制说明，不加载完整内容。
+    #[serde(default = "preview_limit_bytes_by_default")]
+    pub preview_limit_bytes: PreviewLimitBytes,
 }
 
 impl Default for WorkspacesConfig {
     fn default() -> Self {
         Self {
             registry_file: registry_file_by_default(),
+            preview_limit_bytes: preview_limit_bytes_by_default(),
         }
     }
 }
@@ -63,6 +67,47 @@ impl Default for WorkspacesConfig {
 /// `[workspaces] registry_file` 的缺省值：进程工作目录下的 `workspaces.json`。
 fn registry_file_by_default() -> PathBuf {
     PathBuf::from(DEFAULT_REGISTRY_FILE)
+}
+
+/// 缺省的单文件文本预览上限：1 MiB。
+pub const DEFAULT_PREVIEW_LIMIT_BYTES: u64 = 1024 * 1024;
+
+/// `[workspaces] preview_limit_bytes` 的缺省值：1 MiB。
+fn preview_limit_bytes_by_default() -> PreviewLimitBytes {
+    PreviewLimitBytes(DEFAULT_PREVIEW_LIMIT_BYTES)
+}
+
+/// 单个文件的文本预览上限（字节）：合法范围 1..=u64::MAX。
+///
+/// 解析本身承担范围检查：零会让任何文件都不可预览，负数、小数、字符串、布尔值都无法解析成
+/// 无符号整数——每种情形都让**启动失败**，不做静默回退，也不用缺省值掩盖写错的配置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreviewLimitBytes(u64);
+
+impl PreviewLimitBytes {
+    /// 构造一个合法的预览上限；零不是合法上限。
+    pub fn new(bytes: u64) -> Result<Self, &'static str> {
+        if bytes == 0 {
+            Err("preview_limit_bytes 必须是正整数（默认 1048576）")
+        } else {
+            Ok(Self(bytes))
+        }
+    }
+
+    /// 上限的字节数。
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PreviewLimitBytes {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes = u64::deserialize(deserializer)?;
+        Self::new(bytes).map_err(de::Error::custom)
+    }
 }
 
 /// 关机设置（`[shutdown]` 段）。
@@ -357,6 +402,64 @@ working_directory = 'C:\work'
         assert!(
             Config::from_toml(&raw).is_err(),
             "[workspaces] 里写错字段名必须导致解析失败"
+        );
+    }
+
+    #[test]
+    fn legacy_config_without_preview_limit_defaults_to_one_mebibyte() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.workspaces.preview_limit_bytes.get(),
+            DEFAULT_PREVIEW_LIMIT_BYTES,
+            "缺省 [workspaces] 段时预览上限取 1 MiB"
+        );
+
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'x.json'\n");
+        let config = Config::from_toml(&raw).expect("只有 registry_file 的配置必须可解析");
+        assert_eq!(
+            config.workspaces.preview_limit_bytes.get(),
+            DEFAULT_PREVIEW_LIMIT_BYTES,
+            "缺少 preview_limit_bytes 字段时取 1 MiB"
+        );
+    }
+
+    #[test]
+    fn explicit_preview_limit_is_read_verbatim() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = 2097152\n"
+        );
+        let config = Config::from_toml(&raw).expect("合法预览上限必须可解析");
+        assert_eq!(config.workspaces.preview_limit_bytes.get(), 2_097_152);
+    }
+
+    #[test]
+    fn preview_limit_with_wrong_type_is_rejected() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = '1 MiB'\n"
+        );
+        let error = Config::from_toml(&raw).expect_err("非整数预览上限必须导致解析失败");
+        assert!(
+            error.to_string().contains("preview_limit_bytes"),
+            "解析错误应指出出错的字段，实际：{error}"
+        );
+    }
+
+    #[test]
+    fn zero_preview_limit_is_rejected_instead_of_falling_back() {
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = 0\n");
+        let error = Config::from_toml(&raw).expect_err("零预览上限必须导致解析失败");
+        assert!(
+            error.to_string().contains("preview_limit_bytes"),
+            "解析错误应指出上限非法，实际：{error}"
+        );
+    }
+
+    #[test]
+    fn negative_preview_limit_is_rejected() {
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = -1\n");
+        assert!(
+            Config::from_toml(&raw).is_err(),
+            "负预览上限必须导致解析失败"
         );
     }
 

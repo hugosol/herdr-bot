@@ -203,11 +203,306 @@ h1 {
   cursor: progress;
 }
 
+.workspace-item__open {
+  flex: none;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #37506b;
+  border-radius: 0.5rem;
+  background: #1d2a38;
+  color: #a9d0f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.workspace-item__open:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .workspace-form__input:focus-visible,
 .workspace-register:focus-visible,
+.workspace-item__open:focus-visible,
 .workspace-item__remove:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
+}
+
+/* ---------- workspace 只读文件浏览 ---------- */
+
+/* 文件列表比固定操作需要更宽的左右布局；其他 tab 仍保持窄面板。 */
+.panel--wide {
+  width: min(100%, 72rem);
+  /* 浏览布局比固定操作高：从顶部开始排布，避免居中把标题和工具栏推到视口外。 */
+  min-height: calc(100vh - 2rem);
+  align-self: flex-start;
+  margin-block: 1rem;
+}
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.browser-toolbar__button {
+  flex: none;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-toolbar__button:disabled {
+  color: #8a93a1;
+  cursor: progress;
+}
+
+.browser-toolbar__workspace {
+  flex: 1;
+  min-width: 0;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.browser-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+/* 浏览树与内容区各自滚动：外层 tab 切换时 DOM 保持挂载，滚动位置随组件保留。 */
+.browser-tree,
+.browser-content,
+.browser-mobile__list {
+  box-sizing: border-box;
+  min-height: 24rem;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.5rem;
+  background: #1d2128;
+}
+
+.tree-list,
+.mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-item,
+.mobile-item {
+  margin: 0;
+  min-width: 0;
+}
+
+.tree-row,
+.mobile-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-row:hover,
+.mobile-row:hover {
+  background: #252b33;
+}
+
+.tree-row:focus-visible,
+.mobile-row:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: -2px;
+}
+
+.tree-row--directory {
+  font-weight: 600;
+}
+
+.tree-row__caret {
+  flex: none;
+  width: 1rem;
+  color: #8a93a1;
+}
+
+.tree-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tree-row--file.is-selected {
+  background: #2b3a2d;
+  color: #d9ffdc;
+}
+
+.tree-row--link,
+.mobile-row--link {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: #25231d;
+  color: #c9c2b4;
+  cursor: default;
+}
+
+.tree-row__link-target {
+  color: #e2c98a;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.tree-row__link-reason {
+  color: #a9b1bd;
+  font-size: 0.82rem;
+}
+
+.mobile-row__hint {
+  flex: none;
+  color: #8a93a1;
+}
+
+.browser-loading,
+.browser-empty,
+.browser-placeholder {
+  margin: 0;
+  padding: 0.75rem;
+  color: #a9b1bd;
+  font-size: 0.95rem;
+}
+
+.browser-error {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #c14b3a;
+  border-radius: 0.35rem;
+  background: #33201c;
+  color: #ffd9d1;
+  font-size: 0.95rem;
+}
+
+.browser-error--inline {
+  margin: 0.35rem 0 0.35rem 1rem;
+}
+
+.file-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-view__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #2b313a;
+}
+
+.file-view__path {
+  min-width: 0;
+  color: #d6dbe4;
+  overflow-wrap: anywhere;
+}
+
+.file-view__size {
+  color: #8a93a1;
+  font-size: 0.85rem;
+}
+
+.file-view__text {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-view__limited {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 0.35rem solid #b58a2f;
+  border-radius: 0.35rem;
+  background: #2b261a;
+  color: #f0dfb0;
+}
+
+.browser-current-path {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.browser-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.browser-mobile__back {
+  align-self: flex-start;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #d6dbe4;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.browser-mobile__back:focus-visible {
+  outline: 2px solid #a9d0f0;
+  outline-offset: 2px;
+}
+
+/* 窄屏：面板保持单列宽度，逐层进入的列表自己滚动，返回时恢复位置。 */
+@media (max-width: 720px) {
+  .panel,
+  .panel--wide {
+    width: min(100%, 32rem);
+    padding: 1rem;
+  }
+
+  .browser-toolbar__workspace {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .browser-mobile__list {
+    min-height: 60vh;
+    max-height: 60vh;
+  }
 }
 
 /* 窄屏：路径输入与登记按钮上下排列，按钮占满宽度，触摸目标保持足够大。 */

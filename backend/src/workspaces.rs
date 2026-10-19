@@ -260,7 +260,7 @@ fn canonical_candidate(input: &str) -> Result<String, WorkspaceError> {
 }
 
 /// Windows 的 `canonicalize` 返回 `\\?\C:\…` 形式；存回用户可读的普通绝对路径。
-fn display_path(path: &Path) -> String {
+pub(crate) fn display_path(path: &Path) -> String {
     let text = path.to_string_lossy().into_owned();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
@@ -280,12 +280,13 @@ fn path_key(path: &str) -> String {
         trimmed
     };
     if cfg!(windows) {
-        trimmed.to_lowercase()
+        // 同一目录可能以 `/` 或 `\` 书写；登记身份按 Windows 的大小写与分隔符规则比较。
+        trimmed.replace('/', "\\").to_lowercase()
     } else {
         trimmed.to_string()
     }
 }
 
-fn same_path(left: &str, right: &str) -> bool {
+pub(crate) fn same_path(left: &str, right: &str) -> bool {
     path_key(left) == path_key(right)
 }
