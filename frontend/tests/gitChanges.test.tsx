@@ -245,7 +245,8 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
     expect(screen.getByTestId('conflict-warning')).toHaveTextContent('冲突')
     expect(screen.queryByText(/^[AMD]$/)).toBeNull()
     expect(screen.queryByText(/^[AMD] .*/)).toBeNull()
-    expect(screen.queryByRole('button', { name: /Commit/ })).toBeNull()
+    // Commit 入口已由 05 提供；这段状态带冲突且没有审查版本，因此主按钮必须不可执行。
+    expect(screen.getByRole('button', { name: /Commit/ })).toBeDisabled()
     expect(screen.queryByRole('button', { name: /Sync/ })).toBeNull()
   })
 

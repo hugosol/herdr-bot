@@ -38,6 +38,7 @@ fn config_with_operations(
         shutdown: omp_bot::ShutdownConfig::default(),
         sessions: omp_bot::SessionsConfig::default(),
         workspaces: omp_bot::WorkspacesConfig::default(),
+        git: omp_bot::GitConfig::default(),
     }
 }
 

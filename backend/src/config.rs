@@ -38,6 +38,71 @@ pub struct Config {
     /// `workspaces.json`。
     #[serde(default)]
     pub workspaces: WorkspacesConfig,
+    /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
+    #[serde(default)]
+    pub git: GitConfig,
+}
+
+/// Git 命令执行设置（`[git]` 段）。
+///
+/// 这是本功能的执行时限：每条 Git 命令只允许运行到这里配置的时长。超过时限时停止本次执行并
+/// 中断后续步骤；它不是 Git 自己的退出结果，页面会明确标出这是本功能取消的命令。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitConfig {
+    /// 每条 Git 命令的执行时限；缺省 300 秒。
+    #[serde(default = "command_timeout_seconds_by_default")]
+    pub command_timeout_seconds: CommandTimeoutSeconds,
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self {
+            command_timeout_seconds: command_timeout_seconds_by_default(),
+        }
+    }
+}
+
+/// 缺省的 Git 命令执行时限：300 秒。
+pub const DEFAULT_COMMAND_TIMEOUT_SECONDS: u32 = 300;
+
+/// `[git] command_timeout_seconds` 的缺省值：300 秒。
+fn command_timeout_seconds_by_default() -> CommandTimeoutSeconds {
+    CommandTimeoutSeconds(DEFAULT_COMMAND_TIMEOUT_SECONDS)
+}
+
+/// 每条 Git 命令的执行时限（秒）：合法范围 1..=u32::MAX。
+///
+/// 缺省 300 秒；零、负数、小数、字符串或拼错的字段名都会让启动失败，而不是静默回退。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "u32")]
+pub struct CommandTimeoutSeconds(u32);
+
+impl CommandTimeoutSeconds {
+    pub fn new(seconds: u32) -> Result<Self, &'static str> {
+        if seconds == 0 {
+            Err("command_timeout_seconds 必须是正整数（默认 300）")
+        } else {
+            Ok(Self(seconds))
+        }
+    }
+
+    pub fn get(self) -> u32 {
+        self.0
+    }
+
+    /// 秒数对应的时限。
+    pub fn duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+
+impl TryFrom<u32> for CommandTimeoutSeconds {
+    type Error = &'static str;
+
+    fn try_from(seconds: u32) -> Result<Self, Self::Error> {
+        Self::new(seconds)
+    }
 }
 
 /// workspace 登记设置（`[workspaces]` 段）。
@@ -332,6 +397,69 @@ working_directory = 'C:\work'
 script = 'C:\stop.bat'
 working_directory = 'C:\work'
 "#;
+
+    #[test]
+    fn legacy_config_without_git_section_defaults_to_five_minutes() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.git.command_timeout_seconds.get(),
+            DEFAULT_COMMAND_TIMEOUT_SECONDS,
+            "缺省 [git] 段时每条 Git 命令最多执行 300 秒"
+        );
+        assert_eq!(
+            config.git.command_timeout_seconds.duration(),
+            Duration::from_secs(300)
+        );
+    }
+
+    #[test]
+    fn explicit_git_command_timeout_is_read_verbatim() {
+        let raw = format!("{LEGACY_CONFIG}\n[git]\ncommand_timeout_seconds = 7\n");
+        let config = Config::from_toml(&raw).expect("合法 Git 命令时限必须可解析");
+        assert_eq!(config.git.command_timeout_seconds.get(), 7);
+    }
+
+    #[test]
+    fn git_section_with_only_other_defaults_keeps_timeout_default() {
+        let raw = format!("{LEGACY_CONFIG}\n[git]\n");
+        let config = Config::from_toml(&raw).expect("空的 [git] 段必须可解析");
+        assert_eq!(
+            config.git.command_timeout_seconds.get(),
+            DEFAULT_COMMAND_TIMEOUT_SECONDS
+        );
+    }
+
+    #[test]
+    fn illegal_git_command_timeouts_are_rejected_instead_of_falling_back() {
+        for (literal, why) in [
+            ("0", "零不是合法的执行时限"),
+            ("-1", "负数不是秒数"),
+            ("1.5", "小数不是整秒"),
+            ("'300'", "字符串不是数字"),
+        ] {
+            let raw = format!(
+                "{LEGACY_CONFIG}\n[git]\ncommand_timeout_seconds = {literal}\n"
+            );
+            let error = Config::from_toml(&raw)
+                .err()
+                .unwrap_or_else(|| panic!("{why}，必须导致启动配置解析失败：{literal}"));
+            assert!(
+                error.to_string().contains("command_timeout_seconds"),
+                "解析错误应指出出错的字段，实际：{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn misspelled_git_command_timeout_field_is_rejected() {
+        let raw = format!("{LEGACY_CONFIG}\n[git]\ncommand_timeout_second = 7\n");
+        let error = Config::from_toml(&raw).expect_err("写错的字段名必须导致解析失败");
+        assert!(
+            error.to_string().contains("unknown field")
+                && error.to_string().contains("`command_timeout_second`"),
+            "解析错误应指出未知字段名，实际：{error}"
+        );
+    }
 
     #[test]
     fn legacy_config_without_mdns_section_parses_with_publishing_enabled_by_default() {

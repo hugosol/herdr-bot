@@ -23,7 +23,32 @@ export type GitStatus = {
   changes: GitChange[]
   conflict: boolean
   pendingCount: number
+  /** 本次展示的审查版本；Commit 必须原样带回它。 */
+  reviewToken?: string
+  /** 仓库级阻塞原因；存在时 Commit 不可用。 */
+  blockedReason?: string | null
 }
+
+/** 一次已确认提交的回执。 */
+export type CommitAccepted = {
+  workspace: string
+  outcome: 'committed'
+  commit: string
+  branch?: string | null
+  message: string
+}
+
+/**
+ * 一次提交请求在页面一侧的归宿。
+ *
+ * - `ok`：后端确认创建了提交。
+ * - `rejected`：后端明确拒绝；没有提交或提交失败，错误类别与 Git 诊断原样显示。
+ * - `unreachable`：观察中断；不能当成成功，也不能当成未执行。
+ */
+export type CommitResult =
+  | { kind: 'ok'; value: CommitAccepted }
+  | { kind: 'rejected'; code: string; message: string }
+  | { kind: 'unreachable' }
 
 /** 文件列表上的角标概览；不可访问的项带 `error`，普通目录没有待提交数量。 */
 export type WorkspaceSummary = {
@@ -80,8 +105,35 @@ function isGitStatus(value: unknown): value is GitStatus {
   if (!value.changes.every(isGitChange)) return false
   if (!('conflict' in value) || typeof value.conflict !== 'boolean') return false
   if (!('pendingCount' in value) || typeof value.pendingCount !== 'number') return false
+  if (
+    'reviewToken' in value &&
+    value.reviewToken !== undefined &&
+    typeof value.reviewToken !== 'string'
+  ) {
+    return false
+  }
+  if (
+    'blockedReason' in value &&
+    value.blockedReason !== undefined &&
+    value.blockedReason !== null &&
+    typeof value.blockedReason !== 'string'
+  ) {
+    return false
+  }
   // 项数必须与集合一致；不一致的答复不能冒充可用状态。
   return value.pendingCount === value.changes.length
+}
+
+function isCommitAccepted(value: unknown): value is CommitAccepted {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('outcome' in value) || value.outcome !== 'committed') return false
+  if (!('commit' in value) || typeof value.commit !== 'string') return false
+  if (!('message' in value) || typeof value.message !== 'string') return false
+  if ('branch' in value && value.branch !== undefined && value.branch !== null) {
+    if (typeof value.branch !== 'string') return false
+  }
+  return true
 }
 
 function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
@@ -128,10 +180,11 @@ function isErrorBody(value: unknown): value is { code: string; message: string }
 async function gitRequest<T>(
   url: string,
   parse: (payload: unknown) => T | null,
+  init?: RequestInit,
 ): Promise<GitResult<T>> {
   let response: Response
   try {
-    response = await fetch(url)
+    response = await fetch(url, init)
   } catch {
     return { kind: 'unreachable' }
   }
@@ -163,4 +216,25 @@ export function fetchGitStatus(workspace: string): Promise<GitResult<GitStatus>>
 /** 读取登记列表的角标概览。 */
 export function fetchWorkspaceOverview(): Promise<GitResult<WorkspaceSummary[]>> {
   return gitRequest('/api/workspaces/overview', parseOverview)
+}
+
+/**
+ * 提交页面当前展示的审查版本。
+ *
+ * 只发送一次 POST；网络中断返回 `unreachable`，由调用方查询实际仓库状态而不是自动重试。
+ */
+export function commitWorkspace(
+  workspace: string,
+  message: string,
+  reviewToken: string,
+): Promise<GitResult<CommitAccepted>> {
+  return gitRequest(
+    '/api/workspaces/commit',
+    (payload) => (isCommitAccepted(payload) ? payload : null),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace, message, reviewToken }),
+    },
+  )
 }

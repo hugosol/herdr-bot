@@ -272,7 +272,7 @@ pub(crate) fn display_path(path: &Path) -> String {
 }
 
 /// 路径身份：Windows 上大小写不敏感，结尾分隔符不影响同一性。
-fn path_key(path: &str) -> String {
+pub(crate) fn path_key(path: &str) -> String {
     let trimmed = path.trim();
     let trimmed = if trimmed.len() > 3 {
         trimmed.trim_end_matches(['\\', '/'])
