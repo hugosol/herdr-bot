@@ -44,6 +44,7 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
+pub mod workspaces;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -61,7 +62,7 @@ use tower_http::services::ServeDir;
 
 pub use config::{
     Config, CountdownSeconds, MdnsConfig, OperationBinding, Operations, SessionWindowSeconds,
-    SessionsConfig, ShutdownConfig,
+    SessionsConfig, ShutdownConfig, WorkspacesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -69,10 +70,14 @@ pub use sessions::SessionPolicy;
 pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
+use workspaces::{RegisteredWorkspace, WorkspaceError};
 
 /// 操作请求的请求体读取上限。操作请求不接受请求体，任何请求体都注定被拒绝，
 /// 因此只要够读完空请求体即可，不必为一个越界请求缓冲任意大的内容。
 const MAX_REQUEST_BODY_BYTES: usize = 8 * 1024;
+
+/// workspace 命令的请求体上限：只含一个服务器目录路径。
+const MAX_WORKSPACE_REQUEST_BYTES: usize = 64 * 1024;
 
 /// 提供给 HTTP handler 的运行状态：只有服务端配置绑定的两个固定操作，以及两个操作共用的执行资格。
 #[derive(Clone)]
@@ -97,6 +102,10 @@ pub struct AppState {
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
     /// 实际关机动作接缝由它持有（注入的记录型实现只用于自动化与人工验收的安全外壳）。
     pub shutdown: Arc<countdown::ShutdownState>,
+    /// workspace 登记列表：由后端以文件持久保存，电脑与手机共享同一份。
+    ///
+    /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
+    pub workspaces: Arc<workspaces::Workspaces>,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -163,6 +172,9 @@ pub fn app_with_state(
         execution: Arc::new(Mutex::new(())),
         sessions,
         shutdown,
+        workspaces: Arc::new(workspaces::Workspaces::new(
+            config.workspaces.registry_file.clone(),
+        )),
     };
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
@@ -184,6 +196,13 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
+        // workspace 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
+        // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
+        .route(
+            "/api/workspaces",
+            get(list_workspaces).post(register_workspace),
+        )
+        .route("/api/workspaces/remove", post(unregister_workspace))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
@@ -416,6 +435,110 @@ struct MonitoringAccepted {
     outcome: &'static str,
     /// 命令之后的权威关机状态（含当前监听集合，与观察流下发的是同一份内容）。
     shutdown: ShutdownView,
+}
+
+/// workspace 登记列表的响应：当前完整列表（登记与取消登记也返回同一形状）。
+#[derive(Debug, Serialize)]
+struct WorkspaceListResponse {
+    workspaces: Vec<RegisteredWorkspace>,
+}
+
+/// workspace 请求的明确失败：机器可读类别 + 面向使用者的说明。
+#[derive(Debug, Serialize)]
+struct WorkspaceErrorResponse {
+    code: &'static str,
+    message: String,
+}
+
+/// 一次 workspace 命令的请求体：服务器上的目录路径。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspacePathRequest {
+    path: String,
+}
+
+/// “列出 workspace 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
+async fn list_workspaces(State(state): State<AppState>) -> Response {
+    workspace_list_response(state.workspaces.list().await)
+}
+
+/// “登记 workspace”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
+async fn register_workspace(State(state): State<AppState>, request: Request) -> Response {
+    match workspace_path(request).await {
+        Ok(path) => workspace_list_response(state.workspaces.register(&path).await),
+        Err(rejection) => rejection,
+    }
+}
+
+/// “取消登记”：只移除登记项，不删除目录或文件。
+async fn unregister_workspace(State(state): State<AppState>, request: Request) -> Response {
+    match workspace_path(request).await {
+        Ok(path) => workspace_list_response(state.workspaces.unregister(&path).await),
+        Err(rejection) => rejection,
+    }
+}
+
+/// 读取 workspace 命令的请求体；请求面封闭（不接受查询串或未知字段）。
+async fn workspace_path(request: Request) -> Result<String, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "workspace 命令不接受查询参数：路径只来自请求体。".to_string(),
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "workspace 请求体超过 64KB 上限。".to_string(),
+            )
+        })?;
+    let body: WorkspacePathRequest = serde_json::from_slice(&bytes).map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            "无法解析 workspace 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。"
+                .to_string(),
+        )
+    })?;
+    Ok(body.path)
+}
+
+/// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表，失败不伪装成空列表。
+fn workspace_list_response(result: Result<Vec<RegisteredWorkspace>, WorkspaceError>) -> Response {
+    match result {
+        Ok(workspaces) => (
+            StatusCode::OK,
+            Json(WorkspaceListResponse { workspaces }),
+        )
+            .into_response(),
+        Err(error) => workspace_error_response(error),
+    }
+}
+
+fn workspace_error_response(error: WorkspaceError) -> Response {
+    let status = match &error {
+        WorkspaceError::AlreadyRegistered => StatusCode::CONFLICT,
+        WorkspaceError::NotRegistered => StatusCode::NOT_FOUND,
+        WorkspaceError::Unreadable(_)
+        | WorkspaceError::Corrupt(_)
+        | WorkspaceError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        WorkspaceError::Required
+        | WorkspaceError::NotAbsolute
+        | WorkspaceError::NotFound
+        | WorkspaceError::NotADirectory
+        | WorkspaceError::Inaccessible(_) => StatusCode::BAD_REQUEST,
+    };
+    rejected_owned(status, error.code(), error.message())
+}
+
+fn rejected_owned(status: StatusCode, code: &'static str, message: String) -> Response {
+    (status, Json(WorkspaceErrorResponse { code, message })).into_response()
 }
 
 /// 两个固定操作共用的执行路径。

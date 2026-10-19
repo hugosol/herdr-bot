@@ -15,6 +15,7 @@ use serde::de::{self, Deserializer};
 use serde::Deserialize;
 
 use crate::sessions::{DEFAULT_OFFLINE_RETENTION_SECONDS, DEFAULT_ONLINE_SECONDS, SessionPolicy};
+use crate::workspaces::DEFAULT_REGISTRY_FILE;
 
 /// omp-bot 主界面运行配置。
 #[derive(Debug, Clone, Deserialize)]
@@ -33,6 +34,35 @@ pub struct Config {
     /// 会话登记的两个窗口；整个 `[sessions]` 段可缺省，缺省等于默认（在线 10 秒、离线保留 30 秒）。
     #[serde(default)]
     pub sessions: SessionsConfig,
+    /// workspace 登记列表的存储位置；整个 `[workspaces]` 段可缺省，缺省为进程工作目录下的
+    /// `workspaces.json`。
+    #[serde(default)]
+    pub workspaces: WorkspacesConfig,
+}
+
+/// workspace 登记设置（`[workspaces]` 段）。
+///
+/// 登记列表由后端以文件持久保存，电脑与手机读取同一份列表；路径相对进程工作目录，与既有配置的
+/// 路径语义一致。登记文件不存在表示还没有任何登记，不是错误。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspacesConfig {
+    /// 登记文件路径；缺省 `workspaces.json`。
+    #[serde(default = "registry_file_by_default")]
+    pub registry_file: PathBuf,
+}
+
+impl Default for WorkspacesConfig {
+    fn default() -> Self {
+        Self {
+            registry_file: registry_file_by_default(),
+        }
+    }
+}
+
+/// `[workspaces] registry_file` 的缺省值：进程工作目录下的 `workspaces.json`。
+fn registry_file_by_default() -> PathBuf {
+    PathBuf::from(DEFAULT_REGISTRY_FILE)
 }
 
 /// 关机设置（`[shutdown]` 段）。
@@ -297,6 +327,36 @@ working_directory = 'C:\work'
         assert!(
             Config::from_toml(&raw).is_err(),
             "顶层未知字段必须仍然解析失败（deny_unknown_fields 保持）"
+        );
+    }
+
+    #[test]
+    fn legacy_config_without_workspaces_section_defaults_to_workspaces_json() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.workspaces.registry_file,
+            PathBuf::from("workspaces.json"),
+            "缺省 [workspaces] 段时登记文件取工作目录下的 workspaces.json"
+        );
+    }
+
+    #[test]
+    fn workspaces_registry_file_is_read_when_present() {
+        let raw =
+            format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'E:\\data\\workspaces.json'\n");
+        let config = Config::from_toml(&raw).expect("带 [workspaces] 段的新配置必须可解析");
+        assert_eq!(
+            config.workspaces.registry_file,
+            PathBuf::from(r"E:\data\workspaces.json")
+        );
+    }
+
+    #[test]
+    fn misspelled_workspaces_field_name_is_rejected() {
+        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry = 'x.json'\n");
+        assert!(
+            Config::from_toml(&raw).is_err(),
+            "[workspaces] 里写错字段名必须导致解析失败"
         );
     }
 

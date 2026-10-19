@@ -35,6 +35,8 @@ describe('App（omp-bot 主界面）', () => {
     const user = userEvent.setup()
     render(<App />)
 
+    // 页面默认停在会话列表；固定操作在控制面板。
+    await user.click(screen.getByTestId('tab-control'))
     await user.click(screen.getByTestId('start-button'))
 
     expect(await screen.findByTestId('operation-result')).toHaveTextContent(

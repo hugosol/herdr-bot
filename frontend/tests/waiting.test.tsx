@@ -221,8 +221,8 @@ describe('会话列表 tab 不显示等待提示', () => {
     expect(screen.queryByTestId('tab-sessions-indicator')).toBeNull()
     // 无障碍名恰是标签本身：提示即使挂在 tab 旁边（tablist 里）也会被这两条挡住。
     expect(screen.getByRole('tab', { name: '会话列表' })).toBe(sessionsTab)
-    expect(within(screen.getByRole('tablist')).getAllByRole('tab')).toHaveLength(2)
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
+    expect(within(screen.getByRole('tablist')).getAllByRole('tab')).toHaveLength(3)
+    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
 
     // 场景确实到达了条件：会话列表里的等待组非空，等待者就在里面。
     await user.click(sessionsTab)

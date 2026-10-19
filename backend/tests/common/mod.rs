@@ -239,6 +239,8 @@ pub fn config_with_countdown(
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
         sessions: omp_bot::SessionsConfig::default(),
+        // workspace 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
+        workspaces: omp_bot::WorkspacesConfig::default(),
     }
 }
 
@@ -352,6 +354,28 @@ pub async fn post_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
         .await
         .expect("发送操作请求");
     stream.flush().await.expect("发送操作请求");
+
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("读取响应");
+    parse_response(&raw)
+}
+
+/// 经一条新的 TCP 连接提交一次裸 GET：只带路径，没有查询串、没有请求体。
+///
+/// 与 [`post_over_tcp`] 同一形态（真实 TCP、不经过任何前端代码），用于只读列表的独立观察。
+pub async fn get_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("连接测试服务器");
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("发送读取请求");
+    stream.flush().await.expect("发送读取请求");
 
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).await.expect("读取响应");

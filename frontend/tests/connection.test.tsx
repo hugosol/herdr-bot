@@ -57,7 +57,8 @@ describe('断线降级与重连', () => {
     const user = userEvent.setup()
     render(<App sessionFeed={feed} />)
 
-    // 停在控制面板时断线：降级只属于会话列表，这里不呈现。
+    // 先切到控制面板再断线：降级只属于会话列表，这里不呈现。
+    await user.click(screen.getByTestId('tab-control'))
     await push(sessions, 'interrupted')
     const banner = screen.getByTestId('connection-banner')
     expect(banner).not.toBeVisible()
