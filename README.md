@@ -25,17 +25,19 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
 | `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
-| `backend/src/git.rs` | Git workspace 状态：当前分支、待提交变更、重命名/冲突类别与角标计数；只读查询 |
+| `backend/src/git.rs` | Git workspace 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
 | `backend/src/watch.rs` | workspace 本地文件/Git 元数据监听、按 workspace 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
 | `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、待提交角标、取消登记与进入浏览 |
-| `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览与 Git 变更内部子 tab、待提交着色与祖先目录提示 |
+| `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览、Git 变更列表与左右/统一 diff、待提交着色与祖先目录提示 |
 | `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
 | `frontend/src/gitApi.ts` | Git 状态与 workspace 角标概览客户端，含响应形状校验 |
 | `frontend/src/workspaceWatch.ts` | 自动更新 SSE 数据源：首帧监听快照、合并后的刷新通知与监听健康 |
+| `frontend/src/diff.ts` | 行级统一 diff 与左右对照配对（纯文本，不解析 HTML） |
+| `frontend/src/diffApi.ts` | 审查 diff 客户端与响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
 | `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
@@ -309,27 +311,31 @@ refresh_interval_seconds = 10
 ### 进入 workspace：只读浏览与 Git 待提交变更
 
 登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
-内部子 tab，并在工具栏显示当前分支。本阶段只定位待提交变更，不开放 diff、Commit 或 Sync。
+内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff；Commit / Sync 仍由
+后续票提供。
 
-- **电脑**：左侧目录树、右侧文件内容。目录按需展开；选择文件后右侧显示只读内容。
-- **窄屏（≤ 720px）**：逐层进入目录；选择文件后进入内容视图，并可用“返回文件列表”回到原目录，列表滚动
-  位置会恢复。
+- **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。目录按需展开；选择变更后右侧显示从当前分支最新
+  本地提交到最终本地内容的差异，默认左右对照。
+- **窄屏（≤ 720px）**：逐层进入目录或变更；选择文件/变更后进入内容视图，并可用明确返回按钮回到原列表，
+  列表滚动位置会恢复。diff 默认统一显示。
 - **完整目录**：输出与磁盘真实内容一致，隐藏文件、被 Git 忽略的文件、`.gitignore` 与 `.git` 元数据都不会
   被过滤；`.git` 内的文件可只读打开，但不参与任何普通待提交着色或角标。
 - **边界**：只读取已登记 workspace 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
   目录联接与其他 reparse point 都会被拒绝；链接条目在目录中显示目标与不可进入原因，目标内容不会被读取。
-  登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。
+  登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。新增的 diff 入口使用
+  同一份边界检查，Git 旧路径也不能绕过它。
 - **内容识别**：按内容识别文本（完整 UTF-8、无 NUL 字节），不要求后缀；无后缀文本可读，伪文本后缀的
-  二进制文件给出“不可文本预览”原因。内容以纯文本显示，HTML/script 不会被执行。
-- **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。超限文件只显示大小与上限，不加载
-  完整内容；二进制与超限都不影响文件在目录中的可见性。
+  二进制文件给出“不可文本预览”原因。内容与 diff 都以纯文本显示，HTML/script 不会被执行。
+- **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。文件预览在读取内容前应用上限；
+  diff 对旧侧与新侧分别应用同一个上限。任一侧超限或二进制时不渲染完整 diff，明确说明限制；超限或二进制
+  不改变文件/变更的可见性、着色、计数或后续提交资格。
 - **自动刷新**：后端监听每个已登记 workspace 的本地文件（Git 工作树还监听工作区之外的元数据目录），
   事件按 workspace 合并后经只读 SSE 通知页面重新读取；普通目录的外部增删改也会反映到浏览与角标。
   没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
   `[workspaces] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
   间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 workspace 监听与节流，不会各自放大刷新。
-- **刷新边界**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件与
-  Git 状态，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
+- **刷新边界**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件、
+  Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
 - **监听健康**：监听建立失败、workspace 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
   与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
@@ -365,6 +371,14 @@ refresh_interval_seconds = 10
   `{"workspace":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
   "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}]}`。
   普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时是明确错误，不是干净状态。
+- `GET /api/workspaces/diff?workspace=<登记路径>&path=<相对新路径>`（重命名再加
+  `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
+  `{"workspace":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
+  旧侧取当前分支最新本地提交（没有首次提交时为空树），新侧取最终本地文件；已暂存与未暂存内容合并
+  观察，不使用索引作为旧侧，也不比较远端。每一侧的形状与文件预览一致：`text`（带 `content`、`size`）、
+  `binary`（带 `reason`、`size`）、`too-large`（带 `reason`、`size`、`limit`，不含内容），或 `absent`
+  （新增文件的旧侧、删除文件的新侧）。任一非文本侧使 `complete:false`，页面不渲染完整 diff。
+  新增路径与 `oldPath` 都执行同一份根边界检查；旧路径来自 Git 历史也不能绕过它。
 - `GET /api/workspaces/overview` 返回每个登记项的角标事实：
   `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
   普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
@@ -1566,3 +1580,59 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
 - **限制与未由本票承担的范围**：真实浏览器证据来自无头 Chromium 与仿真窄屏，手机实机触摸/软键盘体验
   （H1）仍由 08 汇总后交用户确认。Git 识别结果可能随仓库内容变化；本票如实采用当前结果，不保证所有
   改名都会被识别。diff、Commit、Sync、文件事件自动刷新与冲突恢复流程属于后续票。
+
+## 变更记录：审查最终内容与完整 diff（2026-10-19）
+
+本次让 Git workspace 的变更视图逐个审查从当前分支最新本地提交到最终本地内容的 diff；新增、删除、
+部分暂存与 Git 已识别重命名都使用同一份事实。Commit / Sync 仍由后续票提供。
+
+- **改了什么**：
+  - `backend/src/git.rs` 新增 `change_diff`：旧侧只取 `HEAD`（尚无首次提交时按空树处理），新侧读取最终
+    本地文件，合并观察已暂存与未暂存内容；索引与远端都不作为旧侧。Git 已识别重命名通过 `oldPath`
+    定位 HEAD 中的旧路径；新增与删除分别用 `absent` 明确表示空的一侧。
+  - 新增 `GET /api/workspaces/diff`，两侧各自应用 `[workspaces] preview_limit_bytes`（默认 1 MiB）：
+    超限时在读取完整内容之前停止，二进制给出不可文本 diff 原因，`complete:false` 时不渲染完整 diff。
+    该入口先校验新路径与旧路径写法，再核对登记根；新侧复用浏览读取（链接、目录联接、根替换均拒绝），
+    旧侧只从核对过工作树根的 Git 对象库读取。`git ls-tree` / `git cat-file` 不写索引、不暂存、不改文件。
+  - 前端新增 `diff.ts`（行级 LCS 与左右配对）和 `diffApi.ts`；变更列表成为选择入口，电脑左侧列表、右侧
+    diff 并默认左右对照；窄屏默认统一 diff，提供明确返回并恢复列表滚动位置。切换内部视图或顶层 tab 保留
+    所选变更、diff 与滚动位置。diff 内容只作为文本节点渲染，不解析 HTML。
+  - README 的目录结构、workspace 章节与接口说明同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test --test workspace_diff` → `4 passed`：真实部分暂存仓库（HEAD `beta`、索引 `STAGED`、最终
+    `STAGED/FINAL`，另有与 HEAD 不同的远端跟踪引用 `origin/main`）证明旧侧是 HEAD，而不是索引或远端；
+    未暂存新增与删除分别可审查；已识别改名读取旧路径；无首次提交仓库按空树比较且待提交项仍为绿色新增；32 字节精确边界、旧侧超限/新侧很小、
+    旧侧很小/新侧超限、两侧二进制；根外路径、遍历、绝对路径、真实符号链接、Windows 目录联接、根替换、
+    旧路径遍历、未登记 workspace 与封闭查询面都被拒绝且不泄露根外内容；请求前后 `.git/index`、
+    `ls-files --stage`、已暂存/未暂存 diff 与所有文件字节的 SHA-256 完全不变。
+  - `cargo test --test workspace_git_status` → `7 passed`：状态、分支、待提交集合与角标回归；确认抽出
+    `worktree_root` 后普通目录、父仓库子目录与损坏 Git 元数据的行为未改变。
+  - `cargo test --no-fail-fast` → `222 passed / 30 suites`（含既有 mDNS、会话、关机、浏览与 Git 状态用例；
+    0 failed）。
+  - `npm test` → `16 files / 113 tests passed`；新增 `tests/diffReview.test.tsx` 8 例，覆盖宽屏左右对照、
+    重命名旧路径、新增/删除空的一侧、HTML/script 纯文本、超限与二进制不渲染完整 diff、内部视图与顶层
+    tab 往返上下文、窄屏统一 diff、明确返回与精确滚动恢复。
+  - 前端突变验证：临时把 `complete:false` 也渲染成 diff 行，超限与二进制两例失败；还原后 8 例通过。
+    后端突变验证：临时把旧侧从 HEAD 改成索引对象，`diff_reads_head_to_final_content_without_touching_index_or_files`
+    因旧侧返回 `STAGED` 而不是 `beta` 失败；还原后 4 例通过。
+    `npm run build`（`tsc --noEmit && vite build`）成功。
+- **真实 Chromium smoke**（隔离真实 Git 仓库、隔离登记文件、真实后端进程；未执行关机）：
+  - 桌面 `1024×800`：左列表右 diff，默认 `data-mode="side-by-side"`；`src/modified.txt` 旧侧显示 HEAD 的
+    `beta`，新侧显示 `STAGED` 与 `FINAL`；`src/new-name.txt` 标题为
+    `src/old-name.txt → src/new-name.txt`，旧侧读 HEAD 旧路径。
+  - 列表 23 项时 `scrollHeight=789 > clientHeight=518`，滚动到 `260` 后仍可选择并显示 diff；切换
+    「文件浏览 / 变更」与「会话列表 / 文件列表」后，所选变更、diff 与 `scrollTop=260` 均保留。
+  - `src/limit-old.txt`（旧侧 4 950 000 字节）与 `src/limit-new.txt`（新侧 4 950 000 字节）分别显示超过
+    1 048 576 字节上限、未加载完整内容；`src/binary.txt` 显示 NUL 字节原因；两者都没有 `diff-view`，但
+    变更行、类别着色与角标（`变更（23）`）不变。
+  - `src/script.html` 的 `<script>` 与 `onerror` 图片标签作为字面量文本显示，diff 容器 HTML 已转义，
+    `window.__pwned` 未定义且没有 `img` 元素；唯一 `script` 元素是应用自身打包脚本。
+  - 窄屏 `390×844`：默认列表，进入后 `data-mode="unified"`，显示 `- beta / - gamma / + STAGED / + FINAL`
+    与「返回变更列表」；返回后列表 `scrollTop` 从 `260` 精确恢复为 `260`。
+  - 连续读取目录、文件与四类 diff 前后，`.git/index` 与 `git ls-files --stage` / `git diff --cached
+    --binary` / `git diff --binary` 及所有文件字节的 SHA-256 全部相同（`unchanged: true`）。
+  - 截图与细节见
+    [`.scratch/workspace-file-browser/evidence/04-review-final-content-diffs/`](.scratch/workspace-file-browser/evidence/04-review-final-content-diffs/)。
+- **限制与未由本票承担的范围**：宽屏与窄屏证据来自无头 Chromium，窄屏为视口仿真；手机实机触摸、diff
+  滚动与返回手感仍属于 human-led H1，由 08 汇总后交用户确认。Commit / Sync、审查版本复核、文件事件
+  自动刷新与冲突恢复流程属于后续票。

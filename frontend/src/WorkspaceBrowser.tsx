@@ -14,6 +14,12 @@ import {
   type BrowseResult,
   type FileView,
 } from './browseApi'
+import { diffRows, sideBySideRows } from './diff'
+import {
+  fetchChangeDiff,
+  type ChangeDiff,
+  type DiffSide,
+} from './diffApi'
 import { fetchGitStatus, type ChangeKind, type GitChange, type GitStatus } from './gitApi'
 import type { ConnectionStatus } from './sessionFeed'
 import {
@@ -43,6 +49,33 @@ const CHANGE_LABEL: Record<ChangeKind, string> = {
   deleted: '删除',
   renamed: '重命名',
   conflicted: '冲突',
+}
+
+/** 变更项身份：同一路径可能同时出现不同类别，比较时要把类别与旧路径一起纳入。 */
+function changeIdentity(change: GitChange): string {
+  return `${change.kind}:${change.path}<-${change.oldPath ?? ''}`
+}
+
+/** 单侧不能展示完整 diff 的原因；可展示时返回 null。 */
+function diffSideProblem(side: DiffSide, label: string): string | null {
+  if (side.kind === 'binary') return `${label}不可文本 diff：${side.reason}`
+  if (side.kind === 'too-large') {
+    return `${label}大小 ${side.size} 字节，超过预览上限 ${side.limit} 字节；未加载完整内容`
+  }
+  return null
+}
+
+/** 任一侧超限或二进制都不渲染完整 diff，而是明确说明限制发生在哪一侧。 */
+function diffUnavailableReason(diff: ChangeDiff): string {
+  const problems = [
+    diffSideProblem(diff.old, '旧侧'),
+    diffSideProblem(diff.new, '新侧'),
+  ].filter((problem): problem is string => problem !== null)
+  const detail =
+    problems.length > 0
+      ? problems.map((problem) => problem.replace(/。$/, '')).join('；')
+      : '没有可渲染的文本内容'
+  return `不可展示完整 diff：${detail}。`
 }
 
 function useNarrowLayout(): boolean {
@@ -122,6 +155,12 @@ export function WorkspaceBrowser({
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null)
   const [gitError, setGitError] = useState<string | null>(null)
   const [view, setView] = useState<'browse' | 'changes'>('browse')
+  // 变更审查：选中的变更、它的 HEAD→最终内容 diff，以及窄屏是否正停留在 diff 上。
+  const [selectedChange, setSelectedChange] = useState<GitChange | null>(null)
+  const [changeDiff, setChangeDiff] = useState<ChangeDiff | null>(null)
+  const [changeDiffError, setChangeDiffError] = useState<string | null>(null)
+  const [changeDiffLoading, setChangeDiffLoading] = useState(false)
+  const [changesShowingDiff, setChangesShowingDiff] = useState(false)
 
   const narrow = useNarrowLayout()
   const watchGeneration = watch?.generation ?? 0
@@ -130,11 +169,15 @@ export function WorkspaceBrowser({
     watch?.entry ?? null,
   )
   const gitSequence = useRef(0)
+  const diffSequence = useRef(0)
   const directorySequences = useRef(new Map<string, number>())
   const fileSequence = useRef(0)
   const desktopTreeRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const mobileListRef = useRef<HTMLDivElement>(null)
+  const changesListRef = useRef<HTMLDivElement>(null)
+  const selectedChangeRef = useRef<GitChange | null>(null)
+  const changesScrollPosition = useRef(0)
   const scrollPositions = useRef(new Map<string, number>())
   const activePreviously = useRef(active)
   const seenWatchGeneration = useRef(watchGeneration)
@@ -207,7 +250,14 @@ export function WorkspaceBrowser({
     if (result.kind === 'ok') {
       setGitStatus(result.value)
       setGitError(null)
-      if (!result.value.repository) setView('browse')
+      if (!result.value.repository) {
+        setView('browse')
+        selectedChangeRef.current = null
+        setSelectedChange(null)
+        setChangeDiff(null)
+        setChangeDiffError(null)
+        setChangesShowingDiff(false)
+      }
     } else {
       // 读取失败时清除旧状态：不能把上一次的分支或「没有变更」继续显示成当前事实。
       setGitStatus(null)
@@ -217,8 +267,36 @@ export function WorkspaceBrowser({
           : '无法确认 Git 状态：请求没有得到可用响应。',
       )
       setView('browse')
+      selectedChangeRef.current = null
+      setSelectedChange(null)
+      setChangeDiff(null)
+      setChangeDiffError(null)
+      setChangesShowingDiff(false)
     }
   }, [workspace])
+
+  const loadChangeDiff = useCallback(
+    async (change: GitChange) => {
+      const sequence = diffSequence.current + 1
+      diffSequence.current = sequence
+      setChangeDiffLoading(true)
+      setChangeDiff(null)
+      setChangeDiffError(null)
+
+      const result = await fetchChangeDiff(workspace, change.path, change.oldPath)
+      if (diffSequence.current !== sequence) return
+
+      setChangeDiffLoading(false)
+      if (result.kind === 'ok') {
+        setChangeDiff(result.value)
+      } else {
+        // 读取失败时清除旧 diff：不能把上一次的内容继续显示成当前变更。
+        setChangeDiff(null)
+        setChangeDiffError(failureMessage(result, `变更 ${change.path} 的 diff`))
+      }
+    },
+    [workspace],
+  )
 
   const refresh = useCallback(async () => {
     const paths = new Set(entries.keys())
@@ -226,8 +304,10 @@ export function WorkspaceBrowser({
     setRefreshing(true)
     await Promise.all([...paths].map((path) => loadDirectory(path)).concat(loadGitStatus()))
     if (selectedPath !== null) await loadFile(selectedPath)
+    const currentChange = selectedChangeRef.current
+    if (currentChange !== null) await loadChangeDiff(currentChange)
     setRefreshing(false)
-  }, [entries, selectedPath, loadDirectory, loadFile, loadGitStatus])
+  }, [entries, selectedPath, loadDirectory, loadFile, loadGitStatus, loadChangeDiff])
 
   const refreshLatest = useRef(refresh)
   refreshLatest.current = refresh
@@ -245,6 +325,12 @@ export function WorkspaceBrowser({
     setGitStatus(null)
     setGitError(null)
     setView('browse')
+    selectedChangeRef.current = null
+    setSelectedChange(null)
+    setChangeDiff(null)
+    setChangeDiffError(null)
+    setChangesShowingDiff(false)
+    changesScrollPosition.current = 0
     scrollPositions.current = new Map()
     void loadDirectory('')
     void loadGitStatus()
@@ -276,6 +362,42 @@ export function WorkspaceBrowser({
     const list = mobileListRef.current
     if (list) list.scrollTop = scrollPositions.current.get(mobilePath) ?? 0
   }, [narrow, mobileShowingContent, mobilePath, entries])
+
+  // 变更列表在内部视图或窄屏 diff 往返后恢复滚动位置；列表本身不是当前事实的缓存。
+  useLayoutEffect(() => {
+    if (view !== 'changes') return
+    if (narrow && changesShowingDiff) return
+    const list = changesListRef.current
+    if (list) list.scrollTop = changesScrollPosition.current
+  }, [view, narrow, changesShowingDiff, gitStatus])
+
+  // 刷新后变更集合可能已经不含所选路径：清除失效选择，避免把旧 diff 当成当前变更。
+  useEffect(() => {
+    if (selectedChange === null || gitStatus === null) return
+    const stillPresent = gitStatus.changes.some(
+      (change) => changeIdentity(change) === changeIdentity(selectedChange),
+    )
+    if (stillPresent) return
+    diffSequence.current += 1
+    selectedChangeRef.current = null
+    setSelectedChange(null)
+    setChangeDiff(null)
+    setChangeDiffError(null)
+    setChangesShowingDiff(false)
+  }, [gitStatus, selectedChange])
+
+  function rememberChangesScroll() {
+    const list = changesListRef.current
+    if (list) changesScrollPosition.current = list.scrollTop
+  }
+
+  function selectChange(change: GitChange) {
+    rememberChangesScroll()
+    selectedChangeRef.current = change
+    setSelectedChange(change)
+    setChangesShowingDiff(true)
+    void loadChangeDiff(change)
+  }
 
   function rememberMobileScroll() {
     const list = mobileListRef.current
@@ -342,23 +464,8 @@ export function WorkspaceBrowser({
     )
   }
 
-  function changesView(): ReactNode {
-    if (gitError !== null) {
-      return (
-        <p className="browser-error" data-testid="git-status-error" role="alert">
-          {gitError}
-        </p>
-      )
-    }
-    if (gitStatus === null) {
-      return (
-        <p className="browser-loading" data-testid="git-status-loading" role="status">
-          正在读取 Git 状态……
-        </p>
-      )
-    }
-    if (!gitStatus.repository) return null
-
+  function changesList(): ReactNode {
+    if (gitStatus === null) return null
     return (
       <section className="changes" data-testid="changes-view">
         {gitStatus.conflict && (
@@ -372,36 +479,230 @@ export function WorkspaceBrowser({
           </p>
         ) : (
           <ul className="change-list" data-testid="change-list">
-            {gitStatus.changes.map((change) => (
-              <li
-                key={`${change.kind}:${change.path}<-${change.oldPath ?? ''}`}
-                className={`change-row ${CHANGE_CLASS[change.kind]}`}
-                data-testid={`change:${change.path}`}
-                data-change={change.kind}
-                aria-label={`${change.path}：${CHANGE_LABEL[change.kind]}`}
-              >
-                <code className="change-row__path">
-                  {change.kind === 'renamed' && change.oldPath !== undefined ? (
-                    <>
-                      <span className="change-row__old">{change.oldPath}</span>
-                      <span aria-hidden="true"> → </span>
-                      <span>{change.path}</span>
-                    </>
-                  ) : (
-                    change.path
-                  )}
-                </code>
-                {change.kind === 'renamed' && (
-                  <span className="change-row__note">重命名</span>
-                )}
-                {change.kind === 'conflicted' && (
-                  <span className="change-row__warning">冲突</span>
-                )}
-              </li>
-            ))}
+            {gitStatus.changes.map((change) => {
+              const selected =
+                selectedChange !== null &&
+                changeIdentity(selectedChange) === changeIdentity(change)
+              return (
+                <li key={changeIdentity(change)} className="change-item">
+                  <button
+                    type="button"
+                    className={[
+                      'change-row',
+                      CHANGE_CLASS[change.kind],
+                      selected ? 'is-selected' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    data-testid={`change:${change.path}`}
+                    data-change={change.kind}
+                    aria-current={selected ? 'true' : undefined}
+                    aria-label={`${change.path}：${CHANGE_LABEL[change.kind]}`}
+                    onClick={() => selectChange(change)}
+                  >
+                    <code className="change-row__path">
+                      {change.kind === 'renamed' && change.oldPath !== undefined ? (
+                        <>
+                          <span className="change-row__old">{change.oldPath}</span>
+                          <span aria-hidden="true"> → </span>
+                          <span>{change.path}</span>
+                        </>
+                      ) : (
+                        change.path
+                      )}
+                    </code>
+                    {change.kind === 'renamed' && (
+                      <span className="change-row__note">重命名</span>
+                    )}
+                    {change.kind === 'conflicted' && (
+                      <span className="change-row__warning">冲突</span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
+    )
+  }
+
+  function diffBody(diff: ChangeDiff): ReactNode {
+    const oldText = diff.old.kind === 'text' ? diff.old.content : ''
+    const newText = diff.new.kind === 'text' ? diff.new.content : ''
+    const rows = diffRows(oldText, newText)
+    if (rows.length === 0) {
+      return (
+        <p className="browser-empty" data-testid="diff-empty">
+          两侧内容相同，没有行级差异。
+        </p>
+      )
+    }
+
+    if (narrow) {
+      return (
+        <div className="diff-lines" data-testid="diff-view" data-mode="unified">
+          {rows.map((row, index) => (
+            <div
+              key={`${index}:${row.kind}`}
+              className={`diff-line diff-line--${row.kind}`}
+              data-testid={`diff-row-${row.kind}`}
+            >
+              <span className="diff-line__number" aria-hidden="true">
+                {row.oldNumber ?? ''}
+              </span>
+              <span className="diff-line__number" aria-hidden="true">
+                {row.newNumber ?? ''}
+              </span>
+              <span className="diff-line__marker" aria-hidden="true">
+                {row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}
+              </span>
+              <span className="diff-line__text">{row.text}</span>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="diff-side-by-side" data-testid="diff-view" data-mode="side-by-side">
+        {sideBySideRows(rows).map((pair, index) => (
+          <div key={index} className="diff-pair">
+            <div
+              className={`diff-cell diff-cell--${pair.old.kind}`}
+              data-testid={`diff-old-${pair.old.kind}`}
+            >
+              <span className="diff-line__number" aria-hidden="true">
+                {pair.old.number ?? ''}
+              </span>
+              <span className="diff-line__text" data-testid="diff-old-text">
+                {pair.old.text}
+              </span>
+            </div>
+            <div
+              className={`diff-cell diff-cell--${pair.new.kind}`}
+              data-testid={`diff-new-${pair.new.kind}`}
+            >
+              <span className="diff-line__number" aria-hidden="true">
+                {pair.new.number ?? ''}
+              </span>
+              <span className="diff-line__text" data-testid="diff-new-text">
+                {pair.new.text}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  function diffPane(): ReactNode {
+    if (selectedChange === null) {
+      return (
+        <p className="browser-placeholder" data-testid="diff-placeholder">
+          选择变更以审查从最新本地提交到最终本地内容的差异。
+        </p>
+      )
+    }
+    if (changeDiffLoading) {
+      return (
+        <p className="browser-loading" data-testid="diff-loading" role="status">
+          正在读取 diff……
+        </p>
+      )
+    }
+    if (changeDiffError !== null) {
+      return (
+        <p className="browser-error" data-testid="diff-error" role="alert">
+          {changeDiffError}
+        </p>
+      )
+    }
+    if (changeDiff === null) return null
+
+    return (
+      <section className="diff" data-testid="diff-pane">
+        <header className="file-view__header">
+          <code className="file-view__path" data-testid="diff-path">
+            {changeDiff.oldPath !== undefined ? (
+              <>
+                <span className="change-row__old">{changeDiff.oldPath}</span>
+                <span aria-hidden="true"> → </span>
+                <span>{changeDiff.path}</span>
+              </>
+            ) : (
+              changeDiff.path
+            )}
+          </code>
+          <span className="file-view__size" data-testid="diff-basis">
+            最新本地提交 → 最终本地内容
+          </span>
+        </header>
+        {changeDiff.complete ? (
+          diffBody(changeDiff)
+        ) : (
+          <p className="file-view__limited" data-testid="diff-unavailable" role="note">
+            {diffUnavailableReason(changeDiff)}
+          </p>
+        )}
+      </section>
+    )
+  }
+
+  function changesView(): ReactNode {
+    if (gitStatus === null) {
+      return (
+        <p className="browser-loading" data-testid="git-status-loading" role="status">
+          正在读取 Git 状态……
+        </p>
+      )
+    }
+    if (!gitStatus.repository) return null
+
+    if (narrow) {
+      if (changesShowingDiff && selectedChange !== null) {
+        return (
+          <div className="browser-mobile" data-testid="changes-mobile">
+            <button
+              type="button"
+              className="browser-mobile__back"
+              data-testid="back-to-changes-list"
+              onClick={() => setChangesShowingDiff(false)}
+            >
+              返回变更列表
+            </button>
+            {diffPane()}
+          </div>
+        )
+      }
+      return (
+        <div className="browser-mobile" data-testid="changes-mobile">
+          <div
+            className="browser-mobile__list"
+            data-testid="changes-list-scroll"
+            ref={changesListRef}
+            onScroll={rememberChangesScroll}
+          >
+            {changesList()}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="changes-layout" data-testid="changes-layout">
+        <div
+          className="changes-list"
+          data-testid="changes-list-scroll"
+          ref={changesListRef}
+          onScroll={rememberChangesScroll}
+        >
+          {changesList()}
+        </div>
+        <div className="changes-detail" data-testid="changes-detail">
+          {diffPane()}
+        </div>
+      </div>
     )
   }
 
@@ -746,56 +1047,64 @@ export function WorkspaceBrowser({
         </div>
       )}
 
-      {view === 'changes' && gitStatus?.repository ? (
-        changesView()
-      ) : narrow ? (
-        <div className="browser-mobile" data-testid="browser-mobile">
-          {mobileShowingContent ? (
-            <>
-              <button
-                type="button"
-                className="browser-mobile__back"
-                data-testid="back-to-file-list"
-                onClick={() => setMobileShowingContent(false)}
-              >
-                返回文件列表
-              </button>
-              {filePane()}
-            </>
-          ) : (
-            <>
-              <p className="browser-current-path" data-testid="browser-current-path">
-                {mobilePath === '' ? workspace : `${workspace}\\${mobilePath}`}
-              </p>
-              {mobilePath !== '' && (
+      {/* 浏览与变更两个内部视图都保持挂载，只切换可见性：切走再切回时选择、展开与滚动位置
+          仍由同一个组件实例持有，不因重新挂载而丢失。 */}
+      <div className="browser-pane" hidden={view !== 'browse'}>
+        {narrow ? (
+          <div className="browser-mobile" data-testid="browser-mobile">
+            {mobileShowingContent ? (
+              <>
                 <button
                   type="button"
                   className="browser-mobile__back"
-                  data-testid="mobile-parent"
-                  onClick={goMobileUp}
+                  data-testid="back-to-file-list"
+                  onClick={() => setMobileShowingContent(false)}
                 >
-                  上一级
+                  返回文件列表
                 </button>
-              )}
-              <div
-                className="browser-mobile__list"
-                data-testid="browser-mobile-list"
-                ref={mobileListRef}
-                onScroll={rememberMobileScroll}
-              >
-                {directoryState(mobilePath, mobileEntryList(mobilePath))}
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="browser-layout" data-testid="browser-layout">
-          <div className="browser-tree" data-testid="browser-tree" ref={desktopTreeRef}>
-            {desktopTree('', 0)}
+                {filePane()}
+              </>
+            ) : (
+              <>
+                <p className="browser-current-path" data-testid="browser-current-path">
+                  {mobilePath === '' ? workspace : `${workspace}\\${mobilePath}`}
+                </p>
+                {mobilePath !== '' && (
+                  <button
+                    type="button"
+                    className="browser-mobile__back"
+                    data-testid="mobile-parent"
+                    onClick={goMobileUp}
+                  >
+                    上一级
+                  </button>
+                )}
+                <div
+                  className="browser-mobile__list"
+                  data-testid="browser-mobile-list"
+                  ref={mobileListRef}
+                  onScroll={rememberMobileScroll}
+                >
+                  {directoryState(mobilePath, mobileEntryList(mobilePath))}
+                </div>
+              </>
+            )}
           </div>
-          <div className="browser-content" data-testid="browser-content" ref={contentRef}>
-            {filePane()}
+        ) : (
+          <div className="browser-layout" data-testid="browser-layout">
+            <div className="browser-tree" data-testid="browser-tree" ref={desktopTreeRef}>
+              {desktopTree('', 0)}
+            </div>
+            <div className="browser-content" data-testid="browser-content" ref={contentRef}>
+              {filePane()}
+            </div>
           </div>
+        )}
+      </div>
+
+      {gitStatus?.repository && (
+        <div className="browser-pane" hidden={view !== 'changes'}>
+          {changesView()}
         </div>
       )}
     </section>
