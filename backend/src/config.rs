@@ -115,6 +115,9 @@ pub struct WorkspacesConfig {
     /// 登记文件路径；缺省 `workspaces.json`。
     #[serde(default = "registry_file_by_default")]
     pub registry_file: PathBuf,
+    /// 新 workspace 的创建父目录；缺省未配置，只禁用“新增”而不猜测写入位置。
+    #[serde(default)]
+    pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限；缺省 1 MiB。超限只返回限制说明，不加载完整内容。
     #[serde(default = "preview_limit_bytes_by_default")]
     pub preview_limit_bytes: PreviewLimitBytes,
@@ -127,6 +130,7 @@ impl Default for WorkspacesConfig {
     fn default() -> Self {
         Self {
             registry_file: registry_file_by_default(),
+            create_parent_directory: None,
             preview_limit_bytes: preview_limit_bytes_by_default(),
             refresh_interval_seconds: refresh_interval_seconds_by_default(),
         }
@@ -560,6 +564,38 @@ working_directory = 'C:\work'
             config.workspaces.registry_file,
             PathBuf::from("workspaces.json"),
             "缺省 [workspaces] 段时登记文件取工作目录下的 workspaces.json"
+        );
+    }
+
+    #[test]
+    fn legacy_config_without_create_parent_directory_disables_workspace_creation() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.workspaces.create_parent_directory, None,
+            "没有显式配置时不能猜测一个创建父目录"
+        );
+    }
+
+    #[test]
+    fn explicit_create_parent_directory_is_read_verbatim() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[workspaces]\ncreate_parent_directory = 'E:\\Developer\\bot-playground'\n"
+        );
+        let config = Config::from_toml(&raw).expect("显式创建父目录必须可解析");
+        assert_eq!(
+            config.workspaces.create_parent_directory,
+            Some(PathBuf::from(r"E:\Developer\bot-playground"))
+        );
+    }
+
+    #[test]
+    fn misspelled_create_parent_directory_field_is_rejected() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[workspaces]\ncreate_parent = 'E:\\Developer\\bot-playground'\n"
+        );
+        assert!(
+            Config::from_toml(&raw).is_err(),
+            "创建父目录字段拼错时必须导致解析失败"
         );
     }
 

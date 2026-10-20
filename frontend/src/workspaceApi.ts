@@ -9,6 +9,12 @@ export type WorkspaceRegistration = {
   path: string
 }
 
+/** 后端配置是否允许新建 workspace，以及创建父目录的展示值。 */
+export type WorkspaceCreation = {
+  available: boolean
+  parentDirectory?: string
+}
+
 /**
  * 一次 workspace 请求在页面一侧的可能归宿。
  *
@@ -17,7 +23,11 @@ export type WorkspaceRegistration = {
  * - `unreachable`：没有得到可用响应（网络中断或响应无法解析），不能当成成功或失败。
  */
 export type WorkspaceResult =
-  | { kind: 'ok'; workspaces: WorkspaceRegistration[] }
+  | {
+      kind: 'ok'
+      workspaces: WorkspaceRegistration[]
+      creation: WorkspaceCreation
+    }
   | { kind: 'rejected'; code: string; message: string }
   | { kind: 'unreachable' }
 
@@ -31,12 +41,29 @@ function isWorkspaceRegistration(value: unknown): value is WorkspaceRegistration
   )
 }
 
+function isWorkspaceCreation(value: unknown): value is WorkspaceCreation {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'available' in value &&
+    typeof value.available === 'boolean' &&
+    (!('parentDirectory' in value) ||
+      value.parentDirectory === undefined ||
+      typeof value.parentDirectory === 'string')
+  )
+}
+
 /** 列表响应的形状检查：形状不对的响应不能被当作成功。 */
-function isWorkspaceList(value: unknown): value is { workspaces: WorkspaceRegistration[] } {
+function isWorkspaceList(
+  value: unknown,
+): value is { workspaces: WorkspaceRegistration[]; creation?: WorkspaceCreation } {
   if (typeof value !== 'object' || value === null || !('workspaces' in value)) {
     return false
   }
-  return Array.isArray(value.workspaces) && value.workspaces.every(isWorkspaceRegistration)
+  if (!Array.isArray(value.workspaces) || !value.workspaces.every(isWorkspaceRegistration)) {
+    return false
+  }
+  return !('creation' in value) || value.creation === undefined || isWorkspaceCreation(value.creation)
 }
 
 /** 明确失败响应的形状检查。 */
@@ -77,7 +104,11 @@ async function workspaceRequest(
 
   if (response.ok) {
     return isWorkspaceList(payload)
-      ? { kind: 'ok', workspaces: payload.workspaces }
+      ? {
+          kind: 'ok',
+          workspaces: payload.workspaces,
+          creation: payload.creation ?? { available: false },
+        }
       : { kind: 'unreachable' }
   }
 
@@ -97,6 +128,15 @@ export function registerWorkspace(path: string): Promise<WorkspaceResult> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path }),
+  })
+}
+
+/** 新建 workspace：只提交名称，父目录必须由后端配置决定。 */
+export function createWorkspace(name: string): Promise<WorkspaceResult> {
+  return workspaceRequest('/api/workspaces/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
   })
 }
 

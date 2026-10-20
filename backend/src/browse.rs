@@ -442,6 +442,24 @@ pub fn read_file(
     })
 }
 
+/// 读取一个 workspace 内文件的原始字节，供 HTML 阅读模式加载 HTML 与相对资源。
+///
+/// 与文本预览共用同一份根边界、路径分量与链接检查；这里不应用预览上限，因为图片、样式与字体
+/// 不是文本预览，截断会破坏它们。目录、根外路径和链接仍在读取前拒绝。
+pub fn read_resource(registered_root: &str, relative: &str) -> Result<Vec<u8>, BrowseError> {
+    let root = checked_root(registered_root)?;
+    let components = relative_components(relative)?;
+    if components.is_empty() {
+        return Err(BrowseError::NotAFile);
+    }
+    let path = resolve_existing(&root, &components)?;
+    let metadata = fs::metadata(&path).map_err(map_metadata_error)?;
+    if metadata.is_dir() {
+        return Err(BrowseError::NotAFile);
+    }
+    fs::read(path).map_err(BrowseError::ReadFailed)
+}
+
 /// 核对登记根当前仍是原来的真实目录，并且没有被替换成链接或目录联接。
 ///
 /// Git 状态查询复用同一份边界核对：状态读取同样以登记根为边界，不跟随被替换的根。

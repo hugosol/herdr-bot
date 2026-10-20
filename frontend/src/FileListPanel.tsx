@@ -7,9 +7,11 @@ import {
 } from './gitApi'
 import { useWorkspaceWatch } from './useWorkspaceWatch'
 import {
+  createWorkspace,
   fetchWorkspaces,
   registerWorkspace,
   unregisterWorkspace,
+  type WorkspaceCreation,
   type WorkspaceRegistration,
   type WorkspaceResult,
 } from './workspaceApi'
@@ -49,7 +51,13 @@ export function FileListPanel({
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [path, setPath] = useState('')
-  const [pending, setPending] = useState<'register' | `remove:${string}` | null>(null)
+  const [name, setName] = useState('')
+  const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [creation, setCreation] = useState<WorkspaceCreation>({ available: false })
+  const [pending, setPending] = useState<
+    'register' | 'create' | `remove:${string}` | null
+  >(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   // 当前进入的 workspace；顶层 tab 往返期间保持，返回列表时才清除。
   const [openWorkspace, setOpenWorkspace] = useState<string | null>(null)
@@ -88,9 +96,11 @@ export function FileListPanel({
       setLoading(false)
       if (result.kind === 'ok') {
         setWorkspaces(result.workspaces)
+        setCreation(result.creation)
         setListFailure(null)
       } else {
         setWorkspaces(null)
+        setCreation({ available: false })
         setListFailure(describeFailure(result, '列表读取'))
       }
     })
@@ -110,26 +120,75 @@ export function FileListPanel({
     void loadOverview()
   }, [active, openWorkspace, watchRevision, loadOverview])
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function openDialog(kind: 'register' | 'create') {
+    setDialog(kind)
+    setPath('')
+    setName('')
+    setFormError(null)
+    setFeedback(null)
+  }
+
+  function closeDialog() {
+    setDialog(null)
+    setFormError(null)
+    setPath('')
+    setName('')
+  }
+
+  async function submitRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const candidate = path.trim()
     if (candidate === '') {
-      setFeedback({ kind: 'error', text: '请填写服务器上的目录路径。' })
+      setFormError('请填写服务器上的目录路径。')
       return
     }
 
     setPending('register')
-    setFeedback(null)
+    setFormError(null)
     const result = await registerWorkspace(candidate)
     setPending(null)
     if (result.kind === 'ok') {
       setWorkspaces(result.workspaces)
+      setCreation(result.creation)
       setListFailure(null)
+      setDialog(null)
       setPath('')
       setFeedback({ kind: 'success', text: `已登记：${candidate}` })
       void loadOverview()
     } else {
-      setFeedback({ kind: 'error', text: describeFailure(result, '登记') })
+      setFormError(describeFailure(result, '登记'))
+    }
+  }
+
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const candidate = name.trim()
+    if (candidate === '') {
+      setFormError('请填写新 workspace 的名称。')
+      return
+    }
+
+    const previousPaths = new Set((workspaces ?? []).map((entry) => entry.path))
+    setPending('create')
+    setFormError(null)
+    const result = await createWorkspace(candidate)
+    setPending(null)
+    if (result.kind === 'ok') {
+      const createdPath = result.workspaces.find(
+        (entry) => !previousPaths.has(entry.path),
+      )?.path
+      setWorkspaces(result.workspaces)
+      setCreation(result.creation)
+      setListFailure(null)
+      setDialog(null)
+      setName('')
+      setFeedback({
+        kind: 'success',
+        text: createdPath === undefined ? '已创建 workspace。' : `已创建：${createdPath}`,
+      })
+      void loadOverview()
+    } else {
+      setFormError(describeFailure(result, '新建'))
     }
   }
 
@@ -140,6 +199,7 @@ export function FileListPanel({
     setPending(null)
     if (result.kind === 'ok') {
       setWorkspaces(result.workspaces)
+      setCreation(result.creation)
       setListFailure(null)
       setFeedback({
         kind: 'success',
@@ -218,10 +278,34 @@ export function FileListPanel({
 
   return (
     <section className="workspaces" data-testid="file-list">
-      <p className="scope-note">
-        这里的路径指 omp-bot 服务所在电脑上的目录，不是手机或浏览器所在设备。
-        登记成功后由后端保存，本机与局域网设备共享；取消登记不会删除目录或文件。
-      </p>
+      <div className="workspace-actions">
+        <button
+          type="button"
+          className="workspace-action workspace-action--register"
+          data-testid="register-open"
+          disabled={pending !== null}
+          onClick={() => openDialog('register')}
+        >
+          登记
+        </button>
+        <button
+          type="button"
+          className="workspace-action workspace-action--create"
+          data-testid="create-open"
+          disabled={
+            pending !== null || workspaces === null || !creation.available
+          }
+          onClick={() => openDialog('create')}
+        >
+          新增
+        </button>
+      </div>
+
+      {workspaces !== null && !creation.available && (
+        <p className="workspace-note" data-testid="create-unavailable" role="note">
+          未配置 [workspaces] create_parent_directory；“新增”暂不可用。
+        </p>
+      )}
 
       {listProblem !== null && (
         <p
@@ -232,34 +316,6 @@ export function FileListPanel({
           {listProblem.text}
         </p>
       )}
-
-      <form className="workspace-form" onSubmit={(event) => void submit(event)}>
-        <label className="workspace-form__label" htmlFor="workspace-path">
-          服务器目录路径
-        </label>
-        <div className="workspace-form__row">
-          <input
-            id="workspace-path"
-            className="workspace-form__input"
-            data-testid="workspace-path"
-            type="text"
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-            placeholder="C:\Projects\example"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={pending !== null}
-          />
-          <button
-            type="submit"
-            className="workspace-register"
-            data-testid="register-workspace"
-            disabled={pending !== null}
-          >
-            登记
-          </button>
-        </div>
-      </form>
 
       {feedback !== null && (
         <p
@@ -327,6 +383,132 @@ export function FileListPanel({
             ))}
           </ul>
         ))}
+
+      {dialog === 'register' && (
+        <div className="workspace-modal">
+          <form
+            className="workspace-dialog"
+            data-testid="register-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="登记 workspace"
+            onSubmit={(event) => void submitRegister(event)}
+          >
+            <h2 className="workspace-dialog__title">登记已有目录</h2>
+            <p className="workspace-dialog__hint">
+              输入 omp-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
+            </p>
+            <label className="workspace-form__label" htmlFor="workspace-path">
+              服务器目录路径
+            </label>
+            <input
+              id="workspace-path"
+              className="workspace-form__input"
+              data-testid="workspace-path"
+              type="text"
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+              placeholder="C:\Projects\example"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={pending !== null}
+            />
+            {formError !== null && (
+              <p
+                className="workspace-feedback"
+                data-testid="workspace-feedback"
+                data-kind="error"
+                role="alert"
+              >
+                {formError}
+              </p>
+            )}
+            <div className="workspace-dialog__actions">
+              <button
+                type="button"
+                className="workspace-dialog__cancel"
+                data-testid="register-cancel"
+                disabled={pending !== null}
+                onClick={closeDialog}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className="workspace-register"
+                data-testid="register-workspace"
+                disabled={pending !== null}
+              >
+                登记
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {dialog === 'create' && (
+        <div className="workspace-modal">
+          <form
+            className="workspace-dialog"
+            data-testid="create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="新增 workspace"
+            onSubmit={(event) => void submitCreate(event)}
+          >
+            <h2 className="workspace-dialog__title">新增 workspace</h2>
+            <p className="workspace-dialog__hint">
+              将在{' '}
+              <code>{creation.parentDirectory ?? '配置的父目录'}</code>{' '}
+              下创建直接子目录，执行 git init 后加入登记列表。
+            </p>
+            <label className="workspace-form__label" htmlFor="workspace-name">
+              新 workspace 名称
+            </label>
+            <input
+              id="workspace-name"
+              className="workspace-form__input"
+              data-testid="create-name"
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="new-project"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={pending !== null}
+            />
+            {formError !== null && (
+              <p
+                className="workspace-feedback"
+                data-testid="workspace-feedback"
+                data-kind="error"
+                role="alert"
+              >
+                {formError}
+              </p>
+            )}
+            <div className="workspace-dialog__actions">
+              <button
+                type="button"
+                className="workspace-dialog__cancel"
+                data-testid="create-cancel"
+                disabled={pending !== null}
+                onClick={closeDialog}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className="workspace-register"
+                data-testid="create-workspace"
+                disabled={pending !== null}
+              >
+                创建
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   )
 }

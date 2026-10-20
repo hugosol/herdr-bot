@@ -260,6 +260,8 @@ workspace 登记列表由后端以文件持久保存，本机与局域网设备�
 
 ```toml
 [workspaces]
+# 新 workspace 的创建父目录。必须显式配置；缺省未配置时只禁用“新增”。
+create_parent_directory = 'E:\Developer\bot-playground'
 # 登记文件位置；缺省为进程工作目录下的 workspaces.json。
 registry_file = 'E:\data\omp-bot-workspaces.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
@@ -270,6 +272,7 @@ refresh_interval_seconds = 10
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
+| `create_parent_directory` | 无（必须显式配置） | 新建 workspace 的唯一父目录；必须在服务器上已存在 |
 | `registry_file` | `workspaces.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
 | `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
 | `refresh_interval_seconds` | `10` | 每个 workspace 合并文件事件并自动刷新的最小间隔（秒） |
@@ -279,8 +282,15 @@ refresh_interval_seconds = 10
   损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；`GET /api/workspaces` 再次读取与重启后
   看到的仍是原内容。
 - 登记路径必须是服务器上的**绝对**路径，且指向真实存在的目录；普通目录与 Git 工作树根目录都可登记。
-  登记不初始化 Git，也不扫描或聚合嵌套仓库。
+  登记已有目录不初始化 Git，也不扫描或聚合嵌套仓库；只有“新增 workspace”会创建目录并执行 `git init`。
 - 取消登记只移除登记项，不删除目录或文件；目录在登记后被外部删除时仍可取消登记。
+- `create_parent_directory` 没有代码内静默兜底。旧配置缺少该字段时服务仍可启动，只是“新增”按钮禁用并提示
+  配置字段。配置父目录缺失、不是目录或不是绝对路径时，创建请求明确失败，不自动创建父目录。
+- 新 workspace 名称只能是配置父目录下的一个直接子目录名，不能包含路径分隔符、`..` 或 Windows 设备名；
+  同名目录已存在时拒绝，不覆盖、不复用。
+- 创建顺序是**目录 → `git init` → 持久化登记**。全部成功后才显示成功并加入列表；不生成 README、首次提交
+  或远程仓库。中途失败保留已产生的目录：失败反馈说明失败阶段与完整路径；若目录与 Git 初始化已完成而只有
+  登记失败，可用“登记”入口按已有目录重新登记。
 - `preview_limit_bytes` 必须是正整数；零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，
   不会静默回退到 1 MiB。缺省值只在字段或整段缺失时使用。
 - `refresh_interval_seconds` 必须是正整数秒；零、负数、小数、字符串或拼错的字段名同样让**启动明确失败**，
@@ -321,21 +331,42 @@ command_timeout_seconds = 300
 > 手机使用文件浏览与 Git 操作。本版没有增加登录、多用户权限或公网部署能力，也没有任意命令、脚本
 > 或终端入口；不要把本服务暴露到公网或不可信网络。
 
-“文件列表”tab 的登记流程：
+“文件列表”tab 直接展示 workspace 列表和“登记”“新增”两个按钮；两个按钮都不在页面上常驻输入框，而是
+点按后打开弹窗，确认后才发送请求。
 
-1. 在“服务器目录路径”中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
+登记已有目录：
+
+1. 点按“登记”，在弹窗中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
    页面不提供客户端文件选择器。
-2. 点按“登记”。后端校验路径并持久保存；只有保存成功后页面才显示“已登记”。
+2. 点按弹窗里的“登记”。后端校验路径并持久保存；只有保存成功后页面才关闭弹窗并显示“已登记”。
 3. 已登记的 workspace 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
    登记。
 4. 每个登记项的“取消登记”只移除登记，不删除目录或文件。
 
+新增 workspace：
+
+1. 点按“新增”，弹窗只接受一个直接子目录名称，并显示配置的父目录。父目录来自服务端配置，客户端不能替换。
+2. 确认后，服务端在父目录下创建目录、执行 `git init`，再写入登记列表；全部成功后才关闭弹窗并显示创建路径。
+3. 未配置 `create_parent_directory` 时“新增”禁用并显示配置提示；“登记”不受影响。
+4. 非法名称、父目录缺失或目标已存在都会被明确拒绝；中途失败保留已产生的目录并显示失败阶段与完整路径。
+   同名目录不会覆盖或复用。
+
 失败反馈保持明确：非法路径、重复登记、存储读取/写入失败或登记文件损坏都会显示后端返回的类别说明；
 请求没有得到响应时页面显示“无法确认”，既不当成成功，也不当成失败或空列表。
 
-接口：`GET /api/workspaces` 读取列表，`POST /api/workspaces` 登记（JSON `{"path":"服务器绝对路径"}`），
-`POST /api/workspaces/remove` 取消登记（同一请求体）。成功响应都是当前完整列表：
-`{"workspaces":[{"path":"…"}]}`；失败响应是 `{"code":"…","message":"…"}`。
+接口：
+
+- `GET /api/workspaces` 读取列表。
+- `POST /api/workspaces` 登记已有目录（JSON `{"path":"服务器绝对路径"}`）。
+- `POST /api/workspaces/create` 新建 workspace（JSON `{"name":"直接子目录名称"}`）。
+- `POST /api/workspaces/remove` 取消登记（JSON `{"path":"服务器绝对路径"}`）。
+
+成功响应都是当前完整列表与创建能力：
+`{"workspaces":[{"path":"…"}],"creation":{"available":true,"parentDirectory":"…"}}`。未配置父目录时
+`creation` 为 `{"available":false}`，不返回伪造的父目录。失败响应是
+`{"code":"…","message":"…"}`；创建失败类别包括 `create-parent-not-configured`、
+`create-parent-not-found`、`invalid-name`、`name-already-exists`、`git-init-failed` 与
+`workspace-registration-failed` 等。
 
 ### 进入 workspace：只读浏览与 Git 待提交变更
 
@@ -355,7 +386,8 @@ command_timeout_seconds = 300
   登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。新增的 diff 入口使用
   同一份边界检查，Git 旧路径也不能绕过它。
 - **内容识别**：按内容识别文本（完整 UTF-8、无 NUL 字节），不要求后缀；无后缀文本可读，伪文本后缀的
-  二进制文件给出“不可文本预览”原因。内容与 diff 都以纯文本显示，HTML/script 不会被执行。
+  二进制文件给出“不可文本预览”原因。文件内容与 diff 默认都以纯文本显示，HTML/script 不会被执行；
+  `.html`/`.htm` 文本文件另有显式的“阅读 HTML”入口，见下一节。
 - **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。文件预览在读取内容前应用上限；
   diff 对旧侧与新侧分别应用同一个上限。任一侧超限或二进制时不渲染完整 diff，明确说明限制；超限或二进制
   不改变文件/变更的可见性、着色、计数或后续提交资格。
@@ -430,6 +462,30 @@ command_timeout_seconds = 300
 失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
 `path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
 
+### 阅读本地 HTML
+
+文件浏览中选中扩展名为 `.html` 或 `.htm` 的文本文件（大小写不敏感）时，文件头出现“阅读 HTML”按钮；
+原有源码预览仍保留。文件超过 `preview_limit_bytes` 或不是文本时没有可阅读内容，页面继续显示明确原因。
+
+- 点按后进入覆盖整个可用视口的阅读模式，不要求浏览器进入系统级全屏。右上角“退出”始终可见；退出后恢复
+  进入前的 workspace、当前目录、所选 HTML 文件和列表滚动位置，而不是回到 workspace 列表。
+- 阅读模式只支持静态 HTML：HTML 排版、CSS、图片、页内锚点与原生 `<details>` 可正常显示；**不执行
+  JavaScript**，不提交表单，不嵌入 iframe/object 等其他网页。
+- 内容先在父页面净化，再放入只允许同源、禁止脚本的 sandbox iframe，并附带禁止脚本、表单、嵌入、
+  连接和外部资源自动加载的 CSP。净化移除 `script`、iframe/object/embed、表单、meta refresh、内联事件
+  处理器和 `javascript:`/`file:` 链接；外部图片、字体、样式等资源不会自动加载。
+- workspace 内的相对 CSS、图片、字体等资源允许加载，读取仍经过与文件浏览相同的根边界检查：绝对路径、
+  `..` 遍历、符号链接、目录联接和根外路径都会被拒绝。根目录始终是登记 workspace，不会因进入阅读模式扩大。
+- 页内锚点正常跳转；指向 workspace 内其他 HTML 的链接在当前阅读模式内打开。`http`/`https` 普通链接在
+  新标签页打开；`file:///…` 链接不会打开本机其他文件。
+- HTML 源文件沿用单文件预览上限（默认 1 MiB）；相对 CSS、图片等资源不是文本预览，不按该文本上限截断。
+  如果 HTML 通过 `../assets/...` 引用资源，登记目录必须包含这些资源所在的共同父目录。
+
+阅读资源接口为
+`GET /api/workspaces/reader/<workspace-hex>/<相对路径>`：workspace 路径以 UTF-8 十六进制编码，使 HTML 的
+相对 URL 自然解析到同一个 workspace；响应是原始字节，按扩展名给出 MIME，并带 `nosniff`、CSP 与
+`Cache-Control: no-store`。未登记 workspace、越界路径、链接与目录都明确拒绝。
+
 ### 经审查复核的整仓 Commit
 
 Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Commit` 主按钮：
@@ -451,7 +507,7 @@ Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Comm
    与直接请求中说明原因；冲突解决但流程尚未结束时仍然阻塞。用户在外部完成或撤销流程后，刷新即恢复。
    没有 upstream 不妨碍本地 Commit，也不会隐式配置 upstream。
 8. 已初始化但没有首次提交的仓库按空树审查：已暂存与未忽略的未跟踪文件都显示为新增，Commit 创建首个提交。
-   本功能不提供 `git init`。
+   已有目录的登记与浏览不初始化 Git；“新增 workspace”是唯一会执行 `git init` 的入口。
 9. 嵌套仓库与子模块不递归管理：父仓库只记录其 gitlink 提交，内部文件不会作为父仓库普通内容提交；父仓库
    自身已跟踪的 gitlink 引用变化仍正常纳入。父仓库提交不会改写子仓库/嵌套仓库内部工作区。
 10. Git 沿用服务器现有的身份、凭据与策略：`git commit -m` 不打开编辑器，`GIT_TERMINAL_PROMPT=0` 禁止在
@@ -1853,3 +1909,51 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
 - **限制**：真实手机触摸与软键盘体验仍未确认，窄屏截图只是 `390×844` 视口仿真；未执行真实关机；
   Git 结果只针对隔离 bare 远端，未向业务远端推送。可信局域网无认证提醒已补入“文件列表与 workspace
   登记”一节。
+
+## 变更记录：新增 workspace 与 HTML 阅读模式（2026-10-21）
+
+本次把“文件列表”改成直接展示列表与两个弹窗入口，并加入由服务端配置父目录的新建 workspace 流程；同时为
+workspace 内的本地 HTML 增加整页静态阅读模式。文档记录见 [ADR-0007](docs/adr/0007-workspace-creation-explicit-parent-and-partial-failure.md)
+与 [ADR-0008](docs/adr/0008-html-reader-static-workspace-boundary.md)。
+
+- **改了什么**：
+  - `[workspaces] create_parent_directory` 为必须显式配置的可选字段，随附 `omp-bot.toml` 使用
+    `E:\Developer\bot-playground`。旧配置缺字段仍可启动，但“新增”禁用；父目录缺失不自动创建。
+  - 新增 `POST /api/workspaces/create`（JSON `{"name":"直接子目录名称"}`）；列表、登记、创建与取消登记
+    的成功响应带 `creation.available` 与可选 `parentDirectory`。请求只接受名称，父目录不能由客户端替换。
+  - 创建顺序为目录 → `git init` → 登记；同名目录拒绝，名称限制为单一直接子目录。任一步失败保留已经
+    产生的目录，错误包含失败阶段与完整路径；登记失败时目录与 Git 初始化不撤销。
+  - 新增 `GET /api/workspaces/reader/<workspace-hex>/<relative-path>` 原始资源路由，按扩展名返回 MIME、
+    `nosniff`、`no-store` 与 CSP；仍复用 workspace 根、链接与路径遍历边界检查。
+  - “文件列表”去掉常驻路径输入与说明文字，直接显示列表及“登记”“新增”按钮；两者改为弹窗确认。
+  - `.html`/`.htm` 文本文件增加“阅读 HTML”入口。内容在父页面移除脚本、表单、嵌入、meta refresh、
+    事件处理器和外部资源属性后，放入 `sandbox="allow-same-origin"` iframe；CSS、图片与原生折叠内容
+    可读。退出恢复原 workspace、目录、所选文件与滚动位置。
+  - 阅读器内 workspace HTML 链接在当前模式打开，`http`/`https` 链接在新标签页打开，`file://` 与其他
+    scheme 被拦截；外部资源不会自动加载。`GLOSSARY.md`、README、`omp-bot.toml` 同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test -- --skip conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves`
+    → `297 passed / 36 suites`，1 个环境受限用例被跳过。
+  - `cargo test` 的完整运行中，除上述 `mdns_conflict` 用例外全部通过。当前机器已有另一个 omp-bot 服务
+    监听 `8787`，该用例无法建立自己的受控 mDNS 占用者；单独重跑同样受环境阻塞，与本次改动无关。
+  - `cargo test --test workspace_create --test workspace_reader` → `6 passed`：覆盖真实目录创建与
+    `git init`、持久化登记、未配置/父目录缺失/非法名称/同名冲突、创建请求面封闭、登记失败保留目录、
+    HTML/CSS 原始响应与 MIME/CSP、越界与未登记 workspace 拒绝。
+  - `npm test` → `23 files / 167 tests passed`；新增 `htmlReader.test.ts` 及文件列表、浏览器交互用例，
+    覆盖弹窗确认、创建成功/失败、阅读入口与退出、净化规则、链接分类和 iframe 内链接分流。
+  - `npm run build`（`tsc --noEmit && vite build`）成功；新增 Rust 文件通过 `rustfmt --check`。
+- **真实 Chromium smoke**（隔离登记文件与 HTML 资源、真实交付后端进程；新增 workspace 落到配置父目录）：
+  - 页面“新增”弹窗显示 `E:\Developer\bot-playground`；确认后反馈
+    `已创建：E:\Developer\bot-playground\omp-smoke-html-20261021`，列表从 1 项变为 2 项；
+    `git rev-parse --is-inside-work-tree` 返回 `true` 且 `.git` 存在。
+  - HTML 阅读层矩形为 `0,0,1280×800`，与 `1280×800` 视口一致；workspace CSS 生效
+    （`color: rgb(1, 2, 3)`），相对图片加载 (`naturalWidth > 0`)，原生 `<details>` 保留。
+  - iframe 内 `script`/`iframe`/`form` 数量均为 0，`window.__pwned` 与 `dataset.scriptRan` 为 `null`，
+    外部图片数量为 0；CSP 与指向 workspace 资源路由的 `<base>` 均存在。
+  - 点击 workspace 内 `next.html` 链接后阅读路径变为 `next.html` 且显示目标标题；外部链接实际打开
+    `https://example.com/article` 新标签页，阅读路径不变；`file:///C:/Windows/win.ini` 链接的 `href`
+    已在净化后移除。
+  - 点击右上角“退出”后阅读层消失，仍停留在原 workspace，文件路径仍为 `index.html`，源码预览可见。
+- **限制与未覆盖**：阅读模式设计上不执行 JavaScript，因此依赖脚本的交互页面不在支持范围；真实手机触摸、
+  软键盘与窄屏阅读体验尚未做实机验收。当前环境存在另一个 omp-bot 实例，`mdns_conflict` 全量测试的
+  端口冲突仍需在无既有实例时复验。

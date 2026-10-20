@@ -78,6 +78,166 @@ describe('文件列表：workspace 登记', () => {
     expect(document.querySelector('input[type="file"]')).toBeNull()
   })
 
+  it('直接显示 workspace 列表，登记与新增都只在弹窗中输入', async () => {
+    const user = userEvent.setup()
+    mockWorkspaceFetch((url, method) => {
+      if (url === '/api/workspaces' && method === 'GET') {
+        return jsonResponse(200, {
+          workspaces: [{ path: 'C:\\work\\alpha' }],
+          creation: {
+            available: true,
+            parentDirectory: 'E:\\Developer\\bot-playground',
+          },
+        })
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openFileList(user)
+    await screen.findByText('C:\\work\\alpha')
+
+    expect(
+      screen.queryByText(/这里的路径指 omp-bot 服务所在电脑上的目录/),
+    ).toBeNull()
+    expect(screen.queryByTestId('workspace-path')).toBeNull()
+
+    await user.click(screen.getByTestId('register-open'))
+    const registerDialog = screen.getByTestId('register-dialog')
+    expect(registerDialog).toBeVisible()
+    expect(within(registerDialog).getByLabelText('服务器目录路径')).toBeVisible()
+    await user.click(screen.getByTestId('register-cancel'))
+    expect(screen.queryByTestId('register-dialog')).toBeNull()
+    expect(screen.queryByTestId('workspace-path')).toBeNull()
+
+    await user.click(screen.getByTestId('create-open'))
+    const createDialog = screen.getByTestId('create-dialog')
+    expect(createDialog).toBeVisible()
+    expect(within(createDialog).getByLabelText('新 workspace 名称')).toBeVisible()
+    expect(createDialog).toHaveTextContent('E:\\Developer\\bot-playground')
+    await user.click(screen.getByTestId('create-cancel'))
+    expect(screen.queryByTestId('create-dialog')).toBeNull()
+  })
+
+  it('未配置创建父目录时禁用新增并给出明确提示', async () => {
+    const user = userEvent.setup()
+    mockWorkspaceFetch((url, method) => {
+      if (url === '/api/workspaces' && method === 'GET') {
+        return jsonResponse(200, {
+          workspaces: [],
+          creation: { available: false },
+        })
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openFileList(user)
+    await screen.findByText('尚未登记 workspace。')
+
+    expect(screen.getByTestId('create-open')).toBeDisabled()
+    expect(screen.getByTestId('create-unavailable')).toHaveTextContent(
+      'create_parent_directory',
+    )
+    expect(screen.getByTestId('register-open')).toBeEnabled()
+  })
+
+  it('新增 workspace 在弹窗确认后才发送名称并显示创建路径', async () => {
+    const user = userEvent.setup()
+    const reply = deferredReply()
+    const { calls } = mockWorkspaceFetch((url, method) => {
+      if (url === '/api/workspaces' && method === 'GET') {
+        return jsonResponse(200, {
+          workspaces: [],
+          creation: {
+            available: true,
+            parentDirectory: 'E:\\Developer\\bot-playground',
+          },
+        })
+      }
+      if (url === '/api/workspaces/create' && method === 'POST') {
+        return reply.promise
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openFileList(user)
+    await screen.findByText('尚未登记 workspace。')
+
+    await user.click(screen.getByTestId('create-open'))
+    await user.type(screen.getByLabelText('新 workspace 名称'), 'new-project')
+    await user.click(screen.getByTestId('create-workspace'))
+
+    expect(screen.queryByTestId('workspace-feedback')).toBeNull()
+    expect(screen.getByTestId('create-workspace')).toBeDisabled()
+
+    reply.settle(
+      jsonResponse(200, {
+        workspaces: [{ path: 'E:\\Developer\\bot-playground\\new-project' }],
+        creation: {
+          available: true,
+          parentDirectory: 'E:\\Developer\\bot-playground',
+        },
+      }),
+    )
+
+    const feedback = await screen.findByTestId('workspace-feedback')
+    expect(feedback).toHaveAttribute('data-kind', 'success')
+    expect(feedback).toHaveTextContent(
+      '已创建：E:\\Developer\\bot-playground\\new-project',
+    )
+    expect(screen.queryByTestId('create-dialog')).toBeNull()
+    expect(
+      screen.getByText('E:\\Developer\\bot-playground\\new-project'),
+    ).toBeVisible()
+
+    const post = calls.find(
+      (call) => call.url === '/api/workspaces/create' && call.method === 'POST',
+    )
+    expect(post).toBeDefined()
+    expect(JSON.parse(post!.body!)).toEqual({ name: 'new-project' })
+  })
+
+  it('新增失败时保留弹窗并显示后端给出的失败阶段与完整目录', async () => {
+    const user = userEvent.setup()
+    const keptPath = 'E:\\Developer\\bot-playground\\kept-project'
+    mockWorkspaceFetch((url, method) => {
+      if (url === '/api/workspaces' && method === 'GET') {
+        return jsonResponse(200, {
+          workspaces: [{ path: 'C:\\work\\alpha' }],
+          creation: {
+            available: true,
+            parentDirectory: 'E:\\Developer\\bot-playground',
+          },
+        })
+      }
+      if (url === '/api/workspaces/create' && method === 'POST') {
+        return jsonResponse(500, {
+          code: 'workspace-registration-failed',
+          message: `目录与 Git 初始化已完成，但 workspace 登记失败，目录已保留：${keptPath}；原登记文件未被修改。`,
+        })
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openFileList(user)
+    await screen.findByText('C:\\work\\alpha')
+
+    await user.click(screen.getByTestId('create-open'))
+    await user.type(screen.getByLabelText('新 workspace 名称'), 'kept-project')
+    await user.click(screen.getByTestId('create-workspace'))
+
+    const feedback = await screen.findByTestId('workspace-feedback')
+    expect(feedback).toHaveAttribute('data-kind', 'error')
+    expect(feedback).toHaveTextContent('目录与 Git 初始化已完成')
+    expect(feedback).toHaveTextContent(keptPath)
+    expect(screen.getByTestId('create-dialog')).toBeVisible()
+    expect(screen.queryByText('已创建')).toBeNull()
+    expect(screen.getByText('C:\\work\\alpha')).toBeVisible()
+  })
+
   it('登记成功后显示成功并更新列表；答复到达之前不显示成功', async () => {
     const user = userEvent.setup()
     const reply = deferredReply()
@@ -95,6 +255,7 @@ describe('文件列表：workspace 登记', () => {
     await openFileList(user)
     expect(await screen.findByText('尚未登记 workspace。')).toBeVisible()
 
+    await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'E:\\work\\new-project')
     await user.click(screen.getByTestId('register-workspace'))
 
@@ -136,6 +297,7 @@ describe('文件列表：workspace 登记', () => {
     await openFileList(user)
     await screen.findByText('C:\\work\\alpha')
 
+    await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\missing')
     await user.click(screen.getByTestId('register-workspace'))
 
@@ -165,6 +327,7 @@ describe('文件列表：workspace 登记', () => {
     await openFileList(user)
     await screen.findByText('C:\\work\\alpha')
 
+    await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\second')
     await user.click(screen.getByTestId('register-workspace'))
 
@@ -251,6 +414,7 @@ describe('文件列表：workspace 登记', () => {
     await openFileList(user)
     await screen.findByText('尚未登记 workspace。')
 
+    await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'E:\\work\\new-project')
     await user.click(screen.getByTestId('register-workspace'))
 

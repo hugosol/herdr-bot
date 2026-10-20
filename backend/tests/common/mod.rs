@@ -189,7 +189,8 @@ pub fn repo_fixtures_dir() -> PathBuf {
 /// 递归复制目录内容。
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap_or_else(|e| panic!("创建目录失败 {}：{e}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|e| panic!("读取目录失败 {}：{e}", from.display()))
+    for entry in
+        fs::read_dir(from).unwrap_or_else(|e| panic!("读取目录失败 {}：{e}", from.display()))
     {
         let entry = entry.expect("读取目录项");
         let name = entry.file_name();
@@ -371,8 +372,7 @@ pub async fn get_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("连接测试服务器");
-    let request =
-        format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .await
@@ -503,9 +503,9 @@ fn parse_response(raw: &[u8]) -> HttpResponse {
         })
         .collect();
 
-    let chunked = headers
-        .iter()
-        .any(|(name, value)| name == "transfer-encoding" && value.to_lowercase().contains("chunked"));
+    let chunked = headers.iter().any(|(name, value)| {
+        name == "transfer-encoding" && value.to_lowercase().contains("chunked")
+    });
     let body = if chunked {
         decode_chunked(body)
     } else {
@@ -565,11 +565,7 @@ pub async fn run_batch(
     for (key, value) in env {
         command.env(key, value);
     }
-    command
-        .status()
-        .await
-        .expect("启动批处理")
-        .code()
+    command.status().await.expect("启动批处理").code()
 }
 
 /// 同步版本，用于测试清理路径（`Drop` 中不能 await）。

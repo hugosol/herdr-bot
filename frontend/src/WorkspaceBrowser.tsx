@@ -14,6 +14,8 @@ import {
   type BrowseResult,
   type FileView,
 } from './browseApi'
+import { HtmlReader } from './HtmlReaderView'
+import { isHtmlPath } from './htmlReader'
 import { diffRows, sideBySideRows } from './diff'
 import {
   fetchChangeDiff,
@@ -156,6 +158,11 @@ export function WorkspaceBrowser({
   const [file, setFile] = useState<FileView | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
+  // HTML 阅读模式是当前文件之上的整页展示；退出只清除它，所选文件与浏览位置保持不变。
+  const [htmlReader, setHtmlReader] = useState<{
+    path: string
+    source: string
+  } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   // 进入 workspace 时预读整棵目录树；展开目录只切换显示，不再等待网络。
   const [treeLoading, setTreeLoading] = useState(false)
@@ -1121,6 +1128,10 @@ export function WorkspaceBrowser({
       )
     }
     if (file === null) return null
+    const htmlSource =
+      file.preview.kind === 'text' && isHtmlPath(file.path)
+        ? file.preview.content
+        : null
     return (
       <article className="file-view" data-testid="file-view">
         <header className="file-view__header">
@@ -1130,6 +1141,16 @@ export function WorkspaceBrowser({
           <span className="file-view__size" data-testid="file-size">
             {file.size} 字节
           </span>
+          {htmlSource !== null && (
+            <button
+              type="button"
+              className="file-view__read-html"
+              data-testid="read-html"
+              onClick={() => setHtmlReader({ path: file.path, source: htmlSource })}
+            >
+              阅读 HTML
+            </button>
+          )}
         </header>
         {previewPane(file)}
       </article>
@@ -1566,6 +1587,15 @@ export function WorkspaceBrowser({
             </button>
           </div>
         </div>
+      )}
+
+      {htmlReader !== null && (
+        <HtmlReader
+          workspace={workspace}
+          initialPath={htmlReader.path}
+          initialSource={htmlReader.source}
+          onClose={() => setHtmlReader(null)}
+        />
       )}
     </section>
   )

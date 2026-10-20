@@ -599,6 +599,128 @@ describe('workspace 只读文件浏览', () => {
     expect(screen.getByTestId('browser-mobile-list').scrollTop).toBe(320)
   })
 
+  it('HTML 文件可进入整页阅读模式，脚本被隔离且退出恢复原文件', async () => {
+    const user = userEvent.setup()
+    mockFetch(standardHandler)
+
+    render(<App />)
+    await openWorkspace(user)
+
+    await user.click(screen.getByTestId('entry:README'))
+    await screen.findByTestId('file-text')
+    expect(screen.queryByTestId('read-html')).toBeNull()
+
+    await user.click(screen.getByTestId('entry:page.html'))
+    const text = await screen.findByTestId('file-text')
+    expect(text.textContent).toBe('<script>window.__pwned=1</script>')
+
+    await user.click(screen.getByTestId('read-html'))
+    const reader = screen.getByTestId('html-reader')
+    expect(reader).toHaveAttribute('role', 'dialog')
+    expect(reader).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByTestId('exit-html-reader')).toBeVisible()
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('page.html')
+
+    const frame = screen.getByTestId('html-reader-frame')
+    expect(frame).toHaveAttribute('sandbox', 'allow-same-origin')
+    expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
+    const document = frame.getAttribute('srcdoc') ?? ''
+    expect(document).not.toContain('<script')
+    expect(document).not.toContain('window.__pwned')
+    expect(document).toContain('Content-Security-Policy')
+    expect(document).toContain('/api/workspaces/reader/')
+    expect(document).toContain('/page.html')
+    expect('__pwned' in window).toBe(false)
+
+    await user.click(screen.getByTestId('exit-html-reader'))
+    expect(screen.queryByTestId('html-reader')).toBeNull()
+    expect(await screen.findByTestId('file-text')).toHaveTextContent(
+      '<script>window.__pwned=1</script>',
+    )
+    expect(screen.getByTestId('file-path')).toHaveTextContent('page.html')
+  })
+
+  it('阅读模式内打开 workspace HTML，并把外部链接与 file 链接分流', async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    mockFetch((url) => {
+      if (url.pathname === '/api/workspaces/file') {
+        const path = url.searchParams.get('path') ?? ''
+        if (path === 'page.html') {
+          return jsonResponse(200, {
+            workspace: WORKSPACE,
+            path,
+            name: 'page.html',
+            size: 120,
+            preview: {
+              kind: 'text',
+              content:
+                '<a id="next" href="next.html">next</a><a id="outside" href="https://example.com/article">outside</a><a id="local" href="file:///C:/secret.html">local</a>',
+            },
+          })
+        }
+        if (path === 'next.html') {
+          return jsonResponse(200, {
+            workspace: WORKSPACE,
+            path,
+            name: 'next.html',
+            size: 20,
+            preview: { kind: 'text', content: '<h1 id="next-page">Next page</h1>' },
+          })
+        }
+      }
+      return standardHandler(url)
+    })
+
+    render(<App />)
+    await openWorkspace(user)
+    await user.click(screen.getByTestId('entry:page.html'))
+    await screen.findByTestId('file-text')
+    await user.click(screen.getByTestId('read-html'))
+
+    const frame = screen.getByTestId('html-reader-frame') as HTMLIFrameElement
+    // jsdom 不填充 srcdoc 的 contentDocument；挂一份真实 Document 到 iframe 元素，驱动父页面的
+    // 链接拦截。真实 iframe 文档的净化与渲染由 htmlReader.test 和 Chromium smoke 覆盖。
+    const frameDocument = new DOMParser().parseFromString(
+      '<a id="next" href="next.html">next</a>' +
+        '<a id="outside" href="https://example.com/article">outside</a>' +
+        '<a id="local" href="file:///C:/secret.html">local</a>',
+      'text/html',
+    )
+    Object.defineProperty(frame, 'contentDocument', {
+      configurable: true,
+      value: frameDocument,
+    })
+    fireEvent.load(frame)
+
+    frameDocument
+      .querySelector('#next')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    await waitFor(() => {
+      expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+      expect(frame.getAttribute('srcdoc')).toContain('next-page')
+    })
+
+    frameDocument
+      .querySelector('#outside')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(open).toHaveBeenCalledWith(
+      'https://example.com/article',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+
+    frameDocument
+      .querySelector('#local')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(await screen.findByTestId('html-reader-notice')).toHaveTextContent(
+      'file:// 链接不会打开',
+    )
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+    open.mockRestore()
+  })
+
   it('包含 HTML/script 的文件只作为文本展示', async () => {
     const user = userEvent.setup()
     mockFetch(standardHandler)

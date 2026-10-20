@@ -49,6 +49,7 @@ pub mod sessions;
 pub mod shutdown;
 pub mod sync;
 pub mod watch;
+pub mod workspace_create;
 pub mod workspaces;
 
 use std::convert::Infallible;
@@ -58,10 +59,10 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::Router;
-use axum::body::to_bytes;
+use axum::body::{Body, to_bytes};
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path as UrlPath, Query, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
@@ -117,6 +118,8 @@ pub struct AppState {
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
     pub workspaces: Arc<workspaces::Workspaces>,
+    /// 新 workspace 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
+    pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
     ///
     /// 浏览读取只读；上限只影响内容预览，不影响目录列表与文件元数据。
@@ -202,6 +205,7 @@ pub fn app_with_state(
         workspaces: Arc::new(workspaces::Workspaces::new(
             config.workspaces.registry_file.clone(),
         )),
+        create_parent_directory: config.workspaces.create_parent_directory.clone(),
         preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
         repository_locks: Arc::new(commit::RepositoryLocks::new()),
@@ -236,11 +240,19 @@ pub fn app_with_state(
             "/api/workspaces",
             get(list_workspaces).post(register_workspace),
         )
+        // 新 workspace 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
+        .route("/api/workspaces/create", post(create_workspace))
         // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
         // 整树读取对 Git workspace 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
         .route("/api/workspaces/tree", get(read_workspace_tree))
         .route("/api/workspaces/entries", get(list_workspace_entries))
         .route("/api/workspaces/file", get(read_workspace_file))
+        // HTML 阅读模式的原始资源入口：workspace 身份编码在路径段中，HTML 的相对 URL 因此
+        // 能自然解析到同一 workspace 内的 CSS、图片等资源；每次读取仍重新核对登记根与链接边界。
+        .route(
+            "/api/workspaces/reader/{workspace}/{*path}",
+            get(read_workspace_reader_resource),
+        )
         // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
         .route("/api/workspaces/git-status", get(workspace_git_status))
         // 单个变更的审查 diff：旧侧是 HEAD，新侧是最终本地内容；两侧各自应用预览上限。
@@ -497,8 +509,17 @@ struct MonitoringAccepted {
 
 /// workspace 登记列表的响应：当前完整列表（登记与取消登记也返回同一形状）。
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCreationView {
+    available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_directory: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct WorkspaceListResponse {
     workspaces: Vec<RegisteredWorkspace>,
+    creation: WorkspaceCreationView,
 }
 
 /// workspace 请求的明确失败：机器可读类别 + 面向使用者的说明。
@@ -515,9 +536,16 @@ struct WorkspacePathRequest {
     path: String,
 }
 
+/// 新建 workspace 的请求体：只接受一个目录名称，父目录只来自服务端配置。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateWorkspaceRequest {
+    name: String,
+}
+
 /// “列出 workspace 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
 async fn list_workspaces(State(state): State<AppState>) -> Response {
-    workspace_list_response(state.workspaces.list().await)
+    workspace_list_response(&state, state.workspaces.list().await)
 }
 
 /// “登记 workspace”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
@@ -527,11 +555,60 @@ async fn register_workspace(State(state): State<AppState>, request: Request) -> 
             Ok(workspaces) => {
                 // 新登记的 workspace 立即开始监听；监听失败会作为健康错误交给观察连接。
                 state.workspace_watch.reconcile(&workspaces).await;
-                workspace_list_response(Ok(workspaces))
+                workspace_list_response(&state, Ok(workspaces))
             }
             Err(error) => workspace_error_response(error),
         },
         Err(rejection) => rejection,
+    }
+}
+
+/// “新建 workspace”：在配置父目录下创建直接子目录、执行 `git init`，随后登记。
+///
+/// 客户端只提交名称，父目录固定来自服务端配置。目录创建或 Git 初始化失败会保留已产生的目录；
+/// 登记失败也保留目录，并明确告诉调用者目录与 Git 初始化已经完成、可是登记没有成功。
+async fn create_workspace(State(state): State<AppState>, request: Request) -> Response {
+    let name = match workspace_create_name(request).await {
+        Ok(name) => name,
+        Err(rejection) => return rejection,
+    };
+    let Some(parent) = state.create_parent_directory.clone() else {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "create-parent-not-configured",
+            "未配置 [workspaces] create_parent_directory；本次没有创建任何目录。".to_string(),
+        );
+    };
+    let timeout = state.git_timeout;
+    let created = match tokio::task::spawn_blocking(move || {
+        workspace_create::create_and_init(&parent, &name, timeout)
+    })
+    .await
+    {
+        Ok(Ok(path)) => path,
+        Ok(Err(error)) => return workspace_create_error_response(error),
+        Err(_) => {
+            return rejected_owned(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "create-task-failed",
+                "新建 workspace 的任务异常结束，无法确认目录或 Git 状态。".to_string(),
+            );
+        }
+    };
+    let path = workspaces::display_path(&created);
+    match state.workspaces.register(&path).await {
+        Ok(workspaces) => {
+            state.workspace_watch.reconcile(&workspaces).await;
+            workspace_list_response(&state, Ok(workspaces))
+        }
+        Err(error) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "workspace-registration-failed",
+            format!(
+                "目录与 Git 初始化已完成，但 workspace 登记失败，目录已保留：{path}；{}",
+                error.message()
+            ),
+        ),
     }
 }
 
@@ -541,7 +618,7 @@ async fn unregister_workspace(State(state): State<AppState>, request: Request) -
         Ok(path) => match state.workspaces.unregister(&path).await {
             Ok(workspaces) => {
                 state.workspace_watch.reconcile(&workspaces).await;
-                workspace_list_response(Ok(workspaces))
+                workspace_list_response(&state, Ok(workspaces))
             }
             Err(error) => workspace_error_response(error),
         },
@@ -577,6 +654,54 @@ async fn workspace_path(request: Request) -> Result<String, Response> {
         )
     })?;
     Ok(body.path)
+}
+
+/// 读取新建 workspace 的请求体；请求面同样封闭，父目录不会从请求中接受。
+async fn workspace_create_name(request: Request) -> Result<String, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "新建 workspace 不接受查询参数：名称只来自请求体。".to_string(),
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "新建 workspace 的请求体超过 64KB 上限。".to_string(),
+            )
+        })?;
+    let body: CreateWorkspaceRequest = serde_json::from_slice(&bytes).map_err(|_| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            "无法解析新建 workspace 请求：请发送 {\"name\":\"目录名称\"} 形式的 JSON。".to_string(),
+        )
+    })?;
+    Ok(body.name)
+}
+
+/// 把创建 workspace 的失败翻译成稳定 HTTP 类别；失败消息保留目录路径与失败阶段。
+fn workspace_create_error_response(error: workspace_create::CreateWorkspaceError) -> Response {
+    use workspace_create::CreateWorkspaceError;
+    let status = match &error {
+        CreateWorkspaceError::AlreadyExists { .. } => StatusCode::CONFLICT,
+        CreateWorkspaceError::ParentNotAbsolute(_)
+        | CreateWorkspaceError::ParentNotFound(_)
+        | CreateWorkspaceError::ParentNotDirectory(_)
+        | CreateWorkspaceError::ParentInaccessible { .. }
+        | CreateWorkspaceError::NameRequired
+        | CreateWorkspaceError::InvalidName(_) => StatusCode::BAD_REQUEST,
+        CreateWorkspaceError::CreateFailed { .. }
+        | CreateWorkspaceError::GitInitFailed { .. }
+        | CreateWorkspaceError::FinalizeFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    rejected_owned(status, error.code(), error.message())
 }
 
 /// 一次只读浏览请求的查询参数：登记路径 + 可选相对路径（空字符串表示根目录）。
@@ -682,6 +807,110 @@ async fn read_workspace_file(
             "read-failed",
             "读取文件的任务异常结束，无法确认文件内容。".to_string(),
         ),
+    }
+}
+
+/// HTML 阅读模式读取原始资源：HTML、CSS、图片、字体等都以真实字节返回。
+///
+/// `workspace` 是登记路径的 UTF-8 十六进制编码，只用于把相对 URL 稳定地解析回同一个 workspace；
+/// 是否允许读取仍由登记列表与浏览边界决定。响应总是 `nosniff`，HTML 与 SVG 还带禁止脚本、表单、
+/// 嵌入和外部资源自动加载的 CSP。
+async fn read_workspace_reader_resource(
+    State(state): State<AppState>,
+    UrlPath((workspace_token, path)): UrlPath<(String, String)>,
+) -> Response {
+    let requested = match decode_workspace_token(&workspace_token) {
+        Ok(workspace) => workspace,
+        Err(message) => {
+            return rejected_owned(StatusCode::BAD_REQUEST, "invalid-workspace-token", message);
+        }
+    };
+    let registered = match registered_workspace(&state, &requested).await {
+        Ok(registered) => registered,
+        Err(response) => return response,
+    };
+    let content_type = resource_content_type(&path);
+    let relative = path.clone();
+    match tokio::task::spawn_blocking(move || browse::read_resource(&registered, &relative)).await {
+        Ok(Ok(bytes)) => resource_response(bytes, content_type),
+        Ok(Err(error)) => browse_error_response(error),
+        Err(_) => rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read-failed",
+            "读取 workspace 原始资源的任务异常结束，无法确认文件内容。".to_string(),
+        ),
+    }
+}
+
+fn decode_workspace_token(token: &str) -> Result<String, String> {
+    if token.is_empty() || token.len() % 2 != 0 {
+        return Err("HTML 阅读资源地址中的 workspace 编码无效。".to_string());
+    }
+    let mut bytes = Vec::with_capacity(token.len() / 2);
+    for pair in token.as_bytes().chunks_exact(2) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| "HTML 阅读资源地址中的 workspace 编码无效。".to_string())?;
+        let byte = u8::from_str_radix(text, 16)
+            .map_err(|_| "HTML 阅读资源地址中的 workspace 编码无效。".to_string())?;
+        bytes.push(byte);
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| "HTML 阅读资源地址中的 workspace 编码不是 UTF-8。".to_string())
+}
+
+fn resource_response(bytes: Vec<u8>, content_type: &'static str) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; \
+             font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'none'; \
+             object-src 'none'; frame-src 'none'; child-src 'none'; connect-src 'none'; \
+             form-action 'none'; base-uri 'self'; frame-ancestors 'self'",
+        ),
+    );
+    let mut response = (StatusCode::OK, Body::from(bytes)).into_response();
+    *response.headers_mut() = headers;
+    response
+}
+
+fn resource_content_type(path: &str) -> &'static str {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "html" | "htm" => "text/html; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "json" | "map" => "application/json",
+        "txt" | "md" | "markdown" => "text/plain; charset=utf-8",
+        "xml" => "application/xml; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
     }
 }
 
@@ -1307,11 +1536,28 @@ fn browse_error_response(error: browse::BrowseError) -> Response {
     rejected_owned(status, error.code(), error.message())
 }
 
-/// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表，失败不伪装成空列表。
-fn workspace_list_response(result: Result<Vec<RegisteredWorkspace>, WorkspaceError>) -> Response {
+/// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表与创建能力，失败不伪装成空列表。
+fn workspace_list_response(
+    state: &AppState,
+    result: Result<Vec<RegisteredWorkspace>, WorkspaceError>,
+) -> Response {
     match result {
         Ok(workspaces) => {
-            (StatusCode::OK, Json(WorkspaceListResponse { workspaces })).into_response()
+            let creation = WorkspaceCreationView {
+                available: state.create_parent_directory.is_some(),
+                parent_directory: state
+                    .create_parent_directory
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().into_owned()),
+            };
+            (
+                StatusCode::OK,
+                Json(WorkspaceListResponse {
+                    workspaces,
+                    creation,
+                }),
+            )
+                .into_response()
         }
         Err(error) => workspace_error_response(error),
     }

@@ -85,6 +85,118 @@ h1 {
   gap: 1rem;
 }
 
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.workspace-action {
+  flex: 1 1 10rem;
+  min-height: 2.75rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workspace-action--register {
+  border: 1px solid #3d4653;
+  background: #1d2128;
+  color: #e8ecf2;
+}
+
+.workspace-action--create {
+  border: 1px solid #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+}
+
+.workspace-action:disabled {
+  border-color: #3a4048;
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.workspace-note {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-left: 0.35rem solid #b58a2f;
+  border-radius: 0.35rem;
+  background: #2b261a;
+  color: #ffd995;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.workspace-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 970;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1.25rem;
+  background: rgba(6, 8, 11, 0.88);
+}
+
+.workspace-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  width: min(100%, 32rem);
+  padding: 1.25rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.75rem;
+  background: #14161a;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45);
+}
+
+.workspace-dialog__title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.workspace-dialog__hint {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.workspace-dialog__hint code {
+  color: #d6dbe4;
+  overflow-wrap: anywhere;
+}
+
+.workspace-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.workspace-dialog__cancel {
+  min-width: 6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #e8ecf2;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.workspace-dialog__cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .workspace-form {
   display: flex;
   flex-direction: column;
@@ -280,9 +392,13 @@ h1 {
 }
 
 .workspace-form__input:focus-visible,
+.workspace-action:focus-visible,
+.workspace-dialog__cancel:focus-visible,
 .workspace-register:focus-visible,
 .workspace-item__open:focus-visible,
-.workspace-item__remove:focus-visible {
+.workspace-item__remove:focus-visible,
+.file-view__read-html:focus-visible,
+.html-reader__exit:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
 }
@@ -924,6 +1040,104 @@ h1 {
 .file-view__size {
   color: #8a93a1;
   font-size: 0.85rem;
+}
+
+.file-view__read-html {
+  align-self: center;
+  margin-left: auto;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #2f7d32;
+  border-radius: 0.45rem;
+  background: #1f3522;
+  color: #b6f0c0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 阅读模式占满整个可用视口；顶部只有路径与右上角退出，内容区不再套主界面布局。 */
+.html-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 980;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: #0b0d10;
+  color: #f2f4f8;
+}
+
+.html-reader__bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: none;
+  box-sizing: border-box;
+  min-height: 3.5rem;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid #2b313a;
+  background: #14161a;
+}
+
+.html-reader__path {
+  min-width: 0;
+  overflow: hidden;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.html-reader__exit {
+  flex: none;
+  margin-left: auto;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #6b3a33;
+  border-radius: 0.45rem;
+  background: #33201c;
+  color: #ffd9d1;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.html-reader__status,
+.html-reader__error,
+.html-reader__notice {
+  position: absolute;
+  top: 4rem;
+  left: 50%;
+  z-index: 2;
+  box-sizing: border-box;
+  max-width: min(92vw, 44rem);
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.35);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  transform: translateX(-50%);
+}
+
+.html-reader__error {
+  border-left: 0.35rem solid #c14b3a;
+  color: #ffd9d1;
+}
+
+.html-reader__notice {
+  border-left: 0.35rem solid #b58a2f;
+  color: #ffd995;
+}
+
+.html-reader__frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #ffffff;
 }
 
 .file-view__text {
