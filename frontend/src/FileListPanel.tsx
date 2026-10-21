@@ -35,7 +35,7 @@ function describeFailure(result: ZoneResult, action: string): string {
 /**
  * 文件列表：zone 登记列表的入口。
  *
- * 路径指 omp-bot 服务所在电脑上的目录，不是手机或浏览器所在设备；页面没有客户端文件选择器。
+ * 路径指 herdr-bot 服务所在电脑上的目录，不是手机或浏览器所在设备；页面没有客户端文件选择器。
  * 每次进入这个顶层入口都重新读取后端列表，因此另一台设备新增的登记会在这里出现；登记成功
  * 只表示后端已经持久化，取消登记只移除登记项。
  */
@@ -396,7 +396,7 @@ export function FileListPanel({
           >
             <h2 className="zone-dialog__title">登记已有目录</h2>
             <p className="zone-dialog__hint">
-              输入 omp-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
+              输入 herdr-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
             </p>
             <label className="zone-form__label" htmlFor="zone-path">
               服务器目录路径

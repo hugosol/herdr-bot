@@ -38,7 +38,7 @@ export type SessionEventSourceFactory = (url: string) => SessionEventSource
  * 默认端点：与页面同源。
  *
  * 交付运行时由 Axum 同时提供页面与该接口，开发时由 Vite 的 `/api` 代理转发到本机后端，
- * 所以两种情形下相对路径都指向同一个 omp-bot 实例。
+ * 所以两种情形下相对路径都指向同一个 herdr-bot 实例。
  */
 export const SESSION_EVENTS_URL = '/api/sessions/events'
 

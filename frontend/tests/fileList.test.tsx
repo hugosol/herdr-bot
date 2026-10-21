@@ -98,7 +98,7 @@ describe('文件列表：zone 登记', () => {
     await screen.findByText('C:\\work\\alpha')
 
     expect(
-      screen.queryByText(/这里的路径指 omp-bot 服务所在电脑上的目录/),
+      screen.queryByText(/这里的路径指 herdr-bot 服务所在电脑上的目录/),
     ).toBeNull()
     expect(screen.queryByTestId('zone-path')).toBeNull()
 

@@ -27,7 +27,7 @@ async function showSessions(sessions: SessionView[]) {
 const WORKING: SessionView = {
   sessionId: '3f9c1a72-aa10-4d0e-9b11-7c2e5f8a0011',
   sessionName: '会话桥契约梳理',
-  cwd: 'E:\\Developer\\myhub\\omp-bot',
+  cwd: 'E:\\Developer\\myhub\\herdr-bot',
   model: 'claude-sonnet-4-5',
   online: true,
   state: 'working',
@@ -41,12 +41,12 @@ describe('会话列表（卡片流）', () => {
     expect(within(card).getByTestId('keepalive-dot')).toHaveAttribute('aria-label', '在线')
     expect(within(card).getByTestId('session-name')).toHaveTextContent('会话桥契约梳理')
     expect(within(card).getByTestId('session-state')).toHaveTextContent('工作中')
-    expect(within(card).getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\omp-bot')
+    expect(within(card).getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\herdr-bot')
     expect(within(card).getByTestId('session-model')).toHaveTextContent('claude-sonnet-4-5')
 
     // 不显示最后活动时间：卡片的可见文本恰是这几项字段加上「完成后关机」按钮，多出任何一项都会让这条断言失败。
     expect(card.textContent?.replace(/\s+/g, '')).toBe(
-      '会话桥契约梳理工作中E:\\Developer\\myhub\\omp-botclaude-sonnet-4-5完成后关机',
+      '会话桥契约梳理工作中E:\\Developer\\myhub\\herdr-botclaude-sonnet-4-5完成后关机',
     )
   })
 
@@ -62,7 +62,7 @@ describe('会话列表（卡片流）', () => {
     await showSessions([unnamed, blank])
 
     const names = screen.getAllByTestId('session-name').map((node) => node.textContent)
-    expect(names).toEqual(['omp-bot · 3f9c1a72', 'my-omp-toolkit · aaaaaaaa'])
+    expect(names).toEqual(['herdr-bot · 3f9c1a72', 'my-omp-toolkit · aaaaaaaa'])
   })
 
   it('model 缺省或为空时隐藏该字段', async () => {
@@ -102,7 +102,7 @@ describe('会话列表（卡片流）', () => {
   it('state 缺省时显示中性占位「状态同步中…」，不预设成任一具体状态', async () => {
     const unsynced: SessionView = {
       sessionId: 'cccccccc-1111-2222-3333-444455556666',
-      cwd: 'E:\\Developer\\myhub\\omp-bot',
+      cwd: 'E:\\Developer\\myhub\\herdr-bot',
       online: true,
     }
 
@@ -249,7 +249,7 @@ describe('会话列表（卡片流）', () => {
     const onlineUnsynced: SessionView = {
       sessionId: 'online-unsynced',
       sessionName: '在线未同步会话',
-      cwd: 'E:\\Developer\\myhub\\omp-bot',
+      cwd: 'E:\\Developer\\myhub\\herdr-bot',
       online: true,
     }
 

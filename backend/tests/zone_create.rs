@@ -12,7 +12,7 @@ use std::process::Command;
 use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 
-fn config_with_creation(registry: &Path, parent: Option<&Path>) -> omp_bot::Config {
+fn config_with_creation(registry: &Path, parent: Option<&Path>) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");

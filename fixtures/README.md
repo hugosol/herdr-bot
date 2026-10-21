@@ -41,7 +41,7 @@ fixtures/
 
 ## 在服务端配置中指定为操作目标
 
-夹具通过服务端配置（`omp-bot.toml`）的 `[operations.start]` / `[operations.stop]` 绑定，
+夹具通过服务端配置（`herdr-bot.toml`）的 `[operations.start]` / `[operations.stop]` 绑定，
 客户端无法替换命令、脚本路径或参数。绝对路径示例（把 `<仓库>` 换成本仓库所在目录）：
 
 ```toml
@@ -73,7 +73,7 @@ working_directory = '<仓库>\fixtures\operations'
 每次夹具被调用都会向同一个记录文件追加一行，用于证明“仅调用了一次”“没有延迟补做”“调用时间与工作目录”：
 
 - 默认位置：`fixtures/runtime/calls.tsv`
-- 可配置：环境变量 `OMP_BOT_FIXTURE_RECORD_DIR` 指向任意目录（进程级，后端与其子进程继承）
+- 可配置：环境变量 `HERDR_BOT_FIXTURE_RECORD_DIR` 指向任意目录（进程级，后端与其子进程继承）
 - 记录文件为 UTF-8（无 BOM），制表符分隔，一行一次记录或一条阶段记录，字段顺序固定：
 
 | 列 | 含义 |
@@ -114,7 +114,7 @@ working_directory = '<仓库>\fixtures\operations'
 1. **停止标记（首选）**：创建 `<记录目录>\stop\<夹具>.stop` 文件，夹具见到后写入 `stage=stop-observed`
    记录并退出；`stop-fixtures.bat` 会为两个长期夹具写标记。
 2. **PID 文件 + 强制结束（兜底）**：`<记录目录>\pids\<夹具>.pid` 记录夹具进程 PID，可用
-   `taskkill /PID <pid> /T /F` 结束进程树（分离子进程的窗口标题为 `omp-bot detached child`）。
+   `taskkill /PID <pid> /T /F` 结束进程树（分离子进程的窗口标题为 `herdr-bot detached child`）。
 
 人工或脚本统一入口：
 

@@ -42,7 +42,7 @@ fn class(body: &Value) -> (String, Option<String>) {
 #[tokio::test]
 async fn success_exit_is_reported_as_completed() {
     let tree = FixtureTree::new("result-success");
-    let app = omp_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
 
     let (status, body) = post_start(app).await;
 
@@ -63,7 +63,7 @@ async fn success_exit_is_reported_as_completed() {
 #[tokio::test]
 async fn failure_exit_is_reported_as_failed() {
     let tree = FixtureTree::new("result-failure");
-    let app = omp_bot::app(&config(&tree.script("failure.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("failure.bat"), &tree.operations()));
 
     let (status, body) = post_start(app).await;
 
@@ -86,7 +86,7 @@ async fn missing_script_is_reported_as_failed_not_started() {
     let missing = tree.script("unstartable/missing-script.bat");
     assert!(!missing.exists(), "夹具前提：该目标确实不存在");
 
-    let app = omp_bot::app(&config(&missing, &tree.operations()));
+    let app = herdr_bot::app(&config(&missing, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -113,7 +113,7 @@ async fn non_executable_target_is_reported_as_failed_not_started() {
     let target = tree.script("unstartable/invalid-target.exe");
     assert!(target.is_file(), "夹具前提：该目标文件存在");
 
-    let app = omp_bot::app(&config(&target, &tree.operations()));
+    let app = herdr_bot::app(&config(&target, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -143,7 +143,7 @@ async fn missing_working_directory_is_reported_as_failed_not_started() {
         "夹具前提：该工作目录确实不存在"
     );
 
-    let app = omp_bot::app(&config(&tree.script("success.bat"), &missing_directory));
+    let app = herdr_bot::app(&config(&tree.script("success.bat"), &missing_directory));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -159,7 +159,7 @@ async fn missing_working_directory_is_reported_as_failed_not_started() {
 #[tokio::test(flavor = "multi_thread")]
 async fn detached_child_does_not_delay_the_completed_result() {
     let tree = FixtureTree::new("result-detached");
-    let app = omp_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
 
     let started_at = Instant::now();
     let (status, body) = tokio::time::timeout(Duration::from_secs(30), post_start(app))
@@ -220,17 +220,17 @@ async fn the_three_result_classes_are_mutually_distinguishable() {
     let tree = FixtureTree::new("result-classes");
     let operations = tree.operations();
 
-    let (_, completed) = post_start(omp_bot::app(&config(
+    let (_, completed) = post_start(herdr_bot::app(&config(
         &tree.script("success.bat"),
         &operations,
     )))
     .await;
-    let (_, failed) = post_start(omp_bot::app(&config(
+    let (_, failed) = post_start(herdr_bot::app(&config(
         &tree.script("failure.bat"),
         &operations,
     )))
     .await;
-    let (_, not_started) = post_start(omp_bot::app(&config(
+    let (_, not_started) = post_start(herdr_bot::app(&config(
         &tree.script("unstartable/missing-script.bat"),
         &operations,
     )))
@@ -265,7 +265,7 @@ async fn failure_looking_output_does_not_change_a_success_exit() {
         ],
     );
 
-    let app = omp_bot::app(&config(&script, &tree.operations()));
+    let app = herdr_bot::app(&config(&script, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -291,7 +291,7 @@ async fn success_looking_output_does_not_change_a_failure_exit() {
         ],
     );
 
-    let app = omp_bot::app(&config(&script, &tree.operations()));
+    let app = herdr_bot::app(&config(&script, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -310,8 +310,8 @@ async fn both_fixed_operations_report_the_result_class() {
     let mut configuration = config(&tree.script("success.bat"), &tree.operations());
     configuration.operations.stop.script = tree.script("failure.bat");
 
-    let (_, start_body) = post_operation(omp_bot::app(&configuration), "start").await;
-    let (_, stop_body) = post_operation(omp_bot::app(&configuration), "stop").await;
+    let (_, start_body) = post_operation(herdr_bot::app(&configuration), "start").await;
+    let (_, stop_body) = post_operation(herdr_bot::app(&configuration), "stop").await;
 
     assert_eq!(start_body["operation"], "start");
     assert_eq!(class(&start_body), ("completed".to_string(), None));

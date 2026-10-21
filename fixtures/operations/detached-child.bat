@@ -3,7 +3,7 @@ rem ============================================================
 rem  Fixture child: started detached by spawn-detached.bat and
 rem  long running. Same stop mechanism as long-running.bat.
 rem
-rem  Runs in its own window titled "omp-bot detached child", so it is
+rem  Runs in its own window titled "herdr-bot detached child", so it is
 rem  identifiable. Writes a call record (fixture=detached-child, stage=child-start)
 rem  and its PID to <record-dir>\pids\detached-child.pid, then waits for
 rem  <record-dir>\stop\detached-child.stop and records stage=stop-observed.

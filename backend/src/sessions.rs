@@ -1,13 +1,13 @@
 //! 会话事件的读写两端与会话内存态。
 //!
-//! omp-bot 服务端的「会话」第一次在这里落地：扩展把每个会话的生命周期事件（`register` /
+//! herdr-bot 服务端的「会话」第一次在这里落地：扩展把每个会话的生命周期事件（`register` /
 //! `heartbeat` / `state` / `unregister`）都发到同一条 `POST /api/sessions/events`，
 //! 服务端把它们写进**进程内**的会话表，并在同一把锁内把浏览器可见的变化发布给订阅者
-//! （读路径只做只读转发，不重放、不落盘，omp-bot 重启即清空）。
+//! （读路径只做只读转发，不重放、不落盘，herdr-bot 重启即清空）。
 //!
 //! 事件信封是 `{sessionId, kind, data}`：没有版本位、没有时间戳，`kind` 是封闭枚举，未知字段一律忽略。
 //! `register` 是**唯一**的建行入口且幂等——重复注册不新起行，只刷新注册时间与展示字段快照；
-//! 非 `register` 事件引用未知会话时得到 `404 unknown-session`（扩展据此判别 omp-bot 重启过）。
+//! 非 `register` 事件引用未知会话时得到 `404 unknown-session`（扩展据此判别 herdr-bot 重启过）。
 //!
 //! 在线与否只由服务端判定：[`SessionPolicy::is_online`] 是唯一判定式，[`SessionPolicy`] 是唯一的阈值来源
 //! （启动期由 `[sessions]` 配置给出，缺省在线有效期 10 秒、离线保留期 30 秒），快照（读路径）、写入与
@@ -578,7 +578,7 @@ struct EventAccepted {
 /// （本机没有可读的网卡信息）时按「不是本机」拒绝：边界默认关闭。
 ///
 /// 同机经 mDNS 主机名接入时源地址就是本机网卡地址，因此这一条同时保住了默认端点
-/// `omp-bot.local:8787` 的同机可用性。
+/// `herdr-bot.local:8787` 的同机可用性。
 fn is_local_source(ip: IpAddr) -> bool {
     ip.is_loopback()
         || if_addrs::get_if_addrs().is_ok_and(|interfaces| {

@@ -1,23 +1,31 @@
-# omp-bot 主界面
+# herdr-bot 主界面
 
 在 Windows 上手动启动的网页主界面：本机浏览器与同一局域网内的手机访问同一个服务；分为「会话列表」「文件列表」与「控制面板」三个 tab，每次打开或整页刷新默认会话列表。
 
 ## Language
 
-**omp-bot 主界面**:
+**herdr-bot 主界面**:
 本服务在浏览器中提供的整个页面；本机与局域网设备访问同一实例。
-_Avoid_: 控制面板, 管理后台, 仪表盘
+_Avoid_: omp-bot 主界面（旧名）, 控制面板, 管理后台, 仪表盘
+
+**herdr**:
+外部项目，负责管理 session；herdr-bot 不重复实现其 session 管理。
+_Avoid_: herdr-bot, 本项目
+
+**connect-bot**:
+agent 侧的扩展与接入协议；任何实现 connect-bot 的 agent 都可以把 agent session 上报到 herdr-bot 主界面。当前实现由 my-agent-toolkit 提供，支持多种 agent。
+_Avoid_: herdr, herdr-bot
 
 **控制面板**:
-omp-bot 主界面中承载固定操作的 tab；只反馈脚本调用情况，不检查后台程序是否就绪。
+herdr-bot 主界面中承载固定操作的 tab；只反馈脚本调用情况，不检查后台程序是否就绪。
 _Avoid_: 管理后台, 仪表盘, 主界面
 
 **zone**:
-用户登记的、位于 omp-bot 服务所在电脑上的一个目录，是文件浏览的根边界。它可以是普通目录，也可以对应一个 Git 工作树；后者的 Git 操作只针对该仓库，不递归管理嵌套仓库。
+用户登记的、位于 herdr-bot 服务所在电脑上的一个目录，是文件浏览的根边界。它可以是普通目录，也可以对应一个 Git 工作树；后者的 Git 操作只针对该仓库，不递归管理嵌套仓库。
 _Avoid_: workspace（保留给未来的 herdr 概念）, 工作区（Git 工作树的常用译名）, 会话工作目录, 仓库（zone 不一定是 Git 仓库）
 
 **zone 登记列表**:
-同一 omp-bot 实例保存并由电脑与手机共享的 zone 集合；取消登记不表示删除目录或文件。
+同一 herdr-bot 实例保存并由电脑与手机共享的 zone 集合；取消登记不表示删除目录或文件。
 _Avoid_: 本机收藏夹, 浏览器目录列表
 
 **zone 创建父目录**:
@@ -25,7 +33,7 @@ _Avoid_: 本机收藏夹, 浏览器目录列表
 _Avoid_: 默认目录, 固定根目录
 
 **文件列表**:
-omp-bot 主界面中承载 zone 登记列表、并作为进入 zone 文件浏览入口的 tab；登记路径指服务所在电脑上的目录，不是浏览设备上的目录。
+herdr-bot 主界面中承载 zone 登记列表、并作为进入 zone 文件浏览入口的 tab；登记路径指服务所在电脑上的目录，不是浏览设备上的目录。
 _Avoid_: 控制面板, 变更视图, 浏览器目录列表
 
 **文件浏览视图**:
@@ -61,11 +69,11 @@ _Avoid_: 关机, 关闭服务
 _Avoid_: 停止, 关闭主界面
 
 **完成后关机监听**:
-用户为某个会话选择的关机意图，以“等待用户输入”作为该会话的轮次结束条件。它独立于 agent 状态、keepAlive 和“已接入”，不表示整个任务已成功完成。
+用户为某个 agent session 选择的关机意图，以“等待用户输入”作为该 agent session 的轮次结束条件。它独立于 agent 状态、keepAlive 和“已接入”，不表示整个任务已成功完成。
 _Avoid_: 监听结束状态, agent 状态, 已接入
 
 **完成后关机监听集合**:
-同一 omp-bot 实例内当前被选中进行完成后关机监听的会话集合；集合非空且所有成员当前都在线并等待用户输入，才具备自动关机倒计时的触发条件。
+同一 herdr-bot 实例内当前被选中进行完成后关机监听的 agent session 集合；集合非空且所有成员当前都在线并等待用户输入，才具备自动关机倒计时的触发条件。
 _Avoid_: 全部会话, 曾经完成的会话, 任务完成列表
 
 **关机倒计时**:
@@ -77,7 +85,7 @@ _Avoid_: 会话状态, 已关机, 停止倒计时
 _Avoid_: 返回, 关闭提醒, 撤回已发出的关机指令
 
 **mDNS 主机名**:
-通过 mDNS 发布、供局域网设备访问 omp-bot 主界面的 `.local` 主机名，例如 `omp-bot.local`。
+通过 mDNS 发布、供局域网设备访问 herdr-bot 主界面的 `.local` 主机名，例如 `herdr-bot.local`。
 _Avoid_: 域名, 网址, 内网域名
 
 **执行资格**:
@@ -89,31 +97,31 @@ _Avoid_: 锁, 队列
 _Avoid_: 失败, 错误
 
 **局域网设备**:
-与本机处于同一链路、可通过 IP 或 mDNS 主机名访问 omp-bot 主界面的设备。
+与本机处于同一链路、可通过 IP 或 mDNS 主机名访问 herdr-bot 主界面的设备。
 _Avoid_: 客户端, 远程设备
 
-**会话**:
-一个 omp agent 对话单元。启用 `/connect-bot` 后，扩展把它上报到 omp-bot 主界面，每个会话独立呈现其 keepAlive 与状态。
-_Avoid_: 连接, 进程, 客户端
+**agent session（会话）**:
+一个实现 connect-bot 的 agent 的对话单元；由该 agent 的扩展上报到 herdr-bot 主界面，每个 agent session 独立呈现其 keepAlive 与状态。
+_Avoid_: omp 会话, herdr session, 连接, 进程, 客户端
 
 **会话登记**:
-omp-bot 当前跟踪某个会话的记录；它不同于 agent 对话本身，登记消失不表示对话或聊天记录被删除。
+herdr-bot 当前跟踪某个 agent session 的记录；它不同于 agent 对话本身，登记消失不表示对话或聊天记录被删除。
 _Avoid_: 会话历史, 连接, agent 会话
 
 **会话列表**:
-omp-bot 主界面中呈现所有当前已登记会话的 keepAlive 与最后上报的 agent 状态的 tab。
+herdr-bot 主界面中呈现所有当前已登记 agent session 的 keepAlive 与最后上报的 agent 状态的 tab。
 _Avoid_: 会话面板, 会话页
 
 **keepAlive**:
-omp-bot 对已登记会话最近上报是否仍在有效期内的判断，定时心跳是其输入之一。它与 agent 是否正在工作、浏览器能否获取最新状态是不同的概念。
+herdr-bot 对已登记 agent session 最近上报是否仍在有效期内的判断，定时心跳是其输入之一。它与 agent 是否正在工作、浏览器能否获取最新状态是不同的概念。
 _Avoid_: 心跳（心跳只是它的输入）, 在线状态
 
 **在线**:
-keepAlive 的取值之一：该会话最近的上报仍在在线有效期内。
+keepAlive 的取值之一：该 agent session 最近的上报仍在在线有效期内。
 _Avoid_: 已连接, 工作中
 
 **离线**:
-keepAlive 的取值之一：该会话最近的上报已过期，但登记仍保留。它不确定失联原因、不承诺重连，也不表示浏览器与 omp-bot 断开。
+keepAlive 的取值之一：该 agent session 最近的上报已过期，但登记仍保留。它不确定失联原因、不承诺重连，也不表示浏览器与 herdr-bot 断开。
 _Avoid_: 已断开, 已退出, 空闲
 
 **在线有效期**:
@@ -133,9 +141,9 @@ _Avoid_: 忙碌, 运行中
 _Avoid_: 完成, 结束, 空闲
 
 **空闲**:
-会话在线、agent 没有在跑，且 omp-bot 主界面尚未观察到任何轮次结束的状态；新会话启用后的初始态。它与「等待用户输入」的区别是还没有可等待的轮次结束。
+agent session 在线、agent 没有在跑，且 herdr-bot 主界面尚未观察到任何轮次结束的状态；新 agent session 启用后的初始态。它与「等待用户输入」的区别是还没有可等待的轮次结束。
 _Avoid_: 在线, 待机
 
 **已接入**:
-扩展当前正在把该会话推送到 omp-bot 主界面（`/connect-bot` 已 arm）。它与 keepAlive 的「在线/离线」不同：前者是扩展侧的推送状态，后者由 omp-bot 主界面按心跳过期判定。未 arm 即「未接入」。
+扩展当前正在把该 agent session 推送到 herdr-bot 主界面（`/connect-bot` 已 arm）。它与 keepAlive 的「在线/离线」不同：前者是扩展侧的推送状态，后者由 herdr-bot 主界面按心跳过期判定。未 arm 即「未接入」。
 _Avoid_: 已连接, 已启用, 在线

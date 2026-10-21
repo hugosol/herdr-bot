@@ -17,7 +17,7 @@ use serde::Deserialize;
 use crate::sessions::{DEFAULT_OFFLINE_RETENTION_SECONDS, DEFAULT_ONLINE_SECONDS, SessionPolicy};
 use crate::zones::DEFAULT_REGISTRY_FILE;
 
-/// omp-bot 主界面运行配置。
+/// herdr-bot 主界面运行配置。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -403,7 +403,7 @@ fn mdns_enabled_by_default() -> bool {
     true
 }
 
-/// omp-bot 主界面允许执行的固定操作集合：只有“启动”与“停止”两个，目标只能来自配置。
+/// herdr-bot 主界面允许执行的固定操作集合：只有“启动”与“停止”两个，目标只能来自配置。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Operations {

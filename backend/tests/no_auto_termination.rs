@@ -105,7 +105,7 @@ fn assert_busy(path: &str, response: &HttpResponse) {
 
 /// “启动”绑定长跑夹具（只有停止标记能让它结束），“停止”绑定立即成功结束的夹具：
 /// 于是“人工结束后恢复接受操作”能用另一个夹具的真实调用记录证明。
-fn config_for(tree: &FixtureTree) -> omp_bot::Config {
+fn config_for(tree: &FixtureTree) -> herdr_bot::Config {
     let mut config = config(&tree.script("long-running.bat"), &tree.operations());
     config.operations.stop.script = tree.script("success.bat");
     config

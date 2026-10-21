@@ -36,7 +36,7 @@ const BUSY_BUDGET: Duration = Duration::from_secs(2);
 const QUIET_PERIOD: Duration = Duration::from_secs(3);
 
 /// 把两个固定操作分别绑定到不同夹具，便于用调用记录区分“哪个操作真的执行了”。
-fn config_with(tree: &FixtureTree, start: &str, stop: &str) -> omp_bot::Config {
+fn config_with(tree: &FixtureTree, start: &str, stop: &str) -> herdr_bot::Config {
     let mut config = config(&tree.script(start), &tree.operations());
     config.operations.stop.script = tree.script(stop);
     config

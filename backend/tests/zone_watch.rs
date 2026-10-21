@@ -15,14 +15,14 @@ use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp
 use serde_json::{Value, json};
 
 /// 与交付配置同形，但把登记文件放进隔离目录，并把自动刷新窗口压到 1 秒。
-fn config_with_watch(registry: &Path) -> omp_bot::Config {
+fn config_with_watch(registry: &Path) -> herdr_bot::Config {
     let fixtures = repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
     config.zones.registry_file = registry.to_path_buf();
     config.zones.refresh_interval_seconds =
-        omp_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
+        herdr_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
     config
 }
 

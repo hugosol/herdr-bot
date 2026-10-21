@@ -3,6 +3,8 @@
 - 状态：accepted
 - 日期：2026-10-01
 
+> 术语注记（2026-10-21）：项目已更名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`；原因与硬切换范围见 [ADR 0010](./0010-rename-project-to-herdr-bot.md)。正文保留原文。
+
 `POST /api/sessions/events`（`register` / `heartbeat` / `state` / `unregister` 四种事件）只接受**同机来源**
 的请求：TCP 对端 IP 是回环地址（`ip.is_loopback()` 覆盖 `127.0.0.0/8` 与 `::1`），或属于本机网卡地址集合
 ——后者在**每次写入**时用 `if-addrs` 现枚举，DHCP 换址后旧地址不会残留成误放行的口子；枚举失败时按「不是

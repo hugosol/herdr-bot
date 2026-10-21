@@ -18,9 +18,9 @@ use std::time::Duration;
 use axum::extract::connect_info::MockConnectInfo;
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::clock::ManualClock;
-use omp_bot::sessions::{SessionPolicy, SessionsState};
-use omp_bot::{PowerOff, PowerOffFailure};
+use herdr_bot::clock::ManualClock;
+use herdr_bot::sessions::{SessionPolicy, SessionsState};
+use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 
 /// 监听命令的请求路径。
@@ -59,7 +59,7 @@ impl PowerOff for RecordingPowerOff {
 struct MonitoringServer {
     server: TestServer,
     double: Arc<RecordingPowerOff>,
-    shutdown: Arc<omp_bot::countdown::ShutdownState>,
+    shutdown: Arc<herdr_bot::countdown::ShutdownState>,
     sessions: Arc<SessionsState>,
     /// 受控时刻；`None` 表示这个装配走真实挂钟（用于「必须真的等窗口过去」的用例）。
     clock: Option<Arc<ManualClock>>,
@@ -91,7 +91,7 @@ impl MonitoringServer {
             None => Arc::new(SessionsState::new()),
         };
         let double = RecordingPowerOff::new();
-        let (app, state) = omp_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             double,
@@ -103,7 +103,7 @@ impl MonitoringServer {
 
     /// 启动交付运行时那份时钟驱动的维护循环（一遍维护 + 监听重判）。
     fn spawn_maintenance(&self) {
-        omp_bot::sessions::spawn_expiry_scan(
+        herdr_bot::sessions::spawn_expiry_scan(
             Arc::clone(&self.sessions),
             Arc::clone(&self.shutdown),
         );
@@ -1206,7 +1206,7 @@ async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_event
     let config = common::config(Path::new("unused.bat"), Path::new("."));
     let sessions = Arc::new(SessionsState::new());
     let double = RecordingPowerOff::new();
-    let (app, _state) = omp_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+    let (app, _state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
     let server = TestServer::start_app_on(SocketAddr::from((address, 0)), app.clone()).await;
     let addr = server.addr();
     assert!(
@@ -1214,7 +1214,7 @@ async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_event
         "这一次的连接源必须是回环之外的地址：{addr}"
     );
 
-    // 非回环来源（同机网卡地址，正是扩展经 `omp-bot.local` 接入时服务端看到的形态）：会话写入可用。
+    // 非回环来源（同机网卡地址，正是扩展经 `herdr-bot.local` 接入时服务端看到的形态）：会话写入可用。
     assert_accepted(
         &post_json_over_tcp(
             addr,
@@ -1330,7 +1330,7 @@ fn local_nic_ipv4() -> Option<std::net::Ipv4Addr> {
         .ok()?
         .into_iter()
         .find_map(|interface| match interface.addr {
-            if_addrs::IfAddr::V4(address) if omp_bot::mdns::is_publishable_ipv4(address.ip) => {
+            if_addrs::IfAddr::V4(address) if herdr_bot::mdns::is_publishable_ipv4(address.ip) => {
                 Some(address.ip)
             }
             _ => None,

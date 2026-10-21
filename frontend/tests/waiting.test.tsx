@@ -12,7 +12,7 @@ function session(sessionId: string, sessionName: string, rest: Partial<SessionVi
   return {
     sessionId,
     sessionName,
-    cwd: 'E:\\Developer\\myhub\\omp-bot',
+    cwd: 'E:\\Developer\\myhub\\herdr-bot',
     online: true,
     state: 'idle',
     ...rest,

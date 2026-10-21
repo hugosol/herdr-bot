@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::PowerOff;
-use omp_bot::sessions::SessionsState;
+use herdr_bot::PowerOff;
+use herdr_bot::sessions::SessionsState;
 use serde_json::{Value, json};
 
 /// 记录型关机动作：只记录调用次数，**绝不**接触系统关机。
@@ -29,7 +29,7 @@ struct RecordingPowerOff {
 }
 
 impl PowerOff for RecordingPowerOff {
-    fn power_off(&self) -> Result<(), omp_bot::PowerOffFailure> {
+    fn power_off(&self) -> Result<(), herdr_bot::PowerOffFailure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -53,7 +53,7 @@ impl Panel {
         let double = Arc::new(RecordingPowerOff {
             calls: AtomicUsize::new(0),
         });
-        let (app, _state) = omp_bot::app_with_state(&config, double.clone(), sessions);
+        let (app, _state) = herdr_bot::app_with_state(&config, double.clone(), sessions);
         Self {
             server: TestServer::start_app(app).await,
             double,

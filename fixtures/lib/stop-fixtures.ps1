@@ -20,7 +20,7 @@
 #>
 [CmdletBinding()]
 param(
-    # 记录目录；省略时用环境变量 OMP_BOT_FIXTURE_RECORD_DIR 或 <fixtures>/runtime。
+    # 记录目录；省略时用环境变量 HERDR_BOT_FIXTURE_RECORD_DIR 或 <fixtures>/runtime。
     [string]$RecordDir = '',
     # 等待夹具自行结束的宽限秒数，超时后强制结束。
     [int]$GraceSeconds = 15

@@ -1,10 +1,10 @@
 ﻿<#
 .SYNOPSIS
-  omp-bot 验证夹具共用的调用记录与进程工具。
+  herdr-bot 验证夹具共用的调用记录与进程工具。
 
 .DESCRIPTION
   被 record-call.ps1 与 stop-fixtures.ps1 点源引用，提供三件事：
-  * 解析记录目录（显式参数 > 环境变量 OMP_BOT_FIXTURE_RECORD_DIR > <fixtures>/runtime）；
+  * 解析记录目录（显式参数 > 环境变量 HERDR_BOT_FIXTURE_RECORD_DIR > <fixtures>/runtime）；
   * 以命名互斥保护的追加写，向记录文件写一行可核对的调用记录；
   * 查询夹具进程 PID、判断进程是否仍在运行。
 
@@ -21,7 +21,7 @@ function Resolve-FixtureRecordDir {
     param([string]$Explicit = '')
 
     if ($Explicit -ne '') { return $Explicit }
-    if ($env:OMP_BOT_FIXTURE_RECORD_DIR) { return $env:OMP_BOT_FIXTURE_RECORD_DIR }
+    if ($env:HERDR_BOT_FIXTURE_RECORD_DIR) { return $env:HERDR_BOT_FIXTURE_RECORD_DIR }
     # 本文件位于 <fixtures>/lib，因此向上一级就是夹具根目录。
     return (Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime')
 }
@@ -80,7 +80,7 @@ function Add-FixtureRecord {
         [string]$CallIdentity = '',
         [string]$RecordDetail = '',
         # 记录互斥名：跨进程串行化追加写，保证重叠调用不丢行、序号不乱。
-        [string]$MutexName = 'Local\omp-bot-fixture-record'
+        [string]$MutexName = 'Local\herdr-bot-fixture-record'
     )
 
     $mutex = New-Object System.Threading.Mutex($false, $MutexName)

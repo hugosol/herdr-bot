@@ -5,7 +5,7 @@
 //! 的接受与拒绝类别、启动期配置决定的实际到期输出、后端对「取消 vs 到期」的唯一裁定、最近结果的可读性，
 //! 以及共享观察流（`GET /api/sessions/events`）的首帧与关机完整状态事件。
 //!
-//! **绝不真的关机**：全部用例都经 `omp_bot::app_with_power_off` 注入记录型关机动作（既有接缝的替身），
+//! **绝不真的关机**：全部用例都经 `herdr_bot::app_with_power_off` 注入记录型关机动作（既有接缝的替身），
 //! 它只记录调用次数并按用例指定返回成功、失败或停在「执行已开始」；不接触任何系统调用。真实 Win32 动作
 //! 只在 `src/shutdown.rs` 的非关单元测试与一次性人工验收里出现。
 //!
@@ -23,7 +23,7 @@ use axum::body::Body;
 use axum::http::StatusCode;
 use common::sse::{SseConnection, SseFrame};
 use common::{FixtureTree, HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::{PowerOff, PowerOffFailure};
+use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tower::ServiceExt;
@@ -151,9 +151,9 @@ impl ShutdownServer {
     }
 
     /// 用**给定配置**装配应用：缺段旧配置的用例从这里进来。
-    async fn start_with_config(config: omp_bot::Config, double: Arc<RecordingPowerOff>) -> Self {
+    async fn start_with_config(config: herdr_bot::Config, double: Arc<RecordingPowerOff>) -> Self {
         let power_off: Arc<dyn PowerOff> = double.clone();
-        let app = omp_bot::app_with_power_off(&config, power_off);
+        let app = herdr_bot::app_with_power_off(&config, power_off);
         Self {
             server: TestServer::start_app(app).await,
             double,
@@ -574,7 +574,7 @@ working_directory = '.'
 script = 'unused.bat'
 working_directory = '.'
 "#;
-    let config = omp_bot::Config::from_toml(legacy).expect("缺 [shutdown] 段的旧配置必须仍可加载");
+    let config = herdr_bot::Config::from_toml(legacy).expect("缺 [shutdown] 段的旧配置必须仍可加载");
 
     let server = ShutdownServer::start_with_config(config, RecordingPowerOff::succeeding()).await;
     let response = server.start_shutdown().await;
@@ -839,7 +839,7 @@ async fn the_shutdown_commands_close_their_request_face_and_keep_no_immediate_al
 #[tokio::test]
 async fn the_production_assembly_registers_both_shutdown_commands() {
     let config = common::config(Path::new("unused.bat"), Path::new("."));
-    let app = omp_bot::app(&config);
+    let app = herdr_bot::app(&config);
 
     for path in [START, CANCEL] {
         let request = axum::http::Request::builder()
@@ -883,7 +883,7 @@ async fn an_arrangement_forms_while_a_fixed_operation_holds_the_execution_permit
 
     let double = RecordingPowerOff::succeeding();
     let power_off: Arc<dyn PowerOff> = double.clone();
-    let app = omp_bot::app_with_power_off(&config, power_off);
+    let app = herdr_bot::app_with_power_off(&config, power_off);
     let server = TestServer::start_app(app).await;
 
     // 长跑夹具占住执行资格（正对照：单次“启动”确实产生一次调用记录）。
@@ -964,11 +964,11 @@ fn diagnostics_of_the_exercised_expiry_path_are_machine_assertable() {
     );
 
     assert!(
-        log.contains("[omp-bot] 关机状态：invoked"),
+        log.contains("[herdr-bot] 关机状态：invoked"),
         "到期成功必须留下 invoked 类别：\n{log}"
     );
     assert!(
-        log.contains("[omp-bot] 关机状态：failed step=privilege error=")
+        log.contains("[herdr-bot] 关机状态：failed step=privilege error=")
             && log.contains(FAILURE_DETAIL),
         "到期失败必须留下 failed 类别与系统原始错误（详情只出现在这里）：\n{log}"
     );

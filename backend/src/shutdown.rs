@@ -14,7 +14,7 @@
 //! 返回 FALSE 就如实失败，**不**改走 `EWX_FORCE` 之类的强制路径，也不重试。
 //!
 //! 诊断输出（S3 诊断日志 seam）用固定类别词 `invoked` / `failed` 加稳定的 `key=value` 字段，
-//! 行首为 `[omp-bot] 关机状态：`，与 mDNS 状态一行的风格一致，因此关机结果可以被自动化断言。
+//! 行首为 `[herdr-bot] 关机状态：`，与 mDNS 状态一行的风格一致，因此关机结果可以被自动化断言。
 //!
 //! 平台门控：Win32 绑定（`windows-sys`）只在 Windows 目标平台引入（见 `Cargo.toml` 的
 //! `[target.'cfg(windows)'.dependencies]`），不引入任何额外运行时。本 crate 只构建于 Windows——
@@ -84,7 +84,7 @@ pub enum ShutdownOutcome {
 }
 
 /// 诊断输出的固定前缀；类别词紧随其后，自动化据此断言关机结果类别。
-const DIAGNOSTIC_PREFIX: &str = "[omp-bot] 关机状态：";
+const DIAGNOSTIC_PREFIX: &str = "[herdr-bot] 关机状态：";
 
 /// 写一条关机诊断输出（S3 诊断日志 seam）。
 pub fn report(outcome: &ShutdownOutcome) {

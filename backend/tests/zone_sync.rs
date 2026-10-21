@@ -17,7 +17,7 @@ use common::{
 use serde_json::{Value, json};
 
 /// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
-fn config_with_registry(registry: &Path) -> omp_bot::Config {
+fn config_with_registry(registry: &Path) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
@@ -1133,7 +1133,7 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
-        omp_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
 
@@ -1209,7 +1209,7 @@ async fn sync_runs_noninteractively_and_does_not_change_repository_configuration
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
-        omp_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
 

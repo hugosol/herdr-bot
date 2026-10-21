@@ -1,9 +1,9 @@
 [package]
-name = "omp-bot"
+name = "herdr-bot"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "omp-bot 主界面后端：Axum 服务，提供打包页面与固定脚本操作"
+description = "herdr-bot 主界面后端：Axum 服务，提供打包页面与固定脚本操作"
 
 [dependencies]
 anyhow = "1"

@@ -1,14 +1,14 @@
-# omp-bot 主界面
+# herdr-bot 主界面
 
 在 Windows 上手动启动的网页主界面：本机浏览器与同一局域网内的手机访问**同一个服务**，
 用固定按钮操作预先配置好的批处理脚本，也可以用一个固定主机名打开页面、并从页面关闭这台电脑。
-omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪。
+herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪。
 
 - 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
   [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
 - 当前新增（三个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
   [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)。
-- 较早版本（mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
+- 较早版本（当时的 mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
   [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
   决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
   [ADR 0002](docs/adr/0002-shutdown-button-default-on-client-countdown-no-auth.md)、
@@ -28,7 +28,7 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/src/git.rs` | Git zone 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
 | `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
 | `backend/src/watch.rs` | zone 本地文件/Git 元数据监听、按 zone 合并节流与监听健康上报 |
-| `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
+| `backend/src/mdns.rs` | 发布 mDNS 主机名 `herdr-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
@@ -40,7 +40,7 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `frontend/src/diff.ts` | 行级统一 diff 与左右对照配对（纯文本，不解析 HTML） |
 | `frontend/src/diffApi.ts` | 审查 diff 客户端与响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
-| `omp-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
+| `herdr-bot.toml` | 运行配置（默认读取当前工作目录下的这个文件） |
 
 ## 前置条件
 
@@ -58,26 +58,26 @@ cargo build --release --manifest-path backend\Cargo.toml
 ```
 
 `npm run build` 会把打包页面写入 `backend/static/`（同一个 Axum 服务从这里提供页面），
-`cargo build --release` 生成 `backend\target\release\omp-bot.exe`。
+`cargo build --release` 生成 `backend\target\release\herdr-bot.exe`。
 
 ## 手动启动
 
-在仓库根目录执行（默认读取 `omp-bot.toml`）：
+在仓库根目录执行（默认读取 `herdr-bot.toml`）：
 
 ```bat
-backend\target\release\omp-bot.exe
+backend\target\release\herdr-bot.exe
 ```
 
 需要换一份配置时：
 
 ```bat
-backend\target\release\omp-bot.exe --config 其他配置.toml
+backend\target\release\herdr-bot.exe --config 其他配置.toml
 ```
 
 启动后控制台会打印监听地址、当前绑定的启动与停止脚本及其工作目录。
 开发时也可以用 `cargo run --release --manifest-path backend\Cargo.toml`。
 
-请在**控制台窗口**（cmd、PowerShell 或终端）中启动 omp-bot 主界面：它会把自身的控制台继承给脚本进程，
+请在**控制台窗口**（cmd、PowerShell 或终端）中启动 herdr-bot 主界面：它会把自身的控制台继承给脚本进程，
 脚本里 `timeout` 这类需要控制台输入的命令才会像你手动运行脚本时一样工作（详见
 [现有脚本接入的已知现象](#现有脚本接入的已知现象)）。若在无控制台的环境启动，启动日志会打印提示，
 脚本自身的这类命令会以非交互方式失败，操作结果会如实显示为该退出码。
@@ -87,26 +87,26 @@ backend\target\release\omp-bot.exe --config 其他配置.toml
 启动后控制台会打印三个入口：mDNS 主机名、本机地址与 IP 兜底提示。
 
 ```
-[omp-bot] 监听：http://0.0.0.0:8787/
-[omp-bot] 局域网设备请访问 http://<本机局域网 IPv4>:8787（ipconfig 查看地址）
-[omp-bot] mDNS 状态：published host=omp-bot.local. address=192.168.5.4 port=8787 url=http://omp-bot.local:8787/
+[herdr-bot] 监听：http://0.0.0.0:8787/
+[herdr-bot] 局域网设备请访问 http://<本机局域网 IPv4>:8787（ipconfig 查看地址）
+[herdr-bot] mDNS 状态：published host=herdr-bot.local. address=192.168.5.4 port=8787 url=http://herdr-bot.local:8787/
 ```
 
 | 入口 | 地址 | 用途 |
 |---|---|---|
 | 本机 | `http://127.0.0.1:8787/` | 在这台电脑上看页面，任何情况下都可用 |
-| 局域网设备（推荐） | `http://omp-bot.local:8787/` | 名字固定：换 Wi-Fi、重启路由器或 DHCP 重分配后也不用改地址 |
+| 局域网设备（推荐） | `http://herdr-bot.local:8787/` | 名字固定：换 Wi-Fi、重启路由器或 DHCP 重分配后也不用改地址 |
 | 局域网设备（兜底） | `http://<本机局域网 IPv4>:8787/` | mDNS 解析不了时用（原因见下一节） |
 
-### mDNS 主机名 `omp-bot.local`（推荐入口）
+### mDNS 主机名 `herdr-bot.local`（推荐入口）
 
-omp-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `omp-bot.local`（以及 `_http._tcp` 服务记录），
-局域网设备用 `http://omp-bot.local:<端口>/` 就能打开同一个页面。发布地址默认是本机主路由的 IPv4
+herdr-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `herdr-bot.local`（以及 `_http._tcp` 服务记录），
+局域网设备用 `http://herdr-bot.local:<端口>/` 就能打开同一个页面。发布地址默认是本机主路由的 IPv4
 （自动排除回环与 `169.254.0.0/16`），也可以用 `[mdns] address` 指定；端口取实际监听端口——以启动日志
 `published` 那一行为准：
 
 ```
-[omp-bot] mDNS 状态：published host=omp-bot.local. address=<IPv4> port=<端口> url=http://omp-bot.local:<端口>/
+[herdr-bot] mDNS 状态：published host=herdr-bot.local. address=<IPv4> port=<端口> url=http://herdr-bot.local:<端口>/
 ```
 
 **`.local` 能不能解析，取决于客户端和网络，不由本服务决定**——用这条路线前先看这段：
@@ -141,10 +141,10 @@ omp-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `omp-bot.lo
 ### 用手机操作（步骤与预期结果）
 
 真机连通与真机操作只能由**真实手机**确认，自动化验证（Chromium 窄屏仿真）不构成真机结论；当前状态
-见[人工验收移交](#人工验收移交p2--p4未验收)。手机浏览器也可以直接打开 `http://omp-bot.local:8787/`
+见[人工验收移交](#人工验收移交p2--p4未验收)。手机浏览器也可以直接打开 `http://herdr-bot.local:8787/`
 （见上一节；解析不了就照下面的 IP 步骤做）。
 
-1. 电脑侧按“构建”“手动启动”启动 omp-bot 主界面，确认控制台打印了监听地址。
+1. 电脑侧按“构建”“手动启动”启动 herdr-bot 主界面，确认控制台打印了监听地址。
 2. 在电脑上查局域网地址：
 
    ```bat
@@ -156,7 +156,7 @@ omp-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `omp-bot.lo
    端口固定为配置里的 `8787`。**不要在手机上用 `127.0.0.1`**（那指向手机自己）。
 3. 手机连接**与电脑同一个 Wi-Fi**（不要用访客网络或热点）。
 4. 手机浏览器打开 `http://<上一步的 IPv4>:8787/`。
-   - **预期看到**：标题“omp-bot”、三个等宽入口（“会话列表”“文件列表”“控制面板”），默认停在
+   - **预期看到**：标题“herdr-bot”、三个等宽入口（“会话列表”“文件列表”“控制面板”），默认停在
      “会话列表”。
 5. 点按“控制面板”，再点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时
    **两个按钮同时变灰、点不动**；脚本结束后显示本次调用结果。从**控制台窗口**启动面板时，
@@ -172,15 +172,15 @@ omp-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `omp-bot.lo
 
 | 现象 | 检查 |
 |---|---|
-| 一直转圈/无法访问 | 手机是否与电脑同一 Wi-Fi；Windows 防火墙是否放行监听程序。已在电脑上核实（`netsh advfirewall firewall show rule name=omp-bot`）：两条**入站允许**规则（TCP 与 UDP）、`配置文件=公用`、`程序=E:\developer\myhub\omp-bot\backend\target\release\omp-bot.exe`、任意端口；当前 WLAN 的网络类别正是“公用”，所以该规则覆盖这个地址 |
-| 换了 exe 路径 / 重命名 / 换了网络类别 | 需要重新放行（管理员命令提示符）：`netsh advfirewall firewall add rule name="omp-bot" dir=in action=allow program="<omp-bot.exe 的绝对路径>" enable=yes profile=any` |
+| 一直转圈/无法访问 | 手机是否与电脑同一 Wi-Fi；Windows 防火墙是否放行监听程序。已在电脑上核实（`netsh advfirewall firewall show rule name=herdr-bot`）：两条**入站允许**规则（TCP 与 UDP）、`配置文件=公用`、`程序=E:\developer\myhub\herdr-bot\backend\target\release\herdr-bot.exe`、任意端口；当前 WLAN 的网络类别正是“公用”，所以该规则覆盖这个地址 |
+| 换了 exe 路径 / 重命名 / 换了网络类别 | 需要重新放行（管理员命令提示符）：`netsh advfirewall firewall add rule name="herdr-bot" dir=in action=allow program="<herdr-bot.exe 的绝对路径>" enable=yes profile=any` |
 | 电脑上能开、手机上不能 | 路由器“AP 隔离/客户端隔离”、访客网络、手机 VPN/代理、公司网络的客户端隔离都会阻断，换普通家庭 Wi-Fi 再试 |
 | 服务起不来 | 控制台打印“绑定监听地址失败”表示端口被占用：换配置里的端口，并同步改手机地址里的端口 |
 | 页面能打开但按钮点了没反应 | 页面与接口同源同端口；若反向代理/端口转发只转发了页面，接口会失败（页面显示“无法确认本次调用结果”）。直接用 `http://<IPv4>:8787/` 访问 |
 
 ## 配置
 
-`omp-bot.toml`：
+`herdr-bot.toml`：
 
 ```toml
 listen_addr = "0.0.0.0:8787"   # 0.0.0.0 表示本机与局域网都可访问
@@ -221,12 +221,12 @@ address = "192.168.5.4"    # 可选：指定要发布的 IPv4；缺省自动选�
 - `address` 必须是**本机网卡上真实存在的地址**：值本身不可发布（回环、`169.254.0.0/16`）→ 启动日志
   `no-address`；不在本机网卡上（即使是非回环公网地址）→ 启动日志 `error`。两种情况都**跳过发布**，
   HTTP 与 IP 入口照常可用（本次交付实测见下文「交付验证记录（v2，2026-09-30）」）。
-- 主机名固定为 `omp-bot.local`，**没有**改名配置项。局域网里已有别的设备占用这个名字时**不改名**：
+- 主机名固定为 `herdr-bot.local`，**没有**改名配置项。局域网里已有别的设备占用这个名字时**不改名**：
   注册前探测到占用 → 不发布并告警（启动日志 `conflict phase=preprobe`）；注册后才发现被改名 → 立即注销
-  记录并告警（`conflict phase=renamed`）。**绝不发布** `omp-bot-2.local` 之类的名字。
+  记录并告警（`conflict phase=renamed`）。**绝不发布** `herdr-bot-2.local` 之类的名字。
 - 配置解析保持 `deny_unknown_fields`：`[mdns]` 里写错字段名会启动失败并给出解析错误，不会静默忽略。
 - 关掉 mDNS 只影响“名字入口”，不影响 IP 入口，也不影响页面与任何接口（含关机端点）。
-- 诊断类别固定为 `published` / `disabled` / `no-address` / `conflict` / `error`（行首 `[omp-bot] mDNS 状态：`），
+- 诊断类别固定为 `published` / `disabled` / `no-address` / `conflict` / `error`（行首 `[herdr-bot] mDNS 状态：`），
   发布结果因此可以直接从启动输出断言。
 
 ### `[sessions]` 配置（可选）
@@ -263,7 +263,7 @@ zone 登记列表由后端以文件持久保存，本机与局域网设备读取
 # 新 zone 的创建父目录。必须显式配置；缺省未配置时只禁用“新增”。
 create_parent_directory = 'E:\Developer\bot-playground'
 # 登记文件位置；缺省为进程工作目录下的 zones.json。
-registry_file = 'E:\data\omp-bot-zones.json'
+registry_file = 'E:\data\herdr-bot-zones.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
 preview_limit_bytes = 1048576
 # 每个 zone 自动刷新合并事件的最小间隔；缺省 10 秒。
@@ -336,7 +336,7 @@ command_timeout_seconds = 300
 
 登记已有目录：
 
-1. 点按“登记”，在弹窗中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
+1. 点按“登记”，在弹窗中输入**herdr-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
    页面不提供客户端文件选择器。
 2. 点按弹窗里的“登记”。后端校验路径并持久保存；只有保存成功后页面才关闭弹窗并显示“已登记”。
 3. 已登记的 zone 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
@@ -571,7 +571,7 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 
 ### 默认绑定与改绑
 
-默认 `omp-bot.toml` 绑定的是用户**现有的两个批处理**（与规格 Further Notes 记录的外部集成路径一致），
+默认 `herdr-bot.toml` 绑定的是用户**现有的两个批处理**（与规格 Further Notes 记录的外部集成路径一致），
 执行工作目录为它们所在的目录：
 
 | 操作 | `script` | `working_directory` |
@@ -579,18 +579,18 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 | 启动 | `E:\Developer\myhub\my-streaming\start-all.bat` | `E:\Developer\myhub\my-streaming` |
 | 停止 | `E:\Developer\myhub\my-streaming\shutdown-all.bat` | `E:\Developer\myhub\my-streaming` |
 
-- omp-bot 主界面启动时会把这份绑定打印到控制台，人工核对应以这几行为准；脚本内容与 omp-bot 主界面**互不影响**：
+- herdr-bot 主界面启动时会把这份绑定打印到控制台，人工核对应以这几行为准；脚本内容与 herdr-bot 主界面**互不影响**：
   面板只在自己的进程里以配置的工作目录执行它们，不修改脚本、不写入脚本所在仓库。
 - **改绑方式**（只能改服务端配置，客户端无法改绑）：
-  1. 在仓库根目录编辑 `omp-bot.toml`，或另存一份配置文件并用
-     `backend\target\release\omp-bot.exe --config <配置文件路径>` 指定；`[operations.start]` /
+  1. 在仓库根目录编辑 `herdr-bot.toml`，或另存一份配置文件并用
+     `backend\target\release\herdr-bot.exe --config <配置文件路径>` 指定；`[operations.start]` /
      `[operations.stop]` 下的 `script` 与 `working_directory` 是两个脚本各自的执行目标与工作目录；
-  2. 重启 omp-bot 主界面（运行中的服务不会重读配置）。
+  2. 重启 herdr-bot 主界面（运行中的服务不会重读配置）。
 - 配置文件使用 `deny_unknown_fields`：写错字段名会启动失败并给出解析错误，不会静默忽略。
 
 ### 隔离夹具（fixtures/）的用途
 
-`fixtures/` 是一组随交付保留的真实 Windows 批处理，用来把 omp-bot 主界面绑到**不会影响用户程序**的目标上，
+`fixtures/` 是一组随交付保留的真实 Windows 批处理，用来把 herdr-bot 主界面绑到**不会影响用户程序**的目标上，
 验证“能否启动 / 何时算结束 / 工作目录 / 互斥 / 卡住”等执行机制；也可以用来在没有后台程序的环境里
 复现页面与接口行为。把一个操作改绑到夹具的写法（绝对路径示例）：
 
@@ -698,10 +698,10 @@ grep -rniE "timeout|tokio::time|\.kill\(|start_kill|kill_on_drop|abort\(|Duratio
 
 ### 脚本卡住时的人工处理
 
-脚本卡住（长时间不结束）时 omp-bot 主界面不会做任何事：既不超时终止脚本，也不释放执行资格。表现是页面一直
+脚本卡住（长时间不结束）时 herdr-bot 主界面不会做任何事：既不超时终止脚本，也不释放执行资格。表现是页面一直
 停在“执行中”（按钮不可点），其他页面/设备/直接请求都得到 `409 operation-in-progress`。处理办法：
 
-1. **确认脚本进程是否还在运行**。omp-bot 主界面不提供这个信息：它没有执行历史，重启后也不记得旧脚本，
+1. **确认脚本进程是否还在运行**。herdr-bot 主界面不提供这个信息：它没有执行历史，重启后也不记得旧脚本，
    所以必须自己看操作系统。脚本以 `cmd.exe /C <脚本>` 的形式运行，可以直接看：
 
    ```bat
@@ -737,7 +737,7 @@ grep -rniE "timeout|tokio::time|\.kill\(|start_kill|kill_on_drop|abort\(|Duratio
    - `/T` 会连同脚本的**子进程**一起结束。对用户现有启动脚本，它打开的 Python 程序是否随之结束
      未在本次交付中验证（没有触发真实脚本）；要停止那些 Python 程序请照旧用“停止”操作
      （`shutdown-all.bat`）。
-3. **重启 omp-bot 主界面不证明旧脚本已结束**：面板不做终止、不做等待，也不保留跨重启的状态。实测：结束面板
+3. **重启 herdr-bot 主界面不证明旧脚本已结束**：面板不做终止、不做等待，也不保留跨重启的状态。实测：结束面板
    进程本身后，正在运行的脚本进程**仍在运行**；重新启动面板后页面回到“尚未提交操作。”并立即接受
    新操作，对旧脚本一无所知。所以“重启一下就好”是错觉——**先按第 1 步确认、再按第 2 步处理**。
    （未验证的推论：若脚本进程与面板共用同一个控制台窗口，用关闭窗口或 Ctrl+C 结束面板时，Windows
@@ -750,7 +750,7 @@ grep -rniE "timeout|tokio::time|\.kill\(|start_kill|kill_on_drop|abort\(|Duratio
 默认绑定的两个现有脚本的最后一条命令都是 `timeout /t N /nobreak >nul`（`start-all.bat` 中间还有一条）。
 `timeout.exe` 需要**真实控制台**作为标准输入：在控制台窗口里手动运行时它正常等待、脚本以退出码 0 结束；
 标准输入被重定向（非交互）时它立即失败并让脚本以退出码 1 结束——即使脚本主体（`start` 打开窗口、
-启动或终止 Python 程序）已经生效。omp-bot 主界面按“与手动运行脚本一致”的方式处理：
+启动或终止 Python 程序）已经生效。herdr-bot 主界面按“与手动运行脚本一致”的方式处理：
 
 - **面板在控制台窗口里启动（推荐，也是手动启动的常态）**：后端把面板自己的控制台继承给脚本进程，
   脚本按设计等待并结束，页面显示“执行完成”（`outcome: completed`、退出码 0）。
@@ -766,13 +766,13 @@ grep -rniE "timeout|tokio::time|\.kill\(|start_kill|kill_on_drop|abort\(|Duratio
 | 无控制台 | “执行失败”（退出码 1，约 0.1 s） | “执行失败”（退出码 1） | Python 程序仍被启动/停止（`start`/`taskkill` 已生效） |
 
 因此：**页面反馈只反映脚本调用结果**。“执行失败”不代表程序没起来，“执行完成”也不代表程序已就绪；
-omp-bot 主界面不修改脚本（规格要求保持现有脚本内容不变），也不假设“脚本没报错就是没出错”。
-需要与手动运行脚本一致的反馈，请在控制台窗口里启动 omp-bot 主界面。
+herdr-bot 主界面不修改脚本（规格要求保持现有脚本内容不变），也不假设“脚本没报错就是没出错”。
+需要与手动运行脚本一致的反馈，请在控制台窗口里启动 herdr-bot 主界面。
 
 ### 启动脚本打开的窗口
 
 既有启动脚本用 `start` 打开两个独立窗口（标题 `My Streaming Worker` / `My Streaming Server`），
-omp-bot 主界面调用时同样出现**两个各自独立的可见顶层窗口**；本机由系统默认终端应用承载——交付前的真实验证中
+herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗口**；本机由系统默认终端应用承载——交付前的真实验证中
 观测到的是 Windows Terminal（`CASCADIA_HOSTING_WINDOW_CLASS`，注册表 `HKCU\Console\%%Startup` 两个委托项都是
 全零 GUID，即“让 Windows 决定”），每个 Python 进程各有自己的 `conhost.exe`。是否与用户心目中的
 “原有窗口行为”（例如经典 conhost 独立窗口）一致，需要人工验收确认（见[人工验收移交](#人工验收移交p2--p4未验收)）。
@@ -794,7 +794,7 @@ omp-bot 主界面调用时同样出现**两个各自独立的可见顶层窗口*
 - 后端每 5 秒跑一遍维护：先发布离线，超过两个窗口之和后发布清除。因此可见变化可能比阈值晚约一个
   扫描周期；**页面不自己计时、也不自己删除记录**，移除一律来自后端观察流。
 - 离线的登记仍可被操作：保留期内接受普通上报会刷新它并恢复在线；显式 `unregister` 立即删除登记。
-  删除登记只删除 omp-bot 对会话的跟踪记录，**不删除 agent 会话或聊天记录**（`sessionFile` 只用于诊断）。
+  删除登记只删除 herdr-bot 对会话的跟踪记录，**不删除 agent 会话或聊天记录**（`sessionFile` 只用于诊断）。
 - 上报年龄超过两个窗口之和并不等于立刻拒收：结果由**登记是否已被维护实际删除**决定。维护尚未执行到那一遍
   时，迟到的 `heartbeat`／`state` 仍会被接受并让登记按这次上报重新计时；维护已经删除登记之后，普通上报得到
   `404 {"code":"unknown-session"}`，**`register` 是唯一建立登记的入口**，普通上报不会隐式建行。重新
@@ -959,7 +959,7 @@ countdown_seconds = 10
   不重置、不延长，也不会多调用一次实际关机。
 - 到点由后端调用既有的 Windows 关机能力（`SeShutdownPrivilege` +
   `ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG, …)`）：成功一次，**失败不自动重试**，结果可读。
-  诊断输出 `[omp-bot] 关机状态：invoked` 或 `…failed step=privilege|exit-windows-ex|internal error=<原始错误>`；
+  诊断输出 `[herdr-bot] 关机状态：invoked` 或 `…failed step=privilege|exit-windows-ex|internal error=<原始错误>`；
   原始系统错误**只**进诊断输出，不进 HTTP 结果类别，也不进观察帧。
 - 取消与到期由后端裁定唯一结果：执行开始之前生效的取消阻止本次关机，执行开始之后不可取消；延迟送达的取消
   作用于**收到请求时**的当前安排（不按调用者看到的安排标识校验），这是已接受的取舍。
@@ -986,8 +986,8 @@ countdown_seconds = 10
 - 服务监听 `0.0.0.0`（非回环）：同一个局域网里能访问这台电脑的设备都能打开页面并调用**所有**接口，
   包括关机端点——它不需要任何口令、令牌或会话。
 - 现有的 Windows 防火墙规则决定**谁能连上端口**，但它不做身份区分。本机实测（`netsh advfirewall
-  firewall show rule name=omp-bot`）：两条**入站允许**规则（TCP 与 UDP）、任意端口、程序为
-  `omp-bot.exe`、配置文件 `公用`；而本机 WLAN 当前的网络类别正是“公用”（`Get-NetConnectionProfile`），
+  firewall show rule name=herdr-bot`）：两条**入站允许**规则（TCP 与 UDP）、任意端口、程序为
+  `herdr-bot.exe`、配置文件 `公用`；而本机 WLAN 当前的网络类别正是“公用”（`Get-NetConnectionProfile`），
   因此这条规则覆盖本机地址——**同一个 Wi-Fi 里的任何设备都在放行范围内**。
 - 因此这条边界就是“**仅可信局域网**”：不要暴露到公网、不要用不信任的 Wi-Fi/访客网络，也不要做端口
   转发。要收回访问只能改防火墙放行范围或换网络；本版没有运行时开关，也没有口令。
@@ -1023,7 +1023,7 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   且系统错误详情不进响应体；脚本占着执行资格时关机照样被接受，且不结束脚本、不释放资格、不执行
   “停止”脚本；端点永远注册（换 HTTP 方法得 405 而不是 404）。**这些用例全部注入记录型关机动作，
   自动化里绝不会真的关机。**
-- `backend/tests/mdns_conflict.rs`：`omp-bot.local` 被占用时不改名、不发布，面板照常服务；以及注册后
+- `backend/tests/mdns_conflict.rs`：`herdr-bot.local` 被占用时不改名、不发布，面板照常服务；以及注册后
   被改名时立即注销（第二个用例借环境开关强制走这条兜底路径）。
 - `backend/tests/mdns_failure.rs`：`[mdns] address` 不在本机网卡上时只告警、跳过发布，HTTP 照常服务。
 - `backend/src/mdns.rs`、`backend/src/config.rs` 的内联单测：地址选择（`[mdns] address` 优先、未设置时
@@ -1031,23 +1031,29 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
 
 ### 诊断用环境开关（不是用户配置）
 
-`OMP_BOT_MDNS_SKIP_PREPROBE`：设置后跳过注册前的冲突预探测，用于验证“注册后被改名”的兜底路径
+`HERDR_BOT_MDNS_SKIP_PREPROBE`：设置后跳过注册前的冲突预探测，用于验证“注册后被改名”的兜底路径
 （`backend/tests/mdns_conflict.rs` 的第二个用例就是这么跑的）。不设置即正常走预探测；**正常使用与日常
-排查都不需要它**——它不是配置项，也不出现在 `omp-bot.toml` 里。
+排查都不需要它**——它不是配置项，也不出现在 `herdr-bot.toml` 里。
 
 ## 首版限制
 
 - **无身份验证**：任何能连上监听端口的设备都可以调用操作接口。只在可信局域网内使用，
   Windows 防火墙放行应限制在专用网络范围，不要暴露到公网。
-- **单实例**：只运行一个 omp-bot 主界面进程；同一时间只执行一个脚本操作的约束以单实例为前提（多实例之间
+- **单实例**：只运行一个 herdr-bot 主界面进程；同一时间只执行一个脚本操作的约束以单实例为前提（多实例之间
   没有互斥）。同一实例内的重叠请求立即得到 `409 operation-in-progress`，不会被排队补做。
 - 页面只反映脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
 - 关闭脚本按端口强制终止进程树，可能误杀占用相同端口的其他程序（既有脚本行为，首版保留）。
   验收或使用前先确认 `8899`/`8888` 没有被无关程序占用（`netstat -ano | findstr LISTENING | findstr "8899 8888"`）。
-- 脚本未结束时不会自动终止；卡住需要在 Windows 上人工处理（重启 omp-bot 主界面不能证明旧脚本已结束），
+- 脚本未结束时不会自动终止；卡住需要在 Windows 上人工处理（重启 herdr-bot 主界面不能证明旧脚本已结束），
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
 - 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
   见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
+
+## 变更记录：项目更名为 herdr-bot（2026-10-21）
+
+项目标识由 `omp-bot` 硬切换为 `herdr-bot`：仓库与本地目录、Rust crate 与二进制、默认配置 `herdr-bot.toml`、mDNS 主机名 `herdr-bot.local`、`HERDR_BOT_*` 环境变量、日志前缀与前端标题同步更新。既有 API、会话协议与 `connect-bot` 行为不变。历史 ADR 与下方交付验证/变更记录保留原文；原因与影响见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。`my-agent-toolkit` 的真实面板 interop 辅助文件作为独立后续更新。
+
+> 术语注记（2026-10-21）：以下交付验证记录与变更记录保留当时的 **omp-bot** 名称与路径；项目现名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`。原因与硬切换范围见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。正文保留原文。
 
 ## 交付验证记录（首版，2026-09-30）
 

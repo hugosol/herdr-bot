@@ -21,15 +21,15 @@ use std::time::Duration;
 
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp};
-use omp_bot::PowerOff;
-use omp_bot::sessions::SessionsState;
+use herdr_bot::PowerOff;
+use herdr_bot::sessions::SessionsState;
 use serde_json::{Value, json};
 
 /// 读路径用例绝不接触关机路径；这个动作只会在路由接错时立刻把用例打失败。
 struct NeverPowerOff;
 
 impl PowerOff for NeverPowerOff {
-    fn power_off(&self) -> Result<(), omp_bot::PowerOffFailure> {
+    fn power_off(&self) -> Result<(), herdr_bot::PowerOffFailure> {
         panic!("会话读路径用例不应触发关机");
     }
 }
@@ -42,7 +42,7 @@ struct SseServer {
 impl SseServer {
     async fn start() -> Self {
         let config = common::config(Path::new("unused.bat"), Path::new("."));
-        let app = omp_bot::app_with_sessions(
+        let app = herdr_bot::app_with_sessions(
             &config,
             Arc::new(NeverPowerOff),
             Arc::new(SessionsState::new()),

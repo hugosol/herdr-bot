@@ -33,7 +33,7 @@ impl TempDir {
     pub fn new(label: &str) -> Self {
         let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir()
-            .join("omp bot fixture checks")
+            .join("herdr-bot fixture checks")
             .join(format!("{label} {}-{unique}", std::process::id()));
         fs::create_dir_all(&path).expect("创建临时目录");
         TempDir(path)
@@ -212,7 +212,7 @@ fn copy_dir(from: &Path, to: &Path) {
 /// 只驱动“启动”的测试不需要区分两个操作，因此“停止”先绑定同一个目标；
 /// 需要两个不同目标的测试自己改写 `operations.stop`。关机倒计时取配置缺省的 10 秒；
 /// 需要驱动实际到期的用例用 [`config_with_countdown`]。
-pub fn config(script: &Path, working_directory: &Path) -> omp_bot::Config {
+pub fn config(script: &Path, working_directory: &Path) -> herdr_bot::Config {
     config_with_countdown(script, working_directory, 10)
 }
 
@@ -221,29 +221,29 @@ pub fn config_with_countdown(
     script: &Path,
     working_directory: &Path,
     countdown_seconds: u32,
-) -> omp_bot::Config {
-    let binding = || omp_bot::OperationBinding {
+) -> herdr_bot::Config {
+    let binding = || herdr_bot::OperationBinding {
         script: script.to_path_buf(),
         working_directory: working_directory.to_path_buf(),
     };
-    omp_bot::Config {
+    herdr_bot::Config {
         listen_addr: "0.0.0.0:0".to_string(),
-        operations: omp_bot::Operations {
+        operations: herdr_bot::Operations {
             start: binding(),
             stop: binding(),
         },
-        mdns: omp_bot::MdnsConfig::default(),
-        shutdown: omp_bot::ShutdownConfig {
-            countdown_seconds: omp_bot::CountdownSeconds::new(countdown_seconds)
+        mdns: herdr_bot::MdnsConfig::default(),
+        shutdown: herdr_bot::ShutdownConfig {
+            countdown_seconds: herdr_bot::CountdownSeconds::new(countdown_seconds)
                 .expect("测试用的倒计时秒数必须合法"),
         },
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
-        sessions: omp_bot::SessionsConfig::default(),
+        sessions: herdr_bot::SessionsConfig::default(),
         // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
-        zones: omp_bot::ZonesConfig::default(),
+        zones: herdr_bot::ZonesConfig::default(),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
-        git: omp_bot::GitConfig::default(),
+        git: herdr_bot::GitConfig::default(),
     }
 }
 
@@ -273,7 +273,7 @@ pub async fn post_start(app: axum::Router) -> (axum::http::StatusCode, serde_jso
     post_operation(app, "start").await
 }
 
-/// 在临时端口上真实监听 HTTP 的测试服务器，提供与交付运行时同一份 `omp_bot::app`。
+/// 在临时端口上真实监听 HTTP 的测试服务器，提供与交付运行时同一份 `herdr_bot::app`。
 ///
 /// 与 `post_operation`（在进程内直接把请求交给 Router）不同，这里的每个请求都经独立 TCP 连接发出，
 /// 因此“多个客户端同时提交”来自真正独立的 HTTP 客户端：既覆盖多页面/多设备同时提交的实际情况，
@@ -285,14 +285,14 @@ pub struct TestServer {
 
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
-    pub async fn start(config: &omp_bot::Config) -> Self {
-        Self::start_app(omp_bot::app(config)).await
+    pub async fn start(config: &herdr_bot::Config) -> Self {
+        Self::start_app(herdr_bot::app(config)).await
     }
 
     /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。
     ///
     /// 与 `start` 完全同一形态（真实监听端口 + 每个请求独立 TCP 连接），只是装配好的应用由调用者
-    /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `omp_bot::app` / `omp_bot::app_with_power_off`。
+    /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `herdr_bot::app` / `herdr_bot::app_with_power_off`。
     pub async fn start_app(app: axum::Router) -> Self {
         Self::start_app_on("127.0.0.1:0".parse().expect("回环测试监听地址"), app).await
     }
@@ -300,7 +300,7 @@ impl TestServer {
     /// 在**指定**地址的临时端口上启动给定的应用。
     ///
     /// 用于让请求的 TCP 对端地址取到回环之外的地址：绑定本机某个网卡地址后再连它，同机访问的源
-    /// 地址就是那个网卡地址——正是扩展经 `omp-bot.local` 连进来时服务端看到的样子。
+    /// 地址就是那个网卡地址——正是扩展经 `herdr-bot.local` 连进来时服务端看到的样子。
     pub async fn start_app_on(bind: SocketAddr, app: axum::Router) -> Self {
         let listener = tokio::net::TcpListener::bind(bind)
             .await

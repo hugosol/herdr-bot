@@ -13,7 +13,7 @@ use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp
 use serde_json::{Value, json};
 
 /// 把 zone 登记文件放到隔离的临时目录里；除此之外与交付配置同一形状。
-fn config_with_registry(registry: &Path) -> omp_bot::Config {
+fn config_with_registry(registry: &Path) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
@@ -342,14 +342,14 @@ struct Panel {
 
 impl Panel {
     fn start(config_path: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omp-bot"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("启动 omp-bot 进程");
+            .expect("启动 herdr-bot 进程");
 
         let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         for source in [
@@ -387,7 +387,7 @@ impl Panel {
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "omp-bot 没有在 30 秒内打印监听端口：{text}"
+                "herdr-bot 没有在 30 秒内打印监听端口：{text}"
             );
             std::thread::sleep(std::time::Duration::from_millis(25));
         };
@@ -412,7 +412,7 @@ fn write_process_config(dir: &TempDir, registry: &Path) -> PathBuf {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
-    let config_path = dir.path().join("omp-bot.toml");
+    let config_path = dir.path().join("herdr-bot.toml");
     fs::write(
         &config_path,
         format!(

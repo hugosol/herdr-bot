@@ -255,7 +255,7 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
       {/* 降级只在会话列表内呈现：断线时保留最后一帧快照，并说明它可能已经过期。 */}
       {snapshot.connection === 'interrupted' ? (
         <div className="session-stale" role="status" data-testid="connection-banner">
-          <strong>与 omp-bot 的连接已中断</strong>
+          <strong>与 herdr-bot 的连接已中断</strong>
           <span>下面是最后一次收到的快照，可能已经过期；连接恢复后会自动对齐。</span>
         </div>
       ) : null}

@@ -28,7 +28,7 @@ const OPERATION_LABELS: Record<OperationName, string> = {
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
 /**
- * omp-bot 主界面的三个顶层入口，按频繁程度排列：会话列表 → 文件列表 → 控制面板。
+ * herdr-bot 主界面的三个顶层入口，按频繁程度排列：会话列表 → 文件列表 → 控制面板。
  * 打开或整页刷新永远从会话列表开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
  */
 const TAB_ORDER = ['sessions', 'files', 'control'] as const
@@ -49,7 +49,7 @@ type Feedback = {
 }
 
 /**
- * omp-bot 主界面。
+ * herdr-bot 主界面。
  *
  * `sessionFeed` 是注入给「会话列表」的数据源；不传时用空数据源（页面显示引导空态）。
  * 运行时由 `main.tsx` 注入真实 SSE 数据源；组件本身不依赖全局 `EventSource`，因此组件测试
@@ -117,7 +117,7 @@ export default function App({
 
   return (
     <main className={tab === 'files' ? 'panel panel--wide' : 'panel'}>
-      <h1>omp-bot</h1>
+      <h1>herdr-bot</h1>
 
       {/* 三 tab 外壳：会话列表 → 文件列表 → 控制面板，打开时默认停在会话列表。
           三个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
@@ -125,7 +125,7 @@ export default function App({
       <div
         className="tabs"
         role="tablist"
-        aria-label="omp-bot 主界面分区"
+        aria-label="herdr-bot 主界面分区"
         onKeyDown={selectAdjacentTab}
       >
         {TAB_ORDER.map((key) => (

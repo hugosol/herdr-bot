@@ -142,9 +142,9 @@ describe('App 三 tab 骨架', () => {
     expect(screen.getByTestId('tab-control')).toHaveTextContent('控制面板')
   })
 
-  it('整页可见标题为 omp-bot', () => {
+  it('整页可见标题为 herdr-bot', () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { level: 1, name: 'omp-bot' })).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'herdr-bot' })).toBeVisible()
   })
 })

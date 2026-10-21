@@ -5,7 +5,7 @@
 //!
 //! 来源经 `ConnectInfo` 这一接缝驱动，两侧各用一半：
 //! - **真 TCP**：用例起一个真实监听端口，连接它的源地址由内核决定——回环地址一份、本机网卡地址一份
-//!   （正是扩展经 `omp-bot.local` 接入时服务端看到的样子），断言同机来源通过校验。
+//!   （正是扩展经 `herdr-bot.local` 接入时服务端看到的样子），断言同机来源通过校验。
 //! - **受控来源**：在应用上套 axum 的 `MockConnectInfo`，把对端地址设成 RFC 5737 的文档地址（本机
 //!   不可能拥有），代表局域网设备，断言写入被拒、读取照常。
 //!
@@ -24,8 +24,8 @@ use axum::body::Body;
 use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Request, StatusCode};
 use common::{TestServer, post_json_over_tcp};
-use omp_bot::PowerOff;
-use omp_bot::sessions::SessionsState;
+use herdr_bot::PowerOff;
+use herdr_bot::sessions::SessionsState;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -33,7 +33,7 @@ use tower::ServiceExt;
 struct NeverPowerOff;
 
 impl PowerOff for NeverPowerOff {
-    fn power_off(&self) -> Result<(), omp_bot::PowerOffFailure> {
+    fn power_off(&self) -> Result<(), herdr_bot::PowerOffFailure> {
         panic!("写入边界用例不应触发关机");
     }
 }
@@ -44,7 +44,7 @@ const LAN_SOURCE: &str = "203.0.113.7:40000";
 /// 与会话用例同一份装配：路由注册与交付运行时一致，会话表由用例持有。
 fn app_with(sessions: &Arc<SessionsState>) -> Router {
     let config = common::config(Path::new("unused.bat"), Path::new("."));
-    omp_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(sessions))
+    herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(sessions))
 }
 
 /// 把应用装上受控的 TCP 对端地址：这批请求不来自真 socket，来源就是这里指定的地址。
@@ -62,7 +62,7 @@ fn local_nic_ipv4() -> Option<Ipv4Addr> {
         .ok()?
         .into_iter()
         .find_map(|interface| match interface.addr {
-            if_addrs::IfAddr::V4(address) if omp_bot::mdns::is_publishable_ipv4(address.ip) => {
+            if_addrs::IfAddr::V4(address) if herdr_bot::mdns::is_publishable_ipv4(address.ip) => {
                 Some(address.ip)
             }
             _ => None,
@@ -162,7 +162,7 @@ async fn loopback_source_write_is_accepted() {
     );
 }
 
-/// 同机经本机网卡地址接入（扩展连 `omp-bot.local:8787` 时的真实形态）能通过校验，不被误拒。
+/// 同机经本机网卡地址接入（扩展连 `herdr-bot.local:8787` 时的真实形态）能通过校验，不被误拒。
 #[tokio::test]
 async fn same_host_access_via_local_nic_address_is_accepted() {
     let Some(address) = local_nic_ipv4() else {
@@ -262,7 +262,7 @@ async fn reads_are_open_to_lan_sources() {
     let (status, page) = send(lan.clone(), "GET", "/", String::new()).await;
     assert_eq!(status, StatusCode::OK, "页面读取不该受来源校验影响");
     assert!(
-        page.contains("<title>omp-bot</title>"),
+        page.contains("<title>herdr-bot</title>"),
         "局域网来源读到的应是打包页面：{page}"
     );
 

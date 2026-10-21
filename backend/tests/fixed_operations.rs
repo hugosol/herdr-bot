@@ -21,24 +21,24 @@ fn config_with_operations(
     start_working_directory: &Path,
     stop_script: &Path,
     stop_working_directory: &Path,
-) -> omp_bot::Config {
-    omp_bot::Config {
+) -> herdr_bot::Config {
+    herdr_bot::Config {
         listen_addr: "0.0.0.0:0".to_string(),
-        operations: omp_bot::Operations {
-            start: omp_bot::OperationBinding {
+        operations: herdr_bot::Operations {
+            start: herdr_bot::OperationBinding {
                 script: start_script.to_path_buf(),
                 working_directory: start_working_directory.to_path_buf(),
             },
-            stop: omp_bot::OperationBinding {
+            stop: herdr_bot::OperationBinding {
                 script: stop_script.to_path_buf(),
                 working_directory: stop_working_directory.to_path_buf(),
             },
         },
-        mdns: omp_bot::MdnsConfig::default(),
-        shutdown: omp_bot::ShutdownConfig::default(),
-        sessions: omp_bot::SessionsConfig::default(),
-        zones: omp_bot::ZonesConfig::default(),
-        git: omp_bot::GitConfig::default(),
+        mdns: herdr_bot::MdnsConfig::default(),
+        shutdown: herdr_bot::ShutdownConfig::default(),
+        sessions: herdr_bot::SessionsConfig::default(),
+        zones: herdr_bot::ZonesConfig::default(),
+        git: herdr_bot::GitConfig::default(),
     }
 }
 
@@ -88,7 +88,7 @@ async fn two_operations_invoke_their_own_bound_scripts_with_their_configured_wor
     fs::create_dir_all(&stop_directory).expect("创建停止工作目录");
     let (start_script, stop_script) = scripts(&tree);
 
-    let app = omp_bot::app(&config_with_operations(
+    let app = herdr_bot::app(&config_with_operations(
         &start_script,
         &start_directory,
         &stop_script,
@@ -153,8 +153,8 @@ async fn two_operations_invoke_their_own_bound_scripts_with_their_configured_wor
 async fn default_config_binds_the_specified_start_and_shutdown_batches_in_their_directory() {
     let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join("omp-bot.toml");
-    let config = omp_bot::Config::load(&config_path).expect("读取交付默认配置");
+        .join("herdr-bot.toml");
+    let config = herdr_bot::Config::load(&config_path).expect("读取交付默认配置");
 
     let streaming = Path::new(r"E:\Developer\myhub\my-streaming");
     let start_script = streaming.join("start-all.bat");
@@ -205,7 +205,7 @@ async fn default_config_binds_the_specified_start_and_shutdown_batches_in_their_
 async fn unknown_operation_names_are_rejected_with_a_category_and_without_running_any_script() {
     let tree = FixtureTree::new("unknown-operation");
     let (start_script, stop_script) = scripts(&tree);
-    let app = omp_bot::app(&config_with_operations(
+    let app = herdr_bot::app(&config_with_operations(
         &start_script,
         &tree.operations(),
         &stop_script,
@@ -254,7 +254,7 @@ async fn unknown_operation_names_are_rejected_with_a_category_and_without_runnin
 async fn parameter_carrying_requests_are_rejected_without_running_any_script() {
     let tree = FixtureTree::new("override-attempts");
     let (start_script, stop_script) = scripts(&tree);
-    let app = omp_bot::app(&config_with_operations(
+    let app = herdr_bot::app(&config_with_operations(
         &start_script,
         &tree.operations(),
         &stop_script,
@@ -342,7 +342,7 @@ async fn parameter_carrying_requests_are_rejected_without_running_any_script() {
 async fn non_post_methods_never_run_the_bound_scripts() {
     let tree = FixtureTree::new("non-post");
     let (start_script, stop_script) = scripts(&tree);
-    let app = omp_bot::app(&config_with_operations(
+    let app = herdr_bot::app(&config_with_operations(
         &start_script,
         &tree.operations(),
         &stop_script,
