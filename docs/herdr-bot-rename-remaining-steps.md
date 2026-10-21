@@ -1,14 +1,14 @@
 # herdr-bot 改名剩余步骤
 
 - 日期：2026-10-21
-- 当前状态：当前仓库内的代码、测试、当前文档与运行时标识已完成改名并推送。
-- 已完成提交：`6420523 rename project to herdr-bot`
-- 当前远程：`git@github.com:hugosol/omp-bot.git`
-- 当前本地目录：`E:\Developer\myhub\omp-bot`
-- 目标远程：`git@github.com:hugosol/herdr-bot.git`
-- 目标本地目录：`E:\Developer\myhub\herdr-bot`
+- 当前状态：当前仓库内的代码、测试、当前文档、运行时标识与防火墙已完成改名；手机局域网访问已验收。剩余 `my-agent-toolkit` 独立后续。
+- 已完成提交：`6420523 rename project to herdr-bot`、`835e093 docs: add herdr-bot rename remaining steps`
+- 当前远程：`git@github.com:hugosol/herdr-bot.git`
+- 当前本地目录：`E:\Developer\myhub\herdr-bot`
 
-本文只覆盖**尚未执行**的步骤。已完成事项见 [ADR 0010](./adr/0010-rename-project-to-herdr-bot.md) 和根目录 `README.md` 的「变更记录：项目更名为 herdr-bot」。
+本文记录改名迁移的执行状态与剩余步骤。已完成事项见 [ADR 0010](./adr/0010-rename-project-to-herdr-bot.md) 和根目录 `README.md` 的「变更记录：项目更名为 herdr-bot」。
+
+术语边界：`docs/omp-*.md`、`.omp/`、`omp` 命令等 OMP 平台词汇按 [ADR 0010](./adr/0010-rename-project-to-herdr-bot.md) 保留；历史 ADR 与 README 历史记录不改写。
 
 ## 不可跳过的边界
 
@@ -20,7 +20,7 @@
 
 ---
 
-## 1. GitHub 仓库原地改名
+## 1. GitHub 仓库原地改名（已完成）
 
 ### 1.1 操作
 
@@ -64,7 +64,7 @@ origin  git@github.com:hugosol/herdr-bot.git (push)
 
 ---
 
-## 2. 本地目录改名
+## 2. 本地目录改名（已完成）
 
 > 这一步会改变当前工作目录。请先关闭本 AI 会话、所有终端、编辑器、`herdr-bot.exe`、cargo、node 等占用该目录的进程。
 
@@ -125,7 +125,7 @@ http://127.0.0.1:8787/
 
 ---
 
-## 3. Windows 防火墙与局域网入口
+## 3. Windows 防火墙与局域网入口（防火墙与手机验收已完成）
 
 旧规则仍指向旧 exe 路径，改名后需要重建。
 
@@ -165,7 +165,7 @@ http://herdr-bot.local:8787/
 
 ---
 
-## 4. `my-agent-toolkit` 独立后续
+## 4. `my-agent-toolkit` 独立后续（未完成）
 
 本步骤在 `my-agent-toolkit` 仓库中单独提交，不属于当前仓库改名提交。
 
@@ -258,7 +258,7 @@ rename connect-bot panel references to herdr-bot
 
 ---
 
-## 5. 最终审计
+## 5. 最终审计（仓库内已完成；外部仓库待做）
 
 在当前仓库根目录执行：
 
@@ -334,18 +334,18 @@ Rename-Item -Path 'E:\Developer\myhub\herdr-bot' -NewName 'omp-bot'
 
 ---
 
-## 7. 完成清单
+## 7. 完成清单（截至 2026-10-21）
 
-- [ ] GitHub 仓库已原地改名为 `hugosol/herdr-bot`
-- [ ] 本地 remote 已更新并 `git fetch --prune` 成功
-- [ ] 本地目录已改名为 `E:\Developer\myhub\herdr-bot`
-- [ ] 新路径下 `cargo build --release` 成功
-- [ ] `herdr-bot.exe --config herdr-bot.toml` 启动成功
-- [ ] 页面标题/H1 为 `herdr-bot`
-- [ ] 日志出现 `[herdr-bot]` 与 `published host=herdr-bot.local.`
-- [ ] 手机可通过 `http://herdr-bot.local:8787/` 打开
-- [ ] 旧 `omp-bot` 防火墙规则已删除，新 `herdr-bot-*` 规则已添加
+- [x] GitHub 仓库已原地改名为 `hugosol/herdr-bot`
+- [x] 本地 remote 已更新并 `git fetch --prune` 成功
+- [x] 本地目录已改名为 `E:\Developer\myhub\herdr-bot`
+- [x] 新路径下 `cargo build --release` 成功
+- [x] `herdr-bot.exe --config herdr-bot.toml` 启动成功
+- [x] 页面标题/H1 为 `herdr-bot`
+- [x] 日志出现 `[herdr-bot]` 与 `published host=herdr-bot.local.`（手机 mDNS 访问已验收）
+- [x] 手机可通过 `http://herdr-bot.local:8787/` 打开
+- [x] 旧 `omp-bot` 防火墙规则已删除，新 `herdr-bot-*` 规则已添加
 - [ ] `my-agent-toolkit` 的 connect-bot interop helper 与文案更新完成
 - [ ] `HERDR_BOT_BINARY=... bun test tests/connect-bot` 通过
 - [ ] `bun run typecheck` 通过
-- [ ] 当前仓库最终审计通过，旧标识只出现在历史说明中
+- [x] 当前仓库最终审计通过，旧项目标识只出现在历史说明中；OMP 平台词汇按 ADR 0010 保留

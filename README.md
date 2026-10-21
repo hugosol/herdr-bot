@@ -998,6 +998,19 @@ countdown_seconds = 10
 cargo test --manifest-path backend\Cargo.toml
 ```
 
+mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
+且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：
+
+```bat
+cargo test --manifest-path backend\Cargo.toml -- --ignored
+```
+
+运行全部测试并包含这些用例：
+
+```bat
+cargo test --manifest-path backend\Cargo.toml -- --include-ignored
+```
+
 测试经 HTTP interface 请求操作，并用真实批处理（写入 `%CD%`、退出码等）验证调用与工作目录。
 `backend/tests/execution_result.rs` 还验证执行结果分类：无法启动、成功退出、失败退出三类结果，
 以及“脚本另开长期进程不参与完成判定”。`backend/tests/mutual_exclusion.rs` 用真实监听端口与**多个独立

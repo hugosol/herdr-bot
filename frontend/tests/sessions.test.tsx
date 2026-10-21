@@ -56,13 +56,13 @@ describe('会话列表（卡片流）', () => {
       ...WORKING,
       sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       sessionName: '   ',
-      cwd: 'E:\\Developer\\myhub\\my-omp-toolkit\\',
+      cwd: 'E:\\Developer\\myhub\\my-agent-toolkit\\',
     }
 
     await showSessions([unnamed, blank])
 
     const names = screen.getAllByTestId('session-name').map((node) => node.textContent)
-    expect(names).toEqual(['herdr-bot · 3f9c1a72', 'my-omp-toolkit · aaaaaaaa'])
+    expect(names).toEqual(['herdr-bot · 3f9c1a72', 'my-agent-toolkit · aaaaaaaa'])
   })
 
   it('model 缺省或为空时隐藏该字段', async () => {
