@@ -256,6 +256,28 @@ offline_retention_seconds = 30
 - 运行中的实例不会因为改写配置文件而改变已加载的窗口；新值只在**重启后**生效。
 - 阈值语义与可见行为见[会话登记的生命周期](#会话登记的生命周期会话列表)。
 
+### `[herdr]` 配置（必须显式配置）
+
+从 zone 创建 Bot 时，每个新 Tab 都创建在这个服务端明确配置的 Herdr Workspace 中。这一段**没有
+代码缺省值**：
+
+```toml
+[herdr]
+workspace_name = 'bot-playground'
+# executable = 'C:\Users\<you>\.herdr\packages\standalone\releases\<version>\herdr.exe'
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `workspace_name` | **无（必须显式配置）** | 目标 Herdr Workspace 的显示名；每次创建按它精确匹配且必须唯一 |
+| `executable` | `herdr` | 生产调用使用的 Herdr CLI；缺省按 `PATH` 查找 |
+
+- 整段缺失、`workspace_name` 为空字符串或纯空白都会让**进程启动失败**，不会回退到 `bot-playground`
+  或其他猜测目标。
+- 浏览器请求没有 Workspace 字段，不能替换这个目标；创建时即使 Herdr 当前焦点在别的 Workspace，
+  也仍按配置名称精确查找。匹配到零个或多个时明确失败，不任取第一个、不新建 Workspace。
+- 合法值去掉首尾空白后按字面保存；拼错的字段名会让启动失败。
+
 ### `[zones]` 配置（可选）
 
 zone 登记列表由后端以文件持久保存，本机与局域网设备读取同一份；整段可缺省：
@@ -381,6 +403,58 @@ agent 的能力表也不互相复制。
 `template-thinking-invalid`、`template-thinking-requires-default-model`、
 `template-thinking-unsupported` 与 `template-skill-invalid`；存储错误包括 `templates-unreadable`、
 `templates-corrupt` 与 `templates-write-failed`。保存失败时此前已保存的模板保持不变。
+
+### 从 zone 创建 Bot
+
+“文件列表”tab 的每个 zone 行都有一个独立的“+”入口。打开弹窗后选择模板、填写可为空的初始 input；
+弹窗只显示后端预览的本次名称，**没有手工命名输入**。确认后由后端执行创建，页面不再自己计算名称：
+
+1. 按 `[herdr] workspace_name` 精确查找唯一 Workspace。当前焦点不会影响选择；零个或多个匹配都失败。
+2. 在目标 Workspace 中新建独立 Tab，显示名严格使用模板 `bot-name` 的结果，cwd 显式设为该 zone 的目录。
+3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
+4. 就绪后才把 Skill、模板 prompt 与本次 input 合成一次初始指示提交；不先单独发起 Skill 轮次。
+5. 初始指示提交被确认后立即显示“创建成功，初始指示已提交”，不等待模型完成任务、Skill 执行或
+   connect-bot 接入。
+
+页面把过程分成“正在启动”与“正在提交初始指示”两个稳定阶段。只有就绪与提交都确认才显示成功；
+失败或超时会保留已经创建的 Tab / agent 与已知标识，显示失败阶段，不自动删除、重建、重发。成功与失败
+都留在弹窗中由用户关闭，不自动切换到会话列表。创建 Bot 不登记 connect-bot 会话，也不修改会话监听、
+keepAlive 或关机安排。
+
+接口：
+
+- `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
+  名称：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","templateId":"…","agent":"omp"}`。
+- `POST /api/bots`，JSON 为
+  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…"}`；接受后返回 HTTP 202
+  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。请求没有 Workspace 字段；模板在请求
+  被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
+  不会悄悄改名。
+- `GET /api/bots/{id}` 读取同一次创建的当前阶段：`starting`、`submitting`、`succeeded` 或 `failed`。
+  已取得的 `tabId` / `paneId` / `agentName` 只在确实取得后出现；失败时附加
+  `failure:{stage,code,message}`，`inputSubmitted` 只有在提交被确认后才为 `true`。
+
+`bot.id` 是显示名中的短实例标识（6 个小写十六进制字符），不是 Herdr Tab ID，也不充当对象身份。
+Tab 显示名允许重复；内部对象身份使用 Herdr 返回的 Tab / Pane 标识与后端单独生成的 agent 控制别名。
+名称与 input 经逐参数进程调用传给 Herdr CLI，不经过 Shell，因此引号、中文、空格、换行与 Shell
+特殊字符都按字面传递。
+
+**真实运行的人工验收准备（P25 / P26 / P27 / P33）**：自动用例使用受控 Herdr 替身，不能代替真实
+Herdr / agent。用户确认时可以：
+
+1. 在 `herdr-bot.toml` 明确写 `[herdr] workspace_name = 'bot-playground'`（或本次显式目标），并确认
+   真实 Herdr 已在运行；在 Herdr 中让焦点停在另一个 Workspace。
+2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建，记录结果中的 Bot
+   名称、Tab / Pane 标识。
+3. 用独立 Herdr 命令核对对象：`herdr workspace list` 找到配置目标；`herdr tab list` / `herdr pane get`
+   找到结果中的标识；`herdr pane process_info <pane>` 或 `herdr agent get <pane>` 读取实际 cwd，应与所选
+   zone 目录一致，而不是焦点 Workspace 的目录。
+4. 观察页面先显示“正在启动”、目标可交互后才显示“正在提交初始指示”，最后才显示“创建成功，初始指示已
+   提交”；成功出现时手动终端里应已收到一次初始输入。创建完成不要求模型任务结束，也不应在会话列表中
+   出现由本次创建自动生成的 connect-bot 登记。
+
+四组 agent / model 组合（omp、pi 分别搭配两个已确认模型）与初始正文的进一步核对由 03 / 04 共用同一轮
+真实运行；本页只准备其中的目标 Workspace、目录、Tab / Pane 定位、就绪到投递时序与提交确认对照。
 
 ### 文件列表与 zone 登记
 
@@ -1071,7 +1145,16 @@ npm --prefix frontend run test:browser
 ```
 
 `test:browser` 使用本机已安装的 Google Chrome（Playwright `channel: "chrome"`），不额外下载浏览器；
-用例覆盖 Bot 模板 tab 的真实新增、查看、编辑、删除、公开 HTTP 共享读取、保存失败与进程重启保留。
+用例覆盖 Bot 模板 tab 的真实新增、查看、编辑、删除、公开 HTTP 共享读取、保存失败与进程重启保留，
+以及从普通目录与 Git 工作树 zone 行创建 Bot 的真实页面链路、名称预览与 Herdr 侧名称一致、启动/
+提交阶段、成功与失败留在弹窗。
+
+创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
+adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
+调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
+`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识与
+不触碰会话/关机状态；`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程验证 Workspace 配置缺失、
+空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
 
 mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
 且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：

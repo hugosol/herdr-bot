@@ -88,7 +88,8 @@ impl Panel {
                 "listen_addr = \"0.0.0.0:0\"\n\n\
                  [operations.start]\nscript = 'C:\\missing\\start.bat'\nworking_directory = 'C:\\missing'\n\n\
                  [operations.stop]\nscript = 'C:\\missing\\stop.bat'\nworking_directory = 'C:\\missing'\n\n\
-                 [mdns]\naddress = \"{address}\"\n"
+                 [mdns]\naddress = \"{address}\"\n\n\
+                 [herdr]\nworkspace_name = 'bot-playground'\n"
             ),
         )
         .expect("写临时配置");

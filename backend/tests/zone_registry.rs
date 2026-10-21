@@ -420,6 +420,7 @@ fn write_process_config(dir: &TempDir, registry: &Path) -> PathBuf {
              [operations.start]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [operations.stop]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [mdns]\nenabled = false\n\n\
+             [herdr]\nworkspace_name = 'bot-playground'\n\n\
              [zones]\nregistry_file = '{registry}'\n",
             script = script.display(),
             operations = operations.display(),

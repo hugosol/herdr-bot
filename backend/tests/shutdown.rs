@@ -573,6 +573,9 @@ working_directory = '.'
 [operations.stop]
 script = 'unused.bat'
 working_directory = '.'
+
+[herdr]
+workspace_name = 'bot-playground'
 "#;
     let config = herdr_bot::Config::from_toml(legacy).expect("缺 [shutdown] 段的旧配置必须仍可加载");
 

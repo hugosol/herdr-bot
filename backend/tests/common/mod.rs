@@ -207,6 +207,83 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
+/// 一个受控 Herdr CLI 副本：独立临时目录里的真实进程，记录外部调用。
+///
+/// 副本的目录就是它的数据目录：`workspaces.json` / `behavior.json` 由用例预写，
+/// `calls.jsonl` / `tabs.jsonl` 由夹具进程自己追加。herdr-bot 经生产调用包装层（逐参数、
+/// 无 Shell）启动它；记录不经过 herdr-bot 的进程内状态。
+pub struct HerdrFixture {
+    root: TempDir,
+    executable: PathBuf,
+}
+
+impl HerdrFixture {
+    pub fn new(label: &str) -> Self {
+        let root = TempDir::new(label);
+        let source = PathBuf::from(env!("CARGO_BIN_EXE_herdr-fixture"));
+        let executable = root.path().join("herdr-fixture.exe");
+        fs::copy(&source, &executable).expect("复制受控 Herdr 夹具");
+        fs::write(
+            root.path().join("workspaces.json"),
+            r#"[
+  {"workspace_id":"w-other","label":"other","focused":true,"cwd":"C:\\elsewhere\\focused"},
+  {"workspace_id":"w-target","label":"bot-playground","focused":false},
+  {"workspace_id":"w-decoys","label":"bot-playground-extra","focused":false}
+]"#,
+        )
+        .expect("写默认 Workspace 集合");
+        fs::write(root.path().join("behavior.json"), "{}").expect("写默认夹具行为");
+        Self { root, executable }
+    }
+
+    pub fn path(&self) -> &Path {
+        self.root.path()
+    }
+
+    pub fn executable(&self) -> &Path {
+        &self.executable
+    }
+
+    pub fn set_workspaces(&self, workspaces: serde_json::Value) {
+        fs::write(
+            self.root.path().join("workspaces.json"),
+            serde_json::to_string(&workspaces).expect("序列化 Workspace 集合"),
+        )
+        .expect("写 Workspace 集合");
+    }
+
+    pub fn set_behavior(&self, behavior: serde_json::Value) {
+        fs::write(
+            self.root.path().join("behavior.json"),
+            serde_json::to_string(&behavior).expect("序列化夹具行为"),
+        )
+        .expect("写夹具行为");
+    }
+
+    /// 读取外部调用记录；文件尚不存在表示还没有调用。
+    pub fn calls(&self) -> Vec<serde_json::Value> {
+        read_json_lines(&self.root.path().join("calls.jsonl"))
+    }
+
+    /// 读取新建 Tab 的外部记录。
+    pub fn tabs(&self) -> Vec<serde_json::Value> {
+        read_json_lines(&self.root.path().join("tabs.jsonl"))
+    }
+}
+
+/// 逐行读取 JSONL；文件不存在时返回空列表。
+pub fn read_json_lines(path: &Path) -> Vec<serde_json::Value> {
+    match fs::read_to_string(path) {
+        Ok(raw) => raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str(line).expect("夹具记录必须是 JSON"))
+            .collect(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => panic!("读取夹具记录失败：{error}"),
+    }
+}
+
 /// 服务端配置：把某个夹具批处理绑定为“启动”操作，并使用配置的工作目录。
 ///
 /// 只驱动“启动”的测试不需要区分两个操作，因此“停止”先绑定同一个目标；
@@ -244,6 +321,8 @@ pub fn config_with_countdown(
         zones: herdr_bot::ZonesConfig::default(),
         // Bot 模板存储文件同理；需要隔离存储的用例自己改写这个路径。
         bot_templates: herdr_bot::BotTemplatesConfig::default(),
+        // 目标 Herdr Workspace 必须显式；不需要创建 Bot 的用例取一个固定的合法名称。
+        herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: herdr_bot::GitConfig::default(),
     }

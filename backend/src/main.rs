@@ -38,6 +38,11 @@ async fn main() -> anyhow::Result<()> {
     }
     println!("[herdr-bot] 打包页面：{}", static_dir.display());
     println!(
+        "[herdr-bot] Herdr Workspace：{}（herdr：{}）",
+        config.herdr.workspace_name,
+        config.herdr.executable.display()
+    );
+    println!(
         "[herdr-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
         config.sessions.online_timeout_seconds.get(),
         config.sessions.offline_retention_seconds.get()

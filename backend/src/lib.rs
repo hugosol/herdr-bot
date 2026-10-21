@@ -36,12 +36,14 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
+pub mod bots;
 pub mod browse;
 pub mod clock;
 pub mod commit;
 pub mod config;
 pub mod countdown;
 pub mod git;
+pub mod herdr;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
@@ -74,8 +76,8 @@ use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
 pub use config::{
-    BotTemplatesConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig,
-    OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
+    BotTemplatesConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
+    MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     ZonesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
@@ -128,6 +130,12 @@ pub struct AppState {
     /// 与固定操作、关机路径完全解耦：模板管理只读取与写入模板存储文件，不执行任何脚本、
     /// 不创建也不关闭 Bot。
     pub bot_templates: Arc<templates::Templates>,
+    /// Herdr 公开控制接口的生产 adapter；目标 Workspace 名称来自启动期配置。
+    ///
+    /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
+    pub herdr: Arc<herdr::HerdrClient>,
+    /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Bot 列表。
+    pub bot_creations: Arc<bots::BotCreations>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -212,12 +220,12 @@ pub fn app_with_state(
         execution: Arc::new(Mutex::new(())),
         sessions,
         shutdown,
-        zones: Arc::new(zones::Zones::new(
-            config.zones.registry_file.clone(),
-        )),
+        zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
         bot_templates: Arc::new(templates::Templates::new(
             config.bot_templates.storage_file.clone(),
         )),
+        herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
+        bot_creations: Arc::new(bots::BotCreations::new()),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
@@ -249,10 +257,7 @@ pub fn app_with_state(
         )
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
-        .route(
-            "/api/zones",
-            get(list_zones).post(register_zone),
-        )
+        .route("/api/zones", get(list_zones).post(register_zone))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Bot 模板：同一条路径读取列表与新增；单个模板按标识读取、编辑与删除。
@@ -267,6 +272,11 @@ pub fn app_with_state(
                 .put(update_bot_template)
                 .delete(delete_bot_template),
         )
+        // 从已登记 zone 创建 Bot：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
+        // 之后由页面轮询同一次创建。目标 Workspace 只来自服务端配置，请求面没有这个字段。
+        .route("/api/bots/preview", post(preview_bot))
+        .route("/api/bots", post(create_bot))
+        .route("/api/bots/{id}", get(get_bot_creation))
         // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
         // 整树读取对 Git zone 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
         .route("/api/zones/tree", get(read_zone_tree))
@@ -675,15 +685,13 @@ async fn zone_path(request: Request) -> Result<String, Response> {
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
-        .await
-        .map_err(|_| {
-            rejected_owned(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "payload-too-large",
-                "zone 请求体超过 64KB 上限。".to_string(),
-            )
-        })?;
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES).await.map_err(|_| {
+        rejected_owned(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload-too-large",
+            "zone 请求体超过 64KB 上限。".to_string(),
+        )
+    })?;
     let body: ZonePathRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -705,15 +713,13 @@ async fn zone_create_name(request: Request) -> Result<String, Response> {
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
-        .await
-        .map_err(|_| {
-            rejected_owned(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "payload-too-large",
-                "新建 zone 的请求体超过 64KB 上限。".to_string(),
-            )
-        })?;
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES).await.map_err(|_| {
+        rejected_owned(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload-too-large",
+            "新建 zone 的请求体超过 64KB 上限。".to_string(),
+        )
+    })?;
     let body: CreateZoneRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -748,10 +754,7 @@ async fn list_bot_templates(State(state): State<AppState>) -> Response {
 }
 
 /// “读取单个 Bot 模板”：删除后由独立客户端按标识选择时得到明确的不存在。
-async fn get_bot_template(
-    State(state): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-) -> Response {
+async fn get_bot_template(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> Response {
     match state.bot_templates.get(&id).await {
         Ok(template) => (StatusCode::OK, Json(BotTemplateView { template })).into_response(),
         Err(error) => bot_template_error_response(error),
@@ -880,6 +883,206 @@ fn bot_template_error_response(error: templates::TemplateError) -> Response {
         | TemplateError::UnknownSkill(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(status, error.code(), error.message())
+}
+
+/// Bot 名称预览请求：只指定已登记 zone 与模板，不携带名称、Workspace 或其他覆盖字段。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BotPreviewRequest {
+    zone: String,
+    template_id: String,
+}
+
+/// 创建 Bot 的请求：实例标识与预览名称沿用预览结果；input 可为空；没有 Workspace 字段。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CreateBotRequest {
+    zone: String,
+    template_id: String,
+    bot_id: String,
+    #[serde(default)]
+    input: String,
+    /// 预览时看到的名称；若模板在预览之后被修改，创建明确拒绝而不是悄悄改名。
+    #[serde(default)]
+    expected_name: Option<String>,
+}
+
+/// Bot 名称预览的成功响应：本次创建实际会使用的名称与短实例标识。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BotPreviewResponse {
+    bot_id: String,
+    name: String,
+    zone: String,
+    template_id: String,
+    agent: &'static str,
+}
+
+/// “预览 Bot 名称”：只生成名称与短实例标识，不创建 Tab、不启动 agent。
+async fn preview_bot(State(state): State<AppState>, request: Request) -> Response {
+    let input: BotPreviewRequest = match bot_command_body(request, "Bot 名称预览").await {
+        Ok(input) => input,
+        Err(rejection) => return rejection,
+    };
+    let zone = match bot_zone(&state, &input.zone).await {
+        Ok(zone) => zone,
+        Err(rejection) => return rejection,
+    };
+    let template = match state.bot_templates.get(&input.template_id).await {
+        Ok(template) => template,
+        Err(error) => return bot_template_error_response(error),
+    };
+
+    let bot_id = bots::new_bot_id();
+    let name = bots::render_bot_name(&template.bot_name, &zone, &template, &bot_id);
+    let agent = template.agent.label();
+    (
+        StatusCode::OK,
+        Json(BotPreviewResponse {
+            bot_id,
+            name,
+            zone,
+            template_id: template.id,
+            agent,
+        }),
+    )
+        .into_response()
+}
+
+/// “创建 Bot”：接受后由后端拥有的任务继续执行，HTTP 响应只给出本次创建的生命周期标识。
+///
+/// 模板在请求被接受时固定为快照；之后编辑或删除模板不改变本次创建。目标 Workspace 只来自
+/// 服务端配置，请求无法携带或替换它。
+async fn create_bot(State(state): State<AppState>, request: Request) -> Response {
+    let input: CreateBotRequest = match bot_command_body(request, "创建 Bot").await {
+        Ok(input) => input,
+        Err(rejection) => return rejection,
+    };
+    if !bots::is_valid_bot_id(&input.bot_id) {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "bot-id-invalid",
+            "Bot 短实例标识必须来自名称预览（6 个小写十六进制字符）。".to_string(),
+        );
+    }
+    let zone = match bot_zone(&state, &input.zone).await {
+        Ok(zone) => zone,
+        Err(rejection) => return rejection,
+    };
+    let template = match state.bot_templates.get(&input.template_id).await {
+        Ok(template) => template,
+        Err(error) => return bot_template_error_response(error),
+    };
+    let name = bots::render_bot_name(&template.bot_name, &zone, &template, &input.bot_id);
+    if let Some(expected) = input.expected_name {
+        if expected != name {
+            return rejected_owned(
+                StatusCode::CONFLICT,
+                "name-preview-stale",
+                "模板在预览之后发生了变化，本次名称已不同；请重新预览后再创建。".to_string(),
+            );
+        }
+    }
+
+    let view = bots::CreationView::starting(
+        bots::new_creation_id(),
+        name,
+        zone.clone(),
+        template.id.clone(),
+    );
+    let job = state.bot_creations.insert(view.clone()).await;
+    let herdr = Arc::clone(&state.herdr);
+    tokio::spawn(async move {
+        bots::run_creation(herdr, job, template, zone, input.input).await;
+    });
+    (StatusCode::ACCEPTED, Json(view)).into_response()
+}
+
+/// “读取一次创建的状态”：同一次创建在请求结束后仍可被提交它的页面观察。
+async fn get_bot_creation(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    request: Request,
+) -> Response {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return rejected(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "创建状态读取不接受查询参数：目标只由路径中的创建标识决定。",
+        );
+    }
+    match state.bot_creations.get(&id).await {
+        Some(view) => (StatusCode::OK, Json(view)).into_response(),
+        None => rejected(
+            StatusCode::NOT_FOUND,
+            "creation-not-found",
+            "找不到这次创建；它可能不属于当前后端实例。",
+        ),
+    }
+}
+
+/// 解析 Bot 命令的 JSON 请求体；查询串与未知字段都被拒绝。
+async fn bot_command_body<T: serde::de::DeserializeOwned>(
+    request: Request,
+    action: &str,
+) -> Result<T, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            format!("{action}不接受查询参数：字段只来自请求体。"),
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                format!("{action}的请求体超过 1 MiB 上限。"),
+            )
+        })?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            format!("无法解析{action}请求：{error}"),
+        )
+    })
+}
+
+/// 核对请求中的 zone 确实已登记，并返回登记列表里的规范路径。
+///
+/// Bot 的 cwd 只能来自已登记 zone；未登记的路径不会被当作工作目录。
+async fn bot_zone(state: &AppState, requested: &str) -> Result<String, Response> {
+    let trimmed = requested.trim();
+    if trimmed.is_empty() {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "zone-required",
+            "请选择已登记的 zone。".to_string(),
+        ));
+    }
+    let zones = state.zones.list().await.map_err(|error| {
+        rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "zones-unreadable",
+            format!("读取 zone 登记列表失败：{}", error.message()),
+        )
+    })?;
+    zones
+        .into_iter()
+        .find(|entry| zones::same_path(&entry.path, trimmed))
+        .map(|entry| entry.path)
+        .ok_or_else(|| {
+            rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "zone-not-registered",
+                "该目录没有登记；只能从已登记的 zone 创建 Bot。".to_string(),
+            )
+        })
 }
 
 /// 一次只读浏览请求的查询参数：登记路径 + 可选相对路径（空字符串表示根目录）。
@@ -1032,8 +1235,7 @@ fn decode_zone_token(token: &str) -> Result<String, String> {
             .map_err(|_| "HTML 阅读资源地址中的 zone 编码无效。".to_string())?;
         bytes.push(byte);
     }
-    String::from_utf8(bytes)
-        .map_err(|_| "HTML 阅读资源地址中的 zone 编码不是 UTF-8。".to_string())
+    String::from_utf8(bytes).map_err(|_| "HTML 阅读资源地址中的 zone 编码不是 UTF-8。".to_string())
 }
 
 fn resource_response(bytes: Vec<u8>, content_type: &'static str) -> Response {
@@ -1113,14 +1315,8 @@ async fn zones_overview(State(state): State<AppState>) -> Response {
     };
     let timeout = state.git_timeout;
     let sync_state = Arc::clone(&state.sync_state);
-    match tokio::task::spawn_blocking(move || git::overview(&zones, timeout, &sync_state))
-        .await
-    {
-        Ok(zones) => (
-            StatusCode::OK,
-            Json(ZoneOverviewResponse { zones }),
-        )
-            .into_response(),
+    match tokio::task::spawn_blocking(move || git::overview(&zones, timeout, &sync_state)).await {
+        Ok(zones) => (StatusCode::OK, Json(ZoneOverviewResponse { zones })).into_response(),
         Err(_) => rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
             "git-command-failed",
@@ -1490,15 +1686,13 @@ async fn zone_target(request: Request) -> Result<String, Response> {
         ));
     }
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
-        .await
-        .map_err(|_| {
-            rejected_owned(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "payload-too-large",
-                "请求体超过 64KB 上限。".to_string(),
-            )
-        })?;
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES).await.map_err(|_| {
+        rejected_owned(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload-too-large",
+            "请求体超过 64KB 上限。".to_string(),
+        )
+    })?;
     let request: ZoneTargetRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -1673,8 +1867,7 @@ fn browse_query(
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-query",
-            "读取 zone 需要 `zone` 参数与可选的 `path` 参数，且不接受其他参数。"
-                .to_string(),
+            "读取 zone 需要 `zone` 参数与可选的 `path` 参数，且不接受其他参数。".to_string(),
         )
     })?;
     if query.zone.trim().is_empty() {
@@ -1728,14 +1921,7 @@ fn zone_list_response(
                     .as_ref()
                     .map(|path| path.to_string_lossy().into_owned()),
             };
-            (
-                StatusCode::OK,
-                Json(ZoneListResponse {
-                    zones,
-                    creation,
-                }),
-            )
-                .into_response()
+            (StatusCode::OK, Json(ZoneListResponse { zones, creation })).into_response()
         }
         Err(error) => zone_error_response(error),
     }
@@ -1745,9 +1931,9 @@ fn zone_error_response(error: ZoneError) -> Response {
     let status = match &error {
         ZoneError::AlreadyRegistered => StatusCode::CONFLICT,
         ZoneError::NotRegistered => StatusCode::NOT_FOUND,
-        ZoneError::Unreadable(_)
-        | ZoneError::Corrupt(_)
-        | ZoneError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ZoneError::Unreadable(_) | ZoneError::Corrupt(_) | ZoneError::WriteFailed(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
         ZoneError::Required
         | ZoneError::NotAbsolute
         | ZoneError::NotFound
