@@ -14,6 +14,9 @@
 //! `behavior.json` 可延迟或拒绝某一步，用来观察“启动中”“提交中”与失败边界：
 //! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`prompt_delay_ms`，
 //! 以及布尔值 `fail_workspace_list`、`fail_tab_create`、`fail_agent_start`、`fail_prompt`。
+//!
+//! 空文本提交与真实 Herdr 一样以 `empty_agent_prompt` 拒绝；拒绝前仍写下调用记录，因为
+//! “herdr-bot 尝试提交什么”与“Herdr 是否接受”是两件需要分别观察的事实。
 
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -261,6 +264,11 @@ fn agent_prompt(args: &[String]) {
         }),
     );
     delay(&behavior, "prompt_delay_ms");
+    if text.is_empty() {
+        // 真实 Herdr 在写入 pane 之前就以 `empty_agent_prompt` 拒绝空文本；受控替身保持同一结果。
+        // 调用记录已经写下，因此测试能够证明 herdr-bot 确实尝试过这次提交，而不是跳过它。
+        fail("empty_agent_prompt", "agent prompt must not be empty");
+    }
     if flag(&behavior, "fail_prompt") {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
     }

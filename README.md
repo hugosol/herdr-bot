@@ -1152,7 +1152,8 @@ npm --prefix frontend run test:browser
 创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
 adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
 调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
-`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识与
+`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识、
+Skill / prompt / input 的单次合成（含空值组合、两项原生 Skill 前缀与正文逐字保真）、
 不触碰会话/关机状态；`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程验证 Workspace 配置缺失、
 空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
 
