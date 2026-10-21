@@ -12,8 +12,16 @@ _Avoid_: omp-bot 主界面（旧名）, 控制面板, 管理后台, 仪表盘
 外部项目，负责管理 session；herdr-bot 不重复实现其 session 管理。
 _Avoid_: herdr-bot, 本项目
 
+**Bot**:
+从 Bot 模板为某个 zone 创建的独立 agent 对话实例，由 herdr 托管；它不等同于 herdr 的 Session 命名空间，也不以接入 connect-bot 为成立条件。
+_Avoid_: herdr session, 会话登记, connect-bot 会话
+
+**bot-template（Bot 模板）**:
+创建 Bot 时复用的预设，描述目标 agent、模型与思考级别选择、实例命名规则及初始化输入；它不假定不同 agent 具有统一的 Skill 调用方式。
+_Avoid_: 会话登记, agent session, 通用 Skill 协议
+
 **connect-bot**:
-agent 侧的扩展与接入协议；任何实现 connect-bot 的 agent 都可以把 agent session 上报到 herdr-bot 主界面。当前实现由 my-agent-toolkit 提供，支持多种 agent。
+独立于 herdr 的 agent 会话接入与管理机制；任何实现 connect-bot 的 agent 都可以把 agent session 上报到 herdr-bot 主界面，无需由 herdr 创建或托管。当前实现由 my-agent-toolkit 提供，支持多种 agent。
 _Avoid_: herdr, herdr-bot
 
 **控制面板**:
