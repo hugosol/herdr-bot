@@ -84,7 +84,7 @@ afterEach(() => {
 })
 
 describe('Bot 模板 tab：读取与展示', () => {
-  it('进入独立 tab 才读取后端共享模板，并显示全部已保存字段', async () => {
+  it('进入 bot 入口才读取共享模板，并显示字段与 bot-name 示例', async () => {
     const user = userEvent.setup()
     const literal = {
       id: 'tpl-literal-1',
@@ -113,7 +113,9 @@ describe('Bot 模板 tab：读取与展示', () => {
     expect(calls[0]).toMatchObject({ url: '/api/bot-templates', method: 'GET' })
     const row = within(list).getByTestId('bot-template-item')
     expect(row).toHaveTextContent('发布检查')
-    expect(row).toHaveTextContent('{zone.name} · {template.name} · {bot.id}')
+    expect(row).toHaveTextContent('bot-name 示例')
+    expect(row).toHaveTextContent('alpha · 发布检查 · a7f3c2')
+    expect(row).not.toHaveTextContent('{zone.name}')
     expect(row).toHaveTextContent('pi')
     expect(row).toHaveTextContent('deepseek-flash')
     expect(row).toHaveTextContent('max')
@@ -311,6 +313,8 @@ describe('Bot 模板 tab：读取与展示', () => {
     })
     const row = screen.getByTestId('bot-template-item')
     expect(row).toHaveTextContent('审查')
+    expect(row).toHaveTextContent('alpha · 审查 · pi · a7f3c2')
+    expect(row).not.toHaveTextContent('{template.name}')
     expect(row).toHaveTextContent('deepseek-flash')
     expect(row).toHaveTextContent('/code-review')
     expect(screen.getByTestId('template-feedback')).toHaveAttribute('data-kind', 'success')
@@ -448,6 +452,9 @@ describe('Bot 模板 tab：读取与展示', () => {
       prompt: '第一行\n第二行',
     })
     expect(screen.getAllByTestId('bot-template-item')[0]).toHaveTextContent('新名字')
+    expect(screen.getAllByTestId('bot-template-item')[0]).toHaveTextContent(
+      '新名字 · pi · a7f3c2',
+    )
 
     // 删除：只有后端成功返回后才从列表消失。
     const targetRow = screen

@@ -92,6 +92,8 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   const row = page.getByTestId('bot-template-item')
   await expect(row).toHaveCount(1)
   await expect(row).toContainText('发布检查')
+  await expect(row).toContainText('alpha · 发布检查 · pi · a7f3c2')
+  await expect(row).not.toContainText('{zone.name}')
   await expect(row).toContainText('pi')
   await expect(row).toContainText('deepseek-flash')
   await expect(row).toContainText('max')
@@ -129,6 +131,9 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   await page.getByTestId('save-template').click()
 
   await expect(page.getByTestId('bot-template-item')).toContainText('发布检查（改）')
+  await expect(page.getByTestId('bot-template-item')).toContainText(
+    '发布检查（改） · omp · a7f3c2',
+  )
   const afterEdit = await server.getTemplates()
   expect(afterEdit.templates).toHaveLength(1)
   expect(afterEdit.templates[0].id).toBe(saved.id)

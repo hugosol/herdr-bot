@@ -265,8 +265,8 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                 <h2 className="bot-template-item__name">{template.name}</h2>
                 <dl className="bot-template-item__fields">
                   <div>
-                    <dt>bot-name</dt>
-                    <dd>{template.botName}</dd>
+                    <dt>bot-name 示例</dt>
+                    <dd>{renderBotNameExample(template.botName, template.name, template.agent)}</dd>
                   </div>
                   <div>
                     <dt>agent</dt>
