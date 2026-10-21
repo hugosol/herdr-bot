@@ -475,14 +475,33 @@ async fn assert_launch_from_public_entry(
         start["agent_kind"], agent,
         "外部启动目标类型必须对应所选 agent"
     );
-    assert_eq!(start["args"], expected_args, "启动参数必须与预写样例一致");
+    let expected = expected_args.as_array().expect("预写样例是数组");
+    let args = start["args"].as_array().expect("启动参数是数组");
+    assert_eq!(
+        args.len(),
+        expected.len() + 2,
+        "除模型 / thinking 外只应追加本次独立的会话目录：{}",
+        start["args"]
+    );
+    assert_eq!(
+        &args[..expected.len()],
+        expected.as_slice(),
+        "启动参数中的模型与 thinking 必须与预写样例一致"
+    );
+    assert_eq!(
+        args[expected.len()],
+        "--session-dir",
+        "模型 / thinking 之后必须显式选择独立的新会话目录：{}",
+        start["args"]
+    );
+    assert!(
+        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
+        "会话目录必须是绝对路径：{}",
+        start["args"]
+    );
     if agent == "pi" {
         assert!(
-            !start["args"]
-                .as_array()
-                .expect("启动参数是数组")
-                .iter()
-                .any(|arg| arg == "auto"),
+            !args.iter().any(|arg| arg == "auto"),
             "Pi 不接收 auto：{}",
             start["args"]
         );
