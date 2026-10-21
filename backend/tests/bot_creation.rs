@@ -56,8 +56,12 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .expect("登记响应必须包含刚登记的目录")
 }
 
-/// 保存一个模板并返回完整已保存对象。
+/// 保存一个模板并返回本次保存的完整对象（按请求中的显示名定位，不假设列表里只有一个）。
 async fn save_template(server: &TestServer, template: Value) -> Value {
+    let name = template["name"]
+        .as_str()
+        .expect("测试模板必须有显示名")
+        .to_string();
     let response =
         post_json_over_tcp(server.addr(), "/api/bot-templates", &template.to_string()).await;
     assert_eq!(response.status, 200, "保存模板应成功：{}", response.body);
@@ -65,9 +69,22 @@ async fn save_template(server: &TestServer, template: Value) -> Value {
     body["templates"]
         .as_array()
         .expect("模板响应必须有 templates")
-        .first()
-        .expect("保存后必须有一个模板")
+        .iter()
+        .find(|saved| saved["name"] == name)
+        .unwrap_or_else(|| panic!("保存响应必须包含刚保存的模板 {name}"))
         .clone()
+}
+
+/// 经公开读取接口取回一个已保存模板，作为“实际保存的是什么”的独立观察。
+async fn read_template(server: &TestServer, id: &str) -> Value {
+    let response = get_over_tcp(server.addr(), &format!("/api/bot-templates/{id}")).await;
+    assert_eq!(
+        response.status, 200,
+        "读取已保存模板应成功：{}",
+        response.body
+    );
+    let body: Value = serde_json::from_str(&response.body).expect("模板读取响应是 JSON");
+    body["template"].clone()
 }
 
 async fn preview(server: &TestServer, zone: &str, template_id: &str) -> HttpResponse {
@@ -339,6 +356,222 @@ fn bots_like_bot_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// 四组显式 agent / model / thinking 的预写样例：选择值与外部启动参数分开写死。
+///
+/// 期望值来自已确认的产品映射和目标源码能力事实，不由 herdr-bot 的映射函数生成：
+/// - `openai-codex/gpt-6.1-sol`：OMP `thinking.efforts` 为 low/medium/high/xhigh/max；
+///   Pi 1.3.0 的 map 为 off:null、minimal..max，`getSupportedThinkingLevels` 因此为
+///   minimal/low/medium/high/xhigh/max（不接受 off）。
+/// - `deepseek/deepseek-flash`：OMP 为 low/high/max；Pi 的 map 把 minimal/medium 置为 null，
+///   因而支持 off/low/high/max。
+/// Pi 的合法级别不含 `auto`；四组样例使用的级别都落在各自 agent / model 的能力集合内。
+const EXPLICIT_LAUNCH_CASES: [(&str, &str, &str, [&str; 4]); 4] = [
+    (
+        "omp",
+        "gpt-6.1-sol",
+        "high",
+        ["--model", "openai-codex/gpt-6.1-sol", "--thinking", "high"],
+    ),
+    (
+        "omp",
+        "deepseek-flash",
+        "max",
+        ["--model", "deepseek/deepseek-flash", "--thinking", "max"],
+    ),
+    (
+        "pi",
+        "gpt-6.1-sol",
+        "xhigh",
+        [
+            "--model",
+            "openai-codex/gpt-6.1-sol",
+            "--thinking",
+            "xhigh",
+        ],
+    ),
+    (
+        "pi",
+        "deepseek-flash",
+        "low",
+        ["--model", "deepseek/deepseek-flash", "--thinking", "low"],
+    ),
+];
+
+/// 从公开入口保存模板、独立读回保存值，再创建一次并核对受控 Herdr 写下的外部启动记录。
+async fn assert_launch_from_public_entry(
+    server: &TestServer,
+    herdr: &HerdrFixture,
+    zone: &str,
+    agent: &str,
+    model: &str,
+    thinking: &str,
+    expected_args: Value,
+    input: &str,
+) -> Value {
+    let template = json!({
+        "name": format!("启动配置 {agent} {model} {thinking}"),
+        "botName": "{zone.name} · {template.name} · {bot.id}",
+        "agent": agent,
+        "model": model,
+        "thinking": thinking,
+        "skill": null,
+        "prompt": "",
+    });
+    let saved = save_template(server, template.clone()).await;
+    let template_id = saved["id"].as_str().expect("模板标识").to_string();
+
+    // 公开保存、独立读回与外部启动参数必须一致：先确认后端实际保存的就是这组值。
+    let stored = read_template(server, &template_id).await;
+    for field in ["name", "agent", "model", "thinking"] {
+        assert_eq!(
+            stored[field], template[field],
+            "已保存模板的 {field} 必须与公开保存值一致"
+        );
+    }
+
+    let calls_before = herdr.calls().len();
+    let preview_response = preview(server, zone, &template_id).await;
+    assert_eq!(
+        preview_response.status, 200,
+        "预览应成功：{}",
+        preview_response.body
+    );
+    let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
+
+    let response = create(server, create_body(zone, &template_id, &preview, input)).await;
+    assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
+    let id = accepted["id"].as_str().expect("创建标识").to_string();
+
+    let finished = wait_stage(server, &id, "succeeded").await;
+    assert_eq!(finished["inputSubmitted"], true);
+
+    let calls = herdr.calls();
+    let created_calls = calls
+        .get(calls_before..)
+        .expect("创建前后的外部调用记录必须连续");
+    let tail: Vec<&str> = created_calls
+        .iter()
+        .filter_map(|call| call["kind"].as_str())
+        .collect();
+    assert_eq!(
+        tail,
+        vec![
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt"
+        ],
+        "一次创建只有一次启动与一次提交；启动参数在提交之前确定，没有启动后切换"
+    );
+
+    let start = created_calls
+        .iter()
+        .find(|call| call["kind"] == "agent_start")
+        .expect("必须启动 agent");
+    assert_eq!(
+        start["agent_kind"], agent,
+        "外部启动目标类型必须对应所选 agent"
+    );
+    assert_eq!(start["args"], expected_args, "启动参数必须与预写样例一致");
+    if agent == "pi" {
+        assert!(
+            !start["args"]
+                .as_array()
+                .expect("启动参数是数组")
+                .iter()
+                .any(|arg| arg == "auto"),
+            "Pi 不接收 auto：{}",
+            start["args"]
+        );
+    }
+
+    let prompt = created_calls
+        .iter()
+        .find(|call| call["kind"] == "agent_prompt")
+        .expect("必须提交初始指示");
+    assert_eq!(
+        prompt["target"], start["name"],
+        "初始指示必须提交给本次启动的 agent"
+    );
+    assert_eq!(prompt["text"], input, "初始指示按字面提交一次");
+    finished
+}
+
+/// P14 / P16 / P17：公开入口保存的 omp / pi 与两个显式模型，在受控 Herdr 的外部启动记录中
+/// 使用完整 provider / model 与适用的 thinking 原生参数；Pi 的级别不含 auto。
+#[tokio::test(flavor = "multi_thread")]
+async fn explicit_agents_and_models_reach_herdr_as_native_launch_arguments() {
+    let herdr = HerdrFixture::new("bot launch explicit");
+    let storage = TempDir::new("bot launch explicit storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+
+    for (index, (agent, model, thinking, expected_args)) in EXPLICIT_LAUNCH_CASES.iter().enumerate()
+    {
+        let input = format!("显式组合 {index}：{agent}/{model}/{thinking}");
+        assert_launch_from_public_entry(
+            &server,
+            &herdr,
+            &zone_path,
+            agent,
+            model,
+            thinking,
+            json!(expected_args),
+            &input,
+        )
+        .await;
+    }
+}
+
+/// P14 / P18：默认 model 的启动不传 model 与 thinking 覆盖；显式模型搭配默认 thinking 时
+/// 只传 model。两个 agent 都从公开创建入口观察实际外部参数。
+#[tokio::test(flavor = "multi_thread")]
+async fn defaulted_model_and_thinking_are_absent_from_native_launch_arguments() {
+    let herdr = HerdrFixture::new("bot launch defaults");
+    let storage = TempDir::new("bot launch defaults storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+
+    let cases = [
+        ("omp", "default", "default", json!([])),
+        ("pi", "default", "default", json!([])),
+        (
+            "omp",
+            "gpt-6.1-sol",
+            "default",
+            json!(["--model", "openai-codex/gpt-6.1-sol"]),
+        ),
+        (
+            "pi",
+            "deepseek-flash",
+            "default",
+            json!(["--model", "deepseek/deepseek-flash"]),
+        ),
+    ];
+
+    for (index, (agent, model, thinking, expected_args)) in cases.into_iter().enumerate() {
+        let input = format!("默认组合 {index}：{agent}/{model}/{thinking}");
+        assert_launch_from_public_entry(
+            &server,
+            &herdr,
+            &zone_path,
+            agent,
+            model,
+            thinking,
+            expected_args,
+            &input,
+        )
+        .await;
+    }
 }
 
 /// P27 / P32 / P33 / P34：启动被延迟时不提交；就绪后才进入提交阶段；提交确认后立即成功。

@@ -210,19 +210,23 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
   await expect(thinking).toHaveValue('default')
   expect(await selectValues(page, 'template-thinking')).toEqual(['default'])
 
-  // Pi 的能力表与 OMP 不同。
+  // Pi 的能力表与 OMP 不同：gpt-6.1-sol 不支持 off，但支持 xhigh / max。
   await model.selectOption('gpt-6.1-sol')
   expect(await selectValues(page, 'template-thinking')).toEqual([
     'default',
-    'off',
     'minimal',
     'low',
     'medium',
     'high',
+    'xhigh',
+    'max',
   ])
-  await thinking.selectOption('high')
+  await thinking.selectOption('xhigh')
   await model.selectOption('deepseek-flash')
-  await expect(thinking).toHaveValue('high')
+  await expect(thinking).toHaveValue('default')
+  await expect(page.getByTestId('thinking-notice')).toContainText(
+    '当前思考级别「xhigh」不适用于 pi / deepseek-flash',
+  )
   expect(await selectValues(page, 'template-thinking')).toEqual([
     'default',
     'off',
@@ -230,22 +234,19 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
     'high',
     'max',
   ])
-  await thinking.selectOption('max')
+
+  // off 只在 deepseek-flash 受支持；换回 gpt-6.1-sol 时重置并提示。
+  await thinking.selectOption('off')
   await model.selectOption('gpt-6.1-sol')
   await expect(thinking).toHaveValue('default')
   await expect(page.getByTestId('thinking-notice')).toContainText(
-    '当前思考级别「max」不适用于 pi / gpt-6.1-sol',
+    '当前思考级别「off」不适用于 pi / gpt-6.1-sol',
   )
-  expect(await selectValues(page, 'template-thinking')).not.toContain('max')
-  expect(await selectValues(page, 'template-thinking')).not.toContain('xhigh')
 
   // 改回默认模型：thinking 也只能默认。
-  await model.selectOption('deepseek-flash')
-  await thinking.selectOption('off')
   await model.selectOption('default')
   await expect(thinking).toHaveValue('default')
   expect(await selectValues(page, 'template-thinking')).toEqual(['default'])
-  await expect(page.getByTestId('thinking-notice')).toContainText('已重置为「沿用默认值」')
 })
 
 test('保存失败不表示已保存；预先写定的模板经真实进程重启后仍可读取', async ({ page }) => {
