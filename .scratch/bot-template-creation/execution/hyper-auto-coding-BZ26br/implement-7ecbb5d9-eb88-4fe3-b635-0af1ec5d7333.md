@@ -1,0 +1,111 @@
+# implement
+
+```json
+{
+  "role": "implement",
+  "agent": "tdd",
+  "agent_id": "03-agent-model-thinkingmd-9b357dd8-6849-4152-bdb",
+  "head": "af7a0ffe6951dbd3ce05864db4fab97b0eb06a4b",
+  "exitCode": 0,
+  "aborted": false,
+  "truncated": false
+}
+```
+
+{
+  "status": "completed",
+  "ticket": "03-agent-model-thinking",
+  "branch": "hyper/bot-template-creation/03-agent-model-thinking-9e09c1-11684352cd16",
+  "commit": "af7a0ff feat: 按 agent 与模型能力确定 Bot 启动参数",
+  "worktree_clean": true,
+  "behavior_delivered": [
+    "新增两条公开入口 + 受控 Herdr 外部记录的验收用例：四种显式 agent/model 组合与四种默认/部分默认组合。",
+    "运行时逐个核对 agent_kind、完整 --model/--thinking 参数、启动先于提交、每次创建仅一次 start 与一次 prompt，且初始正文按字面提交。",
+    "修正共享 P17 能力事实：Pi 1.3.0 的 openai-codex/gpt-6.1-sol 支持 minimal/low/medium/high/xhigh/max（不支持 off），原模板表写成 off..high；同时更新后端能力表、后端/前端测试与真实浏览器用例。",
+    "在 README 增加 P14/P16/P17/P18 的 H1 四组复现准备：A–D 表、预期完整启动参数、Tab/Pane 定位与 process-info argv/cmdline 核对步骤、已完成自动检查。"
+  ],
+  "criteria_evidence": [
+    {
+      "criterion": "公开入口分别选择 omp/pi，外部记录证明启动目标类型；不新增第三种 agent",
+      "evidence": "backend/tests/bot_creation.rs: explicit_agents_and_models_reach_herdr_as_native_launch_arguments + defaulted_model_and_thinking_are_absent_from_native_launch_arguments 断言 agent_kind 等于所选 omp/pi；01 的固定选项测试未改动（仍仅 omp/pi）。"
+    },
+    {
+      "criterion": "四种组合：omp/pi × gpt-6.1-sol/deepseek-flash，独立预写期望",
+      "evidence": "同一显式组合用例使用硬编码表：omp+gpt+high→openai-codex/gpt-6.1-sol+high；omp+deepseek+max→deepseek/deepseek-flash+max；pi+gpt+xhigh→openai-codex/gpt-6.1-sol+xhigh；pi+deepseek+low→deepseek/deepseek-flash+low。期望不调用实现映射函数。"
+    },
+    {
+      "criterion": "原生参数在首次提交前设置；不裸模型名、不 provider 回退、不启动后切换",
+      "evidence": "用例断言每次创建的外部调用尾序列严格为 workspace_list→tab_create→agent_start→agent_prompt，仅一次 start/prompt；启动 args 精确等于完整 provider/model 与 thinking；prompt.text 精确等于本次 input。"
+    },
+    {
+      "criterion": "model 默认不传 model/thinking；显式 model+默认 thinking 只传 model",
+      "evidence": "defaulted_model_and_thinking_are_absent_from_native_launch_arguments：omp/pi+default/default→args []；omp+gpt/default→仅 --model openai-codex/gpt-6.1-sol；pi+deepseek/default→仅 --model deepseek/deepseek-flash。"
+    },
+    {
+      "criterion": "依目标版本能力事实；Pi 不收到 auto；非推理模型仅默认 thinking",
+      "evidence": "直接查询安装版 Pi 1.3.0 getSupportedThinkingLevels：pi/gpt 为 [minimal,low,medium,high,xhigh,max]，pi/deepseek 为 [off,low,high,max]；安装版 OMP 18.12.4 catalog 与表中 OMP 两组一致。运行时用例对 pi 断言 args 不含 auto；model 默认的两组均不传 thinking。固定显式模型均为 reasoning 模型，非推理路径即默认 model 路径。"
+    },
+    {
+      "criterion": "公开入口、已保存配置与实际外部参数一致；不直接调用私有构造函数",
+      "evidence": "helper 经 POST /api/bot-templates 保存，经 GET /api/bot-templates/{id} 独立读回比对，再经 POST /api/bots 创建并读取受控 Herdr 的 calls.jsonl；未调用 agent_launch_args 或任何内部构造。"
+    },
+    {
+      "criterion": "保留就绪、单次提交、成功语义；区分受控记录与真实运行",
+      "evidence": "用例等待公开 stage=succeeded 且 inputSubmitted=true，并复用既有 stage/prompt 延迟与失败用例（12 passed）；H1 文档明确受控 Herdr 替身不等于真实 Herdr/agent，真实账号部分未验证。"
+    }
+  ],
+  "verification": [
+    {
+      "command": "cargo test --manifest-path backend/Cargo.toml --test bot_creation",
+      "result": "12 passed; 0 failed"
+    },
+    {
+      "command": "cargo test --manifest-path backend/Cargo.toml --test bot_templates",
+      "result": "8 passed; 0 failed"
+    },
+    {
+      "command": "cargo test --manifest-path backend/Cargo.toml",
+      "result": "EXIT 0；40 suites，327 passed，0 failed，3 ignored（ignored 为既有 mDNS 集成测试）"
+    },
+    {
+      "command": "npm --prefix frontend run test",
+      "result": "25 files / 176 tests passed"
+    },
+    {
+      "command": "npm --prefix frontend run test:browser",
+      "result": "首次 4 passed / 1 failed：失败仅为 afterEach 删除临时目录 EPERM（断言阶段未失败）；单独重跑通过；第二次完整套件 5 passed"
+    },
+    {
+      "command": "cargo build --manifest-path backend/Cargo.toml; npm --prefix frontend run build",
+      "result": "成功，用于真实浏览器套件"
+    },
+    {
+      "command": "targeted mutation checks (bare model / unconditional thinking / fixed agent kind)",
+      "result": "三次临时注入均使对应新测试按预期失败，恢复后全绿"
+    }
+  ],
+  "capability_correction": {
+    "found": "共享 templates.rs 的 Pi/gpt-6.1-sol 能力表为 off/minimal/low/medium/high，与目标运行版本不符。",
+    "target_evidence": "安装版 @earendil-works/pi-ai 1.3.0 直查：getSupportedThinkingLevels(openai-codex/gpt-6.1-sol) = [minimal,low,medium,high,xhigh,max]（thinkingLevelMap.off=null）；deepseek-flash = [off,low,high,max]。安装版 OMP 18.12.4 catalog：gpt-6.1-sol efforts=[low,medium,high,xhigh,max]，deepseek-flash=[low,high,max]。",
+    "fix": "backend/src/templates.rs 更正 Pi gpt 集合为 minimal..max（去 off，加 xhigh/max）；同步更新 backend/tests/bot_templates.rs、frontend/tests/botTemplates.test.tsx、frontend/browser-tests/botTemplates.spec.ts；运行时用例改用 pi+gpt+xhigh 验证。",
+    "note": "该事实由 01 的界面/保存表面共用；本次为 P17 运行时侧核对发现并修正，未改变其他已批准行为。"
+  },
+  "h1_preparation": {
+    "location": "README.md → 从 zone 创建 Bot → 四组 agent / model 组合的人工验收准备（P14 / P16 / P17 / P18）",
+    "contents": [
+      "A–D 四组 agent/model/thinking 与预写完整启动参数表",
+      "两个 zone（普通目录 + Git 工作树）与四组创建步骤",
+      "herdr workspace list / tab list / pane get / pane process-info --pane（argv、cmdline、cwd）/ agent get 定位与参数核对",
+      "两种 Skill 的共享安排（/teach、/code-review）交由 04 准备",
+      "已完成自动检查与受控/真实证据边界"
+    ]
+  },
+  "unverified": [
+    "H1 真实 Herdr 下四组组合的创建、cwd、新对话与初始投递尚未由用户执行确认；真实账号、登录与费用未验证。",
+    "受控 Herdr 记录与真实 Chrome 自动浏览器只是自动化证据，不冒充真实 Herdr/agent 运行结果。",
+    "H2 手机实机体验不属于本票。",
+    "真实 agent 内部是否接受模型/thinking 由账号与目标版本决定；本票只验证启动参数按能力事实透传，未调用模型完成任务。"
+  ],
+  "ticket_files_untouched": true,
+  "integration_branch_untouched": true
+}
