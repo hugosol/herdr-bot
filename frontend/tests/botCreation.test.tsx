@@ -285,6 +285,66 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('初始 input 为空时不阻止提交，空正文仍交给后端与 Herdr 判定', async () => {
+    const user = userEvent.setup()
+    const { calls } = mockFetch((url, method) => {
+      if (url === '/api/zones' && method === 'GET') {
+        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+      }
+      if (url === '/api/zones/overview' && method === 'GET') {
+        return jsonResponse(200, { zones: [] })
+      }
+      if (url === '/api/bot-templates' && method === 'GET') {
+        return jsonResponse(200, {
+          templates: [TEMPLATE],
+          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+        })
+      }
+      if (url === '/api/bots/preview' && method === 'POST') {
+        return jsonResponse(200, PREVIEW)
+      }
+      if (url === '/api/bots' && method === 'POST') {
+        return jsonResponse(202, creation('starting'))
+      }
+      if (url === '/api/bots/bc-1' && method === 'GET') {
+        return jsonResponse(
+          200,
+          creation('failed', {
+            tabId: 'w-target:t9',
+            paneId: 'w-target:p9',
+            failure: {
+              stage: 'submit',
+              code: 'herdr-command-failed',
+              message: 'Herdr 的 agent prompt 失败：agent prompt must not be empty。',
+            },
+          }),
+        )
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    const dialog = await openDialog(user, 0)
+    await vi.waitFor(() =>
+      expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(PREVIEW.name),
+    )
+    expect(within(dialog).getByTestId('bot-input')).toHaveValue('')
+    await user.click(within(dialog).getByTestId('bot-create-submit'))
+
+    // 页面不前置组合校验：空 input 仍发出创建请求，并呈现后端/Herdr 的普通失败。
+    const failure = await within(dialog).findByTestId('bot-create-failure')
+    expect(failure).toHaveTextContent('提交初始指示')
+    expect(failure).toHaveTextContent('agent prompt must not be empty')
+    expect(within(dialog).queryByTestId('bot-create-success')).toBeNull()
+
+    const createCall = calls.find(
+      (call) => call.url === '/api/bots' && call.method === 'POST',
+    )
+    const body = JSON.parse(createCall?.body ?? '{}')
+    expect(body.input).toBe('')
+    expect(body).not.toHaveProperty('workspace')
+  })
+
   it('提交被明确拒绝时说明现场已存在与提交失败，而不是结果未确认', async () => {
     const user = userEvent.setup()
     mockCreationFailure(

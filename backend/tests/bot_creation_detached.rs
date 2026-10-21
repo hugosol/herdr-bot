@@ -123,6 +123,34 @@ fn create_body(zone: &str, template_id: &str, preview: &Value, input: &str) -> S
     .to_string()
 }
 
+/// 启动参数等于预写的 model / thinking 覆盖，后接一次本次独立的会话目录。
+///
+/// `--session-dir` 的具体路径与新鲜度由实例身份覆盖单独断言；这里核对顺序、数量与绝对路径，
+/// 避免把动态创建标识写进期望值。
+fn assert_launch_args(actual: &Value, expected: &[&str], context: &str) {
+    let args = actual.as_array().expect("启动参数是数组");
+    assert_eq!(
+        args.len(),
+        expected.len() + 2,
+        "{context}：除模型 / thinking 外只应追加本次独立的会话目录：{actual}"
+    );
+    let expected = expected.iter().map(|arg| json!(arg)).collect::<Vec<_>>();
+    assert_eq!(
+        &args[..expected.len()],
+        expected.as_slice(),
+        "{context}：模型与 thinking 必须与预写样例一致：{actual}"
+    );
+    assert_eq!(
+        args[expected.len()],
+        "--session-dir",
+        "{context}：模型 / thinking 之后必须显式选择独立的新会话目录：{actual}"
+    );
+    assert!(
+        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
+        "{context}：会话目录必须是绝对路径：{actual}"
+    );
+}
+
 async fn create(server: &TestServer, body: &str) -> common::HttpResponse {
     post_json_over_tcp(server.addr(), "/api/bots", body).await
 }
@@ -216,32 +244,6 @@ fn release_path(herdr: &HerdrFixture, name: &str) -> PathBuf {
 
 fn release(path: &Path) {
     fs::write(path, b"release").expect("写释放文件");
-}
-
-/// 预写的 model / thinking 参数必须在最前面原样出现；其后只能是本功能为每次创建显式选择的
-/// 独立会话目录（`--session-dir` + 绝对路径），不得混入其他启动参数。
-fn assert_launch_args(start: &Value, expected: Value) {
-    let args = start["args"].as_array().expect("启动参数是数组");
-    let expected = expected.as_array().expect("预写启动参数是数组");
-    assert_eq!(
-        args.len(),
-        expected.len() + 2,
-        "除自己独立的会话目录外不应有额外启动参数：{args:?}"
-    );
-    assert_eq!(
-        &args[..expected.len()],
-        expected.as_slice(),
-        "模型与思考参数必须与预写样例一致"
-    );
-    assert_eq!(
-        args[expected.len()],
-        "--session-dir",
-        "必须显式选择独立的新会话"
-    );
-    assert!(
-        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
-        "会话目录必须是绝对路径：{args:?}"
-    );
 }
 
 /// 一条已经发出的创建状态观察连接；用例可以在不读取响应的情况下断开它。
@@ -658,8 +660,9 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
     let blocked = wait_stage(&server, &blocked_id, "succeeded").await;
     let (_, blocked_start, blocked_prompt) = external_objects(&herdr, &blocked);
     assert_launch_args(
-        &blocked_start,
-        json!(["--model", "deepseek/deepseek-flash", "--thinking", "high"]),
+        &blocked_start["args"],
+        &["--model", "deepseek/deepseek-flash", "--thinking", "high"],
+        "启动受阻的创建",
     );
     assert_eq!(blocked_prompt["text"], "启动被阻塞的任务");
     assert_eq!(herdr.tabs().len(), 2);
@@ -798,12 +801,14 @@ async fn concurrent_creations_keep_their_own_accepted_template_snapshots() {
     assert_eq!(start_a["agent_kind"], "omp");
     assert_eq!(start_b["agent_kind"], "pi");
     assert_launch_args(
-        &start_a,
-        json!(["--model", "deepseek/deepseek-flash", "--thinking", "high"]),
+        &start_a["args"],
+        &["--model", "deepseek/deepseek-flash", "--thinking", "high"],
+        "创建 A 必须使用接受时的旧模板启动参数",
     );
     assert_launch_args(
-        &start_b,
-        json!(["--model", "openai-codex/gpt-6.1-sol", "--thinking", "low"]),
+        &start_b["args"],
+        &["--model", "openai-codex/gpt-6.1-sol", "--thinking", "low"],
+        "创建 B 必须使用接受时的旧模板启动参数",
     );
     assert_eq!(
         prompt_a["text"],

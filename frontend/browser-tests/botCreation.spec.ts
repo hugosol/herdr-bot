@@ -62,9 +62,9 @@ async function prepareZones(baseURL: string) {
   }
 }
 
-async function prepareTemplate(baseURL: string) {
-  const saved = await jsonPost(baseURL, '/api/bot-templates', TEMPLATE)
-  return saved.templates[0] as { id: string }
+async function prepareTemplate(baseURL: string, template: Record<string, unknown> = TEMPLATE) {
+  const saved = await jsonPost(baseURL, '/api/bot-templates', template)
+  return saved.templates[saved.templates.length - 1] as { id: string }
 }
 
 async function openBotDialog(page: Page, zonePath: string) {
@@ -230,4 +230,65 @@ test('目标 Workspace 不存在时失败留在弹窗，不假报成功也不自
 
   await dialog.getByTestId('bot-create-close').click()
   await expect(page.getByTestId('bot-creation-dialog')).toHaveCount(0)
+})
+
+test('Skill、固定 prompt 与本次 input 经真实页面合成一次原生 Skill 提交', async ({ page }) => {
+  server = await startServer({ herdr: { behavior: {} } })
+  const zones = await prepareZones(server.baseURL)
+
+  // 预写的完整样例：prompt 含 slash 文本，仍应作为正文的一部分原样提交。
+  const prompt =
+    '固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面'
+  const input = '本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
+  const expected =
+    '/skill:code-review 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
+  await prepareTemplate(server.baseURL, {
+    ...TEMPLATE,
+    skill: 'code-review',
+    prompt,
+  })
+  await page.goto(server.baseURL)
+
+  const dialog = await openBotDialog(page, zones.normal)
+  await expect(dialog.getByTestId('bot-name-preview')).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
+  await dialog.getByTestId('bot-input').fill(input)
+  await dialog.getByTestId('bot-create-submit').click()
+
+  await expect(dialog.getByTestId('bot-create-success')).toHaveText(
+    '创建成功，初始指示已提交',
+    { timeout: 10_000 },
+  )
+  const prompts = callsOfKind('agent_prompt')
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0].text).toBe(expected)
+})
+
+test('Skill、prompt、input 全空仍从页面提交，并由受控 Herdr 拒绝为普通失败', async ({
+  page,
+}) => {
+  server = await startServer({ herdr: { behavior: {} } })
+  const zones = await prepareZones(server.baseURL)
+  await prepareTemplate(server.baseURL)
+  await page.goto(server.baseURL)
+
+  const dialog = await openBotDialog(page, zones.normal)
+  await expect(dialog.getByTestId('bot-name-preview')).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
+  // 不填写初始 input；模板既没有 Skill，固定 prompt 也为空。
+  await expect(dialog.getByTestId('bot-input')).toHaveValue('')
+  await dialog.getByTestId('bot-create-submit').click()
+
+  const failure = dialog.getByTestId('bot-create-failure')
+  await expect(failure).toBeVisible({ timeout: 10_000 })
+  await expect(failure).toContainText('提交初始指示')
+  await expect(failure).toContainText('agent prompt must not be empty')
+  await expect(dialog.getByTestId('bot-create-success')).toHaveCount(0)
+
+  // 现场保留并可定位；受控 Herdr 确实收到过这次空正文提交，而不是被提前跳过。
+  const tabs = server.herdrTabs()
+  expect(tabs).toHaveLength(1)
+  await expect(dialog.getByTestId('bot-result-tab')).toHaveText(String(tabs[0].tab_id))
+  await expect(dialog.getByTestId('bot-result-pane')).toHaveText(String(tabs[0].pane_id))
+  const prompts = callsOfKind('agent_prompt')
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0].text).toBe('')
 })

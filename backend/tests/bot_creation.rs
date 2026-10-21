@@ -57,6 +57,8 @@ async fn register(server: &TestServer, path: &Path) -> String {
 }
 
 /// 保存一个模板并返回本次保存的完整对象（按请求中的显示名定位，不假设列表里只有一个）。
+///
+/// 接口按保存顺序返回完整列表；同一用例连续保存同名模板时，本次保存的在最后。
 async fn save_template(server: &TestServer, template: Value) -> Value {
     let name = template["name"]
         .as_str()
@@ -70,6 +72,7 @@ async fn save_template(server: &TestServer, template: Value) -> Value {
         .as_array()
         .expect("模板响应必须有 templates")
         .iter()
+        .rev()
         .find(|saved| saved["name"] == name)
         .unwrap_or_else(|| panic!("保存响应必须包含刚保存的模板 {name}"))
         .clone()
@@ -215,6 +218,86 @@ fn create_body(zone: &str, template_id: &str, preview: &Value, input: &str) -> V
         "input": input,
         "expectedName": preview["name"],
     })
+}
+
+/// 预写的多行固定 prompt：内部含 slash 文本，用来确认它不会被再次解析成初始化步骤。
+const PREWRITTEN_PROMPT: &str =
+    "固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面";
+
+/// 预写的多行用户 input。
+const PREWRITTEN_INPUT: &str = "本次任务第一行\n第二行带引号 \"quoted\" 与 & 符号";
+
+/// 无 Skill 时的完整正文：prompt 与 input 以空行分段。
+const PREWRITTEN_PLAIN_BODY: &str = "固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 \"quoted\" 与 & 符号";
+
+/// `/skill:teach` 的完整提交正文，用于与外部记录逐字比较。
+const PREWRITTEN_TEACH_BODY: &str = "/skill:teach 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 \"quoted\" 与 & 符号";
+
+/// `/skill:code-review` 的完整提交正文，用于与外部记录逐字比较。
+const PREWRITTEN_CODE_REVIEW_BODY: &str = "/skill:code-review 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 \"quoted\" 与 & 符号";
+
+/// 一次初始输入验收使用的独立环境：受控 Herdr、隔离存储、已登记的真实 zone 与真实 HTTP 服务。
+struct InputFixture {
+    herdr: HerdrFixture,
+    server: TestServer,
+    /// 保持隔离存储存活到用例结束；声明在服务之后，确保先停止服务再删除目录。
+    _storage: TempDir,
+    zone: String,
+}
+
+async fn input_fixture(label: &str) -> InputFixture {
+    let herdr = HerdrFixture::new(label);
+    let storage = TempDir::new(&format!("{label} storage"));
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    let directory = storage.path().join("alpha");
+    fs::create_dir_all(&directory).expect("创建 zone");
+    let zone = register(&server, &directory).await;
+    InputFixture {
+        herdr,
+        server,
+        _storage: storage,
+        zone,
+    }
+}
+
+/// 预写的模板配置：只改变 Skill 与固定 prompt，其余字段与交付默认值一致。
+fn input_template(skill: Option<&str>, prompt: &str) -> Value {
+    json!({
+        "name": "审查",
+        "botName": "{zone.name} · {template.name} · {bot.id}",
+        "agent": "omp",
+        "model": "default",
+        "thinking": "default",
+        "skill": skill,
+        "prompt": prompt,
+    })
+}
+
+/// 经公开预览与创建入口驱动一次创建，等待到达指定终态。
+async fn create_with(
+    inputs: &InputFixture,
+    template: Value,
+    input: &str,
+    expected_stage: &str,
+) -> Value {
+    let saved = save_template(&inputs.server, template).await;
+    let template_id = saved["id"].as_str().expect("模板标识");
+    let preview_response = preview(&inputs.server, &inputs.zone, template_id).await;
+    assert_eq!(
+        preview_response.status, 200,
+        "预览应成功：{}",
+        preview_response.body
+    );
+    let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
+    let response = create(
+        &inputs.server,
+        create_body(&inputs.zone, template_id, &preview, input),
+    )
+    .await;
+    assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
+    let id = accepted["id"].as_str().expect("创建标识");
+    wait_stage(&inputs.server, id, expected_stage).await
 }
 
 fn initialize_git(directory: &Path) {
@@ -384,12 +467,7 @@ const EXPLICIT_LAUNCH_CASES: [(&str, &str, &str, [&str; 4]); 4] = [
         "pi",
         "gpt-6.1-sol",
         "xhigh",
-        [
-            "--model",
-            "openai-codex/gpt-6.1-sol",
-            "--thinking",
-            "xhigh",
-        ],
+        ["--model", "openai-codex/gpt-6.1-sol", "--thinking", "xhigh"],
     ),
     (
         "pi",
@@ -475,34 +553,33 @@ async fn assert_launch_from_public_entry(
         start["agent_kind"], agent,
         "外部启动目标类型必须对应所选 agent"
     );
+    let expected = expected_args.as_array().expect("预写样例是数组");
     let args = start["args"].as_array().expect("启动参数是数组");
-    let expected = expected_args.as_array().expect("预写启动参数是数组");
     assert_eq!(
         args.len(),
         expected.len() + 2,
-        "除自己独立的会话目录外不应有额外启动参数：{args:?}"
+        "除模型 / thinking 外只应追加本次独立的会话目录：{}",
+        start["args"]
     );
     assert_eq!(
         &args[..expected.len()],
         expected.as_slice(),
-        "启动参数必须与预写样例一致"
+        "启动参数中的模型与 thinking 必须与预写样例一致"
     );
     assert_eq!(
         args[expected.len()],
         "--session-dir",
-        "必须显式选择独立的新会话"
+        "模型 / thinking 之后必须显式选择独立的新会话目录：{}",
+        start["args"]
     );
     assert!(
         Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
-        "会话目录必须是绝对路径：{args:?}"
+        "会话目录必须是绝对路径：{}",
+        start["args"]
     );
     if agent == "pi" {
         assert!(
-            !start["args"]
-                .as_array()
-                .expect("启动参数是数组")
-                .iter()
-                .any(|arg| arg == "auto"),
+            !args.iter().any(|arg| arg == "auto"),
             "Pi 不接收 auto：{}",
             start["args"]
         );
@@ -1266,8 +1343,7 @@ async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
 
     // 重新预览后，名称来自编辑后的模板，创建正常继续。
     let refreshed_response = preview(&server, &zone_path, template_id).await;
-    let refreshed: Value =
-        serde_json::from_str(&refreshed_response.body).expect("预览响应是 JSON");
+    let refreshed: Value = serde_json::from_str(&refreshed_response.body).expect("预览响应是 JSON");
     assert!(
         refreshed["name"]
             .as_str()
@@ -1284,4 +1360,283 @@ async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
     let id = accepted["id"].as_str().expect("创建标识");
     wait_stage(&server, id, "succeeded").await;
     assert_eq!(herdr.tabs()[0]["label"], refreshed["name"]);
+}
+
+/// P28 / P29：两项固定 Skill 都生成真正的 `/skill:` 调用；名称后用普通空格接完整正文，
+/// 固定 prompt 与本次 input 以空行分段。外部记录证明每次创建只提交一次，没有先单独开启
+/// Skill 轮次，prompt 中的 slash 文本也不会被再次解析成额外初始化步骤。
+#[tokio::test(flavor = "multi_thread")]
+async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
+    let inputs = input_fixture("bot initial skill invocation").await;
+
+    for (skill, prefix, extension_prefix, expected) in [
+        ("teach", "/skill:teach ", "/teach ", PREWRITTEN_TEACH_BODY),
+        (
+            "code-review",
+            "/skill:code-review ",
+            "/code-review ",
+            PREWRITTEN_CODE_REVIEW_BODY,
+        ),
+    ] {
+        let finished = create_with(
+            &inputs,
+            input_template(Some(skill), PREWRITTEN_PROMPT),
+            PREWRITTEN_INPUT,
+            "succeeded",
+        )
+        .await;
+        assert_eq!(
+            finished["inputSubmitted"], true,
+            "{skill} 提交确认后应成功：{finished}"
+        );
+
+        let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+        let prompt = prompts.last().expect("受控 Herdr 必须收到初始指示");
+        assert_eq!(
+            prompt["text"], expected,
+            "{skill} 的完整正文必须与预写字面样例逐字一致"
+        );
+
+        // 正文只作为 agent prompt 的单个文本参数，不携带 system-role 消息或其他包装。
+        let argv = prompt["argv"].as_array().expect("调用记录必须包含 argv");
+        assert_eq!(argv.len(), 4, "不得把正文拆成多条参数或附加角色字段");
+        assert_eq!(argv[0], "agent");
+        assert_eq!(argv[1], "prompt");
+        assert_eq!(argv[2], prompt["target"]);
+        assert_eq!(argv[3], expected);
+        assert!(
+            prompt.get("role").is_none(),
+            "初始指示不是 system-role 消息：{prompt}"
+        );
+
+        let text = prompt["text"].as_str().expect("正文是字符串");
+        assert!(
+            text.starts_with(prefix),
+            "{skill} 必须以独立字面的原生 Skill 前缀开头：{text}"
+        );
+        assert!(
+            !text.starts_with(extension_prefix),
+            "{skill} 不得调用同名扩展命令或提示词模板：{text}"
+        );
+    }
+
+    // 两次创建各自只有一次查询、建 Tab、启动与一次提交；没有额外的 Skill 轮次。
+    let calls = inputs.herdr.calls();
+    let kinds: Vec<&str> = calls
+        .iter()
+        .filter_map(|call| call["kind"].as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt",
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt",
+        ],
+        "每次创建只提交一次，不先单独发起 Skill 轮次"
+    );
+}
+
+/// P22 / P30：无 Skill 时正文只由固定 prompt 与本次 input 组成，不补 Skill 前缀；
+/// 空 prompt、空 input 与两者都多行的样例分别按预写字面值保真。
+#[tokio::test(flavor = "multi_thread")]
+async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
+    let inputs = input_fixture("bot initial plain body").await;
+
+    for (prompt, input, expected) in [
+        (PREWRITTEN_PROMPT, "", PREWRITTEN_PROMPT),
+        ("", PREWRITTEN_INPUT, PREWRITTEN_INPUT),
+        (PREWRITTEN_PROMPT, PREWRITTEN_INPUT, PREWRITTEN_PLAIN_BODY),
+    ] {
+        let finished = create_with(&inputs, input_template(None, prompt), input, "succeeded").await;
+        assert_eq!(
+            finished["inputSubmitted"], true,
+            "正文提交确认后应成功：{finished}"
+        );
+
+        let prompt_call = calls_of_kind(&inputs.herdr, "agent_prompt")
+            .pop()
+            .expect("受控 Herdr 必须收到初始指示");
+        let text = prompt_call["text"].as_str().expect("正文是字符串");
+        assert_eq!(
+            text, expected,
+            "无 Skill 时正文必须与预写字面样例一致（prompt={prompt:?}, input={input:?}）"
+        );
+        assert!(
+            !text.starts_with("/skill:"),
+            "没有 Skill 时不得补加调用前缀：{text}"
+        );
+    }
+}
+
+/// P31：Skill-only 仍从公开入口进入既定提交，正文是单独的 Skill 调用；不补造 prompt 或 input。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_skill_only_template_submits_the_bare_skill_call() {
+    let inputs = input_fixture("bot initial skill only").await;
+    let finished = create_with(&inputs, input_template(Some("teach"), ""), "", "succeeded").await;
+    assert_eq!(finished["inputSubmitted"], true);
+
+    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 1, "Skill-only 也只提交一次");
+    assert_eq!(prompts[0]["text"], "/skill:teach");
+}
+
+/// P22 / P29：有 Skill 时，空的 prompt 或 input 只是缺少该分段；命令与剩余正文仍按约定合成。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
+    let inputs = input_fixture("bot initial skill partial body").await;
+
+    for (skill, prompt, input, expected) in [
+        (
+            "teach",
+            PREWRITTEN_PROMPT,
+            "",
+            "/skill:teach 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面",
+        ),
+        (
+            "code-review",
+            "",
+            PREWRITTEN_INPUT,
+            "/skill:code-review 本次任务第一行\n第二行带引号 \"quoted\" 与 & 符号",
+        ),
+    ] {
+        let finished = create_with(
+            &inputs,
+            input_template(Some(skill), prompt),
+            input,
+            "succeeded",
+        )
+        .await;
+        assert_eq!(
+            finished["inputSubmitted"], true,
+            "{skill} 提交确认后应成功：{finished}"
+        );
+
+        let prompt_call = calls_of_kind(&inputs.herdr, "agent_prompt")
+            .pop()
+            .expect("受控 Herdr 必须收到初始指示");
+        assert_eq!(
+            prompt_call["text"], expected,
+            "{skill} 缺少一个分段时仍必须与预写字面样例一致"
+        );
+    }
+}
+
+/// P31：Skill、prompt、input 全空仍被公开入口接受并实际提交；受控 Herdr 像真实 Herdr 一样
+/// 拒绝空文本，创建按普通失败流程保留现场。不能前置组合校验、补造内容、跳过提交或假报成功。
+#[tokio::test(flavor = "multi_thread")]
+async fn an_all_empty_template_attempts_submission_and_reports_the_herdr_rejection() {
+    let inputs = input_fixture("bot initial all empty").await;
+    let finished = create_with(&inputs, input_template(None, ""), "", "failed").await;
+
+    assert_eq!(finished["failure"]["stage"], "submit");
+    assert_eq!(finished["failure"]["code"], "herdr-command-failed");
+    assert_eq!(finished["inputSubmitted"], false);
+    assert!(
+        finished["tabId"].as_str().is_some(),
+        "已创建的 Tab 标识必须保留：{finished}"
+    );
+    assert!(
+        finished["paneId"].as_str().is_some(),
+        "已创建的 Pane 标识必须保留：{finished}"
+    );
+    let message = finished["failure"]["message"]
+        .as_str()
+        .expect("失败说明是字符串");
+    assert!(
+        message.contains("agent prompt must not be empty"),
+        "必须呈现 Herdr 的拒绝：{message}"
+    );
+    assert!(
+        message.contains("初始指示的提交被明确拒绝")
+            && message.contains("Tab、Pane 与 agent 已保留"),
+        "必须区分现场已存在而提交失败：{message}"
+    );
+
+    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 1, "全空也必须实际提交一次，不能跳过或重发");
+    assert_eq!(prompts[0]["text"], "", "不得补造内容");
+    assert_eq!(
+        prompts[0]["argv"]
+            .as_array()
+            .expect("调用记录包含 argv")
+            .len(),
+        4,
+        "空正文仍作为单个文本参数提交"
+    );
+
+    let calls = inputs.herdr.calls();
+    let kinds: Vec<&str> = calls
+        .iter()
+        .filter_map(|call| call["kind"].as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt"
+        ],
+        "被拒绝后不得自动重发或继续其他步骤"
+    );
+}
+
+/// P49（正文侧）：引号、换行与 Shell 特殊字符经生产调用包装层原样到达外部。
+/// 包装层逐参数启动进程、不经过 Shell，因此正文不会被解释成命令，也不会产生额外执行。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
+    let inputs = input_fixture("bot initial shell body").await;
+    // 无空格路径，保证这里是一条真正的 Shell 重定向；如果包装层交给 Shell，它会被创建。
+    let marker =
+        std::env::temp_dir().join(format!("herdr-bot-body-shell-{}.txt", std::process::id()));
+    let _ = fs::remove_file(&marker);
+    let prompt = format!(
+        "固定 \"quoted\" %PATH% & echo injected > {} & $(echo pwned) `echo backtick` | ; ^\n第二行",
+        marker.display()
+    );
+    let input = "本次 'single' ! %CD% > < & 结束\n最后一行";
+    let expected = format!("{prompt}\n\n{input}");
+
+    let finished = create_with(&inputs, input_template(None, &prompt), input, "succeeded").await;
+    assert_eq!(finished["inputSubmitted"], true);
+
+    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 1);
+    let recorded = prompts[0]["text"].as_str().expect("正文是字符串");
+    assert_eq!(
+        recorded, expected,
+        "正文必须以单个参数原样到达 Herdr，引号、换行与 Shell 元字符都不被解释"
+    );
+    let argv = prompts[0]["argv"].as_array().expect("调用记录包含 argv");
+    assert_eq!(argv.len(), 4, "不得把正文拆成多条参数");
+    assert_eq!(argv[3], expected);
+    let executed = marker.exists();
+    let _ = fs::remove_file(&marker);
+    assert!(
+        !executed,
+        "包装层不得把正文交给 Shell 执行（{} 不应被创建）",
+        marker.display()
+    );
+
+    let calls = inputs.herdr.calls();
+    let kinds: Vec<&str> = calls
+        .iter()
+        .filter_map(|call| call["kind"].as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt"
+        ],
+        "除既定控制步骤外不得有额外执行"
+    );
 }
