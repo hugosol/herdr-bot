@@ -38,6 +38,7 @@ fn config_with_operations(
         shutdown: herdr_bot::ShutdownConfig::default(),
         sessions: herdr_bot::SessionsConfig::default(),
         zones: herdr_bot::ZonesConfig::default(),
+        bot_templates: herdr_bot::BotTemplatesConfig::default(),
         git: herdr_bot::GitConfig::default(),
     }
 }

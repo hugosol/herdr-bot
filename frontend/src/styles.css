@@ -39,9 +39,9 @@ h1 {
   font-size: 1.5rem;
 }
 
-/* ---------- 三 tab 外壳 ---------- */
+/* ---------- 四 tab 外壳 ---------- */
 
-/* 三个入口等宽共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
+/* 四个入口等宽共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
 .tabs {
   display: flex;
   gap: 0.25rem;
@@ -1843,4 +1843,136 @@ h1 {
   color: #dbe8f6;
   font-size: 1.05rem;
   line-height: 1.5;
+}
+
+/* Bot 模板：列表与编辑表单沿用 zone 的卡片/弹窗样式，只补充字段与操作布局。 */
+.bot-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.bot-templates__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.bot-template-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bot-template-item {
+  padding: 1rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.75rem;
+  background: #14161a;
+}
+
+.bot-template-item__name {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.bot-template-item__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.bot-template-item__fields dt {
+  color: #8fa0b5;
+  font-size: 0.85rem;
+}
+
+.bot-template-item__fields dd {
+  margin: 0.15rem 0 0;
+  word-break: break-word;
+}
+
+.bot-template-item__prompt {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem;
+  border-radius: 0.5rem;
+  background: #0f1115;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.bot-template-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.bot-template-dialog {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.bot-template-fields {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid #2b313a;
+  border-radius: 0.5rem;
+}
+
+.bot-template-fields legend {
+  padding: 0 0.35rem;
+  color: #8fa0b5;
+  font-size: 0.85rem;
+}
+
+.bot-template-field-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.bot-template-field-buttons button {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #3a4656;
+  border-radius: 0.4rem;
+  background: #1b2028;
+  color: #dbe8f6;
+  cursor: pointer;
+}
+
+.bot-template-hint {
+  margin: 0.5rem 0 0;
+  color: #8fa0b5;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.bot-template-preview {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 0.25rem solid #4a6b8a;
+  background: #101318;
+  word-break: break-word;
+}
+
+.bot-template-prompt {
+  min-height: 6rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+@media (max-width: 640px) {
+  .bot-template-item__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .bot-template-field-buttons button {
+    flex: 1 1 auto;
+  }
 }

@@ -242,6 +242,8 @@ pub fn config_with_countdown(
         sessions: herdr_bot::SessionsConfig::default(),
         // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
         zones: herdr_bot::ZonesConfig::default(),
+        // Bot 模板存储文件同理；需要隔离存储的用例自己改写这个路径。
+        bot_templates: herdr_bot::BotTemplatesConfig::default(),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: herdr_bot::GitConfig::default(),
     }
@@ -384,21 +386,40 @@ pub async fn get_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
     parse_response(&raw)
 }
 
-/// 经一条新的 TCP 连接提交一次**带 JSON 请求体**的 POST。
+/// 经一条新的 TCP 连接提交一次带 JSON 请求体的 POST。
 ///
 /// 与 `post_over_tcp` 同一形态（真实 TCP、不经过任何前端代码），只是请求面从空请求体换成
 /// `Content-Type: application/json` 加一段请求体：会话事件接口的请求面就是一条 JSON 事件。
 pub async fn post_json_over_tcp(addr: SocketAddr, path: &str, body: &str) -> HttpResponse {
+    request_json_over_tcp(addr, "POST", path, Some(body)).await
+}
+
+/// 经一条新的 TCP 连接提交任意方法的 JSON 请求。
+///
+/// `body` 为 `None` 时不带请求体（删除模板就是这种封闭请求）；否则带
+/// `Content-Type: application/json` 与给定请求体。调用方仍是独立 TCP 客户端，
+/// 不经过任何前端代码或页面状态。
+pub async fn request_json_over_tcp(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> HttpResponse {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("连接测试服务器");
-    let request = format!(
-        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
-         Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    );
+    let request = match body {
+        Some(body) => format!(
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+        None => format!(
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+        ),
+    };
     stream
         .write_all(request.as_bytes())
         .await

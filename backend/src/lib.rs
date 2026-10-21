@@ -48,6 +48,7 @@ pub mod operations;
 pub mod sessions;
 pub mod shutdown;
 pub mod sync;
+pub mod templates;
 pub mod watch;
 pub mod zone_create;
 pub mod zones;
@@ -73,8 +74,9 @@ use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
 pub use config::{
-    CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig, OperationBinding,
-    Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig, ZonesConfig,
+    BotTemplatesConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig,
+    OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
+    ZonesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -90,6 +92,9 @@ const MAX_REQUEST_BODY_BYTES: usize = 8 * 1024;
 
 /// zone 命令的请求体上限：只含一个服务器目录路径。
 const MAX_ZONE_REQUEST_BYTES: usize = 64 * 1024;
+
+/// Bot 模板请求的请求体上限：固定 prompt 可多行，给足以容纳正常文本。
+const MAX_BOT_TEMPLATE_REQUEST_BYTES: usize = 1024 * 1024;
 
 /// 提供给 HTTP handler 的运行状态：只有服务端配置绑定的两个固定操作，以及两个操作共用的执行资格。
 #[derive(Clone)]
@@ -118,6 +123,11 @@ pub struct AppState {
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
     pub zones: Arc<zones::Zones>,
+    /// Bot 模板：由后端以文件持久保存，电脑与手机共享同一份。
+    ///
+    /// 与固定操作、关机路径完全解耦：模板管理只读取与写入模板存储文件，不执行任何脚本、
+    /// 不创建也不关闭 Bot。
+    pub bot_templates: Arc<templates::Templates>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -205,6 +215,9 @@ pub fn app_with_state(
         zones: Arc::new(zones::Zones::new(
             config.zones.registry_file.clone(),
         )),
+        bot_templates: Arc::new(templates::Templates::new(
+            config.bot_templates.storage_file.clone(),
+        )),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
@@ -242,6 +255,18 @@ pub fn app_with_state(
         )
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
+        // Bot 模板：同一条路径读取列表与新增；单个模板按标识读取、编辑与删除。
+        // 模板只写入后端存储文件，不执行脚本、不创建 Bot。
+        .route(
+            "/api/bot-templates",
+            get(list_bot_templates).post(create_bot_template),
+        )
+        .route(
+            "/api/bot-templates/{id}",
+            get(get_bot_template)
+                .put(update_bot_template)
+                .delete(delete_bot_template),
+        )
         // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
         // 整树读取对 Git zone 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
         .route("/api/zones/tree", get(read_zone_tree))
@@ -543,6 +568,19 @@ struct CreateZoneRequest {
     name: String,
 }
 
+/// Bot 模板列表的响应：当前完整列表与固定选项。
+#[derive(Debug, Serialize)]
+struct BotTemplateListResponse {
+    templates: Vec<templates::BotTemplate>,
+    options: templates::TemplateOptions,
+}
+
+/// 单个 Bot 模板的响应。
+#[derive(Debug, Serialize)]
+struct BotTemplateView {
+    template: templates::BotTemplate,
+}
+
 /// “列出 zone 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
 async fn list_zones(State(state): State<AppState>) -> Response {
     zone_list_response(&state, state.zones.list().await)
@@ -700,6 +738,146 @@ fn zone_create_error_response(error: zone_create::CreateZoneError) -> Response {
         CreateZoneError::CreateFailed { .. }
         | CreateZoneError::GitInitFailed { .. }
         | CreateZoneError::FinalizeFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    rejected_owned(status, error.code(), error.message())
+}
+
+/// “列出 Bot 模板与固定选项”：读取后端持久保存的同一份列表。
+async fn list_bot_templates(State(state): State<AppState>) -> Response {
+    bot_template_list_response(state.bot_templates.list().await)
+}
+
+/// “读取单个 Bot 模板”：删除后由独立客户端按标识选择时得到明确的不存在。
+async fn get_bot_template(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+) -> Response {
+    match state.bot_templates.get(&id).await {
+        Ok(template) => (StatusCode::OK, Json(BotTemplateView { template })).into_response(),
+        Err(error) => bot_template_error_response(error),
+    }
+}
+
+/// “新增 Bot 模板”：固定字段逐个校验；只有存储成功后返回当前完整列表。
+async fn create_bot_template(State(state): State<AppState>, request: Request) -> Response {
+    let input = match bot_template_input(request).await {
+        Ok(input) => input,
+        Err(rejection) => return rejection,
+    };
+    bot_template_list_response(state.bot_templates.create(input).await)
+}
+
+/// “编辑 Bot 模板”：标识不变；只有存储成功后返回当前完整列表。
+async fn update_bot_template(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    request: Request,
+) -> Response {
+    let input = match bot_template_input(request).await {
+        Ok(input) => input,
+        Err(rejection) => return rejection,
+    };
+    bot_template_list_response(state.bot_templates.update(&id, input).await)
+}
+
+/// “删除 Bot 模板”：只移除模板，不改变任何已经创建的 Bot。
+async fn delete_bot_template(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    request: Request,
+) -> Response {
+    if let Some(rejection) = reject_template_delete_request(request).await {
+        return rejection;
+    }
+    bot_template_list_response(state.bot_templates.delete(&id).await)
+}
+
+/// 读取 Bot 模板命令的请求体；请求面封闭（不接受查询串或未知字段）。
+async fn bot_template_input(request: Request) -> Result<templates::TemplateInput, Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Err(rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "模板命令不接受查询参数：字段只来自请求体。".to_string(),
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES)
+        .await
+        .map_err(|_| {
+            rejected_owned(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload-too-large",
+                "模板请求体超过 1 MiB 上限。".to_string(),
+            )
+        })?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+            format!(
+                "无法解析模板命令：{error}；请发送包含 name、botName、agent、model、thinking、skill、prompt 的 JSON。"
+            ),
+        )
+    })
+}
+
+/// 删除模板的请求面：不接受查询串或请求体。
+async fn reject_template_delete_request(request: Request) -> Option<Response> {
+    if request.uri().query().is_some_and(|query| !query.is_empty()) {
+        return Some(rejected(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "删除模板不接受查询参数：目标只由路径中的模板标识决定。",
+        ));
+    }
+
+    let (_, body) = request.into_parts();
+    match to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES).await {
+        Ok(bytes) if bytes.is_empty() => None,
+        _ => Some(rejected(
+            StatusCode::BAD_REQUEST,
+            "unexpected-parameters",
+            "删除模板不接受请求体：目标只由路径中的模板标识决定。",
+        )),
+    }
+}
+
+/// 把模板列表结果翻译成 HTTP 响应：成功附带与页面同一份固定选项。
+fn bot_template_list_response(
+    result: Result<Vec<templates::BotTemplate>, templates::TemplateError>,
+) -> Response {
+    match result {
+        Ok(templates) => (
+            StatusCode::OK,
+            Json(BotTemplateListResponse {
+                templates,
+                options: templates::TemplateOptions::current(),
+            }),
+        )
+            .into_response(),
+        Err(error) => bot_template_error_response(error),
+    }
+}
+
+fn bot_template_error_response(error: templates::TemplateError) -> Response {
+    use templates::TemplateError;
+    let status = match &error {
+        TemplateError::NotFound => StatusCode::NOT_FOUND,
+        TemplateError::Unreadable(_)
+        | TemplateError::Corrupt(_)
+        | TemplateError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        TemplateError::NameRequired
+        | TemplateError::BotNameRequired
+        | TemplateError::BotNameNotSingleLine
+        | TemplateError::AgentRequired
+        | TemplateError::UnknownAgent(_)
+        | TemplateError::UnknownModel(_)
+        | TemplateError::UnknownThinking(_)
+        | TemplateError::ThinkingRequiresDefaultModel
+        | TemplateError::ThinkingUnsupported { .. }
+        | TemplateError::UnknownSkill(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(status, error.code(), error.message())
 }
