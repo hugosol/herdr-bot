@@ -14,6 +14,12 @@
 //! `behavior.json` 可延迟或拒绝某一步，用来观察“启动中”“提交中”与失败边界：
 //! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`prompt_delay_ms`，
 //! 以及布尔值 `fail_workspace_list`、`fail_tab_create`、`fail_agent_start`、`fail_prompt`。
+//!
+//! 并发用例需要“只拦住其中一次创建”的受控屏障，因此还有两个可选门：
+//! `agent_start_gate` 与 `prompt_gate`，各自是
+//! `{ "match": 子串, "wait_for_file": 路径, "timeout_ms": 毫秒 }`。调用先写入记录，再在匹配时
+//! 等待释放文件出现（或到超时）才返回；`match` 省略或为空表示不筛选，`timeout_ms` 缺省 30 秒。
+//! 释放文件由用例创建，因此“一个创建受阻、另一个继续”来自外部进程的可控停顿，不是固定延时。
 
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -22,7 +28,7 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -68,6 +74,38 @@ fn delay(behavior: &Value, key: &str) {
 
 fn flag(behavior: &Value, key: &str) -> bool {
     behavior.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// 受控屏障：调用匹配 `match` 时，一直等到释放文件出现才返回。
+///
+/// 记录已经在等待之前写下，所以用例能先看见“这一步已被调用”，再确认另一条创建没有被它挡住。
+/// 等到 `timeout_ms` 仍未释放时按超时继续，让用例自己的时限给出失败，而不是让夹具永久挂住。
+fn wait_at_gate(behavior: &Value, key: &str, subject: &str) {
+    let Some(gate) = behavior.get(key) else {
+        return;
+    };
+    if let Some(pattern) = gate.get("match").and_then(Value::as_str) {
+        if !pattern.is_empty() && !subject.contains(pattern) {
+            return;
+        }
+    }
+    let Some(file) = gate.get("wait_for_file").and_then(Value::as_str) else {
+        return;
+    };
+    let path = PathBuf::from(file);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        data_dir().join(path)
+    };
+    let timeout = gate
+        .get("timeout_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(30_000);
+    let deadline = Instant::now() + Duration::from_millis(timeout);
+    while !path.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// 追加一条外部调用记录；测试只读这个文件，不读 herdr-bot 的进程内状态。
@@ -218,6 +256,7 @@ fn agent_start(args: &[String]) {
         }),
     );
     delay(&behavior, "agent_start_delay_ms");
+    wait_at_gate(&behavior, "agent_start_gate", &args.join(" "));
     if flag(&behavior, "fail_agent_start") {
         fail("agent_start_failed", "受控夹具拒绝启动 agent");
     }
@@ -261,6 +300,7 @@ fn agent_prompt(args: &[String]) {
         }),
     );
     delay(&behavior, "prompt_delay_ms");
+    wait_at_gate(&behavior, "prompt_gate", &text);
     if flag(&behavior, "fail_prompt") {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
     }
