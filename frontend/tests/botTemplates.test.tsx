@@ -43,7 +43,7 @@ const OPTIONS = {
     },
     pi: {
       default: [],
-      'gpt-6.1-sol': ['off', 'minimal', 'low', 'medium', 'high'],
+      'gpt-6.1-sol': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       'deepseek-flash': ['off', 'low', 'high', 'max'],
     },
   },
@@ -177,15 +177,16 @@ describe('Bot 模板 tab：读取与展示', () => {
     expect(optionValues(thinking)).toEqual(['default'])
     expect(screen.queryByTestId('thinking-notice')).toBeNull()
 
-    // Pi 的能力表与 OMP 不同：不包含 xhigh / max。
+    // Pi 的能力表与 OMP 不同：gpt-6.1-sol 不支持 off 但支持 xhigh / max。
     await user.selectOptions(model, 'gpt-6.1-sol')
     expect(optionValues(thinking)).toEqual([
       'default',
-      'off',
       'minimal',
       'low',
       'medium',
       'high',
+      'xhigh',
+      'max',
     ])
     await user.selectOptions(model, 'deepseek-flash')
     expect(optionValues(thinking)).toEqual(['default', 'off', 'low', 'high', 'max'])

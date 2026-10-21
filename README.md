@@ -447,14 +447,49 @@ Herdr / agent。用户确认时可以：
 2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建，记录结果中的 Bot
    名称、Tab / Pane 标识。
 3. 用独立 Herdr 命令核对对象：`herdr workspace list` 找到配置目标；`herdr tab list` / `herdr pane get`
-   找到结果中的标识；`herdr pane process_info <pane>` 或 `herdr agent get <pane>` 读取实际 cwd，应与所选
-   zone 目录一致，而不是焦点 Workspace 的目录。
+   找到结果中的标识；`herdr pane process-info --pane <paneId>` 或 `herdr agent get <paneId>` 读取实际
+   cwd，应与所选 zone 目录一致，而不是焦点 Workspace 的目录。
 4. 观察页面先显示“正在启动”、目标可交互后才显示“正在提交初始指示”，最后才显示“创建成功，初始指示已
    提交”；成功出现时手动终端里应已收到一次初始输入。创建完成不要求模型任务结束，也不应在会话列表中
    出现由本次创建自动生成的 connect-bot 登记。
 
-四组 agent / model 组合（omp、pi 分别搭配两个已确认模型）与初始正文的进一步核对由 03 / 04 共用同一轮
-真实运行；本页只准备其中的目标 Workspace、目录、Tab / Pane 定位、就绪到投递时序与提交确认对照。
+**四组 agent / model 组合的人工验收准备（P14 / P16 / P17 / P18）**：自动用例只记录受控 Herdr 替身
+收到的启动参数，不能替代真实 Herdr / agent；真实账号、登录与费用由用户最终确认。与 02 / 04 / 05
+共用同一轮四组场景，本组负责目标 agent 类型、完整模型标识和 thinking 级别。
+
+| 组 | agent | model | thinking | Skill（04 准备） | 预期原生启动参数 |
+|---|---|---|---|---|---|
+| A | omp | gpt-6.1-sol | high | /teach | `--model openai-codex/gpt-6.1-sol --thinking high` |
+| B | omp | deepseek-flash | max | /code-review | `--model deepseek/deepseek-flash --thinking max` |
+| C | pi | gpt-6.1-sol | xhigh | /code-review | `--model openai-codex/gpt-6.1-sol --thinking xhigh` |
+| D | pi | deepseek-flash | low | /teach | `--model deepseek/deepseek-flash --thinking low` |
+
+能力事实取自目标版本：OMP 18.12.4 的 `thinking.efforts` 对 gpt-6.1-sol 为 low..max、对
+deepseek-flash 为 low/high/max；Pi 1.3.0 的 `getSupportedThinkingLevels` 对 gpt-6.1-sol 为
+minimal/low/medium/high/xhigh/max（没有 off）、对 deepseek-flash 为 off/low/high/max。Pi 不接受
+auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 thinking 时只传 model。
+
+1. 按上一节准备两个 zone 与真实 Herdr；在“Bot 模板”tab 保存四个模板，字段按上表填写（Skill 列由
+   04 的验收准备决定，不改变本表的 agent / model / thinking）。
+2. 依次从 zone 行的“+”创建 A–D；A/C 使用普通目录 zone，B/D 使用 Git 工作树 zone；每次填入不同的
+   字面 input（如“组 A 初始任务”），记录结果中的 Bot 名称、zone、`tabId`、`paneId` 与 `agentName`。
+3. 对每组用独立 Herdr 命令核对：`herdr workspace list` 找配置目标；`herdr tab list` /
+   `herdr pane get <paneId>` 确认对象位置；`herdr pane process-info --pane <paneId>` 的
+   `foreground_processes[].argv` / `cmdline` 必须包含上表的完整 `--model` 与 `--thinking` 参数，
+   同一条记录的 `cwd` 必须等于该 zone 的目录；`herdr agent get <paneId>` 应显示与所选 omp / pi
+   一致的目标类型。
+4. 核对终端：初始指示只出现一次，且是 Skill 前缀 + 固定 prompt + 本次 input 的合成文本（Skill 细节由
+   04 验收）。账号未登录、模型无权限或终端未就绪时，如实记录实际错误；这不改变“创建成功”只表示
+   已就绪且提交被接受的语义，也不允许改用其他 provider / model 自动回退。
+5. 预期完整模型配置即上表最后一列；没有取得 `argv` / `cmdline` 时标记为未验证，不用页面文本或受控
+   记录代填。
+
+本票已完成的自动检查（受控 Herdr 记录，不等于真实运行）：`cargo test --manifest-path backend\Cargo.toml
+--test bot_creation`（12 passed；覆盖四种显式组合与两个默认组合，核对 `agent_kind`、完整启动参数、
+启动先于提交、仅一次提交）、`cargo test --manifest-path backend\Cargo.toml --test bot_templates`
+（8 passed；能力选项与保存校验使用目标 Pi 1.3.0 能力事实）、`npm --prefix frontend run test`
+（176 passed）。完整后端套件（327 passed、0 failed、3 ignored）与真实 Chrome 浏览器套件
+（5 passed）也已在本次交付中通过；这些仍是受控替身 / 自动化证据，不是真实 Herdr / agent 的运行结果。
 
 ### 文件列表与 zone 登记
 

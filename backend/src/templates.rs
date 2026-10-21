@@ -270,8 +270,9 @@ const THINKING_OPTIONS: [Thinking; 8] = [
 /// 这些是目标源码中的固定能力事实：
 /// - OMP `packages/catalog/src/models.json` 的 `thinking.efforts`：
 ///   `openai-codex/gpt-6.1-sol` = low/medium/high/xhigh/max，`deepseek/deepseek-flash` = low/high/max。
-/// - Pi `getSupportedThinkingLevels`：`gpt-6.1-sol` 没有 `thinkingLevelMap`，支持 off/minimal/low/
-///   medium/high（xhigh/max 在 map 缺失时不受支持）；`deepseek-flash` 的 map 为
+/// - Pi `getSupportedThinkingLevels`：`openai-codex/gpt-6.1-sol` 的 map 为 off=null、
+///   minimal=low、low=low、medium=medium、high=high、xhigh=xhigh、max=max，因此支持
+///   minimal/low/medium/high/xhigh/max（不接受 off）；`deepseek-flash` 的 map 为
 ///   minimal=null、low=low、medium=null、high=high、max=max，因此支持 off/low/high/max。
 ///
 /// 模型沿用默认值时没有可校验的具体模型，只保留默认值。
@@ -281,7 +282,7 @@ pub fn supported_thinking(agent: Agent, model: Model) -> &'static [Thinking] {
         (_, Model::Default) => &[],
         (Agent::Omp, Model::Gpt61Sol) => &[Low, Medium, High, Xhigh, Max],
         (Agent::Omp, Model::DeepseekFlash) => &[Low, High, Max],
-        (Agent::Pi, Model::Gpt61Sol) => &[Off, Minimal, Low, Medium, High],
+        (Agent::Pi, Model::Gpt61Sol) => &[Minimal, Low, Medium, High, Xhigh, Max],
         (Agent::Pi, Model::DeepseekFlash) => &[Off, Low, High, Max],
     }
 }
