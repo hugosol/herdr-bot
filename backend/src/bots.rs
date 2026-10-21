@@ -300,16 +300,32 @@ async fn fail(job: &Arc<Mutex<CreationView>>, stage: FailureStage, error: &Herdr
 }
 
 /// 在 Herdr 的原始说明之外补上现场状态；不把未知的提交结果说成确定。
+///
+/// 同一阶段里，“明确被拒绝”和“超时/响应不可理解”是两种不同事实：前者可以说提交失败，
+/// 后者只能说明结果未确认，不能把它表述成确定未发送。已经取得的对象标识不会被撤销。
 fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
     let base = error.message();
+    let outcome_unknown = matches!(
+        error,
+        HerdrError::Timeout(_) | HerdrError::Unavailable(_) | HerdrError::UnexpectedResponse { .. }
+    );
     match stage {
-        FailureStage::Workspace => format!("{base} 本次没有新建 Tab。"),
-        FailureStage::Tab => format!("{base} 没有继续启动 agent。"),
-        FailureStage::Start => {
-            format!("{base} 已创建的对象如果存在会保留；没有提交初始指示。")
+        FailureStage::Workspace => format!("{base} 本次没有新建 Tab，也没有启动 agent。"),
+        FailureStage::Tab if outcome_unknown => {
+            format!("{base} 无法确认 Tab 是否已经创建；本次没有继续启动 agent。")
         }
+        FailureStage::Tab => format!("{base} 新建 Tab 被拒绝；本次没有继续启动 agent。"),
+        FailureStage::Start if outcome_unknown => format!(
+            "{base} Tab 与 Pane 已创建并保留；agent 的就绪状态未确认，因此没有提交初始指示。"
+        ),
+        FailureStage::Start => {
+            format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
+        }
+        FailureStage::Submit if outcome_unknown => format!(
+            "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
+        ),
         FailureStage::Submit => {
-            format!("{base} Tab 与 agent 已保留；本次创建不算成功。")
+            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
         }
     }
 }

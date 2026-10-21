@@ -22,6 +22,32 @@ const FAILURE_STAGE_LABELS: Record<string, string> = {
 }
 
 /**
+ * 失败后的现场说明。
+ *
+ * 明确被拒绝与超时/无法确认是两种不同事实：只有前者能说提交失败；后者只能说明投递结果
+ * 未确认，不能表述成确定未发送。已经取得的对象保留，页面不提供自动重发或清理。
+ */
+function failureOutcomeText(creation: BotCreation): string {
+  const failure = creation.failure
+  if (failure === undefined) {
+    return '本次创建没有完成；无法确认后续动作是否发生，不会自动重试。'
+  }
+  switch (failure.stage) {
+    case 'workspace':
+      return '本次没有新建 Tab，也没有启动 agent；不会自动重试或改换 Workspace。'
+    case 'tab':
+      return '没有继续启动 agent；已经产生的对象如果存在会保留，不会自动删除或重建。'
+    case 'start':
+      return '现场已存在：Tab 与 Pane 已创建并保留，初始指示尚未提交；不会自动重发。'
+    case 'submit':
+      return failure.code === 'herdr-command-failed'
+        ? '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。'
+        : '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。'
+  }
+  return '本次创建没有完成；不会自动重试。'
+}
+
+/**
  * 从某个 zone 创建 Bot 的弹窗。
  *
  * 名称只显示后端预览的只读结果，没有手工覆盖入口。确认后页面轮询同一次创建：只有后端确认目标
@@ -309,12 +335,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
               创建失败（{FAILURE_STAGE_LABELS[creation.failure?.stage ?? ''] ?? '未知阶段'}）：
               {creation.failure?.message ?? '后端没有给出可读说明。'}
             </p>
-            <p>
-              已创建的对象如果存在会保留；本次不会自动删除、重建或重发。
-              {creation.inputSubmitted
-                ? '初始指示的提交已确认。'
-                : '初始指示的提交未确认，无法据此断定它一定没有发送。'}
-            </p>
+            <p>{failureOutcomeText(creation)}</p>
           </div>
         )}
 
