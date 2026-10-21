@@ -361,20 +361,7 @@ async fn rejects_invalid_fixed_fields_and_capability_violations() {
                 "{zone.name}",
                 "pi",
                 "gpt-6.1-sol",
-                "xhigh",
-                Value::Null,
-                "",
-            ),
-            400,
-            "template-thinking-unsupported",
-        ),
-        (
-            sample(
-                "模板",
-                "{zone.name}",
-                "pi",
-                "gpt-6.1-sol",
-                "max",
+                "off",
                 Value::Null,
                 "",
             ),
@@ -498,7 +485,7 @@ async fn accepts_every_supported_combination_and_empty_or_multiline_prompt() {
         (
             "pi",
             "gpt-6.1-sol",
-            &["off", "minimal", "low", "medium", "high"],
+            &["minimal", "low", "medium", "high", "xhigh", "max"],
         ),
         ("pi", "deepseek-flash", &["off", "low", "high", "max"]),
     ];
@@ -852,8 +839,8 @@ async fn publishes_fixed_agent_model_thinking_and_skill_options() {
 
     // thinking 来自各自目标代码的模型能力事实，不是全局 CLI 级别：
     // OMP 的模型元数据给出 gpt-6.1-sol: low..max，deepseek-flash: low/high/max；
-    // Pi 的 getSupportedThinkingLevels 给出 gpt-6.1-sol: off..high，deepseek-flash: off/low/high/max。
-    // 模型沿用默认值时不提供任何显式 thinking。
+    // Pi 的 getSupportedThinkingLevels 给出 gpt-6.1-sol: minimal..max（无 off），
+    // deepseek-flash: off/low/high/max。模型沿用默认值时不提供任何显式 thinking。
     assert_eq!(
         options["thinking"]["omp"]["gpt-6.1-sol"],
         json!(["low", "medium", "high", "xhigh", "max"])
@@ -864,7 +851,7 @@ async fn publishes_fixed_agent_model_thinking_and_skill_options() {
     );
     assert_eq!(
         options["thinking"]["pi"]["gpt-6.1-sol"],
-        json!(["off", "minimal", "low", "medium", "high"])
+        json!(["minimal", "low", "medium", "high", "xhigh", "max"])
     );
     assert_eq!(
         options["thinking"]["pi"]["deepseek-flash"],
