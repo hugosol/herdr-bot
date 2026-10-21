@@ -1148,7 +1148,12 @@ npm --prefix frontend run test:browser
 `test:browser` 使用本机已安装的 Google Chrome（Playwright `channel: "chrome"`），不额外下载浏览器；
 用例覆盖 Bot 模板 tab 的真实新增、查看、编辑、删除、公开 HTTP 共享读取、保存失败与进程重启保留，
 以及从普通目录与 Git 工作树 zone 行创建 Bot 的真实页面链路、名称预览与 Herdr 侧名称一致、启动/
-提交阶段、成功与失败留在弹窗。
+提交阶段、成功与失败留在弹窗。`mobileWorkflow.spec.ts` 在 1280×900 与 390×844 两种尺寸各完成一遍
+模板 CRUD 与创建全流程，移动档同时检查无横向溢出、弹窗落在视口内并内部滚动、操作按钮不被挤出屏幕、
+触控目标不小于 44px、输入字号不小于 16px、键盘换行与成功/失败结果。`lanAccess.spec.ts` 让服务绑定
+`0.0.0.0`，真实浏览器经本机局域网 IPv4 完成模板 CRUD 与创建，独立 HTTP 客户端经同一地址读取模板，
+请求不携带认证头。`backend/tests/bot_source_boundary.rs` 用受控局域网来源证明模板管理与创建被接受，
+而同一来源的 `POST /api/sessions/events` 仍是 `403 forbidden`，两种能力不共用同机来源限制。
 
 创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
 adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
@@ -2150,4 +2155,80 @@ workspace 内的本地 HTML 增加整页静态阅读模式。文档记录见 [AD
 ## 变更记录：目录登记概念由 workspace 更名为 zone（2026-10-21）
 
 为引入 herdr 相关模块、避免与 herdr 自己的 workspace 概念重名，本项目把「用户登记的服务器目录」统一更名为 zone。更名覆盖前后端标识符与文件名、HTTP 路由 `/api/zones/*`、查询参数 `zone`、JSON 字段 `zones`/`zone`、错误码 `zone-*`、配置段 `[zones]`、默认登记文件 `zones.json` 与界面文案。这次是硬切换：旧 `/api/workspaces/*`、旧 `[workspaces]` 配置与旧 `workspaces.json` 不再兼容，现有登记已一次性迁移。Git working tree 在文档与界面中统一称「工作树」。历史变更记录保留旧词；原因与取舍见 [ADR 0009](docs/adr/0009-rename-workspace-to-zone-for-herdr.md)。
+
+## 人工验收移交（Bot 模板与创建，H2，未验收）
+
+契约 P45 的人工 H2 由用户在日常手机上确认触控、键盘输入、创建阶段与结果体验。自动化已覆盖桌面与
+移动尺寸的真实浏览器、局域网地址访问、模板共享与来源边界，但这些证据**不构成**真机结论；在用户
+逐条确认前保持“未验收”。
+
+### 访问入口
+
+- 手机与电脑连**同一个普通家庭 Wi-Fi**；在电脑上启动 herdr-bot（监听地址默认
+  `0.0.0.0:8787`，见[访问（本机与局域网）](#访问本机与局域网)）。
+- 手机浏览器打开 `http://herdr-bot.local:8787/`；mDNS 解析不了时用
+  `http://<本机局域网 IPv4>:8787/`（本次自动验证使用的地址是 `192.168.5.3`，以 `ipconfig` 实际值为准）。
+- 不需要登录、账号或 token；打开页面即可管理模板并创建 Bot。仅限可信局域网：任何能访问该端口的
+  设备都具有这些能力。
+
+### 日常手机验收步骤（约 3 分钟）
+
+1. 点“Bot 模板”tab → “新增模板”：输入显示名，用字段按钮插入 `{zone.name}` 等占位符并看示例预览；
+   选择 agent / model / thinking / Skill；在固定 prompt 中用回车输入两行以上；保存。回到列表确认字段
+   完整，再编辑一处并保存，最后删除确认消失。若还要创建 Bot，请保留或重新新增一个模板。
+2. 点“文件列表”tab → 在某个 zone 行点“+”。弹窗应显示该 zone 路径；选择模板，在多行 input 中用手指
+   和键盘输入两三行；确认只读名称预览可见且**没有**手工改名入口。
+3. 点“创建”。应依次看到“正在启动”→“正在提交初始指示”→（真实 Herdr / agent 就绪并提交后）
+   “创建成功，初始指示已提交”。结果中的 Bot 名、zone、Herdr Tab / Pane 标识应完整可读；较长内容可在
+   弹窗内上下滚动，底部“关闭”按钮始终可以滚动到达。
+4. 点“关闭”，页面应停留在“文件列表”，不自动跳到会话列表。可在 Herdr 中按结果里的 Tab / Pane
+   标识核对目标 Workspace 与实际目录。
+5. 失败样本（可选）：把 `[herdr] workspace_name` 改成不存在的名称后重启，或让目标 agent 拒绝提交；
+   确认失败阶段与“现场已存在 / 未确认投递”的说明可读、成功文案不出现、没有自动重发，并能自行关闭。
+
+### 已准备的自动证据（真机确认前不构成 H2 结论）
+
+- `frontend/browser-tests/mobileWorkflow.spec.ts`：1280×900 与 390×844 真实 Chrome 各自完成模板新增、
+  读取、编辑、删除，以及从 zone 打开弹窗、选择模板、键盘输入、提交和关闭；移动档分别操作成功与失败
+  结果，并检查无横向溢出、弹窗完整落在视口内、操作按钮不被挤出屏幕、触控目标 ≥44px、输入字号
+  ≥16px、键盘换行与两个稳定阶段。
+- `frontend/browser-tests/lanAccess.spec.ts`：服务绑定 `0.0.0.0`，真实浏览器经本机局域网 IPv4 完成
+  模板 CRUD 与创建；独立 HTTP 客户端经同一地址读取同一份模板；请求无 `Authorization`，页面无登录步骤。
+- `backend/tests/bot_source_boundary.rs`：同一受控局域网来源可以读取/保存模板、预览并提交创建（202），
+  而 `POST /api/sessions/events` 仍为 `403 forbidden`；`backend/tests/session_write_boundary.rs` 继续
+  覆盖原同机来源边界。
+- 本次实际运行：`npm --prefix frontend run test:browser` → `10 passed`；`npm --prefix frontend run test`
+  → `25 files / 178 tests passed`；`cargo test --manifest-path backend\Cargo.toml` →
+  `334 passed / 42 suites`（3 个默认忽略的 mDNS 用例）。
+
+### 未覆盖与已知限制
+
+- 移动尺寸 Chromium 触摸仿真不等于真实手机：软键盘高度、浏览器动态工具栏、iOS 聚焦缩放策略和手指
+  触控手感只能在实机上确认；当前状态为**未验证**。
+- 本票在 02 之后实现，03–07 后续合入的配置、输入与结果文案还需在最终交接时做一次同样的手机回归；
+  本票不重复认领它们的业务测试。
+- 真实 Herdr / OMP / Pi 的账号、模型、登录与审批属于 H1（02–05 准备），本票不把受控 Herdr 记录或
+  移动尺寸仿真当作真实运行结论。
+
+## 变更记录：桌面与移动端完成模板管理与创建（2026-10-21）
+
+本次完成 P45：电脑与手机都能管理共享 Bot 模板并从 zone 创建 Bot；窄屏布局按真实浏览器暴露的问题
+修复，不新增账号、token 或权限系统，也不改变 connect-bot 会话事件写入的同机来源边界。
+
+- **改了什么**：
+  - 弹窗遮罩改为可滚动容器，弹窗自身限制在动态视口高度内并在内部滚动；内容变长（阶段、成功/失败、
+    定位信息）后顶部不被裁掉、底部操作仍可滚动到达。窄屏遮罩留白收紧到 `0.75rem`。
+  - 窄屏下弹窗操作区改为等分两列，“关闭/取消”不再被主操作挤出屏幕左侧；字段插入按钮提升为
+    至少 44px 高的触控目标。
+  - 新增桌面/移动真实浏览器工作流用例、局域网浏览器用例与后端来源边界用例；README 的测试说明与
+    H2 手机验收步骤同步更新。
+- **自动检查**：
+  - `npm --prefix frontend run build`（`tsc --noEmit && vite build`）成功。
+  - `npm --prefix frontend run test:browser` → `10 passed`，其中 `mobileWorkflow.spec.ts` 3 项、
+    `lanAccess.spec.ts` 1 项。
+  - `npm --prefix frontend run test` → `25 files / 178 tests passed`。
+  - `cargo test --manifest-path backend\Cargo.toml` → `334 passed / 42 suites`（3 个默认忽略的 mDNS 用例），
+    包含新增的 `bot_source_boundary`。
+- **限制与未覆盖**：真实手机触控、软键盘与浏览器工具栏仍需 H2 用户确认；03–07 合入后的配置、输入与
+  结果文案需要一次移动回归。移动尺寸仿真与局域网地址请求都不冒充真机或非本机来源结论。
 

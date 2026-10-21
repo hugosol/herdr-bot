@@ -135,11 +135,17 @@ h1 {
   position: fixed;
   inset: 0;
   z-index: 970;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   box-sizing: border-box;
   padding: 1.25rem;
   background: rgba(6, 8, 11, 0.88);
+  /* 手机上长内容与软键盘可能让弹窗高于视口：遮罩本身可滚动，
+     弹窗用 margin:auto 在空间足够时居中，空间不足时从顶部开始，底部不会永远不可达。 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .zone-dialog {
@@ -148,7 +154,14 @@ h1 {
   gap: 0.75rem;
   box-sizing: border-box;
   width: min(100%, 32rem);
+  /* 内容超过视口时在弹窗内部滚动，标题、结果与关闭按钮都仍可通过滚动到达。 */
+  max-height: calc(100vh - 2.5rem);
+  max-height: calc(100dvh - 2.5rem);
+  margin: auto;
   padding: 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid #3d4653;
   border-radius: 0.75rem;
   background: #14161a;
@@ -2013,11 +2026,6 @@ h1 {
   margin-top: 0.75rem;
 }
 
-.bot-template-dialog {
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
 .bot-template-fields {
   margin: 0.75rem 0;
   padding: 0.75rem;
@@ -2038,7 +2046,11 @@ h1 {
 }
 
 .bot-template-field-buttons button {
-  padding: 0.35rem 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid #3a4656;
   border-radius: 0.4rem;
   background: #1b2028;
@@ -2065,6 +2077,30 @@ h1 {
   min-height: 6rem;
   resize: vertical;
   font-family: inherit;
+}
+
+@media (max-width: 480px) {
+  /* 手机纵向空间更紧张：收紧遮罩留白，把省下的高度与宽度留给表单、结果和操作按钮。 */
+  .zone-modal {
+    padding: 0.75rem;
+  }
+
+  .zone-dialog {
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+  }
+
+  /* 取消/关闭与主操作并排时总宽度可能超过手机内容区，导致前一个按钮被挤到屏幕左侧之外。
+     等分两列，两个操作都保留在视口内且仍是触控目标。 */
+  .zone-dialog__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .zone-dialog__actions > button {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 640px) {
