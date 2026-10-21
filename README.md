@@ -1011,6 +1011,17 @@ cargo test --manifest-path backend\Cargo.toml -- --ignored
 cargo test --manifest-path backend\Cargo.toml -- --include-ignored
 ```
 
+如果希望手工运行 mDNS 测试时不再每次构建都新增防火墙规则，使用稳定副本脚本：
+
+```powershell
+.\scripts\run-mdns-tests.ps1 -ConfigureFirewall   # 首次：UAC 提权，为稳定路径添加规则
+.\scripts\run-mdns-tests.ps1                      # 之后：构建并运行稳定副本
+```
+
+脚本会把带 hash 的测试 exe 复制到 `backend\target\debug\mdns_failure_runner.exe` 与
+`mdns_conflict_runner.exe`，再运行这些稳定路径；`-ListOnly` 只构建/复制并打印路径，
+`-NoBuild` 复用现有副本。`mdns_conflict` 仍需先停止正在运行的面板。
+
 测试经 HTTP interface 请求操作，并用真实批处理（写入 `%CD%`、退出码等）验证调用与工作目录。
 `backend/tests/execution_result.rs` 还验证执行结果分类：无法启动、成功退出、失败退出三类结果，
 以及“脚本另开长期进程不参与完成判定”。`backend/tests/mutual_exclusion.rs` 用真实监听端口与**多个独立
