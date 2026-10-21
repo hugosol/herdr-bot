@@ -1,0 +1,672 @@
+//! Bot 实例身份、模板快照与独立新对话的公开接缝（S2 HTTP / S3 Herdr 控制）验收。
+//!
+//! 期望值来自独立预写的字面样例、真实的临时目录，以及受控 Herdr 夹具自己写下的外部调用记录；
+//! 不调用 herdr-bot 的命名函数生成期望，也不把受控记录当作真实 Herdr / agent 已验证。真实 Herdr
+//! 下的账号、模型、终端与会话文件仍属于人工 H1 覆盖。
+
+mod common;
+
+use std::fs;
+use std::path::Path;
+use std::time::Duration;
+
+use common::{
+    HerdrFixture, HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp,
+    request_json_over_tcp, same_path,
+};
+use serde_json::{Value, json};
+
+const STAGE_DEADLINE: Duration = Duration::from_secs(15);
+
+/// 与交付配置同一形状；Herdr 可执行文件指向受控副本，目标 Workspace 取显式名称。
+fn config_with(herdr: &HerdrFixture, storage_dir: &TempDir) -> herdr_bot::Config {
+    let fixtures = common::repo_fixtures_dir();
+    let script = fixtures.join("operations").join("success.bat");
+    let operations = fixtures.join("operations");
+    let mut config = common::config(&script, &operations);
+    config.zones.registry_file = storage_dir.path().join("zones.json");
+    config.bot_templates.storage_file = storage_dir.path().join("bot-templates.json");
+    config.herdr = herdr_bot::HerdrConfig {
+        workspace_name: "bot-playground".to_string(),
+        executable: herdr.executable().to_path_buf(),
+    };
+    config
+}
+
+/// 一个已登记的真实目录；返回登记列表里的路径。
+async fn register(server: &TestServer, path: &Path) -> String {
+    let response = post_json_over_tcp(
+        server.addr(),
+        "/api/zones",
+        &json!({ "path": path }).to_string(),
+    )
+    .await;
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).expect("登记响应是 JSON");
+    body["zones"]
+        .as_array()
+        .expect("登记响应必须有 zones")
+        .iter()
+        .find_map(|zone| {
+            let registered = zone["path"].as_str()?;
+            same_path(Path::new(registered), path).then(|| registered.to_string())
+        })
+        .expect("登记响应必须包含刚登记的目录")
+}
+
+/// 保存一个模板并返回本次保存的完整对象（按预写的显示名匹配，不取列表第一项）。
+async fn save_template(server: &TestServer, template: Value) -> Value {
+    let saved_name = template["name"]
+        .as_str()
+        .expect("模板必须有显示名")
+        .to_string();
+    let response =
+        post_json_over_tcp(server.addr(), "/api/bot-templates", &template.to_string()).await;
+    assert_eq!(response.status, 200, "保存模板应成功：{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).expect("模板响应是 JSON");
+    body["templates"]
+        .as_array()
+        .expect("模板响应必须有 templates")
+        .iter()
+        .find(|saved| saved["name"] == saved_name.as_str())
+        .expect("保存后必须包含刚保存的模板")
+        .clone()
+}
+
+/// 由另一个独立 HTTP 客户端编辑模板，返回完整已保存对象。
+async fn edit_template(server: &TestServer, id: &str, template: Value) -> HttpResponse {
+    request_json_over_tcp(
+        server.addr(),
+        "PUT",
+        &format!("/api/bot-templates/{id}"),
+        Some(&template.to_string()),
+    )
+    .await
+}
+
+async fn preview(server: &TestServer, zone: &str, template_id: &str) -> Value {
+    let response = post_json_over_tcp(
+        server.addr(),
+        "/api/bots/preview",
+        &json!({ "zone": zone, "templateId": template_id }).to_string(),
+    )
+    .await;
+    assert_eq!(response.status, 200, "预览应成功：{}", response.body);
+    serde_json::from_str(&response.body).expect("预览响应是 JSON")
+}
+
+/// 创建请求沿用预览的名称与短标识。
+fn create_body(zone: &str, template_id: &str, preview: &Value, input: &str) -> Value {
+    json!({
+        "zone": zone,
+        "templateId": template_id,
+        "botId": preview["botId"],
+        "input": input,
+        "expectedName": preview["name"],
+    })
+}
+
+async fn create(server: &TestServer, body: Value) -> HttpResponse {
+    post_json_over_tcp(server.addr(), "/api/bots", &body.to_string()).await
+}
+
+async fn creation(server: &TestServer, id: &str) -> Value {
+    let response = get_over_tcp(server.addr(), &format!("/api/bots/{id}")).await;
+    assert_eq!(
+        response.status, 200,
+        "创建状态读取应成功：{}",
+        response.body
+    );
+    serde_json::from_str(&response.body).expect("创建状态是 JSON")
+}
+
+/// 轮询公开状态直到指定阶段；超时让用例失败并打印最近一次响应。
+async fn wait_stage(server: &TestServer, id: &str, expected: &str) -> Value {
+    let deadline = tokio::time::Instant::now() + STAGE_DEADLINE;
+    loop {
+        let view = creation(server, id).await;
+        if view["stage"] == expected {
+            return view;
+        }
+        if view["stage"] == "failed" && expected != "failed" {
+            panic!("创建在到达 {expected} 之前失败：{view}");
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("创建没有在时限内到达阶段 {expected}，最近状态：{view}");
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// 预览、创建并等待成功；返回创建结果。
+async fn create_succeeded(
+    server: &TestServer,
+    zone: &str,
+    template_id: &str,
+    input: &str,
+) -> Value {
+    let preview = preview(server, zone, template_id).await;
+    let response = create(server, create_body(zone, template_id, &preview, input)).await;
+    assert_eq!(
+        response.status, 202,
+        "创建应被接受并返回后端拥有的生命周期：{}",
+        response.body
+    );
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
+    let id = accepted["id"].as_str().expect("创建回执必须有生命周期标识");
+    wait_stage(server, id, "succeeded").await
+}
+
+fn calls_of_kind(herdr: &HerdrFixture, kind: &str) -> Vec<Value> {
+    herdr
+        .calls()
+        .into_iter()
+        .filter(|call| call["kind"] == kind)
+        .collect()
+}
+
+fn string_args(call: &Value) -> Vec<String> {
+    call["args"]
+        .as_array()
+        .expect("agent start 记录必须有 args")
+        .iter()
+        .map(|arg| arg.as_str().expect("启动参数必须是字符串").to_string())
+        .collect()
+}
+
+/// 取 `--flag value` 的值；未出现时返回 None。
+fn flag_value(args: &[String], flag: &str) -> Option<String> {
+    args.iter()
+        .position(|arg| arg == flag)
+        .and_then(|index| args.get(index + 1).cloned())
+}
+
+/// 目录不存在或没有任何条目：本次启动不会读到预置的旧对话。
+fn is_fresh_directory(path: &Path) -> bool {
+    match fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => panic!("读取会话目录失败（{}）：{error}", path.display()),
+    }
+}
+
+fn template(agent: &str, name: &str, bot_name: &str) -> Value {
+    json!({
+        "name": name,
+        "botName": bot_name,
+        "agent": agent,
+        "model": "default",
+        "thinking": "default",
+        "skill": null,
+        "prompt": "",
+    })
+}
+
+/// P48：两个 agent 都从各自全新的会话目录启动，不续接同 cwd 的旧对话。
+///
+/// 受控 Herdr 只记录启动选择；真实 OMP / Pi 是否加载旧上下文仍由人工 H1 在实际终端确认。
+#[tokio::test(flavor = "multi_thread")]
+async fn each_agent_starts_in_its_own_fresh_session_directory_outside_the_zone() {
+    let herdr = HerdrFixture::new("bot identity sessions");
+    let storage = TempDir::new("bot identity sessions storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+
+    // 预置同 cwd 的旧对话：这是外部对照，不属于任何一次创建。
+    let old_conversation = zone.join("old-conversation.jsonl");
+    fs::write(&old_conversation, "{\"type\":\"session\",\"id\":\"old\"}\n").expect("预置旧对话");
+
+    let mut names = Vec::new();
+    for (agent, template_name) in [("omp", "会话 OMP"), ("pi", "会话 Pi")] {
+        let template = save_template(
+            &server,
+            template(agent, template_name, "{zone.name} · 新对话"),
+        )
+        .await;
+        let template_id = template["id"].as_str().expect("模板标识");
+        let finished = create_succeeded(&server, &zone_path, template_id, "独立任务").await;
+        names.push(
+            finished["agentName"]
+                .as_str()
+                .expect("必须记录控制别名")
+                .to_string(),
+        );
+    }
+
+    let starts = calls_of_kind(&herdr, "agent_start");
+    assert_eq!(starts.len(), 2, "每个 Bot 都必须独立启动一次");
+    let kinds: Vec<&str> = starts
+        .iter()
+        .map(|start| start["agent_kind"].as_str().expect("agent 类型"))
+        .collect();
+    assert_eq!(kinds, vec!["omp", "pi"], "OMP 与 Pi 都必须验证独立新对话");
+    assert_ne!(names[0], names[1], "两个 Bot 的控制别名不得相同");
+
+    let mut directories = Vec::new();
+    for start in &starts {
+        let args = string_args(start);
+        assert!(
+            !args.iter().any(|arg| matches!(
+                arg.as_str(),
+                "--continue" | "-c" | "--resume" | "-r" | "--session"
+            )),
+            "启动不得携带续接旧对话的显式参数：{args:?}"
+        );
+        assert!(
+            !args.iter().any(|arg| arg.contains("old-conversation")),
+            "启动选择不得引用预置的旧对话：{args:?}"
+        );
+
+        let directory =
+            flag_value(&args, "--session-dir").expect("每个 agent 都必须选择独立的新会话目录");
+        let path = Path::new(&directory);
+        assert!(
+            path.is_absolute(),
+            "会话目录必须是绝对路径，才能脱离 agent 的 cwd 解析：{directory}"
+        );
+        assert!(
+            !path.starts_with(&zone),
+            "会话目录不得写进 zone 工作目录：{directory}"
+        );
+        assert!(
+            is_fresh_directory(path),
+            "本次启动选择的会话目录不得含有预置的旧对话：{directory}"
+        );
+        directories.push(directory);
+    }
+    assert_ne!(
+        directories[0], directories[1],
+        "两个 Bot 不得共用同一个会话目录"
+    );
+}
+
+/// P12 / P24：移除命名规则中的实例标识后连续创建，两个对象显示名完全相同且各自独立。
+///
+/// 身份取自受控 Herdr 返回的 Tab / Pane 与内部生成的 agent 控制别名，不按显示名定位。
+#[tokio::test(flavor = "multi_thread")]
+async fn two_creations_in_one_zone_are_distinct_objects_under_the_same_display_name() {
+    let herdr = HerdrFixture::new("bot identity same name");
+    let storage = TempDir::new("bot identity same name storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+    let template = save_template(&server, template("omp", "同名模板", "{zone.name} · 同名")).await;
+    let template_id = template["id"].as_str().expect("模板标识");
+
+    // 两次独立预览产生同一个预写字面名称，没有自动后缀。
+    let first_preview = preview(&server, &zone_path, template_id).await;
+    let second_preview = preview(&server, &zone_path, template_id).await;
+    assert_eq!(first_preview["name"], "alpha · 同名");
+    assert_eq!(second_preview["name"], "alpha · 同名");
+
+    let first = create_succeeded(&server, &zone_path, template_id, "第一任务").await;
+    let second = create_succeeded(&server, &zone_path, template_id, "第二任务").await;
+
+    let tabs = herdr.tabs();
+    assert_eq!(tabs.len(), 2, "两次创建必须各自新建 Tab");
+    assert_eq!(tabs[0]["label"], "alpha · 同名");
+    assert_eq!(tabs[1]["label"], "alpha · 同名");
+    assert_eq!(
+        tabs[0]["label"], tabs[1]["label"],
+        "命名规则去掉实例标识后不得自动追加去重后缀"
+    );
+    assert_ne!(tabs[0]["tab_id"], tabs[1]["tab_id"], "Tab 对象不得复用");
+    assert_ne!(tabs[0]["pane_id"], tabs[1]["pane_id"], "初始 Pane 不得复用");
+    assert_eq!(first["tabId"], tabs[0]["tab_id"]);
+    assert_eq!(first["paneId"], tabs[0]["pane_id"]);
+    assert_eq!(second["tabId"], tabs[1]["tab_id"]);
+    assert_eq!(second["paneId"], tabs[1]["pane_id"]);
+
+    let starts = calls_of_kind(&herdr, "agent_start");
+    assert_eq!(starts.len(), 2, "每个 Bot 必须独立启动 agent");
+    assert_ne!(starts[0]["name"], starts[1]["name"], "控制别名不得互相覆盖");
+    assert_ne!(starts[0]["pane"], starts[1]["pane"], "不得复用已有 Pane");
+    assert_eq!(first["agentName"], starts[0]["name"]);
+    assert_eq!(second["agentName"], starts[1]["name"]);
+    for start in &starts {
+        let alias = start["name"].as_str().expect("控制别名是字符串");
+        assert!(
+            !alias.is_empty() && alias.len() <= 32,
+            "Herdr 控制别名长度受限：{alias}"
+        );
+        assert!(
+            alias
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_lowercase()),
+            "Herdr 控制别名必须以小写字母开头：{alias}"
+        );
+        assert!(
+            alias.chars().all(|character| character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || character == '-'
+                || character == '_'),
+            "Herdr 控制别名只允许 [a-z0-9_-]：{alias}"
+        );
+        assert_ne!(
+            Some(alias),
+            tabs[0]["label"].as_str(),
+            "控制别名不得直接使用显示名"
+        );
+    }
+
+    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 2);
+    assert_eq!(prompts[0]["target"], starts[0]["name"]);
+    assert_eq!(prompts[0]["text"], "第一任务");
+    assert_eq!(prompts[1]["target"], starts[1]["name"]);
+    assert_eq!(prompts[1]["text"], "第二任务");
+    assert_ne!(
+        prompts[0]["target"], prompts[1]["target"],
+        "两次投递必须按各自的控制别名定位，不能靠显示名"
+    );
+}
+
+/// P13：两次同名创建使用不同的预写配置与普通任务，各自目标收到属于自己的启动配置和输入。
+#[tokio::test(flavor = "multi_thread")]
+async fn same_name_creations_receive_their_own_configuration_and_input() {
+    let herdr = HerdrFixture::new("bot identity same name configs");
+    let storage = TempDir::new("bot identity same name configs storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+
+    let omp = save_template(
+        &server,
+        json!({
+            "name": "OMP 配置",
+            "botName": "{zone.name} · 同名",
+            "agent": "omp",
+            "model": "deepseek-flash",
+            "thinking": "high",
+            "skill": null,
+            "prompt": "OMP 固定指示",
+        }),
+    )
+    .await;
+    let pi = save_template(
+        &server,
+        json!({
+            "name": "Pi 配置",
+            "botName": "{zone.name} · 同名",
+            "agent": "pi",
+            "model": "gpt-6.1-sol",
+            "thinking": "medium",
+            "skill": null,
+            "prompt": "Pi 固定指示",
+        }),
+    )
+    .await;
+    let omp_id = omp["id"].as_str().expect("OMP 模板标识");
+    let pi_id = pi["id"].as_str().expect("Pi 模板标识");
+
+    let omp_preview = preview(&server, &zone_path, omp_id).await;
+    let pi_preview = preview(&server, &zone_path, pi_id).await;
+    assert_eq!(omp_preview["name"], "alpha · 同名");
+    assert_eq!(pi_preview["name"], "alpha · 同名");
+
+    let omp_finished = create_succeeded(&server, &zone_path, omp_id, "OMP 本次任务").await;
+    let pi_finished = create_succeeded(&server, &zone_path, pi_id, "Pi 本次任务").await;
+
+    let tabs = herdr.tabs();
+    assert_eq!(tabs.len(), 2);
+    assert_eq!(tabs[0]["label"], "alpha · 同名");
+    assert_eq!(tabs[1]["label"], "alpha · 同名");
+    assert_ne!(tabs[0]["tab_id"], tabs[1]["tab_id"]);
+    assert_ne!(tabs[0]["pane_id"], tabs[1]["pane_id"]);
+
+    let starts = calls_of_kind(&herdr, "agent_start");
+    let omp_start = starts
+        .iter()
+        .find(|start| start["agent_kind"] == "omp")
+        .expect("必须启动 OMP");
+    let pi_start = starts
+        .iter()
+        .find(|start| start["agent_kind"] == "pi")
+        .expect("必须启动 Pi");
+    assert_ne!(omp_start["name"], pi_start["name"], "别名不得互相覆盖");
+    assert_eq!(omp_finished["agentName"], omp_start["name"]);
+    assert_eq!(pi_finished["agentName"], pi_start["name"]);
+
+    let omp_args = string_args(omp_start);
+    assert_eq!(
+        &omp_args[..4],
+        ["--model", "deepseek/deepseek-flash", "--thinking", "high"],
+        "OMP 必须收到自己模板的预写配置"
+    );
+    assert_eq!(omp_args[4], "--session-dir");
+    assert!(Path::new(&omp_args[5]).is_absolute());
+
+    let pi_args = string_args(pi_start);
+    assert_eq!(
+        &pi_args[..4],
+        [
+            "--model",
+            "openai-codex/gpt-6.1-sol",
+            "--thinking",
+            "medium"
+        ],
+        "Pi 必须收到自己模板的预写配置"
+    );
+    assert_eq!(pi_args[4], "--session-dir");
+    assert!(Path::new(&pi_args[5]).is_absolute());
+
+    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    let omp_prompt = prompts
+        .iter()
+        .find(|prompt| prompt["target"] == omp_start["name"])
+        .expect("OMP 必须收到自己的初始指示");
+    let pi_prompt = prompts
+        .iter()
+        .find(|prompt| prompt["target"] == pi_start["name"])
+        .expect("Pi 必须收到自己的初始指示");
+    assert_eq!(omp_prompt["text"], "OMP 固定指示\n\nOMP 本次任务");
+    assert_eq!(pi_prompt["text"], "Pi 固定指示\n\nPi 本次任务");
+}
+
+/// P3 / P40：一次已接受的创建被挂起时，另一独立客户端编辑模板；本次仍按旧字面快照执行，
+/// 下一次创建才使用新配置。
+#[tokio::test(flavor = "multi_thread")]
+async fn an_accepted_creation_keeps_its_template_snapshot_while_another_client_edits_it() {
+    let herdr = HerdrFixture::new("bot identity snapshot");
+    herdr.set_behavior(json!({ "agent_start_delay_ms": 1_200 }));
+    let storage = TempDir::new("bot identity snapshot storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+
+    let old = save_template(
+        &server,
+        json!({
+            "name": "旧模板",
+            "botName": "{zone.name} · {template.name}",
+            "agent": "omp",
+            "model": "deepseek-flash",
+            "thinking": "high",
+            "skill": "teach",
+            "prompt": "旧固定指示 第一行\n旧固定指示 第二行",
+        }),
+    )
+    .await;
+    let template_id = old["id"].as_str().expect("模板标识");
+
+    let old_preview = preview(&server, &zone_path, template_id).await;
+    assert_eq!(old_preview["name"], "alpha · 旧模板");
+    let accepted = create(
+        &server,
+        create_body(
+            &zone_path,
+            template_id,
+            &old_preview,
+            "旧本次任务 第一行\n旧本次任务 第二行",
+        ),
+    )
+    .await;
+    assert_eq!(accepted.status, 202, "创建应被接受：{}", accepted.body);
+    let accepted: Value = serde_json::from_str(&accepted.body).expect("创建回执是 JSON");
+    let creation_id = accepted["id"].as_str().expect("创建标识").to_string();
+
+    // 启动已经被受控 Herdr 记录，但仍在延迟中：此时由独立 HTTP 客户端编辑模板。
+    assert!(
+        common::wait_until(Duration::from_secs(5), || {
+            !calls_of_kind(&herdr, "agent_start").is_empty()
+        })
+        .await,
+        "受控 Herdr 必须已经收到 agent start"
+    );
+    let edited = edit_template(
+        &server,
+        template_id,
+        json!({
+            "name": "新模板",
+            "botName": "{zone.name} · {template.name}",
+            "agent": "pi",
+            "model": "gpt-6.1-sol",
+            "thinking": "medium",
+            "skill": "code-review",
+            "prompt": "新固定指示",
+        }),
+    )
+    .await;
+    assert_eq!(edited.status, 200, "编辑模板应成功：{}", edited.body);
+
+    let finished = wait_stage(&server, &creation_id, "succeeded").await;
+    assert_eq!(
+        finished["name"], "alpha · 旧模板",
+        "本次创建的名称必须保持接受时的快照"
+    );
+    assert_eq!(herdr.tabs()[0]["label"], "alpha · 旧模板");
+
+    let starts = calls_of_kind(&herdr, "agent_start");
+    assert_eq!(starts.len(), 1, "本次创建只启动一次");
+    let start = &starts[0];
+    assert_eq!(start["agent_kind"], "omp", "必须使用旧快照的 agent");
+    let args = string_args(start);
+    assert_eq!(
+        &args[..4],
+        ["--model", "deepseek/deepseek-flash", "--thinking", "high"],
+        "必须使用旧快照的 model / thinking"
+    );
+    let prompt = calls_of_kind(&herdr, "agent_prompt")
+        .pop()
+        .expect("必须提交旧快照的初始指示");
+    assert_eq!(prompt["target"], start["name"]);
+    assert_eq!(
+        prompt["text"],
+        "/skill:teach 旧固定指示 第一行\n旧固定指示 第二行\n\n旧本次任务 第一行\n旧本次任务 第二行",
+        "必须按旧快照的 Skill、prompt 与本次 input 提交"
+    );
+
+    // 下一次创建才使用编辑后的配置，期望值来自预写的新字面样例。
+    let new_preview = preview(&server, &zone_path, template_id).await;
+    assert_eq!(new_preview["name"], "alpha · 新模板");
+    let next = create_succeeded(&server, &zone_path, template_id, "新任务").await;
+    assert_eq!(next["name"], "alpha · 新模板");
+
+    let starts = calls_of_kind(&herdr, "agent_start");
+    assert_eq!(starts.len(), 2);
+    let next_start = &starts[1];
+    assert_eq!(
+        next_start["agent_kind"], "pi",
+        "下一次必须使用新配置的 agent"
+    );
+    let next_args = string_args(next_start);
+    assert_eq!(
+        &next_args[..4],
+        [
+            "--model",
+            "openai-codex/gpt-6.1-sol",
+            "--thinking",
+            "medium"
+        ],
+        "下一次必须使用新配置的 model / thinking"
+    );
+    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 2);
+    assert_eq!(
+        prompts[1]["text"], "/skill:code-review 新固定指示\n\n新任务",
+        "下一次必须使用新配置的 Skill 与 prompt"
+    );
+    assert_eq!(herdr.tabs()[1]["label"], "alpha · 新模板");
+}
+
+/// P39：创建后编辑并删除模板，已有 Bot 的显示名、对象目标与运行不被重写或关闭。
+///
+/// 模板删除后不可再选的承诺由 01 负责；这里只观察已有 Bot 与外部控制副作用。
+#[tokio::test(flavor = "multi_thread")]
+async fn editing_and_deleting_a_template_does_not_touch_an_existing_bot() {
+    let herdr = HerdrFixture::new("bot identity template lifecycle");
+    let storage = TempDir::new("bot identity template lifecycle storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+    let template = save_template(
+        &server,
+        template("omp", "保留模板", "{zone.name} · {bot.id}"),
+    )
+    .await;
+    let template_id = template["id"].as_str().expect("模板标识");
+
+    let finished = create_succeeded(&server, &zone_path, template_id, "已有任务").await;
+    let creation_id = finished["id"].as_str().expect("创建标识");
+    let calls_before = herdr.calls();
+    let tabs_before = herdr.tabs();
+    assert_eq!(calls_before.len(), 4, "一次创建只有四项外部控制调用");
+
+    let edited = edit_template(
+        &server,
+        template_id,
+        json!({
+            "name": "改名的模板",
+            "botName": "{zone.name} · {template.name}",
+            "agent": "pi",
+            "model": "gpt-6.1-sol",
+            "thinking": "medium",
+            "skill": null,
+            "prompt": "不应影响已有 Bot",
+        }),
+    )
+    .await;
+    assert_eq!(edited.status, 200, "编辑模板应成功：{}", edited.body);
+
+    let deleted = request_json_over_tcp(
+        server.addr(),
+        "DELETE",
+        &format!("/api/bot-templates/{template_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(deleted.status, 200, "删除模板应成功：{}", deleted.body);
+
+    // 给后端任何错误的后台反应留出时间；已有 Bot 不应出现新的控制调用或记录变化。
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        herdr.calls(),
+        calls_before,
+        "编辑或删除模板不得产生新的 Herdr 控制调用（包括关闭或改写对象）"
+    );
+    assert_eq!(
+        herdr.tabs(),
+        tabs_before,
+        "已有 Bot 的显示名、对象目标和 cwd 不得被重写"
+    );
+
+    let after = creation(&server, creation_id).await;
+    assert_eq!(after["stage"], "succeeded");
+    assert_eq!(after["name"], finished["name"]);
+    assert_eq!(after["tabId"], finished["tabId"]);
+    assert_eq!(after["paneId"], finished["paneId"]);
+    assert_eq!(after["agentName"], finished["agentName"]);
+    assert_eq!(after["inputSubmitted"], true);
+}
