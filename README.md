@@ -417,9 +417,10 @@ agent 的能力表也不互相复制。
    connect-bot 接入。
 
 页面把过程分成“正在启动”与“正在提交初始指示”两个稳定阶段。只有就绪与提交都确认才显示成功；
-失败或超时会保留已经创建的 Tab / agent 与已知标识，显示失败阶段，不自动删除、重建、重发。成功与失败
-都留在弹窗中由用户关闭，不自动切换到会话列表。创建 Bot 不登记 connect-bot 会话，也不修改会话监听、
-keepAlive 或关机安排。
+失败或超时会保留已经创建的 Tab / agent 与已知标识，显示失败阶段，不自动删除、重建、重发。提交被
+明确拒绝与投递超时是两种事实：前者说明 agent 已就绪但提交失败；后者只能说明投递结果未确认，不能
+断定未发送，也不会显示成功。成功与失败都留在弹窗中由用户关闭，不自动切换到会话列表。创建 Bot 不
+登记 connect-bot 会话，也不修改会话监听、keepAlive 或关机安排。
 
 接口：
 
@@ -1152,9 +1153,10 @@ npm --prefix frontend run test:browser
 创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
 adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
 调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
-`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识与
-不触碰会话/关机状态；`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程验证 Workspace 配置缺失、
-空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
+`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识、
+不触碰会话/关机状态，以及 Workspace 不可达/零匹配/多匹配、Tab 创建后启动失败、提交被拒绝与提交超时
+时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程
+验证 Workspace 配置缺失、空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
 
 mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
 且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：

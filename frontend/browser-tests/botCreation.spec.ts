@@ -161,6 +161,45 @@ test('从普通目录与 Git 工作树对应的 zone 行创建 Bot：预览名�
   await expect(page.getByTestId('bot-creation-dialog')).toHaveCount(0)
 })
 
+test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的现场一致', async ({ page }) => {
+  server = await startServer({ herdr: { behavior: { fail_prompt: true } } })
+  const zones = await prepareZones(server.baseURL)
+  await prepareTemplate(server.baseURL)
+  await page.goto(server.baseURL)
+
+  const dialog = await openBotDialog(page, zones.normal)
+  await expect(dialog.getByTestId('bot-name-preview')).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
+  await dialog.getByTestId('bot-input').fill('会被拒绝的指示')
+  await dialog.getByTestId('bot-create-submit').click()
+
+  const failure = dialog.getByTestId('bot-create-failure')
+  await expect(failure).toBeVisible({ timeout: 10_000 })
+  await expect(failure).toContainText('提交初始指示')
+  await expect(failure).toContainText(
+    '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。',
+  )
+  await expect(dialog.getByTestId('bot-create-success')).toHaveCount(0)
+
+  // 外部独立现场：Tab 已创建并保留；提交只到达一次且被拒绝，没有清理动作。
+  const tabs = server.herdrTabs()
+  expect(tabs).toHaveLength(1)
+  await expect(dialog.getByTestId('bot-result-tab')).toHaveText(String(tabs[0].tab_id))
+  await expect(dialog.getByTestId('bot-result-pane')).toHaveText(String(tabs[0].pane_id))
+  const prompts = callsOfKind('agent_prompt')
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0].text).toBe('会被拒绝的指示')
+  expect(server.herdrCalls().filter((call) => call.kind === 'unsupported')).toHaveLength(0)
+  await page.waitForTimeout(300)
+  expect(callsOfKind('agent_prompt')).toHaveLength(1)
+  expect(server.herdrTabs()).toHaveLength(1)
+
+  // 结果留在弹窗与文件列表；用户关闭前不自动切换会话列表。
+  await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog).toBeVisible()
+  await dialog.getByTestId('bot-create-close').click()
+  await expect(page.getByTestId('bot-creation-dialog')).toHaveCount(0)
+})
+
 test('目标 Workspace 不存在时失败留在弹窗，不假报成功也不自动跳转', async ({ page }) => {
   server = await startServer({
     herdr: {

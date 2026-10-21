@@ -72,6 +72,43 @@ async function openDialog(user: UserEvent, rowIndex = 1) {
   return screen.getByTestId('bot-creation-dialog')
 }
 
+/** 打开弹窗后创建立即进入指定的失败结果；用于检查页面侧的失败表述。 */
+function mockCreationFailure(failed: Record<string, unknown>) {
+  return mockFetch((url, method) => {
+    if (url === '/api/zones' && method === 'GET') {
+      return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+    }
+    if (url === '/api/zones/overview' && method === 'GET') {
+      return jsonResponse(200, { zones: [] })
+    }
+    if (url === '/api/bot-templates' && method === 'GET') {
+      return jsonResponse(200, {
+        templates: [TEMPLATE],
+        options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+      })
+    }
+    if (url === '/api/bots/preview' && method === 'POST') {
+      return jsonResponse(200, PREVIEW)
+    }
+    if (url === '/api/bots' && method === 'POST') {
+      return jsonResponse(202, creation('starting'))
+    }
+    if (url === '/api/bots/bc-1' && method === 'GET') {
+      return jsonResponse(200, failed)
+    }
+    return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+  })
+}
+
+async function submitCreation(user: UserEvent) {
+  const dialog = await openDialog(user, 0)
+  await vi.waitFor(() =>
+    expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(PREVIEW.name),
+  )
+  await user.click(within(dialog).getByTestId('bot-create-submit'))
+  return dialog
+}
+
 describe('从 zone 创建 Bot：名称预览与阶段', () => {
   it('每个 zone 行都有“+”，弹窗绑定所选 zone，并只显示后端预览的只读名称', async () => {
     const user = userEvent.setup()
@@ -242,6 +279,71 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
     const failure = await within(dialog).findByTestId('bot-create-failure')
     expect(failure).toHaveTextContent('启动 agent')
     expect(failure).toHaveTextContent('agent 没有在时限内就绪。')
+    expect(within(dialog).queryByTestId('bot-create-success')).toBeNull()
+    expect(within(dialog).getByTestId('bot-result-tab')).toHaveTextContent('w-target:t9')
+    expect(within(dialog).getByTestId('bot-result-pane')).toHaveTextContent('w-target:p9')
+    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('提交被明确拒绝时说明现场已存在与提交失败，而不是结果未确认', async () => {
+    const user = userEvent.setup()
+    mockCreationFailure(
+      creation('failed', {
+        tabId: 'w-target:t9',
+        paneId: 'w-target:p9',
+        agentName: 'bot-000000000009',
+        failure: {
+          stage: 'submit',
+          code: 'herdr-command-failed',
+          message:
+            'agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。',
+        },
+      }),
+    )
+
+    render(<App />)
+    const dialog = await submitCreation(user)
+
+    const failure = await within(dialog).findByTestId('bot-create-failure')
+    expect(failure).toHaveTextContent('提交初始指示')
+    expect(failure).toHaveTextContent(
+      '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。',
+    )
+    expect(failure).not.toHaveTextContent('投递结果未确认')
+    expect(within(dialog).queryByTestId('bot-create-success')).toBeNull()
+    expect(within(dialog).getByTestId('bot-result-tab')).toHaveTextContent('w-target:t9')
+    expect(within(dialog).getByTestId('bot-result-pane')).toHaveTextContent('w-target:p9')
+    expect(within(dialog).getByTestId('bot-result-agent')).toHaveTextContent(
+      'bot-000000000009',
+    )
+    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('投递超时只表述为结果未确认，不宣称未发送也不显示成功', async () => {
+    const user = userEvent.setup()
+    mockCreationFailure(
+      creation('failed', {
+        tabId: 'w-target:t9',
+        paneId: 'w-target:p9',
+        agentName: 'bot-000000000009',
+        failure: {
+          stage: 'submit',
+          code: 'herdr-timeout',
+          message:
+            'agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。',
+        },
+      }),
+    )
+
+    render(<App />)
+    const dialog = await submitCreation(user)
+
+    const failure = await within(dialog).findByTestId('bot-create-failure')
+    expect(failure).toHaveTextContent('提交初始指示')
+    expect(failure).toHaveTextContent(
+      '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。',
+    )
+    expect(failure).not.toHaveTextContent('确定未发送')
     expect(within(dialog).queryByTestId('bot-create-success')).toBeNull()
     expect(within(dialog).getByTestId('bot-result-tab')).toHaveTextContent('w-target:t9')
     expect(within(dialog).getByTestId('bot-result-pane')).toHaveTextContent('w-target:p9')
