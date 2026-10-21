@@ -97,7 +97,17 @@ async fn creation(server: &TestServer, id: &str) -> Value {
 
 /// 轮询公开状态直到指定阶段；超时让用例失败并打印最近一次响应。
 async fn wait_stage(server: &TestServer, id: &str, expected: &str) -> Value {
-    let deadline = tokio::time::Instant::now() + STAGE_DEADLINE;
+    wait_stage_within(server, id, expected, STAGE_DEADLINE).await
+}
+
+/// 与 [`wait_stage`] 相同，但允许超时用例给出超过普通阶段时限的等待窗口。
+async fn wait_stage_within(
+    server: &TestServer,
+    id: &str,
+    expected: &str,
+    window: Duration,
+) -> Value {
+    let deadline = tokio::time::Instant::now() + window;
     loop {
         let view = creation(server, id).await;
         if view["stage"] == expected {
@@ -119,6 +129,45 @@ fn calls_of_kind(herdr: &HerdrFixture, kind: &str) -> Vec<Value> {
         .into_iter()
         .filter(|call| call["kind"] == kind)
         .collect()
+}
+
+/// 外部调用记录里的步骤顺序；`unsupported` 表示 herdr-bot 尝试了夹具不认识的命令。
+fn call_kinds(herdr: &HerdrFixture) -> Vec<String> {
+    herdr
+        .calls()
+        .into_iter()
+        .filter_map(|call| call["kind"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// 准备一个已登记的真实 zone 与一个已保存的模板，供故障矩阵用例复用。
+async fn prepare_zone_and_template(server: &TestServer, storage: &TempDir) -> (String, String) {
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(server, &zone).await;
+    let template = save_template(server, default_template()).await;
+    let template_id = template["id"].as_str().expect("模板标识").to_string();
+    (zone_path, template_id)
+}
+
+/// 经公开预览与创建入口接受一次创建，返回它的生命周期标识。
+async fn accept_creation(
+    server: &TestServer,
+    zone: &str,
+    template_id: &str,
+    input: &str,
+) -> String {
+    let preview_response = preview(server, zone, template_id).await;
+    assert_eq!(
+        preview_response.status, 200,
+        "预览应成功：{}",
+        preview_response.body
+    );
+    let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
+    let response = create(server, create_body(zone, template_id, &preview, input)).await;
+    assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
+    accepted["id"].as_str().expect("创建标识").to_string()
 }
 
 fn zone_leaf(path: &str) -> String {
@@ -327,10 +376,22 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
             .expect("必须启动 agent");
         assert_eq!(start["agent_kind"], "omp");
         assert_eq!(start["pane"], last_tab["pane_id"]);
+        let args = start["args"].as_array().expect("agent start 的参数是数组");
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg == "--model" || arg == "--thinking"),
+            "默认 model / thinking 不传启动覆盖参数：{args:?}"
+        );
         assert_eq!(
-            start["args"],
-            json!([]),
-            "默认 model / thinking 不传启动覆盖参数"
+            args.len(),
+            2,
+            "除自己独立的会话目录外不应有额外启动参数：{args:?}"
+        );
+        assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
+        assert!(
+            Path::new(args[1].as_str().expect("会话目录是字符串")).is_absolute(),
+            "会话目录必须是绝对路径：{args:?}"
         );
 
         let prompt = calls_of_kind(&herdr, "agent_prompt")
@@ -478,6 +539,7 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
     let failed = wait_stage(&server, id, "failed").await;
     assert_eq!(failed["stage"], "failed");
     assert_eq!(failed["failure"]["stage"], "submit");
+    assert_eq!(failed["failure"]["code"], "herdr-command-failed");
     assert_eq!(failed["inputSubmitted"], false);
     assert!(
         failed["tabId"].as_str().is_some(),
@@ -487,11 +549,87 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
         failed["paneId"].as_str().is_some(),
         "已创建的 Pane 标识必须保留"
     );
-    assert_eq!(
-        calls_of_kind(&herdr, "agent_prompt").len(),
-        1,
-        "失败后不自动重发"
+    assert!(
+        failed["agentName"].as_str().is_some(),
+        "已启动的 agent 控制别名必须保留"
     );
+    let message = failed["failure"]["message"]
+        .as_str()
+        .expect("失败必须有可读说明");
+    assert!(message.contains("agent 已就绪"), "{message}");
+    assert!(message.contains("被明确拒绝"), "{message}");
+    assert!(message.contains("保留"), "{message}");
+    assert!(
+        !message.contains("未确认"),
+        "明确拒绝不能表述成结果未确认：{message}"
+    );
+
+    // 外部独立记录：agent 已就绪、投递已被夹具收到并拒绝；之后没有重发或清理动作。
+    let created_tab = herdr.tabs().pop().expect("受控 Herdr 必须记录已创建的 Tab");
+    assert_eq!(failed["tabId"], created_tab["tab_id"]);
+    assert_eq!(failed["paneId"], created_tab["pane_id"]);
+    let expected_kinds = vec![
+        "workspace_list".to_string(),
+        "tab_create".to_string(),
+        "agent_start".to_string(),
+        "agent_prompt".to_string(),
+    ];
+    assert_eq!(call_kinds(&herdr), expected_kinds);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        call_kinds(&herdr),
+        expected_kinds,
+        "失败后不得自动重发、重建、关闭或删除现场"
+    );
+    assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 仍保留");
+}
+
+/// P36 / P37 / P38：投递超时无法确认结果时，只能表述为未确认；现场保留且不重发。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retrying() {
+    let herdr = HerdrFixture::new("bot creation prompt timeout");
+    // 夹具先记录这次投递，再睡过 adapter 的提交时限：外部副作用已经发生，结果却未知。
+    herdr.set_behavior(json!({ "prompt_delay_ms": 31_000 }));
+    let storage = TempDir::new("bot creation prompt timeout storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    let (zone_path, template_id) = prepare_zone_and_template(&server, &storage).await;
+    let id = accept_creation(&server, &zone_path, &template_id, "超时的指示").await;
+
+    let failed = wait_stage_within(&server, &id, "failed", Duration::from_secs(50)).await;
+    assert_eq!(failed["stage"], "failed", "不能显示创建成功");
+    assert_eq!(failed["failure"]["stage"], "submit");
+    assert_eq!(failed["failure"]["code"], "herdr-timeout");
+    assert_eq!(failed["inputSubmitted"], false, "超时不能被说成已确认提交");
+    assert!(failed["tabId"].as_str().is_some());
+    assert!(failed["paneId"].as_str().is_some());
+    assert!(failed["agentName"].as_str().is_some());
+
+    let message = failed["failure"]["message"]
+        .as_str()
+        .expect("失败必须有可读说明");
+    assert!(message.contains("投递结果未确认"), "{message}");
+    assert!(message.contains("不能据此断定未发送"), "{message}");
+    assert!(
+        !message.contains("没有发送"),
+        "超时不能表述成确定未发送：{message}"
+    );
+
+    // 外部独立记录：投递确实到达过夹具；之后没有重发、重建、关闭或删除。
+    let expected_kinds = vec![
+        "workspace_list".to_string(),
+        "tab_create".to_string(),
+        "agent_start".to_string(),
+        "agent_prompt".to_string(),
+    ];
+    assert_eq!(call_kinds(&herdr), expected_kinds);
+    assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        call_kinds(&herdr),
+        expected_kinds,
+        "超时后不得自动重发、重建、关闭或删除现场"
+    );
+    assert_eq!(herdr.tabs().len(), 1, "超时后不得关闭或删除现场");
 }
 
 /// P27 / P33：agent 启动失败后绝不提交初始指示；已创建的 Tab / Pane 仍可定位。
@@ -519,12 +657,39 @@ async fn a_failed_agent_start_never_submits_input() {
 
     let failed = wait_stage(&server, id, "failed").await;
     assert_eq!(failed["failure"]["stage"], "start");
+    assert_eq!(failed["failure"]["code"], "herdr-command-failed");
     assert_eq!(failed["inputSubmitted"], false);
     assert!(failed["tabId"].as_str().is_some());
     assert!(failed["paneId"].as_str().is_some());
     assert!(
-        calls_of_kind(&herdr, "agent_prompt").is_empty(),
-        "启动未确认就绪时不得提交初始指示"
+        failed["agentName"].as_str().is_some(),
+        "已尝试启动的 agent 控制别名必须保留"
+    );
+    let message = failed["failure"]["message"]
+        .as_str()
+        .expect("失败必须有可读说明");
+    assert!(message.contains("Tab 与 Pane 已创建"), "{message}");
+    assert!(message.contains("没有提交初始指示"), "{message}");
+
+    // 外部独立记录：Tab 已创建并保留，启动被拒绝后没有任何提交或清理动作。
+    assert_eq!(
+        call_kinds(&herdr),
+        vec![
+            "workspace_list".to_string(),
+            "tab_create".to_string(),
+            "agent_start".to_string(),
+        ]
+    );
+    assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        call_kinds(&herdr),
+        vec![
+            "workspace_list".to_string(),
+            "tab_create".to_string(),
+            "agent_start".to_string(),
+        ],
+        "启动失败后不得提交、重试、重建、关闭或删除现场"
     );
 }
 
@@ -578,8 +743,115 @@ async fn workspace_mismatches_fail_without_creating_a_tab() {
             failed.get("paneId").is_none(),
             "没有新建 Pane 时不得伪造 Pane 标识：{failed}"
         );
+        assert!(
+            failed.get("agentName").is_none(),
+            "没有启动 agent 时不得伪造控制别名：{failed}"
+        );
+        let message = failed["failure"]["message"]
+            .as_str()
+            .expect("失败必须有可读说明");
+        assert!(message.contains("没有新建 Tab"), "{message}");
+
+        // 外部独立记录：只有一次只读列表查询；没有新建 Workspace、没有启动 Herdr、
+        // 没有回退到焦点或其他名称相近的 Workspace，也没有重试。
+        assert_eq!(
+            call_kinds(&herdr),
+            vec!["workspace_list".to_string()],
+            "{label}：Workspace 不唯一时必须停止，不能任取一个或改换目标"
+        );
+        assert!(herdr.tabs().is_empty());
         assert!(calls_of_kind(&herdr, "tab_create").is_empty());
         assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+    }
+}
+
+/// P42：Herdr 不可达时经公开创建入口失败；没有 Tab、agent 或 Workspace 副作用。
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unreachable_herdr_fails_before_any_tab_or_agent_control() {
+    let herdr = HerdrFixture::new("bot creation unreachable herdr");
+    let storage = TempDir::new("bot creation unreachable storage");
+    let mut config = config_with(&herdr, &storage);
+    // 可执行文件不存在就是生产 adapter 的“无法启动或连接 Herdr”路径；不是命令被拒绝。
+    config.herdr.executable = herdr.path().join("missing-herdr.exe");
+    let server = TestServer::start(&config).await;
+    let (zone_path, template_id) = prepare_zone_and_template(&server, &storage).await;
+    let id = accept_creation(&server, &zone_path, &template_id, "不应被提交").await;
+
+    let failed = wait_stage(&server, &id, "failed").await;
+    assert_eq!(failed["failure"]["stage"], "workspace");
+    assert_eq!(failed["failure"]["code"], "herdr-unavailable");
+    assert_eq!(failed["inputSubmitted"], false);
+    assert!(failed.get("tabId").is_none());
+    assert!(failed.get("paneId").is_none());
+    assert!(failed.get("agentName").is_none());
+    let message = failed["failure"]["message"]
+        .as_str()
+        .expect("失败必须有可读说明");
+    assert!(message.contains("没有继续创建"), "{message}");
+
+    // 外部独立记录：不可达时没有产生任何控制调用，也没有创建 Tab。
+    assert!(
+        herdr.calls().is_empty(),
+        "不可达时不得产生外部控制调用：{:?}",
+        herdr.calls()
+    );
+    assert!(herdr.tabs().is_empty(), "不可达时不得创建 Tab");
+}
+
+/// P37 / P42：Workspace 查询与 Tab 创建错误后不继续后续阶段，也不自动重试。
+#[tokio::test(flavor = "multi_thread")]
+async fn workspace_query_and_tab_failures_stop_the_creation_chain() {
+    for (label, behavior, failure_stage, expected_kinds, expected_message) in [
+        (
+            "workspace",
+            json!({ "fail_workspace_list": true }),
+            "workspace",
+            vec!["workspace_list".to_string()],
+            "没有新建 Tab",
+        ),
+        (
+            "tab",
+            json!({ "fail_tab_create": true }),
+            "tab",
+            vec!["workspace_list".to_string(), "tab_create".to_string()],
+            "没有继续启动 agent",
+        ),
+    ] {
+        let herdr = HerdrFixture::new(&format!("bot creation {label} failure chain"));
+        herdr.set_behavior(behavior);
+        let storage = TempDir::new(&format!("bot creation {label} failure chain storage"));
+        let server = TestServer::start(&config_with(&herdr, &storage)).await;
+        let (zone_path, template_id) = prepare_zone_and_template(&server, &storage).await;
+        let id = accept_creation(&server, &zone_path, &template_id, "不应被提交").await;
+
+        let failed = wait_stage(&server, &id, "failed").await;
+        assert_eq!(failed["failure"]["stage"], failure_stage);
+        assert_eq!(failed["failure"]["code"], "herdr-command-failed");
+        assert_eq!(failed["inputSubmitted"], false);
+        assert!(
+            failed.get("tabId").is_none(),
+            "{label}：未取得 Tab 标识时不得伪造"
+        );
+        assert!(
+            failed.get("paneId").is_none(),
+            "{label}：未取得 Pane 标识时不得伪造"
+        );
+        let message = failed["failure"]["message"]
+            .as_str()
+            .expect("失败必须有可读说明");
+        assert!(message.contains(expected_message), "{message}");
+
+        // 外部独立记录：执行到失败步骤为止，之后没有启动、提交、重试或清理。
+        assert_eq!(call_kinds(&herdr), expected_kinds, "{label}");
+        assert!(herdr.tabs().is_empty(), "{label}：不得留下未记录的 Tab");
+        assert!(calls_of_kind(&herdr, "agent_start").is_empty());
+        assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            call_kinds(&herdr),
+            expected_kinds,
+            "{label}：失败后不得继续或自动重试"
+        );
     }
 }
 

@@ -9,7 +9,7 @@
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -171,6 +171,21 @@ pub fn is_valid_bot_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+/// 每个 Bot 的会话目录根：模板存储文件所在目录下的 `bot-sessions`。
+///
+/// 每个 Bot 使用其中以本次创建标识命名的独立目录。显式会话目录让 OMP 跳过 `autoResume` 的隐式
+/// 续接，也让 Pi 不依赖其默认查找；目录位于 herdr-bot 自己的数据位置，不写进 zone 工作目录。
+/// 启动路径在服务启动时解析成绝对路径，避免 agent 以自己的 cwd 解释相对路径。
+pub fn session_root(storage_file: &Path) -> PathBuf {
+    let parent = storage_file
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::path::absolute(parent)
+        .unwrap_or_else(|_| parent.to_path_buf())
+        .join("bot-sessions")
+}
+
 /// 按模板的命名规则渲染展示名。
 ///
 /// 只有四个已承诺字段被替换；未知占位符保持原样。`{bot.id}` 取本次的短实例标识，不是 Herdr
@@ -210,8 +225,9 @@ pub fn compose_initial_input(template: &BotTemplate, input: &str) -> String {
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
 /// 两个固定模型都映射到约定的完整 provider / model 标识；模型沿用默认值时不传模型覆盖，
-/// thinking 也必须是默认值（模板保存时已校验）。
-pub fn agent_launch_args(template: &BotTemplate) -> Vec<String> {
+/// thinking 也必须是默认值（模板保存时已校验）。`--session-dir` 始终显式传入：它给本次 Bot
+/// 一个全新的会话位置，使 agent 不会因 `autoResume` 一类默认设置续接同 cwd 的旧对话。
+pub fn agent_launch_args(template: &BotTemplate, session_dir: &Path) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = template.model.provider_model() {
         args.push("--model".to_string());
@@ -221,6 +237,8 @@ pub fn agent_launch_args(template: &BotTemplate) -> Vec<String> {
         args.push("--thinking".to_string());
         args.push(template.thinking.label().to_string());
     }
+    args.push("--session-dir".to_string());
+    args.push(session_dir.to_string_lossy().into_owned());
     args
 }
 
@@ -234,6 +252,7 @@ pub async fn run_creation(
     template: BotTemplate,
     zone: String,
     input: String,
+    session_dir: PathBuf,
 ) {
     let workspace = match herdr.workspace().await {
         Ok(workspace) => workspace,
@@ -262,7 +281,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.agent_name = Some(agent_name.clone());
     }
-    let args = agent_launch_args(&template);
+    let args = agent_launch_args(&template, &session_dir);
     let kind = template.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
@@ -300,16 +319,32 @@ async fn fail(job: &Arc<Mutex<CreationView>>, stage: FailureStage, error: &Herdr
 }
 
 /// 在 Herdr 的原始说明之外补上现场状态；不把未知的提交结果说成确定。
+///
+/// 同一阶段里，“明确被拒绝”和“超时/响应不可理解”是两种不同事实：前者可以说提交失败，
+/// 后者只能说明结果未确认，不能把它表述成确定未发送。已经取得的对象标识不会被撤销。
 fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
     let base = error.message();
+    let outcome_unknown = matches!(
+        error,
+        HerdrError::Timeout(_) | HerdrError::Unavailable(_) | HerdrError::UnexpectedResponse { .. }
+    );
     match stage {
-        FailureStage::Workspace => format!("{base} 本次没有新建 Tab。"),
-        FailureStage::Tab => format!("{base} 没有继续启动 agent。"),
-        FailureStage::Start => {
-            format!("{base} 已创建的对象如果存在会保留；没有提交初始指示。")
+        FailureStage::Workspace => format!("{base} 本次没有新建 Tab，也没有启动 agent。"),
+        FailureStage::Tab if outcome_unknown => {
+            format!("{base} 无法确认 Tab 是否已经创建；本次没有继续启动 agent。")
         }
+        FailureStage::Tab => format!("{base} 新建 Tab 被拒绝；本次没有继续启动 agent。"),
+        FailureStage::Start if outcome_unknown => format!(
+            "{base} Tab 与 Pane 已创建并保留；agent 的就绪状态未确认，因此没有提交初始指示。"
+        ),
+        FailureStage::Start => {
+            format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
+        }
+        FailureStage::Submit if outcome_unknown => format!(
+            "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
+        ),
         FailureStage::Submit => {
-            format!("{base} Tab 与 agent 已保留；本次创建不算成功。")
+            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
         }
     }
 }

@@ -316,6 +316,16 @@ fn fail(code: &str, message: &str) -> ! {
 }
 
 fn usage(args: &[String]) -> ! {
+    // 未预期的命令也记入外部调用记录：测试据此证明失败或超时之后没有额外的
+    // 删除、关闭、重建或重发动作，而不是只相信 herdr-bot 自己返回的结果。
+    record(
+        "calls.jsonl",
+        json!({
+            "at": now_ms(),
+            "kind": "unsupported",
+            "argv": args,
+        }),
+    );
     eprintln!(
         "{}",
         json!({
