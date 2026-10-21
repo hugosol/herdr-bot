@@ -84,6 +84,23 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 - 终端必须处于预期的 agent 输入界面；Herdr 在识别为 `blocked` 时拒绝 `agent.prompt`。它提供的是终端文本与 Enter 提交，不是带角色的聊天 API。[H1]
 - 多行文本应作为一次粘贴再提交，不要逐行模拟多个 Enter。Pi 的 bracketed-paste 路径会取消自动补全，避免提交键仅确认补全项。[P5][H1]
 
+## 新对话与会话目录
+
+创建 Bot 必须得到独立的新对话，不能因为 agent 的隐式续接设置载入同一 cwd 的旧上下文。
+
+- OMP 的 `autoResume` 设置在没有显式会话标志或会话目录时，会续接 cwd 最近的会话
+  （[设置说明](../../oh-my-pi/docs/settings.md)、[会话操作](../../oh-my-pi/docs/session-operations-export-share-fork-resume.md)）。
+  其启动决议在 `--session-dir` 存在时直接创建新会话，不再进入 autoResume 分支
+  （[main.ts](../../oh-my-pi/packages/coding-agent/src/main.ts)）。`--session-dir` 是启动参数
+  （[flag-tables.ts](../../oh-my-pi/packages/coding-agent/src/cli/flag-tables.ts)）。
+- Pi 在没有 `--continue` / `--resume` 时默认创建新会话；同样支持 `--session-dir`
+  （[args.ts](../../pi/packages/coding-agent/src/cli/args.ts)）。
+- herdr-bot 每次创建都把 `--session-dir` 设为模板存储目录旁的
+  `bot-sessions/<本次创建标识>`，并在该目录中启动目标 agent。这样启动选择不依赖 cwd 查找，
+  也不以新 Tab 本身作为“新对话”的证据；目录是真实外部位置，不是伪造的 Herdr 标识。
+- 受控 Herdr 记录可以证明启动选择与参数；真实 OMP / Pi TUI 是否未载入旧上下文仍需人工 H1
+  在实际终端中对照旧、新会话文件或会话标识。
+
 ## 验证记录
 
 已执行两组无模型请求的生产模块 smoke：
