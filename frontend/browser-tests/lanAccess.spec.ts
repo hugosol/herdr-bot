@@ -11,6 +11,7 @@ import {
   expectNoHorizontalOverflow,
   jsonPost,
   scrollToDialogAction,
+  zoneRowFor,
 } from './ui'
 
 /**
@@ -157,7 +158,7 @@ test('局域网地址可管理共享模板并从 zone 创建 Bot，不额外要�
 
   // 从 zone 创建 Bot：预览、提交、阶段、成功与定位都在局域网页面完成。
   await activate(page.getByTestId('tab-files'), true)
-  const zoneRow = page.getByTestId('zone-item').filter({ hasText: zone })
+  const zoneRow = zoneRowFor(page, zone)
   await activate(zoneRow.getByTestId('zone-create-bot'), true)
   const creation = page.getByTestId('bot-creation-dialog')
   await expect(creation).toBeVisible()

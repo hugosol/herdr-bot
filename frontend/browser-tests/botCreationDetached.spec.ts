@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
 import { startServer, type E2EServer } from './support'
+import { zoneRowFor } from './ui'
 
 const TEMPLATE = {
   name: '审查',
@@ -66,7 +67,7 @@ async function prepareTemplate(baseURL: string) {
 
 async function openBotDialog(page: Page, zonePath: string) {
   await page.getByTestId('tab-files').click()
-  const row = page.getByTestId('zone-item').filter({ hasText: zonePath })
+  const row = zoneRowFor(page, zonePath)
   await expect(row).toHaveCount(1)
   await row.getByTestId('zone-create-bot').click()
   const dialog = page.getByTestId('bot-creation-dialog')

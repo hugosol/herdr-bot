@@ -16,6 +16,7 @@ import {
   type ZoneRegistration,
   type ZoneResult,
 } from './zoneApi'
+import { zoneDisplayName } from './zoneDisplay'
 import {
   describeWatchProblem,
   type ZoneWatchFeed,
@@ -34,7 +35,7 @@ function describeFailure(result: ZoneResult, action: string): string {
 }
 
 /**
- * 文件列表：zone 登记列表的入口。
+ * zone 入口：zone 登记列表与文件浏览的入口。
  *
  * 路径指 herdr-bot 服务所在电脑上的目录，不是手机或浏览器所在设备；页面没有客户端文件选择器。
  * 每次进入这个顶层入口都重新读取后端列表，因此另一台设备新增的登记会在这里出现；登记成功
@@ -88,7 +89,7 @@ export function FileListPanel({
     }
   }, [])
 
-  // 进入文件列表时读取后端共享列表；切走时取消尚未落地的读取结果。
+  // 进入 zone 入口时读取后端共享列表；切走时取消尚未落地的读取结果。
   useEffect(() => {
     if (!active) return
 
@@ -222,9 +223,11 @@ export function FileListPanel({
         <span
           className="zone-badge zone-badge--error"
           data-testid="zone-badge"
+          role="img"
+          aria-label={`待提交状态不可用：${summary.error}`}
           title={summary.error}
         >
-          待提交状态不可用
+          ⚠
         </span>
       )
     }
@@ -240,8 +243,10 @@ export function FileListPanel({
         className="zone-badge"
         data-testid="zone-badge"
         data-conflict={summary.conflict ? 'true' : undefined}
+        aria-label={`${summary.pendingCount} 项待提交${summary.conflict ? '，存在冲突' : ''}`}
+        title={`${summary.pendingCount} 项待提交${summary.conflict ? '，存在冲突' : ''}`}
       >
-        {summary.pendingCount} 项待提交
+        {summary.pendingCount}
       </span>
     )
   }
@@ -359,17 +364,23 @@ export function FileListPanel({
         ) : (
           <ul className="zone-list" data-testid="zone-list">
             {zones.map((registration) => (
-              <li key={registration.path} className="zone-item" data-testid="zone-item">
-                {/* 整行就是浏览入口：路径与角标都在按钮内部，点击行内任一非取消区域都会进入 zone。 */}
+              <li
+                key={registration.path}
+                className="zone-item"
+                data-testid="zone-item"
+                data-zone-path={registration.path}
+              >
+                {/* 浏览入口只显示末级目录名；完整路径留在无障碍名称、悬停标题与进入后的工具栏中。 */}
                 <button
                   type="button"
                   className="zone-item__open"
                   aria-label={`浏览 ${registration.path}`}
+                  title={registration.path}
                   data-testid="open-zone"
                   disabled={pending !== null}
                   onClick={() => setOpenZone(registration.path)}
                 >
-                  <code className="zone-item__path">{registration.path}</code>
+                  <span className="zone-item__name">{zoneDisplayName(registration.path)}</span>
                   {badgeFor(registration.path)}
                 </button>
                 <button

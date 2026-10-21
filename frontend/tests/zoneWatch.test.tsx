@@ -202,9 +202,11 @@ describe('zone 自动刷新与监听健康', () => {
 
     fixture.pendingCount = 1
     emit(source, 'refresh', { zone: ZONE, at: 100, generation: 1 })
-    await waitFor(() =>
-      expect(screen.getByTestId('zone-badge')).toHaveTextContent('1 项待提交'),
-    )
+    await waitFor(() => {
+      const badge = screen.getByTestId('zone-badge')
+      expect(badge).toHaveTextContent(/^1$/)
+      expect(badge).toHaveAttribute('aria-label', '1 项待提交')
+    })
   })
 
   it('监听失效明确显示错误与过期提示，不自动宣称恢复；手动刷新仍取得当前事实', async () => {

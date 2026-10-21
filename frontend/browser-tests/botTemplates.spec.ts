@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 import { startServer, type TemplateView, type E2EServer } from './support'
+import { serializedBotRule } from './ui'
 
 /** 只取模板字段，忽略后端生成的标识。 */
 function fieldsOf(template: TemplateView) {
@@ -46,7 +47,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   }
 
   await page.goto(server.baseURL)
-  await expect(page.getByTestId('tab-templates')).toHaveText('Bot 模板')
+  await expect(page.getByTestId('tab-templates')).toHaveText('bot')
 
   // 既有 tab 仍可操作。
   await page.getByTestId('tab-files').click()
@@ -64,12 +65,14 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   const botName = page.getByTestId('template-bot-name')
   await botName.fill('')
   await page.getByTestId('insert-zone-name').click()
-  await expect(botName).toHaveValue('{zone.name}')
+  await expect.poll(() => serializedBotRule(botName)).toBe('{zone.name}')
   await page.getByTestId('insert-template-name').click()
-  await expect(botName).toHaveValue('{zone.name}{template.name}')
+  await expect.poll(() => serializedBotRule(botName)).toBe('{zone.name}{template.name}')
   await page.getByTestId('insert-agent').click()
   await page.getByTestId('insert-bot-id').click()
-  await expect(botName).toHaveValue('{zone.name}{template.name}{agent}{bot.id}')
+  await expect
+    .poll(() => serializedBotRule(botName))
+    .toBe('{zone.name}{template.name}{agent}{bot.id}')
   await expect(dialog.getByTestId('bot-name-preview')).toHaveText(
     'alpha发布检查ompa7f3c2',
   )
@@ -112,7 +115,9 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   await row.getByTestId('template-edit').click()
   await expect(page.getByTestId('template-dialog')).toBeVisible()
   await expect(page.getByTestId('template-name')).toHaveValue('发布检查')
-  await expect(page.getByTestId('template-bot-name')).toHaveValue(literal.botName)
+  await expect
+    .poll(() => serializedBotRule(page.getByTestId('template-bot-name')))
+    .toBe(literal.botName)
   await expect(page.getByTestId('template-prompt')).toHaveValue(literal.prompt)
   await page.getByTestId('template-name').fill('发布检查（改）')
   await page.getByTestId('template-bot-name').fill('{template.name} · {agent} · {bot.id}')
@@ -147,7 +152,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   expect(unavailable.status).toBe(404)
   expect((await unavailable.json()).code).toBe('template-not-found')
 
-  // 删除后仍停留在 Bot 模板 tab，不自动跳到会话列表。
+  // 删除后仍停留在 bot tab，不自动跳到 chat。
   await expect(page.getByTestId('tab-templates')).toHaveAttribute('aria-selected', 'true')
 })
 
@@ -195,7 +200,7 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
   await model.selectOption('deepseek-flash')
   await expect(thinking).toHaveValue('default')
   await expect(page.getByTestId('thinking-notice')).toContainText(
-    '当前思考级别「xhigh」不适用于 omp / deepseek-flash，已重置为「沿用默认值」。',
+    '当前思考级别「xhigh」不适用于 omp / deepseek-flash，已重置为「沿用 Agent 默认值」。',
   )
 
   // 仍适用：保留，不提示。

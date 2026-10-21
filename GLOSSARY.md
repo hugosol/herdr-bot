@@ -1,12 +1,12 @@
 # herdr-bot 主界面
 
-在 Windows 上手动启动的网页主界面：本机浏览器与同一局域网内的手机访问同一个服务；分为「会话列表」「文件列表」与「控制面板」三个 tab，每次打开或整页刷新默认会话列表。
+在 Windows 上手动启动的网页主界面：本机浏览器与同一局域网内的手机访问同一个服务；分为 `chat`、`bot`、`zone` 与 `server` 四个 tab，每次打开或整页刷新默认进入 `chat`。
 
 ## Language
 
 **herdr-bot 主界面**:
 本服务在浏览器中提供的整个页面；本机与局域网设备访问同一实例。
-_Avoid_: omp-bot 主界面（旧名）, 控制面板, 管理后台, 仪表盘
+_Avoid_: omp-bot 主界面（旧名）, 管理后台, 仪表盘
 
 **herdr**:
 外部项目，负责管理 session；herdr-bot 不重复实现其 session 管理。
@@ -20,13 +20,17 @@ _Avoid_: herdr session, 会话登记, connect-bot 会话
 创建 Bot 时复用的预设，描述目标 agent、模型与思考级别选择、实例命名规则及初始化输入；它不假定不同 agent 具有统一的 Skill 调用方式。
 _Avoid_: 会话登记, agent session, 通用 Skill 协议
 
+**bot 入口**:
+herdr-bot 主界面中承载 bot-template 新增、查看、编辑与删除的 tab，界面标签为 `bot`。
+_Avoid_: Bot 模板 tab（旧界面名）, Bot 管理后台
+
 **connect-bot**:
 独立于 herdr 的 agent 会话接入与管理机制；任何实现 connect-bot 的 agent 都可以把 agent session 上报到 herdr-bot 主界面，无需由 herdr 创建或托管。当前实现由 my-agent-toolkit 提供，支持多种 agent。
 _Avoid_: herdr, herdr-bot
 
-**控制面板**:
-herdr-bot 主界面中承载固定操作的 tab；只反馈脚本调用情况，不检查后台程序是否就绪。
-_Avoid_: 管理后台, 仪表盘, 主界面
+**server 入口**:
+herdr-bot 主界面中承载固定操作的 tab，界面标签为 `server`；只反馈脚本调用情况，不检查后台程序是否就绪。
+_Avoid_: 控制面板（旧界面名）, 管理后台, 仪表盘, 主界面
 
 **zone**:
 用户登记的、位于 herdr-bot 服务所在电脑上的一个目录，是文件浏览的根边界。它可以是普通目录，也可以对应一个 Git 工作树；后者的 Git 操作只针对该仓库，不递归管理嵌套仓库。
@@ -40,9 +44,9 @@ _Avoid_: 本机收藏夹, 浏览器目录列表
 显式配置在服务端文件中的服务器目录，新 zone 只能作为它的直接子目录创建；它不是代码里可猜测的默认位置，客户端也不能在请求中替换。
 _Avoid_: 默认目录, 固定根目录
 
-**文件列表**:
-herdr-bot 主界面中承载 zone 登记列表、并作为进入 zone 文件浏览入口的 tab；登记路径指服务所在电脑上的目录，不是浏览设备上的目录。
-_Avoid_: 控制面板, 变更视图, 浏览器目录列表
+**zone 入口**:
+herdr-bot 主界面中承载 zone 登记列表、并作为进入 zone 文件浏览入口的 tab，界面标签为 `zone`；登记路径指服务所在电脑上的目录，不是浏览设备上的目录。
+_Avoid_: 文件列表（旧界面名）, 控制面板, 变更视图, 浏览器目录列表
 
 **文件浏览视图**:
 zone 内展示目录树与文件内容的浏览视图，普通目录与 Git 工作树共用；待提交变更及其所在目录的提示帮助用户定位变更范围。
@@ -116,9 +120,9 @@ _Avoid_: omp 会话, herdr session, 连接, 进程, 客户端
 herdr-bot 当前跟踪某个 agent session 的记录；它不同于 agent 对话本身，登记消失不表示对话或聊天记录被删除。
 _Avoid_: 会话历史, 连接, agent 会话
 
-**会话列表**:
-herdr-bot 主界面中呈现所有当前已登记 agent session 的 keepAlive 与最后上报的 agent 状态的 tab。
-_Avoid_: 会话面板, 会话页
+**chat 入口**:
+herdr-bot 主界面中呈现所有当前已登记 agent session 的 keepAlive 与最后上报的 agent 状态的 tab，界面标签为 `chat`；它是打开或整页刷新后的默认入口。
+_Avoid_: 会话列表（旧界面名）, 会话面板, 会话页
 
 **keepAlive**:
 herdr-bot 对已登记 agent session 最近上报是否仍在有效期内的判断，定时心跳是其输入之一。它与 agent 是否正在工作、浏览器能否获取最新状态是不同的概念。

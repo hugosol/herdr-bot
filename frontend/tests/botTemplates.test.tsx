@@ -54,6 +54,31 @@ async function openTemplates(user: UserEvent) {
   await user.click(screen.getByTestId('tab-templates'))
 }
 
+/** 规整化编辑器 DOM：变量块按占位符读取，固定文字按文本节点读取。 */
+function serializedRule(editor: HTMLElement): string {
+  return Array.from(editor.childNodes)
+    .map((node) =>
+      node instanceof HTMLElement && node.dataset.botNameToken !== undefined
+        ? node.dataset.botNameToken
+        : (node.textContent ?? ''),
+    )
+    .join('')
+}
+
+function setRule(editor: HTMLElement, rule: string): void {
+  editor.replaceChildren()
+  if (rule !== '') editor.append(document.createTextNode(rule))
+  fireEvent.input(editor)
+}
+
+function selectCollapsedRange(editor: HTMLElement, range: Range): void {
+  editor.focus()
+  const selection = window.getSelection()
+  if (selection === null) throw new Error('测试环境没有 Selection')
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -79,7 +104,7 @@ describe('Bot 模板 tab：读取与展示', () => {
     })
 
     render(<App />)
-    expect(screen.getByTestId('tab-templates')).toHaveTextContent('Bot 模板')
+    expect(screen.getByTestId('tab-templates')).toHaveTextContent('bot')
     expect(calls).toHaveLength(0)
 
     await openTemplates(user)
@@ -136,8 +161,12 @@ describe('Bot 模板 tab：读取与展示', () => {
       '/code-review',
     ])
 
-    // model 默认时 thinking 只能沿用默认值。
+    // model 默认时 thinking 只能沿用默认值；选中项文本必须与控件当前值一致。
     expect(optionValues(thinking)).toEqual(['default'])
+    expect(agent.selectedOptions[0].textContent).toBe('omp')
+    expect(model.selectedOptions[0].textContent).toBe('沿用 Agent 默认值')
+    expect(thinking.selectedOptions[0].textContent).toBe('沿用 Agent 默认值')
+    expect(skill.selectedOptions[0].textContent).toBe('无')
 
     await user.selectOptions(model, 'gpt-6.1-sol')
     expect(optionValues(thinking)).toEqual([
@@ -165,7 +194,7 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.selectOptions(model, 'deepseek-flash')
     expect(thinking.value).toBe('default')
     expect(screen.getByTestId('thinking-notice')).toHaveTextContent(
-      '当前思考级别「xhigh」不适用于 omp / deepseek-flash，已重置为「沿用默认值」。',
+      '当前思考级别「xhigh」不适用于 omp / deepseek-flash，已重置为「沿用 Agent 默认值」。',
     )
 
     // 更换 agent：model 与 thinking 都重置，提示清除。
@@ -197,7 +226,7 @@ describe('Bot 模板 tab：读取与展示', () => {
     expect(thinking.value).toBe('default')
     expect(optionValues(thinking)).toEqual(['default'])
     expect(screen.getByTestId('thinking-notice')).toHaveTextContent(
-      '当前思考级别「max」不适用于 pi / default，已重置为「沿用默认值」。',
+      '当前思考级别「max」不适用于 pi / default，已重置为「沿用 Agent 默认值」。',
     )
   })
 
@@ -230,22 +259,29 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.click(screen.getByTestId('template-create-open'))
 
     const dialog = screen.getByTestId('template-dialog')
-    const botName = within(dialog).getByTestId('template-bot-name') as HTMLInputElement
-    expect(botName.value).toBe('{zone.name} · {template.name} · {bot.id}')
+    const botName = within(dialog).getByTestId('template-bot-name') as HTMLElement
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(3)
+    expect(serializedRule(botName)).toBe('{zone.name} · {template.name} · {bot.id}')
 
     // 编辑命名规则：只提供四个已承诺字段，每次插入都能在规则中观察到对应占位符。
-    await user.clear(botName)
+    setRule(botName, '')
     await user.click(within(dialog).getByTestId('insert-zone-name'))
-    expect(botName.value).toBe('{zone.name}')
+    expect(serializedRule(botName)).toBe('{zone.name}')
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(1)
     await user.click(within(dialog).getByTestId('insert-template-name'))
-    expect(botName.value).toBe('{zone.name}{template.name}')
+    expect(serializedRule(botName)).toBe('{zone.name}{template.name}')
     await user.click(within(dialog).getByTestId('insert-agent'))
     await user.click(within(dialog).getByTestId('insert-bot-id'))
-    expect(botName.value).toBe('{zone.name}{template.name}{agent}{bot.id}')
-    fireEvent.change(botName, {
-      target: { value: '{zone.name} · {template.name} · {agent} · {bot.id}' },
-    })
-    expect(botName.value).toBe('{zone.name} · {template.name} · {agent} · {bot.id}')
+    expect(serializedRule(botName)).toBe('{zone.name}{template.name}{agent}{bot.id}')
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(4)
+    expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(
+      'alpha审查ompa7f3c2',
+    )
+
+    setRule(botName, '{zone.name} · {template.name} · {agent} · {bot.id}')
+    expect(serializedRule(botName)).toBe(
+      '{zone.name} · {template.name} · {agent} · {bot.id}',
+    )
 
     await user.type(within(dialog).getByTestId('template-name'), '审查')
     expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(
@@ -278,6 +314,53 @@ describe('Bot 模板 tab：读取与展示', () => {
     expect(row).toHaveTextContent('deepseek-flash')
     expect(row).toHaveTextContent('/code-review')
     expect(screen.getByTestId('template-feedback')).toHaveAttribute('data-kind', 'success')
+  })
+
+  it('变量块可按退格或 × 整块删除，插入位置跟随光标而不是固定追加', async () => {
+    const user = userEvent.setup()
+    mockTemplateFetch((url, method) => {
+      if (url === '/api/bot-templates' && method === 'GET') {
+        return jsonResponse(200, { templates: [], options: OPTIONS })
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openTemplates(user)
+    await screen.findByTestId('template-empty')
+    await user.click(screen.getByTestId('template-create-open'))
+    const dialog = screen.getByTestId('template-dialog')
+    const botName = within(dialog).getByTestId('template-bot-name') as HTMLElement
+
+    // 退格紧跟在变量块之后：整个 {template.name} 消失，固定分隔符仍留给用户编辑。
+    const tokens = within(dialog).getAllByTestId('bot-name-token')
+    expect(tokens).toHaveLength(3)
+    const afterTemplateToken = document.createRange()
+    afterTemplateToken.setStartAfter(tokens[1])
+    afterTemplateToken.collapse(true)
+    selectCollapsedRange(botName, afterTemplateToken)
+    fireEvent.keyDown(botName, { key: 'Backspace' })
+
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(2)
+    expect(serializedRule(botName)).toBe('{zone.name} ·  · {bot.id}')
+
+    // 普通文字中的光标位置决定插入点，而不是总追加到末尾。
+    setRule(botName, '前缀后缀')
+    const text = botName.firstChild
+    expect(text?.nodeType).toBe(Node.TEXT_NODE)
+    const middle = document.createRange()
+    middle.setStart(text as Text, 2)
+    middle.collapse(true)
+    selectCollapsedRange(botName, middle)
+    fireEvent.click(within(dialog).getByTestId('insert-zone-name'))
+    expect(serializedRule(botName)).toBe('前缀{zone.name}后缀')
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(1)
+
+    // × 只删除变量块，不影响前后固定文字。
+    const token = within(dialog).getByTestId('bot-name-token')
+    fireEvent.click(within(token).getByRole('button', { name: '删除变量 zone.name' }))
+    expect(serializedRule(botName)).toBe('前缀后缀')
+    expect(within(dialog).queryByTestId('bot-name-token')).toBeNull()
   })
 
   it('编辑与删除模板，只有后端确认后才更新列表', async () => {
@@ -335,17 +418,15 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.click(within(rows[0]).getByTestId('template-edit'))
     const dialog = screen.getByTestId('template-dialog')
     expect((within(dialog).getByTestId('template-name') as HTMLInputElement).value).toBe('旧名字')
-    expect((within(dialog).getByTestId('template-bot-name') as HTMLInputElement).value).toBe(
-      '{zone.name}',
-    )
+    const botName = within(dialog).getByTestId('template-bot-name') as HTMLElement
+    expect(serializedRule(botName)).toBe('{zone.name}')
+    expect(within(dialog).getAllByTestId('bot-name-token')).toHaveLength(1)
     expect((within(dialog).getByTestId('template-prompt') as HTMLTextAreaElement).value).toBe(
       '旧 prompt',
     )
     await user.clear(within(dialog).getByTestId('template-name'))
     await user.type(within(dialog).getByTestId('template-name'), '新名字')
-    fireEvent.change(within(dialog).getByTestId('template-bot-name'), {
-      target: { value: '{template.name} · {agent} · {bot.id}' },
-    })
+    setRule(botName, '{template.name} · {agent} · {bot.id}')
     await user.selectOptions(within(dialog).getByTestId('template-agent'), 'pi')
     await user.selectOptions(within(dialog).getByTestId('template-model'), 'gpt-6.1-sol')
     await user.selectOptions(within(dialog).getByTestId('template-thinking'), 'medium')

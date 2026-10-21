@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
+import { BotNameRuleEditor } from './BotNameRuleEditor'
 import {
   createBotTemplate,
   deleteBotTemplate,
@@ -11,7 +12,7 @@ import {
   type BotTemplateOptions,
   type BotTemplateResult,
 } from './botTemplateApi'
-import { INITIAL_BOT_NAME, NAMING_FIELDS, renderBotNameExample } from './botTemplateNaming'
+import { INITIAL_BOT_NAME, renderBotNameExample } from './botTemplateNaming'
 
 type Feedback = {
   kind: 'success' | 'error'
@@ -33,7 +34,7 @@ function modelLabel(template: Pick<BotTemplate, 'model'>): string {
 }
 
 function thinkingLabel(template: Pick<BotTemplate, 'thinking'>): string {
-  return template.thinking === 'default' ? '沿用默认值' : template.thinking
+  return template.thinking === 'default' ? '沿用 Agent 默认值' : template.thinking
 }
 
 function skillLabel(template: Pick<BotTemplate, 'skill'>): string {
@@ -67,9 +68,9 @@ function draftFrom(template: BotTemplate): BotTemplateInput {
 }
 
 /**
- * Bot 模板：独立 tab 中的新增、查看、编辑与删除。
+ * Bot 模板：`bot` 入口中的新增、查看、编辑与删除。
  *
- * 模板由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入该 tab 都重新读取，
+ * 模板由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 bot 入口都重新读取，
  * 保存/删除成功后才用后端返回的完整列表更新界面；保存失败不表示已保存。
  */
 export function BotTemplatesPanel({ active }: { active: boolean }) {
@@ -126,11 +127,6 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
     setNotice(null)
   }
 
-  function insertField(token: string) {
-    // 字段按钮把占位符追加到规则末尾；编辑中的固定文字不会被改写。
-    setDraft((current) => ({ ...current, botName: `${current.botName}${token}` }))
-  }
-
   function changeAgent(agent: BotTemplateInput['agent']) {
     // 更换 agent 时 model 与 thinking 都重置为默认值，避免沿用另一种 agent 的配置。
     setDraft((current) => ({
@@ -154,7 +150,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
     setNotice(
       retained
         ? null
-        : `当前思考级别「${thinkingLabel(draft)}」不适用于 ${draft.agent} / ${model}，已重置为「沿用默认值」。`,
+        : `当前思考级别「${thinkingLabel(draft)}」不适用于 ${draft.agent} / ${model}，已重置为「沿用 Agent 默认值」。`,
     )
   }
 
@@ -331,173 +327,160 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
               {dialog.kind === 'create' ? '新增 Bot 模板' : '编辑 Bot 模板'}
             </h2>
 
-            <label className="zone-form__label" htmlFor="template-name">
-              模板显示名
-            </label>
-            <input
-              id="template-name"
-              className="zone-form__input"
-              data-testid="template-name"
-              type="text"
-              value={draft.name}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, name: event.target.value }))
-              }
-              autoComplete="off"
-              disabled={saving}
-            />
-            <p className="bot-template-hint">必填；只是模板的显示名，不是新 Bot 的固定名字。</p>
+            <section className="bot-template-preview-card" aria-label="Bot 名称实时示例">
+              <span className="bot-template-preview-card__label">Bot 名称 · 实时示例</span>
+              <output
+                className="bot-template-preview"
+                data-testid="bot-name-preview"
+                aria-live="polite"
+              >
+                {renderBotNameExample(draft.botName, draft.name, draft.agent) || '（空规则）'}
+              </output>
+              <small className="bot-template-preview-card__hint">
+                示例 zone：alpha；示例短标识：a7f3c2。创建 Bot 时由后端使用真实值。
+              </small>
+            </section>
 
-            <label className="zone-form__label" htmlFor="template-bot-name">
-              单行 bot-name 命名规则
-            </label>
-            <input
-              id="template-bot-name"
-              className="zone-form__input"
-              data-testid="template-bot-name"
-              type="text"
-              value={draft.botName}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, botName: event.target.value }))
-              }
-              autoComplete="off"
-              spellCheck={false}
-              disabled={saving}
-            />
-
-            <fieldset className="bot-template-fields">
-              <legend>插入命名字段</legend>
-              <div className="bot-template-field-buttons">
-                {NAMING_FIELDS.map((field) => (
-                  <button
-                    key={field.key}
-                    type="button"
-                    data-testid={`insert-${field.key}`}
-                    disabled={saving}
-                    onClick={() => insertField(field.token)}
-                  >
-                    {field.token}
-                  </button>
-                ))}
+            <div className="bot-template-compose">
+              <div className="bot-template-compose__primary">
+                <BotNameRuleEditor
+                  value={draft.botName}
+                  onChange={(botName) => setDraft((current) => ({ ...current, botName }))}
+                  disabled={saving}
+                />
               </div>
-              <p className="bot-template-hint">
-                四个字段的示例：zone.name = alpha；template.name ={' '}
-                {draft.name.trim() === '' ? '审查' : draft.name.trim()}；agent = {draft.agent}；
-                bot.id = a7f3c2。
-              </p>
-            </fieldset>
 
-            <p className="bot-template-preview" data-testid="bot-name-preview" role="status">
-              {renderBotNameExample(draft.botName, draft.name, draft.agent)}
-            </p>
+              <fieldset className="bot-template-settings">
+                <legend>Agent 与模板设置</legend>
 
-            <label className="zone-form__label" htmlFor="template-agent">
-              agent
-            </label>
-            <select
-              id="template-agent"
-              className="zone-form__input"
-              data-testid="template-agent"
-              value={draft.agent}
-              onChange={(event) => changeAgent(event.target.value as BotTemplateInput['agent'])}
-              disabled={saving}
-            >
-              {data.options.agents.map((agent) => (
-                <option key={agent} value={agent}>
-                  {agent}
-                </option>
-              ))}
-            </select>
+                <label className="zone-form__label" htmlFor="template-name">
+                  模板显示名
+                </label>
+                <input
+                  id="template-name"
+                  className="zone-form__input"
+                  data-testid="template-name"
+                  type="text"
+                  value={draft.name}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, name: event.target.value }))
+                  }
+                  autoComplete="off"
+                  disabled={saving}
+                />
+                <p className="bot-template-hint">
+                  必填；只是模板的显示名，不是新 Bot 的固定名字。
+                </p>
 
-            <label className="zone-form__label" htmlFor="template-model">
-              model
-            </label>
-            <select
-              id="template-model"
-              className="zone-form__input"
-              data-testid="template-model"
-              value={draft.model}
-              onChange={(event) => changeModel(event.target.value as BotTemplateInput['model'])}
-              disabled={saving}
-            >
-              {data.options.models.map((model) => (
-                <option key={model} value={model}>
-                  {model === 'default' ? '沿用 Agent 默认值' : model}
-                </option>
-              ))}
-            </select>
+                <label className="zone-form__label" htmlFor="template-agent">
+                  agent
+                </label>
+                <select
+                  id="template-agent"
+                  className="zone-form__input zone-form__select"
+                  data-testid="template-agent"
+                  value={draft.agent}
+                  onChange={(event) => changeAgent(event.target.value as BotTemplateInput['agent'])}
+                  disabled={saving}
+                >
+                  {data.options.agents.map((agent) => (
+                    <option key={agent} value={agent}>
+                      {agent}
+                    </option>
+                  ))}
+                </select>
 
-            <label className="zone-form__label" htmlFor="template-thinking">
-              thinking
-            </label>
-            <select
-              id="template-thinking"
-              className="zone-form__input"
-              data-testid="template-thinking"
-              value={draft.thinking}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  thinking: event.target.value as BotTemplateInput['thinking'],
-                }))
-              }
-              disabled={saving}
-            >
-              <option value="default">沿用默认值</option>
-              {thinkingOptions.map((thinking) => (
-                <option key={thinking} value={thinking}>
-                  {thinking}
-                </option>
-              ))}
-            </select>
+                <label className="zone-form__label" htmlFor="template-model">
+                  model
+                </label>
+                <select
+                  id="template-model"
+                  className="zone-form__input zone-form__select"
+                  data-testid="template-model"
+                  value={draft.model}
+                  onChange={(event) => changeModel(event.target.value as BotTemplateInput['model'])}
+                  disabled={saving}
+                >
+                  {data.options.models.map((model) => (
+                    <option key={model} value={model}>
+                      {model === 'default' ? '沿用 Agent 默认值' : model}
+                    </option>
+                  ))}
+                </select>
 
-            {notice !== null && (
-              <p className="zone-feedback" data-testid="thinking-notice" role="status">
-                {notice}
-              </p>
-            )}
+                <label className="zone-form__label" htmlFor="template-thinking">
+                  thinking
+                </label>
+                <select
+                  id="template-thinking"
+                  className="zone-form__input zone-form__select"
+                  data-testid="template-thinking"
+                  value={draft.thinking}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      thinking: event.target.value as BotTemplateInput['thinking'],
+                    }))
+                  }
+                  disabled={saving}
+                >
+                  <option value="default">沿用 Agent 默认值</option>
+                  {thinkingOptions.map((thinking) => (
+                    <option key={thinking} value={thinking}>
+                      {thinking}
+                    </option>
+                  ))}
+                </select>
 
-            <label className="zone-form__label" htmlFor="template-skill">
-              Skill
-            </label>
-            <select
-              id="template-skill"
-              className="zone-form__input"
-              data-testid="template-skill"
-              value={draft.skill ?? ''}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  skill:
-                    event.target.value === ''
-                      ? null
-                      : (event.target.value as NonNullable<BotTemplateInput['skill']>),
-                }))
-              }
-              disabled={saving}
-            >
-              <option value="">无</option>
-              {data.options.skills.map((skill) => (
-                <option key={skill} value={skill}>
-                  /{skill}
-                </option>
-              ))}
-            </select>
+                {notice !== null && (
+                  <p className="zone-feedback" data-testid="thinking-notice" role="status">
+                    {notice}
+                  </p>
+                )}
 
-            <label className="zone-form__label" htmlFor="template-prompt">
-              固定 prompt（可多行、可为空）
-            </label>
-            <textarea
-              id="template-prompt"
-              className="zone-form__input bot-template-prompt"
-              data-testid="template-prompt"
-              value={draft.prompt}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, prompt: event.target.value }))
-              }
-              rows={5}
-              disabled={saving}
-            />
+                <label className="zone-form__label" htmlFor="template-skill">
+                  Skill
+                </label>
+                <select
+                  id="template-skill"
+                  className="zone-form__input zone-form__select"
+                  data-testid="template-skill"
+                  value={draft.skill ?? ''}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      skill:
+                        event.target.value === ''
+                          ? null
+                          : (event.target.value as NonNullable<BotTemplateInput['skill']>),
+                    }))
+                  }
+                  disabled={saving}
+                >
+                  <option value="">无</option>
+                  {data.options.skills.map((skill) => (
+                    <option key={skill} value={skill}>
+                      /{skill}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="zone-form__label" htmlFor="template-prompt">
+                  固定 prompt（可多行、可为空）
+                </label>
+                <textarea
+                  id="template-prompt"
+                  className="zone-form__input bot-template-prompt"
+                  data-testid="template-prompt"
+                  value={draft.prompt}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, prompt: event.target.value }))
+                  }
+                  rows={5}
+                  disabled={saving}
+                />
+              </fieldset>
+            </div>
 
             {formError !== null && (
               <p

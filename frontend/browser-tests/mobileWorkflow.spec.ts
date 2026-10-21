@@ -12,6 +12,8 @@ import {
   expectNoHorizontalOverflow,
   jsonPost,
   scrollToDialogAction,
+  serializedBotRule,
+  zoneRowFor,
 } from './ui'
 
 /**
@@ -179,7 +181,9 @@ async function addTemplateThroughUi(
   await botName.fill('')
   await activate(page.getByTestId('insert-zone-name'), touch)
   await activate(page.getByTestId('insert-template-name'), touch)
-  await expect(botName).toHaveValue('{zone.name}{template.name}')
+  await expect
+    .poll(() => serializedBotRule(botName))
+    .toBe('{zone.name}{template.name}')
   await botName.fill(literal.botName)
 
   await page.getByTestId('template-agent').selectOption(literal.agent)
@@ -283,7 +287,7 @@ for (const profile of PROFILES) {
 
       // 从 zone 行打开创建弹窗：绑定正确 zone，模板可选，名称由后端预览。
       await openFiles(page, profile.hasTouch)
-      const zoneRow = page.getByTestId('zone-item').filter({ hasText: zone })
+      const zoneRow = zoneRowFor(page, zone)
       await expect(zoneRow).toHaveCount(1)
       await activate(zoneRow.getByTestId('zone-create-bot'), profile.hasTouch)
       const dialog = page.getByTestId('bot-creation-dialog')
@@ -376,7 +380,7 @@ test.describe('移动尺寸失败结果', () => {
 
     await page.goto(server.baseURL)
     await openFiles(page, true)
-    const zoneRow = page.getByTestId('zone-item').filter({ hasText: zone })
+    const zoneRow = zoneRowFor(page, zone)
     await zoneRow.getByTestId('zone-create-bot').tap()
     const dialog = page.getByTestId('bot-creation-dialog')
     await expect(dialog).toBeVisible()

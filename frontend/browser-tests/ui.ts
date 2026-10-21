@@ -7,6 +7,26 @@
 import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
+/** 从变量编辑器 DOM 读取保存格式；变量块按占位符计算，不把删除按钮的 × 计入。 */
+export async function serializedBotRule(locator: Locator): Promise<string> {
+  return locator.evaluate((element) =>
+    Array.from(element.childNodes)
+      .map((node) =>
+        node instanceof HTMLElement && node.dataset.botNameToken !== undefined
+          ? node.dataset.botNameToken
+          : (node.textContent ?? ''),
+      )
+      .join(''),
+  )
+}
+
+/** 按完整路径定位 zone 行；列表只显示末级名称，行本身仍保留完整路径身份。 */
+export function zoneRowFor(page: Page, zonePath: string): Locator {
+  return page.getByTestId('zone-item').filter({
+    has: page.getByRole('button', { name: `从 ${zonePath} 创建 Bot` }),
+  })
+}
+
 /** 触摸档用 tap，桌面档用 click；两种尺寸的操作路径保持一致。 */
 export async function activate(locator: Locator, touch: boolean) {
   if (touch) {

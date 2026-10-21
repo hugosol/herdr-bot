@@ -206,7 +206,7 @@ describe('会话列表 tab 不显示等待提示', () => {
 
     // 基线：只有离线等待者，tab 没有任何提示。
     const sessionsTab = screen.getByTestId('tab-sessions')
-    expect(sessionsTab.textContent).toBe('会话列表')
+    expect(sessionsTab.textContent).toBe('chat')
     expect(sessionsTab.children).toHaveLength(0)
 
     // 等待者转为在线等待输入：旧行为会在这里点亮 tab 黄点。
@@ -216,11 +216,11 @@ describe('会话列表 tab 不显示等待提示', () => {
     ])
 
     // tab 仍然只有标签文字：没有黄点、没有计数，也没有任何挂在 tab 上的提示元素。
-    expect(sessionsTab.textContent).toBe('会话列表')
+    expect(sessionsTab.textContent).toBe('chat')
     expect(sessionsTab.children).toHaveLength(0)
     expect(screen.queryByTestId('tab-sessions-indicator')).toBeNull()
     // 无障碍名恰是标签本身：提示即使挂在 tab 旁边（tablist 里）也会被这两条挡住。
-    expect(screen.getByRole('tab', { name: '会话列表' })).toBe(sessionsTab)
+    expect(screen.getByRole('tab', { name: 'chat' })).toBe(sessionsTab)
     expect(within(screen.getByRole('tablist')).getAllByRole('tab')).toHaveLength(4)
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
 

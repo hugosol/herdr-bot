@@ -409,7 +409,7 @@ export function ZoneBrowser({
     void loadGitStatus()
   }, [zone, loadEntireTree, loadGitStatus])
 
-  // 从其他顶层 tab 回到文件列表时只更新 Git 状态；完整目录树仅由手动刷新重读。
+  // 从其他顶层 tab 回到 zone 入口时只更新 Git 状态；完整目录树仅由手动刷新重读。
   useEffect(() => {
     if (active && !activePreviously.current) {
       void loadGitStatus()
@@ -1472,7 +1472,7 @@ export function ZoneBrowser({
                   data-testid="back-to-file-list"
                   onClick={() => setMobileShowingContent(false)}
                 >
-                  返回文件列表
+                  返回 zone 列表
                 </button>
                 {filePane()}
               </>

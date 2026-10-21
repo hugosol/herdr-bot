@@ -7,16 +7,16 @@ import App from '../src/App'
 /**
  * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
  *
- * 顶层顺序固定为会话列表、Bot 模板、文件列表、控制面板；每次打开或整页刷新都从会话列表开始，
+ * 顶层顺序固定为 chat、bot、zone、server；每次打开或整页刷新都从 chat 开始，
  * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
  * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
  */
 describe('App 四 tab 骨架', () => {
-  it('整页恰四个 tab，顺序为会话列表、Bot 模板、文件列表、控制面板，默认停在会话列表', () => {
+  it('整页恰四个 tab，顺序为 chat、bot、zone、server，默认停在 chat', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['会话列表', 'Bot 模板', '文件列表', '控制面板'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['chat', 'bot', 'zone', 'server'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
     expect(tabs[2]).toHaveAttribute('aria-selected', 'false')
@@ -148,8 +148,8 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('stop-button')).toBeEnabled()
     expect(screen.getByTestId('operation-result')).toHaveTextContent('尚未提交操作。')
 
-    // 控制面板名称不变。
-    expect(screen.getByTestId('tab-control')).toHaveTextContent('控制面板')
+    // 固定操作仍在 server 入口，入口名称已改为短标签。
+    expect(screen.getByTestId('tab-control')).toHaveTextContent('server')
   })
 
   it('整页可见标题为 herdr-bot', () => {
