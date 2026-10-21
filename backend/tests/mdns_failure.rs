@@ -261,6 +261,7 @@ fn assert_operation_is_served(panel: &Panel) {
 /// 验收 1–4：`[mdns] address` 指向本机不拥有的地址 → 诊断为 `error`（不是 disabled / no-address /
 /// conflict / published）、不发布任何记录、HTTP 服务照常、进程不退出。
 #[test]
+#[ignore = "依赖真实 mDNS 与 Windows 防火墙入站许可；用 --ignored 显式运行"]
 fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
     let fixtures = common::FixtureTree::new("mdns failure");
     let mut panel = Panel::start(UNOWNED_ADDRESS, &fixtures);

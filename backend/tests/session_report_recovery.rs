@@ -311,7 +311,7 @@ fn register_envelope(session_id: &str) -> String {
     json!({
         "sessionId": session_id,
         "kind": "register",
-        "data": { "cwd": "C:\\work\\omp", "sessionName": "omp", "model": "demo" },
+        "data": { "cwd": "C:\\work\\agent", "sessionName": "agent", "model": "demo" },
     })
     .to_string()
 }

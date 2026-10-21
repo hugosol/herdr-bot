@@ -998,6 +998,30 @@ countdown_seconds = 10
 cargo test --manifest-path backend\Cargo.toml
 ```
 
+mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
+且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：
+
+```bat
+cargo test --manifest-path backend\Cargo.toml -- --ignored
+```
+
+运行全部测试并包含这些用例：
+
+```bat
+cargo test --manifest-path backend\Cargo.toml -- --include-ignored
+```
+
+如果希望手工运行 mDNS 测试时不再每次构建都新增防火墙规则，使用稳定副本脚本：
+
+```powershell
+.\scripts\run-mdns-tests.ps1 -ConfigureFirewall   # 首次：UAC 提权，为稳定路径添加规则
+.\scripts\run-mdns-tests.ps1                      # 之后：构建并运行稳定副本
+```
+
+脚本会把带 hash 的测试 exe 复制到 `backend\target\debug\mdns_failure_runner.exe` 与
+`mdns_conflict_runner.exe`，再运行这些稳定路径；`-ListOnly` 只构建/复制并打印路径，
+`-NoBuild` 复用现有副本。`mdns_conflict` 仍需先停止正在运行的面板。
+
 测试经 HTTP interface 请求操作，并用真实批处理（写入 `%CD%`、退出码等）验证调用与工作目录。
 `backend/tests/execution_result.rs` 还验证执行结果分类：无法启动、成功退出、失败退出三类结果，
 以及“脚本另开长期进程不参与完成判定”。`backend/tests/mutual_exclusion.rs` 用真实监听端口与**多个独立
@@ -1051,7 +1075,7 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
 
 ## 变更记录：项目更名为 herdr-bot（2026-10-21）
 
-项目标识由 `omp-bot` 硬切换为 `herdr-bot`：仓库与本地目录、Rust crate 与二进制、默认配置 `herdr-bot.toml`、mDNS 主机名 `herdr-bot.local`、`HERDR_BOT_*` 环境变量、日志前缀与前端标题同步更新。既有 API、会话协议与 `connect-bot` 行为不变。历史 ADR 与下方交付验证/变更记录保留原文；原因与影响见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。`my-agent-toolkit` 的真实面板 interop 辅助文件作为独立后续更新。
+项目标识由 `omp-bot` 硬切换为 `herdr-bot`：仓库与本地目录、Rust crate 与二进制、默认配置 `herdr-bot.toml`、mDNS 主机名 `herdr-bot.local`、`HERDR_BOT_*` 环境变量、日志前缀与前端标题同步更新。既有 API、会话协议与 `connect-bot` 行为不变。历史 ADR 与下方交付验证/变更记录保留原文；原因与影响见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。`my-agent-toolkit` 的真实面板 interop 辅助文件作为独立后续更新。剩余迁移步骤见 [`docs/herdr-bot-rename-remaining-steps.md`](docs/herdr-bot-rename-remaining-steps.md)。
 
 > 术语注记（2026-10-21）：以下交付验证记录与变更记录保留当时的 **omp-bot** 名称与路径；项目现名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`。原因与硬切换范围见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。正文保留原文。
 

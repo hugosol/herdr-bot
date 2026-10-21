@@ -314,7 +314,7 @@ export function SessionsPanel({ feed }: { feed: SessionFeed }) {
       {snapshot.sessions.length === 0 ? (
         <div className="session-empty" data-testid="sessions-empty">
           <strong>面板已就绪，尚无会话接入</strong>
-          <span>在 omp 里执行 /connect-bot 后，会话会出现在这里。</span>
+          <span>在 agent 里执行 /connect-bot 后，会话会出现在这里。</span>
         </div>
       ) : (
         <>

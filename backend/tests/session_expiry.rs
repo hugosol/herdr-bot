@@ -117,7 +117,7 @@ fn session_of(sessions: &[Value], session_id: &str) -> Value {
 
 fn register(session_id: &str, session_file: Option<&str>) -> String {
     let mut data = serde_json::Map::new();
-    data.insert("cwd".to_string(), json!("C:/work/omp"));
+    data.insert("cwd".to_string(), json!("C:/work/agent"));
     if let Some(session_file) = session_file {
         data.insert("sessionFile".to_string(), json!(session_file));
     }

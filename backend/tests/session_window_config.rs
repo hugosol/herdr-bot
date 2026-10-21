@@ -142,7 +142,7 @@ fn register(session_id: &str) -> String {
     json!({
         "sessionId": session_id,
         "kind": "register",
-        "data": { "cwd": "C:/work/omp" },
+        "data": { "cwd": "C:/work/agent" },
     })
     .to_string()
 }
@@ -585,7 +585,7 @@ impl Panel {
             .post_json(json!({
                 "sessionId": session_id,
                 "kind": "register",
-                "data": { "cwd": "C:/work/omp" },
+                "data": { "cwd": "C:/work/agent" },
             }))
             .await;
         assert_eq!(response.status, 200, "注册应被接受：{}", response.body);

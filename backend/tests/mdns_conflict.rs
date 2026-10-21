@@ -294,6 +294,7 @@ fn assert_panel_serves(panel: &Panel, address: Ipv4Addr) {
 /// 验收 1、2、4：名字被占用 → 诊断为 `conflict`（不是 disabled / no-address / error）、不发布、
 /// 不改名，且 HTTP 服务照常。
 #[test]
+#[ignore = "需要独占 herdr-bot.local. 并依赖真实 mDNS/防火墙许可；用 --ignored 显式运行"]
 fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves() {
     let _serial = serial_guard();
     let Some(address) = local_publishable_ipv4() else {
@@ -340,6 +341,7 @@ fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves(
 
 /// 验收 3：绕过预探测强制注册、随后被 mdns-sd 改名时，herdr-bot 主界面立即注销该记录并告警。
 #[test]
+#[ignore = "需要独占 herdr-bot.local. 并依赖真实 mDNS/防火墙许可；用 --ignored 显式运行"]
 fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() {
     let _serial = serial_guard();
     let Some(address) = local_publishable_ipv4() else {
