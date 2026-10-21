@@ -13,7 +13,7 @@ use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp
 use serde_json::{Value, json};
 
 /// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
-fn config_with_registry(registry: &Path) -> omp_bot::Config {
+fn config_with_registry(registry: &Path) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");

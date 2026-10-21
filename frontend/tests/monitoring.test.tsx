@@ -76,7 +76,7 @@ function deferredReply() {
 const WORKING: SessionView = {
   sessionId: 'sess-1',
   sessionName: '工作中会话',
-  cwd: 'E:\\Developer\\myhub\\omp-bot',
+  cwd: 'E:\\Developer\\myhub\\herdr-bot',
   online: true,
   state: 'working',
 }
@@ -264,7 +264,7 @@ describe('完成后关机监听的选择与撤销', () => {
     const working = monitorButton('工作中会话')
     expect(working.getByTestId('session-state')).toHaveTextContent('工作中')
     expect(working.getByTestId('keepalive-dot')).toHaveAttribute('aria-label', '在线')
-    expect(working.getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\omp-bot')
+    expect(working.getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\herdr-bot')
     expect(working.getByTestId('session-name')).toHaveTextContent('工作中会话')
   })
 

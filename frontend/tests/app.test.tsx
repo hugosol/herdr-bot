@@ -8,11 +8,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('App（omp-bot 主界面）', () => {
+describe('App（herdr-bot 主界面）', () => {
   it('渲染标题、两个固定操作与初始反馈', () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'omp-bot' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'herdr-bot' })).toBeInTheDocument()
     expect(screen.getByTestId('start-button')).toBeEnabled()
     expect(screen.getByTestId('stop-button')).toBeEnabled()
     expect(screen.getByTestId('operation-result')).toHaveTextContent('尚未提交操作。')

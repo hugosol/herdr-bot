@@ -18,7 +18,7 @@ impl TempDir {
     fn new(label: &str) -> Self {
         let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir()
-            .join("omp bot test fixtures")
+            .join("herdr-bot test fixtures")
             .join(format!("{label} {}-{unique}", std::process::id()));
         fs::create_dir_all(&path).expect("create temp dir");
         TempDir(path)
@@ -45,22 +45,22 @@ fn write_batch(path: &Path, lines: &[String]) {
     fs::write(path, content).expect("write batch file");
 }
 
-fn config(start_script: &Path, working_directory: &Path) -> omp_bot::Config {
-    let binding = || omp_bot::OperationBinding {
+fn config(start_script: &Path, working_directory: &Path) -> herdr_bot::Config {
+    let binding = || herdr_bot::OperationBinding {
         script: start_script.to_path_buf(),
         working_directory: working_directory.to_path_buf(),
     };
-    omp_bot::Config {
+    herdr_bot::Config {
         listen_addr: "0.0.0.0:0".to_string(),
-        operations: omp_bot::Operations {
+        operations: herdr_bot::Operations {
             start: binding(),
             stop: binding(),
         },
-        mdns: omp_bot::MdnsConfig::default(),
-        shutdown: omp_bot::ShutdownConfig::default(),
-        sessions: omp_bot::SessionsConfig::default(),
-        zones: omp_bot::ZonesConfig::default(),
-        git: omp_bot::GitConfig::default(),
+        mdns: herdr_bot::MdnsConfig::default(),
+        shutdown: herdr_bot::ShutdownConfig::default(),
+        sessions: herdr_bot::SessionsConfig::default(),
+        zones: herdr_bot::ZonesConfig::default(),
+        git: herdr_bot::GitConfig::default(),
     }
 }
 
@@ -94,7 +94,7 @@ async fn start_operation_runs_configured_batch_with_configured_working_directory
         ],
     );
 
-    let app = omp_bot::app(&config(&script, &working_directory));
+    let app = herdr_bot::app(&config(&script, &working_directory));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -127,7 +127,7 @@ async fn start_response_arrives_only_after_script_process_ends() {
         ],
     );
 
-    let app = omp_bot::app(&config(&script, dir.path()));
+    let app = herdr_bot::app(&config(&script, dir.path()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -164,7 +164,7 @@ async fn start_operation_target_comes_from_server_config() {
         ],
     );
 
-    let (status, _) = post_start(omp_bot::app(&config(&first_script, first.path()))).await;
+    let (status, _) = post_start(herdr_bot::app(&config(&first_script, first.path()))).await;
     assert_eq!(status, StatusCode::OK);
     assert!(first_marker.is_file(), "配置的第一个脚本必须被执行");
     assert!(
@@ -172,7 +172,7 @@ async fn start_operation_target_comes_from_server_config() {
         "未被配置的脚本不得被执行（目标来自服务端配置）"
     );
 
-    let (status, _) = post_start(omp_bot::app(&config(&second_script, second.path()))).await;
+    let (status, _) = post_start(herdr_bot::app(&config(&second_script, second.path()))).await;
     assert_eq!(status, StatusCode::OK);
     assert!(second_marker.is_file(), "配置的第二个脚本必须被执行");
 }
@@ -184,7 +184,7 @@ async fn start_call_invalid_working_directory_reports_finished_call_without_star
     write_batch(&script, &["exit /b 0".to_string()]);
     let missing_directory = dir.path().join("no such directory");
 
-    let app = omp_bot::app(&config(&script, &missing_directory));
+    let app = herdr_bot::app(&config(&script, &missing_directory));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");

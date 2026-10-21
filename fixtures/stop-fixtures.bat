@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  omp-bot fixtures: end the long-running fixtures (human stop entry point).
+rem  herdr-bot fixtures: end the long-running fixtures (human stop entry point).
 rem
 rem  Usage:  fixtures\stop-fixtures.bat
 rem

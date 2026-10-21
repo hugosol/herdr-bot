@@ -85,7 +85,7 @@ impl Panel {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let text = self.log_text();
-            if let Some(line) = text.lines().find(|line| line.contains("[omp-bot] 监听：http://")) {
+            if let Some(line) = text.lines().find(|line| line.contains("[herdr-bot] 监听：http://")) {
                 let host_port = line
                     .split("//")
                     .nth(1)
@@ -254,7 +254,7 @@ fn write_config(dir: &TempDir, countdown_seconds: u32) -> PathBuf {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
-    let config_path = dir.path().join("omp-bot.toml");
+    let config_path = dir.path().join("herdr-bot.toml");
     std::fs::write(
         &config_path,
         format!(

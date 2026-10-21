@@ -1,10 +1,10 @@
-//! `omp-bot.local` 被占用时的发布行为（票 02）：不改名、不发布、告警，且不阻止 HTTP 服务。
+//! `herdr-bot.local` 被占用时的发布行为（票 02）：不改名、不发布、告警，且不阻止 HTTP 服务。
 //!
 //! seam：S3 诊断日志（契约批准的 seam）。受控占名用第二个真实的 mDNS 发布者——本进程内一个独立的
 //! `mdns-sd` daemon，发布与后端完全相同的主机名与服务实例名（原型用的等价手段；人工验收另用 Bonjour
 //! 自带的 `dns-sd -P` 做独立实现的复核）。被验收的是**真实二进制**的启动输出与同机解析/浏览结果。
 //!
-//! 两个用例都要独占 `omp-bot.local`，因此串行执行。
+//! 两个用例都要独占 `herdr-bot.local`，因此串行执行。
 
 mod common;
 
@@ -15,28 +15,28 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mdns_sd::{DaemonEvent, HostnameResolutionEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
-use omp_bot::mdns::{HOSTNAME, INSTANCE_NAME, SERVICE_FULLNAME, SERVICE_TYPE};
+use herdr_bot::mdns::{HOSTNAME, INSTANCE_NAME, SERVICE_FULLNAME, SERVICE_TYPE};
 
-/// 受控占名用的服务端口：与受测 omp-bot 主界面的实际监听端口必然不同，因此线上实例的端口能指认发布者是谁。
+/// 受控占名用的服务端口：与受测 herdr-bot 主界面的实际监听端口必然不同，因此线上实例的端口能指认发布者是谁。
 const OCCUPIER_PORT: u16 = 18788;
 
 /// 绕过预探测、强制注册的诊断逃生舱（与 `backend/src/mdns.rs` 的 `SKIP_PREPROBE_ENV` 同名）。
-const SKIP_PREPROBE_ENV: &str = "OMP_BOT_MDNS_SKIP_PREPROBE";
+const SKIP_PREPROBE_ENV: &str = "HERDR_BOT_MDNS_SKIP_PREPROBE";
 
-/// 两个用例都要独占 `omp-bot.local`：串行执行，避免两个占用者互相把对方的名字挤掉。
+/// 两个用例都要独占 `herdr-bot.local`：串行执行，避免两个占用者互相把对方的名字挤掉。
 static SERIAL: Mutex<()> = Mutex::new(());
 
 fn serial_guard() -> std::sync::MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// 受控占名：独立发布者持有 `omp-bot.local.` 与 `omp-bot._http._tcp.local.`，直到被丢弃。
+/// 受控占名：独立发布者持有 `herdr-bot.local.` 与 `herdr-bot._http._tcp.local.`，直到被丢弃。
 struct Occupier {
     daemon: ServiceDaemon,
 }
 
 impl Occupier {
-    /// 发布同名记录并等到它真正播出去（收到 `Announce`）才返回：否则受测 omp-bot 主界面的预探测可能赶在
+    /// 发布同名记录并等到它真正播出去（收到 `Announce`）才返回：否则受测 herdr-bot 主界面的预探测可能赶在
     /// 占用者上线之前跑完，得到“名字空闲”的假阴性。
     fn start(address: Ipv4Addr) -> Self {
         let daemon = ServiceDaemon::new().expect("创建占用者 daemon");
@@ -69,7 +69,7 @@ impl Drop for Occupier {
     }
 }
 
-/// 受测的真实 omp-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
+/// 受测的真实 herdr-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -81,7 +81,7 @@ impl Panel {
     /// 启动真实二进制。`skip_preprobe` 时为它设置诊断逃生舱，绕过注册前的冲突预探测。
     fn start(address: Ipv4Addr, skip_preprobe: bool) -> Self {
         let config_dir = common::TempDir::new("mdns conflict");
-        let config_path = config_dir.path().join("omp-bot.toml");
+        let config_path = config_dir.path().join("herdr-bot.toml");
         std::fs::write(
             &config_path,
             format!(
@@ -93,7 +93,7 @@ impl Panel {
         )
         .expect("写临时配置");
 
-        let mut command = Command::new(env!("CARGO_BIN_EXE_omp-bot"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
         command
             .arg("--config")
             .arg(&config_path)
@@ -106,7 +106,7 @@ impl Panel {
             // 诊断逃生舱不继承自测试进程：用例要验收的正是“有预探测”的那条路径。
             command.env_remove(SKIP_PREPROBE_ENV);
         }
-        let mut child = command.spawn().expect("启动 omp-bot 主界面进程");
+        let mut child = command.spawn().expect("启动 herdr-bot 主界面进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -148,10 +148,10 @@ impl Panel {
 
     /// 从启动输出里的监听行取得实际监听端口（配置用的是 0 端口，端口由系统分配）。
     fn wait_for_listen_port(&mut self) -> u16 {
-        let text = self.wait_for_log("[omp-bot] 监听：http://", Duration::from_secs(30));
+        let text = self.wait_for_log("[herdr-bot] 监听：http://", Duration::from_secs(30));
         let line = text
             .lines()
-            .find(|line| line.contains("[omp-bot] 监听：http://"))
+            .find(|line| line.contains("[herdr-bot] 监听：http://"))
             .expect("监听行已在上面确认存在");
         let after_scheme = line.split("//").nth(1).expect("监听行含协议前缀");
         let host_port = after_scheme.split('/').next().expect("监听行含路径");
@@ -196,7 +196,7 @@ fn local_publishable_ipv4() -> Option<Ipv4Addr> {
             SocketAddr::V4(address) => Some(*address.ip()),
             SocketAddr::V6(_) => None,
         })
-        .filter(|address| omp_bot::mdns::is_publishable_ipv4(*address));
+        .filter(|address| herdr_bot::mdns::is_publishable_ipv4(*address));
 
     main_route.or_else(|| {
         if_addrs::get_if_addrs()
@@ -204,7 +204,7 @@ fn local_publishable_ipv4() -> Option<Ipv4Addr> {
             .into_iter()
             .find_map(|interface| match interface.addr {
                 if_addrs::IfAddr::V4(address)
-                    if omp_bot::mdns::is_publishable_ipv4(address.ip) =>
+                    if herdr_bot::mdns::is_publishable_ipv4(address.ip) =>
                 {
                     Some(address.ip)
                 }
@@ -267,7 +267,7 @@ fn browse_http_instances(duration: Duration) -> Vec<(String, u16)> {
 
 /// 一次最小 HTTP/1.1 GET：直接经 TCP 连端口，不经过页面、按钮或任何前端代码。
 fn http_get(addr: SocketAddr, path: &str) -> (String, String) {
-    let mut stream = TcpStream::connect(addr).expect("连接 omp-bot 主界面");
+    let mut stream = TcpStream::connect(addr).expect("连接 herdr-bot 主界面");
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("设置读取超时");
@@ -283,9 +283,9 @@ fn http_get(addr: SocketAddr, path: &str) -> (String, String) {
 fn assert_panel_serves(panel: &Panel, address: Ipv4Addr) {
     for entry in [Ipv4Addr::LOCALHOST, address] {
         let (status, body) = http_get(SocketAddr::new(IpAddr::V4(entry), panel.port), "/");
-        assert!(status.contains("200"), "入口 {entry} 打不开 omp-bot 主界面：{status}");
+        assert!(status.contains("200"), "入口 {entry} 打不开 herdr-bot 主界面：{status}");
         assert!(
-            body.contains("<title>omp-bot</title>"),
+            body.contains("<title>herdr-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
         );
     }
@@ -320,7 +320,7 @@ fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves(
         );
     }
 
-    assert_hostname_stays_unresolvable("omp-bot-2.local.", Duration::from_secs(5));
+    assert_hostname_stays_unresolvable("herdr-bot-2.local.", Duration::from_secs(5));
     let instances = browse_http_instances(Duration::from_secs(3));
     assert!(
         instances
@@ -330,15 +330,15 @@ fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves(
     );
     assert!(
         instances.iter().all(|(_, port)| *port != panel.port),
-        "被占名时 omp-bot 主界面不得发布任何服务实例：{instances:?}"
+        "被占名时 herdr-bot 主界面不得发布任何服务实例：{instances:?}"
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
     drop(occupier);
 }
 
-/// 验收 3：绕过预探测强制注册、随后被 mdns-sd 改名时，omp-bot 主界面立即注销该记录并告警。
+/// 验收 3：绕过预探测强制注册、随后被 mdns-sd 改名时，herdr-bot 主界面立即注销该记录并告警。
 #[test]
 fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() {
     let _serial = serial_guard();
@@ -360,7 +360,7 @@ fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() 
         "绕过预探测时应先注册成功，再由改名兜底注销：\n{log}"
     );
 
-    assert_hostname_stays_unresolvable("omp-bot-2.local.", Duration::from_secs(20));
+    assert_hostname_stays_unresolvable("herdr-bot-2.local.", Duration::from_secs(20));
     let instances = browse_http_instances(Duration::from_secs(3));
     assert!(
         instances.iter().all(|(_, port)| *port != panel.port),
@@ -368,6 +368,6 @@ fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() 
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
     drop(occupier);
 }

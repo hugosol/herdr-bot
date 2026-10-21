@@ -20,8 +20,8 @@ use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Request, StatusCode};
 use common::sse::SseConnection;
 use common::{FixtureTree, HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
-use omp_bot::sessions::SessionsState;
-use omp_bot::{PowerOff, PowerOffFailure};
+use herdr_bot::sessions::SessionsState;
+use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -53,7 +53,7 @@ impl PowerOff for RecordingPowerOff {
 }
 
 /// 隔离登记文件，并把自动刷新窗口压到 1 秒；其余配置取交付默认。
-fn config_with(registry: &Path) -> omp_bot::Config {
+fn config_with(registry: &Path) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let mut config = common::config(
         &fixtures.join("operations").join("success.bat"),
@@ -61,7 +61,7 @@ fn config_with(registry: &Path) -> omp_bot::Config {
     );
     config.zones.registry_file = registry.to_path_buf();
     config.zones.refresh_interval_seconds =
-        omp_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
+        herdr_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
     config
 }
 
@@ -440,7 +440,7 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
     let config = config_with(&registry);
     let sessions = Arc::new(SessionsState::new());
     let power = RecordingPowerOff::new();
-    let app = omp_bot::app_with_sessions(
+    let app = herdr_bot::app_with_sessions(
         &config,
         Arc::clone(&power) as Arc<dyn PowerOff>,
         Arc::clone(&sessions),
@@ -593,7 +593,7 @@ async fn zone_activity_does_not_change_fixed_operations_sessions_or_shutdown() {
     config.zones.registry_file = registry.path().join("zones.json");
     let sessions = Arc::new(SessionsState::new());
     let power = RecordingPowerOff::new();
-    let server = TestServer::start_app(omp_bot::app_with_sessions(
+    let server = TestServer::start_app(herdr_bot::app_with_sessions(
         &config,
         Arc::clone(&power) as Arc<dyn PowerOff>,
         Arc::clone(&sessions),

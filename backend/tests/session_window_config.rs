@@ -1,6 +1,6 @@
 //! 启动期配置决定会话登记的两个独立窗口（契约 P1–P7）。
 //!
-//! 走交付运行时同一份装配：启动输入经 [`omp_bot::Config::from_toml`] 解析（配置进入实例的唯一入口），
+//! 走交付运行时同一份装配：启动输入经 [`herdr_bot::Config::from_toml`] 解析（配置进入实例的唯一入口），
 //! 窗口策略只由 `config.sessions.policy()` 注入会话表；会话事件经真实 TCP 写入，登记经真实 SSE 读取
 //! （页面收到的就是这些帧），时刻由受控时钟精确驱动。
 //!
@@ -20,11 +20,11 @@ use std::time::{Duration, Instant};
 
 use common::sse::SseConnection;
 use common::{HttpResponse, TempDir, TestServer, post_json_over_tcp};
-use omp_bot::PowerOff;
-use omp_bot::PowerOffFailure;
-use omp_bot::clock::ManualClock;
-use omp_bot::countdown::ShutdownState;
-use omp_bot::sessions::SessionsState;
+use herdr_bot::PowerOff;
+use herdr_bot::PowerOffFailure;
+use herdr_bot::clock::ManualClock;
+use herdr_bot::countdown::ShutdownState;
+use herdr_bot::sessions::SessionsState;
 use serde_json::{Value, json};
 
 /// 会话窗口用例绝不接触关机路径；这个动作只会在路由接错时立刻把用例打失败。
@@ -62,14 +62,14 @@ impl WindowServer {
     /// 从启动输入文本装配实例：策略只来自这次解析出来的配置。
     async fn start(sessions: &str) -> Self {
         let config =
-            omp_bot::Config::from_toml(&config_text(sessions)).expect("启动输入必须可解析");
+            herdr_bot::Config::from_toml(&config_text(sessions)).expect("启动输入必须可解析");
         let clock = Arc::new(ManualClock::new());
         let sessions = Arc::new(SessionsState::with_policy_and_clock(
             config.sessions.policy(),
             clock.clone(),
         ));
         let (app, state) =
-            omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+            herdr_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
@@ -224,7 +224,7 @@ async fn assert_window_boundaries(sessions: &str, online: u64, retention: u64) {
 #[tokio::test]
 async fn the_default_windows_apply_when_the_sessions_section_is_absent() {
     // 先确认这一份启动输入确实没有给出任何会话窗口。
-    let config = omp_bot::Config::from_toml(&config_text("")).expect("缺 [sessions] 段仍必须可解析");
+    let config = herdr_bot::Config::from_toml(&config_text("")).expect("缺 [sessions] 段仍必须可解析");
     assert_eq!(config.sessions.online_timeout_seconds.get(), 10);
     assert_eq!(config.sessions.offline_retention_seconds.get(), 30);
 
@@ -277,7 +277,7 @@ async fn the_smallest_legal_windows_take_effect_as_configured() {
 #[tokio::test]
 async fn the_largest_legal_windows_are_kept_instead_of_falling_back_to_defaults() {
     // 解析层：字段被如实保留。
-    let config = omp_bot::Config::from_toml(&config_text(
+    let config = herdr_bot::Config::from_toml(&config_text(
         "[sessions]\nonline_timeout_seconds = 4294967295\noffline_retention_seconds = 4294967295\n",
     ))
     .expect("两个合法上界都必须可解析");
@@ -320,7 +320,7 @@ async fn the_two_largest_windows_sum_without_overflow_or_early_expiry() {
     const TOTAL_WINDOW_SECONDS: u64 = 8589934590;
 
     // 「启动成功」：两个上界都能被这份启动输入接受。
-    let config = omp_bot::Config::from_toml(&config_text(
+    let config = herdr_bot::Config::from_toml(&config_text(
         "[sessions]\nonline_timeout_seconds = 4294967295\noffline_retention_seconds = 4294967295\n",
     ))
     .expect("两个合法上界都必须可启动");
@@ -495,12 +495,12 @@ fn process_config_text(sessions: &str) -> String {
 
 /// 把一份启动输入写进临时目录，返回配置文件路径（真实进程只认文件）。
 fn write_process_config(dir: &TempDir, sessions: &str) -> PathBuf {
-    let config_path = dir.path().join("omp-bot.toml");
+    let config_path = dir.path().join("herdr-bot.toml");
     std::fs::write(&config_path, process_config_text(sessions)).expect("写临时配置");
     config_path
 }
 
-/// 受测的真实 omp-bot 进程：交付二进制、真实端口、只经真 TCP／SSE 观察。
+/// 受测的真实 herdr-bot 进程：交付二进制、真实端口、只经真 TCP／SSE 观察。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -510,14 +510,14 @@ struct Panel {
 impl Panel {
     /// 用给定配置文件启动真实二进制；返回时已经拿到它实际监听的端口。
     fn start(config_path: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omp-bot"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("启动 omp-bot 进程");
+            .expect("启动 herdr-bot 进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -552,7 +552,7 @@ impl Panel {
             let text = self.log_text();
             if let Some(line) = text
                 .lines()
-                .find(|line| line.contains("[omp-bot] 监听：http://"))
+                .find(|line| line.contains("[herdr-bot] 监听：http://"))
             {
                 let host_port = line
                     .split("//")
@@ -633,14 +633,14 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
 ///
 /// 非法配置下它必须在服务可用之前就结束：超过 20 秒仍在运行即判失败并结束它，用例不会挂住。
 fn run_expecting_immediate_exit(config_path: &Path) -> (std::process::ExitStatus, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omp-bot"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
         .arg("--config")
         .arg(config_path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("启动 omp-bot 进程");
+        .expect("启动 herdr-bot 进程");
     let mut stdout = child.stdout.take().expect("stdout");
     let mut stderr = child.stderr.take().expect("stderr");
 
@@ -692,7 +692,7 @@ fn a_real_process_refuses_to_start_on_an_illegal_session_window() {
             "启动错误必须指出配置文件：\n{output}"
         );
         assert!(
-            !output.contains("[omp-bot] 主界面已启动"),
+            !output.contains("[herdr-bot] 主界面已启动"),
             "非法配置下不得出现可用实例：\n{output}"
         );
     }

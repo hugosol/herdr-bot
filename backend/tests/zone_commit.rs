@@ -15,7 +15,7 @@ use common::{
 use serde_json::{Value, json};
 
 /// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
-fn config_with_registry(registry: &Path) -> omp_bot::Config {
+fn config_with_registry(registry: &Path) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
@@ -429,7 +429,7 @@ async fn review_hashes_full_content_beyond_preview_limits_and_binary() {
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.zones.preview_limit_bytes =
-        omp_bot::config::PreviewLimitBytes::new(4).expect("测试上限必须合法");
+        herdr_bot::config::PreviewLimitBytes::new(4).expect("测试上限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
 
@@ -1038,7 +1038,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
-        omp_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -1333,7 +1333,7 @@ async fn preview_limitations_do_not_change_commit_eligibility_or_the_real_tree()
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.zones.preview_limit_bytes =
-        omp_bot::config::PreviewLimitBytes::new(8).expect("测试上限必须合法");
+        herdr_bot::config::PreviewLimitBytes::new(8).expect("测试上限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
 
@@ -1397,7 +1397,7 @@ async fn credential_conditions_do_not_open_an_interactive_prompt() {
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
-        omp_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;

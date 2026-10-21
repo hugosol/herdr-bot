@@ -13,18 +13,18 @@ use std::process::Command;
 use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 
-fn config_with_registry_and_limit(registry: &Path, preview_limit: u64) -> omp_bot::Config {
+fn config_with_registry_and_limit(registry: &Path, preview_limit: u64) -> herdr_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
     config.zones.registry_file = registry.to_path_buf();
     config.zones.preview_limit_bytes =
-        omp_bot::config::PreviewLimitBytes::new(preview_limit).expect("测试上限必须合法");
+        herdr_bot::config::PreviewLimitBytes::new(preview_limit).expect("测试上限必须合法");
     config
 }
 
-fn config_with_registry(registry: &Path) -> omp_bot::Config {
+fn config_with_registry(registry: &Path) -> herdr_bot::Config {
     config_with_registry_and_limit(registry, 1024 * 1024)
 }
 

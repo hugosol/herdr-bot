@@ -7,8 +7,8 @@
 //! 保留给文档使用，永远不会分配给任何主机）。发布者无法放出这个地址的记录，`publish` 因此走真实的
 //! 失败分支：只告警、跳过 mDNS 发布、HTTP 服务照常启动。
 //!
-//! 解析/浏览观测用测试进程自己的 mDNS daemon。若本机同时有别的测试占用 `omp-bot.local`（票 02 的
-//! 用例），观测不会失真：omp-bot 主界面的记录必然携带它配置的地址与自己实际监听的端口，而两者都被断言
+//! 解析/浏览观测用测试进程自己的 mDNS daemon。若本机同时有别的测试占用 `herdr-bot.local`（票 02 的
+//! 用例），观测不会失真：herdr-bot 主界面的记录必然携带它配置的地址与自己实际监听的端口，而两者都被断言
 //! 不得出现在线上，因此“记录是谁发的”始终可区分。
 
 mod common;
@@ -20,12 +20,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mdns_sd::{HostnameResolutionEvent, ServiceDaemon, ServiceEvent};
-use omp_bot::mdns::{HOSTNAME, SERVICE_TYPE};
+use herdr_bot::mdns::{HOSTNAME, SERVICE_TYPE};
 
 /// 失败地址：RFC 5737 TEST-NET-1，文档保留地址，本机不可能拥有它。
 const UNOWNED_ADDRESS: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 
-/// 受测的真实 omp-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
+/// 受测的真实 herdr-bot 主界面进程：与交付运行时同一条 `main`，启动输出被收进缓冲区供轮询。
 struct Panel {
     child: Child,
     log: Arc<Mutex<Vec<u8>>>,
@@ -40,7 +40,7 @@ impl Panel {
         let script = fixtures.script("success.bat");
         let working_directory = fixtures.operations();
         let config_dir = common::TempDir::new("mdns failure");
-        let config_path = config_dir.path().join("omp-bot.toml");
+        let config_path = config_dir.path().join("herdr-bot.toml");
         std::fs::write(
             &config_path,
             format!(
@@ -54,14 +54,14 @@ impl Panel {
         )
         .expect("写临时配置");
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omp-bot"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .arg("--config")
             .arg(&config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("启动 omp-bot 主界面进程");
+            .expect("启动 herdr-bot 主界面进程");
 
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -103,10 +103,10 @@ impl Panel {
 
     /// 从启动输出里的监听行取得实际监听端口（配置用的是 0 端口，端口由系统分配）。
     fn wait_for_listen_port(&mut self) -> u16 {
-        let text = self.wait_for_log("[omp-bot] 监听：http://", Duration::from_secs(30));
+        let text = self.wait_for_log("[herdr-bot] 监听：http://", Duration::from_secs(30));
         let line = text
             .lines()
-            .find(|line| line.contains("[omp-bot] 监听：http://"))
+            .find(|line| line.contains("[herdr-bot] 监听：http://"))
             .expect("监听行已在上面确认存在");
         let after_scheme = line.split("//").nth(1).expect("监听行含协议前缀");
         let host_port = after_scheme.split('/').next().expect("监听行含路径");
@@ -118,7 +118,7 @@ impl Panel {
             .expect("监听端口是数字")
     }
 
-    /// 进程是否仍在运行：mDNS 失败不得让 omp-bot 主界面退出。
+    /// 进程是否仍在运行：mDNS 失败不得让 herdr-bot 主界面退出。
     fn is_running(&mut self) -> bool {
         self.child
             .try_wait()
@@ -159,7 +159,7 @@ fn local_publishable_ipv4() -> Option<Ipv4Addr> {
             SocketAddr::V4(address) => Some(*address.ip()),
             SocketAddr::V6(_) => None,
         })
-        .filter(|address| omp_bot::mdns::is_publishable_ipv4(*address));
+        .filter(|address| herdr_bot::mdns::is_publishable_ipv4(*address));
 
     main_route.or_else(|| {
         if_addrs::get_if_addrs()
@@ -167,7 +167,7 @@ fn local_publishable_ipv4() -> Option<Ipv4Addr> {
             .into_iter()
             .find_map(|interface| match interface.addr {
                 if_addrs::IfAddr::V4(address)
-                    if omp_bot::mdns::is_publishable_ipv4(address.ip) =>
+                    if herdr_bot::mdns::is_publishable_ipv4(address.ip) =>
                 {
                     Some(address.ip)
                 }
@@ -210,7 +210,7 @@ fn browse_http_instances(duration: Duration) -> Vec<(String, u16)> {
 
 /// 一次最小 HTTP/1.1 请求：直接经 TCP 连端口，不经过页面、按钮或任何前端代码。
 fn http_request(addr: SocketAddr, request: &str) -> (String, String) {
-    let mut stream = TcpStream::connect(addr).expect("连接 omp-bot 主界面");
+    let mut stream = TcpStream::connect(addr).expect("连接 herdr-bot 主界面");
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
         .expect("设置读取超时");
@@ -232,9 +232,9 @@ fn assert_page_serves(panel: &Panel, entries: &[Ipv4Addr]) {
             addr,
             &format!("GET / HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"),
         );
-        assert!(status.contains("200"), "入口 {entry} 打不开 omp-bot 主界面：{status}");
+        assert!(status.contains("200"), "入口 {entry} 打不开 herdr-bot 主界面：{status}");
         assert!(
-            body.contains("<title>omp-bot</title>"),
+            body.contains("<title>herdr-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
         );
     }
@@ -302,7 +302,7 @@ fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
         panel.log_text()
     );
 
-    // 验收 3：失败路径不发布任何 mDNS 记录——omp-bot 主界面的身份（配置地址、实际端口）都不在线上。
+    // 验收 3：失败路径不发布任何 mDNS 记录——herdr-bot 主界面的身份（配置地址、实际端口）都不在线上。
     let resolved = resolved_addresses(HOSTNAME);
     assert!(
         !resolved.contains(&IpAddr::V4(UNOWNED_ADDRESS)),
@@ -311,10 +311,10 @@ fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
     let instances = browse_http_instances(Duration::from_secs(3));
     assert!(
         instances.iter().all(|(_, port)| *port != panel.port),
-        "失败路径发布了 omp-bot 主界面实例：{instances:?}"
+        "失败路径发布了 herdr-bot 主界面实例：{instances:?}"
     );
 
-    eprintln!("omp-bot.local 解析到的地址：{resolved:?}（为空表示完全解析不到）");
+    eprintln!("herdr-bot.local 解析到的地址：{resolved:?}（为空表示完全解析不到）");
     eprintln!("_http._tcp 浏览结果：{instances:?}");
-    eprintln!("受测 omp-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
 }

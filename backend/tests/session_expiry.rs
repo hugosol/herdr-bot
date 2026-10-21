@@ -18,11 +18,11 @@ use std::time::{Duration, Instant};
 
 use common::sse::SseConnection;
 use common::{HttpResponse, TempDir, TestServer, post_json_over_tcp};
-use omp_bot::PowerOff;
-use omp_bot::PowerOffFailure;
-use omp_bot::clock::ManualClock;
-use omp_bot::countdown::ShutdownState;
-use omp_bot::sessions::{EXPIRY_SCAN_INTERVAL, SessionPolicy, SessionsState, spawn_expiry_scan};
+use herdr_bot::PowerOff;
+use herdr_bot::PowerOffFailure;
+use herdr_bot::clock::ManualClock;
+use herdr_bot::countdown::ShutdownState;
+use herdr_bot::sessions::{EXPIRY_SCAN_INTERVAL, SessionPolicy, SessionsState, spawn_expiry_scan};
 use serde_json::{Value, json};
 
 /// 会话维护用例绝不接触关机路径；这个动作只会在路由接错时立刻把用例打失败。
@@ -52,7 +52,7 @@ impl LifecycleServer {
             clock.clone(),
         ));
         let (app, state) =
-            omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+            herdr_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
@@ -345,7 +345,7 @@ async fn clearing_a_registration_leaves_the_isolated_conversation_file_untouched
     assert_eq!(after, original, "清除登记不得改写对话文件内容");
 }
 
-/// `unregister` 立即删除登记（不等窗口），omp-bot 重启（另一份全新的会话表）即清空。
+/// `unregister` 立即删除登记（不等窗口），herdr-bot 重启（另一份全新的会话表）即清空。
 #[tokio::test]
 async fn unregister_removes_immediately_and_a_restart_starts_empty() {
     let server = LifecycleServer::start().await;
@@ -365,7 +365,7 @@ async fn unregister_removes_immediately_and_a_restart_starts_empty() {
         response.body
     );
 
-    // 另一份全新的会话表就是「omp-bot 重启」：内存态不落盘，重启即清空。
+    // 另一份全新的会话表就是「herdr-bot 重启」：内存态不落盘，重启即清空。
     let restarted = LifecycleServer::start().await;
     assert!(restarted.read_sessions().await.is_empty(), "重启后没有残留会话");
 }
@@ -379,7 +379,7 @@ async fn the_real_maintenance_loop_publishes_offline_then_removal_after_the_defa
     let config = common::config(Path::new("unused.bat"), Path::new("."));
     let sessions = Arc::new(SessionsState::new());
     let (app, state) =
-        omp_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+        herdr_bot::app_with_state(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
     let server = TestServer::start_app(app).await;
 
     let registered_at = Instant::now();

@@ -13,7 +13,7 @@ use common::{FixtureTree, RECORD_FILE, config, post_start, same_path};
 #[tokio::test]
 async fn success_fixture_records_one_call_and_ends_immediately_with_zero() {
     let tree = FixtureTree::new("success");
-    let app = omp_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
 
     let (status, body) = post_start(app).await;
 
@@ -54,7 +54,7 @@ async fn success_fixture_records_one_call_and_ends_immediately_with_zero() {
 #[tokio::test]
 async fn success_fixture_process_is_gone_after_the_call() {
     let tree = FixtureTree::new("success-gone");
-    let app = omp_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("success.bat"), &tree.operations()));
 
     let (_, body) = post_start(app).await;
     assert_eq!(body["exitCode"], 0);
@@ -69,7 +69,7 @@ async fn success_fixture_process_is_gone_after_the_call() {
 #[tokio::test]
 async fn failure_fixture_records_one_call_and_ends_with_explicit_failure_code() {
     let tree = FixtureTree::new("failure");
-    let app = omp_bot::app(&config(&tree.script("failure.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("failure.bat"), &tree.operations()));
 
     let (status, body) = post_start(app).await;
 
@@ -113,7 +113,7 @@ async fn unstartable_missing_script_never_runs_and_is_not_reported_as_success() 
     let missing = tree.script("unstartable/missing-script.bat");
     assert!(!missing.exists(), "夹具前提：该目标确实不存在");
 
-    let app = omp_bot::app(&config(&missing, &tree.operations()));
+    let app = herdr_bot::app(&config(&missing, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -137,7 +137,7 @@ async fn unstartable_invalid_target_never_runs_and_is_not_reported_as_success() 
     let target = tree.script("unstartable/invalid-target.exe");
     assert!(target.is_file(), "夹具前提：该目标文件存在");
 
-    let app = omp_bot::app(&config(&target, &tree.operations()));
+    let app = herdr_bot::app(&config(&target, &tree.operations()));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
@@ -158,7 +158,7 @@ async fn unstartable_invalid_target_never_runs_and_is_not_reported_as_success() 
 #[tokio::test(flavor = "multi_thread")]
 async fn detached_child_keeps_running_after_the_call_returns() {
     let tree = FixtureTree::new("spawn-detached");
-    let app = omp_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
 
     let started_at = std::time::Instant::now();
     let (status, body) = tokio::time::timeout(Duration::from_secs(30), common::post_start(app))
@@ -326,7 +326,7 @@ async fn overlapping_calls_are_recorded_once_each_without_lost_lines() {
     );
 }
 
-/// 记录位置可配置：环境变量 OMP_BOT_FIXTURE_RECORD_DIR 决定记录目录。
+/// 记录位置可配置：环境变量 HERDR_BOT_FIXTURE_RECORD_DIR 决定记录目录。
 #[tokio::test(flavor = "multi_thread")]
 async fn record_location_can_be_pointed_at_another_directory() {
     let tree = FixtureTree::new("record-dir");
@@ -336,7 +336,7 @@ async fn record_location_can_be_pointed_at_another_directory() {
         &tree.script("success.bat"),
         &tree.operations(),
         &[(
-            "OMP_BOT_FIXTURE_RECORD_DIR",
+            "HERDR_BOT_FIXTURE_RECORD_DIR",
             custom.path().to_str().expect("临时目录是有效路径"),
         )],
     )
@@ -360,7 +360,7 @@ async fn record_location_can_be_pointed_at_another_directory() {
 #[tokio::test(flavor = "multi_thread")]
 async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
     let tree = FixtureTree::new("long-running");
-    let app = omp_bot::app(&config(&tree.script("long-running.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(&tree.script("long-running.bat"), &tree.operations()));
 
     // 后端请求在脚本结束前不会返回，因此放到后台任务里等待。
     let request = tokio::spawn(common::post_start(app));
@@ -447,7 +447,7 @@ async fn unstartable_missing_working_directory_reports_not_started() {
     let tree = FixtureTree::new("unstartable-workdir");
     let missing_directory = tree.root().join("unstartable").join("missing-working-directory");
 
-    let app = omp_bot::app(&config(&tree.script("success.bat"), &missing_directory));
+    let app = herdr_bot::app(&config(&tree.script("success.bat"), &missing_directory));
     let (status, body) = post_start(app).await;
 
     assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");

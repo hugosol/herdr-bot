@@ -23,7 +23,7 @@ param(
     [string]$CallId = '',
     # 附加说明，例如夹具自报的退出码。
     [string]$Detail = '',
-    # 记录目录；省略时用环境变量 OMP_BOT_FIXTURE_RECORD_DIR 或 <fixtures>/runtime。
+    # 记录目录；省略时用环境变量 HERDR_BOT_FIXTURE_RECORD_DIR 或 <fixtures>/runtime。
     [string]$RecordDir = '',
     # 把夹具进程 PID 写入 <记录目录>/pids/<Fixture>.pid，供人工或脚本强制结束。
     [switch]$TrackPid,

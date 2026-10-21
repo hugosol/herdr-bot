@@ -20,5 +20,5 @@ if errorlevel 1 (
     echo [fixtures] spawn-detached.bat: recording the call failed 1>&2
     exit /b 97
 )
-start "omp-bot detached child" /MIN cmd.exe /C "%~dp0detached-child.bat"
+start "herdr-bot detached child" /MIN cmd.exe /C "%~dp0detached-child.bat"
 exit /b 0

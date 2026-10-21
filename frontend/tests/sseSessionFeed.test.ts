@@ -8,7 +8,7 @@ function wireSession(sessionId: string, overrides: Record<string, unknown> = {})
   return {
     sessionId,
     sessionName: `会话 ${sessionId}`,
-    cwd: 'E:\\Developer\\myhub\\omp-bot',
+    cwd: 'E:\\Developer\\myhub\\herdr-bot',
     model: 'claude-sonnet-4-5',
     online: true,
     state: 'working',

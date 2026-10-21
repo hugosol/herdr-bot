@@ -29,13 +29,13 @@ struct RecordingPowerOff {
     fails: bool,
 }
 
-impl omp_bot::PowerOff for RecordingPowerOff {
-    fn power_off(&self) -> Result<(), omp_bot::PowerOffFailure> {
+impl herdr_bot::PowerOff for RecordingPowerOff {
+    fn power_off(&self) -> Result<(), herdr_bot::PowerOffFailure> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
         let outcome = if self.fails { "failed" } else { "ok" };
-        println!("[omp-bot] 安全壳：记录到关机动作调用 #{call}（结果 {outcome}）");
+        println!("[herdr-bot] 安全壳：记录到关机动作调用 #{call}（结果 {outcome}）");
         if self.fails {
-            Err(omp_bot::PowerOffFailure::Privilege(
+            Err(herdr_bot::PowerOffFailure::Privilege(
                 "安全壳的失败结果（不会真的关机）".to_string(),
             ))
         } else {
@@ -47,40 +47,40 @@ impl omp_bot::PowerOff for RecordingPowerOff {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let (config_path, fails) = arguments()?;
-    let config = omp_bot::Config::load(&config_path)?;
+    let config = herdr_bot::Config::load(&config_path)?;
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await
         .with_context(|| format!("绑定监听地址失败：{}", config.listen_addr))?;
     let local_addr = listener.local_addr().context("读取监听地址失败")?;
 
-    println!("[omp-bot] 安全壳已启动（关机动作为记录型替身，绝不真的关机）");
-    println!("[omp-bot] 配置文件：{}", config_path.display());
+    println!("[herdr-bot] 安全壳已启动（关机动作为记录型替身，绝不真的关机）");
+    println!("[herdr-bot] 配置文件：{}", config_path.display());
     println!(
-        "[omp-bot] 倒计时配置：{} 秒",
+        "[herdr-bot] 倒计时配置：{} 秒",
         config.shutdown.countdown_seconds.get()
     );
     println!(
-        "[omp-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
+        "[herdr-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
         config.sessions.online_timeout_seconds.get(),
         config.sessions.offline_retention_seconds.get()
     );
     println!(
-        "[omp-bot] zone 登记文件：{}",
+        "[herdr-bot] zone 登记文件：{}",
         config.zones.registry_file.display()
     );
-    println!("[omp-bot] 到期结果：{}", if fails { "failed" } else { "ok" });
-    println!("[omp-bot] 监听：http://{local_addr}/");
+    println!("[herdr-bot] 到期结果：{}", if fails { "failed" } else { "ok" });
+    println!("[herdr-bot] 监听：http://{local_addr}/");
 
-    let sessions = Arc::new(omp_bot::sessions::SessionsState::with_policy(
+    let sessions = Arc::new(herdr_bot::sessions::SessionsState::with_policy(
         config.sessions.policy(),
     ));
     let power_off = Arc::new(RecordingPowerOff {
         calls: AtomicUsize::new(0),
         fails,
     });
-    let (app, state) = omp_bot::app_with_state(&config, power_off, Arc::clone(&sessions));
-    omp_bot::sessions::spawn_expiry_scan(sessions, Arc::clone(&state.shutdown));
+    let (app, state) = herdr_bot::app_with_state(&config, power_off, Arc::clone(&sessions));
+    herdr_bot::sessions::spawn_expiry_scan(sessions, Arc::clone(&state.shutdown));
 
     axum::serve(
         listener,
@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
 /// 解析 `--config <path>` 与可选的 `--outcome ok|failed`。
 fn arguments() -> anyhow::Result<(PathBuf, bool)> {
     let mut args = std::env::args().skip(1);
-    let mut config_path = PathBuf::from("omp-bot.toml");
+    let mut config_path = PathBuf::from("herdr-bot.toml");
     let mut fails = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {

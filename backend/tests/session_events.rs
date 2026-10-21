@@ -15,9 +15,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::observation::Observation;
-use omp_bot::sessions::{SessionPolicy, SessionsState};
-use omp_bot::{PowerOff, PowerOffFailure};
+use herdr_bot::observation::Observation;
+use herdr_bot::sessions::{SessionPolicy, SessionsState};
+use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
@@ -42,7 +42,7 @@ impl SessionServer {
         let sessions = Arc::new(SessionsState::new());
         let frames = sessions.observation().subscribe();
         let app =
-            omp_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
+            herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             frames,

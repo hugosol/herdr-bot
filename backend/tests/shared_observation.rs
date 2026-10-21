@@ -18,10 +18,10 @@ use std::time::Duration;
 
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use omp_bot::clock::ManualClock;
-use omp_bot::countdown::ShutdownState;
-use omp_bot::sessions::{SessionPolicy, SessionsState};
-use omp_bot::{PowerOff, PowerOffFailure};
+use herdr_bot::clock::ManualClock;
+use herdr_bot::countdown::ShutdownState;
+use herdr_bot::sessions::{SessionPolicy, SessionsState};
+use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};
 
 /// 会话事件写入路径。
@@ -78,7 +78,7 @@ impl ObservationServer {
             clock.clone(),
         ));
         let double = RecordingPowerOff::new();
-        let (app, state) = omp_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             double,

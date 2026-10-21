@@ -1,4 +1,4 @@
-//! omp-bot 主界面后端。
+//! herdr-bot 主界面后端。
 //!
 //! 同一个 Axum 服务提供三件东西：打包后的 React 页面（静态资源）、固定操作 HTTP interface，
 //! 以及会话事件 HTTP interface。页面与接口同源同端口，本机与局域网设备访问同一服务。
@@ -139,7 +139,7 @@ pub struct AppState {
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
 ///
 /// 交付运行时不用本函数，而是用 [`app_with_sessions`] 自己持有会话表（于是能把同一份表交给后台过期
-/// 扫描，见 `omp_bot::sessions::spawn_expiry_scan`）；本函数固定空表，供只关心路由形状的调用方使用。
+/// 扫描，见 `herdr_bot::sessions::spawn_expiry_scan`）；本函数固定空表，供只关心路由形状的调用方使用。
 pub fn app(config: &Config) -> Router {
     app_with_power_off(config, Arc::new(SystemPowerOff))
 }
@@ -178,7 +178,7 @@ pub fn app_with_sessions(
 /// 与 [`app_with_sessions`] 完全同一份装配，但把运行状态（[`AppState`]）一并交回调用者。
 ///
 /// 交付运行时（`main.rs`）与安全外壳用它拿到关机倒计时的句柄，再交给时钟驱动的维护循环
-/// （`omp_bot::sessions::spawn_expiry_scan`）；于是「过期扫描 + 监听重判」的接线与用例看到的
+/// （`herdr_bot::sessions::spawn_expiry_scan`）；于是「过期扫描 + 监听重判」的接线与用例看到的
 /// 是同一份，不需要为测试另造一条装配。
 pub fn app_with_state(
     config: &Config,
@@ -1648,7 +1648,7 @@ fn operation_response(
         // 脚本进程已创建并结束：只有成功退出码算“执行完成”，其余都是“执行失败”。
         Invocation::Ended(status) => {
             eprintln!(
-                "[omp-bot] {name} 调用已结束：{}，{status}",
+                "[herdr-bot] {name} 调用已结束：{}，{status}",
                 operation.script().display()
             );
             let exit_code = status.code();
@@ -1669,7 +1669,7 @@ fn operation_response(
         // 进程已创建，但结束结果无法观测：不能当作成功退出。
         Invocation::EndUnobserved(error) => {
             eprintln!(
-                "[omp-bot] {name} 调用已结束：无法观测脚本进程的结束结果（{}）：{error}",
+                "[herdr-bot] {name} 调用已结束：无法观测脚本进程的结束结果（{}）：{error}",
                 operation.script().display()
             );
             OperationResponse {
@@ -1684,7 +1684,7 @@ fn operation_response(
         // 目标没能启动：没有脚本进程，属于“执行失败”里的“无法启动”。
         Invocation::NotStarted(reason) => {
             eprintln!(
-                "[omp-bot] {name} 调用已结束：脚本无法启动（{}，工作目录 {}）：{reason}",
+                "[herdr-bot] {name} 调用已结束：脚本无法启动（{}，工作目录 {}）：{reason}",
                 operation.script().display(),
                 operation.working_directory().display()
             );
@@ -1746,6 +1746,6 @@ async fn unknown_api_request(UrlPath(path): UrlPath<String>) -> Response {
 /// 或执行任务没能送回结果（`500`，内部故障）。
 /// 这些路径都不接受请求、不排队，也从不接触服务端配置绑定的脚本。
 fn rejected(status: StatusCode, code: &'static str, message: &'static str) -> Response {
-    eprintln!("[omp-bot] 请求被拒绝：{code}（HTTP {}）", status.as_u16());
+    eprintln!("[herdr-bot] 请求被拒绝：{code}（HTTP {}）", status.as_u16());
     (status, Json(RejectedResponse { code, message })).into_response()
 }

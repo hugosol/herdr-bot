@@ -2,6 +2,9 @@
 
 - 状态：accepted
 - 日期：2026-10-08
+
+> 术语注记（2026-10-21）：项目已更名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`；原因与硬切换范围见 [ADR 0010](./0010-rename-project-to-herdr-bot.md)。正文保留原文。
+
 - 部分替代：[ADR-0002](0002-shutdown-button-default-on-client-countdown-no-auth.md) 的倒计时归属、刷新／关闭页面语义及倒计时时长配置决策。
 - 领域边界修订：[ADR-0006](0006-server-authoritative-session-lifecycle.md) 确定离线成员暂留、登记删除才移出，以及所有成员在线并等待输入才触发。
 

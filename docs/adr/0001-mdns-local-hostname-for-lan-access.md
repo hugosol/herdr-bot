@@ -4,6 +4,8 @@
 - 日期：2026-09-30
 
 > 术语注记（2026-10-01）：本文保留当时用词「控制面板」；整页现称 **omp-bot 主界面**，术语以 [`GLOSSARY.md`](../../GLOSSARY.md) 为准。
+>
+> 术语注记（2026-10-21）：项目已更名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`；原因与硬切换范围见 [ADR 0010](./0010-rename-project-to-herdr-bot.md)。正文保留原文。
 
 局域网访问的主入口是 mDNS 主机名 `omp-bot.local`（`http://omp-bot.local:<端口>/`），保留 `http://<IPv4>:<端口>/` 作为兜底。该名字由后端进程内的常驻 mDNS responder（`mdns-sd`）发布，**不**由 Axum/Tower 承担——Tower 是 HTTP 请求/响应中间件抽象，而 mDNS 是 UDP 5353 组播，HTTP 请求不经过它。主机名硬编码为 `omp-bot`，不提供主机名配置项；同一局域网里若已有设备占用该名字，**不改名**，而是不发布 mDNS、保留 IP 访问并告警（`mdns-sd` 探测到冲突会发 `DaemonEvent::NameChange`，据此注销）。发布地址默认取主路由 IPv4，可用 `[mdns] address` 覆盖；控制面板只提供 `[mdns] enabled`（默认 `true`）与 `[mdns] address` 两个开关。关机时不特殊注销 mDNS：进程下次启动重新注册的记录带 cache-flush，会刷新客户端缓存，空窗期只是机器本来就关着的时间；正常退出时 best-effort 关闭 daemon。
 
