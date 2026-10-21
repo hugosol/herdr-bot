@@ -59,8 +59,8 @@ fn config_with(registry: &Path) -> omp_bot::Config {
         &fixtures.join("operations").join("success.bat"),
         &fixtures.join("operations"),
     );
-    config.workspaces.registry_file = registry.to_path_buf();
-    config.workspaces.refresh_interval_seconds =
+    config.zones.registry_file = registry.to_path_buf();
+    config.zones.refresh_interval_seconds =
         omp_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
     config
 }
@@ -126,10 +126,10 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn status_url(workspace: &Path) -> String {
+fn status_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/git-status?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/git-status?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
@@ -179,7 +179,7 @@ fn init_repository(root: &Path, branch: &str) {
         root,
         &["init", "--quiet", &format!("--initial-branch={branch}")],
     );
-    git_ok(root, &["config", "user.name", "workspace-integration-test"]);
+    git_ok(root, &["config", "user.name", "zone-integration-test"]);
     git_ok(root, &["config", "user.email", "integration@example.test"]);
 }
 
@@ -263,22 +263,22 @@ fn advance_remote(
     remote_head(remote, branch)
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
 
-async fn git_status(server: &TestServer, workspace: &Path) -> Value {
-    let response = get_over_tcp(server.addr(), &status_url(workspace)).await;
+async fn git_status(server: &TestServer, zone: &Path) -> Value {
+    let response = get_over_tcp(server.addr(), &status_url(zone)).await;
     assert_eq!(
         response.status, 200,
         "读取 Git 状态应成功：{}",
@@ -287,7 +287,7 @@ async fn git_status(server: &TestServer, workspace: &Path) -> Value {
     body(&response)
 }
 
-async fn next_refresh(connection: &mut SseConnection, workspace: &Path) -> Value {
+async fn next_refresh(connection: &mut SseConnection, zone: &Path) -> Value {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -299,7 +299,7 @@ async fn next_refresh(connection: &mut SseConnection, workspace: &Path) -> Value
             continue;
         }
         let data = frame.json();
-        if data["workspace"] == json!(workspace.to_string_lossy()) {
+        if data["zone"] == json!(zone.to_string_lossy()) {
             return data;
         }
     }
@@ -310,23 +310,23 @@ async fn next_refresh(connection: &mut SseConnection, workspace: &Path) -> Value
 /// 只有显式检查远端才更新它们。
 #[tokio::test]
 async fn local_file_and_git_metadata_events_never_fetch_the_remote() {
-    let dir = TempDir::new("workspace integration watch remote");
+    let dir = TempDir::new("zone integration watch remote");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with(&registry)).await;
     register(&server, &root).await;
 
     // 页面先建立真实监听；首帧证明监听已经生效。
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
     let snapshot = connection.next_event("snapshot").await.json();
     assert!(
-        snapshot["workspaces"]
+        snapshot["zones"]
             .as_array()
-            .expect("首帧必须包含 workspace 视图")
+            .expect("首帧必须包含 zone 视图")
             .iter()
-            .any(|entry| entry["workspace"] == json!(root.to_string_lossy())),
-        "首帧必须包含已登记 workspace：{snapshot}"
+            .any(|entry| entry["zone"] == json!(root.to_string_lossy())),
+        "首帧必须包含已登记 zone：{snapshot}"
     );
 
     // 隔离远端独立前进；本地尚未检查，远端跟踪引用仍是旧值。
@@ -402,8 +402,8 @@ async fn local_file_and_git_metadata_events_never_fetch_the_remote() {
     // 主动检查仍按 06 的行为生效：只有它更新远端跟踪引用与检查时间。
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/check-remote",
-        &json!({ "workspace": &root }).to_string(),
+        "/api/zones/check-remote",
+        &json!({ "zone": &root }).to_string(),
     )
     .await;
     assert_eq!(
@@ -424,19 +424,19 @@ async fn local_file_and_git_metadata_events_never_fetch_the_remote() {
     );
 }
 
-/// P46：独立调用者（这里以受控的局域网来源代表另一台设备）可以浏览登记 workspace 并发起约定的
+/// P46：独立调用者（这里以受控的局域网来源代表另一台设备）可以浏览登记 zone 并发起约定的
 /// Git 写操作；同一来源的会话事件写入仍按 ADR-0004 被拒绝且不改动会话。公开操作范围里没有
 /// 任意命令、脚本或终端入口。
 #[tokio::test]
 async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_commands() {
-    let dir = TempDir::new("workspace integration lan caller");
+    let dir = TempDir::new("zone integration lan caller");
     let root = dir.path().join("repository");
     init_repository(&root, "main");
     write(&root, "tracked.txt", "base\n");
     git_ok(&root, &["add", "--all"]);
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let config = config_with(&registry);
     let sessions = Arc::new(SessionsState::new());
     let power = RecordingPowerOff::new();
@@ -479,19 +479,19 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
     );
 
     // 同一局域网来源可以读取登记列表、浏览目录与文件、读取 Git 状态。
-    let (status, listed) = send(lan.clone(), "GET", "/api/workspaces", String::new()).await;
+    let (status, listed) = send(lan.clone(), "GET", "/api/zones", String::new()).await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     let (status, registered) = send(
         lan.clone(),
         "POST",
-        "/api/workspaces",
+        "/api/zones",
         json!({ "path": &root }).to_string(),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "局域网来源登记应成功：{registered}");
 
     let entries = format!(
-        "/api/workspaces/entries?workspace={}&path=",
+        "/api/zones/entries?zone={}&path=",
         encode(&root.to_string_lossy())
     );
     let (status, entries) = send(lan.clone(), "GET", &entries, String::new()).await;
@@ -501,7 +501,7 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
         "目录输出必须反映真实文件：{entries}"
     );
     let file = format!(
-        "/api/workspaces/file?workspace={}&path=tracked.txt",
+        "/api/zones/file?zone={}&path=tracked.txt",
         encode(&root.to_string_lossy())
     );
     let (status, file) = send(lan.clone(), "GET", &file, String::new()).await;
@@ -523,9 +523,9 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
     let (status, committed) = send(
         lan.clone(),
         "POST",
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         json!({
-            "workspace": &root,
+            "zone": &root,
             "message": "from a lan caller",
             "reviewToken": token,
         })
@@ -550,9 +550,9 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
     for (method, path, expected) in [
         ("GET", "/api/terminal", "unknown-endpoint"),
         ("POST", "/api/command", "unknown-endpoint"),
-        ("POST", "/api/workspaces/exec", "unknown-endpoint"),
+        ("POST", "/api/zones/exec", "unknown-endpoint"),
         ("POST", "/api/operations/run", "unknown-operation"),
-        ("GET", "/api/workspaces/file/extra", "unknown-endpoint"),
+        ("GET", "/api/zones/file/extra", "unknown-endpoint"),
     ] {
         let (status, body) = send(lan.clone(), method, path, String::new()).await;
         assert_eq!(
@@ -585,12 +585,12 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
 /// P3：文件功能运行期间（真实监听已建立），固定操作、会话写入与全局关机命令仍按原有语义工作；
 /// 关机只建立/取消后端安排，记录型动作零调用。
 #[tokio::test]
-async fn workspace_activity_does_not_change_fixed_operations_sessions_or_shutdown() {
-    let fixtures = FixtureTree::new("workspace integration fixed operations");
-    let workspace = TempDir::new("workspace integration fixed operations workspace");
-    let registry = TempDir::new("workspace integration fixed operations registry");
+async fn zone_activity_does_not_change_fixed_operations_sessions_or_shutdown() {
+    let fixtures = FixtureTree::new("zone integration fixed operations");
+    let zone = TempDir::new("zone integration fixed operations zone");
+    let registry = TempDir::new("zone integration fixed operations registry");
     let mut config = common::config(&fixtures.script("success.bat"), &fixtures.operations());
-    config.workspaces.registry_file = registry.path().join("workspaces.json");
+    config.zones.registry_file = registry.path().join("zones.json");
     let sessions = Arc::new(SessionsState::new());
     let power = RecordingPowerOff::new();
     let server = TestServer::start_app(omp_bot::app_with_sessions(
@@ -600,8 +600,8 @@ async fn workspace_activity_does_not_change_fixed_operations_sessions_or_shutdow
     ))
     .await;
 
-    register(&server, workspace.path()).await;
-    let mut watch = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
+    register(&server, zone.path()).await;
+    let mut watch = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
     let _ = watch.next_event("snapshot").await;
 
     // 固定操作仍按名称执行，并且实际调用了配置的脚本一次。

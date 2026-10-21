@@ -1,8 +1,8 @@
 /**
- * workspace 只读浏览接口客户端。
+ * zone 只读浏览接口客户端。
  *
- * 目录与文件读取都以已登记的 workspace 路径 + 相对路径定位；后端负责边界检查。页面在进入
- * workspace 时读取一次整树快照，之后只有手动刷新会重读；单目录与单文件入口保留给直接读取。
+ * 目录与文件读取都以已登记的 zone 路径 + 相对路径定位；后端负责边界检查。页面在进入
+ * zone 时读取一次整树快照，之后只有手动刷新会重读；单目录与单文件入口保留给直接读取。
  */
 
 export type EntryKind = 'directory' | 'file' | 'link'
@@ -18,7 +18,7 @@ export type BrowseEntry = {
 }
 
 export type DirectoryListing = {
-  workspace: string
+  zone: string
   path: string
   entries: BrowseEntry[]
 }
@@ -36,8 +36,8 @@ export type TreeDirectory = {
 }
 
 /** 一次整树读取：目录路径 → 直接子项；ignoredHidden 表示本次是否隐藏了 ignored 路径。 */
-export type WorkspaceTree = {
-  workspace: string
+export type ZoneTree = {
+  zone: string
   directories: TreeDirectory[]
   ignoredHidden: boolean
 }
@@ -49,7 +49,7 @@ export type FilePreview =
   | { kind: 'too-large'; reason: string; size: number; limit: number }
 
 export type FileView = {
-  workspace: string
+  zone: string
   path: string
   name: string
   size: number
@@ -86,7 +86,7 @@ function isEntry(value: unknown): value is BrowseEntry {
 
 function isDirectoryListing(value: unknown): value is DirectoryListing {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('path' in value) || typeof value.path !== 'string') return false
   return (
     'entries' in value &&
@@ -134,9 +134,9 @@ function isTreeDirectory(value: unknown): value is TreeDirectory {
   return true
 }
 
-function isWorkspaceTree(value: unknown): value is WorkspaceTree {
+function isZoneTree(value: unknown): value is ZoneTree {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('ignoredHidden' in value) || typeof value.ignoredHidden !== 'boolean') return false
   return (
     'directories' in value &&
@@ -147,7 +147,7 @@ function isWorkspaceTree(value: unknown): value is WorkspaceTree {
 
 function isFileView(value: unknown): value is FileView {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('path' in value) || typeof value.path !== 'string') return false
   if (!('name' in value) || typeof value.name !== 'string') return false
   if (!('size' in value) || typeof value.size !== 'number') return false
@@ -191,29 +191,29 @@ async function browseRequest<T>(
     : { kind: 'unreachable' }
 }
 
-function browseUrl(endpoint: string, workspace: string, path: string): string {
-  const params = new URLSearchParams({ workspace, path })
-  return `/api/workspaces/${endpoint}?${params.toString()}`
+function browseUrl(endpoint: string, zone: string, path: string): string {
+  const params = new URLSearchParams({ zone, path })
+  return `/api/zones/${endpoint}?${params.toString()}`
 }
 
-/** 读取一个目录的直接子项；空字符串表示 workspace 根目录。 */
+/** 读取一个目录的直接子项；空字符串表示 zone 根目录。 */
 export function fetchDirectory(
-  workspace: string,
+  zone: string,
   path: string,
 ): Promise<BrowseResult<DirectoryListing>> {
-  return browseRequest(browseUrl('entries', workspace, path), isDirectoryListing)
+  return browseRequest(browseUrl('entries', zone, path), isDirectoryListing)
 }
 
-/** 一次读取完整目录树；Git workspace 的 ignored 路径已由后端省略。 */
-export function fetchTree(workspace: string): Promise<BrowseResult<WorkspaceTree>> {
-  const params = new URLSearchParams({ workspace })
-  return browseRequest(`/api/workspaces/tree?${params.toString()}`, isWorkspaceTree)
+/** 一次读取完整目录树；Git zone 的 ignored 路径已由后端省略。 */
+export function fetchTree(zone: string): Promise<BrowseResult<ZoneTree>> {
+  const params = new URLSearchParams({ zone })
+  return browseRequest(`/api/zones/tree?${params.toString()}`, isZoneTree)
 }
 
 /** 读取单个文件元数据与内容预览。 */
 export function fetchFile(
-  workspace: string,
+  zone: string,
   path: string,
 ): Promise<BrowseResult<FileView>> {
-  return browseRequest(browseUrl('file', workspace, path), isFileView)
+  return browseRequest(browseUrl('file', zone, path), isFileView)
 }

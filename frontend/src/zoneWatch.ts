@@ -1,68 +1,68 @@
 /**
  * 文件列表自动更新的真实数据源：后端只读 SSE 长连接。
  *
- * 服务端为每个 workspace 合并本地文件事件，按最小间隔下发 `refresh`；`health` 明确报告监听失效。
+ * 服务端为每个 zone 合并本地文件事件，按最小间隔下发 `refresh`；`health` 明确报告监听失效。
  * 页面只消费「可以重新读取」的通知与健康状态，不把本地通知当成远端状态，也不因它自动 fetch。
  *
- * 首帧 `snapshot` 是整份监听视图（实际间隔、每个 workspace 的健康与最近刷新）。连接错误只降级为
+ * 首帧 `snapshot` 是整份监听视图（实际间隔、每个 zone 的健康与最近刷新）。连接错误只降级为
  * 「可能已过期」，恢复实况的唯一证据是又一份完整 `snapshot`；`refresh`/`health` 增量不构成恢复证据。
  */
 
 import type { ConnectionStatus } from './sessionFeed'
 
-export type WorkspaceWatchHealth = 'live' | 'error'
+export type ZoneWatchHealth = 'live' | 'error'
 
-/** 后端下发的单个 workspace 监听视图。 */
-export type WorkspaceWatchEntry = {
-  workspace: string
-  health: WorkspaceWatchHealth
+/** 后端下发的单个 zone 监听视图。 */
+export type ZoneWatchEntry = {
+  zone: string
+  health: ZoneWatchHealth
   /** 监听失败原因；正常监听时缺省。 */
   message?: string
   /** 最近一次自动刷新通知的服务端 Unix 毫秒时间；尚未刷新时缺省。 */
   lastRefreshAt?: number
-  /** 服务端累计的刷新代数；同一 workspace 的观察者看到同一个值。 */
+  /** 服务端累计的刷新代数；同一 zone 的观察者看到同一个值。 */
   generation: number
 }
 
 /** 数据源当前暴露的一帧监听视图。 */
-export type WorkspaceWatchSnapshot = {
+export type ZoneWatchSnapshot = {
   connection: ConnectionStatus
   intervalSeconds: number
-  workspaces: WorkspaceWatchEntry[]
+  zones: ZoneWatchEntry[]
 }
 
 /**
  * 自动更新数据源。形状与 `useSyncExternalStore` 对齐；`getSnapshot` 在数据未变化时必须返回同一引用。
  */
-export type WorkspaceWatchFeed = {
+export type ZoneWatchFeed = {
   subscribe(onChange: () => void): () => void
-  getSnapshot(): WorkspaceWatchSnapshot
+  getSnapshot(): ZoneWatchSnapshot
 }
 
 /** 尚未接线时的空视图：没有监听项，也不产生任何自动刷新。 */
-const EMPTY_SNAPSHOT: WorkspaceWatchSnapshot = {
+const EMPTY_SNAPSHOT: ZoneWatchSnapshot = {
   connection: 'live',
   intervalSeconds: 10,
-  workspaces: [],
+  zones: [],
 }
 
-export const EMPTY_WORKSPACE_WATCH: WorkspaceWatchFeed = {
+export const EMPTY_ZONE_WATCH: ZoneWatchFeed = {
   subscribe: () => () => {},
   getSnapshot: () => EMPTY_SNAPSHOT,
 }
 
 /** 默认端点：与页面同源，开发时由 Vite 代理转发到本机后端。 */
-export const WORKSPACE_WATCH_URL = '/api/workspaces/watch'
+export const ZONE_WATCH_URL = '/api/zones/watch'
 
 /** 本模块用到的 `EventSource` 子集：真实实现与测试假实现都能满足它。 */
-export type WorkspaceWatchSource = {
+export type ZoneWatchSource = {
   addEventListener(type: string, listener: (event: { data: string }) => void): void
   close(): void
 }
 
-export type WorkspaceWatchSourceFactory = (url: string) => WorkspaceWatchSource
+export type ZoneWatchSourceFactory = (url: string) => ZoneWatchSource
 
-const defaultSourceFactory: WorkspaceWatchSourceFactory = (url) => new EventSource(url)
+const defaultSourceFactory: ZoneWatchSourceFactory = (url) => new EventSource(url)
 
 function parsePayload(data: string): Record<string, unknown> | null {
   try {
@@ -79,10 +79,10 @@ function isGeneration(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
-function parseEntry(value: unknown): WorkspaceWatchEntry | null {
+function parseEntry(value: unknown): ZoneWatchEntry | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
-  if (typeof record.workspace !== 'string' || record.workspace === '') return null
+  if (typeof record.zone !== 'string' || record.zone === '') return null
   if (record.health !== 'live' && record.health !== 'error') return null
   if (!isGeneration(record.generation)) return null
   if (record.message !== undefined && typeof record.message !== 'string') return null
@@ -93,7 +93,7 @@ function parseEntry(value: unknown): WorkspaceWatchEntry | null {
     return null
   }
   return {
-    workspace: record.workspace,
+    zone: record.zone,
     health: record.health,
     generation: record.generation,
     ...(record.message === undefined ? {} : { message: record.message }),
@@ -103,23 +103,23 @@ function parseEntry(value: unknown): WorkspaceWatchEntry | null {
   }
 }
 
-function parseSnapshot(payload: Record<string, unknown>): WorkspaceWatchSnapshot | null {
+function parseSnapshot(payload: Record<string, unknown>): ZoneWatchSnapshot | null {
   const interval = payload.intervalSeconds
   if (typeof interval !== 'number' || !Number.isInteger(interval) || interval < 1) return null
-  if (!Array.isArray(payload.workspaces)) return null
-  const workspaces: WorkspaceWatchEntry[] = []
-  for (const item of payload.workspaces) {
+  if (!Array.isArray(payload.zones)) return null
+  const zones: ZoneWatchEntry[] = []
+  for (const item of payload.zones) {
     const entry = parseEntry(item)
     if (entry === null) return null
-    workspaces.push(entry)
+    zones.push(entry)
   }
-  return { connection: 'live', intervalSeconds: interval, workspaces }
+  return { connection: 'live', intervalSeconds: interval, zones }
 }
 
-export type CreateWorkspaceWatchOptions = {
+export type CreateZoneWatchOptions = {
   url?: string
   /** 连接的构造方式；缺省用真实 `EventSource`，测试注入假实现。 */
-  eventSourceFactory?: WorkspaceWatchSourceFactory
+  eventSourceFactory?: ZoneWatchSourceFactory
 }
 
 /**
@@ -128,17 +128,17 @@ export type CreateWorkspaceWatchOptions = {
  * 退订后重置为初始视图：重新进入文件列表时会重新订阅并等待新的完整快照，不把上一次连接的
  * 健康状态当成当前事实。
  */
-export function createWorkspaceWatchFeed(
-  options: CreateWorkspaceWatchOptions = {},
-): WorkspaceWatchFeed {
-  const url = options.url ?? WORKSPACE_WATCH_URL
+export function createZoneWatchFeed(
+  options: CreateZoneWatchOptions = {},
+): ZoneWatchFeed {
+  const url = options.url ?? ZONE_WATCH_URL
   const createSource = options.eventSourceFactory ?? defaultSourceFactory
 
-  let snapshot: WorkspaceWatchSnapshot = EMPTY_SNAPSHOT
-  let source: WorkspaceWatchSource | null = null
+  let snapshot: ZoneWatchSnapshot = EMPTY_SNAPSHOT
+  let source: ZoneWatchSource | null = null
   const subscribers = new Set<() => void>()
 
-  function publish(next: WorkspaceWatchSnapshot) {
+  function publish(next: ZoneWatchSnapshot) {
     snapshot = next
     for (const notify of subscribers) notify()
   }
@@ -148,17 +148,17 @@ export function createWorkspaceWatchFeed(
     publish({ ...snapshot, connection: 'interrupted' })
   }
 
-  function upsertEntry(entry: WorkspaceWatchEntry) {
-    const index = snapshot.workspaces.findIndex(
-      (known) => known.workspace === entry.workspace,
+  function upsertEntry(entry: ZoneWatchEntry) {
+    const index = snapshot.zones.findIndex(
+      (known) => known.zone === entry.zone,
     )
-    const workspaces =
+    const zones =
       index === -1
-        ? [...snapshot.workspaces, entry]
-        : snapshot.workspaces.map((known, position) =>
+        ? [...snapshot.zones, entry]
+        : snapshot.zones.map((known, position) =>
             position === index ? entry : known,
           )
-    publish({ ...snapshot, workspaces })
+    publish({ ...snapshot, zones })
   }
 
   function handleFrame(name: string, data: string) {
@@ -176,14 +176,14 @@ export function createWorkspaceWatchFeed(
     if (snapshot.connection === 'interrupted') return
 
     if (name === 'refresh') {
-      const workspace = payload.workspace
+      const zone = payload.zone
       const at = payload.at
       const generation = payload.generation
-      if (typeof workspace !== 'string' || workspace === '') return
+      if (typeof zone !== 'string' || zone === '') return
       if (typeof at !== 'number' || !Number.isFinite(at) || !isGeneration(generation)) return
-      const existing = snapshot.workspaces.find((entry) => entry.workspace === workspace)
+      const existing = snapshot.zones.find((entry) => entry.zone === zone)
       upsertEntry({
-        workspace,
+        zone,
         health: existing?.health ?? 'live',
         generation,
         lastRefreshAt: at,
@@ -193,14 +193,14 @@ export function createWorkspaceWatchFeed(
     }
 
     if (name === 'health') {
-      const workspace = payload.workspace
-      if (typeof workspace !== 'string' || workspace === '') return
+      const zone = payload.zone
+      if (typeof zone !== 'string' || zone === '') return
       if (payload.health !== 'live' && payload.health !== 'error') return
       if (!isGeneration(payload.generation)) return
       if (payload.message !== undefined && typeof payload.message !== 'string') return
-      const existing = snapshot.workspaces.find((entry) => entry.workspace === workspace)
+      const existing = snapshot.zones.find((entry) => entry.zone === zone)
       upsertEntry({
-        workspace,
+        zone,
         health: payload.health,
         generation: payload.generation,
         ...(payload.health === 'error' && typeof payload.message === 'string'
@@ -240,16 +240,16 @@ export function createWorkspaceWatchFeed(
 }
 
 /** 页面上的自动更新问题：监听失效优先于连接中断；两者都不表示手动读取不可用。 */
-export type WorkspaceWatchProblem = {
+export type ZoneWatchProblem = {
   kind: 'listener' | 'connection'
   text: string
 }
 
 export function describeWatchProblem(
   connection: ConnectionStatus,
-  entry: WorkspaceWatchEntry | null,
+  entry: ZoneWatchEntry | null,
   subject?: string,
-): WorkspaceWatchProblem | null {
+): ZoneWatchProblem | null {
   if (connection === 'interrupted') {
     return {
       kind: 'connection',

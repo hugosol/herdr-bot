@@ -77,32 +77,144 @@ h1 {
   display: none;
 }
 
-/* ---------- 文件列表：workspace 登记 ---------- */
+/* ---------- 文件列表：zone 登记 ---------- */
 
-.workspaces {
+.zones {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.workspace-form {
+.zone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.zone-action {
+  flex: 1 1 10rem;
+  min-height: 2.75rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zone-action--register {
+  border: 1px solid #3d4653;
+  background: #1d2128;
+  color: #e8ecf2;
+}
+
+.zone-action--create {
+  border: 1px solid #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+}
+
+.zone-action:disabled {
+  border-color: #3a4048;
+  background: #3a4048;
+  color: #9aa3ae;
+  cursor: not-allowed;
+}
+
+.zone-note {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-left: 0.35rem solid #b58a2f;
+  border-radius: 0.35rem;
+  background: #2b261a;
+  color: #ffd995;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.zone-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 970;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1.25rem;
+  background: rgba(6, 8, 11, 0.88);
+}
+
+.zone-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  width: min(100%, 32rem);
+  padding: 1.25rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.75rem;
+  background: #14161a;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45);
+}
+
+.zone-dialog__title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.zone-dialog__hint {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.zone-dialog__hint code {
+  color: #d6dbe4;
+  overflow-wrap: anywhere;
+}
+
+.zone-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.zone-dialog__cancel {
+  min-width: 6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #3d4653;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  color: #e8ecf2;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.zone-dialog__cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.zone-form {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.workspace-form__label {
+.zone-form__label {
   font-size: 0.95rem;
   font-weight: 600;
   color: #d6dbe4;
 }
 
-.workspace-form__row {
+.zone-form__row {
   display: flex;
   gap: 0.5rem;
 }
 
-.workspace-form__input {
+.zone-form__input {
   flex: 1;
   min-width: 0;
   padding: 0.75rem;
@@ -113,11 +225,11 @@ h1 {
   font-size: 1rem;
 }
 
-.workspace-form__input::placeholder {
+.zone-form__input::placeholder {
   color: #6b7280;
 }
 
-.workspace-register {
+.zone-register {
   flex: none;
   padding: 0.75rem 1.1rem;
   border: 0;
@@ -129,15 +241,15 @@ h1 {
   cursor: pointer;
 }
 
-.workspace-register:disabled {
+.zone-register:disabled {
   background: #3a4048;
   color: #9aa3ae;
   cursor: not-allowed;
 }
 
-.workspace-feedback,
-.workspace-error,
-.workspaces__loading {
+.zone-feedback,
+.zone-error,
+.zones__loading {
   box-sizing: border-box;
   margin: 0;
   padding: 0.75rem 1rem;
@@ -147,27 +259,27 @@ h1 {
   line-height: 1.5;
 }
 
-.workspace-feedback[data-kind='success'] {
+.zone-feedback[data-kind='success'] {
   border-left: 0.35rem solid #2f7d32;
   color: #b6f0c0;
 }
 
-.workspace-feedback[data-kind='error'],
-.workspace-error {
+.zone-feedback[data-kind='error'],
+.zone-error {
   border-left: 0.35rem solid #c14b3a;
   color: #ffd9d1;
 }
 
-.workspaces__loading {
+.zones__loading {
   color: #a9b1bd;
 }
 
-.workspaces__heading {
+.zones__heading {
   margin: 0.5rem 0 0;
   font-size: 1.1rem;
 }
 
-.workspaces__empty {
+.zones__empty {
   margin: 0;
   padding: 1rem;
   border-radius: 0.75rem;
@@ -175,7 +287,7 @@ h1 {
   color: #a9b1bd;
 }
 
-.workspace-list {
+.zone-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -184,7 +296,7 @@ h1 {
   list-style: none;
 }
 
-.workspace-item {
+.zone-item {
   display: flex;
   align-items: stretch;
   gap: 0.35rem;
@@ -195,7 +307,7 @@ h1 {
 }
 
 /* 整行浏览入口：路径、角标和空白区域共同组成一个按钮，不再单独显示「浏览」。 */
-.workspace-item__open {
+.zone-item__open {
   display: flex;
   align-items: center;
   flex: 1 1 auto;
@@ -211,16 +323,16 @@ h1 {
   cursor: pointer;
 }
 
-.workspace-item__open:hover:enabled {
+.zone-item__open:hover:enabled {
   background: #252b33;
 }
 
-.workspace-item__open:disabled {
+.zone-item__open:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.workspace-item__path {
+.zone-item__path {
   flex: 1;
   min-width: 0;
   color: #d6dbe4;
@@ -229,7 +341,7 @@ h1 {
 }
 
 /* 取消登记只显示一个叉号；保留 44px 触摸目标，避免手机上误触。 */
-.workspace-item__remove {
+.zone-item__remove {
   display: grid;
   place-items: center;
   flex: none;
@@ -245,18 +357,18 @@ h1 {
   cursor: pointer;
 }
 
-.workspace-item__remove:hover:enabled {
+.zone-item__remove:hover:enabled {
   border-color: #a45245;
   background: #3d2621;
 }
 
-.workspace-item__remove:disabled {
+.zone-item__remove:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
 /* 待提交角标：只显示后端确认的项数；读取失败用独立色，不伪装成 0。 */
-.workspace-badge {
+.zone-badge {
   flex: none;
   padding: 0.2rem 0.55rem;
   border: 1px solid #37506b;
@@ -267,27 +379,31 @@ h1 {
   white-space: nowrap;
 }
 
-.workspace-badge[data-conflict='true'] {
+.zone-badge[data-conflict='true'] {
   border-color: #8a5a2b;
   background: #33281c;
   color: #ffd995;
 }
 
-.workspace-badge--error {
+.zone-badge--error {
   border-color: #6b3a33;
   background: #33201c;
   color: #ffd9d1;
 }
 
-.workspace-form__input:focus-visible,
-.workspace-register:focus-visible,
-.workspace-item__open:focus-visible,
-.workspace-item__remove:focus-visible {
+.zone-form__input:focus-visible,
+.zone-action:focus-visible,
+.zone-dialog__cancel:focus-visible,
+.zone-register:focus-visible,
+.zone-item__open:focus-visible,
+.zone-item__remove:focus-visible,
+.file-view__read-html:focus-visible,
+.html-reader__exit:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
 }
 
-/* ---------- workspace 只读文件浏览 ---------- */
+/* ---------- zone 只读文件浏览 ---------- */
 
 /* 文件列表比固定操作需要更宽的左右布局；其他 tab 仍保持窄面板。 */
 .panel--wide {
@@ -332,7 +448,7 @@ h1 {
   cursor: progress;
 }
 
-.browser-toolbar__workspace {
+.browser-toolbar__zone {
   flex: 1;
   min-width: 0;
   color: #a9b1bd;
@@ -348,7 +464,7 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-/* workspace 内部子 tab：只有 Git 工作区出现；普通目录仍只有浏览。 */
+/* zone 内部子 tab：只有 Git 工作树出现；普通目录仍只有浏览。 */
 .browser-views {
   display: flex;
   gap: 0.25rem;
@@ -926,6 +1042,104 @@ h1 {
   font-size: 0.85rem;
 }
 
+.file-view__read-html {
+  align-self: center;
+  margin-left: auto;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #2f7d32;
+  border-radius: 0.45rem;
+  background: #1f3522;
+  color: #b6f0c0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 阅读模式占满整个可用视口；顶部只有路径与右上角退出，内容区不再套主界面布局。 */
+.html-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 980;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: #0b0d10;
+  color: #f2f4f8;
+}
+
+.html-reader__bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: none;
+  box-sizing: border-box;
+  min-height: 3.5rem;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid #2b313a;
+  background: #14161a;
+}
+
+.html-reader__path {
+  min-width: 0;
+  overflow: hidden;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.html-reader__exit {
+  flex: none;
+  margin-left: auto;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #6b3a33;
+  border-radius: 0.45rem;
+  background: #33201c;
+  color: #ffd9d1;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.html-reader__status,
+.html-reader__error,
+.html-reader__notice {
+  position: absolute;
+  top: 4rem;
+  left: 50%;
+  z-index: 2;
+  box-sizing: border-box;
+  max-width: min(92vw, 44rem);
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  background: #1d2128;
+  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.35);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  transform: translateX(-50%);
+}
+
+.html-reader__error {
+  border-left: 0.35rem solid #c14b3a;
+  color: #ffd9d1;
+}
+
+.html-reader__notice {
+  border-left: 0.35rem solid #b58a2f;
+  color: #ffd995;
+}
+
+.html-reader__frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #ffffff;
+}
+
 .file-view__text {
   margin: 0;
   padding: 0.5rem;
@@ -1070,7 +1284,7 @@ h1 {
     padding: 1rem;
   }
 
-  .browser-toolbar__workspace {
+  .browser-toolbar__zone {
     order: 3;
     flex-basis: 100%;
   }
@@ -1083,11 +1297,11 @@ h1 {
 
 /* 窄屏：路径输入与登记按钮上下排列，按钮占满宽度，触摸目标保持足够大。 */
 @media (max-width: 420px) {
-  .workspace-form__row {
+  .zone-form__row {
     flex-direction: column;
   }
 
-  .workspace-register {
+  .zone-register {
     width: 100%;
     padding: 0.85rem 1.1rem;
   }

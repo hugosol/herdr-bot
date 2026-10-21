@@ -151,8 +151,9 @@ impl SseConnection {
                     .expect("状态码必须是数字");
                 self.headers = lines
                     .filter_map(|line| {
-                        line.split_once(':')
-                            .map(|(name, value)| (name.trim().to_lowercase(), value.trim().to_string()))
+                        line.split_once(':').map(|(name, value)| {
+                            (name.trim().to_lowercase(), value.trim().to_string())
+                        })
                     })
                     .collect();
                 return;

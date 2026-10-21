@@ -1,22 +1,22 @@
 import { useCallback, useSyncExternalStore } from 'react'
 
 import {
-  EMPTY_WORKSPACE_WATCH,
-  type WorkspaceWatchFeed,
-  type WorkspaceWatchSnapshot,
-} from './workspaceWatch'
+  EMPTY_ZONE_WATCH,
+  type ZoneWatchFeed,
+  type ZoneWatchSnapshot,
+} from './zoneWatch'
 
 /**
  * 订阅自动更新数据源；只有文件列表处于前台时才连接。
  *
  * 切到其它顶层 tab 时退订并回到空视图：重新进入文件列表会重新连接并等待完整快照，
- * 不把上一次连接的健康状态当成当前事实；进入 workspace 时的即时读取仍由页面自己发起。
+ * 不把上一次连接的健康状态当成当前事实；进入 zone 时的即时读取仍由页面自己发起。
  */
-export function useWorkspaceWatch(
-  feed: WorkspaceWatchFeed | undefined,
+export function useZoneWatch(
+  feed: ZoneWatchFeed | undefined,
   active: boolean,
-): WorkspaceWatchSnapshot {
-  const source = active && feed !== undefined ? feed : EMPTY_WORKSPACE_WATCH
+): ZoneWatchSnapshot {
+  const source = active && feed !== undefined ? feed : EMPTY_ZONE_WATCH
   const subscribe = useCallback(
     (onChange: () => void) => source.subscribe(onChange),
     [source],

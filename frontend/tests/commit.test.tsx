@@ -6,9 +6,9 @@ import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
 import { treeResponse } from './treeResponse'
 import type { ChangeDiff, DiffSide } from '../src/diffApi'
-import type { GitChange, GitStatus, WorkspaceSummary } from '../src/gitApi'
+import type { GitChange, GitStatus, ZoneSummary } from '../src/gitApi'
 
-const WORKSPACE = 'C:\\work\\repository'
+const ZONE = 'C:\\work\\repository'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -31,7 +31,7 @@ function mockFetch(handler: Handler): { urls: URL[]; commits: string[] } {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), 'http://localhost')
       urls.push(url)
-      if (url.pathname === '/api/workspaces/commit') {
+      if (url.pathname === '/api/zones/commit') {
         commits.push(String(init?.body ?? ''))
       }
       return (
@@ -70,28 +70,28 @@ const TEXT = (content: string): DiffSide => ({
 
 const DIFFS: Record<string, ChangeDiff> = {
   'src/added.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/added.txt',
     old: { kind: 'absent' },
     new: TEXT('brand\nnew\n'),
     complete: true,
   },
   'src/binary.bin': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/binary.bin',
     old: TEXT('old\n'),
     new: { kind: 'binary', reason: '文件包含 NUL 字节。', size: 8 },
     complete: false,
   },
   'src/gone.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/gone.txt',
     old: TEXT('gone\n'),
     new: { kind: 'absent' },
     complete: true,
   },
   'src/modified.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/modified.txt',
     old: TEXT('old\n'),
     new: TEXT('new\n'),
@@ -101,7 +101,7 @@ const DIFFS: Record<string, ChangeDiff> = {
 
 function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     repository: true,
     branch: 'main',
     detached: false,
@@ -114,11 +114,11 @@ function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   }
 }
 
-function overview(status: GitStatus): { workspaces: WorkspaceSummary[] } {
+function overview(status: GitStatus): { zones: ZoneSummary[] } {
   return {
-    workspaces: [
+    zones: [
       {
-        path: WORKSPACE,
+        path: ZONE,
         repository: status.repository,
         branch: status.branch,
         pendingCount: status.repository ? status.pendingCount : undefined,
@@ -129,7 +129,7 @@ function overview(status: GitStatus): { workspaces: WorkspaceSummary[] } {
 }
 
 function listing(path: string) {
-  return { workspace: WORKSPACE, path, entries: DIRECTORIES[path] ?? [] }
+  return { zone: ZONE, path, entries: DIRECTORIES[path] ?? [] }
 }
 
 /**
@@ -141,39 +141,39 @@ function standardHandler(
   commit: (body: string) => Response | Promise<Response>,
 ): Handler {
   return (url, init) => {
-    if (url.pathname === '/api/workspaces') {
-      return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+    if (url.pathname === '/api/zones') {
+      return jsonResponse(200, { zones: [{ path: ZONE }] })
     }
-    if (url.pathname === '/api/workspaces/overview') {
+    if (url.pathname === '/api/zones/overview') {
       return jsonResponse(200, overview(status()))
     }
-    if (url.pathname === '/api/workspaces/git-status') {
+    if (url.pathname === '/api/zones/git-status') {
       return jsonResponse(200, status())
     }
-    if (url.pathname === '/api/workspaces/tree') {
-      return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+    if (url.pathname === '/api/zones/tree') {
+      return jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
     }
-    if (url.pathname === '/api/workspaces/entries') {
+    if (url.pathname === '/api/zones/entries') {
       return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
     }
-    if (url.pathname === '/api/workspaces/file') {
+    if (url.pathname === '/api/zones/file') {
       const path = url.searchParams.get('path') ?? ''
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         path,
         name: path.split('/').pop() ?? path,
         size: 4,
         preview: { kind: 'text', content: `content of ${path}` },
       })
     }
-    if (url.pathname === '/api/workspaces/diff') {
+    if (url.pathname === '/api/zones/diff') {
       const path = url.searchParams.get('path') ?? ''
       const diff = DIFFS[path]
       return diff === undefined
         ? jsonResponse(404, { code: 'path-not-found', message: '没有该变更' })
         : jsonResponse(200, diff)
     }
-    if (url.pathname === '/api/workspaces/commit') {
+    if (url.pathname === '/api/zones/commit') {
       return commit(String(init?.body ?? ''))
     }
     return undefined
@@ -182,9 +182,9 @@ function standardHandler(
 
 async function openChanges(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
   await screen.findByTestId('browser-branch')
   await user.click(screen.getByTestId('browser-view-changes'))
   await screen.findByTestId('commit-bar')
@@ -240,7 +240,7 @@ describe('经审查复核的整仓 Commit', () => {
     expect(button).toBeEnabled()
     expect(screen.queryByTestId('commit-message-required')).toBeNull()
 
-    // 工作区干净时没有可提交变更，按钮禁用并明确说明。
+    // 工作树干净时没有可提交变更，按钮禁用并明确说明。
     status = gitStatus({ changes: [], pendingCount: 0 })
     await user.click(screen.getByTestId('browser-refresh'))
     await waitFor(() => expect(screen.getByTestId('commit-unavailable')).toBeVisible())
@@ -289,7 +289,7 @@ describe('经审查复核的整仓 Commit', () => {
     expect(paragraphs).toHaveLength(1)
     const text = dialog.textContent ?? ''
     expect(text).toContain('确认提交当前审查版本中的全部待提交变更？')
-    expect(text).not.toContain(WORKSPACE)
+    expect(text).not.toContain(ZONE)
     expect(text).not.toContain('main')
     expect(text).not.toContain('unique-message-marker')
     expect(text).not.toContain('src/added.txt')
@@ -311,7 +311,7 @@ describe('经审查复核的整仓 Commit', () => {
         () => {
           status = gitStatus({ changes: [], pendingCount: 0, reviewToken: 'token-2' })
           return jsonResponse(200, {
-            workspace: WORKSPACE,
+            zone: ZONE,
             outcome: 'committed',
             commit: 'abcdef1234567890',
             branch: 'main',
@@ -333,7 +333,7 @@ describe('经审查复核的整仓 Commit', () => {
 
     expect(requests.commits).toHaveLength(1)
     expect(JSON.parse(requests.commits[0])).toEqual({
-      workspace: WORKSPACE,
+      zone: ZONE,
       message: 'reviewed message',
       reviewToken: 'token-1',
     })
@@ -359,7 +359,7 @@ describe('经审查复核的整仓 Commit', () => {
           }
           status = gitStatus({ changes: [], pendingCount: 0, reviewToken: 'token-3' })
           return jsonResponse(200, {
-            workspace: WORKSPACE,
+            zone: ZONE,
             outcome: 'committed',
             commit: '1234567890abcdef',
             branch: 'main',
@@ -400,10 +400,10 @@ describe('经审查复核的整仓 Commit', () => {
     let status = gitStatus()
     let statusReads = 0
     const requests = mockFetch((url, init) => {
-      if (url.pathname === '/api/workspaces/commit') {
+      if (url.pathname === '/api/zones/commit') {
         return Promise.reject(new TypeError('连接中断'))
       }
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         statusReads += 1
         // 实际仓库可能已经提交：刷新后显示干净状态。
         if (statusReads > 1) {
@@ -459,7 +459,7 @@ describe('经审查复核的整仓 Commit', () => {
     status = gitStatus({ changes: [], pendingCount: 0, reviewToken: 'token-2' })
     resolveCommit!(
       jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         outcome: 'committed',
         commit: 'fedcba9876543210',
         branch: 'main',
@@ -498,7 +498,7 @@ describe('经审查复核的整仓 Commit', () => {
     expect(requests.commits).toHaveLength(1)
     pendingCommit!(
       jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         outcome: 'committed',
         commit: '0011223344556677',
         branch: 'main',
@@ -574,7 +574,7 @@ describe('经审查复核的整仓 Commit', () => {
 
     const view = render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
+    await screen.findByTestId('zone-list')
 
     status = gitStatus({
       repository: false,
@@ -583,8 +583,8 @@ describe('经审查复核的整仓 Commit', () => {
       pendingCount: 0,
       reviewToken: undefined,
     })
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
     await waitFor(() =>
       expect(screen.queryByTestId('browser-view-changes')).not.toBeInTheDocument(),
     )
@@ -644,7 +644,7 @@ describe('经审查复核的整仓 Commit', () => {
             reviewToken: 'after-first-commit',
           })
           return jsonResponse(200, {
-            workspace: WORKSPACE,
+            zone: ZONE,
             outcome: 'committed',
             commit: '1111222233334444',
             branch: 'main',

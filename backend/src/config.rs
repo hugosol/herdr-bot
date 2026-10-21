@@ -15,7 +15,7 @@ use serde::de::{self, Deserializer};
 use serde::Deserialize;
 
 use crate::sessions::{DEFAULT_OFFLINE_RETENTION_SECONDS, DEFAULT_ONLINE_SECONDS, SessionPolicy};
-use crate::workspaces::DEFAULT_REGISTRY_FILE;
+use crate::zones::DEFAULT_REGISTRY_FILE;
 
 /// omp-bot 主界面运行配置。
 #[derive(Debug, Clone, Deserialize)]
@@ -34,10 +34,10 @@ pub struct Config {
     /// 会话登记的两个窗口；整个 `[sessions]` 段可缺省，缺省等于默认（在线 10 秒、离线保留 30 秒）。
     #[serde(default)]
     pub sessions: SessionsConfig,
-    /// workspace 登记列表的存储位置；整个 `[workspaces]` 段可缺省，缺省为进程工作目录下的
-    /// `workspaces.json`。
+    /// zone 登记列表的存储位置；整个 `[zones]` 段可缺省，缺省为进程工作目录下的
+    /// `zones.json`。
     #[serde(default)]
-    pub workspaces: WorkspacesConfig,
+    pub zones: ZonesConfig,
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
@@ -105,35 +105,39 @@ impl TryFrom<u32> for CommandTimeoutSeconds {
     }
 }
 
-/// workspace 登记设置（`[workspaces]` 段）。
+/// zone 登记设置（`[zones]` 段）。
 ///
 /// 登记列表由后端以文件持久保存，电脑与手机读取同一份列表；路径相对进程工作目录，与既有配置的
 /// 路径语义一致。登记文件不存在表示还没有任何登记，不是错误。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkspacesConfig {
-    /// 登记文件路径；缺省 `workspaces.json`。
+pub struct ZonesConfig {
+    /// 登记文件路径；缺省 `zones.json`。
     #[serde(default = "registry_file_by_default")]
     pub registry_file: PathBuf,
+    /// 新 zone 的创建父目录；缺省未配置，只禁用“新增”而不猜测写入位置。
+    #[serde(default)]
+    pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限；缺省 1 MiB。超限只返回限制说明，不加载完整内容。
     #[serde(default = "preview_limit_bytes_by_default")]
     pub preview_limit_bytes: PreviewLimitBytes,
-    /// 每个 workspace 自动刷新合并事件的最小间隔；缺省 10 秒。
+    /// 每个 zone 自动刷新合并事件的最小间隔；缺省 10 秒。
     #[serde(default = "refresh_interval_seconds_by_default")]
     pub refresh_interval_seconds: RefreshIntervalSeconds,
 }
 
-impl Default for WorkspacesConfig {
+impl Default for ZonesConfig {
     fn default() -> Self {
         Self {
             registry_file: registry_file_by_default(),
+            create_parent_directory: None,
             preview_limit_bytes: preview_limit_bytes_by_default(),
             refresh_interval_seconds: refresh_interval_seconds_by_default(),
         }
     }
 }
 
-/// `[workspaces] registry_file` 的缺省值：进程工作目录下的 `workspaces.json`。
+/// `[zones] registry_file` 的缺省值：进程工作目录下的 `zones.json`。
 fn registry_file_by_default() -> PathBuf {
     PathBuf::from(DEFAULT_REGISTRY_FILE)
 }
@@ -141,7 +145,7 @@ fn registry_file_by_default() -> PathBuf {
 /// 缺省的单文件文本预览上限：1 MiB。
 pub const DEFAULT_PREVIEW_LIMIT_BYTES: u64 = 1024 * 1024;
 
-/// `[workspaces] preview_limit_bytes` 的缺省值：1 MiB。
+/// `[zones] preview_limit_bytes` 的缺省值：1 MiB。
 fn preview_limit_bytes_by_default() -> PreviewLimitBytes {
     PreviewLimitBytes(DEFAULT_PREVIEW_LIMIT_BYTES)
 }
@@ -179,15 +183,15 @@ impl<'de> Deserialize<'de> for PreviewLimitBytes {
     }
 }
 
-/// 缺省的每 workspace 自动刷新最小间隔：10 秒。
+/// 缺省的每 zone 自动刷新最小间隔：10 秒。
 pub const DEFAULT_REFRESH_INTERVAL_SECONDS: u32 = 10;
 
-/// `[workspaces] refresh_interval_seconds` 的缺省值：10 秒。
+/// `[zones] refresh_interval_seconds` 的缺省值：10 秒。
 fn refresh_interval_seconds_by_default() -> RefreshIntervalSeconds {
     RefreshIntervalSeconds(DEFAULT_REFRESH_INTERVAL_SECONDS)
 }
 
-/// 每个 workspace 自动刷新合并事件的最小间隔（秒）：合法范围 1..=4294967295。
+/// 每个 zone 自动刷新合并事件的最小间隔（秒）：合法范围 1..=4294967295。
 ///
 /// 零会让窗口立刻结束、节流形同虚设；负数、小数、字符串与超过上界的值都无法解析成这个类型。
 /// 每种非法情形都让**启动失败**，不静默回退到缺省值。
@@ -554,32 +558,64 @@ working_directory = 'C:\work'
     }
 
     #[test]
-    fn legacy_config_without_workspaces_section_defaults_to_workspaces_json() {
+    fn legacy_config_without_zones_section_defaults_to_zones_json() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
-            config.workspaces.registry_file,
-            PathBuf::from("workspaces.json"),
-            "缺省 [workspaces] 段时登记文件取工作目录下的 workspaces.json"
+            config.zones.registry_file,
+            PathBuf::from("zones.json"),
+            "缺省 [zones] 段时登记文件取工作目录下的 zones.json"
         );
     }
 
     #[test]
-    fn workspaces_registry_file_is_read_when_present() {
-        let raw =
-            format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'E:\\data\\workspaces.json'\n");
-        let config = Config::from_toml(&raw).expect("带 [workspaces] 段的新配置必须可解析");
+    fn legacy_config_without_create_parent_directory_disables_zone_creation() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
-            config.workspaces.registry_file,
-            PathBuf::from(r"E:\data\workspaces.json")
+            config.zones.create_parent_directory, None,
+            "没有显式配置时不能猜测一个创建父目录"
         );
     }
 
     #[test]
-    fn misspelled_workspaces_field_name_is_rejected() {
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry = 'x.json'\n");
+    fn explicit_create_parent_directory_is_read_verbatim() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[zones]\ncreate_parent_directory = 'E:\\Developer\\bot-playground'\n"
+        );
+        let config = Config::from_toml(&raw).expect("显式创建父目录必须可解析");
+        assert_eq!(
+            config.zones.create_parent_directory,
+            Some(PathBuf::from(r"E:\Developer\bot-playground"))
+        );
+    }
+
+    #[test]
+    fn misspelled_create_parent_directory_field_is_rejected() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[zones]\ncreate_parent = 'E:\\Developer\\bot-playground'\n"
+        );
         assert!(
             Config::from_toml(&raw).is_err(),
-            "[workspaces] 里写错字段名必须导致解析失败"
+            "创建父目录字段拼错时必须导致解析失败"
+        );
+    }
+
+    #[test]
+    fn zones_registry_file_is_read_when_present() {
+        let raw =
+            format!("{LEGACY_CONFIG}\n[zones]\nregistry_file = 'E:\\data\\zones.json'\n");
+        let config = Config::from_toml(&raw).expect("带 [zones] 段的新配置必须可解析");
+        assert_eq!(
+            config.zones.registry_file,
+            PathBuf::from(r"E:\data\zones.json")
+        );
+    }
+
+    #[test]
+    fn misspelled_zones_field_name_is_rejected() {
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nregistry = 'x.json'\n");
+        assert!(
+            Config::from_toml(&raw).is_err(),
+            "[zones] 里写错字段名必须导致解析失败"
         );
     }
 
@@ -587,15 +623,15 @@ working_directory = 'C:\work'
     fn legacy_config_without_preview_limit_defaults_to_one_mebibyte() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
-            config.workspaces.preview_limit_bytes.get(),
+            config.zones.preview_limit_bytes.get(),
             DEFAULT_PREVIEW_LIMIT_BYTES,
-            "缺省 [workspaces] 段时预览上限取 1 MiB"
+            "缺省 [zones] 段时预览上限取 1 MiB"
         );
 
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'x.json'\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nregistry_file = 'x.json'\n");
         let config = Config::from_toml(&raw).expect("只有 registry_file 的配置必须可解析");
         assert_eq!(
-            config.workspaces.preview_limit_bytes.get(),
+            config.zones.preview_limit_bytes.get(),
             DEFAULT_PREVIEW_LIMIT_BYTES,
             "缺少 preview_limit_bytes 字段时取 1 MiB"
         );
@@ -604,16 +640,16 @@ working_directory = 'C:\work'
     #[test]
     fn explicit_preview_limit_is_read_verbatim() {
         let raw = format!(
-            "{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = 2097152\n"
+            "{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = 2097152\n"
         );
         let config = Config::from_toml(&raw).expect("合法预览上限必须可解析");
-        assert_eq!(config.workspaces.preview_limit_bytes.get(), 2_097_152);
+        assert_eq!(config.zones.preview_limit_bytes.get(), 2_097_152);
     }
 
     #[test]
     fn preview_limit_with_wrong_type_is_rejected() {
         let raw = format!(
-            "{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = '1 MiB'\n"
+            "{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = '1 MiB'\n"
         );
         let error = Config::from_toml(&raw).expect_err("非整数预览上限必须导致解析失败");
         assert!(
@@ -624,7 +660,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn zero_preview_limit_is_rejected_instead_of_falling_back() {
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = 0\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = 0\n");
         let error = Config::from_toml(&raw).expect_err("零预览上限必须导致解析失败");
         assert!(
             error.to_string().contains("preview_limit_bytes"),
@@ -634,7 +670,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn negative_preview_limit_is_rejected() {
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\npreview_limit_bytes = -1\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = -1\n");
         assert!(
             Config::from_toml(&raw).is_err(),
             "负预览上限必须导致解析失败"
@@ -645,15 +681,15 @@ working_directory = 'C:\work'
     fn legacy_config_without_refresh_interval_defaults_to_ten_seconds() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
-            config.workspaces.refresh_interval_seconds.get(),
+            config.zones.refresh_interval_seconds.get(),
             DEFAULT_REFRESH_INTERVAL_SECONDS,
-            "缺省 [workspaces] 段时自动刷新最小间隔取 10 秒"
+            "缺省 [zones] 段时自动刷新最小间隔取 10 秒"
         );
 
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nregistry_file = 'x.json'\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nregistry_file = 'x.json'\n");
         let config = Config::from_toml(&raw).expect("只有 registry_file 的配置必须可解析");
         assert_eq!(
-            config.workspaces.refresh_interval_seconds.get(),
+            config.zones.refresh_interval_seconds.get(),
             DEFAULT_REFRESH_INTERVAL_SECONDS,
             "缺少 refresh_interval_seconds 字段时取 10 秒"
         );
@@ -662,11 +698,11 @@ working_directory = 'C:\work'
     #[test]
     fn explicit_refresh_interval_is_read_verbatim() {
         let raw =
-            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 25\n");
+            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 25\n");
         let config = Config::from_toml(&raw).expect("合法自动刷新间隔必须可解析");
-        assert_eq!(config.workspaces.refresh_interval_seconds.get(), 25);
+        assert_eq!(config.zones.refresh_interval_seconds.get(), 25);
         assert_eq!(
-            config.workspaces.refresh_interval_seconds.duration(),
+            config.zones.refresh_interval_seconds.duration(),
             Duration::from_secs(25)
         );
     }
@@ -674,14 +710,14 @@ working_directory = 'C:\work'
     #[test]
     fn refresh_interval_accepts_the_legal_lower_bound() {
         let raw =
-            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 1\n");
+            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 1\n");
         let config = Config::from_toml(&raw).expect("最小合法自动刷新间隔必须可解析");
-        assert_eq!(config.workspaces.refresh_interval_seconds.get(), 1);
+        assert_eq!(config.zones.refresh_interval_seconds.get(), 1);
     }
 
     #[test]
     fn zero_refresh_interval_is_rejected_instead_of_falling_back() {
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = 0\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 0\n");
         let error = Config::from_toml(&raw).expect_err("零自动刷新间隔必须导致解析失败");
         assert!(
             error.to_string().contains("refresh_interval_seconds"),
@@ -691,7 +727,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn negative_refresh_interval_is_rejected() {
-        let raw = format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = -1\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = -1\n");
         assert!(
             Config::from_toml(&raw).is_err(),
             "负自动刷新间隔必须导致解析失败"
@@ -701,7 +737,7 @@ working_directory = 'C:\work'
     #[test]
     fn refresh_interval_with_wrong_type_is_rejected() {
         let raw =
-            format!("{LEGACY_CONFIG}\n[workspaces]\nrefresh_interval_seconds = '10s'\n");
+            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = '10s'\n");
         let error = Config::from_toml(&raw).expect_err("非整数自动刷新间隔必须导致解析失败");
         assert!(
             error.to_string().contains("refresh_interval_seconds"),

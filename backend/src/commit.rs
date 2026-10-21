@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::git::{self, command_failed, GitError, GitStatus};
-use crate::workspaces;
+use crate::zones;
 
 /// 一个仓库的写操作资格。不同的实际仓库互不影响；同一仓库的不同路径别名共用同一把锁。
 #[derive(Default)]
@@ -34,7 +34,7 @@ impl RepositoryLocks {
 
     /// 取得一个仓库身份对应的锁；仓库身份使用规范化绝对路径，不区分大小写与分隔符写法。
     fn for_repository(&self, root: &str) -> Arc<AsyncMutex<()>> {
-        let key = workspaces::path_key(root);
+        let key = zones::path_key(root);
         let mut repositories = self
             .repositories
             .lock()
@@ -93,7 +93,7 @@ pub fn execute(
         Ok(None) => return CommitOutcome::NotRepository,
         Err(error) => return CommitOutcome::Failed(error),
     };
-    let Some(permit) = locks.try_qualify(&workspaces::display_path(&root)) else {
+    let Some(permit) = locks.try_qualify(&zones::display_path(&root)) else {
         return CommitOutcome::Busy;
     };
 

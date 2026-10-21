@@ -10,10 +10,10 @@ import type {
   GitStatus,
   SyncAccepted,
   UpstreamRef,
-  WorkspaceSummary,
+  ZoneSummary,
 } from '../src/gitApi'
 
-const WORKSPACE = 'C:\\work\\repository'
+const ZONE = 'C:\\work\\repository'
 
 const UPSTREAM: UpstreamRef = {
   remote: 'upstream',
@@ -49,13 +49,13 @@ function mockFetch(handler: Handler): {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), 'http://localhost')
       urls.push(url)
-      if (url.pathname === '/api/workspaces/commit') {
+      if (url.pathname === '/api/zones/commit') {
         commits.push(String(init?.body ?? ''))
       }
-      if (url.pathname === '/api/workspaces/check-remote') {
+      if (url.pathname === '/api/zones/check-remote') {
         checks.push(String(init?.body ?? ''))
       }
-      if (url.pathname === '/api/workspaces/sync') {
+      if (url.pathname === '/api/zones/sync') {
         syncs.push(String(init?.body ?? ''))
       }
       return (
@@ -78,7 +78,7 @@ const CHANGES: GitChange[] = [
 
 function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     repository: true,
     branch: 'main',
     detached: false,
@@ -108,7 +108,7 @@ function syncFacts(
 
 function accepted(overrides: Partial<SyncAccepted> = {}): SyncAccepted {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     outcome: 'synced',
     branch: 'main',
     upstream: UPSTREAM,
@@ -126,11 +126,11 @@ function accepted(overrides: Partial<SyncAccepted> = {}): SyncAccepted {
   }
 }
 
-function overview(status: GitStatus): { workspaces: WorkspaceSummary[] } {
+function overview(status: GitStatus): { zones: ZoneSummary[] } {
   return {
-    workspaces: [
+    zones: [
       {
-        path: WORKSPACE,
+        path: ZONE,
         repository: status.repository,
         branch: status.branch,
         pendingCount: status.repository ? status.pendingCount : undefined,
@@ -149,46 +149,46 @@ function standardHandler(
   } = {},
 ): Handler {
   return (url, init) => {
-    if (url.pathname === '/api/workspaces') {
-      return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+    if (url.pathname === '/api/zones') {
+      return jsonResponse(200, { zones: [{ path: ZONE }] })
     }
-    if (url.pathname === '/api/workspaces/overview') {
+    if (url.pathname === '/api/zones/overview') {
       return jsonResponse(200, overview(status()))
     }
-    if (url.pathname === '/api/workspaces/git-status') {
+    if (url.pathname === '/api/zones/git-status') {
       return jsonResponse(200, status())
     }
-    if (url.pathname === '/api/workspaces/tree') {
-      return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+    if (url.pathname === '/api/zones/tree') {
+      return jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
     }
-    if (url.pathname === '/api/workspaces/entries') {
+    if (url.pathname === '/api/zones/entries') {
       const path = url.searchParams.get('path') ?? ''
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         path,
         entries: DIRECTORIES[path] ?? [],
       })
     }
-    if (url.pathname === '/api/workspaces/file') {
+    if (url.pathname === '/api/zones/file') {
       const path = url.searchParams.get('path') ?? ''
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         path,
         name: path,
         size: 4,
         preview: { kind: 'text', content: `content of ${path}` },
       })
     }
-    if (url.pathname === '/api/workspaces/diff') {
+    if (url.pathname === '/api/zones/diff') {
       return jsonResponse(404, { code: 'path-not-found', message: '没有该变更' })
     }
-    if (url.pathname === '/api/workspaces/check-remote') {
+    if (url.pathname === '/api/zones/check-remote') {
       return overrides.check?.(String(init?.body ?? '')) ?? jsonResponse(200, status())
     }
-    if (url.pathname === '/api/workspaces/sync') {
+    if (url.pathname === '/api/zones/sync') {
       return overrides.sync?.(String(init?.body ?? '')) ?? jsonResponse(200, accepted())
     }
-    if (url.pathname === '/api/workspaces/commit') {
+    if (url.pathname === '/api/zones/commit') {
       return overrides.commit?.(String(init?.body ?? '')) ?? jsonResponse(200, {})
     }
     return undefined
@@ -197,9 +197,9 @@ function standardHandler(
 
 async function openChanges(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
   await screen.findByTestId('browser-branch')
   await user.click(screen.getByTestId('browser-view-changes'))
   await screen.findByTestId('commit-bar')
@@ -242,7 +242,7 @@ describe('按现有 upstream 安全 Sync', () => {
     expect(screen.getByTestId('commit-button')).toHaveTextContent('Commit')
     expect(screen.queryByTestId('sync-button')).not.toBeInTheDocument()
     expect(screen.getByTestId('sync-state')).toHaveTextContent(
-      'Sync 只对干净工作区可用',
+      'Sync 只对干净工作树可用',
     )
 
     // 干净但远端尚未检查：Sync 禁用并给出检查入口与原因。
@@ -337,7 +337,7 @@ describe('按现有 upstream 安全 Sync', () => {
     expect(feedback).toHaveAttribute('data-tone', 'success')
     expect(feedback).toHaveTextContent('远端已检查')
     expect(requests.checks).toHaveLength(1)
-    expect(JSON.parse(requests.checks[0])).toEqual({ workspace: WORKSPACE })
+    expect(JSON.parse(requests.checks[0])).toEqual({ zone: ZONE })
 
     await waitFor(() => expect(screen.getByTestId('sync-button')).toBeEnabled())
     expect(screen.getByTestId('remote-checked-at')).toHaveAttribute(
@@ -372,7 +372,7 @@ describe('按现有 upstream 安全 Sync', () => {
     expect(paragraphs).toHaveLength(1)
     const text = dialog.textContent ?? ''
     expect(text).toContain('确认按当前分支的既有 upstream')
-    expect(text).not.toContain(WORKSPACE)
+    expect(text).not.toContain(ZONE)
     expect(text).not.toContain('main')
     expect(text).not.toContain('upstream/feature')
     expect(text).not.toContain('待拉取')
@@ -412,7 +412,7 @@ describe('按现有 upstream 安全 Sync', () => {
     expect(feedback).toHaveTextContent('拉取 1 个提交')
     expect(feedback).toHaveTextContent('推送 0 个提交')
     expect(requests.syncs).toHaveLength(1)
-    expect(JSON.parse(requests.syncs[0])).toEqual({ workspace: WORKSPACE })
+    expect(JSON.parse(requests.syncs[0])).toEqual({ zone: ZONE })
 
     await waitFor(() =>
       expect(screen.getByTestId('sync-button')).toHaveTextContent('已同步'),
@@ -495,10 +495,10 @@ describe('按现有 upstream 安全 Sync', () => {
     let status = gitStatus({ sync: syncFacts(1, 0, 1720000004000) })
     let statusReads = 0
     const requests = mockFetch((url, init) => {
-      if (url.pathname === '/api/workspaces/sync') {
+      if (url.pathname === '/api/zones/sync') {
         return Promise.reject(new TypeError('连接中断'))
       }
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         statusReads += 1
         return jsonResponse(200, status)
       }
@@ -594,9 +594,9 @@ describe('按现有 upstream 安全 Sync', () => {
 
     const view = render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
     await waitFor(() =>
       expect(screen.queryByTestId('commit-bar')).not.toBeInTheDocument(),
     )
@@ -607,9 +607,9 @@ describe('按现有 upstream 安全 Sync', () => {
     // 状态读取失败：显示明确错误，不把旧状态当作可同步事实。
     view.unmount()
     mockFetch((url, init) => {
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         return jsonResponse(500, {
-          code: 'workspace-unavailable',
+          code: 'zone-unavailable',
           message: '登记目录已不可访问。',
         })
       }
@@ -617,9 +617,9 @@ describe('按现有 upstream 安全 Sync', () => {
     })
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
     await waitFor(() =>
       expect(screen.getByTestId('git-status-error')).toHaveTextContent(
         '登记目录已不可访问',

@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
-import type { GitChange, GitStatus, WorkspaceSummary } from '../src/gitApi'
+import type { GitChange, GitStatus, ZoneSummary } from '../src/gitApi'
 import { treeResponse } from './treeResponse'
 
-const WORKSPACE = 'C:\\work\\repository'
+const ZONE = 'C:\\work\\repository'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -52,7 +52,7 @@ const DIRECTORIES: Record<string, BrowseEntry[]> = {
   'src/nested': [{ name: 'deep.txt', path: 'src/nested/deep.txt', kind: 'file', size: 4 }],
 }
 
-// Git workspace 的整树响应已经省略 ignored.log；前端只展示后端给出的过滤结果。
+// Git zone 的整树响应已经省略 ignored.log；前端只展示后端给出的过滤结果。
 const VISIBLE_DIRECTORIES: Record<string, BrowseEntry[]> = {
   ...DIRECTORIES,
   '': DIRECTORIES[''].filter((entry) => entry.name !== 'ignored.log'),
@@ -69,7 +69,7 @@ const CHANGES: GitChange[] = [
 
 function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     repository: true,
     branch: 'main',
     detached: false,
@@ -82,7 +82,7 @@ function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
 
 function plainStatus(): GitStatus {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     repository: false,
     branch: null,
     detached: false,
@@ -92,25 +92,25 @@ function plainStatus(): GitStatus {
   }
 }
 
-function overview(entries: WorkspaceSummary[]) {
-  return { workspaces: entries }
+function overview(entries: ZoneSummary[]) {
+  return { zones: entries }
 }
 
 function listing(path: string) {
-  return { workspace: WORKSPACE, path, entries: DIRECTORIES[path] ?? [] }
+  return { zone: ZONE, path, entries: DIRECTORIES[path] ?? [] }
 }
 
 function standardHandler(url: URL, status: () => GitStatus): Response | undefined {
-  if (url.pathname === '/api/workspaces') {
-    return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+  if (url.pathname === '/api/zones') {
+    return jsonResponse(200, { zones: [{ path: ZONE }] })
   }
-  if (url.pathname === '/api/workspaces/overview') {
+  if (url.pathname === '/api/zones/overview') {
     const current = status()
     return jsonResponse(
       200,
       overview([
         {
-          path: WORKSPACE,
+          path: ZONE,
           repository: current.repository,
           pendingCount: current.repository ? current.pendingCount : undefined,
           conflict: current.conflict,
@@ -118,27 +118,27 @@ function standardHandler(url: URL, status: () => GitStatus): Response | undefine
       ]),
     )
   }
-  if (url.pathname === '/api/workspaces/git-status') {
+  if (url.pathname === '/api/zones/git-status') {
     return jsonResponse(200, status())
   }
-  if (url.pathname === '/api/workspaces/tree') {
+  if (url.pathname === '/api/zones/tree') {
     const current = status()
     return jsonResponse(
       200,
       treeResponse(
-        WORKSPACE,
+        ZONE,
         current.repository ? VISIBLE_DIRECTORIES : DIRECTORIES,
         current.repository,
       ),
     )
   }
-  if (url.pathname === '/api/workspaces/entries') {
+  if (url.pathname === '/api/zones/entries') {
     return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
   }
-  if (url.pathname === '/api/workspaces/file') {
+  if (url.pathname === '/api/zones/file') {
     const path = url.searchParams.get('path') ?? ''
     return jsonResponse(200, {
-      workspace: WORKSPACE,
+      zone: ZONE,
       path,
       name: path.split('/').pop() ?? path,
       size: 4,
@@ -148,11 +148,11 @@ function standardHandler(url: URL, status: () => GitStatus): Response | undefine
   return undefined
 }
 
-async function openWorkspace(user: UserEvent) {
+async function openZone(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
   await screen.findByTestId('browser-branch')
 }
 
@@ -164,13 +164,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('Git workspace：分支、内部视图与待提交定位', () => {
+describe('Git zone：分支、内部视图与待提交定位', () => {
   it('显示当前分支与内部子 tab，并按变更类别着色且传播到现存祖先目录', async () => {
     const user = userEvent.setup()
     mockFetch((url) => standardHandler(url, () => gitStatus()))
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     expect(screen.getByTestId('browser-branch')).toHaveTextContent('main')
     expect(screen.getByTestId('browser-view-browse')).toHaveAttribute('aria-selected', 'true')
@@ -274,7 +274,7 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
     mockFetch((url) => standardHandler(url, () => current))
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
     expect(screen.getByTestId('browser-branch')).toHaveTextContent('main')
 
     // 模拟外部切分支：下一次主动刷新必须得到新分支，而不是旧缓存。
@@ -292,7 +292,7 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
   it('状态读取失败时显示明确错误，不显示干净或零变更', async () => {
     const user = userEvent.setup()
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         return jsonResponse(500, {
           code: 'git-command-failed',
           message: 'git status 失败：fatal: 无法读取索引。',
@@ -303,8 +303,8 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
 
     const error = await screen.findByTestId('git-status-error')
     expect(error).toHaveTextContent('无法读取索引')
@@ -319,9 +319,9 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
 
     expect(screen.queryByTestId('browser-branch')).toBeNull()
     expect(screen.queryByTestId('browser-view-changes')).toBeNull()
@@ -330,19 +330,19 @@ describe('Git workspace：分支、内部视图与待提交定位', () => {
   })
 })
 
-describe('workspace 待提交角标', () => {
+describe('zone 待提交角标', () => {
   it('显示后端确认的变更项数，不把目录或行数计入', async () => {
     const user = userEvent.setup()
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview') {
+      if (url.pathname === '/api/zones/overview') {
         return jsonResponse(
           200,
           overview([
             {
-              path: WORKSPACE,
+              path: ZONE,
               repository: true,
               pendingCount: 4,
               conflict: false,
@@ -355,22 +355,22 @@ describe('workspace 待提交角标', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
+    await screen.findByTestId('zone-list')
 
-    const badge = await screen.findByTestId('workspace-badge')
+    const badge = await screen.findByTestId('zone-badge')
     expect(badge).toHaveTextContent('4 项待提交')
   })
 
   it('概览读取失败时明确显示未知，不显示 0 项或空角标', async () => {
     const user = userEvent.setup()
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview') {
+      if (url.pathname === '/api/zones/overview') {
         return jsonResponse(500, {
           code: 'git-command-failed',
-          message: '读取 workspace 概览失败：拒绝访问。',
+          message: '读取 zone 概览失败：拒绝访问。',
         })
       }
       return undefined
@@ -378,10 +378,10 @@ describe('workspace 待提交角标', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
+    await screen.findByTestId('zone-list')
 
-    const error = await screen.findByTestId('workspace-overview-error')
+    const error = await screen.findByTestId('zone-overview-error')
     expect(error).toHaveTextContent('拒绝访问')
-    expect(screen.queryByTestId('workspace-badge')).toBeNull()
+    expect(screen.queryByTestId('zone-badge')).toBeNull()
   })
 })

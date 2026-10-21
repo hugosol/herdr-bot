@@ -12,7 +12,7 @@ export type DiffSide =
 
 /** 一次变更审查：旧侧是 HEAD，新侧是最终本地内容。 */
 export type ChangeDiff = {
-  workspace: string
+  zone: string
   path: string
   oldPath?: string
   old: DiffSide
@@ -67,7 +67,7 @@ function isDiffSide(value: unknown): value is DiffSide {
 
 function isChangeDiff(value: unknown): value is ChangeDiff {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('path' in value) || typeof value.path !== 'string') return false
   if ('oldPath' in value && value.oldPath !== undefined && typeof value.oldPath !== 'string') {
     return false
@@ -120,11 +120,11 @@ async function diffRequest<T>(
 
 /** 读取一个变更从 HEAD 到最终本地内容的 diff；重命名时带上 Git 的旧路径。 */
 export function fetchChangeDiff(
-  workspace: string,
+  zone: string,
   path: string,
   oldPath?: string,
 ): Promise<DiffResult<ChangeDiff>> {
-  const params = new URLSearchParams({ workspace, path })
+  const params = new URLSearchParams({ zone, path })
   if (oldPath !== undefined) params.set('oldPath', oldPath)
-  return diffRequest(`/api/workspaces/diff?${params.toString()}`, isChangeDiff)
+  return diffRequest(`/api/zones/diff?${params.toString()}`, isChangeDiff)
 }

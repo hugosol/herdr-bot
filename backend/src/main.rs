@@ -43,12 +43,12 @@ async fn main() -> anyhow::Result<()> {
         config.sessions.offline_retention_seconds.get()
     );
     println!(
-        "[omp-bot] workspace 登记文件：{}",
-        config.workspaces.registry_file.display()
+        "[omp-bot] zone 登记文件：{}",
+        config.zones.registry_file.display()
     );
     println!(
         "[omp-bot] 单文件预览上限：{} 字节",
-        config.workspaces.preview_limit_bytes.get()
+        config.zones.preview_limit_bytes.get()
     );
     println!(
         "[omp-bot] Git 命令执行上限：{} 秒/条",

@@ -189,7 +189,8 @@ pub fn repo_fixtures_dir() -> PathBuf {
 /// 递归复制目录内容。
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap_or_else(|e| panic!("创建目录失败 {}：{e}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|e| panic!("读取目录失败 {}：{e}", from.display()))
+    for entry in
+        fs::read_dir(from).unwrap_or_else(|e| panic!("读取目录失败 {}：{e}", from.display()))
     {
         let entry = entry.expect("读取目录项");
         let name = entry.file_name();
@@ -239,8 +240,8 @@ pub fn config_with_countdown(
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
         sessions: omp_bot::SessionsConfig::default(),
-        // workspace 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
-        workspaces: omp_bot::WorkspacesConfig::default(),
+        // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
+        zones: omp_bot::ZonesConfig::default(),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: omp_bot::GitConfig::default(),
     }
@@ -371,8 +372,7 @@ pub async fn get_over_tcp(addr: SocketAddr, path: &str) -> HttpResponse {
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("连接测试服务器");
-    let request =
-        format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .await
@@ -503,9 +503,9 @@ fn parse_response(raw: &[u8]) -> HttpResponse {
         })
         .collect();
 
-    let chunked = headers
-        .iter()
-        .any(|(name, value)| name == "transfer-encoding" && value.to_lowercase().contains("chunked"));
+    let chunked = headers.iter().any(|(name, value)| {
+        name == "transfer-encoding" && value.to_lowercase().contains("chunked")
+    });
     let body = if chunked {
         decode_chunked(body)
     } else {
@@ -565,11 +565,7 @@ pub async fn run_batch(
     for (key, value) in env {
         command.env(key, value);
     }
-    command
-        .status()
-        .await
-        .expect("启动批处理")
-        .code()
+    command.status().await.expect("启动批处理").code()
 }
 
 /// 同步版本，用于测试清理路径（`Drop` 中不能 await）。

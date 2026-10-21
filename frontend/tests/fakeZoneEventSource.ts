@@ -1,13 +1,13 @@
 /**
- * 测试用的 `EventSource` 假实现：只提供 workspace 自动更新数据源真正用到的成员。
+ * 测试用的 `EventSource` 假实现：只提供 zone 自动更新数据源真正用到的成员。
  *
  * 它不模拟网络、重连或时序；用例自己决定何时送来哪一帧，因此页面行为与真实 `EventSource`
  * 的接线可以由同一段数据源代码驱动。
  */
 export type FrameEvent = { data: string }
 
-export class FakeWorkspaceEventSource {
-  static instances: FakeWorkspaceEventSource[] = []
+export class FakeZoneEventSource {
+  static instances: FakeZoneEventSource[] = []
 
   readonly url: string
   closed = false
@@ -15,7 +15,7 @@ export class FakeWorkspaceEventSource {
 
   constructor(url: string) {
     this.url = url
-    FakeWorkspaceEventSource.instances.push(this)
+    FakeZoneEventSource.instances.push(this)
   }
 
   addEventListener(type: string, listener: (event: FrameEvent) => void): void {
@@ -34,6 +34,6 @@ export class FakeWorkspaceEventSource {
   }
 }
 
-export function resetFakeWorkspaceEventSources(): void {
-  FakeWorkspaceEventSource.instances = []
+export function resetFakeZoneEventSources(): void {
+  FakeZoneEventSource.instances = []
 }

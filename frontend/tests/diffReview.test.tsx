@@ -6,9 +6,9 @@ import App from '../src/App'
 import type { BrowseEntry } from '../src/browseApi'
 import { treeResponse } from './treeResponse'
 import type { ChangeDiff, DiffSide } from '../src/diffApi'
-import type { GitChange, GitStatus, WorkspaceSummary } from '../src/gitApi'
+import type { GitChange, GitStatus, ZoneSummary } from '../src/gitApi'
 
-const WORKSPACE = 'C:\\work\\repository'
+const ZONE = 'C:\\work\\repository'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -68,35 +68,35 @@ const TEXT = (content: string): DiffSide => ({
 
 const DIFFS: Record<string, ChangeDiff> = {
   'src/added.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/added.txt',
     old: { kind: 'absent' },
     new: TEXT('brand\nnew\n'),
     complete: true,
   },
   'src/binary.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/binary.txt',
     old: TEXT('plain old\n'),
     new: { kind: 'binary', reason: '文件包含 NUL 字节，不是可文本预览的文本。', size: 9 },
     complete: false,
   },
   'src/gone.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/gone.txt',
     old: TEXT('gone line\n'),
     new: { kind: 'absent' },
     complete: true,
   },
   'src/modified.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/modified.txt',
     old: TEXT('alpha\nbeta\ngamma\n'),
     new: TEXT('alpha\nBETA\ngamma\n'),
     complete: true,
   },
   'src/renamed-new.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/renamed-new.txt',
     oldPath: 'src/renamed-old.txt',
     old: TEXT('same line\nold tail\n'),
@@ -104,7 +104,7 @@ const DIFFS: Record<string, ChangeDiff> = {
     complete: true,
   },
   'src/script.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/script.txt',
     old: TEXT('safe\n'),
     new: TEXT(
@@ -113,7 +113,7 @@ const DIFFS: Record<string, ChangeDiff> = {
     complete: true,
   },
   'src/too-large.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/too-large.txt',
     old: {
       kind: 'too-large',
@@ -128,7 +128,7 @@ const DIFFS: Record<string, ChangeDiff> = {
 
 function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   return {
-    workspace: WORKSPACE,
+    zone: ZONE,
     repository: true,
     branch: 'main',
     detached: false,
@@ -139,11 +139,11 @@ function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
   }
 }
 
-function overview(): { workspaces: WorkspaceSummary[] } {
+function overview(): { zones: ZoneSummary[] } {
   return {
-    workspaces: [
+    zones: [
       {
-        path: WORKSPACE,
+        path: ZONE,
         repository: true,
         branch: 'main',
         pendingCount: CHANGES.length,
@@ -154,37 +154,37 @@ function overview(): { workspaces: WorkspaceSummary[] } {
 }
 
 function standardHandler(url: URL): Response | undefined {
-  if (url.pathname === '/api/workspaces') {
-    return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+  if (url.pathname === '/api/zones') {
+    return jsonResponse(200, { zones: [{ path: ZONE }] })
   }
-  if (url.pathname === '/api/workspaces/overview') {
+  if (url.pathname === '/api/zones/overview') {
     return jsonResponse(200, overview())
   }
-  if (url.pathname === '/api/workspaces/git-status') {
+  if (url.pathname === '/api/zones/git-status') {
     return jsonResponse(200, gitStatus())
   }
-  if (url.pathname === '/api/workspaces/tree') {
-    return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+  if (url.pathname === '/api/zones/tree') {
+    return jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
   }
-  if (url.pathname === '/api/workspaces/entries') {
+  if (url.pathname === '/api/zones/entries') {
     const path = url.searchParams.get('path') ?? ''
     return jsonResponse(200, {
-      workspace: WORKSPACE,
+      zone: ZONE,
       path,
       entries: DIRECTORIES[path] ?? [],
     })
   }
-  if (url.pathname === '/api/workspaces/file') {
+  if (url.pathname === '/api/zones/file') {
     const path = url.searchParams.get('path') ?? ''
     return jsonResponse(200, {
-      workspace: WORKSPACE,
+      zone: ZONE,
       path,
       name: path.split('/').pop() ?? path,
       size: 4,
       preview: { kind: 'text', content: `content of ${path}` },
     })
   }
-  if (url.pathname === '/api/workspaces/diff') {
+  if (url.pathname === '/api/zones/diff') {
     const path = url.searchParams.get('path') ?? ''
     const diff = DIFFS[path]
     return diff === undefined
@@ -194,16 +194,16 @@ function standardHandler(url: URL): Response | undefined {
   return undefined
 }
 
-async function openWorkspace(user: UserEvent) {
+async function openZone(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
   await screen.findByTestId('browser-branch')
 }
 
 async function openChanges(user: UserEvent) {
-  await openWorkspace(user)
+  await openZone(user)
   await user.click(screen.getByTestId('browser-view-changes'))
   await screen.findByTestId('change-list')
 }
@@ -248,8 +248,8 @@ describe('变更审查 diff：HEAD 到最终本地内容', () => {
       'true',
     )
 
-    const request = calls.find((call) => call.pathname === '/api/workspaces/diff')
-    expect(request?.searchParams.get('workspace')).toBe(WORKSPACE)
+    const request = calls.find((call) => call.pathname === '/api/zones/diff')
+    expect(request?.searchParams.get('zone')).toBe(ZONE)
     expect(request?.searchParams.get('path')).toBe('src/modified.txt')
     expect(request?.searchParams.has('oldPath')).toBe(false)
   })
@@ -269,7 +269,7 @@ describe('变更审查 diff：HEAD 到最终本地内容', () => {
     expect(screen.getAllByTestId('diff-old-removed')[0]).toHaveTextContent('old tail')
     expect(screen.getAllByTestId('diff-new-added')[0]).toHaveTextContent('new tail')
 
-    const request = calls.find((call) => call.pathname === '/api/workspaces/diff')
+    const request = calls.find((call) => call.pathname === '/api/zones/diff')
     expect(request?.searchParams.get('oldPath')).toBe('src/renamed-old.txt')
   })
 

@@ -6,8 +6,8 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 
 - 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
   [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
-- 当前新增（三个顶层入口、workspace 登记列表）：[`.scratch/workspace-file-browser/spec.md`](.scratch/workspace-file-browser/spec.md)、
-  [`.scratch/workspace-file-browser/contract.md`](.scratch/workspace-file-browser/contract.md)。
+- 当前新增（三个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
+  [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)。
 - 较早版本（mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
   [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
   决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
@@ -23,20 +23,20 @@ omp-bot 主界面只反馈脚本调用情况，不检查后台程序是否就绪
 | `backend/` | Rust/Axum 服务：提供打包页面与操作接口 |
 | `backend/src/config.rs` | 服务端配置：监听地址、固定操作绑定（脚本 + 工作目录） |
 | `backend/src/operations.rs` | 启动配置的执行目标并等待其结束（能否启动、如何结束） |
-| `backend/src/workspaces.rs` | workspace 登记列表的持久化：路径校验、原子写入与读取失败分类 |
-| `backend/src/browse.rs` | workspace 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
-| `backend/src/git.rs` | Git workspace 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
+| `backend/src/zones.rs` | zone 登记列表的持久化：路径校验、原子写入与读取失败分类 |
+| `backend/src/browse.rs` | zone 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
+| `backend/src/git.rs` | Git zone 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
 | `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
-| `backend/src/watch.rs` | workspace 本地文件/Git 元数据监听、按 workspace 合并节流与监听健康上报 |
+| `backend/src/watch.rs` | zone 本地文件/Git 元数据监听、按 zone 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `omp-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
-| `frontend/src/FileListPanel.tsx` | 文件列表 tab：workspace 登记、列表读取、待提交角标、取消登记与进入浏览 |
-| `frontend/src/WorkspaceBrowser.tsx` | workspace 界面：只读浏览、Git 变更列表与左右/统一 diff、待提交着色与祖先目录提示 |
+| `frontend/src/FileListPanel.tsx` | 文件列表 tab：zone 登记、列表读取、待提交角标、取消登记与进入浏览 |
+| `frontend/src/ZoneBrowser.tsx` | zone 界面：只读浏览、Git 变更列表与左右/统一 diff、待提交着色与祖先目录提示 |
 | `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
-| `frontend/src/gitApi.ts` | Git 状态与 workspace 角标概览客户端，含响应形状校验 |
-| `frontend/src/workspaceWatch.ts` | 自动更新 SSE 数据源：首帧监听快照、合并后的刷新通知与监听健康 |
+| `frontend/src/gitApi.ts` | Git 状态与 zone 角标概览客户端，含响应形状校验 |
+| `frontend/src/zoneWatch.ts` | 自动更新 SSE 数据源：首帧监听快照、合并后的刷新通知与监听健康 |
 | `frontend/src/diff.ts` | 行级统一 diff 与左右对照配对（纯文本，不解析 HTML） |
 | `frontend/src/diffApi.ts` | 审查 diff 客户端与响应形状校验 |
 | `fixtures/` | 隔离验证夹具（真实 Windows 批处理，供自动化检查绑定为操作目标；见 [fixtures/README.md](fixtures/README.md)） |
@@ -254,33 +254,43 @@ offline_retention_seconds = 30
 - 运行中的实例不会因为改写配置文件而改变已加载的窗口；新值只在**重启后**生效。
 - 阈值语义与可见行为见[会话登记的生命周期](#会话登记的生命周期会话列表)。
 
-### `[workspaces]` 配置（可选）
+### `[zones]` 配置（可选）
 
-workspace 登记列表由后端以文件持久保存，本机与局域网设备读取同一份；整段可缺省：
+zone 登记列表由后端以文件持久保存，本机与局域网设备读取同一份；整段可缺省：
 
 ```toml
-[workspaces]
-# 登记文件位置；缺省为进程工作目录下的 workspaces.json。
-registry_file = 'E:\data\omp-bot-workspaces.json'
+[zones]
+# 新 zone 的创建父目录。必须显式配置；缺省未配置时只禁用“新增”。
+create_parent_directory = 'E:\Developer\bot-playground'
+# 登记文件位置；缺省为进程工作目录下的 zones.json。
+registry_file = 'E:\data\omp-bot-zones.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
 preview_limit_bytes = 1048576
-# 每个 workspace 自动刷新合并事件的最小间隔；缺省 10 秒。
+# 每个 zone 自动刷新合并事件的最小间隔；缺省 10 秒。
 refresh_interval_seconds = 10
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
-| `registry_file` | `workspaces.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
+| `create_parent_directory` | 无（必须显式配置） | 新建 zone 的唯一父目录；必须在服务器上已存在 |
+| `registry_file` | `zones.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
 | `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
-| `refresh_interval_seconds` | `10` | 每个 workspace 合并文件事件并自动刷新的最小间隔（秒） |
+| `refresh_interval_seconds` | `10` | 每个 zone 合并文件事件并自动刷新的最小间隔（秒） |
 
 - 登记文件不存在表示“还没有任何登记”，不是读取错误；列表在真实进程重启后仍然保留。
 - 登记成功只表示登记文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或文件内容
-  损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；`GET /api/workspaces` 再次读取与重启后
+  损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；`GET /api/zones` 再次读取与重启后
   看到的仍是原内容。
 - 登记路径必须是服务器上的**绝对**路径，且指向真实存在的目录；普通目录与 Git 工作树根目录都可登记。
-  登记不初始化 Git，也不扫描或聚合嵌套仓库。
+  登记已有目录不初始化 Git，也不扫描或聚合嵌套仓库；只有“新增 zone”会创建目录并执行 `git init`。
 - 取消登记只移除登记项，不删除目录或文件；目录在登记后被外部删除时仍可取消登记。
+- `create_parent_directory` 没有代码内静默兜底。旧配置缺少该字段时服务仍可启动，只是“新增”按钮禁用并提示
+  配置字段。配置父目录缺失、不是目录或不是绝对路径时，创建请求明确失败，不自动创建父目录。
+- 新 zone 名称只能是配置父目录下的一个直接子目录名，不能包含路径分隔符、`..` 或 Windows 设备名；
+  同名目录已存在时拒绝，不覆盖、不复用。
+- 创建顺序是**目录 → `git init` → 持久化登记**。全部成功后才显示成功并加入列表；不生成 README、首次提交
+  或远程仓库。中途失败保留已产生的目录：失败反馈说明失败阶段与完整路径；若目录与 Git 初始化已完成而只有
+  登记失败，可用“登记”入口按已有目录重新登记。
 - `preview_limit_bytes` 必须是正整数；零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，
   不会静默回退到 1 MiB。缺省值只在字段或整段缺失时使用。
 - `refresh_interval_seconds` 必须是正整数秒；零、负数、小数、字符串或拼错的字段名同样让**启动明确失败**，
@@ -310,63 +320,85 @@ command_timeout_seconds = 300
   都会让**启动明确失败**，不会静默回退。
 - 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
 
-### 文件列表与 workspace 登记
+### 文件列表与 zone 登记
 
 主界面三个顶层入口按“会话列表 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
 不恢复上次 tab。三个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
 
 > **可信局域网提醒**：本功能没有登录或来源认证，沿用“仅可信局域网”的部署前提。任何能访问本服务
-> 端口的设备都可以读取已登记 workspace 中的文件内容（包括敏感文件），并可以触发已开放的
+> 端口的设备都可以读取已登记 zone 中的文件内容（包括敏感文件），并可以触发已开放的
 > Commit / Sync 写操作。会话事件写入的同机来源校验只限制那一类写入，**不等于认证**，也不会限制
 > 手机使用文件浏览与 Git 操作。本版没有增加登录、多用户权限或公网部署能力，也没有任意命令、脚本
 > 或终端入口；不要把本服务暴露到公网或不可信网络。
 
-“文件列表”tab 的登记流程：
+“文件列表”tab 直接展示 zone 列表和“登记”“新增”两个按钮；两个按钮都不在页面上常驻输入框，而是
+点按后打开弹窗，确认后才发送请求。
 
-1. 在“服务器目录路径”中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
+登记已有目录：
+
+1. 点按“登记”，在弹窗中输入**omp-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
    页面不提供客户端文件选择器。
-2. 点按“登记”。后端校验路径并持久保存；只有保存成功后页面才显示“已登记”。
-3. 已登记的 workspace 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
+2. 点按弹窗里的“登记”。后端校验路径并持久保存；只有保存成功后页面才关闭弹窗并显示“已登记”。
+3. 已登记的 zone 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
    登记。
 4. 每个登记项的“取消登记”只移除登记，不删除目录或文件。
+
+新增 zone：
+
+1. 点按“新增”，弹窗只接受一个直接子目录名称，并显示配置的父目录。父目录来自服务端配置，客户端不能替换。
+2. 确认后，服务端在父目录下创建目录、执行 `git init`，再写入登记列表；全部成功后才关闭弹窗并显示创建路径。
+3. 未配置 `create_parent_directory` 时“新增”禁用并显示配置提示；“登记”不受影响。
+4. 非法名称、父目录缺失或目标已存在都会被明确拒绝；中途失败保留已产生的目录并显示失败阶段与完整路径。
+   同名目录不会覆盖或复用。
 
 失败反馈保持明确：非法路径、重复登记、存储读取/写入失败或登记文件损坏都会显示后端返回的类别说明；
 请求没有得到响应时页面显示“无法确认”，既不当成成功，也不当成失败或空列表。
 
-接口：`GET /api/workspaces` 读取列表，`POST /api/workspaces` 登记（JSON `{"path":"服务器绝对路径"}`），
-`POST /api/workspaces/remove` 取消登记（同一请求体）。成功响应都是当前完整列表：
-`{"workspaces":[{"path":"…"}]}`；失败响应是 `{"code":"…","message":"…"}`。
+接口：
 
-### 进入 workspace：只读浏览与 Git 待提交变更
+- `GET /api/zones` 读取列表。
+- `POST /api/zones` 登记已有目录（JSON `{"path":"服务器绝对路径"}`）。
+- `POST /api/zones/create` 新建 zone（JSON `{"name":"直接子目录名称"}`）。
+- `POST /api/zones/remove` 取消登记（JSON `{"path":"服务器绝对路径"}`）。
 
-登记项旁的“浏览”进入该 workspace。普通目录只提供只读文件浏览；Git 工作区另有「文件浏览」「变更」两个
+成功响应都是当前完整列表与创建能力：
+`{"zones":[{"path":"…"}],"creation":{"available":true,"parentDirectory":"…"}}`。未配置父目录时
+`creation` 为 `{"available":false}`，不返回伪造的父目录。失败响应是
+`{"code":"…","message":"…"}`；创建失败类别包括 `create-parent-not-configured`、
+`create-parent-not-found`、`invalid-name`、`name-already-exists`、`git-init-failed` 与
+`zone-registration-failed` 等。
+
+### 进入 zone：只读浏览与 Git 待提交变更
+
+登记项旁的“浏览”进入该 zone。普通目录只提供只读文件浏览；Git 工作树另有「文件浏览」「变更」两个
 内部子 tab，并在工具栏显示当前分支。变更视图可按最新本地提交到最终本地内容审查 diff，并在审查版本仍未
-失效时执行整仓 Commit；工作区干净时也可按当前分支的既有 upstream 检查远端并 Sync。
+失效时执行整仓 Commit；工作树干净时也可按当前分支的既有 upstream 检查远端并 Sync。
 
-- **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。进入 workspace 与手动刷新时一次读取完整目录树，
+- **电脑**：左侧目录树或变更列表、右侧文件内容或 diff。进入 zone 与手动刷新时一次读取完整目录树，
   展开目录只切换显示；选择变更后右侧显示从当前分支最新本地提交到最终本地内容的差异，默认左右对照。
 - **窄屏（≤ 720px）**：逐层进入目录或变更；选择文件/变更后进入内容视图，并可用明确返回按钮回到原列表，
   列表滚动位置会恢复。diff 默认统一显示。
-- **完整目录**：普通目录输出与磁盘真实内容一致。Git workspace 使用 Git 原生忽略规则省略 ignored 未跟踪
+- **完整目录**：普通目录输出与磁盘真实内容一致。Git zone 使用 Git 原生忽略规则省略 ignored 未跟踪
   路径，并省略 `.git` 元数据；`.gitignore`、未被忽略的隐藏文件、tracked 文件与未被忽略的空目录继续显示。
-  文件事件与返回页面只更新 Git 状态，目录树只在进入 workspace 和手动刷新时重读。
-- **边界**：只读取已登记 workspace 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
+  文件事件与返回页面只更新 Git 状态，目录树只在进入 zone 和手动刷新时重读。
+- **边界**：只读取已登记 zone 内部。绝对路径、`..` 遍历、盘符/UNC/备用数据流写法、符号链接、Windows
   目录联接与其他 reparse point 都会被拒绝；链接条目在目录中显示目标与不可进入原因，目标内容不会被读取。
   登记根被外部删除、替换为文件或替换为链接时，读取返回明确错误，不伪装成空目录。新增的 diff 入口使用
   同一份边界检查，Git 旧路径也不能绕过它。
 - **内容识别**：按内容识别文本（完整 UTF-8、无 NUL 字节），不要求后缀；无后缀文本可读，伪文本后缀的
-  二进制文件给出“不可文本预览”原因。内容与 diff 都以纯文本显示，HTML/script 不会被执行。
-- **预览上限**：默认 1 MiB，可用 `[workspaces] preview_limit_bytes` 配置。文件预览在读取内容前应用上限；
+  二进制文件给出“不可文本预览”原因。文件内容与 diff 默认都以纯文本显示，HTML/script 不会被执行；
+  `.html`/`.htm` 文本文件另有显式的“阅读 HTML”入口，见下一节。
+- **预览上限**：默认 1 MiB，可用 `[zones] preview_limit_bytes` 配置。文件预览在读取内容前应用上限；
   diff 对旧侧与新侧分别应用同一个上限。任一侧超限或二进制时不渲染完整 diff，明确说明限制；超限或二进制
   不改变文件/变更的可见性、着色、计数或后续提交资格。
-- **自动刷新**：后端监听每个已登记 workspace 的本地文件（Git 工作树还监听工作区之外的元数据目录），
-  事件按 workspace 合并后经只读 SSE 通知页面重新读取；普通目录的外部增删改也会反映到浏览与角标。
+- **自动刷新**：后端监听每个已登记 zone 的本地文件（Git 工作树还监听工作树之外的元数据目录），
+  事件按 zone 合并后经只读 SSE 通知页面重新读取；普通目录的外部增删改也会反映到浏览与角标。
   没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
-  `[workspaces] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
-  间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 workspace 监听与节流，不会各自放大刷新。
-- **刷新边界**：进入 workspace、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件、
+  `[zones] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
+  间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 zone 监听与节流，不会各自放大刷新。
+- **刷新边界**：进入 zone、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件、
   Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
-- **监听健康**：监听建立失败、workspace 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
+- **监听健康**：监听建立失败、zone 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
   与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
   不伪装成空目录或干净仓库。
@@ -374,7 +406,7 @@ command_timeout_seconds = 300
   “检查远端”或 Sync 前检查，并显示最近检查时间。未检查时页面明确显示“尚未检查”，不把本地远端跟踪
   引用当成实时状态。
 
-**待提交集合**（`GET /api/workspaces/git-status`）：
+**待提交集合**（`GET /api/zones/git-status`）：
 
 - 包含已跟踪文件的修改与删除（已暂存和未暂存合并观察），以及未忽略的未跟踪文件；排除被忽略的未跟踪文件。
   已跟踪、后来才匹配忽略规则的文件仍然包含；忽略规则文件自身按普通文件处理，不 force-add 被忽略文件。
@@ -384,7 +416,7 @@ command_timeout_seconds = 300
   新增。查询不会为了识别重命名而暂存或修改真实索引。
 - 颜色：新增绿、修改与已识别重命名蓝、删除红；冲突使用独立橙色警告，不与普通修改混淆。两个视图使用同一
   份状态快照，因此颜色一致。界面不显示普通 `A/M/D` 状态字母。
-- 祖先目录只要包含待提交变更（包括已删除路径）就显示蓝色，并传播到 workspace 根下一级；目录不会继承子
+- 祖先目录只要包含待提交变更（包括已删除路径）就显示蓝色，并传播到 zone 根下一级；目录不会继承子
   文件的绿色或红色。删除项只在变更列表出现，浏览树不伪造仍然存在的文件。
 - 角标按待提交变更项计数：同一文件暂存加未暂存只计一次，已识别重命名计一次，未识别删除加新增计两次；
   不计目录或 diff 行数。Git 识别结果变化可以改变项数。
@@ -393,50 +425,74 @@ command_timeout_seconds = 300
 
 接口：
 
-- `GET /api/workspaces/entries?workspace=<登记路径>&path=<相对目录>` 返回
-  `{"workspace":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
+- `GET /api/zones/entries?zone=<登记路径>&path=<相对目录>` 返回
+  `{"zone":"…","path":"…","entries":[{"name":"…","path":"…","kind":"directory|file|link","size":…,
   "linkTarget":"…","linkReason":"…"}]}`。
-- `GET /api/workspaces/file?workspace=<登记路径>&path=<相对文件>` 返回
-  `{"workspace":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
+- `GET /api/zones/file?zone=<登记路径>&path=<相对文件>` 返回
+  `{"zone":"…","path":"…","name":"…","size":…,"preview":{…}}`。`preview.kind` 为 `text`（带 `content`）、
   `binary`（带 `reason`）或 `too-large`（带 `reason`、`size`、`limit`，不含内容）。
-- `GET /api/workspaces/git-status?workspace=<登记路径>` 返回
-  `{"workspace":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
+- `GET /api/zones/git-status?zone=<登记路径>` 返回
+  `{"zone":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
   "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}],
   "sync":{"upstream":{"remote":"…","branch":"…","short":"…"}|null,"ahead":N|null,"behind":N|null,
   "remoteCheckedAt":毫秒|null}}`。普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时
   是明确错误，不是干净状态。`sync` 只描述本地最近已知的远端跟踪事实：本读取**不发起 fetch**，
   `remoteCheckedAt` 为 `null` 表示本实例尚未成功检查远端，`ahead`/`behind` 为 `null` 表示跟踪引用或
   首次提交尚不可用。
-- `GET /api/workspaces/diff?workspace=<登记路径>&path=<相对新路径>`（重命名再加
+- `GET /api/zones/diff?zone=<登记路径>&path=<相对新路径>`（重命名再加
   `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
-  `{"workspace":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
+  `{"zone":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
   旧侧取当前分支最新本地提交（没有首次提交时为空树），新侧取最终本地文件；已暂存与未暂存内容合并
   观察，不使用索引作为旧侧，也不比较远端。每一侧的形状与文件预览一致：`text`（带 `content`、`size`）、
   `binary`（带 `reason`、`size`）、`too-large`（带 `reason`、`size`、`limit`，不含内容），或 `absent`
   （新增文件的旧侧、删除文件的新侧）。任一非文本侧使 `complete:false`，页面不渲染完整 diff。
   新增路径与 `oldPath` 都执行同一份根边界检查；旧路径来自 Git 历史也不能绕过它。
-- `GET /api/workspaces/overview` 返回每个登记项的角标事实：
-  `{"workspaces":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
+- `GET /api/zones/overview` 返回每个登记项的角标事实：
+  `{"zones":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
   普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
 - Git 状态与审查结果还带 `reviewToken`（当前审查版本标识）与可选的 `blockedReason`（仓库级阻塞原因）。
   `reviewToken` 覆盖分支、HEAD、完整索引、待提交路径集合与每个路径的完整最终内容；预览上限不会截断它。
   提交请求必须原样带回它。
-- `GET /api/workspaces/watch` 是自动更新的只读 SSE 长连接。首帧 `snapshot` 给出实际生效的
-  `intervalSeconds` 与每个 workspace 的监听视图
-  `{"workspace":"…","health":"live|error","message":"…","lastRefreshAt":…,"generation":N}`；
-  之后同一 workspace 的所有观察者共享合并后的 `refresh`（`{"workspace":"…","at":…,"generation":N}`）
+- `GET /api/zones/watch` 是自动更新的只读 SSE 长连接。首帧 `snapshot` 给出实际生效的
+  `intervalSeconds` 与每个 zone 的监听视图
+  `{"zone":"…","health":"live|error","message":"…","lastRefreshAt":…,"generation":N}`；
+  之后同一 zone 的所有观察者共享合并后的 `refresh`（`{"zone":"…","at":…,"generation":N}`）
   与 `health` 变化。`error`/监听失败只让页面标注可能过期，不自动重启监听、不触发远端 fetch。
 
-失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-workspace`、`path-is-link`、
-`path-not-found`、`workspace-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
+失败响应同样是 `{"code":"…","message":"…"}`，例如 `path-outside-zone`、`path-is-link`、
+`path-not-found`、`zone-unavailable`、`read-failed`、`git-unavailable`、`git-command-failed`。
+
+### 阅读本地 HTML
+
+文件浏览中选中扩展名为 `.html` 或 `.htm` 的文本文件（大小写不敏感）时，文件头出现“阅读 HTML”按钮；
+原有源码预览仍保留。文件超过 `preview_limit_bytes` 或不是文本时没有可阅读内容，页面继续显示明确原因。
+
+- 点按后进入覆盖整个可用视口的阅读模式，不要求浏览器进入系统级全屏。右上角“退出”始终可见；退出后恢复
+  进入前的 zone、当前目录、所选 HTML 文件和列表滚动位置，而不是回到 zone 列表。
+- 阅读模式只支持静态 HTML：HTML 排版、CSS、图片、页内锚点与原生 `<details>` 可正常显示；**不执行
+  JavaScript**，不提交表单，不嵌入 iframe/object 等其他网页。
+- 内容先在父页面净化，再放入只允许同源、禁止脚本的 sandbox iframe，并附带禁止脚本、表单、嵌入、
+  连接和外部资源自动加载的 CSP。净化移除 `script`、iframe/object/embed、表单、meta refresh、内联事件
+  处理器和 `javascript:`/`file:` 链接；外部图片、字体、样式等资源不会自动加载。
+- zone 内的相对 CSS、图片、字体等资源允许加载，读取仍经过与文件浏览相同的根边界检查：绝对路径、
+  `..` 遍历、符号链接、目录联接和根外路径都会被拒绝。根目录始终是登记 zone，不会因进入阅读模式扩大。
+- 页内锚点正常跳转；指向 zone 内其他 HTML 的链接在当前阅读模式内打开。`http`/`https` 普通链接在
+  新标签页打开；`file:///…` 链接不会打开本机其他文件。
+- HTML 源文件沿用单文件预览上限（默认 1 MiB）；相对 CSS、图片等资源不是文本预览，不按该文本上限截断。
+  如果 HTML 通过 `../assets/...` 引用资源，登记目录必须包含这些资源所在的共同父目录。
+
+阅读资源接口为
+`GET /api/zones/reader/<zone-hex>/<相对路径>`：zone 路径以 UTF-8 十六进制编码，使 HTML 的
+相对 URL 自然解析到同一个 zone；响应是原始字节，按扩展名给出 MIME，并带 `nosniff`、CSP 与
+`Cache-Control: no-store`。未登记 zone、越界路径、链接与目录都明确拒绝。
 
 ### 经审查复核的整仓 Commit
 
-Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Commit` 主按钮：
+Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` 主按钮：
 
 1. 提交信息必须非空；页面在信息为空时禁用按钮，直接请求也会以 `empty-message` 拒绝。
 2. 点按 `Commit` 只弹出**一句**确认消息与“确认提交 / 取消”。取消不发送写请求，因此没有 Git 写入。
-   弹框不重复列出 workspace、分支、文件数、提交信息或文件清单。
+   弹框不重复列出 zone、分支、文件数、提交信息或文件清单。
 3. 确认后，服务端用当前事实重新计算审查版本，并与页面展示的 `reviewToken` 比较。分支、HEAD、索引
    （包括外部暂存）、待提交路径集合或完整内容任何一处变化都会拒绝**当次**提交并返回 `review-invalid`；
    页面保留提交信息、刷新实际变更，用户必须重新审查并再次确认。旧审查不能向另一分支提交。
@@ -444,34 +500,34 @@ Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Comm
    的未跟踪文件不会被强加；只创建本地提交，不自动 push，也不修改 Git 配置。
 5. 同一实际仓库的写操作串行：不同调用者或同一路径的别名同时提交时，后到者得到 `git-write-in-progress`，
    不等待、不排队。资格由执行持有：连接断开不会取消已接受的提交；命令超时且终止未确认时，资格继续保持，
-   不会与后续写操作重叠。workspace Git 资格与固定操作的执行资格互不相同。
+   不会与后续写操作重叠。zone Git 资格与固定操作的执行资格互不相同。
 6. 任一步失败立即中断后续步骤，且不撤销已经成功的步骤：暂存成功后 hook 拒绝 commit，索引仍保留已暂存
    内容，页面显示 Git 返回的纯文本诊断（不执行其中的 HTML/script）。普通命令失败不会被误标为文件冲突。
 7. detached HEAD、未解决冲突，以及未完成的 merge/rebase/cherry-pick/revert 流程会禁用 Commit 并在页面
    与直接请求中说明原因；冲突解决但流程尚未结束时仍然阻塞。用户在外部完成或撤销流程后，刷新即恢复。
    没有 upstream 不妨碍本地 Commit，也不会隐式配置 upstream。
 8. 已初始化但没有首次提交的仓库按空树审查：已暂存与未忽略的未跟踪文件都显示为新增，Commit 创建首个提交。
-   本功能不提供 `git init`。
+   已有目录的登记与浏览不初始化 Git；“新增 zone”是唯一会执行 `git init` 的入口。
 9. 嵌套仓库与子模块不递归管理：父仓库只记录其 gitlink 提交，内部文件不会作为父仓库普通内容提交；父仓库
-   自身已跟踪的 gitlink 引用变化仍正常纳入。父仓库提交不会改写子仓库/嵌套仓库内部工作区。
+   自身已跟踪的 gitlink 引用变化仍正常纳入。父仓库提交不会改写子仓库/嵌套仓库内部工作树。
 10. Git 沿用服务器现有的身份、凭据与策略：`git commit -m` 不打开编辑器，`GIT_TERMINAL_PROMPT=0` 禁止在
     没有终端时等待输入；签名或凭据条件无法满足时明确失败或按 `[git] command_timeout_seconds` 超时，不新开
     终端/网页凭据流程，也不覆盖 Git 配置伪造成功。
 
-接口：`POST /api/workspaces/commit`，JSON
-`{"workspace":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
-成功返回 `{"workspace":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
+接口：`POST /api/zones/commit`，JSON
+`{"zone":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
+成功返回 `{"zone":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
 失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
 `commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
-`git-command-failed`、`workspace-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
+`git-command-failed`、`zone-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
 
 ### 按现有 upstream 安全 Sync
 
-工作区干净时，变更视图显示 Sync 主按钮、当前分支的既有 upstream、最近检查时间与已知 ahead/behind：
+工作树干净时，变更视图显示 Sync 主按钮、当前分支的既有 upstream、最近检查时间与已知 ahead/behind：
 
 | 状态 | 页面与操作 |
 |---|---|
-| 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作区同步 |
+| 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作树同步 |
 | 干净、有 upstream、已知 ahead/behind 非零 | Sync 可用；显示待拉取与待推送数量 |
 | 干净、已知已同步 | 主按钮禁用以“已同步”显示；仍可主动检查远端 |
 | 干净、远端尚未检查 | Sync 禁用并说明原因；“检查远端”可执行 |
@@ -482,7 +538,7 @@ Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Comm
    普通文件事件、页面读取和自动刷新都不会触发 fetch；未检查时页面不会把旧引用说成实时状态。
 2. Sync 只弹出一句确认与“确认同步 / 取消”。取消不发送任何请求，因此没有 fetch、pull、push 或其他
    Git 写入。
-3. 确认后服务端重新核对目录、当前分支、既有 upstream、干净工作区与阻塞状态，再按
+3. 确认后服务端重新核对目录、当前分支、既有 upstream、干净工作树与阻塞状态，再按
    **fetch → pull → 按需 push** 执行。fetch 使用当前分支 upstream 指向的远端；pull 与 push 不附加
    远端、分支或策略参数，完全遵循仓库已有的 merge/rebase/ff-only 与 push 配置。
 4. 只有 pull 后仍存在本地待推送提交时才执行 `git push`；只有 behind 时不会产生无意义推送。不 stash、
@@ -497,20 +553,20 @@ Git workspace 的变更视图在列表上方常驻提交信息输入框与 `Comm
    已有的 Git 输出，不伪造 Git 退出诊断。
 8. 沿用服务器现有的身份与凭据：`GIT_TERMINAL_PROMPT=0`，不新开终端或网页凭据流程；需要交互的凭据、
    编辑器或签名条件会明确失败或按配置超时。
-9. 只同步登记根自身的工作树；不递归同步嵌套仓库或子模块内部仓库，它们的 HEAD、索引与内部工作区保持
+9. 只同步登记根自身的工作树；不递归同步嵌套仓库或子模块内部仓库，它们的 HEAD、索引与内部工作树保持
    原样。父仓库自身已跟踪的 gitlink 变化仍按普通提交/同步事实处理。
 
 接口：
 
-- `POST /api/workspaces/check-remote`，JSON `{"workspace":"服务器目录"}`。成功返回刷新后的完整 Git 状态
-  （与 `GET /api/workspaces/git-status` 同形）。失败类别例如 `not-a-repository`、`no-upstream`、
-  `sync-blocked`、`git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`。
-- `POST /api/workspaces/sync`，JSON `{"workspace":"服务器目录"}`。成功返回
-  `{"workspace":"…","outcome":"synced","branch":"…","upstream":{"remote":"…","branch":"…","short":"…"},
+- `POST /api/zones/check-remote`，JSON `{"zone":"服务器目录"}`。成功返回刷新后的完整 Git 状态
+  （与 `GET /api/zones/git-status` 同形）。失败类别例如 `not-a-repository`、`no-upstream`、
+  `sync-blocked`、`git-write-in-progress`、`git-timeout`、`git-command-failed`、`zone-unavailable`。
+- `POST /api/zones/sync`，JSON `{"zone":"服务器目录"}`。成功返回
+  `{"zone":"…","outcome":"synced","branch":"…","upstream":{"remote":"…","branch":"…","short":"…"},
   "ahead":N,"behind":N,"remoteCheckedAt":毫秒,"pulled":N,"pushed":N,
   "steps":[{"step":"fetch|pull|push","outcome":"completed|skipped"}]}`。
   失败类别例如 `not-a-repository`、`sync-dirty-worktree`、`sync-blocked`、`no-upstream`、
-  `git-write-in-progress`、`git-timeout`、`git-command-failed`、`workspace-unavailable`；失败消息会指出
+  `git-write-in-progress`、`git-timeout`、`git-command-failed`、`zone-unavailable`；失败消息会指出
   失败步骤，并在已有步骤完成时说明它们不会被自动撤销。
 
 ### 默认绑定与改绑
@@ -1020,7 +1076,7 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
 | 真实脚本 + 控制台启动（“退出码 1”修复验证） | 在控制台窗口启动面板（默认 `omp-bot.toml`）→ `curl -X POST .../start`、`.../stop` | `start`：`200` + `{"exitCode":0,"outcome":"completed"}`（约 4.8 s），随后 `127.0.0.1:8899`、`0.0.0.0:8888` LISTENING、`worker.py`/`server.py` 运行、`My Streaming` 窗口出现；`stop`：`200` + `{"exitCode":0,"outcome":"completed"}`（约 0.5 s），两个 Python 进程与端口全部释放，窗口消失 |
 | 无控制台启动（回退路径） | 无控制台启动面板 + `timeout` 探针批处理 | 启动日志打印“本次启动没有连接控制台…”提示；请求返回 `{"exitCode":1,"outcome":"failed","failure":"failed-exit"}`，如实反映脚本在该环境下的退出码 |
 | 无自动终止复核 | “执行生命周期”一节的两条关键字复核命令（`findstr` / `grep`） | 两条都**没有任何输出**（退出码 1 = 无匹配），与文档一致 |
-| 现有脚本未修改 | `sha256sum`、`git -C E:\Developer\myhub\my-streaming status --porcelain`、`rev-parse HEAD`、`hash-object` | 与实现票 12 的记录一致：`875b915a…` / `9b6720c5…`；工作区干净；HEAD `27f0a795…`；`517c03f0…` / `0f6c9eb7…` |
+| 现有脚本未修改 | `sha256sum`、`git -C E:\Developer\myhub\my-streaming status --porcelain`、`rev-parse HEAD`、`hash-object` | 与实现票 12 的记录一致：`875b915a…` / `9b6720c5…`；工作树干净；HEAD `27f0a795…`；`517c03f0…` / `0f6c9eb7…` |
 | 防火墙放行 | `netsh advfirewall firewall show rule name=omp-bot` | 两条入站允许规则（TCP、UDP），`配置文件=公用`、`程序=E:\developer\myhub\omp-bot\backend\target\release\omp-bot.exe` |
 | 基线检查命令 | `netstat -ano` 配合 `findstr` 过滤 `LISTENING` 与 `8899`/`8888`；`tasklist /FI "IMAGENAME eq python.exe"` | 真实脚本验证前后各查一次：执行前 8899/8888 无监听者、无 `python.exe`；执行后再次确认无监听者、无 `python.exe`、无 `My Streaming` 窗口 |
 
@@ -1853,3 +1909,55 @@ P1 与 P8 在用户逐条确认前保持**未验收**；本版自动化证据（
 - **限制**：真实手机触摸与软键盘体验仍未确认，窄屏截图只是 `390×844` 视口仿真；未执行真实关机；
   Git 结果只针对隔离 bare 远端，未向业务远端推送。可信局域网无认证提醒已补入“文件列表与 workspace
   登记”一节。
+
+## 变更记录：新增 workspace 与 HTML 阅读模式（2026-10-21）
+
+本次把“文件列表”改成直接展示列表与两个弹窗入口，并加入由服务端配置父目录的新建 workspace 流程；同时为
+workspace 内的本地 HTML 增加整页静态阅读模式。文档记录见 [ADR-0007](docs/adr/0007-workspace-creation-explicit-parent-and-partial-failure.md)
+与 [ADR-0008](docs/adr/0008-html-reader-static-workspace-boundary.md)。
+
+- **改了什么**：
+  - `[workspaces] create_parent_directory` 为必须显式配置的可选字段，随附 `omp-bot.toml` 使用
+    `E:\Developer\bot-playground`。旧配置缺字段仍可启动，但“新增”禁用；父目录缺失不自动创建。
+  - 新增 `POST /api/workspaces/create`（JSON `{"name":"直接子目录名称"}`）；列表、登记、创建与取消登记
+    的成功响应带 `creation.available` 与可选 `parentDirectory`。请求只接受名称，父目录不能由客户端替换。
+  - 创建顺序为目录 → `git init` → 登记；同名目录拒绝，名称限制为单一直接子目录。任一步失败保留已经
+    产生的目录，错误包含失败阶段与完整路径；登记失败时目录与 Git 初始化不撤销。
+  - 新增 `GET /api/workspaces/reader/<workspace-hex>/<relative-path>` 原始资源路由，按扩展名返回 MIME、
+    `nosniff`、`no-store` 与 CSP；仍复用 workspace 根、链接与路径遍历边界检查。
+  - “文件列表”去掉常驻路径输入与说明文字，直接显示列表及“登记”“新增”按钮；两者改为弹窗确认。
+  - `.html`/`.htm` 文本文件增加“阅读 HTML”入口。内容在父页面移除脚本、表单、嵌入、meta refresh、
+    事件处理器和外部资源属性后，放入 `sandbox="allow-same-origin"` iframe；CSS、图片与原生折叠内容
+    可读。退出恢复原 workspace、目录、所选文件与滚动位置。
+  - 阅读器内 workspace HTML 链接在当前模式打开，`http`/`https` 链接在新标签页打开，`file://` 与其他
+    scheme 被拦截；外部资源不会自动加载。`GLOSSARY.md`、README、`omp-bot.toml` 同步更新。
+- **自动检查**（在 `backend/`、`frontend/` 或仓库根目录执行）：
+  - `cargo test -- --skip conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves`
+    → `297 passed / 36 suites`，1 个环境受限用例被跳过。
+  - `cargo test` 的完整运行中，除上述 `mdns_conflict` 用例外全部通过。当前机器已有另一个 omp-bot 服务
+    监听 `8787`，该用例无法建立自己的受控 mDNS 占用者；单独重跑同样受环境阻塞，与本次改动无关。
+  - `cargo test --test workspace_create --test workspace_reader` → `6 passed`：覆盖真实目录创建与
+    `git init`、持久化登记、未配置/父目录缺失/非法名称/同名冲突、创建请求面封闭、登记失败保留目录、
+    HTML/CSS 原始响应与 MIME/CSP、越界与未登记 workspace 拒绝。
+  - `npm test` → `23 files / 167 tests passed`；新增 `htmlReader.test.ts` 及文件列表、浏览器交互用例，
+    覆盖弹窗确认、创建成功/失败、阅读入口与退出、净化规则、链接分类和 iframe 内链接分流。
+  - `npm run build`（`tsc --noEmit && vite build`）成功；新增 Rust 文件通过 `rustfmt --check`。
+- **真实 Chromium smoke**（隔离登记文件与 HTML 资源、真实交付后端进程；新增 workspace 落到配置父目录）：
+  - 页面“新增”弹窗显示 `E:\Developer\bot-playground`；确认后反馈
+    `已创建：E:\Developer\bot-playground\omp-smoke-html-20261021`，列表从 1 项变为 2 项；
+    `git rev-parse --is-inside-work-tree` 返回 `true` 且 `.git` 存在。
+  - HTML 阅读层矩形为 `0,0,1280×800`，与 `1280×800` 视口一致；workspace CSS 生效
+    （`color: rgb(1, 2, 3)`），相对图片加载 (`naturalWidth > 0`)，原生 `<details>` 保留。
+  - iframe 内 `script`/`iframe`/`form` 数量均为 0，`window.__pwned` 与 `dataset.scriptRan` 为 `null`，
+    外部图片数量为 0；CSP 与指向 workspace 资源路由的 `<base>` 均存在。
+  - 点击 workspace 内 `next.html` 链接后阅读路径变为 `next.html` 且显示目标标题；外部链接实际打开
+    `https://example.com/article` 新标签页，阅读路径不变；`file:///C:/Windows/win.ini` 链接的 `href`
+    已在净化后移除。
+  - 点击右上角“退出”后阅读层消失，仍停留在原 workspace，文件路径仍为 `index.html`，源码预览可见。
+- **限制与未覆盖**：阅读模式设计上不执行 JavaScript，因此依赖脚本的交互页面不在支持范围；真实手机触摸、
+  软键盘与窄屏阅读体验尚未做实机验收。当前环境存在另一个 omp-bot 实例，`mdns_conflict` 全量测试的
+  端口冲突仍需在无既有实例时复验。
+## 变更记录：目录登记概念由 workspace 更名为 zone（2026-10-21）
+
+为引入 herdr 相关模块、避免与 herdr 自己的 workspace 概念重名，本项目把「用户登记的服务器目录」统一更名为 zone。更名覆盖前后端标识符与文件名、HTTP 路由 `/api/zones/*`、查询参数 `zone`、JSON 字段 `zones`/`zone`、错误码 `zone-*`、配置段 `[zones]`、默认登记文件 `zones.json` 与界面文案。这次是硬切换：旧 `/api/workspaces/*`、旧 `[workspaces]` 配置与旧 `workspaces.json` 不再兼容，现有登记已一次性迁移。Git working tree 在文档与界面中统一称「工作树」。历史变更记录保留旧词；原因与取舍见 [ADR 0009](docs/adr/0009-rename-workspace-to-zone-for-herdr.md)。
+

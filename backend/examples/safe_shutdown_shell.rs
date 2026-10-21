@@ -66,8 +66,8 @@ async fn main() -> anyhow::Result<()> {
         config.sessions.offline_retention_seconds.get()
     );
     println!(
-        "[omp-bot] workspace 登记文件：{}",
-        config.workspaces.registry_file.display()
+        "[omp-bot] zone 登记文件：{}",
+        config.zones.registry_file.display()
     );
     println!("[omp-bot] 到期结果：{}", if fails { "failed" } else { "ok" });
     println!("[omp-bot] 监听：http://{local_addr}/");

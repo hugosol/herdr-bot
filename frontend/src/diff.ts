@@ -33,7 +33,7 @@ export type SideBySideRow = {
 /**
  * 按行切分，末尾换行不额外产生一行；空文本是 0 行。
  *
- * CRLF 先归一化为 LF：工作区文件在 Windows 上可能是 CRLF，而 Git 对象保存 LF；
+ * CRLF 先归一化为 LF：工作树文件在 Windows 上可能是 CRLF，而 Git 对象保存 LF；
  * Git 会按文本属性/autocrlf 把两者视为同一行内容。如果不先归一化，每行末尾的 `\r`
  * 会让所有行都被误判为修改。
  *

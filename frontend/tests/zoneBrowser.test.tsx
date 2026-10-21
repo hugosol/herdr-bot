@@ -6,7 +6,7 @@ import App from '../src/App'
 import type { BrowseEntry, DirectoryListing, FileView } from '../src/browseApi'
 import { treeResponse } from './treeResponse'
 
-const WORKSPACE = 'C:\\work\\project'
+const ZONE = 'C:\\work\\project'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -49,7 +49,7 @@ const ROOT_ENTRIES: BrowseEntry[] = [
     path: 'link-out',
     kind: 'link',
     linkTarget: 'C:\\outside\\target',
-    linkReason: '链接指向 workspace 之外；本服务不跟随，未读取目标内容。',
+    linkReason: '链接指向 zone 之外；本服务不跟随，未读取目标内容。',
   },
 ]
 
@@ -71,56 +71,56 @@ const DIRECTORIES: Record<string, BrowseEntry[]> = {
 
 const FILES: Record<string, FileView> = {
   README: {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'README',
     name: 'README',
     size: 16,
     preview: { kind: 'text', content: 'extensionless text' },
   },
   '.hidden.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: '.hidden.txt',
     name: '.hidden.txt',
     size: 6,
     preview: { kind: 'text', content: 'hidden' },
   },
   '.gitignore': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: '.gitignore',
     name: '.gitignore',
     size: 10,
     preview: { kind: 'text', content: 'ignored.log\n' },
   },
   'ignored.log': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'ignored.log',
     name: 'ignored.log',
     size: 7,
     preview: { kind: 'text', content: 'ignored' },
   },
   'src/main.ts': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'src/main.ts',
     name: 'main.ts',
     size: 15,
     preview: { kind: 'text', content: 'console.log(1)\n' },
   },
   'page.html': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'page.html',
     name: 'page.html',
     size: 34,
     preview: { kind: 'text', content: '<script>window.__pwned=1</script>' },
   },
   'binary.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'binary.txt',
     name: 'binary.txt',
     size: 4,
     preview: { kind: 'binary', reason: '文件包含 NUL 字节，不是可文本预览的文本。' },
   },
   'huge.txt': {
-    workspace: WORKSPACE,
+    zone: ZONE,
     path: 'huge.txt',
     name: 'huge.txt',
     size: 1_048_577,
@@ -134,22 +134,22 @@ const FILES: Record<string, FileView> = {
 }
 
 function listing(path: string): DirectoryListing {
-  return { workspace: WORKSPACE, path, entries: DIRECTORIES[path] ?? [] }
+  return { zone: ZONE, path, entries: DIRECTORIES[path] ?? [] }
 }
 
-/** 标准工作区答复：列表、目录与文件都来自固定夹具，便于断言页面行为。 */
+/** 标准 zone 响应：列表、目录与文件都来自固定夹具，便于断言页面行为。 */
 function standardHandler(url: URL): Response | undefined {
-  if (url.pathname === '/api/workspaces') {
-    return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+  if (url.pathname === '/api/zones') {
+    return jsonResponse(200, { zones: [{ path: ZONE }] })
   }
-  if (url.pathname === '/api/workspaces/overview') {
+  if (url.pathname === '/api/zones/overview') {
     return jsonResponse(200, {
-      workspaces: [{ path: WORKSPACE, repository: false, conflict: false }],
+      zones: [{ path: ZONE, repository: false, conflict: false }],
     })
   }
-  if (url.pathname === '/api/workspaces/git-status') {
+  if (url.pathname === '/api/zones/git-status') {
     return jsonResponse(200, {
-      workspace: WORKSPACE,
+      zone: ZONE,
       repository: false,
       branch: null,
       detached: false,
@@ -158,13 +158,13 @@ function standardHandler(url: URL): Response | undefined {
       pendingCount: 0,
     })
   }
-  if (url.pathname === '/api/workspaces/tree') {
-    return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+  if (url.pathname === '/api/zones/tree') {
+    return jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
   }
-  if (url.pathname === '/api/workspaces/entries') {
+  if (url.pathname === '/api/zones/entries') {
     return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
   }
-  if (url.pathname === '/api/workspaces/file') {
+  if (url.pathname === '/api/zones/file') {
     const path = url.searchParams.get('path') ?? ''
     const file = FILES[path]
     return file ? jsonResponse(200, file) : undefined
@@ -172,11 +172,11 @@ function standardHandler(url: URL): Response | undefined {
   return undefined
 }
 
-async function openWorkspace(user: UserEvent) {
+async function openZone(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
   await screen.findByTestId('entry:README')
 }
 
@@ -188,24 +188,24 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('workspace 只读文件浏览', () => {
-  it('进入 workspace 时一次读取整树，展开目录不再发起读取', async () => {
+describe('zone 只读文件浏览', () => {
+  it('进入 zone 时一次读取整树，展开目录不再发起读取', async () => {
     const user = userEvent.setup()
     const calls = mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     await waitFor(() => {
       expect(screen.queryByTestId('tree-loading')).toBeNull()
     })
-    const treeReads = calls.filter((url) => url.pathname === '/api/workspaces/tree')
+    const treeReads = calls.filter((url) => url.pathname === '/api/zones/tree')
     expect(treeReads).toHaveLength(1)
 
     await user.click(screen.getByTestId('entry:src'))
     expect(await screen.findByTestId('entry:src/main.ts')).toBeVisible()
     expect(
-      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+      calls.filter((url) => url.pathname === '/api/zones/tree'),
     ).toHaveLength(1)
   })
 
@@ -217,28 +217,28 @@ describe('workspace 只读文件浏览', () => {
     })
     let treeCalls = 0
     const calls = mockFetch((url) => {
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         treeCalls += 1
         if (treeCalls === 1) return deferredRoot
-        return jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+        return jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
       }
       return standardHandler(url)
     })
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
     expect(screen.getByTestId('tree-loading')).toBeVisible()
     expect(treeCalls).toBe(1)
 
     // 当前整树读取尚未完成时点刷新：应合并为尾随刷新，而不是并行再开一轮。
     await user.click(screen.getByTestId('browser-refresh'))
     expect(treeCalls).toBe(1)
-    expect(calls.filter((url) => url.pathname === '/api/workspaces/tree')).toHaveLength(1)
+    expect(calls.filter((url) => url.pathname === '/api/zones/tree')).toHaveLength(1)
 
-    settleRoot(jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES)))
+    settleRoot(jsonResponse(200, treeResponse(ZONE, DIRECTORIES)))
     await waitFor(() => expect(screen.queryByTestId('tree-loading')).toBeNull())
     expect(await screen.findByTestId('entry:README')).toBeVisible()
     expect(treeCalls).toBe(2)
@@ -247,7 +247,7 @@ describe('workspace 只读文件浏览', () => {
   it('Git 整树省略 ignored 路径，显示隐藏提示并使用未忽略空态', async () => {
     const user = userEvent.setup()
     const filteredTree = treeResponse(
-      WORKSPACE,
+      ZONE,
       {
         '': [
           { name: '.gitignore', path: '.gitignore', kind: 'file', size: 10 },
@@ -260,17 +260,17 @@ describe('workspace 只读文件浏览', () => {
       true,
     )
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview') {
+      if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {
-          workspaces: [{ path: WORKSPACE, repository: true, conflict: false, pendingCount: 0 }],
+          zones: [{ path: ZONE, repository: true, conflict: false, pendingCount: 0 }],
         })
       }
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         return jsonResponse(200, {
-          workspace: WORKSPACE,
+          zone: ZONE,
           repository: true,
           branch: 'main',
           detached: false,
@@ -279,7 +279,7 @@ describe('workspace 只读文件浏览', () => {
           pendingCount: 0,
         })
       }
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         return jsonResponse(200, filteredTree)
       }
       return undefined
@@ -287,9 +287,9 @@ describe('workspace 只读文件浏览', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    await screen.findByTestId('zone-browser')
 
     expect(await screen.findByTestId('ignored-hidden-notice')).toHaveTextContent(
       '已按 Git 忽略规则隐藏',
@@ -311,17 +311,17 @@ describe('workspace 只读文件浏览', () => {
     const user = userEvent.setup()
     let rootEntries: BrowseEntry[] = [{ name: 'README', path: 'README', kind: 'file', size: 16 }]
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview') {
+      if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {
-          workspaces: [{ path: WORKSPACE, repository: true, conflict: false, pendingCount: 0 }],
+          zones: [{ path: ZONE, repository: true, conflict: false, pendingCount: 0 }],
         })
       }
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         return jsonResponse(200, {
-          workspace: WORKSPACE,
+          zone: ZONE,
           repository: true,
           branch: 'main',
           detached: false,
@@ -330,10 +330,10 @@ describe('workspace 只读文件浏览', () => {
           pendingCount: 0,
         })
       }
-      if (url.pathname === '/api/workspaces/tree') {
-        return jsonResponse(200, treeResponse(WORKSPACE, { '': rootEntries }, true))
+      if (url.pathname === '/api/zones/tree') {
+        return jsonResponse(200, treeResponse(ZONE, { '': rootEntries }, true))
       }
-      if (url.pathname === '/api/workspaces/file') {
+      if (url.pathname === '/api/zones/file') {
         const path = url.searchParams.get('path') ?? ''
         return path === 'README' ? jsonResponse(200, FILES.README) : undefined
       }
@@ -341,7 +341,7 @@ describe('workspace 只读文件浏览', () => {
     })
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
     await user.click(screen.getByTestId('entry:README'))
     expect(await screen.findByTestId('file-text')).toHaveTextContent('extensionless text')
 
@@ -358,13 +358,13 @@ describe('workspace 只读文件浏览', () => {
     const calls = mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
     await waitFor(() => expect(screen.queryByTestId('tree-loading')).toBeNull())
     const readsBefore = calls.filter(
-      (url) => url.pathname === '/api/workspaces/tree',
+      (url) => url.pathname === '/api/zones/tree',
     ).length
     const statusBefore = calls.filter(
-      (url) => url.pathname === '/api/workspaces/git-status',
+      (url) => url.pathname === '/api/zones/git-status',
     ).length
 
     await user.click(screen.getByTestId('tab-sessions'))
@@ -372,12 +372,12 @@ describe('workspace 只读文件浏览', () => {
 
     await waitFor(() =>
       expect(
-        calls.filter((url) => url.pathname === '/api/workspaces/git-status').length,
+        calls.filter((url) => url.pathname === '/api/zones/git-status').length,
       ).toBeGreaterThan(statusBefore),
     )
     expect(screen.getByTestId('entry:README')).toBeVisible()
     expect(
-      calls.filter((url) => url.pathname === '/api/workspaces/tree'),
+      calls.filter((url) => url.pathname === '/api/zones/tree'),
     ).toHaveLength(readsBefore)
   })
 
@@ -386,7 +386,7 @@ describe('workspace 只读文件浏览', () => {
     const calls = mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     for (const name of ['.gitignore', '.hidden.txt', 'ignored.log', 'README']) {
       expect(screen.getByTestId(`entry:${name}`)).toBeVisible()
@@ -412,9 +412,9 @@ describe('workspace 只读文件浏览', () => {
 
     const fileRequest = calls.find(
       (url) =>
-        url.pathname === '/api/workspaces/file' && url.searchParams.get('path') === 'README',
+        url.pathname === '/api/zones/file' && url.searchParams.get('path') === 'README',
     )
-    expect(fileRequest?.searchParams.get('workspace')).toBe(WORKSPACE)
+    expect(fileRequest?.searchParams.get('zone')).toBe(ZONE)
   })
 
   it('二进制与超限文件给出明确原因，不显示完整内容', async () => {
@@ -422,7 +422,7 @@ describe('workspace 只读文件浏览', () => {
     mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     await user.click(screen.getByTestId('entry:binary.txt'))
     const binary = await screen.findByTestId('file-unavailable')
@@ -441,28 +441,28 @@ describe('workspace 只读文件浏览', () => {
     const user = userEvent.setup()
     let failDirectories = false
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         return failDirectories
           ? jsonResponse(404, {
-              code: 'workspace-unavailable',
-              message: 'workspace 目录已不存在或无法访问：拒绝访问。',
+              code: 'zone-unavailable',
+              message: 'zone 目录已不存在或无法访问：拒绝访问。',
             })
-          : jsonResponse(200, treeResponse(WORKSPACE, DIRECTORIES))
+          : jsonResponse(200, treeResponse(ZONE, DIRECTORIES))
       }
-      if (url.pathname === '/api/workspaces/file') {
+      if (url.pathname === '/api/zones/file') {
         return jsonResponse(404, {
           code: 'path-not-found',
-          message: '路径在 workspace 中不存在或已被删除。',
+          message: '路径在 zone 中不存在或已被删除。',
         })
       }
       return undefined
     })
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     await user.click(screen.getByTestId('entry:README'))
     expect(await screen.findByTestId('file-error')).toHaveTextContent('不存在或已被删除')
@@ -472,18 +472,18 @@ describe('workspace 只读文件浏览', () => {
     failDirectories = true
     await user.click(screen.getByTestId('browser-refresh'))
     expect(await screen.findByTestId('directory-error')).toHaveTextContent(
-      'workspace 目录已不存在或无法访问',
+      'zone 目录已不存在或无法访问',
     )
     expect(screen.queryByTestId('directory-empty')).toBeNull()
     expect(screen.queryByTestId('entry:README')).toBeNull()
   })
 
-  it('跨顶层 tab 往返保留 workspace、展开状态、所选文件与浏览滚动', async () => {
+  it('跨顶层 tab 往返保留 zone、展开状态、所选文件与浏览滚动', async () => {
     const user = userEvent.setup()
     mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     await user.click(screen.getByTestId('entry:src'))
     expect(await screen.findByTestId('entry:src/main.ts')).toBeVisible()
@@ -498,7 +498,7 @@ describe('workspace 只读文件浏览', () => {
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
 
     await user.click(screen.getByTestId('tab-files'))
-    expect(await screen.findByTestId('browser-workspace')).toHaveTextContent(WORKSPACE)
+    expect(await screen.findByTestId('browser-zone')).toHaveTextContent(ZONE)
     expect(await screen.findByTestId('file-text')).toHaveTextContent('console.log(1)')
     expect(screen.getByTestId('entry:src/main.ts')).toBeVisible()
     expect(screen.getByTestId('browser-tree').scrollTop).toBe(123)
@@ -510,7 +510,7 @@ describe('workspace 只读文件浏览', () => {
     mockFetch((url) => {
       const standard = standardHandler(url)
       if (standard) return standard
-      if (url.pathname === '/api/workspaces/entries') {
+      if (url.pathname === '/api/zones/entries') {
         return jsonResponse(200, listing(url.searchParams.get('path') ?? ''))
       }
       return undefined
@@ -518,8 +518,8 @@ describe('workspace 只读文件浏览', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
     expect(await screen.findByTestId('browser-mobile')).toBeVisible()
     expect(screen.queryByTestId('browser-layout')).toBeNull()
 
@@ -542,21 +542,21 @@ describe('workspace 只读文件浏览', () => {
       { name: 'many', path: 'many', kind: 'directory' },
     ])
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         return jsonResponse(
           200,
-          treeResponse(WORKSPACE, { ...DIRECTORIES, '': rootEntries }),
+          treeResponse(ZONE, { ...DIRECTORIES, '': rootEntries }),
         )
       }
-      if (url.pathname === '/api/workspaces/entries') {
+      if (url.pathname === '/api/zones/entries') {
         const path = url.searchParams.get('path') ?? ''
         const entries = path === '' ? rootEntries : (DIRECTORIES[path] ?? [])
-        return jsonResponse(200, { workspace: WORKSPACE, path, entries })
+        return jsonResponse(200, { zone: ZONE, path, entries })
       }
-      if (url.pathname === '/api/workspaces/file') {
+      if (url.pathname === '/api/zones/file') {
         const path = url.searchParams.get('path') ?? ''
         const file = FILES[path]
         if (file) return jsonResponse(200, file)
@@ -564,7 +564,7 @@ describe('workspace 只读文件浏览', () => {
         if (path.startsWith('many/')) {
           const name = path.slice('many/'.length)
           return jsonResponse(200, {
-            workspace: WORKSPACE,
+            zone: ZONE,
             path,
             name,
             size: 5,
@@ -577,8 +577,8 @@ describe('workspace 只读文件浏览', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
     await screen.findByTestId('entry:many')
 
     const list = screen.getByTestId('browser-mobile-list')
@@ -599,12 +599,134 @@ describe('workspace 只读文件浏览', () => {
     expect(screen.getByTestId('browser-mobile-list').scrollTop).toBe(320)
   })
 
+  it('HTML 文件可进入整页阅读模式，脚本被隔离且退出恢复原文件', async () => {
+    const user = userEvent.setup()
+    mockFetch(standardHandler)
+
+    render(<App />)
+    await openZone(user)
+
+    await user.click(screen.getByTestId('entry:README'))
+    await screen.findByTestId('file-text')
+    expect(screen.queryByTestId('read-html')).toBeNull()
+
+    await user.click(screen.getByTestId('entry:page.html'))
+    const text = await screen.findByTestId('file-text')
+    expect(text.textContent).toBe('<script>window.__pwned=1</script>')
+
+    await user.click(screen.getByTestId('read-html'))
+    const reader = screen.getByTestId('html-reader')
+    expect(reader).toHaveAttribute('role', 'dialog')
+    expect(reader).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByTestId('exit-html-reader')).toBeVisible()
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('page.html')
+
+    const frame = screen.getByTestId('html-reader-frame')
+    expect(frame).toHaveAttribute('sandbox', 'allow-same-origin')
+    expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
+    const document = frame.getAttribute('srcdoc') ?? ''
+    expect(document).not.toContain('<script')
+    expect(document).not.toContain('window.__pwned')
+    expect(document).toContain('Content-Security-Policy')
+    expect(document).toContain('/api/zones/reader/')
+    expect(document).toContain('/page.html')
+    expect('__pwned' in window).toBe(false)
+
+    await user.click(screen.getByTestId('exit-html-reader'))
+    expect(screen.queryByTestId('html-reader')).toBeNull()
+    expect(await screen.findByTestId('file-text')).toHaveTextContent(
+      '<script>window.__pwned=1</script>',
+    )
+    expect(screen.getByTestId('file-path')).toHaveTextContent('page.html')
+  })
+
+  it('阅读模式内打开 zone HTML，并把外部链接与 file 链接分流', async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    mockFetch((url) => {
+      if (url.pathname === '/api/zones/file') {
+        const path = url.searchParams.get('path') ?? ''
+        if (path === 'page.html') {
+          return jsonResponse(200, {
+            zone: ZONE,
+            path,
+            name: 'page.html',
+            size: 120,
+            preview: {
+              kind: 'text',
+              content:
+                '<a id="next" href="next.html">next</a><a id="outside" href="https://example.com/article">outside</a><a id="local" href="file:///C:/secret.html">local</a>',
+            },
+          })
+        }
+        if (path === 'next.html') {
+          return jsonResponse(200, {
+            zone: ZONE,
+            path,
+            name: 'next.html',
+            size: 20,
+            preview: { kind: 'text', content: '<h1 id="next-page">Next page</h1>' },
+          })
+        }
+      }
+      return standardHandler(url)
+    })
+
+    render(<App />)
+    await openZone(user)
+    await user.click(screen.getByTestId('entry:page.html'))
+    await screen.findByTestId('file-text')
+    await user.click(screen.getByTestId('read-html'))
+
+    const frame = screen.getByTestId('html-reader-frame') as HTMLIFrameElement
+    // jsdom 不填充 srcdoc 的 contentDocument；挂一份真实 Document 到 iframe 元素，驱动父页面的
+    // 链接拦截。真实 iframe 文档的净化与渲染由 htmlReader.test 和 Chromium smoke 覆盖。
+    const frameDocument = new DOMParser().parseFromString(
+      '<a id="next" href="next.html">next</a>' +
+        '<a id="outside" href="https://example.com/article">outside</a>' +
+        '<a id="local" href="file:///C:/secret.html">local</a>',
+      'text/html',
+    )
+    Object.defineProperty(frame, 'contentDocument', {
+      configurable: true,
+      value: frameDocument,
+    })
+    fireEvent.load(frame)
+
+    frameDocument
+      .querySelector('#next')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    await waitFor(() => {
+      expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+      expect(frame.getAttribute('srcdoc')).toContain('next-page')
+    })
+
+    frameDocument
+      .querySelector('#outside')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(open).toHaveBeenCalledWith(
+      'https://example.com/article',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+
+    frameDocument
+      .querySelector('#local')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(await screen.findByTestId('html-reader-notice')).toHaveTextContent(
+      'file:// 链接不会打开',
+    )
+    expect(screen.getByTestId('html-reader-path')).toHaveTextContent('next.html')
+    open.mockRestore()
+  })
+
   it('包含 HTML/script 的文件只作为文本展示', async () => {
     const user = userEvent.setup()
     mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     await user.click(screen.getByTestId('entry:page.html'))
     const text = await screen.findByTestId('file-text')
@@ -618,20 +740,20 @@ describe('workspace 只读文件浏览', () => {
     mockFetch(standardHandler)
 
     render(<App />)
-    await openWorkspace(user)
+    await openZone(user)
 
     expect(screen.getByTestId('link-target:link-out')).toHaveTextContent('C:\\outside\\target')
-    expect(screen.getByTestId('entry:link-out')).toHaveTextContent('workspace 之外')
+    expect(screen.getByTestId('entry:link-out')).toHaveTextContent('zone 之外')
     expect(screen.getByTestId('entry:link-out').querySelector('button')).toBeNull()
   })
 
   it('没有可用响应时给出未确认错误，不显示空目录', async () => {
     const user = userEvent.setup()
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         return Promise.reject(new Error('connection reset'))
       }
       return undefined
@@ -639,8 +761,8 @@ describe('workspace 只读文件浏览', () => {
 
     render(<App />)
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
 
     const error = await screen.findByTestId('directory-error')
     await waitFor(() => expect(error).toHaveTextContent('无法确认'))
