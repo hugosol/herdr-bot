@@ -1194,6 +1194,7 @@ npm --prefix frontend run test:browser
 adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
 调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
 `backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识、
+Skill / prompt / input 的单次合成（含空值组合、两项原生 Skill 前缀与正文逐字保真）、
 不触碰会话/关机状态，以及 Workspace 不可达/零匹配/多匹配、Tab 创建后启动失败、提交被拒绝与提交超时
 时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/bot_creation_detached.rs` 继续验证创建
 被接受后观察连接断开不取消执行、提交请求连接断开仍完成唯一一次提交，以及两个独立客户端同时向同一
