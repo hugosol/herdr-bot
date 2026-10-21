@@ -553,41 +553,37 @@ async fn assert_launch_from_public_entry(
         start["agent_kind"], agent,
         "外部启动目标类型必须对应所选 agent"
     );
-
-    // 独立的新会话目录由实例身份覆盖单独断言；这里剔出该对外参数后，其余参数必须与预写的
-    // model / thinking 样例逐项一致，且启动时恰好选择一次新会话目录。
+    let expected = expected_args.as_array().expect("预写样例是数组");
     let args = start["args"].as_array().expect("启动参数是数组");
-    let mut model_args = Vec::new();
-    let mut session_dir_count = 0;
-    let mut index = 0;
-    while index < args.len() {
-        if args[index] == "--session-dir" {
-            assert!(
-                index + 1 < args.len(),
-                "--session-dir 必须有会话目录值：{args:?}"
-            );
-            session_dir_count += 1;
-            index += 2;
-            continue;
-        }
-        model_args.push(args[index].clone());
-        index += 1;
-    }
     assert_eq!(
-        session_dir_count, 1,
-        "启动时必须显式选择一次独立的新会话目录：{args:?}"
+        args.len(),
+        expected.len() + 2,
+        "除模型 / thinking 外只应追加本次独立的会话目录：{}",
+        start["args"]
+    );
+    assert_eq!(
+        &args[..expected.len()],
+        expected.as_slice(),
+        "启动参数中的模型与 thinking 必须与预写样例一致"
+    );
+    assert_eq!(
+        args[expected.len()],
+        "--session-dir",
+        "模型 / thinking 之后必须显式选择独立的新会话目录：{}",
+        start["args"]
+    );
+    assert!(
+        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
+        "会话目录必须是绝对路径：{}",
+        start["args"]
     );
     if agent == "pi" {
         assert!(
-            !model_args.iter().any(|arg| arg == "auto"),
-            "Pi 不接收 auto：{model_args:?}"
+            !args.iter().any(|arg| arg == "auto"),
+            "Pi 不接收 auto：{}",
+            start["args"]
         );
     }
-    assert_eq!(
-        Value::Array(model_args),
-        expected_args,
-        "启动参数必须与预写样例一致"
-    );
 
     let prompt = created_calls
         .iter()
