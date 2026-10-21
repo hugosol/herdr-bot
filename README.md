@@ -1051,7 +1051,7 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
 
 ## 变更记录：项目更名为 herdr-bot（2026-10-21）
 
-项目标识由 `omp-bot` 硬切换为 `herdr-bot`：仓库与本地目录、Rust crate 与二进制、默认配置 `herdr-bot.toml`、mDNS 主机名 `herdr-bot.local`、`HERDR_BOT_*` 环境变量、日志前缀与前端标题同步更新。既有 API、会话协议与 `connect-bot` 行为不变。历史 ADR 与下方交付验证/变更记录保留原文；原因与影响见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。`my-agent-toolkit` 的真实面板 interop 辅助文件作为独立后续更新。
+项目标识由 `omp-bot` 硬切换为 `herdr-bot`：仓库与本地目录、Rust crate 与二进制、默认配置 `herdr-bot.toml`、mDNS 主机名 `herdr-bot.local`、`HERDR_BOT_*` 环境变量、日志前缀与前端标题同步更新。既有 API、会话协议与 `connect-bot` 行为不变。历史 ADR 与下方交付验证/变更记录保留原文；原因与影响见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。`my-agent-toolkit` 的真实面板 interop 辅助文件作为独立后续更新。剩余迁移步骤见 [`docs/herdr-bot-rename-remaining-steps.md`](docs/herdr-bot-rename-remaining-steps.md)。
 
 > 术语注记（2026-10-21）：以下交付验证记录与变更记录保留当时的 **omp-bot** 名称与路径；项目现名 **herdr-bot**，mDNS 主机名现为 `herdr-bot.local`。原因与硬切换范围见 [ADR 0010](docs/adr/0010-rename-project-to-herdr-bot.md)。正文保留原文。
 
