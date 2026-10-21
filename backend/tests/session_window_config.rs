@@ -46,6 +46,7 @@ fn config_text(sessions: &str) -> String {
          [operations.stop]\nscript = 'unused.bat'\nworking_directory = '.'\n\n\
          [shutdown]\ncountdown_seconds = 3600\n\n\
          [mdns]\nenabled = false\n\n\
+         [herdr]\nworkspace_name = 'bot-playground'\n\n\
          {sessions}"
     )
 }
@@ -489,6 +490,7 @@ fn process_config_text(sessions: &str) -> String {
          [operations.stop]\nscript = 'unused.bat'\nworking_directory = '.'\n\n\
          [shutdown]\ncountdown_seconds = 3600\n\n\
          [mdns]\nenabled = false\n\n\
+         [herdr]\nworkspace_name = 'bot-playground'\n\n\
          {sessions}"
     )
 }

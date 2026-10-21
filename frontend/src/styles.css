@@ -367,6 +367,105 @@ h1 {
   cursor: progress;
 }
 
+/* 每个 zone 行独立的“+”创建入口；与浏览、取消登记互不重叠。 */
+.zone-item__bot {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid #35604a;
+  border-radius: 0.45rem;
+  background: #1b3327;
+  color: #b7f0cf;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zone-item__bot:hover:enabled {
+  border-color: #4f8a68;
+  background: #21402f;
+}
+
+.zone-item__bot:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ---------- 从 zone 创建 Bot ---------- */
+
+.bot-dialog {
+  width: min(100%, 38rem);
+}
+
+.bot-zone {
+  margin: 0;
+  color: #a9b1bd;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.bot-input {
+  min-height: 6rem;
+  resize: vertical;
+  font: inherit;
+}
+
+.bot-name-preview {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  border: 1px dashed #3d566d;
+  border-radius: 0.45rem;
+  background: #18222c;
+  color: #d9ecff;
+  font-size: 0.98rem;
+  overflow-wrap: anywhere;
+}
+
+.bot-name-preview[data-state='unavailable'] {
+  color: #ffd9d1;
+}
+
+.bot-stage {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #3d566d;
+  border-radius: 0.45rem;
+  background: #18222c;
+  color: #a9d0f0;
+  font-size: 0.95rem;
+}
+
+.bot-result {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #34404d;
+  border-radius: 0.45rem;
+  background: #171b21;
+  font-size: 0.88rem;
+}
+
+.bot-result div {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.bot-result dt {
+  color: #9aa4b2;
+}
+
+.bot-result dd {
+  margin: 0;
+  color: #d6dbe4;
+  overflow-wrap: anywhere;
+}
+
 /* 待提交角标：只显示后端确认的项数；读取失败用独立色，不伪装成 0。 */
 .zone-badge {
   flex: none;
@@ -396,6 +495,7 @@ h1 {
 .zone-dialog__cancel:focus-visible,
 .zone-register:focus-visible,
 .zone-item__open:focus-visible,
+.zone-item__bot:focus-visible,
 .zone-item__remove:focus-visible,
 .file-view__read-html:focus-visible,
 .html-reader__exit:focus-visible {

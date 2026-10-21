@@ -31,6 +31,14 @@ countdown_seconds = 10
 # online_timeout_seconds = 10
 # offline_retention_seconds = 30
 
+# Herdr 控制设置（必须显式配置，没有代码缺省值）。
+# 从此界面的 zone 创建 Bot 时，每个新 Tab 都按 workspace_name 精确查找唯一的 Herdr Workspace；
+# 浏览器不能替换这个目标。缺失、空字符串或纯空白会让服务启动失败。
+# executable 可选，缺省按 PATH 查找 herdr；通常不需要修改。
+[herdr]
+workspace_name = 'bot-playground'
+# executable = 'C:\Users\<you>\.herdr\packages\standalone\releases\<version>\herdr.exe'
+
 # zone 设置。
 # 新增 zone 的创建父目录必须显式配置；缺省未配置时只禁用“新增”，不影响登记与浏览。
 # 目录必须已存在；服务端只在其下创建一个直接子目录，不自动创建父目录。

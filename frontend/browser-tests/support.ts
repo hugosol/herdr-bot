@@ -16,6 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../..')
 const binary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-bot.exe')
 const fixtures = path.join(repoRoot, 'fixtures', 'operations')
+const herdrFixtureBinary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-fixture.exe')
 
 export type TemplateView = {
   id: string
@@ -28,18 +29,42 @@ export type TemplateView = {
   prompt: string
 }
 
+/** 受控 Herdr 副本的初始数据；它只在自动浏览器验收中使用。 */
+export type HerdrFixtureSetup = {
+  workspaceName?: string
+  workspaces?: unknown[]
+  behavior?: Record<string, unknown>
+}
+
+export type StartServerOptions = {
+  herdr?: HerdrFixtureSetup
+}
+
 export type E2EServer = {
   baseURL: string
   storageFile: string
   configPath: string
   getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
+  /** 受控 Herdr 自己写下的外部调用记录。 */
+  herdrCalls: () => Record<string, unknown>[]
+  /** 受控 Herdr 自己写下的新建 Tab 记录。 */
+  herdrTabs: () => Record<string, unknown>[]
+  setHerdrBehavior: (behavior: Record<string, unknown>) => void
   stop: () => Promise<void>
   restart: () => Promise<void>
   cleanup: () => Promise<void>
 }
 
-function writeConfig(directory: string, storage: string): string {
+function writeConfig(
+  directory: string,
+  storage: string,
+  herdr: { workspaceName: string; executable?: string },
+): string {
   const configPath = path.join(directory, 'herdr-bot.toml')
+  const herdrLines = ['[herdr]', `workspace_name = '${herdr.workspaceName}'`]
+  if (herdr.executable !== undefined) {
+    herdrLines.push(`executable = '${herdr.executable}'`)
+  }
   fs.writeFileSync(
     configPath,
     [
@@ -56,6 +81,11 @@ function writeConfig(directory: string, storage: string): string {
       '[mdns]',
       'enabled = false',
       '',
+      ...herdrLines,
+      '',
+      '[zones]',
+      `registry_file = '${path.join(directory, 'zones.json')}'`,
+      '',
       '[bot_templates]',
       `storage_file = '${storage}'`,
       '',
@@ -63,6 +93,16 @@ function writeConfig(directory: string, storage: string): string {
     'utf8',
   )
   return configPath
+}
+
+/** 读取受控 Herdr 的 JSONL 记录；文件尚不存在时返回空列表。 */
+function readHerdrRecords(file: string): Record<string, unknown>[] {
+  if (!fs.existsSync(file)) return []
+  return fs
+    .readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
 async function waitForTemplates(baseURL: string): Promise<void> {
@@ -122,7 +162,7 @@ function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutN
   })
 }
 
-export async function startServer(): Promise<E2EServer> {
+export async function startServer(options: StartServerOptions = {}): Promise<E2EServer> {
   if (!fs.existsSync(binary)) {
     throw new Error(
       `缺少交付二进制 ${binary}；请先在 backend 目录执行 cargo build。`,
@@ -134,7 +174,40 @@ export async function startServer(): Promise<E2EServer> {
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
   const storageFile = path.join(directory, 'bot-templates.json')
-  const configPath = writeConfig(directory, storageFile)
+  const herdrDirectory = path.join(directory, 'herdr')
+
+  let herdrExecutable: string | undefined
+  if (options.herdr !== undefined) {
+    if (!fs.existsSync(herdrFixtureBinary)) {
+      throw new Error(
+        `缺少受控 Herdr 夹具 ${herdrFixtureBinary}；请先在 backend 目录执行 cargo build。`,
+      )
+    }
+    fs.mkdirSync(herdrDirectory, { recursive: true })
+    herdrExecutable = path.join(herdrDirectory, 'herdr-fixture.exe')
+    fs.copyFileSync(herdrFixtureBinary, herdrExecutable)
+    fs.writeFileSync(
+      path.join(herdrDirectory, 'workspaces.json'),
+      JSON.stringify(
+        options.herdr.workspaces ?? [
+          { workspace_id: 'w-other', label: 'other', focused: true, cwd: 'C:\\elsewhere\\focused' },
+          { workspace_id: 'w-target', label: 'bot-playground', focused: false },
+          { workspace_id: 'w-decoy', label: 'bot-playground-extra', focused: false },
+        ],
+      ),
+      'utf8',
+    )
+    fs.writeFileSync(
+      path.join(herdrDirectory, 'behavior.json'),
+      JSON.stringify(options.herdr.behavior ?? {}),
+      'utf8',
+    )
+  }
+
+  const configPath = writeConfig(directory, storageFile, {
+    workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
+    executable: herdrExecutable,
+  })
 
   let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null
 
@@ -158,6 +231,20 @@ export async function startServer(): Promise<E2EServer> {
         throw new Error(`模板列表读取失败：HTTP ${response.status}`)
       }
       return (await response.json()) as { templates: TemplateView[]; options: unknown }
+    },
+    herdrCalls() {
+      return readHerdrRecords(path.join(herdrDirectory, 'calls.jsonl'))
+    },
+    herdrTabs() {
+      return readHerdrRecords(path.join(herdrDirectory, 'tabs.jsonl'))
+    },
+    setHerdrBehavior(behavior: Record<string, unknown>) {
+      fs.mkdirSync(herdrDirectory, { recursive: true })
+      fs.writeFileSync(
+        path.join(herdrDirectory, 'behavior.json'),
+        JSON.stringify(behavior),
+        'utf8',
+      )
     },
     async stop() {
       const child = running?.child

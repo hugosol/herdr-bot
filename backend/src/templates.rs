@@ -69,6 +69,15 @@ impl Model {
             Model::DeepseekFlash => "deepseek-flash",
         }
     }
+
+    /// 显式模型映射到约定的完整 provider / model 标识；沿用默认值时不传模型覆盖。
+    pub fn provider_model(self) -> Option<&'static str> {
+        match self {
+            Model::Default => None,
+            Model::Gpt61Sol => Some("openai-codex/gpt-6.1-sol"),
+            Model::DeepseekFlash => Some("deepseek/deepseek-flash"),
+        }
+    }
 }
 
 /// 模板可选的思考级别；`Default` 表示沿用 agent 默认值，不传 `--thinking`。

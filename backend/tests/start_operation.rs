@@ -61,6 +61,7 @@ fn config(start_script: &Path, working_directory: &Path) -> herdr_bot::Config {
         sessions: herdr_bot::SessionsConfig::default(),
         zones: herdr_bot::ZonesConfig::default(),
         bot_templates: herdr_bot::BotTemplatesConfig::default(),
+        herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
     }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
+import { BotCreationDialog } from './BotCreationDialog'
 import { ZoneBrowser } from './ZoneBrowser'
 import {
   fetchZoneOverview,
@@ -53,6 +54,8 @@ export function FileListPanel({
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
+  // 从这一行的 zone 打开创建 Bot 弹窗；弹窗自身负责模板、名称预览与创建阶段。
+  const [botZone, setBotZone] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [creation, setCreation] = useState<ZoneCreation>({ available: false })
   const [pending, setPending] = useState<
@@ -371,6 +374,17 @@ export function FileListPanel({
                 </button>
                 <button
                   type="button"
+                  className="zone-item__bot"
+                  data-testid="zone-create-bot"
+                  aria-label={`从 ${registration.path} 创建 Bot`}
+                  title={`从 ${registration.path} 创建 Bot`}
+                  disabled={pending !== null}
+                  onClick={() => setBotZone(registration.path)}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
                   className="zone-item__remove"
                   aria-label={`取消登记 ${registration.path}`}
                   title={`取消登记 ${registration.path}`}
@@ -508,6 +522,10 @@ export function FileListPanel({
             </div>
           </form>
         </div>
+      )}
+
+      {botZone !== null && (
+        <BotCreationDialog zone={botZone} onClose={() => setBotZone(null)} />
       )}
     </section>
   )
