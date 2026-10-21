@@ -422,6 +422,11 @@ agent 的能力表也不互相复制。
 断定未发送，也不会显示成功。成功与失败都留在弹窗中由用户关闭，不自动切换到会话列表。创建 Bot 不
 登记 connect-bot 会话，也不修改会话监听、keepAlive 或关机安排。
 
+创建由后端拥有：公开入口接受后，浏览器断开、刷新或关闭只让这个页面失去观察，不会取消已经接受的
+创建；刷新后也不承诺找回这次结果。电脑与手机等独立客户端同时提交时，每次创建分别被接受并独立执行，
+各自保留自己的 Tab / Pane、agent 控制别名、接受时的模板快照与 input，不合并、不复用，也不因此共享
+固定操作的执行资格或增加全局忙碌拒绝、排队或并发上限。
+
 接口：
 
 - `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
@@ -1190,7 +1195,12 @@ adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 
 调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
 `backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识、
 不触碰会话/关机状态，以及 Workspace 不可达/零匹配/多匹配、Tab 创建后启动失败、提交被拒绝与提交超时
-时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程
+时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/bot_creation_detached.rs` 继续验证创建
+被接受后观察连接断开不取消执行、提交请求连接断开仍完成唯一一次提交，以及两个独立客户端同时向同一
+zone 与不同 zone 提交时各自创建；受控替身还支持按调用内容匹配的启动/提交屏障，让一次创建停住而另一
+次继续，用来证明不存在全局单飞、排队或模板快照串用。`frontend/browser-tests/botCreationDetached.spec.ts`
+在真实浏览器中覆盖断线、刷新与关闭页面：页面在未收到确认结果时不显示成功，后端仍完成同一次创建。
+`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程
 验证 Workspace 配置缺失、空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
 
 mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
