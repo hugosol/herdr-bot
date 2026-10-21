@@ -245,10 +245,22 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
             .expect("必须启动 agent");
         assert_eq!(start["agent_kind"], "omp");
         assert_eq!(start["pane"], last_tab["pane_id"]);
+        let args = start["args"].as_array().expect("agent start 的参数是数组");
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg == "--model" || arg == "--thinking"),
+            "默认 model / thinking 不传启动覆盖参数：{args:?}"
+        );
         assert_eq!(
-            start["args"],
-            json!([]),
-            "默认 model / thinking 不传启动覆盖参数"
+            args.len(),
+            2,
+            "除自己独立的会话目录外不应有额外启动参数：{args:?}"
+        );
+        assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
+        assert!(
+            Path::new(args[1].as_str().expect("会话目录是字符串")).is_absolute(),
+            "会话目录必须是绝对路径：{args:?}"
         );
 
         let prompt = calls_of_kind(&herdr, "agent_prompt")

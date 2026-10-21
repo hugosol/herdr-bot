@@ -45,5 +45,8 @@ dist-ssr
 /bot-templates.json
 /bot-templates.json.tmp
 
+# 每个 Bot 的 agent 会话存储（缺省在模板存储文件旁的 bot-sessions；随存储位置改到别处）
+/bot-sessions/
+
 # 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）
 /fixtures/runtime/

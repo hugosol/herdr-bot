@@ -136,6 +136,10 @@ pub struct AppState {
     pub herdr: Arc<herdr::HerdrClient>,
     /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Bot 列表。
     pub bot_creations: Arc<bots::BotCreations>,
+    /// 每个 Bot 的会话目录根；每次创建在它下面使用一个独立的会话目录。
+    ///
+    /// 与模板存储文件同目录，不写进 zone 工作目录；启动时解析为绝对路径。
+    pub bot_session_root: PathBuf,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -226,6 +230,7 @@ pub fn app_with_state(
         )),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         bot_creations: Arc::new(bots::BotCreations::new()),
+        bot_session_root: bots::session_root(&config.bot_templates.storage_file),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
@@ -984,8 +989,10 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
         }
     }
 
+    let creation_id = bots::new_creation_id();
+    let session_dir = state.bot_session_root.join(&creation_id);
     let view = bots::CreationView::starting(
-        bots::new_creation_id(),
+        creation_id,
         name,
         zone.clone(),
         template.id.clone(),
@@ -993,7 +1000,7 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     tokio::spawn(async move {
-        bots::run_creation(herdr, job, template, zone, input.input).await;
+        bots::run_creation(herdr, job, template, zone, input.input, session_dir).await;
     });
     (StatusCode::ACCEPTED, Json(view)).into_response()
 }
