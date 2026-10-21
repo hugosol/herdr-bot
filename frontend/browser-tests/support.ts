@@ -38,10 +38,14 @@ export type HerdrFixtureSetup = {
 
 export type StartServerOptions = {
   herdr?: HerdrFixtureSetup
+  /** Axum 监听地址；默认只监听回环。局域网用例传 `0.0.0.0:0`。 */
+  listenAddr?: string
 }
 
 export type E2EServer = {
   baseURL: string
+  /** 同一进程在指定主机名/IP 上的入口；用来真实请求局域网地址。 */
+  urlForHost: (host: string) => string
   storageFile: string
   configPath: string
   getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
@@ -55,10 +59,34 @@ export type E2EServer = {
   cleanup: () => Promise<void>
 }
 
+/**
+ * 本机可用于局域网访问的 IPv4；没有时返回 null（调用方跳过用例）。
+ *
+ * 优先取常见私网地址，排除回环与链路本地地址——后者不是手机日常访问的入口。
+ */
+export function lanIPv4(): string | null {
+  const candidates: string[] = []
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue
+      if (entry.address.startsWith('169.254.')) continue
+      candidates.push(entry.address)
+    }
+  }
+  const privateAddress = candidates.find(
+    (address) =>
+      address.startsWith('192.168.') ||
+      address.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(address),
+  )
+  return privateAddress ?? candidates[0] ?? null
+}
+
 function writeConfig(
   directory: string,
   storage: string,
   herdr: { workspaceName: string; executable?: string },
+  listenAddr: string,
 ): string {
   const configPath = path.join(directory, 'herdr-bot.toml')
   const herdrLines = ['[herdr]', `workspace_name = '${herdr.workspaceName}'`]
@@ -68,7 +96,7 @@ function writeConfig(
   fs.writeFileSync(
     configPath,
     [
-      'listen_addr = "127.0.0.1:0"',
+      `listen_addr = "${listenAddr}"`,
       '',
       '[operations.start]',
       `script = '${path.join(fixtures, 'success.bat')}'`,
@@ -204,10 +232,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     )
   }
 
-  const configPath = writeConfig(directory, storageFile, {
-    workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
-    executable: herdrExecutable,
-  })
+  const configPath = writeConfig(
+    directory,
+    storageFile,
+    {
+      workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
+      executable: herdrExecutable,
+    },
+    options.listenAddr ?? '127.0.0.1:0',
+  )
 
   let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null
 
@@ -222,6 +255,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     get baseURL() {
       if (running === null) throw new Error('herdr-bot 进程未运行')
       return `http://127.0.0.1:${running.port}`
+    },
+    urlForHost(host: string) {
+      if (running === null) throw new Error('herdr-bot 进程未运行')
+      return `http://${host}:${running.port}`
     },
     storageFile,
     configPath,
