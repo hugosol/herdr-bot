@@ -1,4 +1,4 @@
-//! workspace 自动刷新的公开接口（S2）：真实文件系统监听、按 workspace 节流与监听健康。
+//! zone 自动刷新的公开接口（S2）：真实文件系统监听、按 zone 节流与监听健康。
 //!
 //! 这些用例经真实 HTTP/SSE 请求和隔离的真实目录/仓库观察行为：刷新时序由配置的窗口决定，
 //! 外部写入由 `std::fs` 与真实 `git` 命令产生，不使用模拟通知。
@@ -20,8 +20,8 @@ fn config_with_watch(registry: &Path) -> omp_bot::Config {
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
-    config.workspaces.refresh_interval_seconds =
+    config.zones.registry_file = registry.to_path_buf();
+    config.zones.refresh_interval_seconds =
         omp_bot::config::RefreshIntervalSeconds::new(1).expect("测试窗口必须合法");
     config
 }
@@ -39,24 +39,24 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn entries_url(workspace: &Path) -> String {
+fn entries_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/entries?workspace={}&path=",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/entries?zone={}&path=",
+        encode(&zone.to_string_lossy())
     )
 }
 
-fn status_url(workspace: &Path) -> String {
+fn status_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/git-status?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/git-status?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
-fn file_url(workspace: &Path, relative: &str) -> String {
+fn file_url(zone: &Path, relative: &str) -> String {
     format!(
-        "/api/workspaces/file?workspace={}&path={}",
-        encode(&workspace.to_string_lossy()),
+        "/api/zones/file?zone={}&path={}",
+        encode(&zone.to_string_lossy()),
         encode(relative)
     )
 }
@@ -65,35 +65,35 @@ fn body(response: &HttpResponse) -> Value {
     serde_json::from_str(&response.body).expect("响应必须是 JSON")
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
 
-async fn snapshot_workspace(connection: &mut SseConnection, workspace: &Path) -> Value {
+async fn snapshot_zone(connection: &mut SseConnection, zone: &Path) -> Value {
     let snapshot = connection.next_event("snapshot").await;
     let data = snapshot.json();
     assert!(
         data["intervalSeconds"].as_u64().is_some(),
         "首帧必须给出实际生效的最小刷新间隔：{data}"
     );
-    let needle = workspace.to_string_lossy().to_string();
-    data["workspaces"]
+    let needle = zone.to_string_lossy().to_string();
+    data["zones"]
         .as_array()
-        .expect("workspaces 必须是数组")
+        .expect("zones 必须是数组")
         .iter()
-        .find(|entry| entry["workspace"] == json!(needle))
+        .find(|entry| entry["zone"] == json!(needle))
         .cloned()
-        .unwrap_or_else(|| panic!("首帧必须包含已登记 workspace：{data}"))
+        .unwrap_or_else(|| panic!("首帧必须包含已登记 zone：{data}"))
 }
 
 /// 在超时内取下一帧指定命名事件；keep-alive 与其它命名事件都跳过，避免把健康事件误当成刷新。
@@ -115,7 +115,7 @@ async fn next_event_within(
     }
 }
 
-async fn next_refresh(connection: &mut SseConnection, workspace: &Path) -> Value {
+async fn next_refresh(connection: &mut SseConnection, zone: &Path) -> Value {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -127,13 +127,13 @@ async fn next_refresh(connection: &mut SseConnection, workspace: &Path) -> Value
             continue;
         }
         let data = frame.json();
-        if data["workspace"] == json!(workspace.to_string_lossy()) {
+        if data["zone"] == json!(zone.to_string_lossy()) {
             return data;
         }
     }
 }
 
-async fn next_health_error(connection: &mut SseConnection, workspace: &Path) -> Value {
+async fn next_health_error(connection: &mut SseConnection, zone: &Path) -> Value {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -145,7 +145,7 @@ async fn next_health_error(connection: &mut SseConnection, workspace: &Path) -> 
             continue;
         }
         let data = frame.json();
-        if data["workspace"] == json!(workspace.to_string_lossy())
+        if data["zone"] == json!(zone.to_string_lossy())
             && data["health"] == json!("error")
         {
             return data;
@@ -170,8 +170,8 @@ fn git(root: &Path, args: &[&str]) {
 fn init_repository(root: &Path) {
     fs::create_dir_all(root).expect("创建仓库目录");
     git(root, &["init", "--quiet", "--initial-branch=main"]);
-    git(root, &["config", "user.name", "workspace-watch-test"]);
-    git(root, &["config", "user.email", "workspace-watch@example.test"]);
+    git(root, &["config", "user.name", "zone-watch-test"]);
+    git(root, &["config", "user.email", "zone-watch@example.test"]);
     fs::write(root.join("tracked.txt"), "first\n").expect("写入已跟踪文件");
     git(root, &["add", "tracked.txt"]);
     git(root, &["commit", "--quiet", "-m", "initial"]);
@@ -189,18 +189,18 @@ fn entry_names(response: &HttpResponse) -> Vec<String> {
 
 #[tokio::test]
 async fn default_config_reports_ten_second_interval_at_runtime() {
-    let workspace = TempDir::new("watch default interval");
+    let zone = TempDir::new("watch default interval");
     let registry = TempDir::new("watch default interval registry");
     let fixtures = repo_fixtures_dir();
     let mut config = common::config(
         &fixtures.join("operations").join("success.bat"),
         &fixtures.join("operations"),
     );
-    config.workspaces.registry_file = registry.path().join("workspaces.json");
+    config.zones.registry_file = registry.path().join("zones.json");
     let server = TestServer::start(&config).await;
-    register(&server, workspace.path()).await;
+    register(&server, zone.path()).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
     let snapshot = connection.next_event("snapshot").await.json();
     assert_eq!(
         snapshot["intervalSeconds"],
@@ -211,41 +211,41 @@ async fn default_config_reports_ten_second_interval_at_runtime() {
 
 #[tokio::test]
 async fn external_plain_directory_create_modify_delete_refreshes_browsing() {
-    let workspace = TempDir::new("watch plain");
+    let zone = TempDir::new("watch plain");
     let registry = TempDir::new("watch plain registry");
-    let server = TestServer::start(&config_with_watch(&registry.path().join("workspaces.json"))).await;
-    register(&server, workspace.path()).await;
+    let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
+    register(&server, zone.path()).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    let view = snapshot_workspace(&mut connection, workspace.path()).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    let view = snapshot_zone(&mut connection, zone.path()).await;
     assert_eq!(view["health"], json!("live"), "监听建立后健康状态：{view}");
 
     // 外部新增：真实文件系统事件到达后，目录读取能看到新文件。
-    fs::write(workspace.path().join("appeared.txt"), "first\n").expect("写入新文件");
-    let refresh = next_refresh(&mut connection, workspace.path()).await;
+    fs::write(zone.path().join("appeared.txt"), "first\n").expect("写入新文件");
+    let refresh = next_refresh(&mut connection, zone.path()).await;
     assert!(refresh["generation"].as_u64().unwrap_or(0) >= 1);
     assert!(
-        entry_names(&get_over_tcp(server.addr(), &entries_url(workspace.path())).await)
+        entry_names(&get_over_tcp(server.addr(), &entries_url(zone.path())).await)
             .contains(&"appeared.txt".to_string()),
         "外部新增必须反映到目录读取"
     );
 
     // 外部修改：内容读取看到新内容。修改事件可能落在同一窗口内，下一次刷新是其补刷新。
-    fs::write(workspace.path().join("appeared.txt"), "second version\n").expect("修改文件");
-    next_refresh(&mut connection, workspace.path()).await;
+    fs::write(zone.path().join("appeared.txt"), "second version\n").expect("修改文件");
+    next_refresh(&mut connection, zone.path()).await;
     let file = get_over_tcp(
         server.addr(),
-        &file_url(workspace.path(), "appeared.txt"),
+        &file_url(zone.path(), "appeared.txt"),
     )
     .await;
     assert_eq!(file.status, 200, "文件读取应成功：{}", file.body);
     assert_eq!(body(&file)["preview"]["content"], json!("second version\n"));
 
     // 外部删除：目录读取不再把它当成仍存在的文件。
-    fs::remove_file(workspace.path().join("appeared.txt")).expect("删除文件");
-    next_refresh(&mut connection, workspace.path()).await;
+    fs::remove_file(zone.path().join("appeared.txt")).expect("删除文件");
+    next_refresh(&mut connection, zone.path()).await;
     assert!(
-        !entry_names(&get_over_tcp(server.addr(), &entries_url(workspace.path())).await)
+        !entry_names(&get_over_tcp(server.addr(), &entries_url(zone.path())).await)
             .contains(&"appeared.txt".to_string()),
         "外部删除必须反映到目录读取"
     );
@@ -253,19 +253,19 @@ async fn external_plain_directory_create_modify_delete_refreshes_browsing() {
 
 #[tokio::test]
 async fn external_git_branch_and_worktree_writes_refresh_branch_and_pending_status() {
-    let workspace = TempDir::new("watch git");
-    init_repository(workspace.path());
+    let zone = TempDir::new("watch git");
+    init_repository(zone.path());
     let registry = TempDir::new("watch git registry");
-    let server = TestServer::start(&config_with_watch(&registry.path().join("workspaces.json"))).await;
-    register(&server, workspace.path()).await;
+    let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
+    register(&server, zone.path()).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    snapshot_workspace(&mut connection, workspace.path()).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    snapshot_zone(&mut connection, zone.path()).await;
 
-    // 外部切换分支只写 Git 元数据，不碰工作区文件；监听必须覆盖相关 Git 元数据。
-    git(workspace.path(), &["switch", "--quiet", "-c", "feature-watch"]);
-    next_refresh(&mut connection, workspace.path()).await;
-    let status = get_over_tcp(server.addr(), &status_url(workspace.path())).await;
+    // 外部切换分支只写 Git 元数据，不碰工作树文件；监听必须覆盖相关 Git 元数据。
+    git(zone.path(), &["switch", "--quiet", "-c", "feature-watch"]);
+    next_refresh(&mut connection, zone.path()).await;
+    let status = get_over_tcp(server.addr(), &status_url(zone.path())).await;
     assert_eq!(status.status, 200, "Git 状态读取应成功：{}", status.body);
     assert_eq!(
         body(&status)["branch"],
@@ -273,10 +273,10 @@ async fn external_git_branch_and_worktree_writes_refresh_branch_and_pending_stat
         "外部切换分支后刷新必须显示新分支"
     );
 
-    // 外部新增未跟踪文件：待提交状态必须更新，而不是继续显示干净工作区。
-    fs::write(workspace.path().join("pending.txt"), "pending\n").expect("写入待提交文件");
-    next_refresh(&mut connection, workspace.path()).await;
-    let status = get_over_tcp(server.addr(), &status_url(workspace.path())).await;
+    // 外部新增未跟踪文件：待提交状态必须更新，而不是继续显示干净工作树。
+    fs::write(zone.path().join("pending.txt"), "pending\n").expect("写入待提交文件");
+    next_refresh(&mut connection, zone.path()).await;
+    let status = get_over_tcp(server.addr(), &status_url(zone.path())).await;
     let status = body(&status);
     assert_eq!(status["pendingCount"], json!(1), "待提交数量：{status}");
     let changes = status["changes"].as_array().expect("changes 必须是数组");
@@ -294,7 +294,7 @@ async fn linked_worktree_external_git_metadata_updates_branch() {
     let main = root.path().join("main");
     let linked = root.path().join("linked");
     init_repository(&main);
-    // 链接工作树的 `.git` 是文件，真正的元数据目录在主仓库内、位于 workspace 根之外。
+    // 链接工作树的 `.git` 是文件，真正的元数据目录在主仓库内、位于 zone 根之外。
     git(
         &main,
         &[
@@ -309,13 +309,13 @@ async fn linked_worktree_external_git_metadata_updates_branch() {
     assert!(linked.join(".git").is_file(), "链接工作树的 .git 必须是文件");
 
     let registry = TempDir::new("watch linked registry");
-    let server = TestServer::start(&config_with_watch(&registry.path().join("workspaces.json"))).await;
+    let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
     register(&server, &linked).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    snapshot_workspace(&mut connection, &linked).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    snapshot_zone(&mut connection, &linked).await;
 
-    // 切换分支写的是 workspace 之外的 Git 元数据目录；只监听工作树文件不足以发现它。
+    // 切换分支写的是 zone 之外的 Git 元数据目录；只监听工作树文件不足以发现它。
     git(&linked, &["switch", "--quiet", "-c", "linked-next"]);
     next_refresh(&mut connection, &linked).await;
     let status = get_over_tcp(server.addr(), &status_url(&linked)).await;
@@ -325,24 +325,24 @@ async fn linked_worktree_external_git_metadata_updates_branch() {
 
 #[tokio::test]
 async fn manual_read_inside_refresh_window_returns_current_facts_immediately() {
-    let workspace = TempDir::new("watch manual read");
+    let zone = TempDir::new("watch manual read");
     let registry = TempDir::new("watch manual read registry");
     let fixtures = repo_fixtures_dir();
     let mut config = common::config(
         &fixtures.join("operations").join("success.bat"),
         &fixtures.join("operations"),
     );
-    config.workspaces.registry_file = registry.path().join("workspaces.json");
+    config.zones.registry_file = registry.path().join("zones.json");
     // 使用缺省 10 秒窗口：窗口内的第二个事件只记待刷新，手动读取仍应立即看到当前事实。
     let server = TestServer::start(&config).await;
-    register(&server, workspace.path()).await;
+    register(&server, zone.path()).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    snapshot_workspace(&mut connection, workspace.path()).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    snapshot_zone(&mut connection, zone.path()).await;
 
-    fs::write(workspace.path().join("first.txt"), "first\n").expect("写入第一次变化");
-    next_refresh(&mut connection, workspace.path()).await;
-    fs::write(workspace.path().join("second.txt"), "second\n").expect("写入窗口内的变化");
+    fs::write(zone.path().join("first.txt"), "first\n").expect("写入第一次变化");
+    next_refresh(&mut connection, zone.path()).await;
+    fs::write(zone.path().join("second.txt"), "second\n").expect("写入窗口内的变化");
     assert!(
         next_event_within(&mut connection, "refresh", Duration::from_millis(300))
             .await
@@ -351,7 +351,7 @@ async fn manual_read_inside_refresh_window_returns_current_facts_immediately() {
     );
 
     // 主动读取不经过自动刷新节流：即使窗口尚未结束，也必须取得当前目录事实。
-    let entries = entry_names(&get_over_tcp(server.addr(), &entries_url(workspace.path())).await);
+    let entries = entry_names(&get_over_tcp(server.addr(), &entries_url(zone.path())).await);
     assert!(
         entries.contains(&"first.txt".to_string()) && entries.contains(&"second.txt".to_string()),
         "手动读取必须立即返回当前事实：{entries:?}"
@@ -360,35 +360,35 @@ async fn manual_read_inside_refresh_window_returns_current_facts_immediately() {
 
 #[tokio::test]
 async fn two_observers_share_one_throttled_refresh_sequence() {
-    let workspace = TempDir::new("watch observers");
+    let zone = TempDir::new("watch observers");
     let registry = TempDir::new("watch observers registry");
-    let server = TestServer::start(&config_with_watch(&registry.path().join("workspaces.json"))).await;
-    register(&server, workspace.path()).await;
+    let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
+    register(&server, zone.path()).await;
 
-    let mut first = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    let mut second = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    let first_view = snapshot_workspace(&mut first, workspace.path()).await;
-    let second_view = snapshot_workspace(&mut second, workspace.path()).await;
+    let mut first = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    let mut second = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    let first_view = snapshot_zone(&mut first, zone.path()).await;
+    let second_view = snapshot_zone(&mut second, zone.path()).await;
     assert_eq!(first_view["health"], json!("live"));
     assert_eq!(second_view["health"], json!("live"));
 
     // 第一次写入没有等待窗口：观察者应尽快收到同一代刷新。
-    fs::write(workspace.path().join("one.txt"), "one\n").expect("写入第一次变化");
-    let first_generation = next_refresh(&mut first, workspace.path())
+    fs::write(zone.path().join("one.txt"), "one\n").expect("写入第一次变化");
+    let first_generation = next_refresh(&mut first, zone.path())
         .await["generation"]
         .as_u64()
         .expect("刷新必须携带代数");
-    let second_generation = next_refresh(&mut second, workspace.path())
+    let second_generation = next_refresh(&mut second, zone.path())
         .await["generation"]
         .as_u64()
         .expect("刷新必须携带代数");
     assert_eq!(
         first_generation, second_generation,
-        "两个观察者必须共享同一次 workspace 刷新，而不是各自生成"
+        "两个观察者必须共享同一次 zone 刷新，而不是各自生成"
     );
 
     // 窗口内第二次写入：不立即刷新；窗口结束补一次，两个观察者看到同一代。
-    fs::write(workspace.path().join("two.txt"), "two\n").expect("写入第二次变化");
+    fs::write(zone.path().join("two.txt"), "two\n").expect("写入第二次变化");
     for connection in [&mut first, &mut second] {
         let early = next_event_within(connection, "refresh", Duration::from_millis(350)).await;
         assert!(
@@ -396,11 +396,11 @@ async fn two_observers_share_one_throttled_refresh_sequence() {
             "窗口内写入不应立即产生第二个刷新：{early:?}"
         );
     }
-    let first_trailing = next_refresh(&mut first, workspace.path())
+    let first_trailing = next_refresh(&mut first, zone.path())
         .await["generation"]
         .as_u64()
         .expect("补刷新必须携带代数");
-    let second_trailing = next_refresh(&mut second, workspace.path())
+    let second_trailing = next_refresh(&mut second, zone.path())
         .await["generation"]
         .as_u64()
         .expect("补刷新必须携带代数");
@@ -424,17 +424,17 @@ async fn two_observers_share_one_throttled_refresh_sequence() {
 
 #[tokio::test]
 async fn listener_failure_is_reported_and_manual_queries_still_read_current_facts() {
-    let workspace = TempDir::new("watch failure");
+    let zone = TempDir::new("watch failure");
     let registry = TempDir::new("watch failure registry");
-    let server = TestServer::start(&config_with_watch(&registry.path().join("workspaces.json"))).await;
-    register(&server, workspace.path()).await;
+    let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
+    register(&server, zone.path()).await;
 
-    let mut connection = SseConnection::open(server.addr(), "/api/workspaces/watch", &[]).await;
-    snapshot_workspace(&mut connection, workspace.path()).await;
+    let mut connection = SseConnection::open(server.addr(), "/api/zones/watch", &[]).await;
+    snapshot_zone(&mut connection, zone.path()).await;
 
-    // 真实监听失败条件：监听建立后删除整个 workspace 目录；重建同名路径不会恢复旧监听。
-    fs::remove_dir_all(workspace.path()).expect("删除 workspace 目录");
-    let failure = next_health_error(&mut connection, workspace.path()).await;
+    // 真实监听失败条件：监听建立后删除整个 zone 目录；重建同名路径不会恢复旧监听。
+    fs::remove_dir_all(zone.path()).expect("删除 zone 目录");
+    let failure = next_health_error(&mut connection, zone.path()).await;
     assert!(
         failure["message"]
             .as_str()
@@ -443,7 +443,7 @@ async fn listener_failure_is_reported_and_manual_queries_still_read_current_fact
     );
 
     // 目录确实不可用时，手动查询显示真实错误，而不是空目录。
-    let missing = get_over_tcp(server.addr(), &entries_url(workspace.path())).await;
+    let missing = get_over_tcp(server.addr(), &entries_url(zone.path())).await;
     assert_eq!(
         missing.status, 404,
         "目录不存在时读取必须明确失败：{}",
@@ -456,9 +456,9 @@ async fn listener_failure_is_reported_and_manual_queries_still_read_current_fact
     );
 
     // 重建同名目录（新身份）：手动查询能取得当前事实，但旧监听不能被宣称为已恢复。
-    fs::create_dir_all(workspace.path()).expect("重建 workspace 目录");
-    fs::write(workspace.path().join("current.txt"), "current\n").expect("写入当前文件");
-    let current = get_over_tcp(server.addr(), &entries_url(workspace.path())).await;
+    fs::create_dir_all(zone.path()).expect("重建 zone 目录");
+    fs::write(zone.path().join("current.txt"), "current\n").expect("写入当前文件");
+    let current = get_over_tcp(server.addr(), &entries_url(zone.path())).await;
     assert_eq!(current.status, 200, "手动读取应成功：{}", current.body);
     assert!(
         entry_names(&current).contains(&"current.txt".to_string()),

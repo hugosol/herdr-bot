@@ -1,6 +1,6 @@
-//! workspace 文件浏览：只读地列目录与读取单个文件内容。
+//! zone 文件浏览：只读地列目录与读取单个文件内容。
 //!
-//! 边界（P14）是这里的核心：所有公开读取都先确认 workspace 登记仍然有效，再从登记根出发逐级检查
+//! 边界（P14）是这里的核心：所有公开读取都先确认 zone 登记仍然有效，再从登记根出发逐级检查
 //! 每个路径分量。绝对路径、`..` 遍历、盘符/UNC／备用数据流写法、符号链接、Windows 目录联接和任何
 //! 其他 reparse point 都不会被跟随；根目录本身被替换成链接时也拒绝读取。根外链接会在目录列表中
 //! 显示目标与不可进入原因，但不会读取目标内容。
@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::workspaces::{self, RegisteredWorkspace};
+use crate::zones::{self, RegisteredZone};
 
 /// 一个目录项的类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -35,7 +35,7 @@ pub enum EntryKind {
 #[serde(rename_all = "camelCase")]
 pub struct BrowseEntry {
     pub name: String,
-    /// 相对于 workspace 根的路径，统一使用 `/` 分隔。
+    /// 相对于 zone 根的路径，统一使用 `/` 分隔。
     pub path: String,
     pub kind: EntryKind,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,8 +50,8 @@ pub struct BrowseEntry {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryView {
-    /// 已登记的 workspace 根路径（服务器上的路径）。
-    pub workspace: String,
+    /// 已登记的 zone 根路径（服务器上的路径）。
+    pub zone: String,
     /// 被读取目录相对根的路径；根目录是空字符串。
     pub path: String,
     pub entries: Vec<BrowseEntry>,
@@ -87,8 +87,8 @@ pub struct TreeDirectoryView {
 /// 一次完整目录树读取的结果。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceTreeView {
-    pub workspace: String,
+pub struct ZoneTreeView {
+    pub zone: String,
     pub directories: Vec<TreeDirectoryView>,
     /// 本次是否因为 Git 忽略规则隐藏了至少一个路径；用于页面提示和空目录文案。
     pub ignored_hidden: bool,
@@ -114,7 +114,7 @@ pub enum Preview {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileView {
-    pub workspace: String,
+    pub zone: String,
     pub path: String,
     pub name: String,
     pub size: u64,
@@ -124,10 +124,10 @@ pub struct FileView {
 /// 公开浏览请求的明确失败类别。
 #[derive(Debug)]
 pub enum BrowseError {
-    /// 请求的路径不在 workspace 登记列表中。
-    WorkspaceNotRegistered,
+    /// 请求的路径不在 zone 登记列表中。
+    ZoneNotRegistered,
     /// 登记根已消失、不可访问或不再是原来的目录（例如被替换为链接）。
-    WorkspaceUnavailable(String),
+    ZoneUnavailable(String),
     /// 绝对路径、`..` 遍历或其他越出登记根的写法。
     PathOutside,
     /// 路径不存在（包括读取前被外部删除）。
@@ -153,9 +153,9 @@ impl BrowseError {
     /// 机器可读的失败类别码。
     pub fn code(&self) -> &'static str {
         match self {
-            Self::WorkspaceNotRegistered => "workspace-not-registered",
-            Self::WorkspaceUnavailable(_) => "workspace-unavailable",
-            Self::PathOutside => "path-outside-workspace",
+            Self::ZoneNotRegistered => "zone-not-registered",
+            Self::ZoneUnavailable(_) => "zone-unavailable",
+            Self::PathOutside => "path-outside-zone",
             Self::PathNotFound => "path-not-found",
             Self::NotADirectory => "not-a-directory",
             Self::NotAFile => "not-a-file",
@@ -169,10 +169,10 @@ impl BrowseError {
     /// 面向使用者的说明；链接错误会带上目标与拒绝跟随的原因。
     pub fn message(&self) -> String {
         match self {
-            Self::WorkspaceNotRegistered => "该目录没有登记为 workspace，拒绝读取。".to_string(),
-            Self::WorkspaceUnavailable(reason) => reason.clone(),
-            Self::PathOutside => "路径越出了 workspace 根目录，拒绝读取。".to_string(),
-            Self::PathNotFound => "路径在 workspace 中不存在或已被删除。".to_string(),
+            Self::ZoneNotRegistered => "该目录没有登记为 zone，拒绝读取。".to_string(),
+            Self::ZoneUnavailable(reason) => reason.clone(),
+            Self::PathOutside => "路径越出了 zone 根目录，拒绝读取。".to_string(),
+            Self::PathNotFound => "路径在 zone 中不存在或已被删除。".to_string(),
             Self::NotADirectory => "路径中的某一级不是目录。".to_string(),
             Self::NotAFile => "请求的路径不是可读取的文件。".to_string(),
             Self::Link { target, reason } => {
@@ -183,7 +183,7 @@ impl BrowseError {
                 format!("路径是链接或目录联接，未跟随。{target}{reason}")
             }
             Self::InvalidPath(reason) => format!("路径写法不可接受：{reason}"),
-            Self::ReadFailed(error) => format!("读取 workspace 内容失败：{error}"),
+            Self::ReadFailed(error) => format!("读取 zone 内容失败：{error}"),
             Self::GitIgnoreFailed(reason) => {
                 format!("读取 Git 忽略规则失败，无法生成完整预览树：{reason}")
             }
@@ -191,18 +191,18 @@ impl BrowseError {
     }
 }
 
-/// 在登记列表中查找请求的 workspace，返回登记时的原始路径。
+/// 在登记列表中查找请求的 zone，返回登记时的原始路径。
 ///
 /// 查找本身不读取文件系统；根的真实性在每次读取时重新核对。
 pub fn registered_root<'a>(
-    workspaces: &'a [RegisteredWorkspace],
+    zones: &'a [RegisteredZone],
     requested: &str,
 ) -> Result<&'a str, BrowseError> {
-    workspaces
+    zones
         .iter()
-        .find(|entry| workspaces::same_path(&entry.path, requested))
+        .find(|entry| zones::same_path(&entry.path, requested))
         .map(|entry| entry.path.as_str())
-        .ok_or(BrowseError::WorkspaceNotRegistered)
+        .ok_or(BrowseError::ZoneNotRegistered)
 }
 
 /// 读取一个目录的直接子项（不递归），完整包含隐藏文件、忽略规则文件与被忽略的文件。
@@ -275,20 +275,20 @@ pub fn list_directory(registered_root: &str, relative: &str) -> Result<Directory
     });
 
     Ok(DirectoryView {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         path: parent,
         entries,
     })
 }
 
-/// 读取完整目录树；Git workspace 使用 Git 原生忽略集合过滤，普通目录保持完整。
+/// 读取完整目录树；Git zone 使用 Git 原生忽略集合过滤，普通目录保持完整。
 ///
 /// 一次请求只计算一次忽略集合，然后按目录逐层读取。根目录读取失败是整次请求失败；子目录读取失败
-/// 保留该目录节点与明确错误，其它目录继续返回，避免一个坏目录拖垮整个 workspace。
+/// 保留该目录节点与明确错误，其它目录继续返回，避免一个坏目录拖垮整个 zone。
 pub fn read_tree(
     registered_root: &str,
     git_timeout: Duration,
-) -> Result<WorkspaceTreeView, BrowseError> {
+) -> Result<ZoneTreeView, BrowseError> {
     let ignored = crate::git::ignored_paths(registered_root, git_timeout)
         .map_err(|error| BrowseError::GitIgnoreFailed(error.message()))?;
     let mut directories = Vec::new();
@@ -301,7 +301,7 @@ pub fn read_tree(
                 let mut children = Vec::new();
                 let mut entries = Vec::with_capacity(view.entries.len());
                 for entry in view.entries {
-                    // Git workspace 的 `.git` 元数据不作为浏览内容展示；普通目录中同名的文件
+                    // Git zone 的 `.git` 元数据不作为浏览内容展示；普通目录中同名的文件
                     // 仍按普通文件处理，不改变普通目录语义。
                     if ignored.is_some() && entry.name.eq_ignore_ascii_case(".git") {
                         continue;
@@ -340,8 +340,8 @@ pub fn read_tree(
         }
     }
 
-    Ok(WorkspaceTreeView {
-        workspace: registered_root.to_string(),
+    Ok(ZoneTreeView {
+        zone: registered_root.to_string(),
         directories,
         ignored_hidden,
     })
@@ -387,7 +387,7 @@ pub fn read_file(
 
     if size > preview_limit {
         return Ok(FileView {
-            workspace: registered_root.to_string(),
+            zone: registered_root.to_string(),
             path: path_text,
             name,
             size,
@@ -411,7 +411,7 @@ pub fn read_file(
         // 文件在核对大小之后变大：仍然不把多出来的内容当成可预览文本。
         let grown = bytes.len() as u64;
         return Ok(FileView {
-            workspace: registered_root.to_string(),
+            zone: registered_root.to_string(),
             path: path_text,
             name,
             size: grown,
@@ -434,7 +434,7 @@ pub fn read_file(
     };
 
     Ok(FileView {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         path: path_text,
         name,
         size: actual_size,
@@ -442,7 +442,7 @@ pub fn read_file(
     })
 }
 
-/// 读取一个 workspace 内文件的原始字节，供 HTML 阅读模式加载 HTML 与相对资源。
+/// 读取一个 zone 内文件的原始字节，供 HTML 阅读模式加载 HTML 与相对资源。
 ///
 /// 与文本预览共用同一份根边界、路径分量与链接检查；这里不应用预览上限，因为图片、样式与字体
 /// 不是文本预览，截断会破坏它们。目录、根外路径和链接仍在读取前拒绝。
@@ -466,31 +466,31 @@ pub fn read_resource(registered_root: &str, relative: &str) -> Result<Vec<u8>, B
 pub(crate) fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError> {
     let root = PathBuf::from(registered_root);
     if !root.is_absolute() {
-        return Err(BrowseError::WorkspaceUnavailable(
-            "workspace 登记路径不是绝对路径，拒绝读取。".to_string(),
+        return Err(BrowseError::ZoneUnavailable(
+            "zone 登记路径不是绝对路径，拒绝读取。".to_string(),
         ));
     }
 
     let metadata = fs::symlink_metadata(&root).map_err(|error| {
-        BrowseError::WorkspaceUnavailable(format!("workspace 目录已不存在或无法访问：{error}"))
+        BrowseError::ZoneUnavailable(format!("zone 目录已不存在或无法访问：{error}"))
     })?;
     if is_link_like(&metadata) {
-        return Err(BrowseError::WorkspaceUnavailable(
-            "workspace 根目录现在是链接或目录联接，拒绝跟随并读取。".to_string(),
+        return Err(BrowseError::ZoneUnavailable(
+            "zone 根目录现在是链接或目录联接，拒绝跟随并读取。".to_string(),
         ));
     }
     if !metadata.is_dir() {
-        return Err(BrowseError::WorkspaceUnavailable(
-            "workspace 根目录已不再是目录，拒绝读取。".to_string(),
+        return Err(BrowseError::ZoneUnavailable(
+            "zone 根目录已不再是目录，拒绝读取。".to_string(),
         ));
     }
 
     let canonical = fs::canonicalize(&root).map_err(|error| {
-        BrowseError::WorkspaceUnavailable(format!("workspace 根目录无法解析：{error}"))
+        BrowseError::ZoneUnavailable(format!("zone 根目录无法解析：{error}"))
     })?;
-    if !workspaces::same_path(&workspaces::display_path(&canonical), registered_root) {
-        return Err(BrowseError::WorkspaceUnavailable(
-            "workspace 根目录已被替换或重定向到其他位置，拒绝读取。".to_string(),
+    if !zones::same_path(&zones::display_path(&canonical), registered_root) {
+        return Err(BrowseError::ZoneUnavailable(
+            "zone 根目录已被替换或重定向到其他位置，拒绝读取。".to_string(),
         ));
     }
     Ok(canonical)
@@ -498,7 +498,7 @@ pub(crate) fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError
 
 /// 校验相对路径写法并规范化成 `/` 分隔的文本；不读取文件系统。
 ///
-/// 所有公开读取入口在读取前都用它确认路径不会越出 workspace 根，因此 `diff` 的旧侧路径
+/// 所有公开读取入口在读取前都用它确认路径不会越出 zone 根，因此 `diff` 的旧侧路径
 /// 也走同一份规则，而不是因为来自 Git 历史就跳过边界检查。
 pub(crate) fn normalize_relative(relative: &str) -> Result<String, BrowseError> {
     Ok(relative_components(relative)?.join("/"))
@@ -548,7 +548,7 @@ fn relative_components(relative: &str) -> Result<Vec<String>, BrowseError> {
             )));
         }
         if part.contains(':') {
-            // 盘符、UNC 的卷语法与 NTFS 备用数据流都不属于 workspace 内的普通相对路径。
+            // 盘符、UNC 的卷语法与 NTFS 备用数据流都不属于 zone 内的普通相对路径。
             return Err(BrowseError::PathOutside);
         }
         if is_windows_device_name(part) {
@@ -685,7 +685,7 @@ fn describe_link(root: &Path, link: &Path) -> (Option<String>, String) {
                 .map(|parent| parent.join(&target))
                 .unwrap_or(target)
         };
-        workspaces::display_path(&absolute)
+        zones::display_path(&absolute)
     });
 
     let reason = match target.as_deref() {
@@ -693,9 +693,9 @@ fn describe_link(root: &Path, link: &Path) -> (Option<String>, String) {
             let resolved = fs::canonicalize(target).ok();
             match resolved {
                 Some(resolved) if !is_within(&resolved, root) => {
-                    "链接指向 workspace 之外；本服务不跟随，未读取目标内容。".to_string()
+                    "链接指向 zone 之外；本服务不跟随，未读取目标内容。".to_string()
                 }
-                Some(_) => "链接位于 workspace 内；本服务仍不跟随任何链接或目录联接。".to_string(),
+                Some(_) => "链接位于 zone 内；本服务仍不跟随任何链接或目录联接。".to_string(),
                 None => "链接目标不可访问；本服务不跟随，未读取目标内容。".to_string(),
             }
         }

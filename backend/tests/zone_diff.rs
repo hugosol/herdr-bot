@@ -1,4 +1,4 @@
-//! workspace 变更审查 diff 的公开 HTTP interface（S2）。
+//! zone 变更审查 diff 的公开 HTTP interface（S2）。
 //!
 //! 每个用例都经真实 HTTP 请求观察行为，并使用隔离的真实 Git 仓库：旧侧期望来自独立写定的
 //! HEAD 内容，新侧期望来自独立写定的最终本地文件；同时独立核对索引语义与文件内容没有因为审查
@@ -18,8 +18,8 @@ fn config_with_registry_and_limit(registry: &Path, preview_limit: u64) -> omp_bo
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
-    config.workspaces.preview_limit_bytes =
+    config.zones.registry_file = registry.to_path_buf();
+    config.zones.preview_limit_bytes =
         omp_bot::config::PreviewLimitBytes::new(preview_limit).expect("测试上限必须合法");
     config
 }
@@ -42,10 +42,10 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn diff_url(workspace: &Path, path: &str, old_path: Option<&str>) -> String {
+fn diff_url(zone: &Path, path: &str, old_path: Option<&str>) -> String {
     let mut url = format!(
-        "/api/workspaces/diff?workspace={}&path={}",
-        encode(&workspace.to_string_lossy()),
+        "/api/zones/diff?zone={}&path={}",
+        encode(&zone.to_string_lossy()),
         encode(path)
     );
     if let Some(old_path) = old_path {
@@ -58,16 +58,16 @@ fn body(response: &HttpResponse) -> Value {
     serde_json::from_str(&response.body).expect("响应必须是 JSON")
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
@@ -104,7 +104,7 @@ fn git_stdout(root: &Path, args: &[&str]) -> String {
 fn init_repository(root: &Path) {
     fs::create_dir_all(root).expect("创建仓库目录");
     git(root, &["init", "--quiet", "--initial-branch=main"]);
-    git(root, &["config", "user.name", "workspace-diff-test"]);
+    git(root, &["config", "user.name", "zone-diff-test"]);
     git(root, &["config", "user.email", "diff@example.test"]);
 }
 
@@ -171,7 +171,7 @@ fn assert_no_secret(response: &HttpResponse) {
 
 #[tokio::test]
 async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
-    let dir = TempDir::new("workspace diff review");
+    let dir = TempDir::new("zone diff review");
     let root = dir.path().join("repository");
     init_repository(&root);
 
@@ -203,7 +203,7 @@ async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
     );
 
     // 真实部分暂存：索引里是 STAGED 内容，最终本地文件还有一段未暂存内容。
-    // 若实现错误地比较 index→工作区，旧侧会变成 STAGED 而不是 HEAD 的 beta。
+    // 若实现错误地比较 index→工作树，旧侧会变成 STAGED 而不是 HEAD 的 beta。
     let staged_review = "alpha\nSTAGED\n";
     let final_review = "alpha\nSTAGED\nFINAL\n";
     fs::write(root.join("review.txt"), staged_review).unwrap();
@@ -218,7 +218,7 @@ async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
     let final_rename = format!("{head_rename}unstaged tail\n");
     fs::write(root.join("new-name.txt"), &final_rename).unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -288,11 +288,11 @@ async fn diff_reads_head_to_final_content_without_touching_index_or_files() {
 
 #[tokio::test]
 async fn empty_repository_compares_against_an_empty_tree() {
-    let dir = TempDir::new("workspace diff no head");
+    let dir = TempDir::new("zone diff no head");
     let root = dir.path().join("repository");
     fs::create_dir_all(&root).unwrap();
     git(&root, &["init", "--quiet", "--initial-branch=main"]);
-    git(&root, &["config", "user.name", "workspace-diff-test"]);
+    git(&root, &["config", "user.name", "zone-diff-test"]);
     git(&root, &["config", "user.email", "diff@example.test"]);
 
     // 已初始化但没有首次提交：一个已暂存文件与一个未忽略未跟踪文件都属于待提交新增。
@@ -302,7 +302,7 @@ async fn empty_repository_compares_against_an_empty_tree() {
     git(&root, &["add", "staged.txt"]);
     fs::write(root.join("untracked.txt"), untracked).unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -310,7 +310,7 @@ async fn empty_repository_compares_against_an_empty_tree() {
     let status = get_over_tcp(
         server.addr(),
         &format!(
-            "/api/workspaces/git-status?workspace={}",
+            "/api/zones/git-status?zone={}",
             encode(&root.to_string_lossy())
         ),
     )
@@ -343,7 +343,7 @@ async fn empty_repository_compares_against_an_empty_tree() {
 
 #[tokio::test]
 async fn diff_sides_apply_the_preview_limit_independently() {
-    let dir = TempDir::new("workspace diff limits");
+    let dir = TempDir::new("zone diff limits");
     let root = dir.path().join("repository");
     init_repository(&root);
 
@@ -365,7 +365,7 @@ async fn diff_sides_apply_the_preview_limit_independently() {
     fs::write(root.join("binary-new.txt"), b"\0binary new\n").unwrap();
     fs::write(root.join("binary-old.txt"), "plain new\n").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry_and_limit(&registry, 32)).await;
     register(&server, &root).await;
 
@@ -433,7 +433,7 @@ async fn diff_sides_apply_the_preview_limit_independently() {
     let status = get_over_tcp(
         server.addr(),
         &format!(
-            "/api/workspaces/git-status?workspace={}",
+            "/api/zones/git-status?zone={}",
             encode(&root.to_string_lossy())
         ),
     )
@@ -456,8 +456,8 @@ async fn diff_sides_apply_the_preview_limit_independently() {
 }
 
 #[tokio::test]
-async fn diff_entry_enforces_the_workspace_root_boundary() {
-    let dir = TempDir::new("workspace diff boundary");
+async fn diff_entry_enforces_the_zone_root_boundary() {
+    let dir = TempDir::new("zone diff boundary");
     let root = dir.path().join("root");
     let outside = dir.path().join("outside");
     fs::create_dir_all(root.join("sub")).unwrap();
@@ -477,7 +477,7 @@ async fn diff_entry_enforces_the_workspace_root_boundary() {
         eprintln!("跳过文件符号链接反例：当前环境无法创建真实符号链接");
     }
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -493,7 +493,7 @@ async fn diff_entry_enforces_the_workspace_root_boundary() {
         "\\\\server\\share\\file.txt",
     ] {
         let response = get_over_tcp(server.addr(), &diff_url(&root, path, None)).await;
-        assert_rejected(&response, 403, "path-outside-workspace");
+        assert_rejected(&response, 403, "path-outside-zone");
         assert_no_secret(&response);
     }
 
@@ -503,7 +503,7 @@ async fn diff_entry_enforces_the_workspace_root_boundary() {
         &diff_url(&root, "review.txt", Some("../outside/secret.txt")),
     )
     .await;
-    assert_rejected(&response, 403, "path-outside-workspace");
+    assert_rejected(&response, 403, "path-outside-zone");
     assert_no_secret(&response);
 
     // 目录联接内部：任何一级都不跟随，目标内容不被读取。
@@ -521,13 +521,13 @@ async fn diff_entry_enforces_the_workspace_root_boundary() {
         assert_no_secret(&response);
     }
 
-    // 未登记 workspace 与封闭请求面。
+    // 未登记 zone 与封闭请求面。
     let response = get_over_tcp(server.addr(), &diff_url(&outside, "secret.txt", None)).await;
-    assert_rejected(&response, 404, "workspace-not-registered");
+    assert_rejected(&response, 404, "zone-not-registered");
     assert_no_secret(&response);
 
-    let response = get_over_tcp(server.addr(), "/api/workspaces/diff?workspace=&path=").await;
-    assert_rejected(&response, 400, "workspace-required");
+    let response = get_over_tcp(server.addr(), "/api/zones/diff?zone=&path=").await;
+    assert_rejected(&response, 400, "zone-required");
 
     let response = get_over_tcp(
         server.addr(),
@@ -544,7 +544,7 @@ async fn diff_entry_enforces_the_workspace_root_boundary() {
         "替换登记根的目录联接必须真实创建"
     );
     let response = get_over_tcp(server.addr(), &diff_url(&root, "review.txt", None)).await;
-    assert_rejected(&response, 404, "workspace-unavailable");
+    assert_rejected(&response, 404, "zone-unavailable");
     assert_no_secret(&response);
 }
 

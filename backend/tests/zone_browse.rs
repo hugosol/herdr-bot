@@ -1,4 +1,4 @@
-//! workspace 文件浏览的公开 HTTP interface（S2）。
+//! zone 文件浏览的公开 HTTP interface（S2）。
 //!
 //! 这些用例只经真实 HTTP 请求观察行为：目录输出与独立创建的真实文件集合核对；边界反例通过公开
 //! 请求实施，并使用真实的 Windows 目录联接与（可用时）符号链接；内容识别、大小边界与只读语义都由
@@ -20,8 +20,8 @@ fn config_with_registry_and_limit(registry: &Path, preview_limit: u64) -> omp_bo
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
-    config.workspaces.preview_limit_bytes =
+    config.zones.registry_file = registry.to_path_buf();
+    config.zones.preview_limit_bytes =
         omp_bot::config::PreviewLimitBytes::new(preview_limit).expect("测试上限必须合法");
     config
 }
@@ -44,26 +44,26 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn entries_url(workspace: &Path, path: &str) -> String {
+fn entries_url(zone: &Path, path: &str) -> String {
     format!(
-        "/api/workspaces/entries?workspace={}&path={}",
-        encode(&workspace.to_string_lossy()),
+        "/api/zones/entries?zone={}&path={}",
+        encode(&zone.to_string_lossy()),
         encode(path)
     )
 }
 
-fn file_url(workspace: &Path, path: &str) -> String {
+fn file_url(zone: &Path, path: &str) -> String {
     format!(
-        "/api/workspaces/file?workspace={}&path={}",
-        encode(&workspace.to_string_lossy()),
+        "/api/zones/file?zone={}&path={}",
+        encode(&zone.to_string_lossy()),
         encode(path)
     )
 }
 
-fn tree_url(workspace: &Path) -> String {
+fn tree_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/tree?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/tree?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
@@ -112,16 +112,16 @@ fn assert_rejected(response: &HttpResponse, status: u16, code: &str) {
     );
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
@@ -186,7 +186,7 @@ fn git(root: &Path, args: &[&str]) -> String {
 
 #[tokio::test]
 async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_directories() {
-    let dir = TempDir::new("workspace tree git ignores");
+    let dir = TempDir::new("zone tree git ignores");
     let root = dir.path().join("project");
     fs::create_dir_all(root.join("ignored")).expect("创建 ignored 目录");
     fs::create_dir_all(root.join("kept")).expect("创建 kept 目录");
@@ -216,7 +216,7 @@ async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_director
     );
     git(&root, &["commit", "-qm", "fixture"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -273,13 +273,13 @@ async fn whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_director
 
 #[tokio::test]
 async fn broken_git_metadata_fails_the_whole_tree_instead_of_showing_ignored_content() {
-    let dir = TempDir::new("workspace tree broken git");
+    let dir = TempDir::new("zone tree broken git");
     let root = dir.path().join("project");
     fs::create_dir_all(&root).expect("创建目录");
     fs::write(root.join(".git"), "gitdir: C:\\missing\\metadata\n").unwrap();
     fs::write(root.join("visible.txt"), "visible").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -289,14 +289,14 @@ async fn broken_git_metadata_fails_the_whole_tree_instead_of_showing_ignored_con
 
 #[tokio::test]
 async fn plain_directory_tree_keeps_gitignore_like_files_unfiltered() {
-    let dir = TempDir::new("workspace tree plain");
+    let dir = TempDir::new("zone tree plain");
     let root = dir.path().join("project");
     fs::create_dir_all(&root).expect("创建普通目录");
     fs::write(root.join(".gitignore"), "ignored.txt\n").unwrap();
     fs::write(root.join("ignored.txt"), "plain file").unwrap();
     fs::write(root.join("visible.txt"), "visible").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -316,7 +316,7 @@ async fn plain_directory_tree_keeps_gitignore_like_files_unfiltered() {
 
 #[tokio::test]
 async fn lists_real_contents_including_hidden_ignored_and_git_metadata() {
-    let dir = TempDir::new("workspace browse contents");
+    let dir = TempDir::new("zone browse contents");
     let root = dir.path().join("project");
     fs::create_dir_all(root.join("src").join("nested")).expect("创建目录树");
     fs::create_dir_all(root.join(".git")).expect("创建 Git 元数据目录");
@@ -334,7 +334,7 @@ async fn lists_real_contents_including_hidden_ignored_and_git_metadata() {
     fs::write(root.join("src").join("main.ts"), "console.log(1)\n").unwrap();
     fs::write(root.join("src").join("nested").join("deep.txt"), "deep").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -366,19 +366,19 @@ async fn lists_real_contents_including_hidden_ignored_and_git_metadata() {
     );
     assert_eq!(entry_of(&root_listing, ".git")["kind"], json!("directory"));
 
-    // 登记身份按 Windows 规则比较：同一路径用 `/` 书写仍指向同一个 workspace。
+    // 登记身份按 Windows 规则比较：同一路径用 `/` 书写仍指向同一个 zone。
     let forward_slashes = root.to_string_lossy().replace('\\', "/");
     let response = get_over_tcp(
         server.addr(),
         &format!(
-            "/api/workspaces/entries?workspace={}&path=",
+            "/api/zones/entries?zone={}&path=",
             encode(&forward_slashes)
         ),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "同一 workspace 的 `/` 写法应被接受：{}",
+        "同一 zone 的 `/` 写法应被接受：{}",
         response.body
     );
 
@@ -428,15 +428,15 @@ async fn lists_real_contents_including_hidden_ignored_and_git_metadata() {
 }
 
 #[tokio::test]
-async fn rejects_traversal_absolute_paths_and_unregistered_workspaces() {
-    let dir = TempDir::new("workspace browse traversal");
+async fn rejects_traversal_absolute_paths_and_unregistered_zones() {
+    let dir = TempDir::new("zone browse traversal");
     let root = dir.path().join("root");
     let outside = dir.path().join("outside");
     fs::create_dir_all(root.join("sub")).expect("创建根目录");
     fs::create_dir_all(&outside).expect("创建根外目录");
     fs::write(outside.join("secret.txt"), "top-secret").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -453,7 +453,7 @@ async fn rejects_traversal_absolute_paths_and_unregistered_workspaces() {
         "\\\\server\\share\\file.txt",
     ] {
         let response = get_over_tcp(server.addr(), &entries_url(&root, path)).await;
-        assert_rejected(&response, 403, "path-outside-workspace");
+        assert_rejected(&response, 403, "path-outside-zone");
         assert!(
             !response.body.contains("top-secret"),
             "越界请求不能泄露根外内容：{}",
@@ -468,15 +468,15 @@ async fn rejects_traversal_absolute_paths_and_unregistered_workspaces() {
 
     // 直接文件读取入口同样执行边界检查。
     let response = get_over_tcp(server.addr(), &file_url(&root, "../outside/secret.txt")).await;
-    assert_rejected(&response, 403, "path-outside-workspace");
+    assert_rejected(&response, 403, "path-outside-zone");
     assert!(!response.body.contains("top-secret"));
 
-    // 未登记路径与空 workspace 参数都是明确拒绝。
+    // 未登记路径与空 zone 参数都是明确拒绝。
     let response = get_over_tcp(server.addr(), &entries_url(&outside, "")).await;
-    assert_rejected(&response, 404, "workspace-not-registered");
+    assert_rejected(&response, 404, "zone-not-registered");
 
-    let response = get_over_tcp(server.addr(), "/api/workspaces/entries?workspace=&path=").await;
-    assert_rejected(&response, 400, "workspace-required");
+    let response = get_over_tcp(server.addr(), "/api/zones/entries?zone=&path=").await;
+    assert_rejected(&response, 400, "zone-required");
 
     // 请求面封闭：未知查询参数不能被静默忽略。
     let response = get_over_tcp(
@@ -571,7 +571,7 @@ fn is_reparse_point(path: &Path) -> bool {
 
 #[tokio::test]
 async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
-    let dir = TempDir::new("workspace browse links");
+    let dir = TempDir::new("zone browse links");
     let root = dir.path().join("root");
     let outside = dir.path().join("outside");
     fs::create_dir_all(&root).expect("创建根目录");
@@ -608,7 +608,7 @@ async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
         eprintln!("已创建真实文件符号链接：{}", file_link.display());
     }
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -624,7 +624,7 @@ async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
     assert!(
         junction_entry["linkReason"]
             .as_str()
-            .is_some_and(|reason| reason.contains("workspace 之外")),
+            .is_some_and(|reason| reason.contains("zone 之外")),
         "根外链接必须说明不可进入原因：{junction_entry}"
     );
     if symlink_created {
@@ -677,7 +677,7 @@ async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
 
 #[tokio::test]
 async fn external_deletion_and_root_replacement_are_explicit_errors() {
-    let dir = TempDir::new("workspace browse deletion");
+    let dir = TempDir::new("zone browse deletion");
     let root = dir.path().join("root");
     let outside = dir.path().join("outside");
     fs::create_dir_all(root.join("sub")).expect("创建子目录");
@@ -685,7 +685,7 @@ async fn external_deletion_and_root_replacement_are_explicit_errors() {
     fs::write(root.join("sub").join("file.txt"), "content").unwrap();
     fs::write(outside.join("secret.txt"), "top-secret").unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     assert_eq!(
@@ -728,7 +728,7 @@ async fn external_deletion_and_root_replacement_are_explicit_errors() {
     let replaced_root = dir.path().join("replaced-root");
     fs::create_dir_all(&replaced_root).expect("创建待替换根");
     fs::write(replaced_root.join("inside.txt"), "inside").unwrap();
-    let replaced_registry = dir.path().join("replaced-workspaces.json");
+    let replaced_registry = dir.path().join("replaced-zones.json");
     let replaced_server = TestServer::start(&config_with_registry(&replaced_registry)).await;
     register(&replaced_server, &replaced_root).await;
 
@@ -739,7 +739,7 @@ async fn external_deletion_and_root_replacement_are_explicit_errors() {
     );
 
     let response = get_over_tcp(replaced_server.addr(), &entries_url(&replaced_root, "")).await;
-    assert_rejected(&response, 404, "workspace-unavailable");
+    assert_rejected(&response, 404, "zone-unavailable");
     assert!(
         !response.body.contains("top-secret"),
         "根目录被替换后不能读取根外内容：{}",
@@ -749,12 +749,12 @@ async fn external_deletion_and_root_replacement_are_explicit_errors() {
     // 根目录被直接删除后，同一路径同样是明确错误。
     fs::remove_dir_all(&replaced_root).expect("删除被替换的根");
     let response = get_over_tcp(replaced_server.addr(), &entries_url(&replaced_root, "")).await;
-    assert_rejected(&response, 404, "workspace-unavailable");
+    assert_rejected(&response, 404, "zone-unavailable");
 }
 
 #[tokio::test]
 async fn reading_does_not_change_files_or_git_index_semantics() {
-    let dir = TempDir::new("workspace browse read only");
+    let dir = TempDir::new("zone browse read only");
     let root = dir.path().join("repository");
     fs::create_dir_all(&root).expect("创建仓库目录");
     assert!(
@@ -766,7 +766,7 @@ async fn reading_does_not_change_files_or_git_index_semantics() {
             .success()
     );
 
-    git(&root, &["config", "user.name", "workspace-browse-test"]);
+    git(&root, &["config", "user.name", "zone-browse-test"]);
     git(&root, &["config", "user.email", "browse@example.test"]);
     fs::write(root.join("tracked.txt"), "one\n").unwrap();
     git(&root, &["add", "tracked.txt"]);
@@ -784,7 +784,7 @@ async fn reading_does_not_change_files_or_git_index_semantics() {
     // Git 自己的只读查询可能刷新索引缓存，因此快照在这之后取，只观察本服务的读取。
     let before_snapshot = snapshot(&root);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -834,7 +834,7 @@ async fn reading_does_not_change_files_or_git_index_semantics() {
 
 #[tokio::test]
 async fn text_is_detected_from_content_and_preview_limit_applies_exactly() {
-    let dir = TempDir::new("workspace browse preview");
+    let dir = TempDir::new("zone browse preview");
     let root = dir.path().join("root");
     fs::create_dir_all(&root).expect("创建根目录");
     let exact_text = "a".repeat(64);
@@ -848,7 +848,7 @@ async fn text_is_detected_from_content_and_preview_limit_applies_exactly() {
     bom.extend_from_slice(b"bom text");
     fs::write(root.join("bom.txt"), bom).unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry_and_limit(&registry, 64)).await;
     register(&server, &root).await;
 
@@ -902,7 +902,7 @@ async fn text_is_detected_from_content_and_preview_limit_applies_exactly() {
 async fn oversized_file_content_is_not_opened() {
     use std::os::windows::fs::OpenOptionsExt;
 
-    let dir = TempDir::new("workspace browse oversized no open");
+    let dir = TempDir::new("zone browse oversized no open");
     let root = dir.path().join("root");
     fs::create_dir_all(&root).expect("创建根目录");
     let path = root.join("locked.txt");
@@ -914,7 +914,7 @@ async fn oversized_file_content_is_not_opened() {
         .open(&path)
         .expect("以独占共享模式打开超限文件");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry_and_limit(&registry, 64)).await;
     register(&server, &root).await;
 
@@ -934,14 +934,14 @@ async fn oversized_file_content_is_not_opened() {
 
 #[tokio::test]
 async fn default_preview_limit_is_one_mebibyte_at_the_exact_boundary() {
-    let dir = TempDir::new("workspace browse default limit");
+    let dir = TempDir::new("zone browse default limit");
     let root = dir.path().join("root");
     fs::create_dir_all(&root).expect("创建根目录");
     let limit = 1024 * 1024;
     fs::write(root.join("exact.txt"), "a".repeat(limit)).unwrap();
     fs::write(root.join("over.txt"), "a".repeat(limit + 1)).unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 

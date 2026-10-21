@@ -6,7 +6,7 @@ import { SessionsPanel } from './SessionsPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
-import type { WorkspaceWatchFeed } from './workspaceWatch'
+import type { ZoneWatchFeed } from './zoneWatch'
 
 type PanelState =
   | { kind: 'idle' }
@@ -57,10 +57,10 @@ type Feedback = {
  */
 export default function App({
   sessionFeed = EMPTY_SESSION_FEED,
-  workspaceWatchFeed,
+  zoneWatchFeed,
 }: {
   sessionFeed?: SessionFeed
-  workspaceWatchFeed?: WorkspaceWatchFeed
+  zoneWatchFeed?: ZoneWatchFeed
 } = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
   // 每次打开或整页刷新都从会话列表开始：这里没有读取任何持久化的 tab 状态。
@@ -169,7 +169,7 @@ export default function App({
         data-testid="panel-files"
         hidden={tab !== 'files'}
       >
-        <FileListPanel active={tab === 'files'} watchFeed={workspaceWatchFeed} />
+        <FileListPanel active={tab === 'files'} watchFeed={zoneWatchFeed} />
       </div>
 
       <div

@@ -1,4 +1,4 @@
-//! Git workspace 状态：当前分支与待提交变更。
+//! Git zone 状态：当前分支与待提交变更。
 //!
 //! 本模块只做**只读查询**：检测登记根自身是否是一个 Git 工作树根，读取当前分支，并用 Git 自己的
 //! 结果列出待提交变更。它不暂存、不提交、不修改配置，也不会为了展示而改变索引；`git status` 只以
@@ -27,7 +27,7 @@ use serde::Serialize;
 
 use crate::browse;
 use crate::sync::{self, SyncFacts, SyncState};
-use crate::workspaces::{self, RegisteredWorkspace};
+use crate::zones::{self, RegisteredZone};
 
 /// 超时后等待子进程确认结束的宽限；超过它仍未确认终止时，调用方必须保留仓库资格。
 const TERMINATION_CONFIRMATION: Duration = Duration::from_secs(5);
@@ -50,7 +50,7 @@ pub enum ChangeKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitChange {
-    /// 当前路径（重命名时是新路径），相对 workspace 根，使用 `/` 分隔。
+    /// 当前路径（重命名时是新路径），相对 zone 根，使用 `/` 分隔。
     pub path: String,
     /// Git 已识别的重命名旧路径；其它类别没有这个字段。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -58,11 +58,11 @@ pub struct GitChange {
     pub kind: ChangeKind,
 }
 
-/// 一个 workspace 的 Git 状态。
+/// 一个 zone 的 Git 状态。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitStatus {
-    pub workspace: String,
+    pub zone: String,
     /// 登记根自身是否是一个 Git 工作树根。
     pub repository: bool,
     /// 当前分支名；detached HEAD 时为 `null`。
@@ -85,13 +85,13 @@ pub struct GitStatus {
     pub sync: SyncFacts,
 }
 
-/// 登记列表中一个 workspace 的角标概览。
+/// 登记列表中一个 zone 的角标概览。
 ///
 /// `pending_count` 只在能够确认是 Git 仓库时出现：普通目录没有 Git 待提交角标，
 /// 读取失败则给出 `error`，两者都不会被伪装成「0 项待提交」。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceSummary {
+pub struct ZoneSummary {
     pub path: String,
     pub repository: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,26 +103,26 @@ pub struct WorkspaceSummary {
     pub error: Option<String>,
 }
 
-/// 读取整个登记列表的概览；单个 workspace 的失败只影响它自己的条目，不会伪装成空列表。
+/// 读取整个登记列表的概览；单个 zone 的失败只影响它自己的条目，不会伪装成空列表。
 pub fn overview(
-    registered: &[RegisteredWorkspace],
+    registered: &[RegisteredZone],
     timeout: Duration,
     sync_state: &SyncState,
-) -> Vec<WorkspaceSummary> {
+) -> Vec<ZoneSummary> {
     registered
         .iter()
         .map(
-            |workspace| match status(&workspace.path, timeout, sync_state) {
-                Ok(status) => WorkspaceSummary {
-                    path: workspace.path.clone(),
+            |zone| match status(&zone.path, timeout, sync_state) {
+                Ok(status) => ZoneSummary {
+                    path: zone.path.clone(),
                     repository: status.repository,
                     branch: status.branch,
                     pending_count: status.repository.then_some(status.pending_count),
                     conflict: status.conflict,
                     error: None,
                 },
-                Err(error) => WorkspaceSummary {
-                    path: workspace.path.clone(),
+                Err(error) => ZoneSummary {
+                    path: zone.path.clone(),
                     repository: false,
                     branch: None,
                     pending_count: None,
@@ -138,7 +138,7 @@ pub fn overview(
 #[derive(Debug)]
 pub enum GitError {
     /// 登记根已消失、不可访问或不再是原来的目录。
-    WorkspaceUnavailable(String),
+    ZoneUnavailable(String),
     /// 找不到 `git` 可执行文件。
     GitUnavailable(String),
     /// Git 命令失败；保留 Git 返回的诊断，不伪装成干净状态。
@@ -157,7 +157,7 @@ pub enum GitError {
 impl GitError {
     pub fn code(&self) -> &'static str {
         match self {
-            Self::WorkspaceUnavailable(_) => "workspace-unavailable",
+            Self::ZoneUnavailable(_) => "zone-unavailable",
             Self::GitUnavailable(_) => "git-unavailable",
             Self::Failed(_) => "git-command-failed",
             Self::TimedOut { .. } => "git-timeout",
@@ -166,7 +166,7 @@ impl GitError {
 
     pub fn message(&self) -> String {
         match self {
-            Self::WorkspaceUnavailable(reason) => reason.clone(),
+            Self::ZoneUnavailable(reason) => reason.clone(),
             Self::GitUnavailable(reason) => reason.clone(),
             Self::Failed(reason) => reason.clone(),
             Self::TimedOut {
@@ -205,17 +205,17 @@ impl GitError {
     }
 }
 
-/// 读取一个已登记 workspace 的 Git 状态。
+/// 读取一个已登记 zone 的 Git 状态。
 ///
 /// 先重新核对登记根（边界与只读语义与浏览一致），再判断它是否是一个工作树根；普通目录返回
-/// `repository: false`，不会运行 `git status`，也就不会把父仓库的变更误当成该 workspace 的变更。
+/// `repository: false`，不会运行 `git status`，也就不会把父仓库的变更误当成该 zone 的变更。
 pub fn status(
     registered_root: &str,
     timeout: Duration,
     sync_state: &SyncState,
 ) -> Result<GitStatus, GitError> {
     let Some(root) = worktree_root(registered_root, timeout)? else {
-        return Ok(plain_workspace(registered_root));
+        return Ok(plain_zone(registered_root));
     };
 
     let (branch, detached) = current_branch(&root, timeout)?;
@@ -250,7 +250,7 @@ pub fn status(
     let sync = sync::facts(&root, branch.as_deref(), detached, timeout, sync_state)?;
 
     Ok(GitStatus {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         repository: true,
         branch,
         detached,
@@ -263,9 +263,9 @@ pub fn status(
     })
 }
 
-fn plain_workspace(registered_root: &str) -> GitStatus {
+fn plain_zone(registered_root: &str) -> GitStatus {
     GitStatus {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         repository: false,
         branch: None,
         detached: false,
@@ -287,7 +287,7 @@ pub(crate) fn worktree_root(
     timeout: Duration,
 ) -> Result<Option<PathBuf>, GitError> {
     let root = browse::checked_root(registered_root)
-        .map_err(|error| GitError::WorkspaceUnavailable(error.message()))?;
+        .map_err(|error| GitError::ZoneUnavailable(error.message()))?;
 
     let git_entry = root.join(".git");
     match fs::symlink_metadata(&git_entry) {
@@ -295,7 +295,7 @@ pub(crate) fn worktree_root(
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(GitError::Failed(format!(
-                "无法访问 workspace 的 Git 元数据：{error}"
+                "无法访问 zone 的 Git 元数据：{error}"
             )));
         }
     }
@@ -307,7 +307,7 @@ pub(crate) fn worktree_root(
     let top_level = String::from_utf8_lossy(&top_level.stdout)
         .trim()
         .to_string();
-    if top_level.is_empty() || !workspaces::same_path(&top_level, &workspaces::display_path(&root))
+    if top_level.is_empty() || !zones::same_path(&top_level, &zones::display_path(&root))
     {
         // 登记根不是仓库的工作树根：不把父仓库或其它仓库的变更聚合进来。
         return Ok(None);
@@ -411,7 +411,7 @@ pub enum DiffSide {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeDiff {
-    pub workspace: String,
+    pub zone: String,
     /// 变更的新路径；重命名时是新路径，删除时是原路径。
     pub path: String,
     /// Git 已识别重命名的旧路径；其它类别没有这个字段。
@@ -491,7 +491,7 @@ pub fn change_diff(
 
     let Some(root) = worktree_root(registered_root, timeout)? else {
         return Err(DiffError::Git(GitError::Failed(
-            "该 workspace 不是 Git 工作树根，没有可审查的本地提交差异。".to_string(),
+            "该 zone 不是 Git 工作树根，没有可审查的本地提交差异。".to_string(),
         )));
     };
 
@@ -507,7 +507,7 @@ pub fn change_diff(
         && matches!(new, DiffSide::Absent | DiffSide::Text { .. });
 
     Ok(ChangeDiff {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         path: new_relative,
         old_path: old_path.map(|_| old_relative),
         old,
@@ -864,7 +864,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
         .map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 GitError::GitUnavailable(
-                    "找不到 git 命令，无法读取 workspace 的 Git 状态。".to_string(),
+                    "找不到 git 命令，无法读取 zone 的 Git 状态。".to_string(),
                 )
             } else {
                 GitError::Failed(format!("无法运行 git：{error}"))

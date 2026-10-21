@@ -1,5 +1,5 @@
 /**
- * workspace Git 状态接口客户端。
+ * zone Git 状态接口客户端。
  *
  * 只读取当前分支与待提交变更；页面不自行判断 Git 规则，也不为了展示暂存或配对文件。
  * 读取失败必须显示为明确错误，不能当作「没有待提交变更」。
@@ -34,9 +34,9 @@ export type SyncFacts = {
   remoteCheckedAt: number | null
 }
 
-/** 一个 workspace 的 Git 状态；普通目录是 `repository: false`。 */
+/** 一个 zone 的 Git 状态；普通目录是 `repository: false`。 */
 export type GitStatus = {
-  workspace: string
+  zone: string
   repository: boolean
   branch: string | null
   detached: boolean
@@ -53,7 +53,7 @@ export type GitStatus = {
 
 /** 一次已确认提交的回执。 */
 export type CommitAccepted = {
-  workspace: string
+  zone: string
   outcome: 'committed'
   commit: string
   branch?: string | null
@@ -74,7 +74,7 @@ export type CommitResult =
 
 /** 一次成功同步的回执；`pulled`/`pushed` 是本次实际整合与推送的提交数。 */
 export type SyncAccepted = {
-  workspace: string
+  zone: string
   outcome: 'synced'
   branch: string
   upstream: UpstreamRef
@@ -87,7 +87,7 @@ export type SyncAccepted = {
 }
 
 /** 文件列表上的角标概览；不可访问的项带 `error`，普通目录没有待提交数量。 */
-export type WorkspaceSummary = {
+export type ZoneSummary = {
   path: string
   repository: boolean
   branch?: string | null
@@ -156,7 +156,7 @@ function isSyncFacts(value: unknown): value is SyncFacts {
 
 function isGitStatus(value: unknown): value is GitStatus {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('repository' in value) || typeof value.repository !== 'boolean') return false
   if (!('branch' in value)) return false
   if (value.branch !== null && typeof value.branch !== 'string') return false
@@ -189,7 +189,7 @@ function isGitStatus(value: unknown): value is GitStatus {
 
 function isCommitAccepted(value: unknown): value is CommitAccepted {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('outcome' in value) || value.outcome !== 'committed') return false
   if (!('commit' in value) || typeof value.commit !== 'string') return false
   if (!('message' in value) || typeof value.message !== 'string') return false
@@ -201,7 +201,7 @@ function isCommitAccepted(value: unknown): value is CommitAccepted {
 
 function isSyncAccepted(value: unknown): value is SyncAccepted {
   if (typeof value !== 'object' || value === null) return false
-  if (!('workspace' in value) || typeof value.workspace !== 'string') return false
+  if (!('zone' in value) || typeof value.zone !== 'string') return false
   if (!('outcome' in value) || value.outcome !== 'synced') return false
   if (!('branch' in value) || typeof value.branch !== 'string') return false
   if (!('upstream' in value) || !isUpstreamRef(value.upstream)) return false
@@ -224,7 +224,7 @@ function isSyncAccepted(value: unknown): value is SyncAccepted {
   )
 }
 
-function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
+function isZoneSummary(value: unknown): value is ZoneSummary {
   if (typeof value !== 'object' || value === null) return false
   if (!('path' in value) || typeof value.path !== 'string') return false
   if (!('repository' in value) || typeof value.repository !== 'boolean') return false
@@ -245,13 +245,13 @@ function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
   return true
 }
 
-/** 概览响应是带 `workspaces` 数组的对象；形状不符时返回 null，而不是猜一个空列表。 */
-function parseOverview(payload: unknown): WorkspaceSummary[] | null {
+/** 概览响应是带 `zones` 数组的对象；形状不符时返回 null，而不是猜一个空列表。 */
+function parseOverview(payload: unknown): ZoneSummary[] | null {
   if (typeof payload !== 'object' || payload === null) return null
-  if (!('workspaces' in payload)) return null
-  const workspaces = payload.workspaces
-  if (!Array.isArray(workspaces) || !workspaces.every(isWorkspaceSummary)) return null
-  return workspaces
+  if (!('zones' in payload)) return null
+  const zones = payload.zones
+  if (!Array.isArray(zones) || !zones.every(isZoneSummary)) return null
+  return zones
 }
 
 function isErrorBody(value: unknown): value is { code: string; message: string } {
@@ -293,17 +293,17 @@ async function gitRequest<T>(
     : { kind: 'unreachable' }
 }
 
-/** 读取一个已登记 workspace 的当前分支与待提交变更。 */
-export function fetchGitStatus(workspace: string): Promise<GitResult<GitStatus>> {
-  const params = new URLSearchParams({ workspace })
-  return gitRequest(`/api/workspaces/git-status?${params.toString()}`, (payload) =>
+/** 读取一个已登记 zone 的当前分支与待提交变更。 */
+export function fetchGitStatus(zone: string): Promise<GitResult<GitStatus>> {
+  const params = new URLSearchParams({ zone })
+  return gitRequest(`/api/zones/git-status?${params.toString()}`, (payload) =>
     isGitStatus(payload) ? payload : null,
   )
 }
 
 /** 读取登记列表的角标概览。 */
-export function fetchWorkspaceOverview(): Promise<GitResult<WorkspaceSummary[]>> {
-  return gitRequest('/api/workspaces/overview', parseOverview)
+export function fetchZoneOverview(): Promise<GitResult<ZoneSummary[]>> {
+  return gitRequest('/api/zones/overview', parseOverview)
 }
 
 /**
@@ -311,18 +311,18 @@ export function fetchWorkspaceOverview(): Promise<GitResult<WorkspaceSummary[]>>
  *
  * 只发送一次 POST；网络中断返回 `unreachable`，由调用方查询实际仓库状态而不是自动重试。
  */
-export function commitWorkspace(
-  workspace: string,
+export function commitZone(
+  zone: string,
   message: string,
   reviewToken: string,
 ): Promise<GitResult<CommitAccepted>> {
   return gitRequest(
-    '/api/workspaces/commit',
+    '/api/zones/commit',
     (payload) => (isCommitAccepted(payload) ? payload : null),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace, message, reviewToken }),
+      body: JSON.stringify({ zone, message, reviewToken }),
     },
   )
 }
@@ -332,14 +332,14 @@ export function commitWorkspace(
  *
  * 只发送一次 POST；网络中断返回 `unreachable`，由调用方按实际状态重新读取，不自动重试。
  */
-export function checkWorkspaceRemote(workspace: string): Promise<GitResult<GitStatus>> {
+export function checkZoneRemote(zone: string): Promise<GitResult<GitStatus>> {
   return gitRequest(
-    '/api/workspaces/check-remote',
+    '/api/zones/check-remote',
     (payload) => (isGitStatus(payload) ? payload : null),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace }),
+      body: JSON.stringify({ zone }),
     },
   )
 }
@@ -349,14 +349,14 @@ export function checkWorkspaceRemote(workspace: string): Promise<GitResult<GitSt
  *
  * 页面不提供分支或远端参数；执行目标由服务端按当前分支的既有配置决定。
  */
-export function syncWorkspace(workspace: string): Promise<GitResult<SyncAccepted>> {
+export function syncZone(zone: string): Promise<GitResult<SyncAccepted>> {
   return gitRequest(
-    '/api/workspaces/sync',
+    '/api/zones/sync',
     (payload) => (isSyncAccepted(payload) ? payload : null),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace }),
+      body: JSON.stringify({ zone }),
     },
   )
 }

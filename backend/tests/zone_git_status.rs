@@ -1,4 +1,4 @@
-//! workspace Git 状态与待提交变更的公开 HTTP interface（S2）。
+//! zone Git 状态与待提交变更的公开 HTTP interface（S2）。
 //!
 //! 这些用例经真实 HTTP 请求观察行为，并使用隔离的真实 Git 仓库：期望值来自 Git 原生语义与
 //! 独立写定的文件集合，不调用实现内部的计算路径。
@@ -12,13 +12,13 @@ use std::process::Command;
 use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 
-/// 与交付配置同形，但把 workspace 登记文件放到隔离临时目录。
+/// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
 fn config_with_registry(registry: &Path) -> omp_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
+    config.zones.registry_file = registry.to_path_buf();
     config
 }
 
@@ -36,10 +36,10 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn status_url(workspace: &Path) -> String {
+fn status_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/git-status?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/git-status?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
@@ -47,16 +47,16 @@ fn body(response: &HttpResponse) -> Value {
     serde_json::from_str(&response.body).expect("响应必须是 JSON")
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
@@ -94,7 +94,7 @@ fn git_stdout(root: &Path, args: &[&str]) -> String {
 fn init_repository(root: &Path) {
     fs::create_dir_all(root).expect("创建仓库目录");
     git(root, &["init", "--quiet", "--initial-branch=main"]);
-    git(root, &["config", "user.name", "workspace-git-test"]);
+    git(root, &["config", "user.name", "zone-git-test"]);
     git(root, &["config", "user.email", "git-status@example.test"]);
 }
 
@@ -137,7 +137,7 @@ fn index_semantics(root: &Path) -> (String, String, String) {
 
 #[tokio::test]
 async fn filesystem_renames_follow_git_and_never_change_the_index() {
-    let dir = TempDir::new("workspace git renames");
+    let dir = TempDir::new("zone git renames");
     let root = dir.path().join("repository");
     init_repository(&root);
 
@@ -150,7 +150,7 @@ async fn filesystem_renames_follow_git_and_never_change_the_index() {
     git(&root, &["add", "--all"]);
     git(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -206,7 +206,7 @@ async fn filesystem_renames_follow_git_and_never_change_the_index() {
 
 #[tokio::test]
 async fn staged_and_unstaged_changes_count_once_and_conflicts_are_distinct() {
-    let dir = TempDir::new("workspace git conflicts");
+    let dir = TempDir::new("zone git conflicts");
     let root = dir.path().join("repository");
     init_repository(&root);
 
@@ -239,7 +239,7 @@ async fn staged_and_unstaged_changes_count_once_and_conflicts_are_distinct() {
         "真实 merge 必须产生冲突才能验证警告"
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -279,11 +279,11 @@ async fn staged_and_unstaged_changes_count_once_and_conflicts_are_distinct() {
     );
 }
 
-/// 概览里的一个 workspace；用于按路径找到固定期望。
+/// 概览里的一个 zone；用于按路径找到固定期望。
 fn overview_entry<'a>(payload: &'a Value, path: &Path) -> &'a Value {
-    payload["workspaces"]
+    payload["zones"]
         .as_array()
-        .expect("workspaces 必须是数组")
+        .expect("zones 必须是数组")
         .iter()
         .find(|entry| {
             entry["path"]
@@ -294,8 +294,8 @@ fn overview_entry<'a>(payload: &'a Value, path: &Path) -> &'a Value {
 }
 
 #[tokio::test]
-async fn workspace_badges_count_change_items_not_directories_or_diff_lines() {
-    let dir = TempDir::new("workspace git badges");
+async fn zone_badges_count_change_items_not_directories_or_diff_lines() {
+    let dir = TempDir::new("zone git badges");
     let root = dir.path().join("repository");
     let clean = dir.path().join("clean-repository");
     let plain = dir.path().join("plain");
@@ -351,10 +351,10 @@ async fn workspace_badges_count_change_items_not_directories_or_diff_lines() {
     fs::create_dir_all(&plain).unwrap();
     fs::create_dir_all(&missing).unwrap();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
-    for workspace in [&root, &clean, &plain, &missing] {
-        register(&server, workspace).await;
+    for zone in [&root, &clean, &plain, &missing] {
+        register(&server, zone).await;
     }
     fs::remove_dir_all(&missing).unwrap();
 
@@ -372,10 +372,10 @@ async fn workspace_badges_count_change_items_not_directories_or_diff_lines() {
     );
     assert_eq!(body(&response)["pendingCount"], json!(5));
 
-    let response = get_over_tcp(server.addr(), "/api/workspaces/overview").await;
+    let response = get_over_tcp(server.addr(), "/api/zones/overview").await;
     assert_eq!(
         response.status, 200,
-        "workspace 概览应成功：{}",
+        "zone 概览应成功：{}",
         response.body
     );
     let payload = body(&response);
@@ -405,13 +405,13 @@ async fn workspace_badges_count_change_items_not_directories_or_diff_lines() {
         missing_entry["error"]
             .as_str()
             .is_some_and(|message| !message.is_empty()),
-        "不可访问的 workspace 不能伪装成干净或零变更：{missing_entry}"
+        "不可访问的 zone 不能伪装成干净或零变更：{missing_entry}"
     );
 }
 
 #[tokio::test]
 async fn branch_refreshes_after_external_switches_without_marking_divergence_as_conflict() {
-    let dir = TempDir::new("workspace git branch");
+    let dir = TempDir::new("zone git branch");
     let root = dir.path().join("repository");
     init_repository(&root);
     fs::write(root.join("tracked.txt"), "one\n").unwrap();
@@ -454,7 +454,7 @@ async fn branch_refreshes_after_external_switches_without_marking_divergence_as_
     git(&root, &["add", "--all"]);
     git(&root, &["commit", "--quiet", "-m", "local ahead"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -488,8 +488,8 @@ async fn branch_refreshes_after_external_switches_without_marking_divergence_as_
 }
 
 #[tokio::test]
-async fn ordinary_missing_and_unregistered_workspaces_are_not_clean_git_workspaces() {
-    let dir = TempDir::new("workspace git boundaries");
+async fn ordinary_missing_and_unregistered_zones_are_not_clean_git_zones() {
+    let dir = TempDir::new("zone git boundaries");
     let plain = dir.path().join("plain");
     let repository = dir.path().join("repository");
     let missing = dir.path().join("missing");
@@ -504,7 +504,7 @@ async fn ordinary_missing_and_unregistered_workspaces_are_not_clean_git_workspac
     fs::write(nested.join("inside.txt"), "inside\n").unwrap();
     fs::create_dir_all(&missing).expect("创建待删除目录");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &plain).await;
     register(&server, &repository).await;
@@ -530,14 +530,14 @@ async fn ordinary_missing_and_unregistered_workspaces_are_not_clean_git_workspac
     assert_eq!(
         body(&response)["repository"],
         json!(false),
-        "父仓库的变更不能越界成为子目录 workspace 的待提交集合"
+        "父仓库的变更不能越界成为子目录 zone 的待提交集合"
     );
 
     // 登记目录消失：明确错误，不伪装成干净仓库。
     let response = get_over_tcp(server.addr(), &status_url(&missing)).await;
     assert_eq!(response.status, 404);
     let payload = body(&response);
-    assert_eq!(payload["code"], json!("workspace-unavailable"));
+    assert_eq!(payload["code"], json!("zone-unavailable"));
     assert!(
         payload["message"]
             .as_str()
@@ -549,7 +549,7 @@ async fn ordinary_missing_and_unregistered_workspaces_are_not_clean_git_workspac
     fs::create_dir_all(&unregistered).expect("创建未登记目录");
     let response = get_over_tcp(server.addr(), &status_url(&unregistered)).await;
     assert_eq!(response.status, 404);
-    assert_eq!(body(&response)["code"], json!("workspace-not-registered"));
+    assert_eq!(body(&response)["code"], json!("zone-not-registered"));
 
     // 请求面封闭：未知查询参数不能被静默忽略。
     let response = get_over_tcp(server.addr(), &format!("{}&extra=1", status_url(&plain))).await;
@@ -559,14 +559,14 @@ async fn ordinary_missing_and_unregistered_workspaces_are_not_clean_git_workspac
 
 #[tokio::test]
 async fn broken_git_metadata_is_an_explicit_error_not_a_clean_repository() {
-    let dir = TempDir::new("workspace git broken metadata");
+    let dir = TempDir::new("zone git broken metadata");
     let root = dir.path().join("repository");
     init_repository(&root);
     fs::write(root.join("tracked.txt"), "one\n").unwrap();
     git(&root, &["add", "--all"]);
     git(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -592,7 +592,7 @@ async fn broken_git_metadata_is_an_explicit_error_not_a_clean_repository() {
         "Git 错误不能被伪装成空变更或干净仓库：{payload}"
     );
 
-    let response = get_over_tcp(server.addr(), "/api/workspaces/overview").await;
+    let response = get_over_tcp(server.addr(), "/api/zones/overview").await;
     assert_eq!(
         response.status, 200,
         "概览本身应成功返回：{}",
@@ -604,7 +604,7 @@ async fn broken_git_metadata_is_an_explicit_error_not_a_clean_repository() {
         entry["error"]
             .as_str()
             .is_some_and(|message| message.contains("rev-parse")),
-        "概览必须显示该 workspace 的 Git 错误：{entry}"
+        "概览必须显示该 zone 的 Git 错误：{entry}"
     );
     assert!(
         entry.get("pendingCount").is_none(),
@@ -614,7 +614,7 @@ async fn broken_git_metadata_is_an_explicit_error_not_a_clean_repository() {
 
 #[tokio::test]
 async fn pending_set_follows_git_tracking_and_ignore_rules() {
-    let dir = TempDir::new("workspace git pending set");
+    let dir = TempDir::new("zone git pending set");
     let root = dir.path().join("repository");
     init_repository(&root);
 
@@ -648,14 +648,14 @@ async fn pending_set_follows_git_tracking_and_ignore_rules() {
         "later.log 必须是已跟踪文件"
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
     let response = get_over_tcp(server.addr(), &status_url(&root)).await;
     assert_eq!(
         response.status, 200,
-        "Git workspace 状态应成功：{}",
+        "Git zone 状态应成功：{}",
         response.body
     );
     let body = body(&response);

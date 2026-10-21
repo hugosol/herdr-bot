@@ -2,11 +2,11 @@
  * HTML 阅读模式的文档净化与链接分类。
  *
  * 阅读模式只渲染用户明确选中的本地 HTML；脚本、表单、嵌入内容和外部资源自动加载都被移除或由
- * CSP/iframe sandbox 再次限制。相对 CSS、图片等资源通过后端的 workspace 原始资源路由加载，根目录
- * 仍是 workspace 本身。
+ * CSP/iframe sandbox 再次限制。相对 CSS、图片等资源通过后端的 zone 原始资源路由加载，根目录
+ * 仍是 zone 本身。
  */
 
-const READER_ROUTE = '/api/workspaces/reader/'
+const READER_ROUTE = '/api/zones/reader/'
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
@@ -47,19 +47,19 @@ export function isHtmlPath(path: string): boolean {
   return /\.html?$/i.test(path.split(/[?#]/, 1)[0] ?? '')
 }
 
-function workspaceHex(workspace: string): string {
-  const bytes = new TextEncoder().encode(workspace)
+function zoneHex(zone: string): string {
+  const bytes = new TextEncoder().encode(zone)
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-/** HTML 阅读资源路由的路径前缀；相对链接与资源都从同一 workspace 前缀解析。 */
-function readerRoutePrefix(workspace: string): string {
-  return `${READER_ROUTE}${workspaceHex(workspace)}/`
+/** HTML 阅读资源路由的路径前缀；相对链接与资源都从同一 zone 前缀解析。 */
+function readerRoutePrefix(zone: string): string {
+  return `${READER_ROUTE}${zoneHex(zone)}/`
 }
 
 /** 为当前 HTML 构造绝对资源地址，作为 iframe 文档的 `<base href>`。 */
 export function readerAssetUrl(
-  workspace: string,
+  zone: string,
   path: string,
   origin = window.location.origin,
 ): string {
@@ -68,7 +68,7 @@ export function readerAssetUrl(
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
-  return `${origin}${readerRoutePrefix(workspace)}${encodedPath}`
+  return `${origin}${readerRoutePrefix(zone)}${encodedPath}`
 }
 
 function routePrefixFromDocument(documentUrl: string): string {
@@ -190,12 +190,12 @@ export function buildHtmlReaderDocument(html: string, documentUrl: string): stri
 
 export type HtmlReaderLink =
   | { kind: 'anchor' }
-  | { kind: 'workspace'; path: string }
+  | { kind: 'zone'; path: string }
   | { kind: 'external'; url: string }
   | { kind: 'blocked'; reason: string }
 
 /**
- * 把 iframe 内的链接分成四类：页内锚点、workspace 内 HTML、外部网页、以及必须拦截的本地/其他方案。
+ * 把 iframe 内的链接分成四类：页内锚点、zone 内 HTML、外部网页、以及必须拦截的本地/其他方案。
  */
 export function classifyHtmlReaderLink(
   rawHref: string,
@@ -222,10 +222,10 @@ export function classifyHtmlReaderLink(
       if (!isHtmlPath(relative)) {
         return {
           kind: 'blocked',
-          reason: '只有 workspace 内的 HTML 文件可以在阅读模式中打开。',
+          reason: '只有 zone 内的 HTML 文件可以在阅读模式中打开。',
         }
       }
-      return { kind: 'workspace', path: relative }
+      return { kind: 'zone', path: relative }
     }
     return { kind: 'external', url: url.href }
   }

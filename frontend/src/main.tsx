@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import App from './App'
 import { createSseSessionFeed } from './sseSessionFeed'
-import { createWorkspaceWatchFeed } from './workspaceWatch'
+import { createZoneWatchFeed } from './zoneWatch'
 import './styles.css'
 
 const root = document.getElementById('root')
@@ -15,10 +15,10 @@ if (!root) {
 // 归一化在 `createSseSessionFeed` 里，组件只管消费注入的契约。
 const sessionFeed = createSseSessionFeed()
 // 文件列表的自动更新也走同源只读长连接；监听只观察本地状态，不触发远端 fetch。
-const workspaceWatchFeed = createWorkspaceWatchFeed()
+const zoneWatchFeed = createZoneWatchFeed()
 
 createRoot(root).render(
   <StrictMode>
-    <App sessionFeed={sessionFeed} workspaceWatchFeed={workspaceWatchFeed} />
+    <App sessionFeed={sessionFeed} zoneWatchFeed={zoneWatchFeed} />
   </StrictMode>,
 )

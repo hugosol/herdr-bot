@@ -13,7 +13,7 @@ import type {
 } from '../src/sessionFeed'
 import type { ShutdownView } from '../src/shutdownView'
 
-const WORKSPACE = 'C:\\work\\project'
+const ZONE = 'C:\\work\\project'
 const SERVER_TIME = 1_700_000_000_000
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -81,16 +81,16 @@ type BackendState = {
   changes: Array<{ path: string; kind: string }>
 }
 
-function workspaceHandler(state: BackendState) {
+function zoneHandler(state: BackendState) {
   return (url: URL): Response | undefined => {
-    if (url.pathname === '/api/workspaces') {
-      return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+    if (url.pathname === '/api/zones') {
+      return jsonResponse(200, { zones: [{ path: ZONE }] })
     }
-    if (url.pathname === '/api/workspaces/overview') {
+    if (url.pathname === '/api/zones/overview') {
       return jsonResponse(200, {
-        workspaces: [
+        zones: [
           {
-            path: WORKSPACE,
+            path: ZONE,
             repository: true,
             conflict: false,
             pendingCount: state.changes.length,
@@ -98,9 +98,9 @@ function workspaceHandler(state: BackendState) {
         ],
       })
     }
-    if (url.pathname === '/api/workspaces/git-status') {
+    if (url.pathname === '/api/zones/git-status') {
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         repository: true,
         branch: state.branch,
         detached: false,
@@ -110,20 +110,20 @@ function workspaceHandler(state: BackendState) {
         reviewToken: `token:${state.branch}:${state.changes.length}`,
       })
     }
-    if (url.pathname === '/api/workspaces/tree') {
-      return jsonResponse(200, treeResponse(WORKSPACE, { '': state.entries }))
+    if (url.pathname === '/api/zones/tree') {
+      return jsonResponse(200, treeResponse(ZONE, { '': state.entries }))
     }
-    if (url.pathname === '/api/workspaces/entries') {
+    if (url.pathname === '/api/zones/entries') {
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         path: url.searchParams.get('path') ?? '',
         entries: state.entries,
       })
     }
-    if (url.pathname === '/api/workspaces/file') {
+    if (url.pathname === '/api/zones/file') {
       const path = url.searchParams.get('path') ?? ''
       return jsonResponse(200, {
-        workspace: WORKSPACE,
+        zone: ZONE,
         path,
         name: path,
         size: 4,
@@ -134,11 +134,11 @@ function workspaceHandler(state: BackendState) {
   }
 }
 
-async function openWorkspace(user: UserEvent) {
+async function openZone(user: UserEvent) {
   await user.click(screen.getByTestId('tab-files'))
-  await screen.findByTestId('workspace-list')
-  await user.click(screen.getByTestId('open-workspace'))
-  await screen.findByTestId('workspace-browser')
+  await screen.findByTestId('zone-list')
+  await user.click(screen.getByTestId('open-zone'))
+  await screen.findByTestId('zone-browser')
 }
 
 beforeEach(() => {
@@ -162,11 +162,11 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     ]
     const { feed } = sessionFeed(sessions, countingDown(30, Date.now()))
     const calls = mockFetch((url, method) => {
-      if (url.pathname === '/api/workspaces' && method === 'GET') {
-        return jsonResponse(200, { workspaces: [] })
+      if (url.pathname === '/api/zones' && method === 'GET') {
+        return jsonResponse(200, { zones: [] })
       }
-      if (url.pathname === '/api/workspaces/overview' && method === 'GET') {
-        return jsonResponse(200, { workspaces: [] })
+      if (url.pathname === '/api/zones/overview' && method === 'GET') {
+        return jsonResponse(200, { zones: [] })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
@@ -179,7 +179,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     expect(screen.getByTestId('shutdown-takeover')).toBeVisible()
 
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-empty')
+    await screen.findByTestId('zone-empty')
     expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
     expect(screen.getByTestId('shutdown-takeover')).toBeVisible()
 
@@ -205,12 +205,12 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
       receivedAt: Date.now(),
     })
     const calls = mockFetch((url, method) => {
-      if (url.pathname === '/api/workspaces' && method === 'GET') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones' && method === 'GET') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview' && method === 'GET') {
+      if (url.pathname === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, {
-          workspaces: [{ path: WORKSPACE, repository: false, conflict: false }],
+          zones: [{ path: ZONE, repository: false, conflict: false }],
         })
       }
       if (url.pathname === '/api/operations/start' && method === 'POST') {
@@ -228,7 +228,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     render(<App sessionFeed={feed} />)
 
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
+    await screen.findByTestId('zone-list')
     await user.click(screen.getByTestId('tab-control'))
     await user.click(screen.getByTestId('start-button'))
     await waitFor(() =>
@@ -245,12 +245,12 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
       branch: 'main',
       changes: [],
     }
-    mockFetch(workspaceHandler(state))
+    mockFetch(zoneHandler(state))
     const user = userEvent.setup()
     render(<App />)
 
-    // 进入 workspace：读取一次完整目录树与当前分支。
-    await openWorkspace(user)
+    // 进入 zone：读取一次完整目录树与当前分支。
+    await openZone(user)
     await screen.findByTestId('entry:README')
     expect(screen.getByTestId('browser-branch')).toHaveTextContent('分支：main')
 
@@ -277,18 +277,18 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
 
   it('文件列表与浏览期间读取失败不会被伪装成空目录或干净仓库', async () => {
     mockFetch((url) => {
-      if (url.pathname === '/api/workspaces') {
-        return jsonResponse(200, { workspaces: [{ path: WORKSPACE }] })
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
       }
-      if (url.pathname === '/api/workspaces/overview') {
+      if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {
-          workspaces: [{ path: WORKSPACE, repository: true, conflict: false, pendingCount: 1 }],
+          zones: [{ path: ZONE, repository: true, conflict: false, pendingCount: 1 }],
         })
       }
-      if (url.pathname === '/api/workspaces/git-status') {
+      if (url.pathname === '/api/zones/git-status') {
         return jsonResponse(500, { code: 'read-failed', message: 'Git 元数据不可读。' })
       }
-      if (url.pathname === '/api/workspaces/tree') {
+      if (url.pathname === '/api/zones/tree') {
         return jsonResponse(500, { code: 'read-failed', message: '目录不可读。' })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
@@ -297,9 +297,9 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     render(<App />)
 
     await user.click(screen.getByTestId('tab-files'))
-    await screen.findByTestId('workspace-list')
-    await user.click(screen.getByTestId('open-workspace'))
-    const browser = await screen.findByTestId('workspace-browser')
+    await screen.findByTestId('zone-list')
+    await user.click(screen.getByTestId('open-zone'))
+    const browser = await screen.findByTestId('zone-browser')
     expect(await within(browser).findByTestId('directory-error')).toHaveTextContent('目录不可读。')
     expect(within(browser).getByTestId('git-status-error')).toBeVisible()
     expect(within(browser).queryByTestId('changes-empty')).toBeNull()

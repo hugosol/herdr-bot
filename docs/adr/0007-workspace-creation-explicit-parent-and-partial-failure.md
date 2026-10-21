@@ -1,5 +1,7 @@
 # workspace 创建使用显式父目录且失败不回滚目录
 
+> 术语更新（2026-10-21）：本文的 workspace 现称 zone；原因与硬切换范围见 [ADR 0009](./0009-rename-workspace-to-zone-for-herdr.md)。正文保留原文。
+
 - 状态：accepted
 - 日期：2026-10-21
 

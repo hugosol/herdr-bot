@@ -14,13 +14,13 @@ use common::{
 };
 use serde_json::{Value, json};
 
-/// 与交付配置同形，但把 workspace 登记文件放到隔离临时目录。
+/// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
 fn config_with_registry(registry: &Path) -> omp_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
+    config.zones.registry_file = registry.to_path_buf();
     config
 }
 
@@ -38,10 +38,10 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn status_url(workspace: &Path) -> String {
+fn status_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/git-status?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/git-status?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
@@ -81,7 +81,7 @@ fn git_stdout(root: &Path, args: &[&str]) -> String {
 fn init_repository(root: &Path) {
     fs::create_dir_all(root).expect("创建仓库目录");
     git_ok(root, &["init", "--quiet", "--initial-branch=main"]);
-    git_ok(root, &["config", "user.name", "workspace-commit-test"]);
+    git_ok(root, &["config", "user.name", "zone-commit-test"]);
     git_ok(root, &["config", "user.email", "commit@example.test"]);
 }
 
@@ -93,22 +93,22 @@ fn write(root: &Path, relative: &str, content: impl AsRef<[u8]>) {
     fs::write(path, content).expect("写入测试文件");
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
 
-async fn git_status(server: &TestServer, workspace: &Path) -> Value {
-    let response = get_over_tcp(server.addr(), &status_url(workspace)).await;
+async fn git_status(server: &TestServer, zone: &Path) -> Value {
+    let response = get_over_tcp(server.addr(), &status_url(zone)).await;
     assert_eq!(
         response.status, 200,
         "读取 Git 状态应成功：{}",
@@ -126,15 +126,15 @@ fn review_token(status: &Value) -> String {
 
 async fn submit_commit(
     server: &TestServer,
-    workspace: &Path,
+    zone: &Path,
     message: &str,
     token: &str,
 ) -> HttpResponse {
     post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         &json!({
-            "workspace": workspace,
+            "zone": zone,
             "message": message,
             "reviewToken": token,
         })
@@ -207,7 +207,7 @@ fn remote_head(remote: &Path) -> String {
 
 #[tokio::test]
 async fn commit_stages_all_eligible_final_changes_and_never_pushes() {
-    let dir = TempDir::new("workspace commit all changes");
+    let dir = TempDir::new("zone commit all changes");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root);
     let remote_before = remote_head(&remote);
@@ -230,7 +230,7 @@ async fn commit_stages_all_eligible_final_changes_and_never_pushes() {
     let index_before = git_stdout(&root, &["diff", "--cached", "--name-only"]);
     assert!(index_before.contains("added.txt"));
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -299,7 +299,7 @@ async fn commit_stages_all_eligible_final_changes_and_never_pushes() {
     assert_eq!(
         git_stdout(&root, &["status", "--porcelain=v1"]),
         "",
-        "提交后工作区应干净"
+        "提交后工作树应干净"
     );
     assert_eq!(
         remote_head(&remote),
@@ -315,7 +315,7 @@ async fn commit_stages_all_eligible_final_changes_and_never_pushes() {
 
 #[tokio::test]
 async fn review_invalidates_same_path_same_count_content_change_without_writing() {
-    let dir = TempDir::new("workspace commit content invalidation");
+    let dir = TempDir::new("zone commit content invalidation");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "same.txt", "one\n");
@@ -323,7 +323,7 @@ async fn review_invalidates_same_path_same_count_content_change_without_writing(
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
 
     write(&root, "same.txt", "reviewed\n");
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -364,14 +364,14 @@ async fn review_invalidates_same_path_same_count_content_change_without_writing(
 
 #[tokio::test]
 async fn external_staging_head_and_branch_changes_invalidate_the_review() {
-    let dir = TempDir::new("workspace commit staging head branch");
+    let dir = TempDir::new("zone commit staging head branch");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
     git_ok(&root, &["add", "--all"]);
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -415,7 +415,7 @@ async fn external_staging_head_and_branch_changes_invalidate_the_review() {
 
 #[tokio::test]
 async fn review_hashes_full_content_beyond_preview_limits_and_binary() {
-    let dir = TempDir::new("workspace commit binary invalidation");
+    let dir = TempDir::new("zone commit binary invalidation");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "binary.bin", [0u8, 1, 2, 3, 4, 5, 6, 7]);
@@ -426,9 +426,9 @@ async fn review_hashes_full_content_beyond_preview_limits_and_binary() {
     write(&root, "binary.bin", [0u8, 9, 8, 7, 6, 5, 4, 3]);
     write(&root, "large.txt", b"0123456789ABCDEF".to_vec());
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
-    config.workspaces.preview_limit_bytes =
+    config.zones.preview_limit_bytes =
         omp_bot::config::PreviewLimitBytes::new(4).expect("测试上限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
@@ -450,7 +450,7 @@ async fn review_hashes_full_content_beyond_preview_limits_and_binary() {
 
 #[tokio::test]
 async fn empty_message_and_open_request_surface_are_rejected_without_writes() {
-    let dir = TempDir::new("workspace commit empty message");
+    let dir = TempDir::new("zone commit empty message");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -458,7 +458,7 @@ async fn empty_message_and_open_request_surface_are_rejected_without_writes() {
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
     write(&root, "file.txt", "pending\n");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -477,9 +477,9 @@ async fn empty_message_and_open_request_surface_are_rejected_without_writes() {
 
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         &json!({
-            "workspace": root,
+            "zone": root,
             "message": "valid",
             "reviewToken": token,
             "extra": true,
@@ -491,9 +491,9 @@ async fn empty_message_and_open_request_surface_are_rejected_without_writes() {
 
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/commit?workspace=x",
+        "/api/zones/commit?zone=x",
         &json!({
-            "workspace": root,
+            "zone": root,
             "message": "valid",
             "reviewToken": token,
         })
@@ -513,7 +513,7 @@ async fn empty_message_and_open_request_surface_are_rejected_without_writes() {
 
 #[tokio::test]
 async fn hook_rejection_keeps_the_staged_index_and_reports_git_output() {
-    let dir = TempDir::new("workspace commit hook rejection");
+    let dir = TempDir::new("zone commit hook rejection");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -528,7 +528,7 @@ async fn hook_rejection_keeps_the_staged_index_and_reports_git_output() {
         "#!/bin/sh\necho 'hook rejected <script>window.__pwned = 1</script>' >&2\nexit 1\n",
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -557,7 +557,7 @@ async fn hook_rejection_keeps_the_staged_index_and_reports_git_output() {
         fs::read_to_string(root.join("file.txt"))
             .expect("读取文件")
             .contains("pending"),
-        "工作区内容不能被失败流程改写"
+        "工作树内容不能被失败流程改写"
     );
     let after = git_status(&server, &root).await;
     assert_eq!(
@@ -574,7 +574,7 @@ async fn hook_rejection_keeps_the_staged_index_and_reports_git_output() {
 
 #[tokio::test]
 async fn first_commit_uses_empty_tree_and_commits_staged_and_untracked_files() {
-    let dir = TempDir::new("workspace commit unborn head");
+    let dir = TempDir::new("zone commit unborn head");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, ".gitignore", "*.log\n");
@@ -583,7 +583,7 @@ async fn first_commit_uses_empty_tree_and_commits_staged_and_untracked_files() {
     write(&root, "untracked.txt", "untracked before first commit\n");
     write(&root, "ignored.log", "must stay ignored\n");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -623,12 +623,12 @@ async fn first_commit_uses_empty_tree_and_commits_staged_and_untracked_files() {
 
 #[tokio::test]
 async fn plain_directory_detached_head_conflicts_and_unfinished_flows_are_blocked() {
-    let dir = TempDir::new("workspace commit blocked states");
+    let dir = TempDir::new("zone commit blocked states");
     let plain = dir.path().join("plain");
     fs::create_dir_all(&plain).expect("创建普通目录");
     write(&plain, "file.txt", "plain content\n");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &plain).await;
 
@@ -747,7 +747,7 @@ async fn plain_directory_detached_head_conflicts_and_unfinished_flows_are_blocke
 
 #[tokio::test]
 async fn nested_repositories_and_submodules_do_not_leak_internal_files() {
-    let dir = TempDir::new("workspace commit nested repositories");
+    let dir = TempDir::new("zone commit nested repositories");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "top.txt", "top\n");
@@ -798,7 +798,7 @@ async fn nested_repositories_and_submodules_do_not_leak_internal_files() {
         .trim()
         .to_string();
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -853,7 +853,7 @@ async fn nested_repositories_and_submodules_do_not_leak_internal_files() {
         fs::read_to_string(sub.join("dirty-only.txt"))
             .expect("子模块内部文件仍在")
             .contains("uncommitted"),
-        "提交父仓库不能改写子模块内部工作区"
+        "提交父仓库不能改写子模块内部工作树"
     );
     assert_eq!(
         git_stdout(&sub, &["status", "--porcelain=v1"]),
@@ -869,7 +869,7 @@ async fn nested_repositories_and_submodules_do_not_leak_internal_files() {
 
 #[tokio::test]
 async fn concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel() {
-    let dir = TempDir::new("workspace commit concurrency");
+    let dir = TempDir::new("zone commit concurrency");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -884,19 +884,19 @@ async fn concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel() {
         &format!("#!/bin/sh\necho started > '{hook_marker_for_shell}'\nsleep 2\n"),
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
     let token = review_token(&status);
     let request = json!({
-        "workspace": root,
+        "zone": root,
         "message": "one accepted commit",
         "reviewToken": token,
     })
     .to_string();
 
-    let first = OpenJsonRequest::submit(server.addr(), "/api/workspaces/commit", &request).await;
+    let first = OpenJsonRequest::submit(server.addr(), "/api/zones/commit", &request).await;
     assert!(
         wait_until(Duration::from_secs(10), || hook_marker.exists()).await,
         "第一条提交必须真的进入执行"
@@ -954,7 +954,7 @@ async fn concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel() {
 
 #[tokio::test]
 async fn path_aliases_of_the_same_repository_share_one_write_qualification() {
-    let dir = TempDir::new("workspace commit path aliases");
+    let dir = TempDir::new("zone commit path aliases");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -964,11 +964,11 @@ async fn path_aliases_of_the_same_repository_share_one_write_qualification() {
 
     // 同一个实际仓库的另一种写法（结尾分隔符）：登记仍只有一项，请求可以经别名到达。
     let alias = format!("{}\\", root.display());
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     fs::write(
         &registry,
         serde_json::to_string(&json!({
-            "workspaces": [{ "path": root.to_string_lossy() }],
+            "zones": [{ "path": root.to_string_lossy() }],
         }))
         .expect("序列化登记文件"),
     )
@@ -988,9 +988,9 @@ async fn path_aliases_of_the_same_repository_share_one_write_qualification() {
     let alias_path = PathBuf::from(&alias);
     let first = OpenJsonRequest::submit(
         server.addr(),
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         &json!({
-            "workspace": root,
+            "zone": root,
             "message": "through canonical path",
             "reviewToken": token,
         })
@@ -1022,7 +1022,7 @@ async fn path_aliases_of_the_same_repository_share_one_write_qualification() {
 
 #[tokio::test]
 async fn configured_timeout_stops_git_and_its_children_then_releases_the_repository() {
-    let dir = TempDir::new("workspace commit timeout");
+    let dir = TempDir::new("zone commit timeout");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -1035,7 +1035,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
         "#!/bin/sh\necho 'hook started' >&2\n( sleep 8; echo child-alive > child-marker.txt ) &\nsleep 8\n",
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
         omp_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
@@ -1046,7 +1046,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     let head_before = head_oid(&root);
 
     let request = json!({
-        "workspace": root,
+        "zone": root,
         "message": "blocked hook",
         "reviewToken": token,
     })
@@ -1054,7 +1054,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     let pending = tokio::spawn({
         let addr = server.addr();
         let request = request.clone();
-        async move { post_json_over_tcp(addr, "/api/workspaces/commit", &request).await }
+        async move { post_json_over_tcp(addr, "/api/zones/commit", &request).await }
     });
     // 等待 commit 真正开始；此时仓库资格被持有。
     assert!(
@@ -1114,12 +1114,12 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
 }
 
 #[tokio::test]
-async fn workspace_git_qualification_is_independent_of_fixed_operation_execution() {
-    let fixtures = common::FixtureTree::new("workspace commit independent qualification");
+async fn zone_git_qualification_is_independent_of_fixed_operation_execution() {
+    let fixtures = common::FixtureTree::new("zone commit independent qualification");
     let script = fixtures.script("long-running.bat");
     let mut config = common::config(&script, &fixtures.operations());
-    let registry = fixtures.root().join("workspaces.json");
-    config.workspaces.registry_file = registry.clone();
+    let registry = fixtures.root().join("zones.json");
+    config.zones.registry_file = registry.clone();
     let root = fixtures.root().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -1156,7 +1156,7 @@ async fn workspace_git_qualification_is_independent_of_fixed_operation_execution
     .await;
     assert_eq!(
         response.status, 200,
-        "workspace Git 资格不能与固定操作的执行资格混同：{}",
+        "zone Git 资格不能与固定操作的执行资格混同：{}",
         response.body
     );
 
@@ -1165,15 +1165,15 @@ async fn workspace_git_qualification_is_independent_of_fixed_operation_execution
 }
 
 #[tokio::test]
-async fn inaccessible_workspace_rejects_commit_and_reports_read_failure() {
-    let dir = TempDir::new("workspace commit missing directory");
+async fn inaccessible_zone_rejects_commit_and_reports_read_failure() {
+    let dir = TempDir::new("zone commit missing directory");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
     git_ok(&root, &["add", "--all"]);
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -1184,22 +1184,22 @@ async fn inaccessible_workspace_rejects_commit_and_reports_read_failure() {
         "目录消失必须明确报错而不是空状态：{}",
         response.body
     );
-    assert_eq!(body(&response)["code"], json!("workspace-unavailable"));
+    assert_eq!(body(&response)["code"], json!("zone-unavailable"));
 
-    let response = submit_commit(&server, &root, "deleted workspace", "old-token").await;
+    let response = submit_commit(&server, &root, "deleted zone", "old-token").await;
     assert_eq!(response.status, 404);
-    assert_eq!(body(&response)["code"], json!("workspace-unavailable"));
+    assert_eq!(body(&response)["code"], json!("zone-unavailable"));
 
     // 路径被替换成普通文件同样不是可提交的干净事实。
     fs::write(&root, "not a directory").expect("用文件替换目录");
-    let response = submit_commit(&server, &root, "replaced workspace", "old-token").await;
+    let response = submit_commit(&server, &root, "replaced zone", "old-token").await;
     assert_eq!(response.status, 404);
-    assert_eq!(body(&response)["code"], json!("workspace-unavailable"));
+    assert_eq!(body(&response)["code"], json!("zone-unavailable"));
 }
 
 #[tokio::test]
 async fn missing_upstream_does_not_block_local_commit_and_configuration_is_unchanged() {
-    let dir = TempDir::new("workspace commit no upstream");
+    let dir = TempDir::new("zone commit no upstream");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -1216,7 +1216,7 @@ async fn missing_upstream_does_not_block_local_commit_and_configuration_is_uncha
         "测试仓库不应配置 upstream"
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -1242,7 +1242,7 @@ async fn missing_upstream_does_not_block_local_commit_and_configuration_is_uncha
 
 #[tokio::test]
 async fn editor_and_signing_conditions_fail_or_are_not_invoked_without_overriding_policy() {
-    let dir = TempDir::new("workspace commit noninteractive");
+    let dir = TempDir::new("zone commit noninteractive");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -1264,7 +1264,7 @@ async fn editor_and_signing_conditions_fail_or_are_not_invoked_without_overridin
     );
     write(&root, "file.txt", "editor must not run\n");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -1318,7 +1318,7 @@ async fn editor_and_signing_conditions_fail_or_are_not_invoked_without_overridin
 
 #[tokio::test]
 async fn preview_limitations_do_not_change_commit_eligibility_or_the_real_tree() {
-    let dir = TempDir::new("workspace commit preview limits");
+    let dir = TempDir::new("zone commit preview limits");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "base.txt", "base\n");
@@ -1330,9 +1330,9 @@ async fn preview_limitations_do_not_change_commit_eligibility_or_the_real_tree()
     write(&root, "large.txt", &large);
     write(&root, "binary.bin", binary);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
-    config.workspaces.preview_limit_bytes =
+    config.zones.preview_limit_bytes =
         omp_bot::config::PreviewLimitBytes::new(8).expect("测试上限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
@@ -1377,7 +1377,7 @@ async fn preview_limitations_do_not_change_commit_eligibility_or_the_real_tree()
 
 #[tokio::test]
 async fn credential_conditions_do_not_open_an_interactive_prompt() {
-    let dir = TempDir::new("workspace commit credentials");
+    let dir = TempDir::new("zone commit credentials");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
@@ -1394,7 +1394,7 @@ async fn credential_conditions_do_not_open_an_interactive_prompt() {
         "#!/bin/sh\nif printf 'protocol=https\\nhost=example.invalid\\n\\n' | git credential fill >/dev/null 2>&1; then\n  echo 'unexpected credential' >&2\n  exit 1\nfi\nexit 0\n",
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
         omp_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
@@ -1423,14 +1423,14 @@ async fn credential_conditions_do_not_open_an_interactive_prompt() {
 
 #[tokio::test]
 async fn clean_repository_rejects_direct_commit_without_creating_an_empty_commit() {
-    let dir = TempDir::new("workspace commit clean");
+    let dir = TempDir::new("zone commit clean");
     let root = dir.path().join("repository");
     init_repository(&root);
     write(&root, "file.txt", "base\n");
     git_ok(&root, &["add", "--all"]);
     git_ok(&root, &["commit", "--quiet", "-m", "initial"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;

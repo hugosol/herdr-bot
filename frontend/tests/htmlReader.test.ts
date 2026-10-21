@@ -7,18 +7,18 @@ import {
   readerAssetUrl,
 } from '../src/htmlReader'
 
-const WORKSPACE = 'C:\\work\\project'
+const ZONE = 'C:\\work\\project'
 const ORIGIN = 'http://localhost:8787'
-const PAGE_URL = readerAssetUrl(WORKSPACE, 'lessons/page.html', ORIGIN)
+const PAGE_URL = readerAssetUrl(ZONE, 'lessons/page.html', ORIGIN)
 
 describe('HTML 阅读模式文档', () => {
-  it('构造 workspace 原始资源地址并保留相对目录结构', () => {
-    expect(readerAssetUrl(WORKSPACE, 'lessons/page one.html', ORIGIN)).toBe(
-      'http://localhost:8787/api/workspaces/reader/433a5c776f726b5c70726f6a656374/lessons/page%20one.html',
+  it('构造 zone 原始资源地址并保留相对目录结构', () => {
+    expect(readerAssetUrl(ZONE, 'lessons/page one.html', ORIGIN)).toBe(
+      'http://localhost:8787/api/zones/reader/433a5c776f726b5c70726f6a656374/lessons/page%20one.html',
     )
   })
 
-  it('移除可执行、嵌入、表单与外部资源，只保留 workspace 内的相对资源', () => {
+  it('移除可执行、嵌入、表单与外部资源，只保留 zone 内的相对资源', () => {
     const source = `<!doctype html>
 <html><head>
   <meta http-equiv="refresh" content="0;url=https://outside.example">
@@ -74,14 +74,14 @@ describe('HTML 阅读模式文档', () => {
 })
 
 describe('HTML 阅读模式链接', () => {
-  it('区分页内锚点、workspace HTML、外部网页与需拦截的本地链接', () => {
+  it('区分页内锚点、zone HTML、外部网页与需拦截的本地链接', () => {
     expect(classifyHtmlReaderLink('#section', PAGE_URL)).toEqual({ kind: 'anchor' })
     expect(classifyHtmlReaderLink('0006-next.html', PAGE_URL)).toEqual({
-      kind: 'workspace',
+      kind: 'zone',
       path: 'lessons/0006-next.html',
     })
     expect(classifyHtmlReaderLink('../homework/evidence.html', PAGE_URL)).toEqual({
-      kind: 'workspace',
+      kind: 'zone',
       path: 'homework/evidence.html',
     })
     expect(classifyHtmlReaderLink('https://example.com/article', PAGE_URL)).toEqual({

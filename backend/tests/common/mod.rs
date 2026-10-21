@@ -240,8 +240,8 @@ pub fn config_with_countdown(
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
         sessions: omp_bot::SessionsConfig::default(),
-        // workspace 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
-        workspaces: omp_bot::WorkspacesConfig::default(),
+        // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
+        zones: omp_bot::ZonesConfig::default(),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: omp_bot::GitConfig::default(),
     }

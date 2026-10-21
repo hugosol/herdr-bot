@@ -1,5 +1,7 @@
 # HTML 阅读模式只支持静态内容并沿用 workspace 资源边界
 
+> 术语更新（2026-10-21）：本文的 workspace 现称 zone；原因与硬切换范围见 [ADR 0009](./0009-rename-workspace-to-zone-for-herdr.md)。正文保留原文。
+
 - 状态：accepted
 - 日期：2026-10-21
 

@@ -1,11 +1,11 @@
-//! workspace 文件事件监听、按 workspace 合并节流与监听健康上报。
+//! zone 文件事件监听、按 zone 合并节流与监听健康上报。
 //!
-//! 本模块只观察**本地**状态：每个已登记 workspace（以及 Git 工作树外部元数据目录）各有一条真实
-//! 文件系统监听，事件按 workspace 合并成一个节流窗口，窗口结束补一次刷新通知。它不查询远端、
+//! 本模块只观察**本地**状态：每个已登记 zone（以及 Git 工作树外部元数据目录）各有一条真实
+//! 文件系统监听，事件按 zone 合并成一个节流窗口，窗口结束补一次刷新通知。它不查询远端、
 //! 不替代手动读取，也不把「事件已合并」说成「Git 查询一定在窗口内完成」。
 //!
 //! 页面读取仍然走既有公开读取接口；本模块只通过一条只读 SSE 长连接下发「可以重新读取」的通知与
-//! 监听健康。一个 workspace 只有一条监听和一份节流状态，多个观察者共享同一份通知，不会各自放大刷新。
+//! 监听健康。一个 zone 只有一条监听和一份节流状态，多个观察者共享同一份通知，不会各自放大刷新。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -21,9 +21,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval_at, Instant};
 
-use crate::workspaces::RegisteredWorkspace;
+use crate::zones::RegisteredZone;
 
-/// 一个 workspace 的自动刷新节流状态。
+/// 一个 zone 的自动刷新节流状态。
 ///
 /// 语义只有三条：没有等待窗口时立即刷新；窗口内的事件只记一次待刷新；窗口结束补一次。
 /// 窗口从**上一次刷新**（立即刷新或补刷新）起算，因此连续写入最多每 `interval` 刷新一次，
@@ -104,11 +104,11 @@ impl Health {
     }
 }
 
-/// 一个 workspace 在首帧里的监听视图：健康、最近一次自动刷新时刻与刷新代数。
+/// 一个 zone 在首帧里的监听视图：健康、最近一次自动刷新时刻与刷新代数。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceWatchView {
-    pub workspace: String,
+pub struct ZoneWatchView {
+    pub zone: String,
     pub health: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -117,19 +117,19 @@ pub struct WorkspaceWatchView {
     pub generation: u64,
 }
 
-/// `snapshot` 帧的内容：当前生效的刷新间隔与全部被监听 workspace。
+/// `snapshot` 帧的内容：当前生效的刷新间隔与全部被监听 zone。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceWatchSnapshot {
+pub struct ZoneWatchSnapshot {
     pub interval_seconds: u32,
-    pub workspaces: Vec<WorkspaceWatchView>,
+    pub zones: Vec<ZoneWatchView>,
 }
 
 /// 一次自动刷新通知。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RefreshData {
-    workspace: String,
+    zone: String,
     at: u64,
     generation: u64,
 }
@@ -138,7 +138,7 @@ struct RefreshData {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HealthData {
-    workspace: String,
+    zone: String,
     health: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
@@ -148,16 +148,16 @@ struct HealthData {
 
 /// 广播给所有观察者的增量帧。
 #[derive(Debug, Clone)]
-pub enum WorkspaceWatchFrame {
-    /// 该 workspace 到达一个节流窗口的刷新点。
+pub enum ZoneWatchFrame {
+    /// 该 zone 到达一个节流窗口的刷新点。
     Refresh {
-        workspace: String,
+        zone: String,
         at: u64,
         generation: u64,
     },
-    /// 该 workspace 的监听健康发生变化（建立成功或失败）。
+    /// 该 zone 的监听健康发生变化（建立成功或失败）。
     Health {
-        workspace: String,
+        zone: String,
         health: &'static str,
         message: Option<String>,
         at: u64,
@@ -166,22 +166,22 @@ pub enum WorkspaceWatchFrame {
 }
 
 /// 把广播帧组装成 SSE 命名事件。
-pub fn frame_event(frame: WorkspaceWatchFrame) -> Event {
+pub fn frame_event(frame: ZoneWatchFrame) -> Event {
     match frame {
-        WorkspaceWatchFrame::Refresh {
-            workspace,
+        ZoneWatchFrame::Refresh {
+            zone,
             at,
             generation,
         } => named_event(
             "refresh",
             &RefreshData {
-                workspace,
+                zone,
                 at,
                 generation,
             },
         ),
-        WorkspaceWatchFrame::Health {
-            workspace,
+        ZoneWatchFrame::Health {
+            zone,
             health,
             message,
             at,
@@ -189,7 +189,7 @@ pub fn frame_event(frame: WorkspaceWatchFrame) -> Event {
         } => named_event(
             "health",
             &HealthData {
-                workspace,
+                zone,
                 health,
                 message,
                 at,
@@ -200,7 +200,7 @@ pub fn frame_event(frame: WorkspaceWatchFrame) -> Event {
 }
 
 /// 把首帧（或落后太多后的新快照）组装成带重连提示的 `snapshot` 事件。
-pub fn snapshot_event(snapshot: WorkspaceWatchSnapshot) -> Event {
+pub fn snapshot_event(snapshot: ZoneWatchSnapshot) -> Event {
     named_event("snapshot", &snapshot).retry(Duration::from_secs(2))
 }
 
@@ -218,11 +218,11 @@ fn now_millis() -> u64 {
         .unwrap_or_default()
 }
 
-/// 一个 workspace 的共享状态：监听任务写，所有读连接读。
+/// 一个 zone 的共享状态：监听任务写，所有读连接读。
 struct Shared {
-    workspace: String,
+    zone: String,
     inner: Mutex<SharedInner>,
-    hub: broadcast::Sender<WorkspaceWatchFrame>,
+    hub: broadcast::Sender<ZoneWatchFrame>,
 }
 
 struct SharedInner {
@@ -233,11 +233,11 @@ struct SharedInner {
 
 impl Shared {
     fn new(
-        workspace: String,
-        hub: broadcast::Sender<WorkspaceWatchFrame>,
+        zone: String,
+        hub: broadcast::Sender<ZoneWatchFrame>,
     ) -> Self {
         Self {
-            workspace,
+            zone,
             inner: Mutex::new(SharedInner {
                 health: Health::Live,
                 last_refresh_at: None,
@@ -248,12 +248,12 @@ impl Shared {
     }
 
     fn error(
-        workspace: String,
+        zone: String,
         message: String,
-        hub: broadcast::Sender<WorkspaceWatchFrame>,
+        hub: broadcast::Sender<ZoneWatchFrame>,
     ) -> Self {
         Self {
-            workspace,
+            zone,
             inner: Mutex::new(SharedInner {
                 health: Health::Error(message),
                 last_refresh_at: None,
@@ -263,10 +263,10 @@ impl Shared {
         }
     }
 
-    fn view(&self) -> WorkspaceWatchView {
+    fn view(&self) -> ZoneWatchView {
         let inner = self.inner.lock().expect("监听状态锁不会被毒化");
-        WorkspaceWatchView {
-            workspace: self.workspace.clone(),
+        ZoneWatchView {
+            zone: self.zone.clone(),
             health: inner.health.label(),
             message: inner.health.message(),
             last_refresh_at: inner.last_refresh_at,
@@ -283,8 +283,8 @@ impl Shared {
             inner.last_refresh_at = Some(at);
             (at, inner.generation)
         };
-        let _ = self.hub.send(WorkspaceWatchFrame::Refresh {
-            workspace: self.workspace.clone(),
+        let _ = self.hub.send(ZoneWatchFrame::Refresh {
+            zone: self.zone.clone(),
             at,
             generation,
         });
@@ -302,7 +302,7 @@ impl Shared {
         self.publish_health();
     }
 
-    /// 把当前健康状态下发一次：监听建立成功，或观察者在连接上时新登记了 workspace。
+    /// 把当前健康状态下发一次：监听建立成功，或观察者在连接上时新登记了 zone。
     fn publish_health(&self) {
         let (health, message, at, generation) = {
             let inner = self.inner.lock().expect("监听状态锁不会被毒化");
@@ -313,8 +313,8 @@ impl Shared {
                 inner.generation,
             )
         };
-        let _ = self.hub.send(WorkspaceWatchFrame::Health {
-            workspace: self.workspace.clone(),
+        let _ = self.hub.send(ZoneWatchFrame::Health {
+            zone: self.zone.clone(),
             health,
             message,
             at,
@@ -328,14 +328,14 @@ struct WatchEntry {
     task: Option<JoinHandle<()>>,
 }
 
-/// workspace 监听的拥有者：每个 workspace 只有一条真实监听与一份节流状态。
-pub struct WorkspaceWatchManager {
+/// zone 监听的拥有者：每个 zone 只有一条真实监听与一份节流状态。
+pub struct ZoneWatchManager {
     interval: Duration,
-    hub: broadcast::Sender<WorkspaceWatchFrame>,
+    hub: broadcast::Sender<ZoneWatchFrame>,
     watches: AsyncMutex<BTreeMap<String, WatchEntry>>,
 }
 
-impl WorkspaceWatchManager {
+impl ZoneWatchManager {
     pub fn new(interval: Duration) -> Self {
         let (hub, _) = broadcast::channel(FRAME_BUFFER);
         Self {
@@ -349,25 +349,25 @@ impl WorkspaceWatchManager {
         self.interval.as_secs().try_into().unwrap_or(u32::MAX)
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<WorkspaceWatchFrame> {
+    pub fn subscribe(&self) -> broadcast::Receiver<ZoneWatchFrame> {
         self.hub.subscribe()
     }
 
-    pub async fn snapshot(&self) -> WorkspaceWatchSnapshot {
+    pub async fn snapshot(&self) -> ZoneWatchSnapshot {
         let watches = self.watches.lock().await;
-        WorkspaceWatchSnapshot {
+        ZoneWatchSnapshot {
             interval_seconds: self.interval_seconds(),
-            workspaces: watches.values().map(|entry| entry.shared.view()).collect(),
+            zones: watches.values().map(|entry| entry.shared.view()).collect(),
         }
     }
 
     /// 对齐当前登记列表：新登记的开始监听，取消登记的停止监听；监听失败保留明确的错误状态。
     ///
-    /// 每个 workspace 只建一条监听，多个观察者共享它；监听失败后不会自动重启，新的订阅或登记
+    /// 每个 zone 只建一条监听，多个观察者共享它；监听失败后不会自动重启，新的订阅或登记
     /// 才可能重新尝试建立监听。
-    pub async fn reconcile(&self, workspaces: &[RegisteredWorkspace]) {
+    pub async fn reconcile(&self, zones: &[RegisteredZone]) {
         let mut watches = self.watches.lock().await;
-        let registered: BTreeSet<&str> = workspaces.iter().map(|workspace| workspace.path.as_str()).collect();
+        let registered: BTreeSet<&str> = zones.iter().map(|zone| zone.path.as_str()).collect();
         let stale: Vec<String> = watches
             .keys()
             .filter(|path| !registered.contains(path.as_str()))
@@ -381,15 +381,15 @@ impl WorkspaceWatchManager {
             }
         }
 
-        for workspace in workspaces {
+        for zone in zones {
             let already_watching = watches
-                .get(&workspace.path)
+                .get(&zone.path)
                 .is_some_and(|entry| entry.task.is_some());
             if already_watching {
                 continue;
             }
             match setup_watch(
-                workspace.path.clone(),
+                zone.path.clone(),
                 self.interval,
                 self.hub.clone(),
             )
@@ -397,7 +397,7 @@ impl WorkspaceWatchManager {
             {
                 Ok((shared, task)) => {
                     watches.insert(
-                        workspace.path.clone(),
+                        zone.path.clone(),
                         WatchEntry {
                             shared: shared.clone(),
                             task: Some(task),
@@ -407,12 +407,12 @@ impl WorkspaceWatchManager {
                 }
                 Err(message) => {
                     let shared = Arc::new(Shared::error(
-                        workspace.path.clone(),
+                        zone.path.clone(),
                         message,
                         self.hub.clone(),
                     ));
                     watches.insert(
-                        workspace.path.clone(),
+                        zone.path.clone(),
                         WatchEntry {
                             shared: shared.clone(),
                             task: None,
@@ -430,19 +430,19 @@ struct PreparedWatcher {
     identities: Vec<WatchedIdentity>,
 }
 
-/// 建立真实监听：workspace 根递归监听，Git 工作树的外部元数据目录另外递归监听。
+/// 建立真实监听：zone 根递归监听，Git 工作树的外部元数据目录另外递归监听。
 async fn setup_watch(
-    workspace: String,
+    zone: String,
     interval: Duration,
-    hub: broadcast::Sender<WorkspaceWatchFrame>,
+    hub: broadcast::Sender<ZoneWatchFrame>,
 ) -> Result<(Arc<Shared>, JoinHandle<()>), String> {
-    let root = PathBuf::from(&workspace);
+    let root = PathBuf::from(&zone);
     let watch_root = root.clone();
     let (sender, receiver) = mpsc::unbounded_channel();
     let prepared = tokio::task::spawn_blocking(move || prepare_watcher(&watch_root, sender))
         .await
         .map_err(|_| "建立文件系统监听的任务异常结束。".to_string())??;
-    let shared = Arc::new(Shared::new(workspace, hub));
+    let shared = Arc::new(Shared::new(zone, hub));
     let task = tokio::spawn(run_watch(
         Arc::clone(&shared),
         receiver,
@@ -477,8 +477,8 @@ fn prepare_watcher(
 
     watcher
         .watch(root, RecursiveMode::Recursive)
-        .map_err(|error| format!("无法监听 workspace 目录：{error}"))?;
-    let mut identities = vec![watched_identity(root, "workspace 目录")?];
+        .map_err(|error| format!("无法监听 zone 目录：{error}"))?;
+    let mut identities = vec![watched_identity(root, "zone 目录")?];
 
     if let Some(git_dir) = external_git_dir(root) {
         watcher
@@ -492,12 +492,12 @@ fn prepare_watcher(
     Ok(PreparedWatcher { watcher, identities })
 }
 
-/// Git 工作树根的 `.git` 是文件时，真正的元数据目录可能在 workspace 之外；返回它以便一起监听。
+/// Git 工作树根的 `.git` 是文件时，真正的元数据目录可能在 zone 之外；返回它以便一起监听。
 fn external_git_dir(root: &Path) -> Option<PathBuf> {
     let entry = root.join(".git");
     let metadata = fs::metadata(&entry).ok()?;
     if !metadata.is_file() {
-        // `.git` 是目录（或不存在）：workspace 根的递归监听已经覆盖它。
+        // `.git` 是目录（或不存在）：zone 根的递归监听已经覆盖它。
         return None;
     }
     let content = fs::read_to_string(&entry).ok()?;
@@ -536,7 +536,7 @@ fn watched_identity(path: &Path, label: &'static str) -> Result<WatchedIdentity,
     }
     let canonical = fs::canonicalize(path)
         .map_err(|error| format!("{label}无法解析，自动更新已停止：{error}"))?;
-    let canonical = crate::workspaces::display_path(&canonical);
+    let canonical = crate::zones::display_path(&canonical);
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;

@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
-import { WorkspaceBrowser } from './WorkspaceBrowser'
+import { ZoneBrowser } from './ZoneBrowser'
 import {
-  fetchWorkspaceOverview,
-  type WorkspaceSummary,
+  fetchZoneOverview,
+  type ZoneSummary,
 } from './gitApi'
-import { useWorkspaceWatch } from './useWorkspaceWatch'
+import { useZoneWatch } from './useZoneWatch'
 import {
-  createWorkspace,
-  fetchWorkspaces,
-  registerWorkspace,
-  unregisterWorkspace,
-  type WorkspaceCreation,
-  type WorkspaceRegistration,
-  type WorkspaceResult,
-} from './workspaceApi'
+  createZone,
+  fetchZones,
+  registerZone,
+  unregisterZone,
+  type ZoneCreation,
+  type ZoneRegistration,
+  type ZoneResult,
+} from './zoneApi'
 import {
   describeWatchProblem,
-  type WorkspaceWatchFeed,
-} from './workspaceWatch'
+  type ZoneWatchFeed,
+} from './zoneWatch'
 
 type Feedback = {
   kind: 'success' | 'error'
@@ -26,14 +26,14 @@ type Feedback = {
 }
 
 /** 把一次失败归一化成面向使用者的说明；未得到可用响应时明确说“无法确认”。 */
-function describeFailure(result: WorkspaceResult, action: string): string {
+function describeFailure(result: ZoneResult, action: string): string {
   return result.kind === 'rejected'
     ? result.message
-    : `无法确认 workspace ${action}结果：请求没有得到可用响应。`
+    : `无法确认 zone ${action}结果：请求没有得到可用响应。`
 }
 
 /**
- * 文件列表：workspace 登记列表的入口。
+ * 文件列表：zone 登记列表的入口。
  *
  * 路径指 omp-bot 服务所在电脑上的目录，不是手机或浏览器所在设备；页面没有客户端文件选择器。
  * 每次进入这个顶层入口都重新读取后端列表，因此另一台设备新增的登记会在这里出现；登记成功
@@ -44,32 +44,32 @@ export function FileListPanel({
   watchFeed,
 }: {
   active: boolean
-  watchFeed?: WorkspaceWatchFeed
+  watchFeed?: ZoneWatchFeed
 }) {
-  const watch = useWorkspaceWatch(watchFeed, active)
-  const [workspaces, setWorkspaces] = useState<WorkspaceRegistration[] | null>(null)
+  const watch = useZoneWatch(watchFeed, active)
+  const [zones, setZones] = useState<ZoneRegistration[] | null>(null)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-  const [creation, setCreation] = useState<WorkspaceCreation>({ available: false })
+  const [creation, setCreation] = useState<ZoneCreation>({ available: false })
   const [pending, setPending] = useState<
     'register' | 'create' | `remove:${string}` | null
   >(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
-  // 当前进入的 workspace；顶层 tab 往返期间保持，返回列表时才清除。
-  const [openWorkspace, setOpenWorkspace] = useState<string | null>(null)
-  // 每个 workspace 的待提交项数；只有后端确认过的事实才进入这里。
-  const [summaries, setSummaries] = useState<Map<string, WorkspaceSummary> | null>(null)
+  // 当前进入的 zone；顶层 tab 往返期间保持，返回列表时才清除。
+  const [openZone, setOpenZone] = useState<string | null>(null)
+  // 每个 zone 的待提交项数；只有后端确认过的事实才进入这里。
+  const [summaries, setSummaries] = useState<Map<string, ZoneSummary> | null>(null)
   const [overviewFailure, setOverviewFailure] = useState<string | null>(null)
   const overviewSequence = useRef(0)
 
   const loadOverview = useCallback(async () => {
     const sequence = overviewSequence.current + 1
     overviewSequence.current = sequence
-    const result = await fetchWorkspaceOverview()
+    const result = await fetchZoneOverview()
     if (overviewSequence.current !== sequence) return
     if (result.kind === 'ok') {
       setSummaries(new Map(result.value.map((summary) => [summary.path, summary])))
@@ -91,15 +91,15 @@ export function FileListPanel({
 
     let cancelled = false
     setLoading(true)
-    void fetchWorkspaces().then((result) => {
+    void fetchZones().then((result) => {
       if (cancelled) return
       setLoading(false)
       if (result.kind === 'ok') {
-        setWorkspaces(result.workspaces)
+        setZones(result.zones)
         setCreation(result.creation)
         setListFailure(null)
       } else {
-        setWorkspaces(null)
+        setZones(null)
         setCreation({ available: false })
         setListFailure(describeFailure(result, '列表读取'))
       }
@@ -110,15 +110,15 @@ export function FileListPanel({
     }
   }, [active, loadOverview])
 
-  // 自动更新通知到达时只重读角标概览：事件已由后端按 workspace 合并，页面不再自行节流。
-  const watchRevision = watch.workspaces.reduce(
+  // 自动更新通知到达时只重读角标概览：事件已由后端按 zone 合并，页面不再自行节流。
+  const watchRevision = watch.zones.reduce(
     (sum, entry) => sum + entry.generation,
     0,
   )
   useEffect(() => {
-    if (!active || openWorkspace !== null || watchRevision === 0) return
+    if (!active || openZone !== null || watchRevision === 0) return
     void loadOverview()
-  }, [active, openWorkspace, watchRevision, loadOverview])
+  }, [active, openZone, watchRevision, loadOverview])
 
   function openDialog(kind: 'register' | 'create') {
     setDialog(kind)
@@ -145,10 +145,10 @@ export function FileListPanel({
 
     setPending('register')
     setFormError(null)
-    const result = await registerWorkspace(candidate)
+    const result = await registerZone(candidate)
     setPending(null)
     if (result.kind === 'ok') {
-      setWorkspaces(result.workspaces)
+      setZones(result.zones)
       setCreation(result.creation)
       setListFailure(null)
       setDialog(null)
@@ -164,27 +164,27 @@ export function FileListPanel({
     event.preventDefault()
     const candidate = name.trim()
     if (candidate === '') {
-      setFormError('请填写新 workspace 的名称。')
+      setFormError('请填写新 zone 的名称。')
       return
     }
 
-    const previousPaths = new Set((workspaces ?? []).map((entry) => entry.path))
+    const previousPaths = new Set((zones ?? []).map((entry) => entry.path))
     setPending('create')
     setFormError(null)
-    const result = await createWorkspace(candidate)
+    const result = await createZone(candidate)
     setPending(null)
     if (result.kind === 'ok') {
-      const createdPath = result.workspaces.find(
+      const createdPath = result.zones.find(
         (entry) => !previousPaths.has(entry.path),
       )?.path
-      setWorkspaces(result.workspaces)
+      setZones(result.zones)
       setCreation(result.creation)
       setListFailure(null)
       setDialog(null)
       setName('')
       setFeedback({
         kind: 'success',
-        text: createdPath === undefined ? '已创建 workspace。' : `已创建：${createdPath}`,
+        text: createdPath === undefined ? '已创建 zone。' : `已创建：${createdPath}`,
       })
       void loadOverview()
     } else {
@@ -192,13 +192,13 @@ export function FileListPanel({
     }
   }
 
-  async function remove(registration: WorkspaceRegistration) {
+  async function remove(registration: ZoneRegistration) {
     setPending(`remove:${registration.path}`)
     setFeedback(null)
-    const result = await unregisterWorkspace(registration.path)
+    const result = await unregisterZone(registration.path)
     setPending(null)
     if (result.kind === 'ok') {
-      setWorkspaces(result.workspaces)
+      setZones(result.zones)
       setCreation(result.creation)
       setListFailure(null)
       setFeedback({
@@ -217,8 +217,8 @@ export function FileListPanel({
     if (summary.error !== undefined) {
       return (
         <span
-          className="workspace-badge workspace-badge--error"
-          data-testid="workspace-badge"
+          className="zone-badge zone-badge--error"
+          data-testid="zone-badge"
           title={summary.error}
         >
           待提交状态不可用
@@ -234,8 +234,8 @@ export function FileListPanel({
     }
     return (
       <span
-        className="workspace-badge"
-        data-testid="workspace-badge"
+        className="zone-badge"
+        data-testid="zone-badge"
         data-conflict={summary.conflict ? 'true' : undefined}
       >
         {summary.pendingCount} 项待提交
@@ -244,23 +244,23 @@ export function FileListPanel({
   }
 
   // 列表上的监听问题只针对当前登记项：取消登记后残留的旧健康状态不应继续困扰页面。
-  const registeredPaths = new Set((workspaces ?? []).map((registration) => registration.path))
+  const registeredPaths = new Set((zones ?? []).map((registration) => registration.path))
   const failedWatch =
-    watch.workspaces.find(
-      (entry) => entry.health === 'error' && registeredPaths.has(entry.workspace),
+    watch.zones.find(
+      (entry) => entry.health === 'error' && registeredPaths.has(entry.zone),
     ) ?? null
   const listProblem =
-    workspaces === null || workspaces.length === 0
+    zones === null || zones.length === 0
       ? null
-      : describeWatchProblem(watch.connection, failedWatch, failedWatch?.workspace)
+      : describeWatchProblem(watch.connection, failedWatch, failedWatch?.zone)
 
-  if (openWorkspace !== null) {
+  if (openZone !== null) {
     const watchEntry =
-      watch.workspaces.find((entry) => entry.workspace === openWorkspace) ?? null
+      watch.zones.find((entry) => entry.zone === openZone) ?? null
     return (
-      <section className="workspaces" data-testid="file-list">
-        <WorkspaceBrowser
-          workspace={openWorkspace}
+      <section className="zones" data-testid="file-list">
+        <ZoneBrowser
+          zone={openZone}
           active={active}
           watch={{
             entry: watchEntry,
@@ -268,7 +268,7 @@ export function FileListPanel({
             generation: watchEntry?.generation ?? 0,
           }}
           onBack={() => {
-            setOpenWorkspace(null)
+            setOpenZone(null)
             void loadOverview()
           }}
         />
@@ -277,11 +277,11 @@ export function FileListPanel({
   }
 
   return (
-    <section className="workspaces" data-testid="file-list">
-      <div className="workspace-actions">
+    <section className="zones" data-testid="file-list">
+      <div className="zone-actions">
         <button
           type="button"
-          className="workspace-action workspace-action--register"
+          className="zone-action zone-action--register"
           data-testid="register-open"
           disabled={pending !== null}
           onClick={() => openDialog('register')}
@@ -290,10 +290,10 @@ export function FileListPanel({
         </button>
         <button
           type="button"
-          className="workspace-action workspace-action--create"
+          className="zone-action zone-action--create"
           data-testid="create-open"
           disabled={
-            pending !== null || workspaces === null || !creation.available
+            pending !== null || zones === null || !creation.available
           }
           onClick={() => openDialog('create')}
         >
@@ -301,9 +301,9 @@ export function FileListPanel({
         </button>
       </div>
 
-      {workspaces !== null && !creation.available && (
-        <p className="workspace-note" data-testid="create-unavailable" role="note">
-          未配置 [workspaces] create_parent_directory；“新增”暂不可用。
+      {zones !== null && !creation.available && (
+        <p className="zone-note" data-testid="create-unavailable" role="note">
+          未配置 [zones] create_parent_directory；“新增”暂不可用。
         </p>
       )}
 
@@ -319,8 +319,8 @@ export function FileListPanel({
 
       {feedback !== null && (
         <p
-          className="workspace-feedback"
-          data-testid="workspace-feedback"
+          className="zone-feedback"
+          data-testid="zone-feedback"
           data-kind={feedback.kind}
           role={feedback.kind === 'error' ? 'alert' : 'status'}
         >
@@ -328,50 +328,50 @@ export function FileListPanel({
         </p>
       )}
 
-      <h2 className="workspaces__heading">已登记的 workspace</h2>
+      <h2 className="zones__heading">已登记的 zone</h2>
 
-      {loading && workspaces === null && (
-        <p className="workspaces__loading" data-testid="workspace-loading" role="status">
-          正在读取 workspace 登记列表……
+      {loading && zones === null && (
+        <p className="zones__loading" data-testid="zone-loading" role="status">
+          正在读取 zone 登记列表……
         </p>
       )}
 
       {listFailure !== null && (
-        <p className="workspace-error" data-testid="workspace-list-error" role="alert">
+        <p className="zone-error" data-testid="zone-list-error" role="alert">
           {listFailure}
         </p>
       )}
 
-      {overviewFailure !== null && workspaces !== null && workspaces.length > 0 && (
-        <p className="workspace-error" data-testid="workspace-overview-error" role="alert">
+      {overviewFailure !== null && zones !== null && zones.length > 0 && (
+        <p className="zone-error" data-testid="zone-overview-error" role="alert">
           {overviewFailure}
         </p>
       )}
 
-      {workspaces !== null &&
-        (workspaces.length === 0 ? (
-          <p className="workspaces__empty" data-testid="workspace-empty">
-            尚未登记 workspace。
+      {zones !== null &&
+        (zones.length === 0 ? (
+          <p className="zones__empty" data-testid="zone-empty">
+            尚未登记 zone。
           </p>
         ) : (
-          <ul className="workspace-list" data-testid="workspace-list">
-            {workspaces.map((registration) => (
-              <li key={registration.path} className="workspace-item" data-testid="workspace-item">
-                {/* 整行就是浏览入口：路径与角标都在按钮内部，点击行内任一非取消区域都会进入 workspace。 */}
+          <ul className="zone-list" data-testid="zone-list">
+            {zones.map((registration) => (
+              <li key={registration.path} className="zone-item" data-testid="zone-item">
+                {/* 整行就是浏览入口：路径与角标都在按钮内部，点击行内任一非取消区域都会进入 zone。 */}
                 <button
                   type="button"
-                  className="workspace-item__open"
+                  className="zone-item__open"
                   aria-label={`浏览 ${registration.path}`}
-                  data-testid="open-workspace"
+                  data-testid="open-zone"
                   disabled={pending !== null}
-                  onClick={() => setOpenWorkspace(registration.path)}
+                  onClick={() => setOpenZone(registration.path)}
                 >
-                  <code className="workspace-item__path">{registration.path}</code>
+                  <code className="zone-item__path">{registration.path}</code>
                   {badgeFor(registration.path)}
                 </button>
                 <button
                   type="button"
-                  className="workspace-item__remove"
+                  className="zone-item__remove"
                   aria-label={`取消登记 ${registration.path}`}
                   title={`取消登记 ${registration.path}`}
                   disabled={pending !== null}
@@ -385,26 +385,26 @@ export function FileListPanel({
         ))}
 
       {dialog === 'register' && (
-        <div className="workspace-modal">
+        <div className="zone-modal">
           <form
-            className="workspace-dialog"
+            className="zone-dialog"
             data-testid="register-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="登记 workspace"
+            aria-label="登记 zone"
             onSubmit={(event) => void submitRegister(event)}
           >
-            <h2 className="workspace-dialog__title">登记已有目录</h2>
-            <p className="workspace-dialog__hint">
+            <h2 className="zone-dialog__title">登记已有目录</h2>
+            <p className="zone-dialog__hint">
               输入 omp-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
             </p>
-            <label className="workspace-form__label" htmlFor="workspace-path">
+            <label className="zone-form__label" htmlFor="zone-path">
               服务器目录路径
             </label>
             <input
-              id="workspace-path"
-              className="workspace-form__input"
-              data-testid="workspace-path"
+              id="zone-path"
+              className="zone-form__input"
+              data-testid="zone-path"
               type="text"
               value={path}
               onChange={(event) => setPath(event.target.value)}
@@ -415,18 +415,18 @@ export function FileListPanel({
             />
             {formError !== null && (
               <p
-                className="workspace-feedback"
-                data-testid="workspace-feedback"
+                className="zone-feedback"
+                data-testid="zone-feedback"
                 data-kind="error"
                 role="alert"
               >
                 {formError}
               </p>
             )}
-            <div className="workspace-dialog__actions">
+            <div className="zone-dialog__actions">
               <button
                 type="button"
-                className="workspace-dialog__cancel"
+                className="zone-dialog__cancel"
                 data-testid="register-cancel"
                 disabled={pending !== null}
                 onClick={closeDialog}
@@ -435,8 +435,8 @@ export function FileListPanel({
               </button>
               <button
                 type="submit"
-                className="workspace-register"
-                data-testid="register-workspace"
+                className="zone-register"
+                data-testid="register-zone"
                 disabled={pending !== null}
               >
                 登记
@@ -447,27 +447,27 @@ export function FileListPanel({
       )}
 
       {dialog === 'create' && (
-        <div className="workspace-modal">
+        <div className="zone-modal">
           <form
-            className="workspace-dialog"
+            className="zone-dialog"
             data-testid="create-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="新增 workspace"
+            aria-label="新增 zone"
             onSubmit={(event) => void submitCreate(event)}
           >
-            <h2 className="workspace-dialog__title">新增 workspace</h2>
-            <p className="workspace-dialog__hint">
+            <h2 className="zone-dialog__title">新增 zone</h2>
+            <p className="zone-dialog__hint">
               将在{' '}
               <code>{creation.parentDirectory ?? '配置的父目录'}</code>{' '}
               下创建直接子目录，执行 git init 后加入登记列表。
             </p>
-            <label className="workspace-form__label" htmlFor="workspace-name">
-              新 workspace 名称
+            <label className="zone-form__label" htmlFor="zone-name">
+              新 zone 名称
             </label>
             <input
-              id="workspace-name"
-              className="workspace-form__input"
+              id="zone-name"
+              className="zone-form__input"
               data-testid="create-name"
               type="text"
               value={name}
@@ -479,18 +479,18 @@ export function FileListPanel({
             />
             {formError !== null && (
               <p
-                className="workspace-feedback"
-                data-testid="workspace-feedback"
+                className="zone-feedback"
+                data-testid="zone-feedback"
                 data-kind="error"
                 role="alert"
               >
                 {formError}
               </p>
             )}
-            <div className="workspace-dialog__actions">
+            <div className="zone-dialog__actions">
               <button
                 type="button"
-                className="workspace-dialog__cancel"
+                className="zone-dialog__cancel"
                 data-testid="create-cancel"
                 disabled={pending !== null}
                 onClick={closeDialog}
@@ -499,8 +499,8 @@ export function FileListPanel({
               </button>
               <button
                 type="submit"
-                className="workspace-register"
-                data-testid="create-workspace"
+                className="zone-register"
+                data-testid="create-zone"
                 disabled={pending !== null}
               >
                 创建

@@ -30,16 +30,16 @@ function readFailure(result: BrowseResult<FileView>, path: string): string {
 /**
  * 全屏 HTML 阅读模式。
  *
- * 内容先在父页面净化，再放进只允许同源、禁止脚本的 sandbox iframe。workspace 内 HTML 链接由父页面
+ * 内容先在父页面净化，再放进只允许同源、禁止脚本的 sandbox iframe。zone 内 HTML 链接由父页面
  * 继续在当前阅读模式打开；外部 http(s) 链接在新标签页打开；file:// 与其他 scheme 被拦截。
  */
 export function HtmlReader({
-  workspace,
+  zone,
   initialPath,
   initialSource,
   onClose,
 }: {
-  workspace: string
+  zone: string
   initialPath: string
   initialSource: string
   onClose: () => void
@@ -54,7 +54,7 @@ export function HtmlReader({
   const navigateTo = useCallback(
     async (path: string) => {
       if (!isHtmlPath(path)) {
-        setNotice('只有 workspace 内的 HTML 文件可以在阅读模式中打开。')
+        setNotice('只有 zone 内的 HTML 文件可以在阅读模式中打开。')
         return
       }
       const run = sequence.current + 1
@@ -62,7 +62,7 @@ export function HtmlReader({
       setLoading(true)
       setError(null)
       setNotice(null)
-      const result = await fetchFile(workspace, path)
+      const result = await fetchFile(zone, path)
       if (sequence.current !== run) return
       setLoading(false)
       if (result.kind === 'ok' && result.value.preview.kind === 'text') {
@@ -71,10 +71,10 @@ export function HtmlReader({
       }
       setError(readFailure(result, path))
     },
-    [workspace],
+    [zone],
   )
 
-  const documentUrl = readerAssetUrl(workspace, current.path)
+  const documentUrl = readerAssetUrl(zone, current.path)
   const srcDoc = useMemo(
     () => buildHtmlReaderDocument(current.source, documentUrl),
     [current.source, documentUrl],
@@ -93,7 +93,7 @@ export function HtmlReader({
       switch (action.kind) {
         case 'anchor':
           return
-        case 'workspace':
+        case 'zone':
           event.preventDefault()
           void navigateTo(action.path)
           return

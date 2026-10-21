@@ -33,9 +33,9 @@ dist-ssr
 # 前端构建产物：由同一个 Axum 服务提供的打包页面（frontend 执行 npm run build 生成）
 /backend/static
 
-# workspace 登记列表的后端运行时文件（缺省在进程工作目录；可用 [workspaces] 改到别处）
-/workspaces.json
-/workspaces.json.tmp
+# zone 登记列表的后端运行时文件（缺省在进程工作目录；可用 [zones] 改到别处）
+/zones.json
+/zones.json.tmp
 
 # 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）
 /fixtures/runtime/

@@ -1,4 +1,4 @@
-//! 新建 workspace：在配置的父目录下创建一个直接子目录、初始化 Git，再交给登记列表。
+//! 新建 zone：在配置的父目录下创建一个直接子目录、初始化 Git，再交给登记列表。
 //!
 //! 创建与 Git 初始化是两个已经产生外部效果的步骤，不能假装成一个可回滚事务：任何后续失败都保留
 //! 已经创建的目录，并在错误里说明失败阶段与完整路径。只有登记持久化成功后，调用方才返回成功。
@@ -11,9 +11,9 @@ use std::time::Duration;
 use crate::browse;
 use crate::git;
 
-/// 创建 workspace 时的明确失败类别。
+/// 创建 zone 时的明确失败类别。
 #[derive(Debug)]
-pub enum CreateWorkspaceError {
+pub enum CreateZoneError {
     ParentNotAbsolute(PathBuf),
     ParentNotFound(PathBuf),
     ParentNotDirectory(PathBuf),
@@ -26,7 +26,7 @@ pub enum CreateWorkspaceError {
     FinalizeFailed { path: PathBuf, error: io::Error },
 }
 
-impl CreateWorkspaceError {
+impl CreateZoneError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::ParentNotAbsolute(_) => "create-parent-not-absolute",
@@ -45,27 +45,27 @@ impl CreateWorkspaceError {
     pub fn message(&self) -> String {
         match self {
             Self::ParentNotAbsolute(path) => format!(
-                "配置的 workspace 创建父目录不是绝对路径：{}。",
+                "配置的 zone 创建父目录不是绝对路径：{}。",
                 path.display()
             ),
             Self::ParentNotFound(path) => format!(
-                "配置的 workspace 创建父目录不存在：{}。不会自动创建父目录。",
+                "配置的 zone 创建父目录不存在：{}。不会自动创建父目录。",
                 path.display()
             ),
             Self::ParentNotDirectory(path) => {
-                format!("配置的 workspace 创建父目录不是目录：{}。", path.display())
+                format!("配置的 zone 创建父目录不是目录：{}。", path.display())
             }
             Self::ParentInaccessible { path, error } => format!(
-                "无法访问配置的 workspace 创建父目录：{}；{error}。",
+                "无法访问配置的 zone 创建父目录：{}；{error}。",
                 path.display()
             ),
-            Self::NameRequired => "请填写新 workspace 的名称。".to_string(),
-            Self::InvalidName(reason) => format!("新 workspace 名称不可接受：{reason}"),
+            Self::NameRequired => "请填写新 zone 的名称。".to_string(),
+            Self::InvalidName(reason) => format!("新 zone 名称不可接受：{reason}"),
             Self::AlreadyExists { path } => {
                 format!("目标目录已存在，未覆盖、未复用：{}。", path.display())
             }
             Self::CreateFailed { path, error } => format!(
-                "创建 workspace 目录失败，目录未创建或未完成：{}；{error}。",
+                "创建 zone 目录失败，目录未创建或未完成：{}；{error}。",
                 path.display()
             ),
             Self::GitInitFailed { path, reason } => format!(
@@ -88,11 +88,11 @@ pub fn create_and_init(
     parent: &Path,
     name: &str,
     git_timeout: Duration,
-) -> Result<PathBuf, CreateWorkspaceError> {
+) -> Result<PathBuf, CreateZoneError> {
     validate_parent(parent)?;
     let name = validate_name(name)?;
     let parent =
-        fs::canonicalize(parent).map_err(|error| CreateWorkspaceError::ParentInaccessible {
+        fs::canonicalize(parent).map_err(|error| CreateZoneError::ParentInaccessible {
             path: parent.to_path_buf(),
             error,
         })?;
@@ -101,10 +101,10 @@ pub fn create_and_init(
     match fs::create_dir(&target) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            return Err(CreateWorkspaceError::AlreadyExists { path: target });
+            return Err(CreateZoneError::AlreadyExists { path: target });
         }
         Err(error) => {
-            return Err(CreateWorkspaceError::CreateFailed {
+            return Err(CreateZoneError::CreateFailed {
                 path: target,
                 error,
             });
@@ -112,60 +112,60 @@ pub fn create_and_init(
     }
 
     let initialized = git::run_git(&target, &["init"], git_timeout).map_err(|error| {
-        CreateWorkspaceError::GitInitFailed {
+        CreateZoneError::GitInitFailed {
             path: target.clone(),
             reason: error.message(),
         }
     })?;
     if !initialized.status.success() {
         let reason = git::command_failed("git init", &initialized).message();
-        return Err(CreateWorkspaceError::GitInitFailed {
+        return Err(CreateZoneError::GitInitFailed {
             path: target,
             reason,
         });
     }
 
-    fs::canonicalize(&target).map_err(|error| CreateWorkspaceError::FinalizeFailed {
+    fs::canonicalize(&target).map_err(|error| CreateZoneError::FinalizeFailed {
         path: target,
         error,
     })
 }
 
-fn validate_parent(parent: &Path) -> Result<(), CreateWorkspaceError> {
+fn validate_parent(parent: &Path) -> Result<(), CreateZoneError> {
     if parent.as_os_str().is_empty() || !parent.is_absolute() {
-        return Err(CreateWorkspaceError::ParentNotAbsolute(
+        return Err(CreateZoneError::ParentNotAbsolute(
             parent.to_path_buf(),
         ));
     }
     let metadata = fs::metadata(parent).map_err(|error| match error.kind() {
-        io::ErrorKind::NotFound => CreateWorkspaceError::ParentNotFound(parent.to_path_buf()),
-        _ => CreateWorkspaceError::ParentInaccessible {
+        io::ErrorKind::NotFound => CreateZoneError::ParentNotFound(parent.to_path_buf()),
+        _ => CreateZoneError::ParentInaccessible {
             path: parent.to_path_buf(),
             error,
         },
     })?;
     if !metadata.is_dir() {
-        return Err(CreateWorkspaceError::ParentNotDirectory(
+        return Err(CreateZoneError::ParentNotDirectory(
             parent.to_path_buf(),
         ));
     }
     Ok(())
 }
 
-fn validate_name(input: &str) -> Result<String, CreateWorkspaceError> {
+fn validate_name(input: &str) -> Result<String, CreateZoneError> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Err(CreateWorkspaceError::NameRequired);
+        return Err(CreateZoneError::NameRequired);
     }
     if trimmed.contains(['/', '\\']) {
-        return Err(CreateWorkspaceError::InvalidName(
+        return Err(CreateZoneError::InvalidName(
             "名称只能是配置父目录下的一个直接子目录，不能包含路径分隔符。".to_string(),
         ));
     }
     let normalized = browse::normalize_relative(trimmed)
-        .map_err(|error| CreateWorkspaceError::InvalidName(error.message()))?;
+        .map_err(|error| CreateZoneError::InvalidName(error.message()))?;
     if normalized.is_empty() || normalized.contains('/') {
-        return Err(CreateWorkspaceError::InvalidName(
+        return Err(CreateZoneError::InvalidName(
             "名称必须是一个非空的直接子目录。".to_string(),
         ));
     }

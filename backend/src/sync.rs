@@ -3,7 +3,7 @@
 //! 同步语义（S2）：
 //! - 远端状态按需检查：`check` 执行一次真实的 `git fetch <upstream.remote>`，成功后记录“最近检查时间”。
 //!   状态读取只使用本地远端跟踪引用，绝不隐式 fetch；页面把未检查与已知状态分开显示。
-//! - `execute` 先重新核对登记根、当前分支、upstream 与干净工作区，再按 fetch → pull → 按需 push 的顺序
+//! - `execute` 先重新核对登记根、当前分支、upstream 与干净工作树，再按 fetch → pull → 按需 push 的顺序
 //!   执行。pull 不附加 repository、refspec 或 merge/rebase/ff-only 策略，因此完全遵循仓库已有配置；
 //!   没有待推送提交时不执行无意义的 push。不 stash、不隐式 commit、不强推、不修改配置。
 //! - 任一步失败立即停止后续步骤，并保留 Git 原始诊断；已经成功的步骤不会被自动撤销，也不宣称事务回滚。
@@ -24,7 +24,7 @@ use tokio::sync::OwnedMutexGuard;
 
 use crate::commit::RepositoryLocks;
 use crate::git::{self, GitError, GitStatus, command_failed};
-use crate::workspaces;
+use crate::zones;
 
 /// 当前分支已有的 upstream；`short` 是 Git 的简短写法（如 `upstream/feature`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -35,7 +35,7 @@ pub struct UpstreamRef {
     pub short: String,
 }
 
-/// 一个 workspace 的远端同步事实。
+/// 一个 zone 的远端同步事实。
 ///
 /// `ahead`/`behind` 来自最近已知的本地远端跟踪引用；`remoteCheckedAt` 是本实例最后一次成功 fetch 的
 /// 时刻（Unix 毫秒），为 `null` 时页面必须显示“远端尚未检查”，不能把旧引用当成实时状态。
@@ -95,7 +95,7 @@ impl SyncState {
 fn check_key(root: &Path, upstream: &UpstreamRef) -> String {
     format!(
         "{}\0{}",
-        workspaces::path_key(&workspaces::display_path(root)),
+        zones::path_key(&zones::display_path(root)),
         upstream.short
     )
 }
@@ -247,7 +247,7 @@ pub enum CheckOutcome {
 
 /// 主动检查远端：真实 fetch 当前分支 upstream 的远端，成功后记录检查时间。
 ///
-/// 检查不要求工作区干净（它不触碰工作树），但要求登记根是 Git 工作树根且当前分支有远端 upstream。
+/// 检查不要求工作树干净（它不触碰工作树），但要求登记根是 Git 工作树根且当前分支有远端 upstream。
 /// 与 Commit/Sync 共用同一份仓库写操作资格，因此不会与它们的引用写入重叠。
 pub fn check(
     registered_root: &str,
@@ -260,7 +260,7 @@ pub fn check(
         Ok(None) => return CheckOutcome::NotRepository,
         Err(error) => return CheckOutcome::Failed(error),
     };
-    let Some(permit) = locks.try_qualify(&workspaces::display_path(&root)) else {
+    let Some(permit) = locks.try_qualify(&zones::display_path(&root)) else {
         return CheckOutcome::Busy;
     };
 
@@ -316,7 +316,7 @@ pub enum SyncOutcome {
     Busy,
     /// detached HEAD、冲突或未完成流程；需要用户在外部处理。
     Blocked(String),
-    /// 工作区有未提交变更；Sync 不 stash、不隐式提交。
+    /// 工作树有未提交变更；Sync 不 stash、不隐式提交。
     Dirty,
     /// 当前分支没有远端 upstream；本功能不会配置 upstream 或发布分支。
     NoUpstream,
@@ -332,7 +332,7 @@ pub enum SyncOutcome {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncAccepted {
-    pub workspace: String,
+    pub zone: String,
     pub outcome: &'static str,
     pub branch: String,
     pub upstream: UpstreamRef,
@@ -358,7 +358,7 @@ pub struct StepReport {
 
 /// 执行一次按既有 upstream 与 Git 配置的同步。
 ///
-/// 调用方负责先确认请求来自已登记的 workspace。本函数是阻塞的（同步 Git 进程），应在
+/// 调用方负责先确认请求来自已登记的 zone。本函数是阻塞的（同步 Git 进程），应在
 /// `spawn_blocking` 中运行；拿不到仓库资格时立即返回 `Busy`，不等待、不排队。
 pub fn execute(
     registered_root: &str,
@@ -371,13 +371,13 @@ pub fn execute(
         Ok(None) => return SyncOutcome::NotRepository,
         Err(error) => {
             return SyncOutcome::Failed {
-                step: "workspace",
+                step: "zone",
                 error,
                 completed: Vec::new(),
             };
         }
     };
-    let Some(permit) = locks.try_qualify(&workspaces::display_path(&root)) else {
+    let Some(permit) = locks.try_qualify(&zones::display_path(&root)) else {
         return SyncOutcome::Busy;
     };
 
@@ -391,7 +391,7 @@ fn execute_locked(
     timeout: Duration,
     state: &SyncState,
 ) -> SyncOutcome {
-    // 执行时重新核对当前分支、工作区与阻塞状态；页面展示的内容不能替代这次检查。
+    // 执行时重新核对当前分支、工作树与阻塞状态；页面展示的内容不能替代这次检查。
     let status = match git::status(registered_root, timeout, state) {
         Ok(status) => status,
         Err(error) => {
@@ -520,7 +520,7 @@ fn execute_locked(
     }
 
     SyncOutcome::Synced(SyncAccepted {
-        workspace: registered_root.to_string(),
+        zone: registered_root.to_string(),
         outcome: "synced",
         branch,
         upstream,

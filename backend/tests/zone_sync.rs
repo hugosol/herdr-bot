@@ -16,13 +16,13 @@ use common::{
 };
 use serde_json::{Value, json};
 
-/// 与交付配置同形，但把 workspace 登记文件放到隔离临时目录。
+/// 与交付配置同形，但把 zone 登记文件放到隔离临时目录。
 fn config_with_registry(registry: &Path) -> omp_bot::Config {
     let fixtures = common::repo_fixtures_dir();
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
+    config.zones.registry_file = registry.to_path_buf();
     config
 }
 
@@ -39,10 +39,10 @@ fn encode(value: &str) -> String {
     encoded
 }
 
-fn status_url(workspace: &Path) -> String {
+fn status_url(zone: &Path) -> String {
     format!(
-        "/api/workspaces/git-status?workspace={}",
-        encode(&workspace.to_string_lossy())
+        "/api/zones/git-status?zone={}",
+        encode(&zone.to_string_lossy())
     )
 }
 
@@ -85,7 +85,7 @@ fn init_repository(root: &Path, branch: &str) {
         root,
         &["init", "--quiet", &format!("--initial-branch={branch}")],
     );
-    git_ok(root, &["config", "user.name", "workspace-sync-test"]);
+    git_ok(root, &["config", "user.name", "zone-sync-test"]);
     git_ok(root, &["config", "user.email", "sync@example.test"]);
 }
 
@@ -190,22 +190,22 @@ fn advance_remote(
     remote_head(remote, branch)
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(
         response.status, 200,
-        "登记 workspace 应成功：{}",
+        "登记 zone 应成功：{}",
         response.body
     );
 }
 
-async fn git_status(server: &TestServer, workspace: &Path) -> Value {
-    let response = get_over_tcp(server.addr(), &status_url(workspace)).await;
+async fn git_status(server: &TestServer, zone: &Path) -> Value {
+    let response = get_over_tcp(server.addr(), &status_url(zone)).await;
     assert_eq!(
         response.status, 200,
         "读取 Git 状态应成功：{}",
@@ -214,30 +214,30 @@ async fn git_status(server: &TestServer, workspace: &Path) -> Value {
     body(&response)
 }
 
-async fn check_remote(server: &TestServer, workspace: &Path) -> HttpResponse {
+async fn check_remote(server: &TestServer, zone: &Path) -> HttpResponse {
     post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/check-remote",
-        &json!({ "workspace": workspace }).to_string(),
+        "/api/zones/check-remote",
+        &json!({ "zone": zone }).to_string(),
     )
     .await
 }
 
-async fn submit_sync(server: &TestServer, workspace: &Path) -> HttpResponse {
+async fn submit_sync(server: &TestServer, zone: &Path) -> HttpResponse {
     post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/sync",
-        &json!({ "workspace": workspace }).to_string(),
+        "/api/zones/sync",
+        &json!({ "zone": zone }).to_string(),
     )
     .await
 }
 
 #[tokio::test]
 async fn check_remote_updates_real_references_and_is_the_only_fetch_trigger() {
-    let dir = TempDir::new("workspace sync check remote");
+    let dir = TempDir::new("zone sync check remote");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -292,7 +292,7 @@ async fn check_remote_updates_real_references_and_is_the_only_fetch_trigger() {
     assert_eq!(
         git_stdout(&root, &["status", "--porcelain=v1"]),
         "",
-        "检查不改变工作区"
+        "检查不改变工作树"
     );
 
     // 检查后远端再次独立前进：只读取状态不得 fetch；再次主动检查才更新引用与页面事实。
@@ -354,7 +354,7 @@ async fn check_remote_updates_real_references_and_is_the_only_fetch_trigger() {
 
 #[tokio::test]
 async fn sync_uses_non_default_upstream_and_checks_again_before_pulling_then_pushing() {
-    let dir = TempDir::new("workspace sync merge");
+    let dir = TempDir::new("zone sync merge");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
 
@@ -398,7 +398,7 @@ async fn sync_uses_non_default_upstream_and_checks_again_before_pulling_then_pus
     );
     let config_before = git_stdout(&root, &["config", "--local", "--list"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -449,7 +449,7 @@ async fn sync_uses_non_default_upstream_and_checks_again_before_pulling_then_pus
     assert_eq!(
         git_stdout(&root, &["status", "--porcelain=v1"]),
         "",
-        "Sync 后工作区应干净"
+        "Sync 后工作树应干净"
     );
     assert_eq!(
         git_stdout(&root, &["config", "--local", "--list"]),
@@ -460,7 +460,7 @@ async fn sync_uses_non_default_upstream_and_checks_again_before_pulling_then_pus
 
 #[tokio::test]
 async fn sync_follows_existing_rebase_configuration() {
-    let dir = TempDir::new("workspace sync rebase config");
+    let dir = TempDir::new("zone sync rebase config");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     advance_remote(
@@ -475,7 +475,7 @@ async fn sync_follows_existing_rebase_configuration() {
     git_ok(&root, &["commit", "--quiet", "-m", "local on old base"]);
     git_ok(&root, &["config", "pull.rebase", "true"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -498,7 +498,7 @@ async fn sync_follows_existing_rebase_configuration() {
 
 #[tokio::test]
 async fn behind_only_sync_never_creates_a_meaningless_push() {
-    let dir = TempDir::new("workspace sync behind only");
+    let dir = TempDir::new("zone sync behind only");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     advance_remote(
@@ -518,7 +518,7 @@ async fn behind_only_sync_never_creates_a_meaningless_push() {
         &format!("#!/bin/sh\necho pushed > '{marker_for_shell}'\n"),
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -541,7 +541,7 @@ async fn behind_only_sync_never_creates_a_meaningless_push() {
 #[tokio::test]
 async fn push_rejection_after_a_successful_pull_keeps_effective_local_state_and_reports_git_output()
 {
-    let dir = TempDir::new("workspace sync push rejected");
+    let dir = TempDir::new("zone sync push rejected");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     advance_remote(
@@ -564,7 +564,7 @@ async fn push_rejection_after_a_successful_pull_keeps_effective_local_state_and_
     )
     .expect("写入远端拒绝 hook");
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -597,7 +597,7 @@ async fn push_rejection_after_a_successful_pull_keeps_effective_local_state_and_
     assert_eq!(
         git_stdout(&root, &["status", "--porcelain=v1"]),
         "",
-        "pull 后工作区仍应干净，不伪造冲突"
+        "pull 后工作树仍应干净，不伪造冲突"
     );
 
     let after = git_status(&server, &root).await;
@@ -617,7 +617,7 @@ async fn push_rejection_after_a_successful_pull_keeps_effective_local_state_and_
 
 #[tokio::test]
 async fn fetch_and_pull_failures_stop_later_steps_and_are_not_reported_as_conflicts() {
-    let dir = TempDir::new("workspace sync fetch failure");
+    let dir = TempDir::new("zone sync fetch failure");
     let root = dir.path().join("repository");
     init_with_remote(&root, "upstream", "feature");
     let head_before = head_oid(&root);
@@ -638,7 +638,7 @@ async fn fetch_and_pull_failures_stop_later_steps_and_are_not_reported_as_confli
         &format!("#!/bin/sh\necho pushed > '{marker_for_shell}'\n"),
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -737,7 +737,7 @@ async fn fetch_and_pull_failures_stop_later_steps_and_are_not_reported_as_confli
     assert_eq!(
         git_stdout(&conflicted_root, &["status", "--porcelain=v1"]),
         "",
-        "撤销流程后工作区应恢复干净"
+        "撤销流程后工作树应恢复干净"
     );
 
     // 外部重新合并、解决并完成流程后，刷新恢复；同步随后按实际状态推送。
@@ -766,7 +766,7 @@ async fn fetch_and_pull_failures_stop_later_steps_and_are_not_reported_as_confli
 
 #[tokio::test]
 async fn pull_policy_rejection_stops_before_push_and_does_not_override_configuration() {
-    let dir = TempDir::new("workspace sync pull policy");
+    let dir = TempDir::new("zone sync pull policy");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     advance_remote(
@@ -792,7 +792,7 @@ async fn pull_policy_rejection_stops_before_push_and_does_not_override_configura
         &format!("#!/bin/sh\necho pushed > '{marker_for_shell}'\n"),
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -833,8 +833,8 @@ async fn pull_policy_rejection_stops_before_push_and_does_not_override_configura
 
 #[tokio::test]
 async fn plain_detached_dirty_and_no_upstream_are_rejected_without_writes() {
-    let dir = TempDir::new("workspace sync blocked states");
-    let registry = dir.path().join("workspaces.json");
+    let dir = TempDir::new("zone sync blocked states");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
 
     // 普通目录：页面与直接请求都不产生 Sync。
@@ -849,7 +849,7 @@ async fn plain_detached_dirty_and_no_upstream_are_rejected_without_writes() {
     assert_eq!(response.status, 409, "普通目录不能检查远端");
     assert!(!plain.join(".git").exists(), "不能隐式初始化 Git");
 
-    // 脏工作区：拒绝，且不 stash、不 commit、不改引用。
+    // 脏工作树：拒绝，且不 stash、不 commit、不改引用。
     let dirty = dir.path().join("dirty");
     let dirty_remote = init_with_remote(&dirty, "upstream", "feature");
     let dirty_remote_before = remote_head(&dirty_remote, "feature");
@@ -857,7 +857,7 @@ async fn plain_detached_dirty_and_no_upstream_are_rejected_without_writes() {
     write(&dirty, "tracked.txt", "uncommitted\n");
     register(&server, &dirty).await;
     let response = submit_sync(&server, &dirty).await;
-    assert_eq!(response.status, 409, "脏工作区不能 Sync：{}", response.body);
+    assert_eq!(response.status, 409, "脏工作树不能 Sync：{}", response.body);
     assert_eq!(body(&response)["code"], json!("sync-dirty-worktree"));
     assert_eq!(head_oid(&dirty), dirty_head_before);
     assert_eq!(remote_head(&dirty_remote, "feature"), dirty_remote_before);
@@ -919,7 +919,7 @@ async fn plain_detached_dirty_and_no_upstream_are_rejected_without_writes() {
 
 #[tokio::test]
 async fn nested_repositories_and_submodules_keep_their_own_references_and_state() {
-    let dir = TempDir::new("workspace sync nested repositories");
+    let dir = TempDir::new("zone sync nested repositories");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "origin", "main");
 
@@ -975,7 +975,7 @@ async fn nested_repositories_and_submodules_keep_their_own_references_and_state(
     git_ok(&root, &["add", "parent.txt"]);
     git_ok(&root, &["commit", "--quiet", "-m", "parent next"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let response = submit_sync(&server, &root).await;
@@ -999,12 +999,12 @@ async fn nested_repositories_and_submodules_keep_their_own_references_and_state(
     assert_eq!(
         git_stdout(&sub, &["status", "--porcelain=v1"]),
         "?? dirty-only.txt\n",
-        "Sync 不能改写子模块内部工作区"
+        "Sync 不能改写子模块内部工作树"
     );
     assert_eq!(
         git_stdout(&embedded, &["status", "--porcelain=v1"]),
         "?? dirty-only.txt\n",
-        "Sync 不能改写嵌套仓库内部工作区"
+        "Sync 不能改写嵌套仓库内部工作树"
     );
     let parent_status = git_stdout(&root, &["status", "--porcelain=v1"]);
     assert!(
@@ -1015,7 +1015,7 @@ async fn nested_repositories_and_submodules_keep_their_own_references_and_state(
 
 #[tokio::test]
 async fn concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_does_not_cancel() {
-    let dir = TempDir::new("workspace sync concurrency");
+    let dir = TempDir::new("zone sync concurrency");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     write(&root, "local.txt", "one accepted sync\n");
@@ -1030,15 +1030,15 @@ async fn concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_do
         &format!("#!/bin/sh\necho started > '{marker_for_shell}'\nsleep 3\n"),
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
 
     let first = OpenJsonRequest::submit(
         server.addr(),
-        "/api/workspaces/sync",
-        &json!({ "workspace": root }).to_string(),
+        "/api/zones/sync",
+        &json!({ "zone": root }).to_string(),
     )
     .await;
     assert!(
@@ -1053,9 +1053,9 @@ async fn concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_do
     assert_eq!(body(&second)["code"], json!("git-write-in-progress"));
     let commit = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         &json!({
-            "workspace": root,
+            "zone": root,
             "message": "must not overlap",
             "reviewToken": status["reviewToken"],
         })
@@ -1091,9 +1091,9 @@ async fn concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_do
     let status = git_status(&server, &root).await;
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/commit",
+        "/api/zones/commit",
         &json!({
-            "workspace": root,
+            "zone": root,
             "message": "commit after sync",
             "reviewToken": status["reviewToken"],
         })
@@ -1109,7 +1109,7 @@ async fn concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_do
 
 #[tokio::test]
 async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_state() {
-    let dir = TempDir::new("workspace sync timeout");
+    let dir = TempDir::new("zone sync timeout");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     advance_remote(
@@ -1130,7 +1130,7 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
         "#!/bin/sh\necho 'push hook started' >&2\n( sleep 8; echo child-alive > child-marker.txt ) &\nsleep 8\n",
     );
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
         omp_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
@@ -1190,7 +1190,7 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
 
 #[tokio::test]
 async fn sync_runs_noninteractively_and_does_not_change_repository_configuration() {
-    let dir = TempDir::new("workspace sync noninteractive");
+    let dir = TempDir::new("zone sync noninteractive");
     let root = dir.path().join("repository");
     init_with_remote(&root, "upstream", "feature");
     // 一个必然连接失败的 HTTPS 远端：若允许交互提示，命令会等待输入；本功能必须快速失败。
@@ -1206,7 +1206,7 @@ async fn sync_runs_noninteractively_and_does_not_change_repository_configuration
     git_ok(&root, &["config", "credential.helper", ""]);
     let config_before = git_stdout(&root, &["config", "--local", "--list"]);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
         omp_bot::CommandTimeoutSeconds::new(20).expect("测试时限必须合法");
@@ -1243,7 +1243,7 @@ async fn sync_runs_noninteractively_and_does_not_change_repository_configuration
 
 #[tokio::test]
 async fn external_branch_switch_is_reflected_and_sync_targets_the_current_branch() {
-    let dir = TempDir::new("workspace sync branch switch");
+    let dir = TempDir::new("zone sync branch switch");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "main");
     let main_head = head_oid(&root);
@@ -1258,7 +1258,7 @@ async fn external_branch_switch_is_reflected_and_sync_targets_the_current_branch
     git_ok(&root, &["checkout", "--quiet", "main"]);
     assert_eq!(head_oid(&root), main_head);
 
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
@@ -1305,12 +1305,12 @@ async fn external_branch_switch_is_reflected_and_sync_targets_the_current_branch
 }
 
 #[tokio::test]
-async fn workspace_git_qualification_does_not_mix_with_fixed_operation_execution() {
-    let fixtures = FixtureTree::new("workspace sync independent qualification");
+async fn zone_git_qualification_does_not_mix_with_fixed_operation_execution() {
+    let fixtures = FixtureTree::new("zone sync independent qualification");
     let script = fixtures.script("long-running.bat");
     let mut config = common::config(&script, &fixtures.operations());
-    let registry = fixtures.root().join("workspaces.json");
-    config.workspaces.registry_file = registry;
+    let registry = fixtures.root().join("zones.json");
+    config.zones.registry_file = registry;
     let root = fixtures.root().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
     write(&root, "local.txt", "pending while script runs\n");
@@ -1341,7 +1341,7 @@ async fn workspace_git_qualification_does_not_mix_with_fixed_operation_execution
     let response = submit_sync(&server, &root).await;
     assert_eq!(
         response.status, 200,
-        "workspace Git 资格不能与固定操作的执行资格混同：{}",
+        "zone Git 资格不能与固定操作的执行资格混同：{}",
         response.body
     );
     assert_eq!(remote_head(&remote, "feature"), head_oid(&root));
@@ -1351,19 +1351,19 @@ async fn workspace_git_qualification_does_not_mix_with_fixed_operation_execution
 }
 
 #[tokio::test]
-async fn open_request_surface_and_missing_workspace_are_rejected_without_writes() {
-    let dir = TempDir::new("workspace sync request surface");
+async fn open_request_surface_and_missing_zone_are_rejected_without_writes() {
+    let dir = TempDir::new("zone sync request surface");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "origin", "main");
     let remote_before = remote_head(&remote, "main");
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
     register(&server, &root).await;
 
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/sync?workspace=x",
-        &json!({ "workspace": root }).to_string(),
+        "/api/zones/sync?zone=x",
+        &json!({ "zone": root }).to_string(),
     )
     .await;
     assert_eq!(response.status, 400, "查询参数必须被拒绝");
@@ -1371,25 +1371,25 @@ async fn open_request_surface_and_missing_workspace_are_rejected_without_writes(
 
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/sync",
-        &json!({ "workspace": root, "extra": true }).to_string(),
+        "/api/zones/sync",
+        &json!({ "zone": root, "extra": true }).to_string(),
     )
     .await;
     assert_eq!(response.status, 400, "未知字段必须被拒绝");
 
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces/check-remote",
-        &json!({ "workspace": "   " }).to_string(),
+        "/api/zones/check-remote",
+        &json!({ "zone": "   " }).to_string(),
     )
     .await;
-    assert_eq!(response.status, 400, "空 workspace 必须被拒绝");
-    assert_eq!(body(&response)["code"], json!("workspace-required"));
+    assert_eq!(response.status, 400, "空 zone 必须被拒绝");
+    assert_eq!(body(&response)["code"], json!("zone-required"));
 
     let missing = dir.path().join("missing");
     let response = submit_sync(&server, &missing).await;
     assert_eq!(response.status, 404, "未登记目录必须被拒绝");
-    assert_eq!(body(&response)["code"], json!("workspace-not-registered"));
+    assert_eq!(body(&response)["code"], json!("zone-not-registered"));
 
     assert_eq!(remote_head(&remote, "main"), remote_before);
 }

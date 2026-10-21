@@ -23,10 +23,10 @@ import {
   type DiffSide,
 } from './diffApi'
 import {
-  checkWorkspaceRemote,
-  commitWorkspace,
+  checkZoneRemote,
+  commitZone,
   fetchGitStatus,
-  syncWorkspace,
+  syncZone,
   type ChangeKind,
   type GitChange,
   type GitStatus,
@@ -34,8 +34,8 @@ import {
 import type { ConnectionStatus } from './sessionFeed'
 import {
   describeWatchProblem,
-  type WorkspaceWatchEntry,
-} from './workspaceWatch'
+  type ZoneWatchEntry,
+} from './zoneWatch'
 
 /** 窄屏断点：与 styles.css 的浏览器布局断点保持一致。 */
 const NARROW_LAYOUT_MAX_WIDTH = 720
@@ -129,22 +129,22 @@ function previewPane(file: FileView) {
 }
 
 /**
- * workspace 内的只读浏览：电脑左树右内容，窄屏逐层进入并在文件内容处明确返回。
+ * zone 内的只读浏览：电脑左树右内容，窄屏逐层进入并在文件内容处明确返回。
  *
  * 所有读取都经过后端公开入口；页面只显示后端返回的事实，不自行判断路径边界或文本类型。
- * 组件在顶层 tab 切换时保持挂载：workspace、展开状态、所选文件与浏览滚动因此保留；回到页面时
+ * 组件在顶层 tab 切换时保持挂载：zone、展开状态、所选文件与浏览滚动因此保留；回到页面时
  * 重新读取当前目录与所选文件，不把旧结果当成当前事实。
  */
-export function WorkspaceBrowser({
-  workspace,
+export function ZoneBrowser({
+  zone,
   active,
   watch,
   onBack,
 }: {
-  workspace: string
+  zone: string
   active: boolean
   watch?: {
-    entry: WorkspaceWatchEntry | null
+    entry: ZoneWatchEntry | null
     connection: ConnectionStatus
     generation: number
   }
@@ -164,7 +164,7 @@ export function WorkspaceBrowser({
     source: string
   } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  // 进入 workspace 时预读整棵目录树；展开目录只切换显示，不再等待网络。
+  // 进入 zone 时预读整棵目录树；展开目录只切换显示，不再等待网络。
   const [treeLoading, setTreeLoading] = useState(false)
   const [mobilePath, setMobilePath] = useState('')
   const [mobileShowingContent, setMobileShowingContent] = useState(false)
@@ -202,7 +202,7 @@ export function WorkspaceBrowser({
   )
   const gitSequence = useRef(0)
   const diffSequence = useRef(0)
-  // 整树预读的代际：切换 workspace 时，旧请求返回后不得补写新树。
+  // 整树预读的代际：切换 zone 时，旧请求返回后不得补写新树。
   const treeRun = useRef(0)
   // 同一时刻只跑一轮整树扫描；扫描期间的刷新合并为结束后的一次补跑，避免反复从头开始。
   const treeInFlight = useRef<Promise<void> | null>(null)
@@ -217,14 +217,14 @@ export function WorkspaceBrowser({
   const scrollPositions = useRef(new Map<string, number>())
   const activePreviously = useRef(active)
   const seenWatchGeneration = useRef(watchGeneration)
-  // 异步写操作返回时只更新仍属于同一个 workspace 的页面；切换 workspace 不能把旧结果贴到新目录。
-  const workspaceRef = useRef(workspace)
-  workspaceRef.current = workspace
+  // 异步写操作返回时只更新仍属于同一个 zone 的页面；切换 zone 不能把旧结果贴到新目录。
+  const zoneRef = useRef(zone)
+  zoneRef.current = zone
 
   /**
    * 一次读取完整目录树。
    *
-   * 后端在 Git workspace 中已经按 Git 原生忽略规则过滤；这里只替换前端快照。
+   * 后端在 Git zone 中已经按 Git 原生忽略规则过滤；这里只替换前端快照。
    * 同一时间只跑一次请求，扫描期间收到的刷新合并为结束后的一次补跑。
    */
   const loadEntireTree = useCallback(async () => {
@@ -234,8 +234,8 @@ export function WorkspaceBrowser({
     }
 
     const scanTree = async (run: number) => {
-      const result = await fetchTree(workspace)
-      if (treeRun.current !== run || workspaceRef.current !== workspace) return
+      const result = await fetchTree(zone)
+      if (treeRun.current !== run || zoneRef.current !== zone) return
 
       if (result.kind === 'ok') {
         const nextEntries = new Map<string, BrowseEntry[]>()
@@ -284,7 +284,7 @@ export function WorkspaceBrowser({
     }
     void promise.then(settle, settle)
     return promise
-  }, [workspace])
+  }, [zone])
 
   const loadFile = useCallback(
     async (path: string) => {
@@ -294,7 +294,7 @@ export function WorkspaceBrowser({
       setFile(null)
       setFileError(null)
 
-      const result = await fetchFile(workspace, path)
+      const result = await fetchFile(zone, path)
       if (fileSequence.current !== sequence) return
 
       setFileLoading(false)
@@ -304,13 +304,13 @@ export function WorkspaceBrowser({
         setFileError(failureMessage(result, `文件 ${path}`))
       }
     },
-    [workspace],
+    [zone],
   )
 
   const loadGitStatus = useCallback(async () => {
     const sequence = gitSequence.current + 1
     gitSequence.current = sequence
-    const result = await fetchGitStatus(workspace)
+    const result = await fetchGitStatus(zone)
     if (gitSequence.current !== sequence) return
     if (result.kind === 'ok') {
       setGitStatus(result.value)
@@ -338,7 +338,7 @@ export function WorkspaceBrowser({
       setChangeDiffError(null)
       setChangesShowingDiff(false)
     }
-  }, [workspace])
+  }, [zone])
 
   const loadChangeDiff = useCallback(
     async (change: GitChange) => {
@@ -348,7 +348,7 @@ export function WorkspaceBrowser({
       setChangeDiff(null)
       setChangeDiffError(null)
 
-      const result = await fetchChangeDiff(workspace, change.path, change.oldPath)
+      const result = await fetchChangeDiff(zone, change.path, change.oldPath)
       if (diffSequence.current !== sequence) return
 
       setChangeDiffLoading(false)
@@ -360,7 +360,7 @@ export function WorkspaceBrowser({
         setChangeDiffError(failureMessage(result, `变更 ${change.path} 的 diff`))
       }
     },
-    [workspace],
+    [zone],
   )
 
   const refresh = useCallback(async () => {
@@ -372,9 +372,9 @@ export function WorkspaceBrowser({
     setRefreshing(false)
   }, [selectedPath, loadEntireTree, loadFile, loadGitStatus, loadChangeDiff])
 
-  // 打开 workspace（或切换 workspace）时读取一次完整目录树，并清空上一份临时浏览状态。
+  // 打开 zone（或切换 zone）时读取一次完整目录树，并清空上一份临时浏览状态。
   useEffect(() => {
-    // 切换 workspace 时立即作废旧代际；新 workspace 另起一轮，不复用旧树的尾随刷新。
+    // 切换 zone 时立即作废旧代际；新 zone 另起一轮，不复用旧树的尾随刷新。
     treeRun.current += 1
     treeInFlight.current = null
     treeReloadRequested.current = false
@@ -407,7 +407,7 @@ export function WorkspaceBrowser({
     scrollPositions.current = new Map()
     void loadEntireTree()
     void loadGitStatus()
-  }, [workspace, loadEntireTree, loadGitStatus])
+  }, [zone, loadEntireTree, loadGitStatus])
 
   // 从其他顶层 tab 回到文件列表时只更新 Git 状态；完整目录树仅由手动刷新重读。
   useEffect(() => {
@@ -566,7 +566,7 @@ export function WorkspaceBrowser({
   if (blockedReason !== null) {
     syncStateHint = blockedReason
   } else if (!worktreeClean) {
-    syncStateHint = '工作区有未提交变更：Sync 只对干净工作区可用。'
+    syncStateHint = '工作树有未提交变更：Sync 只对干净工作树可用。'
   } else if (upstream === null) {
     syncStateHint =
       '当前分支没有 upstream：Sync 不可用；本功能不会配置 upstream 或发布分支。'
@@ -614,7 +614,7 @@ export function WorkspaceBrowser({
     setCommitRunning(true)
     setCommitFeedback(null)
     const submitted = commitMessage
-    const result = await commitWorkspace(workspace, submitted, token)
+    const result = await commitZone(zone, submitted, token)
     setCommitRunning(false)
 
     if (result.kind === 'ok') {
@@ -647,11 +647,11 @@ export function WorkspaceBrowser({
    */
   async function runCheckRemote() {
     if (!checkAvailable) return
-    const target = workspace
+    const target = zone
     setRemoteChecking(true)
     setSyncFeedback(null)
-    const result = await checkWorkspaceRemote(target)
-    if (workspaceRef.current !== target) return
+    const result = await checkZoneRemote(target)
+    if (zoneRef.current !== target) return
     setRemoteChecking(false)
 
     if (result.kind === 'ok') {
@@ -684,11 +684,11 @@ export function WorkspaceBrowser({
   async function runSync() {
     setSyncConfirming(false)
     if (!syncAvailable) return
-    const target = workspace
+    const target = zone
     setSyncRunning(true)
     setSyncFeedback(null)
-    const result = await syncWorkspace(target)
-    if (workspaceRef.current !== target) return
+    const result = await syncZone(target)
+    if (zoneRef.current !== target) return
     setSyncRunning(false)
 
     if (result.kind === 'ok') {
@@ -1367,18 +1367,18 @@ export function WorkspaceBrowser({
   }
 
   return (
-    <section className="browser" data-testid="workspace-browser">
+    <section className="browser" data-testid="zone-browser">
       <header className="browser-toolbar">
         <button
           type="button"
           className="browser-toolbar__button"
-          data-testid="back-to-workspaces"
+          data-testid="back-to-zones"
           onClick={onBack}
         >
-          返回 workspace 列表
+          返回 zone 列表
         </button>
-        <code className="browser-toolbar__workspace" data-testid="browser-workspace">
-          {workspace}
+        <code className="browser-toolbar__zone" data-testid="browser-zone">
+          {zone}
         </code>
         {gitStatus?.repository && (
           <span className="browser-toolbar__branch" data-testid="browser-branch">
@@ -1423,9 +1423,9 @@ export function WorkspaceBrowser({
         </p>
       )}
 
-      {/* Git workspace 才有的内部子 tab；普通目录只保留浏览，不出现空的变更入口。 */}
+      {/* Git zone 才有的内部子 tab；普通目录只保留浏览，不出现空的变更入口。 */}
       {gitStatus?.repository && (
-        <div className="browser-views" role="tablist" aria-label="workspace 视图">
+        <div className="browser-views" role="tablist" aria-label="zone 视图">
           <button
             type="button"
             role="tab"
@@ -1479,7 +1479,7 @@ export function WorkspaceBrowser({
             ) : (
               <>
                 <p className="browser-current-path" data-testid="browser-current-path">
-                  {mobilePath === '' ? workspace : `${workspace}\\${mobilePath}`}
+                  {mobilePath === '' ? zone : `${zone}\\${mobilePath}`}
                 </p>
                 {mobilePath !== '' && (
                   <button
@@ -1521,7 +1521,7 @@ export function WorkspaceBrowser({
       )}
 
       {/*
-        确认门禁只有一句消息与确认/取消：workspace、分支、文件数、提交信息与清单已经由
+        确认门禁只有一句消息与确认/取消：zone、分支、文件数、提交信息与清单已经由
         变更界面承载，不在弹框里重复。取消只关闭门禁，不发送任何写请求。
       */}
       {commitConfirming && (
@@ -1591,7 +1591,7 @@ export function WorkspaceBrowser({
 
       {htmlReader !== null && (
         <HtmlReader
-          workspace={workspace}
+          zone={zone}
           initialPath={htmlReader.path}
           initialSource={htmlReader.source}
           onClose={() => setHtmlReader(null)}

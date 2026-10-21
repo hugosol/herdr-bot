@@ -1,6 +1,6 @@
-//! HTML 阅读模式使用的 workspace 原始资源路由。
+//! HTML 阅读模式使用的 zone 原始资源路由。
 //!
-//! HTML 本身与相对资源都从一个按 workspace 根约束的路径读取；期望值来自独立创建的真实文件，
+//! HTML 本身与相对资源都从一个按 zone 根约束的路径读取；期望值来自独立创建的真实文件，
 //! 边界反例通过公开 HTTP 请求实施。
 
 mod common;
@@ -16,7 +16,7 @@ fn config_with_registry(registry: &Path) -> omp_bot::Config {
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
-    config.workspaces.registry_file = registry.to_path_buf();
+    config.zones.registry_file = registry.to_path_buf();
     config
 }
 
@@ -45,10 +45,10 @@ fn path_segments(path: &str) -> String {
         .join("/")
 }
 
-fn reader_url(workspace: &Path, path: &str) -> String {
+fn reader_url(zone: &Path, path: &str) -> String {
     format!(
-        "/api/workspaces/reader/{}/{}",
-        hex(&workspace.to_string_lossy()),
+        "/api/zones/reader/{}/{}",
+        hex(&zone.to_string_lossy()),
         path_segments(path)
     )
 }
@@ -77,11 +77,11 @@ fn assert_rejected(response: &HttpResponse, status: u16, code: &str) {
     );
 }
 
-async fn register(server: &TestServer, workspace: &Path) {
+async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
-        "/api/workspaces",
-        &json!({ "path": workspace }).to_string(),
+        "/api/zones",
+        &json!({ "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记应成功：{}", response.body);
@@ -89,23 +89,23 @@ async fn register(server: &TestServer, workspace: &Path) {
 
 #[tokio::test]
 async fn serves_html_and_relative_resources_with_isolated_content_type_and_csp() {
-    let dir = TempDir::new("workspace reader resources");
-    let workspace = dir.path().join("course");
-    fs::create_dir_all(workspace.join("lessons")).expect("创建 lessons");
-    fs::create_dir_all(workspace.join("assets")).expect("创建 assets");
+    let dir = TempDir::new("zone reader resources");
+    let zone = dir.path().join("course");
+    fs::create_dir_all(zone.join("lessons")).expect("创建 lessons");
+    fs::create_dir_all(zone.join("assets")).expect("创建 assets");
     let html = r#"<!doctype html><html><head><link rel="stylesheet" href="../assets/style.css"></head><body><h1>lesson</h1><img src="../assets/pixel.png"></body></html>"#;
-    fs::write(workspace.join("lessons/page.html"), html).expect("写入 HTML");
+    fs::write(zone.join("lessons/page.html"), html).expect("写入 HTML");
     fs::write(
-        workspace.join("assets/style.css"),
+        zone.join("assets/style.css"),
         "body { font-family: sans-serif; }",
     )
     .expect("写入 CSS");
-    fs::write(workspace.join("assets/pixel.png"), b"\x89PNG\r\n\x1a\n").expect("写入图片");
-    let registry = dir.path().join("workspaces.json");
+    fs::write(zone.join("assets/pixel.png"), b"\x89PNG\r\n\x1a\n").expect("写入图片");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
-    register(&server, &workspace).await;
+    register(&server, &zone).await;
 
-    let response = get_over_tcp(server.addr(), &reader_url(&workspace, "lessons/page.html")).await;
+    let response = get_over_tcp(server.addr(), &reader_url(&zone, "lessons/page.html")).await;
     assert_eq!(response.status, 200, "HTML 应能读取：{}", response.body);
     assert_eq!(response.body, html);
     assert_eq!(
@@ -118,7 +118,7 @@ async fn serves_html_and_relative_resources_with_isolated_content_type_and_csp()
     assert!(csp.contains("frame-ancestors 'self'"));
     assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
 
-    let response = get_over_tcp(server.addr(), &reader_url(&workspace, "assets/style.css")).await;
+    let response = get_over_tcp(server.addr(), &reader_url(&zone, "assets/style.css")).await;
     assert_eq!(response.status, 200, "CSS 应能读取：{}", response.body);
     assert_eq!(
         response.body, "body { font-family: sans-serif; }",
@@ -129,31 +129,31 @@ async fn serves_html_and_relative_resources_with_isolated_content_type_and_csp()
         Some("text/css; charset=utf-8")
     );
 
-    let response = get_over_tcp(server.addr(), &reader_url(&workspace, "assets/pixel.png")).await;
+    let response = get_over_tcp(server.addr(), &reader_url(&zone, "assets/pixel.png")).await;
     assert_eq!(response.status, 200, "图片应能读取：{}", response.body);
     assert_eq!(header(&response, "content-type"), Some("image/png"));
 }
 
 #[tokio::test]
-async fn reader_resource_route_rejects_unregistered_workspaces_and_path_escapes() {
-    let dir = TempDir::new("workspace reader boundary");
-    let workspace = dir.path().join("course");
+async fn reader_resource_route_rejects_unregistered_zones_and_path_escapes() {
+    let dir = TempDir::new("zone reader boundary");
+    let zone = dir.path().join("course");
     let outside = dir.path().join("outside.txt");
-    fs::create_dir_all(workspace.join("lessons")).expect("创建 workspace");
-    fs::write(workspace.join("lessons/page.html"), "<h1>inside</h1>").expect("写入 HTML");
+    fs::create_dir_all(zone.join("lessons")).expect("创建 zone");
+    fs::write(zone.join("lessons/page.html"), "<h1>inside</h1>").expect("写入 HTML");
     fs::write(&outside, "outside").expect("写入根外文件");
-    let registry = dir.path().join("workspaces.json");
+    let registry = dir.path().join("zones.json");
     let server = TestServer::start(&config_with_registry(&registry)).await;
-    register(&server, &workspace).await;
+    register(&server, &zone).await;
 
     let escape = format!(
-        "/api/workspaces/reader/{}/%2e%2e/outside.txt",
-        hex(&workspace.to_string_lossy())
+        "/api/zones/reader/{}/%2e%2e/outside.txt",
+        hex(&zone.to_string_lossy())
     );
     assert_rejected(
         &get_over_tcp(server.addr(), &escape).await,
         403,
-        "path-outside-workspace",
+        "path-outside-zone",
     );
 
     let unregistered = dir.path().join("other");
@@ -161,21 +161,21 @@ async fn reader_resource_route_rejects_unregistered_workspaces_and_path_escapes(
     assert_rejected(
         &get_over_tcp(server.addr(), &reader_url(&unregistered, "page.html")).await,
         404,
-        "workspace-not-registered",
+        "zone-not-registered",
     );
 
     assert_rejected(
         &get_over_tcp(
             server.addr(),
-            &format!("/api/workspaces/reader/zz/page.html"),
+            &format!("/api/zones/reader/zz/page.html"),
         )
         .await,
         400,
-        "invalid-workspace-token",
+        "invalid-zone-token",
     );
 
     assert_rejected(
-        &get_over_tcp(server.addr(), &reader_url(&workspace, "lessons")).await,
+        &get_over_tcp(server.addr(), &reader_url(&zone, "lessons")).await,
         400,
         "not-a-file",
     );

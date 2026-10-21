@@ -49,8 +49,8 @@ pub mod sessions;
 pub mod shutdown;
 pub mod sync;
 pub mod watch;
-pub mod workspace_create;
-pub mod workspaces;
+pub mod zone_create;
+pub mod zones;
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
@@ -74,7 +74,7 @@ use tower_http::services::ServeDir;
 
 pub use config::{
     CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, MdnsConfig, OperationBinding,
-    Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig, WorkspacesConfig,
+    Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig, ZonesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -82,14 +82,14 @@ pub use sessions::SessionPolicy;
 pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
-use workspaces::{RegisteredWorkspace, WorkspaceError};
+use zones::{RegisteredZone, ZoneError};
 
 /// 操作请求的请求体读取上限。操作请求不接受请求体，任何请求体都注定被拒绝，
 /// 因此只要够读完空请求体即可，不必为一个越界请求缓冲任意大的内容。
 const MAX_REQUEST_BODY_BYTES: usize = 8 * 1024;
 
-/// workspace 命令的请求体上限：只含一个服务器目录路径。
-const MAX_WORKSPACE_REQUEST_BYTES: usize = 64 * 1024;
+/// zone 命令的请求体上限：只含一个服务器目录路径。
+const MAX_ZONE_REQUEST_BYTES: usize = 64 * 1024;
 
 /// 提供给 HTTP handler 的运行状态：只有服务端配置绑定的两个固定操作，以及两个操作共用的执行资格。
 #[derive(Clone)]
@@ -114,11 +114,11 @@ pub struct AppState {
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
     /// 实际关机动作接缝由它持有（注入的记录型实现只用于自动化与人工验收的安全外壳）。
     pub shutdown: Arc<countdown::ShutdownState>,
-    /// workspace 登记列表：由后端以文件持久保存，电脑与手机共享同一份。
+    /// zone 登记列表：由后端以文件持久保存，电脑与手机共享同一份。
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
-    pub workspaces: Arc<workspaces::Workspaces>,
-    /// 新 workspace 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
+    pub zones: Arc<zones::Zones>,
+    /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
     ///
@@ -130,10 +130,10 @@ pub struct AppState {
     pub repository_locks: Arc<commit::RepositoryLocks>,
     /// 本实例成功检查远端的时间记录；只由显式检查与 Sync 前检查写入，本地事件不会触发 fetch。
     pub sync_state: Arc<sync::SyncState>,
-    /// workspace 文件事件监听与按 workspace 合并的自动刷新通知。
+    /// zone 文件事件监听与按 zone 合并的自动刷新通知。
     ///
-    /// 每个已登记 workspace 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
-    pub workspace_watch: Arc<watch::WorkspaceWatchManager>,
+    /// 每个已登记 zone 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
+    pub zone_watch: Arc<watch::ZoneWatchManager>,
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
@@ -202,16 +202,16 @@ pub fn app_with_state(
         execution: Arc::new(Mutex::new(())),
         sessions,
         shutdown,
-        workspaces: Arc::new(workspaces::Workspaces::new(
-            config.workspaces.registry_file.clone(),
+        zones: Arc::new(zones::Zones::new(
+            config.zones.registry_file.clone(),
         )),
-        create_parent_directory: config.workspaces.create_parent_directory.clone(),
-        preview_limit_bytes: config.workspaces.preview_limit_bytes.get(),
+        create_parent_directory: config.zones.create_parent_directory.clone(),
+        preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
         repository_locks: Arc::new(commit::RepositoryLocks::new()),
         sync_state: Arc::new(sync::SyncState::new()),
-        workspace_watch: Arc::new(watch::WorkspaceWatchManager::new(
-            config.workspaces.refresh_interval_seconds.duration(),
+        zone_watch: Arc::new(watch::ZoneWatchManager::new(
+            config.zones.refresh_interval_seconds.duration(),
         )),
     };
 
@@ -234,41 +234,41 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
-        // workspace 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
+        // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route(
-            "/api/workspaces",
-            get(list_workspaces).post(register_workspace),
+            "/api/zones",
+            get(list_zones).post(register_zone),
         )
-        // 新 workspace 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
-        .route("/api/workspaces/create", post(create_workspace))
+        // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
+        .route("/api/zones/create", post(create_zone))
         // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
-        // 整树读取对 Git workspace 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
-        .route("/api/workspaces/tree", get(read_workspace_tree))
-        .route("/api/workspaces/entries", get(list_workspace_entries))
-        .route("/api/workspaces/file", get(read_workspace_file))
-        // HTML 阅读模式的原始资源入口：workspace 身份编码在路径段中，HTML 的相对 URL 因此
-        // 能自然解析到同一 workspace 内的 CSS、图片等资源；每次读取仍重新核对登记根与链接边界。
+        // 整树读取对 Git zone 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
+        .route("/api/zones/tree", get(read_zone_tree))
+        .route("/api/zones/entries", get(list_zone_entries))
+        .route("/api/zones/file", get(read_zone_file))
+        // HTML 阅读模式的原始资源入口：zone 身份编码在路径段中，HTML 的相对 URL 因此
+        // 能自然解析到同一 zone 内的 CSS、图片等资源；每次读取仍重新核对登记根与链接边界。
         .route(
-            "/api/workspaces/reader/{workspace}/{*path}",
-            get(read_workspace_reader_resource),
+            "/api/zones/reader/{zone}/{*path}",
+            get(read_zone_reader_resource),
         )
         // Git 状态只读查询：当前分支与待提交变更；普通目录明确返回 repository=false。
-        .route("/api/workspaces/git-status", get(workspace_git_status))
+        .route("/api/zones/git-status", get(zone_git_status))
         // 单个变更的审查 diff：旧侧是 HEAD，新侧是最终本地内容；两侧各自应用预览上限。
-        .route("/api/workspaces/diff", get(workspace_change_diff))
+        .route("/api/zones/diff", get(zone_change_diff))
         // 经审查复核的整仓提交：确认后重查审查版本，再暂存全部符合 Git 规则的最终变更并提交。
-        .route("/api/workspaces/commit", post(commit_workspace))
+        .route("/api/zones/commit", post(commit_zone))
         // 按需检查远端：真实 fetch 当前分支的既有 upstream，并记录最近检查时间。
-        .route("/api/workspaces/check-remote", post(check_workspace_remote))
+        .route("/api/zones/check-remote", post(check_zone_remote))
         // 按既有 upstream 与 Git 配置同步：检查远端 → pull → 按需 push。
-        .route("/api/workspaces/sync", post(sync_workspace))
-        // 登记列表的角标概览：每个 workspace 的待提交项数或明确错误。
-        .route("/api/workspaces/overview", get(workspaces_overview))
-        // 自动更新的只读长连接：真实文件系统事件按 workspace 合并后通知页面重新读取；
-        // 同一 workspace 的所有观察者共享一条监听，监听失效会明确下发错误而不是保持静默。
-        .route("/api/workspaces/watch", get(watch_workspaces))
-        .route("/api/workspaces/remove", post(unregister_workspace))
+        .route("/api/zones/sync", post(sync_zone))
+        // 登记列表的角标概览：每个 zone 的待提交项数或明确错误。
+        .route("/api/zones/overview", get(zones_overview))
+        // 自动更新的只读长连接：真实文件系统事件按 zone 合并后通知页面重新读取；
+        // 同一 zone 的所有观察者共享一条监听，监听失效会明确下发错误而不是保持静默。
+        .route("/api/zones/watch", get(watch_zones))
+        .route("/api/zones/remove", post(unregister_zone))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
@@ -507,68 +507,68 @@ struct MonitoringAccepted {
     shutdown: ShutdownView,
 }
 
-/// workspace 登记列表的响应：当前完整列表（登记与取消登记也返回同一形状）。
+/// zone 登记列表的响应：当前完整列表（登记与取消登记也返回同一形状）。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WorkspaceCreationView {
+struct ZoneCreationView {
     available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_directory: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct WorkspaceListResponse {
-    workspaces: Vec<RegisteredWorkspace>,
-    creation: WorkspaceCreationView,
+struct ZoneListResponse {
+    zones: Vec<RegisteredZone>,
+    creation: ZoneCreationView,
 }
 
-/// workspace 请求的明确失败：机器可读类别 + 面向使用者的说明。
+/// zone 请求的明确失败：机器可读类别 + 面向使用者的说明。
 #[derive(Debug, Serialize)]
-struct WorkspaceErrorResponse {
+struct ZoneErrorResponse {
     code: &'static str,
     message: String,
 }
 
-/// 一次 workspace 命令的请求体：服务器上的目录路径。
+/// 一次 zone 命令的请求体：服务器上的目录路径。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkspacePathRequest {
+struct ZonePathRequest {
     path: String,
 }
 
-/// 新建 workspace 的请求体：只接受一个目录名称，父目录只来自服务端配置。
+/// 新建 zone 的请求体：只接受一个目录名称，父目录只来自服务端配置。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CreateWorkspaceRequest {
+struct CreateZoneRequest {
     name: String,
 }
 
-/// “列出 workspace 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
-async fn list_workspaces(State(state): State<AppState>) -> Response {
-    workspace_list_response(&state, state.workspaces.list().await)
+/// “列出 zone 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
+async fn list_zones(State(state): State<AppState>) -> Response {
+    zone_list_response(&state, state.zones.list().await)
 }
 
-/// “登记 workspace”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
-async fn register_workspace(State(state): State<AppState>, request: Request) -> Response {
-    match workspace_path(request).await {
-        Ok(path) => match state.workspaces.register(&path).await {
-            Ok(workspaces) => {
-                // 新登记的 workspace 立即开始监听；监听失败会作为健康错误交给观察连接。
-                state.workspace_watch.reconcile(&workspaces).await;
-                workspace_list_response(&state, Ok(workspaces))
+/// “登记 zone”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
+async fn register_zone(State(state): State<AppState>, request: Request) -> Response {
+    match zone_path(request).await {
+        Ok(path) => match state.zones.register(&path).await {
+            Ok(zones) => {
+                // 新登记的 zone 立即开始监听；监听失败会作为健康错误交给观察连接。
+                state.zone_watch.reconcile(&zones).await;
+                zone_list_response(&state, Ok(zones))
             }
-            Err(error) => workspace_error_response(error),
+            Err(error) => zone_error_response(error),
         },
         Err(rejection) => rejection,
     }
 }
 
-/// “新建 workspace”：在配置父目录下创建直接子目录、执行 `git init`，随后登记。
+/// “新建 zone”：在配置父目录下创建直接子目录、执行 `git init`，随后登记。
 ///
 /// 客户端只提交名称，父目录固定来自服务端配置。目录创建或 Git 初始化失败会保留已产生的目录；
 /// 登记失败也保留目录，并明确告诉调用者目录与 Git 初始化已经完成、可是登记没有成功。
-async fn create_workspace(State(state): State<AppState>, request: Request) -> Response {
-    let name = match workspace_create_name(request).await {
+async fn create_zone(State(state): State<AppState>, request: Request) -> Response {
+    let name = match zone_create_name(request).await {
         Ok(name) => name,
         Err(rejection) => return rejection,
     };
@@ -576,36 +576,36 @@ async fn create_workspace(State(state): State<AppState>, request: Request) -> Re
         return rejected_owned(
             StatusCode::BAD_REQUEST,
             "create-parent-not-configured",
-            "未配置 [workspaces] create_parent_directory；本次没有创建任何目录。".to_string(),
+            "未配置 [zones] create_parent_directory；本次没有创建任何目录。".to_string(),
         );
     };
     let timeout = state.git_timeout;
     let created = match tokio::task::spawn_blocking(move || {
-        workspace_create::create_and_init(&parent, &name, timeout)
+        zone_create::create_and_init(&parent, &name, timeout)
     })
     .await
     {
         Ok(Ok(path)) => path,
-        Ok(Err(error)) => return workspace_create_error_response(error),
+        Ok(Err(error)) => return zone_create_error_response(error),
         Err(_) => {
             return rejected_owned(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "create-task-failed",
-                "新建 workspace 的任务异常结束，无法确认目录或 Git 状态。".to_string(),
+                "新建 zone 的任务异常结束，无法确认目录或 Git 状态。".to_string(),
             );
         }
     };
-    let path = workspaces::display_path(&created);
-    match state.workspaces.register(&path).await {
-        Ok(workspaces) => {
-            state.workspace_watch.reconcile(&workspaces).await;
-            workspace_list_response(&state, Ok(workspaces))
+    let path = zones::display_path(&created);
+    match state.zones.register(&path).await {
+        Ok(zones) => {
+            state.zone_watch.reconcile(&zones).await;
+            zone_list_response(&state, Ok(zones))
         }
         Err(error) => rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "workspace-registration-failed",
+            "zone-registration-failed",
             format!(
-                "目录与 Git 初始化已完成，但 workspace 登记失败，目录已保留：{path}；{}",
+                "目录与 Git 初始化已完成，但 zone 登记失败，目录已保留：{path}；{}",
                 error.message()
             ),
         ),
@@ -613,93 +613,93 @@ async fn create_workspace(State(state): State<AppState>, request: Request) -> Re
 }
 
 /// “取消登记”：只移除登记项，不删除目录或文件。
-async fn unregister_workspace(State(state): State<AppState>, request: Request) -> Response {
-    match workspace_path(request).await {
-        Ok(path) => match state.workspaces.unregister(&path).await {
-            Ok(workspaces) => {
-                state.workspace_watch.reconcile(&workspaces).await;
-                workspace_list_response(&state, Ok(workspaces))
+async fn unregister_zone(State(state): State<AppState>, request: Request) -> Response {
+    match zone_path(request).await {
+        Ok(path) => match state.zones.unregister(&path).await {
+            Ok(zones) => {
+                state.zone_watch.reconcile(&zones).await;
+                zone_list_response(&state, Ok(zones))
             }
-            Err(error) => workspace_error_response(error),
+            Err(error) => zone_error_response(error),
         },
         Err(rejection) => rejection,
     }
 }
 
-/// 读取 workspace 命令的请求体；请求面封闭（不接受查询串或未知字段）。
-async fn workspace_path(request: Request) -> Result<String, Response> {
+/// 读取 zone 命令的请求体；请求面封闭（不接受查询串或未知字段）。
+async fn zone_path(request: Request) -> Result<String, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "workspace 命令不接受查询参数：路径只来自请求体。".to_string(),
+            "zone 命令不接受查询参数：路径只来自请求体。".to_string(),
         ));
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
         .await
         .map_err(|_| {
             rejected_owned(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "payload-too-large",
-                "workspace 请求体超过 64KB 上限。".to_string(),
+                "zone 请求体超过 64KB 上限。".to_string(),
             )
         })?;
-    let body: WorkspacePathRequest = serde_json::from_slice(&bytes).map_err(|_| {
+    let body: ZonePathRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析 workspace 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
+            "无法解析 zone 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
         )
     })?;
     Ok(body.path)
 }
 
-/// 读取新建 workspace 的请求体；请求面同样封闭，父目录不会从请求中接受。
-async fn workspace_create_name(request: Request) -> Result<String, Response> {
+/// 读取新建 zone 的请求体；请求面同样封闭，父目录不会从请求中接受。
+async fn zone_create_name(request: Request) -> Result<String, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "新建 workspace 不接受查询参数：名称只来自请求体。".to_string(),
+            "新建 zone 不接受查询参数：名称只来自请求体。".to_string(),
         ));
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
         .await
         .map_err(|_| {
             rejected_owned(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "payload-too-large",
-                "新建 workspace 的请求体超过 64KB 上限。".to_string(),
+                "新建 zone 的请求体超过 64KB 上限。".to_string(),
             )
         })?;
-    let body: CreateWorkspaceRequest = serde_json::from_slice(&bytes).map_err(|_| {
+    let body: CreateZoneRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析新建 workspace 请求：请发送 {\"name\":\"目录名称\"} 形式的 JSON。".to_string(),
+            "无法解析新建 zone 请求：请发送 {\"name\":\"目录名称\"} 形式的 JSON。".to_string(),
         )
     })?;
     Ok(body.name)
 }
 
-/// 把创建 workspace 的失败翻译成稳定 HTTP 类别；失败消息保留目录路径与失败阶段。
-fn workspace_create_error_response(error: workspace_create::CreateWorkspaceError) -> Response {
-    use workspace_create::CreateWorkspaceError;
+/// 把创建 zone 的失败翻译成稳定 HTTP 类别；失败消息保留目录路径与失败阶段。
+fn zone_create_error_response(error: zone_create::CreateZoneError) -> Response {
+    use zone_create::CreateZoneError;
     let status = match &error {
-        CreateWorkspaceError::AlreadyExists { .. } => StatusCode::CONFLICT,
-        CreateWorkspaceError::ParentNotAbsolute(_)
-        | CreateWorkspaceError::ParentNotFound(_)
-        | CreateWorkspaceError::ParentNotDirectory(_)
-        | CreateWorkspaceError::ParentInaccessible { .. }
-        | CreateWorkspaceError::NameRequired
-        | CreateWorkspaceError::InvalidName(_) => StatusCode::BAD_REQUEST,
-        CreateWorkspaceError::CreateFailed { .. }
-        | CreateWorkspaceError::GitInitFailed { .. }
-        | CreateWorkspaceError::FinalizeFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        CreateZoneError::AlreadyExists { .. } => StatusCode::CONFLICT,
+        CreateZoneError::ParentNotAbsolute(_)
+        | CreateZoneError::ParentNotFound(_)
+        | CreateZoneError::ParentNotDirectory(_)
+        | CreateZoneError::ParentInaccessible { .. }
+        | CreateZoneError::NameRequired
+        | CreateZoneError::InvalidName(_) => StatusCode::BAD_REQUEST,
+        CreateZoneError::CreateFailed { .. }
+        | CreateZoneError::GitInitFailed { .. }
+        | CreateZoneError::FinalizeFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     };
     rejected_owned(status, error.code(), error.message())
 }
@@ -708,7 +708,7 @@ fn workspace_create_error_response(error: workspace_create::CreateWorkspaceError
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BrowseQuery {
-    workspace: String,
+    zone: String,
     #[serde(default)]
     path: String,
 }
@@ -716,15 +716,15 @@ struct BrowseQuery {
 /// 整树读取的查询参数：只需要登记路径。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkspaceTreeQuery {
-    workspace: String,
+struct ZoneTreeQuery {
+    zone: String,
 }
 
-/// “读整棵树”：一次返回过滤后的目录快照。Git workspace 按 Git 原生忽略规则省略 ignored 路径；
+/// “读整棵树”：一次返回过滤后的目录快照。Git zone 按 Git 原生忽略规则省略 ignored 路径；
 /// 普通目录完整返回。子目录读取失败随响应带回，根目录或 Git 忽略查询失败则整次请求明确失败。
-async fn read_workspace_tree(
+async fn read_zone_tree(
     State(state): State<AppState>,
-    query: Result<Query<WorkspaceTreeQuery>, QueryRejection>,
+    query: Result<Query<ZoneTreeQuery>, QueryRejection>,
 ) -> Response {
     let query = match query {
         Ok(Query(query)) => query,
@@ -732,18 +732,18 @@ async fn read_workspace_tree(
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
-                "读取 workspace 目录树需要唯一的 `workspace` 参数，且不接受其他参数。".to_string(),
+                "读取 zone 目录树需要唯一的 `zone` 参数，且不接受其他参数。".to_string(),
             );
         }
     };
-    if query.workspace.trim().is_empty() {
+    if query.zone.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+            "zone-required",
+            "请通过 `zone` 参数指定已登记的 zone 路径。".to_string(),
         );
     }
-    let registered = match registered_workspace(&state, &query.workspace).await {
+    let registered = match registered_zone(&state, &query.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -760,7 +760,7 @@ async fn read_workspace_tree(
 }
 
 /// “列目录”：返回该目录的直接子项；隐藏文件、忽略文件和 Git 元数据都不过滤。
-async fn list_workspace_entries(
+async fn list_zone_entries(
     State(state): State<AppState>,
     query: Result<Query<BrowseQuery>, QueryRejection>,
 ) -> Response {
@@ -768,7 +768,7 @@ async fn list_workspace_entries(
         Ok(query) => query,
         Err(rejection) => return rejection,
     };
-    let registered = match registered_workspace(&state, &query.workspace).await {
+    let registered = match registered_zone(&state, &query.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -785,7 +785,7 @@ async fn list_workspace_entries(
 }
 
 /// “读文件”：返回文件元数据与内容预览；超限或二进制不返回内容，但仍返回元数据。
-async fn read_workspace_file(
+async fn read_zone_file(
     State(state): State<AppState>,
     query: Result<Query<BrowseQuery>, QueryRejection>,
 ) -> Response {
@@ -793,7 +793,7 @@ async fn read_workspace_file(
         Ok(query) => query,
         Err(rejection) => return rejection,
     };
-    let registered = match registered_workspace(&state, &query.workspace).await {
+    let registered = match registered_zone(&state, &query.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -812,20 +812,20 @@ async fn read_workspace_file(
 
 /// HTML 阅读模式读取原始资源：HTML、CSS、图片、字体等都以真实字节返回。
 ///
-/// `workspace` 是登记路径的 UTF-8 十六进制编码，只用于把相对 URL 稳定地解析回同一个 workspace；
+/// `zone` 是登记路径的 UTF-8 十六进制编码，只用于把相对 URL 稳定地解析回同一个 zone；
 /// 是否允许读取仍由登记列表与浏览边界决定。响应总是 `nosniff`，HTML 与 SVG 还带禁止脚本、表单、
 /// 嵌入和外部资源自动加载的 CSP。
-async fn read_workspace_reader_resource(
+async fn read_zone_reader_resource(
     State(state): State<AppState>,
-    UrlPath((workspace_token, path)): UrlPath<(String, String)>,
+    UrlPath((zone_token, path)): UrlPath<(String, String)>,
 ) -> Response {
-    let requested = match decode_workspace_token(&workspace_token) {
-        Ok(workspace) => workspace,
+    let requested = match decode_zone_token(&zone_token) {
+        Ok(zone) => zone,
         Err(message) => {
-            return rejected_owned(StatusCode::BAD_REQUEST, "invalid-workspace-token", message);
+            return rejected_owned(StatusCode::BAD_REQUEST, "invalid-zone-token", message);
         }
     };
-    let registered = match registered_workspace(&state, &requested).await {
+    let registered = match registered_zone(&state, &requested).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -837,25 +837,25 @@ async fn read_workspace_reader_resource(
         Err(_) => rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
             "read-failed",
-            "读取 workspace 原始资源的任务异常结束，无法确认文件内容。".to_string(),
+            "读取 zone 原始资源的任务异常结束，无法确认文件内容。".to_string(),
         ),
     }
 }
 
-fn decode_workspace_token(token: &str) -> Result<String, String> {
+fn decode_zone_token(token: &str) -> Result<String, String> {
     if token.is_empty() || token.len() % 2 != 0 {
-        return Err("HTML 阅读资源地址中的 workspace 编码无效。".to_string());
+        return Err("HTML 阅读资源地址中的 zone 编码无效。".to_string());
     }
     let mut bytes = Vec::with_capacity(token.len() / 2);
     for pair in token.as_bytes().chunks_exact(2) {
         let text = std::str::from_utf8(pair)
-            .map_err(|_| "HTML 阅读资源地址中的 workspace 编码无效。".to_string())?;
+            .map_err(|_| "HTML 阅读资源地址中的 zone 编码无效。".to_string())?;
         let byte = u8::from_str_radix(text, 16)
-            .map_err(|_| "HTML 阅读资源地址中的 workspace 编码无效。".to_string())?;
+            .map_err(|_| "HTML 阅读资源地址中的 zone 编码无效。".to_string())?;
         bytes.push(byte);
     }
     String::from_utf8(bytes)
-        .map_err(|_| "HTML 阅读资源地址中的 workspace 编码不是 UTF-8。".to_string())
+        .map_err(|_| "HTML 阅读资源地址中的 zone 编码不是 UTF-8。".to_string())
 }
 
 fn resource_response(bytes: Vec<u8>, content_type: &'static str) -> Response {
@@ -918,41 +918,41 @@ fn resource_content_type(path: &str) -> &'static str {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GitStatusQuery {
-    workspace: String,
+    zone: String,
 }
 
-/// workspace 列表上的角标概览：每个登记项的待提交项数或明确错误。
+/// zone 列表上的角标概览：每个登记项的待提交项数或明确错误。
 #[derive(Debug, Serialize)]
-struct WorkspaceOverviewResponse {
-    workspaces: Vec<git::WorkspaceSummary>,
+struct ZoneOverviewResponse {
+    zones: Vec<git::ZoneSummary>,
 }
 
-/// “读取 workspace 概览”：为登记列表中每个 workspace 给出角标所需的事实。
-async fn workspaces_overview(State(state): State<AppState>) -> Response {
-    let workspaces = match state.workspaces.list().await {
-        Ok(workspaces) => workspaces,
-        Err(error) => return workspace_error_response(error),
+/// “读取 zone 概览”：为登记列表中每个 zone 给出角标所需的事实。
+async fn zones_overview(State(state): State<AppState>) -> Response {
+    let zones = match state.zones.list().await {
+        Ok(zones) => zones,
+        Err(error) => return zone_error_response(error),
     };
     let timeout = state.git_timeout;
     let sync_state = Arc::clone(&state.sync_state);
-    match tokio::task::spawn_blocking(move || git::overview(&workspaces, timeout, &sync_state))
+    match tokio::task::spawn_blocking(move || git::overview(&zones, timeout, &sync_state))
         .await
     {
-        Ok(workspaces) => (
+        Ok(zones) => (
             StatusCode::OK,
-            Json(WorkspaceOverviewResponse { workspaces }),
+            Json(ZoneOverviewResponse { zones }),
         )
             .into_response(),
         Err(_) => rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
             "git-command-failed",
-            "读取 workspace 概览的任务异常结束，无法确认待提交数量。".to_string(),
+            "读取 zone 概览的任务异常结束，无法确认待提交数量。".to_string(),
         ),
     }
 }
 
 /// “读取 Git 状态”：当前分支与待提交变更；普通目录返回 `repository: false`。
-async fn workspace_git_status(
+async fn zone_git_status(
     State(state): State<AppState>,
     query: Result<Query<GitStatusQuery>, QueryRejection>,
 ) -> Response {
@@ -962,18 +962,18 @@ async fn workspace_git_status(
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
-                "读取 Git 状态需要 `workspace` 参数，且不接受其他参数。".to_string(),
+                "读取 Git 状态需要 `zone` 参数，且不接受其他参数。".to_string(),
             );
         }
     };
-    if query.workspace.trim().is_empty() {
+    if query.zone.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+            "zone-required",
+            "请通过 `zone` 参数指定已登记的 zone 路径。".to_string(),
         );
     }
-    let registered = match registered_workspace(&state, &query.workspace).await {
+    let registered = match registered_zone(&state, &query.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -993,18 +993,18 @@ async fn workspace_git_status(
 
 /// “订阅自动更新”：一条只读 SSE 长连接。
 ///
-/// 首帧是全部被监听 workspace 的快照（实际生效的间隔、健康与最近刷新），之后同一 workspace 的所有
+/// 首帧是全部被监听 zone 的快照（实际生效的间隔、健康与最近刷新），之后同一 zone 的所有
 /// 观察者共享同一条监听与同一份节流状态，只收到合并后的刷新通知或监听健康变化。
 /// 这里只下发本地事件；远端状态仍需页面显式检查，不因本连接自动 fetch。
-async fn watch_workspaces(State(state): State<AppState>) -> Response {
-    let workspaces = match state.workspaces.list().await {
-        Ok(workspaces) => workspaces,
-        Err(error) => return workspace_error_response(error),
+async fn watch_zones(State(state): State<AppState>) -> Response {
+    let zones = match state.zones.list().await {
+        Ok(zones) => zones,
+        Err(error) => return zone_error_response(error),
     };
     // 先订阅再对齐监听：对齐期间新建立的监听健康与刷新都不会漏掉。
-    let receiver = state.workspace_watch.subscribe();
-    state.workspace_watch.reconcile(&workspaces).await;
-    let manager = Arc::clone(&state.workspace_watch);
+    let receiver = state.zone_watch.subscribe();
+    state.zone_watch.reconcile(&zones).await;
+    let manager = Arc::clone(&state.zone_watch);
     let first = manager.snapshot().await;
 
     let stream = stream::unfold((receiver, Some(first)), move |(mut receiver, pending)| {
@@ -1033,7 +1033,7 @@ async fn watch_workspaces(State(state): State<AppState>) -> Response {
 
 fn git_error_response(error: git::GitError) -> Response {
     let status = match &error {
-        git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
         git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
         git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
@@ -1053,7 +1053,7 @@ fn diff_error_response(error: git::DiffError) -> Response {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DiffQuery {
-    workspace: String,
+    zone: String,
     path: String,
     #[serde(default)]
     old_path: Option<String>,
@@ -1062,8 +1062,8 @@ struct DiffQuery {
 /// “读取审查 diff”：旧侧取当前分支最新本地提交，新侧取最终本地文件。
 ///
 /// 新增、删除、已识别重命名与部分暂存都使用同一入口；旧路径只用于定位 Git 历史内容，仍先经过
-/// workspace 根边界检查。任一侧超限或二进制时返回明确限制，不返回完整内容。
-async fn workspace_change_diff(
+/// zone 根边界检查。任一侧超限或二进制时返回明确限制，不返回完整内容。
+async fn zone_change_diff(
     State(state): State<AppState>,
     query: Result<Query<DiffQuery>, QueryRejection>,
 ) -> Response {
@@ -1073,16 +1073,16 @@ async fn workspace_change_diff(
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
-                "审查 diff 需要 `workspace` 与 `path` 参数，可选 `oldPath`，且不接受其他参数。"
+                "审查 diff 需要 `zone` 与 `path` 参数，可选 `oldPath`，且不接受其他参数。"
                     .to_string(),
             );
         }
     };
-    if query.workspace.trim().is_empty() {
+    if query.zone.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+            "zone-required",
+            "请通过 `zone` 参数指定已登记的 zone 路径。".to_string(),
         );
     }
     if query.path.trim().is_empty() {
@@ -1093,7 +1093,7 @@ async fn workspace_change_diff(
         );
     }
 
-    let registered = match registered_workspace(&state, &query.workspace).await {
+    let registered = match registered_zone(&state, &query.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -1123,8 +1123,8 @@ async fn workspace_change_diff(
 /// 一次提交请求：服务器目录、非空提交信息，以及页面展示的审查版本标识。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceCommitRequest {
-    workspace: String,
+struct ZoneCommitRequest {
+    zone: String,
     message: String,
     review_token: String,
 }
@@ -1132,8 +1132,8 @@ struct WorkspaceCommitRequest {
 /// 一次真实提交成功后的回执：只有 Git 确认创建了新的 HEAD 才返回。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WorkspaceCommitResponse {
-    workspace: String,
+struct ZoneCommitResponse {
+    zone: String,
     outcome: &'static str,
     commit: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1145,17 +1145,17 @@ struct WorkspaceCommitResponse {
 ///
 /// 页面与直接请求都拒绝空信息、普通目录、阻塞状态和失效审查；被拒绝的请求不会产生 Git 写入。
 /// 请求被接受后，执行放在独立任务里：客户端断线不会取消已经开始的提交，也不会在别处重放。
-async fn commit_workspace(State(state): State<AppState>, request: Request) -> Response {
+async fn commit_zone(State(state): State<AppState>, request: Request) -> Response {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "提交请求不接受查询参数：workspace、提交信息与审查版本只来自请求体。".to_string(),
+            "提交请求不接受查询参数：zone、提交信息与审查版本只来自请求体。".to_string(),
         );
     }
 
     let (_, body) = request.into_parts();
-    let bytes = match to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES).await {
+    let bytes = match to_bytes(body, MAX_ZONE_REQUEST_BYTES).await {
         Ok(bytes) => bytes,
         Err(_) => {
             return rejected_owned(
@@ -1165,22 +1165,22 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
             );
         }
     };
-    let request: WorkspaceCommitRequest = match serde_json::from_slice(&bytes) {
+    let request: ZoneCommitRequest = match serde_json::from_slice(&bytes) {
         Ok(request) => request,
         Err(_) => {
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-request",
-                "无法解析提交请求：请发送 {\"workspace\":\"服务器目录\",\"message\":\"提交信息\",\"reviewToken\":\"审查版本\"} 形式的 JSON。"
+                "无法解析提交请求：请发送 {\"zone\":\"服务器目录\",\"message\":\"提交信息\",\"reviewToken\":\"审查版本\"} 形式的 JSON。"
                     .to_string(),
             );
         }
     };
-    if request.workspace.trim().is_empty() {
+    if request.zone.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请指定要提交的已登记 workspace。".to_string(),
+            "zone-required",
+            "请指定要提交的已登记 zone。".to_string(),
         );
     }
     if request.message.trim().is_empty() {
@@ -1198,14 +1198,14 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
         );
     }
 
-    let registered = match registered_workspace(&state, &request.workspace).await {
+    let registered = match registered_zone(&state, &request.zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
     let timeout = state.git_timeout;
     let locks = Arc::clone(&state.repository_locks);
     let sync_state = Arc::clone(&state.sync_state);
-    let response_workspace = registered.clone();
+    let response_zone = registered.clone();
     let message = request.message;
     let review_token = request.review_token;
     let (sender, receiver) = oneshot::channel();
@@ -1221,7 +1221,7 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
             )
         })
         .await;
-        let response = commit_response(response_workspace, outcome);
+        let response = commit_response(response_zone, outcome);
         // 连接已经断开时接收端不存在，结果丢弃；已经开始的提交不会被取消或重放。
         let _ = sender.send(response);
     });
@@ -1237,7 +1237,7 @@ async fn commit_workspace(State(state): State<AppState>, request: Request) -> Re
 }
 
 fn commit_response(
-    workspace: String,
+    zone: String,
     outcome: Result<commit::CommitOutcome, tokio::task::JoinError>,
 ) -> Response {
     match outcome {
@@ -1247,8 +1247,8 @@ fn commit_response(
             message,
         }) => (
             StatusCode::OK,
-            Json(WorkspaceCommitResponse {
-                workspace,
+            Json(ZoneCommitResponse {
+                zone,
                 outcome: "committed",
                 commit,
                 branch,
@@ -1259,7 +1259,7 @@ fn commit_response(
         Ok(commit::CommitOutcome::NotRepository) => rejected_owned(
             StatusCode::CONFLICT,
             "not-a-repository",
-            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Commit。".to_string(),
+            "该 zone 不是 Git 工作树根：普通目录没有可执行的 Commit。".to_string(),
         ),
         Ok(commit::CommitOutcome::Busy) => rejected_owned(
             StatusCode::CONFLICT,
@@ -1279,7 +1279,7 @@ fn commit_response(
         ),
         Ok(commit::CommitOutcome::Failed(error)) => {
             let status = match &error {
-                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
                 git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
                 git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
                     StatusCode::INTERNAL_SERVER_ERROR
@@ -1295,24 +1295,24 @@ fn commit_response(
     }
 }
 
-/// 一次“只有 workspace”的 POST 请求体；检查远端与 Sync 都只接收服务器目录。
+/// 一次“只有 zone”的 POST 请求体；检查远端与 Sync 都只接收服务器目录。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkspaceTargetRequest {
-    workspace: String,
+struct ZoneTargetRequest {
+    zone: String,
 }
 
 /// 读取检查远端/Sync 的请求体；请求面封闭，不接受查询串或未知字段。
-async fn workspace_target(request: Request) -> Result<String, Response> {
+async fn zone_target(request: Request) -> Result<String, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "该命令不接受查询参数：workspace 只来自请求体。".to_string(),
+            "该命令不接受查询参数：zone 只来自请求体。".to_string(),
         ));
     }
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_WORKSPACE_REQUEST_BYTES)
+    let bytes = to_bytes(body, MAX_ZONE_REQUEST_BYTES)
         .await
         .map_err(|_| {
             rejected_owned(
@@ -1321,33 +1321,33 @@ async fn workspace_target(request: Request) -> Result<String, Response> {
                 "请求体超过 64KB 上限。".to_string(),
             )
         })?;
-    let request: WorkspaceTargetRequest = serde_json::from_slice(&bytes).map_err(|_| {
+    let request: ZoneTargetRequest = serde_json::from_slice(&bytes).map_err(|_| {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析请求：请发送 {\"workspace\":\"服务器目录\"} 形式的 JSON。".to_string(),
+            "无法解析请求：请发送 {\"zone\":\"服务器目录\"} 形式的 JSON。".to_string(),
         )
     })?;
-    if request.workspace.trim().is_empty() {
+    if request.zone.trim().is_empty() {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请指定要操作的已登记 workspace。".to_string(),
+            "zone-required",
+            "请指定要操作的已登记 zone。".to_string(),
         ));
     }
-    Ok(request.workspace)
+    Ok(request.zone)
 }
 
 /// “检查远端”：真实 fetch 当前分支已有 upstream 的远端，成功后返回刷新后的完整 Git 状态。
 ///
-/// 检查不要求工作区干净，也不修改工作树、索引或本地分支；普通目录、detached HEAD 与没有远端
+/// 检查不要求工作树干净，也不修改工作树、索引或本地分支；普通目录、detached HEAD 与没有远端
 /// upstream 的状态分别明确拒绝。检查与 Commit/Sync 共用同一份仓库写操作资格。
-async fn check_workspace_remote(State(state): State<AppState>, request: Request) -> Response {
-    let workspace = match workspace_target(request).await {
-        Ok(workspace) => workspace,
+async fn check_zone_remote(State(state): State<AppState>, request: Request) -> Response {
+    let zone = match zone_target(request).await {
+        Ok(zone) => zone,
         Err(response) => return response,
     };
-    let registered = match registered_workspace(&state, &workspace).await {
+    let registered = match registered_zone(&state, &zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
@@ -1362,7 +1362,7 @@ async fn check_workspace_remote(State(state): State<AppState>, request: Request)
         Ok(sync::CheckOutcome::NotRepository) => rejected_owned(
             StatusCode::CONFLICT,
             "not-a-repository",
-            "该 workspace 不是 Git 工作树根：普通目录没有可检查的远端。".to_string(),
+            "该 zone 不是 Git 工作树根：普通目录没有可检查的远端。".to_string(),
         ),
         Ok(sync::CheckOutcome::Busy) => rejected_owned(
             StatusCode::CONFLICT,
@@ -1389,28 +1389,28 @@ async fn check_workspace_remote(State(state): State<AppState>, request: Request)
 
 /// “按既有 upstream 同步”：检查远端 → pull → 按需 push。
 ///
-/// 页面与直接请求都拒绝普通目录、脏工作区、detached HEAD、冲突或未完成流程，以及没有远端
+/// 页面与直接请求都拒绝普通目录、脏工作树、detached HEAD、冲突或未完成流程，以及没有远端
 /// upstream 的状态。执行放在独立任务里：客户端断线不会取消已接受的同步，也不会重放。
-async fn sync_workspace(State(state): State<AppState>, request: Request) -> Response {
-    let workspace = match workspace_target(request).await {
-        Ok(workspace) => workspace,
+async fn sync_zone(State(state): State<AppState>, request: Request) -> Response {
+    let zone = match zone_target(request).await {
+        Ok(zone) => zone,
         Err(response) => return response,
     };
-    let registered = match registered_workspace(&state, &workspace).await {
+    let registered = match registered_zone(&state, &zone).await {
         Ok(registered) => registered,
         Err(response) => return response,
     };
     let timeout = state.git_timeout;
     let locks = Arc::clone(&state.repository_locks);
     let sync_state = Arc::clone(&state.sync_state);
-    let response_workspace = registered.clone();
+    let response_zone = registered.clone();
     let (sender, receiver) = oneshot::channel();
     tokio::spawn(async move {
         let outcome = tokio::task::spawn_blocking(move || {
             sync::execute(&registered, timeout, &locks, &sync_state)
         })
         .await;
-        let response = sync_response(response_workspace, outcome);
+        let response = sync_response(response_zone, outcome);
         let _ = sender.send(response);
     });
 
@@ -1425,18 +1425,18 @@ async fn sync_workspace(State(state): State<AppState>, request: Request) -> Resp
 }
 
 fn sync_response(
-    workspace: String,
+    zone: String,
     outcome: Result<sync::SyncOutcome, tokio::task::JoinError>,
 ) -> Response {
     match outcome {
         Ok(sync::SyncOutcome::Synced(mut accepted)) => {
-            accepted.workspace = workspace;
+            accepted.zone = zone;
             (StatusCode::OK, Json(accepted)).into_response()
         }
         Ok(sync::SyncOutcome::NotRepository) => rejected_owned(
             StatusCode::CONFLICT,
             "not-a-repository",
-            "该 workspace 不是 Git 工作树根：普通目录没有可执行的 Sync。".to_string(),
+            "该 zone 不是 Git 工作树根：普通目录没有可执行的 Sync。".to_string(),
         ),
         Ok(sync::SyncOutcome::Busy) => rejected_owned(
             StatusCode::CONFLICT,
@@ -1449,7 +1449,7 @@ fn sync_response(
         Ok(sync::SyncOutcome::Dirty) => rejected_owned(
             StatusCode::CONFLICT,
             "sync-dirty-worktree",
-            "工作区有未提交变更：Sync 只对干净工作区可用；本功能不会 stash 或隐式提交。"
+            "工作树有未提交变更：Sync 只对干净工作树可用；本功能不会 stash 或隐式提交。"
                 .to_string(),
         ),
         Ok(sync::SyncOutcome::NoUpstream) => rejected_owned(
@@ -1471,7 +1471,7 @@ fn sync_response(
                 ));
             }
             let status = match &error {
-                git::GitError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+                git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
                 git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
                 git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
                     StatusCode::INTERNAL_SERVER_ERROR
@@ -1495,36 +1495,36 @@ fn browse_query(
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-query",
-            "读取 workspace 需要 `workspace` 参数与可选的 `path` 参数，且不接受其他参数。"
+            "读取 zone 需要 `zone` 参数与可选的 `path` 参数，且不接受其他参数。"
                 .to_string(),
         )
     })?;
-    if query.workspace.trim().is_empty() {
+    if query.zone.trim().is_empty() {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
-            "workspace-required",
-            "请通过 `workspace` 参数指定已登记的 workspace 路径。".to_string(),
+            "zone-required",
+            "请通过 `zone` 参数指定已登记的 zone 路径。".to_string(),
         ));
     }
     Ok(query)
 }
 
-/// 按登记列表核对 workspace；未登记与登记文件读取失败都明确返回，不继续读取文件系统。
-async fn registered_workspace(state: &AppState, requested: &str) -> Result<String, Response> {
-    match state.workspaces.list().await {
-        Ok(workspaces) => match browse::registered_root(&workspaces, requested) {
+/// 按登记列表核对 zone；未登记与登记文件读取失败都明确返回，不继续读取文件系统。
+async fn registered_zone(state: &AppState, requested: &str) -> Result<String, Response> {
+    match state.zones.list().await {
+        Ok(zones) => match browse::registered_root(&zones, requested) {
             Ok(root) => Ok(root.to_string()),
             Err(error) => Err(browse_error_response(error)),
         },
-        Err(error) => Err(workspace_error_response(error)),
+        Err(error) => Err(zone_error_response(error)),
     }
 }
 
 fn browse_error_response(error: browse::BrowseError) -> Response {
     use browse::BrowseError;
     let status = match &error {
-        BrowseError::WorkspaceNotRegistered | BrowseError::PathNotFound => StatusCode::NOT_FOUND,
-        BrowseError::WorkspaceUnavailable(_) => StatusCode::NOT_FOUND,
+        BrowseError::ZoneNotRegistered | BrowseError::PathNotFound => StatusCode::NOT_FOUND,
+        BrowseError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
         BrowseError::PathOutside | BrowseError::Link { .. } => StatusCode::FORBIDDEN,
         BrowseError::NotADirectory | BrowseError::NotAFile | BrowseError::InvalidPath(_) => {
             StatusCode::BAD_REQUEST
@@ -1537,13 +1537,13 @@ fn browse_error_response(error: browse::BrowseError) -> Response {
 }
 
 /// 把登记操作的结果翻译成 HTTP 响应：成功返回当前完整列表与创建能力，失败不伪装成空列表。
-fn workspace_list_response(
+fn zone_list_response(
     state: &AppState,
-    result: Result<Vec<RegisteredWorkspace>, WorkspaceError>,
+    result: Result<Vec<RegisteredZone>, ZoneError>,
 ) -> Response {
     match result {
-        Ok(workspaces) => {
-            let creation = WorkspaceCreationView {
+        Ok(zones) => {
+            let creation = ZoneCreationView {
                 available: state.create_parent_directory.is_some(),
                 parent_directory: state
                     .create_parent_directory
@@ -1552,35 +1552,35 @@ fn workspace_list_response(
             };
             (
                 StatusCode::OK,
-                Json(WorkspaceListResponse {
-                    workspaces,
+                Json(ZoneListResponse {
+                    zones,
                     creation,
                 }),
             )
                 .into_response()
         }
-        Err(error) => workspace_error_response(error),
+        Err(error) => zone_error_response(error),
     }
 }
 
-fn workspace_error_response(error: WorkspaceError) -> Response {
+fn zone_error_response(error: ZoneError) -> Response {
     let status = match &error {
-        WorkspaceError::AlreadyRegistered => StatusCode::CONFLICT,
-        WorkspaceError::NotRegistered => StatusCode::NOT_FOUND,
-        WorkspaceError::Unreadable(_)
-        | WorkspaceError::Corrupt(_)
-        | WorkspaceError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        WorkspaceError::Required
-        | WorkspaceError::NotAbsolute
-        | WorkspaceError::NotFound
-        | WorkspaceError::NotADirectory
-        | WorkspaceError::Inaccessible(_) => StatusCode::BAD_REQUEST,
+        ZoneError::AlreadyRegistered => StatusCode::CONFLICT,
+        ZoneError::NotRegistered => StatusCode::NOT_FOUND,
+        ZoneError::Unreadable(_)
+        | ZoneError::Corrupt(_)
+        | ZoneError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ZoneError::Required
+        | ZoneError::NotAbsolute
+        | ZoneError::NotFound
+        | ZoneError::NotADirectory
+        | ZoneError::Inaccessible(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(status, error.code(), error.message())
 }
 
 fn rejected_owned(status: StatusCode, code: &'static str, message: String) -> Response {
-    (status, Json(WorkspaceErrorResponse { code, message })).into_response()
+    (status, Json(ZoneErrorResponse { code, message })).into_response()
 }
 
 /// 两个固定操作共用的执行路径。
