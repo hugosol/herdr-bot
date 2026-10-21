@@ -5,41 +5,45 @@ import { describe, expect, it } from 'vitest'
 import App from '../src/App'
 
 /**
- * 三 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
+ * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
  *
- * 顶层顺序固定为会话列表、文件列表、控制面板；每次打开或整页刷新都从会话列表开始，
- * 不恢复上次 tab。三个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
- * 方向键在三个入口之间循环切换并同步焦点。左右滑动不参与切换。
+ * 顶层顺序固定为会话列表、Bot 模板、文件列表、控制面板；每次打开或整页刷新都从会话列表开始，
+ * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
+ * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
  */
-describe('App 三 tab 骨架', () => {
-  it('整页恰三个 tab，顺序为会话列表、文件列表、控制面板，默认停在会话列表', () => {
+describe('App 四 tab 骨架', () => {
+  it('整页恰四个 tab，顺序为会话列表、Bot 模板、文件列表、控制面板，默认停在会话列表', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['会话列表', '文件列表', '控制面板'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['会话列表', 'Bot 模板', '文件列表', '控制面板'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
     expect(tabs[2]).toHaveAttribute('aria-selected', 'false')
+    expect(tabs[3]).toHaveAttribute('aria-selected', 'false')
 
     // 同一时刻只有一个 tabpanel 在可访问性树里可见。
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
+    expect(screen.getByTestId('panel-templates')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-control')).not.toBeVisible()
   })
 
-  it('Tab 可聚焦三个 tab，Enter/Space 可切换', async () => {
+  it('Tab 可聚焦四个 tab，Enter/Space 可切换', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     await user.tab()
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
     await user.tab()
+    expect(screen.getByTestId('tab-templates')).toHaveFocus()
+    await user.tab()
     expect(screen.getByTestId('tab-files')).toHaveFocus()
     await user.tab()
     expect(screen.getByTestId('tab-control')).toHaveFocus()
 
-    // Space 激活当前聚焦的第三个入口。
+    // Space 激活当前聚焦的第四个入口。
     await user.keyboard(' ')
     expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-control')).toBeVisible()
@@ -54,12 +58,17 @@ describe('App 三 tab 骨架', () => {
     expect(screen.getByTestId('panel-control')).not.toBeVisible()
   })
 
-  it('方向键在三个入口之间循环切换，并同步焦点', async () => {
+  it('方向键在四个入口之间循环切换，并同步焦点', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     await user.click(screen.getByTestId('tab-sessions'))
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByTestId('tab-templates')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-templates')).toHaveFocus()
+    expect(screen.getByTestId('panel-templates')).toBeVisible()
 
     await user.keyboard('{ArrowRight}')
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
@@ -103,6 +112,7 @@ describe('App 三 tab 骨架', () => {
 
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
+    expect(screen.getByTestId('panel-templates')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-control')).not.toBeVisible()
   })

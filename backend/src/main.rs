@@ -47,6 +47,10 @@ async fn main() -> anyhow::Result<()> {
         config.zones.registry_file.display()
     );
     println!(
+        "[herdr-bot] Bot 模板存储文件：{}",
+        config.bot_templates.storage_file.display()
+    );
+    println!(
         "[herdr-bot] 单文件预览上限：{} 字节",
         config.zones.preview_limit_bytes.get()
     );

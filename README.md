@@ -6,8 +6,10 @@ herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就�
 
 - 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
   [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
-- 当前新增（三个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
-  [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)。
+- 当前新增（四个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
+  [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)；Bot 模板管理与从
+  zone 创建 Bot：[`.scratch/bot-template-creation/spec.md`](.scratch/bot-template-creation/spec.md)、
+  [`.scratch/bot-template-creation/contract.md`](.scratch/bot-template-creation/contract.md)。
 - 较早版本（当时的 mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
   [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
   决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
@@ -156,8 +158,8 @@ herdr-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `herdr-bo
    端口固定为配置里的 `8787`。**不要在手机上用 `127.0.0.1`**（那指向手机自己）。
 3. 手机连接**与电脑同一个 Wi-Fi**（不要用访客网络或热点）。
 4. 手机浏览器打开 `http://<上一步的 IPv4>:8787/`。
-   - **预期看到**：标题“herdr-bot”、三个等宽入口（“会话列表”“文件列表”“控制面板”），默认停在
-     “会话列表”。
+   - **预期看到**：标题“herdr-bot”、四个等宽入口（“会话列表”“Bot 模板”“文件列表”“控制面板”），
+     默认停在“会话列表”。
 5. 点按“控制面板”，再点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时
    **两个按钮同时变灰、点不动**；脚本结束后显示本次调用结果。从**控制台窗口**启动面板时，
    默认绑定的现有脚本会显示“执行完成”（约 5 秒，脚本自身的等待会真正执行）；若面板是在没有控制台
@@ -298,6 +300,26 @@ refresh_interval_seconds = 10
 - 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
   就只显示大小与上限说明。
 
+### `[bot_templates]` 配置（可选）
+
+Bot 模板由后端以文件持久保存，电脑与手机读取同一份；整段可缺省：
+
+```toml
+[bot_templates]
+# 模板存储文件位置；缺省为进程工作目录下的 bot-templates.json。
+storage_file = 'E:\data\herdr-bot-templates.json'
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `storage_file` | `bot-templates.json` | Bot 模板的持久文件；相对路径按进程工作目录解析 |
+
+- 文本文件不存在表示还没有任何模板，不是读取错误；模板在真实进程重启后仍然保留。
+- 保存成功只表示存储文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或内容
+  损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；页面不会把失败的保存显示成
+  “已保存”。
+- 拼错的字段名或段名会让**启动明确失败**，不会静默回退到缺省路径。
+
 ### `[git]` 配置（可选）
 
 本功能发起的每条 Git 命令都有执行时限；整段可缺省：
@@ -320,10 +342,50 @@ command_timeout_seconds = 300
   都会让**启动明确失败**，不会静默回退。
 - 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
 
+### Bot 模板
+
+主界面提供独立的“Bot 模板”tab，用于新增、查看、编辑与删除模板；模板由后端持久保存，电脑与手机
+读取同一份。顶层层级顺序为“会话列表 → Bot 模板 → 文件列表 → 控制面板”；每次打开或整页刷新仍从
+会话列表开始，不恢复上次 tab。删除模板只移除模板，不改变任何已经创建的 Bot。
+
+模板字段与固定规则：
+
+- `name` 必填，是模板显示名，不是新 Bot 的固定名字。
+- `bot-name` 必填且必须是单行规则；初始规则为 `{zone.name} · {template.name} · {bot.id}`。
+  编辑时可插入四个已承诺字段 `{zone.name}`、`{template.name}`、`{agent}`、`{bot.id}` 并查看示例预览；
+  页面不扩展未知占位符的产品承诺。
+- `agent` 只能是 `omp` 或 `pi`。
+- `model` 只能沿用 Agent 默认值、`gpt-6.1-sol` 或 `deepseek-flash`，没有自由输入。
+- `thinking` 只提供当前 agent 与具体模型支持的固定级别；model 沿用默认值时 thinking 也只能沿用
+  默认值。切换 agent 会把 model 与 thinking 重置为默认值；切换 model 时保留仍适用的 thinking，
+  否则重置并提示。
+- `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
+- `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
+
+能力事实来自目标源码的固定选项：OMP 使用模型元数据的 `thinking.efforts`，Pi 使用
+`getSupportedThinkingLevels`。全局 CLI 支持的级别（例如 OMP 的 `auto`）不会成为模型能力；两个
+agent 的能力表也不互相复制。
+
+接口：
+
+- `GET /api/bot-templates` 读取完整列表与固定选项（`templates`、`options`）。
+- `POST /api/bot-templates` 新增模板，JSON 字段为
+  `{"name":"…","botName":"…","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"…"}`。
+- `GET /api/bot-templates/{id}` 按标识读取单个模板；已删除的模板返回 `template-not-found`。
+- `PUT /api/bot-templates/{id}` 编辑模板；标识保持不变。
+- `DELETE /api/bot-templates/{id}` 删除模板。
+
+成功响应都是当前完整模板列表与固定选项。失败响应是 `{"code":"…","message":"…"}`；字段与能力约束的
+类别包括 `template-name-required`、`template-bot-name-required`、
+`template-bot-name-not-single-line`、`template-agent-invalid`、`template-model-invalid`、
+`template-thinking-invalid`、`template-thinking-requires-default-model`、
+`template-thinking-unsupported` 与 `template-skill-invalid`；存储错误包括 `templates-unreadable`、
+`templates-corrupt` 与 `templates-write-failed`。保存失败时此前已保存的模板保持不变。
+
 ### 文件列表与 zone 登记
 
-主界面三个顶层入口按“会话列表 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
-不恢复上次 tab。三个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
+主界面顶层入口按“会话列表 → Bot 模板 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
+不恢复上次 tab。四个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
 
 > **可信局域网提醒**：本功能没有登录或来源认证，沿用“仅可信局域网”的部署前提。任何能访问本服务
 > 端口的设备都可以读取已登记 zone 中的文件内容（包括敏感文件），并可以触发已开放的
@@ -997,6 +1059,19 @@ countdown_seconds = 10
 ```bat
 cargo test --manifest-path backend\Cargo.toml
 ```
+
+前端交互测试与真实浏览器验收分开运行；浏览器用例会启动隔离的真实 herdr-bot 进程，需要先构建
+打包页面与后端二进制：
+
+```bat
+npm --prefix frontend run test
+npm --prefix frontend run build
+cargo build --manifest-path backend\Cargo.toml
+npm --prefix frontend run test:browser
+```
+
+`test:browser` 使用本机已安装的 Google Chrome（Playwright `channel: "chrome"`），不额外下载浏览器；
+用例覆盖 Bot 模板 tab 的真实新增、查看、编辑、删除、公开 HTTP 共享读取、保存失败与进程重启保留。
 
 mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
 且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：

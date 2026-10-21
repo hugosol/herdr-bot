@@ -38,6 +38,10 @@ pub struct Config {
     /// `zones.json`。
     #[serde(default)]
     pub zones: ZonesConfig,
+    /// Bot 模板的存储位置；整个 `[bot_templates]` 段可缺省，缺省为进程工作目录下的
+    /// `bot-templates.json`。
+    #[serde(default)]
+    pub bot_templates: BotTemplatesConfig,
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
@@ -135,6 +139,31 @@ impl Default for ZonesConfig {
             refresh_interval_seconds: refresh_interval_seconds_by_default(),
         }
     }
+}
+
+/// Bot 模板设置（`[bot_templates]` 段）。
+///
+/// 模板由后端以文件持久保存，电脑与手机读取同一份；路径相对进程工作目录，与既有配置的
+/// 路径语义一致。存储文件不存在表示还没有任何模板，不是错误。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BotTemplatesConfig {
+    /// 模板存储文件路径；缺省 `bot-templates.json`。
+    #[serde(default = "storage_file_by_default")]
+    pub storage_file: PathBuf,
+}
+
+impl Default for BotTemplatesConfig {
+    fn default() -> Self {
+        Self {
+            storage_file: storage_file_by_default(),
+        }
+    }
+}
+
+/// `[bot_templates] storage_file` 的缺省值：进程工作目录下的 `bot-templates.json`。
+fn storage_file_by_default() -> PathBuf {
+    PathBuf::from(crate::templates::DEFAULT_STORAGE_FILE)
 }
 
 /// `[zones] registry_file` 的缺省值：进程工作目录下的 `zones.json`。
@@ -923,6 +952,37 @@ working_directory = 'C:\work'
         assert!(
             error.to_string().contains("unknown field") && error.to_string().contains("`session`"),
             "解析错误应指出未知的段名，实际：{error}"
+        );
+    }
+
+    /// Bot 模板存储文件缺省为当前工作目录下的 bot-templates.json。
+    #[test]
+    fn legacy_config_without_bot_templates_section_uses_default_storage_file() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.bot_templates.storage_file,
+            PathBuf::from("bot-templates.json")
+        );
+    }
+
+    /// 显式配置的模板存储路径按字面读取；拼错的字段名明确失败。
+    #[test]
+    fn explicit_bot_templates_storage_file_is_read_verbatim() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[bot_templates]\nstorage_file = 'D:\\\\templates\\\\bot-templates.json'\n"
+        );
+        let config = Config::from_toml(&raw).expect("合法模板存储路径必须可解析");
+        assert_eq!(
+            config.bot_templates.storage_file,
+            PathBuf::from(r"D:\templates\bot-templates.json")
+        );
+
+        let misspelled = format!("{LEGACY_CONFIG}\n[bot_templates]\nstoragefile = 'x.json'\n");
+        let error = Config::from_toml(&misspelled).expect_err("写错的字段名必须导致解析失败");
+        assert!(
+            error.to_string().contains("unknown field")
+                && error.to_string().contains("`storagefile`"),
+            "解析错误应指出未知字段名，实际：{error}"
         );
     }
 }
