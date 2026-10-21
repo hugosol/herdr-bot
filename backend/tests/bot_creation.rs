@@ -1305,7 +1305,8 @@ async fn an_all_empty_template_attempts_submission_and_reports_the_herdr_rejecti
         "必须呈现 Herdr 的拒绝：{message}"
     );
     assert!(
-        message.contains("Tab 与 agent 已保留"),
+        message.contains("初始指示的提交被明确拒绝")
+            && message.contains("Tab、Pane 与 agent 已保留"),
         "必须区分现场已存在而提交失败：{message}"
     );
 
