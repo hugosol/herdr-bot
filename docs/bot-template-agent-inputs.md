@@ -42,6 +42,16 @@ OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再�
 
 自动证据位于 `frontend/browser-tests/templateExtensionLaunch.spec.ts`：六组合字面预期、真实隔离文件故障（包括 Windows 独占句柄读取拒绝）、实际页面错误与独立 Herdr 调用/对象记录、同进程入口映射更新及未选缺失入口。Playwright 附件 `controlled-herdr-six-combinations-NOT-real-loading` 与 `controlled-herdr-dynamic-entry-mapping-NOT-real-loading` 供真实加载验收复用。它们仅证明受控 Herdr 调用正确，不表示真实 OMP/Pi 已通过加载或 ambient 对照；真实 Herdr→OMP/Pi 六组合及 H1 判断仍由 08 负责。
 
+## 失效选择的显式修正与元数据恢复（2026-10-22）
+
+移除模型、当前 Agent 适用的 thinking 或可选扩展元数据后，模板仍保存原稳定标识，不自动删除、替换或默认化。编辑器以 `原标识（不可用）` 保留已保存的模型/级别，失效扩展仍以勾选项显示，可由用户显式取消。错误说明跨三个步骤保留；仅查看、往返步骤或取消编辑不会改变持久模板。更换模型/级别、取消失效扩展后，还需明确保存并收到成功确认。修正前保存和创建会由服务端按当前目录拒绝，创建拒绝发生在 Tab、agent 和输入提交之前。
+
+未知模型标识属于单个模板的选择失效，不是整个模板持久文件损坏；同一文件中的其他有效模板仍可读、编辑并创建。不要为修正单个模板而删除整个持久文件。
+
+选项目录缺失、不可读或 TOML/关系非法是全局配置故障，与单个模板失效不同。运行中发生故障时，模板列表、单项公开读取、保存与创建返回包含元数据文件位置及具体原因的错误；页面不显示保存成功，也不使用故障前选项继续保存或创建。请在服务端配置的 `[bot_templates].metadata_file` 位置修复文件（缺省 `meta-data/bot-options.toml`），不要通过清空模板、重启或恢复旧缓存掩盖问题。写回完整有效目录后，无需重启；重新打开编辑器读取当前选项，显式修正已保存选择，保存后创建按新 provider/model 与扩展入口映射执行。已打开页面不接收后台推送，提交仍由服务端重新校验。没有元数据编辑界面或自动修正。
+
+自动复现：先构建前端与后端二进制，再在 `frontend` 执行 `npx playwright test browser-tests/staleSelectionRecovery.spec.ts`。用例通过真实页面、隔离持久文件、同进程外部改写和直接公开请求，覆盖 P27–P30/P32；桌面与 390px 视口均记录修正操作。每例的 `frontend/test-results/staleSelectionRecovery-*/trace.zip` 保留完整浏览器操作及网络结果，附件 `public-requests-and-external-observation` 记录独立公开请求与受控 Herdr 调用/Tab，PNG 记录不可用选择、配置错误及修复后结果。受控调用仅证明消费者拒绝/恢复与参数映射，不替代真实 OMP/Pi 加载或真实手机触摸的 H1/H2 判断。
+
 ## 模型与思考级别：固定选项方案已确认
 
 Herdr 的 `agent.start` 接受 `args: Vec<String>`，用于传递目标 agent 的原生启动参数（[Herdr 参数定义](../../herdr/src/api/schema/agents.rs#L186-L199)）。OMP 与 Pi 当前均支持 `--model <model>`、`--thinking <level>`，因此应在启动时指定，而不是先启动再通过 slash 命令切换。
