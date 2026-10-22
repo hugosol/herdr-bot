@@ -1261,6 +1261,11 @@ npm --prefix frontend run test:browser
 请求不携带认证头。`backend/tests/bot_source_boundary.rs` 用受控局域网来源证明模板管理与创建被接受，
 而同一来源的 `POST /api/sessions/events` 仍是 `403 forbidden`，两种能力不共用同机来源限制。
 
+P49 三步模板工作流的桌面/移动视口真实生产页面验收见
+[操作记录、截图与 H2 移交边界](docs/bot-template-responsive-browser.md)。
+`responsiveTemplates.spec.ts` 在两种尺寸操作命名字段插入、扩展勾选、草稿往返、摘要和明确保存，
+并通过真实磁盘/TOML 故障检查持久失败、失效选择修正与创建前依赖错误；移动视口不代表真实手机通过。
+
 创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
 adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
 调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
