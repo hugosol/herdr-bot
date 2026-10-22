@@ -414,6 +414,9 @@ impl<'de> Deserialize<'de> for CountdownSeconds {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionsConfig {
+    /// 持久历史元数据位置；不保存当前登记、监听或倒计时。
+    #[serde(default = "history_file_by_default")]
+    pub history_file: PathBuf,
     /// 在线有效期秒数；缺省 10 秒。
     #[serde(default = "online_timeout_seconds_by_default")]
     pub online_timeout_seconds: SessionWindowSeconds,
@@ -425,6 +428,7 @@ pub struct SessionsConfig {
 impl Default for SessionsConfig {
     fn default() -> Self {
         Self {
+            history_file: history_file_by_default(),
             online_timeout_seconds: online_timeout_seconds_by_default(),
             offline_retention_seconds: offline_retention_seconds_by_default(),
         }
@@ -442,6 +446,10 @@ impl SessionsConfig {
             self.offline_retention_seconds.get(),
         )
     }
+}
+
+fn history_file_by_default() -> PathBuf {
+    PathBuf::from(".data/session-history.json")
 }
 
 /// `[sessions] online_timeout_seconds` 的缺省值：缺字段（或整段）得到 10 秒。

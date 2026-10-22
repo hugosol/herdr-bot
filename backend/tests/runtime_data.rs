@@ -619,6 +619,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
         vec![
             ".runtime-layout-v1",
             "bot-templates.json",
+            "session-history.json",
             "zones.json"
         ]
     );

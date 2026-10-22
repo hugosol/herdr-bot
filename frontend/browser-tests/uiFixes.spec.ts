@@ -71,7 +71,7 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
       selectedText: option.textContent,
     }
   })
-  expect(initialModel.selectedText).toBe('沿用 Agent 默认值')
+  expect(initialModel.selectedText).toBe('Default Model')
   expect(contrastRatio(initialModel.color, initialModel.backgroundColor)).toBeGreaterThan(4.5)
   expect(contrastRatio(initialModel.optionColor, initialModel.backgroundColor)).toBeGreaterThan(4.5)
 
@@ -83,7 +83,7 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
     backgroundColor: getComputedStyle(select).backgroundColor,
   }))
   expect(selectedModel.value).toBe('deepseek-flash')
-  expect(selectedModel.selectedText).toBe('deepseek-flash')
+  expect(selectedModel.selectedText).toBe('DeepSeek-Flash')
   expect(contrastRatio(selectedModel.color, selectedModel.backgroundColor)).toBeGreaterThan(4.5)
 
   const thinking = page.getByTestId('template-thinking')

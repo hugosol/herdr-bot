@@ -8,6 +8,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
+import net from 'node:net'
+import { randomInt } from 'node:crypto'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -84,6 +86,25 @@ export function lanIPv4(): string | null {
   return privateAddress ?? candidates[0] ?? null
 }
 
+// Windows may allocate port 0 inside Fetch/Chrome's forbidden service-port range
+// (for example 6566 or 6667). Probe the unrestricted dynamic range instead.
+async function browserListenAddress(address: string): Promise<string> {
+  if (!address.endsWith(':0')) return address
+  const host = address.slice(0, -2)
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const port = randomInt(49152, 65536)
+    const server = net.createServer()
+    const { promise, resolve, reject } = Promise.withResolvers<boolean>()
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE' || error.code === 'EACCES') resolve(false)
+      else reject(error)
+    })
+    server.listen(port, host, () => server.close(error => error ? reject(error) : resolve(true)))
+    if (await promise) return `${host}:${port}`
+  }
+  throw new Error('无法为浏览器夹具分配安全的动态端口')
+}
+
 function writeConfig(
   directory: string,
   storage: string,
@@ -107,6 +128,9 @@ function writeConfig(
       '[operations.stop]',
       `script = '${path.join(fixtures, 'success.bat')}'`,
       `working_directory = '${fixtures}'`,
+      '',
+      '[sessions]',
+      `history_file = '${path.join(directory, 'session-history.json')}'`,
       '',
       '[mdns]',
       'enabled = false',
@@ -152,6 +176,7 @@ async function waitForTemplates(baseURL: string): Promise<void> {
 
 function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number }> {
   const child = spawn(binary, ['--config', configPath], {
+    cwd: path.dirname(configPath),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
@@ -254,7 +279,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
       executable: herdrExecutable,
     },
-    options.listenAddr ?? '127.0.0.1:0',
+    await browserListenAddress(options.listenAddr ?? '127.0.0.1:0'),
   )
 
   let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null

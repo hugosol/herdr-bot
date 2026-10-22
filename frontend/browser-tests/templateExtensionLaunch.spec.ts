@@ -147,10 +147,30 @@ async function denyRead(file: string) {
   }
 }
 
-// P33/P35: genuine missing/directory/sharing-denied files, for fixed AND selected optional items.
+// Readable extension directories are supported; discovery within them belongs to the agent.
+for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
+  test(`目录入口 ${entry} 按原路径交给 agent 且不执行入口内容`, async ({ page }) => {
+    const { root, zone } = await setup()
+    await save({ ...template, extensions: ['omp-codebase-tools'] })
+    const directory = path.join(root, 'extensions', `${entry}.ts`)
+    fs.unlinkSync(directory)
+    fs.mkdirSync(directory)
+    fs.writeFileSync(path.join(directory, 'index.ts'), `throw new Error('DIRECTORY CHECK MUST NOT EXECUTE')\n`)
+    const form = await dialog(page, zone)
+    await form.getByTestId('bot-input').fill('本次输入')
+    await form.getByTestId('bot-create-submit').click()
+    await expect(page.getByTestId('bot-create-success')).toBeVisible()
+    const start = server!.herdrCalls().find(call => call.kind === 'agent_start')!
+    expect(start.args).toContain(directory)
+    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(1)
+    expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
+  })
+}
+
+// P33/P35: genuine missing/sharing-denied files, for fixed AND selected optional items.
 // Violation: check only fixed items, only existence, or start a tab before validating. Real files and adapter stay in path.
 for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
-  for (const fault of ['missing', 'directory', 'unreadable']) {
+  for (const fault of ['missing', 'unreadable']) {
     test(`自动入口检查 ${entry}/${fault} 在页面及HTTP拒绝且无三个副作用`, async ({ page }) => {
       const { root, zone } = await setup()
       const saved = await save({ ...template, extensions: ['omp-codebase-tools'] })
@@ -158,7 +178,6 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
       const file = path.join(root, 'extensions', `${entry}.ts`)
       let unlock: (() => Promise<void>) | undefined
       if (fault === 'missing') fs.unlinkSync(file)
-      if (fault === 'directory') { fs.unlinkSync(file); fs.mkdirSync(file) }
       if (fault === 'unreadable') unlock = await denyRead(file)
       try {
         const response = await create(zone, saved.id)
@@ -167,7 +186,7 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
         expect(error.code).toBe('extension-entrypoint-invalid')
         expect(error.message).toContain(entry === 'omp-model-cost' ? 'omp-model-cost' : 'omp-codebase-tools')
         expect(error.message).toContain(file)
-        expect(error.message).toContain({ missing: '不存在', directory: '不是文件', unreadable: '无法读取' }[fault])
+        expect(error.message).toContain({ missing: '不存在', unreadable: '无法读取' }[fault])
         expect(error.message).toContain('未创建 Herdr Tab、未启动 agent、未提交输入')
         await form.getByTestId('bot-create-submit').click()
         await expect(page.getByTestId('bot-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')

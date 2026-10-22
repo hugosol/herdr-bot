@@ -45,6 +45,7 @@ pub mod config;
 pub mod countdown;
 pub mod git;
 pub mod herdr;
+pub mod history;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
@@ -118,6 +119,8 @@ pub struct AppState {
     ///
     /// 它与固定操作、关机路径完全解耦：会话写入既不取执行资格，也不接触任何脚本。
     pub sessions: Arc<sessions::SessionsState>,
+    /// 持久历史目录，与当前会话登记和临时关机意图独立。
+    pub history: Arc<history::History>,
     /// 后端权威的关机倒计时：手动开始意图建立安排，到期由后端自己调用 [`PowerOff`]。
     ///
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
@@ -224,6 +227,7 @@ pub fn app_with_state(
         ),
         execution: Arc::new(Mutex::new(())),
         sessions,
+        history: Arc::new(history::History::new(config.sessions.history_file.clone())),
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
         bot_templates: Arc::new(templates::Templates::new(
@@ -262,6 +266,8 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
+        // 历史读取沿用局域网公开读取边界；没有独立的外部写入端点。
+        .route("/api/sessions/history", get(history::get_history))
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone))

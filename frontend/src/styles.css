@@ -77,6 +77,33 @@ h1 {
   display: none;
 }
 
+/* ---------- chat 当前／历史互斥视图 ---------- */
+.chat-views {
+  min-width: 0;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: #171b22;
+}
+.chat-views--history { background: #202c28; }
+.chat-views__header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+.chat-views__header h2 { margin: 0; font-size: 1rem; }
+.chat-views__toggle { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.75rem; padding: 0.4rem 0.65rem; background: #2b3541; color: #f2f4f8; border: 1px solid #637587; border-radius: 0.35rem; cursor: pointer; }
+.chat-views__toggle:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
+.history-panel { min-width: 0; }
+.history-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.8rem; }
+.history-table th, .history-table td { text-align: left; vertical-align: top; padding: 0.5rem 0.3rem; border-bottom: 1px solid #40544b; overflow-wrap: anywhere; }
+.history-table th:nth-child(1) { width: 27%; }
+.history-table th:nth-child(2) { width: 14%; }
+.history-table th:nth-child(3) { width: 33%; }
+.history-table th:nth-child(4) { width: 26%; }
+@media (max-width: 599px) {
+  .history-table, .history-table tbody { display: block; }
+  .history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .history-table tr { display: block; padding-block: 0.4rem; border-bottom: 1px solid #40544b; }
+  .history-table td { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 0.4rem; border: 0; padding-block: 0.25rem; }
+  .history-table td::before { content: attr(data-label); color: #bbcbbf; font-size: 0.75rem; }
+}
+
 /* ---------- 文件列表：zone 登记 ---------- */
 
 .zones {

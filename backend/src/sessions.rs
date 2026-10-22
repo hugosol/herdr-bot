@@ -3,7 +3,8 @@
 //! herdr-bot 服务端的「会话」第一次在这里落地：扩展把每个会话的生命周期事件（`register` /
 //! `heartbeat` / `state` / `unregister`）都发到同一条 `POST /api/sessions/events`，
 //! 服务端把它们写进**进程内**的会话表，并在同一把锁内把浏览器可见的变化发布给订阅者
-//! （读路径只做只读转发，不重放、不落盘，herdr-bot 重启即清空）。
+//! （当前登记的读路径只做只读转发，不重放、不落盘，herdr-bot 重启即清空）。
+//! 另由 [`crate::history`] 为通过协议与来源校验的 register 保存持久元数据；历史不恢复当前登记或关机意图。
 //!
 //! 事件信封是 `{sessionId, kind, data}`：没有版本位、没有时间戳，`kind` 是封闭枚举，未知字段一律忽略。
 //! `register` 是**唯一**的建行入口且幂等——重复注册不新起行，只刷新注册时间与展示字段快照；
@@ -649,6 +650,19 @@ pub(crate) async fn post_session_event(
         );
     };
 
+    // Keep registration acceptance and history persistence independent. All protocol and
+    // source validation has completed before this explicit register can reach history.
+    if let SessionEvent::Register { session_id, data } = &event {
+        if let Err(error) = state.history.register(
+            session_id,
+            data.session_name.as_deref(),
+            data.agent_type.as_deref(),
+            &data.cwd,
+            data.session_file.as_deref(),
+        ).await {
+            eprintln!("[herdr-bot] 历史保存失败 sessionId={session_id}: {error}");
+        }
+    }
     let applied = state.sessions.apply(event).await;
     // 会话状态变化之后按**最新**快照重判监听集合：注销、离线与状态变化都要立即影响集合与自动安排。
     // 没有监听成员时这一步什么也不看（常见路径零成本），因此不需要先判断事件是否相关。
