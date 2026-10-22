@@ -59,6 +59,9 @@ pub struct BotTemplate {
     pub skill: Option<String>,
     /// 可多行、可为空的固定指示。
     pub prompt: String,
+    /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
 /// 一次新增或编辑请求的原始字段；字符串先按字段逐个校验，失败时给出明确类别。
@@ -72,6 +75,8 @@ pub struct TemplateInput {
     thinking: Option<String>,
     skill: Option<String>,
     prompt: Option<String>,
+    #[serde(default)]
+    extensions: Vec<String>,
 }
 
 /// 校验后的模板字段（不含标识）。
@@ -83,6 +88,7 @@ struct TemplateFields {
     thinking: String,
     skill: Option<String>,
     prompt: String,
+    extensions: Vec<String>,
 }
 
 impl TemplateInput {
@@ -115,6 +121,7 @@ impl TemplateInput {
         let skill = self.skill.as_deref().map(str::trim).filter(|v| !v.is_empty())
             .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
+        catalog.validate_extensions(agent, &self.extensions)?;
 
         Ok(TemplateFields {
             name,
@@ -124,6 +131,7 @@ impl TemplateInput {
             thinking,
             skill,
             prompt: self.prompt.unwrap_or_default(),
+            extensions: self.extensions,
         })
     }
 }
@@ -146,6 +154,7 @@ pub enum TemplateError {
         supported: Vec<String>,
     },
     UnknownSkill(String),
+    InvalidExtension(String),
     Metadata(String),
     NotFound,
     Unreadable(io::Error),
@@ -167,6 +176,7 @@ impl TemplateError {
             Self::ThinkingRequiresDefaultModel => "template-thinking-requires-default-model",
             Self::ThinkingUnsupported { .. } => "template-thinking-unsupported",
             Self::UnknownSkill(_) => "template-skill-invalid",
+            Self::InvalidExtension(_) => "template-extension-invalid",
             Self::Metadata(_) => "metadata-invalid",
             Self::NotFound => "template-not-found",
             Self::Unreadable(_) => "templates-unreadable",
@@ -223,6 +233,9 @@ impl TemplateError {
             }
             Self::UnknownSkill(value) => {
                 format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
+            }
+            Self::InvalidExtension(value) => {
+                format!("扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。")
             }
             Self::Metadata(detail) => detail.clone(),
             Self::NotFound => "目标模板不存在：可能已被删除。".to_string(),
@@ -296,6 +309,7 @@ impl Templates {
             thinking: fields.thinking,
             skill: fields.skill,
             prompt: fields.prompt,
+            extensions: fields.extensions,
         });
         self.save(&templates)?;
         Ok(templates)
@@ -322,6 +336,7 @@ impl Templates {
         target.thinking = fields.thinking;
         target.skill = fields.skill;
         target.prompt = fields.prompt;
+        target.extensions = fields.extensions;
         self.save(&templates)?;
         Ok(templates)
     }

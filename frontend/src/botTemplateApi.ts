@@ -20,12 +20,13 @@ export type BotTemplate = {
   thinking: TemplateThinking
   skill: TemplateSkill | null
   prompt: string
+  extensions: string[]
 }
 
 /** 新增或编辑时提交的字段（标识由后端维护）。 */
 export type BotTemplateInput = Omit<BotTemplate, 'id'>
 
-/** 固定选项；`thinking[agent][model]` 是显式级别，`default` 模型对应空数组。 */
+/** 当前元数据选项；`thinking[agent][model]` 是显式级别，`default` 模型对应空数组。 */
 export type BotTemplateOptions = {
   agents: TemplateAgent[]
   models: TemplateModel[]
@@ -67,7 +68,8 @@ function isTemplate(value: unknown): value is BotTemplate {
     typeof template.model === 'string' &&
     typeof template.thinking === 'string' &&
     (template.skill === null || typeof template.skill === 'string') &&
-    typeof template.prompt === 'string'
+    typeof template.prompt === 'string' &&
+    isStringArray(template.extensions)
   )
 }
 

@@ -51,6 +51,7 @@ function emptyDraft(): BotTemplateInput {
     thinking: 'default',
     skill: null,
     prompt: '',
+    extensions: [],
   }
 }
 
@@ -64,6 +65,7 @@ function draftFrom(template: BotTemplate): BotTemplateInput {
     thinking: template.thinking,
     skill: template.skill,
     prompt: template.prompt,
+    extensions: [...template.extensions],
   }
 }
 
@@ -83,6 +85,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
   const [formError, setFormError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   // 进入这个顶层入口时读取后端共享列表；切走时取消尚未落地的读取结果。
@@ -116,8 +119,14 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
       return
     }
     setData({ templates: result.templates, options: result.options })
-    setDialog(template ? { kind: 'edit', id: template.id } : { kind: 'create' })
-    setDraft(template ? draftFrom(template) : { ...emptyDraft(), agent: result.options.agents[0] })
+    const current = template ? result.templates.find((entry) => entry.id === template.id) : undefined
+    if (template && !current) {
+      setFeedback({ kind: 'error', text: '目标模板不存在：可能已被删除。' })
+      return
+    }
+    setDialog(current ? { kind: 'edit', id: current.id } : { kind: 'create' })
+    setStep(1)
+    setDraft(current ? draftFrom(current) : { ...emptyDraft(), agent: result.options.agents[0] })
     setFormError(null)
     setNotice(null)
   }
@@ -132,12 +141,13 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
   }
 
   function changeAgent(agent: BotTemplateInput['agent']) {
-    // 更换 agent 时 model 与 thinking 都重置为默认值，避免沿用另一种 agent 的配置。
+    // 切换 Agent 不继承模型或同名扩展；切回也不恢复隐藏选择。
     setDraft((current) => ({
       ...current,
       agent,
       model: 'default',
       thinking: 'default',
+      extensions: [],
     }))
     setNotice(null)
   }
@@ -176,6 +186,10 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (dialog === null) return
+    if (step !== 3) {
+      setStep(step === 1 ? 2 : 3)
+      return
+    }
 
     if (draft.name.trim() === '') {
       setFormError('请填写模板显示名。')
@@ -214,6 +228,10 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
     draft.model === 'default'
       ? []
       : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
+
+  const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
+  const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed')
+  const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
 
   return (
     <section className="bot-templates" data-testid="bot-templates">
@@ -288,6 +306,14 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                     <dt>Skill</dt>
                     <dd>{skillLabel(template)}</dd>
                   </div>
+                  <div>
+                    <dt>固定扩展</dt>
+                    <dd>{data.options.extensions?.filter((entry) => entry.agent === template.agent && entry.kind === 'fixed').map((entry) => entry.label).join('、') || '无'}</dd>
+                  </div>
+                  <div>
+                    <dt>可选扩展</dt>
+                    <dd>{template.extensions.map((id) => data.options.extensions?.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd>
+                  </div>
                 </dl>
                 <pre className="bot-template-item__prompt" data-testid="template-prompt-view">
                   {template.prompt}
@@ -331,6 +357,16 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
               {dialog.kind === 'create' ? '新增 Bot 模板' : '编辑 Bot 模板'}
             </h2>
 
+            <p data-testid="template-step" role="status">
+              {step} / 3 · {step === 1 ? '模板预设' : step === 2 ? '扩展配置' : '确认保存'}
+            </p>
+            <ol className="bot-template-steps" aria-label="模板编辑步骤">
+              {['模板预设', '扩展配置', '确认保存'].map((label, index) => (
+                <li key={label} aria-current={step === index + 1 ? 'step' : undefined}>{label}</li>
+              ))}
+            </ol>
+
+            {step === 1 && <>
             <section className="bot-template-preview-card" aria-label="Bot 名称实时示例">
               <span className="bot-template-preview-card__label">Bot 名称 · 实时示例</span>
               <output
@@ -485,6 +521,51 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                 />
               </fieldset>
             </div>
+            </>}
+
+            {step === 2 && <section className="bot-template-extensions" aria-label="扩展配置">
+              <section data-testid="template-fixed-extensions">
+                <h3>固定扩展（始终加载，不可取消）</h3>
+                <p>{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</p>
+              </section>
+              <fieldset disabled={saving}>
+                <legend>可选扩展（可不选或多选）</legend>
+                {optionalExtensions.map((entry) => (
+                  <label key={entry.id} className="bot-template-extension">
+                    <input type="checkbox" data-testid={`extension-${entry.id}`}
+                      checked={draft.extensions.includes(entry.id)}
+                      onChange={(event) => setDraft((current) => ({
+                        ...current,
+                        extensions: event.target.checked
+                          ? [...current.extensions, entry.id]
+                          : current.extensions.filter((id) => id !== entry.id),
+                      }))}
+                    />
+                    {entry.label}
+                  </label>
+                ))}
+              </fieldset>
+              <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与本模板所选项。</p>
+            </section>}
+
+            {step === 3 && <section data-testid="template-summary" aria-label="确认保存摘要">
+              <h3>确认保存</h3>
+              <dl className="bot-template-item__fields">
+                <div><dt>模板显示名</dt><dd data-testid="summary-name">{draft.name}</dd></div>
+                <div><dt>bot-name 命名规则</dt><dd data-testid="summary-botName">{draft.botName}</dd></div>
+                <div><dt>Bot 名称示例</dt><dd>{renderBotNameExample(draft.botName, draft.name, draft.agent)}</dd></div>
+                <div><dt>agent</dt><dd data-testid="summary-agent">{data.options.labels?.agents?.[draft.agent] ?? draft.agent}</dd></div>
+                <div><dt>model</dt><dd data-testid="summary-model">{data.options.labels?.models?.[draft.model] ?? modelLabel(draft)}</dd></div>
+                <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>
+                <div><dt>Skill</dt><dd data-testid="summary-skill">{draft.skill === null ? '无' : (data.options.labels?.skills?.[draft.skill] ?? skillLabel(draft))}</dd></div>
+                <div><dt>固定扩展（始终加载，不可取消）</dt><dd data-testid="summary-fixed">{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</dd></div>
+                <div><dt>可选扩展</dt><dd data-testid="summary-optional">{draft.extensions.map((id) => extensions.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd></div>
+                <div><dt>扩展自动发现</dt><dd data-testid="summary-discovery">关闭</dd></div>
+              </dl>
+              <h4>固定 prompt</h4>
+              <pre className="bot-template-item__prompt" data-testid="summary-prompt">{draft.prompt}</pre>
+              <p>仅在点击保存并收到成功确认后更新共享模板；摘要不表示扩展已实际加载。</p>
+            </section>}
 
             {formError !== null && (
               <p
@@ -507,14 +588,18 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
               >
                 取消
               </button>
-              <button
+              {step !== 1 && <button type="button" className="zone-dialog__cancel"
+                data-testid="template-back" disabled={saving}
+                onClick={() => setStep(step === 3 ? 2 : 1)}>上一步</button>}
+              {step === 3 ? <button
                 type="submit"
                 className="zone-register"
                 data-testid="save-template"
                 disabled={saving}
               >
-                保存
-              </button>
+                {saving ? '正在保存……' : '保存'}
+              </button> : <button type="submit" className="zone-register"
+                data-testid="template-next" disabled={saving}>下一步</button>}
             </div>
           </form>
         </div>

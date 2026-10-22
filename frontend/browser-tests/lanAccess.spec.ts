@@ -10,6 +10,7 @@ import {
   expectDialogInsideViewport,
   expectNoHorizontalOverflow,
   jsonPost,
+  saveTemplate,
   scrollToDialogAction,
   zoneRowFor,
 } from './ui'
@@ -27,25 +28,19 @@ import {
 
 const HOST = lanIPv4()
 
-const TEMPLATE = {
-  name: '局域网模板',
-  botName: '{zone.name} · {template.name} · {bot.id}',
-  agent: 'pi',
-  model: 'deepseek-flash',
-  thinking: 'high',
-  skill: 'code-review',
-  prompt: '局域网第一行\n局域网第二行',
-}
+const TEMPLATE = { name: '局域网模板',
+botName: '{zone.name} · {template.name} · {bot.id}',
+agent: 'pi',
+model: 'deepseek-flash',
+thinking: 'high',
+skill: 'code-review', prompt: '局域网第一行\n局域网第二行', extensions: [] }
 
-const EDITED = {
-  name: '局域网模板（改）',
-  botName: '{zone.name} · {template.name} · {bot.id}',
-  agent: 'omp',
-  model: 'gpt-6.1-sol',
-  thinking: 'max',
-  skill: 'teach',
-  prompt: '局域网编辑后的第一行\n局域网编辑后的第二行',
-}
+const EDITED = { name: '局域网模板（改）',
+botName: '{zone.name} · {template.name} · {bot.id}',
+agent: 'omp',
+model: 'gpt-6.1-sol',
+thinking: 'max',
+skill: 'teach', prompt: '局域网编辑后的第一行\n局域网编辑后的第二行', extensions: [] }
 
 const INPUT = '局域网任务第一行\n局域网任务第二行'
 
@@ -118,7 +113,7 @@ test('局域网地址可管理共享模板并从 zone 创建 Bot，不额外要�
   await page.getByTestId('template-thinking').selectOption(TEMPLATE.thinking)
   await page.getByTestId('template-skill').selectOption(TEMPLATE.skill)
   await page.getByTestId('template-prompt').fill(TEMPLATE.prompt)
-  await activate(page.getByTestId('save-template'), true)
+  await saveTemplate(page, true)
   await expect(page.getByTestId('template-dialog')).toHaveCount(0)
 
   const saved = await (await fetch(`${lanURL}/api/bot-templates`)).json()
@@ -136,7 +131,7 @@ test('局域网地址可管理共享模板并从 zone 创建 Bot，不额外要�
   await page.getByTestId('template-thinking').selectOption(EDITED.thinking)
   await page.getByTestId('template-skill').selectOption(EDITED.skill)
   await page.getByTestId('template-prompt').fill(EDITED.prompt)
-  await activate(page.getByTestId('save-template'), true)
+  await saveTemplate(page, true)
   await expect(row).toContainText(EDITED.name)
 
   const edited = await (await fetch(`${lanURL}/api/bot-templates`)).json()
@@ -153,7 +148,7 @@ test('局域网地址可管理共享模板并从 zone 创建 Bot，不额外要�
   await page.getByTestId('template-thinking').selectOption('default')
   await page.getByTestId('template-skill').selectOption('')
   await page.getByTestId('template-prompt').fill('')
-  await activate(page.getByTestId('save-template'), true)
+  await saveTemplate(page, true)
   await expect(page.getByTestId('bot-template-item')).toHaveCount(2)
 
   // 从 zone 创建 Bot：预览、提交、阶段、成功与定位都在局域网页面完成。

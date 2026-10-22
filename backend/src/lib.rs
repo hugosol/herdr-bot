@@ -893,7 +893,8 @@ fn bot_template_error_response(error: templates::TemplateError) -> Response {
         | TemplateError::UnknownThinking(_)
         | TemplateError::ThinkingRequiresDefaultModel
         | TemplateError::ThinkingUnsupported { .. }
-        | TemplateError::UnknownSkill(_) => StatusCode::BAD_REQUEST,
+        | TemplateError::UnknownSkill(_)
+        | TemplateError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(status, error.code(), error.message())
 }

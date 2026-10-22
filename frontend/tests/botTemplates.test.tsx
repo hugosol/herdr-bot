@@ -54,6 +54,12 @@ async function openTemplates(user: UserEvent) {
   await user.click(screen.getByTestId('tab-templates'))
 }
 
+async function saveTemplate(user: UserEvent, dialog: HTMLElement) {
+  await user.click(within(dialog).getByTestId('template-next'))
+  await user.click(within(dialog).getByTestId('template-next'))
+  await user.click(within(dialog).getByTestId('save-template'))
+}
+
 /** 规整化编辑器 DOM：变量块按占位符读取，固定文字按文本节点读取。 */
 function serializedRule(editor: HTMLElement): string {
   return Array.from(editor.childNodes)
@@ -86,16 +92,13 @@ afterEach(() => {
 describe('Bot 模板 tab：读取与展示', () => {
   it('进入 bot 入口才读取共享模板，并显示字段与 bot-name 示例', async () => {
     const user = userEvent.setup()
-    const literal = {
-      id: 'tpl-literal-1',
-      name: '发布检查',
-      botName: '{zone.name} · {template.name} · {bot.id}',
-      agent: 'pi',
-      model: 'deepseek-flash',
-      thinking: 'max',
-      skill: 'code-review',
-      prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\',
-    }
+    const literal = { id: 'tpl-literal-1',
+    name: '发布检查',
+    botName: '{zone.name} · {template.name} · {bot.id}',
+    agent: 'pi',
+    model: 'deepseek-flash',
+    thinking: 'max',
+    skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
     const { calls } = mockTemplateFetch((url, method) => {
       if (url === '/api/bot-templates' && method === 'GET') {
         return jsonResponse(200, { templates: [literal], options: OPTIONS })
@@ -235,16 +238,13 @@ describe('Bot 模板 tab：读取与展示', () => {
   it('新增模板时插入四个命名占位符、查看示例并保存完整字面值', async () => {
     const user = userEvent.setup()
     const prompt = '第一行\n第二行：保留 "引号" 与反斜杠 \\'
-    const saved = {
-      id: 'tpl-created',
-      name: '审查',
-      botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
-      agent: 'pi',
-      model: 'deepseek-flash',
-      thinking: 'max',
-      skill: 'code-review',
-      prompt,
-    }
+    const saved = { id: 'tpl-created',
+    name: '审查',
+    botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
+    agent: 'pi',
+    model: 'deepseek-flash',
+    thinking: 'max',
+    skill: 'code-review', prompt, extensions: [] }
     const { calls } = mockTemplateFetch((url, method) => {
       if (url === '/api/bot-templates' && method === 'GET') {
         return jsonResponse(200, { templates: [], options: OPTIONS })
@@ -295,22 +295,19 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.selectOptions(within(dialog).getByTestId('template-thinking'), 'max')
     await user.selectOptions(within(dialog).getByTestId('template-skill'), 'code-review')
     await user.type(within(dialog).getByTestId('template-prompt'), prompt)
-    await user.click(within(dialog).getByTestId('save-template'))
+    await saveTemplate(user, dialog)
 
     await screen.findByTestId('bot-template-list')
     expect(screen.queryByTestId('template-dialog')).toBeNull()
     const post = calls.find((call) => call.method === 'POST')
     expect(post?.url).toBe('/api/bot-templates')
     expect(post?.body).not.toBeNull()
-    expect(JSON.parse(post?.body ?? 'null')).toEqual({
-      name: '审查',
-      botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
-      agent: 'pi',
-      model: 'deepseek-flash',
-      thinking: 'max',
-      skill: 'code-review',
-      prompt,
-    })
+    expect(JSON.parse(post?.body ?? 'null')).toEqual({ name: '审查',
+    botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
+    agent: 'pi',
+    model: 'deepseek-flash',
+    thinking: 'max',
+    skill: 'code-review', prompt, extensions: [] })
     const row = screen.getByTestId('bot-template-item')
     expect(row).toHaveTextContent('审查')
     expect(row).toHaveTextContent('alpha · 审查 · pi · a7f3c2')
@@ -369,36 +366,27 @@ describe('Bot 模板 tab：读取与展示', () => {
 
   it('编辑与删除模板，只有后端确认后才更新列表', async () => {
     const user = userEvent.setup()
-    const first = {
-      id: 'tpl-a',
-      name: '旧名字',
-      botName: '{zone.name}',
-      agent: 'omp',
-      model: 'default',
-      thinking: 'default',
-      skill: null,
-      prompt: '旧 prompt',
-    }
-    const second = {
-      id: 'tpl-b',
-      name: '待删除',
-      botName: '{template.name}',
-      agent: 'pi',
-      model: 'gpt-6.1-sol',
-      thinking: 'off',
-      skill: 'teach',
-      prompt: '',
-    }
-    const edited = {
-      ...first,
-      name: '新名字',
-      botName: '{template.name} · {agent} · {bot.id}',
-      agent: 'pi',
-      model: 'gpt-6.1-sol',
-      thinking: 'medium',
-      skill: 'code-review',
-      prompt: '第一行\n第二行',
-    }
+    const first = { id: 'tpl-a',
+    name: '旧名字',
+    botName: '{zone.name}',
+    agent: 'omp',
+    model: 'default',
+    thinking: 'default',
+    skill: null, prompt: '旧 prompt', extensions: [] }
+    const second = { id: 'tpl-b',
+    name: '待删除',
+    botName: '{template.name}',
+    agent: 'pi',
+    model: 'gpt-6.1-sol',
+    thinking: 'off',
+    skill: 'teach', prompt: '', extensions: [] }
+    const edited = { ...first,
+    name: '新名字',
+    botName: '{template.name} · {agent} · {bot.id}',
+    agent: 'pi',
+    model: 'gpt-6.1-sol',
+    thinking: 'medium',
+    skill: 'code-review', prompt: '第一行\n第二行', extensions: [] }
     const { calls } = mockTemplateFetch((url, method) => {
       if (url === '/api/bot-templates' && method === 'GET') {
         return jsonResponse(200, { templates: [first, second], options: OPTIONS })
@@ -437,20 +425,17 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.selectOptions(within(dialog).getByTestId('template-skill'), 'code-review')
     await user.clear(within(dialog).getByTestId('template-prompt'))
     await user.type(within(dialog).getByTestId('template-prompt'), '第一行\n第二行')
-    await user.click(within(dialog).getByTestId('save-template'))
+    await saveTemplate(user, dialog)
 
     await screen.findByTestId('bot-template-list')
     const put = calls.find((call) => call.method === 'PUT')
     expect(put?.url).toBe('/api/bot-templates/tpl-a')
-    expect(JSON.parse(put?.body ?? 'null')).toEqual({
-      name: '新名字',
-      botName: '{template.name} · {agent} · {bot.id}',
-      agent: 'pi',
-      model: 'gpt-6.1-sol',
-      thinking: 'medium',
-      skill: 'code-review',
-      prompt: '第一行\n第二行',
-    })
+    expect(JSON.parse(put?.body ?? 'null')).toEqual({ name: '新名字',
+    botName: '{template.name} · {agent} · {bot.id}',
+    agent: 'pi',
+    model: 'gpt-6.1-sol',
+    thinking: 'medium',
+    skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
     expect(screen.getAllByTestId('bot-template-item')[0]).toHaveTextContent('新名字')
     expect(screen.getAllByTestId('bot-template-item')[0]).toHaveTextContent(
       '新名字 · pi · a7f3c2',
@@ -470,16 +455,13 @@ describe('Bot 模板 tab：读取与展示', () => {
 
   it('保存失败不表示已保存，列表保持此前读取到的值', async () => {
     const user = userEvent.setup()
-    const existing = {
-      id: 'tpl-existing',
-      name: '已保存',
-      botName: '{zone.name}',
-      agent: 'omp',
-      model: 'default',
-      thinking: 'default',
-      skill: null,
-      prompt: '',
-    }
+    const existing = { id: 'tpl-existing',
+    name: '已保存',
+    botName: '{zone.name}',
+    agent: 'omp',
+    model: 'default',
+    thinking: 'default',
+    skill: null, prompt: '', extensions: [] }
     mockTemplateFetch((url, method) => {
       if (url === '/api/bot-templates' && method === 'GET') {
         return jsonResponse(200, { templates: [existing], options: OPTIONS })
@@ -499,7 +481,7 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.click(screen.getByTestId('template-create-open'))
     const dialog = screen.getByTestId('template-dialog')
     await user.type(within(dialog).getByTestId('template-name'), '不应保存')
-    await user.click(within(dialog).getByTestId('save-template'))
+    await saveTemplate(user, dialog)
 
     expect(await within(dialog).findByTestId('template-form-error')).toHaveTextContent(
       '保存 Bot 模板失败：磁盘不可写；此前已保存的模板保持不变。',
@@ -535,7 +517,7 @@ describe('Bot 模板 tab：读取与展示', () => {
     await user.type(within(dialog).getByTestId('template-name'), '空 prompt 模板')
     expect((within(dialog).getByTestId('template-prompt') as HTMLTextAreaElement).value).toBe('')
     expect((within(dialog).getByTestId('template-skill') as HTMLSelectElement).value).toBe('')
-    await user.click(within(dialog).getByTestId('save-template'))
+    await saveTemplate(user, dialog)
 
     await screen.findByTestId('bot-template-list')
     const post = calls.find((call) => call.method === 'POST')

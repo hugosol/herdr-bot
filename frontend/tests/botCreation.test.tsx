@@ -29,16 +29,13 @@ function mockFetch(
   return { calls, fetchMock }
 }
 
-const TEMPLATE = {
-  id: 'tpl-1',
-  name: '审查',
-  botName: '{zone.name} · {template.name} · {bot.id}',
-  agent: 'omp',
-  model: 'default',
-  thinking: 'default',
-  skill: null,
-  prompt: '',
-}
+const TEMPLATE = { id: 'tpl-1',
+name: '审查',
+botName: '{zone.name} · {template.name} · {bot.id}',
+agent: 'omp',
+model: 'default',
+thinking: 'default',
+skill: null, prompt: '', extensions: [] }
 
 const PREVIEW = {
   botId: 'a7f3c2',

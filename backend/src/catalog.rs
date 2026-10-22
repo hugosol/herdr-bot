@@ -149,8 +149,20 @@ impl Catalog {
         Ok(())
     }
 
+    pub fn validate_extensions(&self, agent: Agent, selections: &[String]) -> Result<(), TemplateError> {
+        for (index, id) in selections.iter().enumerate() {
+            if selections[..index].contains(id) || !self.extensions.iter().any(|extension| {
+                extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional
+            }) {
+                return Err(TemplateError::InvalidExtension(id.clone()));
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate_template(&self, template: &BotTemplate) -> Result<(), TemplateError> {
-        self.validate_selection(template.agent, &template.model, &template.thinking, template.skill.as_deref())
+        self.validate_selection(template.agent, &template.model, &template.thinking, template.skill.as_deref())?;
+        self.validate_extensions(template.agent, &template.extensions)
     }
 
     pub fn options(&self) -> TemplateOptions {

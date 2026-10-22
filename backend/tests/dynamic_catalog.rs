@@ -183,7 +183,8 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
     assert_eq!(template["model"], "lab-model");
     assert_eq!(template["skill"], "lab-skill");
     assert_eq!(template["prompt"], "第一行\n第二行");
-    assert_eq!(template.as_object().unwrap().len(), 8, "persist stable fields only");
+    assert_eq!(template["extensions"], json!([]));
+    assert_eq!(template.as_object().unwrap().len(), 9, "persist stable fields only");
     fs::write(&metadata, CATALOG.replace("['low', 'high']", "['low']").replace("实验模型", "新版模型")).unwrap();
     let rejected = post_json_over_tcp(server.addr(), "/api/bot-templates", &payload("high")).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);

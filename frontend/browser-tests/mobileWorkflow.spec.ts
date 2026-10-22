@@ -11,6 +11,7 @@ import {
   expectDialogInsideViewport,
   expectNoHorizontalOverflow,
   jsonPost,
+  saveTemplate,
   scrollToDialogAction,
   serializedBotRule,
   zoneRowFor,
@@ -49,35 +50,26 @@ const PROFILES: Profile[] = [
   },
 ]
 
-const TEMPLATE = {
-  name: '发布检查',
-  botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
-  agent: 'pi',
-  model: 'gpt-6.1-sol',
-  thinking: 'high',
-  skill: 'code-review',
-  prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\',
-}
+const TEMPLATE = { name: '发布检查',
+botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
+agent: 'pi',
+model: 'gpt-6.1-sol',
+thinking: 'high',
+skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
 
-const EDITED = {
-  name: '发布检查（改）',
-  botName: '{template.name} · {agent} · {bot.id}',
-  agent: 'omp',
-  model: 'deepseek-flash',
-  thinking: 'high',
-  skill: 'teach',
-  prompt: '编辑后的第一行\n编辑后的第二行',
-}
+const EDITED = { name: '发布检查（改）',
+botName: '{template.name} · {agent} · {bot.id}',
+agent: 'omp',
+model: 'deepseek-flash',
+thinking: 'high',
+skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] }
 
-const CREATION_TEMPLATE = {
-  name: '创建用',
-  botName: '{zone.name} · {template.name} · {bot.id}',
-  agent: 'omp',
-  model: 'default',
-  thinking: 'default',
-  skill: null,
-  prompt: '',
-}
+const CREATION_TEMPLATE = { name: '创建用',
+botName: '{zone.name} · {template.name} · {bot.id}',
+agent: 'omp',
+model: 'default',
+thinking: 'default',
+skill: null, prompt: '', extensions: [] }
 
 const MULTILINE_INPUT = '第一行任务：检查登录\n第二行任务：保留缩进\n第三行任务：完成'
 
@@ -208,7 +200,7 @@ async function addTemplateThroughUi(
     .replace('{bot.id}', 'a7f3c2')
   await expect(page.getByTestId('bot-name-preview')).toHaveText(example)
 
-  await activate(page.getByTestId('save-template'), touch)
+  await saveTemplate(page, touch)
   await expect(page.getByTestId('template-dialog')).toHaveCount(0)
   await expect(page.getByTestId('bot-template-item')).toHaveCount(1)
 }
@@ -262,7 +254,7 @@ for (const profile of PROFILES) {
       await page.getByTestId('template-thinking').selectOption(EDITED.thinking)
       await page.getByTestId('template-skill').selectOption(EDITED.skill ?? '')
       await page.getByTestId('template-prompt').fill(EDITED.prompt)
-      await activate(page.getByTestId('save-template'), profile.hasTouch)
+      await saveTemplate(page, profile.hasTouch)
 
       await expect(row).toContainText(EDITED.name)
       const afterEdit = await server.getTemplates()
