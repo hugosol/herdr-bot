@@ -30,6 +30,8 @@ countdown_seconds = 10
 # [sessions]
 # online_timeout_seconds = 10
 # offline_retention_seconds = 30
+# 历史只保存会话元数据，与当前登记及关机意图独立；相对进程工作目录。
+# history_file = ".data/session-history.json"
 
 # Herdr 控制设置（必须显式配置，没有代码缺省值）。
 # 弹窗初始选“当前”，按 zone 根目录名匹配；改选“默认”时按 workspace_name 精确查找唯一 Herdr Workspace。

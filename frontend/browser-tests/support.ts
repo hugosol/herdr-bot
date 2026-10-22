@@ -108,6 +108,9 @@ function writeConfig(
       `script = '${path.join(fixtures, 'success.bat')}'`,
       `working_directory = '${fixtures}'`,
       '',
+      '[sessions]',
+      `history_file = '${path.join(directory, 'session-history.json')}'`,
+      '',
       '[mdns]',
       'enabled = false',
       '',
@@ -152,6 +155,7 @@ async function waitForTemplates(baseURL: string): Promise<void> {
 
 function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number }> {
   const child = spawn(binary, ['--config', configPath], {
+    cwd: path.dirname(configPath),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
@@ -211,7 +215,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   fs.mkdirSync(extensionDirectory)
   const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
   fs.writeFileSync(metadataFile, metadata.replace(/entrypoint = '([^']+)'/g, (_line, original: string) => {
-    const relative = original.split('entrypoints\\')[1].replaceAll('\\', '-')
+    const relative = (original.split('entrypoints\\')[1] ?? path.win32.basename(original)).replaceAll('\\', '-')
     const entrypoint = path.join(extensionDirectory, relative)
     fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
     return `entrypoint = '${entrypoint}'`
