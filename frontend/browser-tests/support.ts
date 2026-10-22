@@ -52,6 +52,8 @@ export type E2EServer = {
   storageFile: string
   metadataFile: string
   configPath: string
+  /** Actual delivered backend stdout/stderr; diagnostic observation only. */
+  diagnostics: () => string
   getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
   /** 受控 Herdr 自己写下的外部调用记录。 */
   herdrCalls: () => Record<string, unknown>[]
@@ -174,7 +176,7 @@ async function waitForTemplates(baseURL: string): Promise<void> {
   throw new Error(`herdr-bot 没有在 20 秒内开始提供模板接口：${baseURL}`)
 }
 
-function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number }> {
+function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
   const child = spawn(binary, ['--config', configPath], {
     cwd: path.dirname(configPath),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -198,7 +200,7 @@ function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutN
       if (match === null || settled) return
       settled = true
       clearTimeout(timer)
-      resolve({ child, port: Number(match[2]) })
+      resolve({ child, port: Number(match[2]), diagnostics: () => log.join('') })
     })
     child.stderr.on('data', (chunk: Buffer) => {
       log.push(chunk.toString('utf8'))
@@ -282,7 +284,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     await browserListenAddress(options.listenAddr ?? '127.0.0.1:0'),
   )
 
-  let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null
+  let running: { child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string } | null = null
 
   async function start() {
     running = await startProcess(configPath)
@@ -303,6 +305,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     storageFile,
     metadataFile,
     configPath,
+    diagnostics() { return running?.diagnostics() ?? '' },
     async getTemplates() {
       const response = await fetch(`${this.baseURL}/api/bot-templates`)
       if (!response.ok) {
@@ -328,11 +331,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       const child = running?.child
       running = null
       if (child === undefined || child.exitCode !== null) return
-      await new Promise<void>((resolve) => {
-        child.once('exit', () => resolve())
+      const exited = Promise.withResolvers<void>()
+      child.once('exit', () => exited.resolve())
+      const exitTimer = setTimeout(() => exited.resolve(), 5000)
+      if (process.platform === 'win32') {
+        // Independent identity queries are real child processes. Killing only
+        // their parent leaves a live copied EXE holding the test directory open.
+        const killed = Promise.withResolvers<void>()
+        const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        killer.once('error', killed.reject)
+        killer.once('exit', code => code === 0 || child.exitCode !== null ? killed.resolve() : killed.reject(new Error(`taskkill failed: ${code}`)))
+        await killed.promise
+      } else {
         child.kill()
-        setTimeout(() => resolve(), 5000)
-      })
+      }
+      await exited.promise
+      clearTimeout(exitTimer)
     },
     async restart() {
       await this.stop()

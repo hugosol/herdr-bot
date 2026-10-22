@@ -47,6 +47,14 @@ pub struct CreatedTab {
     pub pane_id: String,
 }
 
+/// Identity supplied by the official integration for the exact queried agent.
+#[derive(Debug)]
+pub struct NativeSession {
+    pub session_id: String,
+    pub cwd: String,
+    pub session_file: Option<String>,
+}
+
 /// Herdr 控制失败：每个类别都说明失败发生在哪个控制步骤，不把未知说成确定。
 #[derive(Debug)]
 pub enum HerdrError {
@@ -277,6 +285,40 @@ impl HerdrClient {
         Ok(())
     }
 
+    /// One read-only identity attempt. The caller owns the overall acquisition
+    /// deadline; this method never scans directories or invokes agent commands.
+    pub async fn native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+        let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
+        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+        let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
+        let reference = agent.get("agent_session").filter(|value| !value.is_null())
+            .ok_or_else(|| native_error("native identity is not available"))?;
+        if !matches!(kind, "pi" | "omp")
+            || reference.get("agent").and_then(Value::as_str) != Some(kind)
+            || reference.get("source").and_then(Value::as_str) != Some(if kind == "omp" { "herdr:omp" } else { "herdr:pi" })
+        {
+            return Err(native_error("native reference agent/source does not match this creation"));
+        }
+        let reference_value = nonempty(reference.get("value"))
+            .ok_or_else(|| native_error("native reference has no value"))?;
+        match reference.get("kind").and_then(Value::as_str) {
+            Some("id") => {
+                let cwd = nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd")))
+                    .ok_or_else(|| native_error("native ID has no reported cwd"))?;
+                Ok(NativeSession { session_id: reference_value.to_owned(), cwd: cwd.to_owned(), session_file: None })
+            }
+            Some("path") => {
+                let path = PathBuf::from(reference_value);
+                if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
+                let allow_title_metadata = kind == "omp";
+                tokio::task::spawn_blocking(move || native_header(path, allow_title_metadata, deadline)).await
+                    .map_err(|error| native_error(&format!("native header reader failed: {error}")))?
+            }
+            _ => Err(native_error("unsupported native reference kind")),
+        }
+    }
+
     /// 执行一次 herdr CLI 调用；参数逐个传递，绝不经过 Shell。
     async fn run(
         &self,
@@ -341,6 +383,59 @@ impl HerdrClient {
             command: command_name,
             detail: format!("stdout 不是单个 JSON 响应：{error}"),
         })
+    }
+}
+
+fn native_error(detail: &str) -> HerdrError {
+    HerdrError::UnexpectedResponse { command: "agent get native identity", detail: detail.to_owned() }
+}
+
+fn nonempty(value: Option<&Value>) -> Option<&str> {
+    value.and_then(Value::as_str).filter(|text| !text.trim().is_empty())
+}
+
+/// Read only the metadata prefix of this exact file. OMP reserves a title line
+/// before the session header; Pi starts with the session header. Neither agent
+/// is inferred from the JSON shape, and conversation entries are never imported.
+fn native_header(path: PathBuf, allow_title_metadata: bool, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+    use std::io::Read;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(native_error("native identity acquisition deadline expired"));
+    }
+    let mut file = std::fs::File::open(&path)
+        .map_err(|error| native_error(&format!("native header unavailable: {error}")))?;
+    let mut line = Vec::with_capacity(512);
+    let mut remaining = 64 * 1024;
+    loop {
+        line.clear();
+        loop {
+            // In-flight kernel I/O is not forcibly cancellable, but a completed
+            // operation must not initiate further reads after the total budget.
+            if tokio::time::Instant::now() >= deadline {
+                return Err(native_error("native identity acquisition deadline expired"));
+            }
+            if remaining == 0 { return Err(native_error("native metadata prefix exceeds 64 KiB")); }
+            remaining -= 1;
+            // No read-ahead into conversation content; only identity metadata is needed.
+            let mut byte = [0];
+            if file.read(&mut byte).map_err(|error| native_error(&format!("native header read failed: {error}")))? == 0 {
+                return Err(native_error("native header is not complete yet"));
+            }
+            if byte[0] == b'\n' { break; }
+            line.push(byte[0]);
+        }
+        if line.iter().all(u8::is_ascii_whitespace) { continue; }
+        let metadata: Value = serde_json::from_slice(&line)
+            .map_err(|error| native_error(&format!("native metadata is not valid JSON: {error}")))?;
+        match metadata.get("type").and_then(Value::as_str) {
+            Some("title") if allow_title_metadata => continue,
+            Some("session") => {
+                let id = nonempty(metadata.get("id")).ok_or_else(|| native_error("native header has no ID"))?;
+                let cwd = nonempty(metadata.get("cwd")).ok_or_else(|| native_error("native header has no cwd"))?;
+                return Ok(NativeSession { session_id: id.to_owned(), cwd: cwd.to_owned(), session_file: Some(path.to_string_lossy().into_owned()) });
+            }
+            _ => return Err(native_error("expected native session header, not conversation content")),
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 //! Persistent metadata directory, independent of current registrations and shutdown intent.
-//! Only explicit accepted registration events write it; native session content is never read.
+//! Accepted registration and confirmed zone creation write metadata only; native bodies are never imported.
 
 use std::fs;
 use std::io::{self, Write};
@@ -21,6 +21,8 @@ use crate::AppState;
 struct HistoryRecord {
     session_id: String,
     session_name: Option<String>,
+    #[serde(default)]
+    name_from_zone: bool,
     agent_type: Option<String>,
     cwd: Option<String>,
     first_recorded_at: u64,
@@ -75,6 +77,17 @@ impl History {
         }
     }
 
+    pub async fn record_zone(
+        &self,
+        session_id: &str,
+        name: &str,
+        agent_type: &str,
+        cwd: &str,
+        session_file: Option<&str>,
+    ) -> io::Result<()> {
+        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, true).await
+    }
+
     pub async fn register(
         &self,
         session_id: &str,
@@ -82,6 +95,18 @@ impl History {
         agent_type: Option<&str>,
         cwd: &str,
         session_file: Option<&str>,
+    ) -> io::Result<()> {
+        self.record(session_id, session_name, agent_type, cwd, session_file, false).await
+    }
+
+    async fn record(
+        &self,
+        session_id: &str,
+        session_name: Option<&str>,
+        agent_type: Option<&str>,
+        cwd: &str,
+        session_file: Option<&str>,
+        from_zone: bool,
     ) -> io::Result<()> {
         let _guard = self.lock.lock().await;
         let mut records = self.read()?;
@@ -92,7 +117,10 @@ impl History {
             .filter(|value| Path::new(value).is_absolute());
 
         if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
-            update(&mut record.session_name, session_name);
+            if from_zone || !record.name_from_zone {
+                update(&mut record.session_name, session_name);
+                if from_zone && session_name.is_some() { record.name_from_zone = true; }
+            }
             update(&mut record.agent_type, agent_type);
             update(&mut record.cwd, cwd);
             update(&mut record.session_file, session_file);
@@ -101,6 +129,7 @@ impl History {
             records.push(HistoryRecord {
                 session_id: session_id.to_owned(),
                 session_name: session_name.map(str::to_owned),
+                name_from_zone: from_zone && session_name.is_some(),
                 agent_type: agent_type.map(str::to_owned),
                 cwd: cwd.map(str::to_owned),
                 first_recorded_at,

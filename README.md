@@ -1097,14 +1097,36 @@ chat 右上角的三角按钮在**当前会话／历史会话**两个互斥视�
   每项固定为 `sessionId`（完整字符串）、`sessionName`、`agentType`、`cwd`（三个可为 `null`）和
   `firstRecordedAt`（服务端首次成功保存的 Unix 毫秒时间戳）。按首次收录时间倒序；相同时间按完整 ID 稳定排序。
   存储读取失败返回非 2xx 的 `{code,message}`，不伪装成空列表。
-- 收录仍通过既有 `POST /api/sessions/events` 的成功 `register`：必填 `sessionId`、`kind`、`data.cwd` 的原规则不变；
+- connect-bot 收录通过既有 `POST /api/sessions/events` 的成功 `register`：必填 `sessionId`、`kind`、`data.cwd` 的原规则不变；
   `data.sessionName`、`data.agentType`、`data.sessionFile` 均不是收录前提。未知会话的非 register 写入或被拒绝请求不建立历史。
   来源仍只接受回环或本机网卡地址，其他来源 `403 forbidden`，不增加认证。
 - 同一**完整 sessionId**重复注册只更新同一条历史；同名、同 cwd 或 ID 前缀相同的不同会话不会合并。
   有效元数据填充或更新已有值；缺失、空字符串及纯空白不清空已知值。首次收录时间不因更新改变。
   精确绝对 `sessionFile` 可作为内部引用更新，但不在读取结果或页面中公开，也不会读取其正文。
-- 历史只因明确成功 register 收录，不扫描或批量导入旧原生会话，不移动、转换或改写原生文件。
-  已有旧对话之后明确 register 可以正常收录；注销或当前登记消失不删除历史。
+- zone Bot 在 Herdr 确认可交互且初始指示提交获确认后，也会独立收录实际原生对话；不要求勾选 connect-bot，
+  不等待模型轮次或任务完成。启动／提交尚未确认成功不触发 zone 收录，独立成功 register 仍可正常收录。
+  同一完整原生 ID 的两种来源合并成一条；zone Bot 名称优先于 connect-bot 名称，优先级跨重启保留。
+  收录历史本身不建立当前登记；接入后两视图可同时包含该对话，注销当前登记不删除历史。
+- 两种收录入口都不扫描或批量导入旧原生会话，不移动、复制、转换、删除或改写原生文件。
+  zone 只查询本次创建的精确 Herdr agent 对象及官方原生引用，必要时只读该精确文件的 header 身份元数据；
+  不按 cwd、别名、创建 ID、Tab／Pane 或最近文件猜 sessionId，不读取／导入正文。
+
+### zone 原生身份等待与服务端诊断
+
+创建成功先发布，随后由与页面生命周期独立的任务取得身份；不增加历史专用页面轮询。
+身份获取（包含 Herdr 查询及 header 暂不可读等待）总预算最多 **30 秒**，其间不持有创建、当前登记或历史存储锁。
+取得身份后只尝试保存一次；身份超时或保存失败即结束，不在期限后继续获取，不重试写入，不自动 connect、停止 agent、
+关闭 Tab 或重发初始指示。此预算不是模型轮次时限，也不保证强制取消已经进入内核的任意磁盘操作。
+当前 keepAlive、登记、监听及倒计时不受历史等待或故障改变，不把这些临时意图写入历史。
+
+失败仅在**服务端 stderr** 产生 `warning: zone-history`，带本次 `creation=bc-…`、精确 `agent=bot-…`、
+agent 类型及原因（`identity-timeout`／`save-failed`，保存失败同时带完整原生 session ID）；
+创建响应与页面仍只表达创建结果，不增加历史失败提示。可用创建结果中的 `id`／`agentName` 关联日志。
+官方集成可在原生主文件落盘前先上报精确路径；例如 Pi 仅执行 `/settings`、OMP 仅执行 `/rename`，
+尚未形成消息时 header 可能一直不存在。服务端不会从文件名猜 ID：到期记警告结束，
+后续明确成功 register 可按普通规则收录。
+真实隔离 Pi／Herdr 的引用、header、历史比对及部署 H1 步骤见
+[Pi zone 历史验收](docs/pi-zone-native-history-acceptance.md)。
 
 历史元数据存储位置可在启动期配置，默认相对进程工作目录：
 

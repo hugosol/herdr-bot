@@ -260,6 +260,7 @@ pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset) -> Vec<String>
 /// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
 pub async fn run_creation(
     herdr: Arc<HerdrClient>,
+    history: Arc<crate::history::History>,
     job: Arc<Mutex<CreationView>>,
     template: BotTemplate,
     preset: crate::catalog::ResolvedPreset,
@@ -312,9 +313,57 @@ pub async fn run_creation(
         return;
     }
 
-    let mut view = job.lock().await;
-    view.input_submitted = true;
-    view.stage = Stage::Succeeded;
+    let creation_id = {
+        let mut view = job.lock().await;
+        view.input_submitted = true;
+        view.stage = Stage::Succeeded;
+        view.id.clone()
+    };
+    // The page and the creation result do not own this task. Never hold a creation,
+    // current-registration or history lock while waiting for external identity.
+    tokio::spawn(async move {
+        collect_native_history(herdr, history, creation_id, agent_name, kind, name).await;
+    });
+}
+
+async fn collect_native_history(
+    herdr: Arc<HerdrClient>,
+    history: Arc<crate::history::History>,
+    creation_id: String,
+    agent_name: String,
+    kind: &'static str,
+    name: String,
+) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut last_reason = String::from("native identity unavailable");
+    let identity = loop {
+        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind, deadline)).await {
+            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
+            Ok(Ok(_)) => {
+                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
+                return;
+            }
+            Ok(Err(error)) => {
+                // A reader noticing the shared deadline must not overwrite the
+                // useful underlying cause (for example an unavailable header).
+                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
+            }
+            Err(_) => {
+                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
+                return;
+            }
+        }
+        if tokio::time::timeout_at(deadline, tokio::time::sleep(std::time::Duration::from_millis(100))).await.is_err() {
+            eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
+            return;
+        }
+    };
+    // Exactly one persistence attempt after identity; no background write retries.
+    if let Err(error) = history.record_zone(
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(),
+    ).await {
+        eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
+    }
 }
 
 /// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。
