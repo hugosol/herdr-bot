@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 /// 登记文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
-pub const DEFAULT_REGISTRY_FILE: &str = "zones.json";
+pub const DEFAULT_REGISTRY_FILE: &str = ".data/zones.json";
 
 /// 登记文件里的一个 zone：服务器上的一个绝对目录路径。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,10 +133,7 @@ impl Zones {
 
         let _guard = self.lock.lock().await;
         let mut zones = self.read()?;
-        if zones
-            .iter()
-            .any(|entry| same_path(&entry.path, &candidate))
-        {
+        if zones.iter().any(|entry| same_path(&entry.path, &candidate)) {
             return Err(ZoneError::AlreadyRegistered);
         }
         zones.push(RegisteredZone { path: candidate });
@@ -145,10 +142,7 @@ impl Zones {
     }
 
     /// 取消一个登记；不检查目录是否仍然存在，也不删除任何目录或文件。
-    pub async fn unregister(
-        &self,
-        input: &str,
-    ) -> Result<Vec<RegisteredZone>, ZoneError> {
+    pub async fn unregister(&self, input: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
             return Err(ZoneError::Required);

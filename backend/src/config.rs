@@ -35,11 +35,11 @@ pub struct Config {
     #[serde(default)]
     pub sessions: SessionsConfig,
     /// zone 登记列表的存储位置；整个 `[zones]` 段可缺省，缺省为进程工作目录下的
-    /// `zones.json`。
+    /// `.data/zones.json`。
     #[serde(default)]
     pub zones: ZonesConfig,
     /// Bot 模板的存储位置；整个 `[bot_templates]` 段可缺省，缺省为进程工作目录下的
-    /// `bot-templates.json`。
+    /// `.data/bot-templates.json`。
     #[serde(default)]
     pub bot_templates: BotTemplatesConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
@@ -150,7 +150,7 @@ impl TryFrom<u32> for CommandTimeoutSeconds {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZonesConfig {
-    /// 登记文件路径；缺省 `zones.json`。
+    /// 登记文件路径；缺省 `.data/zones.json`。
     #[serde(default = "registry_file_by_default")]
     pub registry_file: PathBuf,
     /// 新 zone 的创建父目录；缺省未配置，只禁用“新增”而不猜测写入位置。
@@ -182,7 +182,7 @@ impl Default for ZonesConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BotTemplatesConfig {
-    /// 模板存储文件路径；缺省 `bot-templates.json`。
+    /// 模板存储文件路径；缺省 `.data/bot-templates.json`。
     #[serde(default = "storage_file_by_default")]
     pub storage_file: PathBuf,
 }
@@ -195,12 +195,12 @@ impl Default for BotTemplatesConfig {
     }
 }
 
-/// `[bot_templates] storage_file` 的缺省值：进程工作目录下的 `bot-templates.json`。
+/// `[bot_templates] storage_file` 的缺省值：进程工作目录下的 `.data/bot-templates.json`。
 fn storage_file_by_default() -> PathBuf {
     PathBuf::from(crate::templates::DEFAULT_STORAGE_FILE)
 }
 
-/// `[zones] registry_file` 的缺省值：进程工作目录下的 `zones.json`。
+/// `[zones] registry_file` 的缺省值：进程工作目录下的 `.data/zones.json`。
 fn registry_file_by_default() -> PathBuf {
     PathBuf::from(DEFAULT_REGISTRY_FILE)
 }
@@ -647,12 +647,12 @@ workspace_name = 'bot-playground'
     }
 
     #[test]
-    fn legacy_config_without_zones_section_defaults_to_zones_json() {
+    fn config_without_zones_section_defaults_to_centralized_registry() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
             config.zones.registry_file,
-            PathBuf::from("zones.json"),
-            "缺省 [zones] 段时登记文件取工作目录下的 zones.json"
+            PathBuf::from(".data/zones.json"),
+            "缺省 [zones] 段时登记文件取工作目录下的 .data/zones.json"
         );
     }
 
@@ -1006,13 +1006,13 @@ workspace_name = 'bot-playground'
         );
     }
 
-    /// Bot 模板存储文件缺省为当前工作目录下的 bot-templates.json。
+    /// Bot 模板存储文件缺省为当前工作目录下的 .data/bot-templates.json。
     #[test]
     fn legacy_config_without_bot_templates_section_uses_default_storage_file() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
             config.bot_templates.storage_file,
-            PathBuf::from("bot-templates.json")
+            PathBuf::from(".data/bot-templates.json")
         );
     }
 
