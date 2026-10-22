@@ -16,7 +16,7 @@ import {
 } from './browseApi'
 import { HtmlReader } from './HtmlReaderView'
 import { isHtmlPath } from './htmlReader'
-import { diffRows, sideBySideRows } from './diff'
+import { DiffContent } from './DiffContent'
 import {
   fetchChangeDiff,
   type ChangeDiff,
@@ -922,72 +922,8 @@ export function ZoneBrowser({
   }
 
   function diffBody(diff: ChangeDiff): ReactNode {
-    const oldText = diff.old.kind === 'text' ? diff.old.content : ''
-    const newText = diff.new.kind === 'text' ? diff.new.content : ''
-    const rows = diffRows(oldText, newText)
-    if (rows.length === 0) {
-      return (
-        <p className="browser-empty" data-testid="diff-empty">
-          两侧内容相同，没有行级差异。
-        </p>
-      )
-    }
-
-    if (narrow) {
-      return (
-        <div className="diff-lines" data-testid="diff-view" data-mode="unified">
-          {rows.map((row, index) => (
-            <div
-              key={`${index}:${row.kind}`}
-              className={`diff-line diff-line--${row.kind}`}
-              data-testid={`diff-row-${row.kind}`}
-            >
-              <span className="diff-line__number" aria-hidden="true">
-                {row.oldNumber ?? ''}
-              </span>
-              <span className="diff-line__number" aria-hidden="true">
-                {row.newNumber ?? ''}
-              </span>
-              <span className="diff-line__marker" aria-hidden="true">
-                {row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}
-              </span>
-              <span className="diff-line__text">{row.text}</span>
-            </div>
-          ))}
-        </div>
-      )
-    }
-
-    return (
-      <div className="diff-side-by-side" data-testid="diff-view" data-mode="side-by-side">
-        {sideBySideRows(rows).map((pair, index) => (
-          <div key={index} className="diff-pair">
-            <div
-              className={`diff-cell diff-cell--${pair.old.kind}`}
-              data-testid={`diff-old-${pair.old.kind}`}
-            >
-              <span className="diff-line__number" aria-hidden="true">
-                {pair.old.number ?? ''}
-              </span>
-              <span className="diff-line__text" data-testid="diff-old-text">
-                {pair.old.text}
-              </span>
-            </div>
-            <div
-              className={`diff-cell diff-cell--${pair.new.kind}`}
-              data-testid={`diff-new-${pair.new.kind}`}
-            >
-              <span className="diff-line__number" aria-hidden="true">
-                {pair.new.number ?? ''}
-              </span>
-              <span className="diff-line__text" data-testid="diff-new-text">
-                {pair.new.text}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
+    // 路径或两侧内容变化时创建全新的展开状态。
+    return <DiffContent key={JSON.stringify(diff)} diff={diff} narrow={narrow} />
   }
 
   function diffPane(): ReactNode {

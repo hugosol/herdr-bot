@@ -1314,6 +1314,30 @@ h1 {
   line-height: 1.45;
 }
 
+.diff-context-toggle {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem;
+  border: 0;
+  border-block: 1px solid #2b313a;
+  border-radius: 0;
+  background: #202c3b;
+  color: #b7d5ff;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.diff-context-toggle:hover {
+  background: #2b3e56;
+}
+
+.diff-context-toggle:focus-visible {
+  outline: 2px solid #b7d5ff;
+  outline-offset: -3px;
+}
+
 .diff-line {
   display: grid;
   grid-template-columns: 3rem 3rem 1.25rem minmax(0, 1fr);
