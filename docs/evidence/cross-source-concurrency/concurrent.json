@@ -1,0 +1,57 @@
+{
+  "sessions": [
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000006",
+      "sessionName": "Parallel identical",
+      "agentType": "omp",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713289
+    },
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000004",
+      "sessionName": "Parallel identical",
+      "agentType": "omp",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713287
+    },
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000003",
+      "sessionName": "Parallel identical",
+      "agentType": "omp",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713282
+    },
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000005",
+      "sessionName": "Parallel identical",
+      "agentType": "pi",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713280
+    },
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000002",
+      "sessionName": "Parallel identical",
+      "agentType": "pi",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713276
+    },
+    {
+      "sessionId": "parallel-f58d5000-0000-4000-8000-000000000001",
+      "sessionName": "Parallel identical",
+      "agentType": "pi",
+      "cwd": "C:/same",
+      "firstRecordedAt": 1792690713272
+    },
+    {
+      "sessionId": "shared-16b2b3f0-17a8-4ffd-8000-000000000001",
+      "sessionName": "Shared final literal",
+      "agentType": "omp",
+      "cwd": "C:/wave-two",
+      "firstRecordedAt": 1792690713252
+    }
+  ],
+  "page": 1,
+  "pageSize": 50,
+  "total": 7,
+  "totalPages": 1
+}

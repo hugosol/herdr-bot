@@ -1,0 +1,67 @@
+{
+  "before": {
+    "sessions": [
+      {
+        "sessionId": "omp-failure-89ba2000-8000-4000-8000-000000000001",
+        "sessionName": "Current original literal",
+        "agentType": "omp",
+        "cwd": "C:/current-original",
+        "online": true,
+        "state": "working"
+      }
+    ],
+    "shutdown": {
+      "monitoredSessionIds": [],
+      "arrangementId": "shutdown-0",
+      "phase": "counting-down",
+      "deadline": 1792694320709,
+      "serverTime": 1792690720712
+    }
+  },
+  "afterFailures": {
+    "sessions": [
+      {
+        "sessionId": "omp-failure-89ba2000-8000-4000-8000-000000000001",
+        "sessionName": "Current accepted despite history failure",
+        "agentType": "omp",
+        "cwd": "C:/current-after-failure",
+        "online": true,
+        "state": "working"
+      }
+    ],
+    "shutdown": {
+      "monitoredSessionIds": [],
+      "arrangementId": "shutdown-0",
+      "phase": "counting-down",
+      "deadline": 1792694320709,
+      "serverTime": 1792690720992
+    }
+  },
+  "afterRecovery": {
+    "sessions": [
+      {
+        "sessionId": "omp-failure-89ba2000-8000-4000-8000-000000000001",
+        "sessionName": "Connect recovery must not replace saved zone",
+        "agentType": "omp",
+        "cwd": "C:/recovered-current",
+        "online": true,
+        "state": "working"
+      }
+    ],
+    "shutdown": {
+      "monitoredSessionIds": [],
+      "arrangementId": "shutdown-0",
+      "phase": "counting-down",
+      "deadline": 1792694320709,
+      "serverTime": 1792690721039
+    }
+  },
+  "afterRestart": {
+    "sessions": [],
+    "shutdown": {
+      "monitoredSessionIds": [],
+      "phase": "none",
+      "serverTime": 1792690721225
+    }
+  }
+}
