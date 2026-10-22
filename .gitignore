@@ -37,15 +37,19 @@ dist-ssr
 /frontend/test-results/
 /frontend/playwright-report/
 
-# zone 登记列表的后端运行时文件（缺省在进程工作目录；可用 [zones] 改到别处）
+# 集中运行数据（含临时写入、会话与一次性切换标记）；手工 meta-data 不忽略。
+.data/
+
+# 旧根目录运行数据仍忽略，首次切换前后均不应被误加入 Git。
+# zone 登记列表的旧运行时文件
 /zones.json
 /zones.json.tmp
 
-# Bot 模板的后端运行时文件（缺省在进程工作目录；可用 [bot_templates] 改到别处）
+# Bot 模板的旧根目录运行时文件
 /bot-templates.json
 /bot-templates.json.tmp
 
-# 每个 Bot 的 agent 会话存储（缺省在模板存储文件旁的 bot-sessions；随存储位置改到别处）
+# 旧根目录 agent 会话存储
 /bot-sessions/
 
 # 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）

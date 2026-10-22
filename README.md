@@ -286,8 +286,8 @@ zone 登记列表由后端以文件持久保存，本机与局域网设备读取
 [zones]
 # 新 zone 的创建父目录。必须显式配置；缺省未配置时只禁用“新增”。
 create_parent_directory = 'E:\Developer\bot-playground'
-# 登记文件位置；缺省为进程工作目录下的 zones.json。
-registry_file = 'E:\data\herdr-bot-zones.json'
+# 登记文件位置；缺省为进程工作目录下的 .data/zones.json。
+registry_file = '.data/zones.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
 preview_limit_bytes = 1048576
 # 每个 zone 自动刷新合并事件的最小间隔；缺省 10 秒。
@@ -297,7 +297,7 @@ refresh_interval_seconds = 10
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `create_parent_directory` | 无（必须显式配置） | 新建 zone 的唯一父目录；必须在服务器上已存在 |
-| `registry_file` | `zones.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
+| `registry_file` | `.data/zones.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
 | `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
 | `refresh_interval_seconds` | `10` | 每个 zone 合并文件事件并自动刷新的最小间隔（秒） |
 
@@ -328,19 +328,46 @@ Bot 模板由后端以文件持久保存，电脑与手机读取同一份；整�
 
 ```toml
 [bot_templates]
-# 模板存储文件位置；缺省为进程工作目录下的 bot-templates.json。
-storage_file = 'E:\data\herdr-bot-templates.json'
+# 模板存储文件位置；缺省为进程工作目录下的 .data/bot-templates.json。
+storage_file = '.data/bot-templates.json'
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
-| `storage_file` | `bot-templates.json` | Bot 模板的持久文件；相对路径按进程工作目录解析 |
+| `storage_file` | `.data/bot-templates.json` | Bot 模板的持久文件；相对路径按进程工作目录解析 |
 
 - 文本文件不存在表示还没有任何模板，不是读取错误；模板在真实进程重启后仍然保留。
 - 保存成功只表示存储文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或内容
   损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；页面不会把失败的保存显示成
   “已保存”。
 - 拼错的字段名或段名会让**启动明确失败**，不会静默回退到缺省路径。
+
+### 运行数据目录与首次切换
+
+默认及随附配置将 zone 登记放在 `.data/zones.json`、Bot 模板放在
+`.data/bot-templates.json`，每个 Bot 在 `.data/bot-sessions/<创建标识>/` 中使用独立的新会话目录。
+所有相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
+运行数据目录及持久文件的父目录不存在时由启动程序创建，创建失败会明确拒绝启动。
+会话目录分配失败会拒绝本次创建，不产生 Herdr Tab、agent 或输入提交。
+
+首次使用新布局启动时执行已授权的一次性切换：
+
+- 根目录 `zones.json` 的字节完整复制到当前配置的登记目标，再删除旧源；不改写登记内容或其中的路径，
+  更不搬动、删除或改写 zone 实际目录。若目标登记文件已存在，保留目标原样并删除旧源，不合并、不覆盖、
+  不因新旧登记不同而停机；目录冒充目标文件或迁移写入失败则明确失败，保留旧源。
+- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp` 和旧 `bot-sessions/`。
+  不迁移或恢复旧模板／旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
+- 成功后在 `.data/.runtime-layout-v1` 留下切换标记。正常启动不重复清理；切换后保存的新模板与新会话文件
+  在重启后保留。不要删除该标记来“修复”数据；后续即使重新出现旧根目录文件，也不会自动读取或回退。
+
+`[zones] registry_file` 与 `[bot_templates] storage_file` 仍可显式指定其他持久位置，
+新 Bot 的 `bot-sessions/` 随模板存储文件放在同一父目录。显式配置不增加旧位置回退；
+使用自定义位置时，应自行将该位置加入 Git 忽略规则。
+交付的 `.gitignore` 忽略 `.data/` 的全部运行与临时文件，并保留旧根目录运行文件的忽略项；
+手工维护的 `meta-data/` 不被忽略，可纳入 Git，不要添加或提交用户运行数据。
+
+这次整理没有增加会话登记、完成后关机监听、关机倒计时或 Bot 创建进度的持久化／恢复。
+这些状态仍仅属于当前后端进程，重启清空；agent 会话文件保留不等于接管或恢复 Bot。
 
 ### `[git]` 配置（可选）
 
