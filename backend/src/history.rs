@@ -4,7 +4,8 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use crate::clock::Clock;
 
 use axum::Json;
 use axum::extract::State;
@@ -58,13 +59,14 @@ struct HistoryList<'a> {
 
 pub struct History {
     file: PathBuf,
+    clock: Arc<dyn Clock>,
     // One instance serializes the entire read/merge/replace transaction, not just writes.
     lock: Mutex<()>,
 }
 
 impl History {
-    pub fn new(file: PathBuf) -> Self {
-        Self { file, lock: Mutex::new(()) }
+    pub fn new(file: PathBuf, clock: Arc<dyn Clock>) -> Self {
+        Self { file, clock, lock: Mutex::new(()) }
     }
 
     fn read(&self) -> io::Result<Vec<HistoryRecord>> {
@@ -123,10 +125,7 @@ impl History {
             update(&mut record.cwd, cwd);
             update(&mut record.session_file, session_file);
         } else {
-            let first_recorded_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(io::Error::other)?
-                .as_millis() as u64;
+            let first_recorded_at = self.clock.unix_millis();
             records.push(HistoryRecord {
                 session_id: session_id.to_owned(),
                 session_name: session_name.map(str::to_owned),

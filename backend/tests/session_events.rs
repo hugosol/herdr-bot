@@ -170,7 +170,7 @@ async fn register_reports_online_count_and_publishes_the_view() {
     assert_eq!(response.status, 200, "响应体：{}", response.body);
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 
     // 视图字段与契约逐字一致：没有 pid/sessionFile、没有 state，可空字段一个 null 都不出现。
@@ -222,7 +222,7 @@ async fn register_keeps_optional_fields_out_of_the_view_unless_present() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -243,7 +243,7 @@ async fn register_keeps_optional_fields_out_of_the_view_unless_present() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 2})
+        json!({"outcome": "registered", "onlineCount": 2, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -263,7 +263,7 @@ async fn unknown_fields_are_ignored() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -281,7 +281,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&first),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.drain_frames();
 
@@ -291,7 +291,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&repeated),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.assert_no_frame();
 
@@ -310,7 +310,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&other),
-        json!({"outcome": "registered", "onlineCount": 2})
+        json!({"outcome": "registered", "onlineCount": 2, "historySaved": true})
     );
 }
 
@@ -337,7 +337,7 @@ async fn repeated_register_preserves_the_observed_state_without_a_frame() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.assert_no_frame();
 }
@@ -418,7 +418,7 @@ async fn unregister_removes_the_row_and_a_later_register_builds_a_new_one() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -445,7 +445,7 @@ async fn non_register_events_for_unknown_sessions_are_rejected_without_building_
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -501,7 +501,7 @@ async fn malformed_or_incomplete_events_are_invalid_event() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -548,7 +548,7 @@ async fn query_strings_are_rejected_as_unexpected_parameters() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 

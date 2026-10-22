@@ -157,6 +157,11 @@ async fn create_succeeded(
     wait_stage(server, id, "succeeded").await
 }
 
+fn control_calls(herdr: &HerdrFixture) -> Vec<Value> {
+    // Zone history observes native identity without controlling the Bot.
+    herdr.calls().into_iter().filter(|call| call["kind"] != "agent_get").collect()
+}
+
 fn calls_of_kind(herdr: &HerdrFixture, kind: &str) -> Vec<Value> {
     herdr
         .calls()
@@ -576,7 +581,7 @@ async fn editing_and_deleting_a_template_does_not_touch_an_existing_bot() {
 
     let finished = create_succeeded(&server, &zone_path, template_id, "已有任务").await;
     let creation_id = finished["id"].as_str().expect("创建标识");
-    let calls_before = herdr.calls();
+    let calls_before = control_calls(&herdr);
     let tabs_before = herdr.tabs();
     assert_eq!(calls_before.len(), 4, "一次创建只有四项外部控制调用");
 
@@ -608,7 +613,7 @@ async fn editing_and_deleting_a_template_does_not_touch_an_existing_bot() {
     // 给后端任何错误的后台反应留出时间；已有 Bot 不应出现新的控制调用或记录变化。
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
-        herdr.calls(),
+        control_calls(&herdr),
         calls_before,
         "编辑或删除模板不得产生新的 Herdr 控制调用（包括关闭或改写对象）"
     );

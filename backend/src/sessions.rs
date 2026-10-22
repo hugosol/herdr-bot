@@ -286,6 +286,10 @@ impl SessionsState {
         self.clock.now()
     }
 
+    pub(crate) fn clock(&self) -> Arc<dyn Clock> {
+        Arc::clone(&self.clock)
+    }
+
     /// 共享观察流的发布端：读路径从这里订阅，关机安排也把同一份通道交给它的读连接。
     pub fn observation(&self) -> Arc<Hub> {
         Arc::clone(&self.hub)
@@ -573,6 +577,15 @@ struct RegisterAccepted {
     outcome: &'static str,
     /// 当前在线会话数（含本会话）。
     online_count: usize,
+    history_saved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_warning: Option<HistoryWarning>,
+}
+
+#[derive(Debug, Serialize)]
+struct HistoryWarning {
+    code: &'static str,
+    message: &'static str,
 }
 
 /// 其余 kind 的成功回执：只说明「事件已被接受」。
@@ -652,6 +665,7 @@ pub(crate) async fn post_session_event(
 
     // Keep registration acceptance and history persistence independent. All protocol and
     // source validation has completed before this explicit register can reach history.
+    let mut history_warning = None;
     if let SessionEvent::Register { session_id, data } = &event {
         if let Err(error) = state.history.register(
             session_id,
@@ -661,6 +675,10 @@ pub(crate) async fn post_session_event(
             data.session_file.as_deref(),
         ).await {
             eprintln!("[herdr-bot] 历史保存失败 sessionId={session_id}: {error}");
+            history_warning = Some(HistoryWarning {
+                code: "history-save-failed",
+                message: "接入成功，但历史会话保存失败；修复存储后可再次执行 connect-bot 保存历史。",
+            });
         }
     }
     let applied = state.sessions.apply(event).await;
@@ -676,6 +694,8 @@ pub(crate) async fn post_session_event(
             Json(RegisterAccepted {
                 outcome: REGISTERED,
                 online_count,
+                history_saved: history_warning.is_none(),
+                history_warning,
             }),
         )
             .into_response(),
