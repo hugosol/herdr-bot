@@ -8,7 +8,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** in-progress
+**Status:** closed
 
 - [x] 沿用现有 register 必填字段与来源校验；只有服务端接受的 register 触发收录。分别覆盖有效注册、缺可选元数据、未知非 register 写入和被拒绝来源，观察公开回执及历史结果。
 - [x] 使用可信完整 sessionId 标识记录；正常重复 register 更新同一记录，不按名称、cwd 或 ID 前缀误合并。不额外要求 agent 类型或原生文件路径才能收录。
@@ -28,7 +28,14 @@
 
 ## Comments
 
-本票实施及验收完成，待独立集成代理合入后按项目规则置 `closed`；当前不操作集成分支。
+本票实施已随集成提交 `a33b597d52afa916583cc230ce6758c943443924` 合入并同步回开发分支，独立全局测试通过，状态置 `closed`。本轮修复提交仍由宿主排队合并；未操作集成工作区。
+
+### 同步后全局回归
+
+- 确认当前开发分支已包含宿主同步的 `a33b597d52afa916583cc230ce6758c943443924`，开始时工作区干净，无合并冲突。
+- 首次 `backend: cargo test` 发现 `runtime_data::real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation` 的旧目录清单未包含新增的 `session-history.json`。更新清单，并通过公开历史读取断言重启后仅保留已接受注册的历史 ID／cwd，仍不恢复当前登记和临时关机意图。
+- 修复后完整 `backend: cargo test` 通过：383 passed，3 ignored（46 suites）；`frontend: npm test` 通过：27 files，205 passed。
+- 本轮仅执行全局测试；复杂脚本、实机 smoke 与跨票据整体验收留给最终独立门禁。
 
 - 批准 seam：S2 交付 HTTP interface、S1 真实浏览器；未把存储内部提升为测试 seam。
 - Red→green：历史读取最初为 404；空白更新最初把已知名称清空；浏览器最初找不到切换按钮。随后对应行为均通过。
@@ -39,4 +46,4 @@
 - P10／P14／P15／P28：`chat current/history are exclusive and readable at 1280px/390px` 实际双向点击三角按钮，核对标题、不同底色、互斥面板、四个展示字段、完整 ID 回退、`—`、长名称路径换行及无越界；没有模型、来源、存活状态、关机操作、搜索或正文等界面。已查看两张实际页面截图（Playwright test-results 下 history-1280.png／history-390.png）。README 与示例 TOML 已更新公开 interface、配置、使用说明及变更记录。
 - 实际验证：`cargo test --test session_history` 最终 4 passed；包含 session_events、session_write_boundary、session_expiry、session_report_recovery、shutdown、session_window_config、recovery、shared_observation 及 session_history 的回归命令共 9 suites／74 passed。
 - 实际验证：`npm test` 为 27 files／205 passed；`npm run build`、`cargo build` 成功；最终 `npx playwright test sessionHistory.spec.ts` 为 3 passed（真实 Chrome，未替换 HTTP 后端）。
-- 未完成事项：本票无实施或验收遗留；尚未合入集成分支。分页、故障反馈／恢复及 zone 收录不属于本票，不宣称已覆盖。未执行真实关机、模型任务、原生配置修改、旧会话批量导入或其他票据操作。
+- 本票实施已合入；本轮回归修复由宿主继续排队合并。分页、故障反馈／恢复及 zone 收录不属于本票，不宣称已覆盖。未执行真实关机、模型任务、原生配置修改、旧会话批量导入或其他票据操作。
