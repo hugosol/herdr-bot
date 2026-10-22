@@ -131,8 +131,8 @@ fn assert_launch_args(actual: &Value, expected: &[&str], context: &str) {
     let args = actual.as_array().expect("启动参数是数组");
     assert_eq!(
         args.len(),
-        expected.len() + 2,
-        "{context}：除模型 / thinking 外只应追加本次独立的会话目录：{actual}"
+        expected.len() + 5,
+        "{context}：除模型 / thinking 外追加独立会话目录、关闭自动发现及一个固定扩展：{actual}"
     );
     let expected = expected.iter().map(|arg| json!(arg)).collect::<Vec<_>>();
     assert_eq!(

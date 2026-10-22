@@ -190,6 +190,8 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
         <h2 className="zone-dialog__title">创建 Bot</h2>
         <p className="zone-dialog__hint">
           新 Bot 会在服务端配置的 Herdr Workspace 中新建独立 Tab，并以所选 zone 的目录作为工作目录。
+          创建前自动检查模板的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自模板。
+          文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
         </p>
 
         <p className="bot-zone" data-testid="bot-zone">
