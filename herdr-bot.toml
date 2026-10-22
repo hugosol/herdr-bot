@@ -67,3 +67,6 @@ registry_file = '.data/zones.json'
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
 [bot_templates]
 storage_file = '.data/bot-templates.json'
+# 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
+# 修改后下次打开模板编辑、保存和创建立即读取，无需重启。
+metadata_file = 'meta-data/bot-options.toml'

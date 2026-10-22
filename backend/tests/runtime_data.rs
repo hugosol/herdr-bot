@@ -17,6 +17,13 @@ struct Panel {
 }
 
 fn command(root: &Path) -> Command {
+    let metadata_dir = root.join("meta-data");
+    fs::create_dir_all(&metadata_dir).unwrap();
+    fs::write(
+        metadata_dir.join("bot-options.toml"),
+        include_str!("../../meta-data/bot-options.toml"),
+    )
+    .unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
     command
         .current_dir(root)

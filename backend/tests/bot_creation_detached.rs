@@ -344,6 +344,14 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
     // 尚未投递确认：提交调用已经到达夹具但响应被延迟；再断开一条观察连接。
     let submitting = wait_stage(&server, &id, "submitting").await;
     assert_eq!(submitting["inputSubmitted"], false);
+    assert!(
+        wait_until(Duration::from_secs(10), || {
+            !calls_of_kind(&herdr, "agent_prompt").is_empty()
+        })
+        .await,
+        "受控 Herdr 必须已经收到初始指示提交"
+    );
+    assert_eq!(creation(&server, &id).await["inputSubmitted"], false);
     assert_eq!(
         calls_of_kind(&herdr, "agent_prompt").len(),
         1,

@@ -570,6 +570,7 @@ impl Panel {
         use std::process::{Command, Stdio};
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())

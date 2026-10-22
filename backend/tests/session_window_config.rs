@@ -513,6 +513,7 @@ impl Panel {
     /// 用给定配置文件启动真实二进制；返回时已经拿到它实际监听的端口。
     fn start(config_path: &Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+        .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
@@ -636,6 +637,7 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
 /// 非法配置下它必须在服务可用之前就结束：超过 20 秒仍在运行即判失败并结束它，用例不会挂住。
 fn run_expecting_immediate_exit(config_path: &Path) -> (std::process::ExitStatus, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+        .current_dir(common::repo_fixtures_dir().parent().unwrap())
         .arg("--config")
         .arg(config_path)
         .stdin(Stdio::null())

@@ -185,14 +185,22 @@ pub struct BotTemplatesConfig {
     /// 模板存储文件路径；缺省 `.data/bot-templates.json`。
     #[serde(default = "storage_file_by_default")]
     pub storage_file: PathBuf,
+    /// 手工维护的选项目录；相对进程工作目录，运行中每次操作重新读取。
+    #[serde(default = "metadata_file_by_default")]
+    pub metadata_file: PathBuf,
 }
 
 impl Default for BotTemplatesConfig {
     fn default() -> Self {
         Self {
             storage_file: storage_file_by_default(),
+            metadata_file: metadata_file_by_default(),
         }
     }
+}
+
+fn metadata_file_by_default() -> PathBuf {
+    PathBuf::from("meta-data/bot-options.toml")
 }
 
 /// `[bot_templates] storage_file` 的缺省值：进程工作目录下的 `.data/bot-templates.json`。

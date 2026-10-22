@@ -7,11 +7,9 @@
 //! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何模板，不是读取错误；读取失败或内容
 //! 损坏都是明确错误，不会伪装成空列表，也不会覆盖原文件。同一实例内的读取与写入共用一把锁。
 //!
-//! agent / model / thinking 的选项来自目标 agent 源码中的固定能力事实：OMP 的模型元数据给出
-//! `thinking.efforts`，Pi 使用 `getSupportedThinkingLevels`。全局 CLI 支持的级别（例如 OMP 的
-//! `auto`）不因此成为某个模型的可用级别；两个 agent 的能力表也互不复制。
+//! agent / model / thinking / Skill 的可用选项由独立 TOML 目录维护；每次保存按当前元数据校验。
+//! 持久文件只保留稳定标识，不保存映射副本；读取不因单个选择失效而丢弃其他模板。
 
-use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
@@ -34,9 +32,6 @@ pub enum Agent {
 }
 
 impl Agent {
-    /// 按界面顺序排列的全部固定选项。
-    pub const ALL: [Agent; 2] = [Agent::Omp, Agent::Pi];
-
     /// 序列化后的固定值（存入存储文件、HTTP 响应也使用同一个值）。
     pub fn label(self) -> &'static str {
         match self {
@@ -46,90 +41,6 @@ impl Agent {
     }
 }
 
-/// 模板可选的模型：沿用 agent 默认值，或两个已确认的显式模型。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Model {
-    #[serde(rename = "default")]
-    Default,
-    #[serde(rename = "gpt-6.1-sol")]
-    Gpt61Sol,
-    #[serde(rename = "deepseek-flash")]
-    DeepseekFlash,
-}
-
-impl Model {
-    /// 按界面顺序排列的全部固定选项。
-    pub const ALL: [Model; 3] = [Model::Default, Model::Gpt61Sol, Model::DeepseekFlash];
-
-    /// 序列化后的固定值。
-    pub fn label(self) -> &'static str {
-        match self {
-            Model::Default => "default",
-            Model::Gpt61Sol => "gpt-6.1-sol",
-            Model::DeepseekFlash => "deepseek-flash",
-        }
-    }
-
-    /// 显式模型映射到约定的完整 provider / model 标识；沿用默认值时不传模型覆盖。
-    pub fn provider_model(self) -> Option<&'static str> {
-        match self {
-            Model::Default => None,
-            Model::Gpt61Sol => Some("openai-codex/gpt-6.1-sol"),
-            Model::DeepseekFlash => Some("deepseek/deepseek-flash"),
-        }
-    }
-}
-
-/// 模板可选的思考级别；`Default` 表示沿用 agent 默认值，不传 `--thinking`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Thinking {
-    Default,
-    Off,
-    Minimal,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl Thinking {
-    /// 序列化后的固定值。
-    pub fn label(self) -> &'static str {
-        match self {
-            Thinking::Default => "default",
-            Thinking::Off => "off",
-            Thinking::Minimal => "minimal",
-            Thinking::Low => "low",
-            Thinking::Medium => "medium",
-            Thinking::High => "high",
-            Thinking::Xhigh => "xhigh",
-            Thinking::Max => "max",
-        }
-    }
-}
-
-/// 模板可选的 Skill（单选，可为无）；这两个值表示名为 teach / code-review 的 Skill。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Skill {
-    Teach,
-    CodeReview,
-}
-
-impl Skill {
-    /// 按界面顺序排列的全部固定选项。
-    pub const ALL: [Skill; 2] = [Skill::Teach, Skill::CodeReview];
-
-    /// 序列化后的固定值（界面显示为 `/teach`、`/code-review`）。
-    pub fn label(self) -> &'static str {
-        match self {
-            Skill::Teach => "teach",
-            Skill::CodeReview => "code-review",
-        }
-    }
-}
 
 /// 一个已保存的模板。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,10 +53,10 @@ pub struct BotTemplate {
     /// Bot 自动命名规则：单行固定文字与占位符。
     pub bot_name: String,
     pub agent: Agent,
-    pub model: Model,
-    pub thinking: Thinking,
+    pub model: String,
+    pub thinking: String,
     /// 不选 Skill 时为 `None`。
-    pub skill: Option<Skill>,
+    pub skill: Option<String>,
     /// 可多行、可为空的固定指示。
     pub prompt: String,
 }
@@ -168,14 +79,14 @@ struct TemplateFields {
     name: String,
     bot_name: String,
     agent: Agent,
-    model: Model,
-    thinking: Thinking,
-    skill: Option<Skill>,
+    model: String,
+    thinking: String,
+    skill: Option<String>,
     prompt: String,
 }
 
 impl TemplateInput {
-    fn validate(self) -> Result<TemplateFields, TemplateError> {
+    fn validate(self, catalog: &crate::catalog::Catalog) -> Result<TemplateFields, TemplateError> {
         let name = self.name.unwrap_or_default();
         if name.trim().is_empty() {
             return Err(TemplateError::NameRequired);
@@ -194,52 +105,16 @@ impl TemplateInput {
             .as_deref()
             .ok_or(TemplateError::AgentRequired)?
             .trim();
-        let agent = Agent::ALL
-            .into_iter()
-            .find(|candidate| candidate.label() == agent)
+        let agent = catalog.agents.iter()
+            .find(|candidate| candidate.id.label() == agent)
+            .map(|candidate| candidate.id)
             .ok_or_else(|| TemplateError::UnknownAgent(agent.to_string()))?;
 
-        let model = match self.model.as_deref().map(str::trim) {
-            None | Some("") => Model::Default,
-            Some(value) => Model::ALL
-                .into_iter()
-                .find(|candidate| candidate.label() == value)
-                .ok_or_else(|| TemplateError::UnknownModel(value.to_string()))?,
-        };
-
-        let thinking = match self.thinking.as_deref().map(str::trim) {
-            None | Some("") => Thinking::Default,
-            Some(value) => THINKING_OPTIONS
-                .into_iter()
-                .find(|candidate| candidate.label() == value)
-                .ok_or_else(|| TemplateError::UnknownThinking(value.to_string()))?,
-        };
-
-        if model == Model::Default && thinking != Thinking::Default {
-            return Err(TemplateError::ThinkingRequiresDefaultModel);
-        }
-        if thinking != Thinking::Default && !supported_thinking(agent, model).contains(&thinking) {
-            return Err(TemplateError::ThinkingUnsupported {
-                agent,
-                model,
-                thinking,
-                supported: supported_thinking(agent, model),
-            });
-        }
-
-        let skill = match self.skill.as_deref().map(str::trim) {
-            None | Some("") => None,
-            Some(value) => {
-                // 界面显示为 `/teach`；公开调用同时接受该显示值与规范的 Skill 名称。
-                let name = value.strip_prefix('/').unwrap_or(value);
-                Some(
-                    Skill::ALL
-                        .into_iter()
-                        .find(|candidate| candidate.label() == name)
-                        .ok_or_else(|| TemplateError::UnknownSkill(value.to_string()))?,
-                )
-            }
-        };
+        let model = self.model.as_deref().map(str::trim).filter(|v| !v.is_empty()).unwrap_or("default").to_owned();
+        let thinking = self.thinking.as_deref().map(str::trim).filter(|v| !v.is_empty()).unwrap_or("default").to_owned();
+        let skill = self.skill.as_deref().map(str::trim).filter(|v| !v.is_empty())
+            .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
+        catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
 
         Ok(TemplateFields {
             name,
@@ -250,77 +125,6 @@ impl TemplateInput {
             skill,
             prompt: self.prompt.unwrap_or_default(),
         })
-    }
-}
-
-/// 全部已知的思考级别（用于解析请求中的固定值）。
-const THINKING_OPTIONS: [Thinking; 8] = [
-    Thinking::Default,
-    Thinking::Off,
-    Thinking::Minimal,
-    Thinking::Low,
-    Thinking::Medium,
-    Thinking::High,
-    Thinking::Xhigh,
-    Thinking::Max,
-];
-
-/// 指定 agent 与模型支持的显式思考级别（不含“沿用默认值”）。
-///
-/// 这些是目标源码中的固定能力事实：
-/// - OMP `packages/catalog/src/models.json` 的 `thinking.efforts`：
-///   `openai-codex/gpt-6.1-sol` = low/medium/high/xhigh/max，`deepseek/deepseek-flash` = low/high/max。
-/// - Pi `getSupportedThinkingLevels`：`openai-codex/gpt-6.1-sol` 的 map 为 off=null、
-///   minimal=low、low=low、medium=medium、high=high、xhigh=xhigh、max=max，因此支持
-///   minimal/low/medium/high/xhigh/max（不接受 off）；`deepseek-flash` 的 map 为
-///   minimal=null、low=low、medium=null、high=high、max=max，因此支持 off/low/high/max。
-///
-/// 模型沿用默认值时没有可校验的具体模型，只保留默认值。
-pub fn supported_thinking(agent: Agent, model: Model) -> &'static [Thinking] {
-    use Thinking::*;
-    match (agent, model) {
-        (_, Model::Default) => &[],
-        (Agent::Omp, Model::Gpt61Sol) => &[Low, Medium, High, Xhigh, Max],
-        (Agent::Omp, Model::DeepseekFlash) => &[Low, High, Max],
-        (Agent::Pi, Model::Gpt61Sol) => &[Minimal, Low, Medium, High, Xhigh, Max],
-        (Agent::Pi, Model::DeepseekFlash) => &[Off, Low, High, Max],
-    }
-}
-
-/// 公开的固定选项；页面与直接调用者读取同一份，公开保存也按同一份能力事实校验。
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplateOptions {
-    agents: Vec<&'static str>,
-    models: Vec<&'static str>,
-    /// `thinking[agent][model]` 的显式级别；`default` 模型对应空数组。
-    thinking: BTreeMap<&'static str, BTreeMap<&'static str, Vec<&'static str>>>,
-    skills: Vec<&'static str>,
-}
-
-impl TemplateOptions {
-    pub fn current() -> Self {
-        let mut thinking = BTreeMap::new();
-        for agent in Agent::ALL {
-            let mut by_model = BTreeMap::new();
-            for model in Model::ALL {
-                by_model.insert(
-                    model.label(),
-                    supported_thinking(agent, model)
-                        .iter()
-                        .map(|level| level.label())
-                        .collect(),
-                );
-            }
-            thinking.insert(agent.label(), by_model);
-        }
-
-        Self {
-            agents: Agent::ALL.iter().map(|agent| agent.label()).collect(),
-            models: Model::ALL.iter().map(|model| model.label()).collect(),
-            thinking,
-            skills: Skill::ALL.iter().map(|skill| skill.label()).collect(),
-        }
     }
 }
 
@@ -337,11 +141,12 @@ pub enum TemplateError {
     ThinkingRequiresDefaultModel,
     ThinkingUnsupported {
         agent: Agent,
-        model: Model,
-        thinking: Thinking,
-        supported: &'static [Thinking],
+        model: String,
+        thinking: String,
+        supported: Vec<String>,
     },
     UnknownSkill(String),
+    Metadata(String),
     NotFound,
     Unreadable(io::Error),
     Corrupt(String),
@@ -362,6 +167,7 @@ impl TemplateError {
             Self::ThinkingRequiresDefaultModel => "template-thinking-requires-default-model",
             Self::ThinkingUnsupported { .. } => "template-thinking-unsupported",
             Self::UnknownSkill(_) => "template-skill-invalid",
+            Self::Metadata(_) => "metadata-invalid",
             Self::NotFound => "template-not-found",
             Self::Unreadable(_) => "templates-unreadable",
             Self::Corrupt(_) => "templates-corrupt",
@@ -377,12 +183,12 @@ impl TemplateError {
             Self::BotNameNotSingleLine => {
                 "bot-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
             }
-            Self::AgentRequired => "请选择 agent：omp 或 pi。".to_string(),
+            Self::AgentRequired => "请选择当前选项目录中的 agent。".to_string(),
             Self::UnknownAgent(value) => {
-                format!("agent 只能是 omp 或 pi，收到：{value}。")
+                format!("agent 不在当前选项目录中，收到：{value}。")
             }
             Self::UnknownModel(value) => {
-                format!("model 只能沿用默认值、gpt-6.1-sol 或 deepseek-flash，收到：{value}。")
+                format!("model 不在当前 Agent 的可用选项目录中，收到：{value}。")
             }
             Self::UnknownThinking(value) => {
                 format!(
@@ -400,14 +206,14 @@ impl TemplateError {
             } => {
                 let options = supported
                     .iter()
-                    .map(|level| level.label())
+                    .map(String::as_str)
                     .collect::<Vec<_>>()
                     .join("、");
                 format!(
                     "thinking「{}」不适用于 {} / {}；该组合可用：{}。",
-                    thinking.label(),
+                    thinking,
                     agent.label(),
-                    model.label(),
+                    model,
                     if options.is_empty() {
                         "沿用默认值"
                     } else {
@@ -416,8 +222,9 @@ impl TemplateError {
                 )
             }
             Self::UnknownSkill(value) => {
-                format!("Skill 只能不选、teach 或 code-review，收到：{value}。")
+                format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
             }
+            Self::Metadata(detail) => detail.clone(),
             Self::NotFound => "目标模板不存在：可能已被删除。".to_string(),
             Self::Unreadable(error) => {
                 format!("读取 Bot 模板存储文件失败：{error}；没有把它当成空列表。")
@@ -435,16 +242,22 @@ impl TemplateError {
 /// 持久保存在一个 JSON 文件里的 Bot 模板列表。
 pub struct Templates {
     storage_file: PathBuf,
+    metadata_file: PathBuf,
     /// 读取与读改写写共用：同一实例内任意时刻只有一个调用者在操作存储文件。
     lock: Mutex<()>,
 }
 
 impl Templates {
-    pub fn new(storage_file: PathBuf) -> Self {
+    pub fn new(storage_file: PathBuf, metadata_file: PathBuf) -> Self {
         Self {
             storage_file,
+            metadata_file,
             lock: Mutex::new(()),
         }
+    }
+
+    pub fn catalog(&self) -> Result<crate::catalog::Catalog, TemplateError> {
+        crate::catalog::Catalog::load(&self.metadata_file)
     }
 
     /// 存储文件位置（启动日志与测试观察用）。
@@ -469,7 +282,7 @@ impl Templates {
 
     /// 新增一个模板；成功返回保存后的完整列表。
     pub async fn create(&self, input: TemplateInput) -> Result<Vec<BotTemplate>, TemplateError> {
-        let fields = input.validate()?;
+        let fields = input.validate(&self.catalog()?)?;
 
         let _guard = self.lock.lock().await;
         let mut templates = self.read()?;
@@ -494,7 +307,7 @@ impl Templates {
         id: &str,
         input: TemplateInput,
     ) -> Result<Vec<BotTemplate>, TemplateError> {
-        let fields = input.validate()?;
+        let fields = input.validate(&self.catalog()?)?;
 
         let _guard = self.lock.lock().await;
         let mut templates = self.read()?;
@@ -587,7 +400,7 @@ struct TemplatesDocument {
     templates: Vec<BotTemplate>,
 }
 
-/// 存储文件里的每一项都必须满足与公开保存相同的固定规则，且标识不能重复。
+/// 校验持久文件结构和模板身份；选项适用性只在保存/创建时按当前目录校验。
 fn validate_document(templates: &[BotTemplate]) -> Result<(), TemplateError> {
     let mut seen = Vec::with_capacity(templates.len());
     for template in templates {
@@ -610,20 +423,6 @@ fn validate_document(templates: &[BotTemplate]) -> Result<(), TemplateError> {
         {
             return Err(TemplateError::Corrupt(format!(
                 "模板 {} 的 bot-name 不是合法单行规则",
-                template.id
-            )));
-        }
-        if template.model == Model::Default && template.thinking != Thinking::Default {
-            return Err(TemplateError::Corrupt(format!(
-                "模板 {} 在默认模型下指定了 thinking",
-                template.id
-            )));
-        }
-        if template.thinking != Thinking::Default
-            && !supported_thinking(template.agent, template.model).contains(&template.thinking)
-        {
-            return Err(TemplateError::Corrupt(format!(
-                "模板 {} 的 thinking 不适用于所选 agent / model",
                 template.id
             )));
         }
