@@ -343,7 +343,11 @@ async fn collect_native_history(
                 eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
                 return;
             }
-            Ok(Err(error)) => last_reason = error.message(),
+            Ok(Err(error)) => {
+                // A reader noticing the shared deadline must not overwrite the
+                // useful underlying cause (for example an unavailable header).
+                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
+            }
             Err(_) => {
                 eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
                 return;
