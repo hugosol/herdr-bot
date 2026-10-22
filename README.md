@@ -447,8 +447,9 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
   同名扩展在不同 Agent 下用不同标识；各 Agent 至少定义一个固定扩展。元数据结构校验不执行入口。
 
 模板只持久保存选择标识与原有字段，不保存 provider/model、能力表或 Skill 原生映射副本。
-已有模板不必重存即可在下次创建使用新映射；接受创建时固定本次模板和完整模型/Skill 映射，后续编辑
-不改变已接受或已有的 Bot。公开 `options` 包含 `agents/models/skills` 标识列表、`thinking[agent][model]`、
+已有模板不必重存即可在下次创建使用新映射；接受创建时固定本次模板、完整 provider/model、thinking、
+Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 input。后续推进不重读模板或元数据；后续编辑、
+删除模板或修改元数据只影响下一次创建，不改配、关闭或重建已接受或已有的 Bot。公开 `options` 包含 `agents/models/skills` 标识列表、`thinking[agent][model]`、
 `labels` 显示信息与 `extensions` 定义；前端选项、公开保存校验、原生启动解释共用这个文档。
 
 接口：
@@ -1268,8 +1269,25 @@ Skill / prompt / input 的单次合成（含空值组合、两项原生 Skill �
 不触碰会话/关机状态，以及 Workspace 不可达/零匹配/多匹配、Tab 创建后启动失败、提交被拒绝与提交超时
 时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/bot_creation_detached.rs` 继续验证创建
 被接受后观察连接断开不取消执行、提交请求连接断开仍完成唯一一次提交，以及两个独立客户端同时向同一
-zone 与不同 zone 提交时各自创建；受控替身还支持按调用内容匹配的启动/提交屏障，让一次创建停住而另一
-次继续，用来证明不存在全局单飞、排队或模板快照串用。`frontend/browser-tests/botCreationDetached.spec.ts`
+zone 与不同 zone 提交时各自创建；受控替身还支持按调用内容匹配的 Tab 创建/启动/提交屏障，让一次创建停住而另一
+次继续，用来证明不存在全局单飞、排队或模板快照串用。
+
+P36/P37 的完整映射隔离复现同样位于 `backend/tests/bot_creation_detached.rs`，可分别运行
+`cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p36_` 与同命令的 `p37_`：
+
+- P36 把旧创建停在 Tab 返回前；通过公开编辑保存新模板，并在真实磁盘改写同一份元数据。旧配置为
+  `old-provider/old-model`、`high`、`old-native`、`old-fixed.ts + old-tools.ts`，新配置为
+  `new-provider/new-model`、`low`、`new-native`、`new-fixed.ts + new-connect.ts`，固定指示和本次输入也不同。
+  新创建在旧屏障未释放时成功。随后删除来源模板并移除元数据，释放旧 Tab/启动/提交屏障，逐步观察
+  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的对象与会话目录不同。
+- P37 先创建 Bot，再编辑模板、改元数据，核对已有外部调用及对象没有变化；下一次创建使用新配置。
+  删除来源后，带删除前预览的直接创建请求也以 `template-not-found` 拒绝。两条已有 Bot 的外部记录、
+  Tab/Pane 和公开状态保持不变，没有新增改配、关闭、重建或输入重发。
+
+这两例首次实际运行均通过；原有创建路径已经按值捕获模板及已解析映射，本次不另加缓存、队列、恢复或重试。
+该证据仅覆盖受控 Herdr 的调用与对象隔离，不宣称真实 OMP/Pi 的扩展执行成功。
+
+`frontend/browser-tests/botCreationDetached.spec.ts`
 在真实浏览器中覆盖断线、刷新与关闭页面：页面在未收到确认结果时不显示成功，后端仍完成同一次创建。
 `backend/tests/herdr_config.rs` 用真实 TOML 与真实进程
 验证 Workspace 配置缺失、空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
