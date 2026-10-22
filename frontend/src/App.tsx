@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
+import { BotTemplatesPanel } from './BotTemplatesPanel'
 import { FileListPanel } from './FileListPanel'
 import { SessionsPanel } from './SessionsPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
@@ -28,17 +29,18 @@ const OPERATION_LABELS: Record<OperationName, string> = {
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
 /**
- * herdr-bot 主界面的三个顶层入口，按频繁程度排列：会话列表 → 文件列表 → 控制面板。
- * 打开或整页刷新永远从会话列表开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
+ * herdr-bot 主界面的四个顶层入口，按频繁程度排列：chat → bot → zone → server。
+ * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
  */
-const TAB_ORDER = ['sessions', 'files', 'control'] as const
+const TAB_ORDER = ['sessions', 'templates', 'files', 'control'] as const
 
 type TabKey = (typeof TAB_ORDER)[number]
 
 const TAB_LABELS: Record<TabKey, string> = {
-  sessions: '会话列表',
-  files: '文件列表',
-  control: '控制面板',
+  sessions: 'chat',
+  templates: 'bot',
+  files: 'zone',
+  control: 'server',
 }
 
 type Feedback = {
@@ -51,7 +53,7 @@ type Feedback = {
 /**
  * herdr-bot 主界面。
  *
- * `sessionFeed` 是注入给「会话列表」的数据源；不传时用空数据源（页面显示引导空态）。
+ * `sessionFeed` 是注入给 `chat` 入口的数据源；不传时用空数据源（页面显示引导空态）。
  * 运行时由 `main.tsx` 注入真实 SSE 数据源；组件本身不依赖全局 `EventSource`，因此组件测试
  * 可以用假数据源直接驱动。
  */
@@ -63,13 +65,13 @@ export default function App({
   zoneWatchFeed?: ZoneWatchFeed
 } = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
-  // 每次打开或整页刷新都从会话列表开始：这里没有读取任何持久化的 tab 状态。
+  // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
   const [tab, setTab] = useState<TabKey>('sessions')
-  // 三个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
+  // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
   const [shutdownTakeover, setShutdownTakeover] = useState(false)
-  // 后端权威的关机状态与观察流健康度：与「会话列表」同一条观察流，因此同一次订阅就够。
+  // 后端权威的关机状态与观察流健康度：与 chat 入口同一条观察流，因此同一次订阅就够。
   const { shutdown, connection } = useSessionFeedSnapshot(sessionFeed)
 
   function selectAdjacentTab(event: KeyboardEvent<HTMLDivElement>) {
@@ -116,12 +118,12 @@ export default function App({
   const feedback = feedbackFor(state)
 
   return (
-    <main className={tab === 'files' ? 'panel panel--wide' : 'panel'}>
+    <main className={tab === 'files' || tab === 'templates' ? 'panel panel--wide' : 'panel'}>
       <h1>herdr-bot</h1>
 
-      {/* 三 tab 外壳：会话列表 → 文件列表 → 控制面板，打开时默认停在会话列表。
-          三个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
-          方向键在三个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
+      {/* 四 tab 外壳：chat → bot → zone → server，打开时默认停在 chat。
+          四个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
+          方向键在四个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
       <div
         className="tabs"
         role="tablist"
@@ -159,6 +161,17 @@ export default function App({
         hidden={tab !== 'sessions'}
       >
         <SessionsPanel feed={sessionFeed} />
+      </div>
+
+      <div
+        id="panel-templates"
+        role="tabpanel"
+        aria-labelledby="tab-templates"
+        className="tabpanel"
+        data-testid="panel-templates"
+        hidden={tab !== 'templates'}
+      >
+        <BotTemplatesPanel active={tab === 'templates'} />
       </div>
 
       <div
@@ -226,7 +239,7 @@ export default function App({
         )}
       </div>
 
-      {/* 全局关机提醒不能位于 hidden 的 tab 容器内；手动入口仍只在控制面板可见。 */}
+      {/* 全局关机提醒不能位于 hidden 的 tab 容器内；手动入口仍只在 server 入口可见。 */}
       <ShutdownControl
         showButton={tab === 'control'}
         shutdown={shutdown}

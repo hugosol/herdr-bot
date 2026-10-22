@@ -358,7 +358,42 @@ describe('zone 待提交角标', () => {
     await screen.findByTestId('zone-list')
 
     const badge = await screen.findByTestId('zone-badge')
-    expect(badge).toHaveTextContent('4 项待提交')
+    expect(badge).toHaveTextContent(/^4$/)
+    expect(badge).toHaveAttribute('aria-label', '4 项待提交')
+  })
+
+  it('单个 zone 概览失败显示紧凑警告并保留原因', async () => {
+    const user = userEvent.setup()
+    mockFetch((url) => {
+      if (url.pathname === '/api/zones') {
+        return jsonResponse(200, { zones: [{ path: ZONE }] })
+      }
+      if (url.pathname === '/api/zones/overview') {
+        return jsonResponse(
+          200,
+          overview([
+            {
+              path: ZONE,
+              repository: true,
+              conflict: false,
+              error: '拒绝访问 Git 元数据。',
+            },
+          ]),
+        )
+      }
+      return undefined
+    })
+
+    render(<App />)
+    await user.click(screen.getByTestId('tab-files'))
+    await screen.findByTestId('zone-list')
+
+    const badge = await screen.findByTestId('zone-badge')
+    expect(badge).toHaveTextContent('⚠')
+    expect(badge).toHaveAttribute('aria-label', '待提交状态不可用：拒绝访问 Git 元数据。')
+    expect(badge).toHaveAttribute('title', '拒绝访问 Git 元数据。')
+    expect(badge).not.toHaveTextContent('待提交状态不可用')
+    expect(screen.queryByTestId('zone-detail')).toBeNull()
   })
 
   it('概览读取失败时明确显示未知，不显示 0 项或空角标', async () => {

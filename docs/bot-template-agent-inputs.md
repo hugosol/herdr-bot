@@ -16,7 +16,7 @@
 
 用户已确认 Q11：部分失败时保留已经创建的 Tab / agent，展示失败阶段及可定位对象信息；不自动删除、不自动重新创建，也不自动重发初始输入。超时不证明操作未执行，不将失败伪装为成功。
 
-用户已确认 Q1：新增独立“Bot 模板”tab，支持新增、编辑、删除模板，服务端保存并由电脑与手机共享；Zone 行上的 `+` 只负责选模板、填写初始 input 和提交创建。
+用户已确认 Q1：新增独立 `bot` 入口（承载 Bot 模板管理），支持新增、编辑、删除模板，服务端保存并由电脑与手机共享；Zone 行上的 `+` 只负责选模板、填写初始 input 和提交创建。
 
 用户已确认 Q4：模板编辑仅影响后续创建，删除模板不关闭已有 Bot；请求被接受时使用当时的模板内容，后续编辑不影响正在进行的创建。
 
@@ -24,11 +24,33 @@
 
 用户已确认 Q2：模板字段为 `name`、`bot-name`、`agent`、`skill`、`prompt`。`name` 和 `bot-name` 必填，`bot-name` 初始规则为 `{zone.name} · {template.name} · {bot.id}`；`agent` 必选一个固定选项（`omp`、`pi`）。`skill` 可不选，选择时只能从固定列表单选，初始选项显示为 `/teach`、`/code-review`，不允许任意文本输入；用户已确认 Q20：两者表示真正的 Skill，实际分别投递 `/skill:teach …` 与 `/skill:code-review …`，不是原样执行同名扩展命令或提示词模板。`prompt` 是可选的多行固定指示。
 
-用户已确认 Q18：创建结果展示生成名称、Zone、Herdr Tab / Pane 标识及成功或失败阶段，用户自行关闭弹窗；不自动跳转会话列表，不插入 connect-bot 会话登记。本次不增加 Bot 列表、聊天或关闭 Bot 功能。创建 Bot 与现有会话列表没有自动关联。
+用户已确认 Q18：创建结果展示生成名称、Zone、Herdr Tab / Pane 标识及成功或失败阶段，用户自行关闭弹窗；不自动跳转 `chat` 入口，不插入 connect-bot 会话登记。本次不增加 Bot 列表、聊天或关闭 Bot 功能。创建 Bot 与现有 `chat` 入口没有自动关联。
 
 用户已确认 Q19：所有能访问当前实例的设备均可管理模板和创建 Bot，本次不增加账号或权限系统；这是可在服务端启动 Agent 和提交任务的写入能力，不将局域网来源视为认证。
 
 用户在 Q21 / Q26 明确要求不增加额外的非空组合校验：prompt 与 input 即使都为空，也继续按所选 Skill 合成输入并提交；单独的 `/skill:名称` 仍是有效的非空输入。不引入“仅创建、不发送”的成功分支。如果 Herdr 拒绝提交，则按 Q11 保留已创建的 Tab / agent、展示错误并中断，不自动删除、重建或重发，不能宣称创建成功。用户已在 Q27 明确拒绝 Skill 必选限制，保留 Skill 可不选。即使 Skill、prompt、input 全为空，也不增加此组合的创建前校验，不跳过消息提交来宣称成功；由 Herdr 返回结果，拒绝时按既定错误流程保留现场并中断。
+
+## 模板扩展与创建前文件检查（2026-10-22）
+
+创建弹窗只选择已保存模板和本次 input，不接收扩展、固定项取消或入口路径覆盖。服务端每次创建重新读取当前 `meta-data/bot-options.toml`，校验模板稳定标识及 Agent 适用关系，固定本次完整启动映射；模板不保存入口副本。
+
+在查询 Herdr、新建 Tab、启动 agent 或提交初始输入之前，自动检查本次固定和所选扩展入口存在、为普通文件且可读取。缺失、目录冒充文件或读取拒绝会以 `extension-entrypoint-invalid` 报告扩展名称、标识、入口与具体原因，并明确未创建 Herdr Tab、未启动 agent、未提交输入。元数据或选择失效也在外部创建之前拒绝。未选扩展的文件缺失不影响有效组合；全局元数据结构和关系仍须合法。
+
+OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应 model-cost；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
+
+检查只打开、检查文件类型并读取文件，不导入或执行扩展，不调用模型或余额/账号探测。它不证明扩展或 Skill 初始化/执行成功，也不保证检查到实际加载之间文件不会变化。通过后仍须 Herdr 确认 agent 就绪，再提交一次原生合成初始输入；只有提交确认才成功。后续失败保留真实 Tab、Pane 和 agent 定位，不删除、重建或重发。
+
+自动证据位于 `frontend/browser-tests/templateExtensionLaunch.spec.ts`：六组合字面预期、真实隔离文件故障（包括 Windows 独占句柄读取拒绝）、实际页面错误与独立 Herdr 调用/对象记录、同进程入口映射更新及未选缺失入口。Playwright 附件 `controlled-herdr-six-combinations-NOT-real-loading` 与 `controlled-herdr-dynamic-entry-mapping-NOT-real-loading` 供真实加载验收复用。它们仅证明受控 Herdr 调用正确，不表示真实 OMP/Pi 已通过加载或 ambient 对照；真实 Herdr→OMP/Pi 六组合及 H1 判断仍由 08 负责。
+
+## 失效选择的显式修正与元数据恢复（2026-10-22）
+
+移除模型、当前 Agent 适用的 thinking 或可选扩展元数据后，模板仍保存原稳定标识，不自动删除、替换或默认化。编辑器以 `原标识（不可用）` 保留已保存的模型/级别，失效扩展仍以勾选项显示，可由用户显式取消。错误说明跨三个步骤保留；仅查看、往返步骤或取消编辑不会改变持久模板。更换模型/级别、取消失效扩展后，还需明确保存并收到成功确认。修正前保存和创建会由服务端按当前目录拒绝，创建拒绝发生在 Tab、agent 和输入提交之前。
+
+未知模型标识属于单个模板的选择失效，不是整个模板持久文件损坏；同一文件中的其他有效模板仍可读、编辑并创建。不要为修正单个模板而删除整个持久文件。
+
+选项目录缺失、不可读或 TOML/关系非法是全局配置故障，与单个模板失效不同。运行中发生故障时，模板列表、单项公开读取、保存与创建返回包含元数据文件位置及具体原因的错误；页面不显示保存成功，也不使用故障前选项继续保存或创建。请在服务端配置的 `[bot_templates].metadata_file` 位置修复文件（缺省 `meta-data/bot-options.toml`），不要通过清空模板、重启或恢复旧缓存掩盖问题。写回完整有效目录后，无需重启；重新打开编辑器读取当前选项，显式修正已保存选择，保存后创建按新 provider/model 与扩展入口映射执行。已打开页面不接收后台推送，提交仍由服务端重新校验。没有元数据编辑界面或自动修正。
+
+自动复现：先构建前端与后端二进制，再在 `frontend` 执行 `npx playwright test browser-tests/staleSelectionRecovery.spec.ts`。用例通过真实页面、隔离持久文件、同进程外部改写和直接公开请求，覆盖 P27–P30/P32；桌面与 390px 视口均记录修正操作。每例的 `frontend/test-results/staleSelectionRecovery-*/trace.zip` 保留完整浏览器操作及网络结果，附件 `public-requests-and-external-observation` 记录独立公开请求与受控 Herdr 调用/Tab，PNG 记录不可用选择、配置错误及修复后结果。受控调用仅证明消费者拒绝/恢复与参数映射，不替代真实 OMP/Pi 加载或真实手机触摸的 H1/H2 判断。
 
 ## 模型与思考级别：固定选项方案已确认
 
@@ -83,6 +105,23 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 - `/settings` 等会打开选择器；需要其他按键交互。OMP 的 `/model` TUI 路径打开选择器，不能假定所有 slash 命令都是无交互设置命令。[O6][P4]
 - 终端必须处于预期的 agent 输入界面；Herdr 在识别为 `blocked` 时拒绝 `agent.prompt`。它提供的是终端文本与 Enter 提交，不是带角色的聊天 API。[H1]
 - 多行文本应作为一次粘贴再提交，不要逐行模拟多个 Enter。Pi 的 bracketed-paste 路径会取消自动补全，避免提交键仅确认补全项。[P5][H1]
+
+## 新对话与会话目录
+
+创建 Bot 必须得到独立的新对话，不能因为 agent 的隐式续接设置载入同一 cwd 的旧上下文。
+
+- OMP 的 `autoResume` 设置在没有显式会话标志或会话目录时，会续接 cwd 最近的会话
+  （[设置说明](../../oh-my-pi/docs/settings.md)、[会话操作](../../oh-my-pi/docs/session-operations-export-share-fork-resume.md)）。
+  其启动决议在 `--session-dir` 存在时直接创建新会话，不再进入 autoResume 分支
+  （[main.ts](../../oh-my-pi/packages/coding-agent/src/main.ts)）。`--session-dir` 是启动参数
+  （[flag-tables.ts](../../oh-my-pi/packages/coding-agent/src/cli/flag-tables.ts)）。
+- Pi 在没有 `--continue` / `--resume` 时默认创建新会话；同样支持 `--session-dir`
+  （[args.ts](../../pi/packages/coding-agent/src/cli/args.ts)）。
+- herdr-bot 每次创建都把 `--session-dir` 设为模板存储目录旁的
+  `bot-sessions/<本次创建标识>`，并在该目录中启动目标 agent。这样启动选择不依赖 cwd 查找，
+  也不以新 Tab 本身作为“新对话”的证据；目录是真实外部位置，不是伪造的 Herdr 标识。
+- 受控 Herdr 记录可以证明启动选择与参数；真实 OMP / Pi TUI 是否未载入旧上下文仍需人工 H1
+  在实际终端中对照旧、新会话文件或会话标识。
 
 ## 验证记录
 

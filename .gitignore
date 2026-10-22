@@ -33,9 +33,24 @@ dist-ssr
 # 前端构建产物：由同一个 Axum 服务提供的打包页面（frontend 执行 npm run build 生成）
 /backend/static
 
-# zone 登记列表的后端运行时文件（缺省在进程工作目录；可用 [zones] 改到别处）
+# 真实浏览器验收产物
+/frontend/test-results/
+/frontend/playwright-report/
+
+# 集中运行数据（含临时写入、会话与一次性切换标记）；手工 meta-data 不忽略。
+.data/
+
+# 旧根目录运行数据仍忽略，首次切换前后均不应被误加入 Git。
+# zone 登记列表的旧运行时文件
 /zones.json
 /zones.json.tmp
+
+# Bot 模板的旧根目录运行时文件
+/bot-templates.json
+/bot-templates.json.tmp
+
+# 旧根目录 agent 会话存储
+/bot-sessions/
 
 # 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）
 /fixtures/runtime/

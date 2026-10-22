@@ -6,8 +6,10 @@ herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就�
 
 - 首版范围（脚本操作、执行结果分类、互斥、局域网 IP 访问）：[`.scratch/omp-bot-v1/spec.md`](.scratch/omp-bot-v1/spec.md)、
   [`.scratch/omp-bot-v1/contract.md`](.scratch/omp-bot-v1/contract.md)。
-- 当前新增（三个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
-  [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)。
+- 当前新增（四个顶层入口、zone 登记列表）：[`.scratch/zone-file-browser/spec.md`](.scratch/zone-file-browser/spec.md)、
+  [`.scratch/zone-file-browser/contract.md`](.scratch/zone-file-browser/contract.md)；Bot 模板管理与从
+  zone 创建 Bot：[`.scratch/bot-template-creation/spec.md`](.scratch/bot-template-creation/spec.md)、
+  [`.scratch/bot-template-creation/contract.md`](.scratch/bot-template-creation/contract.md)。
 - 较早版本（当时的 mDNS 主机名 `omp-bot.local`、页面关机按钮）：[`.scratch/omp-bot-v2/spec.md`](.scratch/omp-bot-v2/spec.md)、
   [`.scratch/omp-bot-v2/contract.md`](.scratch/omp-bot-v2/contract.md)；
   决策记录见 [ADR 0001](docs/adr/0001-mdns-local-hostname-for-lan-access.md)、
@@ -32,7 +34,7 @@ herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就�
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
 | `backend/static/` | 打包页面构建产物（由 `frontend` 构建生成，不入库） |
 | `frontend/` | React 前端源码（Vite）；`frontend/src/config.ts` 是关机的构建期常量 |
-| `frontend/src/FileListPanel.tsx` | 文件列表 tab：zone 登记、列表读取、待提交角标、取消登记与进入浏览 |
+| `frontend/src/FileListPanel.tsx` | zone 入口：zone 登记、列表读取、数字待提交角标、取消登记与进入浏览 |
 | `frontend/src/ZoneBrowser.tsx` | zone 界面：只读浏览、Git 变更列表与左右/统一 diff、待提交着色与祖先目录提示 |
 | `frontend/src/browseApi.ts` | 目录/文件读取客户端与响应形状校验 |
 | `frontend/src/gitApi.ts` | Git 状态与 zone 角标概览客户端，含响应形状校验 |
@@ -156,16 +158,16 @@ herdr-bot 主界面启动时会在自己进程里发布 mDNS 主机名 `herdr-bo
    端口固定为配置里的 `8787`。**不要在手机上用 `127.0.0.1`**（那指向手机自己）。
 3. 手机连接**与电脑同一个 Wi-Fi**（不要用访客网络或热点）。
 4. 手机浏览器打开 `http://<上一步的 IPv4>:8787/`。
-   - **预期看到**：标题“herdr-bot”、三个等宽入口（“会话列表”“文件列表”“控制面板”），默认停在
-     “会话列表”。
-5. 点按“控制面板”，再点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时
+   - **预期看到**：标题“herdr-bot”、四个等宽入口（`chat`、`bot`、`zone`、`server`），
+     默认停在 `chat`。
+5. 点按 `server`，再点按“启动”：先出现“正在执行启动脚本……本次操作尚未结束。”，此时
    **两个按钮同时变灰、点不动**；脚本结束后显示本次调用结果。从**控制台窗口**启动面板时，
    默认绑定的现有脚本会显示“执行完成”（约 5 秒，脚本自身的等待会真正执行）；若面板是在没有控制台
    的环境里启动的，则会如实显示“执行失败：脚本以退出码 1 结束”，原因见
    [现有脚本接入的已知现象](#现有脚本接入的已知现象)。
 6. 点按“停止”：同样先“执行中”、后结果；停止之后可以再次点按“启动”，会再次真实调用脚本
    （不检查服务是否已运行，也不做状态去重）。
-7. 点按“文件列表”：输入**服务器电脑上的**目录绝对路径（不是手机上的目录），点按“登记”；成功只会在
+7. 点按 `zone`：输入**服务器电脑上的**目录绝对路径（不是手机上的目录），点按“登记”；成功只会在
    后端持久保存之后显示。点按某个登记项的“取消登记”只移除登记，不删除目录或文件。
 
 手机打不开页面时：
@@ -252,7 +254,29 @@ offline_retention_seconds = 30
   **启动明确失败**并指出出错的配置，不会静默回退到缺省值。两个合法窗口之和（最大 `8589934590` 秒）按总阈值
   正常判定，不溢出、不提前过期。
 - 运行中的实例不会因为改写配置文件而改变已加载的窗口；新值只在**重启后**生效。
-- 阈值语义与可见行为见[会话登记的生命周期](#会话登记的生命周期会话列表)。
+- 阈值语义与可见行为见[会话登记的生命周期](#会话登记的生命周期chat-入口)。
+
+### `[herdr]` 配置（必须显式配置）
+
+从 zone 创建 Bot 时，每个新 Tab 都创建在这个服务端明确配置的 Herdr Workspace 中。这一段**没有
+代码缺省值**：
+
+```toml
+[herdr]
+workspace_name = 'bot-playground'
+# executable = 'C:\Users\<you>\.herdr\packages\standalone\releases\<version>\herdr.exe'
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `workspace_name` | **无（必须显式配置）** | 目标 Herdr Workspace 的显示名；每次创建按它精确匹配且必须唯一 |
+| `executable` | `herdr` | 生产调用使用的 Herdr CLI；缺省按 `PATH` 查找 |
+
+- 整段缺失、`workspace_name` 为空字符串或纯空白都会让**进程启动失败**，不会回退到 `bot-playground`
+  或其他猜测目标。
+- 浏览器请求没有 Workspace 字段，不能替换这个目标；创建时即使 Herdr 当前焦点在别的 Workspace，
+  也仍按配置名称精确查找。匹配到零个或多个时明确失败，不任取第一个、不新建 Workspace。
+- 合法值去掉首尾空白后按字面保存；拼错的字段名会让启动失败。
 
 ### `[zones]` 配置（可选）
 
@@ -262,8 +286,8 @@ zone 登记列表由后端以文件持久保存，本机与局域网设备读取
 [zones]
 # 新 zone 的创建父目录。必须显式配置；缺省未配置时只禁用“新增”。
 create_parent_directory = 'E:\Developer\bot-playground'
-# 登记文件位置；缺省为进程工作目录下的 zones.json。
-registry_file = 'E:\data\herdr-bot-zones.json'
+# 登记文件位置；缺省为进程工作目录下的 .data/zones.json。
+registry_file = '.data/zones.json'
 # 单文件文本预览上限；缺省 1048576 字节（1 MiB）。
 preview_limit_bytes = 1048576
 # 每个 zone 自动刷新合并事件的最小间隔；缺省 10 秒。
@@ -273,7 +297,7 @@ refresh_interval_seconds = 10
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `create_parent_directory` | 无（必须显式配置） | 新建 zone 的唯一父目录；必须在服务器上已存在 |
-| `registry_file` | `zones.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
+| `registry_file` | `.data/zones.json` | 登记列表的持久文件；相对路径按进程工作目录解析 |
 | `preview_limit_bytes` | `1048576` | 单个文件的文本预览上限（字节）；超限不加载完整内容 |
 | `refresh_interval_seconds` | `10` | 每个 zone 合并文件事件并自动刷新的最小间隔（秒） |
 
@@ -298,6 +322,56 @@ refresh_interval_seconds = 10
 - 上限只限制**内容预览**：不影响目录列表、文件可见性或元数据；恰好等于上限的文件完整显示，超过一个字节
   就只显示大小与上限说明。
 
+### `[bot_templates]` 配置（可选）
+
+Bot 模板由后端以文件持久保存，电脑与手机读取同一份；整段可缺省：
+
+```toml
+[bot_templates]
+# 模板存储文件位置；缺省为进程工作目录下的 .data/bot-templates.json。
+storage_file = '.data/bot-templates.json'
+# 手工维护的选项元数据，与运行数据分离。
+metadata_file = 'meta-data/bot-options.toml'
+```
+
+| 字段 | 缺省 | 含义 |
+|---|---|---|
+| `storage_file` | `.data/bot-templates.json` | Bot 模板的持久文件；相对路径按进程工作目录解析 |
+| `metadata_file` | `meta-data/bot-options.toml` | 必须存在的 TOML 选项目录；相对路径同样按进程工作目录解析 |
+
+- 文本文件不存在表示还没有任何模板，不是读取错误；模板在真实进程重启后仍然保留。
+- 保存成功只表示存储文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或内容
+  损坏时，接口返回明确错误，**不会伪装成空列表**，也不会覆盖原文件；页面不会把失败的保存显示成
+  “已保存”。
+- 拼错的字段名或段名会让**启动明确失败**，不会静默回退到缺省路径。
+
+### 运行数据目录与首次切换
+
+默认及随附配置将 zone 登记放在 `.data/zones.json`、Bot 模板放在
+`.data/bot-templates.json`，每个 Bot 在 `.data/bot-sessions/<创建标识>/` 中使用独立的新会话目录。
+所有相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
+运行数据目录及持久文件的父目录不存在时由启动程序创建，创建失败会明确拒绝启动。
+会话目录分配失败会拒绝本次创建，不产生 Herdr Tab、agent 或输入提交。
+
+首次使用新布局启动时执行已授权的一次性切换：
+
+- 根目录 `zones.json` 的字节完整复制到当前配置的登记目标，再删除旧源；不改写登记内容或其中的路径，
+  更不搬动、删除或改写 zone 实际目录。若目标登记文件已存在，保留目标原样并删除旧源，不合并、不覆盖、
+  不因新旧登记不同而停机；目录冒充目标文件或迁移写入失败则明确失败，保留旧源。
+- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp` 和旧 `bot-sessions/`。
+  不迁移或恢复旧模板／旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
+- 成功后在 `.data/.runtime-layout-v1` 留下切换标记。正常启动不重复清理；切换后保存的新模板与新会话文件
+  在重启后保留。不要删除该标记来“修复”数据；后续即使重新出现旧根目录文件，也不会自动读取或回退。
+
+`[zones] registry_file` 与 `[bot_templates] storage_file` 仍可显式指定其他持久位置，
+新 Bot 的 `bot-sessions/` 随模板存储文件放在同一父目录。显式配置不增加旧位置回退；
+使用自定义位置时，应自行将该位置加入 Git 忽略规则。
+交付的 `.gitignore` 忽略 `.data/` 的全部运行与临时文件，并保留旧根目录运行文件的忽略项；
+手工维护的 `meta-data/` 不被忽略，可纳入 Git，不要添加或提交用户运行数据。
+
+这次整理没有增加会话登记、完成后关机监听、关机倒计时或 Bot 创建进度的持久化／恢复。
+这些状态仍仅属于当前后端进程，重启清空；agent 会话文件保留不等于接管或恢复 Bot。
+
 ### `[git]` 配置（可选）
 
 本功能发起的每条 Git 命令都有执行时限；整段可缺省：
@@ -320,10 +394,178 @@ command_timeout_seconds = 300
   都会让**启动明确失败**，不会静默回退。
 - 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
 
-### 文件列表与 zone 登记
+### Bot 模板
 
-主界面三个顶层入口按“会话列表 → 文件列表 → 控制面板”排列；每次打开或整页刷新都从会话列表开始，
-不恢复上次 tab。三个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
+主界面提供独立的 `bot` 入口，用于新增、查看、编辑与删除模板；模板由后端持久保存，电脑与手机
+读取同一份。顶层顺序为 `chat → bot → zone → server`；每次打开或整页刷新仍从 `chat` 开始，
+不恢复上次 tab。删除模板只移除模板，不改变任何已经创建的 Bot。
+
+新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
+
+1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 可选 `codebase-tools`、`connect-bot`；Pi 仅可选 `codebase-tools`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
+3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
+
+“下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
+
+模板字段与固定规则：
+
+- `name` 必填，是模板显示名，不是新 Bot 的固定名字。
+- `bot-name` 必填且必须是单行规则；初始规则为 `{zone.name} · {template.name} · {bot.id}`。
+  编辑时可插入四个已承诺字段 `{zone.name}`、`{template.name}`、`{agent}`、`{bot.id}` 并查看示例预览；
+  页面不扩展未知占位符的产品承诺。模板列表显示用示例 zone `alpha` 与示例短标识 `a7f3c2` 渲染后的
+  bot-name 示例，不显示原始规则；规则只在编辑弹窗中维护。
+- `agent` 只能是 `omp` 或 `pi`。
+- `model` 只能沿用 Agent 默认值、`gpt-6.1-sol` 或 `deepseek-flash`，没有自由输入。
+- `thinking` 只提供当前 agent 与具体模型支持的固定级别；model 沿用默认值时 thinking 也只能沿用
+  默认值。切换 agent 会把 model 与 thinking 重置为默认值；切换 model 时保留仍适用的 thinking，
+  否则重置并提示。
+- `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
+- `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
+- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
+
+以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
+OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
+OMP GPT 为 low/medium/high/xhigh/max、DeepSeek 为 low/high/max；Pi GPT 为
+minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型分别使用完整的
+`openai-codex/gpt-6.1-sol` 与 `deepseek/deepseek-flash`，不做裸名匹配或 provider 回退。
+
+#### 维护共享选项目录
+
+直接编辑该 TOML 文档；它可纳入 Git，不属于运行数据。部署时须一并交付，程序不生成替代文件。
+服务启动先完整读取并校验；缺失、读取失败、TOML 错误、重复标识、未知 Agent 引用或相互矛盾的
+默认模型关系均阻止启动，并报告文件位置及原因。运行中每次重新打开模板编辑器、保存模板和接受
+创建都重新读取当前文件；不需重启，没有文件监听或已打开页面实时推送，也没有旧缓存回退。
+
+- `[[agents]]`：原生 Agent `id`（omp/pi）与 `label`；可维护顺序、显示与可用集合，不增加第三种原生 Agent。
+- `[[models]]`：稳定 `id`、`label`、完整 `provider_model`；`thinking` 的各 Agent key 同时定义适用关系
+  与显式级别，例如 `thinking = { omp = ['low', 'high'], pi = ['off', 'high'] }`。`default` 必须存在且
+  不得携带模型或 thinking 覆盖；每组显式级别之外始终可选沿用默认。
+- `[[skills]]`：稳定 `id`、`label`、原生 `native_name`；例如 teach 映射到 `/skill:teach`。
+  不选仍为 null，不增加必选或空正文限制。
+- `[[extensions]]`：唯一稳定 `id`、`label`、适用 `agent`、`kind`（fixed/optional）与 `entrypoint`。
+  同名扩展在不同 Agent 下用不同标识；各 Agent 至少定义一个固定扩展。元数据结构校验不执行入口。
+
+模板只持久保存选择标识与原有字段，不保存 provider/model、能力表或 Skill 原生映射副本。
+已有模板不必重存即可在下次创建使用新映射；接受创建时固定本次模板、完整 provider/model、thinking、
+Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 input。后续推进不重读模板或元数据；后续编辑、
+删除模板或修改元数据只影响下一次创建，不改配、关闭或重建已接受或已有的 Bot。公开 `options` 包含 `agents/models/skills` 标识列表、`thinking[agent][model]`、
+`labels` 显示信息与 `extensions` 定义；前端选项、公开保存校验、原生启动解释共用这个文档。
+
+接口：
+
+- `GET /api/bot-templates` 读取完整列表与当前选项（`templates`、`options`）。
+- `POST /api/bot-templates` 新增模板，JSON 字段为
+  `{"name":"…","botName":"…","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"…","extensions":[]}`。
+- `GET /api/bot-templates/{id}` 按标识读取单个模板；已删除的模板返回 `template-not-found`。
+- `PUT /api/bot-templates/{id}` 编辑模板；标识保持不变。
+- `DELETE /api/bot-templates/{id}` 删除模板。
+
+列表及写入成功响应附带当前完整模板列表与当前选项。元数据错误返回 `metadata-invalid`，消息包含位置和原因，不使用旧缓存。其他失败响应是 `{"code":"…","message":"…"}`；字段与能力约束的
+类别包括 `template-extension-invalid`（不是当前 Agent 的可选扩展或重复选择）、`template-name-required`、`template-bot-name-required`、
+`template-bot-name-not-single-line`、`template-agent-invalid`、`template-model-invalid`、
+`template-thinking-invalid`、`template-thinking-requires-default-model`、
+`template-thinking-unsupported` 与 `template-skill-invalid`；存储错误包括 `templates-unreadable`、
+`templates-corrupt` 与 `templates-write-failed`。保存失败时此前已保存的模板保持不变。
+
+### 从 zone 创建 Bot
+
+`zone` 入口的每个 zone 行都有一个独立的“+”入口。打开弹窗后选择模板、填写可为空的初始 input；
+弹窗只显示后端预览的本次名称，**没有手工命名输入**。确认后由后端执行创建，页面不再自己计算名称：
+
+1. 按 `[herdr] workspace_name` 精确查找唯一 Workspace。当前焦点不会影响选择；零个或多个匹配都失败。
+2. 在目标 Workspace 中新建独立 Tab，显示名严格使用模板 `bot-name` 的结果，cwd 显式设为该 zone 的目录。
+3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
+4. 就绪后才把 Skill、模板 prompt 与本次 input 合成一次初始指示提交；不先单独发起 Skill 轮次。
+5. 初始指示提交被确认后立即显示“创建成功，初始指示已提交”，不等待模型完成任务、Skill 执行或
+   connect-bot 接入。
+
+页面把过程分成“正在启动”与“正在提交初始指示”两个稳定阶段。只有就绪与提交都确认才显示成功；
+失败或超时会保留已经创建的 Tab / agent 与已知标识，显示失败阶段，不自动删除、重建、重发。提交被
+明确拒绝与投递超时是两种事实：前者说明 agent 已就绪但提交失败；后者只能说明投递结果未确认，不能
+断定未发送，也不会显示成功。成功与失败都留在弹窗中由用户关闭，不自动切换到 `chat`。创建 Bot 不
+登记 connect-bot 会话，也不修改会话监听、keepAlive 或关机安排。
+
+创建由后端拥有：公开入口接受后，浏览器断开、刷新或关闭只让这个页面失去观察，不会取消已经接受的
+创建；刷新后也不承诺找回这次结果。电脑与手机等独立客户端同时提交时，每次创建分别被接受并独立执行，
+各自保留自己的 Tab / Pane、agent 控制别名、接受时的模板快照与 input，不合并、不复用，也不因此共享
+固定操作的执行资格或增加全局忙碌拒绝、排队或并发上限。
+
+接口：
+
+- `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
+  名称：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","templateId":"…","agent":"omp"}`。
+- `POST /api/bots`，JSON 为
+  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…"}`；接受后返回 HTTP 202
+  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。请求没有 Workspace 字段；模板在请求
+  被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
+  不会悄悄改名。
+- `GET /api/bots/{id}` 读取同一次创建的当前阶段：`starting`、`submitting`、`succeeded` 或 `failed`。
+  已取得的 `tabId` / `paneId` / `agentName` 只在确实取得后出现；失败时附加
+  `failure:{stage,code,message}`，`inputSubmitted` 只有在提交被确认后才为 `true`。
+
+`bot.id` 是显示名中的短实例标识（6 个小写十六进制字符），不是 Herdr Tab ID，也不充当对象身份。
+Tab 显示名允许重复；内部对象身份使用 Herdr 返回的 Tab / Pane 标识与后端单独生成的 agent 控制别名。
+名称与 input 经逐参数进程调用传给 Herdr CLI，不经过 Shell，因此引号、中文、空格、换行与 Shell
+特殊字符都按字面传递。
+
+**真实运行的人工验收准备（P25 / P26 / P27 / P33）**：自动用例使用受控 Herdr 替身，不能代替真实
+Herdr / agent。用户确认时可以：
+
+1. 在 `herdr-bot.toml` 明确写 `[herdr] workspace_name = 'bot-playground'`（或本次显式目标），并确认
+   真实 Herdr 已在运行；在 Herdr 中让焦点停在另一个 Workspace。
+2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建，记录结果中的 Bot
+   名称、Tab / Pane 标识。
+3. 用独立 Herdr 命令核对对象：`herdr workspace list` 找到配置目标；`herdr tab list` / `herdr pane get`
+   找到结果中的标识；`herdr pane process-info --pane <paneId>` 或 `herdr agent get <paneId>` 读取实际
+   cwd，应与所选 zone 目录一致，而不是焦点 Workspace 的目录。
+4. 观察页面先显示“正在启动”、目标可交互后才显示“正在提交初始指示”，最后才显示“创建成功，初始指示已
+   提交”；成功出现时手动终端里应已收到一次初始输入。创建完成不要求模型任务结束，也不应在 `chat`
+   入口中出现由本次创建自动生成的 connect-bot 登记。
+
+**四组 agent / model 组合的人工验收准备（P14 / P16 / P17 / P18）**：自动用例只记录受控 Herdr 替身
+收到的启动参数，不能替代真实 Herdr / agent；真实账号、登录与费用由用户最终确认。与 02 / 04 / 05
+共用同一轮四组场景，本组负责目标 agent 类型、完整模型标识和 thinking 级别。
+
+| 组 | agent | model | thinking | Skill（04 准备） | 预期原生启动参数 |
+|---|---|---|---|---|---|
+| A | omp | gpt-6.1-sol | high | /teach | `--model openai-codex/gpt-6.1-sol --thinking high` |
+| B | omp | deepseek-flash | max | /code-review | `--model deepseek/deepseek-flash --thinking max` |
+| C | pi | gpt-6.1-sol | xhigh | /code-review | `--model openai-codex/gpt-6.1-sol --thinking xhigh` |
+| D | pi | deepseek-flash | low | /teach | `--model deepseek/deepseek-flash --thinking low` |
+
+能力事实取自目标版本：OMP 18.12.4 的 `thinking.efforts` 对 gpt-6.1-sol 为 low..max、对
+deepseek-flash 为 low/high/max；Pi 1.3.0 的 `getSupportedThinkingLevels` 对 gpt-6.1-sol 为
+minimal/low/medium/high/xhigh/max（没有 off）、对 deepseek-flash 为 off/low/high/max。Pi 不接受
+auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 thinking 时只传 model。
+
+1. 按上一节准备两个 zone 与真实 Herdr；在 `bot` 入口保存四个模板，字段按上表填写（Skill 列由
+   04 的验收准备决定，不改变本表的 agent / model / thinking）。
+2. 依次从 zone 行的“+”创建 A–D；A/C 使用普通目录 zone，B/D 使用 Git 工作树 zone；每次填入不同的
+   字面 input（如“组 A 初始任务”），记录结果中的 Bot 名称、zone、`tabId`、`paneId` 与 `agentName`。
+3. 对每组用独立 Herdr 命令核对：`herdr workspace list` 找配置目标；`herdr tab list` /
+   `herdr pane get <paneId>` 确认对象位置；`herdr pane process-info --pane <paneId>` 的
+   `foreground_processes[].argv` / `cmdline` 必须包含上表的完整 `--model` 与 `--thinking` 参数，
+   同一条记录的 `cwd` 必须等于该 zone 的目录；`herdr agent get <paneId>` 应显示与所选 omp / pi
+   一致的目标类型。
+4. 核对终端：初始指示只出现一次，且是 Skill 前缀 + 固定 prompt + 本次 input 的合成文本（Skill 细节由
+   04 验收）。账号未登录、模型无权限或终端未就绪时，如实记录实际错误；这不改变“创建成功”只表示
+   已就绪且提交被接受的语义，也不允许改用其他 provider / model 自动回退。
+5. 预期完整模型配置即上表最后一列；没有取得 `argv` / `cmdline` 时标记为未验证，不用页面文本或受控
+   记录代填。
+
+本票已完成的自动检查（受控 Herdr 记录，不等于真实运行）：`cargo test --manifest-path backend\Cargo.toml
+--test bot_creation`（12 passed；覆盖四种显式组合与两个默认组合，核对 `agent_kind`、完整启动参数、
+启动先于提交、仅一次提交）、`cargo test --manifest-path backend\Cargo.toml --test bot_templates`
+（8 passed；能力选项与保存校验使用目标 Pi 1.3.0 能力事实）、`npm --prefix frontend run test`
+（176 passed）。完整后端套件（327 passed、0 failed、3 ignored）与真实 Chrome 浏览器套件
+（5 passed）也已在本次交付中通过；这些仍是受控替身 / 自动化证据，不是真实 Herdr / agent 的运行结果。
+
+### zone 入口与 zone 登记
+
+主界面顶层入口按 `chat → bot → zone → server` 排列；每次打开或整页刷新都从 `chat` 开始，
+不恢复上次 tab。四个入口等宽，支持 Tab/Enter/Space 与方向键，左右滑动不切换顶层 tab。
+主页面始终从顶部排布，保留原有顶部内边距与水平居中；内容不足一屏时不再垂直居中，超过一屏时正常滚动。
 
 > **可信局域网提醒**：本功能没有登录或来源认证，沿用“仅可信局域网”的部署前提。任何能访问本服务
 > 端口的设备都可以读取已登记 zone 中的文件内容（包括敏感文件），并可以触发已开放的
@@ -331,15 +573,16 @@ command_timeout_seconds = 300
 > 手机使用文件浏览与 Git 操作。本版没有增加登录、多用户权限或公网部署能力，也没有任意命令、脚本
 > 或终端入口；不要把本服务暴露到公网或不可信网络。
 
-“文件列表”tab 直接展示 zone 列表和“登记”“新增”两个按钮；两个按钮都不在页面上常驻输入框，而是
-点按后打开弹窗，确认后才发送请求。
+`zone` 入口直接展示 zone 列表和“登记”“新增”两个按钮；每行只显示末级目录名与数字待提交角标，
+完整路径保留在浏览入口的悬停标题与无障碍名称中，并在进入 zone 后由浏览工具栏显示。两个按钮都不在
+页面上常驻输入框，而是点按后打开弹窗，确认后才发送请求。
 
 登记已有目录：
 
 1. 点按“登记”，在弹窗中输入**herdr-bot 服务所在电脑上的**绝对目录路径（不是手机或浏览器所在设备的目录）。
    页面不提供客户端文件选择器。
 2. 点按弹窗里的“登记”。后端校验路径并持久保存；只有保存成功后页面才关闭弹窗并显示“已登记”。
-3. 已登记的 zone 显示在同一列表中；另一台设备进入“文件列表”时会重新读取后端列表，因此看到同一份
+3. 已登记的 zone 显示在同一列表中；另一台设备进入 `zone` 入口时会重新读取后端列表，因此看到同一份
    登记。
 4. 每个登记项的“取消登记”只移除登记，不删除目录或文件。
 
@@ -396,7 +639,7 @@ command_timeout_seconds = 300
   没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
   `[zones] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
   间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 zone 监听与节流，不会各自放大刷新。
-- **刷新边界**：进入 zone、回到文件列表 tab 以及点按“刷新”都会立即重新读取当前目录、所选文件、
+- **刷新边界**：进入 zone、回到 `zone` 入口以及点按“刷新”都会立即重新读取当前目录、所选文件、
   Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
 - **监听健康**：监听建立失败、zone 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
@@ -777,9 +1020,9 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
 全零 GUID，即“让 Windows 决定”），每个 Python 进程各有自己的 `conhost.exe`。是否与用户心目中的
 “原有窗口行为”（例如经典 conhost 独立窗口）一致，需要人工验收确认（见[人工验收移交](#人工验收移交p2--p4未验收)）。
 
-## 会话登记的生命周期（会话列表）
+## 会话登记的生命周期（chat 入口）
 
-「会话列表」展示后端当前**全部**已登记会话，包括离线登记。在线／离线只表示最近一次上报是否过期，
+`chat` 入口展示后端当前**全部**已登记会话，包括离线登记。在线／离线只表示最近一次上报是否过期，
 与 agent 是否在跑、浏览器能否连上后端都是不同的维度：
 
 | 距最后一次被后端接受的写入 | 登记与展示 |
@@ -816,8 +1059,8 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
 关机有两条入口，共用**同一个**后端倒计时：
 
 - **手动关机**：页面上的“关机”按钮，确认之后立即开始倒计时（不等任何会话）。
-- **完成后关机监听**：在会话列表里为指定的在线工作中会话勾选“完成后关机”，等它们全部停下来
-  等待用户输入之后再由后端自动开始同一个倒计时（详见[完成后关机监听](#完成后关机监听会话列表)）。
+- **完成后关机监听**：在 `chat` 入口为指定的在线工作中会话勾选“完成后关机”，等它们全部停下来
+  等待用户输入之后再由后端自动开始同一个倒计时（详见[完成后关机监听](#完成后关机监听chat-入口)）。
 
 ### 页面流程与结果反馈
 
@@ -855,11 +1098,11 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
 前端只保留展示开关与请求等待上限（`frontend/src/config.ts`：`SHUTDOWN_BUTTON_VISIBLE`、
 `SHUTDOWN_RESPONSE_TIMEOUT_MS`）；**倒计时时长不在前端**，改它要改后端配置并重启。
 
-### 完成后关机监听（会话列表）
+### 完成后关机监听（chat 入口）
 
 给“等它跑完再关机”的会话勾上监听，全部成员都停下来之后由**后端**自动开始上面那个倒计时。
-全屏倒计时提醒与取消入口是全局展示：停留在“会话列表”时也会自动出现，**无需切换 tab 或刷新**；
-取消后返回仍保留原先选择的 tab。手动“关机”入口仍只在“控制面板”显示。
+全屏倒计时提醒与取消入口是全局展示：停留在 `chat` 入口时也会自动出现，**无需切换 tab 或刷新**；
+取消后返回仍保留原先选择的 tab。手动“关机”入口仍只在 `server` 入口显示。
 
 1. 卡片上的“完成后关机”按钮只在**当前在线且工作中**的会话上出现——这是**新增**监听的资格。
    离线（上报过期）、空闲、等待用户输入、以及在线但尚未同步 agent 状态的会话都不提供这个入口；
@@ -884,7 +1127,7 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
    用户输入；保留期内恢复在线后原监听继续有效，不需要重新选择。恢复上报按它**当时**的 agent 状态参与
    判定：恢复成“工作中”继续阻塞，恢复成“等待用户输入”才可能满足条件——恢复在线本身不被当作轮次结束。
    离线的已监听成员也可以随时明确撤销监听，撤销不因离线被拒绝。
-5. 集合里有监听、但还没有倒计时时，「会话列表」顶部出现“取消关机并清空监听”：一次命令
+5. 集合里有监听、但还没有倒计时时，`chat` 入口顶部出现“取消关机并清空监听”：一次命令
    （`POST /api/shutdown/cancel`）**原子**清空整组监听（不是逐个撤销，因此不会在中间触发关机），
    拿到服务端确认（`200`）时给出“本次命令已被接受”的说明；**集合是否真的清空仍由观察流给出**。
    它与每个会话的撤销按钮、结果页的“返回”各占一处，不是同一个东西。
@@ -997,6 +1240,62 @@ countdown_seconds = 10
 ```bat
 cargo test --manifest-path backend\Cargo.toml
 ```
+
+前端交互测试与真实浏览器验收分开运行；浏览器用例会启动隔离的真实 herdr-bot 进程，需要先构建
+打包页面与后端二进制：
+
+```bat
+npm --prefix frontend run test
+npm --prefix frontend run build
+cargo build --manifest-path backend\Cargo.toml
+npm --prefix frontend run test:browser
+```
+
+`test:browser` 使用本机已安装的 Google Chrome（Playwright `channel: "chrome"`），不额外下载浏览器；
+用例覆盖 `bot` 入口的真实新增、查看、编辑、删除、公开 HTTP 共享读取、保存失败与进程重启保留，
+以及从普通目录与 Git 工作树 zone 行创建 Bot 的真实页面链路、名称预览与 Herdr 侧名称一致、启动/
+提交阶段、成功与失败留在弹窗。`mobileWorkflow.spec.ts` 在 1280×900 与 390×844 两种尺寸各完成一遍
+模板 CRUD 与创建全流程，移动档同时检查无横向溢出、弹窗落在视口内并内部滚动、操作按钮不被挤出屏幕、
+触控目标不小于 44px、输入字号不小于 16px、键盘换行与成功/失败结果。`lanAccess.spec.ts` 让服务绑定
+`0.0.0.0`，真实浏览器经本机局域网 IPv4 完成模板 CRUD 与创建，独立 HTTP 客户端经同一地址读取模板，
+请求不携带认证头。`backend/tests/bot_source_boundary.rs` 用受控局域网来源证明模板管理与创建被接受，
+而同一来源的 `POST /api/sessions/events` 仍是 `403 forbidden`，两种能力不共用同机来源限制。
+
+P49 三步模板工作流的桌面/移动视口真实生产页面验收见
+[操作记录、截图与 H2 移交边界](docs/bot-template-responsive-browser.md)。
+`responsiveTemplates.spec.ts` 在两种尺寸操作命名字段插入、扩展勾选、草稿往返、摘要和明确保存，
+并通过真实磁盘/TOML 故障检查持久失败、失效选择修正与创建前依赖错误；移动视口不代表真实手机通过。
+
+创建流程的自动化验收使用 `backend/src/bin/herdr-fixture.rs`：这是**受控 Herdr 替身**，不是生产
+adapter。测试把它复制到独立临时目录，并让 `[herdr] executable` 指向这个副本；herdr-bot 仍走生产
+调用包装层（逐参数、无 Shell），而调用记录、Tab / Pane 标识、延迟与失败由这个独立进程写下。
+`backend/tests/bot_creation.rs` 用它验证 Workspace 精确选择、显式 cwd、就绪后提交、已知对象标识、
+Skill / prompt / input 的单次合成（含空值组合、两项原生 Skill 前缀与正文逐字保真）、
+不触碰会话/关机状态，以及 Workspace 不可达/零匹配/多匹配、Tab 创建后启动失败、提交被拒绝与提交超时
+时停止后续阶段、保留现场且不自动重发或清理。`backend/tests/bot_creation_detached.rs` 继续验证创建
+被接受后观察连接断开不取消执行、提交请求连接断开仍完成唯一一次提交，以及两个独立客户端同时向同一
+zone 与不同 zone 提交时各自创建；受控替身还支持按调用内容匹配的 Tab 创建/启动/提交屏障，让一次创建停住而另一
+次继续，用来证明不存在全局单飞、排队或模板快照串用。
+
+P36/P37 的完整映射隔离复现同样位于 `backend/tests/bot_creation_detached.rs`，可分别运行
+`cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p36_` 与同命令的 `p37_`：
+
+- P36 把旧创建停在 Tab 返回前；通过公开编辑保存新模板，并在真实磁盘改写同一份元数据。旧配置为
+  `old-provider/old-model`、`high`、`old-native`、`old-fixed.ts + old-tools.ts`，新配置为
+  `new-provider/new-model`、`low`、`new-native`、`new-fixed.ts + new-connect.ts`，固定指示和本次输入也不同。
+  新创建在旧屏障未释放时成功。随后删除来源模板并移除元数据，释放旧 Tab/启动/提交屏障，逐步观察
+  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的对象与会话目录不同。
+- P37 先创建 Bot，再编辑模板、改元数据，核对已有外部调用及对象没有变化；下一次创建使用新配置。
+  删除来源后，带删除前预览的直接创建请求也以 `template-not-found` 拒绝。两条已有 Bot 的外部记录、
+  Tab/Pane 和公开状态保持不变，没有新增改配、关闭、重建或输入重发。
+
+这两例首次实际运行均通过；原有创建路径已经按值捕获模板及已解析映射，本次不另加缓存、队列、恢复或重试。
+该证据仅覆盖受控 Herdr 的调用与对象隔离，不宣称真实 OMP/Pi 的扩展执行成功。
+
+`frontend/browser-tests/botCreationDetached.spec.ts`
+在真实浏览器中覆盖断线、刷新与关闭页面：页面在未收到确认结果时不显示成功，后端仍完成同一次创建。
+`backend/tests/herdr_config.rs` 用真实 TOML 与真实进程
+验证 Workspace 配置缺失、空白或合法显式值。受控记录不能替代真实 Herdr / agent 的人工验收。
 
 mDNS 集成测试默认带 `#[ignore]`：它们会绑定真实网络并可能触发 Windows Defender 防火墙的入站提示，
 且 `mdns_conflict` 需要独占 `herdr-bot.local.`。需要时先停止正在运行的面板，再显式运行：
@@ -1990,4 +2289,107 @@ workspace 内的本地 HTML 增加整页静态阅读模式。文档记录见 [AD
 ## 变更记录：目录登记概念由 workspace 更名为 zone（2026-10-21）
 
 为引入 herdr 相关模块、避免与 herdr 自己的 workspace 概念重名，本项目把「用户登记的服务器目录」统一更名为 zone。更名覆盖前后端标识符与文件名、HTTP 路由 `/api/zones/*`、查询参数 `zone`、JSON 字段 `zones`/`zone`、错误码 `zone-*`、配置段 `[zones]`、默认登记文件 `zones.json` 与界面文案。这次是硬切换：旧 `/api/workspaces/*`、旧 `[workspaces]` 配置与旧 `workspaces.json` 不再兼容，现有登记已一次性迁移。Git working tree 在文档与界面中统一称「工作树」。历史变更记录保留旧词；原因与取舍见 [ADR 0009](docs/adr/0009-rename-workspace-to-zone-for-herdr.md)。
+
+## 人工验收移交（Bot 模板与创建，H2，未验收）
+
+契约 P45 的人工 H2 由用户在日常手机上确认触控、键盘输入、创建阶段与结果体验。自动化已覆盖桌面与
+移动尺寸的真实浏览器、局域网地址访问、模板共享与来源边界，但这些证据**不构成**真机结论；在用户
+逐条确认前保持“未验收”。
+
+### 访问入口
+
+- 手机与电脑连**同一个普通家庭 Wi-Fi**；在电脑上启动 herdr-bot（监听地址默认
+  `0.0.0.0:8787`，见[访问（本机与局域网）](#访问本机与局域网)）。
+- 手机浏览器打开 `http://herdr-bot.local:8787/`；mDNS 解析不了时用
+  `http://<本机局域网 IPv4>:8787/`（本次自动验证使用的地址是 `192.168.5.3`，以 `ipconfig` 实际值为准）。
+- 不需要登录、账号或 token；打开页面即可管理模板并创建 Bot。仅限可信局域网：任何能访问该端口的
+  设备都具有这些能力。
+
+### 日常手机验收步骤（约 3 分钟）
+
+1. 点 `bot` 入口 → “新增模板”：输入显示名，用字段按钮插入 `{zone.name}` 等占位符并看示例预览；
+   点击变量旁的 × 或在变量后按退格可整块删除；选择 agent / model / thinking / Skill；在固定 prompt 中
+   用回车输入两行以上；点“下一步”配置扩展，再点“下一步”核对确认摘要，最后明确保存。往返步骤确认草稿不丢失。回到列表确认字段完整，再编辑一处并逐步保存，最后删除确认消失。若还要创建
+   Bot，请保留或重新新增一个模板。
+2. 点 `zone` 入口 → 在某个 zone 行点“+”。列表行只显示末级目录名和数字角标，不再提供独立详情按钮；
+   完整路径可在进入 zone 后从浏览工具栏核对。弹窗应显示该 zone 路径；选择模板，在多行 input 中用手指
+   和键盘输入两三行；确认只读名称预览可见且**没有**手工改名入口。
+3. 点“创建”。应依次看到“正在启动”→“正在提交初始指示”→（真实 Herdr / agent 就绪并提交后）
+   “创建成功，初始指示已提交”。结果中的 Bot 名、zone、Herdr Tab / Pane 标识应完整可读；较长内容可在
+   弹窗内上下滚动，底部“关闭”按钮始终可以滚动到达。
+4. 点“关闭”，页面应停留在 `zone` 入口，不自动跳到 `chat`。可在 Herdr 中按结果里的 Tab / Pane
+   标识核对目标 Workspace 与实际目录。
+5. 失败样本（可选）：把 `[herdr] workspace_name` 改成不存在的名称后重启，或让目标 agent 拒绝提交；
+   确认失败阶段与“现场已存在 / 未确认投递”的说明可读、成功文案不出现、没有自动重发，并能自行关闭。
+
+### 已准备的自动证据（真机确认前不构成 H2 结论）
+
+- `frontend/browser-tests/mobileWorkflow.spec.ts`：1280×900 与 390×844 真实 Chrome 各自完成模板新增、
+  读取、编辑、删除，以及从 zone 打开弹窗、选择模板、键盘输入、提交和关闭；移动档分别操作成功与失败
+  结果，并检查无横向溢出、弹窗完整落在视口内、操作按钮不被挤出屏幕、触控目标 ≥44px、输入字号
+  ≥16px、键盘换行与两个稳定阶段。
+- `frontend/browser-tests/lanAccess.spec.ts`：服务绑定 `0.0.0.0`，真实浏览器经本机局域网 IPv4 完成
+  模板 CRUD 与创建；独立 HTTP 客户端经同一地址读取同一份模板；请求无 `Authorization`，页面无登录步骤。
+- `backend/tests/bot_source_boundary.rs`：同一受控局域网来源可以读取/保存模板、预览并提交创建（202），
+  而 `POST /api/sessions/events` 仍为 `403 forbidden`；`backend/tests/session_write_boundary.rs` 继续
+  覆盖原同机来源边界。
+- 本次实际运行：`npm --prefix frontend run test:browser` → `10 passed`；`npm --prefix frontend run test`
+  → `25 files / 178 tests passed`；`cargo test --manifest-path backend\Cargo.toml` →
+  `334 passed / 42 suites`（3 个默认忽略的 mDNS 用例）。
+
+### 未覆盖与已知限制
+
+- 移动尺寸 Chromium 触摸仿真不等于真实手机：软键盘高度、浏览器动态工具栏、iOS 聚焦缩放策略和手指
+  触控手感只能在实机上确认；当前状态为**未验证**。
+- 本票在 02 之后实现，03–07 后续合入的配置、输入与结果文案还需在最终交接时做一次同样的手机回归；
+  本票不重复认领它们的业务测试。
+- 真实 Herdr / OMP / Pi 的账号、模型、登录与审批属于 H1（02–05 准备），本票不把受控 Herdr 记录或
+  移动尺寸仿真当作真实运行结论。
+
+## 变更记录：桌面与移动端完成模板管理与创建（2026-10-21）
+
+本次完成 P45：电脑与手机都能管理共享 Bot 模板并从 zone 创建 Bot；窄屏布局按真实浏览器暴露的问题
+修复，不新增账号、token 或权限系统，也不改变 connect-bot 会话事件写入的同机来源边界。
+
+- **改了什么**：
+  - 弹窗遮罩改为可滚动容器，弹窗自身限制在动态视口高度内并在内部滚动；内容变长（阶段、成功/失败、
+    定位信息）后顶部不被裁掉、底部操作仍可滚动到达。窄屏遮罩留白收紧到 `0.75rem`。
+  - 窄屏下弹窗操作区改为等分两列，“关闭/取消”不再被主操作挤出屏幕左侧；字段插入按钮提升为
+    至少 44px 高的触控目标。
+  - 新增桌面/移动真实浏览器工作流用例、局域网浏览器用例与后端来源边界用例；README 的测试说明与
+    H2 手机验收步骤同步更新。
+- **自动检查**：
+  - `npm --prefix frontend run build`（`tsc --noEmit && vite build`）成功。
+  - `npm --prefix frontend run test:browser` → `10 passed`，其中 `mobileWorkflow.spec.ts` 3 项、
+    `lanAccess.spec.ts` 1 项。
+  - `npm --prefix frontend run test` → `25 files / 178 tests passed`。
+  - `cargo test --manifest-path backend\Cargo.toml` → `334 passed / 42 suites`（3 个默认忽略的 mDNS 用例），
+    包含新增的 `bot_source_boundary`。
+- **限制与未覆盖**：真实手机触控、软键盘与浏览器工具栏仍需 H2 用户确认；03–07 合入后的配置、输入与
+  结果文案需要一次移动回归。移动尺寸仿真与局域网地址请求都不冒充真机或非本机来源结论。
+
+## 变更记录：移动端 zone 行与 Bot 模板命名交互（2026-10-22）
+
+本次调整四个顶层入口的可见文案为 `chat` / `bot` / `zone` / `server`，并修正移动端 zone 列表与
+Bot 模板编辑体验；不改后端接口、存储格式、默认入口或业务状态。
+
+- **改了什么**：
+  - `bot` 入口的 bot-name 规则改为行内变量编辑器：固定文字可自由编辑，变量可点击 × 或在变量后按
+    退格整块删除，插入按钮跟随当前光标位置；名称示例移到表单顶部并继续实时预览。模板列表展示渲染后的
+    bot-name 示例，不再显示原始规则。
+  - 四个下拉框显式使用深色控件配色并固定选中项的可见文字颜色，包括“沿用 Agent 默认值”和“无”。
+  - 创建 Bot 弹窗的模板下拉框复用模板管理的同一套深色控件样式，统一选中项文字、选项背景与禁用态配色。
+  - `zone` 入口每行只显示末级目录名；待提交角标只显示数字，读取失败显示紧凑警告图标，并保留可访问的
+    错误原因。列表不再提供独立详情按钮；完整路径保留在浏览入口的悬停标题与无障碍名称中，进入 zone 后
+    由浏览工具栏显示，同名末级目录仍按完整路径区分。
+  - 顶层入口保持原有顺序与功能归属：`chat`（会话）、`bot`（Bot 模板）、`zone`（登记与文件浏览）、
+    `server`（固定操作）；打开与刷新仍默认进入 `chat`。
+  - `GLOSSARY.md` 与 README 当前操作说明同步入口术语；历史变更记录与 ADR 保留原文。
+- **自动检查**：
+  - `npm --prefix frontend run test` → `26 files / 184 tests passed`。
+  - `npm --prefix frontend run build`（`tsc --noEmit && vite build`）成功。
+  - `cargo build --manifest-path backend/Cargo.toml` 成功，刷新供浏览器验收使用的交付二进制。
+  - `npm --prefix frontend run test:browser` → `17 passed`；覆盖真实 Chromium 中的变量块 ×/退格删除、
+    光标插入、下拉选中项对比度、390px 与 320px 下 zone 行无横向溢出、数字角标和完整路径标题。
+- **限制**：真实手机触控、软键盘和浏览器工具栏仍未验证；390px / 320px 结论来自 Chromium 视口仿真。
 

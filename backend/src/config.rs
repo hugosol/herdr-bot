@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Context;
-use serde::de::{self, Deserializer};
 use serde::Deserialize;
+use serde::de::{self, Deserializer};
 
 use crate::sessions::{DEFAULT_OFFLINE_RETENTION_SECONDS, DEFAULT_ONLINE_SECONDS, SessionPolicy};
 use crate::zones::DEFAULT_REGISTRY_FILE;
@@ -35,12 +35,50 @@ pub struct Config {
     #[serde(default)]
     pub sessions: SessionsConfig,
     /// zone 登记列表的存储位置；整个 `[zones]` 段可缺省，缺省为进程工作目录下的
-    /// `zones.json`。
+    /// `.data/zones.json`。
     #[serde(default)]
     pub zones: ZonesConfig,
+    /// Bot 模板的存储位置；整个 `[bot_templates]` 段可缺省，缺省为进程工作目录下的
+    /// `.data/bot-templates.json`。
+    #[serde(default)]
+    pub bot_templates: BotTemplatesConfig,
+    /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
+    ///
+    /// 这一段不是后备缺省：目标 Workspace 只能由部署者明确指定，缺失、空串或纯空白都会让
+    /// 进程启动失败，而不是落到任何猜测出来的位置。
+    pub herdr: HerdrConfig,
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
+}
+
+/// Herdr 控制设置（`[herdr]` 段）。
+///
+/// 每个新建 Bot 都按 `workspace_name` 精确查找唯一的 Herdr Workspace；客户端请求不能替换这个目标。
+/// `executable` 是生产调用 `herdr` CLI 的路径，缺省按 `PATH` 查找；它不改变目标 Workspace 的归属。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HerdrConfig {
+    /// 目标 Herdr Workspace 的显示名，必须显式配置且非空白。
+    pub workspace_name: String,
+    /// Herdr CLI 可执行文件；缺省 `herdr`（按 PATH 查找）。
+    #[serde(default = "herdr_executable_by_default")]
+    pub executable: PathBuf,
+}
+
+impl HerdrConfig {
+    /// 用明确的目标 Workspace 名称构造配置；可执行文件取缺省 `herdr`。
+    pub fn new(workspace_name: impl Into<String>) -> Self {
+        Self {
+            workspace_name: workspace_name.into(),
+            executable: herdr_executable_by_default(),
+        }
+    }
+}
+
+/// `[herdr] executable` 的缺省值：按 PATH 查找的 `herdr`。
+fn herdr_executable_by_default() -> PathBuf {
+    PathBuf::from("herdr")
 }
 
 /// Git 命令执行设置（`[git]` 段）。
@@ -112,7 +150,7 @@ impl TryFrom<u32> for CommandTimeoutSeconds {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZonesConfig {
-    /// 登记文件路径；缺省 `zones.json`。
+    /// 登记文件路径；缺省 `.data/zones.json`。
     #[serde(default = "registry_file_by_default")]
     pub registry_file: PathBuf,
     /// 新 zone 的创建父目录；缺省未配置，只禁用“新增”而不猜测写入位置。
@@ -137,7 +175,40 @@ impl Default for ZonesConfig {
     }
 }
 
-/// `[zones] registry_file` 的缺省值：进程工作目录下的 `zones.json`。
+/// Bot 模板设置（`[bot_templates]` 段）。
+///
+/// 模板由后端以文件持久保存，电脑与手机读取同一份；路径相对进程工作目录，与既有配置的
+/// 路径语义一致。存储文件不存在表示还没有任何模板，不是错误。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BotTemplatesConfig {
+    /// 模板存储文件路径；缺省 `.data/bot-templates.json`。
+    #[serde(default = "storage_file_by_default")]
+    pub storage_file: PathBuf,
+    /// 手工维护的选项目录；相对进程工作目录，运行中每次操作重新读取。
+    #[serde(default = "metadata_file_by_default")]
+    pub metadata_file: PathBuf,
+}
+
+impl Default for BotTemplatesConfig {
+    fn default() -> Self {
+        Self {
+            storage_file: storage_file_by_default(),
+            metadata_file: metadata_file_by_default(),
+        }
+    }
+}
+
+fn metadata_file_by_default() -> PathBuf {
+    PathBuf::from("meta-data/bot-options.toml")
+}
+
+/// `[bot_templates] storage_file` 的缺省值：进程工作目录下的 `.data/bot-templates.json`。
+fn storage_file_by_default() -> PathBuf {
+    PathBuf::from(crate::templates::DEFAULT_STORAGE_FILE)
+}
+
+/// `[zones] registry_file` 的缺省值：进程工作目录下的 `.data/zones.json`。
 fn registry_file_by_default() -> PathBuf {
     PathBuf::from(DEFAULT_REGISTRY_FILE)
 }
@@ -268,7 +339,9 @@ impl CountdownSeconds {
     /// 配置解析与测试都用这一个入口，因此「什么算合法」只有一处定义。
     pub fn new(seconds: u32) -> Result<Self, &'static str> {
         if seconds == 0 {
-            return Err("countdown_seconds 必须是 1 至 4294967295 的整数秒，0 不是合法的倒计时时长");
+            return Err(
+                "countdown_seconds 必须是 1 至 4294967295 的整数秒，0 不是合法的倒计时时长",
+            );
         }
         Ok(Self(seconds))
     }
@@ -429,15 +502,38 @@ impl Config {
         Config::from_toml(&raw).with_context(|| format!("解析配置文件失败：{}", path.display()))
     }
 
-    /// 解析 TOML 配置文本。
+    /// 解析 TOML 配置文本，并拒绝没有明确目标 Workspace 的部署。
+    ///
+    /// `[herdr] workspace_name` 缺失由 TOML 反序列化直接拒绝；空串与纯空白在这里拒绝，避免把
+    /// 空白当作一个可能匹配到其他 Workspace 的名称。合法值去掉首尾空白后按字面保存。
     pub fn from_toml(raw: &str) -> anyhow::Result<Config> {
-        Ok(toml::from_str(raw)?)
+        let mut config: Config = toml::from_str(raw)?;
+        config.herdr.workspace_name = config.herdr.workspace_name.trim().to_string();
+        if config.herdr.workspace_name.is_empty() {
+            anyhow::bail!(
+                "[herdr] workspace_name 不能为空或纯空白：必须在服务端配置中明确指定目标 Herdr Workspace。"
+            );
+        }
+        Ok(config)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 除 `[herdr]` 外的最小合法配置；用于观察 `[herdr]` 段本身的缺失与字段校验。
+    const BASE_CONFIG: &str = r#"
+listen_addr = "0.0.0.0:8787"
+
+[operations.start]
+script = 'C:\start.bat'
+working_directory = 'C:\work'
+
+[operations.stop]
+script = 'C:\stop.bat'
+working_directory = 'C:\work'
+"#;
 
     /// 旧配置（没有任何 `[mdns]` 段）必须仍能解析，且缺段等于默认启用、地址自动选择。
     const LEGACY_CONFIG: &str = r#"
@@ -450,6 +546,9 @@ working_directory = 'C:\work'
 [operations.stop]
 script = 'C:\stop.bat'
 working_directory = 'C:\work'
+
+[herdr]
+workspace_name = 'bot-playground'
 "#;
 
     #[test]
@@ -491,9 +590,7 @@ working_directory = 'C:\work'
             ("1.5", "小数不是整秒"),
             ("'300'", "字符串不是数字"),
         ] {
-            let raw = format!(
-                "{LEGACY_CONFIG}\n[git]\ncommand_timeout_seconds = {literal}\n"
-            );
+            let raw = format!("{LEGACY_CONFIG}\n[git]\ncommand_timeout_seconds = {literal}\n");
             let error = Config::from_toml(&raw)
                 .err()
                 .unwrap_or_else(|| panic!("{why}，必须导致启动配置解析失败：{literal}"));
@@ -558,12 +655,12 @@ working_directory = 'C:\work'
     }
 
     #[test]
-    fn legacy_config_without_zones_section_defaults_to_zones_json() {
+    fn config_without_zones_section_defaults_to_centralized_registry() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
             config.zones.registry_file,
-            PathBuf::from("zones.json"),
-            "缺省 [zones] 段时登记文件取工作目录下的 zones.json"
+            PathBuf::from(".data/zones.json"),
+            "缺省 [zones] 段时登记文件取工作目录下的 .data/zones.json"
         );
     }
 
@@ -590,9 +687,8 @@ working_directory = 'C:\work'
 
     #[test]
     fn misspelled_create_parent_directory_field_is_rejected() {
-        let raw = format!(
-            "{LEGACY_CONFIG}\n[zones]\ncreate_parent = 'E:\\Developer\\bot-playground'\n"
-        );
+        let raw =
+            format!("{LEGACY_CONFIG}\n[zones]\ncreate_parent = 'E:\\Developer\\bot-playground'\n");
         assert!(
             Config::from_toml(&raw).is_err(),
             "创建父目录字段拼错时必须导致解析失败"
@@ -601,8 +697,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn zones_registry_file_is_read_when_present() {
-        let raw =
-            format!("{LEGACY_CONFIG}\n[zones]\nregistry_file = 'E:\\data\\zones.json'\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nregistry_file = 'E:\\data\\zones.json'\n");
         let config = Config::from_toml(&raw).expect("带 [zones] 段的新配置必须可解析");
         assert_eq!(
             config.zones.registry_file,
@@ -639,18 +734,14 @@ working_directory = 'C:\work'
 
     #[test]
     fn explicit_preview_limit_is_read_verbatim() {
-        let raw = format!(
-            "{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = 2097152\n"
-        );
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = 2097152\n");
         let config = Config::from_toml(&raw).expect("合法预览上限必须可解析");
         assert_eq!(config.zones.preview_limit_bytes.get(), 2_097_152);
     }
 
     #[test]
     fn preview_limit_with_wrong_type_is_rejected() {
-        let raw = format!(
-            "{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = '1 MiB'\n"
-        );
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\npreview_limit_bytes = '1 MiB'\n");
         let error = Config::from_toml(&raw).expect_err("非整数预览上限必须导致解析失败");
         assert!(
             error.to_string().contains("preview_limit_bytes"),
@@ -697,8 +788,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn explicit_refresh_interval_is_read_verbatim() {
-        let raw =
-            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 25\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 25\n");
         let config = Config::from_toml(&raw).expect("合法自动刷新间隔必须可解析");
         assert_eq!(config.zones.refresh_interval_seconds.get(), 25);
         assert_eq!(
@@ -709,8 +799,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn refresh_interval_accepts_the_legal_lower_bound() {
-        let raw =
-            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 1\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = 1\n");
         let config = Config::from_toml(&raw).expect("最小合法自动刷新间隔必须可解析");
         assert_eq!(config.zones.refresh_interval_seconds.get(), 1);
     }
@@ -736,8 +825,7 @@ working_directory = 'C:\work'
 
     #[test]
     fn refresh_interval_with_wrong_type_is_rejected() {
-        let raw =
-            format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = '10s'\n");
+        let raw = format!("{LEGACY_CONFIG}\n[zones]\nrefresh_interval_seconds = '10s'\n");
         let error = Config::from_toml(&raw).expect_err("非整数自动刷新间隔必须导致解析失败");
         assert!(
             error.to_string().contains("refresh_interval_seconds"),
@@ -892,9 +980,9 @@ working_directory = 'C:\work'
                 ("4294967296", "超过 u32 上界"),
             ] {
                 let raw = format!("{LEGACY_CONFIG}\n[sessions]\n{field} = {literal}\n");
-                let error = Config::from_toml(&raw).err().unwrap_or_else(|| {
-                    panic!("{field} = {literal}（{why}）必须让配置解析失败")
-                });
+                let error = Config::from_toml(&raw)
+                    .err()
+                    .unwrap_or_else(|| panic!("{field} = {literal}（{why}）必须让配置解析失败"));
                 assert!(
                     error.to_string().contains(field),
                     "拒绝必须指出出错的字段（{field} = {literal}，{why}）：{error}"
@@ -923,6 +1011,79 @@ working_directory = 'C:\work'
         assert!(
             error.to_string().contains("unknown field") && error.to_string().contains("`session`"),
             "解析错误应指出未知的段名，实际：{error}"
+        );
+    }
+
+    /// Bot 模板存储文件缺省为当前工作目录下的 .data/bot-templates.json。
+    #[test]
+    fn legacy_config_without_bot_templates_section_uses_default_storage_file() {
+        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
+        assert_eq!(
+            config.bot_templates.storage_file,
+            PathBuf::from(".data/bot-templates.json")
+        );
+    }
+
+    /// 显式配置的模板存储路径按字面读取；拼错的字段名明确失败。
+    #[test]
+    fn explicit_bot_templates_storage_file_is_read_verbatim() {
+        let raw = format!(
+            "{LEGACY_CONFIG}\n[bot_templates]\nstorage_file = 'D:\\\\templates\\\\bot-templates.json'\n"
+        );
+        let config = Config::from_toml(&raw).expect("合法模板存储路径必须可解析");
+        assert_eq!(
+            config.bot_templates.storage_file,
+            PathBuf::from(r"D:\templates\bot-templates.json")
+        );
+
+        let misspelled = format!("{LEGACY_CONFIG}\n[bot_templates]\nstoragefile = 'x.json'\n");
+        let error = Config::from_toml(&misspelled).expect_err("写错的字段名必须导致解析失败");
+        assert!(
+            error.to_string().contains("unknown field")
+                && error.to_string().contains("`storagefile`"),
+            "解析错误应指出未知字段名，实际：{error}"
+        );
+    }
+
+    /// 目标 Workspace 没有代码缺省值：整个 `[herdr]` 段缺失时启动配置必须失败。
+    #[test]
+    fn config_without_herdr_section_is_rejected() {
+        let error = Config::from_toml(BASE_CONFIG).expect_err("[herdr] 缺失必须让启动配置失败");
+        assert!(
+            error.to_string().contains("herdr"),
+            "解析错误应指出缺失的段，实际：{error}"
+        );
+    }
+
+    /// 空串与纯空白都不是合法目标；合法值去掉首尾空白后按字面保存。
+    #[test]
+    fn herdr_workspace_name_must_be_explicit_and_non_blank() {
+        for literal in ["''", "'   '", "\"\\t\\n\"", "\" \\t \""] {
+            let raw = format!("{BASE_CONFIG}\n[herdr]\nworkspace_name = {literal}\n");
+            let error = Config::from_toml(&raw)
+                .err()
+                .unwrap_or_else(|| panic!("workspace_name = {literal} 必须让启动配置失败"));
+            assert!(
+                error.to_string().contains("workspace_name"),
+                "拒绝必须指出出错的字段，实际：{error}"
+            );
+        }
+
+        let raw = format!("{BASE_CONFIG}\n[herdr]\nworkspace_name = '  explicit-target  '\n");
+        let config = Config::from_toml(&raw).expect("合法显式名称必须可解析");
+        assert_eq!(config.herdr.workspace_name, "explicit-target");
+        assert_eq!(config.herdr.executable, PathBuf::from("herdr"));
+    }
+
+    /// 拼错 `[herdr]` 字段或段内未知字段必须明确失败，不能悄悄忽略。
+    #[test]
+    fn misspelled_herdr_field_is_rejected() {
+        let raw = format!("{BASE_CONFIG}\n[herdr]\nworkspace = 'bot-playground'\n");
+        let error = Config::from_toml(&raw).expect_err("写错的字段名必须导致解析失败");
+        assert!(
+            error.to_string().contains("unknown field")
+                && error.to_string().contains("`workspace`"),
+            "解析错误应指出未知字段名，实际：{error}"
         );
     }
 }

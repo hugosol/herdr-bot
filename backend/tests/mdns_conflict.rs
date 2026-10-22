@@ -88,13 +88,15 @@ impl Panel {
                 "listen_addr = \"0.0.0.0:0\"\n\n\
                  [operations.start]\nscript = 'C:\\missing\\start.bat'\nworking_directory = 'C:\\missing'\n\n\
                  [operations.stop]\nscript = 'C:\\missing\\stop.bat'\nworking_directory = 'C:\\missing'\n\n\
-                 [mdns]\naddress = \"{address}\"\n"
+                 [mdns]\naddress = \"{address}\"\n\n\
+                 [herdr]\nworkspace_name = 'bot-playground'\n"
             ),
         )
         .expect("写临时配置");
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
         command
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(&config_path)
             .stdin(Stdio::null())

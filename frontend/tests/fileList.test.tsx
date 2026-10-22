@@ -68,14 +68,40 @@ describe('文件列表：zone 登记', () => {
 
     const list = await screen.findByTestId('zone-list')
     expect(within(list).getAllByTestId('zone-item')).toHaveLength(2)
-    expect(within(list).getByText('C:\\work\\alpha')).toBeVisible()
-    expect(within(list).getByText('D:\\projects\\beta')).toBeVisible()
-    // 整行就是浏览入口：路径与角标位于同一个按钮内，不再有独立的「浏览」按钮。
+    expect(within(list).getByText('alpha')).toBeVisible()
+    expect(within(list).getByText('beta')).toBeVisible()
+    // 浏览入口只显示末级目录名；完整路径保留在无障碍名称中。
     const row = within(list).getByRole('button', { name: '浏览 C:\\work\\alpha' })
-    expect(row).toHaveTextContent('C:\\work\\alpha')
+    expect(row).toHaveTextContent('alpha')
+    expect(row).not.toHaveTextContent('C:\\work\\alpha')
     expect(within(list).queryByRole('button', { name: '浏览' })).toBeNull()
     expect(calls[0]).toMatchObject({ url: '/api/zones', method: 'GET' })
     expect(document.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it('同名末级目录仍是两个独立登记，完整路径保留在浏览入口', async () => {
+    const user = userEvent.setup()
+    mockZoneFetch((url, method) => {
+      if (url === '/api/zones' && method === 'GET') {
+        return jsonResponse(200, {
+          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\alpha' }],
+        })
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    await openFileList(user)
+    const list = await screen.findByTestId('zone-list')
+
+    expect(within(list).getAllByText('alpha')).toHaveLength(2)
+    const first = within(list).getByRole('button', { name: '浏览 C:\\work\\alpha' })
+    const second = within(list).getByRole('button', { name: '浏览 D:\\projects\\alpha' })
+    expect(first).toBeVisible()
+    expect(second).toBeVisible()
+    expect(first).toHaveAttribute('title', 'C:\\work\\alpha')
+    expect(second).toHaveAttribute('title', 'D:\\projects\\alpha')
+    expect(within(list).queryByTestId('zone-detail')).toBeNull()
   })
 
   it('直接显示 zone 列表，登记与新增都只在弹窗中输入', async () => {
@@ -95,7 +121,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
+    await screen.findByTestId('zone-list')
 
     expect(
       screen.queryByText(/这里的路径指 herdr-bot 服务所在电脑上的目录/),
@@ -188,9 +214,7 @@ describe('文件列表：zone 登记', () => {
       '已创建：E:\\Developer\\bot-playground\\new-project',
     )
     expect(screen.queryByTestId('create-dialog')).toBeNull()
-    expect(
-      screen.getByText('E:\\Developer\\bot-playground\\new-project'),
-    ).toBeVisible()
+    expect(screen.getByText('new-project')).toBeVisible()
 
     const post = calls.find(
       (call) => call.url === '/api/zones/create' && call.method === 'POST',
@@ -223,7 +247,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
+    await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('create-open'))
     await user.type(screen.getByLabelText('新 zone 名称'), 'kept-project')
@@ -235,7 +259,9 @@ describe('文件列表：zone 登记', () => {
     expect(feedback).toHaveTextContent(keptPath)
     expect(screen.getByTestId('create-dialog')).toBeVisible()
     expect(screen.queryByText('已创建')).toBeNull()
-    expect(screen.getByText('C:\\work\\alpha')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: '浏览 C:\\work\\alpha' }),
+    ).toBeVisible()
   })
 
   it('登记成功后显示成功并更新列表；答复到达之前不显示成功', async () => {
@@ -271,7 +297,9 @@ describe('文件列表：zone 登记', () => {
     expect(feedback).toHaveAttribute('data-kind', 'success')
     expect(feedback).toHaveTextContent('已登记')
     expect(screen.queryByText('尚未登记 zone。')).toBeNull()
-    expect(screen.getByText('E:\\work\\new-project')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: '浏览 E:\\work\\new-project' }),
+    ).toBeVisible()
 
     const post = calls.find((call) => call.url === '/api/zones' && call.method === 'POST')
     expect(post).toBeDefined()
@@ -295,7 +323,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
+    await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\missing')
@@ -305,7 +333,9 @@ describe('文件列表：zone 登记', () => {
     expect(feedback).toHaveAttribute('data-kind', 'error')
     expect(feedback).toHaveTextContent('该路径在服务器上不存在。')
     expect(feedback).not.toHaveTextContent('已登记')
-    expect(screen.getByText('C:\\work\\alpha')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: '浏览 C:\\work\\alpha' }),
+    ).toBeVisible()
   })
 
   it('存储写入失败显示失败并保留原列表，不把失败当成成功', async () => {
@@ -325,7 +355,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
+    await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\second')
@@ -334,8 +364,12 @@ describe('文件列表：zone 登记', () => {
     const feedback = await screen.findByTestId('zone-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'error')
     expect(feedback).toHaveTextContent('原登记文件未被修改')
-    expect(screen.getByText('C:\\work\\alpha')).toBeVisible()
-    expect(screen.queryByText('C:\\work\\second')).toBeNull()
+    expect(
+      screen.getByRole('button', { name: '浏览 C:\\work\\alpha' }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: '浏览 C:\\work\\second' }),
+    ).toBeNull()
   })
 
   it('列表读取失败显示错误，不伪装成空列表', async () => {
@@ -380,7 +414,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
+    await screen.findByTestId('zone-list')
 
     const removeButton = screen.getByRole('button', { name: '取消登记 C:\\work\\alpha' })
     expect(removeButton).toHaveTextContent('×')
@@ -390,8 +424,12 @@ describe('文件列表：zone 登记', () => {
     expect(feedback).toHaveAttribute('data-kind', 'success')
     expect(feedback).toHaveTextContent('已取消登记：C:\\work\\alpha')
     expect(feedback).toHaveTextContent('目录与文件未删除')
-    expect(screen.queryByText('C:\\work\\alpha')).toBeNull()
-    expect(screen.getByText('D:\\projects\\beta')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: '浏览 C:\\work\\alpha' }),
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: '浏览 D:\\projects\\beta' }),
+    ).toBeVisible()
 
     const remove = calls.find((call) => call.url === '/api/zones/remove')
     expect(remove).toBeDefined()
@@ -422,7 +460,9 @@ describe('文件列表：zone 登记', () => {
     expect(feedback).toHaveAttribute('data-kind', 'error')
     expect(feedback).toHaveTextContent('无法确认')
     expect(feedback).not.toHaveTextContent('已登记')
-    expect(screen.queryByText('E:\\work\\new-project')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: '浏览 E:\\work\\new-project' }),
+    ).toBeNull()
   })
 
   it('重新进入文件列表会重新读取后端列表，显示另一设备新增的登记', async () => {
@@ -443,13 +483,17 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('C:\\work\\alpha')
-    expect(screen.queryByText('D:\\projects\\from-phone')).toBeNull()
+    await screen.findByTestId('zone-list')
+    expect(
+      screen.queryByRole('button', { name: '浏览 D:\\projects\\from-phone' }),
+    ).toBeNull()
 
     await user.click(screen.getByTestId('tab-sessions'))
     await openFileList(user)
 
-    expect(await screen.findByText('D:\\projects\\from-phone')).toBeVisible()
+    expect(
+      await screen.findByRole('button', { name: '浏览 D:\\projects\\from-phone' }),
+    ).toBeVisible()
     expect(read).toBeGreaterThanOrEqual(2)
   })
 })

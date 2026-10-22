@@ -47,7 +47,8 @@ impl Panel {
                 "listen_addr = \"0.0.0.0:0\"\n\n\
                  [operations.start]\nscript = '{script}'\nworking_directory = '{fixtures}'\n\n\
                  [operations.stop]\nscript = '{script}'\nworking_directory = '{fixtures}'\n\n\
-                 [mdns]\naddress = \"{address}\"\n",
+                 [mdns]\naddress = \"{address}\"\n\n\
+                 [herdr]\nworkspace_name = 'bot-playground'\n",
                 script = script.display(),
                 fixtures = working_directory.display(),
             ),
@@ -55,6 +56,7 @@ impl Panel {
         .expect("写临时配置");
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(&config_path)
             .stdin(Stdio::null())

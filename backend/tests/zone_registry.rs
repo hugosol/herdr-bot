@@ -343,6 +343,7 @@ struct Panel {
 impl Panel {
     fn start(config_path: &Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
@@ -420,6 +421,7 @@ fn write_process_config(dir: &TempDir, registry: &Path) -> PathBuf {
              [operations.start]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [operations.stop]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [mdns]\nenabled = false\n\n\
+             [herdr]\nworkspace_name = 'bot-playground'\n\n\
              [zones]\nregistry_file = '{registry}'\n",
             script = script.display(),
             operations = operations.display(),

@@ -1,0 +1,123 @@
+{
+  "feature": "bot-template-extensions",
+  "ticket": "05-stale-selection-recovery.md",
+  "run_id": "c14f20b1-fe75-4711-9c44-d5d72bb4c0ce",
+  "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "7a4d4e1e-ca57-4705-8508-782ffa26a4c6",
+  "started_at": "2026-10-22T04:45:07.731Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-10-22T04:57:17.302Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "05-stale-selection-recoverymd-7a4d4e1e-ca57-4705",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf\\.scratch\\bot-template-extensions\\implementation\\05-stale-selection-recovery.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf\\.scratch\\bot-template-extensions\\implementation\\05-stale-selection-recovery.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement stale selection recovery",
+    "lastIntent": "Committing isolated recovery implementation",
+    "exitCode": 0,
+    "output": "{\n  \"result\": \"implemented-and-verified\",\n  \"ticket\": \".scratch/bot-template-extensions/implementation/05-stale-selection-recovery.md\",\n  \"commit\": \"950830d\",\n  \"branch\": \"hyper/bot-template-extensions/05-stale-selection-recovery-97738b-8713386ed6b5\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-V4TMFf\",\n  \"handoff\": \"已提交本票实现并交出 worktree；未操作或合入 feature/create-bot，未修改其他票据或工作流报告，未调用 retro。\",\n  \"delivered\": [\n    \"失效模型和 thinking 保留原稳定标识并明确显示不可用，不再由浏览器静默显示默认值。\",\n    \"失效扩展保持可辨认的勾选项，用户可显式移除；错误说明跨步骤保留，导航不保存。\",\n    \"单项公开模板读取在元数据损坏或缺失时明确失败；有效元数据中的单个失效选择仍可读取。\",\n    \"更新失效选择与配置修复说明，新增真实浏览器、公开 HTTP、真实文件和独立 Herdr 观察覆盖。\"\n  ],\n  \"coverage\": {\n    \"P27\": \"4 个旧页面场景：模型移除、模型 Agent 适用关系变化、thinking 移除、扩展移除；页面保存/创建及直接公开请求全部拒绝。\",\n    \"P28\": \"分别恢复模型、thinking、扩展；原选择可辨认，导航不修正，明确保存后独立公开读回准确。\",\n    \"P29\": \"修正前保存和创建拒绝并解释原因；独立 Herdr 调用和 Tab 记录为空。390px 视口完成扩展修正及页面创建。\",\n    \"P30\": \"同一真实 JSON 包含未知模型和有效模板；有效邻居可读取、编辑及创建，失效记录保持原样。\",\n    \"P32\": \"同一运行实例分别经历元数据损坏、移走及写回不同有效配置；读取/保存/创建明确失败后恢复，实际启动记录使用新模型和扩展映射。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"cargo build --bins\",\n      \"result\": \"通过\"\n    },\n    {\n      \"command\": \"cargo test --test bot_templates --test dynamic_catalog --test bot_creation --test runtime_data\",\n      \"result\": \"40 通过\"\n    },\n    {\n      \"command\": \"npm test -- tests/botTemplates.test.tsx tests/botCreation.test.tsx\",\n      \"result\": \"13 通过\"\n    },\n    {\n      \"command\": \"npm run build\",\n      \"result\": \"TypeScript 与 Vite 通过\"\n    },\n    {\n      \"command\": \"npx playwright test browser-tests/staleSelectionRecovery.spec.ts browser-tests/steppedTemplates.spec.ts browser-tests/dynamicCatalog.spec.ts browser-tests/templateExtensionLaunch.spec.ts\",\n      \"result\": \"37 通过，其中本票 10 个场景\"\n    }\n  ],\n  \"tdd_evidence\": \"实际观察到模型/级别错误显示 default、失效扩展警告缺失、元数据故障时单项读取错误返回 200；对应修复后全部 green。扩展移除导致节点脱离的 Playwright uncheck 超时改为真实点击并观察节点消失与公开持久结果，未降低验收预期。\",\n  \"evidence\": \"frontend/test-results/staleSelectionRecovery-*/trace.zip 保留完整浏览器操作和网络记录；JSON 附件 public-requests-and-external-observation 保留公开请求与独立 Herdr 调用/Tab；PNG 保留修正及配置故障画面。\",\n  \"unresolved\": [],\n  \"limitations\": [\n    \"受控 Herdr 参数记录不证明真实 OMP/Pi 扩展加载；真实手机触摸亦未验证，二者属于其他票据的 H1/H2，不属于本票未完成项。\",\n    \"按照项目 closed 须已合入的规则，本票验收项已全部勾选，Status 保留 in-progress，待独立集成者合入后关闭。\"\n  ]\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 729464,
+    "tokens": 108119,
+    "requests": 56,
+    "contextTokens": 86457,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 90003,
+      "output": 18116,
+      "cacheRead": 3354624,
+      "cacheWrite": 0,
+      "totalTokens": 3462743,
+      "reasoningTokens": 3623,
+      "cost": {
+        "input": 0.18000600000000008,
+        "output": 0.18116000000000004,
+        "cacheRead": 0.33546239999999994,
+        "cacheWrite": 0,
+        "total": 0.6966284
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\05-stale-selection-recoverymd-7a4d4e1e-ca57-4705.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "result": "implemented-and-verified",
+            "ticket": ".scratch/bot-template-extensions/implementation/05-stale-selection-recovery.md",
+            "commit": "950830d",
+            "branch": "hyper/bot-template-extensions/05-stale-selection-recovery-97738b-8713386ed6b5",
+            "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-V4TMFf",
+            "handoff": "已提交本票实现并交出 worktree；未操作或合入 feature/create-bot，未修改其他票据或工作流报告，未调用 retro。",
+            "delivered": [
+              "失效模型和 thinking 保留原稳定标识并明确显示不可用，不再由浏览器静默显示默认值。",
+              "失效扩展保持可辨认的勾选项，用户可显式移除；错误说明跨步骤保留，导航不保存。",
+              "单项公开模板读取在元数据损坏或缺失时明确失败；有效元数据中的单个失效选择仍可读取。",
+              "更新失效选择与配置修复说明，新增真实浏览器、公开 HTTP、真实文件和独立 Herdr 观察覆盖。"
+            ],
+            "coverage": {
+              "P27": "4 个旧页面场景：模型移除、模型 Agent 适用关系变化、thinking 移除、扩展移除；页面保存/创建及直接公开请求全部拒绝。",
+              "P28": "分别恢复模型、thinking、扩展；原选择可辨认，导航不修正，明确保存后独立公开读回准确。",
+              "P29": "修正前保存和创建拒绝并解释原因；独立 Herdr 调用和 Tab 记录为空。390px 视口完成扩展修正及页面创建。",
+              "P30": "同一真实 JSON 包含未知模型和有效模板；有效邻居可读取、编辑及创建，失效记录保持原样。",
+              "P32": "同一运行实例分别经历元数据损坏、移走及写回不同有效配置；读取/保存/创建明确失败后恢复，实际启动记录使用新模型和扩展映射。"
+            },
+            "verification": [
+              {
+                "command": "cargo build --bins",
+                "result": "通过"
+              },
+              {
+                "command": "cargo test --test bot_templates --test dynamic_catalog --test bot_creation --test runtime_data",
+                "result": "40 通过"
+              },
+              {
+                "command": "npm test -- tests/botTemplates.test.tsx tests/botCreation.test.tsx",
+                "result": "13 通过"
+              },
+              {
+                "command": "npm run build",
+                "result": "TypeScript 与 Vite 通过"
+              },
+              {
+                "command": "npx playwright test browser-tests/staleSelectionRecovery.spec.ts browser-tests/steppedTemplates.spec.ts browser-tests/dynamicCatalog.spec.ts browser-tests/templateExtensionLaunch.spec.ts",
+                "result": "37 通过，其中本票 10 个场景"
+              }
+            ],
+            "tdd_evidence": "实际观察到模型/级别错误显示 default、失效扩展警告缺失、元数据故障时单项读取错误返回 200；对应修复后全部 green。扩展移除导致节点脱离的 Playwright uncheck 超时改为真实点击并观察节点消失与公开持久结果，未降低验收预期。",
+            "evidence": "frontend/test-results/staleSelectionRecovery-*/trace.zip 保留完整浏览器操作和网络记录；JSON 附件 public-requests-and-external-observation 保留公开请求与独立 Herdr 调用/Tab；PNG 保留修正及配置故障画面。",
+            "unresolved": [],
+            "limitations": [
+              "受控 Herdr 参数记录不证明真实 OMP/Pi 扩展加载；真实手机触摸亦未验证，二者属于其他票据的 H1/H2，不属于本票未完成项。",
+              "按照项目 closed 须已合入的规则，本票验收项已全部勾选，Status 保留 in-progress，待独立集成者合入后关闭。"
+            ]
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 50,
+      "charCount": 2241
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "05-stale-selection-recoverymd-7a4d4e1e-ca57-4705",
+  "session_id": "01a161ed-5b28-72ea-841b-f0858fc3ea8a",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\05-stale-selection-recoverymd-7a4d4e1e-ca57-4705.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\05-stale-selection-recovery.md\\c14f20b1-fe75-4711-9c44-d5d72bb4c0ce.md",
+  "retro_finished_at": "2026-10-22T04:59:48.549Z"
+}

@@ -6,10 +6,15 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
+mod runtime_data;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
+    herdr_bot::catalog::Catalog::load(&config.bot_templates.metadata_file)
+        .map_err(|error| anyhow::anyhow!(error.message()))?;
+    runtime_data::prepare(&config)?;
 
     let static_dir = herdr_bot::static_dir();
     if !static_dir.join("index.html").is_file() {
@@ -38,6 +43,11 @@ async fn main() -> anyhow::Result<()> {
     }
     println!("[herdr-bot] 打包页面：{}", static_dir.display());
     println!(
+        "[herdr-bot] Herdr Workspace：{}（herdr：{}）",
+        config.herdr.workspace_name,
+        config.herdr.executable.display()
+    );
+    println!(
         "[herdr-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
         config.sessions.online_timeout_seconds.get(),
         config.sessions.offline_retention_seconds.get()
@@ -45,6 +55,14 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "[herdr-bot] zone 登记文件：{}",
         config.zones.registry_file.display()
+    );
+    println!(
+        "[herdr-bot] Bot 模板存储文件：{}",
+        config.bot_templates.storage_file.display()
+    );
+    println!(
+        "[herdr-bot] Bot 选项元数据：{}",
+        config.bot_templates.metadata_file.display()
     );
     println!(
         "[herdr-bot] 单文件预览上限：{} 字节",
