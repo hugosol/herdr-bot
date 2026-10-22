@@ -54,7 +54,7 @@ Pi 与 OMP 一样提供各自的可选 `connect-bot`，Pi 使用 `entrypoints/pi
 
 在查询 Herdr、新建 Tab、启动 agent 或提交初始输入之前，自动检查本次固定和所选扩展入口存在、为普通文件且可读取。缺失、目录冒充文件或读取拒绝会以 `extension-entrypoint-invalid` 报告扩展名称、标识、入口与具体原因，并明确未创建 Herdr Tab、未启动 agent、未提交输入。元数据或选择失效也在外部创建之前拒绝。未选扩展的文件缺失不影响有效组合；全局元数据结构和关系仍须合法。
 
-OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应 model-cost；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
+OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应的 Herdr 官方集成与 model-cost。OMP 固定项 `omp-herdr-agent-state` 使用已安装的 `herdr-omp-agent-state.ts`，Pi 固定项 `pi-herdr-agent-state` 使用已安装的 `herdr-agent-state.ts`；入口由选项目录显式配置，沿用同一套创建前文件检查。Herdr 只把官方集成安装到原生扩展发现目录，不会向 `agent start` 自动注入这些入口，因此关闭自动发现后必须显式保留。官方集成向 Herdr 上报状态和原生会话引用，不代替 connect-bot，也不修改其可选属性；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
 
 检查只打开、检查文件类型并读取文件，不导入或执行扩展，不调用模型或余额/账号探测。它不证明扩展或 Skill 初始化/执行成功，也不保证检查到实际加载之间文件不会变化。通过后仍须 Herdr 确认 agent 就绪，再提交一次原生合成初始输入；只有提交确认才成功。后续失败保留真实 Tab、Pane 和 agent 定位，不删除、重建或重发。
 
@@ -149,6 +149,16 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 2. Pi：直接 import `expandPromptTemplate`，验证 `/review login.ts` 与换行参数展开，以及未知模板原样透传。结果 PASS。
 
 完整源码会话模块的直接 import 未成功：OMP checkout 缺 Windows `pi_natives` addon；Pi checkout 缺 provider `data/.manifest.json`。未修改这些仓库或构建依赖。以上不是 Herdr → TUI → 模型的端到端验证；Skill 实际执行链路结论来自下列源码，未声称已观察到模型调用或任务完成。
+
+### Herdr 官方固定扩展核验（2026-10-22）
+
+随附选项目录已将 OMP `omp-herdr-agent-state`、Pi `pi-herdr-agent-state` 设为固定项，使用本机 Herdr 管理的已安装入口。实际 `herdr integration status` 显示 Pi v9、OMP v10 均为 current；运行中的模板读取响应已包含两项，确认无需重启后端即可读到新配置，已有模板无需重存。
+
+针对 Bot 创建、请求断开后的创建、Bot 身份、模板与动态选项目录运行五组已有检查，51 项通过。删除了三处把固定扩展数量钉死为一个的偶然参数总数断言，没有把它们改钉成新的数量。
+
+另用本机安装的 Pi／OMP 启动隔离 Windows TUI，保持 `--no-extensions`，按选项目录传入各自全部固定扩展，未提交模型输入。两者均向独立本地命名管道发出 `pane.report_agent_session`，source 分别为 `herdr:pi` 与 `herdr:omp`，原生会话路径均位于各自隔离目录。管道只收取并确认请求，不连接用户 Herdr；这证明真实 TUI 已加载并执行官方上报扩展，不等同于真实 Herdr 已保存或成功恢复对话。临时 TUI 进程和目录已清理，未停止用户 agent，也未修改用户原生配置。
+
+初次 RPC smoke 能取得原生状态，但 OMP 官方扩展要求交互式 `hasUI`，所以没有上报；最终证据来自真实 TUI，不把 RPC 结果算作上报通过。
 
 ## 一手来源
 

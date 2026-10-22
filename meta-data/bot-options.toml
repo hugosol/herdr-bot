@@ -37,6 +37,13 @@ label = '/code-review'
 native_name = 'code-review'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
+# --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
+[[extensions]]
+id = 'omp-herdr-agent-state'
+label = 'herdr-agent-state'
+agent = 'omp'
+kind = 'fixed'
+entrypoint = 'C:\Users\hugos\.omp\agent\extensions\herdr-omp-agent-state.ts'
 [[extensions]]
 id = 'omp-model-cost'
 label = 'model-cost'
@@ -55,6 +62,12 @@ label = 'connect-bot'
 agent = 'omp'
 kind = 'optional'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\connect-bot.ts'
+[[extensions]]
+id = 'pi-herdr-agent-state'
+label = 'herdr-agent-state'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = 'C:\Users\hugos\.pi\agent\extensions\herdr-agent-state.ts'
 [[extensions]]
 id = 'pi-model-cost'
 label = 'model-cost'

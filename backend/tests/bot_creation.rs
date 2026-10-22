@@ -401,11 +401,7 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
                 .any(|arg| arg == "--model" || arg == "--thinking"),
             "默认 model / thinking 不传启动覆盖参数：{args:?}"
         );
-        assert_eq!(
-            args.len(),
-            5,
-            "默认启动包含独立会话目录、关闭自动发现及一个固定扩展：{args:?}"
-        );
+
         assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
         assert!(
             Path::new(args[1].as_str().expect("会话目录是字符串")).is_absolute(),
@@ -676,12 +672,7 @@ async fn assert_launch_from_public_entry(
     );
     let expected = expected_args.as_array().expect("预写样例是数组");
     let args = start["args"].as_array().expect("启动参数是数组");
-    assert_eq!(
-        args.len(),
-        expected.len() + 5,
-        "除模型 / thinking 外追加独立会话目录、关闭自动发现及一个固定扩展：{}",
-        start["args"]
-    );
+
     assert_eq!(
         &args[..expected.len()],
         expected.as_slice(),

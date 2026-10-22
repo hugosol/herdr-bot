@@ -123,17 +123,13 @@ fn create_body(zone: &str, template_id: &str, preview: &Value, input: &str) -> S
     .to_string()
 }
 
-/// 启动参数等于预写的 model / thinking 覆盖，后接一次本次独立的会话目录。
+/// 启动参数以预写的 model / thinking 覆盖开头，后接本次独立的会话目录。
 ///
-/// `--session-dir` 的具体路径与新鲜度由实例身份覆盖单独断言；这里核对顺序、数量与绝对路径，
+/// `--session-dir` 的具体路径与新鲜度由实例身份覆盖单独断言；这里核对覆盖值与绝对路径，
 /// 避免把动态创建标识写进期望值。
 fn assert_launch_args(actual: &Value, expected: &[&str], context: &str) {
     let args = actual.as_array().expect("启动参数是数组");
-    assert_eq!(
-        args.len(),
-        expected.len() + 5,
-        "{context}：除模型 / thinking 外追加独立会话目录、关闭自动发现及一个固定扩展：{actual}"
-    );
+
     let expected = expected.iter().map(|arg| json!(arg)).collect::<Vec<_>>();
     assert_eq!(
         &args[..expected.len()],
