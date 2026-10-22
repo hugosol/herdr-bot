@@ -296,7 +296,6 @@ async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() 
         assert!((200..300).contains(&cancelled.status), "{}", cancelled.body);
     }
 }
-
 // P02: startup and submit rejection must not collect a zone record. A later
 // explicit register is independently allowed; same ID is not blacklisted.
 #[tokio::test(flavor="multi_thread")]
