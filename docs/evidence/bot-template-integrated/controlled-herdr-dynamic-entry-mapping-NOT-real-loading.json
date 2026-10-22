@@ -1,0 +1,168 @@
+{
+  "calls": [
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1792645599042,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "w-target",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+        "--label",
+        "launch-zone-e0af5d",
+        "--no-focus"
+      ],
+      "at": 1792645599055,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+      "kind": "tab_create",
+      "label": "launch-zone-e0af5d",
+      "workspace": "w-target"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--session-dir",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\bot-sessions\\bc-2d824e5ad348",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\extensions\\omp-auto-codebase-tools.ts"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "bot-a4868aac5777",
+        "--kind",
+        "omp",
+        "--pane",
+        "w-target:pe46714",
+        "--timeout",
+        "30000",
+        "--",
+        "--session-dir",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\bot-sessions\\bc-2d824e5ad348",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\extensions\\omp-auto-codebase-tools.ts"
+      ],
+      "at": 1792645599069,
+      "kind": "agent_start",
+      "name": "bot-a4868aac5777",
+      "pane": "w-target:pe46714"
+    },
+    {
+      "argv": [
+        "agent",
+        "prompt",
+        "bot-a4868aac5777",
+        "固定指示\n\n本次输入"
+      ],
+      "at": 1792645599082,
+      "kind": "agent_prompt",
+      "target": "bot-a4868aac5777",
+      "text": "固定指示\n\n本次输入"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1792645599222,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "w-target",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+        "--label",
+        "launch-zone-f7db62",
+        "--no-focus"
+      ],
+      "at": 1792645599236,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+      "kind": "tab_create",
+      "label": "launch-zone-f7db62",
+      "workspace": "w-target"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--session-dir",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\bot-sessions\\bc-8caa58d15f09",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\next-fixed.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\next-optional.ts"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "bot-0df1c3f4c334",
+        "--kind",
+        "omp",
+        "--pane",
+        "w-target:pa44488",
+        "--timeout",
+        "30000",
+        "--",
+        "--session-dir",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\bot-sessions\\bc-8caa58d15f09",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\next-fixed.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\next-optional.ts"
+      ],
+      "at": 1792645599250,
+      "kind": "agent_start",
+      "name": "bot-0df1c3f4c334",
+      "pane": "w-target:pa44488"
+    },
+    {
+      "argv": [
+        "agent",
+        "prompt",
+        "bot-0df1c3f4c334",
+        "固定指示\n\n本次输入"
+      ],
+      "at": 1792645599263,
+      "kind": "agent_prompt",
+      "target": "bot-0df1c3f4c334",
+      "text": "固定指示\n\n本次输入"
+    }
+  ],
+  "tabs": [
+    {
+      "at": 1792645599055,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+      "label": "launch-zone-e0af5d",
+      "pane_id": "w-target:pe46714",
+      "tab_id": "w-target:te46714",
+      "workspace": "w-target"
+    },
+    {
+      "at": 1792645599236,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser NhPtIc\\launch-zone",
+      "label": "launch-zone-f7db62",
+      "pane_id": "w-target:pa44488",
+      "tab_id": "w-target:ta44488",
+      "workspace": "w-target"
+    }
+  ]
+}

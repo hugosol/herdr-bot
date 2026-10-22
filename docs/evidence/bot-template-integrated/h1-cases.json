@@ -1,0 +1,42 @@
+{
+  "scope": "P23/H1 preparation; these expectations are not real-loading results",
+  "initialInputs": {"omp": "/extensions", "pi": "/settings"},
+  "cases": [
+    {
+      "key": "omp-none",
+      "template": {"name":"H1 OMP 零项","botName":"H1-{template.name}-{bot.id}","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]},
+      "expectedLoaded": ["model-cost"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp\\model-cost.ts"]
+    },
+    {
+      "key": "omp-codebase",
+      "template": {"name":"H1 OMP codebase-tools","botName":"H1-{template.name}-{bot.id}","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"","extensions":["omp-codebase-tools"]},
+      "expectedLoaded": ["model-cost","codebase-tools"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp\\model-cost.ts","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\codebase-tools.ts"]
+    },
+    {
+      "key": "omp-connect",
+      "template": {"name":"H1 OMP connect-bot","botName":"H1-{template.name}-{bot.id}","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"","extensions":["omp-connect-bot"]},
+      "expectedLoaded": ["model-cost","connect-bot"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp\\model-cost.ts","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\connect-bot.ts"]
+    },
+    {
+      "key": "omp-both",
+      "template": {"name":"H1 OMP 两项","botName":"H1-{template.name}-{bot.id}","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"","extensions":["omp-codebase-tools","omp-connect-bot"]},
+      "expectedLoaded": ["model-cost","codebase-tools","connect-bot"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp\\model-cost.ts","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\codebase-tools.ts","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\connect-bot.ts"]
+    },
+    {
+      "key": "pi-none",
+      "template": {"name":"H1 Pi 零项","botName":"H1-{template.name}-{bot.id}","agent":"pi","model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]},
+      "expectedLoaded": ["model-cost"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\pi\\model-cost.ts"]
+    },
+    {
+      "key": "pi-codebase",
+      "template": {"name":"H1 Pi codebase-tools","botName":"H1-{template.name}-{bot.id}","agent":"pi","model":"default","thinking":"default","skill":null,"prompt":"","extensions":["pi-codebase-tools"]},
+      "expectedLoaded": ["model-cost","codebase-tools"],
+      "expectedNativeTail": ["--no-extensions","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\pi\\model-cost.ts","--extension","E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\pi-auto\\codebase-tools.ts"]
+    }
+  ]
+}
