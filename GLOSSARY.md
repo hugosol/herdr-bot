@@ -17,8 +17,20 @@ _Avoid_: herdr-bot, 本项目
 _Avoid_: herdr session, 会话登记, connect-bot 会话
 
 **bot-template（Bot 模板）**:
-创建 Bot 时复用的预设，描述目标 agent、模型与思考级别选择、实例命名规则及初始化输入；它不假定不同 agent 具有统一的 Skill 调用方式。
+创建 Bot 时复用的预设，描述目标 agent、模型与思考级别选择、可选扩展选择、实例命名规则及初始化输入；它不假定不同 agent 具有统一的 Skill 调用方式。
 _Avoid_: 会话登记, agent session, 通用 Skill 协议
+
+**Bot 模板选项目录**:
+定义 Bot 模板有哪些可用选项及其适用关系的共享清单；它不同于记录具体预设的 Bot 模板。
+_Avoid_: Bot 模板, 模板实例
+
+**Bot 固定扩展**:
+创建 Bot 时始终加载、不由模板勾选决定的 agent 扩展。
+_Avoid_: 默认勾选扩展, 可选扩展
+
+**Bot 可选扩展**:
+由 Bot 模板保存选择、创建 Bot 时按该选择加载的 agent 扩展；可同时选择多个，也可以不选。
+_Avoid_: 固定扩展, 启动时临时选择
 
 **bot 入口**:
 herdr-bot 主界面中承载 bot-template 新增、查看、编辑与删除的 tab，界面标签为 `bot`。
