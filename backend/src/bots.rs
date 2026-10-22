@@ -376,6 +376,7 @@ mod tests {
             thinking: "default".into(),
             skill: None,
             prompt: String::new(),
+            extensions: Vec::new(),
         }
     }
 

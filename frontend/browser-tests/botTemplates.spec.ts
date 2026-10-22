@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 import { startServer, type TemplateView, type E2EServer } from './support'
-import { serializedBotRule } from './ui'
+import { saveTemplate, serializedBotRule } from './ui'
 
 /** 只取模板字段，忽略后端生成的标识。 */
 function fieldsOf(template: TemplateView) {
@@ -36,15 +36,12 @@ test.afterEach(async () => {
 test('真实浏览器新增、共享读取、编辑、删除完整模板', async ({ page }) => {
   server = await startServer()
 
-  const literal = {
-    name: '发布检查',
-    botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
-    agent: 'pi',
-    model: 'deepseek-flash',
-    thinking: 'max',
-    skill: 'code-review',
-    prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\',
-  }
+  const literal = { name: '发布检查',
+  botName: '{zone.name} · {template.name} · {agent} · {bot.id}',
+  agent: 'pi',
+  model: 'deepseek-flash',
+  thinking: 'max',
+  skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
 
   await page.goto(server.baseURL)
   await expect(page.getByTestId('tab-templates')).toHaveText('bot')
@@ -86,7 +83,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   await page.getByTestId('template-thinking').selectOption('max')
   await page.getByTestId('template-skill').selectOption('code-review')
   await page.getByTestId('template-prompt').fill(literal.prompt)
-  await page.getByTestId('save-template').click()
+  await saveTemplate(page)
 
   await expect(page.getByTestId('template-dialog')).toBeHidden()
   const row = page.getByTestId('bot-template-item')
@@ -128,7 +125,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   await page.getByTestId('template-thinking').selectOption('xhigh')
   await page.getByTestId('template-skill').selectOption('teach')
   await page.getByTestId('template-prompt').fill('编辑后的第一行\n编辑后的第二行')
-  await page.getByTestId('save-template').click()
+  await saveTemplate(page)
 
   await expect(page.getByTestId('bot-template-item')).toContainText('发布检查（改）')
   await expect(page.getByTestId('bot-template-item')).toContainText(
@@ -137,15 +134,12 @@ test('真实浏览器新增、共享读取、编辑、删除完整模板', async
   const afterEdit = await server.getTemplates()
   expect(afterEdit.templates).toHaveLength(1)
   expect(afterEdit.templates[0].id).toBe(saved.id)
-  expect(fieldsOf(afterEdit.templates[0])).toEqual({
-    name: '发布检查（改）',
-    botName: '{template.name} · {agent} · {bot.id}',
-    agent: 'omp',
-    model: 'gpt-6.1-sol',
-    thinking: 'xhigh',
-    skill: 'teach',
-    prompt: '编辑后的第一行\n编辑后的第二行',
-  })
+  expect(fieldsOf(afterEdit.templates[0])).toEqual({ name: '发布检查（改）',
+  botName: '{template.name} · {agent} · {bot.id}',
+  agent: 'omp',
+  model: 'gpt-6.1-sol',
+  thinking: 'xhigh',
+  skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] })
 
   // 删除：独立客户端再读取并尝试按标识选择时，目标模板不可用。
   await page.getByTestId('bot-template-item').getByTestId('template-delete').click()
@@ -262,15 +256,12 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
 test('保存失败不表示已保存；预先写定的模板经真实进程重启后仍可读取', async ({ page }) => {
   server = await startServer()
 
-  const old = {
-    name: '重启保留',
-    botName: '{zone.name} · {template.name} · {bot.id}',
-    agent: 'omp',
-    model: 'gpt-6.1-sol',
-    thinking: 'high',
-    skill: 'teach',
-    prompt: '重启前的第一行\n重启前的第二行',
-  }
+  const old = { name: '重启保留',
+  botName: '{zone.name} · {template.name} · {bot.id}',
+  agent: 'omp',
+  model: 'gpt-6.1-sol',
+  thinking: 'high',
+  skill: 'teach', prompt: '重启前的第一行\n重启前的第二行', extensions: [] }
   const created = await fetch(`${server.baseURL}/api/bot-templates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -287,7 +278,7 @@ test('保存失败不表示已保存；预先写定的模板经真实进程重�
   fs.chmodSync(server.storageFile, 0o444)
   await createOpen(page)
   await page.getByTestId('template-name').fill('不应保存')
-  await page.getByTestId('save-template').click()
+  await saveTemplate(page)
   const error = page.getByTestId('template-form-error')
   await expect(error).toContainText('保存 Bot 模板失败')
   await expect(page.getByTestId('template-dialog')).toBeVisible()

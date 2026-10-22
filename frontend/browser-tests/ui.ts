@@ -36,6 +36,13 @@ export async function activate(locator: Locator, touch: boolean) {
   }
 }
 
+/** 从模板预设逐步确认，再明确保存；每一步均操作真实页面。 */
+export async function saveTemplate(page: Page, touch = false) {
+  await activate(page.getByTestId('template-next'), touch)
+  await activate(page.getByTestId('template-next'), touch)
+  await activate(page.getByTestId('save-template'), touch)
+}
+
 /** 页面不得因弹窗或长路径出现横向滚动。 */
 export async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(

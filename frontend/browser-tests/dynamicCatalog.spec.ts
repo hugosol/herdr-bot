@@ -58,7 +58,7 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   expect(prompt?.text).toBe('/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行')
   expect((await current.getTemplates()).templates[0]).toEqual(saved)
   const persisted = JSON.parse(fs.readFileSync(current.storageFile, 'utf8')).templates[0]
-  expect(Object.keys(persisted).sort()).toEqual(['agent', 'botName', 'id', 'model', 'name', 'prompt', 'skill', 'thinking'])
+  expect(Object.keys(persisted).sort()).toEqual(['agent', 'botName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'thinking'])
 
   // Saving rechecks current capabilities independently from the options previously displayed.
   fs.writeFileSync(current.metadataFile, original.replace("omp = ['low', 'medium', 'high', 'xhigh', 'max']", "omp = ['low']"))

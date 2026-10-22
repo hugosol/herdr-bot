@@ -400,6 +400,14 @@ command_timeout_seconds = 300
 读取同一份。顶层顺序为 `chat → bot → zone → server`；每次打开或整页刷新仍从 `chat` 开始，
 不恢复上次 tab。删除模板只移除模板，不改变任何已经创建的 Bot。
 
+新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
+
+1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 可选 `codebase-tools`、`connect-bot`；Pi 仅可选 `codebase-tools`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
+3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
+
+“下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
+
 模板字段与固定规则：
 
 - `name` 必填，是模板显示名，不是新 Bot 的固定名字。
@@ -414,6 +422,7 @@ command_timeout_seconds = 300
   否则重置并提示。
 - `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
 - `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
+- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
 
 以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
 OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
@@ -446,13 +455,13 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
 
 - `GET /api/bot-templates` 读取完整列表与当前选项（`templates`、`options`）。
 - `POST /api/bot-templates` 新增模板，JSON 字段为
-  `{"name":"…","botName":"…","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"…"}`。
+  `{"name":"…","botName":"…","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"…","extensions":[]}`。
 - `GET /api/bot-templates/{id}` 按标识读取单个模板；已删除的模板返回 `template-not-found`。
 - `PUT /api/bot-templates/{id}` 编辑模板；标识保持不变。
 - `DELETE /api/bot-templates/{id}` 删除模板。
 
 列表及写入成功响应附带当前完整模板列表与当前选项。元数据错误返回 `metadata-invalid`，消息包含位置和原因，不使用旧缓存。其他失败响应是 `{"code":"…","message":"…"}`；字段与能力约束的
-类别包括 `template-name-required`、`template-bot-name-required`、
+类别包括 `template-extension-invalid`（不是当前 Agent 的可选扩展或重复选择）、`template-name-required`、`template-bot-name-required`、
 `template-bot-name-not-single-line`、`template-agent-invalid`、`template-model-invalid`、
 `template-thinking-invalid`、`template-thinking-requires-default-model`、
 `template-thinking-unsupported` 与 `template-skill-invalid`；存储错误包括 `templates-unreadable`、
@@ -2277,7 +2286,7 @@ workspace 内的本地 HTML 增加整页静态阅读模式。文档记录见 [AD
 
 1. 点 `bot` 入口 → “新增模板”：输入显示名，用字段按钮插入 `{zone.name}` 等占位符并看示例预览；
    点击变量旁的 × 或在变量后按退格可整块删除；选择 agent / model / thinking / Skill；在固定 prompt 中
-   用回车输入两行以上；保存。回到列表确认字段完整，再编辑一处并保存，最后删除确认消失。若还要创建
+   用回车输入两行以上；点“下一步”配置扩展，再点“下一步”核对确认摘要，最后明确保存。往返步骤确认草稿不丢失。回到列表确认字段完整，再编辑一处并逐步保存，最后删除确认消失。若还要创建
    Bot，请保留或重新新增一个模板。
 2. 点 `zone` 入口 → 在某个 zone 行点“+”。列表行只显示末级目录名和数字角标，不再提供独立详情按钮；
    完整路径可在进入 zone 后从浏览工具栏核对。弹窗应显示该 zone 路径；选择模板，在多行 input 中用手指

@@ -27,6 +27,7 @@ export type TemplateView = {
   thinking: string
   skill: string | null
   prompt: string
+  extensions: string[]
 }
 
 /** 受控 Herdr 副本的初始数据；它只在自动浏览器验收中使用。 */
