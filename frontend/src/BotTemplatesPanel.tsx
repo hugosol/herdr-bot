@@ -107,19 +107,23 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
     }
   }, [active])
 
-  function openCreate() {
-    setDialog({ kind: 'create' })
-    setDraft(emptyDraft())
+  async function openEditor(template?: BotTemplate) {
+    setLoading(true)
+    const result = await fetchBotTemplates()
+    setLoading(false)
+    if (result.kind !== 'ok') {
+      setFeedback({ kind: 'error', text: describeFailure(result, '选项读取') })
+      return
+    }
+    setData({ templates: result.templates, options: result.options })
+    setDialog(template ? { kind: 'edit', id: template.id } : { kind: 'create' })
+    setDraft(template ? draftFrom(template) : { ...emptyDraft(), agent: result.options.agents[0] })
     setFormError(null)
     setNotice(null)
   }
 
-  function openEdit(template: BotTemplate) {
-    setDialog({ kind: 'edit', id: template.id })
-    setDraft(draftFrom(template))
-    setFormError(null)
-    setNotice(null)
-  }
+  function openCreate() { void openEditor() }
+  function openEdit(template: BotTemplate) { void openEditor(template) }
 
   function closeDialog() {
     setDialog(null)
@@ -385,7 +389,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                 >
                   {data.options.agents.map((agent) => (
                     <option key={agent} value={agent}>
-                      {agent}
+                      {data.options.labels?.agents?.[agent] ?? agent}
                     </option>
                   ))}
                 </select>
@@ -401,9 +405,9 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                   onChange={(event) => changeModel(event.target.value as BotTemplateInput['model'])}
                   disabled={saving}
                 >
-                  {data.options.models.map((model) => (
+                  {data.options.models.filter((model) => model in (data.options.thinking[draft.agent] ?? {})).map((model) => (
                     <option key={model} value={model}>
-                      {model === 'default' ? '沿用 Agent 默认值' : model}
+                      {data.options.labels?.models?.[model] ?? (model === 'default' ? '沿用 Agent 默认值' : model)}
                     </option>
                   ))}
                 </select>
@@ -460,7 +464,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                   <option value="">无</option>
                   {data.options.skills.map((skill) => (
                     <option key={skill} value={skill}>
-                      /{skill}
+                      {data.options.labels?.skills?.[skill] ?? `/${skill}`}
                     </option>
                   ))}
                 </select>

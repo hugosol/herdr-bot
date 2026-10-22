@@ -47,6 +47,7 @@ export type E2EServer = {
   /** 同一进程在指定主机名/IP 上的入口；用来真实请求局域网地址。 */
   urlForHost: (host: string) => string
   storageFile: string
+  metadataFile: string
   configPath: string
   getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
   /** 受控 Herdr 自己写下的外部调用记录。 */
@@ -116,6 +117,7 @@ function writeConfig(
       '',
       '[bot_templates]',
       `storage_file = '${storage}'`,
+      `metadata_file = '${path.join(directory, 'bot-options.toml')}'`,
       '',
     ].join('\n'),
     'utf8',
@@ -202,6 +204,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
   const storageFile = path.join(directory, 'bot-templates.json')
+  const metadataFile = path.join(directory, 'bot-options.toml')
+  fs.copyFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), metadataFile)
   const herdrDirectory = path.join(directory, 'herdr')
 
   let herdrExecutable: string | undefined
@@ -261,6 +265,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       return `http://${host}:${running.port}`
     },
     storageFile,
+    metadataFile,
     configPath,
     async getTemplates() {
       const response = await fetch(`${this.baseURL}/api/bot-templates`)

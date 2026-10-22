@@ -38,6 +38,7 @@ fn assert_startup_rejected(label: &str, section: &str) {
     let dir = TempDir::new(&format!("herdr config {label}"));
     let config_path = write_config(&dir, section);
     let output = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+        .current_dir(common::repo_fixtures_dir().parent().unwrap())
         .arg("--config")
         .arg(&config_path)
         .stdin(Stdio::null())
@@ -82,6 +83,7 @@ fn an_explicit_workspace_name_starts_the_real_process() {
         "[herdr]\nworkspace_name = 'explicit-target'\nexecutable = 'herdr'\n",
     );
     let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
+        .current_dir(common::repo_fixtures_dir().parent().unwrap())
         .arg("--config")
         .arg(&config_path)
         .stdin(Stdio::null())

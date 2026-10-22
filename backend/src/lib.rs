@@ -37,6 +37,7 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod bots;
+pub mod catalog;
 pub mod browse;
 pub mod clock;
 pub mod commit;
@@ -227,6 +228,7 @@ pub fn app_with_state(
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
         bot_templates: Arc::new(templates::Templates::new(
             config.bot_templates.storage_file.clone(),
+            config.bot_templates.metadata_file.clone(),
         )),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         bot_creations: Arc::new(bots::BotCreations::new()),
@@ -587,7 +589,7 @@ struct CreateZoneRequest {
 #[derive(Debug, Serialize)]
 struct BotTemplateListResponse {
     templates: Vec<templates::BotTemplate>,
-    options: templates::TemplateOptions,
+    options: catalog::TemplateOptions,
 }
 
 /// 单个 Bot 模板的响应。
@@ -755,7 +757,7 @@ fn zone_create_error_response(error: zone_create::CreateZoneError) -> Response {
 
 /// “列出 Bot 模板与固定选项”：读取后端持久保存的同一份列表。
 async fn list_bot_templates(State(state): State<AppState>) -> Response {
-    bot_template_list_response(state.bot_templates.list().await)
+    bot_template_list_response(&state, state.bot_templates.list().await)
 }
 
 /// “读取单个 Bot 模板”：删除后由独立客户端按标识选择时得到明确的不存在。
@@ -772,7 +774,7 @@ async fn create_bot_template(State(state): State<AppState>, request: Request) ->
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    bot_template_list_response(state.bot_templates.create(input).await)
+    bot_template_list_response(&state, state.bot_templates.create(input).await)
 }
 
 /// “编辑 Bot 模板”：标识不变；只有存储成功后返回当前完整列表。
@@ -785,7 +787,7 @@ async fn update_bot_template(
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    bot_template_list_response(state.bot_templates.update(&id, input).await)
+    bot_template_list_response(&state, state.bot_templates.update(&id, input).await)
 }
 
 /// “删除 Bot 模板”：只移除模板，不改变任何已经创建的 Bot。
@@ -797,7 +799,7 @@ async fn delete_bot_template(
     if let Some(rejection) = reject_template_delete_request(request).await {
         return rejection;
     }
-    bot_template_list_response(state.bot_templates.delete(&id).await)
+    bot_template_list_response(&state, state.bot_templates.delete(&id).await)
 }
 
 /// 读取 Bot 模板命令的请求体；请求面封闭（不接受查询串或未知字段）。
@@ -854,14 +856,19 @@ async fn reject_template_delete_request(request: Request) -> Option<Response> {
 
 /// 把模板列表结果翻译成 HTTP 响应：成功附带与页面同一份固定选项。
 fn bot_template_list_response(
+    state: &AppState,
     result: Result<Vec<templates::BotTemplate>, templates::TemplateError>,
 ) -> Response {
+    let catalog = match state.bot_templates.catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return bot_template_error_response(error),
+    };
     match result {
         Ok(templates) => (
             StatusCode::OK,
             Json(BotTemplateListResponse {
                 templates,
-                options: templates::TemplateOptions::current(),
+                options: catalog.options(),
             }),
         )
             .into_response(),
@@ -874,6 +881,7 @@ fn bot_template_error_response(error: templates::TemplateError) -> Response {
     let status = match &error {
         TemplateError::NotFound => StatusCode::NOT_FOUND,
         TemplateError::Unreadable(_)
+        | TemplateError::Metadata(_)
         | TemplateError::Corrupt(_)
         | TemplateError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
         TemplateError::NameRequired
@@ -989,6 +997,10 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
         }
     }
 
+    let preset = match state.bot_templates.catalog().and_then(|catalog| catalog.resolve(&template)) {
+        Ok(preset) => preset,
+        Err(error) => return bot_template_error_response(error),
+    };
     let creation_id = bots::new_creation_id();
     let session_dir = state.bot_session_root.join(&creation_id);
     let view = bots::CreationView::starting(
@@ -1000,7 +1012,7 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     tokio::spawn(async move {
-        bots::run_creation(herdr, job, template, zone, input.input, session_dir).await;
+        bots::run_creation(herdr, job, template, preset, zone, input.input, session_dir).await;
     });
     (StatusCode::ACCEPTED, Json(view)).into_response()
 }

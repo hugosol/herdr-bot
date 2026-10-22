@@ -330,11 +330,14 @@ Bot 模板由后端以文件持久保存，电脑与手机读取同一份；整�
 [bot_templates]
 # 模板存储文件位置；缺省为进程工作目录下的 bot-templates.json。
 storage_file = 'E:\data\herdr-bot-templates.json'
+# 手工维护的选项元数据，与运行数据分离。
+metadata_file = 'meta-data/bot-options.toml'
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `storage_file` | `bot-templates.json` | Bot 模板的持久文件；相对路径按进程工作目录解析 |
+| `metadata_file` | `meta-data/bot-options.toml` | 必须存在的 TOML 选项目录；相对路径同样按进程工作目录解析 |
 
 - 文本文件不存在表示还没有任何模板，不是读取错误；模板在真实进程重启后仍然保留。
 - 保存成功只表示存储文件已经成功写入（先写临时文件并落盘，再原子替换）。写入失败、读取失败或内容
@@ -385,20 +388,43 @@ command_timeout_seconds = 300
 - `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
 - `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
 
-能力事实来自目标源码的固定选项：OMP 使用模型元数据的 `thinking.efforts`，Pi 使用
-`getSupportedThinkingLevels`。全局 CLI 支持的级别（例如 OMP 的 `auto`）不会成为模型能力；两个
-agent 的能力表也不互相复制。
+以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
+OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
+OMP GPT 为 low/medium/high/xhigh/max、DeepSeek 为 low/high/max；Pi GPT 为
+minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型分别使用完整的
+`openai-codex/gpt-6.1-sol` 与 `deepseek/deepseek-flash`，不做裸名匹配或 provider 回退。
+
+#### 维护共享选项目录
+
+直接编辑该 TOML 文档；它可纳入 Git，不属于运行数据。部署时须一并交付，程序不生成替代文件。
+服务启动先完整读取并校验；缺失、读取失败、TOML 错误、重复标识、未知 Agent 引用或相互矛盾的
+默认模型关系均阻止启动，并报告文件位置及原因。运行中每次重新打开模板编辑器、保存模板和接受
+创建都重新读取当前文件；不需重启，没有文件监听或已打开页面实时推送，也没有旧缓存回退。
+
+- `[[agents]]`：原生 Agent `id`（omp/pi）与 `label`；可维护顺序、显示与可用集合，不增加第三种原生 Agent。
+- `[[models]]`：稳定 `id`、`label`、完整 `provider_model`；`thinking` 的各 Agent key 同时定义适用关系
+  与显式级别，例如 `thinking = { omp = ['low', 'high'], pi = ['off', 'high'] }`。`default` 必须存在且
+  不得携带模型或 thinking 覆盖；每组显式级别之外始终可选沿用默认。
+- `[[skills]]`：稳定 `id`、`label`、原生 `native_name`；例如 teach 映射到 `/skill:teach`。
+  不选仍为 null，不增加必选或空正文限制。
+- `[[extensions]]`：唯一稳定 `id`、`label`、适用 `agent`、`kind`（fixed/optional）与 `entrypoint`。
+  同名扩展在不同 Agent 下用不同标识；各 Agent 至少定义一个固定扩展。元数据结构校验不执行入口。
+
+模板只持久保存选择标识与原有字段，不保存 provider/model、能力表或 Skill 原生映射副本。
+已有模板不必重存即可在下次创建使用新映射；接受创建时固定本次模板和完整模型/Skill 映射，后续编辑
+不改变已接受或已有的 Bot。公开 `options` 包含 `agents/models/skills` 标识列表、`thinking[agent][model]`、
+`labels` 显示信息与 `extensions` 定义；前端选项、公开保存校验、原生启动解释共用这个文档。
 
 接口：
 
-- `GET /api/bot-templates` 读取完整列表与固定选项（`templates`、`options`）。
+- `GET /api/bot-templates` 读取完整列表与当前选项（`templates`、`options`）。
 - `POST /api/bot-templates` 新增模板，JSON 字段为
   `{"name":"…","botName":"…","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"…"}`。
 - `GET /api/bot-templates/{id}` 按标识读取单个模板；已删除的模板返回 `template-not-found`。
 - `PUT /api/bot-templates/{id}` 编辑模板；标识保持不变。
 - `DELETE /api/bot-templates/{id}` 删除模板。
 
-成功响应都是当前完整模板列表与固定选项。失败响应是 `{"code":"…","message":"…"}`；字段与能力约束的
+列表及写入成功响应附带当前完整模板列表与当前选项。元数据错误返回 `metadata-invalid`，消息包含位置和原因，不使用旧缓存。其他失败响应是 `{"code":"…","message":"…"}`；字段与能力约束的
 类别包括 `template-name-required`、`template-bot-name-required`、
 `template-bot-name-not-single-line`、`template-agent-invalid`、`template-model-invalid`、
 `template-thinking-invalid`、`template-thinking-requires-default-model`、

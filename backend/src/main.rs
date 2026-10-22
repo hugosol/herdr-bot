@@ -10,6 +10,8 @@ use anyhow::Context;
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
+    herdr_bot::catalog::Catalog::load(&config.bot_templates.metadata_file)
+        .map_err(|error| anyhow::anyhow!(error.message()))?;
 
     let static_dir = herdr_bot::static_dir();
     if !static_dir.join("index.html").is_file() {
@@ -54,6 +56,10 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "[herdr-bot] Bot 模板存储文件：{}",
         config.bot_templates.storage_file.display()
+    );
+    println!(
+        "[herdr-bot] Bot 选项元数据：{}",
+        config.bot_templates.metadata_file.display()
     );
     println!(
         "[herdr-bot] 单文件预览上限：{} 字节",

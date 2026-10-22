@@ -6,17 +6,9 @@
  */
 
 export type TemplateAgent = 'omp' | 'pi'
-export type TemplateModel = 'default' | 'gpt-6.1-sol' | 'deepseek-flash'
-export type TemplateThinking =
-  | 'default'
-  | 'off'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
-export type TemplateSkill = 'teach' | 'code-review'
+export type TemplateModel = string
+export type TemplateThinking = string
+export type TemplateSkill = string
 
 /** 一个已保存的模板；字段与后端存储一致。 */
 export type BotTemplate = {
@@ -39,6 +31,8 @@ export type BotTemplateOptions = {
   models: TemplateModel[]
   thinking: Record<string, Record<string, TemplateThinking[]>>
   skills: TemplateSkill[]
+  labels?: Record<string, Record<string, string>>
+  extensions?: { id: string; label: string; agent: TemplateAgent; kind: 'fixed' | 'optional'; entrypoint: string }[]
 }
 
 export type BotTemplateList = {

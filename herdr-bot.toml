@@ -65,5 +65,8 @@ create_parent_directory = 'E:\Developer\bot-playground'
 # Bot 模板设置（可选，缺省为当前工作目录下的 bot-templates.json）。
 # 模板由后端保存，本机与局域网设备共享；电脑与手机在“Bot 模板”tab 中管理。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-# [bot_templates]
+[bot_templates]
 # storage_file = 'bot-templates.json'
+# 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
+# 修改后下次打开模板编辑、保存和创建立即读取，无需重启。
+metadata_file = 'meta-data/bot-options.toml'

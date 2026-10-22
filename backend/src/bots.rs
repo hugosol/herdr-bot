@@ -205,7 +205,7 @@ pub fn render_bot_name(rule: &str, zone: &str, template: &BotTemplate, bot_id: &
 ///
 /// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
 /// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
-pub fn compose_initial_input(template: &BotTemplate, input: &str) -> String {
+pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>, input: &str) -> String {
     let mut sections: Vec<&str> = Vec::new();
     if !template.prompt.is_empty() {
         sections.push(template.prompt.as_str());
@@ -215,9 +215,9 @@ pub fn compose_initial_input(template: &BotTemplate, input: &str) -> String {
     }
     let body = sections.join("\n\n");
 
-    match template.skill {
-        Some(skill) if body.is_empty() => format!("/skill:{}", skill.label()),
-        Some(skill) => format!("/skill:{} {body}", skill.label()),
+    match native_skill {
+        Some(skill) if body.is_empty() => format!("/skill:{skill}"),
+        Some(skill) => format!("/skill:{skill} {body}"),
         None => body,
     }
 }
@@ -227,15 +227,15 @@ pub fn compose_initial_input(template: &BotTemplate, input: &str) -> String {
 /// 两个固定模型都映射到约定的完整 provider / model 标识；模型沿用默认值时不传模型覆盖，
 /// thinking 也必须是默认值（模板保存时已校验）。`--session-dir` 始终显式传入：它给本次 Bot
 /// 一个全新的会话位置，使 agent 不会因 `autoResume` 一类默认设置续接同 cwd 的旧对话。
-pub fn agent_launch_args(template: &BotTemplate, session_dir: &Path) -> Vec<String> {
+pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &Path) -> Vec<String> {
     let mut args = Vec::new();
-    if let Some(model) = template.model.provider_model() {
+    if let Some(model) = &preset.provider_model {
         args.push("--model".to_string());
-        args.push(model.to_string());
+        args.push(model.clone());
     }
-    if template.thinking != crate::templates::Thinking::Default {
+    if let Some(thinking) = &preset.thinking {
         args.push("--thinking".to_string());
-        args.push(template.thinking.label().to_string());
+        args.push(thinking.clone());
     }
     args.push("--session-dir".to_string());
     args.push(session_dir.to_string_lossy().into_owned());
@@ -250,6 +250,7 @@ pub async fn run_creation(
     herdr: Arc<HerdrClient>,
     job: Arc<Mutex<CreationView>>,
     template: BotTemplate,
+    preset: crate::catalog::ResolvedPreset,
     zone: String,
     input: String,
     session_dir: PathBuf,
@@ -281,7 +282,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.agent_name = Some(agent_name.clone());
     }
-    let args = agent_launch_args(&template, &session_dir);
+    let args = agent_launch_args(&preset, &session_dir);
     let kind = template.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
@@ -293,7 +294,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.stage = Stage::Submitting;
     }
-    let text = compose_initial_input(&template, &input);
+    let text = compose_initial_input(&template, preset.native_skill.as_deref(), &input);
     if let Err(error) = herdr.prompt(&agent_name, &text).await {
         fail(&job, FailureStage::Submit, &error).await;
         return;
@@ -363,7 +364,7 @@ fn next_token() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::templates::{Agent, BotTemplate, Model, Skill, Thinking};
+    use crate::templates::{Agent, BotTemplate};
 
     fn template(rule: &str) -> BotTemplate {
         BotTemplate {
@@ -371,8 +372,8 @@ mod tests {
             name: "审查".to_string(),
             bot_name: rule.to_string(),
             agent: Agent::Omp,
-            model: Model::Default,
-            thinking: Thinking::Default,
+            model: "default".into(),
+            thinking: "default".into(),
             skill: None,
             prompt: String::new(),
         }
@@ -427,7 +428,7 @@ mod tests {
     fn plain_input_is_submitted_once_without_extra_prefix() {
         let template = template("{bot.id}");
         assert_eq!(
-            compose_initial_input(&template, "检查登录\n第二行"),
+            compose_initial_input(&template, template.skill.as_deref(), "检查登录\n第二行"),
             "检查登录\n第二行"
         );
     }
@@ -436,10 +437,10 @@ mod tests {
     #[test]
     fn skill_uses_one_native_invocation_prefix() {
         let mut template = template("{bot.id}");
-        template.skill = Some(Skill::CodeReview);
+        template.skill = Some("code-review".into());
         template.prompt = "固定指示".to_string();
         assert_eq!(
-            compose_initial_input(&template, "本次任务"),
+            compose_initial_input(&template, template.skill.as_deref(), "本次任务"),
             "/skill:code-review 固定指示\n\n本次任务"
         );
     }

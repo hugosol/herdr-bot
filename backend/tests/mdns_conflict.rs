@@ -96,6 +96,7 @@ impl Panel {
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
         command
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(&config_path)
             .stdin(Stdio::null())
