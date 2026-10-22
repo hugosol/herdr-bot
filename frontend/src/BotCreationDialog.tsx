@@ -203,7 +203,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
         </label>
         <select
           id="bot-template"
-          className="zone-form__input"
+          className="zone-form__input zone-form__select"
           data-testid="bot-template"
           value={templateId}
           onChange={(event) => setTemplateId(event.target.value)}
