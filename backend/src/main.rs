@@ -6,12 +6,15 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
+mod runtime_data;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
     herdr_bot::catalog::Catalog::load(&config.bot_templates.metadata_file)
         .map_err(|error| anyhow::anyhow!(error.message()))?;
+    runtime_data::prepare(&config)?;
 
     let static_dir = herdr_bot::static_dir();
     if !static_dir.join("index.html").is_file() {

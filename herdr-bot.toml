@@ -45,10 +45,10 @@ workspace_name = 'bot-playground'
 [zones]
 create_parent_directory = 'E:\Developer\bot-playground'
 
-# 登记列表的持久文件（可选，缺省为当前工作目录下的 zones.json）。
+# 登记列表的持久文件（可选，缺省为当前工作目录下的 .data/zones.json）。
 # 登记列表由后端保存，本机与局域网设备共享；取消登记不删除目录或文件。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-# registry_file = 'zones.json'
+registry_file = '.data/zones.json'
 # 单文件文本预览上限（可选，缺省 1048576 字节 = 1 MiB）。
 # 超限文件只显示大小与上限，不加载完整内容；HTML 阅读也沿用这个上限。
 # 零、负数、小数或字符串会让启动明确失败。
@@ -62,11 +62,11 @@ create_parent_directory = 'E:\Developer\bot-playground'
 # [git]
 # command_timeout_seconds = 300
 
-# Bot 模板设置（可选，缺省为当前工作目录下的 bot-templates.json）。
+# Bot 模板设置（可选，缺省为当前工作目录下的 .data/bot-templates.json）。
 # 模板由后端保存，本机与局域网设备共享；电脑与手机在“Bot 模板”tab 中管理。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
 [bot_templates]
-# storage_file = 'bot-templates.json'
+storage_file = '.data/bot-templates.json'
 # 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
 # 修改后下次打开模板编辑、保存和创建立即读取，无需重启。
 metadata_file = 'meta-data/bot-options.toml'

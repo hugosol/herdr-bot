@@ -1003,12 +1003,19 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     };
     let creation_id = bots::new_creation_id();
     let session_dir = state.bot_session_root.join(&creation_id);
-    let view = bots::CreationView::starting(
-        creation_id,
-        name,
-        zone.clone(),
-        template.id.clone(),
-    );
+    if let Err(error) = std::fs::create_dir_all(&state.bot_session_root)
+        .and_then(|()| std::fs::create_dir(&session_dir))
+    {
+        return rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "bot-session-directory-failed",
+            format!(
+                "创建 Bot 会话目录失败：{}：{error}；未创建 Herdr Tab、未启动 agent、未提交输入。",
+                session_dir.display()
+            ),
+        );
+    }
+    let view = bots::CreationView::starting(creation_id, name, zone.clone(), template.id.clone());
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     tokio::spawn(async move {
