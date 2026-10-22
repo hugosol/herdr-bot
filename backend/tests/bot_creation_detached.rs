@@ -830,6 +830,377 @@ async fn concurrent_creations_keep_their_own_accepted_template_snapshots() {
     assert_eq!(calls_of_kind(&herdr, "unsupported").len(), 0);
 }
 
+/// P36/P37 的预写元数据：保持稳定标识，替换完整 provider/model、Skill 和两类扩展映射。
+/// 文件在真实磁盘改写；期望参数在断言处独立写明，不调用生产解析或参数合成函数。
+fn write_snapshot_catalog(storage: &TempDir, revision: &str) -> PathBuf {
+    let (model, native_skill, fixed, tools, connect) = match revision {
+        "old" => (
+            "old-provider/old-model",
+            "old-native",
+            "old-fixed.ts",
+            "old-tools.ts",
+            "old-connect.ts",
+        ),
+        "new" => (
+            "new-provider/new-model",
+            "new-native",
+            "new-fixed.ts",
+            "new-tools.ts",
+            "new-connect.ts",
+        ),
+        _ => panic!("未知样例版本"),
+    };
+    let metadata = storage.path().join("snapshot-options.toml");
+    fs::write(
+        &metadata,
+        format!(
+            r#"
+[[agents]]
+id = 'omp'
+label = 'OMP'
+[[models]]
+id = 'default'
+label = '默认'
+[[models]]
+id = 'mapped-model'
+label = '映射模型'
+provider_model = '{model}'
+thinking = {{ omp = ['low', 'high'] }}
+[[skills]]
+id = 'mapped-skill'
+label = '映射 Skill'
+native_name = '{native_skill}'
+[[extensions]]
+id = 'fixed'
+label = '固定扩展'
+agent = 'omp'
+kind = 'fixed'
+entrypoint = '{}'
+[[extensions]]
+id = 'tools'
+label = '工具扩展'
+agent = 'omp'
+kind = 'optional'
+entrypoint = '{}'
+[[extensions]]
+id = 'connect'
+label = '接入扩展'
+agent = 'omp'
+kind = 'optional'
+entrypoint = '{}'
+"#,
+            storage.path().join(fixed).display(),
+            storage.path().join(tools).display(),
+            storage.path().join(connect).display()
+        ),
+    )
+    .expect("写入真实元数据");
+    for name in [fixed, tools, connect] {
+        fs::write(
+            storage.path().join(name),
+            "// controlled extension entrypoint\n",
+        )
+        .expect("写扩展入口");
+    }
+    metadata
+}
+
+fn snapshot_template(revision: &str) -> Value {
+    match revision {
+        "old" => json!({
+            "name": "旧快照", "botName": "old-{template.name}-{bot.id}", "agent": "omp",
+            "model": "mapped-model", "thinking": "high", "skill": "mapped-skill",
+            "prompt": "旧固定指示\n第二行", "extensions": ["tools"],
+        }),
+        "new" => json!({
+            "name": "新快照", "botName": "new-{template.name}-{bot.id}", "agent": "omp",
+            "model": "mapped-model", "thinking": "low", "skill": "mapped-skill",
+            "prompt": "新固定指示\n第二行", "extensions": ["connect"],
+        }),
+        _ => panic!("未知模板版本"),
+    }
+}
+
+/// 检查完整外部启动记录，只有每次独立的会话目录是动态值。
+fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], entries: &[&str]) {
+    assert_eq!(start["agent_kind"], "omp");
+    let args = start["args"].as_array().expect("原生启动参数");
+    assert_eq!(
+        &args[..4],
+        expected
+            .iter()
+            .map(|value| json!(value))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(args[4], "--session-dir");
+    let session = Path::new(args[5].as_str().expect("会话位置"));
+    assert!(session.is_dir(), "会话目录必须实际存在");
+    assert!(same_path(
+        session.parent().unwrap(),
+        &storage.path().join("bot-sessions")
+    ));
+    let mut expected_tail = vec![json!("--no-extensions")];
+    for entry in entries {
+        expected_tail.push(json!("--extension"));
+        expected_tail.push(json!(storage.path().join(entry)));
+    }
+    assert_eq!(
+        &args[6..],
+        expected_tail.as_slice(),
+        "只能使用接受时的固定及所选扩展"
+    );
+}
+
+/// S2 / P36：旧创建停在 Tab 返回之前，另一客户端改模板和真实元数据后新建。
+/// 违反样例：阶段推进重新解析映射、只复制模板未复制扩展，或全局队列使新创建等待旧创建。
+/// 观察：未释放旧屏障时新创建成功；旧创建在模板已删除、元数据已移除后仍按旧字面配置完成。
+#[tokio::test(flavor = "multi_thread")]
+async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_independently() {
+    let herdr = HerdrFixture::new("full creation snapshot");
+    let tab_release = release_path(&herdr, "release-old-tab");
+    let start_release = release_path(&herdr, "release-old-start");
+    let prompt_release = release_path(&herdr, "release-old-prompt");
+    herdr.set_behavior(json!({
+        "tab_create_gate": { "match": "old-旧快照-", "wait_for_file": tab_release, "timeout_ms": 25_000 },
+        "agent_start_gate": { "match": "old-provider/old-model", "wait_for_file": start_release, "timeout_ms": 25_000 },
+        "prompt_gate": { "match": "旧本次输入", "wait_for_file": prompt_release, "timeout_ms": 25_000 },
+    }));
+    let storage = TempDir::new("full creation snapshot storage");
+    let metadata = write_snapshot_catalog(&storage, "old");
+    let mut config = config_with(&herdr, &storage);
+    config.bot_templates.metadata_file = metadata.clone();
+    let server = TestServer::start(&config).await;
+    let zone = storage.path().join("alpha");
+    fs::create_dir(&zone).unwrap();
+    let zone = register(&server, &zone).await;
+    let saved = save_template(&server, snapshot_template("old")).await;
+    let template_id = saved["id"].as_str().unwrap();
+    let (old_id, old_accepted) =
+        accept_creation(&server, &zone, template_id, "旧本次输入\n保留换行").await;
+    assert!(
+        wait_until(Duration::from_secs(10), || calls_of_kind(
+            &herdr,
+            "tab_create"
+        )
+        .len()
+            == 1)
+        .await
+    );
+    assert_eq!(creation(&server, &old_id).await["stage"], "starting");
+    assert!(herdr.tabs().is_empty(), "旧 Tab 尚未创建，启动参数还未发出");
+    assert!(calls_of_kind(&herdr, "agent_start").is_empty());
+
+    write_snapshot_catalog(&storage, "new");
+    update_template(&server, template_id, snapshot_template("new")).await;
+    let (new_id, _) = accept_creation(&server, &zone, template_id, "新本次输入\n保留换行").await;
+    let new_finished = wait_stage(&server, &new_id, "succeeded").await;
+    assert!(!tab_release.exists(), "新创建必须在旧创建释放之前完成");
+    let old_blocked = creation(&server, &old_id).await;
+    assert_eq!(old_blocked["stage"], "starting");
+    assert_eq!(old_blocked["inputSubmitted"], false);
+    assert!(old_blocked.get("tabId").is_none());
+    let (new_tab, new_start, new_prompt) = external_objects(&herdr, &new_finished);
+    assert!(
+        new_tab["label"]
+            .as_str()
+            .unwrap()
+            .starts_with("new-新快照-")
+    );
+    assert_eq!(new_tab["cwd"], zone);
+    assert_snapshot_launch(
+        &new_start,
+        &storage,
+        &["--model", "new-provider/new-model", "--thinking", "low"],
+        &["new-fixed.ts", "new-connect.ts"],
+    );
+    assert_eq!(
+        new_prompt["text"],
+        "/skill:new-native 新固定指示\n第二行\n\n新本次输入\n保留换行"
+    );
+
+    // 已接受的旧创建不再依赖可变来源；删除模板及元数据也不能触发重读/重配。
+    let deleted = request_json_over_tcp(
+        server.addr(),
+        "DELETE",
+        &format!("/api/bot-templates/{template_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(deleted.status, 200, "{}", deleted.body);
+    fs::remove_file(&metadata).unwrap();
+    release(&tab_release);
+    assert!(
+        wait_until(Duration::from_secs(10), || calls_of_kind(
+            &herdr,
+            "agent_start"
+        )
+        .len()
+            == 2)
+        .await
+    );
+    assert_eq!(creation(&server, &old_id).await["stage"], "starting");
+    assert_eq!(
+        calls_of_kind(&herdr, "agent_prompt").len(),
+        1,
+        "旧 agent 就绪前不能提交"
+    );
+    release(&start_release);
+    assert!(
+        wait_until(Duration::from_secs(10), || calls_of_kind(
+            &herdr,
+            "agent_prompt"
+        )
+        .len()
+            == 2)
+        .await
+    );
+    let submitting = creation(&server, &old_id).await;
+    assert_eq!(submitting["stage"], "submitting");
+    assert_eq!(
+        submitting["inputSubmitted"], false,
+        "外部提交尚未确认时不能报告成功"
+    );
+    release(&prompt_release);
+    let old_finished = wait_stage(&server, &old_id, "succeeded").await;
+    assert_eq!(old_finished["inputSubmitted"], true);
+    assert_eq!(old_finished["name"], old_accepted["name"]);
+    assert_ne!(old_finished["tabId"], new_finished["tabId"]);
+    assert_ne!(old_finished["paneId"], new_finished["paneId"]);
+    assert_ne!(old_finished["agentName"], new_finished["agentName"]);
+    let (old_tab, old_start, old_prompt) = external_objects(&herdr, &old_finished);
+    assert!(
+        old_tab["label"]
+            .as_str()
+            .unwrap()
+            .starts_with("old-旧快照-")
+    );
+    assert_eq!(old_tab["cwd"], zone);
+    assert_snapshot_launch(
+        &old_start,
+        &storage,
+        &["--model", "old-provider/old-model", "--thinking", "high"],
+        &["old-fixed.ts", "old-tools.ts"],
+    );
+    assert_ne!(
+        old_start["args"][5], new_start["args"][5],
+        "并发创建不能复用会话目录"
+    );
+    assert_eq!(
+        old_prompt["text"],
+        "/skill:old-native 旧固定指示\n第二行\n\n旧本次输入\n保留换行"
+    );
+    assert_eq!(herdr.tabs().len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "workspace_list").len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "tab_create").len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
+    assert_eq!(herdr.calls().len(), 8, "没有额外重试、改配、关闭或重建调用");
+    assert_eq!(creation(&server, &new_id).await, new_finished);
+}
+
+/// S2 / P37：先实际创建，再依次编辑、改元数据、删除来源；已有 Bot 的外部对象和调用不变。
+/// 违反样例：模板编辑向旧 agent 下发改配/重启，或后续创建误用旧映射/允许已删除来源。
+#[tokio::test(flavor = "multi_thread")]
+async fn p37_template_and_metadata_changes_leave_existing_bots_untouched() {
+    let herdr = HerdrFixture::new("existing bot isolation");
+    let storage = TempDir::new("existing bot isolation storage");
+    let metadata = write_snapshot_catalog(&storage, "old");
+    let mut config = config_with(&herdr, &storage);
+    config.bot_templates.metadata_file = metadata;
+    let server = TestServer::start(&config).await;
+    let zone = storage.path().join("alpha");
+    fs::create_dir(&zone).unwrap();
+    let zone = register(&server, &zone).await;
+    let saved = save_template(&server, snapshot_template("old")).await;
+    let template_id = saved["id"].as_str().unwrap();
+    let (id, _) = accept_creation(&server, &zone, template_id, "已有 Bot 的输入").await;
+    let existing = wait_stage(&server, &id, "succeeded").await;
+    let original_calls = herdr.calls();
+    let original_tabs = herdr.tabs();
+    let (_, original_start, original_prompt) = external_objects(&herdr, &existing);
+    assert_snapshot_launch(
+        &original_start,
+        &storage,
+        &["--model", "old-provider/old-model", "--thinking", "high"],
+        &["old-fixed.ts", "old-tools.ts"],
+    );
+    assert_eq!(
+        original_prompt["text"],
+        "/skill:old-native 旧固定指示\n第二行\n\n已有 Bot 的输入"
+    );
+
+    update_template(&server, template_id, snapshot_template("new")).await;
+    assert_eq!(herdr.calls(), original_calls, "编辑模板不触碰外部 Bot");
+    assert_eq!(herdr.tabs(), original_tabs);
+    write_snapshot_catalog(&storage, "new");
+    // 经公开读取触发当前元数据加载，而非仅写一个无人读取的文件。
+    let read = get_over_tcp(server.addr(), &format!("/api/bot-templates/{template_id}")).await;
+    assert_eq!(read.status, 200, "{}", read.body);
+    assert_eq!(herdr.calls(), original_calls, "元数据更新不触碰外部 Bot");
+    assert_eq!(herdr.tabs(), original_tabs);
+    assert_eq!(creation(&server, &id).await, existing);
+
+    // 同一仍有效的来源立即使用新配置，不用重启服务或重新保存映射。
+    let (new_id, _) = accept_creation(&server, &zone, template_id, "后续 Bot 的输入").await;
+    let new_bot = wait_stage(&server, &new_id, "succeeded").await;
+    let (_, new_start, new_prompt) = external_objects(&herdr, &new_bot);
+    assert_snapshot_launch(
+        &new_start,
+        &storage,
+        &["--model", "new-provider/new-model", "--thinking", "low"],
+        &["new-fixed.ts", "new-connect.ts"],
+    );
+    assert_eq!(
+        new_prompt["text"],
+        "/skill:new-native 新固定指示\n第二行\n\n后续 Bot 的输入"
+    );
+    assert_eq!(
+        herdr.calls().len(),
+        original_calls.len() + 4,
+        "只增加另一次创建的四次外部调用"
+    );
+    assert_eq!(
+        external_objects(&herdr, &existing),
+        (original_tabs[0].clone(), original_start, original_prompt)
+    );
+    let before_delete_calls = herdr.calls();
+    let before_delete_tabs = herdr.tabs();
+    let stale_preview = preview(&server, &zone, template_id).await;
+    let deleted = request_json_over_tcp(
+        server.addr(),
+        "DELETE",
+        &format!("/api/bot-templates/{template_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(deleted.status, 200, "{}", deleted.body);
+    write_snapshot_catalog(&storage, "old");
+    assert_eq!(
+        get_over_tcp(server.addr(), &format!("/api/bot-templates/{template_id}"))
+            .await
+            .status,
+        404
+    );
+    let rejected = create(
+        &server,
+        &create_body(&zone, template_id, &stale_preview, "不能发送的输入"),
+    )
+    .await;
+    assert_eq!(rejected.status, 404, "{}", rejected.body);
+    let rejected: Value = serde_json::from_str(&rejected.body).unwrap();
+    assert_eq!(rejected["code"], "template-not-found");
+    // 不只看页面列表：跨过一段调度窗口，独立外部日志与对象完全相同，两条已完成创建也不变。
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        herdr.calls(),
+        before_delete_calls,
+        "删除来源不重发、改配、关闭或重建已有 Bot"
+    );
+    assert_eq!(herdr.tabs(), before_delete_tabs);
+    assert_eq!(creation(&server, &id).await, existing);
+    assert_eq!(creation(&server, &new_id).await, new_bot);
+}
+
 /// P51：创建 Bot 不共享固定操作的执行资格；创建停在提交阶段时，固定操作仍被接受并执行。
 #[tokio::test(flavor = "multi_thread")]
 async fn bot_creation_does_not_take_the_fixed_operation_execution_slot() {
