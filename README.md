@@ -407,7 +407,7 @@ status_cache_ttl_seconds = 10
 新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
 
 1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
-2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`；Pi 另可选 `web-access`（标识 `pi-web-access`），直接加载本机第三方源码入口。新模板初始零选，可不选、单选或多选。`herdr-agent-state`（Herdr 官方集成）与 `model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。官方集成在 Herdr 环境中上报 agent 状态及原生会话引用；它不等于可选的 `connect-bot`，也不会自动向 chat 登记会话。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`；OMP 另可选 `oh-my-wayfinder`，Pi 另可选 `web-access`（标识 `pi-web-access`），直接加载本机第三方源码入口。新模板初始零选，可不选、单选或多选。`herdr-agent-state`（Herdr 官方集成）与 `model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。官方集成在 Herdr 环境中上报 agent 状态及原生会话引用；它不等于可选的 `connect-bot`，也不会自动向 chat 登记会话。
 3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
 
 “下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
@@ -435,6 +435,10 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
 `openai-codex/gpt-6.1-sol` 与 `deepseek/deepseek-flash`，不做裸名匹配或 provider 回退。
 
 #### 维护共享选项目录
+
+OMP 可选扩展 `oh-my-wayfinder`（标识 `omp-oh-my-wayfinder`）加载 `E:\Developer\myhub\oh-my-wayfinder\extensions\entry.ts`，由该入口注册 `/hyper-auto-coding` 与 `/spec-to-code`。使用这些命令的模板必须选中此扩展；仅在 prompt 中填写命令不会加载扩展，也不应将其当作同名 Skill。部署到其他位置时更新 `entrypoint`。选项与模板修改无需重启 herdr-bot，但只对之后新建的 Bot 生效，已运行的会话不会自动补载。
+
+当前 OMP 扩展命令解析器只按普通空格分隔命令名与参数，不将换行当作分隔符。若模板 prompt 仅填写 `/hyper-auto-coding`、创建时 input 填写 slug，须将 prompt 保存为 `"/hyper-auto-coding "`（末尾一个普通空格）；herdr-bot 会保留此空格，再以空行连接 input，Wayfinder 会对收到的 slug 去除首尾空白。否则命令名会连同换行和 slug 一起被查找，未命中后作为普通用户文本交给模型。也可将 prompt 留空，在 input 中一次填写 `/hyper-auto-coding <slug>`。
 
 Pi 可选扩展 `web-access` 的入口为 `E:\Developer\myhub\pi-extension\pi-web-access\index.ts`。首次使用前，在该源码目录执行 `npm install` 安装依赖；源码加载不依赖 npm 发布包，但仍需要源码自身的 npm 依赖。部署到其他位置时需更新元数据中的 `entrypoint`。源码更新会影响之后新启动的 Bot，不会自动替换已运行会话中的扩展。
 

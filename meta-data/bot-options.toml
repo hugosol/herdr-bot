@@ -63,6 +63,12 @@ agent = 'omp'
 kind = 'optional'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\connect-bot.ts'
 [[extensions]]
+id = 'omp-oh-my-wayfinder'
+label = 'oh-my-wayfinder'
+agent = 'omp'
+kind = 'optional'
+entrypoint = 'E:\Developer\myhub\oh-my-wayfinder\extensions\entry.ts'
+[[extensions]]
 id = 'pi-herdr-agent-state'
 label = 'herdr-agent-state'
 agent = 'pi'
