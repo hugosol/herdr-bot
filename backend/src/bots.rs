@@ -337,8 +337,12 @@ async fn collect_native_history(
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut last_reason = String::from("native identity unavailable");
     let identity = loop {
-        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind)).await {
-            Ok(Ok(identity)) => break identity,
+        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind, deadline)).await {
+            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
+            Ok(Ok(_)) => {
+                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
+                return;
+            }
             Ok(Err(error)) => last_reason = error.message(),
             Err(_) => {
                 eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
