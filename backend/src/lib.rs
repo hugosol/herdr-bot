@@ -226,8 +226,8 @@ pub fn app_with_state(
             config.operations.stop.working_directory.clone(),
         ),
         execution: Arc::new(Mutex::new(())),
+        history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
         sessions,
-        history: Arc::new(history::History::new(config.sessions.history_file.clone())),
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
         bot_templates: Arc::new(templates::Templates::new(
