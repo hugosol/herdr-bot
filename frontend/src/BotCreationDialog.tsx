@@ -8,6 +8,7 @@ import {
   type BotPreview,
 } from './botCreationApi'
 import { fetchBotTemplates, type BotTemplate } from './botTemplateApi'
+import { renderBotNameExample } from './botTemplateNaming'
 
 const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
   starting: '正在启动',
@@ -50,15 +51,16 @@ function failureOutcomeText(creation: BotCreation): string {
 /**
  * 从某个 zone 创建 Bot 的弹窗。
  *
- * 名称只显示后端预览的只读结果，没有手工覆盖入口。确认后页面轮询同一次创建：只有后端确认目标
+ * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改模板。确认后页面轮询同一次创建：只有后端确认目标
  * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
 export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
   const [templates, setTemplates] = useState<BotTemplate[] | null>(null)
   const [templateId, setTemplateId] = useState('')
-  const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('default')
+  const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
+  const [botNameRule, setBotNameRule] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<BotPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
@@ -93,7 +95,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }, [])
 
-  // 模板选定后由后端生成名称与本次短实例标识；页面不自己拼名称。
+  // 模板切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
   useEffect(() => {
     if (templateId === '') {
       setPreview(null)
@@ -102,12 +104,15 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     const sequence = previewSequence.current + 1
     previewSequence.current = sequence
     setPreviewing(true)
+    setPreview(null)
+    setBotNameRule('')
     setPreviewError(null)
     void previewBot(zone, templateId).then((result) => {
       if (previewSequence.current !== sequence) return
       setPreviewing(false)
       if (result.kind === 'ok') {
         setPreview(result.value)
+        setBotNameRule(result.value.botNameRule)
       } else {
         setPreview(null)
         setPreviewError(
@@ -145,9 +150,18 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }, [creation])
 
+  const name = preview === null ? '' : renderBotNameExample(
+    botNameRule,
+    preview.templateName,
+    preview.agent,
+    { zoneName: preview.zoneName, botId: preview.botId },
+  )
+  const validName = botNameRule.trim() !== '' && !/[\r\n]/.test(botNameRule) &&
+    name.trim() !== '' && !/[\r\n]/.test(name)
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (preview === null || submitting || creation !== null) return
+    if (preview === null || previewing || !validName || submitting || creation !== null) return
 
     setSubmitting(true)
     setRequestError(null)
@@ -155,7 +169,8 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
       zone,
       templateId: preview.templateId,
       botId: preview.botId,
-      expectedName: preview.name,
+      expectedName: name,
+      botNameRule,
       input,
       workspaceTarget,
     })
@@ -177,7 +192,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
   const running = creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed'
   const finished = creation !== null && !running
   const canSubmit =
-    preview !== null && !previewing && !submitting && !running && templates !== null
+    preview !== null && validName && !previewing && !submitting && creation === null && templates !== null
 
   return (
     <div className="zone-modal">
@@ -210,7 +225,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           data-testid="bot-template"
           value={templateId}
           onChange={(event) => setTemplateId(event.target.value)}
-          disabled={templates === null || running || finished}
+          disabled={templates === null || submitting || running || finished}
         >
           {templates !== null && templates.length === 0 && <option value="">没有可用的模板</option>}
           {(templates ?? []).map((template) => (
@@ -251,11 +266,24 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           rows={4}
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          disabled={running || finished}
+          disabled={submitting || running || finished}
           spellCheck={false}
         />
 
-        <span className="zone-form__label">本次 Bot 名称（只读预览）</span>
+        <label className="zone-form__label" htmlFor="bot-name-rule">本次 Bot 名称（可编辑规则）</label>
+        <input
+          id="bot-name-rule"
+          className="zone-form__input"
+          value={botNameRule}
+          onChange={(event) => setBotNameRule(event.target.value)}
+          disabled={preview === null || previewing || submitting || running || finished}
+          spellCheck={false}
+          aria-describedby="bot-name-hint"
+        />
+        <p id="bot-name-hint" className="zone-dialog__hint">
+          可修改固定文字，保留的占位符会自动转换；仅影响本次创建，不修改模板。
+        </p>
+        <span className="zone-form__label">最终名称预览</span>
         <output
           className="bot-name-preview"
           data-testid="bot-name-preview"
@@ -265,14 +293,14 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           {previewing
             ? '正在生成名称……'
             : preview !== null
-              ? preview.name
+              ? name || '请输入名称规则'
               : previewError !== null
                 ? '名称暂不可用'
                 : '选择模板后显示'}
         </output>
-        <p className="zone-dialog__hint">
-          名称由模板的 bot-name 规则与本次短实例标识决定，不能在弹窗中手工覆盖。
-        </p>
+        {preview !== null && !previewing && !validName && (
+          <p className="zone-feedback" role="alert">名称必须是非空单行文字。</p>
+        )}
 
         {loadError !== null && (
           <p className="zone-feedback" data-testid="bot-load-error" data-kind="error" role="alert">

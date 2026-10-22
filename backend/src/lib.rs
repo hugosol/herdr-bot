@@ -936,7 +936,10 @@ struct CreateBotRequest {
     workspace_target: WorkspaceTarget,
     #[serde(default)]
     input: String,
-    /// 预览时看到的名称；若模板在预览之后被修改，创建明确拒绝而不是悄悄改名。
+    /// 仅用于本次创建的命名规则；省略时使用模板规则，不写回模板。
+    #[serde(default)]
+    bot_name_rule: Option<String>,
+    /// 预览时看到的名称；若有效规则渲染出的名称变化，明确拒绝而不是悄悄改名。
     #[serde(default)]
     expected_name: Option<String>,
 }
@@ -948,7 +951,10 @@ struct BotPreviewResponse {
     bot_id: String,
     name: String,
     zone: String,
+    zone_name: String,
     template_id: String,
+    template_name: String,
+    bot_name_rule: String,
     agent: &'static str,
 }
 
@@ -975,8 +981,14 @@ async fn preview_bot(State(state): State<AppState>, request: Request) -> Respons
         Json(BotPreviewResponse {
             bot_id,
             name,
+            zone_name: std::path::Path::new(&zone)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             zone,
             template_id: template.id,
+            template_name: template.name,
+            bot_name_rule: template.bot_name,
             agent,
         }),
     )
@@ -1018,7 +1030,29 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
             ),
         },
     };
-    let name = bots::render_bot_name(&template.bot_name, &zone, &template, &input.bot_id);
+    let rule = input.bot_name_rule.as_deref().unwrap_or(&template.bot_name);
+    if rule.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "bot-name-rule-required",
+            "本次 bot-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        );
+    }
+    if rule.contains(|c| c == '\n' || c == '\r') {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "bot-name-rule-not-single-line",
+            "本次 bot-name 必须是单行规则，不能包含换行。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        );
+    }
+    let name = bots::render_bot_name(rule, &zone, &template, &input.bot_id);
+    if name.trim().is_empty() {
+        return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "bot-name-required",
+            "命名规则生成的 Bot 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        );
+    }
     if let Some(expected) = input.expected_name {
         if expected != name {
             return rejected_owned(

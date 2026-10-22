@@ -32,7 +32,7 @@ countdown_seconds = 10
 # offline_retention_seconds = 30
 
 # Herdr 控制设置（必须显式配置，没有代码缺省值）。
-# 创建 Bot 时默认按 workspace_name 精确查找唯一的 Herdr Workspace；弹窗选“当前”时改按 zone 根目录名匹配。
+# 弹窗初始选“当前”，按 zone 根目录名匹配；改选“默认”时按 workspace_name 精确查找唯一 Herdr Workspace。
 # 浏览器不能指定任意 Workspace 名称。缺失、空字符串或纯空白会让服务启动失败。
 # executable 可选，缺省按 PATH 查找 herdr；通常不需要修改。
 [herdr]

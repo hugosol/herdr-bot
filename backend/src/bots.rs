@@ -69,7 +69,7 @@ pub struct Failure {
 pub struct CreationView {
     /// 本次创建的生命周期标识（不是 Herdr Tab ID）。
     pub id: String,
-    /// 按模板命名规则生成并实际用作 Tab 显示名的名称。
+    /// 按本次有效命名规则（创建覆盖或模板默认）生成并实际用作 Tab 显示名的名称。
     pub name: String,
     /// 发起创建的已登记 zone 目录。
     pub zone: String,
@@ -195,10 +195,30 @@ pub fn render_bot_name(rule: &str, zone: &str, template: &BotTemplate, bot_id: &
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    rule.replace("{zone.name}", &zone_name)
-        .replace("{template.name}", &template.name)
-        .replace("{agent}", template.agent.label())
-        .replace("{bot.id}", bot_id)
+    // 只扫描规则本身一次；替换值中的占位符按字面保留，与页面本地预览一致。
+    let mut rendered = String::with_capacity(rule.len());
+    let mut remaining = rule;
+    while let Some(start) = remaining.find('{') {
+        rendered.push_str(&remaining[..start]);
+        remaining = &remaining[start..];
+        let replacement = [
+            ("{zone.name}", zone_name.as_str()),
+            ("{template.name}", template.name.as_str()),
+            ("{agent}", template.agent.label()),
+            ("{bot.id}", bot_id),
+        ]
+        .into_iter()
+        .find(|(placeholder, _)| remaining.starts_with(*placeholder));
+        if let Some((placeholder, value)) = replacement {
+            rendered.push_str(value);
+            remaining = &remaining[placeholder.len()..];
+        } else {
+            rendered.push('{');
+            remaining = &remaining[1..];
+        }
+    }
+    rendered.push_str(remaining);
+    rendered
 }
 
 /// 把 Skill、固定 prompt 与本次 input 合成一次提交的正文。

@@ -434,6 +434,105 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn per_create_rule_uses_preview_context_without_changing_the_template() {
+    let herdr = HerdrFixture::new("bot creation rule override");
+    let storage = TempDir::new("bot creation rule override storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    // Replacement values deliberately contain recognized placeholders: they stay literal.
+    let zone_dir = storage.path().join("alpha-{template.name}-{bot.id}");
+    fs::create_dir_all(&zone_dir).expect("创建 zone");
+    let zone = register(&server, &zone_dir).await;
+    let mut template = default_template();
+    template["name"] = json!("审查-{agent}-{bot.id}");
+    let saved = save_template(&server, template).await;
+    let template_id = saved["id"].as_str().expect("模板标识");
+    let response = preview(&server, &zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    let bot_id = preview["botId"].as_str().expect("短标识");
+    assert_eq!(preview["zoneName"], "alpha-{template.name}-{bot.id}");
+    assert_eq!(preview["templateName"], "审查-{agent}-{bot.id}");
+    assert_eq!(preview["botNameRule"], saved["botName"]);
+    assert_eq!(preview["agent"], "omp");
+    assert_eq!(
+        preview["name"],
+        format!("alpha-{{template.name}}-{{bot.id}} · 审查-{{agent}}-{{bot.id}} · {bot_id}")
+    );
+    let expected = format!(
+        "自定 / {bot_id} / alpha-{{template.name}}-{{bot.id}} / 审查-{{agent}}-{{bot.id}} / omp / {{unknown}} / {bot_id}"
+    );
+    let mut body = create_body(&zone, template_id, &preview, "检查自定名称");
+    body["botNameRule"] = json!("自定 / {bot.id} / {zone.name} / {template.name} / {agent} / {unknown} / {bot.id}");
+    body["expectedName"] = json!(expected);
+    let response = create(&server, body).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建 JSON");
+    assert_eq!(accepted["name"], expected);
+    let finished = wait_stage(&server, accepted["id"].as_str().expect("创建标识"), "succeeded").await;
+    assert_eq!(finished["name"], expected);
+    assert_eq!(herdr.tabs().last().expect("实际 Tab")["label"], expected);
+    assert_eq!(read_template(&server, template_id).await, saved);
+
+    // Omission still selects the stored template rule for a later creation.
+    let response = self::preview(&server, &zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let next_preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    assert_eq!(next_preview["botNameRule"], saved["botName"]);
+    let response = create(&server, create_body(&zone, template_id, &next_preview, "默认规则")).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建 JSON");
+    let finished = wait_stage(&server, accepted["id"].as_str().expect("创建标识"), "succeeded").await;
+    assert_eq!(finished["name"], next_preview["name"]);
+    assert_eq!(herdr.tabs().last().expect("默认规则 Tab")["label"], next_preview["name"]);
+    assert_eq!(read_template(&server, template_id).await, saved);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects() {
+    let herdr = HerdrFixture::new("bot creation invalid rule");
+    let storage = TempDir::new("bot creation invalid rule storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    let (zone, template_id) = prepare_zone_and_template(&server, &storage).await;
+    let response = preview(&server, &zone, &template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    for (rule, status, code) in [
+        ("", 400, "bot-name-rule-required"),
+        (" \t ", 400, "bot-name-rule-required"),
+        ("first\nsecond", 400, "bot-name-rule-not-single-line"),
+        ("first\rsecond", 400, "bot-name-rule-not-single-line"),
+        ("changed {bot.id}", 409, "name-preview-stale"),
+    ] {
+        let mut body = create_body(&zone, &template_id, &preview, "不可提交");
+        body["botNameRule"] = json!(rule);
+        let response = create(&server, body).await;
+        assert_eq!(response.status, status, "{rule:?}: {}", response.body);
+        let rejected: Value = serde_json::from_str(&response.body).expect("拒绝 JSON");
+        assert_eq!(rejected["code"], code, "{rejected}");
+        assert!(herdr.calls().is_empty(), "拒绝前不能调用 Herdr：{:?}", herdr.calls());
+        assert!(herdr.tabs().is_empty(), "拒绝不能创建 Tab");
+    }
+    // A nonblank rule can still render blank for a registered filesystem root.
+    let root = Path::new(&zone).ancestors().last().expect("文件系统根目录");
+    let root_zone = register(&server, root).await;
+    let response = self::preview(&server, &root_zone, &template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let root_preview: Value = serde_json::from_str(&response.body).expect("根目录预览 JSON");
+    assert_eq!(root_preview["zoneName"], "");
+    let mut body = create_body(&root_zone, &template_id, &root_preview, "不可提交");
+    body["botNameRule"] = json!("{zone.name}");
+    body["expectedName"] = json!("");
+    let response = create(&server, body).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    let rejected: Value = serde_json::from_str(&response.body).expect("拒绝 JSON");
+    assert_eq!(rejected["code"], "bot-name-required");
+    assert!(herdr.calls().is_empty());
+    assert!(herdr.tabs().is_empty());
+    let saved = read_template(&server, &template_id).await;
+    assert_eq!(saved["botName"], default_template()["botName"]);
+}
+
 fn bots_like_bot_id(value: &str) -> bool {
     value.len() == 6
         && value

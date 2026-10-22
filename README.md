@@ -258,7 +258,7 @@ offline_retention_seconds = 30
 
 ### `[herdr]` 配置（必须显式配置）
 
-从 zone 创建 Bot 时，弹窗默认使用这个服务端明确配置的 Herdr Workspace；选择“当前”则按 zone 根目录名匹配。这一段**没有
+从 zone 创建 Bot 时，弹窗初始选择“当前”，按 zone 根目录名匹配；改选“默认”才使用这个服务端明确配置的 Herdr Workspace。这一段**没有
 代码缺省值**：
 
 ```toml
@@ -403,7 +403,7 @@ command_timeout_seconds = 300
 新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
 
 1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
-2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 可选 `codebase-tools`、`connect-bot`；Pi 仅可选 `codebase-tools`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
 3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
 
 “下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
@@ -422,7 +422,7 @@ command_timeout_seconds = 300
   否则重置并提示。
 - `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
 - `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
-- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
+- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools","pi-connect-bot"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
 
 以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
 OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
@@ -471,14 +471,17 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 ### 从 zone 创建 Bot
 
 `zone` 入口的每个 zone 行都有一个独立的“+”入口。打开弹窗后选择模板、填写可为空的初始 input；
-弹窗只显示后端预览的本次名称，**没有手工命名输入**。确认后由后端执行创建，页面不再自己计算名称：
+弹窗沿用原布局，在名称区域提供单行“本次 Bot 名称（可编辑规则）”及最终名称预览。规则初始来自模板，
+可修改固定文字与占位符；前端复用模板编辑的转换函数，使用后端提供的真实 zone、模板名、agent 与本次短标识实时预览。
+编辑不请求后端、不保存模板；切换模板重新载入规则。规则与生成名称必须非空且为单行，创建开始后不可继续编辑。
+提交时后端重新计算并核对最终名称，只有一致才继续创建；未知占位符保持字面值，替换值不递归展开。
 
-弹窗的 `Herdr Workspace` 提供“默认”和“当前”，每次打开重置为默认，不保存到模板或记住上次选择。
+弹窗的 `Herdr Workspace` 提供“默认”和“当前”，每次打开重置为“当前”，不保存到模板或记住上次选择。
 “当前”取 zone 根目录的最后一级目录名，不使用文件浏览中的子目录；例如 `E:\projects\alpha` 匹配 `alpha`。
 盘符根目录等无末级目录名的 zone 选择“当前”时拒绝创建，并提示改选默认 Workspace。
 
 1. 默认按 `[herdr] workspace_name`、当前按 zone 根目录名精确查找唯一 Workspace。区分大小写，当前焦点不会影响选择；零个或多个匹配都失败，显示实际目标名称且不新建、不回退。
-2. 在目标 Workspace 中新建独立 Tab，显示名严格使用模板 `bot-name` 的结果，cwd 显式设为该 zone 的目录。
+2. 在目标 Workspace 中新建独立 Tab，显示名使用本次命名规则的转换结果（未覆盖时沿用模板 `bot-name`），cwd 显式设为该 zone 的目录。
 3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
 4. 就绪后才把 Skill、模板 prompt 与本次 input 合成一次初始指示提交；不先单独发起 Skill 轮次。
 5. 初始指示提交被确认后立即显示“创建成功，初始指示已提交”，不等待模型完成任务、Skill 执行或
@@ -498,12 +501,14 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 接口：
 
 - `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
-  名称：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","templateId":"…","agent":"omp"}`。
+  初始名称及本地转换上下文：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","zoneName":"alpha","templateId":"…","templateName":"审查","botNameRule":"{zone.name} · {template.name} · {bot.id}","agent":"omp"}`。
 - `POST /api/bots`，JSON 为
-  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…","workspaceTarget":"default"}`；接受后返回 HTTP 202
+  `{"zone":"…","templateId":"…","botId":"a7f3c2","botNameRule":"{zone.name} · 发布检查 · {bot.id}","input":"…","expectedName":"alpha · 发布检查 · a7f3c2","workspaceTarget":"current"}`；接受后返回 HTTP 202
   与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。`workspaceTarget` 可为 `default` 或 `current`，省略时为 `default`；
   不接受任意 Workspace 名称或其他枚举值。当前模式无目录名时返回 400 `workspace-name-unavailable`，不调用 Herdr。
-  模板与目标名称在请求被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
+  `botNameRule` 可省略，省略时使用当前模板规则；提供时只用于本次创建，不写回模板。空白规则、换行规则、空白结果分别返回
+  400 `bot-name-rule-required`、`bot-name-rule-not-single-line`、`bot-name-required`，均不调用 Herdr。
+  模板与目标名称在请求被接受时固定为快照。若 `expectedName` 与本次规则使用真实字段算出的名称不同，返回 409 `name-preview-stale`，
   不会悄悄改名。
 - `GET /api/bots/{id}` 读取同一次创建的当前阶段：`starting`、`submitting`、`succeeded` 或 `failed`。
   已取得的 `tabId` / `paneId` / `agentName` 只在确实取得后出现；失败时附加
@@ -519,8 +524,8 @@ Herdr / agent。用户确认时可以：
 
 1. 在 `herdr-bot.toml` 明确写 `[herdr] workspace_name = 'bot-playground'`（或本次显式目标），并确认
    真实 Herdr 已在运行；在 Herdr 中让焦点停在另一个 Workspace。
-2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建，记录结果中的 Bot
-   名称、Tab / Pane 标识。
+2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建。验证配置目标时显式选“默认”；
+   验证“当前”时预先准备与 zone 根目录同名的 Herdr Workspace。编辑本次规则并核对预览，记录结果中的 Bot 名称、Tab / Pane 标识。
 3. 用独立 Herdr 命令核对对象：`herdr workspace list` 找到配置目标；`herdr tab list` / `herdr pane get`
    找到结果中的标识；`herdr pane process-info --pane <paneId>` 或 `herdr agent get <paneId>` 读取实际
    cwd，应与所选 zone 目录一致，而不是焦点 Workspace 的目录。
@@ -1380,6 +1385,13 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
 - 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
   见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
+
+## 变更记录：创建 Bot 名称编辑（2026-10-22）
+
+- 按确认的最小原型保留原弹窗布局，仅新增本次单行命名规则编辑与最终名称预览；前端复用转换函数，编辑不产生请求、不修改模板。提交由后端重新计算并核对名称。
+- Workspace 每次打开初始选“当前”；仍按 zone 根目录名匹配，不使用 Herdr 焦点。
+- Pi 新增可选 `connect-bot`，已有模板不自动勾选。
+- 实际 Chromium 桌面与 390×844 窄屏已检查；窄屏弹窗宽度与滚动宽度均为 364，无横向溢出。编辑 `{zone.name} · 发布检查 · {bot.id}` 后无网络请求，预览与受控 Herdr 记录的最终 Tab 名一致，模板规则未改变。受控启动参数包含 Pi model-cost 与所选 connect-bot；这不证明真实 Pi 扩展加载或接入成功，也不替代真机手机验收。
 
 ## 变更记录：项目更名为 herdr-bot（2026-10-21）
 

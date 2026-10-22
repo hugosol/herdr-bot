@@ -41,6 +41,7 @@ async function dialog(page: Page, zone: string) {
   await page.getByTestId('tab-files').click()
   await zoneRowFor(page, zone).getByTestId('zone-create-bot').click()
   await expect(page.getByTestId('bot-name-preview')).toHaveAttribute('data-state', 'ready')
+  await page.locator('#bot-workspace-target').selectOption('default')
   return page.getByTestId('bot-creation-dialog')
 }
 
@@ -67,7 +68,6 @@ test('六种模板集合准确显式启动，固定项不可取消，创建页�
     if (index === 0) {
       const form = await dialog(page, zone)
       await expect(form.locator('input[type=checkbox]')).toHaveCount(0)
-      await expect(form.locator('select')).toHaveCount(1)
       for (const override of [{ extensions: [] }, { entrypoint: 'arbitrary.ts' }, { fixedExtensions: [] }]) {
         const rejected = await create(zone, saved.id, override)
         expect(rejected.status).toBe(400)
