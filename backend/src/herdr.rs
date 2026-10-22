@@ -311,8 +311,8 @@ impl HerdrClient {
             Some("path") => {
                 let path = PathBuf::from(reference_value);
                 if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
-                let kind = kind.to_owned();
-                tokio::task::spawn_blocking(move || native_header(path, &kind, deadline)).await
+                let allow_title_metadata = kind == "omp";
+                tokio::task::spawn_blocking(move || native_header(path, allow_title_metadata, deadline)).await
                     .map_err(|error| native_error(&format!("native header reader failed: {error}")))?
             }
             _ => Err(native_error("unsupported native reference kind")),
@@ -397,7 +397,7 @@ fn nonempty(value: Option<&Value>) -> Option<&str> {
 /// Read only the metadata prefix of this exact file. OMP reserves a title line
 /// before the session header; Pi starts with the session header. Neither agent
 /// is inferred from the JSON shape, and conversation entries are never imported.
-fn native_header(path: PathBuf, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+fn native_header(path: PathBuf, allow_title_metadata: bool, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
     use std::io::Read;
     if tokio::time::Instant::now() >= deadline {
         return Err(native_error("native identity acquisition deadline expired"));
@@ -428,7 +428,7 @@ fn native_header(path: PathBuf, kind: &str, deadline: tokio::time::Instant) -> R
         let metadata: Value = serde_json::from_slice(&line)
             .map_err(|error| native_error(&format!("native metadata is not valid JSON: {error}")))?;
         match metadata.get("type").and_then(Value::as_str) {
-            Some("title") if kind == "omp" => continue,
+            Some("title") if allow_title_metadata => continue,
             Some("session") => {
                 let id = nonempty(metadata.get("id")).ok_or_else(|| native_error("native header has no ID"))?;
                 let cwd = nonempty(metadata.get("cwd")).ok_or_else(|| native_error("native header has no cwd"))?;
