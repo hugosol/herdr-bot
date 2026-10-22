@@ -6,7 +6,7 @@
 
 **Blocked by:** 05 — 让旧页面和失效模板可辨认、可拒绝、可修正。
 
-**Status:** in-progress
+**Status:** closed
 
 ## Acceptance criteria
 
@@ -25,4 +25,6 @@
 
 ## Comments
 
-2026-10-22：P49 桌面 1280×900 与移动视口 390×844 已操作验收。新增 `frontend/browser-tests/responsiveTemplates.spec.ts`，使用生产页面、真实服务/持久文件和元数据隔离副本；两档分别完成新增、编辑、草稿往返、明确保存与三类错误修正。未发现阻断布局，无需修改生产界面。截图、公开 HTTP/操作记录及供 08 复用的 H2 边界见 [`docs/bot-template-responsive-browser.md`](../../../docs/bot-template-responsive-browser.md)（仓库根目录路径）。构建成功，相关浏览器用例最终 **17 passed**；不宣称真实手机或真实 agent 启动通过。实现与验收已完成，等待独立集成后按规则将状态改为 `closed`。
+2026-10-22：P49 桌面 1280×900 与移动视口 390×844 已操作验收。新增 `frontend/browser-tests/responsiveTemplates.spec.ts`，使用生产页面、真实服务/持久文件和元数据隔离副本；两档分别完成新增、编辑、草稿往返、明确保存与三类错误修正。未发现阻断布局，无需修改生产界面。截图、公开 HTTP/操作记录及供 08 复用的 H2 边界见 [`docs/bot-template-responsive-browser.md`](../../../docs/bot-template-responsive-browser.md)（仓库根目录路径）。构建成功，相关浏览器用例最终 **17 passed**；不宣称真实手机或真实 agent 启动通过。实现与验收已完成；首次合入的集成提交 `9381daa23388f0b5456177a023de46d7fa670062` 已同步回本票开发分支。
+
+2026-10-22：独立集成验收确认当前分支位于上述合入提交且工作区无冲突、无未提交变更；执行全局 `npm --prefix frontend test`，26 个测试文件、184 个测试通过；执行 `cargo test --manifest-path backend/Cargo.toml`，363 个测试通过、3 个忽略。无需产品修复，按已实现、已测试且已合入规则关闭本票。本轮未重跑复杂脚本、浏览器 smoke、实机或跨票据整体验收，这些仍由最后独立门禁负责。
