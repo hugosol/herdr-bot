@@ -37,9 +37,21 @@ struct HistoryView<'a> {
     first_recorded_at: u64,
 }
 
+const PAGE_SIZE: usize = 50;
+
+#[derive(Deserialize, Default)]
+pub(crate) struct HistoryQuery {
+    page: Option<usize>,
+}
+
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HistoryList<'a> {
     sessions: Vec<HistoryView<'a>>,
+    page: usize,
+    page_size: usize,
+    total: usize,
+    total_pages: usize,
 }
 
 pub struct History {
@@ -134,7 +146,10 @@ fn update(target: &mut Option<String>, value: Option<&str>) {
     }
 }
 
-pub(crate) async fn get_history(State(state): State<AppState>) -> Response {
+pub(crate) async fn get_history(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
+) -> Response {
     let _guard = state.history.lock.lock().await;
     match state.history.read() {
         Ok(mut records) => {
@@ -142,14 +157,17 @@ pub(crate) async fn get_history(State(state): State<AppState>) -> Response {
                 b.first_recorded_at.cmp(&a.first_recorded_at)
                     .then_with(|| a.session_id.cmp(&b.session_id))
             });
-            let sessions = records.iter().map(|record| HistoryView {
+            let total = records.len();
+            let total_pages = total.div_ceil(PAGE_SIZE).max(1);
+            let page = query.page.unwrap_or(1).clamp(1, total_pages);
+            let sessions = records.iter().skip((page - 1) * PAGE_SIZE).take(PAGE_SIZE).map(|record| HistoryView {
                 session_id: &record.session_id,
                 session_name: record.session_name.as_deref(),
                 agent_type: record.agent_type.as_deref(),
                 cwd: record.cwd.as_deref(),
                 first_recorded_at: record.first_recorded_at,
             }).collect();
-            Json(HistoryList { sessions }).into_response()
+            Json(HistoryList { sessions, page, page_size: PAGE_SIZE, total, total_pages }).into_response()
         }
         Err(error) => crate::rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,

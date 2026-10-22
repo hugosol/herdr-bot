@@ -40,7 +40,8 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(missing.getByRole('cell').nth(1)).toHaveText('—')
     await expect(missing.getByRole('cell').nth(2)).toHaveText('—')
     await expect(history).not.toContainText(/SECRET-MODEL|private\/native|keepAlive|在线|离线|关机|来源/)
-    await expect(history.getByRole('button')).toHaveCount(0)
+    await expect(history.getByRole('table').getByRole('button')).toHaveCount(0)
+    await expect(history.getByRole('navigation', { name: '历史分页' })).toHaveCount(1)
     await expect(history.getByRole('textbox')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const rowGeometry = await longRow.evaluate((row) => {
