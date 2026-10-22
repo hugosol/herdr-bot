@@ -35,7 +35,7 @@ function failureOutcomeText(creation: BotCreation): string {
   }
   switch (failure.stage) {
     case 'workspace':
-      return '本次没有新建 Tab，也没有启动 agent；不会自动重试或改换 Workspace。'
+      return '本次没有新建 Tab，也没有启动 agent；不会自动重试或改换 Workspace。已保留表单，可直接再次创建，也可改选 Workspace 后创建。'
     case 'tab':
       return '没有继续启动 agent；已经产生的对象如果存在会保留，不会自动删除或重建。'
     case 'start':
@@ -159,12 +159,17 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
   const validName = botNameRule.trim() !== '' && !/[\r\n]/.test(botNameRule) &&
     name.trim() !== '' && !/[\r\n]/.test(name)
 
+  const workspaceFailed = creation?.stage === 'failed' && creation.failure?.stage === 'workspace'
+  const running = creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed'
+  const finished = creation !== null && !running && !workspaceFailed
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (preview === null || previewing || !validName || submitting || creation !== null) return
+    if (preview === null || previewing || !validName || submitting || (creation !== null && !workspaceFailed)) return
 
     setSubmitting(true)
     setRequestError(null)
+    setObservationError(null)
     const result = await createBot({
       zone,
       templateId: preview.templateId,
@@ -189,10 +194,9 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }
 
-  const running = creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed'
-  const finished = creation !== null && !running
   const canSubmit =
-    preview !== null && validName && !previewing && !submitting && creation === null && templates !== null
+    preview !== null && validName && !previewing && !submitting &&
+    (creation === null || workspaceFailed) && templates !== null
 
   return (
     <div className="zone-modal">

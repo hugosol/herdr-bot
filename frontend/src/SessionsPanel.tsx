@@ -83,6 +83,9 @@ function SessionCard({ session, waiting, monitoring }: SessionCardProps) {
         <strong className="session-card__name" data-testid="session-name">
           {sessionDisplayName(session)}
         </strong>
+        <span className="session-card__agent-type" data-testid="session-agent-type" aria-label="Agent 类型">
+          {session.agentType === 'pi' || session.agentType === 'omp' ? session.agentType : '未知'}
+        </span>
         {session.online ? null : (
           <span className="session-card__offline" data-testid="offline-tag">
             已离线

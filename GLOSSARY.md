@@ -132,6 +132,10 @@ _Avoid_: 客户端, 远程设备
 一个实现 connect-bot 的 agent 的对话单元；由该 agent 的扩展上报到 herdr-bot 主界面，每个 agent session 独立呈现其 keepAlive 与状态。
 _Avoid_: omp 会话, herdr session, 连接, 进程, 客户端
 
+**会话 agent 类型**:
+运行该 agent session 的 agent 种类，例如 pi 或 omp；它不同于模型、agent 状态或会话是否由 Bot 模板创建。未获知类型不表示会话离线。
+_Avoid_: 模型类型, Bot 模板类型, agent 状态
+
 **会话登记**:
 herdr-bot 当前跟踪某个 agent session 的记录；它不同于 agent 对话本身，登记消失不表示对话或聊天记录被删除。
 _Avoid_: 会话历史, 连接, agent 会话

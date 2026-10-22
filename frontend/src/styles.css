@@ -1544,6 +1544,16 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.session-card__agent-type {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid #555d69;
+  border-radius: 0.35rem;
+  color: #c7ced9;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
 .session-card__offline {
   flex: none;
   margin-left: auto;

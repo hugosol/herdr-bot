@@ -389,6 +389,100 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })).toHaveValue('current')
   })
 
+  it.each([
+    ['workspace-not-found', 'current'],
+    ['workspace-ambiguous', 'default'],
+    ['herdr-command-failed', 'default'],
+  ] as const)('Workspace 查询失败 %s 后保留表单并允许主动重试到 %s', async (code, target) => {
+    const user = userEvent.setup()
+    let attempts = 0
+    let resolveRetry!: (response: Response) => void
+    const retryResponse = new Promise<Response>((resolve) => { resolveRetry = resolve })
+    const { calls } = mockFetch((url, method) => {
+      if (url === '/api/bot-templates') {
+        return jsonResponse(200, {
+          templates: [TEMPLATE],
+          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+        })
+      }
+      if (url === '/api/bots/preview') return jsonResponse(200, PREVIEW)
+      if (url === '/api/bots' && method === 'POST') {
+        attempts += 1
+        return attempts === 1 ? jsonResponse(202, creation('starting')) : retryResponse
+      }
+      if (url === '/api/bots/bc-1') {
+        return jsonResponse(200, creation('failed', {
+          failure: { stage: 'workspace', code, message: 'Workspace 查询失败' },
+        }))
+      }
+      if (url === '/api/bots/bc-2') {
+        return jsonResponse(200, creation('succeeded', { id: 'bc-2' }))
+      }
+      return jsonResponse(404, {})
+    })
+    render(<BotCreationDialog zone={PREVIEW.zone} onClose={() => {}} />)
+    const dialog = screen.getByTestId('bot-creation-dialog')
+    const rule = within(dialog).getByRole('textbox', { name: /本次 Bot 名称/ })
+    const input = within(dialog).getByTestId('bot-input')
+    const workspace = within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })
+    const submit = within(dialog).getByTestId('bot-create-submit')
+    await vi.waitFor(() => expect(submit).toBeEnabled())
+    await user.type(input, '保留我的初始指示')
+    await user.clear(rule)
+    await user.type(rule, '保留名称 {{bot.id}')
+    const expectedRule = '保留名称 {bot.id}'
+    const expectedName = '保留名称 a7f3c2'
+    expect(rule).toHaveValue(expectedRule)
+    await user.click(submit)
+    expect(await within(dialog).findByTestId('bot-create-failure')).toHaveTextContent('查找 Workspace')
+    expect(submit).toBeEnabled()
+    expect(workspace).toBeEnabled()
+    expect(rule).toBeEnabled()
+    expect(input).toBeEnabled()
+    expect(within(dialog).getByTestId('bot-template')).toBeEnabled()
+    expect(within(dialog).getByTestId('bot-template')).toHaveValue(TEMPLATE.id)
+    expect(input).toHaveValue('保留我的初始指示')
+    expect(rule).toHaveValue(expectedRule)
+    expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(expectedName)
+    expect(attempts).toBe(1)
+    if (target !== 'current') await user.selectOptions(workspace, target)
+    await user.dblClick(submit)
+    expect(attempts).toBe(2)
+    expect(submit).toBeDisabled()
+    expect(workspace).toBeDisabled()
+    resolveRetry(jsonResponse(202, creation('starting', { id: 'bc-2' })))
+    expect(await within(dialog).findByText('正在启动')).toBeVisible()
+    expect(submit).toBeDisabled()
+    expect(await within(dialog).findByTestId('bot-create-success')).toBeVisible()
+    const bodies = calls.filter((call) => call.url === '/api/bots').map((call) => JSON.parse(call.body ?? '{}'))
+    expect(bodies).toEqual([
+      { zone: PREVIEW.zone, templateId: TEMPLATE.id, botId: PREVIEW.botId,
+        expectedName, botNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: 'current' },
+      { zone: PREVIEW.zone, templateId: TEMPLATE.id, botId: PREVIEW.botId,
+        expectedName, botNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: target },
+    ])
+    expect(calls.filter((call) => call.url === '/api/bots/preview')).toHaveLength(1)
+  })
+
+  it.each(['tab', 'start', 'submit'])('%s 阶段失败仍锁定表单且不能重复创建', async (stage) => {
+    const user = userEvent.setup()
+    const { calls } = mockCreationFailure(creation('failed', {
+      failure: { stage, code: 'herdr-command-failed', message: '保留失败现场' },
+    }))
+    render(<App />)
+    const dialog = await submitCreation(user)
+    await within(dialog).findByTestId('bot-create-failure')
+    for (const control of [
+      within(dialog).getByTestId('bot-create-submit'),
+      within(dialog).getByTestId('bot-template'),
+      within(dialog).getByTestId('bot-input'),
+      within(dialog).getByRole('textbox', { name: /本次 Bot 名称/ }),
+      within(dialog).getByRole('combobox', { name: 'Herdr Workspace' }),
+    ]) expect(control).toBeDisabled()
+    await user.click(within(dialog).getByTestId('bot-create-submit'))
+    expect(calls.filter((call) => call.url === '/api/bots')).toHaveLength(1)
+  })
+
   it('就绪或提交任一失败都不显示成功，并保留已知定位信息', async () => {
     const user = userEvent.setup()
     mockFetch((url, method) => {

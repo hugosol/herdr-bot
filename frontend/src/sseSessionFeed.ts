@@ -86,6 +86,7 @@ function toSessionView(value: unknown): SessionView | null {
     online: record.online === true,
     ...(sessionName === undefined ? {} : { sessionName }),
     ...(model === undefined ? {} : { model }),
+    ...(record.agentType === 'pi' || record.agentType === 'omp' ? { agentType: record.agentType } : {}),
     ...(state === undefined ? {} : { state }),
   }
 }

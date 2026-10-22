@@ -27,6 +27,7 @@ async function showSessions(sessions: SessionView[]) {
 const WORKING: SessionView = {
   sessionId: '3f9c1a72-aa10-4d0e-9b11-7c2e5f8a0011',
   sessionName: '会话桥契约梳理',
+  agentType: 'omp',
   cwd: 'E:\\Developer\\myhub\\herdr-bot',
   model: 'claude-sonnet-4-5',
   online: true,
@@ -44,10 +45,19 @@ describe('会话列表（卡片流）', () => {
     expect(within(card).getByTestId('session-cwd')).toHaveTextContent('E:\\Developer\\myhub\\herdr-bot')
     expect(within(card).getByTestId('session-model')).toHaveTextContent('claude-sonnet-4-5')
 
-    // 不显示最后活动时间：卡片的可见文本恰是这几项字段加上「完成后关机」按钮，多出任何一项都会让这条断言失败。
-    expect(card.textContent?.replace(/\s+/g, '')).toBe(
-      '会话桥契约梳理工作中E:\\Developer\\myhub\\herdr-botclaude-sonnet-4-5完成后关机',
-    )
+  })
+
+  it('名称旁常驻显示 pi、omp 或未知，不根据名字或模型猜测且离线仍显示', async () => {
+    await showSessions([
+      { ...WORKING, sessionId: 'pi-session', agentType: 'pi', sessionName: 'omp' },
+      { ...WORKING, sessionId: 'omp-session', agentType: 'omp', sessionName: 'pi', online: false },
+      { ...WORKING, sessionId: 'legacy-session', agentType: undefined, sessionName: '旧版 pi', model: 'omp' },
+    ])
+
+    for (const [name, expected] of [['omp', 'pi'], ['pi', 'omp'], ['旧版 pi', '未知']]) {
+      const card = screen.getByText(name, { selector: '[data-testid="session-name"]' }).closest('article')!
+      expect(within(card).getByTestId('session-agent-type')).toHaveTextContent(expected)
+    }
   })
 
   it('会话名为空时回退为「<cwd 目录名> · <sessionId 前 8 位>」', async () => {

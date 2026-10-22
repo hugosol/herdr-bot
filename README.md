@@ -480,6 +480,11 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 “当前”取 zone 根目录的最后一级目录名，不使用文件浏览中的子目录；例如 `E:\projects\alpha` 匹配 `alpha`。
 盘符根目录等无末级目录名的 zone 选择“当前”时拒绝创建，并提示改选默认 Workspace。
 
+Workspace 查找阶段失败（不存在、重名或 Herdr 不可达等）只提示，不锁定原弹窗：可以直接再次创建，
+也可以改选“默认 / 当前”后创建。模板、input、名称规则、短标识与名称预览全部保留；每次接受创建都产生
+独立尝试记录，不覆盖旧失败。不会自动切换或重试，也不增加提交前预检查。请求提交或后台执行期间仍防止
+重复提交；进入创建 Tab、启动 agent 或提交输入阶段后的失败仍保留结果，不开放同窗重建。
+
 1. 默认按 `[herdr] workspace_name`、当前按 zone 根目录名精确查找唯一 Workspace。区分大小写，当前焦点不会影响选择；零个或多个匹配都失败，显示实际目标名称且不新建、不回退。
 2. 在目标 Workspace 中新建独立 Tab，显示名使用本次命名规则的转换结果（未覆盖时沿用模板 `bot-name`），cwd 显式设为该 zone 的目录。
 3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
@@ -1036,6 +1041,11 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
 
 ## 会话登记的生命周期（chat 入口）
 
+每条会话名称旁常驻显示 agent 类型 `pi` / `omp`，离线时仍保留。类型由 my-agent-toolkit 对应的
+connect-bot 接入端在 `register.data.agentType` 上报，经服务端会话快照与增量更新下发，不从会话名、
+模型名或 Bot 模板猜测。后端接受可选字符串；旧扩展缺字段或前端不认识的类型显示“未知”，不影响接入、
+agent 状态、keepAlive 或关机监听。更新扩展并重新加载、注册后才会上报类型；不增加筛选或分组。
+
 `chat` 入口展示后端当前**全部**已登记会话，包括离线登记。在线／离线只表示最近一次上报是否过期，
 与 agent 是否在跑、浏览器能否连上后端都是不同的维度：
 
@@ -1385,6 +1395,15 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
 - 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
   见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
+
+## 变更记录：Workspace 失败恢复与 chat agent 类型（2026-10-22）
+
+- Workspace 查找失败后恢复原弹窗表单与创建资格；保留模板、input、名称规则、短标识及名称预览。每次重新创建使用独立后台记录，不覆盖旧失败；进行中防重复提交，Tab / agent / 输入阶段失败不开放重建。
+- my-agent-toolkit 的 Pi / OMP connect-bot 原生接入端明确上报 `agentType`；服务端保存并经 SSE 快照与增量更新下发，chat 名称旁常驻显示类型。旧扩展缺失或前端不认识的类型显示“未知”，不改变监听与会话生命周期。
+- 浏览器 smoke：先在旧产物复现下拉与创建按钮锁定；新产物在同窗查找失败后改选默认并成功创建，输入和名称不变，受控 Herdr 只产生一个 Tab 和一次原样初始输入。
+- 类型 smoke：调用真实 Pi / OMP connect-bot 接入代码，在受控宿主 API 边界注入上下文，将其真实生成的注册请求发到隔离后端；浏览器增量与刷新后快照均显示正确类型，即使模型名故意与 agent 类型相反。缺字段与未来字符串显示“未知”。桌面与 390×844 Chromium 窄屏已观察，窄屏滚动宽度等于 390；不宣称真实 Pi / OMP 进程加载或手机实机验收。
+- `npm test`：27 files / 203 tests passed；`npm run build` 与 `cargo build --bins` 成功。后端 `bot_creation` 26 例和 `session_events` 14 例通过，包含同短标识独立重建记录及类型快照 / 增量更新；全量命令在 300 秒被中断，已对尚未完成的 2 个 commit 用例、其余 8 个测试目标（49 例）与 doc-tests 补跑通过。真实 mDNS 用例仍按原标记忽略。toolkit `bun run typecheck` 成功；`bun run test` 全量 180 files / 1612 tests passed，0 fail。
+- 默认 `target/release/herdr-bot.exe` 构建因访问被拒绝，未停止现有服务或替换该文件；使用 `cargo build --release --bins --target-dir target/updated` 成功生成 `backend/target/updated/release/herdr-bot.exe`，运行中的服务未由本次验证切换。
 
 ## 变更记录：创建 Bot 名称编辑（2026-10-22）
 

@@ -1082,6 +1082,68 @@ async fn current_workspace_uses_exact_zone_basename_without_fallback() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn workspace_retry_reuses_preview_but_preserves_independent_creation_records() {
+    let fixture = input_fixture("workspace retry identity").await;
+    fixture.herdr.set_workspaces(json!([
+        {"workspace_id":"w-default","label":"bot-playground"}
+    ]));
+    let template = save_template(&fixture.server, default_template()).await;
+    let template_id = template["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &fixture.zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).unwrap();
+    let mut body = create_body(&fixture.zone, template_id, &preview, "保留重试输入");
+    body["workspaceTarget"] = json!("current");
+    let response = create(&fixture.server, body.clone()).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).unwrap();
+    let failed_id = accepted["id"].as_str().unwrap();
+    assert_ne!(accepted["id"], preview["botId"], "创建标识不是显示名短标识");
+    let failed = wait_stage(&fixture.server, failed_id, "failed").await;
+    assert_eq!(failed["failure"]["stage"], "workspace");
+    assert_eq!(failed["failure"]["code"], "workspace-not-found");
+    assert_eq!(call_kinds(&fixture.herdr), vec!["workspace_list"]);
+    assert!(fixture.herdr.tabs().is_empty());
+
+    // 同一目标也可主动重试；不要求用户先切换 Workspace，且旧失败不能被覆盖。
+    let response = create(&fixture.server, body.clone()).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let repeated: Value = serde_json::from_str(&response.body).unwrap();
+    let repeated_id = repeated["id"].as_str().unwrap();
+    assert_ne!(repeated["id"], accepted["id"]);
+    wait_stage(&fixture.server, repeated_id, "failed").await;
+    assert_eq!(creation(&fixture.server, failed_id).await, failed);
+    assert_eq!(call_kinds(&fixture.herdr), vec!["workspace_list", "workspace_list"]);
+
+    // 只改 Workspace；名称、botId、模板与 input 沿用同一次预览，不产生会话目录冲突。
+    body["workspaceTarget"] = json!("default");
+    let response = create(&fixture.server, body).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let retry: Value = serde_json::from_str(&response.body).unwrap();
+    let retry_id = retry["id"].as_str().unwrap();
+    assert_ne!(retry["id"], accepted["id"]);
+    assert_ne!(retry["id"], repeated["id"]);
+    let succeeded = wait_stage(&fixture.server, retry_id, "succeeded").await;
+    assert_eq!(succeeded["name"], failed["name"]);
+    assert_eq!(succeeded["name"], preview["name"]);
+    assert_eq!(succeeded["templateId"], failed["templateId"]);
+    assert_eq!(creation(&fixture.server, failed_id).await, failed);
+    assert_eq!(creation(&fixture.server, repeated_id).await["stage"], "failed");
+    assert_eq!(fixture.herdr.tabs().len(), 1);
+    assert_eq!(fixture.herdr.tabs()[0]["workspace"], "w-default");
+    let prompts = calls_of_kind(&fixture.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0]["text"], "保留重试输入");
+    let start = calls_of_kind(&fixture.herdr, "agent_start");
+    assert_eq!(start.len(), 1);
+    let session_dir = start[0]["args"][1].as_str().expect("独立会话目录");
+    assert_eq!(Path::new(session_dir).file_name().unwrap().to_str().unwrap(), retry_id);
+    assert_eq!(call_kinds(&fixture.herdr), vec![
+        "workspace_list", "workspace_list", "workspace_list", "tab_create", "agent_start", "agent_prompt",
+    ]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn current_workspace_rejects_root_without_a_directory_name() {
     let fixture = input_fixture("current workspace root").await;
     let root = Path::new(&fixture.zone).ancestors().last().unwrap();

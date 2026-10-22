@@ -33,6 +33,7 @@ impl PowerOff for NeverPowerOff {
 /// 一个用例独占的服务：真实监听端口的应用，加上可订阅的同一份会话表。
 struct SessionServer {
     server: TestServer,
+    sessions: Arc<SessionsState>,
     frames: broadcast::Receiver<Observation>,
 }
 
@@ -45,6 +46,7 @@ impl SessionServer {
             herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
+            sessions,
             frames,
         }
     }
@@ -170,6 +172,29 @@ async fn register_reports_online_count_and_publishes_the_view() {
         upsert_view(server.take_frame()),
         json!({"sessionId": "s1", "cwd": "C:/work", "online": true})
     );
+}
+
+/// 原生类型与其他注册字段一样更新并进快照；开放未来字符串，兼容缺字段的旧扩展。
+#[tokio::test]
+async fn agent_type_round_trips_through_upserts_and_snapshots() {
+    let mut server = SessionServer::start().await;
+    for agent_type in [Some("pi"), Some("omp"), Some("future-harness"), None] {
+        let mut data = json!({"cwd": "C:/work"});
+        if let Some(value) = agent_type {
+            data["agentType"] = json!(value);
+        }
+        let response = server.post(&json!({
+            "sessionId": "native", "kind": "register", "data": data
+        }).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let view = upsert_view(server.take_frame());
+        let snapshot = serde_json::to_value(server.sessions.snapshot().await).unwrap();
+        assert_eq!(snapshot[0], view);
+        match agent_type {
+            Some(value) => assert_eq!(view["agentType"], value),
+            None => assert!(view.get("agentType").is_none()),
+        }
+    }
 }
 
 /// 注册时的展示字段是快照：`sessionName`/`model` 进视图，`sessionFile`/`pid` 只存下不下发；

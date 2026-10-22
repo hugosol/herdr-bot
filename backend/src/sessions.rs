@@ -154,6 +154,9 @@ pub struct SessionView {
     /// 会话名，来自注册快照；为空即省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,
+    /// 原生 harness 类型；保留开放字符串，旧扩展缺省时省略。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
     /// 会话的工作目录，注册时必填。
     pub cwd: String,
     /// 模型的展示名，来自注册快照；为空即省略。
@@ -175,6 +178,7 @@ struct SessionRow {
     session_id: String,
     cwd: String,
     session_name: Option<String>,
+    agent_type: Option<String>,
     session_file: Option<String>,
     model: Option<String>,
     pid: Option<u32>,
@@ -193,6 +197,7 @@ impl SessionRow {
         SessionView {
             session_id: self.session_id.clone(),
             session_name: self.session_name.clone(),
+            agent_type: self.agent_type.clone(),
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             online: policy.is_online(self.last_seen, now),
@@ -357,6 +362,7 @@ impl SessionsState {
                 let RegisterData {
                     cwd,
                     session_name,
+                    agent_type,
                     session_file,
                     model,
                     pid,
@@ -367,6 +373,7 @@ impl SessionsState {
                         let before = row.view(now, policy);
                         row.cwd = cwd;
                         row.session_name = session_name;
+                        row.agent_type = agent_type;
                         row.session_file = session_file;
                         row.model = model;
                         row.pid = pid;
@@ -382,6 +389,7 @@ impl SessionsState {
                             session_id: session_id.clone(),
                             cwd,
                             session_name,
+                            agent_type,
                             session_file,
                             model,
                             pid,
@@ -526,6 +534,8 @@ struct RegisterData {
     cwd: String,
     /// 会话名；缺省即省略。
     session_name: Option<String>,
+    /// 原生 harness 的开放类型；缺省兼容旧扩展，未来字符串不影响接入。
+    agent_type: Option<String>,
     /// 会话文件路径；存下备查，不下发帧。
     session_file: Option<String>,
     /// 模型的展示名（注册时快照）；缺省即省略。
