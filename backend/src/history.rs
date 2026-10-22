@@ -20,6 +20,8 @@ use crate::AppState;
 struct HistoryRecord {
     session_id: String,
     session_name: Option<String>,
+    #[serde(default)]
+    name_from_zone: bool,
     agent_type: Option<String>,
     cwd: Option<String>,
     first_recorded_at: u64,
@@ -81,7 +83,7 @@ impl History {
         cwd: &str,
         session_file: Option<&str>,
     ) -> io::Result<()> {
-        self.register(session_id, Some(name), Some(agent_type), cwd, session_file).await
+        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, true).await
     }
 
     pub async fn register(
@@ -92,6 +94,18 @@ impl History {
         cwd: &str,
         session_file: Option<&str>,
     ) -> io::Result<()> {
+        self.record(session_id, session_name, agent_type, cwd, session_file, false).await
+    }
+
+    async fn record(
+        &self,
+        session_id: &str,
+        session_name: Option<&str>,
+        agent_type: Option<&str>,
+        cwd: &str,
+        session_file: Option<&str>,
+        from_zone: bool,
+    ) -> io::Result<()> {
         let _guard = self.lock.lock().await;
         let mut records = self.read()?;
         let session_name = valid_text(session_name);
@@ -101,7 +115,10 @@ impl History {
             .filter(|value| Path::new(value).is_absolute());
 
         if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
-            update(&mut record.session_name, session_name);
+            if from_zone || !record.name_from_zone {
+                update(&mut record.session_name, session_name);
+                if from_zone && session_name.is_some() { record.name_from_zone = true; }
+            }
             update(&mut record.agent_type, agent_type);
             update(&mut record.cwd, cwd);
             update(&mut record.session_file, session_file);
@@ -113,6 +130,7 @@ impl History {
             records.push(HistoryRecord {
                 session_id: session_id.to_owned(),
                 session_name: session_name.map(str::to_owned),
+                name_from_zone: from_zone && session_name.is_some(),
                 agent_type: agent_type.map(str::to_owned),
                 cwd: cwd.map(str::to_owned),
                 first_recorded_at,
