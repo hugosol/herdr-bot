@@ -762,6 +762,11 @@ async fn list_bot_templates(State(state): State<AppState>) -> Response {
 
 /// “读取单个 Bot 模板”：删除后由独立客户端按标识选择时得到明确的不存在。
 async fn get_bot_template(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> Response {
+    // Metadata health is global; stale selections are not. Keep the original IDs readable
+    // when the current catalog is valid, without pretending a broken catalog is usable.
+    if let Err(error) = state.bot_templates.catalog() {
+        return bot_template_error_response(error);
+    }
     match state.bot_templates.get(&id).await {
         Ok(template) => (StatusCode::OK, Json(BotTemplateView { template })).into_response(),
         Err(error) => bot_template_error_response(error),

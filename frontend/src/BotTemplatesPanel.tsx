@@ -224,14 +224,24 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
     }
   }
 
+  const modelUnavailable = data !== null &&
+    !(draft.model in (data.options.thinking[draft.agent] ?? {}))
+
   const thinkingOptions: BotTemplateOptions['thinking'][string][string] =
     draft.model === 'default'
       ? []
       : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
 
+  const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
   const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
   const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed')
   const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
+  const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
+  const selectionErrors = [
+    ...(modelUnavailable ? [`model「${draft.model}」不可用`] : []),
+    ...(thinkingUnavailable ? [`thinking「${draft.thinking}」不可用`] : []),
+    ...unavailableExtensions.map((id) => `扩展「${id}」不可用`),
+  ]
 
   return (
     <section className="bot-templates" data-testid="bot-templates">
@@ -366,6 +376,12 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
               ))}
             </ol>
 
+            {selectionErrors.length > 0 && (
+              <p className="zone-error" data-testid="template-selection-error" role="alert">
+                {selectionErrors.join('；')}；请显式修正选择后再保存或创建。仅查看或切换步骤不会修正已保存模板。
+              </p>
+            )}
+
             {step === 1 && <>
             <section className="bot-template-preview-card" aria-label="Bot 名称实时示例">
               <span className="bot-template-preview-card__label">Bot 名称 · 实时示例</span>
@@ -441,6 +457,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                   onChange={(event) => changeModel(event.target.value as BotTemplateInput['model'])}
                   disabled={saving}
                 >
+                  {modelUnavailable && <option value={draft.model} disabled>{draft.model}（不可用）</option>}
                   {data.options.models.filter((model) => model in (data.options.thinking[draft.agent] ?? {})).map((model) => (
                     <option key={model} value={model}>
                       {data.options.labels?.models?.[model] ?? (model === 'default' ? '沿用 Agent 默认值' : model)}
@@ -465,6 +482,7 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                   disabled={saving}
                 >
                   <option value="default">沿用 Agent 默认值</option>
+                  {thinkingUnavailable && <option value={draft.thinking} disabled>{draft.thinking}（不可用）</option>}
                   {thinkingOptions.map((thinking) => (
                     <option key={thinking} value={thinking}>
                       {thinking}
@@ -542,6 +560,17 @@ export function BotTemplatesPanel({ active }: { active: boolean }) {
                       }))}
                     />
                     {entry.label}
+                  </label>
+                ))}
+                {unavailableExtensions.map((id) => (
+                  <label key={id} className="bot-template-extension">
+                    <input type="checkbox" data-testid={`extension-${id}`} checked
+                      onChange={() => setDraft((current) => ({
+                        ...current,
+                        extensions: current.extensions.filter((selected) => selected !== id),
+                      }))}
+                    />
+                    {id}（不可用）
                   </label>
                 ))}
               </fieldset>
