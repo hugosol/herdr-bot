@@ -1,4 +1,4 @@
-//! Bot 实例身份、模板快照与独立新对话的公开接缝（S2 HTTP / S3 Herdr 控制）验收。
+//! Bot 实例身份、模板快照与原生存储选择的公开接缝（HTTP / Herdr 控制）验收。
 //!
 //! 期望值来自独立预写的字面样例、真实的临时目录，以及受控 Herdr 夹具自己写下的外部调用记录；
 //! 不调用 herdr-bot 的命名函数生成期望，也不把受控记录当作真实 Herdr / agent 已验证。真实 Herdr
@@ -174,22 +174,6 @@ fn string_args(call: &Value) -> Vec<String> {
         .collect()
 }
 
-/// 取 `--flag value` 的值；未出现时返回 None。
-fn flag_value(args: &[String], flag: &str) -> Option<String> {
-    args.iter()
-        .position(|arg| arg == flag)
-        .and_then(|index| args.get(index + 1).cloned())
-}
-
-/// 目录不存在或没有任何条目：本次启动不会读到预置的旧对话。
-fn is_fresh_directory(path: &Path) -> bool {
-    match fs::read_dir(path) {
-        Ok(mut entries) => entries.next().is_none(),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-        Err(error) => panic!("读取会话目录失败（{}）：{error}", path.display()),
-    }
-}
-
 fn template(agent: &str, name: &str, bot_name: &str) -> Value {
     json!({
         "name": name,
@@ -202,11 +186,12 @@ fn template(agent: &str, name: &str, bot_name: &str) -> Value {
     })
 }
 
-/// P48：两个 agent 都从各自全新的会话目录启动，不续接同 cwd 的旧对话。
-///
-/// 受控 Herdr 只记录启动选择；真实 OMP / Pi 是否加载旧上下文仍由人工 H1 在实际终端确认。
+/// P23/P24，S4（经公开创建 HTTP 驱动受控 Herdr）：原生存储选择留给 agent。
+/// 独立期望来自 contract：仅加载扩展，不传目录或强制新建/恢复参数。
+/// 具体违规：旧实现分配 bot-sessions 并覆盖 --session-dir；两种 agent 的完整 argv
+/// 和真实目录清单都可辨别此违规。真实原生落盘/发现另行隔离运行，不以此冒充。
 #[tokio::test(flavor = "multi_thread")]
-async fn each_agent_starts_in_its_own_fresh_session_directory_outside_the_zone() {
+async fn each_agent_keeps_its_native_storage_selection_without_allocating_directories() {
     let herdr = HerdrFixture::new("bot identity sessions");
     let storage = TempDir::new("bot identity sessions storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
@@ -242,45 +227,18 @@ async fn each_agent_starts_in_its_own_fresh_session_directory_outside_the_zone()
         .iter()
         .map(|start| start["agent_kind"].as_str().expect("agent 类型"))
         .collect();
-    assert_eq!(kinds, vec!["omp", "pi"], "OMP 与 Pi 都必须验证独立新对话");
+    assert_eq!(kinds, vec!["omp", "pi"], "OMP 与 Pi 都必须验证原生存储选择");
     assert_ne!(names[0], names[1], "两个 Bot 的控制别名不得相同");
 
-    let mut directories = Vec::new();
     for start in &starts {
         let args = string_args(start);
-        assert!(
-            !args.iter().any(|arg| matches!(
-                arg.as_str(),
-                "--continue" | "-c" | "--resume" | "-r" | "--session"
-            )),
-            "启动不得携带续接旧对话的显式参数：{args:?}"
-        );
-        assert!(
-            !args.iter().any(|arg| arg.contains("old-conversation")),
-            "启动选择不得引用预置的旧对话：{args:?}"
-        );
-
-        let directory =
-            flag_value(&args, "--session-dir").expect("每个 agent 都必须选择独立的新会话目录");
-        let path = Path::new(&directory);
-        assert!(
-            path.is_absolute(),
-            "会话目录必须是绝对路径，才能脱离 agent 的 cwd 解析：{directory}"
-        );
-        assert!(
-            !path.starts_with(&zone),
-            "会话目录不得写进 zone 工作目录：{directory}"
-        );
-        assert!(
-            is_fresh_directory(path),
-            "本次启动选择的会话目录不得含有预置的旧对话：{directory}"
-        );
-        directories.push(directory);
+        assert_eq!(args[0], "--no-extensions", "不得覆盖 agent 原生存储选择：{args:?}");
+        assert!(args[1..].chunks(2).all(|pair| pair.len() == 2 && pair[0] == "--extension"),
+            "默认模板只显式选择扩展：{args:?}");
     }
-    assert_ne!(
-        directories[0], directories[1],
-        "两个 Bot 不得共用同一个会话目录"
-    );
+    assert!(!storage.path().join("bot-sessions").exists(), "不得预分配原生目录");
+    assert_eq!(fs::read(&old_conversation).unwrap(), b"{\"type\":\"session\",\"id\":\"old\"}\n");
+    assert_eq!(fs::read_dir(&zone).unwrap().count(), 1);
 }
 
 /// P12 / P24：移除命名规则中的实例标识后连续创建，两个对象显示名完全相同且各自独立。
@@ -441,8 +399,7 @@ async fn same_name_creations_receive_their_own_configuration_and_input() {
         ["--model", "deepseek/deepseek-flash", "--thinking", "high"],
         "OMP 必须收到自己模板的预写配置"
     );
-    assert_eq!(omp_args[4], "--session-dir");
-    assert!(Path::new(&omp_args[5]).is_absolute());
+    assert_eq!(omp_args[4], "--no-extensions");
 
     let pi_args = string_args(pi_start);
     assert_eq!(
@@ -455,8 +412,7 @@ async fn same_name_creations_receive_their_own_configuration_and_input() {
         ],
         "Pi 必须收到自己模板的预写配置"
     );
-    assert_eq!(pi_args[4], "--session-dir");
-    assert!(Path::new(&pi_args[5]).is_absolute());
+    assert_eq!(pi_args[4], "--no-extensions");
 
     let prompts = calls_of_kind(&herdr, "agent_prompt");
     let omp_prompt = prompts

@@ -177,6 +177,7 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
   ])
   expect(await selectValues(page, 'template-skill')).toEqual([
     '',
+    'grill-with-docs',
     'teach',
     'code-review',
   ])

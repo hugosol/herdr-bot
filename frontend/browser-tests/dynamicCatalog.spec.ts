@@ -26,7 +26,7 @@ test('同一真实进程重新打开编辑、保存和创建各自读取当前�
   await page.getByTestId('template-cancel').click()
 
   // No tab change, page reload or process restart: reopening itself must fetch current choices.
-  fs.writeFileSync(current.metadataFile, original.replace("label = 'gpt-6.1-sol'", "label = '当前 GPT 显示名'") + `
+  fs.writeFileSync(current.metadataFile, original.replace("label = 'GPT-6.1-sol'", "label = '当前 GPT 显示名'") + `
 [[models]]
 id = 'lab-model'
 label = '新增实验模型'

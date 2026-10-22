@@ -379,7 +379,7 @@ for (const fault of ['损坏', '移走']) {
     for (const start of starts) {
       const args = start.args as string[]
       expect(args.slice(0, 4)).toEqual(['--model', 'repaired-provider/second-model', '--thinking', 'medium'])
-      expect(args.slice(6)).toEqual(['--no-extensions', '--extension', path.join(path.dirname(server.metadataFile), 'repaired-cost.ts')])
+      expect(args.slice(4)).toEqual(['--no-extensions', '--extension', path.join(path.dirname(server.metadataFile), 'repaired-cost.ts')])
     }
     expect(server.baseURL).toBe(originalURL)
     await screenshot(creator, info, 'metadata-repaired-creation-success')

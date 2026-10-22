@@ -8,6 +8,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
+import net from 'node:net'
+import { randomInt } from 'node:crypto'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -82,6 +84,25 @@ export function lanIPv4(): string | null {
       /^172\.(1[6-9]|2\d|3[01])\./.test(address),
   )
   return privateAddress ?? candidates[0] ?? null
+}
+
+// Windows may allocate port 0 inside Fetch/Chrome's forbidden service-port range
+// (for example 6566 or 6667). Probe the unrestricted dynamic range instead.
+async function browserListenAddress(address: string): Promise<string> {
+  if (!address.endsWith(':0')) return address
+  const host = address.slice(0, -2)
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const port = randomInt(49152, 65536)
+    const server = net.createServer()
+    const { promise, resolve, reject } = Promise.withResolvers<boolean>()
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE' || error.code === 'EACCES') resolve(false)
+      else reject(error)
+    })
+    server.listen(port, host, () => server.close(error => error ? reject(error) : resolve(true)))
+    if (await promise) return `${host}:${port}`
+  }
+  throw new Error('无法为浏览器夹具分配安全的动态端口')
 }
 
 function writeConfig(
@@ -214,11 +235,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   const extensionDirectory = path.join(directory, 'extensions')
   fs.mkdirSync(extensionDirectory)
   const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
-  fs.writeFileSync(metadataFile, metadata.replace(/entrypoint = '([^']+)'/g, (_line, original: string) => {
-    const relative = (original.split('entrypoints\\')[1] ?? path.win32.basename(original)).replaceAll('\\', '-')
+  fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
+    const id = prefix.match(/^id = '([^']+)'/m)![1]
+    const relative = `${id}.ts`
     const entrypoint = path.join(extensionDirectory, relative)
     fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
-    return `entrypoint = '${entrypoint}'`
+    return `${prefix}'${entrypoint}'`
   }))
   const herdrDirectory = path.join(directory, 'herdr')
 
@@ -257,7 +279,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
       executable: herdrExecutable,
     },
-    options.listenAddr ?? '127.0.0.1:0',
+    await browserListenAddress(options.listenAddr ?? '127.0.0.1:0'),
   )
 
   let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null

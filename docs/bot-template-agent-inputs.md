@@ -54,7 +54,7 @@ Pi 与 OMP 一样提供各自的可选 `connect-bot`，Pi 使用 `entrypoints/pi
 
 在查询 Herdr、新建 Tab、启动 agent 或提交初始输入之前，自动检查本次固定和所选扩展入口存在、为普通文件且可读取。缺失、目录冒充文件或读取拒绝会以 `extension-entrypoint-invalid` 报告扩展名称、标识、入口与具体原因，并明确未创建 Herdr Tab、未启动 agent、未提交输入。元数据或选择失效也在外部创建之前拒绝。未选扩展的文件缺失不影响有效组合；全局元数据结构和关系仍须合法。
 
-OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应的 Herdr 官方集成与 model-cost。OMP 固定项 `omp-herdr-agent-state` 使用已安装的 `herdr-omp-agent-state.ts`，Pi 固定项 `pi-herdr-agent-state` 使用已安装的 `herdr-agent-state.ts`；入口由选项目录显式配置，沿用同一套创建前文件检查。Herdr 只把官方集成安装到原生扩展发现目录，不会向 `agent start` 自动注入这些入口，因此关闭自动发现后必须显式保留。官方集成向 Herdr 上报状态和原生会话引用，不代替 connect-bot，也不修改其可选属性；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
+OMP 与 Pi 均不传原生会话目录覆盖，只传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应的 Herdr 官方集成与 model-cost。OMP 固定项 `omp-herdr-agent-state` 使用已安装的 `herdr-omp-agent-state.ts`，Pi 固定项 `pi-herdr-agent-state` 使用已安装的 `herdr-agent-state.ts`；入口由选项目录显式配置，沿用同一套创建前文件检查。Herdr 只把官方集成安装到原生扩展发现目录，不会向 `agent start` 自动注入这些入口，因此关闭自动发现后必须显式保留。官方集成向 Herdr 上报状态和原生会话引用，不代替 connect-bot，也不修改其可选属性；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
 
 检查只打开、检查文件类型并读取文件，不导入或执行扩展，不调用模型或余额/账号探测。它不证明扩展或 Skill 初始化/执行成功，也不保证检查到实际加载之间文件不会变化。通过后仍须 Herdr 确认 agent 就绪，再提交一次原生合成初始输入；只有提交确认才成功。后续失败保留真实 Tab、Pane 和 agent 定位，不删除、重建或重发。
 
@@ -124,22 +124,21 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 - 终端必须处于预期的 agent 输入界面；Herdr 在识别为 `blocked` 时拒绝 `agent.prompt`。它提供的是终端文本与 Enter 提交，不是带角色的聊天 API。[H1]
 - 多行文本应作为一次粘贴再提交，不要逐行模拟多个 Enter。Pi 的 bracketed-paste 路径会取消自动补全，避免提交键仅确认补全项。[P5][H1]
 
-## 新对话与会话目录
+## 原生对话与会话目录
 
-创建 Bot 必须得到独立的新对话，不能因为 agent 的隐式续接设置载入同一 cwd 的旧上下文。
+创建 Bot 新建 Herdr Tab／控制对象，但不保证 agent 必然新建原生对话。
 
-- OMP 的 `autoResume` 设置在没有显式会话标志或会话目录时，会续接 cwd 最近的会话
-  （[设置说明](../../oh-my-pi/docs/settings.md)、[会话操作](../../oh-my-pi/docs/session-operations-export-share-fork-resume.md)）。
-  其启动决议在 `--session-dir` 存在时直接创建新会话，不再进入 autoResume 分支
-  （[main.ts](../../oh-my-pi/packages/coding-agent/src/main.ts)）。`--session-dir` 是启动参数
-  （[flag-tables.ts](../../oh-my-pi/packages/coding-agent/src/cli/flag-tables.ts)）。
-- Pi 在没有 `--continue` / `--resume` 时默认创建新会话；同样支持 `--session-dir`
-  （[args.ts](../../pi/packages/coding-agent/src/cli/args.ts)）。
-- herdr-bot 每次创建都把 `--session-dir` 设为模板存储目录旁的
-  `bot-sessions/<本次创建标识>`，并在该目录中启动目标 agent。这样启动选择不依赖 cwd 查找，
-  也不以新 Tab 本身作为“新对话”的证据；目录是真实外部位置，不是伪造的 Herdr 标识。
-- 受控 Herdr 记录可以证明启动选择与参数；真实 OMP / Pi TUI 是否未载入旧上下文仍需人工 H1
-  在实际终端中对照旧、新会话文件或会话标识。
+- herdr-bot 不再覆盖或预分配 `bot-sessions/<创建标识>`，不传 `--session-dir`，也不添加
+  `--no-session`、显式 session ID、`--continue`／`--resume` 等替代性强制策略。
+- Pi／OMP 正常的有效存储配置决定实际目录与原生发现范围。Pi 可配置 `sessionDir` 或
+  `PI_CODING_AGENT_SESSION_DIR`；OMP 的 agent 目录可由 `PI_CODING_AGENT_DIR` 改变，
+  不能把硬编码的 `~/.pi`／`~/.omp` 默认位置当作所有环境的承诺。
+- OMP 的 `autoResume` 可能使相同 cwd 续接已有对话；是否续接由当前 agent 版本和有效配置决定。
+  本功能不启用、关闭或改写它，不为防范未来配置变更加一条强制新建路径。
+- 既有原生主文件与附属记录原位保留，包括旧根目录 `bot-sessions/` 和先前外置目录；
+  不迁移、复制、转换、删除或重写。正常启动的 agent 不会因此自动发现先前的外置文件。
+- [隔离真实运行证据、配置说明与部署 H1 步骤](native-session-storage-acceptance.md) 区分
+  受控启动选择、真实 CLI 落盘／原生发现及尚待用户确认的实际 Herdr 部署，不混用结论。
 
 ## 验证记录
 

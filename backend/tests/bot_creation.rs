@@ -402,11 +402,7 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
             "默认 model / thinking 不传启动覆盖参数：{args:?}"
         );
 
-        assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
-        assert!(
-            Path::new(args[1].as_str().expect("会话目录是字符串")).is_absolute(),
-            "会话目录必须是绝对路径：{args:?}"
-        );
+        assert_eq!(args[0], "--no-extensions", "原生存储选择留给 agent");
 
         let prompt = calls_of_kind(&herdr, "agent_prompt")
             .into_iter()
@@ -678,17 +674,7 @@ async fn assert_launch_from_public_entry(
         expected.as_slice(),
         "启动参数中的模型与 thinking 必须与预写样例一致"
     );
-    assert_eq!(
-        args[expected.len()],
-        "--session-dir",
-        "模型 / thinking 之后必须显式选择独立的新会话目录：{}",
-        start["args"]
-    );
-    assert!(
-        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
-        "会话目录必须是绝对路径：{}",
-        start["args"]
-    );
+    assert_eq!(args[expected.len()], "--no-extensions", "不得覆盖原生会话配置");
     if agent == "pi" {
         assert!(
             !args.iter().any(|arg| arg == "auto"),
@@ -1157,7 +1143,7 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
         vec!["workspace_list", "workspace_list"]
     );
 
-    // 只改 Workspace；名称、botId、模板与 input 沿用同一次预览，不产生会话目录冲突。
+    // 只改 Workspace；名称、botId、模板与 input 沿用同一次预览。
     body["workspaceTarget"] = json!("default");
     let response = create(&fixture.server, body).await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -1181,15 +1167,7 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
     assert_eq!(prompts[0]["text"], "保留重试输入");
     let start = calls_of_kind(&fixture.herdr, "agent_start");
     assert_eq!(start.len(), 1);
-    let session_dir = start[0]["args"][1].as_str().expect("独立会话目录");
-    assert_eq!(
-        Path::new(session_dir)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap(),
-        retry_id
-    );
+    assert_eq!(start[0]["args"][0], "--no-extensions");
     assert_eq!(
         call_kinds(&fixture.herdr),
         vec![
