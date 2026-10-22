@@ -877,6 +877,10 @@ fn bot_template_list_response(
 }
 
 fn bot_template_error_response(error: templates::TemplateError) -> Response {
+    bot_template_error_with_context(error, "")
+}
+
+fn bot_template_error_with_context(error: templates::TemplateError, context: &str) -> Response {
     use templates::TemplateError;
     let status = match &error {
         TemplateError::NotFound => StatusCode::NOT_FOUND,
@@ -896,7 +900,7 @@ fn bot_template_error_response(error: templates::TemplateError) -> Response {
         | TemplateError::UnknownSkill(_)
         | TemplateError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
     };
-    rejected_owned(status, error.code(), error.message())
+    rejected_owned(status, error.code(), format!("{}{context}", error.message()))
 }
 
 /// Bot 名称预览请求：只指定已登记 zone 与模板，不携带名称、Workspace 或其他覆盖字段。
@@ -985,7 +989,7 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     };
     let template = match state.bot_templates.get(&input.template_id).await {
         Ok(template) => template,
-        Err(error) => return bot_template_error_response(error),
+        Err(error) => return bot_template_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
     };
     let name = bots::render_bot_name(&template.bot_name, &zone, &template, &input.bot_id);
     if let Some(expected) = input.expected_name {
@@ -1000,8 +1004,15 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
 
     let preset = match state.bot_templates.catalog().and_then(|catalog| catalog.resolve(&template)) {
         Ok(preset) => preset,
-        Err(error) => return bot_template_error_response(error),
+        Err(error) => return bot_template_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
     };
+    if let Err(message) = preset.check_entrypoints() {
+        return rejected_owned(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "extension-entrypoint-invalid",
+            format!("{message} 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+        );
+    }
     let creation_id = bots::new_creation_id();
     let session_dir = state.bot_session_root.join(&creation_id);
     if let Err(error) = std::fs::create_dir_all(&state.bot_session_root)

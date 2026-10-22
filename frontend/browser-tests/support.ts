@@ -206,7 +206,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
   const storageFile = path.join(directory, 'bot-templates.json')
   const metadataFile = path.join(directory, 'bot-options.toml')
-  fs.copyFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), metadataFile)
+  // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
+  const extensionDirectory = path.join(directory, 'extensions')
+  fs.mkdirSync(extensionDirectory)
+  const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
+  fs.writeFileSync(metadataFile, metadata.replace(/entrypoint = '([^']+)'/g, (_line, original: string) => {
+    const relative = original.split('entrypoints\\')[1].replaceAll('\\', '-')
+    const entrypoint = path.join(extensionDirectory, relative)
+    fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
+    return `entrypoint = '${entrypoint}'`
+  }))
   const herdrDirectory = path.join(directory, 'herdr')
 
   let herdrExecutable: string | undefined

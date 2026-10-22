@@ -224,9 +224,9 @@ pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>,
 
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
-/// 两个固定模型都映射到约定的完整 provider / model 标识；模型沿用默认值时不传模型覆盖，
-/// thinking 也必须是默认值（模板保存时已校验）。`--session-dir` 始终显式传入：它给本次 Bot
-/// 一个全新的会话位置，使 agent 不会因 `autoResume` 一类默认设置续接同 cwd 的旧对话。
+/// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
+/// `--session-dir` 给本次 Bot 全新会话位置，避免自动续接同 cwd 的旧对话。
+/// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与模板所选入口。
 pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &Path) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = &preset.provider_model {
@@ -239,6 +239,11 @@ pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &
     }
     args.push("--session-dir".to_string());
     args.push(session_dir.to_string_lossy().into_owned());
+    args.push("--no-extensions".to_string());
+    for extension in &preset.extensions {
+        args.push("--extension".to_string());
+        args.push(extension.entrypoint.to_string_lossy().into_owned());
+    }
     args
 }
 

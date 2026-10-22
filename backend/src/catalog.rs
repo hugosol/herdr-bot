@@ -196,6 +196,10 @@ impl Catalog {
             provider_model: self.models.iter().find(|v| v.id == template.model).and_then(|v| v.provider_model.clone()),
             thinking: (template.thinking != "default").then(|| template.thinking.clone()),
             native_skill: template.skill.as_ref().and_then(|id| self.skills.iter().find(|v| &v.id == id)).map(|v| v.native_name.clone()),
+            extensions: self.extensions.iter()
+                .filter(|extension| extension.agent == template.agent &&
+                    (extension.kind == ExtensionKind::Fixed || template.extensions.contains(&extension.id)))
+                .cloned().collect(),
         })
     }
 }
@@ -204,4 +208,34 @@ pub struct ResolvedPreset {
     pub provider_model: Option<String>,
     pub thinking: Option<String>,
     pub native_skill: Option<String>,
+    pub extensions: Vec<ExtensionOption>,
+}
+
+impl ResolvedPreset {
+    /// Only inspect this creation's files. Never import, execute, or probe extension services.
+    /// A successful check is not a promise that files cannot change before the agent loads them.
+    pub fn check_entrypoints(&self) -> Result<(), String> {
+        use std::io::Read;
+        for extension in &self.extensions {
+            let check = || -> Result<(), String> {
+                let mut file = fs::File::open(&extension.entrypoint).map_err(|error| {
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        format!("入口不存在：{error}")
+                    } else {
+                        format!("入口无法读取：{error}")
+                    }
+                })?;
+                let metadata = file.metadata().map_err(|error| format!("无法检查文件类型：{error}"))?;
+                if !metadata.is_file() { return Err("入口不是文件".into()); }
+                file.read(&mut [0u8; 1]).map_err(|error| format!("入口无法读取：{error}"))?;
+                Ok(())
+            };
+            // Inspect directories separately as Windows may reject opening one before metadata().
+            if fs::metadata(&extension.entrypoint).is_ok_and(|metadata| metadata.is_dir()) {
+                return Err(format!("扩展「{}」（{}）入口 {}：入口不是文件。", extension.label, extension.id, extension.entrypoint.display()));
+            }
+            check().map_err(|reason| format!("扩展「{}」（{}）入口 {}：{reason}。", extension.label, extension.id, extension.entrypoint.display()))?;
+        }
+        Ok(())
+    }
 }

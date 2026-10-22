@@ -403,8 +403,8 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
         );
         assert_eq!(
             args.len(),
-            2,
-            "除自己独立的会话目录外不应有额外启动参数：{args:?}"
+            5,
+            "默认启动包含独立会话目录、关闭自动发现及一个固定扩展：{args:?}"
         );
         assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
         assert!(
@@ -557,8 +557,8 @@ async fn assert_launch_from_public_entry(
     let args = start["args"].as_array().expect("启动参数是数组");
     assert_eq!(
         args.len(),
-        expected.len() + 2,
-        "除模型 / thinking 外只应追加本次独立的会话目录：{}",
+        expected.len() + 5,
+        "除模型 / thinking 外追加独立会话目录、关闭自动发现及一个固定扩展：{}",
         start["args"]
     );
     assert_eq!(

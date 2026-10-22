@@ -30,6 +30,18 @@
 
 用户在 Q21 / Q26 明确要求不增加额外的非空组合校验：prompt 与 input 即使都为空，也继续按所选 Skill 合成输入并提交；单独的 `/skill:名称` 仍是有效的非空输入。不引入“仅创建、不发送”的成功分支。如果 Herdr 拒绝提交，则按 Q11 保留已创建的 Tab / agent、展示错误并中断，不自动删除、重建或重发，不能宣称创建成功。用户已在 Q27 明确拒绝 Skill 必选限制，保留 Skill 可不选。即使 Skill、prompt、input 全为空，也不增加此组合的创建前校验，不跳过消息提交来宣称成功；由 Herdr 返回结果，拒绝时按既定错误流程保留现场并中断。
 
+## 模板扩展与创建前文件检查（2026-10-22）
+
+创建弹窗只选择已保存模板和本次 input，不接收扩展、固定项取消或入口路径覆盖。服务端每次创建重新读取当前 `meta-data/bot-options.toml`，校验模板稳定标识及 Agent 适用关系，固定本次完整启动映射；模板不保存入口副本。
+
+在查询 Herdr、新建 Tab、启动 agent 或提交初始输入之前，自动检查本次固定和所选扩展入口存在、为普通文件且可读取。缺失、目录冒充文件或读取拒绝会以 `extension-entrypoint-invalid` 报告扩展名称、标识、入口与具体原因，并明确未创建 Herdr Tab、未启动 agent、未提交输入。元数据或选择失效也在外部创建之前拒绝。未选扩展的文件缺失不影响有效组合；全局元数据结构和关系仍须合法。
+
+OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应 model-cost；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
+
+检查只打开、检查文件类型并读取文件，不导入或执行扩展，不调用模型或余额/账号探测。它不证明扩展或 Skill 初始化/执行成功，也不保证检查到实际加载之间文件不会变化。通过后仍须 Herdr 确认 agent 就绪，再提交一次原生合成初始输入；只有提交确认才成功。后续失败保留真实 Tab、Pane 和 agent 定位，不删除、重建或重发。
+
+自动证据位于 `frontend/browser-tests/templateExtensionLaunch.spec.ts`：六组合字面预期、真实隔离文件故障（包括 Windows 独占句柄读取拒绝）、实际页面错误与独立 Herdr 调用/对象记录、同进程入口映射更新及未选缺失入口。Playwright 附件 `controlled-herdr-six-combinations-NOT-real-loading` 与 `controlled-herdr-dynamic-entry-mapping-NOT-real-loading` 供真实加载验收复用。它们仅证明受控 Herdr 调用正确，不表示真实 OMP/Pi 已通过加载或 ambient 对照；真实 Herdr→OMP/Pi 六组合及 H1 判断仍由 08 负责。
+
 ## 模型与思考级别：固定选项方案已确认
 
 Herdr 的 `agent.start` 接受 `args: Vec<String>`，用于传递目标 agent 的原生启动参数（[Herdr 参数定义](../../herdr/src/api/schema/agents.rs#L186-L199)）。OMP 与 Pi 当前均支持 `--model <model>`、`--thinking <level>`，因此应在启动时指定，而不是先启动再通过 slash 命令切换。
