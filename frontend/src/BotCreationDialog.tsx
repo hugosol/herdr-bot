@@ -57,6 +57,7 @@ function failureOutcomeText(creation: BotCreation): string {
 export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
   const [templates, setTemplates] = useState<BotTemplate[] | null>(null)
   const [templateId, setTemplateId] = useState('')
+  const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('default')
   const [input, setInput] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<BotPreview | null>(null)
@@ -156,6 +157,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
       botId: preview.botId,
       expectedName: preview.name,
       input,
+      workspaceTarget,
     })
     setSubmitting(false)
     if (result.kind === 'ok') {
@@ -189,7 +191,8 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
       >
         <h2 className="zone-dialog__title">创建 Bot</h2>
         <p className="zone-dialog__hint">
-          新 Bot 会在服务端配置的 Herdr Workspace 中新建独立 Tab，并以所选 zone 的目录作为工作目录。
+          新 Bot 会在所选 Herdr Workspace 中新建独立 Tab；默认使用服务端配置，当前按 zone 目录名匹配。
+          无论选择哪项，都以所选 zone 的目录作为工作目录。
           创建前自动检查模板的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自模板。
           文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
         </p>
@@ -216,6 +219,27 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
             </option>
           ))}
         </select>
+
+        <label className="zone-form__label" htmlFor="bot-workspace-target">
+          Herdr Workspace
+        </label>
+        <select
+          id="bot-workspace-target"
+          className="zone-form__input zone-form__select"
+          value={workspaceTarget}
+          onChange={(event) =>
+            setWorkspaceTarget(event.target.value === 'current' ? 'current' : 'default')
+          }
+          disabled={submitting || running || finished}
+          aria-describedby="bot-workspace-hint"
+        >
+          <option value="default">默认</option>
+          <option value="current">当前</option>
+        </select>
+        <p id="bot-workspace-hint" className="zone-dialog__hint">
+          当前按 zone 目录名匹配（区分大小写），不是 Herdr 当前聚焦的 Workspace，也不是浏览器所在子目录。
+          未找到或匹配到多个 Workspace 时创建失败，不会改用默认 Workspace。
+        </p>
 
         <label className="zone-form__label" htmlFor="bot-input">
           初始 input（可为空）

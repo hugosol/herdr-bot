@@ -259,8 +259,9 @@ pub async fn run_creation(
     zone: String,
     input: String,
     session_dir: PathBuf,
+    workspace_name: String,
 ) {
-    let workspace = match herdr.workspace().await {
+    let workspace = match herdr.workspace(&workspace_name).await {
         Ok(workspace) => workspace,
         Err(error) => {
             fail(&job, FailureStage::Workspace, &error).await;

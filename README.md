@@ -258,7 +258,7 @@ offline_retention_seconds = 30
 
 ### `[herdr]` 配置（必须显式配置）
 
-从 zone 创建 Bot 时，每个新 Tab 都创建在这个服务端明确配置的 Herdr Workspace 中。这一段**没有
+从 zone 创建 Bot 时，弹窗默认使用这个服务端明确配置的 Herdr Workspace；选择“当前”则按 zone 根目录名匹配。这一段**没有
 代码缺省值**：
 
 ```toml
@@ -269,13 +269,13 @@ workspace_name = 'bot-playground'
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
-| `workspace_name` | **无（必须显式配置）** | 目标 Herdr Workspace 的显示名；每次创建按它精确匹配且必须唯一 |
+| `workspace_name` | **无（必须显式配置）** | 默认 Herdr Workspace 的显示名；选择“默认”时按它精确匹配且必须唯一 |
 | `executable` | `herdr` | 生产调用使用的 Herdr CLI；缺省按 `PATH` 查找 |
 
 - 整段缺失、`workspace_name` 为空字符串或纯空白都会让**进程启动失败**，不会回退到 `bot-playground`
   或其他猜测目标。
-- 浏览器请求没有 Workspace 字段，不能替换这个目标；创建时即使 Herdr 当前焦点在别的 Workspace，
-  也仍按配置名称精确查找。匹配到零个或多个时明确失败，不任取第一个、不新建 Workspace。
+- 浏览器只可选择“默认”或“当前”，不能指定任意 Workspace 名称。默认按配置名称匹配，当前按 zone 根目录名匹配；
+  均区分大小写、精确查找，Herdr 焦点不参与选择。匹配到零个或多个时明确失败，不任取第一个、不新建、不回退。
 - 合法值去掉首尾空白后按字面保存；拼错的字段名会让启动失败。
 
 ### `[zones]` 配置（可选）
@@ -473,7 +473,11 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 `zone` 入口的每个 zone 行都有一个独立的“+”入口。打开弹窗后选择模板、填写可为空的初始 input；
 弹窗只显示后端预览的本次名称，**没有手工命名输入**。确认后由后端执行创建，页面不再自己计算名称：
 
-1. 按 `[herdr] workspace_name` 精确查找唯一 Workspace。当前焦点不会影响选择；零个或多个匹配都失败。
+弹窗的 `Herdr Workspace` 提供“默认”和“当前”，每次打开重置为默认，不保存到模板或记住上次选择。
+“当前”取 zone 根目录的最后一级目录名，不使用文件浏览中的子目录；例如 `E:\projects\alpha` 匹配 `alpha`。
+盘符根目录等无末级目录名的 zone 选择“当前”时拒绝创建，并提示改选默认 Workspace。
+
+1. 默认按 `[herdr] workspace_name`、当前按 zone 根目录名精确查找唯一 Workspace。区分大小写，当前焦点不会影响选择；零个或多个匹配都失败，显示实际目标名称且不新建、不回退。
 2. 在目标 Workspace 中新建独立 Tab，显示名严格使用模板 `bot-name` 的结果，cwd 显式设为该 zone 的目录。
 3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
 4. 就绪后才把 Skill、模板 prompt 与本次 input 合成一次初始指示提交；不先单独发起 Skill 轮次。
@@ -496,9 +500,10 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 - `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
   名称：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","templateId":"…","agent":"omp"}`。
 - `POST /api/bots`，JSON 为
-  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…"}`；接受后返回 HTTP 202
-  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。请求没有 Workspace 字段；模板在请求
-  被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
+  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…","workspaceTarget":"default"}`；接受后返回 HTTP 202
+  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。`workspaceTarget` 可为 `default` 或 `current`，省略时为 `default`；
+  不接受任意 Workspace 名称或其他枚举值。当前模式无目录名时返回 400 `workspace-name-unavailable`，不调用 Herdr。
+  模板与目标名称在请求被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
   不会悄悄改名。
 - `GET /api/bots/{id}` 读取同一次创建的当前阶段：`starting`、`submitting`、`succeeded` 或 `failed`。
   已取得的 `tabId` / `paneId` / `agentName` 只在确实取得后出现；失败时附加

@@ -130,8 +130,8 @@ impl HerdrClient {
         &self.workspace_name
     }
 
-    /// 按配置名称精确查找唯一 Workspace；焦点与顺序都不参与选择。
-    pub async fn workspace(&self) -> Result<Workspace, HerdrError> {
+    /// 按本次目标名称精确查找唯一 Workspace；焦点与顺序都不参与选择。
+    pub async fn workspace(&self, name: &str) -> Result<Workspace, HerdrError> {
         let value = self
             .run(
                 "workspace list",
@@ -152,7 +152,7 @@ impl HerdrClient {
             let label = entry.get("label").and_then(Value::as_str);
             let id = entry.get("workspace_id").and_then(Value::as_str);
             if let (Some(label), Some(id)) = (label, id)
-                && label == self.workspace_name
+                && label == name
             {
                 matches.push(Workspace {
                     id: id.to_string(),
@@ -163,11 +163,11 @@ impl HerdrClient {
 
         match matches.len() {
             0 => Err(HerdrError::WorkspaceNotFound {
-                name: self.workspace_name.clone(),
+                name: name.to_string(),
             }),
             1 => Ok(matches.remove(0)),
             count => Err(HerdrError::WorkspaceAmbiguous {
-                name: self.workspace_name.clone(),
+                name: name.to_string(),
                 matches: count,
             }),
         }

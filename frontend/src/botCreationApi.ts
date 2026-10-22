@@ -151,6 +151,7 @@ export function createBot(input: {
   botId: string
   expectedName: string
   input: string
+  workspaceTarget?: 'default' | 'current'
 }): Promise<BotResult<BotCreation>> {
   return request('/api/bots', jsonInit('POST', input), isCreation)
 }

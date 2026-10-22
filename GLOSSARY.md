@@ -12,6 +12,10 @@ _Avoid_: omp-bot 主界面（旧名）, 管理后台, 仪表盘
 外部项目，负责管理 session；herdr-bot 不重复实现其 session 管理。
 _Avoid_: herdr-bot, 本项目
 
+**Herdr Workspace**:
+herdr 中承载 Tab 的分组，是创建 Bot 时新 Tab 的归属；它与表示已登记目录的 zone 是不同概念。
+_Avoid_: zone, Git 工作树, 会话工作目录
+
 **Bot**:
 从 Bot 模板为某个 zone 创建的独立 agent 对话实例，由 herdr 托管；它不等同于 herdr 的 Session 命名空间，也不以接入 connect-bot 为成立条件。
 _Avoid_: herdr session, 会话登记, connect-bot 会话

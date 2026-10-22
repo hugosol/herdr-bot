@@ -131,7 +131,7 @@ pub struct AppState {
     /// 与固定操作、关机路径完全解耦：模板管理只读取与写入模板存储文件，不执行任何脚本、
     /// 不创建也不关闭 Bot。
     pub bot_templates: Arc<templates::Templates>,
-    /// Herdr 公开控制接口的生产 adapter；目标 Workspace 名称来自启动期配置。
+    /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
     pub herdr: Arc<herdr::HerdrClient>,
@@ -280,7 +280,7 @@ pub fn app_with_state(
                 .delete(delete_bot_template),
         )
         // 从已登记 zone 创建 Bot：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
-        // 之后由页面轮询同一次创建。目标 Workspace 只来自服务端配置，请求面没有这个字段。
+        // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
         .route("/api/bots/preview", post(preview_bot))
         .route("/api/bots", post(create_bot))
         .route("/api/bots/{id}", get(get_bot_creation))
@@ -916,13 +916,24 @@ struct BotPreviewRequest {
     template_id: String,
 }
 
-/// 创建 Bot 的请求：实例标识与预览名称沿用预览结果；input 可为空；没有 Workspace 字段。
+/// 本次创建的目标选择；客户端不能指定任意 Workspace 名称。
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum WorkspaceTarget {
+    #[default]
+    Default,
+    Current,
+}
+
+/// 创建 Bot 的请求：实例标识与预览名称沿用预览结果；input 可为空。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CreateBotRequest {
     zone: String,
     template_id: String,
     bot_id: String,
+    #[serde(default)]
+    workspace_target: WorkspaceTarget,
     #[serde(default)]
     input: String,
     /// 预览时看到的名称；若模板在预览之后被修改，创建明确拒绝而不是悄悄改名。
@@ -974,8 +985,8 @@ async fn preview_bot(State(state): State<AppState>, request: Request) -> Respons
 
 /// “创建 Bot”：接受后由后端拥有的任务继续执行，HTTP 响应只给出本次创建的生命周期标识。
 ///
-/// 模板在请求被接受时固定为快照；之后编辑或删除模板不改变本次创建。目标 Workspace 只来自
-/// 服务端配置，请求无法携带或替换它。
+/// 模板与目标名称在请求被接受时固定为快照；之后编辑或删除模板不改变本次创建。
+/// 默认目标来自服务端配置，当前目标来自已登记 zone 根目录名；请求不能提供任意名称。
 async fn create_bot(State(state): State<AppState>, request: Request) -> Response {
     let input: CreateBotRequest = match bot_command_body(request, "创建 Bot").await {
         Ok(input) => input,
@@ -995,6 +1006,17 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let template = match state.bot_templates.get(&input.template_id).await {
         Ok(template) => template,
         Err(error) => return bot_template_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
+    let workspace_name = match input.workspace_target {
+        WorkspaceTarget::Default => state.herdr.workspace_name().to_string(),
+        WorkspaceTarget::Current => match std::path::Path::new(&zone).file_name().and_then(|name| name.to_str()) {
+            Some(name) if !name.is_empty() => name.to_string(),
+            _ => return rejected_owned(
+                StatusCode::BAD_REQUEST,
+                "workspace-name-unavailable",
+                "该 zone 无可用目录名，请选择默认 Workspace。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+            ),
+        },
     };
     let name = bots::render_bot_name(&template.bot_name, &zone, &template, &input.bot_id);
     if let Some(expected) = input.expected_name {
@@ -1036,7 +1058,7 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     tokio::spawn(async move {
-        bots::run_creation(herdr, job, template, preset, zone, input.input, session_dir).await;
+        bots::run_creation(herdr, job, template, preset, zone, input.input, session_dir, workspace_name).await;
     });
     (StatusCode::ACCEPTED, Json(view)).into_response()
 }

@@ -941,6 +941,66 @@ async fn a_failed_agent_start_never_submits_input() {
     );
 }
 
+/// 当前模式只按 zone 根目录名匹配，不回退到默认或焦点 Workspace。
+#[tokio::test(flavor = "multi_thread")]
+async fn current_workspace_uses_exact_zone_basename_without_fallback() {
+    for (label, entries, expected_error) in [
+        ("unique", json!([{"workspace_id":"w-zone","label":"alpha"}]), None),
+        ("missing", json!([]), Some("workspace-not-found")),
+        ("case", json!([{"workspace_id":"w-case","label":"Alpha"}]), Some("workspace-not-found")),
+        ("duplicate", json!([
+            {"workspace_id":"w-one","label":"alpha"},
+            {"workspace_id":"w-two","label":"alpha"}
+        ]), Some("workspace-ambiguous")),
+    ] {
+        let fixture = input_fixture(&format!("current workspace {label}")).await;
+        let mut workspaces = entries.as_array().unwrap().clone();
+        workspaces.push(json!({"workspace_id":"w-default","label":"bot-playground","focused":true}));
+        fixture.herdr.set_workspaces(json!(workspaces));
+        let template = save_template(&fixture.server, default_template()).await;
+        let template_id = template["id"].as_str().unwrap();
+        let response = preview(&fixture.server, &fixture.zone, template_id).await;
+        let preview: Value = serde_json::from_str(&response.body).unwrap();
+        let mut body = create_body(&fixture.zone, template_id, &preview, "测试输入");
+        body["workspaceTarget"] = json!("current");
+        let response = create(&fixture.server, body).await;
+        assert_eq!(response.status, 202, "{}", response.body);
+        let accepted: Value = serde_json::from_str(&response.body).unwrap();
+        let result = wait_stage(&fixture.server, accepted["id"].as_str().unwrap(),
+            if expected_error.is_some() { "failed" } else { "succeeded" }).await;
+        if let Some(code) = expected_error {
+            assert_eq!(result["failure"]["code"], code);
+            assert!(result["failure"]["message"].as_str().unwrap().contains("alpha"));
+            assert_eq!(call_kinds(&fixture.herdr), vec!["workspace_list"]);
+            assert!(fixture.herdr.tabs().is_empty());
+        } else {
+            let tabs = fixture.herdr.tabs();
+            assert_eq!(tabs.len(), 1);
+            assert_eq!(tabs[0]["workspace"], "w-zone");
+            assert_eq!(tabs[0]["cwd"], fixture.zone);
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn current_workspace_rejects_root_without_a_directory_name() {
+    let fixture = input_fixture("current workspace root").await;
+    let root = Path::new(&fixture.zone).ancestors().last().unwrap();
+    let zone = register(&fixture.server, root).await;
+    let template = save_template(&fixture.server, default_template()).await;
+    let template_id = template["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &zone, template_id).await;
+    let preview: Value = serde_json::from_str(&response.body).unwrap();
+    let mut body = create_body(&zone, template_id, &preview, "不应提交");
+    body["workspaceTarget"] = json!("current");
+    let response = create(&fixture.server, body).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    let error: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(error["code"], "workspace-name-unavailable");
+    assert!(error["message"].as_str().unwrap().contains("请选择默认 Workspace"));
+    assert!(fixture.herdr.calls().is_empty());
+}
+
 /// P41 / P46（基础失败）：找不到目标 Workspace 或存在同名歧义时不新建 Tab，也不伪造标识。
 #[tokio::test(flavor = "multi_thread")]
 async fn workspace_mismatches_fail_without_creating_a_tab() {

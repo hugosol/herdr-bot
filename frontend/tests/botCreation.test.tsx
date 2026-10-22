@@ -144,7 +144,7 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
     const preview = await within(dialog).findByTestId('bot-name-preview')
     await vi.waitFor(() => expect(preview).toHaveTextContent(PREVIEW.name))
     expect(preview.tagName).toBe('OUTPUT')
-    // 名称没有手工覆盖入口：弹窗只有模板选择与初始 input。
+    // 名称没有手工覆盖入口；Workspace 选择不提供名称输入框。
     expect(dialog.querySelector('input')).toBeNull()
     expect(within(dialog).queryByRole('textbox', { name: /Bot 名称/ })).toBeNull()
 
@@ -224,8 +224,75 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
       botId: PREVIEW.botId,
       expectedName: PREVIEW.name,
       input: '检查登录逻辑',
+      workspaceTarget: 'default',
     })
     expect(body).not.toHaveProperty('workspace')
+  })
+
+  it('Workspace 每次打开默认，当前选择随创建发送，并在提交和结果期间锁定', async () => {
+    const user = userEvent.setup()
+    let resolveCreate!: (response: Response) => void
+    const createResponse = new Promise<Response>((resolve) => {
+      resolveCreate = resolve
+    })
+    const { calls } = mockFetch((url, method) => {
+      if (url === '/api/zones' && method === 'GET') {
+        return jsonResponse(200, { zones: [{ path: PREVIEW.zone }] })
+      }
+      if (url === '/api/zones/overview' && method === 'GET') {
+        return jsonResponse(200, { zones: [] })
+      }
+      if (url === '/api/bot-templates' && method === 'GET') {
+        return jsonResponse(200, {
+          templates: [TEMPLATE],
+          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+        })
+      }
+      if (url === '/api/bots/preview' && method === 'POST') {
+        return jsonResponse(200, PREVIEW)
+      }
+      if (url === '/api/bots' && method === 'POST') return createResponse
+      if (url === '/api/bots/bc-1' && method === 'GET') {
+        return jsonResponse(200, creation('succeeded'))
+      }
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+
+    render(<App />)
+    let dialog = await openDialog(user, 0)
+    let workspace = within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })
+    expect(workspace).toHaveValue('default')
+    expect(workspace).toHaveAccessibleDescription(/当前按 zone 目录名匹配/)
+    await user.selectOptions(workspace, 'current')
+    await user.click(within(dialog).getByTestId('bot-create-close'))
+
+    dialog = await openDialog(user, 0)
+    workspace = within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })
+    expect(workspace).toHaveValue('default')
+    await user.selectOptions(workspace, 'current')
+    await vi.waitFor(() =>
+      expect(within(dialog).getByTestId('bot-name-preview')).toHaveTextContent(PREVIEW.name),
+    )
+    await user.click(within(dialog).getByTestId('bot-create-submit'))
+    expect(workspace).toBeDisabled()
+    expect(workspace).toHaveValue('current')
+    expect(JSON.parse(calls.find((call) => call.url === '/api/bots')?.body ?? '{}')).toEqual({
+      zone: PREVIEW.zone,
+      templateId: PREVIEW.templateId,
+      botId: PREVIEW.botId,
+      expectedName: PREVIEW.name,
+      input: '',
+      workspaceTarget: 'current',
+    })
+
+    resolveCreate(jsonResponse(202, creation('starting')))
+    expect(await within(dialog).findByText('正在启动')).toBeVisible()
+    expect(workspace).toBeDisabled()
+    expect(await within(dialog).findByText('创建成功，初始指示已提交')).toBeVisible()
+    expect(workspace).toBeDisabled()
+    await user.click(within(dialog).getByTestId('bot-create-close'))
+    dialog = await openDialog(user, 0)
+    expect(within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })).toHaveValue('default')
   })
 
   it('就绪或提交任一失败都不显示成功，并保留已知定位信息', async () => {
@@ -276,6 +343,7 @@ describe('从 zone 创建 Bot：名称预览与阶段', () => {
     const failure = await within(dialog).findByTestId('bot-create-failure')
     expect(failure).toHaveTextContent('启动 agent')
     expect(failure).toHaveTextContent('agent 没有在时限内就绪。')
+    expect(within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })).toBeDisabled()
     expect(within(dialog).queryByTestId('bot-create-success')).toBeNull()
     expect(within(dialog).getByTestId('bot-result-tab')).toHaveTextContent('w-target:t9')
     expect(within(dialog).getByTestId('bot-result-pane')).toHaveTextContent('w-target:p9')

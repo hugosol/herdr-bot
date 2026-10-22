@@ -44,7 +44,7 @@ pub struct Config {
     pub bot_templates: BotTemplatesConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
     ///
-    /// 这一段不是后备缺省：目标 Workspace 只能由部署者明确指定，缺失、空串或纯空白都会让
+    /// 这一段不是后备缺省：默认 Workspace 由部署者明确指定，缺失、空串或纯空白都会让
     /// 进程启动失败，而不是落到任何猜测出来的位置。
     pub herdr: HerdrConfig,
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
@@ -54,7 +54,7 @@ pub struct Config {
 
 /// Herdr 控制设置（`[herdr]` 段）。
 ///
-/// 每个新建 Bot 都按 `workspace_name` 精确查找唯一的 Herdr Workspace；客户端请求不能替换这个目标。
+/// 默认按 `workspace_name` 精确查找唯一的 Herdr Workspace；本次选择“当前”时按 zone 根目录名匹配。
 /// `executable` 是生产调用 `herdr` CLI 的路径，缺省按 `PATH` 查找；它不改变目标 Workspace 的归属。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
