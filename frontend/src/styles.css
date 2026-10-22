@@ -90,6 +90,12 @@ h1 {
 .chat-views__toggle { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.75rem; padding: 0.4rem 0.65rem; background: #2b3541; color: #f2f4f8; border: 1px solid #637587; border-radius: 0.35rem; cursor: pointer; }
 .chat-views__toggle:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
 .history-panel { min-width: 0; }
+.history-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.75rem; }
+.history-pagination p { margin: 0; font-size: 0.8rem; }
+.history-pagination__controls { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.history-pagination button { min-height: 2.75rem; padding: 0.4rem 0.65rem; background: #2b4035; color: #f2f4f8; border: 1px solid #637d6c; border-radius: 0.35rem; cursor: pointer; }
+.history-pagination button:disabled { opacity: 0.5; cursor: default; }
+.history-pagination button:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
 .history-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.8rem; }
 .history-table th, .history-table td { text-align: left; vertical-align: top; padding: 0.5rem 0.3rem; border-bottom: 1px solid #40544b; overflow-wrap: anywhere; }
 .history-table th:nth-child(1) { width: 27%; }

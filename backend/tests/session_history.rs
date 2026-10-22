@@ -89,7 +89,7 @@ async fn rejected_sources_missing_required_fields_and_non_register_events_never_
     let rejected: Value = serde_json::from_slice(&to_bytes(rejected.into_body(), 8192).await.unwrap()).unwrap();
     assert_eq!(rejected["code"], "forbidden");
     let before = get_over_tcp(server.addr(), "/api/sessions/history").await;
-    assert_eq!(serde_json::from_str::<Value>(&before.body).unwrap(), json!({"sessions":[]}));
+    assert_eq!(serde_json::from_str::<Value>(&before.body).unwrap(), json!({"sessions":[],"page":1,"pageSize":50,"total":0,"totalPages":1}));
     let accepted = post_json_over_tcp(server.addr(), "/api/sessions/events", r#"{"sessionId":"accepted-local","kind":"register","data":{"cwd":"C:/known"}}"#).await;
     assert_eq!(accepted.status, 200);
     let read = lan.oneshot(Request::builder().uri("/api/sessions/history").body(Body::empty()).unwrap()).await.unwrap();
@@ -113,7 +113,7 @@ async fn explicit_register_survives_restart_without_restoring_current_or_shutdow
     config.sessions.history_file = root.path().join("history.json");
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
     let empty = get_over_tcp(server.addr(), "/api/sessions/history").await;
-    assert_eq!(serde_json::from_str::<Value>(&empty.body).unwrap(), json!({"sessions":[]}));
+    assert_eq!(serde_json::from_str::<Value>(&empty.body).unwrap(), json!({"sessions":[],"page":1,"pageSize":50,"total":0,"totalPages":1}));
     for event in [
         json!({"sessionId":"old-native-exact-id", "kind":"register", "data":{"cwd":"C:/old", "sessionName":"Original", "sessionFile":native}}),
         json!({"sessionId":"old-native-exact-id", "kind":"state", "data":{"value":"working"}}),

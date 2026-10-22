@@ -10,21 +10,27 @@ type HistorySession = {
   firstRecordedAt: number
 }
 
-type HistoryState = { kind: 'loading' } | { kind: 'loaded'; sessions: HistorySession[] } | { kind: 'error' }
+type HistoryPage = { sessions: HistorySession[]; page: number; total: number; totalPages: number }
+type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }
 
 function HistoryPanel() {
+  const [page, setPage] = useState(1)
   const [state, setState] = useState<HistoryState>({ kind: 'loading' })
+  const navigate = (target: number) => {
+    setState({ kind: 'loading' })
+    setPage(target)
+  }
   useEffect(() => {
     const controller = new AbortController()
-    void fetch('/api/sessions/history', { signal: controller.signal, cache: 'no-store' })
+    void fetch(`/api/sessions/history?page=${page}`, { signal: controller.signal, cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const body = await response.json() as { sessions: HistorySession[] }
-        if (!controller.signal.aborted) setState({ kind: 'loaded', sessions: body.sessions })
+        const body = await response.json() as HistoryPage
+        if (!controller.signal.aborted) setState({ kind: 'loaded', ...body })
       })
       .catch(() => { if (!controller.signal.aborted) setState({ kind: 'error' }) })
     return () => controller.abort()
-  }, [])
+  }, [page])
 
   return <section aria-label="历史会话" className="history-panel">
     {state.kind === 'loading' ? <p role="status">正在读取历史会话…</p> : null}
@@ -39,6 +45,15 @@ function HistoryPanel() {
         <td data-label="首次收录时间"><time dateTime={new Date(session.firstRecordedAt).toISOString()}>{new Date(session.firstRecordedAt).toLocaleString('zh-CN')}</time></td>
       </tr>)}</tbody>
     </table> : null}
+    {state.kind === 'loaded' ? <nav className="history-pagination" aria-label="历史分页">
+      <p aria-live="polite">第 {state.page} / {state.totalPages} 页 · 共 {state.total} 条</p>
+      <div className="history-pagination__controls">
+        <button type="button" disabled={state.page === 1} onClick={() => navigate(1)}>首页</button>
+        <button type="button" disabled={state.page === 1} onClick={() => navigate(state.page - 1)}>上一页</button>
+        <button type="button" disabled={state.page === state.totalPages} onClick={() => navigate(state.page + 1)}>下一页</button>
+        <button type="button" disabled={state.page === state.totalPages} onClick={() => navigate(state.totalPages)}>末页</button>
+      </div>
+    </nav> : null}
   </section>
 }
 
