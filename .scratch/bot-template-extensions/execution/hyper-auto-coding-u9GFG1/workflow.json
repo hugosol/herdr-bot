@@ -1,0 +1,1186 @@
+{
+  "branch": "feature/create-bot",
+  "baseline": "f6188103885cec5f5588f65e4cc46f8c0527d7e2",
+  "attempts": [
+    {
+      "ticket": "01-runtime-data-cutover.md",
+      "id": "5382facb-3a23-4ebc-a673-f57dc05e53ea",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-ec33ae7d-fd39-4e0f-a6fd-b0b9187b194d.md"
+    },
+    {
+      "ticket": "02-dynamic-option-catalog.md",
+      "id": "7c2e4e28-f214-45f5-b2a8-4f317d3ea159",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-1bb639e1-8c60-4253-8c6c-18f4ad73800b.md"
+    },
+    {
+      "ticket": "03-stepped-template-editor.md",
+      "id": "033e99d7-841b-4b78-bfa5-ea96f5cfe3e5",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-86d0ff27-e6ac-46cf-97ce-c368ac3983df.md"
+    },
+    {
+      "ticket": "04-template-extension-launch.md",
+      "id": "de202d29-63b4-4aaa-8e15-d2d5a721bbaf",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-3c3f673c-a7e8-42ee-a50c-43c9b1495a13.md"
+    },
+    {
+      "ticket": "05-stale-selection-recovery.md",
+      "id": "7a4d4e1e-ca57-4705-8508-782ffa26a4c6",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-ea5fe463-8bba-4afa-8333-685077935c76.md"
+    },
+    {
+      "ticket": "06-creation-snapshot-isolation.md",
+      "id": "92948478-8e60-4f48-a979-1659a9928157",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-2789cc4d-6a63-4f81-bc2c-acfc9662cb00.md"
+    },
+    {
+      "ticket": "07-responsive-browser-workflow.md",
+      "id": "4bdcf0eb-7af0-42f3-93c4-886725c0340a",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-fe6626cc-c5e8-4e96-8c8a-c9a8f844940c.md"
+    },
+    {
+      "ticket": "08-integrated-acceptance-handoff.md",
+      "id": "8302ff20-775d-4aaa-b0c2-60a45703773e",
+      "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-4a4fcf18-a7c1-4394-be75-761d14bddbc5.md"
+    }
+  ],
+  "tickets": {
+    "mode": "running",
+    "planned": true,
+    "paused": false,
+    "pausing": false,
+    "checkpoint": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-auto-coding-pause-01a161bb-4f63-705f-a415-e84490a1-83469277443a74c5.json",
+    "branch": "feature/create-bot",
+    "baseline": "f6188103885cec5f5588f65e4cc46f8c0527d7e2",
+    "temporaryDir": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1",
+    "maxParallelTickets": 4,
+    "active": [],
+    "integrating": [],
+    "ready": [],
+    "tickets": [
+      {
+        "ticket": "01-runtime-data-cutover.md",
+        "blockedBy": [],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/01-runtime-data-cutover-cb2396-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-uyovrw"
+        },
+        "mergedHead": "b20098398ae0f7fbf2dc2ca94b53a93e1dcb0ce0",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-5f759c7a-0770-4e64-a5c4-653ce4344402.md",
+        "integrationAgentId": "integrate-01-runtime-data-cutovermd-d4d2b169-a1b",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-ec33ae7d-fd39-4e0f-a6fd-b0b9187b194d.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "02-dynamic-option-catalog.md",
+        "blockedBy": [],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/02-dynamic-option-catalog-dd6373-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pgiqvr"
+        },
+        "mergedHead": "a8fe429bb736499f43e322d87b5971e3bffc901f",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-86cbf944-6512-4068-a0dc-40faa2918d08.md",
+        "integrationAgentId": "integrate-02-dynamic-option-catalogmd-5e46f4ba-0",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-1bb639e1-8c60-4253-8c6c-18f4ad73800b.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "03-stepped-template-editor.md",
+        "blockedBy": [
+          "02-dynamic-option-catalog.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/03-stepped-template-editor-8a299b-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-MQZFDe"
+        },
+        "mergedHead": "22b3d5311cfc046c8974ecd853c096041a5ee704",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-dede91d7-2343-4afc-be86-38f44caa7859.md",
+        "integrationAgentId": "integrate-03-stepped-template-editormd-b0f729e6-",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-86d0ff27-e6ac-46cf-97ce-c368ac3983df.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "04-template-extension-launch.md",
+        "blockedBy": [
+          "03-stepped-template-editor.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/04-template-extension-launch-82a561-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-LoC52D"
+        },
+        "mergedHead": "987dae60f9ff6d45c9e573b551068464597d65c3",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-a41a468f-5477-4c4c-b91e-d9ee450a8f7f.md",
+        "integrationAgentId": "integrate-04-template-extension-launchmd-fb6cfb1",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-3c3f673c-a7e8-42ee-a50c-43c9b1495a13.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "05-stale-selection-recovery.md",
+        "blockedBy": [
+          "04-template-extension-launch.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/05-stale-selection-recovery-97738b-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf"
+        },
+        "mergedHead": "34c934a26987c7f0cb4c8e5478bc40d7321cb943",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-91ec0dc9-a22f-4501-bb49-25f27e11d6b7.md",
+        "integrationAgentId": "integrate-05-stale-selection-recoverymd-e466e1f6",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-ea5fe463-8bba-4afa-8333-685077935c76.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "06-creation-snapshot-isolation.md",
+        "blockedBy": [
+          "04-template-extension-launch.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/06-creation-snapshot-isolation-0f8080-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-JYUSEw"
+        },
+        "mergedHead": "8ac3bb6d094be8aef0ec8dad6ba6bc353988b285",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-e694841a-c2d2-4ebc-bb3c-6b9f5b64761e.md",
+        "integrationAgentId": "integrate-06-creation-snapshot-isolationmd-bd45d",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-2789cc4d-6a63-4f81-bc2c-acfc9662cb00.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "07-responsive-browser-workflow.md",
+        "blockedBy": [
+          "05-stale-selection-recovery.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/07-responsive-browser-workflow-550873-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ym31DH"
+        },
+        "mergedHead": "9381daa23388f0b5456177a023de46d7fa670062",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-da32c562-a598-4e2d-8a74-48253b665291.md",
+        "integrationAgentId": "integrate-07-responsive-browser-workflowmd-62e79",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-fe6626cc-c5e8-4e96-8c8a-c9a8f844940c.md",
+        "reportSuccessful": true
+      },
+      {
+        "ticket": "08-integrated-acceptance-handoff.md",
+        "blockedBy": [
+          "01-runtime-data-cutover.md",
+          "06-creation-snapshot-isolation.md",
+          "07-responsive-browser-workflow.md"
+        ],
+        "status": "integrated",
+        "worktree": {
+          "branch": "hyper/bot-template-extensions/08-integrated-acceptance-handoff-89ca9f-8713386ed6b5",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-qgJDMn"
+        },
+        "mergedHead": "c922ca589e7297e4de14173af93f6c1dd08cfff1",
+        "integrationReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-c9d323db-1cb3-419f-9a2c-8fd1429acb1f.md",
+        "integrationAgentId": "integrate-08-integrated-acceptance-handoffmd-397",
+        "report": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\implement-4a4fcf18-a7c1-4394-be75-761d14bddbc5.md",
+        "reportSuccessful": true
+      }
+    ],
+    "finished": false,
+    "lastReport": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\execution\\hyper-auto-coding-u9GFG1\\integrate-c9d323db-1cb3-419f-9a2c-8fd1429acb1f.md"
+  },
+  "executions": [
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "01-runtime-data-cutover.md",
+      "run_id": "156aac55-34ee-4753-b1af-e922ffd0ea46",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "5382facb-3a23-4ebc-a673-f57dc05e53ea",
+      "started_at": "2026-10-22T03:58:15.713Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:11:22.500Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "01-runtime-data-cutovermd-5382facb-3a23-4ebc-a67",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-uyovrw\\.scratch\\bot-template-extensions\\implementation\\01-runtime-data-cutover.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-uyovrw\\.scratch\\bot-template-extensions\\implementation\\01-runtime-data-cutover.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement runtime data cutover ticket using TDD",
+        "lastIntent": "Committing isolated runtime cutover implementation",
+        "exitCode": 0,
+        "output": "{\n  \"ticket\": \"01-runtime-data-cutover.md\",\n  \"result\": \"本票实现与自动验收完成，已提交，可交由独立集成代理接管。未操作或合入集成分支。\",\n  \"commit\": \"e08e5df\",\n  \"branch\": \"hyper/bot-template-extensions/01-runtime-data-cutover-cb2396-8713386ed6b5\",\n  \"delivered\": [\n    \"默认及随附配置改用 .data/zones.json、.data/bot-templates.json；新 Bot 使用模板文件旁 bot-sessions 下独立、排他创建的新目录。\",\n    \"启动执行一次性切换：完整迁移旧 zone 登记；已有新登记优先且保持原字节；删除授权旧模板、会话及临时文件；成功标记避免重启重复清理。\",\n    \"保留显式持久位置配置，无旧位置自动回退；目录、迁移和写入错误明确失败，不假报成功。\",\n    \"同步 README、随附配置及 Git 忽略规则；不增加临时登记、关机意图或创建进度的持久化恢复。\"\n  ],\n  \"acceptance_evidence\": {\n    \"P40_runtime_P47\": \"default_and_delivered_public_save_and_two_creations_use_fresh_runtime_locations：默认及真实交付 TOML、公开保存与创建、真实独立空会话目录及连续两次进程重启。\",\n    \"P41_P46\": \"default_and_explicit_template_locations_survive_two_restarts_without_legacy_fallback：非默认模板位置、两次重启、新会话样例保留，以及目标缺失也不回退旧源。\",\n    \"P42\": \"delivered_ignore_rules_exclude_runtime_and_temporary_files_but_not_metadata：隔离真实 Git 使用交付忽略规则，仅元数据及忽略文件进入候选集；未添加或提交运行数据。\",\n    \"P43_P45\": \"cutover_moves_only_zone_registration_and_discards_authorized_legacy_data：公开登记、逐字节迁移、授权清理、zone 二进制及无关文件不变、零外部控制调用。\",\n    \"P44\": \"existing_zone_target_wins_without_merging_or_stopping_startup：不同新旧登记下新目标字节及公开结果保持不变，旧源删除。\",\n    \"P47_failures\": \"runtime_directory_and_write_failures_are_not_reported_as_success；invalid_zone_migration_target_fails_without_removing_the_old_registration：真实目录冲突、只读写入失败、会话分配失败、错误迁移目标保留旧源。\",\n    \"P48\": \"real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation：真实登记、监听、长倒计时及外部屏障阻塞的创建在重启后均不恢复或重放。\"\n  },\n  \"verification\": {\n    \"command\": \"cargo test --lib --test runtime_data --test bot_templates --test bot_creation --test bot_creation_detached --test zone_registry\",\n    \"cwd\": \"backend\",\n    \"result\": \"122 passed，0 failed；包含本票新增的 8 个 S2/S3 验收测试。\",\n    \"formatting\": \"已对本票 Rust 文件执行 rustfmt --edition 2024 --config skip_children=true。\",\n    \"tdd\": \"已观察迁移目标缺失、会话目录未落盘、运行数据未忽略及错误登记目标仍被接受的行为性 red，随后 green；已有正确行为补充公开验证。\"\n  },\n  \"handoff_notes\": [\n    \"本票验收项均已勾选并记录实际证据。按仓库规则，未合入前票据保留 in-progress，不将 agent 完成标记为 closed。\",\n    \"共享集成文件为 config.rs、main.rs、templates.rs、zones.rs、lib.rs、herdr-bot.toml、README.md；已与 02 协调变更位置。\",\n    \"完整 P40 的元数据布局仍归 02，最终合并配置验证归 08。受控 Herdr 和手写会话样例不代表真实 OMP/Pi 模型执行或会话恢复。\"\n  ],\n  \"unfinished_owned_items\": []\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 786664,
+        "tokens": 191327,
+        "requests": 70,
+        "contextTokens": 107371,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 167372,
+          "output": 23955,
+          "cacheRead": 5407360,
+          "cacheWrite": 0,
+          "totalTokens": 5598687,
+          "reasoningTokens": 5552,
+          "cost": {
+            "input": 0.33474400000000004,
+            "output": 0.23954999999999999,
+            "cacheRead": 0.5407360000000002,
+            "cacheWrite": 0,
+            "total": 1.11503
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\01-runtime-data-cutovermd-5382facb-3a23-4ebc-a67.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "ticket": "01-runtime-data-cutover.md",
+                "result": "本票实现与自动验收完成，已提交，可交由独立集成代理接管。未操作或合入集成分支。",
+                "commit": "e08e5df",
+                "branch": "hyper/bot-template-extensions/01-runtime-data-cutover-cb2396-8713386ed6b5",
+                "delivered": [
+                  "默认及随附配置改用 .data/zones.json、.data/bot-templates.json；新 Bot 使用模板文件旁 bot-sessions 下独立、排他创建的新目录。",
+                  "启动执行一次性切换：完整迁移旧 zone 登记；已有新登记优先且保持原字节；删除授权旧模板、会话及临时文件；成功标记避免重启重复清理。",
+                  "保留显式持久位置配置，无旧位置自动回退；目录、迁移和写入错误明确失败，不假报成功。",
+                  "同步 README、随附配置及 Git 忽略规则；不增加临时登记、关机意图或创建进度的持久化恢复。"
+                ],
+                "acceptance_evidence": {
+                  "P40_runtime_P47": "default_and_delivered_public_save_and_two_creations_use_fresh_runtime_locations：默认及真实交付 TOML、公开保存与创建、真实独立空会话目录及连续两次进程重启。",
+                  "P41_P46": "default_and_explicit_template_locations_survive_two_restarts_without_legacy_fallback：非默认模板位置、两次重启、新会话样例保留，以及目标缺失也不回退旧源。",
+                  "P42": "delivered_ignore_rules_exclude_runtime_and_temporary_files_but_not_metadata：隔离真实 Git 使用交付忽略规则，仅元数据及忽略文件进入候选集；未添加或提交运行数据。",
+                  "P43_P45": "cutover_moves_only_zone_registration_and_discards_authorized_legacy_data：公开登记、逐字节迁移、授权清理、zone 二进制及无关文件不变、零外部控制调用。",
+                  "P44": "existing_zone_target_wins_without_merging_or_stopping_startup：不同新旧登记下新目标字节及公开结果保持不变，旧源删除。",
+                  "P47_failures": "runtime_directory_and_write_failures_are_not_reported_as_success；invalid_zone_migration_target_fails_without_removing_the_old_registration：真实目录冲突、只读写入失败、会话分配失败、错误迁移目标保留旧源。",
+                  "P48": "real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation：真实登记、监听、长倒计时及外部屏障阻塞的创建在重启后均不恢复或重放。"
+                },
+                "verification": {
+                  "command": "cargo test --lib --test runtime_data --test bot_templates --test bot_creation --test bot_creation_detached --test zone_registry",
+                  "cwd": "backend",
+                  "result": "122 passed，0 failed；包含本票新增的 8 个 S2/S3 验收测试。",
+                  "formatting": "已对本票 Rust 文件执行 rustfmt --edition 2024 --config skip_children=true。",
+                  "tdd": "已观察迁移目标缺失、会话目录未落盘、运行数据未忽略及错误登记目标仍被接受的行为性 red，随后 green；已有正确行为补充公开验证。"
+                },
+                "handoff_notes": [
+                  "本票验收项均已勾选并记录实际证据。按仓库规则，未合入前票据保留 in-progress，不将 agent 完成标记为 closed。",
+                  "共享集成文件为 config.rs、main.rs、templates.rs、zones.rs、lib.rs、herdr-bot.toml、README.md；已与 02 协调变更位置。",
+                  "完整 P40 的元数据布局仍归 02，最终合并配置验证归 08。受控 Herdr 和手写会话样例不代表真实 OMP/Pi 模型执行或会话恢复。"
+                ],
+                "unfinished_owned_items": []
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 34,
+          "charCount": 2254
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "01-runtime-data-cutovermd-5382facb-3a23-4ebc-a67",
+      "session_id": "01a161c2-72e0-7694-beb2-4fe04252c2d6",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\01-runtime-data-cutovermd-5382facb-3a23-4ebc-a67.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-uyovrw",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\01-runtime-data-cutover.md\\156aac55-34ee-4753-b1af-e922ffd0ea46.md",
+      "retro_finished_at": "2026-10-22T04:13:51.123Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "02-dynamic-option-catalog.md",
+      "run_id": "2cde3814-bf1d-47db-954b-444a38f12371",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "7c2e4e28-f214-45f5-b2a8-4f317d3ea159",
+      "started_at": "2026-10-22T03:58:15.969Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:16:45.568Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "02-dynamic-option-catalogmd-7c2e4e28-f214-45f5-b",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pgiqvr\\.scratch\\bot-template-extensions\\implementation\\02-dynamic-option-catalog.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pgiqvr\\.scratch\\bot-template-extensions\\implementation\\02-dynamic-option-catalog.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement the dynamic option catalog ticket",
+        "lastIntent": "Committing isolated catalog implementation",
+        "exitCode": 0,
+        "output": "{\n  \"ticket\": \"02-dynamic-option-catalog\",\n  \"result\": \"本票实现与所属自动验收完成，已提交并交出当前 worktree，等待独立集成。\",\n  \"commit\": \"2fae697\",\n  \"branch\": \"hyper/bot-template-extensions/02-dynamic-option-catalog-dd6373-8713386ed6b5\",\n  \"delivered\": [\n    \"新增手工维护的 meta-data/bot-options.toml，集中定义 Agent、模型完整映射、四组 thinking 能力、Skill、固定/可选扩展及显示信息。\",\n    \"公开选项、编辑器重新打开、保存校验和创建时模型/Skill 解析均读取当前元数据，无编译清单或旧缓存回退；模板仅持久保存稳定标识。\",\n    \"创建接受前解析并固定模型、thinking、Skill 映射；既有保存标识无需重存即可使用新映射。\",\n    \"启动前校验元数据；缺失、不可读、语法错误、重复标识和矛盾关系均明确阻止启动。\",\n    \"同步交付配置、README、现有测试夹具及本票验收证据。\"\n  ],\n  \"coverage\": {\n    \"P7-P9\": \"现有公开 HTTP 能力/非法请求测试与受控 Herdr 原生启动记录：四组显式能力、完整 provider/model、默认模型无额外覆盖。\",\n    \"P10\": \"真实 Chrome 检查 high 保留、xhigh/off 不适用时重置及具体提示。\",\n    \"P11\": \"完整字段读回、Skill 空值/单选、多行与空 prompt、原生初始输入测试。\",\n    \"P25-P26_existing_fields\": \"dynamic_catalog.rs 与 dynamicCatalog.spec.ts：真实文件、公开 HTTP、同一真实程序实例与真实 Chrome；分别观察新选项/显示名、当前保存合法性及不重存模板的新启动映射。\",\n    \"P31\": \"真实交付程序分别验证五种启动故障；Windows 独占文件句柄提供真实读取拒绝。\",\n    \"P40_metadata_layout\": \"真实程序以随附配置及省略 metadata_file 两种形状启动，读取独立 meta-data 目录；根目录非法同名诱饵未被使用。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"cargo test --test bot_templates --test bot_creation --test dynamic_catalog --lib\",\n      \"result\": \"101 passed（当时 dynamic_catalog 含 2 项）\"\n    },\n    {\n      \"command\": \"cargo test --test dynamic_catalog --test herdr_config --test session_window_config --test zone_registry --test bot_creation_detached --test bot_identity\",\n      \"result\": \"36 passed，包含新增默认/交付元数据布局检查\"\n    },\n    {\n      \"command\": \"npm test\",\n      \"result\": \"26 test files、184 passed\"\n    },\n    {\n      \"command\": \"npm run test:browser -- botTemplates.spec.ts dynamicCatalog.spec.ts\",\n      \"result\": \"真实 Chrome 4 passed\"\n    },\n    {\n      \"command\": \"npm run build；cargo build --bins\",\n      \"result\": \"成功，产物用于真实浏览器与真实程序验收\"\n    }\n  ],\n  \"integration_notes\": [\n    \"按仓库状态规则，尚未合入前本票保持 in-progress；验收项已勾选，不能将本次调用完成当作 merged/closed。\",\n    \"合并时保留 01 对 templates.rs/config.rs/main.rs/lib.rs/herdr-bot.toml 的运行数据切换修改。01 的隔离 cwd 进程测试需复制交付元数据或显式配置 metadata_file。\",\n    \"后续票据复用 catalog::Catalog、Templates::catalog() 和 ResolvedPreset；公开 options 增加 labels/extensions，浏览器夹具提供独立 metadataFile。\"\n  ],\n  \"unfinished_owned_items\": [],\n  \"limitations\": [\n    \"未运行整个后端测试套件或 mDNS 网络测试；已执行上述相关回归。\",\n    \"未声称真实 OMP/Pi 扩展加载或真实手机验收完成；这些不属于本票验收责任。\"\n  ]\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 1109406,
+        "tokens": 153008,
+        "requests": 121,
+        "contextTokens": 136119,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 121811,
+          "output": 31197,
+          "cacheRead": 11219456,
+          "cacheWrite": 0,
+          "totalTokens": 11372464,
+          "reasoningTokens": 6389,
+          "cost": {
+            "input": 0.2436219999999999,
+            "output": 0.31196999999999997,
+            "cacheRead": 1.1219456,
+            "cacheWrite": 0,
+            "total": 1.6775376000000004
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\02-dynamic-option-catalogmd-7c2e4e28-f214-45f5-b.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "ticket": "02-dynamic-option-catalog",
+                "result": "本票实现与所属自动验收完成，已提交并交出当前 worktree，等待独立集成。",
+                "commit": "2fae697",
+                "branch": "hyper/bot-template-extensions/02-dynamic-option-catalog-dd6373-8713386ed6b5",
+                "delivered": [
+                  "新增手工维护的 meta-data/bot-options.toml，集中定义 Agent、模型完整映射、四组 thinking 能力、Skill、固定/可选扩展及显示信息。",
+                  "公开选项、编辑器重新打开、保存校验和创建时模型/Skill 解析均读取当前元数据，无编译清单或旧缓存回退；模板仅持久保存稳定标识。",
+                  "创建接受前解析并固定模型、thinking、Skill 映射；既有保存标识无需重存即可使用新映射。",
+                  "启动前校验元数据；缺失、不可读、语法错误、重复标识和矛盾关系均明确阻止启动。",
+                  "同步交付配置、README、现有测试夹具及本票验收证据。"
+                ],
+                "coverage": {
+                  "P7-P9": "现有公开 HTTP 能力/非法请求测试与受控 Herdr 原生启动记录：四组显式能力、完整 provider/model、默认模型无额外覆盖。",
+                  "P10": "真实 Chrome 检查 high 保留、xhigh/off 不适用时重置及具体提示。",
+                  "P11": "完整字段读回、Skill 空值/单选、多行与空 prompt、原生初始输入测试。",
+                  "P25-P26_existing_fields": "dynamic_catalog.rs 与 dynamicCatalog.spec.ts：真实文件、公开 HTTP、同一真实程序实例与真实 Chrome；分别观察新选项/显示名、当前保存合法性及不重存模板的新启动映射。",
+                  "P31": "真实交付程序分别验证五种启动故障；Windows 独占文件句柄提供真实读取拒绝。",
+                  "P40_metadata_layout": "真实程序以随附配置及省略 metadata_file 两种形状启动，读取独立 meta-data 目录；根目录非法同名诱饵未被使用。"
+                },
+                "verification": [
+                  {
+                    "command": "cargo test --test bot_templates --test bot_creation --test dynamic_catalog --lib",
+                    "result": "101 passed（当时 dynamic_catalog 含 2 项）"
+                  },
+                  {
+                    "command": "cargo test --test dynamic_catalog --test herdr_config --test session_window_config --test zone_registry --test bot_creation_detached --test bot_identity",
+                    "result": "36 passed，包含新增默认/交付元数据布局检查"
+                  },
+                  {
+                    "command": "npm test",
+                    "result": "26 test files、184 passed"
+                  },
+                  {
+                    "command": "npm run test:browser -- botTemplates.spec.ts dynamicCatalog.spec.ts",
+                    "result": "真实 Chrome 4 passed"
+                  },
+                  {
+                    "command": "npm run build；cargo build --bins",
+                    "result": "成功，产物用于真实浏览器与真实程序验收"
+                  }
+                ],
+                "integration_notes": [
+                  "按仓库状态规则，尚未合入前本票保持 in-progress；验收项已勾选，不能将本次调用完成当作 merged/closed。",
+                  "合并时保留 01 对 templates.rs/config.rs/main.rs/lib.rs/herdr-bot.toml 的运行数据切换修改。01 的隔离 cwd 进程测试需复制交付元数据或显式配置 metadata_file。",
+                  "后续票据复用 catalog::Catalog、Templates::catalog() 和 ResolvedPreset；公开 options 增加 labels/extensions，浏览器夹具提供独立 metadataFile。"
+                ],
+                "unfinished_owned_items": [],
+                "limitations": [
+                  "未运行整个后端测试套件或 mDNS 网络测试；已执行上述相关回归。",
+                  "未声称真实 OMP/Pi 扩展加载或真实手机验收完成；这些不属于本票验收责任。"
+                ]
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 53,
+          "charCount": 2300
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "02-dynamic-option-catalogmd-7c2e4e28-f214-45f5-b",
+      "session_id": "01a161c2-740c-74f1-97e1-bb38b0e298f8",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\02-dynamic-option-catalogmd-7c2e4e28-f214-45f5-b.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pgiqvr",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\02-dynamic-option-catalog.md\\2cde3814-bf1d-47db-954b-444a38f12371.md",
+      "retro_finished_at": "2026-10-22T04:20:00.320Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "03-stepped-template-editor.md",
+      "run_id": "a3875fca-e98d-4eae-8ba3-73e958654ac5",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "033e99d7-841b-4b78-bfa5-ea96f5cfe3e5",
+      "started_at": "2026-10-22T04:23:30.741Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:33:53.798Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "03-stepped-template-editormd-033e99d7-841b-4b78-",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-MQZFDe\\.scratch\\bot-template-extensions\\implementation\\03-stepped-template-editor.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-MQZFDe\\.scratch\\bot-template-extensions\\implementation\\03-stepped-template-editor.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "实现分步模板编辑器并验证提交",
+        "lastIntent": "Committing stepped template editor ticket",
+        "exitCode": 0,
+        "output": "{\n  \"result\": \"本票实现及所属自动验收全部完成，已提交，可交由独立集成代理接管。未操作或合入集成分支。\",\n  \"commit\": \"fc23613\",\n  \"branch\": \"hyper/bot-template-extensions/03-stepped-template-editor-8a299b-8713386ed6b5\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-MQZFDe\",\n  \"delivered\": [\n    \"生产页面新增与编辑均采用“模板预设 → 扩展配置 → 确认保存”；往返保留完整草稿，导航不保存。\",\n    \"保留所有既有字段编辑、四类命名字段插入及混合固定文字预览；确认摘要逐项显示全部字段、固定项、可选项及自动发现关闭。\",\n    \"按当前 Agent 元数据提供扩展复选框；model-cost 独立显示且不可取消；切换 Agent 重置 model/thinking 并清空扩展。\",\n    \"公开保存校验当前扩展适用性，拒绝跨 Agent、固定项、未知项和重复选择；模板仅持久保存 extensions 稳定标识数组。\",\n    \"重新打开编辑读取当前模板及元数据；真实磁盘写入失败明确反馈且不破坏旧模板。README 与现有测试消费者已同步。\"\n  ],\n  \"acceptance_evidence\": [\n    {\n      \"criteria\": \"P1–P6、P12、P14、P16 展示、P18\",\n      \"test\": \"frontend/browser-tests/steppedTemplates.spec.ts：三步新增和编辑保留完整草稿，摘要与公开持久结果一致，删除不关闭既有 Bot\",\n      \"proves\": \"真实页面完整生命周期、字段与多行草稿、四类命名插入和独立预览、逐字段摘要、导航后独立读取不变；删除前已创建 Bot，随后外部调用和既有对象保持不变。\"\n    },\n    {\n      \"criteria\": \"P14、P17\",\n      \"test\": \"同文件：切换 Agent 清空扩展且切回不恢复，新模板零选明确保存为空\",\n      \"proves\": \"OMP 两项 → Pi → OMP 后无隐藏选择恢复，model/thinking 为默认，零选保存读回为空。\"\n    },\n    {\n      \"criteria\": \"P12–P15、P16 保存边界、P19、P25 稳定标识持久化\",\n      \"test\": \"同文件：公开保存六种扩展组合并在独立客户端和真实重启后保留稳定标识\",\n      \"proves\": \"公开选项符合独立字面集合；OMP 四组合、Pi 两组合均保存；非法选择拒绝；持久文件无映射副本；真实重启后逐标识读取一致。\"\n    },\n    {\n      \"criteria\": \"P25 扩展展示与保存校验、P26 扩展重新编辑与保存\",\n      \"test\": \"同文件：扩展元数据在同一进程重新编辑和保存时生效，只持久保存稳定选择\",\n      \"proves\": \"同进程修改标签和入口后重新打开显示新标签；旧页面保存遇到最新适用性变化被拒绝，修复后保存成功。\"\n    },\n    {\n      \"criteria\": \"P4、P19、P20\",\n      \"test\": \"同文件：真实磁盘写入故障明确失败且重读和重启保留旧模板与扩展\",\n      \"proves\": \"真实目录阻断临时文件写入，页面无成功反馈，草稿保留；独立读取与真实重启后旧模板及扩展选择不变。\"\n    }\n  ],\n  \"verification\": [\n    {\n      \"command\": \"backend: cargo build --bins\",\n      \"result\": \"通过\"\n    },\n    {\n      \"command\": \"backend: cargo test --test bot_templates --test dynamic_catalog --lib\",\n      \"result\": \"81 通过\"\n    },\n    {\n      \"command\": \"frontend: npm run build\",\n      \"result\": \"通过\"\n    },\n    {\n      \"command\": \"frontend: npm test\",\n      \"result\": \"26 个文件，184 个测试通过\"\n    },\n    {\n      \"command\": \"frontend: npm run test:browser -- steppedTemplates.spec.ts botTemplates.spec.ts dynamicCatalog.spec.ts mobileWorkflow.spec.ts lanAccess.spec.ts\",\n      \"result\": \"13 个真实浏览器测试通过\"\n    }\n  ],\n  \"tdd\": \"先观察公开 extensions 保存接口缺失导致 400、步骤界面缺失导致失败，再完成实现并通过对应用例。其余已满足的标准通过真实场景补充验收。\",\n  \"remaining\": \"本票范围无未完成项。真实 Agent 扩展加载及 P16/P25/P26 启动覆盖由 04 负责；完整失效修正与尺寸/真机专项不属于本票，未据此声称已通过。\",\n  \"ticket_status\": \"已勾选全部验收条件并记录证据；依项目规则，独立集成合入前保留 in-progress，合入后方可 closed。\"\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 622939,
+        "tokens": 133121,
+        "requests": 49,
+        "contextTokens": 104085,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 110270,
+          "output": 22851,
+          "cacheRead": 3231360,
+          "cacheWrite": 0,
+          "totalTokens": 3364481,
+          "reasoningTokens": 4792,
+          "cost": {
+            "input": 0.22053999999999993,
+            "output": 0.22851000000000002,
+            "cacheRead": 0.3231360000000001,
+            "cacheWrite": 0,
+            "total": 0.7721859999999999
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\03-stepped-template-editormd-033e99d7-841b-4b78-.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "result": "本票实现及所属自动验收全部完成，已提交，可交由独立集成代理接管。未操作或合入集成分支。",
+                "commit": "fc23613",
+                "branch": "hyper/bot-template-extensions/03-stepped-template-editor-8a299b-8713386ed6b5",
+                "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-MQZFDe",
+                "delivered": [
+                  "生产页面新增与编辑均采用“模板预设 → 扩展配置 → 确认保存”；往返保留完整草稿，导航不保存。",
+                  "保留所有既有字段编辑、四类命名字段插入及混合固定文字预览；确认摘要逐项显示全部字段、固定项、可选项及自动发现关闭。",
+                  "按当前 Agent 元数据提供扩展复选框；model-cost 独立显示且不可取消；切换 Agent 重置 model/thinking 并清空扩展。",
+                  "公开保存校验当前扩展适用性，拒绝跨 Agent、固定项、未知项和重复选择；模板仅持久保存 extensions 稳定标识数组。",
+                  "重新打开编辑读取当前模板及元数据；真实磁盘写入失败明确反馈且不破坏旧模板。README 与现有测试消费者已同步。"
+                ],
+                "acceptance_evidence": [
+                  {
+                    "criteria": "P1–P6、P12、P14、P16 展示、P18",
+                    "test": "frontend/browser-tests/steppedTemplates.spec.ts：三步新增和编辑保留完整草稿，摘要与公开持久结果一致，删除不关闭既有 Bot",
+                    "proves": "真实页面完整生命周期、字段与多行草稿、四类命名插入和独立预览、逐字段摘要、导航后独立读取不变；删除前已创建 Bot，随后外部调用和既有对象保持不变。"
+                  },
+                  {
+                    "criteria": "P14、P17",
+                    "test": "同文件：切换 Agent 清空扩展且切回不恢复，新模板零选明确保存为空",
+                    "proves": "OMP 两项 → Pi → OMP 后无隐藏选择恢复，model/thinking 为默认，零选保存读回为空。"
+                  },
+                  {
+                    "criteria": "P12–P15、P16 保存边界、P19、P25 稳定标识持久化",
+                    "test": "同文件：公开保存六种扩展组合并在独立客户端和真实重启后保留稳定标识",
+                    "proves": "公开选项符合独立字面集合；OMP 四组合、Pi 两组合均保存；非法选择拒绝；持久文件无映射副本；真实重启后逐标识读取一致。"
+                  },
+                  {
+                    "criteria": "P25 扩展展示与保存校验、P26 扩展重新编辑与保存",
+                    "test": "同文件：扩展元数据在同一进程重新编辑和保存时生效，只持久保存稳定选择",
+                    "proves": "同进程修改标签和入口后重新打开显示新标签；旧页面保存遇到最新适用性变化被拒绝，修复后保存成功。"
+                  },
+                  {
+                    "criteria": "P4、P19、P20",
+                    "test": "同文件：真实磁盘写入故障明确失败且重读和重启保留旧模板与扩展",
+                    "proves": "真实目录阻断临时文件写入，页面无成功反馈，草稿保留；独立读取与真实重启后旧模板及扩展选择不变。"
+                  }
+                ],
+                "verification": [
+                  {
+                    "command": "backend: cargo build --bins",
+                    "result": "通过"
+                  },
+                  {
+                    "command": "backend: cargo test --test bot_templates --test dynamic_catalog --lib",
+                    "result": "81 通过"
+                  },
+                  {
+                    "command": "frontend: npm run build",
+                    "result": "通过"
+                  },
+                  {
+                    "command": "frontend: npm test",
+                    "result": "26 个文件，184 个测试通过"
+                  },
+                  {
+                    "command": "frontend: npm run test:browser -- steppedTemplates.spec.ts botTemplates.spec.ts dynamicCatalog.spec.ts mobileWorkflow.spec.ts lanAccess.spec.ts",
+                    "result": "13 个真实浏览器测试通过"
+                  }
+                ],
+                "tdd": "先观察公开 extensions 保存接口缺失导致 400、步骤界面缺失导致失败，再完成实现并通过对应用例。其余已满足的标准通过真实场景补充验收。",
+                "remaining": "本票范围无未完成项。真实 Agent 扩展加载及 P16/P25/P26 启动覆盖由 04 负责；完整失效修正与尺寸/真机专项不属于本票，未据此声称已通过。",
+                "ticket_status": "已勾选全部验收条件并记录证据；依项目规则，独立集成合入前保留 in-progress，合入后方可 closed。"
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 65,
+          "charCount": 2468
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "03-stepped-template-editormd-033e99d7-841b-4b78-",
+      "session_id": "01a161d9-90d4-7159-857d-07f84901675b",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\03-stepped-template-editormd-033e99d7-841b-4b78-.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-MQZFDe",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\03-stepped-template-editor.md\\a3875fca-e98d-4eae-8ba3-73e958654ac5.md",
+      "retro_finished_at": "2026-10-22T04:36:45.798Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "04-template-extension-launch.md",
+      "run_id": "59e97c80-3c15-4b9c-9dcc-eddc98e8f1d8",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "de202d29-63b4-4aaa-8e15-d2d5a721bbaf",
+      "started_at": "2026-10-22T04:33:59.093Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:45:00.883Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "04-template-extension-launchmd-de202d29-63b4-4aa",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-LoC52D\\.scratch\\bot-template-extensions\\implementation\\04-template-extension-launch.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-LoC52D\\.scratch\\bot-template-extensions\\implementation\\04-template-extension-launch.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement template extension launch ticket using TDD",
+        "lastIntent": "Committing isolated extension launch implementation",
+        "exitCode": 0,
+        "output": "{\n  \"ticket\": \"04-template-extension-launch\",\n  \"commit\": \"c0b6baa\",\n  \"branch\": \"hyper/bot-template-extensions/04-template-extension-launch-82a561-8713386ed6b5\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-LoC52D\",\n  \"handoff\": \"实现与本票验收完成，已提交并交出 worktree，等待独立集成代理接管。未操作或合入 feature/create-bot，未调用 retro，未修改其他票据或工作流报告。\",\n  \"delivered\": [\n    \"公开创建使用当前元数据解析模板扩展，启动前检查所有固定及所选入口存在、为文件且可读取；错误明确说明尚未创建 Tab、启动 agent 或提交输入。\",\n    \"OMP/Pi 使用 --no-extensions 和准确的显式 --extension 集合；模板只保存稳定标识，不接受创建请求的扩展、固定项取消或入口覆盖。\",\n    \"保持既有就绪确认、一次合成输入提交、提交确认后成功和部分失败保留现场流程。\",\n    \"创建页面和原有说明文档同步解释文件检查边界；浏览器夹具使用真实隔离入口，具有可识别的执行副作用标记。\"\n  ],\n  \"acceptance_evidence\": [\n    {\n      \"criteria\": \"P16/P21/P22/P24\",\n      \"evidence\": \"templateExtensionLaunch.spec.ts 六组合测试：OMP 四组合、Pi 两组合；独立预写入口集合与原生开关；真实页面无扩展选择，直接覆盖请求被拒绝，用户及项目设置保持不变，不跳转 chat。\"\n    },\n    {\n      \"criteria\": \"P25/P26 扩展启动部分、P34/P39\",\n      \"evidence\": \"同进程相同已保存标识测试：外部更换固定与可选入口并删除旧入口，后续创建使用预写新路径；未选入口缺失不阻止创建，持久化模板不变，扩展执行标记未产生。\"\n    },\n    {\n      \"criteria\": \"P33/P35\",\n      \"evidence\": \"真实页面及公开 HTTP 覆盖固定项、可选项各自缺失/目录/Windows 独占句柄读取拒绝；另覆盖元数据缺失/读取拒绝/语法/重复/关系错误，以及扩展失效/跨 Agent/固定项/重复选择和 model/thinking/Skill/Agent 失效。独立 Herdr 调用、Tab 与外部目录对象记录均证明没有创建副作用。\"\n    },\n    {\n      \"criteria\": \"P38 及既有创建生命周期\",\n      \"evidence\": \"现有 bot_creation、bot_creation_detached、bot_identity 和页面创建用例验证就绪后提交、原生合成输入、提交确认后成功，以及失败/超时保留定位且不重发。\"\n    },\n    {\n      \"criteria\": \"说明及受控证据交付\",\n      \"evidence\": \"docs/bot-template-agent-inputs.md 已更新；Playwright 保存两份受控 Herdr JSON 证据，明确不是实际 OMP/Pi 加载证明。\"\n    }\n  ],\n  \"verification\": [\n    {\n      \"command\": \"npm ci && npm run build && cargo build --manifest-path ../backend/Cargo.toml\",\n      \"result\": \"成功。\"\n    },\n    {\n      \"command\": \"npx playwright test templateExtensionLaunch.spec.ts\",\n      \"result\": \"最终 21/21 通过。曾分别观察缺少原生扩展开关/入口参数、缺失入口仍被接受、无效持久 Agent 错误未声明无副作用三类行为红灯，再实现并确认绿灯。\"\n    },\n    {\n      \"command\": \"cargo test --test bot_creation --test bot_creation_detached --test bot_identity --test dynamic_catalog\",\n      \"result\": \"4 suites，37 tests 通过。\"\n    },\n    {\n      \"command\": \"npm run build && npm test && npx playwright test templateExtensionLaunch.spec.ts botCreation.spec.ts botCreationDetached.spec.ts dynamicCatalog.spec.ts\",\n      \"result\": \"构建成功；Vitest 26 files、184 tests 通过；当时 Playwright 29/29 通过。随后新增的无效 Agent 场景及相关反馈修复由最终 21/21 专项运行覆盖。\"\n    }\n  ],\n  \"saved_evidence\": [\n    \"frontend/test-results/templateExtensionLaunch-六种模板集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择/controlled-herdr-six-combinations-NOT-real-loading.json\",\n    \"frontend/test-results/templateExtensionLaunch-同进程相同已保存标识使用新入口且忽略未选缺失入口，不执行扩展/controlled-herdr-dynamic-entry-mapping-NOT-real-loading.json\"\n  ],\n  \"limitations\": [\n    \"本票范围内无未完成实现。受控 Herdr 调用正确不等于真实 OMP/Pi 加载通过；真实加载、ambient 对照及 H1 最终判断仍由 08 负责。\",\n    \"完整并发快照验收仍由 06 负责。\",\n    \"票据验收项已勾选；依仓库规则 closed 要求已合入，故状态保留 in-progress，待独立集成完成后关闭。\"\n  ]\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 661678,
+        "tokens": 106100,
+        "requests": 71,
+        "contextTokens": 96363,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 86025,
+          "output": 20075,
+          "cacheRead": 4454912,
+          "cacheWrite": 0,
+          "totalTokens": 4561012,
+          "reasoningTokens": 4414,
+          "cost": {
+            "input": 0.17204999999999998,
+            "output": 0.20075,
+            "cacheRead": 0.4454912000000001,
+            "cacheWrite": 0,
+            "total": 0.8182912000000004
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\04-template-extension-launchmd-de202d29-63b4-4aa.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "ticket": "04-template-extension-launch",
+                "commit": "c0b6baa",
+                "branch": "hyper/bot-template-extensions/04-template-extension-launch-82a561-8713386ed6b5",
+                "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-LoC52D",
+                "handoff": "实现与本票验收完成，已提交并交出 worktree，等待独立集成代理接管。未操作或合入 feature/create-bot，未调用 retro，未修改其他票据或工作流报告。",
+                "delivered": [
+                  "公开创建使用当前元数据解析模板扩展，启动前检查所有固定及所选入口存在、为文件且可读取；错误明确说明尚未创建 Tab、启动 agent 或提交输入。",
+                  "OMP/Pi 使用 --no-extensions 和准确的显式 --extension 集合；模板只保存稳定标识，不接受创建请求的扩展、固定项取消或入口覆盖。",
+                  "保持既有就绪确认、一次合成输入提交、提交确认后成功和部分失败保留现场流程。",
+                  "创建页面和原有说明文档同步解释文件检查边界；浏览器夹具使用真实隔离入口，具有可识别的执行副作用标记。"
+                ],
+                "acceptance_evidence": [
+                  {
+                    "criteria": "P16/P21/P22/P24",
+                    "evidence": "templateExtensionLaunch.spec.ts 六组合测试：OMP 四组合、Pi 两组合；独立预写入口集合与原生开关；真实页面无扩展选择，直接覆盖请求被拒绝，用户及项目设置保持不变，不跳转 chat。"
+                  },
+                  {
+                    "criteria": "P25/P26 扩展启动部分、P34/P39",
+                    "evidence": "同进程相同已保存标识测试：外部更换固定与可选入口并删除旧入口，后续创建使用预写新路径；未选入口缺失不阻止创建，持久化模板不变，扩展执行标记未产生。"
+                  },
+                  {
+                    "criteria": "P33/P35",
+                    "evidence": "真实页面及公开 HTTP 覆盖固定项、可选项各自缺失/目录/Windows 独占句柄读取拒绝；另覆盖元数据缺失/读取拒绝/语法/重复/关系错误，以及扩展失效/跨 Agent/固定项/重复选择和 model/thinking/Skill/Agent 失效。独立 Herdr 调用、Tab 与外部目录对象记录均证明没有创建副作用。"
+                  },
+                  {
+                    "criteria": "P38 及既有创建生命周期",
+                    "evidence": "现有 bot_creation、bot_creation_detached、bot_identity 和页面创建用例验证就绪后提交、原生合成输入、提交确认后成功，以及失败/超时保留定位且不重发。"
+                  },
+                  {
+                    "criteria": "说明及受控证据交付",
+                    "evidence": "docs/bot-template-agent-inputs.md 已更新；Playwright 保存两份受控 Herdr JSON 证据，明确不是实际 OMP/Pi 加载证明。"
+                  }
+                ],
+                "verification": [
+                  {
+                    "command": "npm ci && npm run build && cargo build --manifest-path ../backend/Cargo.toml",
+                    "result": "成功。"
+                  },
+                  {
+                    "command": "npx playwright test templateExtensionLaunch.spec.ts",
+                    "result": "最终 21/21 通过。曾分别观察缺少原生扩展开关/入口参数、缺失入口仍被接受、无效持久 Agent 错误未声明无副作用三类行为红灯，再实现并确认绿灯。"
+                  },
+                  {
+                    "command": "cargo test --test bot_creation --test bot_creation_detached --test bot_identity --test dynamic_catalog",
+                    "result": "4 suites，37 tests 通过。"
+                  },
+                  {
+                    "command": "npm run build && npm test && npx playwright test templateExtensionLaunch.spec.ts botCreation.spec.ts botCreationDetached.spec.ts dynamicCatalog.spec.ts",
+                    "result": "构建成功；Vitest 26 files、184 tests 通过；当时 Playwright 29/29 通过。随后新增的无效 Agent 场景及相关反馈修复由最终 21/21 专项运行覆盖。"
+                  }
+                ],
+                "saved_evidence": [
+                  "frontend/test-results/templateExtensionLaunch-六种模板集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择/controlled-herdr-six-combinations-NOT-real-loading.json",
+                  "frontend/test-results/templateExtensionLaunch-同进程相同已保存标识使用新入口且忽略未选缺失入口，不执行扩展/controlled-herdr-dynamic-entry-mapping-NOT-real-loading.json"
+                ],
+                "limitations": [
+                  "本票范围内无未完成实现。受控 Herdr 调用正确不等于真实 OMP/Pi 加载通过；真实加载、ambient 对照及 H1 最终判断仍由 08 负责。",
+                  "完整并发快照验收仍由 06 负责。",
+                  "票据验收项已勾选；依仓库规则 closed 要求已合入，故状态保留 in-progress，待独立集成完成后关闭。"
+                ]
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 62,
+          "charCount": 2862
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "04-template-extension-launchmd-de202d29-63b4-4aa",
+      "session_id": "01a161e3-274d-76ad-ab06-94ba37bc6970",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\04-template-extension-launchmd-de202d29-63b4-4aa.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-LoC52D",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\04-template-extension-launch.md\\59e97c80-3c15-4b9c-9dcc-eddc98e8f1d8.md",
+      "retro_finished_at": "2026-10-22T04:47:09.338Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "05-stale-selection-recovery.md",
+      "run_id": "c14f20b1-fe75-4711-9c44-d5d72bb4c0ce",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "7a4d4e1e-ca57-4705-8508-782ffa26a4c6",
+      "started_at": "2026-10-22T04:45:07.731Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:57:17.302Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "05-stale-selection-recoverymd-7a4d4e1e-ca57-4705",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf\\.scratch\\bot-template-extensions\\implementation\\05-stale-selection-recovery.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf\\.scratch\\bot-template-extensions\\implementation\\05-stale-selection-recovery.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement stale selection recovery",
+        "lastIntent": "Committing isolated recovery implementation",
+        "exitCode": 0,
+        "output": "{\n  \"result\": \"implemented-and-verified\",\n  \"ticket\": \".scratch/bot-template-extensions/implementation/05-stale-selection-recovery.md\",\n  \"commit\": \"950830d\",\n  \"branch\": \"hyper/bot-template-extensions/05-stale-selection-recovery-97738b-8713386ed6b5\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-V4TMFf\",\n  \"handoff\": \"已提交本票实现并交出 worktree；未操作或合入 feature/create-bot，未修改其他票据或工作流报告，未调用 retro。\",\n  \"delivered\": [\n    \"失效模型和 thinking 保留原稳定标识并明确显示不可用，不再由浏览器静默显示默认值。\",\n    \"失效扩展保持可辨认的勾选项，用户可显式移除；错误说明跨步骤保留，导航不保存。\",\n    \"单项公开模板读取在元数据损坏或缺失时明确失败；有效元数据中的单个失效选择仍可读取。\",\n    \"更新失效选择与配置修复说明，新增真实浏览器、公开 HTTP、真实文件和独立 Herdr 观察覆盖。\"\n  ],\n  \"coverage\": {\n    \"P27\": \"4 个旧页面场景：模型移除、模型 Agent 适用关系变化、thinking 移除、扩展移除；页面保存/创建及直接公开请求全部拒绝。\",\n    \"P28\": \"分别恢复模型、thinking、扩展；原选择可辨认，导航不修正，明确保存后独立公开读回准确。\",\n    \"P29\": \"修正前保存和创建拒绝并解释原因；独立 Herdr 调用和 Tab 记录为空。390px 视口完成扩展修正及页面创建。\",\n    \"P30\": \"同一真实 JSON 包含未知模型和有效模板；有效邻居可读取、编辑及创建，失效记录保持原样。\",\n    \"P32\": \"同一运行实例分别经历元数据损坏、移走及写回不同有效配置；读取/保存/创建明确失败后恢复，实际启动记录使用新模型和扩展映射。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"cargo build --bins\",\n      \"result\": \"通过\"\n    },\n    {\n      \"command\": \"cargo test --test bot_templates --test dynamic_catalog --test bot_creation --test runtime_data\",\n      \"result\": \"40 通过\"\n    },\n    {\n      \"command\": \"npm test -- tests/botTemplates.test.tsx tests/botCreation.test.tsx\",\n      \"result\": \"13 通过\"\n    },\n    {\n      \"command\": \"npm run build\",\n      \"result\": \"TypeScript 与 Vite 通过\"\n    },\n    {\n      \"command\": \"npx playwright test browser-tests/staleSelectionRecovery.spec.ts browser-tests/steppedTemplates.spec.ts browser-tests/dynamicCatalog.spec.ts browser-tests/templateExtensionLaunch.spec.ts\",\n      \"result\": \"37 通过，其中本票 10 个场景\"\n    }\n  ],\n  \"tdd_evidence\": \"实际观察到模型/级别错误显示 default、失效扩展警告缺失、元数据故障时单项读取错误返回 200；对应修复后全部 green。扩展移除导致节点脱离的 Playwright uncheck 超时改为真实点击并观察节点消失与公开持久结果，未降低验收预期。\",\n  \"evidence\": \"frontend/test-results/staleSelectionRecovery-*/trace.zip 保留完整浏览器操作和网络记录；JSON 附件 public-requests-and-external-observation 保留公开请求与独立 Herdr 调用/Tab；PNG 保留修正及配置故障画面。\",\n  \"unresolved\": [],\n  \"limitations\": [\n    \"受控 Herdr 参数记录不证明真实 OMP/Pi 扩展加载；真实手机触摸亦未验证，二者属于其他票据的 H1/H2，不属于本票未完成项。\",\n    \"按照项目 closed 须已合入的规则，本票验收项已全部勾选，Status 保留 in-progress，待独立集成者合入后关闭。\"\n  ]\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 729464,
+        "tokens": 108119,
+        "requests": 56,
+        "contextTokens": 86457,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 90003,
+          "output": 18116,
+          "cacheRead": 3354624,
+          "cacheWrite": 0,
+          "totalTokens": 3462743,
+          "reasoningTokens": 3623,
+          "cost": {
+            "input": 0.18000600000000008,
+            "output": 0.18116000000000004,
+            "cacheRead": 0.33546239999999994,
+            "cacheWrite": 0,
+            "total": 0.6966284
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\05-stale-selection-recoverymd-7a4d4e1e-ca57-4705.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "result": "implemented-and-verified",
+                "ticket": ".scratch/bot-template-extensions/implementation/05-stale-selection-recovery.md",
+                "commit": "950830d",
+                "branch": "hyper/bot-template-extensions/05-stale-selection-recovery-97738b-8713386ed6b5",
+                "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-V4TMFf",
+                "handoff": "已提交本票实现并交出 worktree；未操作或合入 feature/create-bot，未修改其他票据或工作流报告，未调用 retro。",
+                "delivered": [
+                  "失效模型和 thinking 保留原稳定标识并明确显示不可用，不再由浏览器静默显示默认值。",
+                  "失效扩展保持可辨认的勾选项，用户可显式移除；错误说明跨步骤保留，导航不保存。",
+                  "单项公开模板读取在元数据损坏或缺失时明确失败；有效元数据中的单个失效选择仍可读取。",
+                  "更新失效选择与配置修复说明，新增真实浏览器、公开 HTTP、真实文件和独立 Herdr 观察覆盖。"
+                ],
+                "coverage": {
+                  "P27": "4 个旧页面场景：模型移除、模型 Agent 适用关系变化、thinking 移除、扩展移除；页面保存/创建及直接公开请求全部拒绝。",
+                  "P28": "分别恢复模型、thinking、扩展；原选择可辨认，导航不修正，明确保存后独立公开读回准确。",
+                  "P29": "修正前保存和创建拒绝并解释原因；独立 Herdr 调用和 Tab 记录为空。390px 视口完成扩展修正及页面创建。",
+                  "P30": "同一真实 JSON 包含未知模型和有效模板；有效邻居可读取、编辑及创建，失效记录保持原样。",
+                  "P32": "同一运行实例分别经历元数据损坏、移走及写回不同有效配置；读取/保存/创建明确失败后恢复，实际启动记录使用新模型和扩展映射。"
+                },
+                "verification": [
+                  {
+                    "command": "cargo build --bins",
+                    "result": "通过"
+                  },
+                  {
+                    "command": "cargo test --test bot_templates --test dynamic_catalog --test bot_creation --test runtime_data",
+                    "result": "40 通过"
+                  },
+                  {
+                    "command": "npm test -- tests/botTemplates.test.tsx tests/botCreation.test.tsx",
+                    "result": "13 通过"
+                  },
+                  {
+                    "command": "npm run build",
+                    "result": "TypeScript 与 Vite 通过"
+                  },
+                  {
+                    "command": "npx playwright test browser-tests/staleSelectionRecovery.spec.ts browser-tests/steppedTemplates.spec.ts browser-tests/dynamicCatalog.spec.ts browser-tests/templateExtensionLaunch.spec.ts",
+                    "result": "37 通过，其中本票 10 个场景"
+                  }
+                ],
+                "tdd_evidence": "实际观察到模型/级别错误显示 default、失效扩展警告缺失、元数据故障时单项读取错误返回 200；对应修复后全部 green。扩展移除导致节点脱离的 Playwright uncheck 超时改为真实点击并观察节点消失与公开持久结果，未降低验收预期。",
+                "evidence": "frontend/test-results/staleSelectionRecovery-*/trace.zip 保留完整浏览器操作和网络记录；JSON 附件 public-requests-and-external-observation 保留公开请求与独立 Herdr 调用/Tab；PNG 保留修正及配置故障画面。",
+                "unresolved": [],
+                "limitations": [
+                  "受控 Herdr 参数记录不证明真实 OMP/Pi 扩展加载；真实手机触摸亦未验证，二者属于其他票据的 H1/H2，不属于本票未完成项。",
+                  "按照项目 closed 须已合入的规则，本票验收项已全部勾选，Status 保留 in-progress，待独立集成者合入后关闭。"
+                ]
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 50,
+          "charCount": 2241
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "05-stale-selection-recoverymd-7a4d4e1e-ca57-4705",
+      "session_id": "01a161ed-5b28-72ea-841b-f0858fc3ea8a",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\05-stale-selection-recoverymd-7a4d4e1e-ca57-4705.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-V4TMFf",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\05-stale-selection-recovery.md\\c14f20b1-fe75-4711-9c44-d5d72bb4c0ce.md",
+      "retro_finished_at": "2026-10-22T04:59:48.549Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "06-creation-snapshot-isolation.md",
+      "run_id": "e4dcacf8-b93c-4717-89d3-e23dd002866c",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "92948478-8e60-4f48-a979-1659a9928157",
+      "started_at": "2026-10-22T04:45:07.981Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T04:52:16.983Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "06-creation-snapshot-isolationmd-92948478-8e60-4",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-JYUSEw\\.scratch\\bot-template-extensions\\implementation\\06-creation-snapshot-isolation.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-JYUSEw\\.scratch\\bot-template-extensions\\implementation\\06-creation-snapshot-isolation.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement creation snapshot isolation",
+        "lastIntent": "Committing isolated snapshot acceptance",
+        "exitCode": 0,
+        "output": "{\n  \"ticket\": \"06-creation-snapshot-isolation\",\n  \"result\": \"本票实现与验收完成，已提交，worktree 可交由独立集成代理接管。未操作集成分支、未自行合入。\",\n  \"commit\": \"71e9f7c\",\n  \"changes\": [\n    \"新增 P36/P37 公开 HTTP 验收，使用真实模板编辑、真实元数据文件修改及独立 Herdr 调用/对象记录。\",\n    \"复用受控 Herdr 屏障机制新增 tab_create_gate，在原生启动参数构造前阻塞旧创建，验证新创建无需等待旧创建。\",\n    \"现有生产代码已按值捕获模板与完整映射，验收首次即通过，因此保留既有实现，不制造失败或增加缓存、队列、恢复和重试。\",\n    \"更新 README 的完整快照承诺、并发复现步骤与实际观察；更新本票验收证据。\"\n  ],\n  \"acceptance_evidence\": {\n    \"P36\": \"p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_independently：旧创建受阻时修改模板与元数据，新创建先独立完成；删除模板及移除元数据后，旧创建仍按旧 provider/model、thinking、Skill、固定扩展、可选扩展及完整输入完成。分别观察 starting/submitting/succeeded，确认就绪与提交确认边界、独立对象与会话目录，以及准确的外部调用数量。\",\n    \"P37\": \"p37_template_and_metadata_changes_leave_existing_bots_untouched：创建后编辑模板及元数据不产生外部改配、关闭或重建；有效来源后续创建使用新配置；删除后携旧预览直接创建返回 404 template-not-found，已有两条 Bot 的外部对象及状态保持不变。\",\n    \"失败与临时生命周期\": \"既有启动失败、明确拒绝、投递超时保留现场且不重发测试通过；真实进程重启测试确认不恢复创建进度、不重放外部创建。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p36_ -- --nocapture\",\n      \"result\": \"1 passed\"\n    },\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p37_ -- --nocapture\",\n      \"result\": \"1 passed\"\n    },\n    {\n      \"command\": \"rustfmt --edition 2024 --config skip_children=true backend/tests/bot_creation_detached.rs backend/src/bin/herdr-fixture.rs\",\n      \"result\": \"成功\"\n    },\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test bot_creation --test bot_creation_detached\",\n      \"result\": \"21 + 10 passed，0 failed\"\n    },\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test runtime_data real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation\",\n      \"result\": \"1 passed，0 failed\"\n    }\n  ],\n  \"limitations\": [\n    \"本票受控 Herdr 证据不代表真实 OMP/Pi 扩展加载成功；P23/H1 不属本票。\",\n    \"尚未集成。依据仓库 closed 必须已合入的规则，本票状态保留 in-progress，验收项均已勾选，待独立集成代理合入后关闭。\"\n  ],\n  \"unfinished_owned_criteria\": []\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 428887,
+        "tokens": 102562,
+        "requests": 32,
+        "contextTokens": 86292,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 89539,
+          "output": 13023,
+          "cacheRead": 1683200,
+          "cacheWrite": 0,
+          "totalTokens": 1785762,
+          "reasoningTokens": 2620,
+          "cost": {
+            "input": 0.17907800000000004,
+            "output": 0.13023,
+            "cacheRead": 0.16832000000000003,
+            "cacheWrite": 0,
+            "total": 0.4776280000000001
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\06-creation-snapshot-isolationmd-92948478-8e60-4.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "ticket": "06-creation-snapshot-isolation",
+                "result": "本票实现与验收完成，已提交，worktree 可交由独立集成代理接管。未操作集成分支、未自行合入。",
+                "commit": "71e9f7c",
+                "changes": [
+                  "新增 P36/P37 公开 HTTP 验收，使用真实模板编辑、真实元数据文件修改及独立 Herdr 调用/对象记录。",
+                  "复用受控 Herdr 屏障机制新增 tab_create_gate，在原生启动参数构造前阻塞旧创建，验证新创建无需等待旧创建。",
+                  "现有生产代码已按值捕获模板与完整映射，验收首次即通过，因此保留既有实现，不制造失败或增加缓存、队列、恢复和重试。",
+                  "更新 README 的完整快照承诺、并发复现步骤与实际观察；更新本票验收证据。"
+                ],
+                "acceptance_evidence": {
+                  "P36": "p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_independently：旧创建受阻时修改模板与元数据，新创建先独立完成；删除模板及移除元数据后，旧创建仍按旧 provider/model、thinking、Skill、固定扩展、可选扩展及完整输入完成。分别观察 starting/submitting/succeeded，确认就绪与提交确认边界、独立对象与会话目录，以及准确的外部调用数量。",
+                  "P37": "p37_template_and_metadata_changes_leave_existing_bots_untouched：创建后编辑模板及元数据不产生外部改配、关闭或重建；有效来源后续创建使用新配置；删除后携旧预览直接创建返回 404 template-not-found，已有两条 Bot 的外部对象及状态保持不变。",
+                  "失败与临时生命周期": "既有启动失败、明确拒绝、投递超时保留现场且不重发测试通过；真实进程重启测试确认不恢复创建进度、不重放外部创建。"
+                },
+                "verification": [
+                  {
+                    "command": "cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p36_ -- --nocapture",
+                    "result": "1 passed"
+                  },
+                  {
+                    "command": "cargo test --manifest-path backend/Cargo.toml --test bot_creation_detached p37_ -- --nocapture",
+                    "result": "1 passed"
+                  },
+                  {
+                    "command": "rustfmt --edition 2024 --config skip_children=true backend/tests/bot_creation_detached.rs backend/src/bin/herdr-fixture.rs",
+                    "result": "成功"
+                  },
+                  {
+                    "command": "cargo test --manifest-path backend/Cargo.toml --test bot_creation --test bot_creation_detached",
+                    "result": "21 + 10 passed，0 failed"
+                  },
+                  {
+                    "command": "cargo test --manifest-path backend/Cargo.toml --test runtime_data real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation",
+                    "result": "1 passed，0 failed"
+                  }
+                ],
+                "limitations": [
+                  "本票受控 Herdr 证据不代表真实 OMP/Pi 扩展加载成功；P23/H1 不属本票。",
+                  "尚未集成。依据仓库 closed 必须已合入的规则，本票状态保留 in-progress，验收项均已勾选，待独立集成代理合入后关闭。"
+                ],
+                "unfinished_owned_criteria": []
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 43,
+          "charCount": 2021
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "06-creation-snapshot-isolationmd-92948478-8e60-4",
+      "session_id": "01a161ed-5c2c-72b1-a78f-eceac2ca5dc9",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\06-creation-snapshot-isolationmd-92948478-8e60-4.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-JYUSEw",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\06-creation-snapshot-isolation.md\\e4dcacf8-b93c-4717-89d3-e23dd002866c.md",
+      "retro_finished_at": "2026-10-22T04:54:17.650Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "07-responsive-browser-workflow.md",
+      "run_id": "4f05c5d7-ee42-4917-9a3c-bc7f37c1cecc",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "4bdcf0eb-7af0-42f3-93c4-886725c0340a",
+      "started_at": "2026-10-22T04:57:23.257Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T05:03:31.407Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "07-responsive-browser-workflowmd-4bdcf0eb-7af0-4",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ym31DH\\.scratch\\bot-template-extensions\\implementation\\07-responsive-browser-workflow.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ym31DH\\.scratch\\bot-template-extensions\\implementation\\07-responsive-browser-workflow.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement responsive browser workflow ticket",
+        "lastIntent": "Committing isolated browser acceptance",
+        "exitCode": 0,
+        "output": "{\n  \"ticket\": \"07-responsive-browser-workflow.md\",\n  \"result\": \"implemented-and-verified; ready for independent integration\",\n  \"commit\": \"5c7395d\",\n  \"branch\": \"hyper/bot-template-extensions/07-responsive-browser-workflow-550873-8713386ed6b5\",\n  \"delivered\": [\n    \"新增 P49 生产浏览器验收 responsiveTemplates.spec.ts，在桌面 1280×900 与移动视口 390×844 分别操作完整新增、编辑、命名四类字段插入、扩展勾选、步骤往返、摘要与明确保存。\",\n    \"真实磁盘写入故障、失效扩展选择和创建前依赖文件缺失均实际触发；核对错误解释、草稿保留、持久结果和可继续操作。\",\n    \"保存 16 张真实视口截图、两份操作及公开 HTTP 记录，并提供复现步骤和 08/H2 移交边界。\",\n    \"未发现阻断使用的布局问题；未修改生产界面或弱化命名编辑、模型联动及错误语义。\"\n  ],\n  \"acceptance_evidence\": {\n    \"新增及编辑实际操作\": \"responsiveTemplates.spec.ts 两档完整工作流；preset/extensions/summary 截图及 operations.json。\",\n    \"草稿往返与控件触达\": \"逐项字面值断言、checkbox 状态断言；实际滚动并点击保存和关闭；summary-actions/dependency-actions 截图。\",\n    \"三类错误与修正\": \"两档均经历真实 .tmp 写入阻挡、元数据定义删除和缺失入口文件；公开 GET 验证旧值不变、修正保存及重启保留。\",\n    \"发现阻断时修复\": \"未观察到阻断布局；无需生产代码修改。\",\n    \"截图与复现\": \"docs/bot-template-responsive-browser.md；docs/evidence/bot-template-responsive/。\",\n    \"P49 与 H2 边界\": \"文档明确移动视口不等于真实手机触摸、软键盘、输入法或 P50/H2，通过现有证据供 08 复用。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"npm ci --prefix frontend\",\n      \"result\": \"成功\"\n    },\n    {\n      \"command\": \"npm run build --prefix frontend && cargo build --manifest-path backend/Cargo.toml --bins\",\n      \"result\": \"成功\"\n    },\n    {\n      \"command\": \"npx playwright test responsiveTemplates.spec.ts\",\n      \"result\": \"2 passed；此前首次运行在验收 fixture 的 CRLF 正则前置检查失败，修正场景表达式后通过，未修改产品行为或期望。\"\n    },\n    {\n      \"command\": \"npx playwright test responsiveTemplates.spec.ts steppedTemplates.spec.ts staleSelectionRecovery.spec.ts\",\n      \"result\": \"17 passed，19.2s；仅出现 NO_COLOR/FORCE_COLOR 环境提示。\"\n    }\n  ],\n  \"limitations\": [\n    \"未执行全仓测试。\",\n    \"未进行真实手机、局域网访问或成功真实 Herdr/agent 启动验收。依赖错误恢复后只重新打开并观察名称预览可用，不声称依赖成功或 agent 已启动。\",\n    \"相关既有回归用例包含受控 Herdr，其结果不等于真实 agent 执行证据。\"\n  ],\n  \"handoff\": \"本票实现与验收已提交；未操作或合入集成分支，未修改其他票据或工作流报告。按仓库规则，票据状态保留 in-progress，独立集成合入后再改 closed。\"\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 367996,
+        "tokens": 101461,
+        "requests": 33,
+        "contextTokens": 84430,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 88011,
+          "output": 13450,
+          "cacheRead": 1888384,
+          "cacheWrite": 0,
+          "totalTokens": 1989845,
+          "reasoningTokens": 2606,
+          "cost": {
+            "input": 0.17602199999999998,
+            "output": 0.1345,
+            "cacheRead": 0.18883839999999996,
+            "cacheWrite": 0,
+            "total": 0.49936040000000004
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\07-responsive-browser-workflowmd-4bdcf0eb-7af0-4.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "ticket": "07-responsive-browser-workflow.md",
+                "result": "implemented-and-verified; ready for independent integration",
+                "commit": "5c7395d",
+                "branch": "hyper/bot-template-extensions/07-responsive-browser-workflow-550873-8713386ed6b5",
+                "delivered": [
+                  "新增 P49 生产浏览器验收 responsiveTemplates.spec.ts，在桌面 1280×900 与移动视口 390×844 分别操作完整新增、编辑、命名四类字段插入、扩展勾选、步骤往返、摘要与明确保存。",
+                  "真实磁盘写入故障、失效扩展选择和创建前依赖文件缺失均实际触发；核对错误解释、草稿保留、持久结果和可继续操作。",
+                  "保存 16 张真实视口截图、两份操作及公开 HTTP 记录，并提供复现步骤和 08/H2 移交边界。",
+                  "未发现阻断使用的布局问题；未修改生产界面或弱化命名编辑、模型联动及错误语义。"
+                ],
+                "acceptance_evidence": {
+                  "新增及编辑实际操作": "responsiveTemplates.spec.ts 两档完整工作流；preset/extensions/summary 截图及 operations.json。",
+                  "草稿往返与控件触达": "逐项字面值断言、checkbox 状态断言；实际滚动并点击保存和关闭；summary-actions/dependency-actions 截图。",
+                  "三类错误与修正": "两档均经历真实 .tmp 写入阻挡、元数据定义删除和缺失入口文件；公开 GET 验证旧值不变、修正保存及重启保留。",
+                  "发现阻断时修复": "未观察到阻断布局；无需生产代码修改。",
+                  "截图与复现": "docs/bot-template-responsive-browser.md；docs/evidence/bot-template-responsive/。",
+                  "P49 与 H2 边界": "文档明确移动视口不等于真实手机触摸、软键盘、输入法或 P50/H2，通过现有证据供 08 复用。"
+                },
+                "verification": [
+                  {
+                    "command": "npm ci --prefix frontend",
+                    "result": "成功"
+                  },
+                  {
+                    "command": "npm run build --prefix frontend && cargo build --manifest-path backend/Cargo.toml --bins",
+                    "result": "成功"
+                  },
+                  {
+                    "command": "npx playwright test responsiveTemplates.spec.ts",
+                    "result": "2 passed；此前首次运行在验收 fixture 的 CRLF 正则前置检查失败，修正场景表达式后通过，未修改产品行为或期望。"
+                  },
+                  {
+                    "command": "npx playwright test responsiveTemplates.spec.ts steppedTemplates.spec.ts staleSelectionRecovery.spec.ts",
+                    "result": "17 passed，19.2s；仅出现 NO_COLOR/FORCE_COLOR 环境提示。"
+                  }
+                ],
+                "limitations": [
+                  "未执行全仓测试。",
+                  "未进行真实手机、局域网访问或成功真实 Herdr/agent 启动验收。依赖错误恢复后只重新打开并观察名称预览可用，不声称依赖成功或 agent 已启动。",
+                  "相关既有回归用例包含受控 Herdr，其结果不等于真实 agent 执行证据。"
+                ],
+                "handoff": "本票实现与验收已提交；未操作或合入集成分支，未修改其他票据或工作流报告。按仓库规则，票据状态保留 in-progress，独立集成合入后再改 closed。"
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 44,
+          "charCount": 1936
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "07-responsive-browser-workflowmd-4bdcf0eb-7af0-4",
+      "session_id": "01a161f8-9481-7285-83b0-d38cd5ee93c9",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\07-responsive-browser-workflowmd-4bdcf0eb-7af0-4.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ym31DH",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\07-responsive-browser-workflow.md\\4f05c5d7-ee42-4917-9a3c-bc7f37c1cecc.md",
+      "retro_finished_at": "2026-10-22T05:05:23.904Z"
+    },
+    {
+      "feature": "bot-template-extensions",
+      "ticket": "08-integrated-acceptance-handoff.md",
+      "run_id": "8c98f228-3a95-42f9-9d68-52d7617dafb6",
+      "parent_session_id": "01a161bb-4f63-705f-a415-e84490a1c511",
+      "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511.jsonl",
+      "workspace": "E:\\Developer\\myhub\\herdr-bot",
+      "tool_call_id": "8302ff20-775d-4aaa-b0c2-60a45703773e",
+      "started_at": "2026-10-22T05:03:37.836Z",
+      "tdd_status": "completed",
+      "retro_status": "completed",
+      "tdd_finished_at": "2026-10-22T05:16:04.302Z",
+      "tdd_result": {
+        "index": 0,
+        "id": "08-integrated-acceptance-handoffmd-8302ff20-775d",
+        "agent": "tdd",
+        "agentSource": "user",
+        "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-qgJDMn\\.scratch\\bot-template-extensions\\implementation\\08-integrated-acceptance-handoff.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-qgJDMn\\.scratch\\bot-template-extensions\\implementation\\08-integrated-acceptance-handoff.md。\n集成分支：feature/create-bot\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+        "description": "Implement integrated acceptance and handoff ticket",
+        "lastIntent": "Committing isolated acceptance handoff",
+        "exitCode": 0,
+        "output": "{\n  \"status\": \"automatic-complete-human-acceptance-pending\",\n  \"ticket\": \"08-integrated-acceptance-handoff\",\n  \"ticket_status\": \"ready-for-human\",\n  \"commit\": \"da7a186\",\n  \"handoff_document\": \"docs/bot-template-integrated-acceptance.md\",\n  \"evidence_directory\": \"docs/evidence/bot-template-integrated/\",\n  \"delivered\": [\n    \"使用未修改的最终交付配置真实启动；公开保存六组模板，停止进程后以新 PID 重启，核对完整模板读回与当前元数据。\",\n    \"真实 Herdr 中完成首次公开创建及四组 OMP 创建；保存实际 Tab/Pane、控制别名、原生进程 argv、独立会话目录和提交确认。\",\n    \"复用并归档 04 的 P22 六组合独立调用附件；复用 07 的 P49 桌面/移动视口截图及操作记录，没有另写同类测试。\",\n    \"提供六组 H1 模板及独立字面预期、可辨认 ambient probe、真实正负对照证据和复现步骤。\",\n    \"提供 H2 真机访问条件、实际 LAN/mDNS 候选地址、完整触摸/输入操作清单，以及独立配置下的错误修正材料。\"\n  ],\n  \"verification\": [\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml\",\n      \"result\": \"363 passed，0 failed，3 ignored；ignored 为既有真实 mDNS/防火墙专用检查\"\n    },\n    {\n      \"command\": \"npm ci --prefix frontend\",\n      \"result\": \"成功\"\n    },\n    {\n      \"command\": \"npm test --prefix frontend\",\n      \"result\": \"26 文件、184 tests passed\"\n    },\n    {\n      \"command\": \"npm run build --prefix frontend\",\n      \"result\": \"TypeScript 与 Vite 生产构建成功\"\n    },\n    {\n      \"command\": \"cargo build --manifest-path backend/Cargo.toml --bins\",\n      \"result\": \"成功\"\n    },\n    {\n      \"command\": \"在 frontend 执行 npx playwright test\",\n      \"result\": \"56 passed，包含原 P22 六组合与 P49 两视口\"\n    },\n    {\n      \"command\": \"真实最终配置启动、进程重启、公开 HTTP、磁盘及 Herdr 进程观察\",\n      \"result\": \"六模板完整读回；首次及四组 OMP 创建均确认提交；实际扩展参数与独立预期一致；OMP 正对照生成 ambient marker，四组阴性未再次生成；本机 LAN/mDNS HTTP 均为 200\"\n    }\n  ],\n  \"human_acceptance_pending\": {\n    \"H1\": \"全部六组的完整真实加载集合仍待用户确认。Pi 正对照真实停在 Trust project folder?，未代用户批准；两个 Pi 模板已保存，但真实创建和 Pi ambient 正负对照待处理信任后执行。\",\n    \"H2\": \"没有实际手机触摸、软键盘或输入法证据；移动视口和本机 LAN 访问不计为真机通过。\",\n    \"observed_limitations\": [\n      \"选 connect-bot 的实际 OMP 显示 endpoint 不可达，不能声称已启用或接入成功。\",\n      \"实际初始化 /help 在安装版 OMP 中产生普通模型回复；不是原生帮助命令。未将模型调用、账号或余额探测加入依赖检查。\"\n    ]\n  },\n  \"resource_handoff\": {\n    \"http_service\": \"已停止验收服务并释放 18787。\",\n    \"live_herdr_objects\": \"OMP 阴性组 wT:tA/pA、wT:tB/pB、wT:tC/pC、wT:tD/pD，Pi 信任正对照 wT:t9/p9；首次集成创建 wT:t7/p7 也保留。OMP 正对照 wT:t8 已关闭。\",\n    \"important\": \"这些原生会话引用本 worktree 忽略的 .data。若需保留现有 H1 观察对象，回收 worktree 前必须保留数据；否则按交接文档在最终交付目录重建并记录新标识。未提交任何运行数据，未操作或合入集成分支工作区。\"\n  },\n  \"acceptance_conclusion\": \"自动部分与材料准备完成；P23/P50 和整体验收未验证，票据未标 closed。\"\n}",
+        "stderr": "",
+        "truncated": false,
+        "durationMs": 746355,
+        "tokens": 161974,
+        "requests": 41,
+        "contextTokens": 107227,
+        "contextWindow": 922000,
+        "modelOverride": [
+          "openai-codex/gpt-6.1-sol:high"
+        ],
+        "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+        "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+        "resolvedThinkingLevel": "high",
+        "aborted": false,
+        "usage": {
+          "input": 136571,
+          "output": 25403,
+          "cacheRead": 2668928,
+          "cacheWrite": 0,
+          "totalTokens": 2830902,
+          "reasoningTokens": 7532,
+          "cost": {
+            "input": 0.273142,
+            "output": 0.2540300000000001,
+            "cacheRead": 0.26689280000000004,
+            "cacheWrite": 0,
+            "total": 0.7940648000000001
+          }
+        },
+        "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\08-integrated-acceptance-handoffmd-8302ff20-775d.md",
+        "extractedToolData": {
+          "yield": [
+            {
+              "data": {
+                "status": "automatic-complete-human-acceptance-pending",
+                "ticket": "08-integrated-acceptance-handoff",
+                "ticket_status": "ready-for-human",
+                "commit": "da7a186",
+                "handoff_document": "docs/bot-template-integrated-acceptance.md",
+                "evidence_directory": "docs/evidence/bot-template-integrated/",
+                "delivered": [
+                  "使用未修改的最终交付配置真实启动；公开保存六组模板，停止进程后以新 PID 重启，核对完整模板读回与当前元数据。",
+                  "真实 Herdr 中完成首次公开创建及四组 OMP 创建；保存实际 Tab/Pane、控制别名、原生进程 argv、独立会话目录和提交确认。",
+                  "复用并归档 04 的 P22 六组合独立调用附件；复用 07 的 P49 桌面/移动视口截图及操作记录，没有另写同类测试。",
+                  "提供六组 H1 模板及独立字面预期、可辨认 ambient probe、真实正负对照证据和复现步骤。",
+                  "提供 H2 真机访问条件、实际 LAN/mDNS 候选地址、完整触摸/输入操作清单，以及独立配置下的错误修正材料。"
+                ],
+                "verification": [
+                  {
+                    "command": "cargo test --manifest-path backend/Cargo.toml",
+                    "result": "363 passed，0 failed，3 ignored；ignored 为既有真实 mDNS/防火墙专用检查"
+                  },
+                  {
+                    "command": "npm ci --prefix frontend",
+                    "result": "成功"
+                  },
+                  {
+                    "command": "npm test --prefix frontend",
+                    "result": "26 文件、184 tests passed"
+                  },
+                  {
+                    "command": "npm run build --prefix frontend",
+                    "result": "TypeScript 与 Vite 生产构建成功"
+                  },
+                  {
+                    "command": "cargo build --manifest-path backend/Cargo.toml --bins",
+                    "result": "成功"
+                  },
+                  {
+                    "command": "在 frontend 执行 npx playwright test",
+                    "result": "56 passed，包含原 P22 六组合与 P49 两视口"
+                  },
+                  {
+                    "command": "真实最终配置启动、进程重启、公开 HTTP、磁盘及 Herdr 进程观察",
+                    "result": "六模板完整读回；首次及四组 OMP 创建均确认提交；实际扩展参数与独立预期一致；OMP 正对照生成 ambient marker，四组阴性未再次生成；本机 LAN/mDNS HTTP 均为 200"
+                  }
+                ],
+                "human_acceptance_pending": {
+                  "H1": "全部六组的完整真实加载集合仍待用户确认。Pi 正对照真实停在 Trust project folder?，未代用户批准；两个 Pi 模板已保存，但真实创建和 Pi ambient 正负对照待处理信任后执行。",
+                  "H2": "没有实际手机触摸、软键盘或输入法证据；移动视口和本机 LAN 访问不计为真机通过。",
+                  "observed_limitations": [
+                    "选 connect-bot 的实际 OMP 显示 endpoint 不可达，不能声称已启用或接入成功。",
+                    "实际初始化 /help 在安装版 OMP 中产生普通模型回复；不是原生帮助命令。未将模型调用、账号或余额探测加入依赖检查。"
+                  ]
+                },
+                "resource_handoff": {
+                  "http_service": "已停止验收服务并释放 18787。",
+                  "live_herdr_objects": "OMP 阴性组 wT:tA/pA、wT:tB/pB、wT:tC/pC、wT:tD/pD，Pi 信任正对照 wT:t9/p9；首次集成创建 wT:t7/p7 也保留。OMP 正对照 wT:t8 已关闭。",
+                  "important": "这些原生会话引用本 worktree 忽略的 .data。若需保留现有 H1 观察对象，回收 worktree 前必须保留数据；否则按交接文档在最终交付目录重建并记录新标识。未提交任何运行数据，未操作或合入集成分支工作区。"
+                },
+                "acceptance_conclusion": "自动部分与材料准备完成；P23/P50 和整体验收未验证，票据未标 closed。"
+              },
+              "status": "success"
+            }
+          ]
+        },
+        "outputMeta": {
+          "lineCount": 59,
+          "charCount": 2315
+        }
+      },
+      "agent": "tdd",
+      "agent_id": "08-integrated-acceptance-handoffmd-8302ff20-775d",
+      "session_id": "01a161fe-4b8d-753e-a875-8dad6fb6da0a",
+      "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-22T03-50-27-939Z_01a161bb-4f63-705f-a415-e84490a1c511\\08-integrated-acceptance-handoffmd-8302ff20-775d.jsonl",
+      "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-qgJDMn",
+      "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-template-extensions\\retro\\08-integrated-acceptance-handoff.md\\8c98f228-3a95-42f9-9d68-52d7617dafb6.md",
+      "retro_finished_at": "2026-10-22T05:18:55.377Z"
+    }
+  ]
+}
