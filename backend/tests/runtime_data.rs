@@ -597,6 +597,11 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
     let calls = herdr.calls().len();
     let restarted = Panel::start(root.path());
     let current = snapshot(&restarted).await;
+    // Accepted registration metadata persists independently of transient runtime state.
+    let history = body(get_over_tcp(restarted.addr, "/api/sessions/history").await);
+    assert_eq!(history["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(history["sessions"][0]["sessionId"], "transient");
+    assert_eq!(history["sessions"][0]["cwd"], json!(zone));
     assert_eq!(current["sessions"], json!([]));
     assert_eq!(current["shutdown"]["phase"], "none");
     assert_eq!(current["shutdown"]["monitoredSessionIds"], json!([]));
@@ -620,6 +625,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
             ".runtime-layout-v1",
             "bot-sessions",
             "bot-templates.json",
+            "session-history.json",
             "zones.json"
         ]
     );
