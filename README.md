@@ -1106,6 +1106,26 @@ history_file = ".data/session-history.json"
 此文件与当前登记独立，写入采用同目录临时文件及原子替换；不要把路径指向原生会话文件。
 修改路径需要重启；备份或迁移此文件可保留目录，不包含对话正文。无需修改 agent 原生存储配置。
 
+### connect-bot 历史保存失败与恢复
+
+被接受的 `register` 始终以 `200`、`outcome: "registered"` 和 `onlineCount` 表达接入成功；
+`historySaved: true` 才表示本次历史保存成功。历史读写失败时，接入回执为 `historySaved: false`，
+并附带 `historyWarning: {code: "history-save-failed", message: "…"}`。这不撤销当前登记、停止上报、
+改变 keepAlive、取消完成后关机监听或重置倒计时。配套 my-agent-toolkit 的 Pi／OMP caller 会把
+“已接入，但历史保存失败”的警告送到实际操作者 UI（而非仅给模型的消息）；旧 caller 需要更新才能显示警告。
+
+检查服务端日志中对应 `sessionId` 的原因及 `history_file` 所在目录／临时文件写入权限。
+不可读或无效内容不会被当作空集合覆盖；失败更新不会替换旧文件。历史页面读取失败显示明确错误，
+不会显示“尚无历史”或把旧行当成新读取结果。修复存储后，退出再进入历史视图重新读取；
+再次明确执行 `/connect-bot` 会重新尝试保存：未存记录新建，已有记录更新且保留原首次时间。
+失败尝试不建立首次收录时间；没有后台历史写入重试、自动 connect 或新的接入失败预算。
+
+自动验收：`backend/tests/connect_history_failures.rs` 覆盖真实文件锁、无效内容、写入失败、受控服务端时间、
+跨重建读回及无自主写入；`frontend/browser-tests/connectHistoryFailures.spec.ts` 覆盖实际 Chromium 错误与恢复。
+caller 命令验收位于 my-agent-toolkit 的 `tests/connect-bot/history-warning.test.ts`、`history-interop.test.ts`；
+后者需将 `HERDR_BOT_BINARY` 指向本项目 `cargo build --example safe_shutdown_shell` 生成的安全外壳，
+将 `HERDR_BOT_METADATA` 指向本项目 `meta-data/bot-options.toml`，绝不使用真实关机动作。
+
 ## 会话登记的生命周期（chat 入口）
 
 每条会话名称旁常驻显示 agent 类型 `pi` / `omp`，离线时仍保留。类型由 my-agent-toolkit 对应的
