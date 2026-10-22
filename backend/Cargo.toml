@@ -31,5 +31,5 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
