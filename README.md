@@ -28,7 +28,8 @@ herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就�
 | `backend/src/zones.rs` | zone 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | zone 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
 | `backend/src/git.rs` | Git zone 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
-| `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
+| `backend/src/status_cache.rs` | 按实际工作树共享的本地 Git 状态缓存：有效期、并发合并与失效代数隔离 |
+| `backend/src/sync.rs` | 共享 Git 状态读取、远端检查反馈与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
 | `backend/src/watch.rs` | zone 本地文件/Git 元数据监听、按 zone 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `herdr-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
@@ -380,18 +381,21 @@ metadata_file = 'meta-data/bot-options.toml'
 [git]
 # 每条 Git 命令的执行上限（秒）；缺省 300。
 command_timeout_seconds = 300
+# 列表与 zone 内共享的本地 Git 状态缓存有效期（秒）；缺省 10。
+status_cache_ttl_seconds = 10
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `command_timeout_seconds` | `300` | 每条 Git 命令允许执行的最长时间（秒） |
+| `status_cache_ttl_seconds` | `10` | 本地 Git 状态成功读取完成后的缓存有效期（秒）；读取不续期，到期不自行轮询 |
 
 - 时限覆盖状态读取、diff、暂存、提交、远端检查以及同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
   （包括 hook 派生出的子进程），停止本次执行并中断后续步骤；页面明确显示这是本功能时限，并保留取消前
   已有的 Git 输出，不伪造 Git 退出消息。
 - 终止尚未确认时，该仓库的写操作资格继续被持有，后来的 Commit 不会与它重叠；确认终止后才释放。
-- 合法整数范围是 `1..=4294967295`；缺段或缺少字段取 300 秒。零、负数、小数、字符串或拼错的字段名
-  都会让**启动明确失败**，不会静默回退。
+- 两项配置的合法整数范围均为 `1..=4294967295`；缺段或缺少字段时，命令时限取 300 秒，缓存有效期取
+  10 秒。零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，不会静默回退。
 - 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
 
 ### Bot 模板
@@ -403,7 +407,7 @@ command_timeout_seconds = 300
 新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
 
 1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
-2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`；Pi 另可选 `web-access`（标识 `pi-web-access`），直接加载本机第三方源码入口。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
 3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
 
 “下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
@@ -422,7 +426,7 @@ command_timeout_seconds = 300
   否则重置并提示。
 - `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
 - `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
-- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools","pi-connect-bot"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
+- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools","pi-connect-bot","pi-web-access"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
 
 以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
 OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
@@ -431,6 +435,10 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
 `openai-codex/gpt-6.1-sol` 与 `deepseek/deepseek-flash`，不做裸名匹配或 provider 回退。
 
 #### 维护共享选项目录
+
+Pi 可选扩展 `web-access` 的入口为 `E:\Developer\myhub\pi-extension\pi-web-access\index.ts`。首次使用前，在该源码目录执行 `npm install` 安装依赖；源码加载不依赖 npm 发布包，但仍需要源码自身的 npm 依赖。部署到其他位置时需更新元数据中的 `entrypoint`。源码更新会影响之后新启动的 Bot，不会自动替换已运行会话中的扩展。
+
+herdr-bot 继续通过 `--no-extensions` 关闭自动发现，仅显式加载固定项与模板所选入口；未勾选 `web-access` 的 Bot 不加载它。此配置不修改 `~/.pi/agent/settings.json`，也不卸载独立 Pi 使用的 `npm:pi-web-access`，两种加载方式保持隔离。
 
 直接编辑该 TOML 文档；它可纳入 Git，不属于运行数据。部署时须一并交付，程序不生成替代文件。
 服务启动先完整读取并校验；缺失、读取失败、TOML 错误、重复标识、未知 Agent 引用或相互矛盾的
@@ -658,15 +666,24 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
   `[zones] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
   间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 zone 监听与节流，不会各自放大刷新。
-- **刷新边界**：进入 zone、回到 `zone` 入口以及点按“刷新”都会立即重新读取当前目录、所选文件、
-  Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
+- **Git 状态缓存**：后端按实际 Git 工作树维护共享内存缓存，zone 列表和 zone 内共用；路径别名共用，
+  独立 worktree 不混用。普通 UI 读取在有效期内复用结果；无缓存或过期时等待新检查，同工作树的并发读取
+  合并。默认有效期 10 秒，由 `[git] status_cache_ttl_seconds` 独立配置；重启清空，不持久化状态快照。
+  本地事件在通知前使缓存失效，Git 操作也会使旧结果失效；失效前尚未完成的检查不能重新写回旧结果。
+  重新检查失败时不继续把旧数量或箭头显示为当前事实。
+- **刷新边界**：切换 UI 读取共享 Git 状态，不因每次切换重复执行 Git；进入 zone 仍读取完整目录树。
+  点按“刷新”会绕过 Git 缓存并重读目录树、所选文件与 diff。本地事件仍沿用通知节流；缓存 TTL 不是
+  所有 Git 检查的严格最小间隔。Commit / Sync 执行前始终实时校验，不相信展示缓存。
 - **监听健康**：监听建立失败、zone 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
   与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
   不伪装成空目录或干净仓库。
-- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 只来自显式
-  “检查远端”或 Sync 前检查，并显示最近检查时间。未检查时页面明确显示“尚未检查”，不把本地远端跟踪
-  引用当成实时状态。
+- **远端边界**：本地文件事件只触发本地状态刷新，不产生周期性 fetch；联网检查由显式“检查远端”、
+  Sync 前检查及本服务成功 Commit 后的一次后台检查触发。外部工具提交不会自动 fetch。
+  ahead/behind 根据本地 HEAD 与本地已知 upstream 引用计算；未检查时明确显示“尚未检查”，不冒充实时远端。
+- **待推送提示**：zone 列表名称旁与 zone 内顶部分支旁显示黄色 `↑ N`，表示相对本地已知 upstream 的
+  待推送提交数。`ahead > 0` 即显示，不要求先联网或工作树干净，可与待提交数量同时出现；数量未知、
+  没有 upstream 时不显示，也不据此宣称已同步。成功检查或 Sync 后重新计算，两处提示随共享状态更新。
 
 **待提交集合**（`GET /api/zones/git-status`）：
 
@@ -697,10 +714,12 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   `{"zone":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
   "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}],
   "sync":{"upstream":{"remote":"…","branch":"…","short":"…"}|null,"ahead":N|null,"behind":N|null,
-  "remoteCheckedAt":毫秒|null}}`。普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时
-  是明确错误，不是干净状态。`sync` 只描述本地最近已知的远端跟踪事实：本读取**不发起 fetch**，
-  `remoteCheckedAt` 为 `null` 表示本实例尚未成功检查远端，`ahead`/`behind` 为 `null` 表示跟踪引用或
-  首次提交尚不可用。
+  "remoteCheckedAt":毫秒|null,"remoteChecking":bool,"remoteCheckError":"…"|null}}`。
+  普通读取复用有效缓存；`&refresh=true` 绕过缓存。普通目录返回 `repository:false` 与空变更；重新读取时
+  登记目录消失或 Git 不可用是明确错误，不是干净状态。`sync` 描述本地最近已知的远端跟踪事实与后台检查
+  反馈：本读取**不发起 fetch**，`remoteCheckedAt` 为 `null` 表示本实例没有对当前跟踪引用的有效成功检查
+  记录，`ahead`/`behind` 为 `null` 表示跟踪引用或首次提交尚不可用。`remoteChecking` 表示提交后检查进行中，
+  `remoteCheckError` 为最近检查失败的诊断；失败不把本地已知数量改成零。
 - `GET /api/zones/diff?zone=<登记路径>&path=<相对新路径>`（重命名再加
   `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
   `{"zone":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
@@ -710,8 +729,9 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   （新增文件的旧侧、删除文件的新侧）。任一非文本侧使 `complete:false`，页面不渲染完整 diff。
   新增路径与 `oldPath` 都执行同一份根边界检查；旧路径来自 Git 历史也不能绕过它。
 - `GET /api/zones/overview` 返回每个登记项的角标事实：
-  `{"zones":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
-  普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+  `{"zones":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"sync":{…},"error":"…"}]}`；
+  Git 项的 `sync` 与详情同形，共用后端缓存和检查反馈；普通目录没有 `pendingCount` 与 `sync`，读取失败的项
+  带 `error`，不伪装成 0 项。
 - Git 状态与审查结果还带 `reviewToken`（当前审查版本标识）与可选的 `blockedReason`（仓库级阻塞原因）。
   `reviewToken` 覆盖分支、HEAD、完整索引、待提交路径集合与每个路径的完整最终内容；预览上限不会截断它。
   提交请求必须原样带回它。
@@ -779,6 +799,10 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 接口：`POST /api/zones/commit`，JSON
 `{"zone":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
 成功返回 `{"zone":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
+本服务确认 Commit 成功后立即反馈，并在后端执行一次独立于请求连接的远端检查；不等待网络结果，
+离开页面也不取消。检查期间展示进度并禁用 Sync，开始与结束均通知所有观察页面重读共享状态。
+检查失败只报告远端检查错误，不撤销或否认成功提交、不自动重试；没有 upstream 时明确说明不可检查，
+不自动发布分支。检查成功后满足同步条件即可直接按 Sync，无需另点“检查远端”；Sync 本身仍再次 fetch。
 失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
 `commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
 `git-command-failed`、`zone-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
@@ -790,7 +814,8 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 | 状态 | 页面与操作 |
 |---|---|
 | 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作树同步 |
-| 干净、有 upstream、已知 ahead/behind 非零 | Sync 可用；显示待拉取与待推送数量 |
+| 提交后后台远端检查进行中 | 显示后台检查进度；Sync 暂不可用，可离开页面 |
+| 干净、有 upstream、已知 ahead/behind 非零且未在后台检查 | Sync 可用；显示待拉取与待推送数量 |
 | 干净、已知已同步 | 主按钮禁用以“已同步”显示；仍可主动检查远端 |
 | 干净、远端尚未检查 | Sync 禁用并说明原因；“检查远端”可执行 |
 | 干净、没有 upstream | 显示限制；不提供 Publish Branch，也不隐式配置 upstream |
@@ -1395,6 +1420,18 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
 - 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
   见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
+
+## 变更记录：共享 Git 状态缓存与提交后检查（2026-10-22）
+
+- 列表与 zone 内复用按实际工作树隔离的后端内存缓存；新增 `[git] status_cache_ttl_seconds`，缺省 10 秒。
+  到期按需检查、并发合并、事件失效与手动强刷；Commit / Sync 执行前仍实时校验。
+- 本服务成功 Commit 后后台检查远端，不等待 fetch 才反馈提交成功；检查进度与失败通过共享状态展示，
+  不自动重试、不自动发布分支。列表与顶部分支旁新增黄色 `↑ N`，基于本地已知 upstream。
+- 验证：前端 205 项测试及生产构建通过；后端 77 项单元测试、19 项 Commit 和其余 29 项 Git 集成测试通过。
+  全量后端命令在 300 秒处超时，未将其报告为全量通过；相关 Git 套件随后单独完成。
+- 隔离真实仓库与 bare 远端冒烟：12 次详情/概览读取未增加 Git 状态命令，手动刷新重新执行；浏览器观测到
+  提交成功后的后台检查、期间禁用 Sync、检查后直接同步，以及同步后列表/详情箭头消失。远端不可用时本地
+  提交保持成功并展示检查失败，移动视口无横向溢出；未操作业务远端或启动/停止/关机按钮。
 
 ## 变更记录：Workspace 失败恢复与 chat agent 类型（2026-10-22）
 

@@ -68,7 +68,10 @@ async fn submit_ended(addr: SocketAddr, path: &str, expected_outcome: &str) -> V
         body.get("code").is_none(),
         "{path} 不得返回拒绝类别（忙碌或其他拒绝）：{body}"
     );
-    assert_eq!(body["ended"], true, "{path} 的响应必须表示本次调用已结束：{body}");
+    assert_eq!(
+        body["ended"], true,
+        "{path} 的响应必须表示本次调用已结束：{body}"
+    );
     assert_eq!(
         body["outcome"], expected_outcome,
         "{path} 的结果类别来自独立给定的夹具情形：{body}"
@@ -96,9 +99,15 @@ async fn success_end_accepts_the_next_operation_and_it_executes() {
 
     // 下一次操作：与上一次不重叠，必须被接受并真实执行另一个固定脚本。
     let body = submit_ended(addr, STOP, "failed").await;
-    assert_eq!(body["started"], true, "结束后的下一次操作必须真的执行脚本：{body}");
+    assert_eq!(
+        body["started"], true,
+        "结束后的下一次操作必须真的执行脚本：{body}"
+    );
     assert_eq!(body["exitCode"], 3, "失败退出码来自夹具自身：{body}");
-    assert_eq!(body["failure"], "failed-exit", "失败子类别必须可区分：{body}");
+    assert_eq!(
+        body["failure"], "failed-exit",
+        "失败子类别必须可区分：{body}"
+    );
     assert_eq!(
         invokes(&tree, "failure").len(),
         1,
@@ -122,9 +131,15 @@ async fn failure_end_accepts_the_next_operation_and_it_executes() {
 
     // 第一次操作：失败结束（退出码 3）。
     let body = submit_ended(addr, START, "failed").await;
-    assert_eq!(body["started"], true, "失败退出也意味着脚本真的被执行：{body}");
+    assert_eq!(
+        body["started"], true,
+        "失败退出也意味着脚本真的被执行：{body}"
+    );
     assert_eq!(body["exitCode"], 3, "失败退出码来自夹具自身：{body}");
-    assert_eq!(body["failure"], "failed-exit", "失败子类别必须是退出失败：{body}");
+    assert_eq!(
+        body["failure"], "failed-exit",
+        "失败子类别必须是退出失败：{body}"
+    );
     assert_eq!(
         invokes(&tree, "failure").len(),
         1,
@@ -134,7 +149,10 @@ async fn failure_end_accepts_the_next_operation_and_it_executes() {
 
     // 紧接着（前一次响应已返回）的下一次操作：失败结束同样释放资格。
     let body = submit_ended(addr, STOP, "completed").await;
-    assert_eq!(body["started"], true, "失败结束后的下一次操作必须真的执行脚本：{body}");
+    assert_eq!(
+        body["started"], true,
+        "失败结束后的下一次操作必须真的执行脚本：{body}"
+    );
     assert_eq!(body["exitCode"], 0, "成功退出码来自夹具自身：{body}");
     assert_eq!(
         invokes(&tree, "success").len(),
@@ -145,7 +163,10 @@ async fn failure_end_accepts_the_next_operation_and_it_executes() {
 
     // 失败结束后的再一次“启动”同样按脚本调用处理，不因为“可能已经在跑”而跳过。
     let body = submit_ended(addr, START, "failed").await;
-    assert_eq!(body["started"], true, "失败结束后的再次启动必须真的执行脚本：{body}");
+    assert_eq!(
+        body["started"], true,
+        "失败结束后的再次启动必须真的执行脚本：{body}"
+    );
     assert_eq!(
         invokes(&tree, "failure").len(),
         2,
@@ -162,7 +183,10 @@ async fn consecutive_starts_invoke_the_start_script_twice() {
     let addr = server.addr();
 
     let first = submit_ended(addr, START, "completed").await;
-    assert_eq!(first["started"], true, "第一次启动必须真的执行脚本：{first}");
+    assert_eq!(
+        first["started"], true,
+        "第一次启动必须真的执行脚本：{first}"
+    );
     assert_eq!(
         invokes(&tree, "success").len(),
         1,
@@ -172,8 +196,14 @@ async fn consecutive_starts_invoke_the_start_script_twice() {
 
     // 第二次“启动”发生在前一次响应返回之后（上一次脚本已经结束），仍然是脚本调用。
     let second = submit_ended(addr, START, "completed").await;
-    assert_eq!(second["started"], true, "第二次启动必须真的执行脚本：{second}");
-    assert_eq!(second["exitCode"], 0, "第二次启动同样以夹具的成功退出码结束：{second}");
+    assert_eq!(
+        second["started"], true,
+        "第二次启动必须真的执行脚本：{second}"
+    );
+    assert_eq!(
+        second["exitCode"], 0,
+        "第二次启动同样以夹具的成功退出码结束：{second}"
+    );
 
     let runs = invokes(&tree, "success");
     assert_eq!(
@@ -186,7 +216,10 @@ async fn consecutive_starts_invoke_the_start_script_twice() {
         runs[0].call_id, runs[1].call_id,
         "两次启动必须是两次真实调用：{runs:#?}"
     );
-    assert_ne!(runs[0].seq, runs[1].seq, "两次启动必须是两条记录行：{runs:#?}");
+    assert_ne!(
+        runs[0].seq, runs[1].seq,
+        "两次启动必须是两条记录行：{runs:#?}"
+    );
     assert!(
         !common::process_is_alive(runs[1].pid),
         "第二次启动返回时它的脚本进程应当已经结束（PID {}）",
@@ -202,11 +235,17 @@ async fn start_and_stop_alternate_across_several_finished_operations() {
     let addr = server.addr();
 
     // 启动（成功）→ 停止（失败）→ 启动（成功）→ 停止（失败）。
-    let chain = [(START, "completed"), (STOP, "failed"), (START, "completed"), (STOP, "failed")];
+    let chain = [
+        (START, "completed"),
+        (STOP, "failed"),
+        (START, "completed"),
+        (STOP, "failed"),
+    ];
     for (index, (path, outcome)) in chain.iter().enumerate() {
         let body = submit_ended(addr, path, outcome).await;
         assert_eq!(
-            body["started"], true,
+            body["started"],
+            true,
             "链条第 {} 次操作必须真的执行脚本：{body}",
             index + 1
         );
@@ -251,16 +290,25 @@ async fn repeated_submissions_never_fall_into_the_busy_class() {
             "第 {round} 轮启动在操作结束后必须被接受：{response:?}"
         );
         let body: Value = serde_json::from_str(&response.body).expect("操作响应必须是 JSON");
-        assert_eq!(body["ended"], true, "第 {round} 轮启动的响应必须已结束：{body}");
+        assert_eq!(
+            body["ended"], true,
+            "第 {round} 轮启动的响应必须已结束：{body}"
+        );
 
         let response = post_over_tcp(addr, STOP).await;
         assert!(
             response.status != BUSY_STATUS,
             "第 {round} 轮停止不得得到忙碌结果：{response:?}"
         );
-        assert_eq!(response.status, 200, "第 {round} 轮停止必须被接受：{response:?}");
+        assert_eq!(
+            response.status, 200,
+            "第 {round} 轮停止必须被接受：{response:?}"
+        );
         let body: Value = serde_json::from_str(&response.body).expect("操作响应必须是 JSON");
-        assert_ne!(body["code"], BUSY_CODE, "第 {round} 轮停止不得是忙碌类别：{body}");
+        assert_ne!(
+            body["code"], BUSY_CODE,
+            "第 {round} 轮停止不得是忙碌类别：{body}"
+        );
     }
 
     assert_eq!(

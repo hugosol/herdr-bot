@@ -14,12 +14,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::response::sse::Event;
-use notify::{recommended_watcher, Event as NotifyEvent, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{
+    Event as NotifyEvent, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+    recommended_watcher,
+};
 use serde::Serialize;
-use tokio::sync::{broadcast, mpsc};
 use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
-use tokio::time::{interval_at, Instant};
+use tokio::time::{Instant, interval_at};
 
 use crate::zones::RegisteredZone;
 
@@ -232,10 +235,7 @@ struct SharedInner {
 }
 
 impl Shared {
-    fn new(
-        zone: String,
-        hub: broadcast::Sender<ZoneWatchFrame>,
-    ) -> Self {
+    fn new(zone: String, hub: broadcast::Sender<ZoneWatchFrame>) -> Self {
         Self {
             zone,
             inner: Mutex::new(SharedInner {
@@ -247,11 +247,7 @@ impl Shared {
         }
     }
 
-    fn error(
-        zone: String,
-        message: String,
-        hub: broadcast::Sender<ZoneWatchFrame>,
-    ) -> Self {
+    fn error(zone: String, message: String, hub: broadcast::Sender<ZoneWatchFrame>) -> Self {
         Self {
             zone,
             inner: Mutex::new(SharedInner {
@@ -333,6 +329,7 @@ pub struct ZoneWatchManager {
     interval: Duration,
     hub: broadcast::Sender<ZoneWatchFrame>,
     watches: AsyncMutex<BTreeMap<String, WatchEntry>>,
+    sync_state: Option<Arc<crate::sync::SyncState>>,
 }
 
 impl ZoneWatchManager {
@@ -342,6 +339,25 @@ impl ZoneWatchManager {
             interval,
             hub,
             watches: AsyncMutex::new(BTreeMap::new()),
+            sync_state: None,
+        }
+    }
+
+    pub fn with_sync_state(interval: Duration, sync_state: Arc<crate::sync::SyncState>) -> Self {
+        let mut manager = Self::new(interval);
+        manager.sync_state = Some(sync_state);
+        manager
+    }
+
+    /// Application-initiated refreshes do not depend on filesystem events or the local event throttle.
+    pub async fn notify(&self, zone: &str) {
+        // Writers have already invalidated or refreshed their cache before broadcasting.
+        let watches = self.watches.lock().await;
+        let key = crate::status_cache::key(zone);
+        for entry in watches.values() {
+            if crate::status_cache::key(&entry.shared.zone) == key {
+                entry.shared.refresh();
+            }
         }
     }
 
@@ -392,6 +408,7 @@ impl ZoneWatchManager {
                 zone.path.clone(),
                 self.interval,
                 self.hub.clone(),
+                self.sync_state.clone(),
             )
             .await
             {
@@ -406,11 +423,8 @@ impl ZoneWatchManager {
                     shared.publish_health();
                 }
                 Err(message) => {
-                    let shared = Arc::new(Shared::error(
-                        zone.path.clone(),
-                        message,
-                        self.hub.clone(),
-                    ));
+                    let shared =
+                        Arc::new(Shared::error(zone.path.clone(), message, self.hub.clone()));
                     watches.insert(
                         zone.path.clone(),
                         WatchEntry {
@@ -435,6 +449,7 @@ async fn setup_watch(
     zone: String,
     interval: Duration,
     hub: broadcast::Sender<ZoneWatchFrame>,
+    sync_state: Option<Arc<crate::sync::SyncState>>,
 ) -> Result<(Arc<Shared>, JoinHandle<()>), String> {
     let root = PathBuf::from(&zone);
     let watch_root = root.clone();
@@ -449,6 +464,7 @@ async fn setup_watch(
         prepared.watcher,
         prepared.identities,
         interval,
+        sync_state,
     ));
     Ok((shared, task))
 }
@@ -467,9 +483,7 @@ fn prepare_watcher(
                 let _ = sender.send(WatchSignal::Changed);
             }
             Err(error) => {
-                let _ = sender.send(WatchSignal::Error(format!(
-                    "文件系统监听失败：{error}"
-                )));
+                let _ = sender.send(WatchSignal::Error(format!("文件系统监听失败：{error}")));
             }
         }
     })
@@ -483,13 +497,14 @@ fn prepare_watcher(
     if let Some(git_dir) = external_git_dir(root) {
         watcher
             .watch(&git_dir, RecursiveMode::Recursive)
-            .map_err(|error| {
-                format!("无法监听 Git 元数据目录 {}：{error}", git_dir.display())
-            })?;
+            .map_err(|error| format!("无法监听 Git 元数据目录 {}：{error}", git_dir.display()))?;
         identities.push(watched_identity(&git_dir, "Git 元数据目录")?);
     }
 
-    Ok(PreparedWatcher { watcher, identities })
+    Ok(PreparedWatcher {
+        watcher,
+        identities,
+    })
 }
 
 /// Git 工作树根的 `.git` 是文件时，真正的元数据目录可能在 zone 之外；返回它以便一起监听。
@@ -528,9 +543,8 @@ struct WatchedIdentity {
 
 /// 读取被监听目录当前身份：路径与目录创建时间共同识别「同名目录被替换」。
 fn watched_identity(path: &Path, label: &'static str) -> Result<WatchedIdentity, String> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        format!("{label}已不存在或无法访问，自动更新已停止：{error}")
-    })?;
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("{label}已不存在或无法访问，自动更新已停止：{error}"))?;
     if !metadata.is_dir() {
         return Err(format!("{label}已不再是目录，自动更新已停止。"));
     }
@@ -569,6 +583,7 @@ async fn run_watch(
     _watcher: RecommendedWatcher,
     identities: Vec<WatchedIdentity>,
     interval: Duration,
+    sync_state: Option<Arc<crate::sync::SyncState>>,
 ) {
     let mut gate = RefreshGate::new(interval);
     let health_interval = interval.min(Duration::from_secs(5));
@@ -580,6 +595,7 @@ async fn run_watch(
         tokio::select! {
             signal = signals.recv() => match signal {
                 Some(WatchSignal::Changed) => {
+                    if let Some(state) = &sync_state { state.cache.invalidate(&shared.zone); }
                     if gate.on_event(Instant::now()) {
                         shared.refresh();
                     }
@@ -691,6 +707,29 @@ mod gate_tests {
             ],
             "连续写入必须按窗口稳定刷新，而不是只留下一个永远不到期的待刷新"
         );
+    }
+
+    #[tokio::test]
+    async fn application_notifications_reach_all_clients_without_filesystem_events_or_throttling() {
+        let manager = ZoneWatchManager::new(Duration::from_secs(60));
+        let zone = ".".to_string();
+        let shared = Arc::new(Shared::new(zone.clone(), manager.hub.clone()));
+        manager
+            .watches
+            .lock()
+            .await
+            .insert(zone.clone(), WatchEntry { shared, task: None });
+        let mut first = manager.subscribe();
+        let mut second = manager.subscribe();
+        manager.notify(&zone).await;
+        manager.notify(&zone).await;
+        for receiver in [&mut first, &mut second] {
+            for expected in [1, 2] {
+                assert!(
+                    matches!(receiver.try_recv().unwrap(), ZoneWatchFrame::Refresh { generation, .. } if generation == expected)
+                );
+            }
+        }
     }
 
     #[test]

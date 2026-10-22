@@ -15,6 +15,7 @@ import {
   type FileView,
 } from './browseApi'
 import { HtmlReader } from './HtmlReaderView'
+import { GitAheadIndicator } from './GitAheadIndicator'
 import { isHtmlPath } from './htmlReader'
 import { DiffContent } from './DiffContent'
 import {
@@ -187,7 +188,8 @@ export function ZoneBrowser({
     { tone: 'success' | 'error' | 'unconfirmed'; text: string } | null
   >(null)
   // 远端检查与同步：检查是可重复的显式读取；同步只发送一次写请求，确认后才能发起。
-  const [remoteChecking, setRemoteChecking] = useState(false)
+  const [manualRemoteChecking, setRemoteChecking] = useState(false)
+  const remoteChecking = manualRemoteChecking || (gitStatus?.sync?.remoteChecking ?? false)
   const [syncConfirming, setSyncConfirming] = useState(false)
   const [syncRunning, setSyncRunning] = useState(false)
   const [syncFeedback, setSyncFeedback] = useState<
@@ -307,10 +309,10 @@ export function ZoneBrowser({
     [zone],
   )
 
-  const loadGitStatus = useCallback(async () => {
+  const loadGitStatus = useCallback(async (forceRefresh = false) => {
     const sequence = gitSequence.current + 1
     gitSequence.current = sequence
-    const result = await fetchGitStatus(zone)
+    const result = await fetchGitStatus(zone, forceRefresh)
     if (gitSequence.current !== sequence) return
     if (result.kind === 'ok') {
       setGitStatus(result.value)
@@ -363,9 +365,9 @@ export function ZoneBrowser({
     [zone],
   )
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceRefresh = true) => {
     setRefreshing(true)
-    await Promise.all([loadEntireTree(), loadGitStatus()])
+    await Promise.all([loadEntireTree(), loadGitStatus(forceRefresh)])
     if (selectedPath !== null) await loadFile(selectedPath)
     const currentChange = selectedChangeRef.current
     if (currentChange !== null) await loadChangeDiff(currentChange)
@@ -588,6 +590,7 @@ export function ZoneBrowser({
     !remoteChecking &&
     !syncRunning
   const syncButtonState =
+    remoteChecking ||
     !worktreeClean ||
     upstream === null ||
     remoteCheckedAt === null ||
@@ -638,7 +641,7 @@ export function ZoneBrowser({
       })
     }
     // 拒绝、失败或断线后都用当前事实刷新；不能把旧审查状态继续当成结果。
-    await refresh()
+    await refresh(false)
   }
 
   /**
@@ -706,7 +709,7 @@ export function ZoneBrowser({
       })
     }
     // 拒绝、失败或断线后都用当前事实刷新；不能把确认前的状态继续当成结果。
-    await refresh()
+    await refresh(false)
   }
 
   function commitBar(): ReactNode {
@@ -1320,6 +1323,8 @@ export function ZoneBrowser({
           <span className="browser-toolbar__branch" data-testid="browser-branch">
             分支：
             {gitStatus.branch ?? (gitStatus.detached ? 'HEAD（已分离）' : '未知')}
+            {' '}
+            <GitAheadIndicator sync={gitStatus.sync} />
           </span>
         )}
         <button
@@ -1332,6 +1337,22 @@ export function ZoneBrowser({
           {refreshing ? '刷新中……' : '刷新'}
         </button>
       </header>
+
+      {remoteChecking && (
+        <p className="sync-bar__state" data-testid="remote-checking" role="status">
+          正在后台检查远端；可以离开此页面，检查结果会自动更新。
+        </p>
+      )}
+      {!remoteChecking && sync?.remoteCheckError != null && (
+        <p
+          className="commit-bar__feedback"
+          data-testid="remote-check-error"
+          data-tone="error"
+          role="alert"
+        >
+          远端检查失败：{sync.remoteCheckError}；提交数量仍为本地已知状态。
+        </p>
+      )}
 
       {watchProblem !== null && (
         <p
@@ -1517,6 +1538,7 @@ export function ZoneBrowser({
               type="button"
               className="commit-confirm__go"
               data-testid="sync-confirm"
+              disabled={!syncAvailable}
               onClick={() => void runSync()}
             >
               确认同步

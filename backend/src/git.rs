@@ -100,6 +100,8 @@ pub struct ZoneSummary {
     pub pending_count: Option<usize>,
     pub conflict: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync: Option<SyncFacts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -112,13 +114,14 @@ pub fn overview(
     registered
         .iter()
         .map(
-            |zone| match status(&zone.path, timeout, sync_state) {
+            |zone| match sync_state.cached_status(&zone.path, timeout, false) {
                 Ok(status) => ZoneSummary {
                     path: zone.path.clone(),
                     repository: status.repository,
                     branch: status.branch,
                     pending_count: status.repository.then_some(status.pending_count),
                     conflict: status.conflict,
+                    sync: status.repository.then_some(status.sync),
                     error: None,
                 },
                 Err(error) => ZoneSummary {
@@ -127,6 +130,7 @@ pub fn overview(
                     branch: None,
                     pending_count: None,
                     conflict: false,
+                    sync: None,
                     error: Some(error.message()),
                 },
             },
@@ -135,7 +139,7 @@ pub fn overview(
 }
 
 /// Git 状态查询的明确失败类别。
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GitError {
     /// 登记根已消失、不可访问或不再是原来的目录。
     ZoneUnavailable(String),
@@ -307,8 +311,7 @@ pub(crate) fn worktree_root(
     let top_level = String::from_utf8_lossy(&top_level.stdout)
         .trim()
         .to_string();
-    if top_level.is_empty() || !zones::same_path(&top_level, &zones::display_path(&root))
-    {
+    if top_level.is_empty() || !zones::same_path(&top_level, &zones::display_path(&root)) {
         // 登记根不是仓库的工作树根：不把父仓库或其它仓库的变更聚合进来。
         return Ok(None);
     }
@@ -863,9 +866,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
         .spawn()
         .map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
-                GitError::GitUnavailable(
-                    "找不到 git 命令，无法读取 zone 的 Git 状态。".to_string(),
-                )
+                GitError::GitUnavailable("找不到 git 命令，无法读取 zone 的 Git 状态。".to_string())
             } else {
                 GitError::Failed(format!("无法运行 git：{error}"))
             }

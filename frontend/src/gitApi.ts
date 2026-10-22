@@ -32,6 +32,8 @@ export type SyncFacts = {
   ahead: number | null
   behind: number | null
   remoteCheckedAt: number | null
+  remoteChecking: boolean
+  remoteCheckError: string | null
 }
 
 /** 一个 zone 的 Git 状态；普通目录是 `repository: false`。 */
@@ -94,6 +96,7 @@ export type ZoneSummary = {
   pendingCount?: number
   conflict: boolean
   error?: string
+  sync?: SyncFacts
 }
 
 /**
@@ -149,6 +152,13 @@ function isSyncFacts(value: unknown): value is SyncFacts {
   if (!('ahead' in value) || !isOptionalCount(value.ahead)) return false
   if (!('behind' in value) || !isOptionalCount(value.behind)) return false
   if (!('remoteCheckedAt' in value) || !isOptionalCount(value.remoteCheckedAt)) {
+    return false
+  }
+  if (!('remoteChecking' in value) || typeof value.remoteChecking !== 'boolean') {
+    return false
+  }
+  if (!('remoteCheckError' in value)) return false
+  if (value.remoteCheckError !== null && typeof value.remoteCheckError !== 'string') {
     return false
   }
   return true
@@ -242,6 +252,9 @@ function isZoneSummary(value: unknown): value is ZoneSummary {
   if ('error' in value && value.error !== undefined && typeof value.error !== 'string') {
     return false
   }
+  if ('sync' in value && value.sync !== undefined && !isSyncFacts(value.sync)) {
+    return false
+  }
   return true
 }
 
@@ -294,8 +307,9 @@ async function gitRequest<T>(
 }
 
 /** 读取一个已登记 zone 的当前分支与待提交变更。 */
-export function fetchGitStatus(zone: string): Promise<GitResult<GitStatus>> {
+export function fetchGitStatus(zone: string, refresh = false): Promise<GitResult<GitStatus>> {
   const params = new URLSearchParams({ zone })
+  if (refresh) params.set('refresh', 'true')
   return gitRequest(`/api/zones/git-status?${params.toString()}`, (payload) =>
     isGitStatus(payload) ? payload : null,
   )

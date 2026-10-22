@@ -41,7 +41,7 @@ fn encode(value: &str) -> String {
 
 fn status_url(zone: &Path) -> String {
     format!(
-        "/api/zones/git-status?zone={}",
+        "/api/zones/git-status?zone={}&refresh=true",
         encode(&zone.to_string_lossy())
     )
 }
@@ -197,11 +197,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 async fn git_status(server: &TestServer, zone: &Path) -> Value {
@@ -233,7 +229,7 @@ async fn submit_sync(server: &TestServer, zone: &Path) -> HttpResponse {
 }
 
 #[tokio::test]
-async fn check_remote_updates_real_references_and_is_the_only_fetch_trigger() {
+async fn check_remote_updates_real_references_while_status_reads_never_fetch() {
     let dir = TempDir::new("zone sync check remote");
     let root = dir.path().join("repository");
     let remote = init_with_remote(&root, "upstream", "feature");
@@ -854,8 +850,10 @@ async fn plain_detached_dirty_and_no_upstream_are_rejected_without_writes() {
     let dirty_remote = init_with_remote(&dirty, "upstream", "feature");
     let dirty_remote_before = remote_head(&dirty_remote, "feature");
     let dirty_head_before = head_oid(&dirty);
-    write(&dirty, "tracked.txt", "uncommitted\n");
     register(&server, &dirty).await;
+    assert_eq!(git_status(&server, &dirty).await["pendingCount"], json!(0));
+    // A previously cached clean status is never authority for a write operation.
+    write(&dirty, "tracked.txt", "uncommitted\n");
     let response = submit_sync(&server, &dirty).await;
     assert_eq!(response.status, 409, "脏工作树不能 Sync：{}", response.body);
     assert_eq!(body(&response)["code"], json!("sync-dirty-worktree"));
@@ -1392,4 +1390,201 @@ async fn open_request_surface_and_missing_zone_are_rejected_without_writes() {
     assert_eq!(body(&response)["code"], json!("zone-not-registered"));
 
     assert_eq!(remote_head(&remote, "main"), remote_before);
+}
+
+async fn commit_reviewed(server: &TestServer, root: &Path) -> HttpResponse {
+    let status = git_status(server, root).await;
+    post_json_over_tcp(
+        server.addr(),
+        "/api/zones/commit",
+        &json!({
+            "zone": root, "message": "application commit", "reviewToken": status["reviewToken"],
+        })
+        .to_string(),
+    )
+    .await
+}
+
+async fn wait_for_post_commit_check(server: &TestServer, root: &Path) -> Value {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        // Ordinary reads must learn completion through invalidation, not an explicit forced refresh.
+        let url = format!(
+            "/api/zones/git-status?zone={}",
+            encode(&root.to_string_lossy())
+        );
+        let response = get_over_tcp(server.addr(), &url).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let status = body(&response);
+        if status["sync"]["remoteChecking"] == json!(false) {
+            return status;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "remote check did not finish: {status}"
+        );
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+}
+
+struct FetchRelease(PathBuf);
+impl Drop for FetchRelease {
+    fn drop(&mut self) {
+        if !self.0.exists() {
+            let _ = fs::write(&self.0, "release");
+        }
+    }
+}
+
+#[tokio::test]
+async fn successful_app_commit_returns_before_fetch_and_publishes_shared_remote_facts() {
+    let dir = TempDir::new("zone post commit background");
+    let root = dir.path().join("repository");
+    let remote = init_with_remote(&root, "upstream", "feature");
+    let remote_advanced = advance_remote(
+        &remote,
+        &dir.path().join("remote writer"),
+        "feature",
+        "remote.txt",
+        "remote\n",
+    );
+    let release = dir.path().join("release-fetch");
+    let _release_on_drop = FetchRelease(release.clone());
+    let helper = dir.path().join("upload-pack.sh");
+    let release_shell = release
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace('\'', "'\\''");
+    fs::write(&helper, format!("#!/bin/sh\nwhile [ ! -f '{release_shell}' ]; do sleep 0.05; done\nexec git-upload-pack \"$@\"\n")).unwrap();
+    let helper_shell = helper
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace('\'', "'\\''");
+    git_ok(
+        &root,
+        &[
+            "config",
+            "remote.upstream.uploadpack",
+            &format!("sh '{helper_shell}'"),
+        ],
+    );
+    write(&root, "tracked.txt", "local application change\n");
+    let registry = dir.path().join("zones.json");
+    let server = TestServer::start(&config_with_registry(&registry)).await;
+    register(&server, &root).await;
+    let result =
+        tokio::time::timeout(Duration::from_secs(8), commit_reviewed(&server, &root)).await;
+    if result.is_err() {
+        fs::write(&release, "release").unwrap();
+    }
+    let response = result.expect("commit response must not await a blocked network check");
+    assert_eq!(response.status, 200, "{}", response.body);
+
+    let checking = git_status(&server, &root).await;
+    assert_eq!(checking["pendingCount"], json!(0));
+    assert_eq!(
+        checking["sync"]["remoteChecking"],
+        json!(true),
+        "{checking}"
+    );
+    assert_eq!(checking["sync"]["ahead"], json!(1), "{checking}");
+    let overview = body(&get_over_tcp(server.addr(), "/api/zones/overview").await);
+    assert_eq!(
+        overview["zones"][0]["sync"]["remoteChecking"],
+        json!(true),
+        "{overview}"
+    );
+    let busy = submit_sync(&server, &root).await;
+    assert_eq!(busy.status, 409, "{}", busy.body);
+    assert_eq!(body(&busy)["code"], json!("git-write-in-progress"));
+    let busy_commit = commit_reviewed(&server, &root).await;
+    assert_eq!(busy_commit.status, 409, "{}", busy_commit.body);
+    assert_eq!(body(&busy_commit)["code"], json!("git-write-in-progress"));
+
+    fs::write(&release, "release").unwrap();
+    let checked = wait_for_post_commit_check(&server, &root).await;
+    assert_eq!(
+        checked["sync"]["remoteCheckError"],
+        Value::Null,
+        "{checked}"
+    );
+    assert!(
+        checked["sync"]["remoteCheckedAt"].as_u64().unwrap_or(0) > 0,
+        "{checked}"
+    );
+    assert_eq!(checked["sync"]["ahead"], json!(1), "{checked}");
+    assert_eq!(checked["sync"]["behind"], json!(1), "{checked}");
+    assert_eq!(
+        remote_tracking_head(&root, "upstream", "feature"),
+        remote_advanced
+    );
+    assert_eq!(
+        remote_head(&remote, "feature"),
+        remote_advanced,
+        "background check never pushes"
+    );
+    let overview = body(&get_over_tcp(server.addr(), "/api/zones/overview").await);
+    assert_eq!(overview["zones"][0]["sync"], checked["sync"], "{overview}");
+}
+
+#[tokio::test]
+async fn post_commit_fetch_failure_preserves_commit_and_local_known_counts() {
+    let dir = TempDir::new("zone post commit failed fetch");
+    let root = dir.path().join("repository");
+    let remote = init_with_remote(&root, "upstream", "feature");
+    let remote_before = remote_head(&remote, "feature");
+    git_ok(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "upstream",
+            dir.path().join("missing.git").to_str().unwrap(),
+        ],
+    );
+    write(&root, "tracked.txt", "committed despite fetch failure\n");
+    let server = TestServer::start(&config_with_registry(&dir.path().join("zones.json"))).await;
+    register(&server, &root).await;
+    let response = commit_reviewed(&server, &root).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    assert_eq!(body(&response)["outcome"], json!("committed"));
+    let checked = wait_for_post_commit_check(&server, &root).await;
+    assert_eq!(checked["pendingCount"], json!(0), "{checked}");
+    assert_eq!(checked["sync"]["ahead"], json!(1), "{checked}");
+    assert_eq!(checked["sync"]["behind"], json!(0), "{checked}");
+    assert!(
+        checked["sync"]["remoteCheckError"]
+            .as_str()
+            .is_some_and(|error| error.contains("fetch")),
+        "{checked}"
+    );
+    assert_eq!(remote_head(&remote, "feature"), remote_before);
+    assert_eq!(body(&response)["commit"], json!(head_oid(&root)));
+}
+
+#[tokio::test]
+async fn post_commit_without_upstream_explains_unavailable_check_without_configuring_or_publishing()
+{
+    let dir = TempDir::new("zone post commit missing upstream");
+    let root = dir.path().join("repository");
+    init_repository(&root, "main");
+    write(&root, "tracked.txt", "first application commit\n");
+    let config_before = git_stdout(&root, &["config", "--local", "--list"]);
+    let server = TestServer::start(&config_with_registry(&dir.path().join("zones.json"))).await;
+    register(&server, &root).await;
+    let response = commit_reviewed(&server, &root).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let checked = wait_for_post_commit_check(&server, &root).await;
+    assert_eq!(checked["sync"]["upstream"], Value::Null, "{checked}");
+    assert_eq!(checked["sync"]["ahead"], Value::Null, "{checked}");
+    assert!(
+        checked["sync"]["remoteCheckError"]
+            .as_str()
+            .is_some_and(|error| error.contains("upstream")),
+        "{checked}"
+    );
+    assert_eq!(
+        git_stdout(&root, &["config", "--local", "--list"]),
+        config_before
+    );
 }

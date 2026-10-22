@@ -107,12 +107,14 @@ impl WindowServer {
 
     /// 经真 TCP 上报一条 agent 状态。
     async fn post_state(&self, session_id: &str, value: &str) -> HttpResponse {
-        self.post(&json!({
-            "sessionId": session_id,
-            "kind": "state",
-            "data": { "value": value },
-        })
-        .to_string())
+        self.post(
+            &json!({
+                "sessionId": session_id,
+                "kind": "state",
+                "data": { "value": value },
+            })
+            .to_string(),
+        )
         .await
     }
 
@@ -225,7 +227,8 @@ async fn assert_window_boundaries(sessions: &str, online: u64, retention: u64) {
 #[tokio::test]
 async fn the_default_windows_apply_when_the_sessions_section_is_absent() {
     // 先确认这一份启动输入确实没有给出任何会话窗口。
-    let config = herdr_bot::Config::from_toml(&config_text("")).expect("缺 [sessions] 段仍必须可解析");
+    let config =
+        herdr_bot::Config::from_toml(&config_text("")).expect("缺 [sessions] 段仍必须可解析");
     assert_eq!(config.sessions.online_timeout_seconds.get(), 10);
     assert_eq!(config.sessions.offline_retention_seconds.get(), 30);
 
@@ -286,7 +289,8 @@ async fn the_largest_legal_windows_are_kept_instead_of_falling_back_to_defaults(
     assert_eq!(config.sessions.offline_retention_seconds.get(), 4294967295);
 
     // 运行 interface：online=4294967295（保留期取缺省 30 秒）时，t=11 仍在线。
-    let large_online = WindowServer::start("[sessions]\nonline_timeout_seconds = 4294967295\n").await;
+    let large_online =
+        WindowServer::start("[sessions]\nonline_timeout_seconds = 4294967295\n").await;
     let accepted = large_online.post(&register("sess-large-online")).await;
     assert_eq!(accepted.status, 200, "注册应被接受：{}", accepted.body);
     large_online.advance(Duration::from_secs(11));
@@ -300,7 +304,9 @@ async fn the_largest_legal_windows_are_kept_instead_of_falling_back_to_defaults(
     // 运行 interface：retention=4294967295（在线有效期取缺省 10 秒）时，t=41 仍保留。
     let large_retention =
         WindowServer::start("[sessions]\noffline_retention_seconds = 4294967295\n").await;
-    let accepted = large_retention.post(&register("sess-large-retention")).await;
+    let accepted = large_retention
+        .post(&register("sess-large-retention"))
+        .await;
     assert_eq!(accepted.status, 200, "注册应被接受：{}", accepted.body);
     large_retention.advance(Duration::from_secs(41));
     large_retention.maintain().await;
@@ -385,9 +391,7 @@ async fn the_configured_online_window_decides_monitoring_eligibility() {
 
     // 保留期内的一次普通上报（心跳不改变 agent 状态）之后即可新增。
     let heartbeat = server
-        .post(
-            &json!({ "sessionId": "sess-late", "kind": "heartbeat", "data": {} }).to_string(),
-        )
+        .post(&json!({ "sessionId": "sess-late", "kind": "heartbeat", "data": {} }).to_string())
         .await;
     assert_eq!(heartbeat.status, 200, "心跳应被接受：{}", heartbeat.body);
     let accepted = server.post_monitor("sess-late", true).await;
@@ -417,7 +421,11 @@ async fn the_configured_online_window_blocks_and_then_allows_the_automatic_arran
             let working = server.post_state(session, "working").await;
             assert_eq!(working.status, 200, "状态上报应被接受：{}", working.body);
             let monitored = server.post_monitor(session, true).await;
-            assert_eq!(monitored.status, 200, "在线工作中即可新增：{}", monitored.body);
+            assert_eq!(
+                monitored.status, 200,
+                "在线工作中即可新增：{}",
+                monitored.body
+            );
         }
 
         // t=1：A 进入等待用户输入；B 仍工作中，整组继续等待。
@@ -438,8 +446,8 @@ async fn the_configured_online_window_blocks_and_then_allows_the_automatic_arran
     }
 
     // 配置窗口（在线 7 秒）：A 在 t=9 时已离线，因此整组被阻塞，两个成员都还在集合里。
-    let configured = run("[sessions]\nonline_timeout_seconds = 7\noffline_retention_seconds = 13\n")
-        .await;
+    let configured =
+        run("[sessions]\nonline_timeout_seconds = 7\noffline_retention_seconds = 13\n").await;
     let shutdown = configured.shutdown().await;
     assert_eq!(
         shutdown["phase"],
@@ -513,7 +521,7 @@ impl Panel {
     /// 用给定配置文件启动真实二进制；返回时已经拿到它实际监听的端口。
     fn start(config_path: &Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
-        .current_dir(common::repo_fixtures_dir().parent().unwrap())
+            .current_dir(common::repo_fixtures_dir().parent().unwrap())
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
@@ -599,7 +607,10 @@ impl Panel {
         let mut connection = SseConnection::open(self.addr(), "/api/sessions/events", &[]).await;
         let first = connection.next_frame().await;
         first.named("snapshot");
-        first.json()["sessions"].as_array().cloned().unwrap_or_default()
+        first.json()["sessions"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn is_running(&mut self) -> bool {
@@ -627,7 +638,9 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
             if read == 0 {
                 return;
             }
-            log.lock().expect("写入日志").extend_from_slice(&buffer[..read]);
+            log.lock()
+                .expect("写入日志")
+                .extend_from_slice(&buffer[..read]);
         }
     });
 }
@@ -719,7 +732,9 @@ async fn a_running_process_keeps_the_windows_it_started_with() {
     // 原实例：启动时读到 7／13。
     let mut original = Panel::start(&config_path);
     assert!(
-        original.log_text().contains("会话窗口：在线 7 秒、离线保留 13 秒"),
+        original
+            .log_text()
+            .contains("会话窗口：在线 7 秒、离线保留 13 秒"),
         "原实例必须报告它启动时读到的窗口：\n{}",
         original.log_text()
     );
@@ -734,7 +749,9 @@ async fn a_running_process_keeps_the_windows_it_started_with() {
     // 新进程用改写后的文件启动，与原实例同时运行。
     let mut restarted = Panel::start(&config_path);
     assert!(
-        restarted.log_text().contains("会话窗口：在线 10 秒、离线保留 30 秒"),
+        restarted
+            .log_text()
+            .contains("会话窗口：在线 10 秒、离线保留 30 秒"),
         "新进程必须报告改写后的窗口：\n{}",
         restarted.log_text()
     );

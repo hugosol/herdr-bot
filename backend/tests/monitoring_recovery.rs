@@ -96,7 +96,8 @@ impl RecoveryServer {
             clock.clone(),
         ));
         let double = RecordingPowerOff::new();
-        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) =
+            herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
@@ -309,7 +310,9 @@ fn assert_refused(response: &HttpResponse, status: u16, code: &str) {
     let body = response_body(response);
     assert_eq!(body["code"], code, "响应体：{}", response.body);
     assert!(
-        body["message"].as_str().is_some_and(|message| !message.is_empty()),
+        body["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty()),
         "拒绝必须带中文说明：{}",
         response.body
     );
@@ -368,12 +371,20 @@ async fn only_a_currently_online_and_working_registration_can_be_added() {
     assert_selected(&server.monitor("a", true).await, "a");
 
     // 离线且**未**选中：拒绝为 409 session-not-eligible。
-    assert_refused(&server.monitor("e", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("e", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 空闲：拒绝。
     assert_accepted(&server.register("idle-1").await);
     assert_accepted(&server.state("idle-1", "idle").await);
-    assert_refused(&server.monitor("idle-1", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("idle-1", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 等待用户输入：拒绝。
     assert_accepted(&server.register("awaiting-1").await);
@@ -393,7 +404,11 @@ async fn only_a_currently_online_and_working_registration_can_be_added() {
     );
 
     // 无登记：拒绝为 404 unknown-session。
-    assert_refused(&server.monitor("ghost-1", true).await, 404, "unknown-session");
+    assert_refused(
+        &server.monitor("ghost-1", true).await,
+        404,
+        "unknown-session",
+    );
 
     // 被拒绝的命令都不改变权威集合。
     assert_eq!(
@@ -420,7 +435,11 @@ async fn a_retained_member_keeps_its_monitoring_intention_after_recovering() {
     server.advance(Duration::from_secs(11));
     server.maintain().await;
     let offline = server.authoritative().await;
-    assert_eq!(monitored_ids(&offline), vec!["b".to_string()], "离线不移出集合");
+    assert_eq!(
+        monitored_ids(&offline),
+        vec!["b".to_string()],
+        "离线不移出集合"
+    );
 
     // 保留期内的恢复上报：重新计时并恢复在线。
     assert_accepted(&server.state("b", "working").await);
@@ -428,7 +447,11 @@ async fn a_retained_member_keeps_its_monitoring_intention_after_recovering() {
     let observer = server.observe().await;
     let b = session_of(&observer.first_sessions(), "b");
     assert_eq!(b["online"], json!(true), "恢复上报后外部读取在线：{b}");
-    assert_eq!(b["state"], json!("working"), "当前 agent 状态按最新上报：{b}");
+    assert_eq!(
+        b["state"],
+        json!("working"),
+        "当前 agent 状态按最新上报：{b}"
+    );
     assert_eq!(
         monitored_ids(&observer.first_shutdown()),
         vec!["b".to_string()],
@@ -520,7 +543,9 @@ async fn a_recovered_member_awaiting_input_makes_the_group_trigger_and_execute_o
     assert_accepted(&server.state("b", "awaiting-input").await);
 
     // 非空集合现在全部在线并等待用户输入：形成唯一安排并消耗整组监听。
-    let arranged = observer.shutdown_until("counting-down", Duration::from_secs(10)).await;
+    let arranged = observer
+        .shutdown_until("counting-down", Duration::from_secs(10))
+        .await;
     assert_eq!(
         monitored_ids(&arranged),
         Vec::<String>::new(),
@@ -533,8 +558,13 @@ async fn a_recovered_member_awaiting_input_makes_the_group_trigger_and_execute_o
     assert_eq!(a["online"], json!(true), "其他成员保持在线：{a}");
 
     // 到期：后端调用既有安全 adapter 恰一次，阶段推进到「指令已发出」。
-    let issued = observer.shutdown_until("issued", Duration::from_secs(10)).await;
-    assert_eq!(issued["arrangementId"], arranged["arrangementId"], "同一安排到期执行");
+    let issued = observer
+        .shutdown_until("issued", Duration::from_secs(10))
+        .await;
+    assert_eq!(
+        issued["arrangementId"], arranged["arrangementId"],
+        "同一安排到期执行"
+    );
     assert_eq!(
         server.double.calls(),
         1,
@@ -559,7 +589,11 @@ async fn only_every_online_member_awaiting_input_triggers_the_group() {
     // A 进入等待、B 仍在工作：整组不满足 → 不触发。
     assert_accepted(&server.state("a", "awaiting-input").await);
     let working_blocks = server.authoritative().await;
-    assert_eq!(working_blocks["phase"], json!("none"), "working 阻塞：{working_blocks}");
+    assert_eq!(
+        working_blocks["phase"],
+        json!("none"),
+        "working 阻塞：{working_blocks}"
+    );
     assert_eq!(
         monitored_ids(&working_blocks),
         vec!["a".to_string(), "b".to_string()]
@@ -568,12 +602,20 @@ async fn only_every_online_member_awaiting_input_triggers_the_group() {
     // B 进入空闲（在线、agent 没在跑、本轮尚未观察到结束）：不满足 → 不触发。
     assert_accepted(&server.state("b", "idle").await);
     let idle_blocks = server.authoritative().await;
-    assert_eq!(idle_blocks["phase"], json!("none"), "idle 阻塞：{idle_blocks}");
+    assert_eq!(
+        idle_blocks["phase"],
+        json!("none"),
+        "idle 阻塞：{idle_blocks}"
+    );
     assert_eq!(server.double.calls(), 0, "没有安排就没有任何关机调用");
 
     // 状态缺省不能新增：集合里因此不可能出现缺省状态的成员。
     assert_accepted(&server.register("c").await);
-    assert_refused(&server.monitor("c", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("c", true).await,
+        409,
+        "session-not-eligible",
+    );
     assert!(
         !server.authoritative_set().await.contains(&"c".to_string()),
         "缺省状态的会话进不了集合"
@@ -583,8 +625,14 @@ async fn only_every_online_member_awaiting_input_triggers_the_group() {
     // 并作为关机状态变化经观察流下发。
     let mut observer = server.observe().await;
     assert_accepted(&server.state("b", "awaiting-input").await);
-    let arranged = observer.shutdown_until("counting-down", Duration::from_secs(10)).await;
-    assert_eq!(arranged["phase"], json!("counting-down"), "全组等待才触发：{arranged}");
+    let arranged = observer
+        .shutdown_until("counting-down", Duration::from_secs(10))
+        .await;
+    assert_eq!(
+        arranged["phase"],
+        json!("counting-down"),
+        "全组等待才触发：{arranged}"
+    );
     assert_eq!(
         monitored_ids(&arranged),
         Vec::<String>::new(),
@@ -641,7 +689,11 @@ async fn an_offline_member_awaiting_input_never_satisfies_the_trigger() {
     assert_eq!(a["state"], json!("awaiting-input"), "A 当前等待：{a}");
     let b = session_of(&observer.first_sessions(), "b");
     assert_eq!(b["online"], json!(false), "B 离线：{b}");
-    assert_eq!(b["state"], json!("awaiting-input"), "B 的最后上报状态原样：{b}");
+    assert_eq!(
+        b["state"],
+        json!("awaiting-input"),
+        "B 的最后上报状态原样：{b}"
+    );
 
     let view = observer.first_shutdown();
     assert_eq!(
@@ -691,7 +743,11 @@ async fn a_historical_turn_end_never_counts_as_completion_eligibility() {
     // A 再次进入等待用户输入：这才满足条件。
     assert_accepted(&server.state("a", "awaiting-input").await);
     let arranged = server.authoritative().await;
-    assert_eq!(arranged["phase"], json!("counting-down"), "A 再次等待才触发：{arranged}");
+    assert_eq!(
+        arranged["phase"],
+        json!("counting-down"),
+        "A 再次等待才触发：{arranged}"
+    );
     assert_eq!(server.double.calls(), 0, "倒计时中还没有关机调用");
 }
 
@@ -725,7 +781,11 @@ async fn an_offline_monitored_member_can_still_be_withdrawn() {
         "离线成员的撤销立即生效，集合只剩 A：{withdrawn}"
     );
     // 剩下的 A 目前离线（超过在线有效期）：不触发，使用与新增/撤销同一套整组判定。
-    assert_eq!(withdrawn["phase"], json!("none"), "A 离线就不触发：{withdrawn}");
+    assert_eq!(
+        withdrawn["phase"],
+        json!("none"),
+        "A 离线就不触发：{withdrawn}"
+    );
     assert_eq!(server.double.calls(), 0, "没有安排就没有任何关机调用");
 
     // A 的恢复上报（等待用户输入）：剩余非空集合全部在线等待 → 按统一规则立即触发。
@@ -767,10 +827,21 @@ async fn withdrawing_the_last_offline_member_never_starts_a_countdown() {
         monitored_ids(&withdrawn).is_empty(),
         "撤销最后一个成员只清空集合：{withdrawn}"
     );
-    assert_eq!(withdrawn["phase"], json!("none"), "空集合不触发：{withdrawn}");
+    assert_eq!(
+        withdrawn["phase"],
+        json!("none"),
+        "空集合不触发：{withdrawn}"
+    );
 
     let after = server.authoritative().await;
-    assert!(monitored_ids(&after).is_empty(), "外部读取确认为空集合：{after}");
-    assert_eq!(after["phase"], json!("none"), "外部读取确认没有安排：{after}");
+    assert!(
+        monitored_ids(&after).is_empty(),
+        "外部读取确认为空集合：{after}"
+    );
+    assert_eq!(
+        after["phase"],
+        json!("none"),
+        "外部读取确认没有安排：{after}"
+    );
     assert_eq!(server.double.calls(), 0, "没有安排就没有任何关机调用");
 }

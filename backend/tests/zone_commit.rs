@@ -10,7 +10,8 @@ use std::process::Command;
 use std::time::Duration;
 
 use common::{
-    HttpResponse, OpenJsonRequest, TempDir, TestServer, get_over_tcp, post_json_over_tcp, wait_until,
+    HttpResponse, OpenJsonRequest, TempDir, TestServer, get_over_tcp, post_json_over_tcp,
+    wait_until,
 };
 use serde_json::{Value, json};
 
@@ -40,7 +41,7 @@ fn encode(value: &str) -> String {
 
 fn status_url(zone: &Path) -> String {
     format!(
-        "/api/zones/git-status?zone={}",
+        "/api/zones/git-status?zone={}&refresh=true",
         encode(&zone.to_string_lossy())
     )
 }
@@ -100,11 +101,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 async fn git_status(server: &TestServer, zone: &Path) -> Value {
@@ -254,7 +251,8 @@ async fn commit_stages_all_eligible_final_changes_and_never_pushes() {
         "待提交集合必须包含已跟踪变更与未忽略的未跟踪文件，不包含 ignored 文件：{status}"
     );
     assert_eq!(
-        status["blockedReason"], Value::Null,
+        status["blockedReason"],
+        Value::Null,
         "普通待提交状态不应被标记为阻塞：{status}"
     );
 
@@ -335,7 +333,11 @@ async fn review_invalidates_same_path_same_count_content_change_without_writing(
     // 路径与数量完全相同，只有内容变了。
     write(&root, "same.txt", "changed after review\n");
     let response = submit_commit(&server, &root, "must not commit stale review", &token).await;
-    assert_eq!(response.status, 409, "失效审查必须被拒绝：{}", response.body);
+    assert_eq!(
+        response.status, 409,
+        "失效审查必须被拒绝：{}",
+        response.body
+    );
     assert_eq!(body(&response)["code"], json!("review-invalid"));
     assert_eq!(head_oid(&root), head_before, "失效审查不能创建提交");
     assert_eq!(index_snapshot(&root), index_before, "失效审查不能暂存内容");
@@ -350,7 +352,11 @@ async fn review_invalidates_same_path_same_count_content_change_without_writing(
         &review_token(&refreshed),
     )
     .await;
-    assert_eq!(response.status, 200, "重新审查后应可提交：{}", response.body);
+    assert_eq!(
+        response.status, 200,
+        "重新审查后应可提交：{}",
+        response.body
+    );
     assert_ne!(
         head_oid(&root),
         head_before_retry,
@@ -382,7 +388,11 @@ async fn external_staging_head_and_branch_changes_invalidate_the_review() {
     let head_before = head_oid(&root);
     git_ok(&root, &["add", "file.txt"]);
     let response = submit_commit(&server, &root, "external staging", &token).await;
-    assert_eq!(response.status, 409, "外部暂存必须使审查失效：{}", response.body);
+    assert_eq!(
+        response.status, 409,
+        "外部暂存必须使审查失效：{}",
+        response.body
+    );
     assert_eq!(body(&response)["code"], json!("review-invalid"));
     assert_eq!(head_oid(&root), head_before);
 
@@ -394,7 +404,11 @@ async fn external_staging_head_and_branch_changes_invalidate_the_review() {
     git_ok(&root, &["commit", "--quiet", "-m", "external head move"]);
     let head_after_external = head_oid(&root);
     let response = submit_commit(&server, &root, "head moved", &token).await;
-    assert_eq!(response.status, 409, "HEAD 变化必须使审查失效：{}", response.body);
+    assert_eq!(
+        response.status, 409,
+        "HEAD 变化必须使审查失效：{}",
+        response.body
+    );
     assert_eq!(body(&response)["code"], json!("review-invalid"));
     assert_eq!(head_oid(&root), head_after_external);
 
@@ -405,7 +419,11 @@ async fn external_staging_head_and_branch_changes_invalidate_the_review() {
     git_ok(&root, &["checkout", "--quiet", "-b", "other"]);
     let other_before = head_oid(&root);
     let response = submit_commit(&server, &root, "wrong branch", &token).await;
-    assert_eq!(response.status, 409, "切分支后旧审查必须失效：{}", response.body);
+    assert_eq!(
+        response.status, 409,
+        "切分支后旧审查必须失效：{}",
+        response.body
+    );
     assert_eq!(head_oid(&root), other_before, "旧审查不能向另一分支提交");
     assert_eq!(
         git_stdout(&root, &["symbolic-ref", "--short", "HEAD"]).trim(),
@@ -536,7 +554,11 @@ async fn hook_rejection_keeps_the_staged_index_and_reports_git_output() {
     let head_before = head_oid(&root);
 
     let response = submit_commit(&server, &root, "must be rejected by hook", &token).await;
-    assert_eq!(response.status, 500, "hook 拒绝必须明确失败：{}", response.body);
+    assert_eq!(
+        response.status, 500,
+        "hook 拒绝必须明确失败：{}",
+        response.body
+    );
     let payload = body(&response);
     assert_eq!(payload["code"], json!("git-command-failed"));
     assert!(
@@ -593,7 +615,9 @@ async fn first_commit_uses_empty_tree_and_commits_staged_and_untracked_files() {
     let changes = status["changes"].as_array().expect("changes 数组");
     assert_eq!(changes.len(), 3, "忽略文件不进入待提交集合：{status}");
     assert!(
-        changes.iter().all(|change| change["kind"] == json!("added")),
+        changes
+            .iter()
+            .all(|change| change["kind"] == json!("added")),
         "没有 HEAD 时已暂存与未忽略未跟踪文件都按新增展示：{status}"
     );
 
@@ -663,8 +687,7 @@ async fn plain_directory_detached_head_conflicts_and_unfinished_flows_are_blocke
         "detached HEAD 必须明确说明原因：{status}"
     );
     let head_before = head_oid(&detached);
-    let response =
-        submit_commit(&server, &detached, "detached", &review_token(&status)).await;
+    let response = submit_commit(&server, &detached, "detached", &review_token(&status)).await;
     assert_eq!(response.status, 409);
     assert_eq!(body(&response)["code"], json!("commit-blocked"));
     assert_eq!(head_oid(&detached), head_before);
@@ -815,13 +838,7 @@ async fn nested_repositories_and_submodules_do_not_leak_internal_files() {
         "子模块内部脏文件不产生变更；父仓库只看到 gitlink 与嵌入仓库：{status}"
     );
 
-    let response = submit_commit(
-        &server,
-        &root,
-        "nested scope",
-        &review_token(&status),
-    )
-    .await;
+    let response = submit_commit(&server, &root, "nested scope", &review_token(&status)).await;
     assert_eq!(response.status, 200, "提交应成功：{}", response.body);
 
     let sub_entry = git_stdout(&root, &["ls-tree", "HEAD", "sub"]);
@@ -903,13 +920,7 @@ async fn concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel() {
     );
 
     // 第一条仍在执行：同一仓库的第二条请求立即被拒绝，不等待、不排队。
-    let second = submit_commit(
-        &server,
-        &root,
-        "overlapping commit",
-        &review_token(&status),
-    )
-    .await;
+    let second = submit_commit(&server, &root, "overlapping commit", &review_token(&status)).await;
     assert_eq!(
         second.status, 409,
         "同一仓库的写操作不能重叠：{}",
@@ -937,7 +948,23 @@ async fn concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel() {
         "提交必须真实完成"
     );
 
-    // 资格在执行结束后释放：下一条正常提交可以执行。
+    // The detached post-commit check also survives disconnect; writes resume after it completes.
+    let check_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let status = git_status(&server, &root).await;
+        if status["sync"]["remoteChecking"] == json!(false)
+            && status["sync"]["remoteCheckError"]
+                .as_str()
+                .is_some_and(|error| error.contains("upstream"))
+        {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < check_deadline,
+            "detached post-commit check did not finish: {status}"
+        );
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
     write(&root, "file.txt", "pending twice\n");
     let status = git_status(&server, &root).await;
     let response = submit_commit(&server, &root, "second commit", &review_token(&status)).await;
@@ -1209,9 +1236,12 @@ async fn missing_upstream_does_not_block_local_commit_and_configuration_is_uncha
 
     let config_before = git_stdout(&root, &["config", "--local", "--list"]);
     assert!(
-        git(&root, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-            .status
-            .success()
+        git(
+            &root,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]
+        )
+        .status
+        .success()
             == false,
         "测试仓库不应配置 upstream"
     );
@@ -1252,8 +1282,11 @@ async fn editor_and_signing_conditions_fail_or_are_not_invoked_without_overridin
     // 编辑器不应被打开：`-m` 已经提供信息，页面也不提供终端输入。
     let editor_marker = root.join("editor-marker.txt");
     let editor = dir.path().join("editor.bat");
-    fs::write(&editor, "@echo off\r\necho editor-opened > editor-marker.txt\r\n")
-        .expect("写入假编辑器");
+    fs::write(
+        &editor,
+        "@echo off\r\necho editor-opened > editor-marker.txt\r\n",
+    )
+    .expect("写入假编辑器");
     git_ok(
         &root,
         &[
@@ -1275,7 +1308,11 @@ async fn editor_and_signing_conditions_fail_or_are_not_invoked_without_overridin
         &review_token(&status),
     )
     .await;
-    assert_eq!(response.status, 200, "编辑器不应参与提交：{}", response.body);
+    assert_eq!(
+        response.status, 200,
+        "编辑器不应参与提交：{}",
+        response.body
+    );
     assert!(
         !editor_marker.exists(),
         "提交不能打开交互式编辑器并要求用户输入"
@@ -1437,9 +1474,11 @@ async fn clean_repository_rejects_direct_commit_without_creating_an_empty_commit
     let head_before = head_oid(&root);
 
     let response = submit_commit(&server, &root, "empty", &review_token(&status)).await;
-    assert_eq!(response.status, 409, "干净仓库不能创建空提交：{}", response.body);
+    assert_eq!(
+        response.status, 409,
+        "干净仓库不能创建空提交：{}",
+        response.body
+    );
     assert_eq!(body(&response)["code"], json!("nothing-to-commit"));
     assert_eq!(head_oid(&root), head_before);
 }
-
-

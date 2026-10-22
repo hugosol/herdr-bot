@@ -187,9 +187,17 @@ async fn a_registration_stays_online_through_the_online_window_and_then_keeps_it
     // t=11：超过在线有效期一秒，读取为离线；登记仍在，最后上报的 agent 状态原样保留。
     server.advance(Duration::from_secs(1));
     let sessions = server.read_sessions().await;
-    assert_eq!(sessions.len(), 2, "离线只是上报过期，登记仍保留：{sessions:?}");
+    assert_eq!(
+        sessions.len(),
+        2,
+        "离线只是上报过期，登记仍保留：{sessions:?}"
+    );
     let working = session_of(&sessions, "sess-working");
-    assert_eq!(working["online"], json!(false), "超过窗口一秒即离线：{working}");
+    assert_eq!(
+        working["online"],
+        json!(false),
+        "超过窗口一秒即离线：{working}"
+    );
     assert_eq!(
         working["state"],
         json!("working"),
@@ -249,8 +257,15 @@ async fn maintenance_retains_through_both_windows_and_clears_one_second_later() 
         "超过在线有效期即离线：{flipped:?}"
     );
     let retained = server.read_sessions().await;
-    assert_eq!(retained.len(), 1, "恰好等于两个窗口之和仍保留登记：{retained:?}");
-    assert_eq!(session_of(&retained, "sess-bounded")["online"], json!(false));
+    assert_eq!(
+        retained.len(),
+        1,
+        "恰好等于两个窗口之和仍保留登记：{retained:?}"
+    );
+    assert_eq!(
+        session_of(&retained, "sess-bounded")["online"],
+        json!(false)
+    );
 
     // t=41：超过两个窗口之和一秒，维护清除登记并发布移除。
     server.advance(Duration::from_secs(1));
@@ -334,7 +349,10 @@ async fn clearing_a_registration_leaves_the_isolated_conversation_file_untouched
     let server = LifecycleServer::start().await;
     assert_accepted(
         &server
-            .post(&register("sess-file", Some(&conversation.to_string_lossy())))
+            .post(&register(
+                "sess-file",
+                Some(&conversation.to_string_lossy()),
+            ))
             .await,
     );
     server.advance(Duration::from_secs(41));
@@ -367,7 +385,10 @@ async fn unregister_removes_immediately_and_a_restart_starts_empty() {
 
     // 另一份全新的会话表就是「herdr-bot 重启」：内存态不落盘，重启即清空。
     let restarted = LifecycleServer::start().await;
-    assert!(restarted.read_sessions().await.is_empty(), "重启后没有残留会话");
+    assert!(
+        restarted.read_sessions().await.is_empty(),
+        "重启后没有残留会话"
+    );
 }
 
 /// 慢用例（真实挂钟，默认策略：10 秒在线 / 30 秒保留）：交付运行时那份**每 5 秒**的维护循环
@@ -403,12 +424,8 @@ async fn the_real_maintenance_loop_publishes_offline_then_removal_after_the_defa
     );
 
     // 离线上界 = 在线有效期 10s + 扫描节奏 5s（另加调度余量）；也不得在窗口内提前翻。
-    let offline = next_named_event_within(
-        &mut observer,
-        "upsert",
-        Duration::from_secs(10 + 5 + 5),
-    )
-    .await;
+    let offline =
+        next_named_event_within(&mut observer, "upsert", Duration::from_secs(10 + 5 + 5)).await;
     assert_eq!(offline["session"]["online"], json!(false), "{offline:?}");
     let staleness = registered_at.elapsed();
     assert!(
@@ -421,12 +438,8 @@ async fn the_real_maintenance_loop_publishes_offline_then_removal_after_the_defa
     );
 
     // 清除上界 = 两个窗口之和 40s + 扫描节奏 5s；观察流给出移除帧，读取随之为空。
-    let removed = next_named_event_within(
-        &mut observer,
-        "remove",
-        Duration::from_secs(30 + 5 + 5),
-    )
-    .await;
+    let removed =
+        next_named_event_within(&mut observer, "remove", Duration::from_secs(30 + 5 + 5)).await;
     assert_eq!(removed["sessionId"], json!("sess-loop"));
     let lifetime = registered_at.elapsed();
     assert!(

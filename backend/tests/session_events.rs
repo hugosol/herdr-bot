@@ -81,8 +81,12 @@ impl SessionServer {
 
 /// 响应体必须是 JSON。
 fn body_of(response: &HttpResponse) -> Value {
-    serde_json::from_str(&response.body)
-        .unwrap_or_else(|e| panic!("响应体必须是 JSON（HTTP {}）：{e}：{}", response.status, response.body))
+    serde_json::from_str(&response.body).unwrap_or_else(|e| {
+        panic!(
+            "响应体必须是 JSON（HTTP {}）：{e}：{}",
+            response.status, response.body
+        )
+    })
 }
 
 /// 断言一次成功回执：HTTP 200 且恰好是 `{outcome}`。
@@ -116,11 +120,7 @@ fn upsert_view(frame: Observation) -> Value {
 #[test]
 fn the_default_windows_are_inclusive_at_their_boundaries() {
     let policy = SessionPolicy::default();
-    assert_eq!(
-        policy.online(),
-        Duration::from_secs(10),
-        "缺省在线有效期"
-    );
+    assert_eq!(policy.online(), Duration::from_secs(10), "缺省在线有效期");
     assert_eq!(
         policy.retention(),
         Duration::from_secs(30),
@@ -139,7 +139,10 @@ fn the_default_windows_are_inclusive_at_their_boundaries() {
         "恰 10s 仍在线"
     );
     assert!(
-        !policy.is_online(last_seen, last_seen + Duration::from_secs(10) + Duration::from_millis(1)),
+        !policy.is_online(
+            last_seen,
+            last_seen + Duration::from_secs(10) + Duration::from_millis(1)
+        ),
         "超过 10s 即离线"
     );
 
@@ -148,7 +151,10 @@ fn the_default_windows_are_inclusive_at_their_boundaries() {
         "恰 40s 仍保留登记"
     );
     assert!(
-        policy.is_expired(last_seen, last_seen + Duration::from_secs(40) + Duration::from_millis(1)),
+        policy.is_expired(
+            last_seen,
+            last_seen + Duration::from_secs(40) + Duration::from_millis(1)
+        ),
         "超过 40s 由维护清除"
     );
 }
@@ -183,9 +189,14 @@ async fn agent_type_round_trips_through_upserts_and_snapshots() {
         if let Some(value) = agent_type {
             data["agentType"] = json!(value);
         }
-        let response = server.post(&json!({
-            "sessionId": "native", "kind": "register", "data": data
-        }).to_string()).await;
+        let response = server
+            .post(
+                &json!({
+                    "sessionId": "native", "kind": "register", "data": data
+                })
+                .to_string(),
+            )
+            .await;
         assert_eq!(response.status, 200, "{}", response.body);
         let view = upsert_view(server.take_frame());
         let snapshot = serde_json::to_value(server.sessions.snapshot().await).unwrap();
@@ -367,7 +378,9 @@ async fn state_and_heartbeat_upsert_the_state_idempotently() {
     assert_outcome(&repeated, "accepted");
     server.assert_no_frame();
 
-    let bare = server.post(r#"{"sessionId":"s1","kind":"heartbeat"}"#).await;
+    let bare = server
+        .post(r#"{"sessionId":"s1","kind":"heartbeat"}"#)
+        .await;
     assert_outcome(&bare, "accepted");
     server.assert_no_frame();
 }
@@ -474,7 +487,11 @@ async fn malformed_or_incomplete_events_are_invalid_event() {
     for (case, event) in invalid_events {
         let response = server.post(event).await;
         assert_eq!(response.status, 400, "用例「{case}」：{}", response.body);
-        assert_eq!(body_of(&response)["code"], "invalid-event", "用例「{case}」");
+        assert_eq!(
+            body_of(&response)["code"],
+            "invalid-event",
+            "用例「{case}」"
+        );
     }
     server.assert_no_frame();
 
@@ -502,7 +519,8 @@ async fn oversized_event_payload_is_rejected() {
     assert_eq!(response.status, 200, "8KB 以内必须照常接受");
 
     let large_cwd = "a".repeat(8_200);
-    let oversized = format!(r#"{{"sessionId":"s2","kind":"register","data":{{"cwd":"{large_cwd}"}}}}"#);
+    let oversized =
+        format!(r#"{{"sessionId":"s2","kind":"register","data":{{"cwd":"{large_cwd}"}}}}"#);
     assert!(oversized.len() > 8 * 1024, "用例本身必须超过 8KB");
     let response = server.post(&oversized).await;
     assert_rejected(&response, 413, "payload-too-large");
@@ -547,6 +565,10 @@ async fn unknown_session_paths_are_unknown_endpoint() {
         )
         .await;
         assert_eq!(response.status, 404, "路径 {path}：{}", response.body);
-        assert_eq!(body_of(&response)["code"], "unknown-endpoint", "路径 {path}");
+        assert_eq!(
+            body_of(&response)["code"],
+            "unknown-endpoint",
+            "路径 {path}"
+        );
     }
 }

@@ -37,8 +37,8 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod bots;
-pub mod catalog;
 pub mod browse;
+pub mod catalog;
 pub mod clock;
 pub mod commit;
 pub mod config;
@@ -50,6 +50,7 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod shutdown;
+mod status_cache;
 pub mod sync;
 pub mod templates;
 pub mod watch;
@@ -79,7 +80,7 @@ use tower_http::services::ServeDir;
 pub use config::{
     BotTemplatesConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
-    ZonesConfig,
+    StatusCacheTtlSeconds, ZonesConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -151,7 +152,7 @@ pub struct AppState {
     pub git_timeout: Duration,
     /// 同一实际仓库的 Git 写操作资格；与固定操作的执行资格完全独立。
     pub repository_locks: Arc<commit::RepositoryLocks>,
-    /// 本实例成功检查远端的时间记录；只由显式检查与 Sync 前检查写入，本地事件不会触发 fetch。
+    /// 本地状态缓存与远端检查事实；只有显式检查、Sync 与应用成功提交后的后台检查访问远端。
     pub sync_state: Arc<sync::SyncState>,
     /// zone 文件事件监听与按 zone 合并的自动刷新通知。
     ///
@@ -213,6 +214,9 @@ pub fn app_with_state(
         Arc::clone(&power_off),
         config.shutdown.countdown_seconds.duration(),
     );
+    let sync_state = Arc::new(sync::SyncState::with_ttl(
+        config.git.status_cache_ttl_seconds.duration(),
+    ));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -237,9 +241,10 @@ pub fn app_with_state(
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
         repository_locks: Arc::new(commit::RepositoryLocks::new()),
-        sync_state: Arc::new(sync::SyncState::new()),
-        zone_watch: Arc::new(watch::ZoneWatchManager::new(
+        sync_state: Arc::clone(&sync_state),
+        zone_watch: Arc::new(watch::ZoneWatchManager::with_sync_state(
             config.zones.refresh_interval_seconds.duration(),
+            sync_state,
         )),
     };
 
@@ -905,7 +910,11 @@ fn bot_template_error_with_context(error: templates::TemplateError, context: &st
         | TemplateError::UnknownSkill(_)
         | TemplateError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
     };
-    rejected_owned(status, error.code(), format!("{}{context}", error.message()))
+    rejected_owned(
+        status,
+        error.code(),
+        format!("{}{context}", error.message()),
+    )
 }
 
 /// Bot 名称预览请求：只指定已登记 zone 与模板，不携带名称、Workspace 或其他覆盖字段。
@@ -1017,7 +1026,12 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     };
     let template = match state.bot_templates.get(&input.template_id).await {
         Ok(template) => template,
-        Err(error) => return bot_template_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+        Err(error) => {
+            return bot_template_error_with_context(
+                error,
+                " 未创建 Herdr Tab、未启动 agent、未提交输入。",
+            );
+        }
     };
     let workspace_name = match input.workspace_target {
         WorkspaceTarget::Default => state.herdr.workspace_name().to_string(),
@@ -1035,7 +1049,8 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
         return rejected_owned(
             StatusCode::BAD_REQUEST,
             "bot-name-rule-required",
-            "本次 bot-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+            "本次 bot-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+                .to_string(),
         );
     }
     if rule.contains(|c| c == '\n' || c == '\r') {
@@ -1050,7 +1065,8 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
         return rejected_owned(
             StatusCode::BAD_REQUEST,
             "bot-name-required",
-            "命名规则生成的 Bot 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+            "命名规则生成的 Bot 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+                .to_string(),
         );
     }
     if let Some(expected) = input.expected_name {
@@ -1063,9 +1079,18 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
         }
     }
 
-    let preset = match state.bot_templates.catalog().and_then(|catalog| catalog.resolve(&template)) {
+    let preset = match state
+        .bot_templates
+        .catalog()
+        .and_then(|catalog| catalog.resolve(&template))
+    {
         Ok(preset) => preset,
-        Err(error) => return bot_template_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+        Err(error) => {
+            return bot_template_error_with_context(
+                error,
+                " 未创建 Herdr Tab、未启动 agent、未提交输入。",
+            );
+        }
     };
     if let Err(message) = preset.check_entrypoints() {
         return rejected_owned(
@@ -1092,7 +1117,17 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     tokio::spawn(async move {
-        bots::run_creation(herdr, job, template, preset, zone, input.input, session_dir, workspace_name).await;
+        bots::run_creation(
+            herdr,
+            job,
+            template,
+            preset,
+            zone,
+            input.input,
+            session_dir,
+            workspace_name,
+        )
+        .await;
     });
     (StatusCode::ACCEPTED, Json(view)).into_response()
 }
@@ -1398,6 +1433,8 @@ fn resource_content_type(path: &str) -> &'static str {
 #[serde(deny_unknown_fields)]
 struct GitStatusQuery {
     zone: String,
+    #[serde(default)]
+    refresh: bool,
 }
 
 /// zone 列表上的角标概览：每个登记项的待提交项数或明确错误。
@@ -1412,6 +1449,7 @@ async fn zones_overview(State(state): State<AppState>) -> Response {
         Ok(zones) => zones,
         Err(error) => return zone_error_response(error),
     };
+    state.zone_watch.reconcile(&zones).await;
     let timeout = state.git_timeout;
     let sync_state = Arc::clone(&state.sync_state);
     match tokio::task::spawn_blocking(move || git::overview(&zones, timeout, &sync_state)).await {
@@ -1435,7 +1473,8 @@ async fn zone_git_status(
             return rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "invalid-query",
-                "读取 Git 状态需要 `zone` 参数，且不接受其他参数。".to_string(),
+                "读取 Git 状态需要 `zone` 参数，可选布尔参数 `refresh`，且不接受其他参数。"
+                    .to_string(),
             );
         }
     };
@@ -1452,7 +1491,10 @@ async fn zone_git_status(
     };
     let timeout = state.git_timeout;
     let sync_state = Arc::clone(&state.sync_state);
-    match tokio::task::spawn_blocking(move || git::status(&registered, timeout, &sync_state)).await
+    match tokio::task::spawn_blocking(move || {
+        sync_state.cached_status(&registered, timeout, query.refresh)
+    })
+    .await
     {
         Ok(Ok(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(Err(error)) => git_error_response(error),
@@ -1468,7 +1510,7 @@ async fn zone_git_status(
 ///
 /// 首帧是全部被监听 zone 的快照（实际生效的间隔、健康与最近刷新），之后同一 zone 的所有
 /// 观察者共享同一条监听与同一份节流状态，只收到合并后的刷新通知或监听健康变化。
-/// 这里只下发本地事件；远端状态仍需页面显式检查，不因本连接自动 fetch。
+/// 下发本地事件及后台远端检查的开始/结束通知；订阅本身不会触发 fetch。
 async fn watch_zones(State(state): State<AppState>) -> Response {
     let zones = match state.zones.list().await {
         Ok(zones) => zones,
@@ -1683,6 +1725,7 @@ async fn commit_zone(State(state): State<AppState>, request: Request) -> Respons
     let review_token = request.review_token;
     let (sender, receiver) = oneshot::channel();
     tokio::spawn(async move {
+        let operation_zone = registered.clone();
         let outcome = tokio::task::spawn_blocking(move || {
             commit::execute(
                 &registered,
@@ -1694,6 +1737,38 @@ async fn commit_zone(State(state): State<AppState>, request: Request) -> Respons
             )
         })
         .await;
+        state.zone_watch.notify(&operation_zone).await;
+        if matches!(&outcome, Ok(commit::CommitOutcome::Committed { .. })) {
+            let background_state = state.clone();
+            tokio::spawn(async move {
+                let check_zone = operation_zone.clone();
+                let sync_state = Arc::clone(&background_state.sync_state);
+                let locks = Arc::clone(&background_state.repository_locks);
+                let result = tokio::task::spawn_blocking(move || {
+                    sync::check_background(&check_zone, timeout, &locks, &sync_state)
+                })
+                .await;
+                let error = match result {
+                    Ok(sync::CheckOutcome::Checked(_)) => None,
+                    Ok(sync::CheckOutcome::NoUpstream) => Some("当前分支没有配置 upstream，无法检查远端；本功能不会自动发布分支或配置 upstream。".to_string()),
+                    Ok(sync::CheckOutcome::Blocked(reason)) => Some(reason),
+                    Ok(sync::CheckOutcome::Failed(error)) => Some(error.message()),
+                    Ok(sync::CheckOutcome::Busy) => Some("仓库已有 Git 写操作，提交后的远端检查未执行。".to_string()),
+                    Ok(sync::CheckOutcome::NotRepository) => Some("提交后的目录不再是 Git 工作树根，无法检查远端。".to_string()),
+                    Err(_) => Some("提交后的远端检查任务异常结束，无法确认远端状态。".to_string()),
+                };
+                if error.is_some() {
+                    background_state
+                        .sync_state
+                        .cache
+                        .invalidate(&operation_zone);
+                }
+                background_state
+                    .sync_state
+                    .finish_remote_check(&operation_zone, error);
+                background_state.zone_watch.notify(&operation_zone).await;
+            });
+        }
         let response = commit_response(response_zone, outcome);
         // 连接已经断开时接收端不存在，结果丢弃；已经开始的提交不会被取消或重放。
         let _ = sender.send(response);
@@ -1825,9 +1900,11 @@ async fn check_zone_remote(State(state): State<AppState>, request: Request) -> R
     let timeout = state.git_timeout;
     let locks = Arc::clone(&state.repository_locks);
     let sync_state = Arc::clone(&state.sync_state);
+    let refresh_zone = registered.clone();
     let outcome =
         tokio::task::spawn_blocking(move || sync::check(&registered, timeout, &locks, &sync_state))
             .await;
+    state.zone_watch.notify(&refresh_zone).await;
     match outcome {
         Ok(sync::CheckOutcome::Checked(status)) => (StatusCode::OK, Json(status)).into_response(),
         Ok(sync::CheckOutcome::NotRepository) => rejected_owned(
@@ -1881,6 +1958,7 @@ async fn sync_zone(State(state): State<AppState>, request: Request) -> Response 
             sync::execute(&registered, timeout, &locks, &sync_state)
         })
         .await;
+        state.zone_watch.notify(&response_zone).await;
         let response = sync_response(response_zone, outcome);
         let _ = sender.send(response);
     });
@@ -1982,10 +2060,13 @@ fn browse_query(
 /// 按登记列表核对 zone；未登记与登记文件读取失败都明确返回，不继续读取文件系统。
 async fn registered_zone(state: &AppState, requested: &str) -> Result<String, Response> {
     match state.zones.list().await {
-        Ok(zones) => match browse::registered_root(&zones, requested) {
-            Ok(root) => Ok(root.to_string()),
-            Err(error) => Err(browse_error_response(error)),
-        },
+        Ok(zones) => {
+            state.zone_watch.reconcile(&zones).await;
+            match browse::registered_root(&zones, requested) {
+                Ok(root) => Ok(root.to_string()),
+                Err(error) => Err(browse_error_response(error)),
+            }
+        }
         Err(error) => Err(zone_error_response(error)),
     }
 }

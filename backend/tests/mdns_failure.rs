@@ -19,8 +19,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use mdns_sd::{HostnameResolutionEvent, ServiceDaemon, ServiceEvent};
 use herdr_bot::mdns::{HOSTNAME, SERVICE_TYPE};
+use mdns_sd::{HostnameResolutionEvent, ServiceDaemon, ServiceEvent};
 
 /// 失败地址：RFC 5737 TEST-NET-1，文档保留地址，本机不可能拥有它。
 const UNOWNED_ADDRESS: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
@@ -122,10 +122,7 @@ impl Panel {
 
     /// 进程是否仍在运行：mDNS 失败不得让 herdr-bot 主界面退出。
     fn is_running(&mut self) -> bool {
-        self.child
-            .try_wait()
-            .expect("查询子进程状态失败")
-            .is_none()
+        self.child.try_wait().expect("查询子进程状态失败").is_none()
     }
 }
 
@@ -144,7 +141,9 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
             if read == 0 {
                 break;
             }
-            log.lock().expect("写日志").extend_from_slice(&buffer[..read]);
+            log.lock()
+                .expect("写日志")
+                .extend_from_slice(&buffer[..read]);
         }
     });
 }
@@ -234,7 +233,10 @@ fn assert_page_serves(panel: &Panel, entries: &[Ipv4Addr]) {
             addr,
             &format!("GET / HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"),
         );
-        assert!(status.contains("200"), "入口 {entry} 打不开 herdr-bot 主界面：{status}");
+        assert!(
+            status.contains("200"),
+            "入口 {entry} 打不开 herdr-bot 主界面：{status}"
+        );
         assert!(
             body.contains("<title>herdr-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
@@ -252,7 +254,10 @@ fn assert_operation_is_served(panel: &Panel) {
              Connection: close\r\n\r\n"
         ),
     );
-    assert!(status.contains("200"), "固定操作接口不可用：{status} {body}");
+    assert!(
+        status.contains("200"),
+        "固定操作接口不可用：{status} {body}"
+    );
     eprintln!("固定操作接口观测：{status} {body}");
     assert!(
         body.contains("\"outcome\":\"completed\"") && body.contains("\"exitCode\":0"),
@@ -319,5 +324,8 @@ fn unowned_publish_address_only_warns_and_keeps_serving_without_publishing() {
 
     eprintln!("herdr-bot.local 解析到的地址：{resolved:?}（为空表示完全解析不到）");
     eprintln!("_http._tcp 浏览结果：{instances:?}");
-    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!(
+        "受测 herdr-bot 主界面的原始诊断输出：\n{}",
+        panel.log_text()
+    );
 }

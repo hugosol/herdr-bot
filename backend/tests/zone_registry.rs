@@ -231,10 +231,7 @@ async fn registers_a_real_git_worktree_root_without_initializing_or_aggregating_
     )
     .await;
     assert_eq!(response.status, 200, "父目录应可登记：{}", response.body);
-    assert_same_directories(
-        &zones_of(&response),
-        &[plain, repository, parent.clone()],
-    );
+    assert_same_directories(&zones_of(&response), &[plain, repository, parent.clone()]);
 
     // 嵌套仓库没有被单独登记，也没有被当作第二个 zone 聚合进来。
     let listed = zones_of(&get_over_tcp(server.addr(), "/api/zones").await);

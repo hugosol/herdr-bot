@@ -107,8 +107,15 @@ async fn two_operations_invoke_their_own_bound_scripts_with_their_configured_wor
     );
 
     let records = tree.records();
-    assert_eq!(records.len(), 1, "“启动”只调用它自己绑定的脚本：{records:#?}");
-    assert_eq!(records[0].fixture, "success", "“启动”必须调用配置绑定的启动脚本");
+    assert_eq!(
+        records.len(),
+        1,
+        "“启动”只调用它自己绑定的脚本：{records:#?}"
+    );
+    assert_eq!(
+        records[0].fixture, "success",
+        "“启动”必须调用配置绑定的启动脚本"
+    );
     assert_eq!(records[0].stage, "invoke");
     assert!(
         same_path(&records[0].cwd, &start_directory),
@@ -132,7 +139,10 @@ async fn two_operations_invoke_their_own_bound_scripts_with_their_configured_wor
         2,
         "“停止”只新增它自己绑定的脚本这一次调用：{records:#?}"
     );
-    assert_eq!(records[1].fixture, "failure", "“停止”必须调用配置绑定的关闭脚本");
+    assert_eq!(
+        records[1].fixture, "failure",
+        "“停止”必须调用配置绑定的关闭脚本"
+    );
     assert_eq!(records[1].stage, "invoke");
     assert!(
         same_path(&records[1].cwd, &stop_directory),
@@ -173,7 +183,10 @@ async fn default_config_binds_the_specified_start_and_shutdown_batches_in_their_
         config.operations.stop.script.display()
     );
     assert!(
-        !same_path(&config.operations.start.script, &config.operations.stop.script),
+        !same_path(
+            &config.operations.start.script,
+            &config.operations.stop.script
+        ),
         "两个按钮必须对应两个不同的固定脚本"
     );
     assert!(
@@ -189,14 +202,24 @@ async fn default_config_binds_the_specified_start_and_shutdown_batches_in_their_
     assert!(
         same_path(
             &config.operations.start.working_directory,
-            config.operations.start.script.parent().expect("启动脚本有父目录")
+            config
+                .operations
+                .start
+                .script
+                .parent()
+                .expect("启动脚本有父目录")
         ),
         "工作目录应等于启动脚本所在目录"
     );
     assert!(
         same_path(
             &config.operations.stop.working_directory,
-            config.operations.stop.script.parent().expect("关闭脚本有父目录")
+            config
+                .operations
+                .stop
+                .script
+                .parent()
+                .expect("关闭脚本有父目录")
         ),
         "工作目录应等于关闭脚本所在目录"
     );
@@ -226,14 +249,22 @@ async fn unknown_operation_names_are_rejected_with_a_category_and_without_runnin
         "/api/operations",
     ] {
         let (status, body) = send_json(app.clone(), bare_post(path)).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{path} 必须被明确拒绝：{body}");
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "{path} 必须被明确拒绝：{body}"
+        );
         assert_eq!(body["code"], "unknown-operation", "{path}：{body}");
         assert!(body["message"].is_string(), "{path} 应给出可读说明：{body}");
     }
 
     for path in ["/api/command", "/api/shell"] {
         let (status, body) = send_json(app.clone(), bare_post(path)).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{path} 必须被明确拒绝：{body}");
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "{path} 必须被明确拒绝：{body}"
+        );
         assert_eq!(body["code"], "unknown-endpoint", "{path}：{body}");
     }
 
@@ -315,7 +346,11 @@ async fn parameter_carrying_requests_are_rejected_without_running_any_script() {
     for request in attempts {
         let uri = request.uri().to_string();
         let (status, body) = send_json(app.clone(), request).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} 必须被明确拒绝：{body}");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "{uri} 必须被明确拒绝：{body}"
+        );
         assert_eq!(body["code"], "unexpected-parameters", "{uri}：{body}");
     }
     assert!(
@@ -331,7 +366,10 @@ async fn parameter_carrying_requests_are_rejected_without_running_any_script() {
     assert_eq!(status, StatusCode::OK, "body: {body}");
 
     let records = tree.records();
-    let fixtures: Vec<&str> = records.iter().map(|record| record.fixture.as_str()).collect();
+    let fixtures: Vec<&str> = records
+        .iter()
+        .map(|record| record.fixture.as_str())
+        .collect();
     assert_eq!(
         fixtures,
         vec!["success", "failure"],

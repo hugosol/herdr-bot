@@ -112,7 +112,10 @@ fn assert_view_shape(view: &Value) {
             "会话视图不得出现契约外的字段：{key}（视图：{view}）"
         );
     }
-    assert!(object["sessionId"].is_string(), "视图必须带 sessionId：{view}");
+    assert!(
+        object["sessionId"].is_string(),
+        "视图必须带 sessionId：{view}"
+    );
     assert!(object["cwd"].is_string(), "视图必须带 cwd：{view}");
     assert!(object["online"].is_boolean(), "视图必须带 online：{view}");
     if let Some(state) = object.get("state") {
@@ -221,7 +224,9 @@ async fn the_snapshot_carries_every_view_in_registration_order() {
         )
         .await;
     // 重注册刷新注册时间：它因此排到最后。
-    server.post_ok(&register("session-y", "/work/upsilon")).await;
+    server
+        .post_ok(&register("session-y", "/work/upsilon"))
+        .await;
 
     let mut connection = server.connect().await;
     let frame = connection.next_frame().await;
@@ -406,7 +411,11 @@ async fn a_reader_converges_without_a_cursor_while_writes_are_in_flight() {
     let addr = server.server.addr();
     let writer = tokio::spawn(async move {
         for round in 0..30 {
-            let value = if round % 2 == 0 { "working" } else { "awaiting-input" };
+            let value = if round % 2 == 0 {
+                "working"
+            } else {
+                "awaiting-input"
+            };
             for id in ids {
                 let response =
                     post_json_over_tcp(addr, "/api/sessions/events", &state(id, value)).await;
@@ -462,7 +471,11 @@ async fn a_lagged_subscriber_gets_a_fresh_snapshot_instead_of_the_missed_increme
     let flood = 300;
     let mut last = "working";
     for index in 0..flood {
-        last = if index % 2 == 0 { "working" } else { "awaiting-input" };
+        last = if index % 2 == 0 {
+            "working"
+        } else {
+            "awaiting-input"
+        };
         server.post_ok(&state("s-big", last)).await;
     }
 

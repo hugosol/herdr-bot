@@ -165,11 +165,7 @@ async fn reader_resource_route_rejects_unregistered_zones_and_path_escapes() {
     );
 
     assert_rejected(
-        &get_over_tcp(
-            server.addr(),
-            &format!("/api/zones/reader/zz/page.html"),
-        )
-        .await,
+        &get_over_tcp(server.addr(), &format!("/api/zones/reader/zz/page.html")).await,
         400,
         "invalid-zone-token",
     );

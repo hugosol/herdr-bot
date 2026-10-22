@@ -38,8 +38,9 @@ impl PowerOff for NeverPowerOff {
 
 /// 把应用装上受控的 TCP 对端地址：这批请求不来自真 socket，来源就是这里指定的地址。
 fn from_source(app: &Router, source: &str) -> Router {
-    app.clone()
-        .layer(MockConnectInfo(source.parse::<SocketAddr>().expect("受控来源地址")))
+    app.clone().layer(MockConnectInfo(
+        source.parse::<SocketAddr>().expect("受控来源地址"),
+    ))
 }
 
 /// 不经真 socket 提交一次公开 HTTP 请求，返回状态码与响应体。

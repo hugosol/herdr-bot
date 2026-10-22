@@ -52,8 +52,9 @@ fn app_with(sessions: &Arc<SessionsState>) -> Router {
 /// 用 axum 自带的 `MockConnectInfo`（它只往请求里放 `ConnectInfo`），接缝与真连接信息同一条，
 /// 因此校验读到的来源与真 TCP 情形是同一个东西。
 fn from_source(app: &Router, source: &str) -> Router {
-    app.clone()
-        .layer(MockConnectInfo(source.parse::<SocketAddr>().expect("受控来源地址")))
+    app.clone().layer(MockConnectInfo(
+        source.parse::<SocketAddr>().expect("受控来源地址"),
+    ))
 }
 
 /// 本机某个可发布的 IPv4（与 mDNS 发布同一枚举口径）；本机只有回环时不构造网卡地址用例。
@@ -220,12 +221,8 @@ async fn lan_source_write_is_forbidden_and_creates_no_session() {
     );
 
     // 拒绝发生在建行之前：这条会话在本机来源看来仍不存在。
-    let afterwards = post_json_over_tcp(
-        server.addr(),
-        "/api/sessions/events",
-        &heartbeat("lan-1"),
-    )
-    .await;
+    let afterwards =
+        post_json_over_tcp(server.addr(), "/api/sessions/events", &heartbeat("lan-1")).await;
     assert_eq!(
         afterwards.status, 404,
         "被拒的 register 不得建行：{} {}",
@@ -268,7 +265,10 @@ async fn reads_are_open_to_lan_sources() {
 
     let (status, frame) = first_sse_frame(lan, "/api/sessions/events").await;
     assert_eq!(status, StatusCode::OK, "SSE 读取不该受来源校验影响");
-    assert!(frame.contains("event: snapshot"), "首帧必须是快照：{frame:?}");
+    assert!(
+        frame.contains("event: snapshot"),
+        "首帧必须是快照：{frame:?}"
+    );
     assert!(
         frame.contains("lan-read-1"),
         "首帧快照里应有本机写入的会话：{frame:?}"

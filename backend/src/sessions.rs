@@ -591,11 +591,8 @@ struct EventAccepted {
 /// `herdr-bot.local:8787` 的同机可用性。
 fn is_local_source(ip: IpAddr) -> bool {
     ip.is_loopback()
-        || if_addrs::get_if_addrs().is_ok_and(|interfaces| {
-            interfaces
-                .iter()
-                .any(|interface| interface.addr.ip() == ip)
-        })
+        || if_addrs::get_if_addrs()
+            .is_ok_and(|interfaces| interfaces.iter().any(|interface| interface.addr.ip() == ip))
 }
 
 /// `POST /api/sessions/events`：会话事件的唯一写入入口。
@@ -668,13 +665,9 @@ pub(crate) async fn post_session_event(
             }),
         )
             .into_response(),
-        Some(Applied::Accepted) => (
-            StatusCode::OK,
-            Json(EventAccepted {
-                outcome: ACCEPTED,
-            }),
-        )
-            .into_response(),
+        Some(Applied::Accepted) => {
+            (StatusCode::OK, Json(EventAccepted { outcome: ACCEPTED })).into_response()
+        }
         None => rejected(
             StatusCode::NOT_FOUND,
             "unknown-session",
@@ -682,4 +675,3 @@ pub(crate) async fn post_session_event(
         ),
     }
 }
-

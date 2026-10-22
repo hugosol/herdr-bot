@@ -321,7 +321,10 @@ pub fn config_with_countdown(
         zones: herdr_bot::ZonesConfig::default(),
         // Bot 模板存储文件同理；需要隔离存储的用例自己改写这个路径。
         bot_templates: herdr_bot::BotTemplatesConfig {
-            metadata_file: repo_fixtures_dir().parent().unwrap().join("meta-data/bot-options.toml"),
+            metadata_file: repo_fixtures_dir()
+                .parent()
+                .unwrap()
+                .join("meta-data/bot-options.toml"),
             ..herdr_bot::BotTemplatesConfig::default()
         },
         // 目标 Herdr Workspace 必须显式；不需要创建 Bot 的用例取一个固定的合法名称。

@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::git::{self, command_failed, GitError, GitStatus};
+use crate::git::{self, GitError, GitStatus, command_failed};
 use crate::zones;
 
 /// 一个仓库的写操作资格。不同的实际仓库互不影响；同一仓库的不同路径别名共用同一把锁。
@@ -88,6 +88,7 @@ pub fn execute(
     locks: &RepositoryLocks,
     sync_state: &crate::sync::SyncState,
 ) -> CommitOutcome {
+    sync_state.cache.invalidate(registered_root);
     let root = match git::worktree_root(registered_root, timeout) {
         Ok(Some(root)) => root,
         Ok(None) => return CommitOutcome::NotRepository,
@@ -97,6 +98,10 @@ pub fn execute(
         return CommitOutcome::Busy;
     };
 
+    if sync_state.remote_checking(registered_root) {
+        return CommitOutcome::Busy;
+    }
+    sync_state.cache.invalidate(registered_root);
     let outcome = execute_locked(
         &root,
         registered_root,
@@ -105,6 +110,10 @@ pub fn execute(
         timeout,
         sync_state,
     );
+    sync_state.cache.invalidate(registered_root);
+    if matches!(&outcome, CommitOutcome::Committed { .. }) {
+        sync_state.begin_remote_check(registered_root);
+    }
     retain_qualification_if_unconfirmed(permit, outcome)
 }
 
@@ -234,4 +243,3 @@ mod tests {
         }
     }
 }
-

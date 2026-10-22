@@ -225,7 +225,11 @@ pub fn render_bot_name(rule: &str, zone: &str, template: &BotTemplate, bot_id: &
 ///
 /// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
 /// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
-pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>, input: &str) -> String {
+pub fn compose_initial_input(
+    template: &BotTemplate,
+    native_skill: Option<&str>,
+    input: &str,
+) -> String {
     let mut sections: Vec<&str> = Vec::new();
     if !template.prompt.is_empty() {
         sections.push(template.prompt.as_str());
@@ -247,7 +251,10 @@ pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>,
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
 /// `--session-dir` 给本次 Bot 全新会话位置，避免自动续接同 cwd 的旧对话。
 /// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与模板所选入口。
-pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &Path) -> Vec<String> {
+pub fn agent_launch_args(
+    preset: &crate::catalog::ResolvedPreset,
+    session_dir: &Path,
+) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = &preset.provider_model {
         args.push("--model".to_string());

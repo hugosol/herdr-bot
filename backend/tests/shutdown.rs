@@ -273,8 +273,14 @@ fn assert_shutdown_shape(view: &Value) {
     let object = view.as_object().expect("关机状态必须是 JSON 对象");
     for key in object.keys() {
         assert!(
-            ["monitoredSessionIds", "arrangementId", "phase", "deadline", "serverTime"]
-                .contains(&key.as_str()),
+            [
+                "monitoredSessionIds",
+                "arrangementId",
+                "phase",
+                "deadline",
+                "serverTime"
+            ]
+            .contains(&key.as_str()),
             "关机状态不得携带契约之外的字段 {key}：{view}"
         );
     }
@@ -304,10 +310,7 @@ fn assert_wire_order(raw: &str, fields: &[&str]) {
             continue;
         };
         if let Some(previous) = last {
-            assert!(
-                previous < at,
-                "字段顺序必须稳定（{fields:?}）：{raw}"
-            );
+            assert!(previous < at, "字段顺序必须稳定（{fields:?}）：{raw}");
         }
         last = Some(at);
     }
@@ -390,7 +393,8 @@ async fn wait_until(condition: impl Fn() -> bool, timeout: Duration, what: &str)
 
 /// 验收 P46：共享观察流的首帧同时包含会话与关机状态，字段与顺序固定，原会话增量语义保留。
 #[tokio::test]
-async fn the_first_frame_carries_sessions_and_shutdown_state_and_session_deltas_keep_their_semantics() {
+async fn the_first_frame_carries_sessions_and_shutdown_state_and_session_deltas_keep_their_semantics()
+ {
     let server = ShutdownServer::start(10, RecordingPowerOff::succeeding()).await;
     let mut observer = server.observe().await;
 
@@ -461,7 +465,8 @@ async fn the_first_frame_carries_sessions_and_shutdown_state_and_session_deltas_
 /// 验收 P37、P46、P31：一次手动开始意图建立唯一安排，整个生命周期以完整关机状态事件下发，
 /// 到期只调用一次实际关机能力。
 #[tokio::test]
-async fn a_manual_start_forms_one_arrangement_and_its_lifecycle_arrives_as_complete_shutdown_events() {
+async fn a_manual_start_forms_one_arrangement_and_its_lifecycle_arrives_as_complete_shutdown_events()
+ {
     let server = ShutdownServer::start(1, RecordingPowerOff::succeeding()).await;
     let mut observer = server.observe().await;
 
@@ -521,7 +526,11 @@ async fn the_backend_executes_the_arrangement_at_its_deadline_without_any_observ
     // 观察者后来才连上也能读到终局：最近结果保留到新安排替代或进程重启。
     let observer = server.observe().await;
     let late = observer.first_shutdown();
-    assert_eq!(late["phase"], json!("issued"), "新调用者仍能读到结果：{late}");
+    assert_eq!(
+        late["phase"],
+        json!("issued"),
+        "新调用者仍能读到结果：{late}"
+    );
 }
 
 /// 验收 P23、P45、P38：启动期配置决定实际到期输出——显式 3 秒在 3 秒后调用一次，之前一次不调用。
@@ -577,7 +586,8 @@ working_directory = '.'
 [herdr]
 workspace_name = 'bot-playground'
 "#;
-    let config = herdr_bot::Config::from_toml(legacy).expect("缺 [shutdown] 段的旧配置必须仍可加载");
+    let config =
+        herdr_bot::Config::from_toml(legacy).expect("缺 [shutdown] 段的旧配置必须仍可加载");
 
     let server = ShutdownServer::start_with_config(config, RecordingPowerOff::succeeding()).await;
     let response = server.start_shutdown().await;
@@ -602,13 +612,23 @@ async fn interleaved_manual_starts_reuse_the_same_arrangement_and_deadline() {
 
     // 第一个调用者建立安排，记下安排标识与截止时间这两个**具体取值**。
     let first = assert_started(&server.start_shutdown().await);
-    let arrangement = first["arrangementId"].as_str().expect("安排标识").to_string();
+    let arrangement = first["arrangementId"]
+        .as_str()
+        .expect("安排标识")
+        .to_string();
     let deadline = first["deadline"].clone();
-    assert!(deadline.as_u64().is_some(), "倒计时中必须有截止时间：{first}");
+    assert!(
+        deadline.as_u64().is_some(),
+        "倒计时中必须有截止时间：{first}"
+    );
 
     // 第二个调用者来自另一条独立连接：它必须读到同一安排，而不是新造一个。
     let second = assert_started(&server.start_shutdown().await);
-    assert_eq!(second["arrangementId"], json!(arrangement), "不得创建第二个安排");
+    assert_eq!(
+        second["arrangementId"],
+        json!(arrangement),
+        "不得创建第二个安排"
+    );
     assert_eq!(
         second["deadline"], deadline,
         "不得重置或延长截止时间（期望值取自第一次的响应，不重算）"
@@ -695,7 +715,8 @@ async fn once_the_execution_started_a_cancel_is_refused_and_never_reported_as_su
     assert_eq!(double.calls(), 1, "只有执行那一次调用");
     let settled = assert_cancelled(&server.cancel_shutdown().await);
     assert_eq!(
-        settled["phase"], json!("issued"),
+        settled["phase"],
+        json!("issued"),
         "已经发出的安排不会因为后来的取消变成「取消成功」：{settled}"
     );
 }
@@ -752,7 +773,11 @@ async fn a_failed_power_off_is_reported_once_and_stays_readable_for_new_callers(
     tokio::time::sleep(Duration::from_millis(1_500)).await;
     let reader = server.observe().await;
     let observed = reader.first_shutdown();
-    assert_eq!(observed["phase"], json!("failed"), "新调用者仍能读到失败：{observed}");
+    assert_eq!(
+        observed["phase"],
+        json!("failed"),
+        "新调用者仍能读到失败：{observed}"
+    );
     assert_eq!(observed["arrangementId"], arrangement);
     assert_eq!(server.double.calls(), 1, "没有自动重试");
 
@@ -807,16 +832,9 @@ async fn the_shutdown_commands_close_their_request_face_and_keep_no_immediate_al
     assert_eq!(response_body(&legacy)["code"], json!("unknown-endpoint"));
 
     // 带查询串或请求体的命令一律按越界请求拒绝，且不建立安排、不改变状态。
-    for path in [
-        "/api/shutdown/start?delay=0",
-        "/api/shutdown/cancel?now=1",
-    ] {
+    for path in ["/api/shutdown/start?delay=0", "/api/shutdown/cancel?now=1"] {
         let response = server.command(path).await;
-        assert_eq!(
-            response.status, 400,
-            "{path} 必须被拒绝：{}",
-            response.body
-        );
+        assert_eq!(response.status, 400, "{path} 必须被拒绝：{}", response.body);
         assert_eq!(
             response_body(&response)["code"],
             json!("unexpected-parameters")
@@ -876,11 +894,8 @@ async fn the_production_assembly_registers_both_shutdown_commands() {
 #[tokio::test(flavor = "multi_thread")]
 async fn an_arrangement_forms_while_a_fixed_operation_holds_the_execution_permit() {
     let tree = FixtureTree::new("manual-shutdown-permit");
-    let mut config = common::config_with_countdown(
-        &tree.script("long-running.bat"),
-        &tree.operations(),
-        10,
-    );
+    let mut config =
+        common::config_with_countdown(&tree.script("long-running.bat"), &tree.operations(), 10);
     // “停止”绑定立即失败的夹具：任何“停止”调用都会留下一条记录。
     config.operations.stop.script = tree.script("failure.bat");
 
@@ -891,10 +906,12 @@ async fn an_arrangement_forms_while_a_fixed_operation_holds_the_execution_permit
 
     // 长跑夹具占住执行资格（正对照：单次“启动”确实产生一次调用记录）。
     let addr = server.addr();
-    let start_request = tokio::spawn(async move { post_over_tcp(addr, "/api/operations/start").await });
+    let start_request =
+        tokio::spawn(async move { post_over_tcp(addr, "/api/operations/start").await });
     assert!(
-        common::wait_until(Duration::from_secs(30), || !invokes(&tree, "long-running").is_empty())
-            .await,
+        common::wait_until(Duration::from_secs(30), || !invokes(&tree, "long-running")
+            .is_empty())
+        .await,
         "正对照：单次“启动”请求必须真实产生一次长跑夹具调用：{:#?}",
         tree.records()
     );
@@ -923,12 +940,19 @@ async fn an_arrangement_forms_while_a_fixed_operation_holds_the_execution_permit
 
     // 结束长跑夹具，资格照常释放（关机既没有获取也没有提前释放它）。
     let stop_output = tree.stop_fixtures();
-    assert!(stop_output.status.success(), "结束脚本必须成功退出：{stop_output:?}");
+    assert!(
+        stop_output.status.success(),
+        "结束脚本必须成功退出：{stop_output:?}"
+    );
     let ended = tokio::time::timeout(Duration::from_secs(30), start_request)
         .await
         .expect("脚本结束后正在执行的请求必须返回")
         .expect("正在执行的请求任务");
-    assert_eq!(ended.status, 200, "脚本结束后“启动”请求正常返回：{}", ended.body);
+    assert_eq!(
+        ended.status, 200,
+        "脚本结束后“启动”请求正常返回：{}",
+        ended.body
+    );
     assert_eq!(double.calls(), 0, "整个过程没有调用关机能力");
 }
 
@@ -980,7 +1004,10 @@ fn diagnostics_of_the_exercised_expiry_path_are_machine_assertable() {
 /// 子进程用例：让两条到期路径各走一遍真实端点路径（成功与失败，都用记录型动作）。
 #[tokio::test]
 async fn manual_shutdown_diagnostics_on_the_expiry_path() {
-    for double in [RecordingPowerOff::succeeding(), RecordingPowerOff::failing()] {
+    for double in [
+        RecordingPowerOff::succeeding(),
+        RecordingPowerOff::failing(),
+    ] {
         let server = ShutdownServer::start(1, double).await;
         assert_started(&server.start_shutdown().await);
         wait_until(

@@ -61,10 +61,7 @@ fn file_url(zone: &Path, path: &str) -> String {
 }
 
 fn tree_url(zone: &Path) -> String {
-    format!(
-        "/api/zones/tree?zone={}",
-        encode(&zone.to_string_lossy())
-    )
+    format!("/api/zones/tree?zone={}", encode(&zone.to_string_lossy()))
 }
 
 fn body(response: &HttpResponse) -> Value {
@@ -119,11 +116,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 /// 独立按照磁盘内容构造快照：相对路径 → 文件字节。用于证明读取没有创建、删除或修改文件。
@@ -370,10 +363,7 @@ async fn lists_real_contents_including_hidden_ignored_and_git_metadata() {
     let forward_slashes = root.to_string_lossy().replace('\\', "/");
     let response = get_over_tcp(
         server.addr(),
-        &format!(
-            "/api/zones/entries?zone={}&path=",
-            encode(&forward_slashes)
-        ),
+        &format!("/api/zones/entries?zone={}&path=", encode(&forward_slashes)),
     )
     .await;
     assert_eq!(

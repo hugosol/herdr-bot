@@ -91,13 +91,51 @@ pub struct GitConfig {
     /// 每条 Git 命令的执行时限；缺省 300 秒。
     #[serde(default = "command_timeout_seconds_by_default")]
     pub command_timeout_seconds: CommandTimeoutSeconds,
+    /// 成功状态缓存的有效期（秒）；启动时读取，缺省 10 秒。
+    #[serde(default = "status_cache_ttl_seconds_by_default")]
+    pub status_cache_ttl_seconds: StatusCacheTtlSeconds,
 }
 
 impl Default for GitConfig {
     fn default() -> Self {
         Self {
             command_timeout_seconds: command_timeout_seconds_by_default(),
+            status_cache_ttl_seconds: status_cache_ttl_seconds_by_default(),
         }
+    }
+}
+
+fn status_cache_ttl_seconds_by_default() -> StatusCacheTtlSeconds {
+    StatusCacheTtlSeconds(10)
+}
+
+/// 成功 Git 状态的缓存有效期（秒）；正整数，缺省 10 秒，仅在启动时读取。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "u32")]
+pub struct StatusCacheTtlSeconds(u32);
+
+impl StatusCacheTtlSeconds {
+    pub fn new(seconds: u32) -> Result<Self, &'static str> {
+        if seconds == 0 {
+            Err("status_cache_ttl_seconds 必须是正整数（默认 10）")
+        } else {
+            Ok(Self(seconds))
+        }
+    }
+
+    pub fn get(self) -> u32 {
+        self.0
+    }
+
+    pub fn duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+
+impl TryFrom<u32> for StatusCacheTtlSeconds {
+    type Error = &'static str;
+    fn try_from(seconds: u32) -> Result<Self, Self::Error> {
+        Self::new(seconds)
     }
 }
 
@@ -563,6 +601,34 @@ workspace_name = 'bot-playground'
             config.git.command_timeout_seconds.duration(),
             Duration::from_secs(300)
         );
+    }
+
+    #[test]
+    fn status_cache_ttl_defaults_to_ten_seconds_and_accepts_positive_integer() {
+        assert_eq!(
+            Config::from_toml(LEGACY_CONFIG)
+                .unwrap()
+                .git
+                .status_cache_ttl_seconds
+                .get(),
+            10
+        );
+        let raw = format!("{LEGACY_CONFIG}\n[git]\nstatus_cache_ttl_seconds = 7\n");
+        assert_eq!(
+            Config::from_toml(&raw)
+                .unwrap()
+                .git
+                .status_cache_ttl_seconds
+                .duration(),
+            Duration::from_secs(7)
+        );
+        for literal in ["0", "-1", "1.5", "'10'"] {
+            let raw = format!("{LEGACY_CONFIG}\n[git]\nstatus_cache_ttl_seconds = {literal}\n");
+            assert!(
+                Config::from_toml(&raw).is_err(),
+                "invalid TTL must fail startup: {literal}"
+            );
+        }
     }
 
     #[test]

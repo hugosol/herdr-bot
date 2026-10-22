@@ -156,7 +156,8 @@ impl CountdownServer {
             SessionPolicy::default(),
             clock.clone(),
         ));
-        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) =
+            herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             sessions,
@@ -468,10 +469,20 @@ async fn assert_arrangement_unchanged(
         json!("counting-down"),
         "{change} 之后安排仍必须在倒计时中：{view}"
     );
-    assert_eq!(view["arrangementId"], *arrangement_id, "{change} 不得换安排：{view}");
-    assert_eq!(view["deadline"], *deadline, "{change} 不得延长或重算截止时间：{view}");
+    assert_eq!(
+        view["arrangementId"], *arrangement_id,
+        "{change} 不得换安排：{view}"
+    );
+    assert_eq!(
+        view["deadline"], *deadline,
+        "{change} 不得延长或重算截止时间：{view}"
+    );
     assert_no_monitoring(&view, &format!("{change} 不得改变被消耗的监听集合"));
-    assert_eq!(server.double.calls(), 0, "{change} 之后仍未到截止时间：{view}");
+    assert_eq!(
+        server.double.calls(),
+        0,
+        "{change} 之后仍未到截止时间：{view}"
+    );
 }
 
 /// 两个开始入口：手动开始意图与自动触发（监听组成员全部进入等待用户输入）。
@@ -522,7 +533,10 @@ async fn a_manual_start_arranges_while_the_monitored_group_is_not_ready() {
     // 自动入口此刻不成立：没有安排，安全 adapter 零调用，集合保持两名成员。
     let pending = server.authoritative().await;
     assert_eq!(pending["phase"], json!("none"), "自动条件不成立：{pending}");
-    assert_eq!(server.authoritative_set().await, vec!["a".to_string(), "b".to_string()]);
+    assert_eq!(
+        server.authoritative_set().await,
+        vec!["a".to_string(), "b".to_string()]
+    );
     assert_eq!(server.double.calls(), 0);
 
     // 合法手动开始：立即建立唯一安排——不等 a 重新上报，也不等 b 结束当前轮次。
@@ -537,7 +551,9 @@ async fn a_manual_start_arranges_while_the_monitored_group_is_not_ready() {
     assert_eq!(server.double.calls(), 0, "倒计时中还没有执行");
 
     // 不依赖回执：共享观察流给出同一安排与同一个截止时间。
-    let observed = observer.shutdown_until("counting-down", Duration::from_secs(10)).await;
+    let observed = observer
+        .shutdown_until("counting-down", Duration::from_secs(10))
+        .await;
     assert_eq!(observed["arrangementId"], started["arrangementId"]);
     assert_eq!(observed["deadline"], started["deadline"]);
     assert_no_monitoring(&observed, "观察到的集合同样为空");
@@ -562,9 +578,15 @@ async fn an_active_countdown_survives_member_offline_deletion_unregister_and_res
         assert_accepted(&server.state(id, "awaiting-input").await);
     }
     // 时刻与时长都取自安排**创建那一刻**下发的帧：截止时间在创建时定死，之后的快照只能如实复述它。
-    let arranged = observer.shutdown_until("counting-down", Duration::from_secs(10)).await;
+    let arranged = observer
+        .shutdown_until("counting-down", Duration::from_secs(10))
+        .await;
     assert_eq!(arranged["phase"], json!("counting-down"), "{arranged}");
-    assert_eq!(arranged_millis(&arranged), 5_000, "自动入口的时长：{arranged}");
+    assert_eq!(
+        arranged_millis(&arranged),
+        5_000,
+        "自动入口的时长：{arranged}"
+    );
     assert_no_monitoring(&arranged, "开始倒计时即消耗整组监听");
     let arrangement_id = arranged["arrangementId"].clone();
     let deadline = arranged["deadline"].clone();
@@ -595,7 +617,11 @@ async fn an_active_countdown_survives_member_offline_deletion_unregister_and_res
         server.double.calls()
     );
     let settled = server.authoritative().await;
-    assert_eq!(settled["phase"], json!("issued"), "结果仍属于同一安排：{settled}");
+    assert_eq!(
+        settled["phase"],
+        json!("issued"),
+        "结果仍属于同一安排：{settled}"
+    );
     assert_eq!(settled["arrangementId"], arrangement_id);
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(server.double.calls(), 1, "已经开始的安排只执行一次，不重试");
@@ -615,23 +641,39 @@ async fn both_entries_consume_the_whole_group_and_a_cancel_never_restores_member
         register_working(&server, "b").await;
         assert_selected(&server.monitor("a", true).await, "a");
         let before = assert_selected(&server.monitor("b", true).await, "b");
-        assert_eq!(monitored_ids(&before), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(
+            monitored_ids(&before),
+            vec!["a".to_string(), "b".to_string()]
+        );
 
         let started = match entry {
             Entry::Manual => assert_started(&server.start_shutdown().await),
             Entry::Automatic => {
                 assert_accepted(&server.state("a", "awaiting-input").await);
                 assert_accepted(&server.state("b", "awaiting-input").await);
-                let view = observer.shutdown_until("counting-down", Duration::from_secs(10)).await;
+                let view = observer
+                    .shutdown_until("counting-down", Duration::from_secs(10))
+                    .await;
                 assert_eq!(arranged_millis(&view), 10_000, "入口 {entry:?}：{view}");
                 view
             }
         };
-        assert_eq!(started["phase"], json!("counting-down"), "入口 {entry:?}：{started}");
-        assert_no_monitoring(&started, &format!("入口 {entry:?} 的开始回执必须给出被消耗后的集合"));
+        assert_eq!(
+            started["phase"],
+            json!("counting-down"),
+            "入口 {entry:?}：{started}"
+        );
+        assert_no_monitoring(
+            &started,
+            &format!("入口 {entry:?} 的开始回执必须给出被消耗后的集合"),
+        );
         // 独立观察者：集合的确为空，不只看回执。
         assert_eq!(server.authoritative_set().await, Vec::<String>::new());
-        assert_eq!(server.double.calls(), 0, "入口 {entry:?}：倒计时中还没有执行");
+        assert_eq!(
+            server.double.calls(),
+            0,
+            "入口 {entry:?}：倒计时中还没有执行"
+        );
 
         // 被消耗的成员再次报告「等待用户输入」：不得塞回集合，也不得重启安排。
         assert_accepted(&server.state("a", "awaiting-input").await);
@@ -646,14 +688,24 @@ async fn both_entries_consume_the_whole_group_and_a_cancel_never_restores_member
 
         // 全局取消：清空并撤销这次安排；被消耗的成员也不会因为取消而回来。
         let cancelled = assert_cancelled(&server.cancel_shutdown().await);
-        assert_eq!(cancelled["phase"], json!("cancelled"), "入口 {entry:?}：{cancelled}");
+        assert_eq!(
+            cancelled["phase"],
+            json!("cancelled"),
+            "入口 {entry:?}：{cancelled}"
+        );
         assert_no_monitoring(&cancelled, "取消即清空监听集合");
         assert_accepted(&server.state("a", "awaiting-input").await);
         assert_accepted(&server.state("b", "awaiting-input").await);
-        let after_cancel = observer.shutdown_until("cancelled", Duration::from_secs(10)).await;
+        let after_cancel = observer
+            .shutdown_until("cancelled", Duration::from_secs(10))
+            .await;
         assert_no_monitoring(&after_cancel, "取消之后集合保持空，需要用户重新选择");
         assert_eq!(server.authoritative_set().await, Vec::<String>::new());
-        assert_eq!(server.double.calls(), 0, "入口 {entry:?}：取消后原截止点不得执行");
+        assert_eq!(
+            server.double.calls(),
+            0,
+            "入口 {entry:?}：取消后原截止点不得执行"
+        );
     }
 }
 
@@ -674,13 +726,20 @@ async fn adding_monitoring_during_an_active_countdown_is_refused_precisely() {
     let refusal = server.monitor("b", true).await;
     assert_refused(&refusal, 409, "shutdown-in-progress");
     // 刚刚被消耗掉的成员同样不能再被新增。
-    assert_refused(&server.monitor("a", true).await, 409, "shutdown-in-progress");
+    assert_refused(
+        &server.monitor("a", true).await,
+        409,
+        "shutdown-in-progress",
+    );
 
     let after = server.authoritative().await;
     assert_no_monitoring(&after, "被拒绝的新增不得进入集合");
     assert_eq!(after["phase"], json!("counting-down"));
     assert_eq!(after["arrangementId"], started["arrangementId"]);
-    assert_eq!(after["deadline"], started["deadline"], "被拒绝的命令不得重置安排");
+    assert_eq!(
+        after["deadline"], started["deadline"],
+        "被拒绝的命令不得重置安排"
+    );
     assert_eq!(server.double.calls(), 0);
 }
 
@@ -695,11 +754,18 @@ async fn a_global_cancel_without_a_countdown_clears_the_whole_monitored_set() {
     register_working(&server, "b").await;
     assert_selected(&server.monitor("a", true).await, "a");
     assert_selected(&server.monitor("b", true).await, "b");
-    assert_eq!(server.authoritative_set().await, vec!["a".to_string(), "b".to_string()]);
+    assert_eq!(
+        server.authoritative_set().await,
+        vec!["a".to_string(), "b".to_string()]
+    );
 
     let receipt = assert_cancelled(&server.cancel_shutdown().await);
     assert_no_monitoring(&receipt, "取消回执必须给出清空后的集合");
-    assert_eq!(receipt["phase"], json!("none"), "本来就没有倒计时：{receipt}");
+    assert_eq!(
+        receipt["phase"],
+        json!("none"),
+        "本来就没有倒计时：{receipt}"
+    );
     assert!(
         receipt.get("arrangementId").is_none(),
         "没有安排时回执不得编造安排标识：{receipt}"
@@ -740,7 +806,9 @@ async fn a_cancellable_countdown_is_revoked_and_its_original_deadline_stays_sile
     );
     assert_no_monitoring(&receipt, "取消即清空监听集合");
 
-    let observed = observer.shutdown_until("cancelled", Duration::from_secs(10)).await;
+    let observed = observer
+        .shutdown_until("cancelled", Duration::from_secs(10))
+        .await;
     assert_eq!(observed["arrangementId"], started["arrangementId"]);
     assert_no_monitoring(&observed, "观察到的集合同样为空");
 
@@ -748,9 +816,16 @@ async fn a_cancellable_countdown_is_revoked_and_its_original_deadline_stays_sile
     tokio::time::sleep(Duration::from_millis(3_600)).await;
     assert_eq!(server.double.calls(), 0, "取消生效后原截止点不得执行");
     let settled = server.authoritative().await;
-    assert_eq!(settled["phase"], json!("cancelled"), "越过截止时间仍是取消的终点：{settled}");
+    assert_eq!(
+        settled["phase"],
+        json!("cancelled"),
+        "越过截止时间仍是取消的终点：{settled}"
+    );
     assert_eq!(settled["arrangementId"], started["arrangementId"]);
-    assert!(settled.get("deadline").is_none(), "终局没有截止时间：{settled}");
+    assert!(
+        settled.get("deadline").is_none(),
+        "终局没有截止时间：{settled}"
+    );
 }
 
 /// 验收 P39（执行已开始）：执行已经开始时取消得到 409 `shutdown-not-cancellable`，不宣称撤回。
@@ -784,7 +859,9 @@ async fn a_cancel_once_the_execution_started_is_refused_and_never_withdrawn() {
 
     // 放行执行并让它走到终局：结果属于同一安排，取消从未生效，也不重试。
     server.double.release();
-    let issued = observer.shutdown_until("issued", Duration::from_secs(15)).await;
+    let issued = observer
+        .shutdown_until("issued", Duration::from_secs(15))
+        .await;
     assert_eq!(issued["arrangementId"], started["arrangementId"]);
     assert_eq!(server.double.calls(), 1, "只执行一次，不重试");
 }

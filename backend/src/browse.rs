@@ -485,9 +485,8 @@ pub(crate) fn checked_root(registered_root: &str) -> Result<PathBuf, BrowseError
         ));
     }
 
-    let canonical = fs::canonicalize(&root).map_err(|error| {
-        BrowseError::ZoneUnavailable(format!("zone 根目录无法解析：{error}"))
-    })?;
+    let canonical = fs::canonicalize(&root)
+        .map_err(|error| BrowseError::ZoneUnavailable(format!("zone 根目录无法解析：{error}")))?;
     if !zones::same_path(&zones::display_path(&canonical), registered_root) {
         return Err(BrowseError::ZoneUnavailable(
             "zone 根目录已被替换或重定向到其他位置，拒绝读取。".to_string(),

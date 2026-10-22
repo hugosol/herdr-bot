@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { BotCreationDialog } from './BotCreationDialog'
+import { GitAheadIndicator } from './GitAheadIndicator'
 import { ZoneBrowser } from './ZoneBrowser'
 import {
   fetchZoneOverview,
@@ -381,6 +382,10 @@ export function FileListPanel({
                   onClick={() => setOpenZone(registration.path)}
                 >
                   <span className="zone-item__name">{zoneDisplayName(registration.path)}</span>
+                  {summaries?.get(registration.path)?.repository &&
+                    summaries.get(registration.path)?.error === undefined && (
+                      <GitAheadIndicator sync={summaries.get(registration.path)?.sync} />
+                    )}
                   {badgeFor(registration.path)}
                 </button>
                 <button

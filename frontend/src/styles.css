@@ -499,6 +499,17 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* 已提交但尚未推送，与待提交角标独立；只描述本地已知 upstream。 */
+.git-ahead {
+  display: inline-block;
+  flex: none;
+  color: #ffd568;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* 待提交角标：只显示后端确认的项数；读取失败用紧凑警告图标，不伪装成 0。 */
 .zone-badge {
   flex: none;
