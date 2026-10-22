@@ -413,6 +413,7 @@ fn native_header(path: PathBuf, kind: &str) -> Result<NativeSession, HerdrError>
             if byte[0] == b'\n' { break; }
             line.push(byte[0]);
         }
+        if line.iter().all(u8::is_ascii_whitespace) { continue; }
         let metadata: Value = serde_json::from_slice(&line)
             .map_err(|error| native_error(&format!("native metadata is not valid JSON: {error}")))?;
         match metadata.get("type").and_then(Value::as_str) {

@@ -1,5 +1,5 @@
 //! Persistent metadata directory, independent of current registrations and shutdown intent.
-//! Only explicit accepted registration events write it; native session content is never read.
+//! Accepted registration and confirmed zone creation write metadata only; native bodies are never imported.
 
 use std::fs;
 use std::io::{self, Write};
@@ -71,6 +71,17 @@ impl History {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }
+    }
+
+    pub async fn record_zone(
+        &self,
+        session_id: &str,
+        name: &str,
+        agent_type: &str,
+        cwd: &str,
+        session_file: Option<&str>,
+    ) -> io::Result<()> {
+        self.register(session_id, Some(name), Some(agent_type), cwd, session_file).await
     }
 
     pub async fn register(

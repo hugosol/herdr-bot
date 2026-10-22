@@ -1104,9 +1104,11 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
     let view = bots::CreationView::starting(creation_id, name, zone.clone(), template.id.clone());
     let job = state.bot_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
+    let history = Arc::clone(&state.history);
     tokio::spawn(async move {
         bots::run_creation(
             herdr,
+            history,
             job,
             template,
             preset,
