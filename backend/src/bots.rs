@@ -9,7 +9,7 @@
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -171,21 +171,6 @@ pub fn is_valid_bot_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-/// 每个 Bot 的会话目录根：模板存储文件所在目录下的 `bot-sessions`。
-///
-/// 每个 Bot 使用其中以本次创建标识命名的独立目录。显式会话目录让 OMP 跳过 `autoResume` 的隐式
-/// 续接，也让 Pi 不依赖其默认查找；目录位于 herdr-bot 自己的数据位置，不写进 zone 工作目录。
-/// 启动路径在服务启动时解析成绝对路径，避免 agent 以自己的 cwd 解释相对路径。
-pub fn session_root(storage_file: &Path) -> PathBuf {
-    let parent = storage_file
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::path::absolute(parent)
-        .unwrap_or_else(|_| parent.to_path_buf())
-        .join("bot-sessions")
-}
-
 /// 按模板的命名规则渲染展示名。
 ///
 /// 只有四个已承诺字段被替换；未知占位符保持原样。`{bot.id}` 取本次的短实例标识，不是 Herdr
@@ -249,12 +234,9 @@ pub fn compose_initial_input(
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
-/// `--session-dir` 给本次 Bot 全新会话位置，避免自动续接同 cwd 的旧对话。
+/// 原生会话位置与自动续接均由 agent 的有效配置决定，不覆盖目录或强制新建。
 /// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与模板所选入口。
-pub fn agent_launch_args(
-    preset: &crate::catalog::ResolvedPreset,
-    session_dir: &Path,
-) -> Vec<String> {
+pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = &preset.provider_model {
         args.push("--model".to_string());
@@ -264,8 +246,6 @@ pub fn agent_launch_args(
         args.push("--thinking".to_string());
         args.push(thinking.clone());
     }
-    args.push("--session-dir".to_string());
-    args.push(session_dir.to_string_lossy().into_owned());
     args.push("--no-extensions".to_string());
     for extension in &preset.extensions {
         args.push("--extension".to_string());
@@ -285,7 +265,6 @@ pub async fn run_creation(
     preset: crate::catalog::ResolvedPreset,
     zone: String,
     input: String,
-    session_dir: PathBuf,
     workspace_name: String,
 ) {
     let workspace = match herdr.workspace(&workspace_name).await {
@@ -315,7 +294,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.agent_name = Some(agent_name.clone());
     }
-    let args = agent_launch_args(&preset, &session_dir);
+    let args = agent_launch_args(&preset);
     let kind = template.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {

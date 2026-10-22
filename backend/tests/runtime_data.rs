@@ -206,10 +206,28 @@ async fn create(panel: &Panel, zone: &Path, template: &Value) -> Value {
     }
 }
 
-// P40(runtime)/P47. No .data directory exists initially. Two public creations must
-// allocate different empty directories on real disk, not merely pass plausible strings to Herdr.
+fn native_snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, Option<Vec<u8>>> {
+    fn visit(root: &Path, dir: &Path, entries: &mut std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            if path.is_dir() {
+                entries.insert(relative, None);
+                visit(root, &path, entries);
+            } else {
+                entries.insert(relative, Some(fs::read(path).unwrap()));
+            }
+        }
+    }
+    let mut entries = std::collections::BTreeMap::new();
+    visit(root, root, &mut entries);
+    entries
+}
+
+// P23/P25, S4: public creations leave the complete old native tree unchanged;
+// the actual delivered executable is stopped/restarted, not an in-process store double.
 #[tokio::test]
-async fn default_and_delivered_public_save_and_two_creations_use_fresh_runtime_locations() {
+async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
     for delivered in [false, true] {
         let root = TempDir::new("runtime fresh creations");
         let herdr = HerdrFixture::new("runtime fresh creation calls");
@@ -228,6 +246,13 @@ async fn default_and_delivered_public_save_and_two_creations_use_fresh_runtime_l
         let template = save(&panel).await;
         assert!(root.path().join(".data/bot-templates.json").is_file());
         assert!(root.path().join(".data/zones.json").is_file());
+        // P25/S4: legacy main + nested sidecar bytes and directory inventory are
+        // independent literals, not files produced by the implementation.
+        let native = root.path().join(".data/bot-sessions");
+        fs::create_dir_all(native.join("old-session/records/empty")).unwrap();
+        fs::write(native.join("old-session/context.jsonl"), b"{\"type\":\"session\",\"id\":\"old-native\"}\n").unwrap();
+        fs::write(native.join("old-session/records/tool.bin"), b"\0old-sidecar\xff\r\n").unwrap();
+        let before = native_snapshot(&native);
         let first = create(&panel, &zone, &template).await;
         let second = create(&panel, &zone, &template).await;
         assert_ne!(first["id"], second["id"]);
@@ -237,36 +262,11 @@ async fn default_and_delivered_public_save_and_two_creations_use_fresh_runtime_l
             .filter(|call| call["kind"] == "agent_start")
             .collect();
         assert_eq!(starts.len(), 2);
-        let mut directories = Vec::new();
         for start in starts {
-            let args = start["args"].as_array().unwrap();
-            let flag = args.iter().position(|arg| arg == "--session-dir").unwrap();
-            let directory = PathBuf::from(args[flag + 1].as_str().unwrap());
-            assert!(common::same_path(
-                directory.parent().unwrap(),
-                &root.path().join(".data/bot-sessions")
-            ));
-            assert!(
-                directory.is_dir(),
-                "real session directory missing: {}",
-                directory.display()
-            );
-            assert_eq!(
-                fs::read_dir(&directory).unwrap().count(),
-                0,
-                "new Bot inherited context"
-            );
-            directories.push(directory);
+            assert_eq!(start["args"][0], "--no-extensions");
         }
-        assert_ne!(directories[0], directories[1]);
         assert!(!root.path().join("bot-sessions").exists());
-        for directory in &directories {
-            fs::write(
-                directory.join("new-context.jsonl"),
-                "new controlled session sample\n",
-            )
-            .unwrap();
-        }
+        assert_eq!(native_snapshot(&native), before, "P25: old main and sidecars unchanged");
         drop(panel);
         for _ in 0..2 {
             let restarted = Panel::start(root.path());
@@ -274,12 +274,7 @@ async fn default_and_delivered_public_save_and_two_creations_use_fresh_runtime_l
                 body(get_over_tcp(restarted.addr, "/api/bot-templates").await)["templates"],
                 json!([template.clone()])
             );
-            for directory in &directories {
-                assert_eq!(
-                    fs::read(directory.join("new-context.jsonl")).unwrap(),
-                    b"new controlled session sample\n"
-                );
-            }
+            assert_eq!(native_snapshot(&native), before, "P25: restart must not touch old native files");
         }
     }
 }
@@ -415,12 +410,17 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
         .to_string(),
     )
     .await;
-    assert_eq!(response.status, 500, "{}", response.body);
-    assert!(response.body.contains("bot-sessions"), "{}", response.body);
-    assert!(
-        herdr.calls().is_empty(),
-        "failed directory allocation must precede external creation"
-    );
+    assert_eq!(response.status, 202, "legacy native path is not a prerequisite: {}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let view = body(get_over_tcp(panel.addr, &format!("/api/bots/{}", accepted["id"].as_str().unwrap())).await);
+        if view["stage"] == "succeeded" { break; }
+        assert_ne!(view["stage"], "failed", "{view}");
+        assert!(Instant::now() < deadline, "{view}");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(fs::read(root.path().join(".data/bot-sessions")).unwrap(), b"not a session directory");
 
     let storage = root.path().join(".data/bot-templates.json");
     let original = fs::read(&storage).unwrap();
@@ -618,7 +618,6 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
         files,
         vec![
             ".runtime-layout-v1",
-            "bot-sessions",
             "bot-templates.json",
             "zones.json"
         ]
@@ -699,11 +698,11 @@ async fn existing_zone_target_wins_without_merging_or_stopping_startup() {
     );
 }
 
-// P43/P45. Independent literal registry + binary zone content are the source of truth.
-// Violation: loading the old registry in place, or recursively clearing the zone alongside sessions.
-// Observe the public list AND target bytes, removed sources, unchanged zone and no Herdr calls.
+// P25 + existing zone cutover: literal registry, binary zone content, and old native
+// main/sidecars are independent expectations. Violation: legacy cleanup deletes native
+// files on first startup. Observe directory/byte inventory plus public zone registration.
 #[tokio::test]
-async fn cutover_moves_only_zone_registration_and_discards_authorized_legacy_data() {
+async fn cutover_preserves_old_native_main_and_sidecars_while_moving_zone_registration() {
     let root = TempDir::new("runtime cutover");
     let herdr = HerdrFixture::new("runtime cutover external calls");
     configure(root.path(), &herdr, None);
@@ -712,8 +711,14 @@ async fn cutover_moves_only_zone_registration_and_discards_authorized_legacy_dat
     let content = b"zone content\0\xff\n";
     fs::write(zone.join("payload.bin"), content).unwrap();
     let registry = legacy_data(root.path(), &zone);
+    let old_native = root.path().join("bot-sessions");
+    fs::create_dir_all(old_native.join("old.records/empty")).unwrap();
+    fs::write(old_native.join("old.records/tool.bin"), b"\0old-record\xff").unwrap();
+    let old_before = native_snapshot(&old_native);
 
     let panel = Panel::start(root.path());
+    assert!(old_native.is_dir(), "P25: first startup must preserve old native files");
+    assert_eq!(native_snapshot(&old_native), old_before);
     let zones = body(get_over_tcp(panel.addr, "/api/zones").await);
     assert_eq!(zones["zones"], json!([{"path": zone}]));
     assert_eq!(
@@ -725,7 +730,6 @@ async fn cutover_moves_only_zone_registration_and_discards_authorized_legacy_dat
         "zones.json.tmp",
         "bot-templates.json",
         "bot-templates.json.tmp",
-        "bot-sessions",
     ] {
         assert!(
             !root.path().join(old).exists(),

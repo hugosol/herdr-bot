@@ -123,10 +123,7 @@ fn create_body(zone: &str, template_id: &str, preview: &Value, input: &str) -> S
     .to_string()
 }
 
-/// 启动参数以预写的 model / thinking 覆盖开头，后接本次独立的会话目录。
-///
-/// `--session-dir` 的具体路径与新鲜度由实例身份覆盖单独断言；这里核对覆盖值与绝对路径，
-/// 避免把动态创建标识写进期望值。
+/// 启动参数以预写的 model / thinking 覆盖开头，后接扩展选择；原生存储留给 agent。
 fn assert_launch_args(actual: &Value, expected: &[&str], context: &str) {
     let args = actual.as_array().expect("启动参数是数组");
 
@@ -136,15 +133,7 @@ fn assert_launch_args(actual: &Value, expected: &[&str], context: &str) {
         expected.as_slice(),
         "{context}：模型与 thinking 必须与预写样例一致：{actual}"
     );
-    assert_eq!(
-        args[expected.len()],
-        "--session-dir",
-        "{context}：模型 / thinking 之后必须显式选择独立的新会话目录：{actual}"
-    );
-    assert!(
-        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
-        "{context}：会话目录必须是绝对路径：{actual}"
-    );
+    assert_eq!(args[expected.len()], "--no-extensions", "{context}：原生存储选择留给 agent");
 }
 
 async fn create(server: &TestServer, body: &str) -> common::HttpResponse {
@@ -917,7 +906,7 @@ fn snapshot_template(revision: &str) -> Value {
     }
 }
 
-/// 检查完整外部启动记录，只有每次独立的会话目录是动态值。
+/// 检查完整外部启动记录，包括接受时快照中的扩展路径。
 fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], entries: &[&str]) {
     assert_eq!(start["agent_kind"], "omp");
     let args = start["args"].as_array().expect("原生启动参数");
@@ -928,20 +917,14 @@ fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], e
             .map(|value| json!(value))
             .collect::<Vec<_>>()
     );
-    assert_eq!(args[4], "--session-dir");
-    let session = Path::new(args[5].as_str().expect("会话位置"));
-    assert!(session.is_dir(), "会话目录必须实际存在");
-    assert!(same_path(
-        session.parent().unwrap(),
-        &storage.path().join("bot-sessions")
-    ));
+
     let mut expected_tail = vec![json!("--no-extensions")];
     for entry in entries {
         expected_tail.push(json!("--extension"));
         expected_tail.push(json!(storage.path().join(entry)));
     }
     assert_eq!(
-        &args[6..],
+        &args[4..],
         expected_tail.as_slice(),
         "只能使用接受时的固定及所选扩展"
     );
@@ -1077,10 +1060,7 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &["--model", "old-provider/old-model", "--thinking", "high"],
         &["old-fixed.ts", "old-tools.ts"],
     );
-    assert_ne!(
-        old_start["args"][5], new_start["args"][5],
-        "并发创建不能复用会话目录"
-    );
+    assert_ne!(old_start["name"], new_start["name"], "并发创建的 Herdr 控制对象必须独立");
     assert_eq!(
         old_prompt["text"],
         "/skill:old-native 旧固定指示\n第二行\n\n旧本次输入\n保留换行"

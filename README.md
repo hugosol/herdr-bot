@@ -349,23 +349,26 @@ metadata_file = 'meta-data/bot-options.toml'
 ### 运行数据目录与首次切换
 
 默认及随附配置将 zone 登记放在 `.data/zones.json`、Bot 模板放在
-`.data/bot-templates.json`，每个 Bot 在 `.data/bot-sessions/<创建标识>/` 中使用独立的新会话目录。
-所有相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
+`.data/bot-templates.json`。Bot 原生会话存储由 Pi／OMP 自身的有效配置决定；herdr-bot 不传
+`--session-dir`、不预分配原生目录，也不修改 autoResume 或加入其他强制新会话策略。
+新建 Herdr Tab 不保证 agent 新建原生对话；用户以后更改配置时，续接行为仍由 agent 决定。
+所有 herdr-bot 相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
 运行数据目录及持久文件的父目录不存在时由启动程序创建，创建失败会明确拒绝启动。
-会话目录分配失败会拒绝本次创建，不产生 Herdr Tab、agent 或输入提交。
+两种原生 agent 的隔离运行证据与部署 H1 核对见 [原生存储验收](docs/native-session-storage-acceptance.md)。
 
 首次使用新布局启动时执行已授权的一次性切换：
 
 - 根目录 `zones.json` 的字节完整复制到当前配置的登记目标，再删除旧源；不改写登记内容或其中的路径，
   更不搬动、删除或改写 zone 实际目录。若目标登记文件已存在，保留目标原样并删除旧源，不合并、不覆盖、
   不因新旧登记不同而停机；目录冒充目标文件或迁移写入失败则明确失败，保留旧源。
-- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp` 和旧 `bot-sessions/`。
-  不迁移或恢复旧模板／旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
+- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp`。
+  旧 `bot-sessions/`（含主文件与附属记录）原位保留，不移动、复制、转换、删除或改写；
+  本次原生存储修正不迁移或恢复旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
 - 成功后在 `.data/.runtime-layout-v1` 留下切换标记。正常启动不重复清理；切换后保存的新模板与新会话文件
   在重启后保留。不要删除该标记来“修复”数据；后续即使重新出现旧根目录文件，也不会自动读取或回退。
 
 `[zones] registry_file` 与 `[bot_templates] storage_file` 仍可显式指定其他持久位置，
-新 Bot 的 `bot-sessions/` 随模板存储文件放在同一父目录。显式配置不增加旧位置回退；
+但这些配置不再决定原生会话目录，也不增加旧位置回退；
 使用自定义位置时，应自行将该位置加入 Git 忽略规则。
 交付的 `.gitignore` 忽略 `.data/` 的全部运行与临时文件，并保留旧根目录运行文件的忽略项；
 手工维护的 `meta-data/` 不被忽略，可纳入 Git，不要添加或提交用户运行数据。
@@ -1339,7 +1342,7 @@ P36/P37 的完整映射隔离复现同样位于 `backend/tests/bot_creation_deta
   `old-provider/old-model`、`high`、`old-native`、`old-fixed.ts + old-tools.ts`，新配置为
   `new-provider/new-model`、`low`、`new-native`、`new-fixed.ts + new-connect.ts`，固定指示和本次输入也不同。
   新创建在旧屏障未释放时成功。随后删除来源模板并移除元数据，释放旧 Tab/启动/提交屏障，逐步观察
-  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的对象与会话目录不同。
+  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的 Herdr 对象不同；不保证独立原生会话目录。
 - P37 先创建 Bot，再编辑模板、改元数据，核对已有外部调用及对象没有变化；下一次创建使用新配置。
   删除来源后，带删除前预览的直接创建请求也以 `template-not-found` 拒绝。两条已有 Bot 的外部记录、
   Tab/Pane 和公开状态保持不变，没有新增改配、关闭、重建或输入重发。

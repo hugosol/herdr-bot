@@ -210,11 +210,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   const extensionDirectory = path.join(directory, 'extensions')
   fs.mkdirSync(extensionDirectory)
   const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
-  fs.writeFileSync(metadataFile, metadata.replace(/entrypoint = '([^']+)'/g, (_line, original: string) => {
-    const relative = original.split('entrypoints\\')[1].replaceAll('\\', '-')
+  fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
+    const id = prefix.match(/^id = '([^']+)'/m)![1]
+    const relative = `${id}.ts`
     const entrypoint = path.join(extensionDirectory, relative)
     fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
-    return `entrypoint = '${entrypoint}'`
+    return `${prefix}'${entrypoint}'`
   }))
   const herdrDirectory = path.join(directory, 'herdr')
 

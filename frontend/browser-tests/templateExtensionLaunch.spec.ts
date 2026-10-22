@@ -51,12 +51,12 @@ test('六种模板集合准确显式启动，固定项不可取消，创建页�
   const { root, zone } = await setup()
   const ext = path.join(root, 'extensions')
   const cases = [
-    { agent: 'omp', extensions: [], entries: ['omp-model-cost.ts'] },
-    { agent: 'omp', extensions: ['omp-codebase-tools'], entries: ['omp-model-cost.ts', 'omp-auto-codebase-tools.ts'] },
-    { agent: 'omp', extensions: ['omp-connect-bot'], entries: ['omp-model-cost.ts', 'omp-auto-connect-bot.ts'] },
-    { agent: 'omp', extensions: ['omp-connect-bot', 'omp-codebase-tools'], entries: ['omp-model-cost.ts', 'omp-auto-codebase-tools.ts', 'omp-auto-connect-bot.ts'] },
-    { agent: 'pi', extensions: [], entries: ['pi-model-cost.ts'] },
-    { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-model-cost.ts', 'pi-auto-codebase-tools.ts'] },
+    { agent: 'omp', extensions: [], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
+    { agent: 'omp', extensions: ['omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts'] },
+    { agent: 'omp', extensions: ['omp-connect-bot'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-connect-bot.ts'] },
+    { agent: 'omp', extensions: ['omp-connect-bot', 'omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts', 'omp-connect-bot.ts'] },
+    { agent: 'pi', extensions: [], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts'] },
+    { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-codebase-tools.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
   const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zone, relative))
@@ -86,8 +86,7 @@ test('六种模板集合准确显式启动，固定项不可取消，创建页�
     const start = server!.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!
     expect(start.agent_kind).toBe(scenario.agent)
     const args = start.args as string[]
-    expect(args.slice(2)).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
-    expect(args[0]).toBe('--session-dir')
+    expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toBe('固定指示\n\n本次输入')
   }
@@ -105,7 +104,7 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   const { root, zone, original } = await setup()
   const saved = await save({ ...template, extensions: ['omp-codebase-tools'] })
   const persistedBefore = fs.readFileSync(server!.storageFile, 'utf8')
-  fs.unlinkSync(path.join(root, 'extensions', 'omp-auto-connect-bot.ts'))
+  fs.unlinkSync(path.join(root, 'extensions', 'omp-connect-bot.ts'))
   fs.unlinkSync(path.join(root, 'extensions', 'pi-model-cost.ts'))
   await finish(await create(zone, saved.id))
   const freshFixed = path.join(root, 'next-fixed.ts')
@@ -114,14 +113,15 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
     fs.writeFileSync(file, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(root, 'extension-executed'))}, 'EXECUTED'); throw new Error('must not execute during check')`)
   }
   const oldFixed = path.join(root, 'extensions', 'omp-model-cost.ts')
-  const oldOptional = path.join(root, 'extensions', 'omp-auto-codebase-tools.ts')
+  const oldOptional = path.join(root, 'extensions', 'omp-codebase-tools.ts')
   fs.writeFileSync(server!.metadataFile, original.replace(oldFixed, freshFixed).replace(oldOptional, freshOptional))
   fs.unlinkSync(oldFixed)
   fs.unlinkSync(oldOptional)
   await finish(await create(zone, saved.id))
   const starts = server!.herdrCalls().filter(call => call.kind === 'agent_start')
-  expect((starts[0].args as string[]).slice(2)).toEqual(['--no-extensions', '--extension', oldFixed, '--extension', oldOptional])
-  expect((starts[1].args as string[]).slice(2)).toEqual(['--no-extensions', '--extension', freshFixed, '--extension', freshOptional])
+  const official = path.join(root, 'extensions', 'omp-herdr-agent-state.ts')
+  expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed, '--extension', oldOptional])
+  expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed, '--extension', freshOptional])
   expect(fs.readFileSync(server!.storageFile, 'utf8')).toBe(persistedBefore)
   expect((await server!.getTemplates()).templates[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
@@ -149,7 +149,7 @@ async function denyRead(file: string) {
 
 // P33/P35: genuine missing/directory/sharing-denied files, for fixed AND selected optional items.
 // Violation: check only fixed items, only existence, or start a tab before validating. Real files and adapter stay in path.
-for (const entry of ['omp-model-cost', 'omp-auto-codebase-tools']) {
+for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
   for (const fault of ['missing', 'directory', 'unreadable']) {
     test(`自动入口检查 ${entry}/${fault} 在页面及HTTP拒绝且无三个副作用`, async ({ page }) => {
       const { root, zone } = await setup()
