@@ -149,12 +149,14 @@ fn calls_of_kind(herdr: &HerdrFixture, kind: &str) -> Vec<Value> {
         .collect()
 }
 
-/// 外部调用记录里的步骤顺序；`unsupported` 表示 herdr-bot 尝试了夹具不认识的命令。
+/// 创建控制调用的步骤顺序；独立历史任务的只读 agent_get 不属于创建控制序列。
+/// `unsupported` 仍表示 herdr-bot 尝试了夹具不认识的命令，不能忽略。
 fn call_kinds(herdr: &HerdrFixture) -> Vec<String> {
     herdr
         .calls()
         .into_iter()
         .filter_map(|call| call["kind"].as_str().map(str::to_string))
+        .filter(|kind| kind != "agent_get")
         .collect()
 }
 
@@ -646,6 +648,7 @@ async fn assert_launch_from_public_entry(
     let tail: Vec<&str> = created_calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         tail,
@@ -846,6 +849,7 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1522,6 +1526,7 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1689,6 +1694,7 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1838,6 +1844,7 @@ async fn an_all_empty_template_attempts_submission_and_reports_the_herdr_rejecti
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1892,6 +1899,7 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,

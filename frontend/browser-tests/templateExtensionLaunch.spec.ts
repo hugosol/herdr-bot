@@ -125,7 +125,8 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   expect(fs.readFileSync(server!.storageFile, 'utf8')).toBe(persistedBefore)
   expect((await server!.getTemplates()).templates[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
-  expect(server!.herdrCalls().map(call => call.kind)).toEqual(['workspace_list', 'tab_create', 'agent_start', 'agent_prompt', 'workspace_list', 'tab_create', 'agent_start', 'agent_prompt'])
+  // Independent native-history reads are not launch/configuration controls.
+  expect(server!.herdrCalls().filter(call => call.kind !== 'agent_get').map(call => call.kind)).toEqual(['workspace_list', 'tab_create', 'agent_start', 'agent_prompt', 'workspace_list', 'tab_create', 'agent_start', 'agent_prompt'])
   const evidence = testInfo.outputPath('controlled-herdr-dynamic-entry-mapping-NOT-real-loading.json')
   fs.writeFileSync(evidence, JSON.stringify({ calls: server!.herdrCalls(), tabs: server!.herdrTabs() }, null, 2))
   await testInfo.attach('controlled-herdr-dynamic-entry-mapping-NOT-real-loading', { path: evidence, contentType: 'application/json' })

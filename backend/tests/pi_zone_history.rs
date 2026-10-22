@@ -23,6 +23,7 @@ async fn post(server: &TestServer, path: &str, body: Value) -> Value {
 }
 fn configuration(herdr: &HerdrFixture, root: &TempDir) -> herdr_bot::Config {
     let mut config = common::config(std::path::Path::new("unused.bat"), root.path());
+    config.shutdown.countdown_seconds = herdr_bot::CountdownSeconds::new(600).unwrap();
     config.herdr.executable = herdr.executable().to_path_buf();
     config.herdr.workspace_name = "bot-playground".into();
     config.zones.registry_file = root.path().join("zones.json");
@@ -78,6 +79,10 @@ async fn pi_without_connect_collects_exact_header_and_leaves_current_and_old_fil
     fs::write(&native, bytes).unwrap();
     let old = root.path().join("newest-decoy.jsonl");
     fs::write(&old, b"{\"type\":\"session\",\"id\":\"wrong-decoy\"}\n").unwrap();
+    let attached = root.path().join("newest-decoy.records");
+    fs::create_dir(&attached).unwrap();
+    fs::write(attached.join("tool.bin"), b"\0old-pi-attached\xff\r\n").unwrap();
+    fs::create_dir(attached.join("empty")).unwrap();
     herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":native}}));
     let (server, zone, template) = setup(&herdr, &root).await;
     let created = create(&server, &zone, &template).await;
@@ -91,6 +96,9 @@ async fn pi_without_connect_collects_exact_header_and_leaves_current_and_old_fil
     assert_eq!(observation.next_frame().await.json()["sessions"], json!([]));
     assert_eq!(fs::read(native).unwrap(), bytes);
     assert_eq!(fs::read(old).unwrap(), b"{\"type\":\"session\",\"id\":\"wrong-decoy\"}\n");
+    assert_eq!(fs::read(attached.join("tool.bin")).unwrap(), b"\0old-pi-attached\xff\r\n");
+    assert_eq!(fs::read_dir(&attached).unwrap().count(), 2);
+    assert_eq!(fs::read_dir(attached.join("empty")).unwrap().count(), 0);
 }
 
 async fn wait_get(herdr: &HerdrFixture) {
@@ -247,6 +255,46 @@ async fn pi_save_failure_does_not_retry_or_change_current_intent() {
     assert_eq!(restarted["shutdown"]["monitoredSessionIds"], json!([]));
     assert_eq!(restarted["shutdown"]["phase"], "none");
     assert_eq!(get(&server, "/api/sessions/history").await["total"], 1);
+}
+
+// P26: an already-running countdown keeps the same arrangement/deadline
+// across successful collection, missing identity and a real save failure.
+#[tokio::test]
+async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() {
+    for outcome in ["success", "timeout", "save-failed"] {
+        let herdr = HerdrFixture::new(outcome);
+        let root = TempDir::new(outcome);
+        let release = root.path().join("release");
+        herdr.set_behavior(json!({"native_session_gate":{"wait_for_file":release,"timeout_ms":60000}}));
+        let (server, zone, template) = setup(&herdr, &root).await;
+        let started = common::post_over_tcp(server.addr(), "/api/shutdown/start").await;
+        assert!((200..300).contains(&started.status), "{}", started.body);
+        let mut before = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+        let before = before.next_frame().await.json();
+        assert_eq!(before["shutdown"]["phase"], "counting-down");
+        if outcome == "save-failed" { fs::create_dir(root.path().join("history.json.tmp")).unwrap(); }
+        assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+        wait_get(&herdr).await;
+        if outcome == "timeout" {
+            tokio::time::pause();
+            tokio::time::advance(Duration::from_secs(30)).await;
+            tokio::task::yield_now().await;
+            tokio::time::resume();
+        } else {
+            herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-countdown-outcome"},"native_cwd":"C:/countdown"}));
+            fs::write(&release, b"release").unwrap();
+            if outcome == "success" { wait_history(&server, "pi-countdown-outcome").await; }
+            else { tokio::time::sleep(Duration::from_millis(400)).await; }
+        }
+        let mut after = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+        let after = after.next_frame().await.json();
+        for field in ["phase", "arrangementId", "deadline", "monitoredSessionIds"] {
+            assert_eq!(after["shutdown"][field], before["shutdown"][field], "{outcome}: {field}");
+        }
+        assert_eq!(after["sessions"], json!([]));
+        let cancelled = common::post_over_tcp(server.addr(), "/api/shutdown/cancel").await;
+        assert!((200..300).contains(&cancelled.status), "{}", cancelled.body);
+    }
 }
 
 // P02: startup and submit rejection must not collect a zone record. A later

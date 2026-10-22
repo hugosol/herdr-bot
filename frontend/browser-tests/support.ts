@@ -331,11 +331,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       const child = running?.child
       running = null
       if (child === undefined || child.exitCode !== null) return
-      await new Promise<void>((resolve) => {
-        child.once('exit', () => resolve())
+      const exited = Promise.withResolvers<void>()
+      child.once('exit', () => exited.resolve())
+      const exitTimer = setTimeout(() => exited.resolve(), 5000)
+      if (process.platform === 'win32') {
+        // Independent identity queries are real child processes. Killing only
+        // their parent leaves a live copied EXE holding the test directory open.
+        const killed = Promise.withResolvers<void>()
+        const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        killer.once('error', killed.reject)
+        killer.once('exit', code => code === 0 || child.exitCode !== null ? killed.resolve() : killed.reject(new Error(`taskkill failed: ${code}`)))
+        await killed.promise
+      } else {
         child.kill()
-        setTimeout(() => resolve(), 5000)
-      })
+      }
+      await exited.promise
+      clearTimeout(exitTimer)
     },
     async restart() {
       await this.stop()
