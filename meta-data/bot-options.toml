@@ -67,7 +67,7 @@ id = 'omp-oh-my-wayfinder'
 label = 'oh-my-wayfinder'
 agent = 'omp'
 kind = 'optional'
-entrypoint = 'E:\Developer\myhub\oh-my-wayfinder\extensions\entry.ts'
+entrypoint = 'E:\Developer\myhub\oh-my-wayfinder\extensions'
 [[extensions]]
 id = 'pi-herdr-agent-state'
 label = 'herdr-agent-state'

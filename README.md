@@ -436,7 +436,9 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
 
 #### 维护共享选项目录
 
-OMP 可选扩展 `oh-my-wayfinder`（标识 `omp-oh-my-wayfinder`）加载 `E:\Developer\myhub\oh-my-wayfinder\extensions\entry.ts`，由该入口注册 `/hyper-auto-coding` 与 `/spec-to-code`。使用这些命令的模板必须选中此扩展；仅在 prompt 中填写命令不会加载扩展，也不应将其当作同名 Skill。部署到其他位置时更新 `entrypoint`。选项与模板修改无需重启 herdr-bot，但只对之后新建的 Bot 生效，已运行的会话不会自动补载。
+OMP 可选扩展 `oh-my-wayfinder`（标识 `omp-oh-my-wayfinder`）加载目录 `E:\Developer\myhub\oh-my-wayfinder\extensions`，与本机 OMP 的 `extensions` 配置一致。OMP 从该目录加载命令入口，并发现 `agents/tdd.md`，无需在用户 agent 目录另装或链接一份定义。不要改成只加载 `extensions/entry.ts`：文件入口虽能注册 `/hyper-auto-coding` 与 `/spec-to-code`，却不会提供同包的 `tdd` 子代理，前置检查会报 `缺少: tdd (agent)`。
+
+扩展 `entrypoint` 支持可读文件或目录；herdr-bot 只检查可读取性，目录扫描与包解释由目标 agent 原生处理。使用这些命令的模板必须选中此扩展；仅在 prompt 中填写命令不会加载扩展，也不应将其当作同名 Skill。部署到其他位置时更新 `entrypoint`。选项与模板修改只对之后新建的 Bot 生效，已运行的会话不会自动补载；目录入口支持涉及后端代码更新，升级后需重启 herdr-bot。
 
 当前 OMP 扩展命令解析器只按普通空格分隔命令名与参数，不将换行当作分隔符。若模板 prompt 仅填写 `/hyper-auto-coding`、创建时 input 填写 slug，须将 prompt 保存为 `"/hyper-auto-coding "`（末尾一个普通空格）；herdr-bot 会保留此空格，再以空行连接 input，Wayfinder 会对收到的 slug 去除首尾空白。否则命令名会连同换行和 slug 一起被查找，未命中后作为普通用户文本交给模型。也可将 prompt 留空，在 input 中一次填写 `/hyper-auto-coding <slug>`。
 

@@ -359,12 +359,23 @@ pub struct ResolvedPreset {
 }
 
 impl ResolvedPreset {
-    /// Only inspect this creation's files. Never import, execute, or probe extension services.
+    /// Inspect this creation's extension files or directory roots for readability.
+    /// Directory discovery and package interpretation remain owned by the target agent.
+    /// Never import, execute, or probe extension services.
     /// A successful check is not a promise that files cannot change before the agent loads them.
     pub fn check_entrypoints(&self) -> Result<(), String> {
         use std::io::Read;
         for extension in &self.extensions {
             let check = || -> Result<(), String> {
+                if fs::metadata(&extension.entrypoint).is_ok_and(|metadata| metadata.is_dir()) {
+                    let mut entries = fs::read_dir(&extension.entrypoint)
+                        .map_err(|error| format!("入口目录无法读取：{error}"))?;
+                    entries
+                        .next()
+                        .transpose()
+                        .map_err(|error| format!("入口目录无法读取：{error}"))?;
+                    return Ok(());
+                }
                 let mut file = fs::File::open(&extension.entrypoint).map_err(|error| {
                     if error.kind() == std::io::ErrorKind::NotFound {
                         format!("入口不存在：{error}")
@@ -382,15 +393,6 @@ impl ResolvedPreset {
                     .map_err(|error| format!("入口无法读取：{error}"))?;
                 Ok(())
             };
-            // Inspect directories separately as Windows may reject opening one before metadata().
-            if fs::metadata(&extension.entrypoint).is_ok_and(|metadata| metadata.is_dir()) {
-                return Err(format!(
-                    "扩展「{}」（{}）入口 {}：入口不是文件。",
-                    extension.label,
-                    extension.id,
-                    extension.entrypoint.display()
-                ));
-            }
             check().map_err(|reason| {
                 format!(
                     "扩展「{}」（{}）入口 {}：{reason}。",
