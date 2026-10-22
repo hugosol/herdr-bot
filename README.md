@@ -1106,6 +1106,9 @@ chat 右上角的三角按钮在**当前会话／历史会话**两个互斥视�
 - zone Bot 在 Herdr 确认可交互且初始指示提交获确认后，也会独立收录实际原生对话；不要求勾选 connect-bot，
   不等待模型轮次或任务完成。启动／提交尚未确认成功不触发 zone 收录，独立成功 register 仍可正常收录。
   同一完整原生 ID 的两种来源合并成一条；zone Bot 名称优先于 connect-bot 名称，优先级跨重启保留。
+  后续有效 zone 名称可以更新原 zone 名称；connect-only 使用最近有效上报名称，缺失名称不清空已知值。
+  同一后端实例接收独立客户端的并发收录时，不丢失成功保存的不同 ID 或同 ID 的合法字段合并；
+  后端重启后仍保留完整记录与首次成功收录时间。不承诺多个后端进程共享同一文件或任意硬件故障下的恢复。
   收录历史本身不建立当前登记；接入后两视图可同时包含该对话，注销当前登记不删除历史。
 - 两种收录入口都不扫描或批量导入旧原生会话，不移动、复制、转换、删除或改写原生文件。
   zone 只查询本次创建的精确 Herdr agent 对象及官方原生引用，必要时只读该精确文件的 header 身份元数据；
@@ -1157,6 +1160,50 @@ history_file = ".data/session-history.json"
 caller 命令验收位于 my-agent-toolkit 的 `tests/connect-bot/history-warning.test.ts`、`history-interop.test.ts`；
 后者需将 `HERDR_BOT_BINARY` 指向本项目 `cargo build --example safe_shutdown_shell` 生成的安全外壳，
 将 `HERDR_BOT_METADATA` 指向本项目 `meta-data/bot-options.toml`，绝不使用真实关机动作。
+
+### 跨来源与并发组合验收（P04／P09／P29／P26）
+
+`frontend/browser-tests/crossSourceConcurrency.spec.ts` 从公开 HTTP 写入独立预写的完整 ID，
+在真实 Chrome 页面核对最终名称，并重启隔离后端读回精确集合：
+
+- Pi／OMP 分别覆盖 connect→zone、zone→connect、同时到达、重复 register、后续 zone 改名、connect-only 改名及缺失值。
+- 同名同 cwd、相同 agent 类型与相同 ID 前缀的不同 ID 仍是不同记录。
+- 八个独立 HTTP 客户端通过屏障释放六个不同 ID 及同 ID 的两个可交换字段更新；第二轮更新显式在第一轮结束后开始。
+  测试不假定无序竞争的先后，以独立字面字段核对完整七条记录，再比较重启前后的首次收录时间及所有字段。
+- 两种来源顺序分别在监听中／倒计时中制造真实临时文件写入故障，观察接入成功与历史失败分开表达、
+  zone 诊断包含创建与原生 ID、原有当前登记／keepAlive／监听集合／安排标识／截止时间不变。
+  组合关机请求只发给既有 `safe_shutdown_shell` 记录型安全壳，绝不调用真实关机。
+- `backend/tests/cross_source_concurrency.rs` 以同一公开 HTTP／SSE seam、受控时钟和记录型 PowerOff
+  验证双来源交错期间失败的 register 仍刷新 keepAlive、离线保留监听、心跳恢复在线、完成后形成倒计时，
+  后续历史故障不重置已有安排，重建应用只恢复历史而不恢复临时意图。
+
+复跑（在仓库根目录；测试仅使用临时目录、受控 Herdr，不运行用户 agent 或修改其全局配置）：
+
+```bat
+npm --prefix frontend ci
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_shell
+cargo test --manifest-path backend/Cargo.toml --test cross_source_concurrency
+npm --prefix frontend run test:browser -- crossSourceConcurrency.spec.ts
+```
+
+本次实际运行：上述新 browser 场景 **15 passed**；连同 `sessionHistory.spec.ts`、
+`connectHistoryFailures.spec.ts` 的兼容回归共 **19 passed**。后端组合与
+`connect_history_failures`、`session_history` 三组共 **9 passed**；前后端构建及安全壳构建成功。
+现有生产实现已满足组合承诺，无需额外修改生产收录或锁逻辑。
+
+页面截图、历史读回 JSON 与真实 zone 保存失败诊断由 Playwright 写入 `frontend/test-results/`；
+本次保留的[七条并发历史读回](docs/evidence/cross-source-concurrency/concurrent.json)及
+[重启后页面](docs/evidence/cross-source-concurrency/concurrent.png)、
+[Pi 名称](docs/evidence/cross-source-concurrency/pi-sources.png)／
+[OMP 名称](docs/evidence/cross-source-concurrency/omp-sources.png)、
+[Pi 故障前后与重启观察](docs/evidence/cross-source-concurrency/pi-countdown-failure.json)／
+[OMP 故障前后与重启观察](docs/evidence/cross-source-concurrency/omp-countdown-failure.json)
+及同目录 `*-warning.json` 来自实际运行，不是预设响应。
+本组合验收沿用前序票已闭合的 S4 身份链路，受控 Herdr 不能冒充真实 agent 运行。
+**P01-H1、P23-H1 仍待用户在实际部署中确认**；01／05／06 已准备的配置、原生引用与 header、
+原生发现及最小验收步骤分别见 [Pi](docs/pi-zone-native-history-acceptance.md) 与
+[OMP](docs/omp-zone-native-history-acceptance.md)，本票不自动宣称 H1 通过。
 
 ## 会话登记的生命周期（chat 入口）
 

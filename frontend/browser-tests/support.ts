@@ -40,6 +40,8 @@ export type HerdrFixtureSetup = {
 }
 
 export type StartServerOptions = {
+  /** Existing record-only PowerOff shell; required for tests sending shutdown commands. */
+  safeShutdown?: boolean
   herdr?: HerdrFixtureSetup
   /** Axum 监听地址；默认只监听回环。局域网用例传 `0.0.0.0:0`。 */
   listenAddr?: string
@@ -176,8 +178,8 @@ async function waitForTemplates(baseURL: string): Promise<void> {
   throw new Error(`herdr-bot 没有在 20 秒内开始提供模板接口：${baseURL}`)
 }
 
-function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
-  const child = spawn(binary, ['--config', configPath], {
+function startProcess(configPath: string, executable: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
+  const child = spawn(executable, ['--config', configPath], {
     cwd: path.dirname(configPath),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -221,9 +223,12 @@ function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutN
 }
 
 export async function startServer(options: StartServerOptions = {}): Promise<E2EServer> {
-  if (!fs.existsSync(binary)) {
+  const executable = options.safeShutdown
+    ? path.join(repoRoot, 'backend', 'target', 'debug', 'examples', 'safe_shutdown_shell.exe')
+    : binary
+  if (!fs.existsSync(executable)) {
     throw new Error(
-      `缺少交付二进制 ${binary}；请先在 backend 目录执行 cargo build。`,
+      `缺少验收二进制 ${executable}；请先在 backend 目录执行 cargo build --bins --example safe_shutdown_shell。`,
     )
   }
   if (!fs.existsSync(path.join(repoRoot, 'backend', 'static', 'index.html'))) {
@@ -287,7 +292,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   let running: { child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string } | null = null
 
   async function start() {
-    running = await startProcess(configPath)
+    running = await startProcess(configPath, executable)
     await waitForTemplates(`http://127.0.0.1:${running.port}`)
   }
 
