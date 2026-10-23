@@ -62,6 +62,8 @@ Bot 的 trigger config 与 env config 在执行结构上分开；普通发起仍
 
 启动命令返回不等于恢复成功：确认新进程报告同一原生身份和实际 cwd 后，还需确认聚焦正确的 Workspace／Tab／Pane，才返回 `restored`。类型、工作目录、必要集成、启动、身份或聚焦失败均有可见结果；已经创建的目标保留供检查，不自动另开、删除或重发输入。页面／HTTP 成功只表示 Herdr 内部导航，不保证 Windows 窗口已置前，也不承诺 agent 自身的模型恢复规则。Pi 使用 session 加载、OMP 使用 resume，且项目不提交输入。既有原生恢复证据由 [01 的真实恢复 smoke](evidence/chat-history-resume/recovery-degradation-01.json) 继续核对：独立专用 Herdr session 中两者都实际显示已知历史、报告正确原生文件及历史 cwd，随后只定位；OMP 停留在旧中断任务的 Read 之后、等待输入，没有新模型请求或新 user／tool 活动。OMP 原生 CLI 可追加一条标明前进程中断的空 assistant／aborted 记录，这不表示本项目修复文件或继续任务，不应把整个文件字节不变作为其加载语义。受控调用记录本身仍不代表真实原生加载证明；本 smoke 不代签后续真实扩展集合的用户确认。
 
+本票逐项过滤的自动证据见 [Pi 页面与受控提交](evidence/chat-history-resume/extension-filter-04-pi-extension-filter-NOT-real-loading.json)、[OMP 页面与受控提交](evidence/chat-history-resume/extension-filter-04-omp-extension-filter-NOT-real-loading.json)：交付页面分别展示部分可用集合的具体跳过原因，以及空显式集合缺少身份确认后的未确认结果；这些记录不证明真实扩展加载。另有 [04 真实恢复 smoke](evidence/chat-history-resume/extension-filter-04-native-smoke.json)：专用隔离 Herdr session 中，真实 Pi／OMP 在有效官方身份项与缺失可选项并存时确认原始 ID／文件／cwd、显示已知旧历史并保持 idle；复制的原生文件未变化，隔离模型端点没有请求，后续 Resume 只定位。smoke 的来源字段是隔离预写样例，可信来源收录另由正常发起的公开 HTTP 测试覆盖；它不代替 H-Pi／H-OMP 的完整显式／默认／ambient 集合人工确认。
+
 恢复降级不等于恢复成功。发生扩展逐项过滤、默认扩展发现、Herdr Workspace 回退或精确原生 ID 回退时，页面与操作结果保留所有已发生要素、各自已知原因和实际采用策略；组合发生时不能只剩最后一条。确认恢复且有降级时明确说明有降级；失败或启动结果未确认时仍保留已发生的降级，而不虚构尚未作出的选择。权威的失败／未确认结果不能被统一成功提示替代。
 
 创建 Tab、提交启动命令、确认正确原生对话与完成聚焦是不同阶段。Pi／OMP 在 Tab 创建等待、agent 启动等待或随后的原生身份确认等待超时，均返回 HTTP `502`、`outcome: "unconfirmed"`、`code: "restore-unconfirmed"` 和实际阶段（`tab`／`start`／`confirm`），不能当作安全失败或恢复成功。`target` 只包含实际取得的 Workspace／Tab／Pane ID，`agentName` 是已提交的启动名称而非加载成功证明；页面显示这些信息及“启动结果未确认”。`progress` 区分已确认创建 Tab、已提交启动、原生对话确认与聚焦：Tab 创建本身超时时 `tabCreated` 为 `null`（未知），不能据此断言 Tab 没有产生。
