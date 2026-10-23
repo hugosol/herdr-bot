@@ -3,7 +3,7 @@
 //! 这里刻意**不经过 Shell**：可执行文件与每个参数都作为独立进程参数提交，因此 Chat 名称、zone
 //! 目录、Bot prompt 与用户 input 中的引号、空格、换行或 Shell 元字符只作为数据到达 Herdr，
 //! 不会被解释成命令。选择 CLI 而不是直接连 socket 只是一个 adapter 选择；对上层而言，它只暴露
-//! Workspace 查询、Tab 创建、agent 启动/就绪与初始输入提交。
+//! Workspace 查询、Tab 创建、agent 启动/就绪、原生身份查找、已有目标聚焦与初始输入提交。
 //!
 //! 所有命令都是一次调用：失败、超时或无法解析都不自动重试，也不回退到其他 Workspace。成功响应
 //! 只表示 Herdr 接受了那一步；`agent.start` 的 CLI 语义是目标 agent 已可交互，`agent.prompt`
@@ -319,6 +319,53 @@ impl HerdrClient {
         }
     }
 
+    /// Query the live inventory on every attempt; names, cwd and registration
+    /// liveness are never native conversation identities.
+    pub(crate) async fn matching_targets(&self, kind: &str, session_id: &str) -> Result<Vec<NavigationTarget>, HerdrError> {
+        let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let entries = value.pointer("/result/agents").and_then(Value::as_array)
+            .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
+        let id = if std::path::Path::new(session_id).is_absolute() {
+            std::borrow::Cow::Owned(read_native_id(session_id, kind).await?)
+        } else { std::borrow::Cow::Borrowed(session_id) };
+        let mut targets = Vec::new();
+        for entry in entries {
+            if entry.get("agent").and_then(Value::as_str) != Some(kind) { continue; }
+            let reference = entry.get("agent_session").filter(|reference| !reference.is_null())
+                .ok_or_else(|| native_error("matching agent kind has no verifiable native identity"))?;
+            if reference.get("agent").and_then(Value::as_str) != Some(kind)
+                || reference.get("source").and_then(Value::as_str) != Some(if kind == "omp" { "herdr:omp" } else { "herdr:pi" }) {
+                return Err(native_error("native identity agent/source is inconsistent"));
+            }
+            let value = nonempty(reference.get("value")).ok_or_else(|| native_error("native reference has no value"))?;
+            let candidate = match reference.get("kind").and_then(Value::as_str) {
+                Some("id") => std::borrow::Cow::Borrowed(value),
+                Some("path") => std::borrow::Cow::Owned(read_native_id(value, kind).await?),
+                _ => return Err(native_error("unsupported native reference kind")),
+            };
+            if candidate == id { targets.push(NavigationTarget::from_agent(entry)?); }
+        }
+        // Opaque public IDs, lexicographically ordered; independent of enumeration
+        // and of display labels. Include all three location components.
+        targets.sort();
+        targets.dedup();
+        Ok(targets)
+    }
+
+    pub(crate) async fn focus_target(&self, target: &NavigationTarget) -> Result<(), HerdrError> {
+        let value = self.run("agent focus", &["agent".into(), "focus".into(), target.pane_id.clone()], QUERY_TIMEOUT).await?;
+        if value.pointer("/result/type").and_then(Value::as_str) != Some("agent_info") {
+            return Err(HerdrError::UnexpectedResponse { command: "agent focus", detail: "missing agent_info focus confirmation".into() });
+        }
+        let agent = value.pointer("/result/agent").ok_or_else(|| HerdrError::UnexpectedResponse {
+            command: "agent focus", detail: "focus confirmation has no agent".into()
+        })?;
+        if NavigationTarget::from_agent(agent)? != *target || agent.get("focused").and_then(Value::as_bool) != Some(true) {
+            return Err(HerdrError::UnexpectedResponse { command: "agent focus", detail: "target navigation was not confirmed".into() });
+        }
+        Ok(())
+    }
+
     /// 执行一次 herdr CLI 调用；参数逐个传递，绝不经过 Shell。
     async fn run(
         &self,
@@ -379,11 +426,41 @@ impl HerdrClient {
                 detail: "stdout 没有 JSON".to_string(),
             });
         }
-        serde_json::from_str(trimmed).map_err(|error| HerdrError::UnexpectedResponse {
+        let value: Value = serde_json::from_str(trimmed).map_err(|error| HerdrError::UnexpectedResponse {
             command: command_name,
             detail: format!("stdout 不是单个 JSON 响应：{error}"),
-        })
+        })?;
+        if let Some(error) = value.get("error") {
+            return Err(HerdrError::CommandFailed { command: command_name,
+                message: error.get("message").and_then(Value::as_str).unwrap_or("Herdr returned an error response").to_owned() });
+        }
+        Ok(value)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigationTarget {
+    pub workspace_id: String,
+    pub tab_id: String,
+    pub pane_id: String,
+}
+impl NavigationTarget {
+    fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
+        let field = |name| nonempty(agent.get(name)).map(str::to_owned)
+            .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
+        Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
+    }
+}
+
+async fn read_native_id(path: &str, kind: &str) -> Result<String, HerdrError> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
+    let allow_title = kind == "omp";
+    let deadline = tokio::time::Instant::now() + QUERY_TIMEOUT;
+    tokio::task::spawn_blocking(move || native_header(path, allow_title, deadline)).await
+        .map_err(|error| native_error(&format!("native identity reader failed: {error}")))?
+        .map(|identity| identity.session_id)
 }
 
 fn native_error(detail: &str) -> HerdrError {

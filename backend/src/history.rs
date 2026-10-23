@@ -57,6 +57,11 @@ struct HistoryList<'a> {
     total_pages: usize,
 }
 
+pub(crate) struct HistorySelection {
+    pub session_id: String,
+    pub agent_type: Option<String>,
+}
+
 pub struct History {
     file: PathBuf,
     clock: Arc<dyn Clock>,
@@ -75,6 +80,13 @@ impl History {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }
+    }
+
+    /// Resolve only a persisted Chat selection, never current registration state.
+    pub(crate) async fn selection(&self, session_id: &str) -> io::Result<Option<HistorySelection>> {
+        let _guard = self.lock.lock().await;
+        Ok(self.read()?.into_iter().find(|record| record.session_id == session_id)
+            .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type }))
     }
 
     pub async fn record_zone(
