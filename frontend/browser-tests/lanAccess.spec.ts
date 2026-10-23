@@ -163,6 +163,7 @@ test('局域网地址可管理共享模板并从 zone 创建 Bot，不额外要�
   await expect(preview).toHaveText(/^alpha · 局域网创建 · [0-9a-f]{6}$/)
   const previewName = (await preview.textContent()) ?? ''
 
+  await creation.locator('#bot-workspace-target').selectOption('default')
   await creation.getByTestId('bot-input').fill(INPUT)
   await activate(creation.getByTestId('bot-create-submit'), true)
   await expect(creation.getByTestId('bot-create-stage')).toHaveText('正在启动')

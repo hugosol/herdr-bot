@@ -188,7 +188,8 @@ impl ShutdownState {
             match inner.active {
                 Some(_) => (view_locked(&inner, server_time), None),
                 None => {
-                    let (created, view) = Self::arrange_locked(&mut inner, self.countdown, server_time);
+                    let (created, view) =
+                        Self::arrange_locked(&mut inner, self.countdown, server_time);
                     // 与状态变化同一把锁内发布：帧顺序与可见变化的发生顺序一致。
                     self.hub.publish(Observation::Shutdown(view.clone()));
                     (view, Some(created))
@@ -378,7 +379,11 @@ impl ShutdownState {
     /// 建立唯一安排：消耗整组监听、替代最近结果，并返回（安排标识, 此刻的完整状态）。
     ///
     /// 调用者必须持有状态锁，并负责在锁内发布返回的状态、在锁外启动到期任务。
-    fn arrange_locked(inner: &mut Inner, countdown: Duration, server_time: u64) -> (String, ShutdownView) {
+    fn arrange_locked(
+        inner: &mut Inner,
+        countdown: Duration,
+        server_time: u64,
+    ) -> (String, ShutdownView) {
         // 开始倒计时即消耗整组监听：取消之后需要用户重新选择，重复等待通知不会自动重启。
         inner.monitored.clear();
         let id = format!("shutdown-{}", inner.next_sequence);
@@ -527,11 +532,7 @@ fn view_locked(inner: &Inner, server_time: u64) -> ShutdownView {
             Some(active.deadline_epoch_ms),
         ),
         None => match &inner.terminal {
-            Some(terminal) => (
-                terminal.phase,
-                Some(terminal.arrangement_id.clone()),
-                None,
-            ),
+            Some(terminal) => (terminal.phase, Some(terminal.arrangement_id.clone()), None),
             None => (ShutdownPhase::None, None, None),
         },
     };

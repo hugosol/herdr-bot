@@ -165,12 +165,9 @@ impl ReportServer {
     /// 用 axum 自带的 `MockConnectInfo`（它只往请求里放 `ConnectInfo`），校验读到的来源与真 TCP 情形
     /// 是同一个东西。
     async fn post_from_lan(&self, body: &str) -> (StatusCode, Value) {
-        let app = self
-            .app
-            .clone()
-            .layer(MockConnectInfo(
-                LAN_SOURCE.parse::<SocketAddr>().expect("受控来源地址"),
-            ));
+        let app = self.app.clone().layer(MockConnectInfo(
+            LAN_SOURCE.parse::<SocketAddr>().expect("受控来源地址"),
+        ));
         let request = Request::builder()
             .method("POST")
             .uri(EVENTS)
@@ -182,8 +179,12 @@ impl ReportServer {
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("读取响应体");
-        let body: Value = serde_json::from_slice(&bytes)
-            .unwrap_or_else(|e| panic!("拒绝响应必须是 JSON（{e}）：{}", String::from_utf8_lossy(&bytes)));
+        let body: Value = serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+            panic!(
+                "拒绝响应必须是 JSON（{e}）：{}",
+                String::from_utf8_lossy(&bytes)
+            )
+        });
         (status, body)
     }
 
@@ -457,7 +458,9 @@ async fn a_rejected_report_never_extends_a_registration() {
     assert_rejected(&illegal, 400, "invalid-event");
 
     // 同一时刻：来源不被接受的写入（局域网对端地址）被拒。
-    let (status, body) = server.post_from_lan(&heartbeat_envelope("sess-rejected")).await;
+    let (status, body) = server
+        .post_from_lan(&heartbeat_envelope("sess-rejected"))
+        .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "拒绝响应：{body}");
     assert_eq!(body["code"], json!("forbidden"));
 
@@ -645,7 +648,11 @@ async fn a_report_after_deletion_is_rejected_and_never_rebuilds() {
     );
 
     // 从未登记的身份：同一拒绝规则。
-    assert_rejected(&server.heartbeat("sess-never").await, 404, "unknown-session");
+    assert_rejected(
+        &server.heartbeat("sess-never").await,
+        404,
+        "unknown-session",
+    );
     assert_rejected(
         &server.state("sess-never", "idle").await,
         404,
@@ -775,11 +782,7 @@ async fn the_extension_event_shape_refreshes_rejects_and_reregisters() {
     server.maintain().await;
     assert!(server.read_sessions().await.is_empty(), "维护已清除登记");
     assert_rejected(&server.heartbeat("ext-1").await, 404, "unknown-session");
-    assert_rejected(
-        &server.state("ext-1", "idle").await,
-        404,
-        "unknown-session",
-    );
+    assert_rejected(&server.state("ext-1", "idle").await, 404, "unknown-session");
     assert!(
         server.read_sessions().await.is_empty(),
         "普通上报不得隐式建行（服务端不代扩展重试）"
@@ -788,9 +791,10 @@ async fn the_extension_event_shape_refreshes_rejects_and_reregisters() {
     // 同一形状的 register 重新建立登记。
     assert_accepted(&server.register("ext-1").await);
     let reregistered = server.read_sessions().await;
-    assert_eq!(reregistered.len(), 1, "重新 register 建立登记：{reregistered:?}");
     assert_eq!(
-        session_of(&reregistered, "ext-1")["online"],
-        json!(true)
+        reregistered.len(),
+        1,
+        "重新 register 建立登记：{reregistered:?}"
     );
+    assert_eq!(session_of(&reregistered, "ext-1")["online"], json!(true));
 }

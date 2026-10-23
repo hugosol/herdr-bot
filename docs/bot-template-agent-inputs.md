@@ -2,6 +2,24 @@
 
 日期：2026-10-21。本文记录源码调查结论，不表示 Bot 模块已经实现。
 
+## 2026-10-22 创建界面修订
+
+本节覆盖下文早期 Q10/Q13 中的固定 Workspace 与只读名称限制：创建弹窗初始选择“当前”，按 zone 根目录名匹配唯一 Herdr Workspace，仍可切换“默认”使用服务端配置；不使用 Herdr 焦点、不记忆上次选择、不回退。
+
+本次命名规则由模板初始化，允许在原弹窗的单行输入框编辑；复用模板管理的前端转换函数，以真实字段和稳定短标识实时预览。编辑不请求后端、不保存模板；切换模板重载规则。提交时后端按本次规则重新计算并检查 `expectedName`，不一致则拒绝，不悄悄改名。
+
+Pi 与 OMP 一样提供各自的可选 `connect-bot`，Pi 使用 `entrypoints/pi-auto/connect-bot.ts`；不默认勾选、不迁移已有模板选择，不改变创建成功条件。
+
+## 2026-10-22 Workspace 失败恢复与 chat 类型修订
+
+本节记录已确认的行为，并覆盖旧的失败后只能关闭弹窗的交互限制：
+
+- Workspace 查找阶段失败（目标不存在、重名或 Herdr 不可达等）只显示失败提示，不因该失败禁用表单或创建按钮。用户可在原弹窗重新选择“当前 / 默认”再创建，也可直接再次提交；不自动切换、回退或重试，不增加提交前的 Workspace 预检查。
+- 重新创建保留所有已填内容、模板选择、命名规则、本次短标识与名称预览。每次被接受的创建使用独立后台尝试记录，不覆盖旧失败记录。
+- 请求提交或后台执行期间仍阻止重复提交。进入创建 Tab、启动 agent 或提交输入阶段后的失败不开放同窗重建，以免重复创建已有现场。
+- chat 每条会话名称旁常驻显示 `pi` / `omp` 类型标签，不增加筛选或分组。类型来自对应 agent 的 connect-bot 接入端，不从模型名、会话名或 Bot 模板猜测。
+- my-agent-toolkit 与 herdr-bot 同步增加注册元数据 `agentType`，贯通接收、存储、快照、增量更新和展示。缺少类型的旧扩展继续正常接入；缺失或不认识的类型显示“未知”，不改变状态、keepAlive 或关机监听。
+
 ## 已确认的产品边界
 
 用户已确认 Q6：模板按目标 agent 的原生规则表达初始化输入，通过 Herdr 投递；不要求不同 agent 具有统一的 Skill 协议。connect-bot 是独立于 Herdr 的会话接入与管理机制，不为该初始化路径增加依赖。
@@ -36,7 +54,7 @@
 
 在查询 Herdr、新建 Tab、启动 agent 或提交初始输入之前，自动检查本次固定和所选扩展入口存在、为普通文件且可读取。缺失、目录冒充文件或读取拒绝会以 `extension-entrypoint-invalid` 报告扩展名称、标识、入口与具体原因，并明确未创建 Herdr Tab、未启动 agent、未提交输入。元数据或选择失效也在外部创建之前拒绝。未选扩展的文件缺失不影响有效组合；全局元数据结构和关系仍须合法。
 
-OMP 与 Pi 均在 `--session-dir <独立目录>` 后传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应 model-cost；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
+OMP 与 Pi 均不传原生会话目录覆盖，只传 `--no-extensions`，再按元数据顺序重复 `--extension <入口>`，集合恰为对应 Agent 的固定项与模板所选项。不会写入用户或项目 Agent 设置。零可选项仍加载对应的 Herdr 官方集成与 model-cost。OMP 固定项 `omp-herdr-agent-state` 使用已安装的 `herdr-omp-agent-state.ts`，Pi 固定项 `pi-herdr-agent-state` 使用已安装的 `herdr-agent-state.ts`；入口由选项目录显式配置，沿用同一套创建前文件检查。Herdr 只把官方集成安装到原生扩展发现目录，不会向 `agent start` 自动注入这些入口，因此关闭自动发现后必须显式保留。官方集成向 Herdr 上报状态和原生会话引用，不代替 connect-bot，也不修改其可选属性；不选 connect-bot 不影响既有成功定义，不等待或伪造 chat 登记，也不自动跳转 chat。
 
 检查只打开、检查文件类型并读取文件，不导入或执行扩展，不调用模型或余额/账号探测。它不证明扩展或 Skill 初始化/执行成功，也不保证检查到实际加载之间文件不会变化。通过后仍须 Herdr 确认 agent 就绪，再提交一次原生合成初始输入；只有提交确认才成功。后续失败保留真实 Tab、Pane 和 agent 定位，不删除、重建或重发。
 
@@ -106,22 +124,21 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 - 终端必须处于预期的 agent 输入界面；Herdr 在识别为 `blocked` 时拒绝 `agent.prompt`。它提供的是终端文本与 Enter 提交，不是带角色的聊天 API。[H1]
 - 多行文本应作为一次粘贴再提交，不要逐行模拟多个 Enter。Pi 的 bracketed-paste 路径会取消自动补全，避免提交键仅确认补全项。[P5][H1]
 
-## 新对话与会话目录
+## 原生对话与会话目录
 
-创建 Bot 必须得到独立的新对话，不能因为 agent 的隐式续接设置载入同一 cwd 的旧上下文。
+创建 Bot 新建 Herdr Tab／控制对象，但不保证 agent 必然新建原生对话。
 
-- OMP 的 `autoResume` 设置在没有显式会话标志或会话目录时，会续接 cwd 最近的会话
-  （[设置说明](../../oh-my-pi/docs/settings.md)、[会话操作](../../oh-my-pi/docs/session-operations-export-share-fork-resume.md)）。
-  其启动决议在 `--session-dir` 存在时直接创建新会话，不再进入 autoResume 分支
-  （[main.ts](../../oh-my-pi/packages/coding-agent/src/main.ts)）。`--session-dir` 是启动参数
-  （[flag-tables.ts](../../oh-my-pi/packages/coding-agent/src/cli/flag-tables.ts)）。
-- Pi 在没有 `--continue` / `--resume` 时默认创建新会话；同样支持 `--session-dir`
-  （[args.ts](../../pi/packages/coding-agent/src/cli/args.ts)）。
-- herdr-bot 每次创建都把 `--session-dir` 设为模板存储目录旁的
-  `bot-sessions/<本次创建标识>`，并在该目录中启动目标 agent。这样启动选择不依赖 cwd 查找，
-  也不以新 Tab 本身作为“新对话”的证据；目录是真实外部位置，不是伪造的 Herdr 标识。
-- 受控 Herdr 记录可以证明启动选择与参数；真实 OMP / Pi TUI 是否未载入旧上下文仍需人工 H1
-  在实际终端中对照旧、新会话文件或会话标识。
+- herdr-bot 不再覆盖或预分配 `bot-sessions/<创建标识>`，不传 `--session-dir`，也不添加
+  `--no-session`、显式 session ID、`--continue`／`--resume` 等替代性强制策略。
+- Pi／OMP 正常的有效存储配置决定实际目录与原生发现范围。Pi 可配置 `sessionDir` 或
+  `PI_CODING_AGENT_SESSION_DIR`；OMP 的 agent 目录可由 `PI_CODING_AGENT_DIR` 改变，
+  不能把硬编码的 `~/.pi`／`~/.omp` 默认位置当作所有环境的承诺。
+- OMP 的 `autoResume` 可能使相同 cwd 续接已有对话；是否续接由当前 agent 版本和有效配置决定。
+  本功能不启用、关闭或改写它，不为防范未来配置变更加一条强制新建路径。
+- 既有原生主文件与附属记录原位保留，包括旧根目录 `bot-sessions/` 和先前外置目录；
+  不迁移、复制、转换、删除或重写。正常启动的 agent 不会因此自动发现先前的外置文件。
+- [隔离真实运行证据、配置说明与部署 H1 步骤](native-session-storage-acceptance.md) 区分
+  受控启动选择、真实 CLI 落盘／原生发现及尚待用户确认的实际 Herdr 部署，不混用结论。
 
 ## 验证记录
 
@@ -131,6 +148,16 @@ OMP 读取 Skill 文件，去除 frontmatter，构造用户归属的 custom mess
 2. Pi：直接 import `expandPromptTemplate`，验证 `/review login.ts` 与换行参数展开，以及未知模板原样透传。结果 PASS。
 
 完整源码会话模块的直接 import 未成功：OMP checkout 缺 Windows `pi_natives` addon；Pi checkout 缺 provider `data/.manifest.json`。未修改这些仓库或构建依赖。以上不是 Herdr → TUI → 模型的端到端验证；Skill 实际执行链路结论来自下列源码，未声称已观察到模型调用或任务完成。
+
+### Herdr 官方固定扩展核验（2026-10-22）
+
+随附选项目录已将 OMP `omp-herdr-agent-state`、Pi `pi-herdr-agent-state` 设为固定项，使用本机 Herdr 管理的已安装入口。实际 `herdr integration status` 显示 Pi v9、OMP v10 均为 current；运行中的模板读取响应已包含两项，确认无需重启后端即可读到新配置，已有模板无需重存。
+
+针对 Bot 创建、请求断开后的创建、Bot 身份、模板与动态选项目录运行五组已有检查，51 项通过。删除了三处把固定扩展数量钉死为一个的偶然参数总数断言，没有把它们改钉成新的数量。
+
+另用本机安装的 Pi／OMP 启动隔离 Windows TUI，保持 `--no-extensions`，按选项目录传入各自全部固定扩展，未提交模型输入。两者均向独立本地命名管道发出 `pane.report_agent_session`，source 分别为 `herdr:pi` 与 `herdr:omp`，原生会话路径均位于各自隔离目录。管道只收取并确认请求，不连接用户 Herdr；这证明真实 TUI 已加载并执行官方上报扩展，不等同于真实 Herdr 已保存或成功恢复对话。临时 TUI 进程和目录已清理，未停止用户 agent，也未修改用户原生配置。
+
+初次 RPC smoke 能取得原生状态，但 OMP 官方扩展要求交互式 `hasUI`，所以没有上报；最终证据来自真实 TUI，不把 RPC 结果算作上报通过。
 
 ## 一手来源
 

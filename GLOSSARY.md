@@ -12,6 +12,10 @@ _Avoid_: omp-bot 主界面（旧名）, 管理后台, 仪表盘
 外部项目，负责管理 session；herdr-bot 不重复实现其 session 管理。
 _Avoid_: herdr-bot, 本项目
 
+**Herdr Workspace**:
+herdr 中承载 Tab 的分组，是创建 Bot 时新 Tab 的归属；它与表示已登记目录的 zone 是不同概念。
+_Avoid_: zone, Git 工作树, 会话工作目录
+
 **Bot**:
 从 Bot 模板为某个 zone 创建的独立 agent 对话实例，由 herdr 托管；它不等同于 herdr 的 Session 命名空间，也不以接入 connect-bot 为成立条件。
 _Avoid_: herdr session, 会话登记, connect-bot 会话
@@ -128,9 +132,21 @@ _Avoid_: 客户端, 远程设备
 一个实现 connect-bot 的 agent 的对话单元；由该 agent 的扩展上报到 herdr-bot 主界面，每个 agent session 独立呈现其 keepAlive 与状态。
 _Avoid_: omp 会话, herdr session, 连接, 进程, 客户端
 
+**会话 agent 类型**:
+运行该 agent session 的 agent 种类，例如 pi 或 omp；它不同于模型、agent 状态或会话是否由 Bot 模板创建。未获知类型不表示会话离线。
+_Avoid_: 模型类型, Bot 模板类型, agent 状态
+
 **会话登记**:
 herdr-bot 当前跟踪某个 agent session 的记录；它不同于 agent 对话本身，登记消失不表示对话或聊天记录被删除。
 _Avoid_: 会话历史, 连接, agent 会话
+
+**历史会话列表**:
+由 zone 成功创建或通过 connect-bot 成功接入的对话所形成的持久目录，同一原生对话只有一条记录；它独立于当前会话登记，不以在线、离线或结束状态划分成员，也不承载原生对话正文。
+_Avoid_: 离线会话列表, 已结束 Bot 列表, 原生对话文件
+
+**会话恢复**:
+在 Herdr 中启动新的 agent 进程并加载指定原生对话；它不表示复活原进程，也不默认继续中断的任务。
+_Avoid_: 重连原进程, 继续执行任务
 
 **chat 入口**:
 herdr-bot 主界面中呈现所有当前已登记 agent session 的 keepAlive 与最后上报的 agent 状态的 tab，界面标签为 `chat`；它是打开或整页刷新后的默认入口。

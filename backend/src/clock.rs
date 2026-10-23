@@ -15,6 +15,15 @@ use std::time::{Duration, Instant};
 pub trait Clock: Send + Sync + 'static {
     /// 当前单调时刻。
     fn now(&self) -> Instant;
+
+    /// Wall-clock server time used only when first persisting history metadata.
+    /// Lifecycle and countdown decisions continue to use monotonic `now`.
+    fn unix_millis(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("server wall clock must not precede Unix epoch")
+            .as_millis() as u64
+    }
 }
 
 /// 生产用时钟：进程单调时钟。

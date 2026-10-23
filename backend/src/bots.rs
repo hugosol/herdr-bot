@@ -9,7 +9,7 @@
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -69,7 +69,7 @@ pub struct Failure {
 pub struct CreationView {
     /// 本次创建的生命周期标识（不是 Herdr Tab ID）。
     pub id: String,
-    /// 按模板命名规则生成并实际用作 Tab 显示名的名称。
+    /// 按本次有效命名规则（创建覆盖或模板默认）生成并实际用作 Tab 显示名的名称。
     pub name: String,
     /// 发起创建的已登记 zone 目录。
     pub zone: String,
@@ -171,21 +171,6 @@ pub fn is_valid_bot_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-/// 每个 Bot 的会话目录根：模板存储文件所在目录下的 `bot-sessions`。
-///
-/// 每个 Bot 使用其中以本次创建标识命名的独立目录。显式会话目录让 OMP 跳过 `autoResume` 的隐式
-/// 续接，也让 Pi 不依赖其默认查找；目录位于 herdr-bot 自己的数据位置，不写进 zone 工作目录。
-/// 启动路径在服务启动时解析成绝对路径，避免 agent 以自己的 cwd 解释相对路径。
-pub fn session_root(storage_file: &Path) -> PathBuf {
-    let parent = storage_file
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::path::absolute(parent)
-        .unwrap_or_else(|_| parent.to_path_buf())
-        .join("bot-sessions")
-}
-
 /// 按模板的命名规则渲染展示名。
 ///
 /// 只有四个已承诺字段被替换；未知占位符保持原样。`{bot.id}` 取本次的短实例标识，不是 Herdr
@@ -195,17 +180,41 @@ pub fn render_bot_name(rule: &str, zone: &str, template: &BotTemplate, bot_id: &
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    rule.replace("{zone.name}", &zone_name)
-        .replace("{template.name}", &template.name)
-        .replace("{agent}", template.agent.label())
-        .replace("{bot.id}", bot_id)
+    // 只扫描规则本身一次；替换值中的占位符按字面保留，与页面本地预览一致。
+    let mut rendered = String::with_capacity(rule.len());
+    let mut remaining = rule;
+    while let Some(start) = remaining.find('{') {
+        rendered.push_str(&remaining[..start]);
+        remaining = &remaining[start..];
+        let replacement = [
+            ("{zone.name}", zone_name.as_str()),
+            ("{template.name}", template.name.as_str()),
+            ("{agent}", template.agent.label()),
+            ("{bot.id}", bot_id),
+        ]
+        .into_iter()
+        .find(|(placeholder, _)| remaining.starts_with(*placeholder));
+        if let Some((placeholder, value)) = replacement {
+            rendered.push_str(value);
+            remaining = &remaining[placeholder.len()..];
+        } else {
+            rendered.push('{');
+            remaining = &remaining[1..];
+        }
+    }
+    rendered.push_str(remaining);
+    rendered
 }
 
 /// 把 Skill、固定 prompt 与本次 input 合成一次提交的正文。
 ///
 /// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
 /// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
-pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>, input: &str) -> String {
+pub fn compose_initial_input(
+    template: &BotTemplate,
+    native_skill: Option<&str>,
+    input: &str,
+) -> String {
     let mut sections: Vec<&str> = Vec::new();
     if !template.prompt.is_empty() {
         sections.push(template.prompt.as_str());
@@ -225,9 +234,9 @@ pub fn compose_initial_input(template: &BotTemplate, native_skill: Option<&str>,
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
-/// `--session-dir` 给本次 Bot 全新会话位置，避免自动续接同 cwd 的旧对话。
+/// 原生会话位置与自动续接均由 agent 的有效配置决定，不覆盖目录或强制新建。
 /// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与模板所选入口。
-pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &Path) -> Vec<String> {
+pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = &preset.provider_model {
         args.push("--model".to_string());
@@ -237,8 +246,6 @@ pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &
         args.push("--thinking".to_string());
         args.push(thinking.clone());
     }
-    args.push("--session-dir".to_string());
-    args.push(session_dir.to_string_lossy().into_owned());
     args.push("--no-extensions".to_string());
     for extension in &preset.extensions {
         args.push("--extension".to_string());
@@ -253,14 +260,15 @@ pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset, session_dir: &
 /// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
 pub async fn run_creation(
     herdr: Arc<HerdrClient>,
+    history: Arc<crate::history::History>,
     job: Arc<Mutex<CreationView>>,
     template: BotTemplate,
     preset: crate::catalog::ResolvedPreset,
     zone: String,
     input: String,
-    session_dir: PathBuf,
+    workspace_name: String,
 ) {
-    let workspace = match herdr.workspace().await {
+    let workspace = match herdr.workspace(&workspace_name).await {
         Ok(workspace) => workspace,
         Err(error) => {
             fail(&job, FailureStage::Workspace, &error).await;
@@ -287,7 +295,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.agent_name = Some(agent_name.clone());
     }
-    let args = agent_launch_args(&preset, &session_dir);
+    let args = agent_launch_args(&preset);
     let kind = template.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
@@ -305,9 +313,57 @@ pub async fn run_creation(
         return;
     }
 
-    let mut view = job.lock().await;
-    view.input_submitted = true;
-    view.stage = Stage::Succeeded;
+    let creation_id = {
+        let mut view = job.lock().await;
+        view.input_submitted = true;
+        view.stage = Stage::Succeeded;
+        view.id.clone()
+    };
+    // The page and the creation result do not own this task. Never hold a creation,
+    // current-registration or history lock while waiting for external identity.
+    tokio::spawn(async move {
+        collect_native_history(herdr, history, creation_id, agent_name, kind, name).await;
+    });
+}
+
+async fn collect_native_history(
+    herdr: Arc<HerdrClient>,
+    history: Arc<crate::history::History>,
+    creation_id: String,
+    agent_name: String,
+    kind: &'static str,
+    name: String,
+) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut last_reason = String::from("native identity unavailable");
+    let identity = loop {
+        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind, deadline)).await {
+            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
+            Ok(Ok(_)) => {
+                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
+                return;
+            }
+            Ok(Err(error)) => {
+                // A reader noticing the shared deadline must not overwrite the
+                // useful underlying cause (for example an unavailable header).
+                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
+            }
+            Err(_) => {
+                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
+                return;
+            }
+        }
+        if tokio::time::timeout_at(deadline, tokio::time::sleep(std::time::Duration::from_millis(100))).await.is_err() {
+            eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
+            return;
+        }
+    };
+    // Exactly one persistence attempt after identity; no background write retries.
+    if let Err(error) = history.record_zone(
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(),
+    ).await {
+        eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
+    }
 }
 
 /// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。

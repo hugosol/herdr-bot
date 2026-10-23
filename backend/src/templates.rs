@@ -41,7 +41,6 @@ impl Agent {
     }
 }
 
-
 /// 一个已保存的模板。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -111,14 +110,32 @@ impl TemplateInput {
             .as_deref()
             .ok_or(TemplateError::AgentRequired)?
             .trim();
-        let agent = catalog.agents.iter()
+        let agent = catalog
+            .agents
+            .iter()
             .find(|candidate| candidate.id.label() == agent)
             .map(|candidate| candidate.id)
             .ok_or_else(|| TemplateError::UnknownAgent(agent.to_string()))?;
 
-        let model = self.model.as_deref().map(str::trim).filter(|v| !v.is_empty()).unwrap_or("default").to_owned();
-        let thinking = self.thinking.as_deref().map(str::trim).filter(|v| !v.is_empty()).unwrap_or("default").to_owned();
-        let skill = self.skill.as_deref().map(str::trim).filter(|v| !v.is_empty())
+        let model = self
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("default")
+            .to_owned();
+        let thinking = self
+            .thinking
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("default")
+            .to_owned();
+        let skill = self
+            .skill
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
             .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
         catalog.validate_extensions(agent, &self.extensions)?;
@@ -235,7 +252,9 @@ impl TemplateError {
                 format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
             }
             Self::InvalidExtension(value) => {
-                format!("扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。")
+                format!(
+                    "扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。"
+                )
             }
             Self::Metadata(detail) => detail.clone(),
             Self::NotFound => "目标模板不存在：可能已被删除。".to_string(),

@@ -128,7 +128,7 @@ fn encode(value: &str) -> String {
 
 fn status_url(zone: &Path) -> String {
     format!(
-        "/api/zones/git-status?zone={}",
+        "/api/zones/git-status?zone={}&refresh=true",
         encode(&zone.to_string_lossy())
     )
 }
@@ -270,11 +270,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 async fn git_status(server: &TestServer, zone: &Path) -> Value {

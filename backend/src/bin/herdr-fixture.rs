@@ -10,6 +10,12 @@
 //! - `tab create --workspace ID --cwd PATH --label TEXT --no-focus`
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
+//! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
+//!
+//! 原生引用控制：`native_session` 是官方 `{source,agent,kind,value}`，`native_cwd`／
+//! `foreground_cwd` 为实际报告目录；`native_session_delay_ms`、`fail_agent_get` 和
+//! `native_session_gate`（同下述 gate 格式）控制读取。gate 释放后重新读取 behavior，
+//! 所以身份可以在创建页面关闭之后才由外部提供；不会从其他创建或磁盘目录推导。
 //!
 //! `behavior.json` 可延迟或拒绝某一步，用来观察“启动中”“提交中”与失败边界：
 //! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`prompt_delay_ms`，
@@ -46,6 +52,7 @@ fn main() {
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
+        Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
         _ => usage(&args),
     }
 }
@@ -285,6 +292,25 @@ fn agent_start(args: &[String]) {
             "argv": extra,
         },
     }));
+}
+
+fn agent_get(args: &[String]) {
+    let initial = behavior();
+    let target = args.get(2).cloned().unwrap_or_default();
+    record("calls.jsonl", json!({"at":now_ms(),"kind":"agent_get","pid":process::id(),"argv":args,"target":target}));
+    delay(&initial, "native_session_delay_ms");
+    wait_at_gate(&initial, "native_session_gate", &target);
+    if flag(&initial, "fail_agent_get") {
+        fail("agent_get_failed", "受控夹具无法读取精确原生身份");
+    }
+    // Re-read after the gate so the external identity may arrive while a page is closed.
+    let behavior = behavior();
+    output(json!({"result":{"agent":{
+        "name":target,
+        "agent_session":behavior.get("native_session").cloned().unwrap_or(Value::Null),
+        "cwd":behavior.get("native_cwd").cloned().unwrap_or(Value::Null),
+        "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
+    }}}));
 }
 
 fn agent_prompt(args: &[String]) {

@@ -33,6 +33,7 @@ impl PowerOff for NeverPowerOff {
 /// 一个用例独占的服务：真实监听端口的应用，加上可订阅的同一份会话表。
 struct SessionServer {
     server: TestServer,
+    sessions: Arc<SessionsState>,
     frames: broadcast::Receiver<Observation>,
 }
 
@@ -45,6 +46,7 @@ impl SessionServer {
             herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
+            sessions,
             frames,
         }
     }
@@ -79,8 +81,12 @@ impl SessionServer {
 
 /// 响应体必须是 JSON。
 fn body_of(response: &HttpResponse) -> Value {
-    serde_json::from_str(&response.body)
-        .unwrap_or_else(|e| panic!("响应体必须是 JSON（HTTP {}）：{e}：{}", response.status, response.body))
+    serde_json::from_str(&response.body).unwrap_or_else(|e| {
+        panic!(
+            "响应体必须是 JSON（HTTP {}）：{e}：{}",
+            response.status, response.body
+        )
+    })
 }
 
 /// 断言一次成功回执：HTTP 200 且恰好是 `{outcome}`。
@@ -114,11 +120,7 @@ fn upsert_view(frame: Observation) -> Value {
 #[test]
 fn the_default_windows_are_inclusive_at_their_boundaries() {
     let policy = SessionPolicy::default();
-    assert_eq!(
-        policy.online(),
-        Duration::from_secs(10),
-        "缺省在线有效期"
-    );
+    assert_eq!(policy.online(), Duration::from_secs(10), "缺省在线有效期");
     assert_eq!(
         policy.retention(),
         Duration::from_secs(30),
@@ -137,7 +139,10 @@ fn the_default_windows_are_inclusive_at_their_boundaries() {
         "恰 10s 仍在线"
     );
     assert!(
-        !policy.is_online(last_seen, last_seen + Duration::from_secs(10) + Duration::from_millis(1)),
+        !policy.is_online(
+            last_seen,
+            last_seen + Duration::from_secs(10) + Duration::from_millis(1)
+        ),
         "超过 10s 即离线"
     );
 
@@ -146,7 +151,10 @@ fn the_default_windows_are_inclusive_at_their_boundaries() {
         "恰 40s 仍保留登记"
     );
     assert!(
-        policy.is_expired(last_seen, last_seen + Duration::from_secs(40) + Duration::from_millis(1)),
+        policy.is_expired(
+            last_seen,
+            last_seen + Duration::from_secs(40) + Duration::from_millis(1)
+        ),
         "超过 40s 由维护清除"
     );
 }
@@ -162,7 +170,7 @@ async fn register_reports_online_count_and_publishes_the_view() {
     assert_eq!(response.status, 200, "响应体：{}", response.body);
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 
     // 视图字段与契约逐字一致：没有 pid/sessionFile、没有 state，可空字段一个 null 都不出现。
@@ -170,6 +178,34 @@ async fn register_reports_online_count_and_publishes_the_view() {
         upsert_view(server.take_frame()),
         json!({"sessionId": "s1", "cwd": "C:/work", "online": true})
     );
+}
+
+/// 原生类型与其他注册字段一样更新并进快照；开放未来字符串，兼容缺字段的旧扩展。
+#[tokio::test]
+async fn agent_type_round_trips_through_upserts_and_snapshots() {
+    let mut server = SessionServer::start().await;
+    for agent_type in [Some("pi"), Some("omp"), Some("future-harness"), None] {
+        let mut data = json!({"cwd": "C:/work"});
+        if let Some(value) = agent_type {
+            data["agentType"] = json!(value);
+        }
+        let response = server
+            .post(
+                &json!({
+                    "sessionId": "native", "kind": "register", "data": data
+                })
+                .to_string(),
+            )
+            .await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let view = upsert_view(server.take_frame());
+        let snapshot = serde_json::to_value(server.sessions.snapshot().await).unwrap();
+        assert_eq!(snapshot[0], view);
+        match agent_type {
+            Some(value) => assert_eq!(view["agentType"], value),
+            None => assert!(view.get("agentType").is_none()),
+        }
+    }
 }
 
 /// 注册时的展示字段是快照：`sessionName`/`model` 进视图，`sessionFile`/`pid` 只存下不下发；
@@ -186,7 +222,7 @@ async fn register_keeps_optional_fields_out_of_the_view_unless_present() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -207,7 +243,7 @@ async fn register_keeps_optional_fields_out_of_the_view_unless_present() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 2})
+        json!({"outcome": "registered", "onlineCount": 2, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -227,7 +263,7 @@ async fn unknown_fields_are_ignored() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     assert_eq!(
         upsert_view(server.take_frame()),
@@ -245,7 +281,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&first),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.drain_frames();
 
@@ -255,7 +291,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&repeated),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.assert_no_frame();
 
@@ -274,7 +310,7 @@ async fn repeated_register_is_idempotent_and_refreshes_the_snapshot() {
         .await;
     assert_eq!(
         body_of(&other),
-        json!({"outcome": "registered", "onlineCount": 2})
+        json!({"outcome": "registered", "onlineCount": 2, "historySaved": true})
     );
 }
 
@@ -301,7 +337,7 @@ async fn repeated_register_preserves_the_observed_state_without_a_frame() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
     server.assert_no_frame();
 }
@@ -342,7 +378,9 @@ async fn state_and_heartbeat_upsert_the_state_idempotently() {
     assert_outcome(&repeated, "accepted");
     server.assert_no_frame();
 
-    let bare = server.post(r#"{"sessionId":"s1","kind":"heartbeat"}"#).await;
+    let bare = server
+        .post(r#"{"sessionId":"s1","kind":"heartbeat"}"#)
+        .await;
     assert_outcome(&bare, "accepted");
     server.assert_no_frame();
 }
@@ -380,7 +418,7 @@ async fn unregister_removes_the_row_and_a_later_register_builds_a_new_one() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -407,7 +445,7 @@ async fn non_register_events_for_unknown_sessions_are_rejected_without_building_
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -449,7 +487,11 @@ async fn malformed_or_incomplete_events_are_invalid_event() {
     for (case, event) in invalid_events {
         let response = server.post(event).await;
         assert_eq!(response.status, 400, "用例「{case}」：{}", response.body);
-        assert_eq!(body_of(&response)["code"], "invalid-event", "用例「{case}」");
+        assert_eq!(
+            body_of(&response)["code"],
+            "invalid-event",
+            "用例「{case}」"
+        );
     }
     server.assert_no_frame();
 
@@ -459,7 +501,7 @@ async fn malformed_or_incomplete_events_are_invalid_event() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -477,7 +519,8 @@ async fn oversized_event_payload_is_rejected() {
     assert_eq!(response.status, 200, "8KB 以内必须照常接受");
 
     let large_cwd = "a".repeat(8_200);
-    let oversized = format!(r#"{{"sessionId":"s2","kind":"register","data":{{"cwd":"{large_cwd}"}}}}"#);
+    let oversized =
+        format!(r#"{{"sessionId":"s2","kind":"register","data":{{"cwd":"{large_cwd}"}}}}"#);
     assert!(oversized.len() > 8 * 1024, "用例本身必须超过 8KB");
     let response = server.post(&oversized).await;
     assert_rejected(&response, 413, "payload-too-large");
@@ -505,7 +548,7 @@ async fn query_strings_are_rejected_as_unexpected_parameters() {
         .await;
     assert_eq!(
         body_of(&response),
-        json!({"outcome": "registered", "onlineCount": 1})
+        json!({"outcome": "registered", "onlineCount": 1, "historySaved": true})
     );
 }
 
@@ -522,6 +565,10 @@ async fn unknown_session_paths_are_unknown_endpoint() {
         )
         .await;
         assert_eq!(response.status, 404, "路径 {path}：{}", response.body);
-        assert_eq!(body_of(&response)["code"], "unknown-endpoint", "路径 {path}");
+        assert_eq!(
+            body_of(&response)["code"],
+            "unknown-endpoint",
+            "路径 {path}"
+        );
     }
 }

@@ -1,0 +1,9 @@
+{
+  "seam": "S2 actual delivered backend stdout/stderr captured during real Chrome acceptance; controlled Herdr external process",
+  "warnings": {
+    "missing": "warning: zone-history creation=bc-add80c5a677c agent=bot-2b4c0bb4e343 kind=omp identity-timeout: Herdr 的 agent get native identity 返回了无法理解的响应：native identity is not available",
+    "wrong-agent": "warning: zone-history creation=bc-ebeb0dcad71c agent=bot-655cb7ac5323 kind=omp identity-timeout: Herdr 的 agent get native identity 返回了无法理解的响应：native reference agent/source does not match this creation",
+    "unreadable-header": "warning: zone-history creation=bc-2ffb108a1a4c agent=bot-a902d28c9e73 kind=omp identity-timeout: Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+    "save-failure": "warning: zone-history creation=bc-6ba60b32c0f4 agent=bot-e556740444cb kind=omp session=omp-save-failure-id save-failed: 拒绝访问。 (os error 5)"
+  }
+}

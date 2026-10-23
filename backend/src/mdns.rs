@@ -389,7 +389,10 @@ mod tests {
     fn non_publishable_override_yields_no_address_instead_of_falling_back() {
         // 覆盖值本身不可发布时不退化成别的地址，也不发布它：跳过发布。
         assert_eq!(select_publish_address(Some(LOOPBACK), &[MAIN_ROUTE]), None);
-        assert_eq!(select_publish_address(Some(LINK_LOCAL), &[MAIN_ROUTE]), None);
+        assert_eq!(
+            select_publish_address(Some(LINK_LOCAL), &[MAIN_ROUTE]),
+            None
+        );
     }
 
     #[test]
@@ -441,7 +444,11 @@ mod tests {
         assert_eq!(service.get_fullname(), "herdr-bot._http._tcp.local.");
         assert_eq!(service.get_port(), 8787);
         assert_eq!(
-            service.get_addresses_v4().into_iter().copied().collect::<Vec<_>>(),
+            service
+                .get_addresses_v4()
+                .into_iter()
+                .copied()
+                .collect::<Vec<_>>(),
             vec![MAIN_ROUTE],
             "发布内容只含这一个 IPv4"
         );

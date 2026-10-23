@@ -27,11 +27,6 @@ pub fn prepare(config: &Config) -> anyhow::Result<()> {
         ] {
             remove_file(Path::new(file))?;
         }
-        match fs::remove_dir_all("bot-sessions") {
-            Ok(()) => (),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => (),
-            Err(error) => return Err(error).context("清理旧会话目录 bot-sessions 失败"),
-        }
         fs::write(marker, b"runtime layout v1\n").context("写入运行数据切换标记失败")?;
     }
     Ok(())

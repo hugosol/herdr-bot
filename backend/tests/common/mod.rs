@@ -316,12 +316,20 @@ pub fn config_with_countdown(
         },
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
-        sessions: herdr_bot::SessionsConfig::default(),
+        sessions: herdr_bot::SessionsConfig {
+            history_file: std::env::temp_dir().join("herdr-bot fixture checks").join(format!(
+                "history-{}-{}.json", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)
+            )),
+            ..herdr_bot::SessionsConfig::default()
+        },
         // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
         zones: herdr_bot::ZonesConfig::default(),
         // Bot 模板存储文件同理；需要隔离存储的用例自己改写这个路径。
         bot_templates: herdr_bot::BotTemplatesConfig {
-            metadata_file: repo_fixtures_dir().parent().unwrap().join("meta-data/bot-options.toml"),
+            metadata_file: repo_fixtures_dir()
+                .parent()
+                .unwrap()
+                .join("meta-data/bot-options.toml"),
             ..herdr_bot::BotTemplatesConfig::default()
         },
         // 目标 Herdr Workspace 必须显式；不需要创建 Bot 的用例取一个固定的合法名称。

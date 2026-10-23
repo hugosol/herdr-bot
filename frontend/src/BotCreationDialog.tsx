@@ -8,6 +8,7 @@ import {
   type BotPreview,
 } from './botCreationApi'
 import { fetchBotTemplates, type BotTemplate } from './botTemplateApi'
+import { renderBotNameExample } from './botTemplateNaming'
 
 const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
   starting: '正在启动',
@@ -34,7 +35,7 @@ function failureOutcomeText(creation: BotCreation): string {
   }
   switch (failure.stage) {
     case 'workspace':
-      return '本次没有新建 Tab，也没有启动 agent；不会自动重试或改换 Workspace。'
+      return '本次没有新建 Tab，也没有启动 agent；不会自动重试或改换 Workspace。已保留表单，可直接再次创建，也可改选 Workspace 后创建。'
     case 'tab':
       return '没有继续启动 agent；已经产生的对象如果存在会保留，不会自动删除或重建。'
     case 'start':
@@ -50,14 +51,16 @@ function failureOutcomeText(creation: BotCreation): string {
 /**
  * 从某个 zone 创建 Bot 的弹窗。
  *
- * 名称只显示后端预览的只读结果，没有手工覆盖入口。确认后页面轮询同一次创建：只有后端确认目标
+ * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改模板。确认后页面轮询同一次创建：只有后端确认目标
  * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
 export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
   const [templates, setTemplates] = useState<BotTemplate[] | null>(null)
   const [templateId, setTemplateId] = useState('')
+  const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
+  const [botNameRule, setBotNameRule] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<BotPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
@@ -92,7 +95,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }, [])
 
-  // 模板选定后由后端生成名称与本次短实例标识；页面不自己拼名称。
+  // 模板切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
   useEffect(() => {
     if (templateId === '') {
       setPreview(null)
@@ -101,12 +104,15 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     const sequence = previewSequence.current + 1
     previewSequence.current = sequence
     setPreviewing(true)
+    setPreview(null)
+    setBotNameRule('')
     setPreviewError(null)
     void previewBot(zone, templateId).then((result) => {
       if (previewSequence.current !== sequence) return
       setPreviewing(false)
       if (result.kind === 'ok') {
         setPreview(result.value)
+        setBotNameRule(result.value.botNameRule)
       } else {
         setPreview(null)
         setPreviewError(
@@ -144,18 +150,34 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }, [creation])
 
+  const name = preview === null ? '' : renderBotNameExample(
+    botNameRule,
+    preview.templateName,
+    preview.agent,
+    { zoneName: preview.zoneName, botId: preview.botId },
+  )
+  const validName = botNameRule.trim() !== '' && !/[\r\n]/.test(botNameRule) &&
+    name.trim() !== '' && !/[\r\n]/.test(name)
+
+  const workspaceFailed = creation?.stage === 'failed' && creation.failure?.stage === 'workspace'
+  const running = creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed'
+  const finished = creation !== null && !running && !workspaceFailed
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (preview === null || submitting || creation !== null) return
+    if (preview === null || previewing || !validName || submitting || (creation !== null && !workspaceFailed)) return
 
     setSubmitting(true)
     setRequestError(null)
+    setObservationError(null)
     const result = await createBot({
       zone,
       templateId: preview.templateId,
       botId: preview.botId,
-      expectedName: preview.name,
+      expectedName: name,
+      botNameRule,
       input,
+      workspaceTarget,
     })
     setSubmitting(false)
     if (result.kind === 'ok') {
@@ -172,10 +194,9 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
     }
   }
 
-  const running = creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed'
-  const finished = creation !== null && !running
   const canSubmit =
-    preview !== null && !previewing && !submitting && !running && templates !== null
+    preview !== null && validName && !previewing && !submitting &&
+    (creation === null || workspaceFailed) && templates !== null
 
   return (
     <div className="zone-modal">
@@ -189,7 +210,8 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
       >
         <h2 className="zone-dialog__title">创建 Bot</h2>
         <p className="zone-dialog__hint">
-          新 Bot 会在服务端配置的 Herdr Workspace 中新建独立 Tab，并以所选 zone 的目录作为工作目录。
+          新 Bot 会在所选 Herdr Workspace 中新建独立 Tab；默认使用服务端配置，当前按 zone 目录名匹配。
+          无论选择哪项，都以所选 zone 的目录作为工作目录。
           创建前自动检查模板的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自模板。
           文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
         </p>
@@ -207,7 +229,7 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           data-testid="bot-template"
           value={templateId}
           onChange={(event) => setTemplateId(event.target.value)}
-          disabled={templates === null || running || finished}
+          disabled={templates === null || submitting || running || finished}
         >
           {templates !== null && templates.length === 0 && <option value="">没有可用的模板</option>}
           {(templates ?? []).map((template) => (
@@ -216,6 +238,27 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
             </option>
           ))}
         </select>
+
+        <label className="zone-form__label" htmlFor="bot-workspace-target">
+          Herdr Workspace
+        </label>
+        <select
+          id="bot-workspace-target"
+          className="zone-form__input zone-form__select"
+          value={workspaceTarget}
+          onChange={(event) =>
+            setWorkspaceTarget(event.target.value === 'current' ? 'current' : 'default')
+          }
+          disabled={submitting || running || finished}
+          aria-describedby="bot-workspace-hint"
+        >
+          <option value="default">默认</option>
+          <option value="current">当前</option>
+        </select>
+        <p id="bot-workspace-hint" className="zone-dialog__hint">
+          当前按 zone 目录名匹配（区分大小写），不是 Herdr 当前聚焦的 Workspace，也不是浏览器所在子目录。
+          未找到或匹配到多个 Workspace 时创建失败，不会改用默认 Workspace。
+        </p>
 
         <label className="zone-form__label" htmlFor="bot-input">
           初始 input（可为空）
@@ -227,11 +270,24 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           rows={4}
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          disabled={running || finished}
+          disabled={submitting || running || finished}
           spellCheck={false}
         />
 
-        <span className="zone-form__label">本次 Bot 名称（只读预览）</span>
+        <label className="zone-form__label" htmlFor="bot-name-rule">本次 Bot 名称（可编辑规则）</label>
+        <input
+          id="bot-name-rule"
+          className="zone-form__input"
+          value={botNameRule}
+          onChange={(event) => setBotNameRule(event.target.value)}
+          disabled={preview === null || previewing || submitting || running || finished}
+          spellCheck={false}
+          aria-describedby="bot-name-hint"
+        />
+        <p id="bot-name-hint" className="zone-dialog__hint">
+          可修改固定文字，保留的占位符会自动转换；仅影响本次创建，不修改模板。
+        </p>
+        <span className="zone-form__label">最终名称预览</span>
         <output
           className="bot-name-preview"
           data-testid="bot-name-preview"
@@ -241,14 +297,14 @@ export function BotCreationDialog({ zone, onClose }: { zone: string; onClose: ()
           {previewing
             ? '正在生成名称……'
             : preview !== null
-              ? preview.name
+              ? name || '请输入名称规则'
               : previewError !== null
                 ? '名称暂不可用'
                 : '选择模板后显示'}
         </output>
-        <p className="zone-dialog__hint">
-          名称由模板的 bot-name 规则与本次短实例标识决定，不能在弹窗中手工覆盖。
-        </p>
+        {preview !== null && !previewing && !validName && (
+          <p className="zone-feedback" role="alert">名称必须是非空单行文字。</p>
+        )}
 
         {loadError !== null && (
           <p className="zone-feedback" data-testid="bot-load-error" data-kind="error" role="alert">

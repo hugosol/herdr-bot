@@ -85,7 +85,10 @@ impl Panel {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let text = self.log_text();
-            if let Some(line) = text.lines().find(|line| line.contains("[herdr-bot] 监听：http://")) {
+            if let Some(line) = text
+                .lines()
+                .find(|line| line.contains("[herdr-bot] 监听：http://"))
+            {
                 let host_port = line
                     .split("//")
                     .nth(1)
@@ -185,7 +188,9 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
             if read == 0 {
                 return;
             }
-            log.lock().expect("写入日志").extend_from_slice(&buffer[..read]);
+            log.lock()
+                .expect("写入日志")
+                .extend_from_slice(&buffer[..read]);
         }
     });
 }
@@ -201,9 +206,10 @@ static SAFE_SHELL_BINARY: LazyLock<PathBuf> = LazyLock::new(|| {
         .and_then(Path::parent)
         .expect("测试可执行文件位于 <target>/<profile>/deps 下")
         .to_path_buf();
-    let binary = profile_dir
-        .join("examples")
-        .join(format!("safe_shutdown_shell{}", std::env::consts::EXE_SUFFIX));
+    let binary = profile_dir.join("examples").join(format!(
+        "safe_shutdown_shell{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     build_safe_shell(&profile_dir);
     assert!(
         binary.is_file(),
@@ -314,7 +320,10 @@ async fn restarting_the_process_clears_registrations_and_the_active_arrangement(
         1,
         "旧实例里有这条登记：{snapshot}"
     );
-    assert!(!first.shutdown_calls(), "倒计时远未到期：安全 adapter 不得被调用");
+    assert!(
+        !first.shutdown_calls(),
+        "倒计时远未到期：安全 adapter 不得被调用"
+    );
 
     // 结束进程，再用**同一份配置**启动一个新进程。
     first.stop();
@@ -323,12 +332,19 @@ async fn restarting_the_process_clears_registrations_and_the_active_arrangement(
     let mut restarted = Panel::start(&config_path, "shutdown restart b");
     let frame = restarted.observe().await;
     let shutdown = shutdown_of(&frame);
-    assert_eq!(shutdown["phase"], json!("none"), "重启后的首帧不得恢复任何旧安排：{frame}");
+    assert_eq!(
+        shutdown["phase"],
+        json!("none"),
+        "重启后的首帧不得恢复任何旧安排：{frame}"
+    );
     assert!(
         shutdown.get("arrangementId").is_none() && shutdown.get("deadline").is_none(),
         "首帧的可观察字段只有「没有安排」：{frame}"
     );
-    assert!(sessions_of(&frame).is_empty(), "重启后不得恢复旧登记：{frame}");
+    assert!(
+        sessions_of(&frame).is_empty(),
+        "重启后不得恢复旧登记：{frame}"
+    );
     assert_eq!(
         shutdown["monitoredSessionIds"],
         json!([]),
@@ -383,8 +399,15 @@ async fn restarting_the_process_clears_monitoring_and_the_automatic_arrangement(
         "监听命令之后权威集合里应有这个会话：{monitored}"
     );
     let snapshot = first.observe().await;
-    assert_eq!(shutdown_of(&snapshot)["monitoredSessionIds"], json!(["sess-a"]));
-    assert_eq!(sessions_of(&snapshot).len(), 1, "旧实例里有这条登记：{snapshot}");
+    assert_eq!(
+        shutdown_of(&snapshot)["monitoredSessionIds"],
+        json!(["sess-a"])
+    );
+    assert_eq!(
+        sessions_of(&snapshot).len(),
+        1,
+        "旧实例里有这条登记：{snapshot}"
+    );
     assert!(!first.shutdown_calls(), "没有安排：安全 adapter 不得被调用");
 
     first.stop();
@@ -394,13 +417,20 @@ async fn restarting_the_process_clears_monitoring_and_the_automatic_arrangement(
     let mut restarted = Panel::start(&config_path, "monitoring restart b");
     let empty = restarted.observe().await;
     let shutdown = shutdown_of(&empty);
-    assert_eq!(shutdown["phase"], json!("none"), "重启后不得恢复旧安排：{empty}");
+    assert_eq!(
+        shutdown["phase"],
+        json!("none"),
+        "重启后不得恢复旧安排：{empty}"
+    );
     assert_eq!(
         shutdown["monitoredSessionIds"],
         json!([]),
         "重启后不得恢复旧监听：{empty}"
     );
-    assert!(sessions_of(&empty).is_empty(), "重启后不得恢复旧登记：{empty}");
+    assert!(
+        sessions_of(&empty).is_empty(),
+        "重启后不得恢复旧登记：{empty}"
+    );
 
     // 同一个新进程里再建立一次**自动倒计时**（成员进入等待用户输入即触发）。
     restarted.register_working("sess-a").await;
@@ -424,7 +454,10 @@ async fn restarting_the_process_clears_monitoring_and_the_automatic_arrangement(
         json!([]),
         "形成安排即消耗整组监听：{arranged}"
     );
-    assert!(!restarted.shutdown_calls(), "倒计时远未到期：安全 adapter 不得被调用");
+    assert!(
+        !restarted.shutdown_calls(),
+        "倒计时远未到期：安全 adapter 不得被调用"
+    );
 
     // 再次重启：旧安排也不恢复，而且不会被补执行一次。
     restarted.stop();

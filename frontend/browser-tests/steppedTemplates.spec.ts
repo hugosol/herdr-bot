@@ -44,9 +44,9 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await page.getByTestId('template-next').click()
   await expect(page.getByTestId('template-step')).toHaveText('2 / 3 · 扩展配置')
   const fixed = page.getByTestId('template-fixed-extensions')
-  await expect(fixed).toHaveText('固定扩展（始终加载，不可取消）model-cost')
+  await expect(fixed).toHaveText('固定扩展（始终加载，不可取消）herdr-agent-state、model-cost')
   await expect(fixed.getByRole('checkbox')).toHaveCount(0)
-  await expect(page.getByRole('checkbox')).toHaveCount(2)
+  await expect(page.getByRole('checkbox')).toHaveCount(3)
   await expect(page.getByTestId('extension-omp-codebase-tools')).not.toBeChecked()
   await expect(page.getByTestId('extension-omp-connect-bot')).not.toBeChecked()
   await page.getByTestId('extension-omp-codebase-tools').check()
@@ -66,8 +66,8 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await expect(page.getByTestId('template-step')).toHaveText('3 / 3 · 确认保存')
   const summary = page.getByTestId('template-summary')
   for (const [id, value] of Object.entries({
-    name: '发布巡检', botName: PRESET.botName, agent: 'OMP', model: 'gpt-6.1-sol', thinking: 'high',
-    skill: '/code-review', prompt: PRESET.prompt, fixed: 'model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭',
+    name: '发布巡检', botName: PRESET.botName, agent: 'oh-my-pi', model: 'GPT-6.1-sol', thinking: 'high',
+    skill: '/code-review', prompt: PRESET.prompt, fixed: 'herdr-agent-state、model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭',
   })) await expect(summary.getByTestId(`summary-${id}`)).toHaveText(value)
   expect((await server.getTemplates()).templates).toEqual([])
   await page.getByTestId('save-template').click()
@@ -101,7 +101,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await page.getByTestId('template-skill').selectOption('teach')
   await page.getByTestId('template-prompt').fill('编辑首行\n编辑次行')
   await page.getByTestId('template-next').click()
-  await expect(page.getByRole('checkbox')).toHaveCount(1)
+  await expect(page.getByRole('checkbox')).toHaveCount(3)
   await page.getByTestId('extension-pi-codebase-tools').check()
   await page.getByTestId('template-next').click()
   await page.getByTestId('template-back').click()
@@ -139,7 +139,7 @@ test('切换 Agent 清空扩展且切回不恢复，新模板零选明确保存�
   await expect(page.getByTestId('template-model')).toHaveValue('default')
   await expect(page.getByTestId('template-thinking')).toHaveValue('default')
   await page.getByTestId('template-next').click()
-  await expect(page.getByRole('checkbox')).toHaveCount(1)
+  await expect(page.getByRole('checkbox')).toHaveCount(3)
   await expect(page.getByTestId('extension-pi-codebase-tools')).not.toBeChecked()
   await page.getByTestId('template-back').click()
   await page.getByTestId('template-agent').selectOption('omp')
@@ -150,7 +150,7 @@ test('切换 Agent 清空扩展且切回不恢复，新模板零选明确保存�
   await expect(page.getByTestId('extension-omp-connect-bot')).not.toBeChecked()
   await page.getByTestId('template-next').click()
   await expect(page.getByTestId('summary-optional')).toHaveText('无')
-  await expect(page.getByTestId('summary-fixed')).toHaveText('model-cost')
+  await expect(page.getByTestId('summary-fixed')).toHaveText('herdr-agent-state、model-cost')
   await page.getByTestId('save-template').click()
   await expect(page.getByTestId('template-dialog')).toHaveCount(0)
   expect((await server.getTemplates()).templates[0]).toMatchObject({ name: '零选样例', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
@@ -228,11 +228,16 @@ test('公开保存六种扩展组合并在独立客户端和真实重启后保�
   server = await startServer()
   const options = (await (await fetch(`${server.baseURL}/api/bot-templates`)).json()).options
   expect(options.extensions.map(({ id, agent, kind }: { id: string; agent: string; kind: string }) => ({ id, agent, kind }))).toEqual([
+    { id: 'omp-herdr-agent-state', agent: 'omp', kind: 'fixed' },
     { id: 'omp-model-cost', agent: 'omp', kind: 'fixed' },
     { id: 'omp-codebase-tools', agent: 'omp', kind: 'optional' },
     { id: 'omp-connect-bot', agent: 'omp', kind: 'optional' },
+    { id: 'omp-oh-my-wayfinder', agent: 'omp', kind: 'optional' },
+    { id: 'pi-herdr-agent-state', agent: 'pi', kind: 'fixed' },
     { id: 'pi-model-cost', agent: 'pi', kind: 'fixed' },
     { id: 'pi-codebase-tools', agent: 'pi', kind: 'optional' },
+    { id: 'pi-connect-bot', agent: 'pi', kind: 'optional' },
+    { id: 'pi-web-access', agent: 'pi', kind: 'optional' },
   ])
   const cases = [
     { agent: 'omp', extensions: [] },

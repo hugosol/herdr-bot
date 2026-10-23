@@ -8,6 +8,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
+import net from 'node:net'
+import { randomInt } from 'node:crypto'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -38,6 +40,8 @@ export type HerdrFixtureSetup = {
 }
 
 export type StartServerOptions = {
+  /** Existing record-only PowerOff shell; required for tests sending shutdown commands. */
+  safeShutdown?: boolean
   herdr?: HerdrFixtureSetup
   /** Axum 监听地址；默认只监听回环。局域网用例传 `0.0.0.0:0`。 */
   listenAddr?: string
@@ -50,6 +54,8 @@ export type E2EServer = {
   storageFile: string
   metadataFile: string
   configPath: string
+  /** Actual delivered backend stdout/stderr; diagnostic observation only. */
+  diagnostics: () => string
   getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
   /** 受控 Herdr 自己写下的外部调用记录。 */
   herdrCalls: () => Record<string, unknown>[]
@@ -84,6 +90,25 @@ export function lanIPv4(): string | null {
   return privateAddress ?? candidates[0] ?? null
 }
 
+// Windows may allocate port 0 inside Fetch/Chrome's forbidden service-port range
+// (for example 6566 or 6667). Probe the unrestricted dynamic range instead.
+async function browserListenAddress(address: string): Promise<string> {
+  if (!address.endsWith(':0')) return address
+  const host = address.slice(0, -2)
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const port = randomInt(49152, 65536)
+    const server = net.createServer()
+    const { promise, resolve, reject } = Promise.withResolvers<boolean>()
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE' || error.code === 'EACCES') resolve(false)
+      else reject(error)
+    })
+    server.listen(port, host, () => server.close(error => error ? reject(error) : resolve(true)))
+    if (await promise) return `${host}:${port}`
+  }
+  throw new Error('无法为浏览器夹具分配安全的动态端口')
+}
+
 function writeConfig(
   directory: string,
   storage: string,
@@ -107,6 +132,9 @@ function writeConfig(
       '[operations.stop]',
       `script = '${path.join(fixtures, 'success.bat')}'`,
       `working_directory = '${fixtures}'`,
+      '',
+      '[sessions]',
+      `history_file = '${path.join(directory, 'session-history.json')}'`,
       '',
       '[mdns]',
       'enabled = false',
@@ -150,8 +178,9 @@ async function waitForTemplates(baseURL: string): Promise<void> {
   throw new Error(`herdr-bot 没有在 20 秒内开始提供模板接口：${baseURL}`)
 }
 
-function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number }> {
-  const child = spawn(binary, ['--config', configPath], {
+function startProcess(configPath: string, executable: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
+  const child = spawn(executable, ['--config', configPath], {
+    cwd: path.dirname(configPath),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
@@ -173,7 +202,7 @@ function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutN
       if (match === null || settled) return
       settled = true
       clearTimeout(timer)
-      resolve({ child, port: Number(match[2]) })
+      resolve({ child, port: Number(match[2]), diagnostics: () => log.join('') })
     })
     child.stderr.on('data', (chunk: Buffer) => {
       log.push(chunk.toString('utf8'))
@@ -194,9 +223,12 @@ function startProcess(configPath: string): Promise<{ child: ChildProcessWithoutN
 }
 
 export async function startServer(options: StartServerOptions = {}): Promise<E2EServer> {
-  if (!fs.existsSync(binary)) {
+  const executable = options.safeShutdown
+    ? path.join(repoRoot, 'backend', 'target', 'debug', 'examples', 'safe_shutdown_shell.exe')
+    : binary
+  if (!fs.existsSync(executable)) {
     throw new Error(
-      `缺少交付二进制 ${binary}；请先在 backend 目录执行 cargo build。`,
+      `缺少验收二进制 ${executable}；请先在 backend 目录执行 cargo build --bins --example safe_shutdown_shell。`,
     )
   }
   if (!fs.existsSync(path.join(repoRoot, 'backend', 'static', 'index.html'))) {
@@ -210,11 +242,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   const extensionDirectory = path.join(directory, 'extensions')
   fs.mkdirSync(extensionDirectory)
   const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
-  fs.writeFileSync(metadataFile, metadata.replace(/entrypoint = '([^']+)'/g, (_line, original: string) => {
-    const relative = original.split('entrypoints\\')[1].replaceAll('\\', '-')
+  fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
+    const id = prefix.match(/^id = '([^']+)'/m)![1]
+    const relative = `${id}.ts`
     const entrypoint = path.join(extensionDirectory, relative)
     fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
-    return `entrypoint = '${entrypoint}'`
+    return `${prefix}'${entrypoint}'`
   }))
   const herdrDirectory = path.join(directory, 'herdr')
 
@@ -253,13 +286,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
       executable: herdrExecutable,
     },
-    options.listenAddr ?? '127.0.0.1:0',
+    await browserListenAddress(options.listenAddr ?? '127.0.0.1:0'),
   )
 
-  let running: { child: ChildProcessWithoutNullStreams; port: number } | null = null
+  let running: { child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string } | null = null
 
   async function start() {
-    running = await startProcess(configPath)
+    running = await startProcess(configPath, executable)
     await waitForTemplates(`http://127.0.0.1:${running.port}`)
   }
 
@@ -277,6 +310,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     storageFile,
     metadataFile,
     configPath,
+    diagnostics() { return running?.diagnostics() ?? '' },
     async getTemplates() {
       const response = await fetch(`${this.baseURL}/api/bot-templates`)
       if (!response.ok) {
@@ -302,11 +336,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       const child = running?.child
       running = null
       if (child === undefined || child.exitCode !== null) return
-      await new Promise<void>((resolve) => {
-        child.once('exit', () => resolve())
+      const exited = Promise.withResolvers<void>()
+      child.once('exit', () => exited.resolve())
+      const exitTimer = setTimeout(() => exited.resolve(), 5000)
+      if (process.platform === 'win32') {
+        // Independent identity queries are real child processes. Killing only
+        // their parent leaves a live copied EXE holding the test directory open.
+        const killed = Promise.withResolvers<void>()
+        const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        killer.once('error', killed.reject)
+        killer.once('exit', code => code === 0 || child.exitCode !== null ? killed.resolve() : killed.reject(new Error(`taskkill failed: ${code}`)))
+        await killed.promise
+      } else {
         child.kill()
-        setTimeout(() => resolve(), 5000)
-      })
+      }
+      await exited.promise
+      clearTimeout(exitTimer)
     },
     async restart() {
       await this.stop()

@@ -11,7 +11,9 @@ use std::process::Command;
 use std::time::Duration;
 
 use common::sse::{SseConnection, SseFrame};
-use common::{HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp, repo_fixtures_dir};
+use common::{
+    HttpResponse, TempDir, TestServer, get_over_tcp, post_json_over_tcp, repo_fixtures_dir,
+};
 use serde_json::{Value, json};
 
 /// 与交付配置同形，但把登记文件放进隔离目录，并把自动刷新窗口压到 1 秒。
@@ -72,11 +74,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 async fn snapshot_zone(connection: &mut SseConnection, zone: &Path) -> Value {
@@ -145,9 +143,7 @@ async fn next_health_error(connection: &mut SseConnection, zone: &Path) -> Value
             continue;
         }
         let data = frame.json();
-        if data["zone"] == json!(zone.to_string_lossy())
-            && data["health"] == json!("error")
-        {
+        if data["zone"] == json!(zone.to_string_lossy()) && data["health"] == json!("error") {
             return data;
         }
     }
@@ -183,7 +179,12 @@ fn entry_names(response: &HttpResponse) -> Vec<String> {
         .as_array()
         .expect("entries 必须是数组")
         .iter()
-        .map(|entry| entry["name"].as_str().expect("目录项必须有名字").to_string())
+        .map(|entry| {
+            entry["name"]
+                .as_str()
+                .expect("目录项必须有名字")
+                .to_string()
+        })
         .collect()
 }
 
@@ -233,11 +234,7 @@ async fn external_plain_directory_create_modify_delete_refreshes_browsing() {
     // 外部修改：内容读取看到新内容。修改事件可能落在同一窗口内，下一次刷新是其补刷新。
     fs::write(zone.path().join("appeared.txt"), "second version\n").expect("修改文件");
     next_refresh(&mut connection, zone.path()).await;
-    let file = get_over_tcp(
-        server.addr(),
-        &file_url(zone.path(), "appeared.txt"),
-    )
-    .await;
+    let file = get_over_tcp(server.addr(), &file_url(zone.path(), "appeared.txt")).await;
     assert_eq!(file.status, 200, "文件读取应成功：{}", file.body);
     assert_eq!(body(&file)["preview"]["content"], json!("second version\n"));
 
@@ -306,7 +303,10 @@ async fn linked_worktree_external_git_metadata_updates_branch() {
             &linked.to_string_lossy(),
         ],
     );
-    assert!(linked.join(".git").is_file(), "链接工作树的 .git 必须是文件");
+    assert!(
+        linked.join(".git").is_file(),
+        "链接工作树的 .git 必须是文件"
+    );
 
     let registry = TempDir::new("watch linked registry");
     let server = TestServer::start(&config_with_watch(&registry.path().join("zones.json"))).await;
@@ -374,12 +374,10 @@ async fn two_observers_share_one_throttled_refresh_sequence() {
 
     // 第一次写入没有等待窗口：观察者应尽快收到同一代刷新。
     fs::write(zone.path().join("one.txt"), "one\n").expect("写入第一次变化");
-    let first_generation = next_refresh(&mut first, zone.path())
-        .await["generation"]
+    let first_generation = next_refresh(&mut first, zone.path()).await["generation"]
         .as_u64()
         .expect("刷新必须携带代数");
-    let second_generation = next_refresh(&mut second, zone.path())
-        .await["generation"]
+    let second_generation = next_refresh(&mut second, zone.path()).await["generation"]
         .as_u64()
         .expect("刷新必须携带代数");
     assert_eq!(
@@ -396,12 +394,10 @@ async fn two_observers_share_one_throttled_refresh_sequence() {
             "窗口内写入不应立即产生第二个刷新：{early:?}"
         );
     }
-    let first_trailing = next_refresh(&mut first, zone.path())
-        .await["generation"]
+    let first_trailing = next_refresh(&mut first, zone.path()).await["generation"]
         .as_u64()
         .expect("补刷新必须携带代数");
-    let second_trailing = next_refresh(&mut second, zone.path())
-        .await["generation"]
+    let second_trailing = next_refresh(&mut second, zone.path()).await["generation"]
         .as_u64()
         .expect("补刷新必须携带代数");
     assert_eq!(first_trailing, second_trailing, "补刷新也由两个观察者共享");

@@ -245,10 +245,20 @@ async fn a_reconnecting_reader_recovers_both_domains_in_the_first_frame_and_then
     assert_eq!(panel.start_shutdown().await.status, 200);
     let restarted = resumed.next_event("shutdown").await;
     let restarted_view = shutdown_payload(&restarted);
-    assert_eq!(restarted_view["phase"], json!("counting-down"), "{restarted_view}");
+    assert_eq!(
+        restarted_view["phase"],
+        json!("counting-down"),
+        "{restarted_view}"
+    );
     assert_ne!(restarted_view["arrangementId"], recovered["arrangementId"]);
     assert!(restarted_view["deadline"].is_u64());
-    for field in ["monitoredSessionIds", "arrangementId", "phase", "deadline", "serverTime"] {
+    for field in [
+        "monitoredSessionIds",
+        "arrangementId",
+        "phase",
+        "deadline",
+        "serverTime",
+    ] {
         assert!(
             restarted.raw.contains(field),
             "带安排的状态必须携带完整字段 {field}：{}",
@@ -276,11 +286,17 @@ async fn two_readers_see_the_same_arrangement_which_expires_exactly_once() {
     // 第一个读者：命令回执里的权威状态。
     let accepted = panel.start_shutdown().await;
     let from_command = shutdown_of(&accepted);
-    assert_eq!(from_command["phase"], json!("counting-down"), "{from_command}");
+    assert_eq!(
+        from_command["phase"],
+        json!("counting-down"),
+        "{from_command}"
+    );
 
     // 独立字面量：配置了 3 秒，截止时间就比服务端当前时间晚 3000 毫秒。
     let deadline = from_command["deadline"].as_u64().expect("截止时间是数字");
-    let server_time = from_command["serverTime"].as_u64().expect("服务端时间是数字");
+    let server_time = from_command["serverTime"]
+        .as_u64()
+        .expect("服务端时间是数字");
     assert_eq!(
         deadline - server_time,
         3_000,
@@ -344,7 +360,11 @@ async fn a_blocked_reader_does_not_block_commands_or_the_arrangement() {
     let flood = 300;
     let mut last = "working";
     for index in 0..flood {
-        last = if index % 2 == 0 { "working" } else { "awaiting-input" };
+        last = if index % 2 == 0 {
+            "working"
+        } else {
+            "awaiting-input"
+        };
         assert_eq!(panel.state("s-big", last).await.status, 200);
     }
 

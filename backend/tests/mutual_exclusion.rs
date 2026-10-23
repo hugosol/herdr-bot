@@ -62,8 +62,10 @@ async fn hold(
     let addr = server.addr();
     let request = tokio::spawn(async move { post_over_tcp(addr, path).await });
 
-    let recorded = common::wait_until(Duration::from_secs(30), || !invokes(tree, fixture).is_empty())
-        .await;
+    let recorded = common::wait_until(Duration::from_secs(30), || {
+        !invokes(tree, fixture).is_empty()
+    })
+    .await;
     assert!(
         recorded,
         "正对照：单次请求必须真实产生一次 {fixture} 调用记录：{:#?}",
@@ -106,10 +108,9 @@ async fn challenge_all(
 
     let mut responses = Vec::new();
     for (path, task) in tasks {
-        let response = task
-            .await
-            .expect("并发客户端任务")
-            .unwrap_or_else(|| panic!("重叠请求必须立即返回忙碌结果，不得排队等待前一次操作结束：{path}"));
+        let response = task.await.expect("并发客户端任务").unwrap_or_else(|| {
+            panic!("重叠请求必须立即返回忙碌结果，不得排队等待前一次操作结束：{path}")
+        });
         responses.push((path, response));
     }
     responses
@@ -123,7 +124,10 @@ fn assert_busy(path: &str, response: &HttpResponse) {
     );
     let body: serde_json::Value =
         serde_json::from_str(&response.body).expect("忙碌响应必须是 JSON");
-    assert_eq!(body["code"], BUSY_CODE, "{path} 的忙碌类别必须可区分：{body}");
+    assert_eq!(
+        body["code"], BUSY_CODE,
+        "{path} 的忙碌类别必须可区分：{body}"
+    );
     assert!(
         body.get("outcome").is_none(),
         "{path} 的忙碌响应不得伪装成一次执行结果：{body}"
@@ -148,7 +152,10 @@ async fn end_running_operation(tree: &FixtureTree, request: JoinHandle<HttpRespo
     );
     let body: serde_json::Value =
         serde_json::from_str(&response.body).expect("操作响应必须是 JSON");
-    assert_eq!(body["outcome"], "completed", "长跑夹具被停止后正常结束：{body}");
+    assert_eq!(
+        body["outcome"], "completed",
+        "长跑夹具被停止后正常结束：{body}"
+    );
 
     assert!(
         common::wait_until(Duration::from_secs(15), || !common::process_is_alive(pid)).await,
@@ -220,9 +227,11 @@ async fn overlapping_start_requests_run_the_script_once_and_the_rest_are_busy() 
         fresh.status, 200,
         "操作结束后新的合法请求必须被接受：{fresh:?}"
     );
-    let body: serde_json::Value =
-        serde_json::from_str(&fresh.body).expect("操作响应必须是 JSON");
-    assert_eq!(body["started"], true, "新的合法请求必须真的执行脚本：{body}");
+    let body: serde_json::Value = serde_json::from_str(&fresh.body).expect("操作响应必须是 JSON");
+    assert_eq!(
+        body["started"], true,
+        "新的合法请求必须真的执行脚本：{body}"
+    );
     assert_eq!(
         invokes(&tree, "failure").len(),
         1,

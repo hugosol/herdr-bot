@@ -1,8 +1,9 @@
 //! 按当前分支既有 upstream 与 Git 配置的远端同步。
 //!
 //! 同步语义（S2）：
-//! - 远端状态按需检查：`check` 执行一次真实的 `git fetch <upstream.remote>`，成功后记录“最近检查时间”。
-//!   状态读取只使用本地远端跟踪引用，绝不隐式 fetch；页面把未检查与已知状态分开显示。
+//! - 显式检查、Sync 与本应用确认成功的提交后检查才执行真实的 `git fetch <upstream.remote>`。
+//!   提交回执不等待网络；后台检查独立存活，期间拒绝其他 Commit/Sync，不自动重试或发布分支。
+//!   普通状态读取共享完成时刻起算的本地状态缓存，绝不隐式 fetch；临时检查反馈在读取时叠加。
 //! - `execute` 先重新核对登记根、当前分支、upstream 与干净工作树，再按 fetch → pull → 按需 push 的顺序
 //!   执行。pull 不附加 repository、refspec 或 merge/rebase/ff-only 策略，因此完全遵循仓库已有配置；
 //!   没有待推送提交时不执行无意义的 push。不 stash、不隐式 commit、不强推、不修改配置。
@@ -46,6 +47,10 @@ pub struct SyncFacts {
     pub ahead: Option<u64>,
     pub behind: Option<u64>,
     pub remote_checked_at: Option<u64>,
+    /// 本实例已接受的提交后远端检查仍在执行；不能用来替代本地已知 ahead/behind。
+    pub remote_checking: bool,
+    /// 最近检查失败的诊断；失败不清空本地远端跟踪引用的计数。
+    pub remote_check_error: Option<String>,
 }
 
 /// 一次成功检查的记录：时间与当时观察到的远端跟踪引用。
@@ -58,14 +63,78 @@ struct CheckRecord {
 }
 
 /// 本实例成功检查远端的记录；按实际仓库、upstream 与观察到的远端引用区分。
-#[derive(Default)]
 pub struct SyncState {
     checks: StdMutex<HashMap<String, CheckRecord>>,
+    remote: StdMutex<HashMap<String, (bool, Option<String>)>>,
+    pub(crate) cache: crate::status_cache::StatusCache,
+}
+
+impl Default for SyncState {
+    fn default() -> Self {
+        Self::with_ttl(Duration::from_secs(10))
+    }
 }
 
 impl SyncState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_ttl(ttl: Duration) -> Self {
+        Self {
+            checks: StdMutex::new(HashMap::new()),
+            remote: StdMutex::new(HashMap::new()),
+            cache: crate::status_cache::StatusCache::new(ttl),
+        }
+    }
+
+    pub(crate) fn remote_checking(&self, path: &str) -> bool {
+        self.remote
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&crate::status_cache::key(path))
+            .is_some_and(|value| value.0)
+    }
+
+    pub(crate) fn begin_remote_check(&self, path: &str) {
+        self.remote
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(crate::status_cache::key(path), (true, None));
+        self.cache.invalidate(path);
+    }
+
+    pub(crate) fn finish_remote_check(&self, path: &str, error: Option<String>) {
+        self.remote
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(crate::status_cache::key(path), (false, error));
+        // Transient feedback is overlaid at read time; do not discard successful local facts.
+    }
+
+    pub(crate) fn overlay(&self, path: &str, facts: &mut SyncFacts) {
+        if let Some((checking, error)) = self
+            .remote
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&crate::status_cache::key(path))
+        {
+            facts.remote_checking = *checking;
+            facts.remote_check_error = error.clone();
+        }
+    }
+
+    pub fn cached_status(
+        &self,
+        path: &str,
+        timeout: Duration,
+        force: bool,
+    ) -> Result<GitStatus, GitError> {
+        let mut status = self
+            .cache
+            .read(path, force, || git::status(path, timeout, self))?;
+        self.overlay(path, &mut status.sync);
+        Ok(status)
     }
 
     fn record(&self, root: &Path, upstream: &UpstreamRef, tracking_oid: &str) {
@@ -144,6 +213,8 @@ pub(crate) fn facts(
         upstream: Some(upstream),
         ahead,
         behind,
+        remote_checking: false,
+        remote_check_error: None,
     })
 }
 
@@ -255,6 +326,26 @@ pub fn check(
     locks: &RepositoryLocks,
     state: &SyncState,
 ) -> CheckOutcome {
+    check_impl(registered_root, timeout, locks, state, false)
+}
+
+pub(crate) fn check_background(
+    registered_root: &str,
+    timeout: Duration,
+    locks: &RepositoryLocks,
+    state: &SyncState,
+) -> CheckOutcome {
+    check_impl(registered_root, timeout, locks, state, true)
+}
+
+fn check_impl(
+    registered_root: &str,
+    timeout: Duration,
+    locks: &RepositoryLocks,
+    state: &SyncState,
+    background: bool,
+) -> CheckOutcome {
+    state.cache.invalidate(registered_root);
     let root = match git::worktree_root(registered_root, timeout) {
         Ok(Some(root)) => root,
         Ok(None) => return CheckOutcome::NotRepository,
@@ -264,7 +355,30 @@ pub fn check(
         return CheckOutcome::Busy;
     };
 
-    let outcome = check_locked(registered_root, &root, timeout, state);
+    if !background && state.remote_checking(registered_root) {
+        return CheckOutcome::Busy;
+    }
+    state.cache.invalidate(registered_root);
+    let mut outcome = check_locked(registered_root, &root, timeout, state);
+    if !background {
+        let error = match &outcome {
+            CheckOutcome::Checked(_) => None,
+            CheckOutcome::Failed(error) => Some(error.message()),
+            CheckOutcome::Blocked(reason) => Some(reason.clone()),
+            CheckOutcome::NoUpstream => Some(
+                "当前分支没有配置 upstream，无法检查远端；本功能不会自动发布分支或配置 upstream。"
+                    .to_string(),
+            ),
+            CheckOutcome::NotRepository | CheckOutcome::Busy => None,
+        };
+        state.finish_remote_check(registered_root, error);
+        if let CheckOutcome::Checked(status) = &mut outcome {
+            state.overlay(registered_root, &mut status.sync);
+        }
+    }
+    if !matches!(&outcome, CheckOutcome::Checked(_)) {
+        state.cache.invalidate(registered_root);
+    }
     retain_qualification_if_unconfirmed(permit, outcome)
 }
 
@@ -302,7 +416,8 @@ fn check_locked(
         return CheckOutcome::Failed(error);
     }
 
-    match git::status(registered_root, timeout, state) {
+    state.cache.invalidate(registered_root);
+    match state.cached_status(registered_root, timeout, true) {
         Ok(status) => CheckOutcome::Checked(status),
         Err(error) => CheckOutcome::Failed(error),
     }
@@ -366,6 +481,7 @@ pub fn execute(
     locks: &RepositoryLocks,
     state: &SyncState,
 ) -> SyncOutcome {
+    state.cache.invalidate(registered_root);
     let root = match git::worktree_root(registered_root, timeout) {
         Ok(Some(root)) => root,
         Ok(None) => return SyncOutcome::NotRepository,
@@ -381,7 +497,12 @@ pub fn execute(
         return SyncOutcome::Busy;
     };
 
+    if state.remote_checking(registered_root) {
+        return SyncOutcome::Busy;
+    }
+    state.cache.invalidate(registered_root);
     let outcome = execute_locked(registered_root, &root, timeout, state);
+    state.cache.invalidate(registered_root);
     retain_qualification_if_unconfirmed(permit, outcome)
 }
 

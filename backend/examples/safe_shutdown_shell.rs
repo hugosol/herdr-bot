@@ -69,7 +69,10 @@ async fn main() -> anyhow::Result<()> {
         "[herdr-bot] zone 登记文件：{}",
         config.zones.registry_file.display()
     );
-    println!("[herdr-bot] 到期结果：{}", if fails { "failed" } else { "ok" });
+    println!(
+        "[herdr-bot] 到期结果：{}",
+        if fails { "failed" } else { "ok" }
+    );
     println!("[herdr-bot] 监听：http://{local_addr}/");
 
     let sessions = Arc::new(herdr_bot::sessions::SessionsState::with_policy(
@@ -108,7 +111,9 @@ fn arguments() -> anyhow::Result<(PathBuf, bool)> {
                     other => anyhow::bail!("--outcome 只能是 ok 或 failed，收到：{other}"),
                 };
             }
-            other => anyhow::bail!("未知参数：{other}（用法：safe_shutdown_shell [--config <path>] [--outcome ok|failed]）"),
+            other => anyhow::bail!(
+                "未知参数：{other}（用法：safe_shutdown_shell [--config <path>] [--outcome ok|failed]）"
+            ),
         }
     }
     Ok((config_path, fails))

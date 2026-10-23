@@ -91,7 +91,8 @@ impl MonitoringServer {
             None => Arc::new(SessionsState::new()),
         };
         let double = RecordingPowerOff::new();
-        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) =
+            herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             double,
@@ -236,7 +237,8 @@ impl Observer {
 
     /// 一直读到阶段的取值等于 `phase`，返回那一帧的完整关机状态。
     async fn shutdown_until(&mut self, phase: &str) -> Value {
-        self.shutdown_until_within(phase, Duration::from_secs(20)).await
+        self.shutdown_until_within(phase, Duration::from_secs(20))
+            .await
     }
 
     /// 同 [`Observer::shutdown_until`]，但等待上限由调用方给出（慢用例要把 keepAlive 真的等过去）。
@@ -270,10 +272,7 @@ impl Observer {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            assert!(
-                !remaining.is_zero(),
-                "等待会话 {session_id} 离线超时"
-            );
+            assert!(!remaining.is_zero(), "等待会话 {session_id} 离线超时");
             let Some(frame) = self.connection.next_frame_within(remaining).await else {
                 panic!("等待会话 {session_id} 离线超时");
             };
@@ -289,7 +288,8 @@ impl Observer {
 
     /// 一直读到监听集合等于 `expected`，返回那一帧的完整关机状态。
     async fn set_until(&mut self, expected: &[&str]) -> Value {
-        self.set_until_within(expected, Duration::from_secs(20)).await
+        self.set_until_within(expected, Duration::from_secs(20))
+            .await
     }
 
     /// 同 [`Observer::set_until`]，但等待上限由调用方给出。
@@ -416,14 +416,25 @@ async fn the_arrangement_waits_for_every_monitored_session_to_await_input() {
     assert_accepted(&server.state("a", "awaiting-input").await);
     let sessions = server.observe().await.first_sessions();
     let a = session_of(&sessions, "a");
-    assert_eq!(a["state"], json!("awaiting-input"), "监听不替换 agent 状态：{a}");
+    assert_eq!(
+        a["state"],
+        json!("awaiting-input"),
+        "监听不替换 agent 状态：{a}"
+    );
     assert_eq!(a["online"], json!(true), "监听不改变 keepAlive：{a}");
     assert_eq!(a["cwd"], json!("C:\\work"), "会话身份信息仍可查看：{a}");
 
     // a 已经等待而 b 仍在工作：不启动；权威状态如实给出「没有安排」与当前集合。
     let pending = server.authoritative().await;
-    assert_eq!(pending["phase"], json!("none"), "成员没全部等待就不启动：{pending}");
-    assert_eq!(monitored_ids(&pending), vec!["a".to_string(), "b".to_string()]);
+    assert_eq!(
+        pending["phase"],
+        json!("none"),
+        "成员没全部等待就不启动：{pending}"
+    );
+    assert_eq!(
+        monitored_ids(&pending),
+        vec!["a".to_string(), "b".to_string()]
+    );
     assert_eq!(server.double.calls(), 0, "没有安排就没有任何关机调用");
 
     // b 也进入等待用户输入：全部成员当前都等待，形成唯一安排（未监听的 bystander 不阻塞）。
@@ -516,12 +527,20 @@ async fn removing_a_member_rejudges_the_set_immediately() {
         monitored_ids(&pending),
         vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
-    assert_eq!(pending["phase"], json!("none"), "b、c 仍在工作就不启动：{pending}");
+    assert_eq!(
+        pending["phase"],
+        json!("none"),
+        "b、c 仍在工作就不启动：{pending}"
+    );
 
     // 注销 c：c 立即移出，不留下一个已经不存在的成员。
     assert_accepted(&server.unregister("c").await);
     let without_c = observer.set_until(&["a", "b"]).await;
-    assert_eq!(without_c["phase"], json!("none"), "剩下的 b 仍在工作：{without_c}");
+    assert_eq!(
+        without_c["phase"],
+        json!("none"),
+        "剩下的 b 仍在工作：{without_c}"
+    );
 
     // 重新注册 c：它**不**自动重新加入监听（移出就是移出）。
     assert_accepted(&server.register("c").await);
@@ -545,7 +564,10 @@ async fn removing_a_member_rejudges_the_set_immediately() {
     // 同一成员的重复等待通知不重启安排、也不改变截止时间。
     assert_accepted(&server.state("a", "awaiting-input").await);
     let again = server.authoritative().await;
-    assert_eq!(again["arrangementId"], arranged["arrangementId"], "安排标识不变");
+    assert_eq!(
+        again["arrangementId"], arranged["arrangementId"],
+        "安排标识不变"
+    );
     assert_eq!(again["deadline"], arranged["deadline"], "截止时间不变");
     assert_eq!(server.double.calls(), 0);
 }
@@ -577,7 +599,11 @@ async fn an_empty_set_never_forms_an_arrangement() {
     assert_accepted(&server.unregister("b").await);
     assert!(server.authoritative_set().await.is_empty());
     let gone = server.authoritative().await;
-    assert_eq!(gone["phase"], json!("none"), "移出最后一个成员不触发关机：{gone}");
+    assert_eq!(
+        gone["phase"],
+        json!("none"),
+        "移出最后一个成员不触发关机：{gone}"
+    );
 
     assert_eq!(server.double.calls(), 0, "零调用：没有任何安排形成");
 }
@@ -619,7 +645,9 @@ async fn the_configured_three_seconds_drives_the_automatic_expiry_once() {
     assert_accepted(&server.state("a", "awaiting-input").await);
     let arranged = observer.shutdown_until("counting-down").await;
     assert_eq!(
-        arranged["deadline"].as_u64().expect("倒计时中必须有截止时间")
+        arranged["deadline"]
+            .as_u64()
+            .expect("倒计时中必须有截止时间")
             - arranged["serverTime"].as_u64().expect("服务端时间必须可读"),
         3000,
         "自动入口必须用启动期配置的时长（3 秒）：{arranged}"
@@ -627,12 +655,22 @@ async fn the_configured_three_seconds_drives_the_automatic_expiry_once() {
 
     // 截止时间之前零调用。
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    assert_eq!(server.double.calls(), 0, "截止时间之前不得调用关机：{arranged}");
+    assert_eq!(
+        server.double.calls(),
+        0,
+        "截止时间之前不得调用关机：{arranged}"
+    );
 
     // 交错的手动开始与重复的等待通知都沿用同一安排：标识与截止时间都不变（P21、P31）。
     let repeated = assert_selected_after_start(&server.start_shutdown().await);
-    assert_eq!(repeated["arrangementId"], arranged["arrangementId"], "沿用同一安排");
-    assert_eq!(repeated["deadline"], arranged["deadline"], "截止时间不得改变");
+    assert_eq!(
+        repeated["arrangementId"], arranged["arrangementId"],
+        "沿用同一安排"
+    );
+    assert_eq!(
+        repeated["deadline"], arranged["deadline"],
+        "截止时间不得改变"
+    );
     assert_accepted(&server.state("a", "awaiting-input").await);
     assert_accepted(&server.heartbeat("a").await);
     let unchanged = server.authoritative().await;
@@ -641,12 +679,20 @@ async fn the_configured_three_seconds_drives_the_automatic_expiry_once() {
 
     // 到期由后端自己执行一次；观察流给出实现已开始与指令已发出的完整状态。
     let issued = observer.shutdown_until("issued").await;
-    assert_eq!(server.double.calls(), 1, "到期恰好调用一次实际关机：{issued}");
+    assert_eq!(
+        server.double.calls(),
+        1,
+        "到期恰好调用一次实际关机：{issued}"
+    );
     assert_eq!(issued["arrangementId"], arranged["arrangementId"]);
 
     // 再等一段时间仍然只有这一次：不重试、不重复执行。
     tokio::time::sleep(Duration::from_millis(1000)).await;
-    assert_eq!(server.double.calls(), 1, "到期后的重复观察不增加调用：{issued}");
+    assert_eq!(
+        server.double.calls(),
+        1,
+        "到期后的重复观察不增加调用：{issued}"
+    );
 }
 
 /// 一次手动开始意图的结果类别与权威状态。
@@ -690,8 +736,16 @@ async fn a_manual_start_consumes_the_whole_set_and_refuses_new_monitoring() {
     // 倒计时期间新增监听被拒绝，权威集合保持空，原安排不受影响。
     assert_accepted(&server.register("c").await);
     assert_accepted(&server.state("c", "working").await);
-    assert_refused(&server.monitor("c", true).await, 409, "shutdown-in-progress");
-    assert_refused(&server.monitor("a", true).await, 409, "shutdown-in-progress");
+    assert_refused(
+        &server.monitor("c", true).await,
+        409,
+        "shutdown-in-progress",
+    );
+    assert_refused(
+        &server.monitor("a", true).await,
+        409,
+        "shutdown-in-progress",
+    );
     let after_refusals = server.authoritative().await;
     assert!(
         monitored_ids(&after_refusals).is_empty(),
@@ -708,7 +762,11 @@ async fn a_manual_start_consumes_the_whole_set_and_refuses_new_monitoring() {
 
     // 取消后不恢复监听：重复的等待通知不再重启安排。
     let cancelled = server.clear_all().await;
-    assert_eq!(cancelled.status, 200, "全局取消必须生效：{}", cancelled.body);
+    assert_eq!(
+        cancelled.status, 200,
+        "全局取消必须生效：{}",
+        cancelled.body
+    );
     assert_accepted(&server.state("c", "awaiting-input").await);
     let after_cancel = server.authoritative().await;
     assert_eq!(
@@ -762,7 +820,11 @@ async fn a_running_arrangement_survives_session_changes_and_frontend_closure() {
         server.double.calls()
     );
     let settled = server.authoritative().await;
-    assert_eq!(settled["phase"], json!("issued"), "结果仍属于同一安排：{settled}");
+    assert_eq!(
+        settled["phase"],
+        json!("issued"),
+        "结果仍属于同一安排：{settled}"
+    );
     assert_eq!(settled["arrangementId"], arrangement_id);
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(server.double.calls(), 1, "只执行一次");
@@ -846,7 +908,11 @@ async fn an_offline_member_stays_in_the_set_and_blocks_automatic_shutdown() {
         vec!["a".to_string()],
         "离线成员必须留在监听集合里：{after}"
     );
-    assert_eq!(after["phase"], json!("none"), "离线成员阻塞自动触发：{after}");
+    assert_eq!(
+        after["phase"],
+        json!("none"),
+        "离线成员阻塞自动触发：{after}"
+    );
     assert_eq!(server.double.calls(), 0, "没有任何关机调用");
 
     // 离线成员仍是同一个监听成员：重申选中值是确认，不是新增，也不需要重新选择。
@@ -951,7 +1017,14 @@ async fn removing_a_member_rejudges_the_remaining_set_for_every_reason() {
             assert_selected(&server.monitor("a", true).await, "a");
             assert_accepted(
                 &server
-                    .state("a", if remaining == "working" { "working" } else { "awaiting-input" })
+                    .state(
+                        "a",
+                        if remaining == "working" {
+                            "working"
+                        } else {
+                            "awaiting-input"
+                        },
+                    )
                     .await,
             );
 
@@ -963,7 +1036,11 @@ async fn removing_a_member_rejudges_the_remaining_set_for_every_reason() {
             match reason {
                 "cleared" => {
                     // 推进到 B 超过两个窗口之和（41 秒），A 仍在保留期内。
-                    server.advance(Duration::from_secs(if remaining == "offline" { 10 } else { 21 }));
+                    server.advance(Duration::from_secs(if remaining == "offline" {
+                        10
+                    } else {
+                        21
+                    }));
                     if remaining != "offline" {
                         // 保持 A 在线（也保持它最后一次上报的等待／工作状态）。
                         assert_accepted(&server.heartbeat("a").await);
@@ -1180,7 +1257,11 @@ async fn send(app: axum::Router, method: &str, uri: &str, body: String) -> (u16,
         builder = builder.header("content-type", "application/json");
     }
     let response = app
-        .oneshot(builder.body(axum::body::Body::from(body)).expect("构造请求"))
+        .oneshot(
+            builder
+                .body(axum::body::Body::from(body))
+                .expect("构造请求"),
+        )
         .await
         .expect("请求应用");
     let status = response.status().as_u16();
@@ -1263,7 +1344,9 @@ async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_event
 
     // 受控来源代表「不是这台机器」的局域网设备：写入会话事件被拒。
     let lan = app.clone().layer(MockConnectInfo(
-        LAN_SOURCE.parse::<std::net::SocketAddr>().expect("受控来源地址"),
+        LAN_SOURCE
+            .parse::<std::net::SocketAddr>()
+            .expect("受控来源地址"),
     ));
     let (status, body) = send(
         lan.clone(),
@@ -1321,7 +1404,8 @@ async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_event
 
 /// 一段响应体文本里的 JSON 对象。
 fn response_body_str(body: &str) -> Value {
-    serde_json::from_str(body).unwrap_or_else(|error| panic!("响应体必须是 JSON（{error}）：{body}"))
+    serde_json::from_str(body)
+        .unwrap_or_else(|error| panic!("响应体必须是 JSON（{error}）：{body}"))
 }
 
 /// 本机某个可发布的 IPv4（与 mDNS 发布同一枚举口径）。
@@ -1373,7 +1457,13 @@ async fn the_shared_observation_stream_carries_monitoring_and_the_automatic_arra
         }
     };
     let (raw, view) = arranged;
-    for field in ["monitoredSessionIds", "arrangementId", "phase", "deadline", "serverTime"] {
+    for field in [
+        "monitoredSessionIds",
+        "arrangementId",
+        "phase",
+        "deadline",
+        "serverTime",
+    ] {
         assert!(
             raw.raw.contains(field),
             "自动触发的关机状态必须携带完整字段 {field}：{}",
@@ -1389,7 +1479,11 @@ async fn the_shared_observation_stream_carries_monitoring_and_the_automatic_arra
         "字段顺序必须稳定：{}",
         raw.raw
     );
-    assert_eq!(monitored_ids(&view), Vec::<String>::new(), "形成安排即消耗整组监听");
+    assert_eq!(
+        monitored_ids(&view),
+        Vec::<String>::new(),
+        "形成安排即消耗整组监听"
+    );
     assert!(view["arrangementId"].is_string(), "安排标识可观察：{view}");
     assert!(view["deadline"].is_u64(), "截止时间可观察：{view}");
     assert!(view["serverTime"].is_u64(), "服务端时间可观察：{view}");
@@ -1403,7 +1497,11 @@ async fn the_shared_observation_stream_carries_monitoring_and_the_automatic_arra
     assert!(first["serverTime"].is_u64());
     assert!(monitored_ids(&first).is_empty());
     let session = session_of(&fresh.first_sessions(), "a");
-    assert_eq!(session["state"], json!("awaiting-input"), "会话那一半照旧：{session}");
+    assert_eq!(
+        session["state"],
+        json!("awaiting-input"),
+        "会话那一半照旧：{session}"
+    );
     assert_eq!(session["online"], json!(true));
 }
 
@@ -1435,7 +1533,9 @@ fn assert_refused(response: &HttpResponse, status: u16, code: &str) {
     let body = response_body(response);
     assert_eq!(body["code"], code, "响应体：{}", response.body);
     assert!(
-        body["message"].as_str().is_some_and(|message| !message.is_empty()),
+        body["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty()),
         "拒绝必须带中文说明：{}",
         response.body
     );
@@ -1459,33 +1559,59 @@ async fn only_a_currently_online_and_working_session_can_be_monitored() {
     assert_accepted(&server.register("working-1").await);
     assert_accepted(&server.state("working-1", "working").await);
     assert_selected(&server.monitor("working-1", true).await, "working-1");
-    assert_eq!(server.authoritative_set().await, vec!["working-1".to_string()]);
+    assert_eq!(
+        server.authoritative_set().await,
+        vec!["working-1".to_string()]
+    );
 
     // 页面曾见工作中，但命令到达前已经等待用户输入：拒绝，且不改变权威集合。
     assert_accepted(&server.register("late-1").await);
     assert_accepted(&server.state("late-1", "working").await);
     assert_accepted(&server.state("late-1", "awaiting-input").await);
-    assert_refused(&server.monitor("late-1", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("late-1", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 等待用户输入：不可新增。
     assert_accepted(&server.register("awaiting-1").await);
     assert_accepted(&server.state("awaiting-1", "awaiting-input").await);
-    assert_refused(&server.monitor("awaiting-1", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("awaiting-1", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 空闲：不可新增。
     assert_accepted(&server.register("idle-1").await);
     assert_accepted(&server.state("idle-1", "idle").await);
-    assert_refused(&server.monitor("idle-1", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("idle-1", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 在线但还没收到过状态：不可新增。
     assert_accepted(&server.register("stateless-1").await);
-    assert_refused(&server.monitor("stateless-1", true).await, 409, "session-not-eligible");
+    assert_refused(
+        &server.monitor("stateless-1", true).await,
+        409,
+        "session-not-eligible",
+    );
 
     // 未注册的会话：明确拒绝。
-    assert_refused(&server.monitor("ghost-1", true).await, 404, "unknown-session");
+    assert_refused(
+        &server.monitor("ghost-1", true).await,
+        404,
+        "unknown-session",
+    );
 
     // 被拒绝的命令都不改变权威集合：仍然只有最初那一个成员。
-    assert_eq!(server.authoritative_set().await, vec!["working-1".to_string()]);
+    assert_eq!(
+        server.authoritative_set().await,
+        vec!["working-1".to_string()]
+    );
 }
 
 /// 验收 P48：监听命令提交的是**明确目标值**——两次选中仍选中，两次未选中仍未选中，不反向翻转。
@@ -1498,7 +1624,10 @@ async fn monitoring_commands_carry_an_explicit_target_value() {
     // 两次选中仍是选中。
     assert_selected(&server.monitor("working-1", true).await, "working-1");
     assert_selected(&server.monitor("working-1", true).await, "working-1");
-    assert_eq!(server.authoritative_set().await, vec!["working-1".to_string()]);
+    assert_eq!(
+        server.authoritative_set().await,
+        vec!["working-1".to_string()]
+    );
 
     // 两次未选中仍未选中。
     assert_unselected(&server.monitor("working-1", false).await, "working-1");

@@ -69,6 +69,27 @@ describe('SSE 数据源接线', () => {
     expect(feed.getSnapshot().sessions.map((session) => session.sessionId)).toEqual(['a', 'b', 'c'])
   })
 
+  it('snapshot 与 upsert 只认原生 pi/omp，缺省、未来值和非法类型归一化为未知', () => {
+    const { feed, source } = subscribed()
+    source.emit('snapshot', snapshot({ sessions: [
+      wireSession('pi', { agentType: 'pi' }),
+      wireSession('omp', { agentType: 'omp' }),
+      wireSession('legacy'),
+      wireSession('future', { agentType: 'future-harness' }),
+      wireSession('invalid', { agentType: 42 }),
+      wireSession('prototype', { agentType: '__proto__' }),
+      wireSession('uppercase', { agentType: 'PI' }),
+    ] }))
+    expect(feed.getSnapshot().sessions.map((session) => session.agentType)).toEqual([
+      'pi', 'omp', undefined, undefined, undefined, undefined, undefined,
+    ])
+    source.emit('upsert', { session: wireSession('pi', { agentType: 'omp' }) })
+    expect(feed.getSnapshot().sessions[0].agentType).toBe('omp')
+    source.emit('upsert', { session: wireSession('pi', { agentType: 'future-harness' }) })
+    expect(feed.getSnapshot().sessions[0]).not.toHaveProperty('agentType')
+    expect(feed.getSnapshot().connection).toBe('live')
+  })
+
   it('remove 按 sessionId 只删掉那一行', () => {
     const { feed, source } = subscribed()
     source.emit('snapshot', snapshot({ sessions: [wireSession('a'), wireSession('b'), wireSession('c')] }))

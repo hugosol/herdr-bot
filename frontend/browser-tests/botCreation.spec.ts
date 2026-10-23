@@ -68,13 +68,14 @@ async function prepareTemplate(baseURL: string, template: Record<string, unknown
   return saved.templates[saved.templates.length - 1] as { id: string }
 }
 
-async function openBotDialog(page: Page, zonePath: string) {
+async function openBotDialog(page: Page, zonePath: string, useCurrent = false) {
   await page.getByTestId('tab-files').click()
   const row = zoneRowFor(page, zonePath)
   await expect(row).toHaveCount(1)
   await row.getByTestId('zone-create-bot').click()
   const dialog = page.getByTestId('bot-creation-dialog')
   await expect(dialog).toBeVisible()
+  if (!useCurrent) await dialog.locator('#bot-workspace-target').selectOption('default')
   return dialog
 }
 
@@ -96,6 +97,7 @@ test('从普通目录与 Git 工作树对应的 zone 行创建 Bot：预览名�
 }) => {
   server = await startServer({
     herdr: {
+      workspaces: [{ workspace_id: 'w-target', label: 'alpha' }, { workspace_id: 'w-beta', label: 'beta' }],
       behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
     },
   })
@@ -109,15 +111,22 @@ test('从普通目录与 Git 工作树对应的 zone 行创建 Bot：预览名�
   await gitDialog.getByTestId('bot-create-close').click()
   await expect(gitDialog).toHaveCount(0)
 
-  const dialog = await openBotDialog(page, zones.normal)
+  const dialog = await openBotDialog(page, zones.normal, true)
   await expect(dialog.getByTestId('bot-zone')).toContainText(zones.normal)
+  await expect(dialog.locator('#bot-workspace-target')).toHaveValue('current')
 
-  // 名称只读预览来自后端；弹窗没有手工命名输入。
   const preview = dialog.getByTestId('bot-name-preview')
   await expect(preview).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
-  const previewName = (await preview.textContent()) ?? ''
-  expect(previewName.length).toBeGreaterThan(0)
-  expect(await dialog.locator('input').count()).toBe(0)
+  const shortId = ((await preview.textContent()) ?? '').split(' · ')[2]
+  const previewRequests: string[] = []
+  page.on('request', request => {
+    if (request.url().endsWith('/api/bots/preview')) previewRequests.push(request.url())
+  })
+  await dialog.locator('#bot-name-rule').fill('{zone.name} · 发布检查 · {bot.id}')
+  const previewName = `alpha · 发布检查 · ${shortId}`
+  await expect(preview).toHaveText(previewName)
+  expect(previewRequests).toEqual([])
+  expect((await server.getTemplates()).templates[0].botName).toBe(TEMPLATE.botName)
 
   await dialog.getByTestId('bot-input').fill('普通任务：检查登录逻辑')
   await dialog.getByTestId('bot-create-submit').click()

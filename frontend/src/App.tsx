@@ -3,7 +3,7 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
 import { BotTemplatesPanel } from './BotTemplatesPanel'
 import { FileListPanel } from './FileListPanel'
-import { SessionsPanel } from './SessionsPanel'
+import { ChatPanel } from './ChatPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
@@ -160,7 +160,7 @@ export default function App({
         data-testid="panel-sessions"
         hidden={tab !== 'sessions'}
       >
-        <SessionsPanel feed={sessionFeed} />
+        <ChatPanel feed={sessionFeed} />
       </div>
 
       <div

@@ -2,27 +2,31 @@
 # id 为模板保存的稳定标识；label 只影响显示。不要把映射副本写入模板。
 [[agents]]
 id = 'omp'
-label = 'OMP'
+label = 'oh-my-pi'
 [[agents]]
 id = 'pi'
 label = 'Pi'
 
 [[models]]
 id = 'default'
-label = '沿用 Agent 默认值'
+label = 'Default Model'
 # default 不允许 provider_model/thinking 覆盖。
 [[models]]
 id = 'gpt-6.1-sol'
-label = 'gpt-6.1-sol'
+label = 'GPT-6.1-sol'
 provider_model = 'openai-codex/gpt-6.1-sol'
 # 能力来自具体模型，不是 CLI 接受的所有级别。
 thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
 [[models]]
 id = 'deepseek-flash'
-label = 'deepseek-flash'
+label = 'DeepSeek-Flash'
 provider_model = 'deepseek/deepseek-flash'
 thinking = { omp = ['low', 'high', 'max'], pi = ['off', 'low', 'high', 'max'] }
 
+[[skills]]
+id = 'grill-with-docs'
+label = '/grill-with-docs'
+native_name = 'grill-with-docs'
 [[skills]]
 id = 'teach'
 label = '/teach'
@@ -33,6 +37,13 @@ label = '/code-review'
 native_name = 'code-review'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
+# --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
+[[extensions]]
+id = 'omp-herdr-agent-state'
+label = 'herdr-agent-state'
+agent = 'omp'
+kind = 'fixed'
+entrypoint = 'C:\Users\hugos\.omp\agent\extensions\herdr-omp-agent-state.ts'
 [[extensions]]
 id = 'omp-model-cost'
 label = 'model-cost'
@@ -52,6 +63,18 @@ agent = 'omp'
 kind = 'optional'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\connect-bot.ts'
 [[extensions]]
+id = 'omp-oh-my-wayfinder'
+label = 'oh-my-wayfinder'
+agent = 'omp'
+kind = 'optional'
+entrypoint = 'E:\Developer\myhub\oh-my-wayfinder\extensions'
+[[extensions]]
+id = 'pi-herdr-agent-state'
+label = 'herdr-agent-state'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = 'C:\Users\hugos\.pi\agent\extensions\herdr-agent-state.ts'
+[[extensions]]
 id = 'pi-model-cost'
 label = 'model-cost'
 agent = 'pi'
@@ -63,3 +86,15 @@ label = 'codebase-tools'
 agent = 'pi'
 kind = 'optional'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\codebase-tools.ts'
+[[extensions]]
+id = 'pi-connect-bot'
+label = 'connect-bot'
+agent = 'pi'
+kind = 'optional'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\connect-bot.ts'
+[[extensions]]
+id = 'pi-web-access'
+label = 'web-access'
+agent = 'pi'
+kind = 'optional'
+entrypoint = 'E:\Developer\myhub\pi-extension\pi-web-access\index.ts'

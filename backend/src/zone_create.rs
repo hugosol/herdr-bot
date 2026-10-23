@@ -44,10 +44,9 @@ impl CreateZoneError {
 
     pub fn message(&self) -> String {
         match self {
-            Self::ParentNotAbsolute(path) => format!(
-                "配置的 zone 创建父目录不是绝对路径：{}。",
-                path.display()
-            ),
+            Self::ParentNotAbsolute(path) => {
+                format!("配置的 zone 创建父目录不是绝对路径：{}。", path.display())
+            }
             Self::ParentNotFound(path) => format!(
                 "配置的 zone 创建父目录不存在：{}。不会自动创建父目录。",
                 path.display()
@@ -91,11 +90,10 @@ pub fn create_and_init(
 ) -> Result<PathBuf, CreateZoneError> {
     validate_parent(parent)?;
     let name = validate_name(name)?;
-    let parent =
-        fs::canonicalize(parent).map_err(|error| CreateZoneError::ParentInaccessible {
-            path: parent.to_path_buf(),
-            error,
-        })?;
+    let parent = fs::canonicalize(parent).map_err(|error| CreateZoneError::ParentInaccessible {
+        path: parent.to_path_buf(),
+        error,
+    })?;
     let target = parent.join(&name);
 
     match fs::create_dir(&target) {
@@ -133,9 +131,7 @@ pub fn create_and_init(
 
 fn validate_parent(parent: &Path) -> Result<(), CreateZoneError> {
     if parent.as_os_str().is_empty() || !parent.is_absolute() {
-        return Err(CreateZoneError::ParentNotAbsolute(
-            parent.to_path_buf(),
-        ));
+        return Err(CreateZoneError::ParentNotAbsolute(parent.to_path_buf()));
     }
     let metadata = fs::metadata(parent).map_err(|error| match error.kind() {
         io::ErrorKind::NotFound => CreateZoneError::ParentNotFound(parent.to_path_buf()),
@@ -145,9 +141,7 @@ fn validate_parent(parent: &Path) -> Result<(), CreateZoneError> {
         },
     })?;
     if !metadata.is_dir() {
-        return Err(CreateZoneError::ParentNotDirectory(
-            parent.to_path_buf(),
-        ));
+        return Err(CreateZoneError::ParentNotDirectory(parent.to_path_buf()));
     }
     Ok(())
 }

@@ -11,7 +11,9 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::{CallRecord, FixtureTree, HttpResponse, OpenRequest, TestServer, config, post_over_tcp};
+use common::{
+    CallRecord, FixtureTree, HttpResponse, OpenRequest, TestServer, config, post_over_tcp,
+};
 
 /// 忙碌结果的编码（见根 `README.md` 的“操作进行中”一节）。
 const BUSY_STATUS: u16 = 409;
@@ -73,7 +75,10 @@ fn assert_busy(path: &str, response: &HttpResponse) {
     );
     let body: serde_json::Value =
         serde_json::from_str(&response.body).expect("忙碌响应必须是 JSON");
-    assert_eq!(body["code"], BUSY_CODE, "{path} 的忙碌类别必须可区分：{body}");
+    assert_eq!(
+        body["code"], BUSY_CODE,
+        "{path} 的忙碌类别必须可区分：{body}"
+    );
     assert!(
         body.get("outcome").is_none(),
         "{path} 的忙碌响应不得伪装成一次执行结果：{body}"
@@ -98,8 +103,10 @@ async fn dropped_connection_keeps_the_operation_running_until_its_own_end() {
     let client = OpenRequest::submit(server.addr(), START).await;
 
     // 正对照：这次请求确实已被接受，并产生一次真实调用，夹具正在运行。
-    let accepted =
-        common::wait_until(RECORD_DEADLINE, || !invokes(&tree, "long-running").is_empty()).await;
+    let accepted = common::wait_until(RECORD_DEADLINE, || {
+        !invokes(&tree, "long-running").is_empty()
+    })
+    .await;
     assert!(
         accepted,
         "正对照：提交后必须产生一次 long-running 调用记录：{:#?}",

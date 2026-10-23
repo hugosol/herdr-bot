@@ -14,8 +14,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use mdns_sd::{DaemonEvent, HostnameResolutionEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 use herdr_bot::mdns::{HOSTNAME, INSTANCE_NAME, SERVICE_FULLNAME, SERVICE_TYPE};
+use mdns_sd::{DaemonEvent, HostnameResolutionEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 
 /// 受控占名用的服务端口：与受测 herdr-bot 主界面的实际监听端口必然不同，因此线上实例的端口能指认发布者是谁。
 const OCCUPIER_PORT: u16 = 18788;
@@ -27,7 +27,9 @@ const SKIP_PREPROBE_ENV: &str = "HERDR_BOT_MDNS_SKIP_PREPROBE";
 static SERIAL: Mutex<()> = Mutex::new(());
 
 fn serial_guard() -> std::sync::MutexGuard<'static, ()> {
-    SERIAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// 受控占名：独立发布者持有 `herdr-bot.local.` 与 `herdr-bot._http._tcp.local.`，直到被丢弃。
@@ -181,7 +183,9 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
             if read == 0 {
                 break;
             }
-            log.lock().expect("写日志").extend_from_slice(&buffer[..read]);
+            log.lock()
+                .expect("写日志")
+                .extend_from_slice(&buffer[..read]);
         }
     });
 }
@@ -273,19 +277,28 @@ fn http_get(addr: SocketAddr, path: &str) -> (String, String) {
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("设置读取超时");
-    write!(stream, "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n")
-        .expect("发送请求");
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+    )
+    .expect("发送请求");
     let mut raw = String::new();
     stream.read_to_string(&mut raw).expect("读取响应");
     let (head, body) = raw.split_once("\r\n\r\n").expect("响应含头体分隔");
-    (head.lines().next().expect("响应含状态行").to_string(), body.to_string())
+    (
+        head.lines().next().expect("响应含状态行").to_string(),
+        body.to_string(),
+    )
 }
 
 /// 冲突路径不阻止 HTTP 服务：本机与局域网 IPv4 两个入口都能打开打包页面。
 fn assert_panel_serves(panel: &Panel, address: Ipv4Addr) {
     for entry in [Ipv4Addr::LOCALHOST, address] {
         let (status, body) = http_get(SocketAddr::new(IpAddr::V4(entry), panel.port), "/");
-        assert!(status.contains("200"), "入口 {entry} 打不开 herdr-bot 主界面：{status}");
+        assert!(
+            status.contains("200"),
+            "入口 {entry} 打不开 herdr-bot 主界面：{status}"
+        );
         assert!(
             body.contains("<title>herdr-bot</title>"),
             "入口 {entry} 返回的不是打包页面：{body}"
@@ -337,7 +350,10 @@ fn conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves(
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!(
+        "受测 herdr-bot 主界面的原始诊断输出：\n{}",
+        panel.log_text()
+    );
     drop(occupier);
 }
 
@@ -372,6 +388,9 @@ fn registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it() 
     );
 
     assert_panel_serves(&panel, address);
-    eprintln!("受测 herdr-bot 主界面的原始诊断输出：\n{}", panel.log_text());
+    eprintln!(
+        "受测 herdr-bot 主界面的原始诊断输出：\n{}",
+        panel.log_text()
+    );
     drop(occupier);
 }

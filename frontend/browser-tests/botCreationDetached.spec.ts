@@ -72,6 +72,7 @@ async function openBotDialog(page: Page, zonePath: string) {
   await row.getByTestId('zone-create-bot').click()
   const dialog = page.getByTestId('bot-creation-dialog')
   await expect(dialog).toBeVisible()
+  await dialog.locator('#bot-workspace-target').selectOption('default')
   return dialog
 }
 

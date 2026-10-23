@@ -28,7 +28,8 @@ herdr-bot 主界面只反馈脚本调用情况，不检查后台程序是否就�
 | `backend/src/zones.rs` | zone 登记列表的持久化：路径校验、原子写入与读取失败分类 |
 | `backend/src/browse.rs` | zone 只读浏览：目录输出、内容识别、预览上限与根边界（含链接/目录联接）检查 |
 | `backend/src/git.rs` | Git zone 状态与审查 diff：当前分支、待提交变更、重命名/冲突类别、角标计数，以及 HEAD→最终本地内容的只读比较（两侧限额） |
-| `backend/src/sync.rs` | 远端检查与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
+| `backend/src/status_cache.rs` | 按实际工作树共享的本地 Git 状态缓存：有效期、并发合并与失效代数隔离 |
+| `backend/src/sync.rs` | 共享 Git 状态读取、远端检查反馈与按既有 upstream/配置的 Sync：fetch → pull → 按需 push、仓库资格复用与失败短路 |
 | `backend/src/watch.rs` | zone 本地文件/Git 元数据监听、按 zone 合并节流与监听健康上报 |
 | `backend/src/mdns.rs` | 发布 mDNS 主机名 `herdr-bot.local` 与 `_http._tcp` 服务记录，并给出可断言的诊断输出 |
 | `backend/src/shutdown.rs` | 本机关机动作（启用 `SeShutdownPrivilege` + `ExitWindowsEx`）与可替换的关机接缝 |
@@ -247,8 +248,9 @@ offline_retention_seconds = 30
 |---|---|---|
 | `online_timeout_seconds` | `10` | 在线有效期（秒）：上报年龄不超过它时该会话是**在线** |
 | `offline_retention_seconds` | `30` | 离线保留期（秒）：超过在线有效期但在两个窗口之和以内时是**离线**且登记仍保留 |
+| `history_file` | `.data/session-history.json` | 持久历史元数据文件；相对进程工作目录，不保存当前登记及关机意图 |
 
-- 两个字段**可以分别缺省**：只写一个时另一个取上表默认值；整个 `[sessions]` 段缺省等于两个都取默认
+- 两个窗口字段**可以分别缺省**：只写一个时另一个取上表默认值；整个 `[sessions]` 段缺省时历史路径与窗口均取默认
   （在线 10 秒／离线保留 30 秒，即上报年龄超过 40 秒后由后端维护清除登记）。
 - 合法整数范围都是 `1..=4294967295`：零、负数、小数、字符串、布尔值、超过上界，或拼错的字段名／段名都会让
   **启动明确失败**并指出出错的配置，不会静默回退到缺省值。两个合法窗口之和（最大 `8589934590` 秒）按总阈值
@@ -258,7 +260,7 @@ offline_retention_seconds = 30
 
 ### `[herdr]` 配置（必须显式配置）
 
-从 zone 创建 Bot 时，每个新 Tab 都创建在这个服务端明确配置的 Herdr Workspace 中。这一段**没有
+从 zone 创建 Bot 时，弹窗初始选择“当前”，按 zone 根目录名匹配；改选“默认”才使用这个服务端明确配置的 Herdr Workspace。这一段**没有
 代码缺省值**：
 
 ```toml
@@ -269,13 +271,13 @@ workspace_name = 'bot-playground'
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
-| `workspace_name` | **无（必须显式配置）** | 目标 Herdr Workspace 的显示名；每次创建按它精确匹配且必须唯一 |
+| `workspace_name` | **无（必须显式配置）** | 默认 Herdr Workspace 的显示名；选择“默认”时按它精确匹配且必须唯一 |
 | `executable` | `herdr` | 生产调用使用的 Herdr CLI；缺省按 `PATH` 查找 |
 
 - 整段缺失、`workspace_name` 为空字符串或纯空白都会让**进程启动失败**，不会回退到 `bot-playground`
   或其他猜测目标。
-- 浏览器请求没有 Workspace 字段，不能替换这个目标；创建时即使 Herdr 当前焦点在别的 Workspace，
-  也仍按配置名称精确查找。匹配到零个或多个时明确失败，不任取第一个、不新建 Workspace。
+- 浏览器只可选择“默认”或“当前”，不能指定任意 Workspace 名称。默认按配置名称匹配，当前按 zone 根目录名匹配；
+  均区分大小写、精确查找，Herdr 焦点不参与选择。匹配到零个或多个时明确失败，不任取第一个、不新建、不回退。
 - 合法值去掉首尾空白后按字面保存；拼错的字段名会让启动失败。
 
 ### `[zones]` 配置（可选）
@@ -348,23 +350,26 @@ metadata_file = 'meta-data/bot-options.toml'
 ### 运行数据目录与首次切换
 
 默认及随附配置将 zone 登记放在 `.data/zones.json`、Bot 模板放在
-`.data/bot-templates.json`，每个 Bot 在 `.data/bot-sessions/<创建标识>/` 中使用独立的新会话目录。
-所有相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
+`.data/bot-templates.json`。Bot 原生会话存储由 Pi／OMP 自身的有效配置决定；herdr-bot 不传
+`--session-dir`、不预分配原生目录，也不修改 autoResume 或加入其他强制新会话策略。
+新建 Herdr Tab 不保证 agent 新建原生对话；用户以后更改配置时，续接行为仍由 agent 决定。
+所有 herdr-bot 相对位置均以**进程工作目录**为基准（不是配置文件所在目录）；请保持启动工作目录一致。
 运行数据目录及持久文件的父目录不存在时由启动程序创建，创建失败会明确拒绝启动。
-会话目录分配失败会拒绝本次创建，不产生 Herdr Tab、agent 或输入提交。
+两种原生 agent 的隔离运行证据与部署 H1 核对见 [原生存储验收](docs/native-session-storage-acceptance.md)。
 
 首次使用新布局启动时执行已授权的一次性切换：
 
 - 根目录 `zones.json` 的字节完整复制到当前配置的登记目标，再删除旧源；不改写登记内容或其中的路径，
   更不搬动、删除或改写 zone 实际目录。若目标登记文件已存在，保留目标原样并删除旧源，不合并、不覆盖、
   不因新旧登记不同而停机；目录冒充目标文件或迁移写入失败则明确失败，保留旧源。
-- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp` 和旧 `bot-sessions/`。
-  不迁移或恢复旧模板／旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
+- 删除根目录 `bot-templates.json`、`bot-templates.json.tmp`、`zones.json.tmp`。
+  旧 `bot-sessions/`（含主文件与附属记录）原位保留，不移动、复制、转换、删除或改写；
+  本次原生存储修正不迁移或恢复旧会话，不触碰旁置无关文件，也不向已有 agent 发送关闭指令。
 - 成功后在 `.data/.runtime-layout-v1` 留下切换标记。正常启动不重复清理；切换后保存的新模板与新会话文件
   在重启后保留。不要删除该标记来“修复”数据；后续即使重新出现旧根目录文件，也不会自动读取或回退。
 
 `[zones] registry_file` 与 `[bot_templates] storage_file` 仍可显式指定其他持久位置，
-新 Bot 的 `bot-sessions/` 随模板存储文件放在同一父目录。显式配置不增加旧位置回退；
+但这些配置不再决定原生会话目录，也不增加旧位置回退；
 使用自定义位置时，应自行将该位置加入 Git 忽略规则。
 交付的 `.gitignore` 忽略 `.data/` 的全部运行与临时文件，并保留旧根目录运行文件的忽略项；
 手工维护的 `meta-data/` 不被忽略，可纳入 Git，不要添加或提交用户运行数据。
@@ -380,18 +385,21 @@ metadata_file = 'meta-data/bot-options.toml'
 [git]
 # 每条 Git 命令的执行上限（秒）；缺省 300。
 command_timeout_seconds = 300
+# 列表与 zone 内共享的本地 Git 状态缓存有效期（秒）；缺省 10。
+status_cache_ttl_seconds = 10
 ```
 
 | 字段 | 缺省 | 含义 |
 |---|---|---|
 | `command_timeout_seconds` | `300` | 每条 Git 命令允许执行的最长时间（秒） |
+| `status_cache_ttl_seconds` | `10` | 本地 Git 状态成功读取完成后的缓存有效期（秒）；读取不续期，到期不自行轮询 |
 
 - 时限覆盖状态读取、diff、暂存、提交、远端检查以及同步中的每一条 Git 命令。到达时限时本功能结束整棵命令进程树
   （包括 hook 派生出的子进程），停止本次执行并中断后续步骤；页面明确显示这是本功能时限，并保留取消前
   已有的 Git 输出，不伪造 Git 退出消息。
 - 终止尚未确认时，该仓库的写操作资格继续被持有，后来的 Commit 不会与它重叠；确认终止后才释放。
-- 合法整数范围是 `1..=4294967295`；缺段或缺少字段取 300 秒。零、负数、小数、字符串或拼错的字段名
-  都会让**启动明确失败**，不会静默回退。
+- 两项配置的合法整数范围均为 `1..=4294967295`；缺段或缺少字段时，命令时限取 300 秒，缓存有效期取
+  10 秒。零、负数、小数、字符串或拼错的字段名都会让**启动明确失败**，不会静默回退。
 - 合法的慢操作可能被较短时限打断；需要更长时间时调大该值并重启。运行中改写配置不会改变已加载的实例。
 
 ### Bot 模板
@@ -403,7 +411,7 @@ command_timeout_seconds = 300
 新增与编辑均依次经过 **模板预设 → 扩展配置 → 确认保存**：
 
 1. 在模板预设中填写名称、命名规则、Agent、model、thinking、Skill 与多行 prompt；四类字段插入和混合固定文字的命名示例保留。
-2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 可选 `codebase-tools`、`connect-bot`；Pi 仅可选 `codebase-tools`。新模板初始零选，可不选、单选或多选。`model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。
+2. 在扩展配置中选择当前 Agent 的可选扩展。随附目录中 OMP 与 Pi 均可选各自的 `codebase-tools`、`connect-bot`；OMP 另可选 `oh-my-wayfinder`，Pi 另可选 `web-access`（标识 `pi-web-access`），直接加载本机第三方源码入口。新模板初始零选，可不选、单选或多选。`herdr-agent-state`（Herdr 官方集成）与 `model-cost` 是对应 Agent 的固定项，独立显示且不可取消，不计入可选集合。官方集成在 Herdr 环境中上报 agent 状态及原生会话引用；它不等于可选的 `connect-bot`，也不会自动向 chat 登记会话。
 3. 在确认保存中核对全部字段、固定项、可选项与扩展自动发现关闭的说明，再点击“保存”。摘要只是配置说明，不证明扩展已实际加载。
 
 “下一步”“上一步”仅保留当前未保存草稿，不写入共享模板；只有明确保存且后端确认成功才更新列表。取消会丢弃草稿。保存拒绝或磁盘写入失败会保留草稿并显示错误，此前已保存的模板不变；可返回修改再保存。切换 Agent 会清空扩展选择，同时把 model / thinking 重置为默认，切回不会恢复旧勾选或继承同名的另一 Agent 入口。重新打开编辑器会重新读取当前模板与选项目录；页面已打开后元数据改变，保存仍按最新元数据校验。
@@ -422,7 +430,7 @@ command_timeout_seconds = 300
   否则重置并提示。
 - `skill` 可不选，选择时只能是 `/teach` 或 `/code-review`；不允许任意 Skill 文本。
 - `prompt` 可多行、可为空；不增加 Skill / prompt / input 的非空组合校验。
-- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
+- `extensions` 是当前 Agent 的可选扩展稳定标识数组，例如 OMP 的 `["omp-codebase-tools","omp-connect-bot"]`，Pi 的 `["pi-codebase-tools","pi-connect-bot","pi-web-access"]`；零选保存为 `[]`。不记录固定项、入口路径或映射副本。固定项、未知项、重复项和跨 Agent 选择不能作为可选项保存。
 
 以上是随附 `meta-data/bot-options.toml` 的初始选项，不是代码中的备用清单。初始能力事实依据
 OMP 模型元数据 `thinking.efforts` 与 Pi `getSupportedThinkingLevels`，不是 CLI 可接受级别。
@@ -431,6 +439,16 @@ minimal/low/medium/high/xhigh/max、DeepSeek 为 off/low/high/max。显式模型
 `openai-codex/gpt-6.1-sol` 与 `deepseek/deepseek-flash`，不做裸名匹配或 provider 回退。
 
 #### 维护共享选项目录
+
+OMP 可选扩展 `oh-my-wayfinder`（标识 `omp-oh-my-wayfinder`）加载目录 `E:\Developer\myhub\oh-my-wayfinder\extensions`，与本机 OMP 的 `extensions` 配置一致。OMP 从该目录加载命令入口，并发现 `agents/tdd.md`，无需在用户 agent 目录另装或链接一份定义。不要改成只加载 `extensions/entry.ts`：文件入口虽能注册 `/hyper-auto-coding` 与 `/spec-to-code`，却不会提供同包的 `tdd` 子代理，前置检查会报 `缺少: tdd (agent)`。
+
+扩展 `entrypoint` 支持可读文件或目录；herdr-bot 只检查可读取性，目录扫描与包解释由目标 agent 原生处理。使用这些命令的模板必须选中此扩展；仅在 prompt 中填写命令不会加载扩展，也不应将其当作同名 Skill。部署到其他位置时更新 `entrypoint`。选项与模板修改只对之后新建的 Bot 生效，已运行的会话不会自动补载；目录入口支持涉及后端代码更新，升级后需重启 herdr-bot。
+
+当前 OMP 扩展命令解析器只按普通空格分隔命令名与参数，不将换行当作分隔符。若模板 prompt 仅填写 `/hyper-auto-coding`、创建时 input 填写 slug，须将 prompt 保存为 `"/hyper-auto-coding "`（末尾一个普通空格）；herdr-bot 会保留此空格，再以空行连接 input，Wayfinder 会对收到的 slug 去除首尾空白。否则命令名会连同换行和 slug 一起被查找，未命中后作为普通用户文本交给模型。也可将 prompt 留空，在 input 中一次填写 `/hyper-auto-coding <slug>`。
+
+Pi 可选扩展 `web-access` 的入口为 `E:\Developer\myhub\pi-extension\pi-web-access\index.ts`。首次使用前，在该源码目录执行 `npm install` 安装依赖；源码加载不依赖 npm 发布包，但仍需要源码自身的 npm 依赖。部署到其他位置时需更新元数据中的 `entrypoint`。源码更新会影响之后新启动的 Bot，不会自动替换已运行会话中的扩展。
+
+herdr-bot 继续通过 `--no-extensions` 关闭自动发现，仅显式加载固定项与模板所选入口；未勾选 `web-access` 的 Bot 不加载它。此配置不修改 `~/.pi/agent/settings.json`，也不卸载独立 Pi 使用的 `npm:pi-web-access`，两种加载方式保持隔离。
 
 直接编辑该 TOML 文档；它可纳入 Git，不属于运行数据。部署时须一并交付，程序不生成替代文件。
 服务启动先完整读取并校验；缺失、读取失败、TOML 错误、重复标识、未知 Agent 引用或相互矛盾的
@@ -471,10 +489,22 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 ### 从 zone 创建 Bot
 
 `zone` 入口的每个 zone 行都有一个独立的“+”入口。打开弹窗后选择模板、填写可为空的初始 input；
-弹窗只显示后端预览的本次名称，**没有手工命名输入**。确认后由后端执行创建，页面不再自己计算名称：
+弹窗沿用原布局，在名称区域提供单行“本次 Bot 名称（可编辑规则）”及最终名称预览。规则初始来自模板，
+可修改固定文字与占位符；前端复用模板编辑的转换函数，使用后端提供的真实 zone、模板名、agent 与本次短标识实时预览。
+编辑不请求后端、不保存模板；切换模板重新载入规则。规则与生成名称必须非空且为单行，创建开始后不可继续编辑。
+提交时后端重新计算并核对最终名称，只有一致才继续创建；未知占位符保持字面值，替换值不递归展开。
 
-1. 按 `[herdr] workspace_name` 精确查找唯一 Workspace。当前焦点不会影响选择；零个或多个匹配都失败。
-2. 在目标 Workspace 中新建独立 Tab，显示名严格使用模板 `bot-name` 的结果，cwd 显式设为该 zone 的目录。
+弹窗的 `Herdr Workspace` 提供“默认”和“当前”，每次打开重置为“当前”，不保存到模板或记住上次选择。
+“当前”取 zone 根目录的最后一级目录名，不使用文件浏览中的子目录；例如 `E:\projects\alpha` 匹配 `alpha`。
+盘符根目录等无末级目录名的 zone 选择“当前”时拒绝创建，并提示改选默认 Workspace。
+
+Workspace 查找阶段失败（不存在、重名或 Herdr 不可达等）只提示，不锁定原弹窗：可以直接再次创建，
+也可以改选“默认 / 当前”后创建。模板、input、名称规则、短标识与名称预览全部保留；每次接受创建都产生
+独立尝试记录，不覆盖旧失败。不会自动切换或重试，也不增加提交前预检查。请求提交或后台执行期间仍防止
+重复提交；进入创建 Tab、启动 agent 或提交输入阶段后的失败仍保留结果，不开放同窗重建。
+
+1. 默认按 `[herdr] workspace_name`、当前按 zone 根目录名精确查找唯一 Workspace。区分大小写，当前焦点不会影响选择；零个或多个匹配都失败，显示实际目标名称且不新建、不回退。
+2. 在目标 Workspace 中新建独立 Tab，显示名使用本次命名规则的转换结果（未覆盖时沿用模板 `bot-name`），cwd 显式设为该 zone 的目录。
 3. 在初始 Pane 中启动模板指定的 agent（omp / pi），等待 Herdr 确认它已可交互。
 4. 就绪后才把 Skill、模板 prompt 与本次 input 合成一次初始指示提交；不先单独发起 Skill 轮次。
 5. 初始指示提交被确认后立即显示“创建成功，初始指示已提交”，不等待模型完成任务、Skill 执行或
@@ -494,11 +524,14 @@ Skill 原生命令、固定扩展及所选可选扩展入口，以及本次 inpu
 接口：
 
 - `POST /api/bots/preview`，JSON 为 `{"zone":"…","templateId":"…"}`，返回本次短实例标识与实际会使用的
-  名称：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","templateId":"…","agent":"omp"}`。
+  初始名称及本地转换上下文：`{"botId":"a7f3c2","name":"alpha · 审查 · a7f3c2","zone":"…","zoneName":"alpha","templateId":"…","templateName":"审查","botNameRule":"{zone.name} · {template.name} · {bot.id}","agent":"omp"}`。
 - `POST /api/bots`，JSON 为
-  `{"zone":"…","templateId":"…","botId":"a7f3c2","input":"…","expectedName":"…"}`；接受后返回 HTTP 202
-  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。请求没有 Workspace 字段；模板在请求
-  被接受时固定为快照。若 `expectedName` 与当前模板规则算出的名称不同，返回 409 `name-preview-stale`，
+  `{"zone":"…","templateId":"…","botId":"a7f3c2","botNameRule":"{zone.name} · 发布检查 · {bot.id}","input":"…","expectedName":"alpha · 发布检查 · a7f3c2","workspaceTarget":"current"}`；接受后返回 HTTP 202
+  与创建生命周期（`id`、`name`、`zone`、`stage:"starting"` 等）。`workspaceTarget` 可为 `default` 或 `current`，省略时为 `default`；
+  不接受任意 Workspace 名称或其他枚举值。当前模式无目录名时返回 400 `workspace-name-unavailable`，不调用 Herdr。
+  `botNameRule` 可省略，省略时使用当前模板规则；提供时只用于本次创建，不写回模板。空白规则、换行规则、空白结果分别返回
+  400 `bot-name-rule-required`、`bot-name-rule-not-single-line`、`bot-name-required`，均不调用 Herdr。
+  模板与目标名称在请求被接受时固定为快照。若 `expectedName` 与本次规则使用真实字段算出的名称不同，返回 409 `name-preview-stale`，
   不会悄悄改名。
 - `GET /api/bots/{id}` 读取同一次创建的当前阶段：`starting`、`submitting`、`succeeded` 或 `failed`。
   已取得的 `tabId` / `paneId` / `agentName` 只在确实取得后出现；失败时附加
@@ -514,8 +547,8 @@ Herdr / agent。用户确认时可以：
 
 1. 在 `herdr-bot.toml` 明确写 `[herdr] workspace_name = 'bot-playground'`（或本次显式目标），并确认
    真实 Herdr 已在运行；在 Herdr 中让焦点停在另一个 Workspace。
-2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建，记录结果中的 Bot
-   名称、Tab / Pane 标识。
+2. 预先登记一个普通目录与一个 Git 工作树目录作为两个 zone；分别从它们的“+”创建。验证配置目标时显式选“默认”；
+   验证“当前”时预先准备与 zone 根目录同名的 Herdr Workspace。编辑本次规则并核对预览，记录结果中的 Bot 名称、Tab / Pane 标识。
 3. 用独立 Herdr 命令核对对象：`herdr workspace list` 找到配置目标；`herdr tab list` / `herdr pane get`
    找到结果中的标识；`herdr pane process-info --pane <paneId>` 或 `herdr agent get <paneId>` 读取实际
    cwd，应与所选 zone 目录一致，而不是焦点 Workspace 的目录。
@@ -621,6 +654,10 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   展开目录只切换显示；选择变更后右侧显示从当前分支最新本地提交到最终本地内容的差异，默认左右对照。
 - **窄屏（≤ 720px）**：逐层进入目录或变更；选择文件/变更后进入内容视图，并可用明确返回按钮回到原列表，
   列表滚动位置会恢复。diff 默认统一显示。
+- **差异上下文**：电脑与窄屏均只在每处修改前后各保留 3 行未修改内容，其余显示为「已隐藏 N 行 · 展开」。
+  点击可展开整段，再点击「收起」恢复折叠；各段独立操作，原文件行号不变。切换文件或差异内容更新后恢复
+  默认折叠。相邻修改的上下文重叠或相接时合并展示；整文件新增、删除不折叠修改行；两侧内容相同时仅显示
+  「两侧内容相同，没有行级差异」。普通文件浏览仍显示完整预览，差异比较基准不变。
 - **完整目录**：普通目录输出与磁盘真实内容一致。Git zone 使用 Git 原生忽略规则省略 ignored 未跟踪
   路径，并省略 `.git` 元数据；`.gitignore`、未被忽略的隐藏文件、tracked 文件与未被忽略的空目录继续显示。
   文件事件与返回页面只更新 Git 状态，目录树只在进入 zone 和手动刷新时重读。
@@ -639,15 +676,24 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   没有等待窗口时立即刷新，窗口内的事件合并成窗口结束的一次补刷新；最小间隔默认 10 秒，可用
   `[zones] refresh_interval_seconds` 配置。连续写入不会让最终刷新无限延期，10 秒是刷新通知的最小
   间隔，不代表 Git 查询必须在 10 秒内完成。多个页面共享同一条 zone 监听与节流，不会各自放大刷新。
-- **刷新边界**：进入 zone、回到 `zone` 入口以及点按“刷新”都会立即重新读取当前目录、所选文件、
-  Git 状态与所选 diff，不受自动刷新节流限制；不把旧结果当作当前事实。外部切分支后点按“刷新”会显示新分支。
+- **Git 状态缓存**：后端按实际 Git 工作树维护共享内存缓存，zone 列表和 zone 内共用；路径别名共用，
+  独立 worktree 不混用。普通 UI 读取在有效期内复用结果；无缓存或过期时等待新检查，同工作树的并发读取
+  合并。默认有效期 10 秒，由 `[git] status_cache_ttl_seconds` 独立配置；重启清空，不持久化状态快照。
+  本地事件在通知前使缓存失效，Git 操作也会使旧结果失效；失效前尚未完成的检查不能重新写回旧结果。
+  重新检查失败时不继续把旧数量或箭头显示为当前事实。
+- **刷新边界**：切换 UI 读取共享 Git 状态，不因每次切换重复执行 Git；进入 zone 仍读取完整目录树。
+  点按“刷新”会绕过 Git 缓存并重读目录树、所选文件与 diff。本地事件仍沿用通知节流；缓存 TTL 不是
+  所有 Git 检查的严格最小间隔。Commit / Sync 执行前始终实时校验，不相信展示缓存。
 - **监听健康**：监听建立失败、zone 目录或其相关 Git 元数据目录消失/被替换时，页面明确显示
   “自动更新已停止”或“可能已过期”，不会继续宣称自动更新正常，也不会自动宣称恢复；监听正常时的刷新
   与手动读取仍走同一组公开读取接口。目录或文件在外部被删除、Git 状态读取失败时，页面显示明确错误，
   不伪装成空目录或干净仓库。
-- **远端边界**：本地文件事件只触发本地状态刷新，不会产生周期性 fetch；远端 ahead/behind 只来自显式
-  “检查远端”或 Sync 前检查，并显示最近检查时间。未检查时页面明确显示“尚未检查”，不把本地远端跟踪
-  引用当成实时状态。
+- **远端边界**：本地文件事件只触发本地状态刷新，不产生周期性 fetch；联网检查由显式“检查远端”、
+  Sync 前检查及本服务成功 Commit 后的一次后台检查触发。外部工具提交不会自动 fetch。
+  ahead/behind 根据本地 HEAD 与本地已知 upstream 引用计算；未检查时明确显示“尚未检查”，不冒充实时远端。
+- **待推送提示**：zone 列表名称旁与 zone 内顶部分支旁显示黄色 `↑ N`，表示相对本地已知 upstream 的
+  待推送提交数。`ahead > 0` 即显示，不要求先联网或工作树干净，可与待提交数量同时出现；数量未知、
+  没有 upstream 时不显示，也不据此宣称已同步。成功检查或 Sync 后重新计算，两处提示随共享状态更新。
 
 **待提交集合**（`GET /api/zones/git-status`）：
 
@@ -678,10 +724,12 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   `{"zone":"…","repository":true|false,"branch":"…"|null,"detached":bool,"conflict":bool,
   "pendingCount":N,"changes":[{"path":"…","oldPath":"…","kind":"added|modified|deleted|renamed|conflicted"}],
   "sync":{"upstream":{"remote":"…","branch":"…","short":"…"}|null,"ahead":N|null,"behind":N|null,
-  "remoteCheckedAt":毫秒|null}}`。普通目录返回 `repository:false` 与空变更；登记目录消失或 Git 不可用时
-  是明确错误，不是干净状态。`sync` 只描述本地最近已知的远端跟踪事实：本读取**不发起 fetch**，
-  `remoteCheckedAt` 为 `null` 表示本实例尚未成功检查远端，`ahead`/`behind` 为 `null` 表示跟踪引用或
-  首次提交尚不可用。
+  "remoteCheckedAt":毫秒|null,"remoteChecking":bool,"remoteCheckError":"…"|null}}`。
+  普通读取复用有效缓存；`&refresh=true` 绕过缓存。普通目录返回 `repository:false` 与空变更；重新读取时
+  登记目录消失或 Git 不可用是明确错误，不是干净状态。`sync` 描述本地最近已知的远端跟踪事实与后台检查
+  反馈：本读取**不发起 fetch**，`remoteCheckedAt` 为 `null` 表示本实例没有对当前跟踪引用的有效成功检查
+  记录，`ahead`/`behind` 为 `null` 表示跟踪引用或首次提交尚不可用。`remoteChecking` 表示提交后检查进行中，
+  `remoteCheckError` 为最近检查失败的诊断；失败不把本地已知数量改成零。
 - `GET /api/zones/diff?zone=<登记路径>&path=<相对新路径>`（重命名再加
   `oldPath=<Git 旧路径>`）返回一次变更的审查事实：
   `{"zone":"…","path":"…","oldPath":"…","old":{…},"new":{…},"complete":bool}`。
@@ -691,8 +739,9 @@ auto。默认 model 时不会传 model 与 thinking；显式 model 搭配默认 
   （新增文件的旧侧、删除文件的新侧）。任一非文本侧使 `complete:false`，页面不渲染完整 diff。
   新增路径与 `oldPath` 都执行同一份根边界检查；旧路径来自 Git 历史也不能绕过它。
 - `GET /api/zones/overview` 返回每个登记项的角标事实：
-  `{"zones":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"error":"…"}]}`；
-  普通目录没有 `pendingCount`，读取失败的项带 `error`，不伪装成 0 项。
+  `{"zones":[{"path":"…","repository":bool,"pendingCount":N,"conflict":bool,"sync":{…},"error":"…"}]}`；
+  Git 项的 `sync` 与详情同形，共用后端缓存和检查反馈；普通目录没有 `pendingCount` 与 `sync`，读取失败的项
+  带 `error`，不伪装成 0 项。
 - Git 状态与审查结果还带 `reviewToken`（当前审查版本标识）与可选的 `blockedReason`（仓库级阻塞原因）。
   `reviewToken` 覆盖分支、HEAD、完整索引、待提交路径集合与每个路径的完整最终内容；预览上限不会截断它。
   提交请求必须原样带回它。
@@ -760,6 +809,10 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 接口：`POST /api/zones/commit`，JSON
 `{"zone":"服务器目录","message":"非空提交信息","reviewToken":"展示的审查版本"}`。
 成功返回 `{"zone":"…","outcome":"committed","commit":"<HEAD oid>","branch":"…","message":"…"}`。
+本服务确认 Commit 成功后立即反馈，并在后端执行一次独立于请求连接的远端检查；不等待网络结果，
+离开页面也不取消。检查期间展示进度并禁用 Sync，开始与结束均通知所有观察页面重读共享状态。
+检查失败只报告远端检查错误，不撤销或否认成功提交、不自动重试；没有 upstream 时明确说明不可检查，
+不自动发布分支。检查成功后满足同步条件即可直接按 Sync，无需另点“检查远端”；Sync 本身仍再次 fetch。
 失败响应为 `{"code":"…","message":"…"}`，例如 `empty-message`、`invalid-request`、`not-a-repository`、
 `commit-blocked`、`review-invalid`、`nothing-to-commit`、`git-write-in-progress`、`git-timeout`、
 `git-command-failed`、`zone-unavailable`。超时消息明确说明本功能时限并保留已有 Git 输出。
@@ -771,7 +824,8 @@ Git zone 的变更视图在列表上方常驻提交信息输入框与 `Commit` �
 | 状态 | 页面与操作 |
 |---|---|
 | 存在普通待提交变更 | Commit 是主操作；Sync 不显示，避免对脏工作树同步 |
-| 干净、有 upstream、已知 ahead/behind 非零 | Sync 可用；显示待拉取与待推送数量 |
+| 提交后后台远端检查进行中 | 显示后台检查进度；Sync 暂不可用，可离开页面 |
+| 干净、有 upstream、已知 ahead/behind 非零且未在后台检查 | Sync 可用；显示待拉取与待推送数量 |
 | 干净、已知已同步 | 主按钮禁用以“已同步”显示；仍可主动检查远端 |
 | 干净、远端尚未检查 | Sync 禁用并说明原因；“检查远端”可执行 |
 | 干净、没有 upstream | 显示限制；不提供 Publish Branch，也不隐式配置 upstream |
@@ -1020,9 +1074,145 @@ herdr-bot 主界面调用时同样出现**两个各自独立的可见顶层窗�
 全零 GUID，即“让 Windows 决定”），每个 Python 进程各有自己的 `conhost.exe`。是否与用户心目中的
 “原有窗口行为”（例如经典 conhost 独立窗口）一致，需要人工验收确认（见[人工验收移交](#人工验收移交p2--p4未验收)）。
 
+## 历史会话列表（chat 入口）
+
+chat 右上角的三角按钮在**当前会话／历史会话**两个互斥视图间切换；标题文字与不同面板底色共同标识视图。
+打开或整页刷新默认显示当前会话。进入历史或翻页时读取服务器当时最新的持久结果，停留期间不自动刷新或随当前会话事件重排；退出再进入回到历史首页并读取最新值。
+历史按首次收录时间倒序，每页最多 **50 条**；首页／上一页／下一页／末页按钮显示当前页与总条数，到边界时禁用。
+这是普通分页，不冻结跨页快照：并发新增时旧记录可能向后跨页移动，相邻两次读取可能重见记录；静止集合可以完整逐页访问。
+分页只限制单次读取，不是存储淘汰；注销、当前登记过期、zone 取消登记，以及历史年龄或数量增长都不会自动删除已保存历史。
+电脑和手机访问同一实例，读取同一份数据，而不是浏览器本地收藏。历史在浏览器刷新、关闭及后端重启后保留；当前登记、监听和倒计时仍仅存在于内存。
+
+历史在桌面显示紧凑四列表格、手机显示紧凑条目：**名称、agent 类型、cwd、首次收录时间**。
+没有名称时显示**完整 sessionId**，其余缺失元数据显示 `—`；不猜类型、不把未知值显示为离线。
+历史不显示模型、来源、keepAlive、运行状态或监听操作，不提供搜索、筛选、正文、恢复、删除或原生文件存活性扫描。
+
+### 历史公开 HTTP interface
+
+- `GET /api/sessions/history?page=1`：局域网可无凭据只读访问，返回
+  `200 {"sessions":[...],"page":1,"pageSize":50,"total":123,"totalPages":3}`。
+  `page` 从 1 开始，省略或传 0 读首页，超出末页读末页；非无符号整数参数返回 `400`。
+  空集合返回 `sessions: []`、`page: 1`、`total: 0`、`totalPages: 1`，四个导航按钮均禁用。
+  每次请求独立读取当时持久数据；不创建跨页快照，也不接受客户端改变每页上限。
+  每项固定为 `sessionId`（完整字符串）、`sessionName`、`agentType`、`cwd`（三个可为 `null`）和
+  `firstRecordedAt`（服务端首次成功保存的 Unix 毫秒时间戳）。按首次收录时间倒序；相同时间按完整 ID 稳定排序。
+  存储读取失败返回非 2xx 的 `{code,message}`，不伪装成空列表。
+- connect-bot 收录通过既有 `POST /api/sessions/events` 的成功 `register`：必填 `sessionId`、`kind`、`data.cwd` 的原规则不变；
+  `data.sessionName`、`data.agentType`、`data.sessionFile` 均不是收录前提。未知会话的非 register 写入或被拒绝请求不建立历史。
+  来源仍只接受回环或本机网卡地址，其他来源 `403 forbidden`，不增加认证。
+- 同一**完整 sessionId**重复注册只更新同一条历史；同名、同 cwd 或 ID 前缀相同的不同会话不会合并。
+  有效元数据填充或更新已有值；缺失、空字符串及纯空白不清空已知值。首次收录时间不因更新改变。
+  精确绝对 `sessionFile` 可作为内部引用更新，但不在读取结果或页面中公开，也不会读取其正文。
+- zone Bot 在 Herdr 确认可交互且初始指示提交获确认后，也会独立收录实际原生对话；不要求勾选 connect-bot，
+  不等待模型轮次或任务完成。启动／提交尚未确认成功不触发 zone 收录，独立成功 register 仍可正常收录。
+  同一完整原生 ID 的两种来源合并成一条；zone Bot 名称优先于 connect-bot 名称，优先级跨重启保留。
+  后续有效 zone 名称可以更新原 zone 名称；connect-only 使用最近有效上报名称，缺失名称不清空已知值。
+  同一后端实例接收独立客户端的并发收录时，不丢失成功保存的不同 ID 或同 ID 的合法字段合并；
+  后端重启后仍保留完整记录与首次成功收录时间。不承诺多个后端进程共享同一文件或任意硬件故障下的恢复。
+  收录历史本身不建立当前登记；接入后两视图可同时包含该对话，注销当前登记不删除历史。
+- 两种收录入口都不扫描或批量导入旧原生会话，不移动、复制、转换、删除或改写原生文件。
+  zone 只查询本次创建的精确 Herdr agent 对象及官方原生引用，必要时只读该精确文件的 header 身份元数据；
+  不按 cwd、别名、创建 ID、Tab／Pane 或最近文件猜 sessionId，不读取／导入正文。
+
+### zone 原生身份等待与服务端诊断
+
+创建成功先发布，随后由与页面生命周期独立的任务取得身份；不增加历史专用页面轮询。
+身份获取（包含 Herdr 查询及 header 暂不可读等待）总预算最多 **30 秒**，其间不持有创建、当前登记或历史存储锁。
+取得身份后只尝试保存一次；身份超时或保存失败即结束，不在期限后继续获取，不重试写入，不自动 connect、停止 agent、
+关闭 Tab 或重发初始指示。此预算不是模型轮次时限，也不保证强制取消已经进入内核的任意磁盘操作。
+当前 keepAlive、登记、监听及倒计时不受历史等待或故障改变，不把这些临时意图写入历史。
+
+失败仅在**服务端 stderr** 产生 `warning: zone-history`，带本次 `creation=bc-…`、精确 `agent=bot-…`、
+agent 类型及原因（`identity-timeout`／`save-failed`，保存失败同时带完整原生 session ID）；
+创建响应与页面仍只表达创建结果，不增加历史失败提示。可用创建结果中的 `id`／`agentName` 关联日志。
+官方集成可在原生主文件落盘前先上报精确路径；例如 Pi 仅执行 `/settings`、OMP 仅执行 `/rename`，
+尚未形成消息时 header 可能一直不存在。服务端不会从文件名猜 ID：到期记警告结束，
+后续明确成功 register 可按普通规则收录。
+真实隔离 Pi／Herdr 的引用、header、历史比对及部署 H1 步骤见
+[Pi zone 历史验收](docs/pi-zone-native-history-acceptance.md)。
+
+历史元数据存储位置可在启动期配置，默认相对进程工作目录：
+
+```toml
+[sessions]
+history_file = ".data/session-history.json"
+```
+
+此文件与当前登记独立，写入采用同目录临时文件及原子替换；不要把路径指向原生会话文件。
+修改路径需要重启；备份或迁移此文件可保留目录，不包含对话正文。无需修改 agent 原生存储配置。
+
+### connect-bot 历史保存失败与恢复
+
+被接受的 `register` 始终以 `200`、`outcome: "registered"` 和 `onlineCount` 表达接入成功；
+`historySaved: true` 才表示本次历史保存成功。历史读写失败时，接入回执为 `historySaved: false`，
+并附带 `historyWarning: {code: "history-save-failed", message: "…"}`。这不撤销当前登记、停止上报、
+改变 keepAlive、取消完成后关机监听或重置倒计时。配套 my-agent-toolkit 的 Pi／OMP caller 会把
+“已接入，但历史保存失败”的警告送到实际操作者 UI（而非仅给模型的消息）；旧 caller 需要更新才能显示警告。
+
+检查服务端日志中对应 `sessionId` 的原因及 `history_file` 所在目录／临时文件写入权限。
+不可读或无效内容不会被当作空集合覆盖；失败更新不会替换旧文件。历史页面读取失败显示明确错误，
+不会显示“尚无历史”或把旧行当成新读取结果。修复存储后，退出再进入历史视图重新读取；
+再次明确执行 `/connect-bot` 会重新尝试保存：未存记录新建，已有记录更新且保留原首次时间。
+失败尝试不建立首次收录时间；没有后台历史写入重试、自动 connect 或新的接入失败预算。
+
+自动验收：`backend/tests/connect_history_failures.rs` 覆盖真实文件锁、无效内容、写入失败、受控服务端时间、
+跨重建读回及无自主写入；`frontend/browser-tests/connectHistoryFailures.spec.ts` 覆盖实际 Chromium 错误与恢复。
+caller 命令验收位于 my-agent-toolkit 的 `tests/connect-bot/history-warning.test.ts`、`history-interop.test.ts`；
+后者需将 `HERDR_BOT_BINARY` 指向本项目 `cargo build --example safe_shutdown_shell` 生成的安全外壳，
+将 `HERDR_BOT_METADATA` 指向本项目 `meta-data/bot-options.toml`，绝不使用真实关机动作。
+
+### 跨来源与并发组合验收（P04／P09／P29／P26）
+
+`frontend/browser-tests/crossSourceConcurrency.spec.ts` 从公开 HTTP 写入独立预写的完整 ID，
+在真实 Chrome 页面核对最终名称，并重启隔离后端读回精确集合：
+
+- Pi／OMP 分别覆盖 connect→zone、zone→connect、同时到达、重复 register、后续 zone 改名、connect-only 改名及缺失值。
+- 同名同 cwd、相同 agent 类型与相同 ID 前缀的不同 ID 仍是不同记录。
+- 八个独立 HTTP 客户端通过屏障释放六个不同 ID 及同 ID 的两个可交换字段更新；第二轮更新显式在第一轮结束后开始。
+  测试不假定无序竞争的先后，以独立字面字段核对完整七条记录，再比较重启前后的首次收录时间及所有字段。
+- 两种来源顺序分别在监听中／倒计时中制造真实临时文件写入故障，观察接入成功与历史失败分开表达、
+  zone 诊断包含创建与原生 ID、原有当前登记／keepAlive／监听集合／安排标识／截止时间不变。
+  组合关机请求只发给既有 `safe_shutdown_shell` 记录型安全壳，绝不调用真实关机。
+- `backend/tests/cross_source_concurrency.rs` 以同一公开 HTTP／SSE seam、受控时钟和记录型 PowerOff
+  验证双来源交错期间失败的 register 仍刷新 keepAlive、离线保留监听、心跳恢复在线、完成后形成倒计时，
+  后续历史故障不重置已有安排，重建应用只恢复历史而不恢复临时意图。
+
+复跑（在仓库根目录；测试仅使用临时目录、受控 Herdr，不运行用户 agent 或修改其全局配置）：
+
+```bat
+npm --prefix frontend ci
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_shell
+cargo test --manifest-path backend/Cargo.toml --test cross_source_concurrency
+npm --prefix frontend run test:browser -- crossSourceConcurrency.spec.ts
+```
+
+本次实际运行：上述新 browser 场景 **15 passed**；连同 `sessionHistory.spec.ts`、
+`connectHistoryFailures.spec.ts` 的兼容回归共 **19 passed**。后端组合与
+`connect_history_failures`、`session_history` 三组共 **9 passed**；前后端构建及安全壳构建成功。
+现有生产实现已满足组合承诺，无需额外修改生产收录或锁逻辑。
+
+页面截图、历史读回 JSON 与真实 zone 保存失败诊断由 Playwright 写入 `frontend/test-results/`；
+本次保留的[七条并发历史读回](docs/evidence/cross-source-concurrency/concurrent.json)及
+[重启后页面](docs/evidence/cross-source-concurrency/concurrent.png)、
+[Pi 名称](docs/evidence/cross-source-concurrency/pi-sources.png)／
+[OMP 名称](docs/evidence/cross-source-concurrency/omp-sources.png)、
+[Pi 故障前后与重启观察](docs/evidence/cross-source-concurrency/pi-countdown-failure.json)／
+[OMP 故障前后与重启观察](docs/evidence/cross-source-concurrency/omp-countdown-failure.json)
+及同目录 `*-warning.json` 来自实际运行，不是预设响应。
+本组合验收沿用前序票已闭合的 S4 身份链路，受控 Herdr 不能冒充真实 agent 运行。
+**P01-H1、P23-H1 仍待用户在实际部署中确认**；01／05／06 已准备的配置、原生引用与 header、
+原生发现及最小验收步骤分别见 [Pi](docs/pi-zone-native-history-acceptance.md) 与
+[OMP](docs/omp-zone-native-history-acceptance.md)，本票不自动宣称 H1 通过。
+
 ## 会话登记的生命周期（chat 入口）
 
-`chat` 入口展示后端当前**全部**已登记会话，包括离线登记。在线／离线只表示最近一次上报是否过期，
+每条会话名称旁常驻显示 agent 类型 `pi` / `omp`，离线时仍保留。类型由 my-agent-toolkit 对应的
+connect-bot 接入端在 `register.data.agentType` 上报，经服务端会话快照与增量更新下发，不从会话名、
+模型名或 Bot 模板猜测。后端接受可选字符串；旧扩展缺字段或前端不认识的类型显示“未知”，不影响接入、
+agent 状态、keepAlive 或关机监听。更新扩展并重新加载、注册后才会上报类型；不增加筛选或分组。
+
+`chat` 的**当前会话视图**展示后端当前**全部**已登记会话，包括离线登记。在线／离线只表示最近一次上报是否过期，
 与 agent 是否在跑、浏览器能否连上后端都是不同的维度：
 
 | 距最后一次被后端接受的写入 | 登记与展示 |
@@ -1284,7 +1474,7 @@ P36/P37 的完整映射隔离复现同样位于 `backend/tests/bot_creation_deta
   `old-provider/old-model`、`high`、`old-native`、`old-fixed.ts + old-tools.ts`，新配置为
   `new-provider/new-model`、`low`、`new-native`、`new-fixed.ts + new-connect.ts`，固定指示和本次输入也不同。
   新创建在旧屏障未释放时成功。随后删除来源模板并移除元数据，释放旧 Tab/启动/提交屏障，逐步观察
-  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的对象与会话目录不同。
+  `starting → submitting → succeeded`；独立 Herdr 记录精确保留旧配置和输入，两条创建的 Herdr 对象不同；不保证独立原生会话目录。
 - P37 先创建 Bot，再编辑模板、改元数据，核对已有外部调用及对象没有变化；下一次创建使用新配置。
   删除来源后，带删除前预览的直接创建请求也以 `template-not-found` 拒绝。两条已有 Bot 的外部记录、
   Tab/Pane 和公开状态保持不变，没有新增改配、关闭、重建或输入重发。
@@ -1371,6 +1561,51 @@ HTTP 客户端**（各自一条 TCP 连接）验证单实例互斥：重叠请�
   具体步骤见[脚本卡住时的人工处理](#脚本卡住时的人工处理)。
 - 本版新增的 `POST /api/shutdown` 属同一条无认证边界，而且后果更重（整台电脑关机）：
   见[安全边界：无认证，且监听局域网](#安全边界无认证且监听局域网)。
+
+## 变更记录：历史分页与独立保留（2026-10-23）
+
+- 历史公开读取按首次收录时间倒序固定每页 50 条，返回页码、总条数、总页数；同时间记录稳定排序，静止集合无遗漏。
+- 桌面和手机历史页提供首页／上一页／下一页／末页；只在进入历史或翻页时读取，不建立跨页冻结快照，不随当前会话事件刷新。
+- 历史与注销、登记过期和 zone 取消登记独立，不按年龄或数量淘汰；读取失败显示明确错误而非空页。
+- 验收：`backend/tests/history_pagination.rs` 经公开 HTTP 检查空／50／51／123 条、同时间完整集合、更新不提升与独立保留；
+  `frontend/browser-tests/historyPagination.spec.ts` 在真实 Chrome 的 1280px 桌面与 390px 手机环境操作分页，检查长路径布局、独立客户端更新、页面读取时机及翻页失败。
+
+## 变更记录：register 持久历史与 chat 双视图（2026-10-23）
+
+- 成功 register 按完整 sessionId 收录历史元数据；重复注册仅更新有效字段，不清空已知值，不合并同名或同 cwd 的不同 ID。
+- 新增只读 `GET /api/sessions/history` 和 `[sessions] history_file`；历史跨后端重启保留，当前登记及临时关机意图仍不恢复。
+- chat 三角按钮在当前／历史互斥视图切换，以明确文字和底色标识；桌面四列表格、手机紧凑条目只显示名称、agent 类型、cwd、首次收录时间。
+- 不扫描或导入旧会话，不公开原生路径或正文，不增加认证、搜索、恢复或删除能力。
+- 验收：`backend/tests/session_history.rs` 经公开 HTTP 覆盖收录、元数据合并、来源拒绝及隔离重建后的历史与临时状态分离；
+  `frontend/browser-tests/sessionHistory.spec.ts` 经交付页面实际点击，检查 1280px／390px 布局，并关闭浏览器、重启真实后端、由独立浏览器上下文读回。
+
+## 变更记录：共享 Git 状态缓存与提交后检查（2026-10-22）
+
+- 列表与 zone 内复用按实际工作树隔离的后端内存缓存；新增 `[git] status_cache_ttl_seconds`，缺省 10 秒。
+  到期按需检查、并发合并、事件失效与手动强刷；Commit / Sync 执行前仍实时校验。
+- 本服务成功 Commit 后后台检查远端，不等待 fetch 才反馈提交成功；检查进度与失败通过共享状态展示，
+  不自动重试、不自动发布分支。列表与顶部分支旁新增黄色 `↑ N`，基于本地已知 upstream。
+- 验证：前端 205 项测试及生产构建通过；后端 77 项单元测试、19 项 Commit 和其余 29 项 Git 集成测试通过。
+  全量后端命令在 300 秒处超时，未将其报告为全量通过；相关 Git 套件随后单独完成。
+- 隔离真实仓库与 bare 远端冒烟：12 次详情/概览读取未增加 Git 状态命令，手动刷新重新执行；浏览器观测到
+  提交成功后的后台检查、期间禁用 Sync、检查后直接同步，以及同步后列表/详情箭头消失。远端不可用时本地
+  提交保持成功并展示检查失败，移动视口无横向溢出；未操作业务远端或启动/停止/关机按钮。
+
+## 变更记录：Workspace 失败恢复与 chat agent 类型（2026-10-22）
+
+- Workspace 查找失败后恢复原弹窗表单与创建资格；保留模板、input、名称规则、短标识及名称预览。每次重新创建使用独立后台记录，不覆盖旧失败；进行中防重复提交，Tab / agent / 输入阶段失败不开放重建。
+- my-agent-toolkit 的 Pi / OMP connect-bot 原生接入端明确上报 `agentType`；服务端保存并经 SSE 快照与增量更新下发，chat 名称旁常驻显示类型。旧扩展缺失或前端不认识的类型显示“未知”，不改变监听与会话生命周期。
+- 浏览器 smoke：先在旧产物复现下拉与创建按钮锁定；新产物在同窗查找失败后改选默认并成功创建，输入和名称不变，受控 Herdr 只产生一个 Tab 和一次原样初始输入。
+- 类型 smoke：调用真实 Pi / OMP connect-bot 接入代码，在受控宿主 API 边界注入上下文，将其真实生成的注册请求发到隔离后端；浏览器增量与刷新后快照均显示正确类型，即使模型名故意与 agent 类型相反。缺字段与未来字符串显示“未知”。桌面与 390×844 Chromium 窄屏已观察，窄屏滚动宽度等于 390；不宣称真实 Pi / OMP 进程加载或手机实机验收。
+- `npm test`：27 files / 203 tests passed；`npm run build` 与 `cargo build --bins` 成功。后端 `bot_creation` 26 例和 `session_events` 14 例通过，包含同短标识独立重建记录及类型快照 / 增量更新；全量命令在 300 秒被中断，已对尚未完成的 2 个 commit 用例、其余 8 个测试目标（49 例）与 doc-tests 补跑通过。真实 mDNS 用例仍按原标记忽略。toolkit `bun run typecheck` 成功；`bun run test` 全量 180 files / 1612 tests passed，0 fail。
+- 默认 `target/release/herdr-bot.exe` 构建因访问被拒绝，未停止现有服务或替换该文件；使用 `cargo build --release --bins --target-dir target/updated` 成功生成 `backend/target/updated/release/herdr-bot.exe`，运行中的服务未由本次验证切换。
+
+## 变更记录：创建 Bot 名称编辑（2026-10-22）
+
+- 按确认的最小原型保留原弹窗布局，仅新增本次单行命名规则编辑与最终名称预览；前端复用转换函数，编辑不产生请求、不修改模板。提交由后端重新计算并核对名称。
+- Workspace 每次打开初始选“当前”；仍按 zone 根目录名匹配，不使用 Herdr 焦点。
+- Pi 新增可选 `connect-bot`，已有模板不自动勾选。
+- 实际 Chromium 桌面与 390×844 窄屏已检查；窄屏弹窗宽度与滚动宽度均为 364，无横向溢出。编辑 `{zone.name} · 发布检查 · {bot.id}` 后无网络请求，预览与受控 Herdr 记录的最终 Tab 名一致，模板规则未改变。受控启动参数包含 Pi model-cost 与所选 connect-bot；这不证明真实 Pi 扩展加载或接入成功，也不替代真机手机验收。
 
 ## 变更记录：项目更名为 herdr-bot（2026-10-21）
 

@@ -78,7 +78,8 @@ impl ObservationServer {
             clock.clone(),
         ));
         let double = RecordingPowerOff::new();
-        let (app, state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
+        let (app, state) =
+            herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
         Self {
             server: TestServer::start_app(app).await,
             double,
@@ -119,8 +120,10 @@ impl ObservationServer {
 
     /// 一次心跳（刷新最后写入时间，不带状态）。
     async fn heartbeat(&self, session_id: &str) -> HttpResponse {
-        self.post_event(json!({"sessionId": session_id, "kind": "heartbeat", "data": {}}).to_string())
-            .await
+        self.post_event(
+            json!({"sessionId": session_id, "kind": "heartbeat", "data": {}}).to_string(),
+        )
+        .await
     }
 
     /// 注销一个会话。
@@ -223,7 +226,10 @@ impl Observer {
         let mut seen: Vec<String> = Vec::new();
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            assert!(!remaining.is_zero(), "等待阶段 {phase:?} 超时；已观察：{seen:#?}");
+            assert!(
+                !remaining.is_zero(),
+                "等待阶段 {phase:?} 超时；已观察：{seen:#?}"
+            );
             let Some(frame) = self.connection.next_frame_within(remaining).await else {
                 panic!("等待阶段 {phase:?} 超时；已观察：{seen:#?}");
             };
@@ -259,7 +265,12 @@ fn response_body(response: &HttpResponse) -> Value {
 fn assert_selected(response: &HttpResponse, session_id: &str) {
     assert_eq!(response.status, 200, "响应体：{}", response.body);
     let body = response_body(response);
-    assert_eq!(body["outcome"], json!("selected"), "响应体：{}", response.body);
+    assert_eq!(
+        body["outcome"],
+        json!("selected"),
+        "响应体：{}",
+        response.body
+    );
     assert!(
         monitored_ids(&body["shutdown"]).contains(&session_id.to_string()),
         "回执必须给出命令之后的权威集合：{}",
@@ -271,7 +282,12 @@ fn assert_selected(response: &HttpResponse, session_id: &str) {
 fn assert_unselected(response: &HttpResponse, session_id: &str) {
     assert_eq!(response.status, 200, "响应体：{}", response.body);
     let body = response_body(response);
-    assert_eq!(body["outcome"], json!("unselected"), "响应体：{}", response.body);
+    assert_eq!(
+        body["outcome"],
+        json!("unselected"),
+        "响应体：{}",
+        response.body
+    );
     assert!(
         !monitored_ids(&body["shutdown"]).contains(&session_id.to_string()),
         "回执必须给出命令之后的权威集合：{}",
@@ -382,16 +398,27 @@ async fn the_first_valid_snapshot_carries_exactly_the_current_registry_and_shutd
     assert_eq!(online["online"], json!(true), "{online}");
     assert_eq!(online["state"], json!("working"), "{online}");
     let retained = session_of(&sessions, "retained");
-    assert_eq!(retained["online"], json!(false), "暂留登记仍被观察：{retained}");
+    assert_eq!(
+        retained["online"],
+        json!(false),
+        "暂留登记仍被观察：{retained}"
+    );
     assert_eq!(
         retained["state"],
         json!("awaiting-input"),
         "离线不改写最后上报状态：{retained}"
     );
     let shutdown = fresh.first_shutdown();
-    assert_eq!(monitored_ids(&shutdown), vec!["online".to_string()], "{shutdown}");
+    assert_eq!(
+        monitored_ids(&shutdown),
+        vec!["online".to_string()],
+        "{shutdown}"
+    );
     assert_eq!(shutdown["phase"], json!("none"), "{shutdown}");
-    assert!(shutdown["arrangementId"].is_null(), "没有安排时不带标识：{shutdown}");
+    assert!(
+        shutdown["arrangementId"].is_null(),
+        "没有安排时不带标识：{shutdown}"
+    );
 
     // 断线期间事实继续变化：注销暂留成员、注册新会话、撤销监听。
     assert_ok(server.unregister("retained").await);
@@ -485,7 +512,11 @@ async fn the_shared_stream_delivers_session_and_shutdown_changes_without_a_reloa
     server.maintain().await;
     let offline = observer.next_upsert().await;
     assert_eq!(offline["sessionId"], json!("watch"));
-    assert_eq!(offline["online"], json!(false), "维护把行翻为离线：{offline}");
+    assert_eq!(
+        offline["online"],
+        json!(false),
+        "维护把行翻为离线：{offline}"
+    );
     assert_eq!(offline["state"], json!("working"), "{offline}");
 
     // 监听变化：撤销离线成员 → 集合清空（仍是一帧完整关机状态）。
@@ -504,10 +535,17 @@ async fn the_shared_stream_delivers_session_and_shutdown_changes_without_a_reloa
         vec!["other".to_string()]
     );
     assert_ok(server.state("other", "awaiting-input").await);
-    assert_eq!(observer.next_upsert().await["state"], json!("awaiting-input"));
+    assert_eq!(
+        observer.next_upsert().await["state"],
+        json!("awaiting-input")
+    );
     let arranged = observer.next_shutdown().await;
     assert_eq!(arranged["phase"], json!("counting-down"), "{arranged}");
-    assert_eq!(monitored_ids(&arranged), Vec::<String>::new(), "形成安排即消耗整组监听");
+    assert_eq!(
+        monitored_ids(&arranged),
+        Vec::<String>::new(),
+        "形成安排即消耗整组监听"
+    );
 
     // 登记清除：t=41 的维护清除 `watch`（离线已过两个窗口之和 40 秒）并把 `other` 翻为离线；
     // 活动安排不受会话变化影响（既有规则），因此这里只有会话增量。
@@ -515,8 +553,16 @@ async fn the_shared_stream_delivers_session_and_shutdown_changes_without_a_reloa
     server.maintain().await;
     let flipped = observer.next_upsert().await;
     assert_eq!(flipped["sessionId"], json!("other"));
-    assert_eq!(flipped["online"], json!(false), "维护把行翻为离线：{flipped}");
-    assert_eq!(observer.next_remove().await, "watch", "超过两个窗口之和的登记被清除");
+    assert_eq!(
+        flipped["online"],
+        json!(false),
+        "维护把行翻为离线：{flipped}"
+    );
+    assert_eq!(
+        observer.next_remove().await,
+        "watch",
+        "超过两个窗口之和的登记被清除"
+    );
 
     // 全程只走首帧 + 命名增量：落后之外的路径没有第二次全量快照。
     observer
@@ -551,7 +597,11 @@ async fn writes_expiry_cleanup_and_adjudication_complete_without_any_reader() {
     // 新观察者取得当前结果：首帧同时给出会话与关机事实（已清除的 `a` 不在其中）。
     let fresh = server.observe().await;
     let sessions = fresh.first_sessions();
-    assert_eq!(session_ids(&sessions), vec!["b".to_string()], "{sessions:?}");
+    assert_eq!(
+        session_ids(&sessions),
+        vec!["b".to_string()],
+        "{sessions:?}"
+    );
     assert_eq!(session_of(&sessions, "b")["state"], json!("awaiting-input"));
     let shutdown = fresh.first_shutdown();
     assert_eq!(shutdown["phase"], json!("counting-down"), "{shutdown}");
@@ -577,7 +627,11 @@ async fn a_blocked_reader_never_blocks_writes_and_converges_via_the_bounded_buff
     // 从这里起不再读这条连接：驱动写入（300 次真实可见的状态变化）仍必须逐次完成。
     const FLOOD: usize = 300;
     for round in 0..FLOOD {
-        let value = if round % 2 == 0 { "awaiting-input" } else { "working" };
+        let value = if round % 2 == 0 {
+            "awaiting-input"
+        } else {
+            "working"
+        };
         assert_ok(server.state("big", value).await);
     }
 

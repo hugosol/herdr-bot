@@ -38,7 +38,7 @@ fn encode(value: &str) -> String {
 
 fn status_url(zone: &Path) -> String {
     format!(
-        "/api/zones/git-status?zone={}",
+        "/api/zones/git-status?zone={}&refresh=true",
         encode(&zone.to_string_lossy())
     )
 }
@@ -54,11 +54,7 @@ async fn register(server: &TestServer, zone: &Path) {
         &json!({ "path": zone }).to_string(),
     )
     .await;
-    assert_eq!(
-        response.status, 200,
-        "登记 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
 }
 
 fn git(root: &Path, args: &[&str]) {
@@ -373,11 +369,7 @@ async fn zone_badges_count_change_items_not_directories_or_diff_lines() {
     assert_eq!(body(&response)["pendingCount"], json!(5));
 
     let response = get_over_tcp(server.addr(), "/api/zones/overview").await;
-    assert_eq!(
-        response.status, 200,
-        "zone 概览应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "zone 概览应成功：{}", response.body);
     let payload = body(&response);
 
     let root_entry = overview_entry(&payload, &root);
@@ -677,4 +669,73 @@ async fn pending_set_follows_git_tracking_and_ignore_rules() {
         "待提交集合必须是已跟踪变更加未忽略的未跟踪文件，且排除被忽略的未跟踪文件"
     );
     assert_eq!(body["pendingCount"], json!(6));
+}
+
+#[test]
+fn cached_status_shares_canonical_aliases_but_not_separate_worktrees() {
+    let dir = TempDir::new("zone cached worktree identity");
+    let root = dir.path().join("repository");
+    let linked = dir.path().join("linked worktree");
+    init_repository(&root);
+    fs::write(root.join("tracked.txt"), "base\n").unwrap();
+    git(&root, &["add", "--all"]);
+    git(&root, &["commit", "--quiet", "-m", "initial"]);
+    git(
+        &root,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "--detach",
+            linked.to_str().unwrap(),
+        ],
+    );
+    let state = herdr_bot::sync::SyncState::with_ttl(std::time::Duration::from_secs(60));
+    let timeout = std::time::Duration::from_secs(30);
+    let root_name = root.to_str().unwrap();
+    assert_eq!(
+        state
+            .cached_status(root_name, timeout, false)
+            .unwrap()
+            .pending_count,
+        0
+    );
+    fs::write(root.join("tracked.txt"), "changed after cached read\n").unwrap();
+    // A trailing separator is a supported registration alias; dot components are not.
+    let alias = format!("{}{}", root.display(), std::path::MAIN_SEPARATOR);
+    let alias_name = alias.as_str();
+    let cached_alias = state.cached_status(alias_name, timeout, false).unwrap();
+    assert_eq!(
+        cached_alias.pending_count, 0,
+        "canonical aliases reuse the same cache"
+    );
+    assert_eq!(
+        cached_alias.zone, alias_name,
+        "responses retain their request registration"
+    );
+    assert_eq!(
+        state
+            .cached_status(alias_name, timeout, true)
+            .unwrap()
+            .pending_count,
+        1
+    );
+    assert_eq!(
+        state
+            .cached_status(root_name, timeout, false)
+            .unwrap()
+            .pending_count,
+        1
+    );
+    let linked_status = state
+        .cached_status(linked.to_str().unwrap(), timeout, false)
+        .unwrap();
+    assert!(
+        linked_status.detached,
+        "linked worktrees must not reuse another worktree's branch"
+    );
+    assert_eq!(
+        linked_status.pending_count, 0,
+        "common Git directory does not imply common local status"
+    );
 }

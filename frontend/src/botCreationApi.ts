@@ -1,8 +1,8 @@
 /**
  * 从 zone 创建 Bot 的接口客户端：页面与接口同源，请求地址直接使用相对路径。
  *
- * 名称预览与创建都由后端生成名称与短实例标识；页面不自造名称，也没有手工覆盖入口。创建请求
- * 返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
+ * 后端预览提供模板命名规则与真实上下文，页面本地预览本次规则编辑，创建时由后端再次校验名称。
+ * 创建请求返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
  */
 
 export type BotCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
@@ -14,6 +14,9 @@ export type BotPreview = {
   zone: string
   templateId: string
   agent: string
+  botNameRule: string
+  templateName: string
+  zoneName: string
 }
 
 export type BotCreationFailure = {
@@ -63,7 +66,10 @@ function isPreview(value: unknown): value is BotPreview {
     isString(preview.name) &&
     isString(preview.zone) &&
     isString(preview.templateId) &&
-    isString(preview.agent)
+    isString(preview.agent) &&
+    isString(preview.botNameRule) &&
+    isString(preview.templateName) &&
+    isString(preview.zoneName)
   )
 }
 
@@ -150,7 +156,9 @@ export function createBot(input: {
   templateId: string
   botId: string
   expectedName: string
+  botNameRule?: string
   input: string
+  workspaceTarget?: 'default' | 'current'
 }): Promise<BotResult<BotCreation>> {
   return request('/api/bots', jsonInit('POST', input), isCreation)
 }

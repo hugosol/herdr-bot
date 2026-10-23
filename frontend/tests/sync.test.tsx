@@ -1,8 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
+import { createZoneWatchFeed } from '../src/zoneWatch'
+import { FakeZoneEventSource, resetFakeZoneEventSources } from './fakeZoneEventSource'
 import type { BrowseEntry } from '../src/browseApi'
 import { treeResponse } from './treeResponse'
 import type {
@@ -92,6 +94,8 @@ function gitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
       ahead: 0,
       behind: 0,
       remoteCheckedAt: null,
+      remoteChecking: false,
+      remoteCheckError: null,
     },
     ...overrides,
   }
@@ -102,8 +106,15 @@ function syncFacts(
   behind: number | null,
   remoteCheckedAt: number | null,
   upstream: UpstreamRef | null = UPSTREAM,
-): GitStatus['sync'] {
-  return { upstream, ahead, behind, remoteCheckedAt }
+): NonNullable<GitStatus['sync']> {
+  return {
+    upstream,
+    ahead,
+    behind,
+    remoteCheckedAt,
+    remoteChecking: false,
+    remoteCheckError: null,
+  }
 }
 
 function accepted(overrides: Partial<SyncAccepted> = {}): SyncAccepted {
@@ -135,6 +146,7 @@ function overview(status: GitStatus): { zones: ZoneSummary[] } {
         branch: status.branch,
         pendingCount: status.repository ? status.pendingCount : undefined,
         conflict: status.conflict,
+        sync: status.sync,
       },
     ],
   }
@@ -219,6 +231,7 @@ async function confirmSync(user: UserEvent) {
 }
 
 beforeEach(() => {
+  resetFakeZoneEventSources()
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
 })
 
@@ -227,6 +240,80 @@ afterEach(() => {
 })
 
 describe('按现有 upstream 安全 Sync', () => {
+  it('列表与分支展示本地领先数，与脏工作树和未检查远端并存', async () => {
+    const user = userEvent.setup()
+    let status = gitStatus({
+      changes: CHANGES,
+      pendingCount: CHANGES.length,
+      sync: syncFacts(3, 2, null),
+    })
+    const requests = mockFetch(standardHandler(() => status))
+    render(<App />)
+    await user.click(screen.getByTestId('tab-files'))
+    const list = await screen.findByTestId('zone-list')
+    expect(await within(list).findByTestId('git-ahead')).toHaveTextContent('↑ 3')
+    expect(within(list).getByTestId('git-ahead')).toHaveAccessibleName(
+      '有 3 个本地提交尚未推送（基于本地已知 upstream）',
+    )
+    expect(within(list).getByTestId('zone-badge')).toHaveTextContent('2')
+    await user.click(screen.getByTestId('open-zone'))
+    expect(await screen.findByTestId('git-ahead')).toHaveTextContent('↑ 3')
+    expect(requests.urls.filter((url) => url.pathname === '/api/zones/git-status')
+      .every((url) => !url.searchParams.has('refresh'))).toBe(true)
+    await user.click(screen.getByTestId('browser-view-changes'))
+    expect(await screen.findByTestId('remote-checked-at')).toHaveTextContent('尚未检查')
+    expect(screen.queryByTestId('sync-button')).not.toBeInTheDocument()
+
+    status = gitStatus({ sync: syncFacts(null, null, null, null) })
+    await user.click(screen.getByTestId('browser-refresh'))
+    await waitFor(() => expect(screen.queryByTestId('git-ahead')).not.toBeInTheDocument())
+    expect(requests.urls.filter((url) => url.pathname === '/api/zones/git-status').at(-1)
+      ?.searchParams.get('refresh')).toBe('true')
+  })
+
+  it('后台检查禁用 Sync，失败保留领先数，后续成功清除失败反馈', async () => {
+    const user = userEvent.setup()
+    let status = gitStatus({
+      sync: { ...syncFacts(2, 0, 1720000001000), remoteChecking: true, remoteCheckError: null },
+    })
+    const requests = mockFetch(standardHandler(() => status))
+    const feed = createZoneWatchFeed({
+      eventSourceFactory: (url) => new FakeZoneEventSource(url),
+    })
+    render(<App zoneWatchFeed={feed} />)
+    await openChanges(user)
+    const source = FakeZoneEventSource.instances.at(-1)!
+    act(() => source.emit('snapshot', {
+      intervalSeconds: 10,
+      zones: [{ zone: ZONE, health: 'live', generation: 0 }],
+    }))
+    expect(screen.getByTestId('remote-checking')).toHaveTextContent('可以离开此页面')
+    expect(screen.getByTestId('sync-button')).toBeDisabled()
+    expect(screen.getByTestId('check-remote-button')).toBeDisabled()
+    expect(screen.getByTestId('git-ahead')).toHaveTextContent('↑ 2')
+
+    status = gitStatus({
+      sync: { ...syncFacts(2, 0, 1720000001000), remoteChecking: false, remoteCheckError: '无法连接 upstream' },
+    })
+    act(() => source.emit('refresh', { zone: ZONE, at: 100, generation: 1 }))
+    expect(await screen.findByTestId('remote-check-error')).toHaveTextContent('无法连接 upstream')
+    expect(screen.getByTestId('remote-check-error')).toHaveTextContent('本地已知状态')
+    expect(screen.queryByTestId('remote-checking')).not.toBeInTheDocument()
+    expect(screen.getByTestId('git-ahead')).toHaveTextContent('↑ 2')
+    expect(screen.getByTestId('sync-button')).toBeEnabled()
+    await user.click(screen.getByTestId('browser-view-browse'))
+    expect(screen.getByTestId('remote-check-error')).toBeVisible()
+
+    status = gitStatus({
+      sync: { ...syncFacts(0, 0, 1720000002000), remoteChecking: false, remoteCheckError: null },
+    })
+    act(() => source.emit('refresh', { zone: ZONE, at: 200, generation: 2 }))
+    await waitFor(() => expect(screen.queryByTestId('remote-check-error')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('git-ahead')).not.toBeInTheDocument()
+    expect(requests.urls.filter((url) => url.pathname === '/api/zones/git-status')
+      .every((url) => !url.searchParams.has('refresh'))).toBe(true)
+  })
+
   it('主按钮逐态对应真实 Git 事实：Commit、Sync、已同步、未检查、无 upstream 与阻塞', async () => {
     const user = userEvent.setup()
     let status = gitStatus({

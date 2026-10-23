@@ -3,7 +3,8 @@
 //! herdr-bot 服务端的「会话」第一次在这里落地：扩展把每个会话的生命周期事件（`register` /
 //! `heartbeat` / `state` / `unregister`）都发到同一条 `POST /api/sessions/events`，
 //! 服务端把它们写进**进程内**的会话表，并在同一把锁内把浏览器可见的变化发布给订阅者
-//! （读路径只做只读转发，不重放、不落盘，herdr-bot 重启即清空）。
+//! （当前登记的读路径只做只读转发，不重放、不落盘，herdr-bot 重启即清空）。
+//! 另由 [`crate::history`] 为通过协议与来源校验的 register 保存持久元数据；历史不恢复当前登记或关机意图。
 //!
 //! 事件信封是 `{sessionId, kind, data}`：没有版本位、没有时间戳，`kind` 是封闭枚举，未知字段一律忽略。
 //! `register` 是**唯一**的建行入口且幂等——重复注册不新起行，只刷新注册时间与展示字段快照；
@@ -154,6 +155,9 @@ pub struct SessionView {
     /// 会话名，来自注册快照；为空即省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,
+    /// 原生 harness 类型；保留开放字符串，旧扩展缺省时省略。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
     /// 会话的工作目录，注册时必填。
     pub cwd: String,
     /// 模型的展示名，来自注册快照；为空即省略。
@@ -175,6 +179,7 @@ struct SessionRow {
     session_id: String,
     cwd: String,
     session_name: Option<String>,
+    agent_type: Option<String>,
     session_file: Option<String>,
     model: Option<String>,
     pid: Option<u32>,
@@ -193,6 +198,7 @@ impl SessionRow {
         SessionView {
             session_id: self.session_id.clone(),
             session_name: self.session_name.clone(),
+            agent_type: self.agent_type.clone(),
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             online: policy.is_online(self.last_seen, now),
@@ -280,6 +286,10 @@ impl SessionsState {
         self.clock.now()
     }
 
+    pub(crate) fn clock(&self) -> Arc<dyn Clock> {
+        Arc::clone(&self.clock)
+    }
+
     /// 共享观察流的发布端：读路径从这里订阅，关机安排也把同一份通道交给它的读连接。
     pub fn observation(&self) -> Arc<Hub> {
         Arc::clone(&self.hub)
@@ -357,6 +367,7 @@ impl SessionsState {
                 let RegisterData {
                     cwd,
                     session_name,
+                    agent_type,
                     session_file,
                     model,
                     pid,
@@ -367,6 +378,7 @@ impl SessionsState {
                         let before = row.view(now, policy);
                         row.cwd = cwd;
                         row.session_name = session_name;
+                        row.agent_type = agent_type;
                         row.session_file = session_file;
                         row.model = model;
                         row.pid = pid;
@@ -382,6 +394,7 @@ impl SessionsState {
                             session_id: session_id.clone(),
                             cwd,
                             session_name,
+                            agent_type,
                             session_file,
                             model,
                             pid,
@@ -526,6 +539,8 @@ struct RegisterData {
     cwd: String,
     /// 会话名；缺省即省略。
     session_name: Option<String>,
+    /// 原生 harness 的开放类型；缺省兼容旧扩展，未来字符串不影响接入。
+    agent_type: Option<String>,
     /// 会话文件路径；存下备查，不下发帧。
     session_file: Option<String>,
     /// 模型的展示名（注册时快照）；缺省即省略。
@@ -562,6 +577,15 @@ struct RegisterAccepted {
     outcome: &'static str,
     /// 当前在线会话数（含本会话）。
     online_count: usize,
+    history_saved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_warning: Option<HistoryWarning>,
+}
+
+#[derive(Debug, Serialize)]
+struct HistoryWarning {
+    code: &'static str,
+    message: &'static str,
 }
 
 /// 其余 kind 的成功回执：只说明「事件已被接受」。
@@ -581,11 +605,8 @@ struct EventAccepted {
 /// `herdr-bot.local:8787` 的同机可用性。
 fn is_local_source(ip: IpAddr) -> bool {
     ip.is_loopback()
-        || if_addrs::get_if_addrs().is_ok_and(|interfaces| {
-            interfaces
-                .iter()
-                .any(|interface| interface.addr.ip() == ip)
-        })
+        || if_addrs::get_if_addrs()
+            .is_ok_and(|interfaces| interfaces.iter().any(|interface| interface.addr.ip() == ip))
 }
 
 /// `POST /api/sessions/events`：会话事件的唯一写入入口。
@@ -642,6 +663,24 @@ pub(crate) async fn post_session_event(
         );
     };
 
+    // Keep registration acceptance and history persistence independent. All protocol and
+    // source validation has completed before this explicit register can reach history.
+    let mut history_warning = None;
+    if let SessionEvent::Register { session_id, data } = &event {
+        if let Err(error) = state.history.register(
+            session_id,
+            data.session_name.as_deref(),
+            data.agent_type.as_deref(),
+            &data.cwd,
+            data.session_file.as_deref(),
+        ).await {
+            eprintln!("[herdr-bot] 历史保存失败 sessionId={session_id}: {error}");
+            history_warning = Some(HistoryWarning {
+                code: "history-save-failed",
+                message: "接入成功，但历史会话保存失败；修复存储后可再次执行 connect-bot 保存历史。",
+            });
+        }
+    }
     let applied = state.sessions.apply(event).await;
     // 会话状态变化之后按**最新**快照重判监听集合：注销、离线与状态变化都要立即影响集合与自动安排。
     // 没有监听成员时这一步什么也不看（常见路径零成本），因此不需要先判断事件是否相关。
@@ -655,16 +694,14 @@ pub(crate) async fn post_session_event(
             Json(RegisterAccepted {
                 outcome: REGISTERED,
                 online_count,
+                history_saved: history_warning.is_none(),
+                history_warning,
             }),
         )
             .into_response(),
-        Some(Applied::Accepted) => (
-            StatusCode::OK,
-            Json(EventAccepted {
-                outcome: ACCEPTED,
-            }),
-        )
-            .into_response(),
+        Some(Applied::Accepted) => {
+            (StatusCode::OK, Json(EventAccepted { outcome: ACCEPTED })).into_response()
+        }
         None => rejected(
             StatusCode::NOT_FOUND,
             "unknown-session",
@@ -672,4 +709,3 @@ pub(crate) async fn post_session_event(
         ),
     }
 }
-

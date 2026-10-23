@@ -158,7 +158,10 @@ async fn unstartable_invalid_target_never_runs_and_is_not_reported_as_success() 
 #[tokio::test(flavor = "multi_thread")]
 async fn detached_child_keeps_running_after_the_call_returns() {
     let tree = FixtureTree::new("spawn-detached");
-    let app = herdr_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(
+        &tree.script("spawn-detached.bat"),
+        &tree.operations(),
+    ));
 
     let started_at = std::time::Instant::now();
     let (status, body) = tokio::time::timeout(Duration::from_secs(30), common::post_start(app))
@@ -360,7 +363,10 @@ async fn record_location_can_be_pointed_at_another_directory() {
 #[tokio::test(flavor = "multi_thread")]
 async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
     let tree = FixtureTree::new("long-running");
-    let app = herdr_bot::app(&config(&tree.script("long-running.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(
+        &tree.script("long-running.bat"),
+        &tree.operations(),
+    ));
 
     // 后端请求在脚本结束前不会返回，因此放到后台任务里等待。
     let request = tokio::spawn(common::post_start(app));
@@ -383,10 +389,7 @@ async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
         common::process_is_alive(pid),
         "长跑夹具不得自行结束（PID {pid}）"
     );
-    assert!(
-        !request.is_finished(),
-        "夹具未结束时后端请求不得提前返回"
-    );
+    assert!(!request.is_finished(), "夹具未结束时后端请求不得提前返回");
 
     // 人工结束入口：与人工结束时用的是同一个脚本。
     let stop_output = tree.stop_fixtures();
@@ -416,7 +419,10 @@ async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
         ],
         "记录必须与调用一一对应：{records:#?}"
     );
-    assert_eq!(records[0].call, records[1].call, "同一次调用的两条记录共用调用序号");
+    assert_eq!(
+        records[0].call, records[1].call,
+        "同一次调用的两条记录共用调用序号"
+    );
     assert_eq!(records[0].call_id, records[1].call_id);
     assert!(records[1].seq > records[0].seq, "记录行序号必须递增");
     assert!(
@@ -426,7 +432,9 @@ async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
         records[1].timestamp
     );
     assert!(
-        records[2].detail.contains("long-running=ended-by-stop-marker"),
+        records[2]
+            .detail
+            .contains("long-running=ended-by-stop-marker"),
         "结束方式必须随夹具记录：{}",
         records[2].detail
     );
@@ -445,7 +453,10 @@ async fn long_running_fixture_stays_running_until_the_stop_entry_point() {
 #[tokio::test]
 async fn unstartable_missing_working_directory_reports_not_started() {
     let tree = FixtureTree::new("unstartable-workdir");
-    let missing_directory = tree.root().join("unstartable").join("missing-working-directory");
+    let missing_directory = tree
+        .root()
+        .join("unstartable")
+        .join("missing-working-directory");
 
     let app = herdr_bot::app(&config(&tree.script("success.bat"), &missing_directory));
     let (status, body) = post_start(app).await;

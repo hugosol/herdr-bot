@@ -149,12 +149,14 @@ fn calls_of_kind(herdr: &HerdrFixture, kind: &str) -> Vec<Value> {
         .collect()
 }
 
-/// 外部调用记录里的步骤顺序；`unsupported` 表示 herdr-bot 尝试了夹具不认识的命令。
+/// 创建控制调用的步骤顺序；独立历史任务的只读 agent_get 不属于创建控制序列。
+/// `unsupported` 仍表示 herdr-bot 尝试了夹具不认识的命令，不能忽略。
 fn call_kinds(herdr: &HerdrFixture) -> Vec<String> {
     herdr
         .calls()
         .into_iter()
         .filter_map(|call| call["kind"].as_str().map(str::to_string))
+        .filter(|kind| kind != "agent_get")
         .collect()
 }
 
@@ -401,16 +403,8 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
                 .any(|arg| arg == "--model" || arg == "--thinking"),
             "默认 model / thinking 不传启动覆盖参数：{args:?}"
         );
-        assert_eq!(
-            args.len(),
-            5,
-            "默认启动包含独立会话目录、关闭自动发现及一个固定扩展：{args:?}"
-        );
-        assert_eq!(args[0], "--session-dir", "必须显式选择独立的新会话");
-        assert!(
-            Path::new(args[1].as_str().expect("会话目录是字符串")).is_absolute(),
-            "会话目录必须是绝对路径：{args:?}"
-        );
+
+        assert_eq!(args[0], "--no-extensions", "原生存储选择留给 agent");
 
         let prompt = calls_of_kind(&herdr, "agent_prompt")
             .into_iter()
@@ -432,6 +426,127 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
                 || call["argv"] == json!(["workspace", "list"])),
         "Workspace 查询必须是只读列表"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn per_create_rule_uses_preview_context_without_changing_the_template() {
+    let herdr = HerdrFixture::new("bot creation rule override");
+    let storage = TempDir::new("bot creation rule override storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    // Replacement values deliberately contain recognized placeholders: they stay literal.
+    let zone_dir = storage.path().join("alpha-{template.name}-{bot.id}");
+    fs::create_dir_all(&zone_dir).expect("创建 zone");
+    let zone = register(&server, &zone_dir).await;
+    let mut template = default_template();
+    template["name"] = json!("审查-{agent}-{bot.id}");
+    let saved = save_template(&server, template).await;
+    let template_id = saved["id"].as_str().expect("模板标识");
+    let response = preview(&server, &zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    let bot_id = preview["botId"].as_str().expect("短标识");
+    assert_eq!(preview["zoneName"], "alpha-{template.name}-{bot.id}");
+    assert_eq!(preview["templateName"], "审查-{agent}-{bot.id}");
+    assert_eq!(preview["botNameRule"], saved["botName"]);
+    assert_eq!(preview["agent"], "omp");
+    assert_eq!(
+        preview["name"],
+        format!("alpha-{{template.name}}-{{bot.id}} · 审查-{{agent}}-{{bot.id}} · {bot_id}")
+    );
+    let expected = format!(
+        "自定 / {bot_id} / alpha-{{template.name}}-{{bot.id}} / 审查-{{agent}}-{{bot.id}} / omp / {{unknown}} / {bot_id}"
+    );
+    let mut body = create_body(&zone, template_id, &preview, "检查自定名称");
+    body["botNameRule"] =
+        json!("自定 / {bot.id} / {zone.name} / {template.name} / {agent} / {unknown} / {bot.id}");
+    body["expectedName"] = json!(expected);
+    let response = create(&server, body).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建 JSON");
+    assert_eq!(accepted["name"], expected);
+    let finished = wait_stage(
+        &server,
+        accepted["id"].as_str().expect("创建标识"),
+        "succeeded",
+    )
+    .await;
+    assert_eq!(finished["name"], expected);
+    assert_eq!(herdr.tabs().last().expect("实际 Tab")["label"], expected);
+    assert_eq!(read_template(&server, template_id).await, saved);
+
+    // Omission still selects the stored template rule for a later creation.
+    let response = self::preview(&server, &zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let next_preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    assert_eq!(next_preview["botNameRule"], saved["botName"]);
+    let response = create(
+        &server,
+        create_body(&zone, template_id, &next_preview, "默认规则"),
+    )
+    .await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).expect("创建 JSON");
+    let finished = wait_stage(
+        &server,
+        accepted["id"].as_str().expect("创建标识"),
+        "succeeded",
+    )
+    .await;
+    assert_eq!(finished["name"], next_preview["name"]);
+    assert_eq!(
+        herdr.tabs().last().expect("默认规则 Tab")["label"],
+        next_preview["name"]
+    );
+    assert_eq!(read_template(&server, template_id).await, saved);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects() {
+    let herdr = HerdrFixture::new("bot creation invalid rule");
+    let storage = TempDir::new("bot creation invalid rule storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    let (zone, template_id) = prepare_zone_and_template(&server, &storage).await;
+    let response = preview(&server, &zone, &template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
+    for (rule, status, code) in [
+        ("", 400, "bot-name-rule-required"),
+        (" \t ", 400, "bot-name-rule-required"),
+        ("first\nsecond", 400, "bot-name-rule-not-single-line"),
+        ("first\rsecond", 400, "bot-name-rule-not-single-line"),
+        ("changed {bot.id}", 409, "name-preview-stale"),
+    ] {
+        let mut body = create_body(&zone, &template_id, &preview, "不可提交");
+        body["botNameRule"] = json!(rule);
+        let response = create(&server, body).await;
+        assert_eq!(response.status, status, "{rule:?}: {}", response.body);
+        let rejected: Value = serde_json::from_str(&response.body).expect("拒绝 JSON");
+        assert_eq!(rejected["code"], code, "{rejected}");
+        assert!(
+            herdr.calls().is_empty(),
+            "拒绝前不能调用 Herdr：{:?}",
+            herdr.calls()
+        );
+        assert!(herdr.tabs().is_empty(), "拒绝不能创建 Tab");
+    }
+    // A nonblank rule can still render blank for a registered filesystem root.
+    let root = Path::new(&zone).ancestors().last().expect("文件系统根目录");
+    let root_zone = register(&server, root).await;
+    let response = self::preview(&server, &root_zone, &template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let root_preview: Value = serde_json::from_str(&response.body).expect("根目录预览 JSON");
+    assert_eq!(root_preview["zoneName"], "");
+    let mut body = create_body(&root_zone, &template_id, &root_preview, "不可提交");
+    body["botNameRule"] = json!("{zone.name}");
+    body["expectedName"] = json!("");
+    let response = create(&server, body).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    let rejected: Value = serde_json::from_str(&response.body).expect("拒绝 JSON");
+    assert_eq!(rejected["code"], "bot-name-required");
+    assert!(herdr.calls().is_empty());
+    assert!(herdr.tabs().is_empty());
+    let saved = read_template(&server, &template_id).await;
+    assert_eq!(saved["botName"], default_template()["botName"]);
 }
 
 fn bots_like_bot_id(value: &str) -> bool {
@@ -533,6 +648,7 @@ async fn assert_launch_from_public_entry(
     let tail: Vec<&str> = created_calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         tail,
@@ -555,28 +671,13 @@ async fn assert_launch_from_public_entry(
     );
     let expected = expected_args.as_array().expect("预写样例是数组");
     let args = start["args"].as_array().expect("启动参数是数组");
-    assert_eq!(
-        args.len(),
-        expected.len() + 5,
-        "除模型 / thinking 外追加独立会话目录、关闭自动发现及一个固定扩展：{}",
-        start["args"]
-    );
+
     assert_eq!(
         &args[..expected.len()],
         expected.as_slice(),
         "启动参数中的模型与 thinking 必须与预写样例一致"
     );
-    assert_eq!(
-        args[expected.len()],
-        "--session-dir",
-        "模型 / thinking 之后必须显式选择独立的新会话目录：{}",
-        start["args"]
-    );
-    assert!(
-        Path::new(args[expected.len() + 1].as_str().expect("会话目录是字符串")).is_absolute(),
-        "会话目录必须是绝对路径：{}",
-        start["args"]
-    );
+    assert_eq!(args[expected.len()], "--no-extensions", "不得覆盖原生会话配置");
     if agent == "pi" {
         assert!(
             !args.iter().any(|arg| arg == "auto"),
@@ -748,6 +849,7 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -939,6 +1041,172 @@ async fn a_failed_agent_start_never_submits_input() {
         ],
         "启动失败后不得提交、重试、重建、关闭或删除现场"
     );
+}
+
+/// 当前模式只按 zone 根目录名匹配，不回退到默认或焦点 Workspace。
+#[tokio::test(flavor = "multi_thread")]
+async fn current_workspace_uses_exact_zone_basename_without_fallback() {
+    for (label, entries, expected_error) in [
+        (
+            "unique",
+            json!([{"workspace_id":"w-zone","label":"alpha"}]),
+            None,
+        ),
+        ("missing", json!([]), Some("workspace-not-found")),
+        (
+            "case",
+            json!([{"workspace_id":"w-case","label":"Alpha"}]),
+            Some("workspace-not-found"),
+        ),
+        (
+            "duplicate",
+            json!([
+                {"workspace_id":"w-one","label":"alpha"},
+                {"workspace_id":"w-two","label":"alpha"}
+            ]),
+            Some("workspace-ambiguous"),
+        ),
+    ] {
+        let fixture = input_fixture(&format!("current workspace {label}")).await;
+        let mut workspaces = entries.as_array().unwrap().clone();
+        workspaces
+            .push(json!({"workspace_id":"w-default","label":"bot-playground","focused":true}));
+        fixture.herdr.set_workspaces(json!(workspaces));
+        let template = save_template(&fixture.server, default_template()).await;
+        let template_id = template["id"].as_str().unwrap();
+        let response = preview(&fixture.server, &fixture.zone, template_id).await;
+        let preview: Value = serde_json::from_str(&response.body).unwrap();
+        let mut body = create_body(&fixture.zone, template_id, &preview, "测试输入");
+        body["workspaceTarget"] = json!("current");
+        let response = create(&fixture.server, body).await;
+        assert_eq!(response.status, 202, "{}", response.body);
+        let accepted: Value = serde_json::from_str(&response.body).unwrap();
+        let result = wait_stage(
+            &fixture.server,
+            accepted["id"].as_str().unwrap(),
+            if expected_error.is_some() {
+                "failed"
+            } else {
+                "succeeded"
+            },
+        )
+        .await;
+        if let Some(code) = expected_error {
+            assert_eq!(result["failure"]["code"], code);
+            assert!(
+                result["failure"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("alpha")
+            );
+            assert_eq!(call_kinds(&fixture.herdr), vec!["workspace_list"]);
+            assert!(fixture.herdr.tabs().is_empty());
+        } else {
+            let tabs = fixture.herdr.tabs();
+            assert_eq!(tabs.len(), 1);
+            assert_eq!(tabs[0]["workspace"], "w-zone");
+            assert_eq!(tabs[0]["cwd"], fixture.zone);
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn workspace_retry_reuses_preview_but_preserves_independent_creation_records() {
+    let fixture = input_fixture("workspace retry identity").await;
+    fixture.herdr.set_workspaces(json!([
+        {"workspace_id":"w-default","label":"bot-playground"}
+    ]));
+    let template = save_template(&fixture.server, default_template()).await;
+    let template_id = template["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &fixture.zone, template_id).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let preview: Value = serde_json::from_str(&response.body).unwrap();
+    let mut body = create_body(&fixture.zone, template_id, &preview, "保留重试输入");
+    body["workspaceTarget"] = json!("current");
+    let response = create(&fixture.server, body.clone()).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let accepted: Value = serde_json::from_str(&response.body).unwrap();
+    let failed_id = accepted["id"].as_str().unwrap();
+    assert_ne!(accepted["id"], preview["botId"], "创建标识不是显示名短标识");
+    let failed = wait_stage(&fixture.server, failed_id, "failed").await;
+    assert_eq!(failed["failure"]["stage"], "workspace");
+    assert_eq!(failed["failure"]["code"], "workspace-not-found");
+    assert_eq!(call_kinds(&fixture.herdr), vec!["workspace_list"]);
+    assert!(fixture.herdr.tabs().is_empty());
+
+    // 同一目标也可主动重试；不要求用户先切换 Workspace，且旧失败不能被覆盖。
+    let response = create(&fixture.server, body.clone()).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let repeated: Value = serde_json::from_str(&response.body).unwrap();
+    let repeated_id = repeated["id"].as_str().unwrap();
+    assert_ne!(repeated["id"], accepted["id"]);
+    wait_stage(&fixture.server, repeated_id, "failed").await;
+    assert_eq!(creation(&fixture.server, failed_id).await, failed);
+    assert_eq!(
+        call_kinds(&fixture.herdr),
+        vec!["workspace_list", "workspace_list"]
+    );
+
+    // 只改 Workspace；名称、botId、模板与 input 沿用同一次预览。
+    body["workspaceTarget"] = json!("default");
+    let response = create(&fixture.server, body).await;
+    assert_eq!(response.status, 202, "{}", response.body);
+    let retry: Value = serde_json::from_str(&response.body).unwrap();
+    let retry_id = retry["id"].as_str().unwrap();
+    assert_ne!(retry["id"], accepted["id"]);
+    assert_ne!(retry["id"], repeated["id"]);
+    let succeeded = wait_stage(&fixture.server, retry_id, "succeeded").await;
+    assert_eq!(succeeded["name"], failed["name"]);
+    assert_eq!(succeeded["name"], preview["name"]);
+    assert_eq!(succeeded["templateId"], failed["templateId"]);
+    assert_eq!(creation(&fixture.server, failed_id).await, failed);
+    assert_eq!(
+        creation(&fixture.server, repeated_id).await["stage"],
+        "failed"
+    );
+    assert_eq!(fixture.herdr.tabs().len(), 1);
+    assert_eq!(fixture.herdr.tabs()[0]["workspace"], "w-default");
+    let prompts = calls_of_kind(&fixture.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0]["text"], "保留重试输入");
+    let start = calls_of_kind(&fixture.herdr, "agent_start");
+    assert_eq!(start.len(), 1);
+    assert_eq!(start[0]["args"][0], "--no-extensions");
+    assert_eq!(
+        call_kinds(&fixture.herdr),
+        vec![
+            "workspace_list",
+            "workspace_list",
+            "workspace_list",
+            "tab_create",
+            "agent_start",
+            "agent_prompt",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn current_workspace_rejects_root_without_a_directory_name() {
+    let fixture = input_fixture("current workspace root").await;
+    let root = Path::new(&fixture.zone).ancestors().last().unwrap();
+    let zone = register(&fixture.server, root).await;
+    let template = save_template(&fixture.server, default_template()).await;
+    let template_id = template["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &zone, template_id).await;
+    let preview: Value = serde_json::from_str(&response.body).unwrap();
+    let mut body = create_body(&zone, template_id, &preview, "不应提交");
+    body["workspaceTarget"] = json!("current");
+    let response = create(&fixture.server, body).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    let error: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(error["code"], "workspace-name-unavailable");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("请选择默认 Workspace")
+    );
+    assert!(fixture.herdr.calls().is_empty());
 }
 
 /// P41 / P46（基础失败）：找不到目标 Workspace 或存在同名歧义时不新建 Tab，也不伪造标识。
@@ -1258,6 +1526,7 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1425,6 +1694,7 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1574,6 +1844,7 @@ async fn an_all_empty_template_attempts_submission_and_reports_the_herdr_rejecti
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,
@@ -1628,6 +1899,7 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
     let kinds: Vec<&str> = calls
         .iter()
         .filter_map(|call| call["kind"].as_str())
+        .filter(|kind| *kind != "agent_get")
         .collect();
     assert_eq!(
         kinds,

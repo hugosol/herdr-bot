@@ -44,7 +44,7 @@ pub struct Config {
     pub bot_templates: BotTemplatesConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
     ///
-    /// 这一段不是后备缺省：目标 Workspace 只能由部署者明确指定，缺失、空串或纯空白都会让
+    /// 这一段不是后备缺省：默认 Workspace 由部署者明确指定，缺失、空串或纯空白都会让
     /// 进程启动失败，而不是落到任何猜测出来的位置。
     pub herdr: HerdrConfig,
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
@@ -54,7 +54,7 @@ pub struct Config {
 
 /// Herdr 控制设置（`[herdr]` 段）。
 ///
-/// 每个新建 Bot 都按 `workspace_name` 精确查找唯一的 Herdr Workspace；客户端请求不能替换这个目标。
+/// 默认按 `workspace_name` 精确查找唯一的 Herdr Workspace；本次选择“当前”时按 zone 根目录名匹配。
 /// `executable` 是生产调用 `herdr` CLI 的路径，缺省按 `PATH` 查找；它不改变目标 Workspace 的归属。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,13 +91,51 @@ pub struct GitConfig {
     /// 每条 Git 命令的执行时限；缺省 300 秒。
     #[serde(default = "command_timeout_seconds_by_default")]
     pub command_timeout_seconds: CommandTimeoutSeconds,
+    /// 成功状态缓存的有效期（秒）；启动时读取，缺省 10 秒。
+    #[serde(default = "status_cache_ttl_seconds_by_default")]
+    pub status_cache_ttl_seconds: StatusCacheTtlSeconds,
 }
 
 impl Default for GitConfig {
     fn default() -> Self {
         Self {
             command_timeout_seconds: command_timeout_seconds_by_default(),
+            status_cache_ttl_seconds: status_cache_ttl_seconds_by_default(),
         }
+    }
+}
+
+fn status_cache_ttl_seconds_by_default() -> StatusCacheTtlSeconds {
+    StatusCacheTtlSeconds(10)
+}
+
+/// 成功 Git 状态的缓存有效期（秒）；正整数，缺省 10 秒，仅在启动时读取。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "u32")]
+pub struct StatusCacheTtlSeconds(u32);
+
+impl StatusCacheTtlSeconds {
+    pub fn new(seconds: u32) -> Result<Self, &'static str> {
+        if seconds == 0 {
+            Err("status_cache_ttl_seconds 必须是正整数（默认 10）")
+        } else {
+            Ok(Self(seconds))
+        }
+    }
+
+    pub fn get(self) -> u32 {
+        self.0
+    }
+
+    pub fn duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+
+impl TryFrom<u32> for StatusCacheTtlSeconds {
+    type Error = &'static str;
+    fn try_from(seconds: u32) -> Result<Self, Self::Error> {
+        Self::new(seconds)
     }
 }
 
@@ -376,6 +414,9 @@ impl<'de> Deserialize<'de> for CountdownSeconds {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionsConfig {
+    /// 持久历史元数据位置；不保存当前登记、监听或倒计时。
+    #[serde(default = "history_file_by_default")]
+    pub history_file: PathBuf,
     /// 在线有效期秒数；缺省 10 秒。
     #[serde(default = "online_timeout_seconds_by_default")]
     pub online_timeout_seconds: SessionWindowSeconds,
@@ -387,6 +428,7 @@ pub struct SessionsConfig {
 impl Default for SessionsConfig {
     fn default() -> Self {
         Self {
+            history_file: history_file_by_default(),
             online_timeout_seconds: online_timeout_seconds_by_default(),
             offline_retention_seconds: offline_retention_seconds_by_default(),
         }
@@ -404,6 +446,10 @@ impl SessionsConfig {
             self.offline_retention_seconds.get(),
         )
     }
+}
+
+fn history_file_by_default() -> PathBuf {
+    PathBuf::from(".data/session-history.json")
 }
 
 /// `[sessions] online_timeout_seconds` 的缺省值：缺字段（或整段）得到 10 秒。
@@ -563,6 +609,34 @@ workspace_name = 'bot-playground'
             config.git.command_timeout_seconds.duration(),
             Duration::from_secs(300)
         );
+    }
+
+    #[test]
+    fn status_cache_ttl_defaults_to_ten_seconds_and_accepts_positive_integer() {
+        assert_eq!(
+            Config::from_toml(LEGACY_CONFIG)
+                .unwrap()
+                .git
+                .status_cache_ttl_seconds
+                .get(),
+            10
+        );
+        let raw = format!("{LEGACY_CONFIG}\n[git]\nstatus_cache_ttl_seconds = 7\n");
+        assert_eq!(
+            Config::from_toml(&raw)
+                .unwrap()
+                .git
+                .status_cache_ttl_seconds
+                .duration(),
+            Duration::from_secs(7)
+        );
+        for literal in ["0", "-1", "1.5", "'10'"] {
+            let raw = format!("{LEGACY_CONFIG}\n[git]\nstatus_cache_ttl_seconds = {literal}\n");
+            assert!(
+                Config::from_toml(&raw).is_err(),
+                "invalid TTL must fail startup: {literal}"
+            );
+        }
     }
 
     #[test]

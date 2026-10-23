@@ -168,6 +168,7 @@ test('失效扩展在手机视口可显式移除，修正前页面与公开创�
   await page.getByTestId('tab-files').click()
   await zoneRowFor(page, zone).getByTestId('zone-create-bot').click()
   await expect(page.getByTestId('bot-name-preview')).toHaveAttribute('data-state', 'ready')
+  await page.locator('#bot-workspace-target').selectOption('default')
   await page.getByTestId('bot-create-submit').click()
   await expect(page.getByTestId('bot-request-error')).toContainText('archive-tools')
   await expect(page.getByTestId('bot-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')
@@ -204,6 +205,7 @@ test('失效扩展在手机视口可显式移除，修正前页面与公开创�
   await page.getByTestId('tab-files').click()
   await zoneRowFor(page, zone).getByTestId('zone-create-bot').click()
   await expect(page.getByTestId('bot-name-preview')).toHaveAttribute('data-state', 'ready')
+  await page.locator('#bot-workspace-target').selectOption('default')
   await page.getByTestId('bot-create-submit').click()
   await expect(page.getByTestId('bot-create-success')).toBeVisible()
   expect(server.herdrTabs()).toHaveLength(1)
@@ -237,6 +239,7 @@ for (const scenario of [
     await page.getByTestId('save-template').click()
     await expect(page.getByTestId('template-form-error')).toContainText(scenario.reason)
     await expect(page.getByTestId('template-feedback')).toHaveCount(0)
+    await creator.locator('#bot-workspace-target').selectOption('default')
     await creator.getByTestId('bot-create-submit').click()
     await expect(creator.getByTestId('bot-request-error')).toContainText(scenario.reason)
     await expect(creator.getByTestId('bot-create-success')).toHaveCount(0)
@@ -326,6 +329,7 @@ for (const fault of ['损坏', '移走']) {
     await expect(page.getByTestId('template-form-error')).toContainText(server.metadataFile)
     await expect(page.getByTestId('template-form-error')).toContainText(reason)
     await expect(page.getByTestId('template-feedback')).toHaveCount(0)
+    await creator.locator('#bot-workspace-target').selectOption('default')
     await creator.getByTestId('bot-create-submit').click()
     await expect(creator.getByTestId('bot-request-error')).toContainText(server.metadataFile)
     await expect(creator.getByTestId('bot-request-error')).toContainText(reason)
@@ -366,6 +370,7 @@ for (const fault of ['损坏', '移走']) {
     expect((await request(`/api/bot-templates/${saved.id}`, fixed, 'PUT')).status).toBe(200)
     await zoneRowFor(creator, zone).getByTestId('zone-create-bot').click()
     await expect(creator.getByTestId('bot-name-preview')).toHaveAttribute('data-state', 'ready')
+    await creator.locator('#bot-workspace-target').selectOption('default')
     await creator.getByTestId('bot-create-submit').click()
     await expect(creator.getByTestId('bot-create-success')).toBeVisible()
     await succeeded(await create(zone, saved.id))
@@ -374,7 +379,7 @@ for (const fault of ['损坏', '移走']) {
     for (const start of starts) {
       const args = start.args as string[]
       expect(args.slice(0, 4)).toEqual(['--model', 'repaired-provider/second-model', '--thinking', 'medium'])
-      expect(args.slice(6)).toEqual(['--no-extensions', '--extension', path.join(path.dirname(server.metadataFile), 'repaired-cost.ts')])
+      expect(args.slice(4)).toEqual(['--no-extensions', '--extension', path.join(path.dirname(server.metadataFile), 'repaired-cost.ts')])
     }
     expect(server.baseURL).toBe(originalURL)
     await screenshot(creator, info, 'metadata-repaired-creation-success')

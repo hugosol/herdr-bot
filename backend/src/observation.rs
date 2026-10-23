@@ -150,9 +150,15 @@ fn named_event(name: &'static str, data: &impl Serialize) -> Event {
 /// 把写入侧发布的一帧增量转成下发帧。
 fn frame_event(frame: Observation) -> Event {
     match frame {
-        Observation::SessionUpsert(view) => named_event(UPSERT_EVENT, &UpsertData { session: view }),
-        Observation::SessionRemove { session_id } => named_event(REMOVE_EVENT, &RemoveData { session_id }),
-        Observation::Shutdown(view) => named_event(SHUTDOWN_EVENT, &ShutdownData { shutdown: view }),
+        Observation::SessionUpsert(view) => {
+            named_event(UPSERT_EVENT, &UpsertData { session: view })
+        }
+        Observation::SessionRemove { session_id } => {
+            named_event(REMOVE_EVENT, &RemoveData { session_id })
+        }
+        Observation::Shutdown(view) => {
+            named_event(SHUTDOWN_EVENT, &ShutdownData { shutdown: view })
+        }
     }
 }
 
@@ -176,35 +182,29 @@ pub(crate) async fn sse_observation(State(state): State<AppState>) -> Response {
     let shutdown = state.shutdown.clone();
     // 先订阅、再取首帧：订阅之前的可见变化都在快照里，之后的都会作为帧送达。
     let receiver = sessions.observation().subscribe();
-    let first = (
-        sessions.snapshot().await,
-        shutdown.snapshot().await,
-    );
-    let stream = stream::unfold(
-        (receiver, Some(first)),
-        move |(mut receiver, pending)| {
-            let sessions = sessions.clone();
-            let shutdown = shutdown.clone();
-            async move {
-                let (views, shutdown_view) = match pending {
-                    Some(snapshot) => snapshot,
-                    None => match receiver.recv().await {
-                        Ok(frame) => {
-                            return Some((stream_item(frame_event(frame)), (receiver, None)));
-                        }
-                        Err(RecvError::Lagged(_)) => {
-                            (sessions.snapshot().await, shutdown.snapshot().await)
-                        }
-                        Err(RecvError::Closed) => return None,
-                    },
-                };
-                Some((
-                    stream_item(snapshot_event(views, shutdown_view)),
-                    (receiver, None),
-                ))
-            }
-        },
-    );
+    let first = (sessions.snapshot().await, shutdown.snapshot().await);
+    let stream = stream::unfold((receiver, Some(first)), move |(mut receiver, pending)| {
+        let sessions = sessions.clone();
+        let shutdown = shutdown.clone();
+        async move {
+            let (views, shutdown_view) = match pending {
+                Some(snapshot) => snapshot,
+                None => match receiver.recv().await {
+                    Ok(frame) => {
+                        return Some((stream_item(frame_event(frame)), (receiver, None)));
+                    }
+                    Err(RecvError::Lagged(_)) => {
+                        (sessions.snapshot().await, shutdown.snapshot().await)
+                    }
+                    Err(RecvError::Closed) => return None,
+                },
+            };
+            Some((
+                stream_item(snapshot_event(views, shutdown_view)),
+                (receiver, None),
+            ))
+        }
+    });
     Sse::new(stream)
         .keep_alive(KeepAlive::new().interval(SSE_KEEP_ALIVE))
         .into_response()

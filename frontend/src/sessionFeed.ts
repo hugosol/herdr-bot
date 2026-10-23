@@ -25,6 +25,8 @@ export type SessionView = {
   sessionId: string
   /** 会话名；缺省或空白时由界面回退为 `<cwd 目录名> · <sessionId 前 8 位>`。 */
   sessionName?: string
+  /** 原生 harness；缺省或未知 wire 类型显示「未知」，不从模型或名字猜测。 */
+  agentType?: 'pi' | 'omp'
   cwd: string
   /** 模型展示名；缺省时界面隐藏该字段。 */
   model?: string

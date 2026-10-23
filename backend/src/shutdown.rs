@@ -111,9 +111,8 @@ impl PowerOff for SystemPowerOff {
         enable_shutdown_privilege()?;
 
         // SAFETY: 两个参数都是常量，调用只向系统发起一次关机，不读写本进程的内存。
-        let issued = unsafe {
-            ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG, SHTDN_REASON_FLAG_PLANNED)
-        };
+        let issued =
+            unsafe { ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG, SHTDN_REASON_FLAG_PLANNED) };
         if issued == 0 {
             return Err(PowerOffFailure::Rejected(format!(
                 "ExitWindowsEx(EWX_SHUTDOWN | EWX_FORCEIFHUNG) 返回 FALSE（GetLastError={}）",
@@ -249,15 +248,9 @@ mod tests {
             privilege, refused,
             "两种失败步骤的类别必须互相区分（它们是不同的动作失败原因）"
         );
-        assert_ne!(
-            refused, internal,
-            "系统拒绝与内部故障必须互相区分"
-        );
+        assert_ne!(refused, internal, "系统拒绝与内部故障必须互相区分");
         for line in [&privilege, &refused, &internal] {
-            assert!(
-                !line.contains("invoked"),
-                "失败不得报成成功类别：{line}"
-            );
+            assert!(!line.contains("invoked"), "失败不得报成成功类别：{line}");
         }
     }
 

@@ -294,7 +294,8 @@ for (const profile of PROFILES) {
       const previewName = (await preview.textContent()) ?? ''
       expect(previewName.length).toBeGreaterThan(0)
 
-      // 多行 input 用键盘输入；弹窗没有手工命名输入。
+      await dialog.locator('#bot-workspace-target').selectOption('default')
+      // 多行 input 用键盘输入。
       const input = dialog.getByTestId('bot-input')
       await input.click()
       for (const [index, line] of MULTILINE_INPUT.split('\n').entries()) {
@@ -302,7 +303,6 @@ for (const profile of PROFILES) {
         await input.pressSequentially(line)
       }
       await expect(input).toHaveValue(MULTILINE_INPUT)
-      expect(await dialog.locator('input').count()).toBe(0)
       await expectNoHorizontalOverflow(page)
 
       await activate(dialog.getByTestId('bot-create-submit'), profile.hasTouch)
@@ -378,6 +378,7 @@ test.describe('移动尺寸失败结果', () => {
     await expect(dialog).toBeVisible()
     await expect(dialog.getByTestId('bot-name-preview')).toHaveText(/^alpha · 创建用 · [0-9a-f]{6}$/)
 
+    await dialog.locator('#bot-workspace-target').selectOption('default')
     await dialog.getByTestId('bot-input').fill('会被拒绝的指示')
     await dialog.getByTestId('bot-create-submit').tap()
 

@@ -159,7 +159,10 @@ async fn missing_working_directory_is_reported_as_failed_not_started() {
 #[tokio::test(flavor = "multi_thread")]
 async fn detached_child_does_not_delay_the_completed_result() {
     let tree = FixtureTree::new("result-detached");
-    let app = herdr_bot::app(&config(&tree.script("spawn-detached.bat"), &tree.operations()));
+    let app = herdr_bot::app(&config(
+        &tree.script("spawn-detached.bat"),
+        &tree.operations(),
+    ));
 
     let started_at = Instant::now();
     let (status, body) = tokio::time::timeout(Duration::from_secs(30), post_start(app))
@@ -186,7 +189,11 @@ async fn detached_child_does_not_delay_the_completed_result() {
             .any(|record| record.fixture == "detached-child")
     })
     .await;
-    assert!(registered, "分离子进程必须留下登记记录：{:#?}", tree.records());
+    assert!(
+        registered,
+        "分离子进程必须留下登记记录：{:#?}",
+        tree.records()
+    );
     let child = tree
         .records()
         .into_iter()
@@ -242,7 +249,10 @@ async fn the_three_result_classes_are_mutually_distinguishable() {
 
     assert_eq!(completed, ("completed".to_string(), None));
     assert_eq!(failed.0, "failed", "失败退出是执行失败：{failed:?}");
-    assert_eq!(not_started.0, "failed", "无法启动是执行失败：{not_started:?}");
+    assert_eq!(
+        not_started.0, "failed",
+        "无法启动是执行失败：{not_started:?}"
+    );
     assert_ne!(
         failed, not_started,
         "“脚本失败退出”与“脚本无法启动”必须能互相区分"

@@ -236,11 +236,7 @@ async fn creates_zone_directory_initializes_git_and_registers_it() {
     )
     .await;
 
-    assert_eq!(
-        response.status, 200,
-        "新建 zone 应成功：{}",
-        response.body
-    );
+    assert_eq!(response.status, 200, "新建 zone 应成功：{}", response.body);
     let created = parent.join("new-project");
     assert!(created.is_dir(), "必须在配置父目录下创建直接子目录");
     assert!(created.join(".git").is_dir(), "创建后必须执行 git init");
