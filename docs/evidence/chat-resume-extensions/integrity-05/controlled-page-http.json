@@ -1,0 +1,4715 @@
+{
+  "scope": "22 actual browser scenarios; 26 receipts because each of 4 timeout interactions also saves its final user retry. Final interaction run includes edited source Bot and corrupt catalog before existing-target locate. Controlled external Herdr only; not native extension loading.",
+  "records": [
+    {
+      "suite": "combined",
+      "scenario": "omp-discovery-combined",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser nehC1i\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extensions",
+                "reason": "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。",
+                "strategy": "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。"
+              },
+              {
+                "element": "workspace",
+                "reason": "原 Workspace 已删除（ID w-target，成功查询确认）。",
+                "strategy": "已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。"
+              }
+            ],
+            "fallback": true,
+            "matchCount": 0,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser nehC1i\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 原 Workspace 已删除（ID w-target，成功查询确认）。 已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。 已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+            "outcome": "restored",
+            "stage": "focused",
+            "target": {
+              "paneId": "w-fallback:pde30b8",
+              "tabId": "w-fallback:tde30b8",
+              "workspaceId": "w-fallback"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763457328,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763457391,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763457404,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-fallback",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser nehC1i\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763457420,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser nehC1i\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-fallback"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--resume",
+                "omp-integrity-history"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-6be4d9b802fe",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-fallback:pde30b8",
+                "--timeout",
+                "30000",
+                "--",
+                "--resume",
+                "omp-integrity-history"
+              ],
+              "at": 1792763457437,
+              "kind": "agent_start",
+              "name": "chat-6be4d9b802fe",
+              "pane": "w-fallback:pde30b8"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-6be4d9b802fe"
+              ],
+              "at": 1792763457453,
+              "kind": "agent_get",
+              "pid": 27792,
+              "target": "chat-6be4d9b802fe"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-fallback:pde30b8"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeStillAbsent": true
+        }
+      }
+    },
+    {
+      "suite": "combined",
+      "scenario": "omp-filtered-combined",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              },
+              {
+                "element": "workspace",
+                "reason": "原 Workspace 已删除（ID w-target，成功查询确认）。",
+                "strategy": "已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。"
+              }
+            ],
+            "fallback": true,
+            "matchCount": 0,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-target，成功查询确认）。 已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。 已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+            "outcome": "restored",
+            "stage": "focused",
+            "target": {
+              "paneId": "w-fallback:p909388",
+              "tabId": "w-fallback:t909388",
+              "workspaceId": "w-fallback"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763455963,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763456050,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763456074,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-fallback",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763456090,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-fallback"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "omp-integrity-history"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-cd460c503c6a",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-fallback:p909388",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser XFJTq1\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "omp-integrity-history"
+              ],
+              "at": 1792763456116,
+              "kind": "agent_start",
+              "name": "chat-cd460c503c6a",
+              "pane": "w-fallback:p909388"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-cd460c503c6a"
+              ],
+              "at": 1792763456131,
+              "kind": "agent_get",
+              "pid": 24624,
+              "target": "chat-cd460c503c6a"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-fallback:p909388"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeStillAbsent": true
+        }
+      }
+    },
+    {
+      "suite": "combined",
+      "scenario": "pi-discovery-combined",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser QWOUzk\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extensions",
+                "reason": "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。",
+                "strategy": "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。"
+              },
+              {
+                "element": "workspace",
+                "reason": "原 Workspace 已删除（ID w-target，成功查询确认）。",
+                "strategy": "已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。"
+              }
+            ],
+            "fallback": true,
+            "matchCount": 0,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser QWOUzk\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 原 Workspace 已删除（ID w-target，成功查询确认）。 已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。 已确认恢复同一 Pi 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+            "outcome": "restored",
+            "stage": "focused",
+            "target": {
+              "paneId": "w-fallback:p6caa1c",
+              "tabId": "w-fallback:t6caa1c",
+              "workspaceId": "w-fallback"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763454527,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763454589,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763454604,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-fallback",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser QWOUzk\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763454627,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser QWOUzk\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-fallback"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--session",
+                "pi-integrity-history"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-1f0031703f56",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-fallback:p6caa1c",
+                "--timeout",
+                "30000",
+                "--",
+                "--session",
+                "pi-integrity-history"
+              ],
+              "at": 1792763454643,
+              "kind": "agent_start",
+              "name": "chat-1f0031703f56",
+              "pane": "w-fallback:p6caa1c"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-1f0031703f56"
+              ],
+              "at": 1792763454659,
+              "kind": "agent_get",
+              "pid": 15480,
+              "target": "chat-1f0031703f56"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-fallback:p6caa1c"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeStillAbsent": true
+        }
+      }
+    },
+    {
+      "suite": "combined",
+      "scenario": "pi-filtered-combined",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              },
+              {
+                "element": "workspace",
+                "reason": "原 Workspace 已删除（ID w-target，成功查询确认）。",
+                "strategy": "已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。"
+              }
+            ],
+            "fallback": true,
+            "matchCount": 0,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-target，成功查询确认）。 已回退到配置的唯一默认 Workspace bot-playground（w-fallback）；保留历史原位置。 已确认恢复同一 Pi 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+            "outcome": "restored",
+            "stage": "focused",
+            "target": {
+              "paneId": "w-fallback:p8226b8",
+              "tabId": "w-fallback:t8226b8",
+              "workspaceId": "w-fallback"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763453304,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763453365,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763453389,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-fallback",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763453404,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-fallback"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "pi-integrity-history"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-8d290b005e9e",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-fallback:p8226b8",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 6YAnfD\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "pi-integrity-history"
+              ],
+              "at": 1792763453420,
+              "kind": "agent_start",
+              "name": "chat-8d290b005e9e",
+              "pane": "w-fallback:p8226b8"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-8d290b005e9e"
+              ],
+              "at": 1792763453436,
+              "kind": "agent_get",
+              "pid": 1984,
+              "target": "chat-8d290b005e9e"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-fallback:p8226b8"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeStillAbsent": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "omp-filtered-start",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 恢复在 start 阶段失败：Herdr 的 agent start 失败：受控夹具拒绝启动 agent 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:pc43380",
+              "tabId": "w-target:tc43380",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763501264,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763501342,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763501358,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-e1b05c3076d6",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:pc43380",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763501375,
+              "kind": "agent_start",
+              "name": "chat-e1b05c3076d6",
+              "pane": "w-target:pc43380"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763500794,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:p20c1e0",
+              "tab_id": "w-target:t20c1e0",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763501358,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J2jUkd\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:pc43380",
+              "tab_id": "w-target:tc43380",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "omp-filtered-confirm",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-3e71d470a516",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 启动结果未确认（confirm 阶段等待超时）：Herdr 的 agent get native identity 返回了无法理解的响应：native identity acquisition deadline expired 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "confirm",
+            "target": {
+              "paneId": "w-target:p251eac",
+              "tabId": "w-target:t251eac",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763504190,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763504266,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763504284,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-3e71d470a516",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:p251eac",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763504298,
+              "kind": "agent_start",
+              "name": "chat-3e71d470a516",
+              "pane": "w-target:p251eac"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504315,
+              "kind": "agent_get",
+              "pid": 10980,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504443,
+              "kind": "agent_get",
+              "pid": 8224,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504569,
+              "kind": "agent_get",
+              "pid": 5292,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504694,
+              "kind": "agent_get",
+              "pid": 40832,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504818,
+              "kind": "agent_get",
+              "pid": 24708,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763504944,
+              "kind": "agent_get",
+              "pid": 17692,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505071,
+              "kind": "agent_get",
+              "pid": 15000,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505193,
+              "kind": "agent_get",
+              "pid": 29784,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505316,
+              "kind": "agent_get",
+              "pid": 31852,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505440,
+              "kind": "agent_get",
+              "pid": 38456,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505566,
+              "kind": "agent_get",
+              "pid": 9960,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505691,
+              "kind": "agent_get",
+              "pid": 40572,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505821,
+              "kind": "agent_get",
+              "pid": 39012,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763505952,
+              "kind": "agent_get",
+              "pid": 36528,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506075,
+              "kind": "agent_get",
+              "pid": 34048,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506200,
+              "kind": "agent_get",
+              "pid": 19672,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506327,
+              "kind": "agent_get",
+              "pid": 24216,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506448,
+              "kind": "agent_get",
+              "pid": 15864,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506571,
+              "kind": "agent_get",
+              "pid": 38140,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506699,
+              "kind": "agent_get",
+              "pid": 26108,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506820,
+              "kind": "agent_get",
+              "pid": 41320,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763506944,
+              "kind": "agent_get",
+              "pid": 5764,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507073,
+              "kind": "agent_get",
+              "pid": 21312,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507195,
+              "kind": "agent_get",
+              "pid": 34528,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507318,
+              "kind": "agent_get",
+              "pid": 36260,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507445,
+              "kind": "agent_get",
+              "pid": 17024,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507568,
+              "kind": "agent_get",
+              "pid": 35892,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507695,
+              "kind": "agent_get",
+              "pid": 19644,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507816,
+              "kind": "agent_get",
+              "pid": 19816,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763507940,
+              "kind": "agent_get",
+              "pid": 10520,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508064,
+              "kind": "agent_get",
+              "pid": 17676,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508198,
+              "kind": "agent_get",
+              "pid": 29104,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508327,
+              "kind": "agent_get",
+              "pid": 32784,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508449,
+              "kind": "agent_get",
+              "pid": 18848,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508571,
+              "kind": "agent_get",
+              "pid": 34560,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508690,
+              "kind": "agent_get",
+              "pid": 29092,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508817,
+              "kind": "agent_get",
+              "pid": 39952,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763508941,
+              "kind": "agent_get",
+              "pid": 35152,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509066,
+              "kind": "agent_get",
+              "pid": 34912,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509190,
+              "kind": "agent_get",
+              "pid": 39336,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509313,
+              "kind": "agent_get",
+              "pid": 5464,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509438,
+              "kind": "agent_get",
+              "pid": 3836,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509562,
+              "kind": "agent_get",
+              "pid": 23184,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509690,
+              "kind": "agent_get",
+              "pid": 34232,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509811,
+              "kind": "agent_get",
+              "pid": 11164,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763509936,
+              "kind": "agent_get",
+              "pid": 37544,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510063,
+              "kind": "agent_get",
+              "pid": 18876,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510188,
+              "kind": "agent_get",
+              "pid": 27596,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510320,
+              "kind": "agent_get",
+              "pid": 31368,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510450,
+              "kind": "agent_get",
+              "pid": 39000,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510575,
+              "kind": "agent_get",
+              "pid": 4472,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510698,
+              "kind": "agent_get",
+              "pid": 8184,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510829,
+              "kind": "agent_get",
+              "pid": 15144,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763510949,
+              "kind": "agent_get",
+              "pid": 6036,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511072,
+              "kind": "agent_get",
+              "pid": 35360,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511198,
+              "kind": "agent_get",
+              "pid": 35832,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511323,
+              "kind": "agent_get",
+              "pid": 32164,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511445,
+              "kind": "agent_get",
+              "pid": 24716,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511572,
+              "kind": "agent_get",
+              "pid": 35288,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511700,
+              "kind": "agent_get",
+              "pid": 42156,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511823,
+              "kind": "agent_get",
+              "pid": 32152,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763511945,
+              "kind": "agent_get",
+              "pid": 19896,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512070,
+              "kind": "agent_get",
+              "pid": 19416,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512193,
+              "kind": "agent_get",
+              "pid": 29440,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512318,
+              "kind": "agent_get",
+              "pid": 9808,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512441,
+              "kind": "agent_get",
+              "pid": 26416,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512562,
+              "kind": "agent_get",
+              "pid": 41740,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512703,
+              "kind": "agent_get",
+              "pid": 12140,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512829,
+              "kind": "agent_get",
+              "pid": 28888,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763512957,
+              "kind": "agent_get",
+              "pid": 42540,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513079,
+              "kind": "agent_get",
+              "pid": 3496,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513198,
+              "kind": "agent_get",
+              "pid": 22764,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513325,
+              "kind": "agent_get",
+              "pid": 41452,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513448,
+              "kind": "agent_get",
+              "pid": 39212,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513571,
+              "kind": "agent_get",
+              "pid": 35968,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513697,
+              "kind": "agent_get",
+              "pid": 40580,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513817,
+              "kind": "agent_get",
+              "pid": 41544,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763513945,
+              "kind": "agent_get",
+              "pid": 38700,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763514069,
+              "kind": "agent_get",
+              "pid": 4132,
+              "target": "chat-3e71d470a516"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-3e71d470a516"
+              ],
+              "at": 1792763514192,
+              "kind": "agent_get",
+              "pid": 32308,
+              "target": "chat-3e71d470a516"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763503721,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:p99f56c",
+              "tab_id": "w-target:t99f56c",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763504284,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser J1GpGq\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:p251eac",
+              "tab_id": "w-target:t251eac",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "omp-filtered-focus",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 恢复在 focus 阶段失败：Herdr 的 agent focus 失败：controlled navigation failure 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "focus",
+            "target": {
+              "paneId": "w-target:pee529c",
+              "tabId": "w-target:tee529c",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763515664,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763515740,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763515756,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-96046c483dce",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:pee529c",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763515772,
+              "kind": "agent_start",
+              "name": "chat-96046c483dce",
+              "pane": "w-target:pee529c"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-96046c483dce"
+              ],
+              "at": 1792763515789,
+              "kind": "agent_get",
+              "pid": 1496,
+              "target": "chat-96046c483dce"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:pee529c"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763515211,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:p73dbec",
+              "tab_id": "w-target:t73dbec",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763515756,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser v4Hft2\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:pee529c",
+              "tab_id": "w-target:tee529c",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "omp-filtered-mismatch",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "native-session-mismatch",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 恢复在 confirm 阶段失败：OMP 加载的原生对话或实际工作目录与历史不符。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "confirm",
+            "target": {
+              "paneId": "w-target:pc06158",
+              "tabId": "w-target:tc06158",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763502721,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763502784,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792763502800,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-8da6d9385c0e",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:pc06158",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763502818,
+              "kind": "agent_start",
+              "name": "chat-8da6d9385c0e",
+              "pane": "w-target:pc06158"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-8da6d9385c0e"
+              ],
+              "at": 1792763502834,
+              "kind": "agent_get",
+              "pid": 17280,
+              "target": "chat-8da6d9385c0e"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763502229,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:pa7d20c",
+              "tab_id": "w-target:ta7d20c",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763502801,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ueIIwD\\isolated integrity cwd",
+              "label": "Integrity omp",
+              "pane_id": "w-target:pc06158",
+              "tab_id": "w-target:tc06158",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "pi-filtered-focus",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 恢复在 focus 阶段失败：Herdr 的 agent focus 失败：controlled navigation failure 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "focus",
+            "target": {
+              "paneId": "w-target:p3eeba4",
+              "tabId": "w-target:t3eeba4",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763499812,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763499874,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763499890,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-32a4bad8a8ee",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:p3eeba4",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763499905,
+              "kind": "agent_start",
+              "name": "chat-32a4bad8a8ee",
+              "pane": "w-target:p3eeba4"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-32a4bad8a8ee"
+              ],
+              "at": 1792763499921,
+              "kind": "agent_get",
+              "pid": 26516,
+              "target": "chat-32a4bad8a8ee"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:p3eeba4"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763499354,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:p529d14",
+              "tab_id": "w-target:t529d14",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763499890,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 2Rx6hg\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:p3eeba4",
+              "tab_id": "w-target:t3eeba4",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "pi-filtered-confirm",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-d80c6d7875be",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 启动结果未确认（confirm 阶段等待超时）：Herdr 的 agent get native identity 返回了无法理解的响应：native identity acquisition deadline expired 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "confirm",
+            "target": {
+              "paneId": "w-target:pf24aa4",
+              "tabId": "w-target:tf24aa4",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763488304,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763488376,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763488392,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-d80c6d7875be",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pf24aa4",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763488408,
+              "kind": "agent_start",
+              "name": "chat-d80c6d7875be",
+              "pane": "w-target:pf24aa4"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763488424,
+              "kind": "agent_get",
+              "pid": 33000,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763488552,
+              "kind": "agent_get",
+              "pid": 24800,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763488677,
+              "kind": "agent_get",
+              "pid": 39800,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763488798,
+              "kind": "agent_get",
+              "pid": 13824,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763488922,
+              "kind": "agent_get",
+              "pid": 35648,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489054,
+              "kind": "agent_get",
+              "pid": 11780,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489175,
+              "kind": "agent_get",
+              "pid": 8196,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489300,
+              "kind": "agent_get",
+              "pid": 18600,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489426,
+              "kind": "agent_get",
+              "pid": 19780,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489550,
+              "kind": "agent_get",
+              "pid": 36048,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489672,
+              "kind": "agent_get",
+              "pid": 16756,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489795,
+              "kind": "agent_get",
+              "pid": 41548,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763489920,
+              "kind": "agent_get",
+              "pid": 28944,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490055,
+              "kind": "agent_get",
+              "pid": 16428,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490186,
+              "kind": "agent_get",
+              "pid": 34076,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490310,
+              "kind": "agent_get",
+              "pid": 23800,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490435,
+              "kind": "agent_get",
+              "pid": 20052,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490561,
+              "kind": "agent_get",
+              "pid": 15172,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490686,
+              "kind": "agent_get",
+              "pid": 36356,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490811,
+              "kind": "agent_get",
+              "pid": 13504,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763490938,
+              "kind": "agent_get",
+              "pid": 28644,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491062,
+              "kind": "agent_get",
+              "pid": 13752,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491187,
+              "kind": "agent_get",
+              "pid": 21620,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491311,
+              "kind": "agent_get",
+              "pid": 12972,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491435,
+              "kind": "agent_get",
+              "pid": 38948,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491562,
+              "kind": "agent_get",
+              "pid": 8400,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491684,
+              "kind": "agent_get",
+              "pid": 28956,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491808,
+              "kind": "agent_get",
+              "pid": 38184,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763491934,
+              "kind": "agent_get",
+              "pid": 9748,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492058,
+              "kind": "agent_get",
+              "pid": 34388,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492183,
+              "kind": "agent_get",
+              "pid": 36408,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492309,
+              "kind": "agent_get",
+              "pid": 33460,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492432,
+              "kind": "agent_get",
+              "pid": 14368,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492558,
+              "kind": "agent_get",
+              "pid": 38076,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492682,
+              "kind": "agent_get",
+              "pid": 34184,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492805,
+              "kind": "agent_get",
+              "pid": 38816,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763492940,
+              "kind": "agent_get",
+              "pid": 19648,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493074,
+              "kind": "agent_get",
+              "pid": 32204,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493196,
+              "kind": "agent_get",
+              "pid": 8200,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493321,
+              "kind": "agent_get",
+              "pid": 8384,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493445,
+              "kind": "agent_get",
+              "pid": 39624,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493567,
+              "kind": "agent_get",
+              "pid": 29412,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493692,
+              "kind": "agent_get",
+              "pid": 9224,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493818,
+              "kind": "agent_get",
+              "pid": 18088,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763493947,
+              "kind": "agent_get",
+              "pid": 16980,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494071,
+              "kind": "agent_get",
+              "pid": 32528,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494196,
+              "kind": "agent_get",
+              "pid": 18916,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494315,
+              "kind": "agent_get",
+              "pid": 30548,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494440,
+              "kind": "agent_get",
+              "pid": 24180,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494565,
+              "kind": "agent_get",
+              "pid": 39728,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494693,
+              "kind": "agent_get",
+              "pid": 33672,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494814,
+              "kind": "agent_get",
+              "pid": 19672,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763494938,
+              "kind": "agent_get",
+              "pid": 20432,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495064,
+              "kind": "agent_get",
+              "pid": 3044,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495188,
+              "kind": "agent_get",
+              "pid": 33024,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495315,
+              "kind": "agent_get",
+              "pid": 41708,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495435,
+              "kind": "agent_get",
+              "pid": 31016,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495561,
+              "kind": "agent_get",
+              "pid": 22072,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495689,
+              "kind": "agent_get",
+              "pid": 19632,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495810,
+              "kind": "agent_get",
+              "pid": 36260,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763495948,
+              "kind": "agent_get",
+              "pid": 27624,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496078,
+              "kind": "agent_get",
+              "pid": 7260,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496202,
+              "kind": "agent_get",
+              "pid": 22108,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496329,
+              "kind": "agent_get",
+              "pid": 28492,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496448,
+              "kind": "agent_get",
+              "pid": 3032,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496577,
+              "kind": "agent_get",
+              "pid": 2680,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496703,
+              "kind": "agent_get",
+              "pid": 26644,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496830,
+              "kind": "agent_get",
+              "pid": 20828,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763496954,
+              "kind": "agent_get",
+              "pid": 18132,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497075,
+              "kind": "agent_get",
+              "pid": 27300,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497201,
+              "kind": "agent_get",
+              "pid": 29484,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497323,
+              "kind": "agent_get",
+              "pid": 3936,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497449,
+              "kind": "agent_get",
+              "pid": 17112,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497571,
+              "kind": "agent_get",
+              "pid": 15516,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497696,
+              "kind": "agent_get",
+              "pid": 39336,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497816,
+              "kind": "agent_get",
+              "pid": 28164,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763497947,
+              "kind": "agent_get",
+              "pid": 5976,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763498066,
+              "kind": "agent_get",
+              "pid": 41160,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763498193,
+              "kind": "agent_get",
+              "pid": 24176,
+              "target": "chat-d80c6d7875be"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-d80c6d7875be"
+              ],
+              "at": 1792763498317,
+              "kind": "agent_get",
+              "pid": 18628,
+              "target": "chat-d80c6d7875be"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763487831,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:p7d3094",
+              "tab_id": "w-target:t7d3094",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763488392,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Ph14M6\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:pf24aa4",
+              "tab_id": "w-target:tf24aa4",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "pi-filtered-mismatch",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "native-session-mismatch",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 恢复在 confirm 阶段失败：Pi 加载的原生对话或实际工作目录与历史不符。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "confirm",
+            "target": {
+              "paneId": "w-target:pe92408",
+              "tabId": "w-target:te92408",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763486920,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763486982,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763486999,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-31f738c8a83a",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pe92408",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763487015,
+              "kind": "agent_start",
+              "name": "chat-31f738c8a83a",
+              "pane": "w-target:pe92408"
+            },
+            {
+              "argv": [
+                "agent",
+                "get",
+                "chat-31f738c8a83a"
+              ],
+              "at": 1792763487031,
+              "kind": "agent_get",
+              "pid": 27844,
+              "target": "chat-31f738c8a83a"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763486442,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:pb01a94",
+              "tab_id": "w-target:tb01a94",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763486999,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser POztdu\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:pe92408",
+              "tab_id": "w-target:te92408",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "failures",
+      "scenario": "pi-filtered-start",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 恢复在 start 阶段失败：Herdr 的 agent start 失败：受控夹具拒绝启动 agent 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:pdba00c",
+              "tabId": "w-target:tdba00c",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763485547,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763485607,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792763485622,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-8ddc61c81eea",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pdba00c",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792763485638,
+              "kind": "agent_start",
+              "name": "chat-8ddc61c81eea",
+              "pane": "w-target:pdba00c"
+            }
+          ],
+          "retainedTabs": [
+            {
+              "at": 1792763485072,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:pe279c",
+              "tab_id": "w-target:te279c",
+              "workspace": "w-target"
+            },
+            {
+              "at": 1792763485623,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser ndtS9z\\isolated integrity cwd",
+              "label": "Integrity pi",
+              "pane_id": "w-target:pdba00c",
+              "tab_id": "w-target:tdba00c",
+              "workspace": "w-target"
+            }
+          ],
+          "historyUnchanged": true,
+          "nativeUnchanged": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "omp-missing-default-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "workspace-not-found",
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser wC4YlX\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser wC4YlX\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser wC4YlX\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser wC4YlX\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 恢复在 workspace 阶段失败：找不到名称恰好为 “bot-playground” 的 Herdr Workspace（匹配到 0 个）。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "workspace",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763565195,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763565274,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763565288,
+              "kind": "workspace_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "omp-session-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "native-session-mismatch",
+            "degradations": [],
+            "fallback": false,
+            "message": "OMP 恢复在 session 阶段失败：历史会话文件属于另一原生对话。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "session",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763562397,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "omp-workspace-query-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser UGKTR1\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser UGKTR1\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser UGKTR1\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID omp-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser UGKTR1\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 恢复在 workspace 阶段失败：Herdr 的 workspace list 失败：受控夹具拒绝列出 Workspace 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "workspace",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763563756,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763563816,
+              "kind": "workspace_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "pi-missing-default-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "workspace-not-found",
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser sccoYX\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser sccoYX\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser sccoYX\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser sccoYX\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 恢复在 workspace 阶段失败：找不到名称恰好为 “bot-playground” 的 Herdr Workspace（匹配到 0 个）。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "workspace",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763560980,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763561059,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763561083,
+              "kind": "workspace_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "pi-session-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "native-session-mismatch",
+            "degradations": [],
+            "fallback": false,
+            "message": "Pi 恢复在 session 阶段失败：历史会话文件属于另一原生对话。 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "session",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763558279,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "unreached",
+      "scenario": "pi-workspace-query-unreached",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "code": "herdr-command-failed",
+            "degradations": [
+              {
+                "element": "session-file",
+                "reason": "会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser pwj3fY\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2)",
+                "strategy": "仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。"
+              },
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser pwj3fY\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：会话文件 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser pwj3fY\\isolated integrity cwd\\original.jsonl 不可用：Herdr 的 agent get native identity 返回了无法理解的响应：native header unavailable: 系统找不到指定的文件。 (os error 2) 仅使用精确原生 ID pi-integrity-history 加载同一对话；不扫描、改写或修复原生文件。 扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser pwj3fY\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 恢复在 workspace 阶段失败：Herdr 的 workspace list 失败：受控夹具拒绝列出 Workspace 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。",
+            "outcome": "failed",
+            "stage": "workspace",
+            "target": null
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763559595,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792763559656,
+              "kind": "workspace_list"
+            }
+          ],
+          "noMutatingCalls": true
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "omp-discovery-retry-located",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "located": {
+            "matchCount": 1,
+            "message": "已切换到当前herdr焦点",
+            "outcome": "located",
+            "target": {
+              "paneId": "w-target:p7f3ab8",
+              "tabId": "w-target:t7f3ab8",
+              "workspaceId": "w-target"
+            }
+          },
+          "retryFailures": [
+            {
+              "code": "herdr-command-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent list 失败：controlled agent query failure 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            },
+            {
+              "code": "identity-verification-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent get native identity 返回了无法理解的响应：matching agent kind has no verifiable native identity 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            }
+          ],
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764165847,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764165914,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792764165932,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-592b45f0aa0a",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:p7f3ab8",
+                "--timeout",
+                "30000",
+                "--",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764165951,
+              "kind": "agent_start",
+              "name": "chat-592b45f0aa0a",
+              "pane": "w-target:p7f3ab8"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:p7f3ab8"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+            "agent": "omp",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-592b45f0aa0a",
+            "pane_id": "w-target:p7f3ab8",
+            "tab_id": "w-target:t7f3ab8",
+            "workspace_id": "w-target"
+          }
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "omp-discovery-structured-timeout",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-592b45f0aa0a",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extensions",
+                "reason": "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。",
+                "strategy": "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 OMP 启动结果未确认（start 阶段等待超时）：Herdr 的 agent start 在时限内没有返回；无法确认这一步是否已经产生效果。 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:p7f3ab8",
+              "tabId": "w-target:t7f3ab8",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764165847,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764165914,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792764165932,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-592b45f0aa0a",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:p7f3ab8",
+                "--timeout",
+                "30000",
+                "--",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764165951,
+              "kind": "agent_start",
+              "name": "chat-592b45f0aa0a",
+              "pane": "w-target:p7f3ab8"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+            "agent": "omp",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser kq3OdD\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-592b45f0aa0a",
+            "pane_id": "w-target:p7f3ab8",
+            "tab_id": "w-target:t7f3ab8",
+            "workspace_id": "w-target"
+          },
+          "duplicateStatus": 409
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "omp-filtered-retry-located",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "located": {
+            "matchCount": 1,
+            "message": "已切换到当前herdr焦点",
+            "outcome": "located",
+            "target": {
+              "paneId": "w-target:pd860f8",
+              "tabId": "w-target:td860f8",
+              "workspaceId": "w-target"
+            }
+          },
+          "retryFailures": [
+            {
+              "code": "herdr-command-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent list 失败：controlled agent query failure 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            },
+            {
+              "code": "identity-verification-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent get native identity 返回了无法理解的响应：matching agent kind has no verifiable native identity 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            }
+          ],
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764163958,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764164024,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792764164043,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-77d690c8a4ea",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:pd860f8",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764164070,
+              "kind": "agent_start",
+              "name": "chat-77d690c8a4ea",
+              "pane": "w-target:pd860f8"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:pd860f8"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+            "agent": "omp",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-77d690c8a4ea",
+            "pane_id": "w-target:pd860f8",
+            "tab_id": "w-target:td860f8",
+            "workspace_id": "w-target"
+          }
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "omp-filtered-structured-timeout",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-77d690c8a4ea",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 OMP 启动结果未确认（start 阶段等待超时）：Herdr 的 agent start 在时限内没有返回；无法确认这一步是否已经产生效果。 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:pd860f8",
+              "tabId": "w-target:td860f8",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764163958,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764164024,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+                "--label",
+                "Integrity omp",
+                "--no-focus"
+              ],
+              "at": 1792764164043,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity omp",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "omp",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-77d690c8a4ea",
+                "--kind",
+                "omp",
+                "--pane",
+                "w-target:pd860f8",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\identity-fixed.ts",
+                "--resume",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764164070,
+              "kind": "agent_start",
+              "name": "chat-77d690c8a4ea",
+              "pane": "w-target:pd860f8"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+            "agent": "omp",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser qpIAVN\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-77d690c8a4ea",
+            "pane_id": "w-target:pd860f8",
+            "tab_id": "w-target:td860f8",
+            "workspace_id": "w-target"
+          },
+          "duplicateStatus": 409
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "pi-discovery-retry-located",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "located": {
+            "matchCount": 1,
+            "message": "已切换到当前herdr焦点",
+            "outcome": "located",
+            "target": {
+              "paneId": "w-target:pea11b0",
+              "tabId": "w-target:tea11b0",
+              "workspaceId": "w-target"
+            }
+          },
+          "retryFailures": [
+            {
+              "code": "herdr-command-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent list 失败：controlled agent query failure 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            },
+            {
+              "code": "identity-verification-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent get native identity 返回了无法理解的响应：matching agent kind has no verifiable native identity 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            }
+          ],
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764161963,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764162070,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792764162098,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-9000bfa81f56",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pea11b0",
+                "--timeout",
+                "30000",
+                "--",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764162116,
+              "kind": "agent_start",
+              "name": "chat-9000bfa81f56",
+              "pane": "w-target:pea11b0"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:pea11b0"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+            "agent": "pi",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-9000bfa81f56",
+            "pane_id": "w-target:pea11b0",
+            "tab_id": "w-target:tea11b0",
+            "workspace_id": "w-target"
+          }
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "pi-discovery-structured-timeout",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-9000bfa81f56",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extensions",
+                "reason": "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。",
+                "strategy": "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 Pi 启动结果未确认（start 阶段等待超时）：Herdr 的 agent start 在时限内没有返回；无法确认这一步是否已经产生效果。 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:pea11b0",
+              "tabId": "w-target:tea11b0",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764161963,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764162070,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792764162098,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-9000bfa81f56",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pea11b0",
+                "--timeout",
+                "30000",
+                "--",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764162116,
+              "kind": "agent_start",
+              "name": "chat-9000bfa81f56",
+              "pane": "w-target:pea11b0"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+            "agent": "pi",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser yP2wGn\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-9000bfa81f56",
+            "pane_id": "w-target:pea11b0",
+            "tab_id": "w-target:tea11b0",
+            "workspace_id": "w-target"
+          },
+          "duplicateStatus": 409
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "pi-filtered-retry-located",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "located": {
+            "matchCount": 1,
+            "message": "已切换到当前herdr焦点",
+            "outcome": "located",
+            "target": {
+              "paneId": "w-target:pe1c38",
+              "tabId": "w-target:te1c38",
+              "workspaceId": "w-target"
+            }
+          },
+          "retryFailures": [
+            {
+              "code": "herdr-command-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent list 失败：controlled agent query failure 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            },
+            {
+              "code": "identity-verification-failed",
+              "message": "Herdr 查找／身份核实失败：Herdr 的 agent get native identity 返回了无法理解的响应：matching agent kind has no verifiable native identity 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+              "outcome": "failed",
+              "stage": "lookup"
+            }
+          ],
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764160476,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764160539,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792764160556,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-d8456990b442",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pe1c38",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764160572,
+              "kind": "agent_start",
+              "name": "chat-d8456990b442",
+              "pane": "w-target:pe1c38"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "focus",
+                "w-target:pe1c38"
+              ],
+              "kind": "agent_focus"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+            "agent": "pi",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-d8456990b442",
+            "pane_id": "w-target:pe1c38",
+            "tab_id": "w-target:te1c38",
+            "workspace_id": "w-target"
+          }
+        }
+      }
+    },
+    {
+      "suite": "interactions",
+      "scenario": "pi-filtered-structured-timeout",
+      "record": {
+        "boundary": "Controlled external Herdr; not real agent extension loading",
+        "evidence": {
+          "result": {
+            "agentName": "chat-d8456990b442",
+            "code": "restore-unconfirmed",
+            "degradations": [
+              {
+                "element": "extension",
+                "reason": "扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+                "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+              }
+            ],
+            "fallback": false,
+            "message": "恢复存在降级：扩展「Optional marker」（optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 启动结果未确认（start 阶段等待超时）：Herdr 的 agent start 在时限内没有返回；无法确认这一步是否已经产生效果。 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+            "outcome": "unconfirmed",
+            "progress": {
+              "conversationConfirmed": false,
+              "focused": false,
+              "startSubmitted": true,
+              "tabCreated": true
+            },
+            "stage": "start",
+            "target": {
+              "paneId": "w-target:pe1c38",
+              "tabId": "w-target:te1c38",
+              "workspaceId": "w-target"
+            }
+          },
+          "calls": [
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764160476,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "agent",
+                "list"
+              ],
+              "kind": "agent_list"
+            },
+            {
+              "argv": [
+                "workspace",
+                "list"
+              ],
+              "at": 1792764160539,
+              "kind": "workspace_list"
+            },
+            {
+              "argv": [
+                "tab",
+                "create",
+                "--workspace",
+                "w-target",
+                "--cwd",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+                "--label",
+                "Integrity pi",
+                "--no-focus"
+              ],
+              "at": 1792764160556,
+              "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+              "kind": "tab_create",
+              "label": "Integrity pi",
+              "workspace": "w-target"
+            },
+            {
+              "agent_kind": "pi",
+              "args": [
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\original.jsonl"
+              ],
+              "argv": [
+                "agent",
+                "start",
+                "chat-d8456990b442",
+                "--kind",
+                "pi",
+                "--pane",
+                "w-target:pe1c38",
+                "--timeout",
+                "30000",
+                "--",
+                "--no-extensions",
+                "--extension",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\identity-fixed.ts",
+                "--session",
+                "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd\\original.jsonl"
+              ],
+              "at": 1792764160572,
+              "kind": "agent_start",
+              "name": "chat-d8456990b442",
+              "pane": "w-target:pe1c38"
+            }
+          ],
+          "retainedTarget": {
+            "actual_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+            "agent": "pi",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser WyLlDt\\isolated integrity cwd",
+            "focused": false,
+            "name": "chat-d8456990b442",
+            "pane_id": "w-target:pe1c38",
+            "tab_id": "w-target:te1c38",
+            "workspace_id": "w-target"
+          },
+          "duplicateStatus": 409
+        }
+      }
+    }
+  ]
+}
