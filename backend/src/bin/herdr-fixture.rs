@@ -11,6 +11,8 @@
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
 //! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
+//! - `agent list`（`behavior.agents` 预置已有目标；可拒绝查询或返回错误／非 JSON）
+//! - `agent focus PANE`（返回官方 `agent_info` 形状，并写入 `focused.json`；可拒绝或不确认焦点）
 //!
 //! 原生引用控制：`native_session` 是官方 `{source,agent,kind,value}`，`native_cwd`／
 //! `foreground_cwd` 为实际报告目录；`native_session_delay_ms`、`fail_agent_get` 和
@@ -53,6 +55,8 @@ fn main() {
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
+        Some("agent") if args.get(1).map(String::as_str) == Some("list") => agent_list(&args),
+        Some("agent") if args.get(1).map(String::as_str) == Some("focus") => agent_focus(&args),
         _ => usage(&args),
     }
 }
@@ -292,6 +296,29 @@ fn agent_start(args: &[String]) {
             "argv": extra,
         },
     }));
+}
+
+fn agent_list(args: &[String]) {
+    let behavior = behavior();
+    record("calls.jsonl", json!({"kind":"agent_list","argv":args}));
+    if flag(&behavior, "fail_agent_list") { fail("query_failed", "controlled agent query failure"); }
+    if flag(&behavior, "invalid_agent_list") { println!("not JSON"); return; }
+    if flag(&behavior, "error_agent_list") { output(json!({"error":{"code":"query_failed","message":"query refused"}})); return; }
+    output(json!({"result":{"type":"agent_list","agents":behavior.get("agents").cloned().unwrap_or(json!([]))}}));
+}
+
+fn agent_focus(args: &[String]) {
+    let behavior = behavior();
+    record("calls.jsonl", json!({"kind":"agent_focus","argv":args}));
+    if flag(&behavior, "fail_agent_focus") { fail("focus_failed", "controlled navigation failure"); }
+    let target = args.get(2).cloned().unwrap_or_default();
+    let mut agent = behavior.get("agents").and_then(Value::as_array)
+        .and_then(|agents| agents.iter().find(|agent| agent["pane_id"] == target)).cloned()
+        .unwrap_or_else(|| fail("unknown_agent", "focus target does not exist"));
+    fs::write(data_dir().join("focused.json"), json!(target).to_string()).unwrap();
+    // Public agent.focus returns AgentInfo, not a generic ok acknowledgement.
+    agent["focused"] = json!(!flag(&behavior, "unconfirmed_focus"));
+    output(json!({"result":{"type":"agent_info","agent":agent}}));
 }
 
 fn agent_get(args: &[String]) {

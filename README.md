@@ -38,6 +38,21 @@ Bot 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`�
 connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](docs/adr/0004-session-write-boundary-same-host.md)。
 页面确认不是服务端认证；测试或排障时不要调用真实关机，也不要用用户正在运行的对话做探针。
 
+## 历史 Chat Resume
+
+在 `chat` 的历史视图中，每条记录都有 `Resume` 入口，不要求当前会话仍登记或保留原 Herdr 绑定。
+独立调用者可发送 `POST /api/chats/resume`，JSON 只包含 `{"sessionId":"历史记录的完整身份"}`；
+额外的命令、参数、路径或输入字段会被拒绝，原生身份及 Herdr 可执行文件均由后端决定。
+
+每次操作重新查询 Herdr，以 Pi／OMP 原生 ID 匹配；路径引用读取原生文件头以核实 ID，不按名称或 cwd 猜测。
+找到目标后导航到其实际 Workspace／Tab／Pane，不搬迁、不创建副本、不提交输入。
+多个目标按 Workspace ID、Tab ID、Pane ID 的字典序稳定选择一个，并在页面提示。
+影响匹配的原生身份暂不可读、Herdr 查询异常或聚焦未确认都会明确失败；不以失败冒充无匹配。
+
+`located` 仅表示已确认 Herdr 内部导航，并不保证 Windows 桌面窗口置前。
+`not-found` 表示查询成功但没有匹配目标，**尚未恢复**；当前已有目标定位流程不创建新的恢复进程。
+缺少受支持 agent 类型的旧记录仍提供入口并明确反馈原因。会话事件同机写入限制保持不变。
+
 ## 旧数据一次性切换
 
 Bot／Chat 术语切换同时改变内部路由、字段、配置与存储格式，不提供旧格式兼容。

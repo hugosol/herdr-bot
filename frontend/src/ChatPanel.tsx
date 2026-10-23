@@ -13,6 +13,36 @@ type HistorySession = {
 type HistoryPage = { sessions: HistorySession[]; page: number; total: number; totalPages: number }
 type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }
 
+function ResumeChat({ sessionId }: { sessionId: string }) {
+  const [pending, setPending] = useState(false)
+  const [result, setResult] = useState<{ failed: boolean; message: string } | null>(null)
+  async function resume() {
+    if (pending) return
+    setPending(true)
+    setResult(null)
+    try {
+      const response = await fetch('/api/chats/resume', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      })
+      const body: unknown = await response.json()
+      if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
+        throw new Error('unconfirmed response')
+      }
+      if (response.ok && (!('outcome' in body) || !['located', 'not-found'].includes(String(body.outcome)))) {
+        throw new Error('unconfirmed outcome')
+      }
+      setResult({ failed: !response.ok, message: body.message })
+    } catch {
+      setResult({ failed: true, message: '无法确认 Resume 结果（网络或响应异常）；尚未确认定位或恢复。请检查 Herdr 后再重试。' })
+    } finally { setPending(false) }
+  }
+  return <>
+    <button type="button" className="history-resume" disabled={pending} onClick={() => void resume()}>{pending ? '正在定位…' : 'Resume'}</button>
+    {result ? <p role={result.failed ? 'alert' : 'status'}>{result.message}</p> : null}
+  </>
+}
+
 function HistoryPanel() {
   const [page, setPage] = useState(1)
   const [state, setState] = useState<HistoryState>({ kind: 'loading' })
@@ -37,12 +67,13 @@ function HistoryPanel() {
     {state.kind === 'error' ? <p role="alert">读取历史会话失败，未确认历史数据。请退出后重新进入历史视图。</p> : null}
     {state.kind === 'loaded' && state.sessions.length === 0 ? <p>尚无历史会话。成功接入的对话会收录在这里。</p> : null}
     {state.kind === 'loaded' && state.sessions.length > 0 ? <table className="history-table" aria-label="历史会话目录">
-      <thead><tr><th>名称</th><th>agent 类型</th><th>cwd</th><th>首次收录时间</th></tr></thead>
+      <thead><tr><th>名称</th><th>agent 类型</th><th>cwd</th><th>首次收录时间</th><th>操作</th></tr></thead>
       <tbody>{state.sessions.map((session) => <tr key={session.sessionId}>
         <td data-label="名称">{session.sessionName ?? session.sessionId}</td>
         <td data-label="agent 类型">{session.agentType ?? '—'}</td>
         <td data-label="cwd">{session.cwd ?? '—'}</td>
         <td data-label="首次收录时间"><time dateTime={new Date(session.firstRecordedAt).toISOString()}>{new Date(session.firstRecordedAt).toLocaleString('zh-CN')}</time></td>
+        <td data-label="操作"><ResumeChat sessionId={session.sessionId} /></td>
       </tr>)}</tbody>
     </table> : null}
     {state.kind === 'loaded' ? <nav className="history-pagination" aria-label="历史分页">

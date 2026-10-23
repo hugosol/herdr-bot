@@ -46,6 +46,7 @@ pub mod countdown;
 pub mod git;
 pub mod herdr;
 pub mod history;
+pub mod resume;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
@@ -287,6 +288,7 @@ pub fn app_with_state(
         )
         // 从已登记 zone 创建 Chat：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
         // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
+        .route("/api/chats/resume", post(resume::post_resume))
         .route("/api/chats/preview", post(preview_chat))
         .route("/api/chats", post(create_chat))
         .route("/api/chats/{id}", get(get_chat_creation))
