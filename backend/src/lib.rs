@@ -1099,7 +1099,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
-    if let Err(message) = preset.check_entrypoints() {
+    if let Err(message) = preset.env.check_entrypoints() {
         return rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
             "extension-entrypoint-invalid",
