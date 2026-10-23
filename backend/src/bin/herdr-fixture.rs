@@ -26,7 +26,7 @@
 //! 空文本提交与真实 Herdr 一样以 `empty_agent_prompt` 拒绝；拒绝前仍写下调用记录，因为
 //! “herdr-bot 尝试提交什么”与“Herdr 是否接受”是两件需要分别观察的事实。
 //!
-//! 并发用例需要“只拦住其中一次创建”的受控屏障，因此还有三个可选门：
+//! 并发用例使用可选的外部屏障：`agent_list_gate`（查询阶段）、
 //! `tab_create_gate`（匹配 Tab 名称）、`agent_start_gate` 与 `prompt_gate`，各自是
 //! `{ "match": 子串, "wait_for_file": 路径, "timeout_ms": 毫秒 }`。调用先写入记录，再在匹配时
 //! 等待释放文件出现（或到超时）才返回；`match` 省略或为空表示不筛选，`timeout_ms` 缺省 30 秒。
@@ -313,6 +313,7 @@ fn read_records(file: &str) -> Vec<Value> {
 fn agent_list(args: &[String]) {
     let behavior = behavior();
     record("calls.jsonl", json!({"kind":"agent_list","argv":args}));
+    wait_at_gate(&behavior, "agent_list_gate", &args.join(" "));
     if flag(&behavior, "fail_agent_list") { fail("query_failed", "controlled agent query failure"); }
     if flag(&behavior, "invalid_agent_list") { println!("not JSON"); return; }
     if flag(&behavior, "error_agent_list") { output(json!({"error":{"code":"query_failed","message":"query refused"}})); return; }
