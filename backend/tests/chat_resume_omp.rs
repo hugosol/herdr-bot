@@ -50,7 +50,7 @@ async fn omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_
     let calls = herdr.calls();
     assert_eq!(calls.iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(),vec!["agent_list","workspace_list","tab_create","agent_start","agent_get","agent_focus"]);
     let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
-    assert_eq!(start["args"],json!(["--no-extensions","--extension",root.path().join("required-omp-integration.ts"),"--resume",native]));
+    assert_eq!(start["args"],json!(["--resume",native]));
     assert_eq!(start["agent_kind"],"omp");
     assert_eq!(body["target"]["paneId"],start["pane"]);
     assert_eq!(herdr.tabs()[0]["cwd"],json!(root.path()));
@@ -59,11 +59,12 @@ async fn omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_
 }
 
 // P10/P11/P12: shared preconditions must remain active for OMP. Another
-// conversation file, missing cwd or absent mandatory integration cannot be
-// permission to start a blank process or silently replace the directory.
+// conversation file or missing cwd cannot be permission to start a blank
+// process or silently replace the directory. Source-less history uses native
+// discovery, so Bot fixed-entrypoint availability is not a precondition.
 #[tokio::test]
 async fn omp_unusable_sources_or_cwd_fail_without_creating_a_target() {
-    for scenario in ["wrong-file", "missing-cwd", "missing-integration"] {
+    for scenario in ["wrong-file", "missing-cwd"] {
         let root = TempDir::new("OMP invalid restore source");
         let herdr = HerdrFixture::new("omp-invalid-source");
         let native = root.path().join("another.jsonl");
@@ -75,10 +76,6 @@ async fn omp_unusable_sources_or_cwd_fail_without_creating_a_target() {
                 records[0]["cwd"] = json!(root.path().join("deleted working directory"));
                 std::fs::write(&config.sessions.history_file,records.to_string()).unwrap();
                 ("cwd","invalid-cwd")
-            }
-            "missing-integration" => {
-                std::fs::remove_file(root.path().join("required-omp-integration.ts")).unwrap();
-                ("settings","invalid-agent-settings")
             }
             _ => ("session","native-session-mismatch"),
         };
@@ -169,7 +166,7 @@ async fn omp_id_only_and_unavailable_file_resume_only_the_selected_native_id() {
         assert_eq!(serde_json::from_str::<Value>(&reply.body).unwrap()["outcome"],"restored");
         let calls = herdr.calls();
         let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
-        assert_eq!(start["args"],json!(["--no-extensions","--extension",root.path().join("required-omp-integration.ts"),"--resume","omp-old-3b9f-exact"]));
+        assert_eq!(start["args"],json!(["--resume","omp-old-3b9f-exact"]));
         assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
     }
 }

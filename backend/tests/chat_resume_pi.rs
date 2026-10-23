@@ -51,30 +51,27 @@ async fn pi_history_loads_file_in_recorded_cwd_then_focuses_without_input_or_bot
     assert!(args.windows(2).any(|w| w == [json!("--session"),json!(native)]));
     assert!(!args.iter().any(|a| ["--model","--thinking","--continue","--resume"].contains(&a.as_str().unwrap_or(""))));
     assert_eq!(body["target"]["paneId"],start["pane"]);
-    assert!(args.windows(2).any(|w| w == [json!("--extension"), json!(root.path().join("required-pi-integration.ts"))]));
+    assert_eq!(start["args"], json!(["--session", native]));
     let actual = common::read_json_lines(&herdr.path().join("started.jsonl"));
     assert!(common::same_path(Path::new(actual[0]["actual_cwd"].as_str().unwrap()),root.path()));
 }
 
-// P10/P12/P14: never load a different file or omit an unavailable mandatory
-// integration and silently replace it with a default/blank launch.
+// P10/P12/P14: never load a different file or replace it with a blank launch.
+// Missing Bot fixed entries are not a precondition for source-less discovery.
 #[tokio::test]
-async fn wrong_session_file_and_missing_required_integration_fail_before_creation() {
-    for wrong_file in [true,false] {
-        let root = TempDir::new("Pi invalid restoration settings");
-        let herdr = HerdrFixture::new("pi-invalid-settings");
-        let native = root.path().join("another.jsonl");
-        std::fs::write(&native,format!("{}\n",json!({"type":"session","id":"not-the-selected-chat","cwd":root.path()}))).unwrap();
-        let config = setup(&root,&herdr,wrong_file.then_some(native.as_path()));
-        if !wrong_file { std::fs::remove_file(root.path().join("required-pi-integration.ts")).unwrap(); }
-        let reply = resume(&config).await;
-        assert_eq!(reply.status,502,"{}",reply.body);
-        let body: Value = serde_json::from_str(&reply.body).unwrap();
-        assert_eq!(body["code"],if wrong_file { "native-session-mismatch" } else { "invalid-agent-settings" });
-        assert_eq!(herdr.calls().len(),1);
-        assert_eq!(herdr.calls()[0]["kind"],"agent_list");
-        assert!(herdr.tabs().is_empty());
-    }
+async fn wrong_session_file_fails_before_creation() {
+    let root = TempDir::new("Pi invalid restoration settings");
+    let herdr = HerdrFixture::new("pi-invalid-settings");
+    let native = root.path().join("another.jsonl");
+    std::fs::write(&native,format!("{}\n",json!({"type":"session","id":"not-the-selected-chat","cwd":root.path()}))).unwrap();
+    let config = setup(&root,&herdr,Some(native.as_path()));
+    let reply = resume(&config).await;
+    assert_eq!(reply.status,502,"{}",reply.body);
+    let body: Value = serde_json::from_str(&reply.body).unwrap();
+    assert_eq!(body["code"], "native-session-mismatch");
+    assert_eq!(herdr.calls().len(),1);
+    assert_eq!(herdr.calls()[0]["kind"],"agent_list");
+    assert!(herdr.tabs().is_empty());
 }
 
 // P9: absence, same-name ambiguity and external lookup errors must not
@@ -183,7 +180,8 @@ async fn unavailable_file_reports_exact_id_strategy_without_changing_the_result(
     let body: Value = serde_json::from_str(&reply.body).unwrap();
     assert_eq!(body["outcome"], "restored");
     let items = body["degradations"].as_array().expect("visible degradation facts");
-    assert_eq!(items.len(), 1);
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[1]["element"], "extensions");
     assert_eq!(items[0]["element"], "session-file");
     assert!(items[0]["reason"].as_str().unwrap().contains(missing.to_str().unwrap()));
     assert!(items[0]["strategy"].as_str().unwrap().contains("pi-old-exact"));
