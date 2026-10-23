@@ -181,6 +181,32 @@ impl HerdrClient {
         }
     }
 
+    /// Resolve an original ID, not a label; only a successful inventory proving
+    /// absence permits fallback. Query/shape failures must not create elsewhere.
+    pub(crate) async fn resume_workspace(&self, original_id: Option<&str>) -> Result<(Workspace, Option<&'static str>), HerdrError> {
+        let reason = if let Some(id) = original_id {
+            let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
+            let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
+                .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
+            let mut original = None;
+            for entry in entries {
+                let entry_id = nonempty(entry.get("workspace_id"))
+                    .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "Workspace 缺少 ID，无法确认原位置是否已删除".into() })?;
+                if entry_id == id {
+                    let label = nonempty(entry.get("label"))
+                        .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace 缺少 label".into() })?;
+                    if original.is_some() { return Err(HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace ID 重复".into() }); }
+                    original = Some(Workspace { id: id.to_owned(), label: label.to_owned() });
+                }
+            }
+            if let Some(workspace) = original { return Ok((workspace, None)); }
+            "原 Workspace 已删除，已回退到配置的默认 Workspace；"
+        } else {
+            "缺少原 Workspace 信息，已回退到配置的默认 Workspace；"
+        };
+        self.workspace(self.workspace_name()).await.map(|workspace| (workspace, Some(reason)))
+    }
+
     /// 在指定 Workspace 中新建 Tab，并把 cwd 显式设为 zone 目录。
     ///
     /// 不使用当前焦点 Workspace；`--no-focus` 避免创建动作改变用户在 Herdr 中的焦点。

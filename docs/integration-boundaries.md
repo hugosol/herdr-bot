@@ -26,7 +26,9 @@ connect-bot 是独立的接入机制：未接入的 Chat 也可以存在并被�
 
 历史列表的 **Resume** 与 `POST /api/chats/resume`（仅提交 `sessionId`）使用同一条恢复路径。先查询 Herdr 的原生对话身份；找到已有目标只做 Herdr 内部导航，查询失败不会当作无匹配。缺少／未知／不支持的 agent 类型会明确拒绝，不按文件形状猜测类型。
 
-成功查询且没有匹配时，Pi／OMP 共用恢复流程，在历史记录的绝对 cwd 中创建新 Tab 并加载指定原生对话。目录必须实际存在，不静默替换。缺少原 Workspace 信息的旧记录使用 `[herdr] workspace_name` 精确匹配的唯一默认 Workspace，并在结果中说明回退；默认 Workspace 缺失、重名或查询失败都不创建替代位置。Resume 不改写历史记录的原 Workspace 信息。
+成功查询且没有匹配时，Pi／OMP 共用恢复流程，在历史记录的绝对 cwd 中创建新 Tab 并加载指定原生对话。目录必须实际存在，不静默替换。历史使用可选 `originalWorkspaceId` 保存原 Herdr Workspace 的稳定 ID，而不是名称或当前焦点：正常发起 Chat 收录已确认的创建位置；connect-bot 的 `register.data.originalWorkspaceId` 可上报已知位置，非 Herdr 来源可以省略，服务不按名称或 cwd 推断。首次获知位置后，重复收录也不会覆盖原值；历史读取接口仅在已知时返回该字段。
+
+恢复优先按该 ID 查找原 Workspace，即使其已更名也返回原位置。缺少信息的旧格式记录无需迁移或手工重写；旧记录或成功查询证实原位置已删除时，使用 `[herdr] workspace_name` 精确匹配的唯一默认 Workspace，并在页面和操作结果中说明回退。原 Workspace 查询失败或响应无法判定存在性时直接报错，不作为已删除回退；默认 Workspace 缺失、重名或查询失败都不创建替代位置。Resume 始终不写历史：原位置恢复、删除后回退、定位其他位置的已有目标都不改写已收录的原 Workspace，也不为旧记录补写位置。删除当前登记不影响这些持久信息或原生内容。
 
 恢复优先使用可读取且原生 ID 一致的 `sessionFile`，不可用时只使用所选原生 ID：Pi 传给 `--session`，OMP 传给 `--resume`。文件若属于另一对话则拒绝恢复。若历史身份本身是已不可读的路径而不能核实 ID，则明确失败，不扫描最近文件或改用空白对话。使用 Herdr 当前配置的对应 `pi`／`omp` 启动命令，关闭扩展自动发现，并显式加载当前 Bot 选项目录中该 agent 的固定集成；不读取任何 Bot 来应用模型、思考级别、Skill、可选扩展、固定初始指示或新输入。OMP 禁止使用会自动继续中断任务的 `--restore`，此功能仅恢复对话，不是通用进程恢复或自动继续任务。
 

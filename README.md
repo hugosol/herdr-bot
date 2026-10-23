@@ -80,6 +80,7 @@ python scripts\migrate-bot-chat-terminology.py --config herdr-bot.toml
 自动检查入口为 `cargo test --manifest-path backend\Cargo.toml`、
 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser`；
 浏览器检查需要构建后的前后端和本机 Chrome。Cargo 检查也需要 Node.js，以执行跨前后端的测试网络护栏。
+浏览器检查使用随仓库交付的 `meta-data/bot-options.toml`；修改显示标签时，须同步更新摘要的独立预期值及动态元数据测试中的替换样例（当前模型标签为 `GPT-6.1-Sol`）。
 
 ### 测试网络边界
 

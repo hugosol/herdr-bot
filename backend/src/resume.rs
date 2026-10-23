@@ -62,7 +62,7 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
     let preset = ResolvedPreset { provider_model: None, thinking: None, native_skill: None,
         extensions: catalog.extensions.into_iter().filter(|extension| extension.agent.label() == kind && extension.kind == ExtensionKind::Fixed).collect() };
     if let Err(error) = preset.check_entrypoints() { return restore_failure(label, "settings", "invalid-agent-settings", &error, None); }
-    let workspace = match state.herdr.workspace(state.herdr.workspace_name()).await {
+    let (workspace, fallback_reason) = match state.herdr.resume_workspace(selected.original_workspace_id.as_deref()).await {
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(label, "workspace", error.code(), &error.message(), None),
     };
@@ -87,8 +87,8 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
         }
     }
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(label, "focus", error.code(), &error.message(), Some(&target)); }
-    Json(json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"fallback":true,
-        "message":format!("缺少原 Workspace 信息，已回退到配置的默认 Workspace；已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。")})).into_response()
+    Json(json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"fallback":fallback_reason.is_some(),
+        "message":format!("{}已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。", fallback_reason.unwrap_or("已在原 Workspace 恢复；"))})).into_response()
 }
 
 fn restore_failure(label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::herdr::NavigationTarget>) -> Response {
