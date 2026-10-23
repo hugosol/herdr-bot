@@ -101,4 +101,17 @@ cargo test --tests
 
 全量唯一失败为 **`zone_sync::configured_timeout_stops_the_running_command_and_keeps_effective_pull_state`**（`backend/tests/zone_sync.rs:1181`）：其终止后的 Git 写资格请求预期 HTTP 200，实际 HTTP 409／`git-write-in-progress`。该用例不是 Resume／扩展路径，本票没有改动其生产代码或测试；未运行基线比较，因此不把它断言为“已知既有 flaky”，也不通过重跑掩盖失败。已将原始结果交给主代理，本票保持隔离、不越票修复。**这使项目全量检查仍非全绿，但本票拥有的自动验收均完成。**
 
-本 worktree 尚未合入集成分支；按票据状态规则，合入前保留 in-progress，由独立集成代理完成整合后关闭。H-Pi／H-OMP 仍为上述未验证的人工边界。
+以上为开发会话交接时的状态；后续同步与全局测试记录如下。H-Pi／H-OMP 仍为上述未验证的人工边界。
+
+## 集成同步后的全局测试
+
+接管时当前开发分支 HEAD 已为 `6a820be1e2aecd10c5de2d555dfce182343e4e0c`，包含本票提交 `cfb6f8f`；`git merge-base --is-ancestor 6a820be1e2aecd10c5de2d555dfce182343e4e0c HEAD` 成功，初始工作区干净，无待解决冲突。未切换分支、操作集成工作区或另建 worktree。
+
+本轮按要求只做全局测试及失败调查，不重做复杂脚本、实机 smoke 或跨票据整体验收：
+
+- `frontend: npm test`：网络策略通过，27 个文件、205 个测试通过。
+- 首次 `backend: cargo test`：退出 101，再次观察到上述 `zone_sync` 用例预期 200、实际 409 的失败，保留该事实，不把后续通过当作根因已修复。
+- 为区分进程树终止请求失败与后续确认失败，曾临时捕获 `taskkill` 的退出状态及 stderr；定向用例、整个 `zone_sync` suite 和 `cargo test -- --nocapture` 均通过，所观察的定向终止请求为 exit 0、stderr 为空。连续 12 次定向调查也均通过，未取得失败时的终止诊断，因此不能确认根因或声称永久修复。
+- 已完整移除临时诊断，未改变生产代码或测试预期。随后在原始未插桩代码上执行最终 `backend: cargo test`：退出 0，454 passed、5 ignored，含单元、集成和文档测试；ignored 不计为通过。
+
+最终全局测试已通过，但 `zone_sync` 的间歇失败仍是已观察、尚未定位的风险，而不是本轮已修复的问题。本轮仅补充此验收记录；真实扩展集合的 H-Pi／H-OMP 确认及最后独立门禁仍未在本轮执行。
