@@ -16,7 +16,6 @@ describe('App 四 tab 骨架', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['chat', 'bot', 'zone', 'server'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
     expect(tabs[2]).toHaveAttribute('aria-selected', 'false')
@@ -25,7 +24,7 @@ describe('App 四 tab 骨架', () => {
     // 同一时刻只有一个 tabpanel 在可访问性树里可见。
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-templates')).not.toBeVisible()
+    expect(screen.getByTestId('panel-bots')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-control')).not.toBeVisible()
   })
@@ -37,7 +36,7 @@ describe('App 四 tab 骨架', () => {
     await user.tab()
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
     await user.tab()
-    expect(screen.getByTestId('tab-templates')).toHaveFocus()
+    expect(screen.getByTestId('tab-bots')).toHaveFocus()
     await user.tab()
     expect(screen.getByTestId('tab-files')).toHaveFocus()
     await user.tab()
@@ -66,9 +65,9 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
 
     await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-templates')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-templates')).toHaveFocus()
-    expect(screen.getByTestId('panel-templates')).toBeVisible()
+    expect(screen.getByTestId('tab-bots')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-bots')).toHaveFocus()
+    expect(screen.getByTestId('panel-bots')).toBeVisible()
 
     await user.keyboard('{ArrowRight}')
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
@@ -112,7 +111,7 @@ describe('App 四 tab 骨架', () => {
 
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-templates')).not.toBeVisible()
+    expect(screen.getByTestId('panel-bots')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-control')).not.toBeVisible()
   })

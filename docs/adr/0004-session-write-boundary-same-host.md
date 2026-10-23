@@ -40,6 +40,4 @@ v1 假定同一台机器上只有一个 omp-bot 实例：会话协议**不带实
 3 次失败后自动 disarm、需手动重新 `/connect-bot`；两条路径退化为同一条恢复路径。区分实例（多实例身份、
 路由、隔离）属于新 effort，不在 v1 范围内。
 
-> 决策的讨论记录见
-> [`.scratch/omp-connect-bot/lighthouse/11-write-boundary-adr.md`](../../.scratch/omp-connect-bot/lighthouse/11-write-boundary-adr.md)；
-> 本 ADR 落盘后，该 lighthouse 不再是这一决策的唯一记录。
+> 历史讨论路径为 `.scratch/omp-connect-bot/lighthouse/11-write-boundary-adr.md`（当前检出不包含该文件）；本 ADR 承接这一决策。

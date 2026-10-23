@@ -10,7 +10,7 @@ pub fn prepare(config: &Config) -> anyhow::Result<()> {
     fs::create_dir_all(".data").context("创建运行数据目录 .data 失败")?;
     for file in [
         &config.zones.registry_file,
-        &config.bot_templates.storage_file,
+        &config.bots.storage_file,
     ] {
         if let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) {
             fs::create_dir_all(parent)
@@ -20,13 +20,8 @@ pub fn prepare(config: &Config) -> anyhow::Result<()> {
     let marker = Path::new(".data/.runtime-layout-v1");
     if !marker.try_exists().context("读取运行数据切换标记失败")? {
         migrate_zones(&config.zones.registry_file)?;
-        for file in [
-            "zones.json.tmp",
-            "bot-templates.json",
-            "bot-templates.json.tmp",
-        ] {
-            remove_file(Path::new(file))?;
-        }
+        // Terminology migration is an explicit offline operation. Startup must never
+        // delete an old preset store, native session tree, or temporary user file.
         fs::write(marker, b"runtime layout v1\n").context("写入运行数据切换标记失败")?;
     }
     Ok(())
@@ -80,13 +75,7 @@ fn migrate_zones(target: &Path) -> anyhow::Result<()> {
         "zone 登记目标不是文件：{}；保留旧登记。",
         target.display()
     );
-    remove_file(source)
-}
-
-fn remove_file(path: &Path) -> anyhow::Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error).with_context(|| format!("清理旧运行文件失败：{}", path.display())),
-    }
+    // The configured target remains authoritative, but a different old registry
+    // is user data, not garbage. Retain it even when the target already exists.
+    Ok(())
 }

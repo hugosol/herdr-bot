@@ -165,7 +165,7 @@ fn session_of(sessions: &[Value], session_id: &str) -> Value {
 /// 验收 P29、P46：断线期间另一个调用者改变了监听与安排，重连的**首帧**同时给出会话与关机的当下
 /// 完整状态；之后关机变化仍是携带完整状态的独立事件，字段与顺序稳定。
 #[tokio::test]
-async fn a_reconnecting_reader_recovers_both_domains_in_the_first_frame_and_then_complete_events() {
+async fn a_reconnecting_reader_recovers_chath_domains_in_the_first_frame_and_then_complete_events() {
     let panel = Panel::start(30).await;
     assert_eq!(panel.register("s-1", "C:\\work").await.status, 200);
     assert_eq!(panel.state("s-1", "working").await.status, 200);

@@ -67,11 +67,11 @@ registry_file = '.data/zones.json'
 # 普通 UI 读取不续期；到期不自行轮询；手动刷新、文件事件与 Git 操作可提前更新。
 # status_cache_ttl_seconds = 10
 
-# Bot 模板设置（可选，缺省为当前工作目录下的 .data/bot-templates.json）。
-# 模板由后端保存，本机与局域网设备共享；电脑与手机在“Bot 模板”tab 中管理。
+# Bot 设置（可选，缺省为当前工作目录下的 .data/bots.json）。
+# Bot 由后端保存，本机与局域网设备共享；电脑与手机在“Bot”tab 中管理。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-[bot_templates]
-storage_file = '.data/bot-templates.json'
+[bots]
+storage_file = '.data/bots.json'
 # 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
-# 修改后下次打开模板编辑、保存和创建立即读取，无需重启。
+# 修改后下次打开 Bot 编辑、保存和创建立即读取，无需重启。
 metadata_file = 'meta-data/bot-options.toml'

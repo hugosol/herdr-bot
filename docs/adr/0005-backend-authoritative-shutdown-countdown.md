@@ -10,7 +10,7 @@
 
 用户需要无人值守的完成后关机监听，并能在本机或局域网设备重新打开 omp-bot 主界面时看到并取消真实的关机安排；ADR-0002 的前端倒计时无法满足这些要求。因此，手动关机与完成后关机监听共享唯一的后端权威关机倒计时，由后端保存截止时间、处理取消并在到期时调用同一实际关机能力，前端仅展示和提交用户操作。
 
-> 本文记录已接受的设计决策，不表示当前实现已符合全部规则。原关机工作见 [spec](../../.scratch/session-completion-shutdown/spec.md) 与 [contract](../../.scratch/session-completion-shutdown/contract.md)；本次会话生命周期和监听边界修订以 [ADR-0006](0006-server-authoritative-session-lifecycle.md) 为准，原 spec、contract 中“离线即移出”的规则不再代表新目标设计。内部模块划分和实现细节不在本 ADR 固定。
+> 本文记录已接受的设计决策，不表示当前实现已符合全部规则。原关机规格路径为 `.scratch/session-completion-shutdown/`（当前检出不包含该目录）；本次会话生命周期和监听边界修订以 [ADR-0006](0006-server-authoritative-session-lifecycle.md) 为准，原 spec、contract 中“离线即移出”的规则不再代表新目标设计。内部模块划分和实现细节不在本 ADR 固定。
 
 ## 决策
 

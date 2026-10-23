@@ -254,7 +254,7 @@ async fn configuring_only_the_retention_window_keeps_the_default_online_window()
 ///
 /// 期望值使用独立字面量：age=7 在线、age=8 离线、age=20 维护后仍保留、age=21 维护后清除。
 #[tokio::test]
-async fn explicitly_configured_windows_move_both_registration_thresholds() {
+async fn explicitly_configured_windows_move_chath_registration_thresholds() {
     assert_window_boundaries(
         "[sessions]\nonline_timeout_seconds = 7\noffline_retention_seconds = 13\n",
         7,

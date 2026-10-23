@@ -36,7 +36,7 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
-pub mod bots;
+pub mod chats;
 pub mod browse;
 pub mod catalog;
 pub mod clock;
@@ -53,7 +53,7 @@ pub mod sessions;
 pub mod shutdown;
 mod status_cache;
 pub mod sync;
-pub mod templates;
+pub mod bots;
 pub mod watch;
 pub mod zone_create;
 pub mod zones;
@@ -79,7 +79,7 @@ use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
 
 pub use config::{
-    BotTemplatesConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
+    BotsConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     StatusCacheTtlSeconds, ZonesConfig,
 };
@@ -98,8 +98,8 @@ const MAX_REQUEST_BODY_BYTES: usize = 8 * 1024;
 /// zone 命令的请求体上限：只含一个服务器目录路径。
 const MAX_ZONE_REQUEST_BYTES: usize = 64 * 1024;
 
-/// Bot 模板请求的请求体上限：固定 prompt 可多行，给足以容纳正常文本。
-const MAX_BOT_TEMPLATE_REQUEST_BYTES: usize = 1024 * 1024;
+/// Bot 请求的请求体上限：固定 prompt 可多行，给足以容纳正常文本。
+const MAX_BOT_REQUEST_BYTES: usize = 1024 * 1024;
 
 /// 提供给 HTTP handler 的运行状态：只有服务端配置绑定的两个固定操作，以及两个操作共用的执行资格。
 #[derive(Clone)]
@@ -130,17 +130,17 @@ pub struct AppState {
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
     pub zones: Arc<zones::Zones>,
-    /// Bot 模板：由后端以文件持久保存，电脑与手机共享同一份。
+    /// Bot：由后端以文件持久保存，电脑与手机共享同一份。
     ///
-    /// 与固定操作、关机路径完全解耦：模板管理只读取与写入模板存储文件，不执行任何脚本、
-    /// 不创建也不关闭 Bot。
-    pub bot_templates: Arc<templates::Templates>,
+    /// 与固定操作、关机路径完全解耦：Bot 管理只读取与写入 Bot 存储文件，不执行任何脚本、
+    /// 不创建也不关闭 Chat。
+    pub bots: Arc<bots::Bots>,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
     pub herdr: Arc<herdr::HerdrClient>,
-    /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Bot 列表。
-    pub bot_creations: Arc<bots::BotCreations>,
+    /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Chat 列表。
+    pub chat_creations: Arc<chats::ChatCreations>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -230,12 +230,12 @@ pub fn app_with_state(
         sessions,
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
-        bot_templates: Arc::new(templates::Templates::new(
-            config.bot_templates.storage_file.clone(),
-            config.bot_templates.metadata_file.clone(),
+        bots: Arc::new(bots::Bots::new(
+            config.bots.storage_file.clone(),
+            config.bots.metadata_file.clone(),
         )),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
-        bot_creations: Arc::new(bots::BotCreations::new()),
+        chat_creations: Arc::new(chats::ChatCreations::new()),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
@@ -273,23 +273,23 @@ pub fn app_with_state(
         .route("/api/zones", get(list_zones).post(register_zone))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
-        // Bot 模板：同一条路径读取列表与新增；单个模板按标识读取、编辑与删除。
-        // 模板只写入后端存储文件，不执行脚本、不创建 Bot。
+        // Bot：同一条路径读取列表与新增；单个 Bot 按标识读取、编辑与删除。
+        // Bot 只写入后端存储文件，不执行脚本、不创建 Chat。
         .route(
-            "/api/bot-templates",
-            get(list_bot_templates).post(create_bot_template),
+            "/api/bots",
+            get(list_bots).post(create_bot),
         )
         .route(
-            "/api/bot-templates/{id}",
-            get(get_bot_template)
-                .put(update_bot_template)
-                .delete(delete_bot_template),
+            "/api/bots/{id}",
+            get(get_bot)
+                .put(update_bot)
+                .delete(delete_bot),
         )
-        // 从已登记 zone 创建 Bot：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
+        // 从已登记 zone 创建 Chat：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
         // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
-        .route("/api/bots/preview", post(preview_bot))
-        .route("/api/bots", post(create_bot))
-        .route("/api/bots/{id}", get(get_bot_creation))
+        .route("/api/chats/preview", post(preview_chat))
+        .route("/api/chats", post(create_chat))
+        .route("/api/chats/{id}", get(get_chat_creation))
         // 只读浏览：整树一次读取、单目录读取、单文件读取。三者都从登记根重新核对边界。
         // 整树读取对 Git zone 应用 Git 原生忽略规则；单目录入口保留给直接调用者。
         .route("/api/zones/tree", get(read_zone_tree))
@@ -591,17 +591,17 @@ struct CreateZoneRequest {
     name: String,
 }
 
-/// Bot 模板列表的响应：当前完整列表与固定选项。
+/// Bot 列表的响应：当前完整列表与固定选项。
 #[derive(Debug, Serialize)]
-struct BotTemplateListResponse {
-    templates: Vec<templates::BotTemplate>,
-    options: catalog::TemplateOptions,
+struct BotListResponse {
+    bots: Vec<bots::Bot>,
+    options: catalog::BotOptions,
 }
 
-/// 单个 Bot 模板的响应。
+/// 单个 Bot 的响应。
 #[derive(Debug, Serialize)]
-struct BotTemplateView {
-    template: templates::BotTemplate,
+struct BotView {
+    bot: bots::Bot,
 }
 
 /// “列出 zone 登记”：读取后端持久保存的同一份列表，不经过任何页面缓存。
@@ -761,76 +761,76 @@ fn zone_create_error_response(error: zone_create::CreateZoneError) -> Response {
     rejected_owned(status, error.code(), error.message())
 }
 
-/// “列出 Bot 模板与固定选项”：读取后端持久保存的同一份列表。
-async fn list_bot_templates(State(state): State<AppState>) -> Response {
-    bot_template_list_response(&state, state.bot_templates.list().await)
+/// “列出 Bot 与固定选项”：读取后端持久保存的同一份列表。
+async fn list_bots(State(state): State<AppState>) -> Response {
+    bot_list_response(&state, state.bots.list().await)
 }
 
-/// “读取单个 Bot 模板”：删除后由独立客户端按标识选择时得到明确的不存在。
-async fn get_bot_template(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> Response {
+/// “读取单个 Bot”：删除后由独立客户端按标识选择时得到明确的不存在。
+async fn get_bot(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> Response {
     // Metadata health is global; stale selections are not. Keep the original IDs readable
     // when the current catalog is valid, without pretending a broken catalog is usable.
-    if let Err(error) = state.bot_templates.catalog() {
-        return bot_template_error_response(error);
+    if let Err(error) = state.bots.catalog() {
+        return bot_error_response(error);
     }
-    match state.bot_templates.get(&id).await {
-        Ok(template) => (StatusCode::OK, Json(BotTemplateView { template })).into_response(),
-        Err(error) => bot_template_error_response(error),
+    match state.bots.get(&id).await {
+        Ok(bot) => (StatusCode::OK, Json(BotView { bot })).into_response(),
+        Err(error) => bot_error_response(error),
     }
 }
 
-/// “新增 Bot 模板”：固定字段逐个校验；只有存储成功后返回当前完整列表。
-async fn create_bot_template(State(state): State<AppState>, request: Request) -> Response {
-    let input = match bot_template_input(request).await {
+/// “新增 Bot”：固定字段逐个校验；只有存储成功后返回当前完整列表。
+async fn create_bot(State(state): State<AppState>, request: Request) -> Response {
+    let input = match bot_input(request).await {
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    bot_template_list_response(&state, state.bot_templates.create(input).await)
+    bot_list_response(&state, state.bots.create(input).await)
 }
 
-/// “编辑 Bot 模板”：标识不变；只有存储成功后返回当前完整列表。
-async fn update_bot_template(
+/// “编辑 Bot”：标识不变；只有存储成功后返回当前完整列表。
+async fn update_bot(
     State(state): State<AppState>,
     UrlPath(id): UrlPath<String>,
     request: Request,
 ) -> Response {
-    let input = match bot_template_input(request).await {
+    let input = match bot_input(request).await {
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    bot_template_list_response(&state, state.bot_templates.update(&id, input).await)
+    bot_list_response(&state, state.bots.update(&id, input).await)
 }
 
-/// “删除 Bot 模板”：只移除模板，不改变任何已经创建的 Bot。
-async fn delete_bot_template(
+/// “删除 Bot”：只移除 Bot，不改变任何已经创建的 Chat。
+async fn delete_bot(
     State(state): State<AppState>,
     UrlPath(id): UrlPath<String>,
     request: Request,
 ) -> Response {
-    if let Some(rejection) = reject_template_delete_request(request).await {
+    if let Some(rejection) = reject_bot_delete_request(request).await {
         return rejection;
     }
-    bot_template_list_response(&state, state.bot_templates.delete(&id).await)
+    bot_list_response(&state, state.bots.delete(&id).await)
 }
 
-/// 读取 Bot 模板命令的请求体；请求面封闭（不接受查询串或未知字段）。
-async fn bot_template_input(request: Request) -> Result<templates::TemplateInput, Response> {
+/// 读取 Bot 命令的请求体；请求面封闭（不接受查询串或未知字段）。
+async fn bot_input(request: Request) -> Result<bots::BotInput, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "模板命令不接受查询参数：字段只来自请求体。".to_string(),
+            "Bot命令不接受查询参数：字段只来自请求体。".to_string(),
         ));
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES)
+    let bytes = to_bytes(body, MAX_BOT_REQUEST_BYTES)
         .await
         .map_err(|_| {
             rejected_owned(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "payload-too-large",
-                "模板请求体超过 1 MiB 上限。".to_string(),
+                "Bot请求体超过 1 MiB 上限。".to_string(),
             )
         })?;
     serde_json::from_slice(&bytes).map_err(|error| {
@@ -838,78 +838,78 @@ async fn bot_template_input(request: Request) -> Result<templates::TemplateInput
             StatusCode::BAD_REQUEST,
             "invalid-request",
             format!(
-                "无法解析模板命令：{error}；请发送包含 name、botName、agent、model、thinking、skill、prompt 的 JSON。"
+                "无法解析Bot命令：{error}；请发送包含 name、chatName、agent、model、thinking、skill、prompt 的 JSON。"
             ),
         )
     })
 }
 
-/// 删除模板的请求面：不接受查询串或请求体。
-async fn reject_template_delete_request(request: Request) -> Option<Response> {
+/// 删除 Bot 的请求面：不接受查询串或请求体。
+async fn reject_bot_delete_request(request: Request) -> Option<Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Some(rejected(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "删除模板不接受查询参数：目标只由路径中的模板标识决定。",
+            "删除Bot不接受查询参数：目标只由路径中的Bot标识决定。",
         ));
     }
 
     let (_, body) = request.into_parts();
-    match to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES).await {
+    match to_bytes(body, MAX_BOT_REQUEST_BYTES).await {
         Ok(bytes) if bytes.is_empty() => None,
         _ => Some(rejected(
             StatusCode::BAD_REQUEST,
             "unexpected-parameters",
-            "删除模板不接受请求体：目标只由路径中的模板标识决定。",
+            "删除Bot不接受请求体：目标只由路径中的Bot标识决定。",
         )),
     }
 }
 
-/// 把模板列表结果翻译成 HTTP 响应：成功附带与页面同一份固定选项。
-fn bot_template_list_response(
+/// 把 Bot 列表结果翻译成 HTTP 响应：成功附带与页面同一份固定选项。
+fn bot_list_response(
     state: &AppState,
-    result: Result<Vec<templates::BotTemplate>, templates::TemplateError>,
+    result: Result<Vec<bots::Bot>, bots::BotError>,
 ) -> Response {
-    let catalog = match state.bot_templates.catalog() {
+    let catalog = match state.bots.catalog() {
         Ok(catalog) => catalog,
-        Err(error) => return bot_template_error_response(error),
+        Err(error) => return bot_error_response(error),
     };
     match result {
-        Ok(templates) => (
+        Ok(bots) => (
             StatusCode::OK,
-            Json(BotTemplateListResponse {
-                templates,
+            Json(BotListResponse {
+                bots,
                 options: catalog.options(),
             }),
         )
             .into_response(),
-        Err(error) => bot_template_error_response(error),
+        Err(error) => bot_error_response(error),
     }
 }
 
-fn bot_template_error_response(error: templates::TemplateError) -> Response {
-    bot_template_error_with_context(error, "")
+fn bot_error_response(error: bots::BotError) -> Response {
+    bot_error_with_context(error, "")
 }
 
-fn bot_template_error_with_context(error: templates::TemplateError, context: &str) -> Response {
-    use templates::TemplateError;
+fn bot_error_with_context(error: bots::BotError, context: &str) -> Response {
+    use bots::BotError;
     let status = match &error {
-        TemplateError::NotFound => StatusCode::NOT_FOUND,
-        TemplateError::Unreadable(_)
-        | TemplateError::Metadata(_)
-        | TemplateError::Corrupt(_)
-        | TemplateError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        TemplateError::NameRequired
-        | TemplateError::BotNameRequired
-        | TemplateError::BotNameNotSingleLine
-        | TemplateError::AgentRequired
-        | TemplateError::UnknownAgent(_)
-        | TemplateError::UnknownModel(_)
-        | TemplateError::UnknownThinking(_)
-        | TemplateError::ThinkingRequiresDefaultModel
-        | TemplateError::ThinkingUnsupported { .. }
-        | TemplateError::UnknownSkill(_)
-        | TemplateError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
+        BotError::NotFound => StatusCode::NOT_FOUND,
+        BotError::Unreadable(_)
+        | BotError::Metadata(_)
+        | BotError::Corrupt(_)
+        | BotError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        BotError::NameRequired
+        | BotError::ChatNameRequired
+        | BotError::ChatNameNotSingleLine
+        | BotError::AgentRequired
+        | BotError::UnknownAgent(_)
+        | BotError::UnknownModel(_)
+        | BotError::UnknownThinking(_)
+        | BotError::ThinkingRequiresDefaultModel
+        | BotError::ThinkingUnsupported { .. }
+        | BotError::UnknownSkill(_)
+        | BotError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(
         status,
@@ -918,12 +918,12 @@ fn bot_template_error_with_context(error: templates::TemplateError, context: &st
     )
 }
 
-/// Bot 名称预览请求：只指定已登记 zone 与模板，不携带名称、Workspace 或其他覆盖字段。
+/// Chat 名称预览请求：只指定已登记 zone 与 Bot，不携带名称、Workspace 或其他覆盖字段。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BotPreviewRequest {
+struct ChatPreviewRequest {
     zone: String,
-    template_id: String,
+    bot_id: String,
 }
 
 /// 本次创建的目标选择；客户端不能指定任意 Workspace 名称。
@@ -935,100 +935,100 @@ enum WorkspaceTarget {
     Current,
 }
 
-/// 创建 Bot 的请求：实例标识与预览名称沿用预览结果；input 可为空。
+/// 创建 Chat 的请求：实例标识与预览名称沿用预览结果；input 可为空。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CreateBotRequest {
+struct CreateChatRequest {
     zone: String,
-    template_id: String,
     bot_id: String,
+    chat_id: String,
     #[serde(default)]
     workspace_target: WorkspaceTarget,
     #[serde(default)]
     input: String,
-    /// 仅用于本次创建的命名规则；省略时使用模板规则，不写回模板。
+    /// 仅用于本次创建的命名规则；省略时使用 Bot 规则，不写回 Bot。
     #[serde(default)]
-    bot_name_rule: Option<String>,
+    chat_name_rule: Option<String>,
     /// 预览时看到的名称；若有效规则渲染出的名称变化，明确拒绝而不是悄悄改名。
     #[serde(default)]
     expected_name: Option<String>,
 }
 
-/// Bot 名称预览的成功响应：本次创建实际会使用的名称与短实例标识。
+/// Chat 名称预览的成功响应：本次创建实际会使用的名称与短实例标识。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct BotPreviewResponse {
-    bot_id: String,
+struct ChatPreviewResponse {
+    chat_id: String,
     name: String,
     zone: String,
     zone_name: String,
-    template_id: String,
-    template_name: String,
-    bot_name_rule: String,
+    bot_id: String,
+    bot_name: String,
+    chat_name_rule: String,
     agent: &'static str,
 }
 
-/// “预览 Bot 名称”：只生成名称与短实例标识，不创建 Tab、不启动 agent。
-async fn preview_bot(State(state): State<AppState>, request: Request) -> Response {
-    let input: BotPreviewRequest = match bot_command_body(request, "Bot 名称预览").await {
+/// “预览 Chat 名称”：只生成名称与短实例标识，不创建 Tab、不启动 agent。
+async fn preview_chat(State(state): State<AppState>, request: Request) -> Response {
+    let input: ChatPreviewRequest = match chat_command_body(request, "Chat 名称预览").await {
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    let zone = match bot_zone(&state, &input.zone).await {
+    let zone = match chat_zone(&state, &input.zone).await {
         Ok(zone) => zone,
         Err(rejection) => return rejection,
     };
-    let template = match state.bot_templates.get(&input.template_id).await {
-        Ok(template) => template,
-        Err(error) => return bot_template_error_response(error),
+    let bot = match state.bots.get(&input.bot_id).await {
+        Ok(bot) => bot,
+        Err(error) => return bot_error_response(error),
     };
 
-    let bot_id = bots::new_bot_id();
-    let name = bots::render_bot_name(&template.bot_name, &zone, &template, &bot_id);
-    let agent = template.agent.label();
+    let chat_id = chats::new_chat_id();
+    let name = chats::render_chat_name(&bot.chat_name, &zone, &bot, &chat_id);
+    let agent = bot.agent.label();
     (
         StatusCode::OK,
-        Json(BotPreviewResponse {
-            bot_id,
+        Json(ChatPreviewResponse {
+            chat_id,
             name,
             zone_name: std::path::Path::new(&zone)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_default(),
             zone,
-            template_id: template.id,
-            template_name: template.name,
-            bot_name_rule: template.bot_name,
+            bot_id: bot.id,
+            bot_name: bot.name,
+            chat_name_rule: bot.chat_name,
             agent,
         }),
     )
         .into_response()
 }
 
-/// “创建 Bot”：接受后由后端拥有的任务继续执行，HTTP 响应只给出本次创建的生命周期标识。
+/// “创建 Chat”：接受后由后端拥有的任务继续执行，HTTP 响应只给出本次创建的生命周期标识。
 ///
-/// 模板与目标名称在请求被接受时固定为快照；之后编辑或删除模板不改变本次创建。
+/// Bot 与目标名称在请求被接受时固定为快照；之后编辑或删除 Bot 不改变本次创建。
 /// 默认目标来自服务端配置，当前目标来自已登记 zone 根目录名；请求不能提供任意名称。
-async fn create_bot(State(state): State<AppState>, request: Request) -> Response {
-    let input: CreateBotRequest = match bot_command_body(request, "创建 Bot").await {
+async fn create_chat(State(state): State<AppState>, request: Request) -> Response {
+    let input: CreateChatRequest = match chat_command_body(request, "创建 Chat").await {
         Ok(input) => input,
         Err(rejection) => return rejection,
     };
-    if !bots::is_valid_bot_id(&input.bot_id) {
+    if !chats::is_valid_chat_id(&input.chat_id) {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "bot-id-invalid",
-            "Bot 短实例标识必须来自名称预览（6 个小写十六进制字符）。".to_string(),
+            "chat-id-invalid",
+            "Chat 短实例标识必须来自名称预览（6 个小写十六进制字符）。".to_string(),
         );
     }
-    let zone = match bot_zone(&state, &input.zone).await {
+    let zone = match chat_zone(&state, &input.zone).await {
         Ok(zone) => zone,
         Err(rejection) => return rejection,
     };
-    let template = match state.bot_templates.get(&input.template_id).await {
-        Ok(template) => template,
+    let bot = match state.bots.get(&input.bot_id).await {
+        Ok(bot) => bot,
         Err(error) => {
-            return bot_template_error_with_context(
+            return bot_error_with_context(
                 error,
                 " 未创建 Herdr Tab、未启动 agent、未提交输入。",
             );
@@ -1045,28 +1045,28 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
             ),
         },
     };
-    let rule = input.bot_name_rule.as_deref().unwrap_or(&template.bot_name);
+    let rule = input.chat_name_rule.as_deref().unwrap_or(&bot.chat_name);
     if rule.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "bot-name-rule-required",
-            "本次 bot-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+            "chat-name-rule-required",
+            "本次 chat-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
                 .to_string(),
         );
     }
     if rule.contains(|c| c == '\n' || c == '\r') {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "bot-name-rule-not-single-line",
-            "本次 bot-name 必须是单行规则，不能包含换行。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+            "chat-name-rule-not-single-line",
+            "本次 chat-name 必须是单行规则，不能包含换行。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
         );
     }
-    let name = bots::render_bot_name(rule, &zone, &template, &input.bot_id);
+    let name = chats::render_chat_name(rule, &zone, &bot, &input.chat_id);
     if name.trim().is_empty() {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
-            "bot-name-required",
-            "命名规则生成的 Bot 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+            "chat-name-required",
+            "命名规则生成的 Chat 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
                 .to_string(),
         );
     }
@@ -1075,19 +1075,19 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
             return rejected_owned(
                 StatusCode::CONFLICT,
                 "name-preview-stale",
-                "模板在预览之后发生了变化，本次名称已不同；请重新预览后再创建。".to_string(),
+                "Bot在预览之后发生了变化，本次名称已不同；请重新预览后再创建。".to_string(),
             );
         }
     }
 
     let preset = match state
-        .bot_templates
+        .bots
         .catalog()
-        .and_then(|catalog| catalog.resolve(&template))
+        .and_then(|catalog| catalog.resolve(&bot))
     {
         Ok(preset) => preset,
         Err(error) => {
-            return bot_template_error_with_context(
+            return bot_error_with_context(
                 error,
                 " 未创建 Herdr Tab、未启动 agent、未提交输入。",
             );
@@ -1100,17 +1100,17 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
             format!("{message} 未创建 Herdr Tab、未启动 agent、未提交输入。"),
         );
     }
-    let creation_id = bots::new_creation_id();
-    let view = bots::CreationView::starting(creation_id, name, zone.clone(), template.id.clone());
-    let job = state.bot_creations.insert(view.clone()).await;
+    let creation_id = chats::new_creation_id();
+    let view = chats::ChatCreationView::starting(creation_id, name, zone.clone(), bot.id.clone());
+    let job = state.chat_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     let history = Arc::clone(&state.history);
     tokio::spawn(async move {
-        bots::run_creation(
+        chats::run_creation(
             herdr,
             history,
             job,
-            template,
+            bot,
             preset,
             zone,
             input.input,
@@ -1122,7 +1122,7 @@ async fn create_bot(State(state): State<AppState>, request: Request) -> Response
 }
 
 /// “读取一次创建的状态”：同一次创建在请求结束后仍可被提交它的页面观察。
-async fn get_bot_creation(
+async fn get_chat_creation(
     State(state): State<AppState>,
     UrlPath(id): UrlPath<String>,
     request: Request,
@@ -1134,7 +1134,7 @@ async fn get_bot_creation(
             "创建状态读取不接受查询参数：目标只由路径中的创建标识决定。",
         );
     }
-    match state.bot_creations.get(&id).await {
+    match state.chat_creations.get(&id).await {
         Some(view) => (StatusCode::OK, Json(view)).into_response(),
         None => rejected(
             StatusCode::NOT_FOUND,
@@ -1144,8 +1144,8 @@ async fn get_bot_creation(
     }
 }
 
-/// 解析 Bot 命令的 JSON 请求体；查询串与未知字段都被拒绝。
-async fn bot_command_body<T: serde::de::DeserializeOwned>(
+/// 解析 Chat 命令的 JSON 请求体；查询串与未知字段都被拒绝。
+async fn chat_command_body<T: serde::de::DeserializeOwned>(
     request: Request,
     action: &str,
 ) -> Result<T, Response> {
@@ -1158,7 +1158,7 @@ async fn bot_command_body<T: serde::de::DeserializeOwned>(
     }
 
     let (_, body) = request.into_parts();
-    let bytes = to_bytes(body, MAX_BOT_TEMPLATE_REQUEST_BYTES)
+    let bytes = to_bytes(body, MAX_BOT_REQUEST_BYTES)
         .await
         .map_err(|_| {
             rejected_owned(
@@ -1178,8 +1178,8 @@ async fn bot_command_body<T: serde::de::DeserializeOwned>(
 
 /// 核对请求中的 zone 确实已登记，并返回登记列表里的规范路径。
 ///
-/// Bot 的 cwd 只能来自已登记 zone；未登记的路径不会被当作工作目录。
-async fn bot_zone(state: &AppState, requested: &str) -> Result<String, Response> {
+/// Chat 的 cwd 只能来自已登记 zone；未登记的路径不会被当作工作目录。
+async fn chat_zone(state: &AppState, requested: &str) -> Result<String, Response> {
     let trimmed = requested.trim();
     if trimmed.is_empty() {
         return Err(rejected_owned(
@@ -1203,7 +1203,7 @@ async fn bot_zone(state: &AppState, requested: &str) -> Result<String, Response>
             rejected_owned(
                 StatusCode::BAD_REQUEST,
                 "zone-not-registered",
-                "该目录没有登记；只能从已登记的 zone 创建 Bot。".to_string(),
+                "该目录没有登记；只能从已登记的 zone 创建 Chat。".to_string(),
             )
         })
 }

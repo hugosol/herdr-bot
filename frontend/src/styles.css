@@ -434,7 +434,7 @@ h1 {
 }
 
 /* 每个 zone 行独立的“+”创建入口；与浏览、取消登记互不重叠。 */
-.zone-item__bot {
+.zone-item__chat {
   display: grid;
   place-items: center;
   flex: none;
@@ -450,36 +450,36 @@ h1 {
   cursor: pointer;
 }
 
-.zone-item__bot:hover:enabled {
+.zone-item__chat:hover:enabled {
   border-color: #4f8a68;
   background: #21402f;
 }
 
-.zone-item__bot:disabled {
+.zone-item__chat:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-/* ---------- 从 zone 创建 Bot ---------- */
+/* ---------- 从 zone 发起 Chat ---------- */
 
-.bot-dialog {
+.chat-dialog {
   width: min(100%, 38rem);
 }
 
-.bot-zone {
+.chat-zone {
   margin: 0;
   color: #a9b1bd;
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
 
-.bot-input {
+.chat-input {
   min-height: 6rem;
   resize: vertical;
   font: inherit;
 }
 
-.bot-name-preview {
+.chat-name-preview {
   display: block;
   padding: 0.65rem 0.75rem;
   border: 1px dashed #3d566d;
@@ -490,11 +490,11 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.bot-name-preview[data-state='unavailable'] {
+.chat-name-preview[data-state='unavailable'] {
   color: #ffd9d1;
 }
 
-.bot-stage {
+.chat-stage {
   margin: 0;
   padding: 0.6rem 0.75rem;
   border: 1px solid #3d566d;
@@ -504,7 +504,7 @@ h1 {
   font-size: 0.95rem;
 }
 
-.bot-result {
+.chat-result {
   display: grid;
   gap: 0.35rem;
   margin: 0;
@@ -515,18 +515,18 @@ h1 {
   font-size: 0.88rem;
 }
 
-.bot-result div {
+.chat-result div {
   display: grid;
   grid-template-columns: 7.5rem 1fr;
   gap: 0.5rem;
   min-width: 0;
 }
 
-.bot-result dt {
+.chat-result dt {
   color: #9aa4b2;
 }
 
-.bot-result dd {
+.chat-result dd {
   margin: 0;
   color: #d6dbe4;
   overflow-wrap: anywhere;
@@ -575,7 +575,7 @@ h1 {
 .zone-dialog__cancel:focus-visible,
 .zone-register:focus-visible,
 .zone-item__open:focus-visible,
-.zone-item__bot:focus-visible,
+.zone-item__chat:focus-visible,
 .zone-item__remove:focus-visible,
 .file-view__read-html:focus-visible,
 .html-reader__exit:focus-visible {
@@ -2059,21 +2059,21 @@ h1 {
   line-height: 1.5;
 }
 
-/* Bot 模板：列表与编辑表单沿用 zone 的卡片/弹窗样式，只补充字段与操作布局。 */
-.bot-templates {
+/* Bot：列表与编辑表单沿用 zone 的卡片/弹窗样式，只补充字段与操作布局。 */
+.bots {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   text-align: left;
 }
 
-.bot-templates__actions {
+.bots__actions {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-.bot-template-list {
+.bot-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2082,36 +2082,36 @@ h1 {
   gap: 0.75rem;
 }
 
-.bot-template-item {
+.bot-item {
   padding: 1rem;
   border: 1px solid #2b313a;
   border-radius: 0.75rem;
   background: #14161a;
 }
 
-.bot-template-item__name {
+.bot-item__name {
   margin: 0 0 0.5rem;
   font-size: 1.15rem;
 }
 
-.bot-template-item__fields {
+.bot-item__fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.5rem 1rem;
   margin: 0;
 }
 
-.bot-template-item__fields dt {
+.bot-item__fields dt {
   color: #8fa0b5;
   font-size: 0.85rem;
 }
 
-.bot-template-item__fields dd {
+.bot-item__fields dd {
   margin: 0.15rem 0 0;
   word-break: break-word;
 }
 
-.bot-template-item__prompt {
+.bot-item__prompt {
   margin: 0.75rem 0 0;
   padding: 0.6rem;
   border-radius: 0.5rem;
@@ -2121,17 +2121,17 @@ h1 {
   font-family: inherit;
 }
 
-.bot-template-item__actions {
+.bot-item__actions {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
 
-.bot-template-dialog {
+.bot-dialog {
   width: min(100%, 56rem);
 }
 
-.bot-template-steps {
+.bot-steps {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 2rem;
@@ -2139,19 +2139,19 @@ h1 {
   color: #8fa0b5;
 }
 
-.bot-template-steps [aria-current="step"] {
+.bot-steps [aria-current="step"] {
   color: #b5d5d0;
   font-weight: 700;
 }
 
-.bot-template-extensions fieldset {
+.bot-extensions fieldset {
   min-width: 0;
   margin: 1rem 0;
   border: 1px solid #3f6d69;
   border-radius: 0.65rem;
 }
 
-.bot-template-extension {
+.bot-extension {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -2159,14 +2159,14 @@ h1 {
   cursor: pointer;
 }
 
-.bot-template-extension input {
+.bot-extension input {
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
 }
 
-/* 预览优先：名称示例置顶，命名规则与 agent/模板设置在其后并排。 */
-.bot-template-preview-card {
+/* 预览优先：名称示例置顶，命名规则与 agent/Bot 设置在其后并排。 */
+.bot-preview-card {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -2177,14 +2177,14 @@ h1 {
   background: linear-gradient(120deg, #1d313f, #182b28);
 }
 
-.bot-template-preview-card__label {
+.bot-preview-card__label {
   color: #b5d5d0;
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.bot-template-preview {
+.bot-preview {
   margin: 0;
   padding: 0;
   border: 0;
@@ -2195,23 +2195,23 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.bot-template-preview-card__hint {
+.bot-preview-card__hint {
   color: #a9c4c0;
   line-height: 1.5;
 }
 
-.bot-template-compose {
+.bot-compose {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: start;
 }
 
-.bot-template-compose__primary {
+.bot-compose__primary {
   min-width: 0;
 }
 
-.bot-template-settings {
+.bot-settings {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -2223,24 +2223,24 @@ h1 {
   background: #171a20;
 }
 
-.bot-template-settings legend {
+.bot-settings legend {
   padding: 0 0.35rem;
   color: #a9b1bd;
   font-size: 0.9rem;
 }
 
-.bot-template-settings .bot-template-hint {
+.bot-settings .bot-hint {
   margin-top: -0.2rem;
 }
 
-.bot-name-editor {
+.chat-name-editor {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
 }
 
-.bot-name-editor__surface {
+.chat-name-editor__surface {
   min-height: 4.5rem;
   padding: 0.75rem;
   border: 1px solid #4a5b6f;
@@ -2254,23 +2254,23 @@ h1 {
   cursor: text;
 }
 
-.bot-name-editor__surface:focus-visible {
+.chat-name-editor__surface:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
 }
 
-.bot-name-editor__surface[aria-disabled='true'] {
+.chat-name-editor__surface[aria-disabled='true'] {
   opacity: 0.65;
   cursor: not-allowed;
 }
 
-.bot-name-editor__surface:empty::before {
+.chat-name-editor__surface:empty::before {
   content: attr(data-placeholder);
   color: #7d8b9c;
   pointer-events: none;
 }
 
-.bot-name-token {
+.chat-name-token {
   display: inline-flex;
   align-items: center;
   gap: 0.1rem;
@@ -2287,7 +2287,7 @@ h1 {
   user-select: none;
 }
 
-.bot-name-token__remove {
+.chat-name-token__remove {
   display: inline-grid;
   place-items: center;
   width: 1.55rem;
@@ -2303,44 +2303,44 @@ h1 {
   cursor: pointer;
 }
 
-.bot-name-token__remove:hover:enabled {
+.chat-name-token__remove:hover:enabled {
   background: #38577d;
 }
 
-.bot-name-token__remove:focus-visible,
-.bot-template-field-buttons button:focus-visible {
+.chat-name-token__remove:focus-visible,
+.bot-field-buttons button:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
 }
 
-.bot-name-editor > .bot-template-hint {
+.chat-name-editor > .bot-hint {
   margin: 0;
 }
 
-.bot-name-editor .bot-template-fields {
+.chat-name-editor .bot-fields {
   margin: 0;
 }
 
-.bot-template-fields {
+.bot-fields {
   margin: 0.75rem 0;
   padding: 0.75rem;
   border: 1px solid #2b313a;
   border-radius: 0.5rem;
 }
 
-.bot-template-fields legend {
+.bot-fields legend {
   padding: 0 0.35rem;
   color: #8fa0b5;
   font-size: 0.85rem;
 }
 
-.bot-template-field-buttons {
+.bot-field-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.bot-template-field-buttons button {
+.bot-field-buttons button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2353,14 +2353,14 @@ h1 {
   cursor: pointer;
 }
 
-.bot-template-hint {
+.bot-hint {
   margin: 0.5rem 0 0;
   color: #8fa0b5;
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
-.bot-template-prompt {
+.bot-prompt {
   min-height: 6rem;
   resize: vertical;
   font-family: inherit;
@@ -2391,27 +2391,27 @@ h1 {
 }
 
 @media (max-width: 720px) {
-  .bot-template-compose {
+  .bot-compose {
     grid-template-columns: 1fr;
   }
 
-  .bot-template-preview {
+  .bot-preview {
     font-size: 1.15rem;
   }
 
   /* 变量旁的 × 是触控删除入口，手机上保留 44px 的可点击区域。 */
-  .bot-name-token__remove {
+  .chat-name-token__remove {
     width: 2.75rem;
     height: 2.75rem;
   }
 }
 
 @media (max-width: 640px) {
-  .bot-template-item__fields {
+  .bot-item__fields {
     grid-template-columns: 1fr;
   }
 
-  .bot-template-field-buttons button {
+  .bot-field-buttons button {
     flex: 1 1 auto;
   }
 }

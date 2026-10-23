@@ -1,7 +1,7 @@
 /**
  * 真实浏览器验收的支撑设施：启动隔离的真实 herdr-bot 进程。
  *
- * 每个测试使用独立临时目录与模板存储文件；页面、公开 HTTP 接口与进程重启都来自交付二进制，
+ * 每个测试使用独立临时目录与 Bot 存储文件；页面、公开 HTTP 接口与进程重启都来自交付二进制，
  * 不经过任何前端 mock。Herdr / agent 控制不在本票范围，固定操作指向安全夹具即可。
  */
 
@@ -20,10 +20,10 @@ const binary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-bot.exe'
 const fixtures = path.join(repoRoot, 'fixtures', 'operations')
 const herdrFixtureBinary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-fixture.exe')
 
-export type TemplateView = {
+export type BotView = {
   id: string
   name: string
-  botName: string
+  chatName: string
   agent: string
   model: string
   thinking: string
@@ -56,7 +56,7 @@ export type E2EServer = {
   configPath: string
   /** Actual delivered backend stdout/stderr; diagnostic observation only. */
   diagnostics: () => string
-  getTemplates: () => Promise<{ templates: TemplateView[]; options: unknown }>
+  getBots: () => Promise<{ bots: BotView[]; options: unknown }>
   /** 受控 Herdr 自己写下的外部调用记录。 */
   herdrCalls: () => Record<string, unknown>[]
   /** 受控 Herdr 自己写下的新建 Tab 记录。 */
@@ -144,7 +144,7 @@ function writeConfig(
       '[zones]',
       `registry_file = '${path.join(directory, 'zones.json')}'`,
       '',
-      '[bot_templates]',
+      '[bots]',
       `storage_file = '${storage}'`,
       `metadata_file = '${path.join(directory, 'bot-options.toml')}'`,
       '',
@@ -164,18 +164,18 @@ function readHerdrRecords(file: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
-async function waitForTemplates(baseURL: string): Promise<void> {
+async function waitForBots(baseURL: string): Promise<void> {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseURL}/api/bot-templates`)
+      const response = await fetch(`${baseURL}/api/bots`)
       if (response.ok) return
     } catch {
       // 进程尚未开始监听。
     }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error(`herdr-bot 没有在 20 秒内开始提供模板接口：${baseURL}`)
+  throw new Error(`herdr-bot 没有在 20 秒内开始提供 Bot 接口：${baseURL}`)
 }
 
 function startProcess(configPath: string, executable: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
@@ -236,7 +236,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   }
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
-  const storageFile = path.join(directory, 'bot-templates.json')
+  const storageFile = path.join(directory, 'bots.json')
   const metadataFile = path.join(directory, 'bot-options.toml')
   // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
   const extensionDirectory = path.join(directory, 'extensions')
@@ -293,7 +293,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
 
   async function start() {
     running = await startProcess(configPath, executable)
-    await waitForTemplates(`http://127.0.0.1:${running.port}`)
+    await waitForBots(`http://127.0.0.1:${running.port}`)
   }
 
   await start()
@@ -311,12 +311,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     metadataFile,
     configPath,
     diagnostics() { return running?.diagnostics() ?? '' },
-    async getTemplates() {
-      const response = await fetch(`${this.baseURL}/api/bot-templates`)
+    async getBots() {
+      const response = await fetch(`${this.baseURL}/api/bots`)
       if (!response.ok) {
-        throw new Error(`模板列表读取失败：HTTP ${response.status}`)
+        throw new Error(`Bot 列表读取失败：HTTP ${response.status}`)
       }
-      return (await response.json()) as { templates: TemplateView[]; options: unknown }
+      return (await response.json()) as { bots: BotView[]; options: unknown }
     },
     herdrCalls() {
       return readHerdrRecords(path.join(herdrDirectory, 'calls.jsonl'))
@@ -359,6 +359,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
     },
     async cleanup() {
       await this.stop()
+      if (process.platform === 'win32' && herdrExecutable !== undefined) {
+        // taskkill /T can miss an identity reader spawned while it snapshots the
+        // tree. The backend is now stopped, so no new readers can appear. Reap
+        // only this fixture's copied executable and wait for its handles to close.
+        const reaped = Promise.withResolvers<void>()
+        const reaper = spawn('powershell.exe', ['-NoProfile', '-Command',
+            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Filter \"Name='herdr-fixture.exe'\" | Where-Object { $_.ExecutablePath -eq $env:HERDR_FIXTURE_EXECUTABLE } | ForEach-Object { $p = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; if ($p -and $p.Path -eq $env:HERDR_FIXTURE_EXECUTABLE) { Stop-Process -InputObject $p -ErrorAction SilentlyContinue; $p.WaitForExit() } }",
+          ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, HERDR_FIXTURE_EXECUTABLE: herdrExecutable } })
+        reaper.once('error', reaped.reject)
+        reaper.once('exit', (code) => code === 0 ? reaped.resolve() : reaped.reject(new Error(`fixture cleanup failed: ${code}`)))
+        await reaped.promise
+      }
       try {
         fs.chmodSync(storageFile, 0o666)
       } catch {

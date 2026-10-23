@@ -36,15 +36,15 @@ async function register(sessionId: string, data: Record<string, unknown>) {
   const receipt = await post('/api/sessions/events', { sessionId, kind: 'register', data })
   expect(receipt.historySaved).toBe(true)
 }
-async function template(agent: string, name: string) {
-  const saved = await post('/api/bot-templates', { name, botName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
-  return saved.templates.find((item: { name: string }) => item.name === name).id as string
+async function bot(agent: string, name: string) {
+  const saved = await post('/api/bots', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+  return saved.bots.find((item: { name: string }) => item.name === name).id as string
 }
-async function create(zone: string, templateId: string) {
-  const preview = await post('/api/bots/preview', { zone, templateId })
-  const accepted = await post('/api/bots', { zone, templateId, botId: preview.botId, input: '/settings' })
+async function create(zone: string, botId: string) {
+  const preview = await post('/api/chats/preview', { zone, botId })
+  const accepted = await post('/api/chats', { zone, botId, chatId: preview.chatId, input: '/settings' })
   await expect.poll(async () => {
-    const response = await fetch(`${server!.baseURL}/api/bots/${accepted.id}`)
+    const response = await fetch(`${server!.baseURL}/api/chats/${accepted.id}`)
     return (await response.json()).stage
   }).toBe('succeeded')
 }
@@ -135,8 +135,8 @@ for (const agent of ['pi', 'omp'] as const) {
       await server.restart()
       const zones = await post('/api/zones', { path: root })
       const zone = zones.zones[0].path as string
-      const original = await template(agent, 'Durable zone before failure')
-      const rejected = await template(agent, 'Zone name that never saved')
+      const original = await bot(agent, 'Durable zone before failure')
+      const rejected = await bot(agent, 'Zone name that never saved')
       await create(zone, original)
       await expect.poll(async () => (await history()).sessions[0]?.sessionName).toBe('Durable zone before failure')
       await register(id, { cwd: 'C:/current-original', agentType: agent, sessionName: 'Current original literal' })
@@ -221,8 +221,8 @@ for (const agent of ['pi', 'omp'] as const) {
       server = await startServer({ herdr: { behavior: { ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } } } })
       const zones = await post('/api/zones', { path: root })
       const zone = zones.zones[0].path as string
-      const first = await template(agent, 'Zone original literal')
-      const renamed = await template(agent, 'Zone renamed literal')
+      const first = await bot(agent, 'Zone original literal')
+      const renamed = await bot(agent, 'Zone renamed literal')
       const connect = () => register(id, { cwd: 'C:/same-project', sessionName: 'Connect original literal', agentType: agent })
       if (order === 'connect-zone') await connect()
       await create(zone, first)

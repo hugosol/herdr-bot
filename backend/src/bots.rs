@@ -1,509 +1,483 @@
-//! 从 zone 创建一个 Bot：命名、单次输入合成、后端拥有的创建生命周期。
+//! Bot：由后端以文件持久保存，电脑与手机共享同一份。
 //!
-//! 一次创建只属于它自己：显示名可以重复，对象身份来自 Herdr 返回的 Tab / Pane 标识，agent 的
-//! 控制别名由后端单独生成，不拿可能重名、含中文或空格的 Tab 名当唯一身份。创建任务在后端运行，
-//! 与提交它的 HTTP 请求连接解耦；请求断开只失去观察，不会取消已经接受的创建。
+//! Bot 是创建 Chat 时复用的预设：显示名、Chat 自动命名规则、agent、模型、思考级别、可选 Skill
+//! 与固定 prompt。Bot 只在创建时被读取，编辑或删除不改变已经创建的 Chat。
 //!
-//! 生命周期只有四个可见阶段：`starting`（查找 Workspace、新建 Tab、启动 agent）、`submitting`
-//! （提交合成后的初始指示）、`succeeded`（就绪与提交都已确认）、`failed`。失败保留已经取得的
-//! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
+//! 持久化语义与 zone 登记相同：只有存储文件成功写入后才返回成功；写入先写同目录的临时文件并
+//! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何 Bot，不是读取错误；读取失败或内容
+//! 损坏都是明确错误，不会伪装成空列表，也不会覆盖原文件。同一实例内的读取与写入共用一把锁。
+//!
+//! agent / model / thinking / Skill 的可用选项由独立 TOML 目录维护；每次保存按当前元数据校验。
+//! 持久文件只保留稳定标识，不保存映射副本；读取不因单个选择失效而丢弃其他 Bot。
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::process;
-use std::sync::Arc;
+use std::ffi::OsString;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::herdr::{HerdrClient, HerdrError};
-use crate::templates::BotTemplate;
+/// Bot 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
+pub const DEFAULT_STORAGE_FILE: &str = ".data/bots.json";
 
-/// Bot 短实例标识的长度（小写十六进制字符数）。
-pub const BOT_ID_LEN: usize = 6;
-
-/// 一次创建在页面上可见的阶段。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// Bot 可选的 agent 类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Stage {
-    /// 正在查找 Workspace、新建 Tab 并等待 agent 就绪。
-    Starting,
-    /// 目标 agent 已就绪，正在提交初始指示。
-    Submitting,
-    /// 就绪与提交都已确认。
-    Succeeded,
-    /// 任一步失败或超时；已取得的现场标识仍保留在结果里。
-    Failed,
+pub enum Agent {
+    Omp,
+    Pi,
 }
 
-impl Stage {
-    fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed)
+impl Agent {
+    /// 序列化后的固定值（存入存储文件、HTTP 响应也使用同一个值）。
+    pub fn label(self) -> &'static str {
+        match self {
+            Agent::Omp => "omp",
+            Agent::Pi => "pi",
+        }
     }
 }
 
-/// 失败发生的位置；与顶部 `stage` 分开，避免把“启动失败”和“提交失败”混成同一种情况。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FailureStage {
-    Workspace,
-    Tab,
-    Start,
-    Submit,
-}
-
-/// 一次失败的可定位说明。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Failure {
-    pub stage: FailureStage,
-    pub code: String,
-    pub message: String,
-}
-
-/// 公开的创建状态；也是创建被接受时的回执与页面轮询读取的同一形状。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreationView {
-    /// 本次创建的生命周期标识（不是 Herdr Tab ID）。
+/// 一个已保存的 Bot。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Bot {
+    /// 稳定标识；编辑以它为定位，不依赖可改动的显示名。
     pub id: String,
-    /// 按本次有效命名规则（创建覆盖或模板默认）生成并实际用作 Tab 显示名的名称。
+    /// Bot 显示名，不是新 Chat 的固定名字。
     pub name: String,
-    /// 发起创建的已登记 zone 目录。
-    pub zone: String,
-    /// 创建被接受时使用的模板标识。
-    pub template_id: String,
-    pub stage: Stage,
-    /// 已取得的 Herdr Tab 标识；未取得时不出现。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tab_id: Option<String>,
-    /// 已取得的 Herdr Pane 标识；未取得时不出现。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pane_id: Option<String>,
-    /// 后端生成的 agent 控制别名；未开始启动时不出现。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_name: Option<String>,
-    /// 只有初始指示提交被确认后才为 true；失败时不把未知说成已提交。
-    pub input_submitted: bool,
-    /// 失败阶段与说明；成功时不出现。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure: Option<Failure>,
+    /// Chat 自动命名规则：单行固定文字与占位符。
+    pub chat_name: String,
+    pub agent: Agent,
+    pub model: String,
+    pub thinking: String,
+    /// 不选 Skill 时为 `None`。
+    pub skill: Option<String>,
+    /// 可多行、可为空的固定指示。
+    pub prompt: String,
+    /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
-impl CreationView {
-    pub fn starting(id: String, name: String, zone: String, template_id: String) -> Self {
-        Self {
-            id,
-            name,
-            zone,
-            template_id,
-            stage: Stage::Starting,
-            tab_id: None,
-            pane_id: None,
-            agent_name: None,
-            input_submitted: false,
-            failure: None,
-        }
-    }
+/// 一次新增或编辑请求的原始字段；字符串先按字段逐个校验，失败时给出明确类别。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BotInput {
+    name: Option<String>,
+    chat_name: Option<String>,
+    agent: Option<String>,
+    model: Option<String>,
+    thinking: Option<String>,
+    skill: Option<String>,
+    prompt: Option<String>,
+    #[serde(default)]
+    extensions: Vec<String>,
 }
 
-/// 进程内的创建生命周期表：按创建标识读取当前状态。
-///
-/// 这里不是 Bot 列表，也不提供历史或恢复；它只让提交创建的页面在请求结束后观察同一次创建。
-/// 每条创建各自独立，不共享全局创建资格。
-pub struct BotCreations {
-    jobs: Mutex<HashMap<String, Arc<Mutex<CreationView>>>>,
-}
-
-impl BotCreations {
-    pub fn new() -> Self {
-        Self {
-            jobs: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// 登记一次已接受的创建并返回它的状态句柄。
-    pub async fn insert(&self, view: CreationView) -> Arc<Mutex<CreationView>> {
-        let handle = Arc::new(Mutex::new(view.clone()));
-        self.jobs
-            .lock()
-            .await
-            .insert(view.id.clone(), handle.clone());
-        handle
-    }
-
-    /// 读取一次创建当前的状态；未知标识是 `None`，不会被解释成成功或失败。
-    pub async fn get(&self, id: &str) -> Option<CreationView> {
-        let handle = self.jobs.lock().await.get(id).cloned()?;
-        let view = handle.lock().await.clone();
-        Some(view)
-    }
-}
-
-impl Default for BotCreations {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// 生成一个短实例标识：小写十六进制，只用于显示名中的 `{bot.id}`，不是 Herdr Tab ID。
-pub fn new_bot_id() -> String {
-    format!("{:06x}", next_token() & 0xff_ffff)
-}
-
-/// 生成一次创建的生命周期标识。
-pub fn new_creation_id() -> String {
-    format!("bc-{:012x}", next_token() & 0xffff_ffff_ffff)
-}
-
-/// 生成 agent 控制别名：满足 Herdr 的 `[a-z][a-z0-9_-]{0,31}`，且不依赖显示名。
-pub fn new_agent_name() -> String {
-    format!("bot-{:012x}", next_token() & 0xffff_ffff_ffff)
-}
-
-/// 校验预览返回的短实例标识；创建请求只能沿用后端分配的标识，不能用任意文本改写名称结构。
-pub fn is_valid_bot_id(value: &str) -> bool {
-    value.len() == BOT_ID_LEN
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-/// 按模板的命名规则渲染展示名。
-///
-/// 只有四个已承诺字段被替换；未知占位符保持原样。`{bot.id}` 取本次的短实例标识，不是 Herdr
-/// Tab ID。`zone.name` 是 zone 目录的末级名称。
-pub fn render_bot_name(rule: &str, zone: &str, template: &BotTemplate, bot_id: &str) -> String {
-    let zone_name = Path::new(zone)
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    // 只扫描规则本身一次；替换值中的占位符按字面保留，与页面本地预览一致。
-    let mut rendered = String::with_capacity(rule.len());
-    let mut remaining = rule;
-    while let Some(start) = remaining.find('{') {
-        rendered.push_str(&remaining[..start]);
-        remaining = &remaining[start..];
-        let replacement = [
-            ("{zone.name}", zone_name.as_str()),
-            ("{template.name}", template.name.as_str()),
-            ("{agent}", template.agent.label()),
-            ("{bot.id}", bot_id),
-        ]
-        .into_iter()
-        .find(|(placeholder, _)| remaining.starts_with(*placeholder));
-        if let Some((placeholder, value)) = replacement {
-            rendered.push_str(value);
-            remaining = &remaining[placeholder.len()..];
-        } else {
-            rendered.push('{');
-            remaining = &remaining[1..];
-        }
-    }
-    rendered.push_str(remaining);
-    rendered
-}
-
-/// 把 Skill、固定 prompt 与本次 input 合成一次提交的正文。
-///
-/// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
-/// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
-pub fn compose_initial_input(
-    template: &BotTemplate,
-    native_skill: Option<&str>,
-    input: &str,
-) -> String {
-    let mut sections: Vec<&str> = Vec::new();
-    if !template.prompt.is_empty() {
-        sections.push(template.prompt.as_str());
-    }
-    if !input.is_empty() {
-        sections.push(input);
-    }
-    let body = sections.join("\n\n");
-
-    match native_skill {
-        Some(skill) if body.is_empty() => format!("/skill:{skill}"),
-        Some(skill) => format!("/skill:{skill} {body}"),
-        None => body,
-    }
-}
-
-/// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
-///
-/// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
-/// 原生会话位置与自动续接均由 agent 的有效配置决定，不覆盖目录或强制新建。
-/// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与模板所选入口。
-pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset) -> Vec<String> {
-    let mut args = Vec::new();
-    if let Some(model) = &preset.provider_model {
-        args.push("--model".to_string());
-        args.push(model.clone());
-    }
-    if let Some(thinking) = &preset.thinking {
-        args.push("--thinking".to_string());
-        args.push(thinking.clone());
-    }
-    args.push("--no-extensions".to_string());
-    for extension in &preset.extensions {
-        args.push("--extension".to_string());
-        args.push(extension.entrypoint.to_string_lossy().into_owned());
-    }
-    args
-}
-
-/// 执行一次已接受的创建；调用方已经固定了模板与 zone 的当时取值。
-///
-/// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
-/// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
-pub async fn run_creation(
-    herdr: Arc<HerdrClient>,
-    history: Arc<crate::history::History>,
-    job: Arc<Mutex<CreationView>>,
-    template: BotTemplate,
-    preset: crate::catalog::ResolvedPreset,
-    zone: String,
-    input: String,
-    workspace_name: String,
-) {
-    let workspace = match herdr.workspace(&workspace_name).await {
-        Ok(workspace) => workspace,
-        Err(error) => {
-            fail(&job, FailureStage::Workspace, &error).await;
-            return;
-        }
-    };
-
-    let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, &zone, &name).await {
-        Ok(created) => created,
-        Err(error) => {
-            fail(&job, FailureStage::Tab, &error).await;
-            return;
-        }
-    };
-    {
-        let mut view = job.lock().await;
-        view.tab_id = Some(created.tab_id);
-        view.pane_id = Some(created.pane_id);
-    }
-
-    let agent_name = new_agent_name();
-    {
-        let mut view = job.lock().await;
-        view.agent_name = Some(agent_name.clone());
-    }
-    let args = agent_launch_args(&preset);
-    let kind = template.agent.label();
-    let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
-    if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
-        fail(&job, FailureStage::Start, &error).await;
-        return;
-    }
-
-    {
-        let mut view = job.lock().await;
-        view.stage = Stage::Submitting;
-    }
-    let text = compose_initial_input(&template, preset.native_skill.as_deref(), &input);
-    if let Err(error) = herdr.prompt(&agent_name, &text).await {
-        fail(&job, FailureStage::Submit, &error).await;
-        return;
-    }
-
-    let creation_id = {
-        let mut view = job.lock().await;
-        view.input_submitted = true;
-        view.stage = Stage::Succeeded;
-        view.id.clone()
-    };
-    // The page and the creation result do not own this task. Never hold a creation,
-    // current-registration or history lock while waiting for external identity.
-    tokio::spawn(async move {
-        collect_native_history(herdr, history, creation_id, agent_name, kind, name).await;
-    });
-}
-
-async fn collect_native_history(
-    herdr: Arc<HerdrClient>,
-    history: Arc<crate::history::History>,
-    creation_id: String,
-    agent_name: String,
-    kind: &'static str,
+/// 校验后的 Bot 字段（不含标识）。
+struct BotFields {
     name: String,
-) {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-    let mut last_reason = String::from("native identity unavailable");
-    let identity = loop {
-        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind, deadline)).await {
-            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
-            Ok(Ok(_)) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
-                return;
+    chat_name: String,
+    agent: Agent,
+    model: String,
+    thinking: String,
+    skill: Option<String>,
+    prompt: String,
+    extensions: Vec<String>,
+}
+
+impl BotInput {
+    fn validate(self, catalog: &crate::catalog::Catalog) -> Result<BotFields, BotError> {
+        let name = self.name.unwrap_or_default();
+        if name.trim().is_empty() {
+            return Err(BotError::NameRequired);
+        }
+
+        let chat_name = self.chat_name.unwrap_or_default();
+        if chat_name.trim().is_empty() {
+            return Err(BotError::ChatNameRequired);
+        }
+        if chat_name.contains(|c| c == '\n' || c == '\r') {
+            return Err(BotError::ChatNameNotSingleLine);
+        }
+
+        let agent = self
+            .agent
+            .as_deref()
+            .ok_or(BotError::AgentRequired)?
+            .trim();
+        let agent = catalog
+            .agents
+            .iter()
+            .find(|candidate| candidate.id.label() == agent)
+            .map(|candidate| candidate.id)
+            .ok_or_else(|| BotError::UnknownAgent(agent.to_string()))?;
+
+        let model = self
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("default")
+            .to_owned();
+        let thinking = self
+            .thinking
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or("default")
+            .to_owned();
+        let skill = self
+            .skill
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
+        catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
+        catalog.validate_extensions(agent, &self.extensions)?;
+
+        Ok(BotFields {
+            name,
+            chat_name,
+            agent,
+            model,
+            thinking,
+            skill,
+            prompt: self.prompt.unwrap_or_default(),
+            extensions: self.extensions,
+        })
+    }
+}
+
+/// 一次 Bot 操作的明确失败类别。
+#[derive(Debug)]
+pub enum BotError {
+    NameRequired,
+    ChatNameRequired,
+    ChatNameNotSingleLine,
+    AgentRequired,
+    UnknownAgent(String),
+    UnknownModel(String),
+    UnknownThinking(String),
+    ThinkingRequiresDefaultModel,
+    ThinkingUnsupported {
+        agent: Agent,
+        model: String,
+        thinking: String,
+        supported: Vec<String>,
+    },
+    UnknownSkill(String),
+    InvalidExtension(String),
+    Metadata(String),
+    NotFound,
+    Unreadable(io::Error),
+    Corrupt(String),
+    WriteFailed(io::Error),
+}
+
+impl BotError {
+    /// 机器可读的稳定类别。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NameRequired => "bot-name-required",
+            Self::ChatNameRequired => "bot-chat-name-required",
+            Self::ChatNameNotSingleLine => "bot-chat-name-not-single-line",
+            Self::AgentRequired => "bot-agent-required",
+            Self::UnknownAgent(_) => "bot-agent-invalid",
+            Self::UnknownModel(_) => "bot-model-invalid",
+            Self::UnknownThinking(_) => "bot-thinking-invalid",
+            Self::ThinkingRequiresDefaultModel => "bot-thinking-requires-default-model",
+            Self::ThinkingUnsupported { .. } => "bot-thinking-unsupported",
+            Self::UnknownSkill(_) => "bot-skill-invalid",
+            Self::InvalidExtension(_) => "bot-extension-invalid",
+            Self::Metadata(_) => "metadata-invalid",
+            Self::NotFound => "bot-not-found",
+            Self::Unreadable(_) => "bots-unreadable",
+            Self::Corrupt(_) => "bots-corrupt",
+            Self::WriteFailed(_) => "bots-write-failed",
+        }
+    }
+
+    /// 面向使用者的说明。
+    pub fn message(&self) -> String {
+        match self {
+            Self::NameRequired => "Bot显示名不能为空。".to_string(),
+            Self::ChatNameRequired => "chat-name 命名规则不能为空。".to_string(),
+            Self::ChatNameNotSingleLine => {
+                "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
             }
-            Ok(Err(error)) => {
-                // A reader noticing the shared deadline must not overwrite the
-                // useful underlying cause (for example an unavailable header).
-                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
+            Self::AgentRequired => "请选择当前选项目录中的 agent。".to_string(),
+            Self::UnknownAgent(value) => {
+                format!("agent 不在当前选项目录中，收到：{value}。")
             }
-            Err(_) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-                return;
+            Self::UnknownModel(value) => {
+                format!("model 不在当前 Agent 的可用选项目录中，收到：{value}。")
+            }
+            Self::UnknownThinking(value) => {
+                format!(
+                    "thinking 不是已定义的思考级别，收到：{value}；请从页面提供的固定选项中选择。"
+                )
+            }
+            Self::ThinkingRequiresDefaultModel => {
+                "model 沿用默认值时，thinking 也必须沿用默认值。".to_string()
+            }
+            Self::ThinkingUnsupported {
+                agent,
+                model,
+                thinking,
+                supported,
+            } => {
+                let options = supported
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("、");
+                format!(
+                    "thinking「{}」不适用于 {} / {}；该组合可用：{}。",
+                    thinking,
+                    agent.label(),
+                    model,
+                    if options.is_empty() {
+                        "沿用默认值"
+                    } else {
+                        options.as_str()
+                    }
+                )
+            }
+            Self::UnknownSkill(value) => {
+                format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
+            }
+            Self::InvalidExtension(value) => {
+                format!(
+                    "扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。"
+                )
+            }
+            Self::Metadata(detail) => detail.clone(),
+            Self::NotFound => "目标Bot不存在：可能已被删除。".to_string(),
+            Self::Unreadable(error) => {
+                format!("读取 Bot存储文件失败：{error}；没有把它当成空列表。")
+            }
+            Self::Corrupt(detail) => {
+                format!("Bot存储文件内容无效：{detail}；请先修复该文件。")
+            }
+            Self::WriteFailed(error) => {
+                format!("保存 Bot失败：{error}；此前已保存的Bot保持不变。")
             }
         }
-        if tokio::time::timeout_at(deadline, tokio::time::sleep(std::time::Duration::from_millis(100))).await.is_err() {
-            eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-            return;
-        }
-    };
-    // Exactly one persistence attempt after identity; no background write retries.
-    if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(),
-    ).await {
-        eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
 }
 
-/// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。
-async fn fail(job: &Arc<Mutex<CreationView>>, stage: FailureStage, error: &HerdrError) {
-    let mut view = job.lock().await;
-    if view.stage.is_terminal() {
-        return;
-    }
-    view.stage = Stage::Failed;
-    view.failure = Some(Failure {
-        stage,
-        code: error.code().to_string(),
-        message: stage_message(stage, error),
-    });
+/// 持久保存在一个 JSON 文件里的 Bot 列表。
+pub struct Bots {
+    storage_file: PathBuf,
+    metadata_file: PathBuf,
+    /// 读取与读改写写共用：同一实例内任意时刻只有一个调用者在操作存储文件。
+    lock: Mutex<()>,
 }
 
-/// 在 Herdr 的原始说明之外补上现场状态；不把未知的提交结果说成确定。
-///
-/// 同一阶段里，“明确被拒绝”和“超时/响应不可理解”是两种不同事实：前者可以说提交失败，
-/// 后者只能说明结果未确认，不能把它表述成确定未发送。已经取得的对象标识不会被撤销。
-fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
-    let base = error.message();
-    let outcome_unknown = matches!(
-        error,
-        HerdrError::Timeout(_) | HerdrError::Unavailable(_) | HerdrError::UnexpectedResponse { .. }
-    );
-    match stage {
-        FailureStage::Workspace => format!("{base} 本次没有新建 Tab，也没有启动 agent。"),
-        FailureStage::Tab if outcome_unknown => {
-            format!("{base} 无法确认 Tab 是否已经创建；本次没有继续启动 agent。")
+impl Bots {
+    pub fn new(storage_file: PathBuf, metadata_file: PathBuf) -> Self {
+        Self {
+            storage_file,
+            metadata_file,
+            lock: Mutex::new(()),
         }
-        FailureStage::Tab => format!("{base} 新建 Tab 被拒绝；本次没有继续启动 agent。"),
-        FailureStage::Start if outcome_unknown => format!(
-            "{base} Tab 与 Pane 已创建并保留；agent 的就绪状态未确认，因此没有提交初始指示。"
-        ),
-        FailureStage::Start => {
-            format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
+    }
+
+    pub fn catalog(&self) -> Result<crate::catalog::Catalog, BotError> {
+        crate::catalog::Catalog::load(&self.metadata_file)
+    }
+
+    /// 存储文件位置（启动日志与测试观察用）。
+    pub fn storage_file(&self) -> &Path {
+        &self.storage_file
+    }
+
+    /// 读取当前 Bot 列表；文件尚不存在时是空列表。
+    pub async fn list(&self) -> Result<Vec<Bot>, BotError> {
+        let _guard = self.lock.lock().await;
+        self.read()
+    }
+
+    /// 按标识读取一个 Bot；不存在是明确错误。
+    pub async fn get(&self, id: &str) -> Result<Bot, BotError> {
+        let _guard = self.lock.lock().await;
+        self.read()?
+            .into_iter()
+            .find(|bot| bot.id == id)
+            .ok_or(BotError::NotFound)
+    }
+
+    /// 新增一个 Bot；成功返回保存后的完整列表。
+    pub async fn create(&self, input: BotInput) -> Result<Vec<Bot>, BotError> {
+        let fields = input.validate(&self.catalog()?)?;
+
+        let _guard = self.lock.lock().await;
+        let mut bots = self.read()?;
+        let id = next_id(&bots);
+        bots.push(Bot {
+            id,
+            name: fields.name,
+            chat_name: fields.chat_name,
+            agent: fields.agent,
+            model: fields.model,
+            thinking: fields.thinking,
+            skill: fields.skill,
+            prompt: fields.prompt,
+            extensions: fields.extensions,
+        });
+        self.save(&bots)?;
+        Ok(bots)
+    }
+
+    /// 编辑一个 Bot；标识保持不变，只有存储成功后才返回新列表。
+    pub async fn update(
+        &self,
+        id: &str,
+        input: BotInput,
+    ) -> Result<Vec<Bot>, BotError> {
+        let fields = input.validate(&self.catalog()?)?;
+
+        let _guard = self.lock.lock().await;
+        let mut bots = self.read()?;
+        let target = bots
+            .iter_mut()
+            .find(|bot| bot.id == id)
+            .ok_or(BotError::NotFound)?;
+        target.name = fields.name;
+        target.chat_name = fields.chat_name;
+        target.agent = fields.agent;
+        target.model = fields.model;
+        target.thinking = fields.thinking;
+        target.skill = fields.skill;
+        target.prompt = fields.prompt;
+        target.extensions = fields.extensions;
+        self.save(&bots)?;
+        Ok(bots)
+    }
+
+    /// 删除一个 Bot；不改变任何已经创建的 Chat。
+    pub async fn delete(&self, id: &str) -> Result<Vec<Bot>, BotError> {
+        let _guard = self.lock.lock().await;
+        let mut bots = self.read()?;
+        let before = bots.len();
+        bots.retain(|bot| bot.id != id);
+        if bots.len() == before {
+            return Err(BotError::NotFound);
         }
-        FailureStage::Submit if outcome_unknown => format!(
-            "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
-        ),
-        FailureStage::Submit => {
-            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
+        self.save(&bots)?;
+        Ok(bots)
+    }
+
+    /// 读取并校验存储文件；文件不存在是空列表，其余失败都是明确错误。
+    fn read(&self) -> Result<Vec<Bot>, BotError> {
+        match fs::read_to_string(&self.storage_file) {
+            Ok(raw) => {
+                let document: BotsDocument = serde_json::from_str(&raw)
+                    .map_err(|error| BotError::Corrupt(error.to_string()))?;
+                validate_document(&document.bots)?;
+                Ok(document.bots)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(BotError::Unreadable(error)),
         }
+    }
+
+    /// 先把新内容写进同目录的临时文件并落盘，再原子替换存储文件。
+    ///
+    /// 任一步失败都删除临时文件并返回错误；原存储文件在替换成功之前保持原样。
+    fn save(&self, bots: &[Bot]) -> Result<(), BotError> {
+        let document = BotsDocument {
+            bots: bots.to_vec(),
+        };
+        let content = serde_json::to_string_pretty(&document).map_err(|error| {
+            BotError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
+        })?;
+
+        let temporary = self.temporary_path();
+        let written = (|| -> io::Result<()> {
+            let mut file = fs::File::create(&temporary)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        if let Err(error) = written {
+            let _ = fs::remove_file(&temporary);
+            return Err(BotError::WriteFailed(error));
+        }
+        if let Err(error) = fs::rename(&temporary, &self.storage_file) {
+            let _ = fs::remove_file(&temporary);
+            return Err(BotError::WriteFailed(error));
+        }
+        Ok(())
+    }
+
+    fn temporary_path(&self) -> PathBuf {
+        let mut name = self
+            .storage_file
+            .file_name()
+            .map(|name| name.to_os_string())
+            .unwrap_or_else(|| OsString::from(DEFAULT_STORAGE_FILE));
+        name.push(".tmp");
+        self.storage_file.with_file_name(name)
     }
 }
 
-/// 时间、进程与计数混合的短标识，避免同一进程内快速连续创建取到相同值。
-fn next_token() -> u64 {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let counter = NEXT.fetch_add(1, Ordering::Relaxed);
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_nanos() as u64)
-        .unwrap_or(0);
-    now.rotate_left(17) ^ counter.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ u64::from(process::id())
+/// 存储文件的完整内容。
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BotsDocument {
+    bots: Vec<Bot>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::templates::{Agent, BotTemplate};
+/// 校验持久文件结构和 Bot 身份；选项适用性只在保存/创建时按当前目录校验。
+fn validate_document(bots: &[Bot]) -> Result<(), BotError> {
+    let mut seen = Vec::with_capacity(bots.len());
+    for bot in bots {
+        if bot.id.trim().is_empty() {
+            return Err(BotError::Corrupt("Bot缺少标识".to_string()));
+        }
+        if seen.contains(&bot.id) {
+            return Err(BotError::Corrupt("Bot标识重复".to_string()));
+        }
+        seen.push(bot.id.clone());
 
-    fn template(rule: &str) -> BotTemplate {
-        BotTemplate {
-            id: "tpl-literal".to_string(),
-            name: "审查".to_string(),
-            bot_name: rule.to_string(),
-            agent: Agent::Omp,
-            model: "default".into(),
-            thinking: "default".into(),
-            skill: None,
-            prompt: String::new(),
-            extensions: Vec::new(),
+        if bot.name.trim().is_empty() {
+            return Err(BotError::Corrupt(format!(
+                "Bot {} 缺少显示名",
+                bot.id
+            )));
+        }
+        if bot.chat_name.trim().is_empty()
+            || bot.chat_name.contains(|c| c == '\n' || c == '\r')
+        {
+            return Err(BotError::Corrupt(format!(
+                "Bot {} 的 chat-name 不是合法单行规则",
+                bot.id
+            )));
         }
     }
+    Ok(())
+}
 
-    /// P8：四个已承诺字段与固定文字按预写的完整名称渲染，不依赖实现计算期望。
-    #[test]
-    fn renders_the_four_fields_with_literal_expected_names() {
-        let template = template("{zone.name} · {template.name} · {agent} · {bot.id}");
-        assert_eq!(
-            render_bot_name(
-                &template.bot_name,
-                r"C:\Projects\alpha",
-                &template,
-                "a7f3c2"
-            ),
-            "alpha · 审查 · omp · a7f3c2"
+/// 生成一个不与现有 Bot 重复的标识。
+fn next_id(bots: &[Bot]) -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    loop {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let candidate = format!(
+            "tpl-{nanos:x}-{:x}",
+            COUNTER.fetch_add(1, Ordering::Relaxed)
         );
-        assert_eq!(
-            render_bot_name(
-                &template.bot_name,
-                r"D:\work\团队 目录",
-                &template,
-                "0f1e2d"
-            ),
-            "团队 目录 · 审查 · omp · 0f1e2d"
-        );
-    }
-
-    /// `{bot.id}` 是短实例标识；未知占位符保持原样，不被当作脚本或表达式执行。
-    #[test]
-    fn leaves_unknown_placeholders_literal() {
-        let template = template("{template.name} · {bot.id} · {unknown} · {zone.name}");
-        assert_eq!(
-            render_bot_name(&template.bot_name, "/tmp/beta", &template, "00a1b2"),
-            "审查 · 00a1b2 · {unknown} · beta"
-        );
-    }
-
-    #[test]
-    fn bot_id_is_six_lowercase_hex_characters() {
-        let id = new_bot_id();
-        assert_eq!(id.len(), BOT_ID_LEN);
-        assert!(is_valid_bot_id(&id), "{id}");
-        for invalid in ["", "A7F3C2", "a7f3c", "a7f3c2x", "a7f3c\n"] {
-            assert!(!is_valid_bot_id(invalid), "{invalid:?} 不应是合法短标识");
+        if !bots.iter().any(|bot| bot.id == candidate) {
+            return candidate;
         }
-    }
-
-    /// 无 Skill、无 prompt、非空 input 时按字面提交本次任务。
-    #[test]
-    fn plain_input_is_submitted_once_without_extra_prefix() {
-        let template = template("{bot.id}");
-        assert_eq!(
-            compose_initial_input(&template, template.skill.as_deref(), "检查登录\n第二行"),
-            "检查登录\n第二行"
-        );
-    }
-
-    /// 有 Skill 时只生成一次 `/skill:` 调用，名称后接普通空格与正文。
-    #[test]
-    fn skill_uses_one_native_invocation_prefix() {
-        let mut template = template("{bot.id}");
-        template.skill = Some("code-review".into());
-        template.prompt = "固定指示".to_string();
-        assert_eq!(
-            compose_initial_input(&template, template.skill.as_deref(), "本次任务"),
-            "/skill:code-review 固定指示\n\n本次任务"
-        );
     }
 }

@@ -858,7 +858,7 @@ async fn the_shutdown_commands_close_their_request_face_and_keep_no_immediate_al
 
 /// 验收 P37：交付装配（真实的 Win32 动作）同样注册这两条命令；探测只用 GET，不产生任何副作用。
 #[tokio::test]
-async fn the_production_assembly_registers_both_shutdown_commands() {
+async fn the_production_assembly_registers_chath_shutdown_commands() {
     let config = common::config(Path::new("unused.bat"), Path::new("."));
     let app = herdr_bot::app(&config);
 
