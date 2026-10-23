@@ -301,7 +301,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let other_file = native(root.path(),&herdr,"omp",other);
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":other})).await["outcome"],"restored");
-        assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--resume",other]));
+        assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--resume",other]));
         let done = create(&panel,zone,source_a).await;
         collected(&panel,other,&done["name"]).await;
         drop(panel);
@@ -314,5 +314,158 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         assert_eq!(row["firstRecordedAt"],123);
         assert_eq!(row["memo"],"independent memo");
         assert_eq!(fs::read(&file).unwrap(),original_native);
+    }
+}
+
+// P7/P15: independently seeded legacy, external register, and real creation
+// followed by Bot deletion must all use native discovery. A fixed-only fallback
+// or a same-name/cwd source guess would leak --no-extensions or an entrypoint.
+// Approved seams: public HTTP, real process restart/disk, external CLI argv.
+#[tokio::test]
+async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() {
+    for agent in ["pi", "omp"] {
+        for scenario in ["legacy", "external", "deleted"] {
+            let root = TempDir::new("native discovery");
+            let herdr = HerdrFixture::new("native discovery herdr");
+            configure(root.path(), &herdr);
+            catalog(root.path(), agent, "discovery", true);
+            let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
+            let panel = Panel::start(root.path());
+            let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+            let saved = post(&panel, "/api/bots", bot(agent, "a", "Same name")).await;
+            let source = saved["bots"][0]["id"].as_str().unwrap();
+            match scenario {
+                "legacy" => fs::write(root.path().join("history.json"), serde_json::to_vec(&json!([{
+                    "sessionId":"native-discovery-full-001", "sessionName":"Same name", "agentType":agent,
+                    "cwd":root.path(), "firstRecordedAt":123, "sessionFile":file, "originalWorkspaceId":"w-target"
+                }])).unwrap()).unwrap(),
+                "external" => register(&panel, "native-discovery-full-001", json!({
+                    "sessionName":"Same name", "agentType":agent, "cwd":root.path(), "sessionFile":file,
+                    "originalWorkspaceId":"w-target", "sourceBotId":source
+                })).await,
+                "deleted" => {
+                    create(&panel, zones["zones"][0]["path"].as_str().unwrap(), source).await;
+                    history(&panel, 1).await;
+                    let reply = request_json_over_tcp(panel.addr, "DELETE", &format!("/api/bots/{source}"), None).await;
+                    assert_eq!(reply.status, 200, "{}", reply.body);
+                    post(&panel, "/api/bots", bot(agent, "b", "Same name")).await;
+                }
+                _ => unreachable!(),
+            }
+            drop(panel);
+            let before = fs::read(root.path().join("history.json")).unwrap();
+            let panel = Panel::start(root.path());
+            let offset = herdr.calls().len();
+            let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-discovery-full-001"})).await;
+            assert_eq!(result["outcome"], "restored", "{agent}/{scenario}: {result}");
+            assert_eq!(result["degradations"].as_array().unwrap().len(), 1, "{result}");
+            let degradation = &result["degradations"][0];
+            assert_eq!(degradation["element"], "extensions");
+            assert!(degradation["reason"].as_str().unwrap().contains(if scenario == "deleted" { "已删除" } else { "缺少来源 Bot" }), "{result}");
+            assert!(degradation["strategy"].as_str().unwrap().contains("原生默认扩展发现"), "{result}");
+            let calls = herdr.calls();
+            assert_eq!(calls[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],
+                json!([if agent == "omp" { "--resume" } else { "--session" }, file]), "{agent}/{scenario}");
+            assert!(!calls[offset..].iter().any(|c| c["kind"] == "agent_prompt"));
+            assert_eq!(fs::read(root.path().join("history.json")).unwrap(), before);
+        }
+    }
+}
+
+// P8/P17: public reads must not initialize or enrich storage. The independent
+// legacy fixture has no source, no name_from_zone, and no Bot/zone files.
+// Compare bytes AND modification time across requests and actual process restarts;
+// transient Workspace labels may change, but the persisted stable ID must not.
+#[tokio::test]
+async fn history_reads_only_resolve_workspace_names_without_any_persistent_enrichment() {
+    let root = TempDir::new("history read integrity");
+    let herdr = HerdrFixture::new("history read integrity herdr");
+    configure(root.path(), &herdr);
+    catalog(root.path(), "pi", "read-only", true);
+    let catalog_bytes = fs::read(root.path().join("options.toml")).unwrap();
+    let history_file = root.path().join("history.json");
+    let bytes = serde_json::to_vec_pretty(&json!([{
+        "sessionId":"legacy-independent-001", "sessionName":"Same name", "agentType":"pi",
+        "cwd":root.path(), "firstRecordedAt":123, "originalWorkspaceId":"w-stable", "memo":"  unchanged\n备注  "
+    }])).unwrap();
+    fs::write(&history_file, &bytes).unwrap();
+    let modified = fs::metadata(&history_file).unwrap().modified().unwrap();
+    for label in [Some("Original name"), Some("Renamed live name"), None] {
+        herdr.set_workspaces(json!([
+            {"workspace_id":"w-stable", "label":label.unwrap_or("Name lookup unavailable")},
+            {"workspace_id":"w-decoy", "label":"Original name", "focused":true}
+        ]));
+        herdr.set_behavior(json!({"fail_workspace_list":label.is_none()}));
+        let panel = Panel::start(root.path());
+        for _ in 0..3 {
+            let view = read(&panel, "/api/sessions/history").await;
+            let row = &view["sessions"][0];
+            assert_eq!(row["sessionId"], "legacy-independent-001");
+            assert_eq!(row["originalWorkspaceId"], "w-stable");
+            assert_eq!(row["originalWorkspaceName"], json!(label));
+            assert_eq!(row["memo"], "  unchanged\n备注  ");
+            assert!(row.get("sourceBotId").is_none());
+            assert_eq!(fs::read(&history_file).unwrap(), bytes);
+            assert_eq!(fs::metadata(&history_file).unwrap().modified().unwrap(), modified);
+            assert_eq!(fs::read(root.path().join("options.toml")).unwrap(), catalog_bytes);
+            for absent in ["bots.json", "zones.json"] {
+                assert!(!root.path().join(absent).exists(), "read initialized {absent}");
+            }
+        }
+        drop(panel);
+    }
+    fs::remove_file(&history_file).unwrap();
+    let panel = Panel::start(root.path());
+    assert_eq!(read(&panel, "/api/sessions/history").await["total"], 0);
+    assert!(!history_file.exists(), "empty history read initialized persistence");
+}
+
+// P17: corruption, OS read failure, TOML parse failure and TOML OS read failure
+// are not deletion. Keep real storage/config IO in the path, alter one boundary
+// after a successful ordinary launch, and observe HTTP plus no new external
+// Tab/start/input. A catch-all NotFound fallback would start native discovery.
+#[tokio::test]
+async fn unreadable_bot_storage_or_catalog_fails_without_start_or_repair() {
+    for agent in ["pi", "omp"] {
+        for mechanism in ["bots-corrupt", "bots-unreadable", "catalog-parse", "catalog-unreadable"] {
+            let root = TempDir::new("resume storage failures");
+            let herdr = HerdrFixture::new("resume storage failure herdr");
+            configure(root.path(), &herdr);
+            catalog(root.path(), agent, "failures", true);
+            native(root.path(), &herdr, agent, "native-error-full-001");
+            let panel = Panel::start(root.path());
+            let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+            let saved = post(&panel, "/api/bots", bot(agent, "a", "Source")).await;
+            create(&panel, zones["zones"][0]["path"].as_str().unwrap(), saved["bots"][0]["id"].as_str().unwrap()).await;
+            history(&panel, 1).await;
+            let history_bytes = fs::read(root.path().join("history.json")).unwrap();
+            let affected = root.path().join(if mechanism.starts_with("bots") { "bots.json" } else { "options.toml" });
+            let unreadable = mechanism.ends_with("unreadable");
+            if unreadable {
+                fs::remove_file(&affected).unwrap();
+                fs::create_dir(&affected).unwrap();
+                fs::write(affected.join("preserve.txt"), "do not repair this directory").unwrap();
+            } else {
+                fs::write(&affected, "{ independently invalid document !!!").unwrap();
+            }
+            let offset = herdr.calls().len();
+            let tab_count = herdr.tabs().len();
+            let response = post_json_over_tcp(panel.addr, "/api/chats/resume", r#"{"sessionId":"native-error-full-001"}"#).await;
+            assert_eq!(response.status, 502, "{agent}/{mechanism}: {}", response.body);
+            let result: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(result["outcome"], "failed");
+            assert_eq!(result["stage"], "settings");
+            assert_eq!(result["code"], if mechanism.starts_with("bots") { mechanism } else { "invalid-agent-settings" });
+            assert_eq!(result["degradations"], json!([]), "a read error must not select discovery: {result}");
+            assert!(!herdr.calls()[offset..].iter().any(|call| ["tab_create", "agent_start", "agent_prompt", "agent_input"].contains(&call["kind"].as_str().unwrap())));
+            assert_eq!(herdr.tabs().len(), tab_count);
+            assert_eq!(fs::read(root.path().join("history.json")).unwrap(), history_bytes);
+            if unreadable {
+                assert!(affected.is_dir());
+                assert_eq!(fs::read_to_string(affected.join("preserve.txt")).unwrap(), "do not repair this directory");
+            } else {
+                assert_eq!(fs::read_to_string(affected).unwrap(), "{ independently invalid document !!!");
+            }
+        }
     }
 }

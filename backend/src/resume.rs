@@ -80,7 +80,7 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
 }
 
 async fn restore_with_feedback(state: &AppState, selected: &crate::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
-    use crate::{bots::{Agent, BotError}, herdr::NavigationTarget};
+    use crate::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
     let cwd = match selected.cwd.as_deref().filter(|cwd| std::path::Path::new(cwd).is_absolute() && std::path::Path::new(cwd).is_dir()) {
         Some(cwd) => cwd,
@@ -90,24 +90,10 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
         Ok(identity) => identity,
         Err((code, message)) => return restore_failure(feedback, label, "session", code, &message, None),
     };
-    let catalog = match state.bots.catalog() {
-        Ok(catalog) => catalog,
-        Err(error) => return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error.message(), None),
+    let mut args = match feedback.environment_args(state, selected, kind).await {
+        Ok(args) => args,
+        Err((code, message)) => return restore_failure(feedback, label, "settings", code, &message, None),
     };
-    let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
-    let selections = match selected.source_bot_id.as_deref() {
-        Some(id) => match state.bots.get(id).await {
-            Ok(bot) if bot.agent == agent => bot.env.extensions,
-            Ok(_) | Err(BotError::NotFound) => Vec::new(),
-            Err(error) => return restore_failure(feedback, label, "settings", error.code(), &error.message(), None),
-        },
-        None => Vec::new(),
-    };
-    let env = match catalog.resolve_env(agent, &selections) {
-        Ok(env) => env,
-        Err(error) => return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error.message(), None),
-    };
-    if let Err(error) = env.check_entrypoints() { return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error, None); }
     let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref()).await {
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
@@ -119,7 +105,6 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
     };
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
     let name = crate::chats::new_agent_name();
-    let mut args = crate::chats::agent_launch_args(&env, None);
     args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
     if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
         if matches!(error, HerdrError::Timeout(_)) {
@@ -160,6 +145,36 @@ mod degradation {
     impl Feedback {
         pub(super) fn record(&mut self, element: &'static str, reason: String, strategy: String) {
             self.items.push(Item { element, reason, strategy });
+        }
+
+        pub(super) async fn environment_args(&mut self, state: &AppState, selected: &crate::history::HistorySelection, kind: &str) -> Result<Vec<String>, (&'static str, String)> {
+            use crate::bots::{Agent, BotError};
+            let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
+            let bot = match selected.source_bot_id.as_deref() {
+                Some(id) => match state.bots.get(id).await {
+                    Ok(bot) => Some(bot),
+                    Err(BotError::NotFound) => {
+                        self.record("extensions", format!("来源 Bot 已删除（ID {id}，成功读取存储确认不存在）。"),
+                            "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。".into());
+                        None
+                    }
+                    Err(error) => return Err((error.code(), error.message())),
+                },
+                None => {
+                    self.record("extensions", "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。".into(),
+                        "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。".into());
+                    None
+                }
+            };
+            let Some(bot) = bot else { return Ok(Vec::new()); };
+            if bot.agent != agent {
+                return Err(("bot-agent-mismatch", "来源 Bot 的 agent 类型与所选历史不一致；尚未恢复。".into()));
+            }
+            let catalog = state.bots.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
+            let env = catalog.resolve_env(agent, &bot.env.extensions)
+                .map_err(|error| ("invalid-agent-settings", error.message()))?;
+            env.check_entrypoints().map_err(|error| ("invalid-agent-settings", error))?;
+            Ok(crate::chats::agent_launch_args(&env, None))
         }
 
         pub(super) async fn native_load(&mut self, selected: &crate::history::HistorySelection, kind: &str) -> Result<(String, String), (&'static str, String)> {

@@ -30,7 +30,7 @@ test('unavailable Pi file visibly selects the exact ID and retains degradation o
   const result = await (await response).json()
   expect(result.outcome).toBe('failed')
   expect(result.stage).toBe('start')
-  expect(result.degradations).toHaveLength(1)
+  expect(result.degradations).toHaveLength(2)
   expect(result.degradations[0].element).toBe('session-file')
   await expect(row.getByRole('alert')).toContainText(missing)
   await expect(row.getByRole('alert')).toContainText('精确原生 ID pi-page-exact-id')
@@ -64,13 +64,13 @@ test('Pi Resume shows confirmed default-workspace fallback and visible failure, 
   await row.getByRole('button', { name: 'Resume', exact: true }).click()
   const result = await (await response).json()
   expect(result.outcome).toBe('restored')
-  // P13/P15, S1/S2/S3: the file is usable, so only Workspace is degraded.
-  // A generic fallback message without the known cause or actual destination
-  // cannot distinguish a missing original location from a failed query.
-  expect(result.degradations).toHaveLength(1)
-  expect(result.degradations[0].element).toBe('workspace')
-  expect(result.degradations[0].reason).toContain('缺少原 Workspace')
-  expect(result.degradations[0].strategy).toContain('w-target')
+  // P13/P15, S1/S2/S3: the file is usable; missing source and Workspace are
+  // independently degraded. Preserve the known cause and actual destination.
+  expect(result.degradations).toHaveLength(2)
+  expect(result.degradations[0].element).toBe('extensions')
+  expect(result.degradations[1].element).toBe('workspace')
+  expect(result.degradations[1].reason).toContain('缺少原 Workspace')
+  expect(result.degradations[1].strategy).toContain('w-target')
   await expect(row.getByRole('status')).toContainText('缺少原 Workspace')
   await expect(row.getByRole('status')).toContainText('w-target')
   await expect(row.getByRole('status')).toContainText('默认 Workspace')
