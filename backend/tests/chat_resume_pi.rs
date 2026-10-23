@@ -165,6 +165,35 @@ async fn pi_file_identity_does_not_hide_an_incorrect_actual_target_cwd() {
     assert!(!herdr.calls().iter().any(|c| c["kind"] == "agent_focus"));
 }
 
+// P14/P15, S2/S3: independent missing-file sample and retained original Workspace.
+// Violation: exact-ID loading works but silently hides why the file was replaced.
+// Observe both the actual load reference and the public degradation facts.
+#[tokio::test]
+async fn unavailable_file_reports_exact_id_strategy_without_changing_the_result() {
+    let root = TempDir::new("Pi visible exact ID fallback");
+    let herdr = HerdrFixture::new("pi-visible-id-fallback");
+    let missing = root.path().join("unavailable.jsonl");
+    let config = setup(&root, &herdr, Some(&missing));
+    let mut records: Value = serde_json::from_slice(&std::fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    records[0]["originalWorkspaceId"] = json!("w-target");
+    std::fs::write(&config.sessions.history_file, records.to_string()).unwrap();
+    herdr.set_behavior(json!({"native_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":"pi-old-exact"}}));
+    let reply = resume(&config).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let body: Value = serde_json::from_str(&reply.body).unwrap();
+    assert_eq!(body["outcome"], "restored");
+    let items = body["degradations"].as_array().expect("visible degradation facts");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["element"], "session-file");
+    assert!(items[0]["reason"].as_str().unwrap().contains(missing.to_str().unwrap()));
+    assert!(items[0]["strategy"].as_str().unwrap().contains("pi-old-exact"));
+    assert!(body["message"].as_str().unwrap().contains("精确原生 ID"));
+    let calls = herdr.calls();
+    let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
+    assert!(start["args"].as_array().unwrap().windows(2).any(|w| w == [json!("--session"), json!("pi-old-exact")]));
+    assert!(!missing.exists(), "Resume must not repair the native file");
+}
+
 // P10: a missing file may fall back to the exact ID, not an arbitrary newest
 // session. These two inputs are independent from the file-preference sample.
 #[tokio::test]
