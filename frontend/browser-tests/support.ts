@@ -43,7 +43,7 @@ export type StartServerOptions = {
   /** Existing record-only PowerOff shell; required for tests sending shutdown commands. */
   safeShutdown?: boolean
   herdr?: HerdrFixtureSetup
-  /** Axum 监听地址；默认只监听回环。局域网用例传 `0.0.0.0:0`。 */
+  /** Axum 数值监听地址；普通入口只允许 127/8 或 [::1]，非回环仅供 startManualServer。 */
   listenAddr?: string
 }
 
@@ -95,6 +95,7 @@ export function lanIPv4(): string | null {
 async function browserListenAddress(address: string): Promise<string> {
   if (!address.endsWith(':0')) return address
   const host = address.slice(0, -2)
+  const bindHost = host.replace(/^\[|\]$/g, '')
   for (let attempt = 0; attempt < 32; attempt++) {
     const port = randomInt(49152, 65536)
     const server = net.createServer()
@@ -103,7 +104,7 @@ async function browserListenAddress(address: string): Promise<string> {
       if (error.code === 'EADDRINUSE' || error.code === 'EACCES') resolve(false)
       else reject(error)
     })
-    server.listen(port, host, () => server.close(error => error ? reject(error) : resolve(true)))
+    server.listen(port, bindHost, () => server.close(error => error ? reject(error) : resolve(true)))
     if (await promise) return `${host}:${port}`
   }
   throw new Error('无法为浏览器夹具分配安全的动态端口')
@@ -222,7 +223,32 @@ function startProcess(configPath: string, executable: string): Promise<{ child: 
   })
 }
 
+/** 普通浏览器验收只允许数值回环地址，不解析 hostname。 */
 export async function startServer(options: StartServerOptions = {}): Promise<E2EServer> {
+  const address = options.listenAddr ?? '127.0.0.1:0'
+  const match = /^(\[[^\]]+\]|[^:]+):(\d+)$/.exec(address)
+  const host = match?.[1].replace(/^\[|\]$/g, '') ?? ''
+  const family = net.isIP(host)
+  const loopback = family === 4
+    ? host.startsWith('127.')
+    : family === 6 && new URL(`http://[${host}]`).hostname === '[::1]'
+  if (!loopback || Number(match?.[2]) > 65535) {
+    throw new Error(`普通浏览器测试只允许数值回环监听地址，收到 ${address}；真实网卡验收请运行 npm run test:browser:manual。`)
+  }
+  return startServerImpl(options, address)
+}
+
+/** 仅显式手动验收入口授权真实网卡监听；普通 helper 永不接受此授权。 */
+export async function startManualServer(options: StartServerOptions = {}): Promise<E2EServer> {
+  if (process.env.HERDR_BOT_MANUAL_NETWORK !== '1') {
+    throw new Error('真实网卡验收需要 HERDR_BOT_MANUAL_NETWORK=1；请运行 npm run test:browser:manual。')
+  }
+  return startServerImpl(options, options.listenAddr ?? '127.0.0.1:0')
+}
+
+async function startServerImpl(options: StartServerOptions, listenAddr: string): Promise<E2EServer> {
+  const listenHost = listenAddr.slice(0, listenAddr.lastIndexOf(':'))
+  const localHost = listenHost === '0.0.0.0' ? '127.0.0.1' : listenHost === '[::]' ? '[::1]' : listenHost
   const executable = options.safeShutdown
     ? path.join(repoRoot, 'backend', 'target', 'debug', 'examples', 'safe_shutdown_shell.exe')
     : binary
@@ -286,14 +312,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
       workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
       executable: herdrExecutable,
     },
-    await browserListenAddress(options.listenAddr ?? '127.0.0.1:0'),
+    await browserListenAddress(listenAddr),
   )
 
   let running: { child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string } | null = null
 
   async function start() {
     running = await startProcess(configPath, executable)
-    await waitForBots(`http://127.0.0.1:${running.port}`)
+    await waitForBots(`http://${localHost}:${running.port}`)
   }
 
   await start()
@@ -301,7 +327,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<E2E
   return {
     get baseURL() {
       if (running === null) throw new Error('herdr-bot 进程未运行')
-      return `http://127.0.0.1:${running.port}`
+      return `http://${localHost}:${running.port}`
     },
     urlForHost(host: string) {
       if (running === null) throw new Error('herdr-bot 进程未运行')

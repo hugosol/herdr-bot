@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { expect, test } from '@playwright/test'
 
-import { lanIPv4, startServer, type E2EServer, type BotView } from './support'
+import { lanIPv4, startManualServer, type E2EServer, type BotView } from './support'
 import {
   activate,
   expectDialogInsideViewport,
@@ -16,7 +16,8 @@ import {
 } from './ui'
 
 /**
- * 局域网浏览器访问（P45 的自动部分）。
+ * 局域网浏览器访问（P45，显式手动验收：npm run test:browser:manual）。
+ * 默认浏览器套件不收集此文件；手动配置授权真实网卡监听，子进程继承授权。
  *
  * 服务按交付配置绑定 `0.0.0.0`，真实浏览器从本机网卡 IPv4 打开页面，完成 Bot 新增、读取、编辑、
  * 删除与 Bot 创建；独立 HTTP 客户端经同一局域网地址读取同一份 Bot。页面没有登录、账号或令牌步骤。
@@ -67,7 +68,7 @@ test('局域网地址可管理共享 Bot 并从 zone 发起 Chat，不额外要�
   test.skip(HOST === null, '本机没有可用的非回环 IPv4，无法构造真实局域网地址')
   if (HOST === null) return
 
-  server = await startServer({
+  server = await startManualServer({
     listenAddr: '0.0.0.0:0',
     herdr: { behavior: { agent_start_delay_ms: 400, prompt_delay_ms: 400 } },
   })

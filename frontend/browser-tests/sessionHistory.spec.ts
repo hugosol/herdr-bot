@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { lanIPv4, startServer, type E2EServer } from './support'
+import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -65,7 +65,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
 // P06: a real process restart, independent HTTP clients and two browser contexts
 // distinguish server persistence from a browser cache or process-local list.
 test('durable history survives refresh, browser closure and backend restart for independent device contexts', async ({ browser }) => {
-  server = await startServer({ listenAddr: '0.0.0.0:0' })
+  server = await startServer()
   const startedAt = Date.now()
   for (const [sessionId, data] of [
     ['durable-native-one-full-id', { cwd: 'C:/durable/one', sessionName: 'Durable one', agentType: 'pi' }],
@@ -96,8 +96,7 @@ test('durable history survives refresh, browser closure and backend restart for 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   try {
     const reopened = await mobile.newPage()
-    const host = lanIPv4()
-    const url = host === null ? server.baseURL : server.urlForHost(host)
+    const url = server.baseURL
     test.info().annotations.push({ type: 'independent browser read', description: url })
     await reopened.goto(url)
     await expect(reopened.getByRole('heading', { name: '当前会话', exact: true })).toBeVisible()

@@ -1,12 +1,16 @@
 <#
 .SYNOPSIS
-Builds the mDNS integration tests and runs stable copies of their executables.
+Builds the manual LAN and mDNS integration tests and runs stable runner copies.
 
 .DESCRIPTION
 Cargo names integration test executables with a content hash. Windows Firewall
 keys its "allow this app" rules by executable path, so every rebuild can create a
 new rule and show a new prompt. This script copies the two mDNS test executables
-to stable paths under backend\target\debug and runs those copies instead.
+and the session_write_boundary/monitoring LAN test executables to stable paths
+under backend\target\debug and runs only their ignored tests. Real NIC listeners
+are authorized with HERDR_BOT_MANUAL_NETWORK=1 only while those runners execute;
+the previous environment value is restored afterward. Default cargo test stays
+loopback-only.
 
 Run -ConfigureFirewall once (the script asks for UAC elevation):
     .\scripts\run-mdns-tests.ps1 -ConfigureFirewall
@@ -19,7 +23,7 @@ running herdr-bot panel before running this script. The script refuses to run
 mdns_conflict while port 8787 is listening.
 
 .PARAMETER ConfigureFirewall
-Adds inbound allow rules for the two stable test runners and the debug
+Adds inbound allow rules for the four stable LAN/mDNS test runners and the debug
 herdr-bot.exe. Requires administrator privileges; the script self-elevates.
 
 .PARAMETER NoBuild
@@ -42,7 +46,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $repoRoot 'backend'
 $manifest = Join-Path $backendDir 'Cargo.toml'
 $debugDir = Join-Path $backendDir 'target\debug'
-$testNames = @('mdns_failure', 'mdns_conflict')
+$testNames = @('mdns_failure', 'mdns_conflict', 'session_write_boundary', 'monitoring')
 $runners = @{}
 
 function Get-StableRunnerPath([string]$name) {
@@ -51,7 +55,11 @@ function Get-StableRunnerPath([string]$name) {
 
 function Build-And-CopyRunners {
     Write-Host 'Building test executables...'
-    $jsonLines = & cargo test --manifest-path $manifest --no-run --message-format=json
+    $testArguments = @()
+    foreach ($name in $testNames) {
+        $testArguments += @('--test', $name)
+    }
+    $jsonLines = & cargo test --manifest-path $manifest --no-run --message-format=json @testArguments
     if ($LASTEXITCODE -ne 0) {
         throw "cargo test --no-run failed with exit code $LASTEXITCODE"
     }
@@ -98,6 +106,8 @@ function Configure-TestFirewallRules {
     $programs = @(
         @{ Name = 'herdr-bot-mdns-test-mdns-failure-runner'; Path = (Get-StableRunnerPath 'mdns_failure') },
         @{ Name = 'herdr-bot-mdns-test-mdns-conflict-runner'; Path = (Get-StableRunnerPath 'mdns_conflict') },
+        @{ Name = 'herdr-bot-mdns-test-session-write-boundary-runner'; Path = (Get-StableRunnerPath 'session_write_boundary') },
+        @{ Name = 'herdr-bot-mdns-test-monitoring-runner'; Path = (Get-StableRunnerPath 'monitoring') },
         @{ Name = 'herdr-bot-mdns-test-debug-panel'; Path = (Join-Path $debugDir 'herdr-bot.exe') }
     )
 
@@ -148,9 +158,18 @@ if ($ListOnly) {
 $failureRunner = Get-StableRunnerPath 'mdns_failure'
 $conflictRunner = Get-StableRunnerPath 'mdns_conflict'
 $exitCode = 0
+$previousManualNetwork = [Environment]::GetEnvironmentVariable('HERDR_BOT_MANUAL_NETWORK', 'Process')
 
 Push-Location $backendDir
 try {
+    [Environment]::SetEnvironmentVariable('HERDR_BOT_MANUAL_NETWORK', '1', 'Process')
+    foreach ($name in @('session_write_boundary', 'monitoring')) {
+        Write-Host ("Running {0} manual LAN tests..." -f $name)
+        $runner = Get-StableRunnerPath $name
+        & $runner --ignored --nocapture
+        if ($LASTEXITCODE -ne 0) { $exitCode = 1 }
+    }
+
     Write-Host 'Running mdns_failure tests...'
     & $failureRunner --ignored --nocapture
     if ($LASTEXITCODE -ne 0) { $exitCode = 1 }
@@ -164,6 +183,7 @@ try {
         if ($LASTEXITCODE -ne 0) { $exitCode = 1 }
     }
 } finally {
+    [Environment]::SetEnvironmentVariable('HERDR_BOT_MANUAL_NETWORK', $previousManualNetwork, 'Process')
     Pop-Location
 }
 

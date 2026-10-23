@@ -165,6 +165,7 @@ async fn loopback_source_write_is_accepted() {
 
 /// 同机经本机网卡地址接入（扩展连 `herdr-bot.local:8787` 时的真实形态）能通过校验，不被误拒。
 #[tokio::test]
+#[ignore = "真实网卡验收：通过 scripts/run-mdns-tests.ps1 手动运行"]
 async fn same_host_access_via_local_nic_address_is_accepted() {
     let Some(address) = local_nic_ipv4() else {
         eprintln!("跳过：本机没有可发布的局域网 IPv4，无法构造经网卡地址的同机访问");
@@ -174,7 +175,7 @@ async fn same_host_access_via_local_nic_address_is_accepted() {
     let sessions = Arc::new(SessionsState::new());
     // 监听在网卡地址上：同机连这个地址时，TCP 源地址就是那个网卡地址（不是 127.0.0.1）。
     let server =
-        TestServer::start_app_on(SocketAddr::from((address, 0)), app_with(&sessions)).await;
+        TestServer::start_manual_app_on(SocketAddr::from((address, 0)), app_with(&sessions)).await;
 
     let response = post_json_over_tcp(
         server.addr(),

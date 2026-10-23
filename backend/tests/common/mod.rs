@@ -389,11 +389,28 @@ impl TestServer {
         Self::start_app_on("127.0.0.1:0".parse().expect("回环测试监听地址"), app).await
     }
 
-    /// 在**指定**地址的临时端口上启动给定的应用。
-    ///
-    /// 用于让请求的 TCP 对端地址取到回环之外的地址：绑定本机某个网卡地址后再连它，同机访问的源
-    /// 地址就是那个网卡地址——正是扩展经 `herdr-bot.local` 连进来时服务端看到的样子。
+    /// 在指定的回环地址上启动应用；即使手动网络授权已设置，普通入口也拒绝非回环监听。
     pub async fn start_app_on(bind: SocketAddr, app: axum::Router) -> Self {
+        assert!(
+            bind.ip().is_loopback(),
+            "普通测试只允许回环（loopback）监听：{bind}；真实网卡验收请使用手动入口"
+        );
+        Self::bind_app_on(bind, app).await
+    }
+
+    /// 仅供显式手动运行的真实网卡验收使用，在绑定前检查网络授权。
+    ///
+    /// 通过 scripts/run-mdns-tests.ps1 运行；绑定本机网卡后，同机连接的 TCP 来源也是该网卡地址。
+    pub async fn start_manual_app_on(bind: SocketAddr, app: axum::Router) -> Self {
+        assert_eq!(
+            std::env::var("HERDR_BOT_MANUAL_NETWORK").as_deref(),
+            Ok("1"),
+            "真实网卡验收必须经手动入口授权：HERDR_BOT_MANUAL_NETWORK=1"
+        );
+        Self::bind_app_on(bind, app).await
+    }
+
+    async fn bind_app_on(bind: SocketAddr, app: axum::Router) -> Self {
         let listener = tokio::net::TcpListener::bind(bind)
             .await
             .expect("绑定测试监听端口");

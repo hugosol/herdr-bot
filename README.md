@@ -60,4 +60,32 @@ python scripts\migrate-bot-chat-terminology.py --config herdr-bot.toml
 源码在 `backend/`（Rust/Axum）和 `frontend/`（React/Vite）。
 自动检查入口为 `cargo test --manifest-path backend\Cargo.toml`、
 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser`；
-浏览器检查需要构建后的前后端和本机 Chrome。
+浏览器检查需要构建后的前后端和本机 Chrome。Cargo 检查也需要 Node.js，以执行跨前后端的测试网络护栏。
+
+### 测试网络边界
+
+默认测试可以启动真实进程及 HTTP／SSE 服务，但只能监听数值回环地址；不得监听所有接口、本机网卡地址或发布真实 mDNS。
+Rust `TestServer::start_app_on` 和浏览器 `startServer` 在绑定前拒绝非回环地址，即使已设置手动授权也不放宽。
+普通测试应复用这些入口，不得自行导入网络模块或创建 listener。历史持久化、进程重启与多浏览器上下文测试仍走回环。
+
+真实 LAN／mDNS 验收须显式手动运行：
+
+```powershell
+# Rust：构建并复制到固定路径，再运行 ignored LAN／mDNS 用例。
+.\scripts\run-mdns-tests.ps1
+# 仅构建并打印 runner 路径，不打开监听。
+.\scripts\run-mdns-tests.ps1 -ListOnly
+# 浏览器：只运行真实 LAN 验收；前置构建要求同普通浏览器检查。
+npm --prefix frontend run test:browser:manual
+```
+
+Rust 脚本沿用原文件名，但现在覆盖 `mdns_failure`、`mdns_conflict`、`session_write_boundary` 和 `monitoring` 的手动用例。
+它把带哈希的 Cargo 测试程序复制为 `backend\target\debug\<测试名>_runner.exe`，避免重建换路径引起重复授权；
+直接 `cargo test -- --ignored` 不提供这一保证。手动入口设置 `HERDR_BOT_MANUAL_NETWORK=1`；这不是普通测试的绕过开关。
+真实 mDNS 用例需要独占 `herdr-bot.local`，运行前停止正在使用该名字的服务。只有用户明确需要配置规则时，才单独使用脚本的 `-ConfigureFirewall`；该选项会请求管理员权限并配置入站放行。
+
+`node scripts/check-test-network-policy.mjs` 检查跨前后端测试中的直接监听 API、网络模块导入、手动 helper 的调用位置及 Rust 手动用例的忽略标记。
+它通过 Cargo 的 `network_policy` 测试和 npm 的 `pretest`／`pretest:watch`／`pretest:browser`／`pretest:browser:manual` 自动执行；直接调用底层 Vitest／Playwright 不会执行 npm hook。
+护栏自身的回归检查为 `node --test scripts/check-test-network-policy.test.mjs`。
+例外限定到脚本内列出的具体基础设施函数和手动用例，不豁免整个目录。新增真实网络能力时必须同时审查手动入口、默认收集规则与固定 runner；不能只增加豁免。
+静态检查针对已知 API，配合运行时地址约束防误用，不是能识别任意第三方库或动态代码的网络沙箱。

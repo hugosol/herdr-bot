@@ -8,6 +8,8 @@ import { defineConfig } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './browser-tests',
+  // 真实网卡验收仅由 playwright.manual.config.ts 显式收集。
+  testIgnore: '**/*.manual.spec.ts',
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

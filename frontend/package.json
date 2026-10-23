@@ -7,9 +7,14 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "pretest": "node ../scripts/check-test-network-policy.mjs",
+    "pretest:watch": "node ../scripts/check-test-network-policy.mjs",
+    "pretest:browser": "node ../scripts/check-test-network-policy.mjs",
+    "pretest:browser:manual": "node ../scripts/check-test-network-policy.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:browser:manual": "playwright test --config playwright.manual.config.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
