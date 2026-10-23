@@ -1,0 +1,67 @@
+# implement
+
+```json
+{
+  "role": "implement",
+  "agent": "tdd",
+  "agent_id": "02-resume-source-bot-environmentmd-de9b1297-d450",
+  "head": "fa529138f0ff441576a8cc88e72c9b0036f452f2",
+  "exitCode": 0,
+  "aborted": false,
+  "truncated": false
+}
+```
+
+{
+  "ticket": "02-resume-source-bot-environment",
+  "implementation": "complete",
+  "commit": "fa52913",
+  "branch": "hyper/chat-resume-extensions/02-resume-source-bot-environment-e420ca-5eca7a2aea10",
+  "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-kSgRdN",
+  "delivered": [
+    "Bot.trigger 与 Bot.env、已解析 trigger/env 配置分离；保持现有 Bot HTTP／磁盘字段形状，不需要格式迁移。",
+    "正常发起确认完整原生身份后持久化首次可信 sourceBotId；register 无权提供来源。共用现有串行读／合并／替换事务，保持首次时间、备忘及已知信息。",
+    "Resume 使用来源 Bot 的最新 env config 和当前目录映射；不解析或重放 trigger config，不提交初始输入，不传 Bot model／thinking 覆盖。",
+    "更新 README、集成边界及唯一指定票据中的验收证据；实现已提交，worktree 可交接。"
+  ],
+  "acceptance_evidence": [
+    {
+      "criteria": "P1/P2/P3/P4 自动覆盖/P9/P10/P18 有效发起",
+      "test": "source_survives_restart_and_resume_uses_latest_environment_without_trigger_replay",
+      "proves": "Pi、OMP 经正常发起、A→B 编辑、目录映射修改、真实服务进程重启后，恢复参数精确包含当前固定项与 B，排除 A／ambient，关闭自动发现；发起仍应用 model、thinking、Skill 和初始消息，恢复没有输入活动。初始 red 实际因恢复遗漏 B 而失败，随后 green。"
+    },
+    {
+      "criteria": "P10：trigger 失效不阻止环境恢复",
+      "test": "invalid_model_or_initial_skill_does_not_block_environment_restoration",
+      "proves": "分别使已保存 Bot 的 model 或初始 Skill 失效；两种 agent 仍恢复有效环境，而普通发起保持拒绝。"
+    },
+    {
+      "criteria": "P2/P3/P9：补齐顺序、并发、来源不变与持久化",
+      "test": "intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and_identity_set",
+      "proves": "覆盖 register 先到、发起收录先到、外部原生身份屏障与同时 HTTP 写入；来源 A 不被后续 B、无来源 register 或伪造字段覆盖；缺失来源只能由明确发起填入。跨进程核对完整独立身份集合、首次时间、备忘、缺省不擦除以及原生文件不变。"
+    },
+    {
+      "criteria": "普通发起扩展校验及既有行为",
+      "evidence": "现有 dynamic_catalog、chat_creation、历史和恢复回归通过。"
+    }
+  ],
+  "verification": [
+    {
+      "command": "cargo test --manifest-path backend/Cargo.toml --lib --test bots --test dynamic_catalog --test chat_creation --test chat_identity --test omp_zone_history --test pi_zone_history --test session_history --test history_memo --test history_workspace --test chat_resume --test chat_resume_pi --test chat_resume_omp --test chat_resume_concurrency --test chat_resume_timeout --test chat_resume_environment --test network_policy",
+      "result": "176 passed，17 suites"
+    },
+    {
+      "command": "cargo test --manifest-path backend/Cargo.toml --lib --test bots --test dynamic_catalog --test chat_creation --test chat_resume_environment --test network_policy",
+      "result": "最终配置调整后 119 passed，6 suites"
+    }
+  ],
+  "limitations": [
+    "真实 HTTP 请求 smoke 使用交付服务独立进程、真实隔离文件和受控 Herdr CLI 进程。参数记录不代表真实扩展加载或真实 agent 加载验收。P4 人工真实加载仍由 07 准备、用户确认；P18 无效扩展对照属于 04。",
+    "没有操作用户现有 Chat，没有操作或合入集成分支工作区。"
+  ],
+  "integration_notes": [
+    "与 01 已协调相邻修改。合入其反馈包装时，本票 resume.rs 新增 restore_failure 调用需要补入 feedback 参数。",
+    "Bot 配置调用者现在使用 bot.trigger.model/thinking/skill/prompt 和 bot.env.extensions；agent_launch_args 接收 (&ResolvedEnvConfig, Option<&ResolvedTriggerConfig>)，Resume 传 None。",
+    "指定票据验收项已勾选；按仓库 closed 必须已合入的规则，状态保留 in-progress，待独立集成代理完成合入后关闭。"
+  ]
+}
