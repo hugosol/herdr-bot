@@ -1,0 +1,819 @@
+   Compiling herdr-bot v0.1.0 (C:\Users\hugos\AppData\Local\Temp\hyper-ticket-ED4AwV\backend)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.54s
+     Running unittests src\lib.rs (target\debug\deps\herdr_bot-d2cfadae457edac2.exe)
+
+running 77 tests
+test chats::tests::chat_id_is_six_lowercase_hex_characters ... ok
+test chats::tests::leaves_unknown_placeholders_literal ... ok
+test chats::tests::plain_input_is_submitted_once_without_extra_prefix ... ok
+test chats::tests::renders_the_four_fields_with_literal_expected_names ... ok
+test config::tests::config_without_zones_section_defaults_to_centralized_registry ... ok
+test config::tests::explicit_create_parent_directory_is_read_verbatim ... ok
+test config::tests::explicit_countdown_seconds_are_read_verbatim ... ok
+test config::tests::countdown_seconds_accepts_the_legal_bounds ... ok
+test commit::tests::confirmed_or_ordinary_failures_release_the_repository_qualification ... ok
+test commit::tests::unconfirmed_termination_keeps_the_repository_qualification ... ok
+test config::tests::config_without_herdr_section_is_rejected ... ok
+test config::tests::explicit_preview_limit_is_read_verbatim ... ok
+test config::tests::explicit_bots_storage_file_is_read_verbatim ... ok
+test config::tests::explicit_refresh_interval_is_read_verbatim ... ok
+test config::tests::git_section_with_only_other_defaults_keeps_timeout_default ... ok
+test chats::tests::skill_uses_one_native_invocation_prefix ... ok
+test config::tests::explicit_git_command_timeout_is_read_verbatim ... ok
+test config::tests::illegal_countdown_seconds_are_rejected_instead_of_falling_back ... ok
+test config::tests::illegal_git_command_timeouts_are_rejected_instead_of_falling_back ... ok
+test config::tests::herdr_workspace_name_must_be_explicit_and_non_blank ... ok
+test config::tests::legacy_config_without_bots_section_uses_default_storage_file ... ok
+test config::tests::legacy_config_without_create_parent_directory_disables_zone_creation ... ok
+test config::tests::legacy_config_without_git_section_defaults_to_five_minutes ... ok
+test config::tests::legacy_config_without_preview_limit_defaults_to_one_mebibyte ... ok
+test config::tests::illegal_session_windows_are_rejected_instead_of_falling_back ... ok
+test config::tests::legacy_config_without_mdns_section_parses_with_publishing_enabled_by_default ... ok
+test config::tests::legacy_config_without_refresh_interval_defaults_to_ten_seconds ... ok
+test config::tests::legacy_config_without_sessions_section_defaults_to_ten_and_thirty_seconds ... ok
+test config::tests::legacy_config_without_shutdown_section_defaults_to_ten_seconds ... ok
+test config::tests::mdns_enabled_and_address_are_read_when_present ... ok
+test config::tests::mdns_section_with_only_address_keeps_publishing_enabled_by_default ... ok
+test config::tests::misspelled_create_parent_directory_field_is_rejected ... ok
+test config::tests::misspelled_git_command_timeout_field_is_rejected ... ok
+test config::tests::misspelled_sessions_section_is_rejected ... ok
+test config::tests::misspelled_mdns_field_name_is_rejected ... ok
+test config::tests::misspelled_session_field_name_is_rejected ... ok
+test config::tests::misspelled_herdr_field_is_rejected ... ok
+test config::tests::misspelled_shutdown_field_name_is_rejected ... ok
+test config::tests::misspelled_shutdown_section_is_rejected ... ok
+test config::tests::misspelled_zones_field_name_is_rejected ... ok
+test config::tests::negative_refresh_interval_is_rejected ... ok
+test config::tests::only_the_missing_session_window_falls_back_to_its_default ... ok
+test config::tests::negative_preview_limit_is_rejected ... ok
+test config::tests::preview_limit_with_wrong_type_is_rejected ... ok
+test config::tests::refresh_interval_accepts_the_legal_lower_bound ... ok
+test config::tests::zero_preview_limit_is_rejected_instead_of_falling_back ... ok
+test config::tests::unknown_top_level_field_is_still_rejected ... ok
+test config::tests::session_windows_accept_the_legal_bounds ... ok
+test config::tests::zero_refresh_interval_is_rejected_instead_of_falling_back ... ok
+test config::tests::refresh_interval_with_wrong_type_is_rejected ... ok
+test config::tests::zones_registry_file_is_read_when_present ... ok
+test git::tests::parses_changes_renames_and_conflicts ... ok
+test mdns::tests::every_link_local_and_loopback_address_is_unpublishable ... ok
+test config::tests::status_cache_ttl_defaults_to_ten_seconds_and_accepts_positive_integer ... ok
+test mdns::tests::loopback_candidate_is_skipped_and_never_chosen ... ok
+test mdns::tests::fullname_constant_matches_the_published_service_instance ... ok
+test mdns::tests::name_change_of_our_own_records_triggers_the_fallback ... ok
+test mdns::tests::non_publishable_override_yields_no_address_instead_of_falling_back ... ok
+test mdns::tests::only_loopback_and_link_local_candidates_yield_no_address ... ok
+test mdns::tests::override_address_wins_over_automatic_candidates ... ok
+test mdns::tests::published_service_info_carries_the_hostname_port_and_only_ipv4 ... ok
+test mdns::tests::without_override_the_main_route_address_is_published_not_wsl_or_link_local ... ok
+test shutdown::tests::diagnostics_carry_a_distinct_category_and_the_original_error ... ok
+test status_cache::tests::completion_ttl_reads_do_not_renew_and_force_bypasses_fresh_value ... ok
+test status_cache::tests::errors_are_not_cached_as_fresh_success ... ok
+test sync::tests::confirmed_termination_and_ordinary_results_release_the_repository_qualification ... ok
+test sync::tests::unconfirmed_termination_keeps_the_repository_qualification ... ok
+test watch::gate_tests::an_event_exactly_at_the_window_end_refreshes_immediately ... ok
+test shutdown::tests::enabling_the_shutdown_privilege_succeeds_without_any_shutdown ... ok
+test watch::gate_tests::continuous_events_flush_once_per_window_instead_of_postponing_forever ... ok
+test watch::gate_tests::events_after_a_trailing_flush_open_a_new_window ... ok
+test status_cache::tests::invalidation_rejects_inflight_results_and_uses_replacement ... ok
+test watch::gate_tests::events_inside_window_are_merged_into_one_trailing_refresh_at_window_end ... ok
+test watch::gate_tests::application_notifications_reach_all_clients_without_filesystem_events_or_throttling ... ok
+test watch::gate_tests::first_event_without_waiting_window_refreshes_immediately ... ok
+test status_cache::tests::forced_and_ordinary_overlapping_reads_share_a_single_flight ... ok
+test status_cache::tests::concurrent_failure_is_shared_but_the_next_read_retries ... ok
+
+test result: ok. 77 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\main.rs (target\debug\deps\herdr_bot-444e3ed2a445ba30.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\herdr-fixture.rs (target\debug\deps\herdr_fixture-a71cb62aea3ca135.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\bots.rs (target\debug\deps\bots-670004d10dc6afee.exe)
+
+running 7 tests
+test rejects_invalid_fixed_fields_and_capability_violations ... ok
+test corrupt_storage_is_reported_and_never_overwritten ... ok
+test saves_a_complete_literal_bot_and_independent_clients_read_it ... ok
+test predetermined_bots_survive_a_real_process_restart ... ok
+test write_failure_is_reported_and_keeps_previously_saved_bots ... ok
+test edits_in_place_and_deletes_only_the_target_bot ... ok
+test accepts_every_supported_combination_and_empty_or_multiline_prompt ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.87s
+
+     Running tests\chat_creation.rs (target\debug\deps\chat_creation-04bec3ea0c4c54ea.exe)
+
+running 26 tests
+test an_unregistered_zone_is_rejected_before_any_herdr_call ... ok
+Initialized empty Git repository in C:/Users/hugos/AppData/Local/Temp/herdr-bot fixture checks/bot creation storage 37840-17/git worktree beta/.git/
+test current_workspace_rejects_root_without_a_directory_name ... ok
+test an_unreachable_herdr_fails_before_any_tab_or_agent_control ... ok
+test rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects ... ok
+test an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection ... ok
+test a_body_with_shell_special_characters_reaches_herdr_verbatim ... ok
+test a_name_with_shell_special_characters_reaches_herdr_verbatim ... ok
+test creating_a_chat_does_not_register_sessions_or_change_shutdown_state ... ok
+test a_stale_preview_is_rejected_instead_of_silently_renaming ... ok
+test a_skill_only_bot_submits_the_bare_skill_call ... ok
+test a_public_request_cannot_override_the_configured_workspace ... ok
+test workspace_mismatches_fail_without_creating_a_tab ... ok
+test a_skill_with_an_empty_section_composes_the_remaining_body ... ok
+test per_create_rule_uses_preview_context_without_changing_the_bot ... ok
+test a_failed_agent_start_never_submits_input ... ok
+test both_skills_submit_one_native_skill_invocation_with_the_full_body ... ok
+test creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone_cwd ... ok
+test current_workspace_uses_exact_zone_basename_without_fallback ... ok
+test workspace_retry_reuses_preview_but_preserves_independent_creation_records ... ok
+test a_rejected_submission_fails_creation_and_keeps_the_created_objects ... ok
+test without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix ... ok
+test explicit_agents_and_models_reach_herdr_as_native_launch_arguments ... ok
+test defaulted_model_and_thinking_are_absent_from_native_launch_arguments ... ok
+test workspace_query_and_tab_failures_stop_the_creation_chain ... ok
+test stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn ... ok
+test a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retrying ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.76s
+
+     Running tests\chat_creation_detached.rs (target\debug\deps\chat_creation_detached-8c7c253b374c638f.exe)
+
+running 10 tests
+test concurrent_zone_creations_render_their_own_zone_names ... ok
+test a_creation_blocked_before_readiness_does_not_queue_another ... ok
+test concurrent_creations_keep_their_own_accepted_bot_snapshots ... ok
+test concurrent_clients_get_independent_objects_and_inputs ... ok
+test a_creation_blocked_at_submission_does_not_queue_another ... ok
+test p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_independently ... ok
+test p37_bot_and_metadata_changes_leave_existing_chats_untouched ... ok
+test chat_creation_does_not_take_the_fixed_operation_execution_slot ... ok
+test accepted_creation_continues_when_the_submitting_client_disconnects ... ok
+test accepted_creation_continues_after_observation_connections_drop ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.07s
+
+     Running tests\chat_identity.rs (target\debug\deps\chat_identity-4b628f91f34190e4.exe)
+
+running 5 tests
+test each_agent_keeps_its_native_storage_selection_without_allocating_directories ... ok
+test two_creations_in_one_zone_are_distinct_objects_under_the_same_display_name ... ok
+test same_name_creations_receive_their_own_configuration_and_input ... ok
+test editing_and_deleting_a_bot_does_not_touch_an_existing_chat ... ok
+test an_accepted_creation_keeps_its_bot_snapshot_while_another_client_edits_it ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.62s
+
+     Running tests\chat_resume.rs (target\debug\deps\chat_resume-1b011380511db451.exe)
+
+running 7 tests
+test query_error_response_is_reported_without_focus_or_creation ... ok
+test native_path_matches_saved_id_and_focuses_actual_location_without_input ... ok
+test client_can_only_select_history_not_supply_execution_content ... ok
+test unreadable_relevant_identity_stops_but_unrelated_agent_does_not ... ok
+test multiple_matches_use_stable_location_order_on_every_attempt ... ok
+test identity_expressions_match_only_the_same_native_conversation ... ok
+test query_and_focus_failures_never_report_success_or_start_copies ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests\chat_resume_concurrency.rs (target\debug\deps\chat_resume_concurrency-204c3353fc308506.exe)
+
+running 3 tests
+test duplicate_requests_during_lookup_and_start_are_rejected_not_queued_then_fresh_request_can_run ... ok
+test other_chats_and_separate_instances_are_not_blocked_by_an_active_resume ... ok
+test located_and_explicit_lookup_focus_or_start_failures_release_for_a_new_user_request ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests\chat_resume_environment.rs (target\debug\deps\chat_resume_environment-dc3d5494f2249b90.exe)
+
+running 11 tests
+test history_reads_only_resolve_workspace_names_without_any_persistent_enrichment ... ok
+test missing_optional_mapping_is_filtered_only_on_resume ... ok
+test source_survives_restart_and_resume_uses_latest_environment_without_trigger_replay ... ok
+test missing_fixed_and_optional_entry_mappings_are_item_local ... ok
+test unreadable_fixed_and_optional_entries_keep_the_other_valid_item ... ok
+test missing_entrypoints_preserve_other_extensions_on_resume_only ... ok
+test invalid_model_or_initial_skill_does_not_block_environment_restoration ... ok
+test missing_source_and_deleted_bot_use_native_discovery_without_guessing ... ok
+test unreadable_bot_storage_or_catalog_fails_without_start_or_repair ... ok
+test intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and_identity_set ... ok
+test empty_explicit_environment_retains_each_warning_without_assuming_confirmation ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.69s
+
+     Running tests\chat_resume_omp.rs (target\debug\deps\chat_resume_omp-0ab1f63c43991b68.exe)
+
+running 5 tests
+test omp_unusable_sources_or_cwd_fail_without_creating_a_target ... ok
+test omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_focuses ... ok
+test omp_existing_target_or_lookup_failure_never_starts_another_process ... ok
+test omp_id_only_and_unavailable_file_resume_only_the_selected_native_id ... ok
+test omp_requires_same_native_identity_actual_cwd_and_confirmed_focus ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests\chat_resume_pi.rs (target\debug\deps\chat_resume_pi-e0b1a183f26f2e4a.exe)
+
+running 8 tests
+test wrong_session_file_fails_before_creation ... ok
+test missing_cwd_or_unrecognized_agent_type_never_starts_a_process ... ok
+test pi_file_identity_does_not_hide_an_incorrect_actual_target_cwd ... ok
+test pi_history_loads_file_in_recorded_cwd_then_focuses_without_input_or_bot_overrides ... ok
+test default_workspace_must_resolve_uniquely_before_creating_any_target ... ok
+test unavailable_file_reports_exact_id_strategy_without_changing_the_result ... ok
+test pi_id_only_and_unavailable_file_restore_the_exact_native_id ... ok
+test failed_launch_wrong_identity_and_focus_failure_cannot_be_success ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests\chat_resume_timeout.rs (target\debug\deps\chat_resume_timeout-311fa63e4b8ed3a6.exe)
+
+running 2 tests
+test pi_and_omp_mutating_command_timeouts_expose_only_observed_destination ... ok
+test pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_lookup_not_replay ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.64s
+
+     Running tests\chat_source_boundary.rs (target\debug\deps\chat_source_boundary-ae3a58a2bb2173cc.exe)
+
+running 1 test
+test lan_source_manages_bots_and_creates_chats_but_cannot_write_session_events ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests\connect_history_failures.rs (target\debug\deps\connect_history_failures-4c811120353121d4.exe)
+
+running 4 tests
+test accepted_connect_distinguishes_history_failure_and_preserves_previous_data ... ok
+test failed_history_has_no_autonomous_write_retry ... ok
+test unreadable_and_invalid_storage_are_errors_and_never_overwritten ... ok
+test explicit_register_recovers_new_and_existing_records_without_rewriting_first_time ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\connection_drop.rs (target\debug\deps\connection_drop-1788be36e124767a.exe)
+
+running 1 test
+test dropped_connection_keeps_the_operation_running_until_its_own_end ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.21s
+
+     Running tests\countdown_independence.rs (target\debug\deps\countdown_independence-a9edad013771d244.exe)
+
+running 7 tests
+test adding_monitoring_during_an_active_countdown_is_refused_precisely ... ok
+test a_global_cancel_without_a_countdown_clears_the_whole_monitored_set ... ok
+test a_manual_start_arranges_while_the_monitored_group_is_not_ready ... ok
+test both_entries_consume_the_whole_group_and_a_cancel_never_restores_members ... ok
+test a_cancel_once_the_execution_started_is_refused_and_never_withdrawn ... ok
+test a_cancellable_countdown_is_revoked_and_its_original_deadline_stays_silent ... ok
+test an_active_countdown_survives_member_offline_deletion_unregister_and_resume ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.66s
+
+     Running tests\cross_source_concurrency.rs (target\debug\deps\cross_source_concurrency-bffc93fe1dca6eec.exe)
+
+running 1 test
+test cross_source_write_failures_preserve_keep_alive_monitoring_and_countdown_for_pi_and_omp ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+     Running tests\dynamic_catalog.rs (target\debug\deps\dynamic_catalog-d1d5a4bc5f018c2e.exe)
+
+running 3 tests
+test current_metadata_drives_public_options_save_validation_and_stable_storage ... ok
+test delivered_configuration_reads_the_independent_metadata_directory_in_a_real_process ... ok
+test startup_rejects_missing_unreadable_syntax_duplicate_and_contradictory_metadata ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests\execution_result.rs (target\debug\deps\execution_result-ce592a838909d413.exe)
+
+running 10 tests
+test missing_working_directory_is_reported_as_failed_not_started ... ok
+test missing_script_is_reported_as_failed_not_started ... ok
+test non_executable_target_is_reported_as_failed_not_started ... ok
+test failure_looking_output_does_not_change_a_success_exit ... ok
+test success_looking_output_does_not_change_a_failure_exit ... ok
+test failure_exit_is_reported_as_failed ... ok
+test success_exit_is_reported_as_completed ... ok
+test both_fixed_operations_report_the_result_class ... ok
+test the_three_result_classes_are_mutually_distinguishable ... ok
+test detached_child_does_not_delay_the_completed_result ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.52s
+
+     Running tests\fixed_operations.rs (target\debug\deps\fixed_operations-e2fbc9a4ce5d46c1.exe)
+
+running 5 tests
+test default_config_binds_the_specified_start_and_shutdown_batches_in_their_directory ... ok
+test non_post_methods_never_run_the_bound_scripts ... ok
+test unknown_operation_names_are_rejected_with_a_category_and_without_running_any_script ... ok
+test two_operations_invoke_their_own_bound_scripts_with_their_configured_working_directories ... ok
+test parameter_carrying_requests_are_rejected_without_running_any_script ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.82s
+
+     Running tests\fixture_behavior.rs (target\debug\deps\fixture_behavior-0c0ce34324bd2294.exe)
+
+running 10 tests
+test unstartable_missing_working_directory_reports_not_started ... ok
+test unstartable_missing_script_never_runs_and_is_not_reported_as_success ... ok
+test unstartable_invalid_target_never_runs_and_is_not_reported_as_success ... ok
+test record_location_can_be_pointed_at_another_directory ... ok
+test overlapping_calls_are_recorded_once_each_without_lost_lines ... ok
+test failure_fixture_records_one_call_and_ends_with_explicit_failure_code ... ok
+test success_fixture_process_is_gone_after_the_call ... ok
+test success_fixture_records_one_call_and_ends_immediately_with_zero ... ok
+test detached_child_keeps_running_after_the_call_returns ... ok
+test long_running_fixture_stays_running_until_the_stop_entry_point ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.45s
+
+     Running tests\herdr_config.rs (target\debug\deps\herdr_config-885e9c01f610fd2f.exe)
+
+running 2 tests
+test an_explicit_workspace_name_starts_the_real_process ... ok
+test missing_empty_or_whitespace_workspace_name_prevents_startup ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\history_memo.rs (target\debug\deps\history_memo-0a6c38401b745366.exe)
+
+running 3 tests
+test legacy_memo_is_optional_and_lan_browser_can_save_exact_text_and_clear_it ... ok
+test workspace_labels_use_one_inventory_and_fail_without_losing_saved_ids_or_memos ... ok
+test missing_identity_and_failed_writes_preserve_existing_history ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests\history_pagination.rs (target\debug\deps\history_pagination-6eb4d0540f52c0c3.exe)
+
+running 5 tests
+test fifty_one_records_have_exact_first_and_last_pages ... ok
+test heartbeat_repeat_register_and_metadata_update_do_not_promote_old_history ... ok
+test equal_first_times_have_stable_pages_and_an_exact_complete_set ... ok
+test empty_full_and_multiple_pages_expose_every_record ... ok
+test unregister_zone_removal_expiry_age_and_growth_never_evict_history ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.16s
+
+     Running tests\history_workspace.rs (target\debug\deps\history_workspace-89f9616c90c9eb8e.exe)
+
+running 6 tests
+test locating_elsewhere_keeps_original_location_and_native_content ... ok
+test old_format_history_remains_readable_and_resumable_without_rewriting ... ok
+test original_workspace_query_failure_never_falls_back_or_starts ... ok
+test connect_history_preserves_original_workspace_across_restart_and_resumes_there ... ok
+test deleted_original_falls_back_without_overwriting_history_even_after_restart ... ok
+test normal_launch_and_connect_keep_literal_identity_set_and_original_location ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests\manual_shutdown_process.rs (target\debug\deps\manual_shutdown_process-91baf283744e6995.exe)
+
+running 3 tests
+test a_running_process_keeps_the_countdown_it_started_with ... ok
+test restarting_the_process_clears_registrations_and_the_active_arrangement ... ok
+test restarting_the_process_clears_monitoring_and_the_automatic_arrangement ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running tests\mdns_conflict.rs (target\debug\deps\mdns_conflict-bf10b0370067c47d.exe)
+
+running 2 tests
+test conflicting_hostname_is_neither_published_nor_renamed_and_panel_still_serves ... ignored, 需要独占 herdr-bot.local. 并依赖真实 mDNS/防火墙许可；用 --ignored 显式运行
+test registration_forced_past_the_preprobe_is_unregistered_once_mdns_renames_it ... ignored, 需要独占 herdr-bot.local. 并依赖真实 mDNS/防火墙许可；用 --ignored 显式运行
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\mdns_failure.rs (target\debug\deps\mdns_failure-e99cba0b31a7f566.exe)
+
+running 1 test
+test unowned_publish_address_only_warns_and_keeps_serving_without_publishing ... ignored, 依赖真实 mDNS 与 Windows 防火墙入站许可；用 --ignored 显式运行
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\monitoring.rs (target\debug\deps\monitoring-2a0268f57468f4ea.exe)
+
+running 21 tests
+test a_non_loopback_source_may_monitor_and_clear_but_not_write_session_events ... ignored, 真实网卡验收：通过 scripts/run-mdns-tests.ps1 手动运行
+test monitoring_refusals_are_machine_readable_and_kept_separate_from_the_response_shape ... ok
+test the_shared_observation_stream_carries_monitoring_and_the_automatic_arrangement ... ok
+test a_member_that_resumes_work_must_await_input_again ... ok
+test unregistering_the_working_member_arranges_shutdown ... ok
+test an_empty_set_never_forms_an_arrangement ... ok
+test the_global_clear_empties_the_whole_set_atomically ... ok
+test monitoring_commands_carry_an_explicit_target_value ... ok
+test the_arrangement_waits_for_every_monitored_session_to_await_input ... ok
+test a_manual_start_consumes_the_whole_set_and_refuses_new_monitoring ... ok
+test a_removed_registration_never_leaves_a_monitored_identity ... ok
+test an_offline_member_blocks_the_automatic_shutdown_even_when_it_awaits_input ... ok
+test only_a_currently_online_and_working_session_can_be_monitored ... ok
+test removing_a_member_rejudges_the_set_immediately ... ok
+test removing_a_member_rejudges_the_remaining_set_for_every_reason ... ok
+test interleaved_removals_and_monitoring_commands_leave_no_ghost_member ... ok
+test removing_the_last_member_never_starts_a_countdown ... ok
+test a_running_arrangement_survives_session_changes_and_frontend_closure ... ok
+test the_backend_executes_the_automatic_arrangement_without_any_observer ... ok
+test the_configured_three_seconds_drives_the_automatic_expiry_once ... ok
+test an_offline_member_stays_in_the_set_and_blocks_automatic_shutdown ... ok
+
+test result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 10.07s
+
+     Running tests\monitoring_recovery.rs (target\debug\deps\monitoring_recovery-e756288bbe6794c3.exe)
+
+running 9 tests
+test a_retained_member_keeps_its_monitoring_intention_after_recovering ... ok
+test withdrawing_the_last_offline_member_never_starts_a_countdown ... ok
+test a_recovered_member_that_is_still_working_keeps_the_group_waiting ... ok
+test a_historical_turn_end_never_counts_as_completion_eligibility ... ok
+test an_offline_monitored_member_can_still_be_withdrawn ... ok
+test an_offline_member_awaiting_input_never_satisfies_the_trigger ... ok
+test only_every_online_member_awaiting_input_triggers_the_group ... ok
+test only_a_currently_online_and_working_registration_can_be_added ... ok
+test a_recovered_member_awaiting_input_makes_the_group_trigger_and_execute_once ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.05s
+
+     Running tests\mutual_exclusion.rs (target\debug\deps\mutual_exclusion-a7cc49adeafd0527.exe)
+
+running 4 tests
+test stop_requests_are_busy_while_a_start_is_running ... ok
+test start_requests_are_busy_while_a_stop_is_running ... ok
+test overlapping_stop_requests_run_the_script_once_and_the_rest_are_busy ... ok
+test overlapping_start_requests_run_the_script_once_and_the_rest_are_busy ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.42s
+
+     Running tests\network_policy.rs (target\debug\deps\network_policy-f33f184616c8469e.exe)
+
+running 3 tests
+test ordinary_server_rejects_ipv6_wildcard_before_binding - should panic ... ok
+test ordinary_server_rejects_ipv4_wildcard_before_binding - should panic ... ok
+test test_network_policy_has_no_unregistered_listeners ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests\next_operation_after_finish.rs (target\debug\deps\next_operation_after_finish-533edf8563b7bd23.exe)
+
+running 5 tests
+test success_end_accepts_the_next_operation_and_it_executes ... ok
+test consecutive_starts_invoke_the_start_script_twice ... ok
+test failure_end_accepts_the_next_operation_and_it_executes ... ok
+test repeated_submissions_never_fall_into_the_busy_class ... ok
+test start_and_stop_alternate_across_several_finished_operations ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.60s
+
+     Running tests\no_auto_termination.rs (target\debug\deps\no_auto_termination-27e62de1a939ff0b.exe)
+
+running 1 test
+test held_script_is_not_auto_terminated_and_execution_stays_busy has been running for over 60 seconds
+test held_script_is_not_auto_terminated_and_execution_stays_busy ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 81.42s
+
+     Running tests\omp_zone_history.rs (target\debug\deps\omp_zone_history-86b9c76a96c11435.exe)
+
+running 7 tests
+test omp_without_connect_records_exact_header_after_title_without_changing_native_files ... ok
+test omp_header_at_29_seconds_is_recorded_before_the_total_budget_expires ... ok
+test failed_omp_start_and_submission_do_not_record_zone_but_register_can_record_same_identity ... ok
+test pending_omp_identity_does_not_hold_creation_registration_or_current_state ... ok
+test omp_save_failure_is_one_shot_and_does_not_persist_current_shutdown_intent ... ok
+test omp_history_outcomes_do_not_retime_or_persist_an_existing_countdown ... ok
+test omp_total_deadline_ends_missing_unreadable_and_pending_identity_without_changing_current_intent ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.55s
+
+     Running tests\pi_zone_history.rs (target\debug\deps\pi_zone_history-6d31cfea6dd4fb0c.exe)
+
+running 8 tests
+test pi_without_connect_collects_exact_header_and_leaves_current_and_old_files_untouched ... ok
+test pi_unconfirmed_start_and_submit_never_collect_but_register_still_can ... ok
+test pi_zone_name_wins_chath_source_orders_and_survives_restart ... ok
+test pi_exact_header_can_arrive_before_the_total_deadline ... ok
+test pi_pending_identity_does_not_hold_creation_or_current_state ... ok
+test pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown ... ok
+test pi_save_failure_does_not_retry_or_change_current_intent ... ok
+test pi_identity_budget_ends_reads_and_never_collects_late_identity ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.74s
+
+     Running tests\recovery.rs (target\debug\deps\recovery-eedd2b156cad58d8.exe)
+
+running 4 tests
+test a_reconnecting_reader_recovers_chath_domains_in_the_first_frame_and_then_complete_events ... ok
+test two_readers_see_the_same_arrangement_which_expires_exactly_once ... ok
+test a_reader_that_disconnects_mid_countdown_does_not_hold_the_arrangement ... ok
+test a_blocked_reader_does_not_block_commands_or_the_arrangement ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.85s
+
+     Running tests\runtime_data.rs (target\debug\deps\runtime_data-e12d43cc9a199379.exe)
+
+running 8 tests
+test invalid_zone_migration_target_fails_without_removing_the_old_registration ... ok
+test cutover_preserves_old_native_main_and_sidecars_while_moving_zone_registration ... ok
+test existing_zone_target_wins_without_merging_or_stopping_startup ... ok
+test delivered_ignore_rules_exclude_runtime_and_temporary_files_but_not_metadata ... ok
+test real_restart_does_not_restore_registry_shutdown_intent_or_inflight_creation ... ok
+test runtime_directory_and_write_failures_are_not_reported_as_success ... ok
+test default_and_explicit_bot_locations_survive_two_restarts_without_legacy_fallback ... ok
+test default_and_delivered_creations_leave_old_native_tree_unchanged ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+
+     Running tests\session_events.rs (target\debug\deps\session_events-1e244b2d60885a2e.exe)
+
+running 14 tests
+test the_default_windows_are_inclusive_at_their_boundaries ... ok
+test unknown_session_paths_are_unknown_endpoint ... ok
+test register_reports_online_count_and_publishes_the_view ... ok
+test query_strings_are_rejected_as_unexpected_parameters ... ok
+test non_register_events_for_unknown_sessions_are_rejected_without_building_rows ... ok
+test unknown_fields_are_ignored ... ok
+test oversized_event_payload_is_rejected ... ok
+test state_and_heartbeat_upsert_the_state_idempotently ... ok
+test unregister_removes_the_row_and_a_later_register_builds_a_new_one ... ok
+test malformed_or_incomplete_events_are_invalid_event ... ok
+test repeated_register_preserves_the_observed_state_without_a_frame ... ok
+test register_keeps_optional_fields_out_of_the_view_unless_present ... ok
+test agent_type_round_trips_through_upserts_and_snapshots ... ok
+test repeated_register_is_idempotent_and_refreshes_the_snapshot ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests\session_events_stream.rs (target\debug\deps\session_events_stream-d1aad34c08ca8325.exe)
+
+running 7 tests
+test a_lagged_subscriber_gets_a_fresh_snapshot_instead_of_the_missed_increments ... ok
+test reconnecting_converges_on_a_fresh_snapshot_and_ignores_any_cursor ... ok
+test connect_upgrades_to_a_read_only_stream_whose_first_frame_is_the_retrying_snapshot ... ok
+test the_snapshot_carries_every_view_in_registration_order ... ok
+test a_reader_converges_without_a_cursor_while_writes_are_in_flight ... ok
+test only_visible_changes_are_pushed_as_increments_after_the_snapshot ... ok
+test an_idle_read_path_keeps_alive_and_reports_stale_sessions_as_offline ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.22s
+
+     Running tests\session_expiry.rs (target\debug\deps\session_expiry-d22c58e28c8cbc9b.exe)
+
+running 7 tests
+test a_new_registration_without_a_state_reads_online_with_no_agent_state ... ok
+test clearing_a_registration_leaves_the_isolated_conversation_file_untouched ... ok
+test unregister_removes_immediately_and_a_restart_starts_empty ... ok
+test a_registration_stays_online_through_the_online_window_and_then_keeps_its_last_state ... ok
+test maintenance_retains_through_chath_windows_and_clears_one_second_later ... ok
+test any_accepted_write_restarts_the_registration_window ... ok
+test the_real_maintenance_loop_publishes_offline_then_removal_after_the_default_windows ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.03s
+
+     Running tests\session_history.rs (target\debug\deps\session_history-c2838a0fd85b9fbb.exe)
+
+running 4 tests
+test accepted_register_is_readable_as_history_without_optional_metadata ... ok
+test rejected_sources_missing_required_fields_and_non_register_events_never_collect ... ok
+test explicit_register_survives_restart_without_restoring_current_or_shutdown_intent ... ok
+test full_identity_and_valid_metadata_survive_partial_and_empty_updates ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\session_report_recovery.rs (target\debug\deps\session_report_recovery-bc434fc52357a7b3.exe)
+
+running 8 tests
+test a_report_after_deletion_is_rejected_and_never_rebuilds ... ok
+test re_registering_a_cleared_monitored_identity_restores_only_the_registration ... ok
+test unregister_removes_immediately_online_and_while_retained ... ok
+test the_extension_event_shape_refreshes_rejects_and_reregisters ... ok
+test every_accepted_report_kind_restarts_the_same_registration ... ok
+test a_report_racing_the_scan_never_loses_an_accepted_refresh ... ok
+test a_late_report_before_cleanup_refreshes_and_the_scan_keeps_it ... ok
+test a_rejected_report_never_extends_a_registration ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests\session_window_config.rs (target\debug\deps\session_window_config-aabe3c227271c214.exe)
+
+running 11 tests
+test the_two_largest_windows_sum_without_overflow_or_early_expiry ... ok
+test the_configured_online_window_decides_monitoring_eligibility ... ok
+test explicitly_configured_windows_move_chath_registration_thresholds ... ok
+test configuring_only_the_online_window_keeps_the_default_retention ... ok
+test configuring_only_the_retention_window_keeps_the_default_online_window ... ok
+test the_default_windows_apply_when_the_sessions_section_is_absent ... ok
+test the_largest_legal_windows_are_kept_instead_of_falling_back_to_defaults ... ok
+test the_smallest_legal_windows_take_effect_as_configured ... ok
+test the_configured_online_window_blocks_and_then_allows_the_automatic_arrangement ... ok
+test a_real_process_refuses_to_start_on_an_illegal_session_window ... ok
+test a_running_process_keeps_the_windows_it_started_with ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.15s
+
+     Running tests\session_write_boundary.rs (target\debug\deps\session_write_boundary-d942e2c90fcf2deb.exe)
+
+running 4 tests
+test same_host_access_via_local_nic_address_is_accepted ... ignored, 真实网卡验收：通过 scripts/run-mdns-tests.ps1 手动运行
+test loopback_source_write_is_accepted ... ok
+test reads_are_open_to_lan_sources ... ok
+test lan_source_write_is_forbidden_and_creates_no_session ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\shared_observation.rs (target\debug\deps\shared_observation-69e068f7b869081c.exe)
+
+running 6 tests
+test the_first_frame_of_a_new_connection_carries_the_active_arrangement ... ok
+test independent_readers_converge_on_the_same_instance_facts ... ok
+test writes_expiry_cleanup_and_adjudication_complete_without_any_reader ... ok
+test the_first_valid_snapshot_carries_exactly_the_current_registry_and_shutdown ... ok
+test a_blocked_reader_never_blocks_writes_and_converges_via_the_bounded_buffer ... ok
+test the_shared_stream_delivers_session_and_shutdown_changes_without_a_reload ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests\shutdown.rs (target\debug\deps\shutdown-74e0039a73470688.exe)
+
+running 16 tests
+test the_production_assembly_registers_chath_shutdown_commands ... ok
+test a_legacy_config_without_a_shutdown_section_arranges_the_default_ten_seconds ... ok
+test the_shutdown_commands_close_their_request_face_and_keep_no_immediate_alias ... ok
+test interleaved_manual_starts_reuse_the_same_arrangement_and_deadline ... ok
+test the_first_frame_carries_sessions_and_shutdown_state_and_session_deltas_keep_their_semantics ... ok
+test a_new_arrangement_replaces_the_previous_result ... ok
+test once_the_execution_started_a_cancel_is_refused_and_never_reported_as_success ... ok
+test a_late_global_cancel_applies_to_the_arrangement_current_at_receipt ... ok
+test a_manual_start_forms_one_arrangement_and_its_lifecycle_arrives_as_complete_shutdown_events ... ok
+test the_backend_executes_the_arrangement_at_its_deadline_without_any_observer ... ok
+test manual_shutdown_diagnostics_on_the_expiry_path ... ok
+test diagnostics_of_the_exercised_expiry_path_are_machine_assertable ... ok
+test an_arrangement_forms_while_a_fixed_operation_holds_the_execution_permit ... ok
+test a_failed_power_off_is_reported_once_and_stays_readable_for_new_callers ... ok
+test a_cancel_before_the_deadline_wins_and_the_original_deadline_stays_silent ... ok
+test the_configured_three_seconds_drives_the_actual_expiry_output ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.75s
+
+     Running tests\start_operation.rs (target\debug\deps\start_operation-658321686c931bc8.exe)
+
+running 4 tests
+test start_call_invalid_working_directory_reports_finished_call_without_starting ... ok
+test start_operation_runs_configured_batch_with_configured_working_directory ... ok
+test start_operation_target_comes_from_server_config ... ok
+test start_response_arrives_only_after_script_process_ends ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.07s
+
+     Running tests\zone_browse.rs (target\debug\deps\zone_browse-9ca6950859c3c4d1.exe)
+
+running 11 tests
+test oversized_file_content_is_not_opened ... ok
+test plain_directory_tree_keeps_gitignore_like_files_unfiltered ... ok
+test text_is_detected_from_content_and_preview_limit_applies_exactly ... ok
+test rejects_traversal_absolute_paths_and_unregistered_zones ... ok
+test lists_real_contents_including_hidden_ignored_and_git_metadata ... ok
+test default_preview_limit_is_one_mebibyte_at_the_exact_boundary ... ok
+test broken_git_metadata_fails_the_whole_tree_instead_of_showing_ignored_content ... ok
+test whole_tree_uses_git_native_ignores_but_keeps_tracked_and_empty_directories ... ok
+test external_deletion_and_root_replacement_are_explicit_errors ... ok
+test reading_does_not_change_files_or_git_index_semantics ... ok
+test rejects_real_junctions_and_symlinks_without_reading_outside_content ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.24s
+
+     Running tests\zone_commit.rs (target\debug\deps\zone_commit-0974ac27e7d5d9a5.exe)
+
+running 19 tests
+test inaccessible_zone_rejects_commit_and_reports_read_failure ... ok
+test empty_message_and_open_request_surface_are_rejected_without_writes ... ok
+test credential_conditions_do_not_open_an_interactive_prompt ... ok
+test review_hashes_full_content_beyond_preview_limits_and_binary ... ok
+test missing_upstream_does_not_block_local_commit_and_configuration_is_unchanged ... ok
+test clean_repository_rejects_direct_commit_without_creating_an_empty_commit ... ok
+test preview_limitations_do_not_change_commit_eligibility_or_the_real_tree ... ok
+test first_commit_uses_empty_tree_and_commits_staged_and_untracked_files ... ok
+test hook_rejection_keeps_the_staged_index_and_reports_git_output ... ok
+test editor_and_signing_conditions_fail_or_are_not_invoked_without_overriding_policy ... ok
+test review_invalidates_same_path_same_count_content_change_without_writing ... ok
+test commit_stages_all_eligible_final_changes_and_never_pushes ... ok
+test external_staging_head_and_branch_changes_invalidate_the_review ... ok
+test nested_repositories_and_submodules_do_not_leak_internal_files ... ok
+test path_aliases_of_the_same_repository_share_one_write_qualification ... ok
+test plain_directory_detached_head_conflicts_and_unfinished_flows_are_blocked ... ok
+test zone_git_qualification_is_independent_of_fixed_operation_execution ... ok
+test concurrent_commits_do_not_overlap_and_disconnect_does_not_cancel ... ok
+test configured_timeout_stops_git_and_its_children_then_releases_the_repository ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.20s
+
+     Running tests\zone_create.rs (target\debug\deps\zone_create-417939a11f22fc26.exe)
+
+running 4 tests
+test listing_reports_creation_availability_and_explicit_parent ... ok
+test registration_failure_keeps_created_directory_and_git_initialization ... ok
+test creation_refuses_missing_configuration_invalid_names_existing_target_and_missing_parent ... ok
+test creates_zone_directory_initializes_git_and_registers_it ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests\zone_diff.rs (target\debug\deps\zone_diff-c1fc231ee708cc2e.exe)
+
+running 4 tests
+test empty_repository_compares_against_an_empty_tree ... ok
+test diff_entry_enforces_the_zone_root_boundary ... ok
+test diff_reads_head_to_final_content_without_touching_index_or_files ... ok
+test diff_sides_apply_the_preview_limit_independently ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.31s
+
+     Running tests\zone_git_status.rs (target\debug\deps\zone_git_status-d49b86cf8f903add.exe)
+
+running 8 tests
+test ordinary_missing_and_unregistered_zones_are_not_clean_git_zones ... ok
+test broken_git_metadata_is_an_explicit_error_not_a_clean_repository ... ok
+test pending_set_follows_git_tracking_and_ignore_rules ... ok
+test cached_status_shares_canonical_aliases_but_not_separate_worktrees ... ok
+test filesystem_renames_follow_git_and_never_change_the_index ... ok
+test zone_badges_count_change_items_not_directories_or_diff_lines ... ok
+test staged_and_unstaged_changes_count_once_and_conflicts_are_distinct ... ok
+test branch_refreshes_after_external_switches_without_marking_divergence_as_conflict ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.46s
+
+     Running tests\zone_integration.rs (target\debug\deps\zone_integration-e1f7a0a993011d46.exe)
+
+running 3 tests
+test lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_commands ... ok
+test zone_activity_does_not_change_fixed_operations_sessions_or_shutdown ... ok
+test local_file_and_git_metadata_events_never_fetch_the_remote ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.16s
+
+     Running tests\zone_reader.rs (target\debug\deps\zone_reader-784f12bd6a8fc4f6.exe)
+
+running 2 tests
+test reader_resource_route_rejects_unregistered_zones_and_path_escapes ... ok
+test serves_html_and_relative_resources_with_isolated_content_type_and_csp ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\zone_registry.rs (target\debug\deps\zone_registry-96df14ba0b1ee951.exe)
+
+running 7 tests
+test unregistering_keeps_every_directory_and_file_intact ... ok
+test registers_an_existing_directory_and_rejects_ineligible_paths ... ok
+test corrupt_registry_is_reported_and_never_overwritten ... ok
+test two_callers_share_the_registry_and_it_survives_a_real_process_restart ... ok
+test unreadable_registry_is_reported_and_never_overwritten ... ok
+test write_failure_is_reported_and_keeps_the_previous_registry ... ok
+test registers_a_real_git_worktree_root_without_initializing_or_aggregating_repositories ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests\zone_sync.rs (target\debug\deps\zone_sync-cd7974b919e0fcf8.exe)
+
+running 18 tests
+test open_request_surface_and_missing_zone_are_rejected_without_writes ... ok
+test post_commit_without_upstream_explains_unavailable_check_without_configuring_or_publishing ... ok
+test behind_only_sync_never_creates_a_meaningless_push ... ok
+test post_commit_fetch_failure_preserves_commit_and_local_known_counts ... ok
+test pull_policy_rejection_stops_before_push_and_does_not_override_configuration ... ok
+test sync_runs_noninteractively_and_does_not_change_repository_configuration ... ok
+test sync_follows_existing_rebase_configuration ... ok
+test sync_uses_non_default_upstream_and_checks_again_before_pulling_then_pushing ... ok
+test external_branch_switch_is_reflected_and_sync_targets_the_current_branch ... ok
+test nested_repositories_and_submodules_keep_their_own_references_and_state ... ok
+test plain_detached_dirty_and_no_upstream_are_rejected_without_writes ... ok
+test successful_app_commit_returns_before_fetch_and_publishes_shared_remote_facts ... ok
+test zone_git_qualification_does_not_mix_with_fixed_operation_execution ... ok
+test push_rejection_after_a_successful_pull_keeps_effective_local_state_and_reports_git_output ... ok
+test check_remote_updates_real_references_while_status_reads_never_fetch ... ok
+test concurrent_syncs_and_mixed_commit_calls_never_overlap_and_disconnect_does_not_cancel ... ok
+test fetch_and_pull_failures_stop_later_steps_and_are_not_reported_as_conflicts ... ok
+test configured_timeout_stops_the_running_command_and_keeps_effective_pull_state ... FAILED
+
+failures:
+
+---- configured_timeout_stops_the_running_command_and_keeps_effective_pull_state stdout ----
+
+thread 'configured_timeout_stops_the_running_command_and_keeps_effective_pull_state' (15804) panicked at tests\zone_sync.rs:1181:5:
+assertion `left == right` failed: 确认终止后必须恢复仓库资格：{"code":"git-write-in-progress","message":"该仓库已有 Git 写操作在执行：本次请求没有被接受，也不会在它结束后补做。"}
+  left: 409
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    configured_timeout_stops_the_running_command_and_keeps_effective_pull_state
+
+test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.78s
+
+error: test failed, to rerun pass `--test zone_sync`

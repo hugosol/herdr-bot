@@ -1,0 +1,194 @@
+{
+  "root": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh",
+  "session": "integrity05-avblp0zh",
+  "url": "http://127.0.0.1:4738",
+  "scope": "Dedicated native smoke only; source/history fixtures are seeded, not proof of trusted intake or H-Pi/H-OMP approval",
+  "records": [
+    {
+      "sessionId": "01a1672d-b70b-72d3-b25d-c96f455256c7",
+      "sessionName": "Integrity05 native pi",
+      "agentType": "pi",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\pi\\zone",
+      "sessionFile": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\pi.jsonl",
+      "firstRecordedAt": 1,
+      "originalWorkspaceId": "w-deleted-isolated-fixture",
+      "sourceBotId": "tpl-18e12d314ebdc1fc-0"
+    },
+    {
+      "sessionId": "01a16737-5b3b-76f7-ab1b-05324809594b",
+      "sessionName": "Integrity05 native omp",
+      "agentType": "omp",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\omp\\zone",
+      "sessionFile": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\omp.jsonl",
+      "firstRecordedAt": 1,
+      "originalWorkspaceId": "w-deleted-isolated-fixture"
+    }
+  ],
+  "liveConfirmed": [
+    {
+      "pane": "w1:p2",
+      "get": {
+        "id": "cli:agent:get",
+        "result": {
+          "agent": {
+            "agent": "pi",
+            "agent_session": {
+              "agent": "pi",
+              "kind": "path",
+              "source": "herdr:pi",
+              "value": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\pi.jsonl"
+            },
+            "agent_status": "idle",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\pi\\zone\\",
+            "focused": false,
+            "interactive_ready": true,
+            "name": "chat-c5ab9448003a",
+            "pane_id": "w1:p2",
+            "revision": 3,
+            "screen_detection_skipped": true,
+            "state_change_seq": 1,
+            "tab_id": "w1:t2",
+            "terminal_id": "term_65e825bdfd5b62",
+            "terminal_title": "π - zone",
+            "terminal_title_stripped": "π - zone",
+            "workspace_id": "w1"
+          },
+          "type": "agent_info"
+        }
+      },
+      "read": "\n ▀▀█  v1.4.0\n █▀ █ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more\n Press ctrl+o to show full startup help and loaded resources.\n\n Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.\n\n[Extensions]\n  pi-identity.ts\n\n\n Acknowledge this isolated storage test.\n\n\n isolated storage acknowledgement\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\nC:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\pi\\zone\n4.5%/33k (auto)                                                                                           storage-probe\n"
+    },
+    {
+      "pane": "w1:p3",
+      "get": {
+        "id": "cli:agent:get",
+        "result": {
+          "agent": {
+            "agent": "omp",
+            "agent_session": {
+              "agent": "omp",
+              "kind": "path",
+              "source": "herdr:omp",
+              "value": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\omp.jsonl"
+            },
+            "agent_status": "idle",
+            "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\omp\\zone\\",
+            "focused": true,
+            "interactive_ready": true,
+            "name": "chat-44385a827c2f",
+            "pane_id": "w1:p3",
+            "revision": 4,
+            "screen_detection_skipped": true,
+            "state_change_seq": 2,
+            "tab_id": "w1:t3",
+            "terminal_id": "term_65e825c92e2503",
+            "terminal_title": "π > zone",
+            "terminal_title_stripped": "π > zone",
+            "workspace_id": "w1"
+          },
+          "type": "agent_info"
+        }
+      },
+      "read": "\n                                            ████████████\n                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄\n                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀\n                                               ▒▒  ██                  █\n                                                   ██       v18.12.6\n\n                                    Tip: Try task isolation to create CoW worktrees\n\n\n H-OMP dedicated interrupted task: reply only RESUME07-PENDING-ACK.\n\n\n ● Read C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\interrupted-marker.txt\n\n Previous OMP process exited before completing the turn.\n\n π > ⬢ storage probe > 📁 …\\herdr-native-storage-vysibcs5\\omp\\zone ▶─────────23%╎───────────┃──────────────────────33K─\n╰─"
+    }
+  ],
+  "missingIdentityRetry": {
+    "status": 502,
+    "body": {
+      "code": "identity-verification-failed",
+      "message": "Herdr 查找／身份核实失败：Herdr 的 agent get native identity 返回了无法理解的响应：matching agent kind has no verifiable native identity 尚未恢复；没有创建 Tab、启动 agent 或提交输入。",
+      "outcome": "failed",
+      "stage": "lookup"
+    }
+  },
+  "retainedAgents": {
+    "id": "cli:agent:list",
+    "result": {
+      "agents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\omp.jsonl"
+          },
+          "agent_status": "idle",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\omp\\zone\\",
+          "focused": true,
+          "interactive_ready": true,
+          "name": "chat-44385a827c2f",
+          "pane_id": "w1:p3",
+          "revision": 4,
+          "screen_detection_skipped": true,
+          "state_change_seq": 2,
+          "tab_id": "w1:t3",
+          "terminal_id": "term_65e825c92e2503",
+          "terminal_title": "π > zone",
+          "terminal_title_stripped": "π > zone",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "pi",
+          "agent_status": "idle",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-native-storage-vysibcs5\\pi\\zone\\",
+          "focused": false,
+          "interactive_ready": true,
+          "name": "chat-da9b6c34f810",
+          "pane_id": "w1:p4",
+          "revision": 3,
+          "state_change_seq": 3,
+          "tab_id": "w1:t4",
+          "terminal_id": "term_65e825f61637e4",
+          "terminal_title": "π - zone",
+          "terminal_title_stripped": "π - zone",
+          "workspace_id": "w1"
+        }
+      ],
+      "type": "agent_list"
+    }
+  },
+  "retainedTabs": {
+    "id": "cli:tab:list",
+    "result": {
+      "tabs": [
+        {
+          "agent_status": "unknown",
+          "focused": false,
+          "label": "1",
+          "number": 1,
+          "pane_count": 1,
+          "tab_id": "w1:t1",
+          "workspace_id": "w1"
+        },
+        {
+          "agent_status": "idle",
+          "focused": true,
+          "label": "Integrity05 native omp",
+          "number": 3,
+          "pane_count": 1,
+          "tab_id": "w1:t3",
+          "workspace_id": "w1"
+        },
+        {
+          "agent_status": "idle",
+          "focused": false,
+          "label": "Integrity05 native pi",
+          "number": 4,
+          "pane_count": 1,
+          "tab_id": "w1:t4",
+          "workspace_id": "w1"
+        }
+      ],
+      "type": "tab_list"
+    }
+  },
+  "hashesBefore": {
+    "pi": "a95fc061f520f9cefe63085bddd35cc2835e5a15fed3db1c7a5b8e9899d2a4b1",
+    "omp": "55ce63c68aa35fa21546ae5c3f51a6b803d4d892b707149b974d17ef8df76d05"
+  },
+  "hashesAfter": {
+    "pi": "a95fc061f520f9cefe63085bddd35cc2835e5a15fed3db1c7a5b8e9899d2a4b1",
+    "omp": "55ce63c68aa35fa21546ae5c3f51a6b803d4d892b707149b974d17ef8df76d05"
+  }
+}
