@@ -69,9 +69,7 @@ async fn resume_selected(state: &AppState, selected: &crate::history::HistorySel
         return restore_history(&state, &selected, kind).await;
     };
     if let Err(error) = state.herdr.focus_target(target).await { return failure("focus", &error); }
-    let message = if targets.len() > 1 {
-        format!("找到 {} 个匹配目标，已按 Workspace、Tab、Pane ID 的稳定顺序自动选择并定位。仅确认 Herdr 内部导航，不表示 Windows 窗口已置前。", targets.len())
-    } else { "已定位已有对话；仅确认 Herdr 内部导航，不表示 Windows 窗口已置前。".into() };
+    let message = "已切换到当前herdr焦点";
     Json(json!({"outcome":"located","target":target,"matchCount":targets.len(),"message":message})).into_response()
 }
 

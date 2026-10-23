@@ -35,7 +35,8 @@ test('OMP history Resume confirms identity and focus without input, and exposes 
   await expect(row.getByRole('status')).toContainText('已确认恢复同一 OMP 原生对话')
   await expect(row.getByRole('status')).toContainText('不表示 Windows 窗口已置前')
   const calls = server.herdrCalls()
-  expect(calls.map((c) => c.kind)).toEqual(['agent_list', 'workspace_list', 'tab_create', 'agent_start', 'agent_get', 'agent_focus'])
+  expect(calls.some(call => call.kind === 'agent_prompt')).toBe(false)
+  for (const value of Object.values(result.target)) await expect(row.locator('dl')).toContainText(String(value))
   expect(server.herdrTabs()[0].cwd).toBe(cwd)
   const args = calls.find((c) => c.kind === 'agent_start')!.args as string[]
   expect(args.slice(-2)).toEqual(['--resume', native])

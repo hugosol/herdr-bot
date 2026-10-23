@@ -80,6 +80,9 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     create_chat(&server, zone, bot).await;
     let history = wait_identities(&server, &["native-full-001"]).await;
     assert_eq!(history["sessions"][0]["originalWorkspaceId"], "w-other");
+    let memo = common::request_json_over_tcp(server.addr(), "PUT", "/api/sessions/history/memo",
+        Some(&json!({"sessionId":"native-full-001","memo":"  shared note\n第二行  "}).to_string())).await;
+    assert_eq!(memo.status, 200, "{}", memo.body);
     create_chat(&server, zone, bot).await;
     // Collection is asynchronous; this read waits for both confirmed agent_gets.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -103,6 +106,11 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     let after = wait_identities(&server, &["native-full-001", "native-full-002"]).await;
     assert_eq!(before, after);
     for row in after["sessions"].as_array().unwrap() {
+        if row["sessionId"] == "native-full-001" {
+            assert_eq!(row["memo"], "  shared note\n第二行  ");
+        } else {
+            assert!(row.get("memo").is_none());
+        }
         assert_eq!(row["originalWorkspaceId"], "w-other");
         assert_eq!(row["sessionName"], "Same name");
     }

@@ -130,7 +130,6 @@ async fn multiple_matches_use_stable_location_order_on_every_attempt() {
         let body: Value = serde_json::from_str(&reply.body).unwrap();
         assert_eq!(body["matchCount"],2);
         assert_eq!(body["target"]["paneId"],"w1:p7");
-        assert!(body["message"].as_str().unwrap().contains("自动选择"));
     }
     let calls = herdr.calls();
     assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_list").count(),2);

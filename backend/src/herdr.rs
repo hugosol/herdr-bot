@@ -181,6 +181,17 @@ impl HerdrClient {
         }
     }
 
+    /// Display-only inventory; callers must retain saved IDs when labels are unavailable.
+    pub(crate) async fn workspace_labels(&self) -> Result<Vec<Workspace>, HerdrError> {
+        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
+            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
+        Ok(entries.iter().filter_map(|entry| Some(Workspace {
+            id: nonempty(entry.get("workspace_id"))?.to_owned(),
+            label: nonempty(entry.get("label"))?.to_owned(),
+        })).collect())
+    }
+
     /// Resolve an original ID, not a label; only a successful inventory proving
     /// absence permits fallback. Query/shape failures must not create elsewhere.
     pub(crate) async fn resume_workspace(&self, original_id: Option<&str>) -> Result<(Workspace, Option<&'static str>), HerdrError> {

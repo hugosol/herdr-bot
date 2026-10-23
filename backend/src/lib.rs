@@ -270,8 +270,9 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
-        // 历史读取沿用局域网公开读取边界；没有独立的外部写入端点。
+        // 历史与备忘沿用浏览器局域网读写边界；不使用扩展上报的本机来源限制。
         .route("/api/sessions/history", get(history::get_history))
+        .route("/api/sessions/history/memo", axum::routing::put(history::put_memo))
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone))

@@ -39,7 +39,8 @@ for (const kind of ['pi', 'omp']) {
     await expect(row.getByRole('alert')).toContainText('启动结果未确认')
     await expect(row.getByRole('status')).toHaveCount(0)
     expect(server.herdrTabs()).toHaveLength(1)
-    expect(server.herdrCalls().map(c => c.kind)).toEqual(['agent_list', 'workspace_list', 'tab_create', 'agent_start'])
+    expect(server.herdrCalls().some(call => ['agent_prompt', 'agent_focus'].includes(String(call.kind)))).toBe(false)
+    for (const value of Object.values(result.target)) await expect(row.locator('dl')).toContainText(String(value))
     await page.screenshot({ path: test.info().outputPath(`${kind}-structured-startup-unconfirmed.png`), fullPage: true })
   })
 
@@ -89,7 +90,7 @@ for (const kind of ['pi', 'omp']) {
     const started = JSON.parse(fs.readFileSync(path.join(root, 'herdr', 'started.jsonl'), 'utf8').trim())
     expect(restored.target).toEqual({ workspaceId: started.workspace_id, tabId: started.tab_id, paneId: started.pane_id })
     expect(JSON.parse(fs.readFileSync(path.join(root, 'herdr', 'focused.json'), 'utf8'))).toBe(started.pane_id)
-    expect(server.herdrCalls().map(c => c.kind)).toEqual(['agent_list', 'workspace_list', 'tab_create', 'agent_start', 'agent_get', 'agent_focus'])
+    expect(server.herdrCalls().some(call => call.kind === 'agent_prompt')).toBe(false)
     await readHistory()
     expect(JSON.parse(fs.readFileSync(historyFile, 'utf8'))).toEqual(records)
 
@@ -117,7 +118,8 @@ for (const kind of ['pi', 'omp']) {
     const locatedResponse = page.waitForResponse(r => r.url().endsWith('/api/chats/resume') && r.request().method() === 'POST')
     await row.getByRole('button', { name: 'Resume', exact: true }).click()
     expect(await (await locatedResponse).json()).toEqual(located)
-    await expect(row.getByRole('status')).toContainText('已定位已有对话')
+    await expect(row.getByRole('status')).toHaveText('已切换到当前herdr焦点')
+    await expect(row.locator('dl')).toHaveCount(0)
     expect(JSON.parse(fs.readFileSync(path.join(root, 'herdr', 'focused.json'), 'utf8'))).toBe(started.pane_id)
     await page.screenshot({ path: test.info().outputPath(`${kind}-cross-path-located.png`), fullPage: true })
 

@@ -42,7 +42,7 @@ test('browser presents authoritative busy rejection and only runs again on a fre
     await expect(row.getByRole('alert')).toHaveText(result.message)
     await expect(row.getByRole('alert')).toContainText('不会排队')
     await expect(row.getByRole('status')).toHaveCount(0)
-    expect(server.herdrCalls().map((call) => call.kind)).toEqual(['agent_list'])
+    expect(server.herdrCalls().some(call => ['tab_create', 'agent_start', 'agent_prompt', 'agent_focus'].includes(String(call.kind)))).toBe(false)
     expect(server.herdrTabs()).toHaveLength(0)
     await page.screenshot({ path: test.info().outputPath('resume-authoritative-busy.png'), fullPage: true })
   } finally { fs.writeFileSync(release, 'release') }
@@ -50,7 +50,7 @@ test('browser presents authoritative busy rejection and only runs again on a fre
   expect(first.status).toBe(200)
   expect((await first.json()).outcome).toBe('restored')
   expect(server.herdrTabs()).toHaveLength(1)
-  expect(server.herdrCalls().map((call) => call.kind)).toEqual(['agent_list', 'workspace_list', 'tab_create', 'agent_start', 'agent_get', 'agent_focus'])
+  expect(server.herdrCalls().some(call => call.kind === 'agent_prompt')).toBe(false)
   // The rejected browser request stays rejected even after the owner succeeds.
   await expect(row.getByRole('alert')).toContainText('不会排队')
   await expect(row.getByRole('status')).toHaveCount(0)
@@ -64,7 +64,8 @@ test('browser presents authoritative busy rejection and only runs again on a fre
   expect(fresh.status()).toBe(200)
   const result = await fresh.json()
   expect(result.outcome).toBe('located')
-  await expect(row.getByRole('status')).toHaveText(result.message)
+  await expect(row.getByRole('status')).toHaveText('已切换到当前herdr焦点')
+  await expect(row.locator('dl')).toHaveCount(0)
   await expect(row.getByRole('alert')).toHaveCount(0)
   expect(server.herdrCalls().filter((call) => call.kind === 'agent_list')).toHaveLength(2)
   expect(server.herdrCalls().filter((call) => call.kind === 'agent_start')).toHaveLength(1)

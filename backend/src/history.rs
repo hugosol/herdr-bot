@@ -31,6 +31,8 @@ struct HistoryRecord {
     // Original location is write-once metadata, never updated by Resume.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     original_workspace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    memo: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -43,6 +45,10 @@ struct HistoryView<'a> {
     first_recorded_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     original_workspace_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_workspace_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memo: Option<&'a str>,
 }
 
 const PAGE_SIZE: usize = 50;
@@ -164,9 +170,21 @@ impl History {
                 first_recorded_at,
                 session_file: session_file.map(str::to_owned),
                 original_workspace_id: original_workspace_id.map(str::to_owned),
+                memo: None,
             });
         }
         self.save(&records)
+    }
+
+    async fn set_memo(&self, session_id: &str, memo: &str) -> io::Result<bool> {
+        let _guard = self.lock.lock().await;
+        let mut records = self.read()?;
+        let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) else {
+            return Ok(false);
+        };
+        record.memo = Some(memo.to_owned());
+        self.save(&records)?;
+        Ok(true)
     }
 
     // Read errors propagate before save is reached. The existing document is never
@@ -204,12 +222,33 @@ fn update(target: &mut Option<String>, value: Option<&str>) {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct MemoRequest {
+    session_id: String,
+    memo: String,
+}
+
+pub(crate) async fn put_memo(
+    State(state): State<AppState>,
+    Json(request): Json<MemoRequest>,
+) -> Response {
+    match state.history.set_memo(&request.session_id, &request.memo).await {
+        Ok(true) => Json(request).into_response(),
+        Ok(false) => crate::rejected_owned(StatusCode::NOT_FOUND, "unknown-chat", "找不到所选历史 Chat。".into()),
+        Err(error) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "history-save-failed", format!("保存备忘失败：{error}")),
+    }
+}
+
 pub(crate) async fn get_history(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
 ) -> Response {
-    let _guard = state.history.lock.lock().await;
-    match state.history.read() {
+    let snapshot = {
+        let _guard = state.history.lock.lock().await;
+        state.history.read()
+    };
+    match snapshot {
         Ok(mut records) => {
             records.sort_by(|a, b| {
                 b.first_recorded_at.cmp(&a.first_recorded_at)
@@ -218,6 +257,12 @@ pub(crate) async fn get_history(
             let total = records.len();
             let total_pages = total.div_ceil(PAGE_SIZE).max(1);
             let page = query.page.unwrap_or(1).clamp(1, total_pages);
+            let workspaces = if records.iter().skip((page - 1) * PAGE_SIZE).take(PAGE_SIZE)
+                .any(|record| record.original_workspace_id.is_some()) {
+                state.herdr.workspace_labels().await.unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             let sessions = records.iter().skip((page - 1) * PAGE_SIZE).take(PAGE_SIZE).map(|record| HistoryView {
                 session_id: &record.session_id,
                 session_name: record.session_name.as_deref(),
@@ -225,6 +270,10 @@ pub(crate) async fn get_history(
                 cwd: record.cwd.as_deref(),
                 first_recorded_at: record.first_recorded_at,
                 original_workspace_id: record.original_workspace_id.as_deref(),
+                original_workspace_name: record.original_workspace_id.as_deref()
+                    .and_then(|id| workspaces.iter().find(|workspace| workspace.id == id))
+                    .map(|workspace| workspace.label.as_str()),
+                memo: record.memo.as_deref(),
             }).collect();
             Json(HistoryList { sessions, page, page_size: PAGE_SIZE, total, total_pages }).into_response()
         }

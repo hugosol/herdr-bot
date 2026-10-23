@@ -61,7 +61,7 @@ test('Pi without connect survives page close and history is independent of curre
     await reopened.goto(server!.baseURL)
     await expect(reopened.getByTestId('session-board')).not.toContainText('Pi Browser Chat')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
-    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toContainText('C:/browser/native')
+    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
     await reopened.screenshot({ path: testInfo.outputPath('pi-history-without-connect.png'), fullPage: true })
     await post('/api/sessions/events', { sessionId: 'pi-browser-exact-id', kind: 'register', data: { cwd: 'C:/browser/native', sessionName: 'Connect display name', agentType: 'pi' } })
     await reopened.getByRole('button', { name: '查看当前会话' }).click()

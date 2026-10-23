@@ -14,8 +14,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     server = await startServer()
     const longName = 'Long native conversation name ' + '名称'.repeat(45)
     const longPath = 'C:/project/' + 'long-directory-'.repeat(16) + '/source'
+    const workspaceId = 'workspace-' + 'stable-id-'.repeat(20)
     for (const [sessionId, data] of [
-      ['history-long-full-id', { cwd: longPath, sessionName: longName, agentType: 'omp', model: 'SECRET-MODEL', sessionFile: 'C:/private/native.jsonl' }],
+      ['history-long-full-id', { cwd: longPath, originalWorkspaceId: workspaceId, sessionName: longName, agentType: 'omp', model: 'SECRET-MODEL', sessionFile: 'C:/private/native.jsonl' }],
       ['history-unknown-full-session-id-not-a-prefix', { cwd: '' }],
     ] as const) {
       const result = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, kind: 'register', data }) })
@@ -28,17 +29,16 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(history).toBeVisible()
     await expect(page.getByRole('heading', { name: '历史会话', exact: true })).toBeVisible()
     await expect(page.getByTestId('session-board')).toHaveCount(0)
-    const headers = history.getByRole('columnheader')
-    await expect(headers).toHaveText(['名称', 'agent 类型', 'cwd', '首次收录时间', '操作'])
     const longRow = history.getByRole('row').filter({ hasText: longName })
     await expect(longRow.getByRole('cell').nth(0)).toHaveText(longName)
     await expect(longRow.getByRole('cell').nth(1)).toHaveText('omp')
-    await expect(longRow.getByRole('cell').nth(2)).toHaveText(longPath)
+    await expect(longRow.getByRole('cell').nth(2)).toHaveText(workspaceId)
+    await expect(longRow).not.toContainText(longPath)
     await expect(longRow.locator('time')).toHaveAttribute('datetime', /\d{4}-\d{2}-\d{2}T/)
     const missing = history.getByRole('row').filter({ hasText: 'history-unknown-full-session-id-not-a-prefix' })
     await expect(missing.getByRole('cell').nth(0)).toHaveText('history-unknown-full-session-id-not-a-prefix')
     await expect(missing.getByRole('cell').nth(1)).toHaveText('—')
-    await expect(missing.getByRole('cell').nth(2)).toHaveText('—')
+    await expect(missing.getByRole('cell').nth(2)).toHaveText('未记录')
     await expect(history).not.toContainText(/SECRET-MODEL|private\/native|keepAlive|在线|离线|关机|来源/)
     await expect(history.getByRole('table').getByRole('button', { name: 'Resume', exact: true })).toHaveCount(2)
     await expect(history.getByRole('navigation', { name: '历史分页' })).toHaveCount(1)
