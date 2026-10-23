@@ -369,6 +369,7 @@ impl SessionsState {
                     session_name,
                     agent_type,
                     session_file,
+                    original_workspace_id: _,
                     model,
                     pid,
                 } = data;
@@ -543,6 +544,8 @@ struct RegisterData {
     agent_type: Option<String>,
     /// 会话文件路径；存下备查，不下发帧。
     session_file: Option<String>,
+    /// 已知原 Herdr Workspace；非 Herdr 来源可省略，不按 cwd 或名称猜测。
+    original_workspace_id: Option<String>,
     /// 模型的展示名（注册时快照）；缺省即省略。
     model: Option<String>,
     /// 扩展进程的 PID；存下备查，不下发帧。
@@ -673,6 +676,7 @@ pub(crate) async fn post_session_event(
             data.agent_type.as_deref(),
             &data.cwd,
             data.session_file.as_deref(),
+            data.original_workspace_id.as_deref(),
         ).await {
             eprintln!("[herdr-bot] 历史保存失败 sessionId={session_id}: {error}");
             history_warning = Some(HistoryWarning {

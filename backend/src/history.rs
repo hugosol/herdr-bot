@@ -28,6 +28,9 @@ struct HistoryRecord {
     first_recorded_at: u64,
     // Kept only in the on-disk document, never in the public read model.
     session_file: Option<String>,
+    // Original location is write-once metadata, never updated by Resume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    original_workspace_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -38,6 +41,8 @@ struct HistoryView<'a> {
     agent_type: Option<&'a str>,
     cwd: Option<&'a str>,
     first_recorded_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_workspace_id: Option<&'a str>,
 }
 
 const PAGE_SIZE: usize = 50;
@@ -63,6 +68,7 @@ pub(crate) struct HistorySelection {
     pub cwd: Option<String>,
     pub session_file: Option<String>,
     pub session_name: Option<String>,
+    pub original_workspace_id: Option<String>,
 }
 
 pub struct History {
@@ -90,7 +96,7 @@ impl History {
         let _guard = self.lock.lock().await;
         Ok(self.read()?.into_iter().find(|record| record.session_id == session_id)
             .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type,
-                cwd: record.cwd, session_file: record.session_file, session_name: record.session_name }))
+                cwd: record.cwd, session_file: record.session_file, session_name: record.session_name, original_workspace_id: record.original_workspace_id }))
     }
 
     pub async fn record_zone(
@@ -100,8 +106,9 @@ impl History {
         agent_type: &str,
         cwd: &str,
         session_file: Option<&str>,
+        original_workspace_id: Option<&str>,
     ) -> io::Result<()> {
-        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, true).await
+        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, original_workspace_id, true).await
     }
 
     pub async fn register(
@@ -111,8 +118,9 @@ impl History {
         agent_type: Option<&str>,
         cwd: &str,
         session_file: Option<&str>,
+        original_workspace_id: Option<&str>,
     ) -> io::Result<()> {
-        self.record(session_id, session_name, agent_type, cwd, session_file, false).await
+        self.record(session_id, session_name, agent_type, cwd, session_file, original_workspace_id, false).await
     }
 
     async fn record(
@@ -122,6 +130,7 @@ impl History {
         agent_type: Option<&str>,
         cwd: &str,
         session_file: Option<&str>,
+        original_workspace_id: Option<&str>,
         from_zone: bool,
     ) -> io::Result<()> {
         let _guard = self.lock.lock().await;
@@ -129,6 +138,7 @@ impl History {
         let session_name = valid_text(session_name);
         let agent_type = valid_text(agent_type);
         let cwd = valid_text(Some(cwd));
+        let original_workspace_id = valid_text(original_workspace_id);
         let session_file = valid_text(session_file)
             .filter(|value| Path::new(value).is_absolute());
 
@@ -140,6 +150,9 @@ impl History {
             update(&mut record.agent_type, agent_type);
             update(&mut record.cwd, cwd);
             update(&mut record.session_file, session_file);
+            if record.original_workspace_id.is_none() {
+                record.original_workspace_id = original_workspace_id.map(str::to_owned);
+            }
         } else {
             let first_recorded_at = self.clock.unix_millis();
             records.push(HistoryRecord {
@@ -150,6 +163,7 @@ impl History {
                 cwd: cwd.map(str::to_owned),
                 first_recorded_at,
                 session_file: session_file.map(str::to_owned),
+                original_workspace_id: original_workspace_id.map(str::to_owned),
             });
         }
         self.save(&records)
@@ -210,6 +224,7 @@ pub(crate) async fn get_history(
                 agent_type: record.agent_type.as_deref(),
                 cwd: record.cwd.as_deref(),
                 first_recorded_at: record.first_recorded_at,
+                original_workspace_id: record.original_workspace_id.as_deref(),
             }).collect();
             Json(HistoryList { sessions, page, page_size: PAGE_SIZE, total, total_pages }).into_response()
         }
