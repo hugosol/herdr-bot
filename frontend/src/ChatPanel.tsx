@@ -29,7 +29,7 @@ function ResumeChat({ sessionId }: { sessionId: string }) {
       if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
         throw new Error('unconfirmed response')
       }
-      if (response.ok && (!('outcome' in body) || !['located', 'not-found'].includes(String(body.outcome)))) {
+      if (response.ok && (!('outcome' in body) || !['located', 'restored', 'not-found'].includes(String(body.outcome)))) {
         throw new Error('unconfirmed outcome')
       }
       setResult({ failed: !response.ok, message: body.message })
@@ -38,7 +38,7 @@ function ResumeChat({ sessionId }: { sessionId: string }) {
     } finally { setPending(false) }
   }
   return <>
-    <button type="button" className="history-resume" disabled={pending} onClick={() => void resume()}>{pending ? '正在定位…' : 'Resume'}</button>
+    <button type="button" className="history-resume" disabled={pending} onClick={() => void resume()}>{pending ? '正在定位／恢复…' : 'Resume'}</button>
     {result ? <p role={result.failed ? 'alert' : 'status'}>{result.message}</p> : null}
   </>
 }

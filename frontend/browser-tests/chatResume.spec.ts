@@ -62,9 +62,9 @@ test('every historical Chat offers Resume after unregister and process restart; 
   await server.restart()
   for (const sessionId of ['native-browser', 'legacy-native', 'unknown-old-record']) {
     const reply = await fetch(`${server.baseURL}/api/chats/resume`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId }) })
-    expect(reply.status).toBe(sessionId === 'unknown-old-record' ? 400 : 200)
+    expect(reply.status).toBe(sessionId === 'unknown-old-record' ? 400 : sessionId === 'legacy-native' ? 502 : 200)
     const result = await reply.json()
-    expect(result.outcome ?? result.code).toBe(sessionId === 'native-browser' ? 'located' : sessionId === 'legacy-native' ? 'not-found' : 'unsupported-agent')
+    expect(sessionId === 'native-browser' ? result.outcome : result.code).toBe(sessionId === 'native-browser' ? 'located' : sessionId === 'legacy-native' ? 'invalid-cwd' : 'unsupported-agent')
   }
   await page.goto(server.baseURL)
   await page.getByRole('button', { name: '查看历史会话' }).click()
@@ -79,7 +79,7 @@ test('every historical Chat offers Resume after unregister and process restart; 
   expect(server.herdrTabs()).toEqual([])
   const legacy = history.getByRole('row').filter({ hasText: 'Legacy Chat' })
   await legacy.getByRole('button', { name: 'Resume', exact: true }).click()
-  await expect(legacy.getByRole('status')).toContainText('尚未恢复')
+  await expect(legacy.getByRole('alert')).toContainText('历史工作目录缺失')
   const unknown = history.getByRole('row').filter({ hasText: 'unknown-old-record' })
   await unknown.getByRole('button', { name: 'Resume', exact: true }).click()
   await expect(unknown.getByRole('alert')).toContainText('无法确定受支持的 agent 类型')
