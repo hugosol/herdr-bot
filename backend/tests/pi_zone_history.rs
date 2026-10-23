@@ -27,7 +27,7 @@ fn configuration(herdr: &HerdrFixture, root: &TempDir) -> herdr_bot::Config {
     config.herdr.executable = herdr.executable().to_path_buf();
     config.herdr.workspace_name = "bot-playground".into();
     config.zones.registry_file = root.path().join("zones.json");
-    config.bot_templates.storage_file = root.path().join("templates.json");
+    config.bots.storage_file = root.path().join("bots.json");
     config.sessions.history_file = root.path().join("history.json");
     config
 }
@@ -37,17 +37,17 @@ async fn setup(herdr: &HerdrFixture, root: &TempDir) -> (TestServer, String, Str
     fs::create_dir_all(&zone).unwrap();
     let zones = post(&server, "/api/zones", json!({"path":zone})).await;
     let zone = zones["zones"][0]["path"].as_str().unwrap().to_owned();
-    let templates = post(&server, "/api/bot-templates", json!({
-        "name":"Pi native history", "botName":"Pi Zone Name", "agent":"pi",
+    let bots = post(&server, "/api/bots", json!({
+        "name":"Pi native history", "chatName":"Pi Zone Name", "agent":"pi",
         "model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]
     })).await;
-    let id = templates["templates"].as_array().unwrap().iter().find(|t| t["name"] == "Pi native history").unwrap()["id"].as_str().unwrap().to_owned();
+    let id = bots["bots"].as_array().unwrap().iter().find(|t| t["name"] == "Pi native history").unwrap()["id"].as_str().unwrap().to_owned();
     (server, zone, id)
 }
-async fn create(server: &TestServer, zone: &str, template: &str) -> Value {
-    let preview = post(server, "/api/bots/preview", json!({"zone":zone,"templateId":template})).await;
-    let accepted = post(server, "/api/bots", json!({"zone":zone,"templateId":template,"botId":preview["botId"],"expectedName":preview["name"],"input":"/settings"})).await;
-    let path = format!("/api/bots/{}", accepted["id"].as_str().unwrap());
+async fn create(server: &TestServer, zone: &str, bot: &str) -> Value {
+    let preview = post(server, "/api/chats/preview", json!({"zone":zone,"botId":bot})).await;
+    let accepted = post(server, "/api/chats", json!({"zone":zone,"botId":bot,"chatId":preview["chatId"],"expectedName":preview["name"],"input":"/settings"})).await;
+    let path = format!("/api/chats/{}", accepted["id"].as_str().unwrap());
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let view = get(server, &path).await;
@@ -84,8 +84,8 @@ async fn pi_without_connect_collects_exact_header_and_leaves_current_and_old_fil
     fs::write(attached.join("tool.bin"), b"\0old-pi-attached\xff\r\n").unwrap();
     fs::create_dir(attached.join("empty")).unwrap();
     herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":native}}));
-    let (server, zone, template) = setup(&herdr, &root).await;
-    let created = create(&server, &zone, &template).await;
+    let (server, zone, bot) = setup(&herdr, &root).await;
+    let created = create(&server, &zone, &bot).await;
     assert_eq!(created["stage"], "succeeded");
     let row = wait_history(&server, "pi-native-full-001").await;
     assert_eq!(row["cwd"], "C:/native/actual");
@@ -118,8 +118,8 @@ async fn pi_exact_header_can_arrive_before_the_total_deadline() {
     let root = TempDir::new("pi-late-header");
     let native = root.path().join("exact-late.jsonl");
     herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":native}}));
-    let (server, zone, template) = setup(&herdr, &root).await;
-    assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+    let (server, zone, bot) = setup(&herdr, &root).await;
+    assert_eq!(create(&server, &zone, &bot).await["stage"], "succeeded");
     wait_get(&herdr).await;
     assert_eq!(get(&server, "/api/sessions/history").await["total"], 0);
     tokio::time::pause();
@@ -146,8 +146,8 @@ async fn pi_identity_budget_ends_reads_and_never_collects_late_identity() {
             _ => json!({}),
         };
         herdr.set_behavior(behavior);
-        let (server, zone, template) = setup(&herdr, &root).await;
-        let created = create(&server, &zone, &template).await;
+        let (server, zone, bot) = setup(&herdr, &root).await;
+        let created = create(&server, &zone, &bot).await;
         assert_eq!(created["stage"], "succeeded");
         wait_get(&herdr).await;
         post(&server, "/api/sessions/events", json!({"sessionId":"current-timeout-control","kind":"register","data":{"cwd":"C:/current"}})).await;
@@ -173,7 +173,7 @@ async fn pi_identity_budget_ends_reads_and_never_collects_late_identity() {
         assert_eq!(after["shutdown"]["phase"], "none");
         assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count(), reads_at_expiry, "{failure}: reads after deadline");
         assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 1);
-        let view = get(&server, &format!("/api/bots/{}", created["id"].as_str().unwrap())).await;
+        let view = get(&server, &format!("/api/chats/{}", created["id"].as_str().unwrap())).await;
         assert_eq!(view, created);
     }
 }
@@ -187,13 +187,13 @@ async fn pi_pending_identity_does_not_hold_creation_or_current_state() {
     let root = TempDir::new("pi-independent");
     let release = root.path().join("release");
     herdr.set_behavior(json!({"native_session_gate":{"wait_for_file":release,"timeout_ms":60000}}));
-    let (server, zone, template) = setup(&herdr, &root).await;
-    let first = create(&server, &zone, &template).await;
+    let (server, zone, bot) = setup(&herdr, &root).await;
+    let first = create(&server, &zone, &bot).await;
     assert_eq!(first["stage"], "succeeded");
     wait_get(&herdr).await;
     let first_agent = first["agentName"].as_str().unwrap();
     herdr.set_behavior(json!({"native_session_gate":{"match":first_agent,"wait_for_file":release,"timeout_ms":60000},"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-second-independent"},"native_cwd":"C:/second"}));
-    assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+    assert_eq!(create(&server, &zone, &bot).await["stage"], "succeeded");
     wait_history(&server, "pi-second-independent").await;
     post(&server, "/api/sessions/events", json!({"sessionId":"current-untouched","kind":"register","data":{"cwd":"C:/current","agentType":"pi"}})).await;
     post(&server, "/api/sessions/events", json!({"sessionId":"current-untouched","kind":"state","data":{"value":"working"}})).await;
@@ -223,7 +223,7 @@ async fn pi_save_failure_does_not_retry_or_change_current_intent() {
     let root = TempDir::new("pi-save-failure");
     let release = root.path().join("release");
     herdr.set_behavior(json!({"native_session_gate":{"wait_for_file":release,"timeout_ms":60000},"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-save-once"},"native_cwd":"C:/save-once"}));
-    let (server, zone, template) = setup(&herdr, &root).await;
+    let (server, zone, bot) = setup(&herdr, &root).await;
     post(&server, "/api/sessions/events", json!({"sessionId":"current-save-control","kind":"register","data":{"cwd":"C:/current","agentType":"pi"}})).await;
     post(&server, "/api/sessions/events", json!({"sessionId":"current-save-control","kind":"state","data":{"value":"working"}})).await;
     post(&server, "/api/shutdown/monitor", json!({"sessionId":"current-save-control","selected":true})).await;
@@ -231,7 +231,7 @@ async fn pi_save_failure_does_not_retry_or_change_current_intent() {
     let before = before.next_frame().await.json();
     let blocker = root.path().join("history.json.tmp");
     fs::create_dir(&blocker).unwrap();
-    assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+    assert_eq!(create(&server, &zone, &bot).await["stage"], "succeeded");
     wait_get(&herdr).await;
     fs::write(release, b"release").unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
@@ -266,14 +266,14 @@ async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() 
         let root = TempDir::new(outcome);
         let release = root.path().join("release");
         herdr.set_behavior(json!({"native_session_gate":{"wait_for_file":release,"timeout_ms":60000}}));
-        let (server, zone, template) = setup(&herdr, &root).await;
+        let (server, zone, bot) = setup(&herdr, &root).await;
         let started = common::post_over_tcp(server.addr(), "/api/shutdown/start").await;
         assert!((200..300).contains(&started.status), "{}", started.body);
         let mut before = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
         let before = before.next_frame().await.json();
         assert_eq!(before["shutdown"]["phase"], "counting-down");
         if outcome == "save-failed" { fs::create_dir(root.path().join("history.json.tmp")).unwrap(); }
-        assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+        assert_eq!(create(&server, &zone, &bot).await["stage"], "succeeded");
         wait_get(&herdr).await;
         if outcome == "timeout" {
             tokio::time::pause();
@@ -306,8 +306,8 @@ async fn pi_unconfirmed_start_and_submit_never_collect_but_register_still_can() 
         let mut behavior = json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-unconfirmed-id"},"native_cwd":"C:/native/unconfirmed"});
         behavior[failure] = json!(true);
         herdr.set_behavior(behavior);
-        let (server, zone, template) = setup(&herdr, &root).await;
-        assert_eq!(create(&server, &zone, &template).await["stage"], "failed");
+        let (server, zone, bot) = setup(&herdr, &root).await;
+        assert_eq!(create(&server, &zone, &bot).await["stage"], "failed");
         assert_eq!(get(&server, "/api/sessions/history").await["total"], 0);
         assert!(!herdr.calls().iter().any(|c| c["kind"] == "agent_get"));
         post(&server, "/api/sessions/events", json!({"sessionId":"pi-unconfirmed-id","kind":"register","data":{"cwd":"C:/native/unconfirmed","sessionName":"Accepted connect","agentType":"pi"}})).await;
@@ -317,15 +317,15 @@ async fn pi_unconfirmed_start_and_submit_never_collect_but_register_still_can() 
 }
 
 // P04/P09: connect may precede or follow zone collection. The independent
-// expected name is the Bot name, not whichever metadata arrived last.
+// expected name is the Chat name, not whichever metadata arrived last.
 #[tokio::test(flavor="multi_thread")]
-async fn pi_zone_name_wins_both_source_orders_and_survives_restart() {
+async fn pi_zone_name_wins_chath_source_orders_and_survives_restart() {
     let herdr = HerdrFixture::new("pi-name-priority");
     let root = TempDir::new("pi-name-priority-storage");
     herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-priority-id"},"native_cwd":"C:/native/priority"}));
-    let (server, zone, template) = setup(&herdr, &root).await;
+    let (server, zone, bot) = setup(&herdr, &root).await;
     post(&server, "/api/sessions/events", json!({"sessionId":"pi-priority-id","kind":"register","data":{"cwd":"C:/connect/first","sessionName":"Connect first"}})).await;
-    assert_eq!(create(&server, &zone, &template).await["stage"], "succeeded");
+    assert_eq!(create(&server, &zone, &bot).await["stage"], "succeeded");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     loop {
         if wait_history(&server, "pi-priority-id").await["sessionName"] == "Pi Zone Name" { break; }

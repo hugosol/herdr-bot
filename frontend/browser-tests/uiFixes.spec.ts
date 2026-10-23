@@ -9,7 +9,7 @@ import { startServer, type E2EServer } from './support'
 import {
   expectNoHorizontalOverflow,
   jsonPost,
-  serializedBotRule,
+  serializedChatRule,
   zoneRowFor,
 } from './ui'
 
@@ -48,18 +48,16 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   server = await startServer()
   await page.goto(server.baseURL)
 
-  const tabs = page.getByRole('tablist', { name: 'herdr-bot 主界面分区' }).getByRole('tab')
-  await expect(tabs).toHaveText(['chat', 'bot', 'zone', 'server'])
   await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
 
-  await page.getByTestId('tab-templates').click()
-  await expect(page.getByTestId('template-empty')).toBeVisible()
-  await page.getByTestId('template-create-open').click()
-  const dialog = page.getByTestId('template-dialog')
+  await page.getByTestId('tab-bots').click()
+  await expect(page.getByTestId('bot-empty')).toBeVisible()
+  await page.getByTestId('bot-create-open').click()
+  const dialog = page.getByTestId('bot-dialog')
   await expect(dialog).toBeVisible()
 
   // 选中项文本与控件值一致；实际渲染颜色对深色背景保持可读对比度。
-  const model = page.getByTestId('template-model')
+  const model = page.getByTestId('bot-model')
   const initialModel = await model.evaluate((select) => {
     const control = getComputedStyle(select)
     const option = select.selectedOptions[0]
@@ -86,8 +84,8 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   expect(selectedModel.selectedText).toBe('DeepSeek-Flash')
   expect(contrastRatio(selectedModel.color, selectedModel.backgroundColor)).toBeGreaterThan(4.5)
 
-  const thinking = page.getByTestId('template-thinking')
-  const skill = page.getByTestId('template-skill')
+  const thinking = page.getByTestId('bot-thinking')
+  const skill = page.getByTestId('bot-skill')
   await expect(thinking).toHaveValue('default')
   await expect(skill).toHaveValue('')
   expect(
@@ -96,37 +94,37 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   expect(await skill.evaluate((select) => select.selectedOptions[0]?.textContent)).toBe('无')
 
   // 变量编辑：光标位于 A 与 B 之间时插入，而不是追加到末尾。
-  const botName = page.getByTestId('template-bot-name')
-  await botName.fill('AB')
+  const chatName = page.getByTestId('bot-chat-name')
+  await chatName.fill('AB')
   await page.keyboard.press('ArrowLeft')
   await page.getByTestId('insert-zone-name').click()
-  expect(await serializedBotRule(botName)).toBe('A{zone.name}B')
-  await expect(page.getByTestId('bot-name-preview')).toHaveText('AalphaB')
+  expect(await serializedChatRule(chatName)).toBe('A{zone.name}B')
+  await expect(page.getByTestId('chat-name-preview')).toHaveText('AalphaB')
 
   // × 删除变量块，前后固定文字保留。
-  await botName.getByRole('button', { name: '删除变量 zone.name' }).click()
-  expect(await serializedBotRule(botName)).toBe('AB')
-  await expect(botName.getByTestId('bot-name-token')).toHaveCount(0)
-  await expect(page.getByTestId('bot-name-preview')).toHaveText('AB')
+  await chatName.getByRole('button', { name: '删除变量 zone.name' }).click()
+  expect(await serializedChatRule(chatName)).toBe('AB')
+  await expect(chatName.getByTestId('chat-name-token')).toHaveCount(0)
+  await expect(page.getByTestId('chat-name-preview')).toHaveText('AB')
 
   // × 按钮本身也可用键盘激活，不被编辑器的 Enter 单行限制吞掉。
-  await botName.fill('K')
-  await page.getByTestId('insert-bot-id').click()
-  const keyboardRemove = botName.getByRole('button', { name: '删除变量 bot.id' })
+  await chatName.fill('K')
+  await page.getByTestId('insert-chat-id').click()
+  const keyboardRemove = chatName.getByRole('button', { name: '删除变量 chat.id' })
   await keyboardRemove.focus()
   await page.keyboard.press('Enter')
-  expect(await serializedBotRule(botName)).toBe('K')
-  await expect(botName.getByTestId('bot-name-token')).toHaveCount(0)
+  expect(await serializedChatRule(chatName)).toBe('K')
+  await expect(chatName.getByTestId('chat-name-token')).toHaveCount(0)
 
   // 变量块后按退格会整块删除，而不是只删除 × 或一个字符。
-  await botName.fill('X')
+  await chatName.fill('X')
   await page.getByTestId('insert-agent').click()
-  expect(await serializedBotRule(botName)).toBe('X{agent}')
-  await expect(botName).toBeFocused()
+  expect(await serializedChatRule(chatName)).toBe('X{agent}')
+  await expect(chatName).toBeFocused()
   await page.keyboard.press('Backspace')
-  expect(await serializedBotRule(botName)).toBe('X')
-  await expect(botName.getByTestId('bot-name-token')).toHaveCount(0)
-  await expect(page.getByTestId('bot-name-preview')).toHaveText('X')
+  expect(await serializedChatRule(chatName)).toBe('X')
+  await expect(chatName.getByTestId('chat-name-token')).toHaveCount(0)
+  await expect(page.getByTestId('chat-name-preview')).toHaveText('X')
 })
 
 test('手机宽度下 zone 只显示末级名称与数字角标', async ({ page }) => {

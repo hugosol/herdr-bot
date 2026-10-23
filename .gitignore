@@ -45,12 +45,13 @@ dist-ssr
 /zones.json
 /zones.json.tmp
 
-# Bot 模板的旧根目录运行时文件
+# Bot 的旧根目录运行文件与一次性迁移备份（旧路径仍不能入库）
 /bot-templates.json
 /bot-templates.json.tmp
+/*.pre-bot-chat
 
 # 旧根目录 agent 会话存储
 /bot-sessions/
 
-# 验证夹具的运行时产物：调用记录、PID 文件与停止标记（fixtures/README.md 说明其可随时删除）
+# 验证夹具的运行时产物：调用记录、PID 文件与停止标记
 /fixtures/runtime/

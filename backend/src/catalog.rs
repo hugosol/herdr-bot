@@ -1,6 +1,6 @@
 //! Hand-maintained option metadata. Each operation loads one complete, validated snapshot.
 //! No generated defaults, watcher, or stale-cache fallback.
-use crate::templates::{Agent, BotTemplate, TemplateError};
+use crate::bots::{Agent, Bot, BotError};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -56,7 +56,7 @@ pub enum ExtensionKind {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplateOptions {
+pub struct BotOptions {
     agents: Vec<String>,
     models: Vec<String>,
     thinking: BTreeMap<String, BTreeMap<String, Vec<String>>>,
@@ -66,7 +66,7 @@ pub struct TemplateOptions {
 }
 
 impl Catalog {
-    pub fn load(path: &Path) -> Result<Self, TemplateError> {
+    pub fn load(path: &Path) -> Result<Self, BotError> {
         let result = (|| -> Result<Self, String> {
             let raw = fs::read_to_string(path).map_err(|e| format!("读取失败：{e}"))?;
             let catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
@@ -74,7 +74,7 @@ impl Catalog {
             Ok(catalog)
         })();
         result.map_err(|reason| {
-            TemplateError::Metadata(format!("选项元数据 {}：{reason}", path.display()))
+            BotError::Metadata(format!("选项元数据 {}：{reason}", path.display()))
         })
     }
 
@@ -204,18 +204,18 @@ impl Catalog {
         model: &str,
         thinking: &str,
         skill: Option<&str>,
-    ) -> Result<(), TemplateError> {
+    ) -> Result<(), BotError> {
         if !self.agents.iter().any(|v| v.id == agent) {
-            return Err(TemplateError::UnknownAgent(agent.label().into()));
+            return Err(BotError::UnknownAgent(agent.label().into()));
         }
         let selected = self
             .models
             .iter()
             .find(|v| v.id == model)
             .filter(|v| v.id == "default" || v.thinking.contains_key(agent.label()))
-            .ok_or_else(|| TemplateError::UnknownModel(model.into()))?;
+            .ok_or_else(|| BotError::UnknownModel(model.into()))?;
         if selected.id == "default" && thinking != "default" {
-            return Err(TemplateError::ThinkingRequiresDefaultModel);
+            return Err(BotError::ThinkingRequiresDefaultModel);
         }
         if thinking != "default" {
             if !self.models.iter().any(|v| {
@@ -223,14 +223,14 @@ impl Catalog {
                     .values()
                     .any(|levels| levels.iter().any(|level| level == thinking))
             }) {
-                return Err(TemplateError::UnknownThinking(thinking.into()));
+                return Err(BotError::UnknownThinking(thinking.into()));
             }
             if !self
                 .supported_thinking(agent, model)
                 .iter()
                 .any(|v| v == thinking)
             {
-                return Err(TemplateError::ThinkingUnsupported {
+                return Err(BotError::ThinkingUnsupported {
                     agent,
                     model: model.into(),
                     thinking: thinking.into(),
@@ -240,7 +240,7 @@ impl Catalog {
         }
         if let Some(skill) = skill {
             if !self.skills.iter().any(|v| v.id == skill) {
-                return Err(TemplateError::UnknownSkill(skill.into()));
+                return Err(BotError::UnknownSkill(skill.into()));
             }
         }
         Ok(())
@@ -250,7 +250,7 @@ impl Catalog {
         &self,
         agent: Agent,
         selections: &[String],
-    ) -> Result<(), TemplateError> {
+    ) -> Result<(), BotError> {
         for (index, id) in selections.iter().enumerate() {
             if selections[..index].contains(id)
                 || !self.extensions.iter().any(|extension| {
@@ -259,23 +259,23 @@ impl Catalog {
                         && extension.kind == ExtensionKind::Optional
                 })
             {
-                return Err(TemplateError::InvalidExtension(id.clone()));
+                return Err(BotError::InvalidExtension(id.clone()));
             }
         }
         Ok(())
     }
 
-    pub fn validate_template(&self, template: &BotTemplate) -> Result<(), TemplateError> {
+    pub fn validate_bot(&self, bot: &Bot) -> Result<(), BotError> {
         self.validate_selection(
-            template.agent,
-            &template.model,
-            &template.thinking,
-            template.skill.as_deref(),
+            bot.agent,
+            &bot.model,
+            &bot.thinking,
+            bot.skill.as_deref(),
         )?;
-        self.validate_extensions(template.agent, &template.extensions)
+        self.validate_extensions(bot.agent, &bot.extensions)
     }
 
-    pub fn options(&self) -> TemplateOptions {
+    pub fn options(&self) -> BotOptions {
         let mut thinking = BTreeMap::new();
         for agent in &self.agents {
             let mut models = BTreeMap::new();
@@ -312,7 +312,7 @@ impl Catalog {
                     .collect(),
             ),
         ]);
-        TemplateOptions {
+        BotOptions {
             agents: self.agents.iter().map(|v| v.id.label().into()).collect(),
             models: self.models.iter().map(|v| v.id.clone()).collect(),
             skills: self.skills.iter().map(|v| v.id.clone()).collect(),
@@ -323,16 +323,16 @@ impl Catalog {
     }
 
     /// Resolve stable IDs once, before any external work; the caller owns this snapshot.
-    pub fn resolve(&self, template: &BotTemplate) -> Result<ResolvedPreset, TemplateError> {
-        self.validate_template(template)?;
+    pub fn resolve(&self, bot: &Bot) -> Result<ResolvedPreset, BotError> {
+        self.validate_bot(bot)?;
         Ok(ResolvedPreset {
             provider_model: self
                 .models
                 .iter()
-                .find(|v| v.id == template.model)
+                .find(|v| v.id == bot.model)
                 .and_then(|v| v.provider_model.clone()),
-            thinking: (template.thinking != "default").then(|| template.thinking.clone()),
-            native_skill: template
+            thinking: (bot.thinking != "default").then(|| bot.thinking.clone()),
+            native_skill: bot
                 .skill
                 .as_ref()
                 .and_then(|id| self.skills.iter().find(|v| &v.id == id))
@@ -341,9 +341,9 @@ impl Catalog {
                 .extensions
                 .iter()
                 .filter(|extension| {
-                    extension.agent == template.agent
+                    extension.agent == bot.agent
                         && (extension.kind == ExtensionKind::Fixed
-                            || template.extensions.contains(&extension.id))
+                            || bot.extensions.contains(&extension.id))
                 })
                 .cloned()
                 .collect(),

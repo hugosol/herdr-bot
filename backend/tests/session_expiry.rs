@@ -238,7 +238,7 @@ async fn a_new_registration_without_a_state_reads_online_with_no_agent_state() {
 ///
 /// 计时只取最后有效上报：离线是在 t=40 观察到的，但清除仍在 t=41 发生（而不是从「首次发现离线」再等一个窗口）。
 #[tokio::test]
-async fn maintenance_retains_through_both_windows_and_clears_one_second_later() {
+async fn maintenance_retains_through_chath_windows_and_clears_one_second_later() {
     let server = LifecycleServer::start().await;
     assert_accepted(&server.post(&register("sess-bounded", None)).await);
     // 刚写入：维护无话可说（窗口内不发布任何可见变化）。

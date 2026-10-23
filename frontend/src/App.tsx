@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
-import { BotTemplatesPanel } from './BotTemplatesPanel'
+import { BotsPanel } from './BotsPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
@@ -32,13 +32,13 @@ type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
  * herdr-bot 主界面的四个顶层入口，按频繁程度排列：chat → bot → zone → server。
  * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
  */
-const TAB_ORDER = ['sessions', 'templates', 'files', 'control'] as const
+const TAB_ORDER = ['sessions', 'bots', 'files', 'control'] as const
 
 type TabKey = (typeof TAB_ORDER)[number]
 
 const TAB_LABELS: Record<TabKey, string> = {
   sessions: 'chat',
-  templates: 'bot',
+  bots: 'bot',
   files: 'zone',
   control: 'server',
 }
@@ -118,7 +118,7 @@ export default function App({
   const feedback = feedbackFor(state)
 
   return (
-    <main className={tab === 'files' || tab === 'templates' ? 'panel panel--wide' : 'panel'}>
+    <main className={tab === 'files' || tab === 'bots' ? 'panel panel--wide' : 'panel'}>
       <h1>herdr-bot</h1>
 
       {/* 四 tab 外壳：chat → bot → zone → server，打开时默认停在 chat。
@@ -164,14 +164,14 @@ export default function App({
       </div>
 
       <div
-        id="panel-templates"
+        id="panel-bots"
         role="tabpanel"
-        aria-labelledby="tab-templates"
+        aria-labelledby="tab-bots"
         className="tabpanel"
-        data-testid="panel-templates"
-        hidden={tab !== 'templates'}
+        data-testid="panel-bots"
+        hidden={tab !== 'bots'}
       >
-        <BotTemplatesPanel active={tab === 'templates'} />
+        <BotsPanel active={tab === 'bots'} />
       </div>
 
       <div

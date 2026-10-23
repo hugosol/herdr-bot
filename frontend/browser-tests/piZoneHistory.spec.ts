@@ -23,18 +23,18 @@ async function prepare(behavior: Record<string, unknown>) {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-zone-history-'))
   server = await startServer({ herdr: { behavior } })
   const zones = await post('/api/zones', { path: root })
-  const saved = await post('/api/bot-templates', { name: 'Pi history browser', botName: 'Pi Browser Bot', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
-  return { zone: zones.zones[0].path as string, template: saved.templates.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
+  const saved = await post('/api/bots', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+  return { zone: zones.zones[0].path as string, bot: saved.bots.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
 }
 async function createInPage(page: Page, zone: string) {
   await page.goto(server!.baseURL)
   await page.getByTestId('tab-files').click()
-  await zoneRowFor(page, zone).getByTestId('zone-create-bot').click()
-  const dialog = page.getByTestId('bot-creation-dialog')
-  await dialog.locator('#bot-workspace-target').selectOption('default')
-  await dialog.getByTestId('bot-input').fill('/settings')
-  await dialog.getByTestId('bot-create-submit').click()
-  await expect(dialog.getByTestId('bot-create-success')).toHaveText('创建成功，初始指示已提交')
+  await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
+  const dialog = page.getByTestId('chat-creation-dialog')
+  await dialog.locator('#chat-workspace-target').selectOption('default')
+  await dialog.getByTestId('chat-input').fill('/settings')
+  await dialog.getByTestId('chat-create-submit').click()
+  await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
   return dialog
 }
 
@@ -59,20 +59,20 @@ test('Pi without connect survives page close and history is independent of curre
   const reopened = await browser.newPage()
   try {
     await reopened.goto(server!.baseURL)
-    await expect(reopened.getByTestId('session-board')).not.toContainText('Pi Browser Bot')
+    await expect(reopened.getByTestId('session-board')).not.toContainText('Pi Browser Chat')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
-    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Bot' })).toContainText('C:/browser/native')
+    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toContainText('C:/browser/native')
     await reopened.screenshot({ path: testInfo.outputPath('pi-history-without-connect.png'), fullPage: true })
     await post('/api/sessions/events', { sessionId: 'pi-browser-exact-id', kind: 'register', data: { cwd: 'C:/browser/native', sessionName: 'Connect display name', agentType: 'pi' } })
     await reopened.getByRole('button', { name: '查看当前会话' }).click()
     await expect(reopened.getByTestId('session-board')).toContainText('Connect display name')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
-    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Bot' })).toBeVisible()
+    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
     await post('/api/sessions/events', { sessionId: 'pi-browser-exact-id', kind: 'unregister' })
     await reopened.getByRole('button', { name: '查看当前会话' }).click()
     await expect(reopened.getByTestId('session-board')).not.toContainText('Connect display name')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
-    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Bot' })).toBeVisible()
+    await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
     expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
   } finally { await reopened.close() }
 })
@@ -115,7 +115,7 @@ for (const failure of ['missing-identity', 'unreadable-header', 'save-failed'] a
     expect(logs).toContain(`agent=${agent}`)
     expect(logs).toMatch(/creation=bc-[0-9a-f]+/)
     if (failure === 'unreadable-header') expect(logs).toContain('native header unavailable')
-    await expect(dialog.getByTestId('bot-create-success')).toBeVisible()
+    await expect(dialog.getByTestId('chat-create-success')).toBeVisible()
     await expect(dialog).not.toContainText(/历史|收录|超时|保存失败/)
     await testInfo.attach('delivered-server-diagnostics', { body: logs, contentType: 'text/plain' })
     console.log(`PI-DIAGNOSTICS ${failure}: ${logs.split('\n').filter(l => l.includes('zone-history')).join('\n')}`)

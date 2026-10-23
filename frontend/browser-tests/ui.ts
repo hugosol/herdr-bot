@@ -8,12 +8,12 @@ import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
 /** 从变量编辑器 DOM 读取保存格式；变量块按占位符计算，不把删除按钮的 × 计入。 */
-export async function serializedBotRule(locator: Locator): Promise<string> {
+export async function serializedChatRule(locator: Locator): Promise<string> {
   return locator.evaluate((element) =>
     Array.from(element.childNodes)
       .map((node) =>
-        node instanceof HTMLElement && node.dataset.botNameToken !== undefined
-          ? node.dataset.botNameToken
+        node instanceof HTMLElement && node.dataset.chatNameToken !== undefined
+          ? node.dataset.chatNameToken
           : (node.textContent ?? ''),
       )
       .join(''),
@@ -23,7 +23,7 @@ export async function serializedBotRule(locator: Locator): Promise<string> {
 /** 按完整路径定位 zone 行；列表只显示末级名称，行本身仍保留完整路径身份。 */
 export function zoneRowFor(page: Page, zonePath: string): Locator {
   return page.getByTestId('zone-item').filter({
-    has: page.getByRole('button', { name: `从 ${zonePath} 创建 Bot` }),
+    has: page.getByRole('button', { name: `从 ${zonePath} 发起 Chat` }),
   })
 }
 
@@ -36,11 +36,11 @@ export async function activate(locator: Locator, touch: boolean) {
   }
 }
 
-/** 从模板预设逐步确认，再明确保存；每一步均操作真实页面。 */
-export async function saveTemplate(page: Page, touch = false) {
-  await activate(page.getByTestId('template-next'), touch)
-  await activate(page.getByTestId('template-next'), touch)
-  await activate(page.getByTestId('save-template'), touch)
+/** 从 Bot 预设逐步确认，再明确保存；每一步均操作真实页面。 */
+export async function saveBot(page: Page, touch = false) {
+  await activate(page.getByTestId('bot-next'), touch)
+  await activate(page.getByTestId('bot-next'), touch)
+  await activate(page.getByTestId('save-bot'), touch)
 }
 
 /** 页面不得因弹窗或长路径出现横向滚动。 */

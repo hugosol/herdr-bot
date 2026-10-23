@@ -7,5 +7,5 @@
 
 ## 备选与代价
 
-- 备选：两段式 `shutdown /s /t 0` + 看门狗 `shutdown /s /f /t 0`（零原生代码，但多一个阈值与竞态）；直接 `shutdown /s /f /t 0` 或 `EWX_FORCE`（不等应用，可能丢数据）。分析见 [`docs/omp-auto-shutdown-watcher.md`](../omp-auto-shutdown-watcher.md) 的 Q18。
+- 备选：两段式 `shutdown /s /t 0` + 看门狗 `shutdown /s /f /t 0`（零原生代码，但多一个阈值与竞态）；直接 `shutdown /s /f /t 0` 或 `EWX_FORCE`（不等应用，可能丢数据）。`shutdown /s /t N`（N > 0）隐含强制关闭，不符合先通知应用保存的选择。
 - 代价：引入 `windows` crate 与提权代码；`EWX_FORCEIFHUNG` 仍会强杀不响应的进程；测试接缝意味着 `ExitWindowsEx` 本身只在人工验收里被真实执行。

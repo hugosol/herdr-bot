@@ -17,7 +17,7 @@ script = '{}'
 working_directory = '{}'
 [herdr]
 workspace_name = 'catalog-test'
-[bot_templates]
+[bots]
 storage_file = '{}'
 metadata_file = '{}'
 "#,
@@ -25,7 +25,7 @@ metadata_file = '{}'
         fixtures.display(),
         fixtures.join("success.bat").display(),
         fixtures.display(),
-        root.join("templates.json").display(),
+        root.join("bots.json").display(),
         root.join("options.toml").display()
     ))
     .unwrap()
@@ -54,7 +54,7 @@ script = '{}'
 working_directory = '{}'
 [herdr]
 workspace_name = 'startup-catalog'
-[bot_templates]
+[bots]
 metadata_file = '{}'
 "#,
             fixtures.join("success.bat").display(),
@@ -147,7 +147,7 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
     fs::create_dir(dir.path().join("meta-data")).unwrap();
     fs::write(dir.path().join("meta-data/bot-options.toml"), CATALOG).unwrap();
     // A decoy beside the config must not be used.
-    fs::write(dir.path().join("bot-options.toml"), "not TOML").unwrap();
+    fs::write(dir.path().join("chat-options.toml"), "not TOML").unwrap();
     let root = common::repo_fixtures_dir().parent().unwrap().to_path_buf();
     let delivered = fs::read_to_string(root.join("herdr-bot.toml")).unwrap();
     let config_path = dir.path().join("herdr-bot.toml");
@@ -193,7 +193,7 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
             );
         }
         let port = received.unwrap();
-        let response = get_over_tcp(([127, 0, 0, 1], port).into(), "/api/bot-templates").await;
+        let response = get_over_tcp(([127, 0, 0, 1], port).into(), "/api/bots").await;
         child.kill().unwrap();
         child.wait().unwrap();
         assert_eq!(response.status, 200, "{}", response.body);
@@ -237,7 +237,7 @@ entrypoint = 'C:/catalog/pi-cost.ts'
 "#;
 
 fn payload(thinking: &str) -> String {
-    json!({"name":"动态样例", "botName":"{zone.name}-{bot.id}", "agent":"omp", "model":"lab-model", "thinking":thinking, "skill":"lab-skill", "prompt":"第一行\n第二行"}).to_string()
+    json!({"name":"动态样例", "chatName":"{zone.name}-{chat.id}", "agent":"omp", "model":"lab-model", "thinking":thinking, "skill":"lab-skill", "prompt":"第一行\n第二行"}).to_string()
 }
 
 // P25/P26: independent literals distinguish current metadata from compiled/cached choices.
@@ -248,7 +248,7 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
     let metadata = dir.path().join("options.toml");
     fs::write(&metadata, CATALOG).unwrap();
     let server = TestServer::start(&configuration(dir.path())).await;
-    let response = get_over_tcp(server.addr(), "/api/bot-templates").await;
+    let response = get_over_tcp(server.addr(), "/api/bots").await;
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(body["options"]["models"], json!(["default", "lab-model"]));
@@ -256,18 +256,18 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
         body["options"]["thinking"]["omp"]["lab-model"],
         json!(["low", "high"])
     );
-    let saved = post_json_over_tcp(server.addr(), "/api/bot-templates", &payload("high")).await;
+    let saved = post_json_over_tcp(server.addr(), "/api/bots", &payload("high")).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let stored: Value =
-        serde_json::from_str(&fs::read_to_string(dir.path().join("templates.json")).unwrap())
+        serde_json::from_str(&fs::read_to_string(dir.path().join("bots.json")).unwrap())
             .unwrap();
-    let template = &stored["templates"][0];
-    assert_eq!(template["model"], "lab-model");
-    assert_eq!(template["skill"], "lab-skill");
-    assert_eq!(template["prompt"], "第一行\n第二行");
-    assert_eq!(template["extensions"], json!([]));
+    let bot = &stored["bots"][0];
+    assert_eq!(bot["model"], "lab-model");
+    assert_eq!(bot["skill"], "lab-skill");
+    assert_eq!(bot["prompt"], "第一行\n第二行");
+    assert_eq!(bot["extensions"], json!([]));
     assert_eq!(
-        template.as_object().unwrap().len(),
+        bot.as_object().unwrap().len(),
         9,
         "persist stable fields only"
     );
@@ -278,9 +278,9 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
             .replace("实验模型", "新版模型"),
     )
     .unwrap();
-    let rejected = post_json_over_tcp(server.addr(), "/api/bot-templates", &payload("high")).await;
+    let rejected = post_json_over_tcp(server.addr(), "/api/bots", &payload("high")).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
-    let accepted = post_json_over_tcp(server.addr(), "/api/bot-templates", &payload("low")).await;
+    let accepted = post_json_over_tcp(server.addr(), "/api/bots", &payload("low")).await;
     assert_eq!(accepted.status, 200, "{}", accepted.body);
     let body: Value = serde_json::from_str(&accepted.body).unwrap();
     assert_eq!(

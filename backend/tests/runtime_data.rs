@@ -104,7 +104,7 @@ fn configure(root: &Path, herdr: &HerdrFixture, storage: Option<&str>) {
         herdr.executable().display(),
     );
     if let Some(storage) = storage {
-        config.push_str(&format!("\n[bot_templates]\nstorage_file = '{storage}'\n"));
+        config.push_str(&format!("\n[bots]\nstorage_file = '{storage}'\n"));
     }
     fs::write(root.join("herdr-bot.toml"), config).unwrap();
 }
@@ -151,12 +151,12 @@ fn legacy_data(root: &Path, zone: &Path) -> Vec<u8> {
     fs::write(root.join("zones.json.tmp"), "old zone temporary").unwrap();
     fs::write(
         root.join("bot-templates.json"),
-        r#"{"templates":[{"id":"legacy","name":"discard me"}]}"#,
+        r#"{"templates":[{"id":"legacy","name":"preserve me"}]}"#,
     )
     .unwrap();
     fs::write(
         root.join("bot-templates.json.tmp"),
-        "old template temporary",
+        "old bot temporary",
     )
     .unwrap();
     fs::create_dir(root.join("bot-sessions")).unwrap();
@@ -167,24 +167,24 @@ fn legacy_data(root: &Path, zone: &Path) -> Vec<u8> {
 
 async fn save(panel: &Panel) -> Value {
     let input = json!({
-        "name": "Fresh template", "botName": "{zone.name}-{bot.id}",
+        "name": "Fresh bot", "chatName": "{zone.name}-{chat.id}",
         "agent": "omp", "model": "default", "thinking": "default",
         "skill": null, "prompt": "fresh prompt\nsecond line"
     });
-    body(post_json_over_tcp(panel.addr, "/api/bot-templates", &input.to_string()).await)["templates"][0].clone()
+    body(post_json_over_tcp(panel.addr, "/api/bots", &input.to_string()).await)["bots"][0].clone()
 }
 
-async fn create(panel: &Panel, zone: &Path, template: &Value) -> Value {
+async fn create(panel: &Panel, zone: &Path, bot: &Value) -> Value {
     let preview = body(
         post_json_over_tcp(
             panel.addr,
-            "/api/bots/preview",
-            &json!({"zone": zone, "templateId": template["id"]}).to_string(),
+            "/api/chats/preview",
+            &json!({"zone": zone, "botId": bot["id"]}).to_string(),
         )
         .await,
     );
-    let response = post_json_over_tcp(panel.addr, "/api/bots", &json!({
-        "zone": zone, "templateId": template["id"], "botId": preview["botId"], "input": "new task"
+    let response = post_json_over_tcp(panel.addr, "/api/chats", &json!({
+        "zone": zone, "botId": bot["id"], "chatId": preview["chatId"], "input": "new task"
     }).to_string()).await;
     assert_eq!(response.status, 202, "{}", response.body);
     let accepted: Value = serde_json::from_str(&response.body).unwrap();
@@ -193,7 +193,7 @@ async fn create(panel: &Panel, zone: &Path, template: &Value) -> Value {
         let view = body(
             get_over_tcp(
                 panel.addr,
-                &format!("/api/bots/{}", accepted["id"].as_str().unwrap()),
+                &format!("/api/chats/{}", accepted["id"].as_str().unwrap()),
             )
             .await,
         );
@@ -243,8 +243,8 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         body(
             post_json_over_tcp(panel.addr, "/api/zones", &json!({"path": zone}).to_string()).await,
         );
-        let template = save(&panel).await;
-        assert!(root.path().join(".data/bot-templates.json").is_file());
+        let bot = save(&panel).await;
+        assert!(root.path().join(".data/bots.json").is_file());
         assert!(root.path().join(".data/zones.json").is_file());
         // P25/S4: legacy main + nested sidecar bytes and directory inventory are
         // independent literals, not files produced by the implementation.
@@ -253,8 +253,8 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         fs::write(native.join("old-session/context.jsonl"), b"{\"type\":\"session\",\"id\":\"old-native\"}\n").unwrap();
         fs::write(native.join("old-session/records/tool.bin"), b"\0old-sidecar\xff\r\n").unwrap();
         let before = native_snapshot(&native);
-        let first = create(&panel, &zone, &template).await;
-        let second = create(&panel, &zone, &template).await;
+        let first = create(&panel, &zone, &bot).await;
+        let second = create(&panel, &zone, &bot).await;
         assert_ne!(first["id"], second["id"]);
         let starts: Vec<Value> = herdr
             .calls()
@@ -271,8 +271,8 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         for _ in 0..2 {
             let restarted = Panel::start(root.path());
             assert_eq!(
-                body(get_over_tcp(restarted.addr, "/api/bot-templates").await)["templates"],
-                json!([template.clone()])
+                body(get_over_tcp(restarted.addr, "/api/bots").await)["bots"],
+                json!([bot.clone()])
             );
             assert_eq!(native_snapshot(&native), before, "P25: restart must not touch old native files");
         }
@@ -282,8 +282,8 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
 // P41/P46. Save through HTTP only after the legacy cutover, then actually stop and
 // start the executable twice. A repeated reset or old-location fallback loses the saved literal.
 #[tokio::test]
-async fn default_and_explicit_template_locations_survive_two_restarts_without_legacy_fallback() {
-    for explicit in [None, Some("private/templates.json")] {
+async fn default_and_explicit_bot_locations_survive_two_restarts_without_legacy_fallback() {
+    for explicit in [None, Some("private/bots.json")] {
         let root = TempDir::new("runtime persistence restart");
         let herdr = HerdrFixture::new("runtime restart calls");
         configure(root.path(), &herdr, explicit);
@@ -292,7 +292,7 @@ async fn default_and_explicit_template_locations_survive_two_restarts_without_le
         legacy_data(root.path(), &zone);
         let storage = root
             .path()
-            .join(explicit.unwrap_or(".data/bot-templates.json"));
+            .join(explicit.unwrap_or(".data/bots.json"));
         let session = storage
             .parent()
             .unwrap()
@@ -300,7 +300,7 @@ async fn default_and_explicit_template_locations_survive_two_restarts_without_le
         let saved = {
             let panel = Panel::start(root.path());
             assert_eq!(
-                body(get_over_tcp(panel.addr, "/api/bot-templates").await)["templates"],
+                body(get_over_tcp(panel.addr, "/api/bots").await)["bots"],
                 json!([])
             );
             let saved = save(&panel).await;
@@ -313,24 +313,24 @@ async fn default_and_explicit_template_locations_survive_two_restarts_without_le
         // Reappearing legacy files must never become a fallback or trigger a second cleanup.
         fs::write(
             root.path().join("bot-templates.json"),
-            "invalid old template source",
+            "invalid old bot source",
         )
         .unwrap();
         fs::write(root.path().join("zones.json"), "invalid old zone source").unwrap();
         for _ in 0..2 {
             let restarted = Panel::start(root.path());
             assert_eq!(
-                body(get_over_tcp(restarted.addr, "/api/bot-templates").await)["templates"],
+                body(get_over_tcp(restarted.addr, "/api/bots").await)["bots"],
                 json!([saved.clone()])
             );
             assert_eq!(
                 body(
                     get_over_tcp(
                         restarted.addr,
-                        &format!("/api/bot-templates/{}", saved["id"].as_str().unwrap())
+                        &format!("/api/bots/{}", saved["id"].as_str().unwrap())
                     )
                     .await
-                )["template"],
+                )["bot"],
                 saved
             );
             assert_eq!(
@@ -343,7 +343,7 @@ async fn default_and_explicit_template_locations_survive_two_restarts_without_le
         fs::remove_file(root.path().join(".data/zones.json")).unwrap();
         let restarted = Panel::start(root.path());
         assert_eq!(
-            body(get_over_tcp(restarted.addr, "/api/bot-templates").await)["templates"],
+            body(get_over_tcp(restarted.addr, "/api/bots").await)["bots"],
             json!([])
         );
         assert_eq!(
@@ -352,14 +352,14 @@ async fn default_and_explicit_template_locations_survive_two_restarts_without_le
         );
         assert_eq!(
             fs::read(root.path().join("bot-templates.json")).unwrap(),
-            b"invalid old template source"
+            b"invalid old bot source"
         );
         assert_eq!(
             fs::read(root.path().join("zones.json")).unwrap(),
             b"invalid old zone source"
         );
         if explicit.is_some() {
-            assert!(!root.path().join(".data/bot-templates.json").exists());
+            assert!(!root.path().join(".data/bots.json").exists());
         }
     }
 }
@@ -396,16 +396,16 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
     let preview = body(
         post_json_over_tcp(
             panel.addr,
-            "/api/bots/preview",
-            &json!({"zone": zone, "templateId": saved["id"]}).to_string(),
+            "/api/chats/preview",
+            &json!({"zone": zone, "botId": saved["id"]}).to_string(),
         )
         .await,
     );
     let response = post_json_over_tcp(
         panel.addr,
-        "/api/bots",
+        "/api/chats",
         &json!({
-            "zone": zone, "templateId": saved["id"], "botId": preview["botId"], "input": "task"
+            "zone": zone, "botId": saved["id"], "chatId": preview["chatId"], "input": "task"
         })
         .to_string(),
     )
@@ -414,7 +414,7 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
     let accepted: Value = serde_json::from_str(&response.body).unwrap();
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
-        let view = body(get_over_tcp(panel.addr, &format!("/api/bots/{}", accepted["id"].as_str().unwrap())).await);
+        let view = body(get_over_tcp(panel.addr, &format!("/api/chats/{}", accepted["id"].as_str().unwrap())).await);
         if view["stage"] == "succeeded" { break; }
         assert_ne!(view["stage"], "failed", "{view}");
         assert!(Instant::now() < deadline, "{view}");
@@ -422,20 +422,20 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
     }
     assert_eq!(fs::read(root.path().join(".data/bot-sessions")).unwrap(), b"not a session directory");
 
-    let storage = root.path().join(".data/bot-templates.json");
+    let storage = root.path().join(".data/bots.json");
     let original = fs::read(&storage).unwrap();
     let permissions = fs::metadata(&storage).unwrap().permissions();
     let mut readonly = permissions.clone();
     readonly.set_readonly(true);
     fs::set_permissions(&storage, readonly).unwrap();
-    let response = post_json_over_tcp(panel.addr, "/api/bot-templates", &json!({
-        "name": "must fail", "botName": "new", "agent": "omp", "model": "default", "thinking": "default", "prompt": "new"
+    let response = post_json_over_tcp(panel.addr, "/api/bots", &json!({
+        "name": "must fail", "chatName": "new", "agent": "omp", "model": "default", "thinking": "default", "prompt": "new"
     }).to_string()).await;
     fs::set_permissions(&storage, permissions).unwrap();
     assert_eq!(response.status, 500, "{}", response.body);
     assert_eq!(fs::read(&storage).unwrap(), original);
     assert_eq!(
-        body(get_over_tcp(panel.addr, "/api/bot-templates").await)["templates"],
+        body(get_over_tcp(panel.addr, "/api/bots").await)["bots"],
         json!([saved])
     );
 }
@@ -459,8 +459,8 @@ fn delivered_ignore_rules_exclude_runtime_and_temporary_files_but_not_metadata()
     for file in [
         ".data/zones.json",
         ".data/zones.json.tmp",
-        ".data/bot-templates.json",
-        ".data/bot-templates.json.tmp",
+        ".data/bots.json",
+        ".data/bots.json.tmp",
         ".data/bot-sessions/new/context.jsonl",
         ".data/.runtime-layout-v1",
         "zones.json",
@@ -564,16 +564,16 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
     let preview = body(
         post_json_over_tcp(
             panel.addr,
-            "/api/bots/preview",
-            &json!({"zone": zone, "templateId": saved["id"]}).to_string(),
+            "/api/chats/preview",
+            &json!({"zone": zone, "botId": saved["id"]}).to_string(),
         )
         .await,
     );
     let response = post_json_over_tcp(
         panel.addr,
-        "/api/bots",
+        "/api/chats",
         &json!({
-            "zone": zone, "templateId": saved["id"], "botId": preview["botId"], "input": "task"
+            "zone": zone, "botId": saved["id"], "chatId": preview["chatId"], "input": "task"
         })
         .to_string(),
     )
@@ -587,7 +587,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
             .any(|call| call["kind"] == "agent_start"))
         .await
     );
-    let creation_path = format!("/api/bots/{}", accepted["id"].as_str().unwrap());
+    let creation_path = format!("/api/chats/{}", accepted["id"].as_str().unwrap());
     assert_eq!(
         body(get_over_tcp(panel.addr, &creation_path).await)["stage"],
         "starting"
@@ -623,7 +623,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
         files,
         vec![
             ".runtime-layout-v1",
-            "bot-templates.json",
+            "bots.json",
             "session-history.json",
             "zones.json"
         ]
@@ -689,7 +689,7 @@ async fn existing_zone_target_wins_without_merging_or_stopping_startup() {
         body(get_over_tcp(panel.addr, "/api/zones").await)["zones"],
         json!([{"path": new_zone}])
     );
-    assert!(!root.path().join("zones.json").exists());
+    assert!(root.path().join("zones.json").is_file(), "the old registration is user data, even when the target differs");
     assert_eq!(
         fs::read(root.path().join(".data/zones.json")).unwrap(),
         target.as_bytes()
@@ -738,12 +738,12 @@ async fn cutover_preserves_old_native_main_and_sidecars_while_moving_zone_regist
         "bot-templates.json.tmp",
     ] {
         assert!(
-            !root.path().join(old).exists(),
-            "legacy source remains: {old}"
+            root.path().join(old).is_file(),
+            "startup discarded user data: {old}"
         );
     }
     assert_eq!(
-        body(get_over_tcp(panel.addr, "/api/bot-templates").await)["templates"],
+        body(get_over_tcp(panel.addr, "/api/bots").await)["bots"],
         json!([])
     );
     assert_eq!(fs::read(zone.join("payload.bin")).unwrap(), content);
