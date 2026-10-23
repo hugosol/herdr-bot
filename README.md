@@ -49,8 +49,12 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 多个目标按 Workspace ID、Tab ID、Pane ID 的字典序稳定选择一个，并在页面提示。
 影响匹配的原生身份暂不可读、Herdr 查询异常或聚焦未确认都会明确失败；不以失败冒充无匹配。
 
-`located` 仅表示已确认 Herdr 内部导航，并不保证 Windows 桌面窗口置前。
-`not-found` 表示查询成功但没有匹配目标，**尚未恢复**；当前已有目标定位流程不创建新的恢复进程。
+只有成功查找且没有匹配时，才在历史 cwd 中新建目标，使用当前配置的 agent 命令和必要集成加载指定原生对话。
+优先使用身份一致的可用会话文件，文件不可用时仅回退到同一原生 ID；Pi 使用 `--session`，OMP 使用 `--resume`，不使用会自动继续中断任务的 `--restore`。
+恢复不提交新输入、不重放 Bot 初始指示，也不重新应用 Bot 的模型／思考设置覆盖原生对话。缺失工作目录、不可用原生对话、启动或聚焦失败均明确反馈，不以空白对话冒充成功。
+缺少原 Workspace 的旧记录回退到配置的唯一默认 Workspace，并说明回退；默认位置不可用时不创建替代位置。
+`located` 表示已确认定位已有对话，`restored` 仅在确认同一原生身份、实际 cwd 和聚焦后返回；两者都只确认 Herdr 内部导航，不保证 Windows 桌面窗口置前。
+真实原生加载及 OMP 未自动继续任务由专用 H-Pi／H-OMP 人工验收确认；受控参数记录不代替该证据。详见 [集成边界](docs/integration-boundaries.md#历史-chat-resume)。
 缺少受支持 agent 类型的旧记录仍提供入口并明确反馈原因。会话事件同机写入限制保持不变。
 
 ## 旧数据一次性切换
@@ -76,6 +80,7 @@ python scripts\migrate-bot-chat-terminology.py --config herdr-bot.toml
 自动检查入口为 `cargo test --manifest-path backend\Cargo.toml`、
 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser`；
 浏览器检查需要构建后的前后端和本机 Chrome。Cargo 检查也需要 Node.js，以执行跨前后端的测试网络护栏。
+真实子进程测试读取启动端口后仍须持续消费 stdout，直到进程退出；提前关闭管道会与剩余启动日志竞争，导致进程异常退出。
 浏览器检查使用随仓库交付的 `meta-data/bot-options.toml`；修改显示标签时，须同步更新摘要的独立预期值及动态元数据测试中的替换样例（当前模型标签为 `GPT-6.1-Sol`）。
 Windows 浏览器 fixture 清理会等待服务退出事件后再判断 `taskkill` 的失败状态，避免将已退出但尚未被 Node 观察到的进程误报为清理失败；进程仍存活时继续报告错误。
 

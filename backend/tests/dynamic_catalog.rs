@@ -179,7 +179,8 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
                     .and_then(|v| v.trim_end_matches('/').parse::<u16>().ok())
                 {
                     let _ = tx.send(port);
-                    return;
+                    // Keep the pipe open and drain remaining startup diagnostics:
+                    // the server still writes to stdout after announcing its port.
                 }
             }
         });
