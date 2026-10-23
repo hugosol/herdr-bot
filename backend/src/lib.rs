@@ -142,6 +142,8 @@ pub struct AppState {
     pub herdr: Arc<herdr::HerdrClient>,
     /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Chat 列表。
     pub chat_creations: Arc<chats::ChatCreations>,
+    /// 同一历史 Chat 的实例内 Resume 资格；立即拒绝重复请求，不排队，与会话登记独立。
+    pub(crate) resume_executions: Arc<resume::ResumeExecutions>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -237,6 +239,7 @@ pub fn app_with_state(
         )),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
+        resume_executions: Arc::new(resume::ResumeExecutions::default()),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),

@@ -175,7 +175,7 @@ for (const agent of ['pi', 'omp'] as const) {
       fs.rmdirSync(staging)
       await register(id, { cwd: 'C:/recovered-current', agentType: agent, sessionName: 'Connect recovery must not replace saved zone' })
       const recovered = await history()
-      expect(recovered.sessions).toEqual([{ sessionId: id, sessionName: 'Durable zone before failure', cwd: 'C:/recovered-current', agentType: agent, originalWorkspaceId: 'w-target', firstRecordedAt: saved.sessions[0].firstRecordedAt }])
+      expect(recovered.sessions).toEqual([{ sessionId: id, sessionName: 'Durable zone before failure', cwd: 'C:/recovered-current', agentType: agent, firstRecordedAt: saved.sessions[0].firstRecordedAt, originalWorkspaceId: 'w-target' }])
       await evidence(info, 'actual-zone-write-warning', { warning })
       await evidence(info, 'combined-failure-history', recovered)
       const afterRecovery = await currentSnapshot()
@@ -253,7 +253,7 @@ for (const agent of ['pi', 'omp'] as const) {
       const saved = await history()
       expect(saved.total).toBe(3)
       expect([...saved.sessions].sort((a, b) => a.sessionId.localeCompare(b.sessionId))).toEqual([
-        { sessionId: id, sessionName: 'Zone renamed literal', agentType: agent, cwd: 'C:/same-project', originalWorkspaceId: 'w-target', firstRecordedAt },
+        { sessionId: id, sessionName: 'Zone renamed literal', agentType: agent, cwd: 'C:/same-project', firstRecordedAt, originalWorkspaceId: 'w-target' },
         { sessionId: other, sessionName: 'Connect latest literal', agentType: agent, cwd: 'C:/same-project', firstRecordedAt: expect.any(Number) },
         { sessionId: crossAgent, sessionName: 'Connect latest literal', agentType: agent === 'pi' ? 'omp' : 'pi', cwd: 'C:/same-project', firstRecordedAt: expect.any(Number) },
       ].sort((a, b) => a.sessionId.localeCompare(b.sessionId)))
