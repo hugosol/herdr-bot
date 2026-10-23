@@ -275,9 +275,17 @@ h1 {
   color: #6b7280;
 }
 
-/* 原生下拉的弹出层不总是继承页面深色背景；显式声明配色，避免选中文字与背景同色。 */
+/* 发起 Chat 与编辑 Bot 共用控件尺寸和箭头，不依赖浏览器原生外观；选项仍使用原生菜单。 */
 .zone-form__select {
+  appearance: none;
+  flex: none;
+  box-sizing: border-box;
   width: 100%;
+  min-height: 2.8125rem;
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23f2f4f8' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
   color-scheme: dark;
   -webkit-text-fill-color: #f2f4f8;
 }
@@ -2129,6 +2137,25 @@ h1 {
 
 .bot-dialog {
   width: min(100%, 56rem);
+}
+
+.bot-delete-dialog {
+  width: min(calc(100% - 2.5rem), 32rem);
+  color: #f2f4f8;
+}
+
+.bot-delete-dialog::backdrop {
+  background: rgba(6, 8, 11, 0.88);
+}
+
+.bot-delete-dialog .zone-dialog__title {
+  overflow-wrap: anywhere;
+}
+
+.bot-delete-confirm {
+  border-color: #a63838;
+  background: #a63838;
+  color: #ffffff;
 }
 
 .bot-steps {

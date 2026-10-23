@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
 import {
@@ -87,6 +87,16 @@ export function BotsPanel({ active }: { active: boolean }) {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Bot | null>(null)
+  const deleteDialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const element = deleteDialog.current
+    if (deleteTarget === null || element === null) return
+    // 由原生弹窗聚焦首个按钮；提前 autoFocus 会丢失用于关闭后恢复的触发按钮。
+    element.showModal()
+    return () => element.close()
+  }, [deleteTarget])
 
   // 进入这个顶层入口时读取后端共享列表；切走时取消尚未落地的读取结果。
   useEffect(() => {
@@ -168,7 +178,13 @@ export function BotsPanel({ active }: { active: boolean }) {
     )
   }
 
+  function closeDeleteDialog() {
+    deleteDialog.current?.close()
+    setDeleteTarget(null)
+  }
+
   async function remove(bot: Bot) {
+    closeDeleteDialog()
     setDeleting(bot.id)
     setFeedback(null)
     const result = await deleteBot(bot.id)
@@ -343,7 +359,7 @@ export function BotsPanel({ active }: { active: boolean }) {
                     className="zone-dialog__cancel"
                     data-testid="bot-delete"
                     disabled={saving || deleting !== null}
-                    onClick={() => void remove(bot)}
+                    onClick={() => setDeleteTarget(bot)}
                   >
                     删除
                   </button>
@@ -352,6 +368,41 @@ export function BotsPanel({ active }: { active: boolean }) {
             ))}
           </ul>
         ))}
+
+      {deleteTarget !== null && (
+        <dialog
+          ref={deleteDialog}
+          className="zone-dialog bot-delete-dialog"
+          data-testid="bot-delete-dialog"
+          aria-labelledby="bot-delete-question"
+          onCancel={(event) => {
+            event.preventDefault()
+            closeDeleteDialog()
+          }}
+        >
+          <h2 id="bot-delete-question" className="zone-dialog__title">
+            是否删除 Bot「{deleteTarget.name}」？
+          </h2>
+          <div className="zone-dialog__actions">
+            <button
+              type="button"
+              className="zone-dialog__cancel"
+              data-testid="bot-delete-cancel"
+              onClick={closeDeleteDialog}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="zone-dialog__cancel bot-delete-confirm"
+              data-testid="bot-delete-confirm"
+              onClick={() => void remove(deleteTarget)}
+            >
+              删除
+            </button>
+          </div>
+        </dialog>
+      )}
 
       {dialog !== null && data !== null && (
         <div className="zone-modal">

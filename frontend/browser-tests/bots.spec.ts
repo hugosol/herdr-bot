@@ -141,9 +141,27 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Bot', async (
   thinking: 'xhigh',
   skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] })
 
-  // 删除：独立客户端再读取并尝试按标识选择时，目标 Bot 不可用。
-  await page.getByTestId('bot-item').getByTestId('bot-delete').click()
+  // 打开、取消及 Escape 均不删除；只有明确确认才提交删除。
+  let deletes = 0
+  page.on('request', (request) => {
+    if (request.method() === 'DELETE') deletes++
+  })
+  const deleteButton = page.getByTestId('bot-item').getByTestId('bot-delete')
+  await deleteButton.click()
+  await expect(page.getByTestId('bot-delete-cancel')).toBeFocused()
+  expect((await server.getBots()).bots).toEqual(afterEdit.bots)
+  expect(deletes).toBe(0)
+  await page.getByTestId('bot-delete-cancel').click()
+  await expect(page.getByTestId('bot-delete-dialog')).toHaveCount(0)
+  await expect(deleteButton).toBeFocused()
+  await deleteButton.click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('bot-delete-dialog')).toHaveCount(0)
+  expect(deletes).toBe(0)
+  await deleteButton.click()
+  await page.getByTestId('bot-delete-confirm').click()
   await expect(page.getByTestId('bot-empty')).toBeVisible()
+  expect(deletes).toBe(1)
   expect((await server.getBots()).bots).toEqual([])
   const unavailable = await fetch(
     `${server.baseURL}/api/bots/${encodeURIComponent(saved.id)}`,
@@ -167,14 +185,9 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
   const thinking = page.getByTestId('bot-thinking')
   const skill = page.getByTestId('bot-skill')
 
-  // agent 固定选项只有 omp / pi；model 只有默认值与两个已确认模型；Skill 仅三个选项。
+  // Agent 与 Skill 选择独立于模型目录。
   await expect(agent.locator('option')).toHaveCount(2)
   expect(await selectValues(page, 'bot-agent')).toEqual(['omp', 'pi'])
-  expect(await selectValues(page, 'bot-model')).toEqual([
-    'default',
-    'gpt-6.1-sol',
-    'deepseek-flash',
-  ])
   expect(await selectValues(page, 'bot-skill')).toEqual([
     '',
     'grill-with-docs',
@@ -240,13 +253,30 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
     'max',
   ])
 
-  // off 只在 deepseek-flash 受支持；换回 gpt-6.1-sol 时重置并提示。
+  // DeepSeek 的 off 不能沿用到 GPT-6.1-sol。
   await thinking.selectOption('off')
   await model.selectOption('gpt-6.1-sol')
   await expect(thinking).toHaveValue('default')
   await expect(page.getByTestId('thinking-notice')).toContainText(
     '当前思考级别「off」不适用于 pi / gpt-6.1-sol',
   )
+
+  // Pi 的 Luna 支持 off；切换到 Astra 必须重置，而不能提交不支持的 off。
+  await model.selectOption('gpt-6-luna')
+  await thinking.selectOption('off')
+  await expect(thinking).toHaveValue('off')
+  await model.selectOption('gpt-6-astra')
+  await expect(thinking).toHaveValue('default')
+  await expect(thinking.locator('option[value="off"]')).toHaveCount(0)
+  await thinking.selectOption('minimal')
+
+  // OMP 不支持 Pi 的 minimal/off，但两个新模型均支持 max。
+  await agent.selectOption('omp')
+  await model.selectOption('gpt-6-luna')
+  await expect(thinking.locator('option[value="off"], option[value="minimal"]')).toHaveCount(0)
+  await thinking.selectOption('max')
+  await model.selectOption('gpt-6-astra')
+  await expect(thinking).toHaveValue('max')
 
   // 改回默认模型：thinking 也只能默认。
   await model.selectOption('default')

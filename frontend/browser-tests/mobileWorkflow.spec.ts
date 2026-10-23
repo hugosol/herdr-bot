@@ -263,6 +263,8 @@ for (const profile of PROFILES) {
 
       // 删除：页面与独立客户端都不再提供该 Bot。
       await activate(row.getByTestId('bot-delete'), profile.hasTouch)
+      await expectDialogInsideViewport(page.getByTestId('bot-delete-dialog'))
+      await activate(page.getByTestId('bot-delete-confirm'), profile.hasTouch)
       await expect(page.getByTestId('bot-empty')).toBeVisible()
       expect((await server.getBots()).bots).toEqual([])
       const removed = await fetch(

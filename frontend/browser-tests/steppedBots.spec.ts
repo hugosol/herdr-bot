@@ -116,6 +116,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
     model: 'deepseek-flash', thinking: 'off', skill: 'teach', prompt: '编辑首行\n编辑次行', extensions: ['pi-codebase-tools'],
   }])
   await page.getByTestId('bot-delete').click()
+  await page.getByTestId('bot-delete-confirm').click()
   await expect(page.getByTestId('bot-empty')).toBeVisible()
   expect((await server.getBots()).bots).toEqual([])
   expect(server.herdrCalls().filter((call) => call.kind !== 'agent_get')).toEqual(calls)

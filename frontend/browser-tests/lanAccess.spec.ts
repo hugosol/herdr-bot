@@ -194,8 +194,10 @@ test('局域网地址可管理共享 Bot 并从 zone 发起 Chat，不额外要�
 
   await activate(page.getByTestId('tab-bots'), true)
   await page.getByTestId('bot-item').getByTestId('bot-delete').first().tap()
+  await page.getByTestId('bot-delete-confirm').tap()
   await expect(page.getByTestId('bot-item')).toHaveCount(1)
   await page.getByTestId('bot-item').getByTestId('bot-delete').first().tap()
+  await page.getByTestId('bot-delete-confirm').tap()
   await expect(page.getByTestId('bot-empty')).toBeVisible()
   const removed = await fetch(
     `${lanURL}/api/bots/${encodeURIComponent(edited.bots[0].id)}`,

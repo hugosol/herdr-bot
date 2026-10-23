@@ -22,6 +22,11 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 以及 [`meta-data/bot-options.toml`](meta-data/bot-options.toml) 中的模型和扩展入口。
 配置相对路径以进程工作目录为基准。请从控制台启动，以便脚本继承可用的控制台。
 
+Bot 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`；
+思考级别按所选 agent 与模型的能力提供，Pi 的 Luna 支持 `off`，Astra 不支持。
+模型目录修改后下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
+删除 Bot 时先询问是否删除，取消不发出删除请求；删除不影响已经发起的 Chat。
+
 本机访问 `http://127.0.0.1:<端口>/`；局域网使用启动日志中的
 `http://herdr-bot.local:<端口>/`，无法解析时使用服务主机的局域网 IPv4。
 手机上的 `127.0.0.1` 指向手机自身。
