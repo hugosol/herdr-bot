@@ -29,4 +29,6 @@
 - 浏览器：`frontend/browser-tests/chatResumeConcurrency.spec.ts` 用独立 HTTP 请求持有资格，交付页面收到真实 `409/resume-in-progress` 后显示后端消息，首个请求成功不把已拒绝请求改为成功；只有新的用户点击才重新查找定位。截图在该 Playwright 用例输出的 `resume-authoritative-busy.png` 与 `resume-after-busy-new-action.png`。
 - TDD red：首个受控查询重叠用例在没有执行资格时因重复请求未即时拒绝而失败（3 秒有界等待到期）；增加 guard 后通过。过程中修正了测试选项目录缺少固定 Pi 集成的独立 fixture，未改变验收预期。
 - 实际验证：`cargo test --test chat_resume --test chat_resume_pi --test chat_resume_concurrency`：17 通过；`npm run test:browser -- chatResume.spec.ts chatResumePi.spec.ts chatResumeConcurrency.spec.ts`：4 通过；`cargo build --bins` 与 `npm run build` 通过。首次 frontend build 因未安装依赖失败，执行锁定依赖 `npm ci --prefer-offline --no-audit --no-fund` 后构建和浏览器验证成功。
-- 说明更新在 `docs/integration-boundaries.md`；未修改会话登记生命周期。本票没有认领或验证 06 的超时交错场景，没有执行 H-Pi／H-OMP 人工真实原生对话验收，也未运行全仓测试。
+- 说明更新在 `docs/integration-boundaries.md`；未修改会话登记生命周期。本票没有认领或验证 06 的超时交错场景，没有执行 H-Pi／H-OMP 人工真实原生对话验收。原开发阶段未运行全仓测试，后续集成结果见下。
+- 集成接管：将集成提交 `374f8046b0391d9477127a62f6c5161bf362823c` 合回本开发分支，解决 `docs/integration-boundaries.md` 冲突，同时保留实例内并发拒绝语义和原 Workspace 持久化／恢复选择说明。
+- 集成全局测试：`cargo test --manifest-path backend/Cargo.toml`：432 通过、5 忽略；`npm --prefix frontend test`：27 个文件、205 通过。首次全量浏览器 95 通过、14 失败，均为跨来源历史完整对象预期未纳入新收录的 `originalWorkspaceId`；两处独立字面预期补充 `w-target`，保留完整对象比对。修复后 `npm --prefix frontend run test:browser`：109 通过，网络策略检查通过。未执行复杂脚本、实机 smoke 或跨票据最终独立门禁。

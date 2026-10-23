@@ -66,7 +66,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await expect(page.getByTestId('bot-step')).toHaveText('3 / 3 · 确认保存')
   const summary = page.getByTestId('bot-summary')
   for (const [id, value] of Object.entries({
-    name: '发布巡检', chatName: PRESET.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-sol', thinking: 'high',
+    name: '发布巡检', chatName: PRESET.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high',
     skill: '/code-review', prompt: PRESET.prompt, fixed: 'herdr-agent-state、model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭',
   })) await expect(summary.getByTestId(`summary-${id}`)).toHaveText(value)
   expect((await server.getBots()).bots).toEqual([])

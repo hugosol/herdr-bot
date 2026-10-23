@@ -322,7 +322,7 @@ pub async fn run_creation(
     // The page and the creation result do not own this task. Never hold a creation,
     // current-registration or history lock while waiting for external identity.
     tokio::spawn(async move {
-        collect_native_history(herdr, history, creation_id, agent_name, kind, name).await;
+        collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id).await;
     });
 }
 
@@ -333,6 +333,7 @@ async fn collect_native_history(
     agent_name: String,
     kind: &'static str,
     name: String,
+    original_workspace_id: String,
 ) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut last_reason = String::from("native identity unavailable");
@@ -360,7 +361,7 @@ async fn collect_native_history(
     };
     // Exactly one persistence attempt after identity; no background write retries.
     if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(),
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id),
     ).await {
         eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
