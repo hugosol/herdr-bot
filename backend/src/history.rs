@@ -60,6 +60,9 @@ struct HistoryList<'a> {
 pub(crate) struct HistorySelection {
     pub session_id: String,
     pub agent_type: Option<String>,
+    pub cwd: Option<String>,
+    pub session_file: Option<String>,
+    pub session_name: Option<String>,
 }
 
 pub struct History {
@@ -86,7 +89,8 @@ impl History {
     pub(crate) async fn selection(&self, session_id: &str) -> io::Result<Option<HistorySelection>> {
         let _guard = self.lock.lock().await;
         Ok(self.read()?.into_iter().find(|record| record.session_id == session_id)
-            .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type }))
+            .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type,
+                cwd: record.cwd, session_file: record.session_file, session_name: record.session_name }))
     }
 
     pub async fn record_zone(

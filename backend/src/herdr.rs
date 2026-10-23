@@ -288,6 +288,15 @@ impl HerdrClient {
     /// One read-only identity attempt. The caller owns the overall acquisition
     /// deadline; this method never scans directories or invokes agent commands.
     pub async fn native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        self.read_native_session(target, kind, deadline, false).await
+    }
+
+    /// Restoration must observe the process cwd, not merely the old file header.
+    pub(crate) async fn restored_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        self.read_native_session(target, kind, deadline, true).await
+    }
+
+    async fn read_native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant, require_live_cwd: bool) -> Result<NativeSession, HerdrError> {
         if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
         let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
         if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
@@ -312,8 +321,13 @@ impl HerdrClient {
                 let path = PathBuf::from(reference_value);
                 if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
                 let allow_title_metadata = kind == "omp";
-                tokio::task::spawn_blocking(move || native_header(path, allow_title_metadata, deadline)).await
-                    .map_err(|error| native_error(&format!("native header reader failed: {error}")))?
+                let mut native = tokio::task::spawn_blocking(move || native_header(path, allow_title_metadata, deadline)).await
+                    .map_err(|error| native_error(&format!("native header reader failed: {error}")))??;
+                if require_live_cwd {
+                    native.cwd = nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd")))
+                        .ok_or_else(|| native_error("restored process has no reported cwd"))?.to_owned();
+                }
+                Ok(native)
             }
             _ => Err(native_error("unsupported native reference kind")),
         }
@@ -453,7 +467,7 @@ impl NavigationTarget {
     }
 }
 
-async fn read_native_id(path: &str, kind: &str) -> Result<String, HerdrError> {
+pub(crate) async fn read_native_id(path: &str, kind: &str) -> Result<String, HerdrError> {
     let path = PathBuf::from(path);
     if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
     let allow_title = kind == "omp";
