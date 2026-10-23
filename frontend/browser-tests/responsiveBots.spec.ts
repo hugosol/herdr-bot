@@ -79,7 +79,7 @@ for (const profile of [
       await expect(page.getByTestId('extension-omp-codebase-tools')).toBeChecked()
       await expect(page.getByTestId('extension-omp-connect-bot')).toBeChecked()
       await action('bot-next')
-      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, fixed: 'herdr-agent-state、model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭' })) {
+      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, fixed: 'herdr-agent-state、model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭' })) {
         await expect(page.getByTestId(`summary-${id}`)).toHaveText(expected)
       }
       expect((await server.getBots()).bots).toEqual([])
