@@ -1,5 +1,6 @@
 //! Resume first locates a native conversation. Only a successful empty query
-//! permits a new process; restoration never submits input or applies a Bot preset.
+//! permits a new process. Restoration loads the latest trusted Bot environment,
+//! but never submits input or replays launch-only trigger configuration.
 use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Response}};
 use serde::Deserialize;
 use serde_json::json;
@@ -79,7 +80,7 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
 }
 
 async fn restore_with_feedback(state: &AppState, selected: &crate::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
-    use crate::{catalog::{ExtensionKind, ResolvedPreset}, herdr::NavigationTarget};
+    use crate::{bots::{Agent, BotError}, herdr::NavigationTarget};
     let label = if kind == "omp" { "OMP" } else { "Pi" };
     let cwd = match selected.cwd.as_deref().filter(|cwd| std::path::Path::new(cwd).is_absolute() && std::path::Path::new(cwd).is_dir()) {
         Some(cwd) => cwd,
@@ -93,10 +94,20 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
         Ok(catalog) => catalog,
         Err(error) => return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error.message(), None),
     };
-    // Resume does not resolve any Bot. Keep only the current mandatory integrations.
-    let preset = ResolvedPreset { provider_model: None, thinking: None, native_skill: None,
-        extensions: catalog.extensions.into_iter().filter(|extension| extension.agent.label() == kind && extension.kind == ExtensionKind::Fixed).collect() };
-    if let Err(error) = preset.check_entrypoints() { return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error, None); }
+    let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
+    let selections = match selected.source_bot_id.as_deref() {
+        Some(id) => match state.bots.get(id).await {
+            Ok(bot) if bot.agent == agent => bot.env.extensions,
+            Ok(_) | Err(BotError::NotFound) => Vec::new(),
+            Err(error) => return restore_failure(feedback, label, "settings", error.code(), &error.message(), None),
+        },
+        None => Vec::new(),
+    };
+    let env = match catalog.resolve_env(agent, &selections) {
+        Ok(env) => env,
+        Err(error) => return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error.message(), None),
+    };
+    if let Err(error) = env.check_entrypoints() { return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error, None); }
     let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref()).await {
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
@@ -108,7 +119,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
     };
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
     let name = crate::chats::new_agent_name();
-    let mut args = crate::chats::agent_launch_args(&preset);
+    let mut args = crate::chats::agent_launch_args(&env, None);
     args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
     if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
         if matches!(error, HerdrError::Timeout(_)) {

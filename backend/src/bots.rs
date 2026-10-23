@@ -52,12 +52,26 @@ pub struct Bot {
     /// Chat 自动命名规则：单行固定文字与占位符。
     pub chat_name: String,
     pub agent: Agent,
+    // Flattening preserves the existing HTTP and persisted Bot format; these
+    // are distinct execution inputs, not a new disk format or legacy aliases.
+    #[serde(flatten)]
+    pub trigger: TriggerConfig,
+    #[serde(flatten)]
+    pub env: EnvConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TriggerConfig {
     pub model: String,
     pub thinking: String,
     /// 不选 Skill 时为 `None`。
     pub skill: Option<String>,
-    /// 可多行、可为空的固定指示。
+    /// 可多行、可为空的固定初始指示，只在发起时提交。
     pub prompt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvConfig {
     /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
     #[serde(default)]
     pub extensions: Vec<String>,
@@ -324,11 +338,13 @@ impl Bots {
             name: fields.name,
             chat_name: fields.chat_name,
             agent: fields.agent,
-            model: fields.model,
-            thinking: fields.thinking,
-            skill: fields.skill,
-            prompt: fields.prompt,
-            extensions: fields.extensions,
+            trigger: TriggerConfig {
+                model: fields.model,
+                thinking: fields.thinking,
+                skill: fields.skill,
+                prompt: fields.prompt,
+            },
+            env: EnvConfig { extensions: fields.extensions },
         });
         self.save(&bots)?;
         Ok(bots)
@@ -351,11 +367,13 @@ impl Bots {
         target.name = fields.name;
         target.chat_name = fields.chat_name;
         target.agent = fields.agent;
-        target.model = fields.model;
-        target.thinking = fields.thinking;
-        target.skill = fields.skill;
-        target.prompt = fields.prompt;
-        target.extensions = fields.extensions;
+        target.trigger = TriggerConfig {
+            model: fields.model,
+            thinking: fields.thinking,
+            skill: fields.skill,
+            prompt: fields.prompt,
+        };
+        target.env = EnvConfig { extensions: fields.extensions };
         self.save(&bots)?;
         Ok(bots)
     }

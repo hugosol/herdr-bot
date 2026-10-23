@@ -265,16 +265,6 @@ impl Catalog {
         Ok(())
     }
 
-    pub fn validate_bot(&self, bot: &Bot) -> Result<(), BotError> {
-        self.validate_selection(
-            bot.agent,
-            &bot.model,
-            &bot.thinking,
-            bot.skill.as_deref(),
-        )?;
-        self.validate_extensions(bot.agent, &bot.extensions)
-    }
-
     pub fn options(&self) -> BotOptions {
         let mut thinking = BTreeMap::new();
         for agent in &self.agents {
@@ -324,41 +314,52 @@ impl Catalog {
 
     /// Resolve stable IDs once, before any external work; the caller owns this snapshot.
     pub fn resolve(&self, bot: &Bot) -> Result<ResolvedPreset, BotError> {
-        self.validate_bot(bot)?;
+        self.validate_selection(bot.agent, &bot.trigger.model, &bot.trigger.thinking, bot.trigger.skill.as_deref())?;
         Ok(ResolvedPreset {
-            provider_model: self
-                .models
-                .iter()
-                .find(|v| v.id == bot.model)
-                .and_then(|v| v.provider_model.clone()),
-            thinking: (bot.thinking != "default").then(|| bot.thinking.clone()),
-            native_skill: bot
-                .skill
-                .as_ref()
-                .and_then(|id| self.skills.iter().find(|v| &v.id == id))
-                .map(|v| v.native_name.clone()),
-            extensions: self
-                .extensions
-                .iter()
-                .filter(|extension| {
-                    extension.agent == bot.agent
-                        && (extension.kind == ExtensionKind::Fixed
-                            || bot.extensions.contains(&extension.id))
-                })
-                .cloned()
-                .collect(),
+            env: self.resolve_env(bot.agent, &bot.env.extensions)?,
+            trigger: ResolvedTriggerConfig {
+                provider_model: self.models.iter()
+                    .find(|v| v.id == bot.trigger.model)
+                    .and_then(|v| v.provider_model.clone()),
+                thinking: (bot.trigger.thinking != "default").then(|| bot.trigger.thinking.clone()),
+                native_skill: bot.trigger.skill.as_ref()
+                    .and_then(|id| self.skills.iter().find(|v| &v.id == id))
+                    .map(|v| v.native_name.clone()),
+            },
+        })
+    }
+
+    /// Resolve only the current session environment. Trigger choices may have
+    /// become invalid since the Bot was saved and are deliberately not consulted.
+    pub fn resolve_env(&self, agent: Agent, selections: &[String]) -> Result<ResolvedEnvConfig, BotError> {
+        self.validate_extensions(agent, selections)?;
+        Ok(ResolvedEnvConfig {
+            extensions: self.extensions.iter().filter(|extension| {
+                extension.agent == agent && (extension.kind == ExtensionKind::Fixed
+                    || selections.contains(&extension.id))
+            }).cloned().collect(),
         })
     }
 }
 
+/// A creation snapshot keeps launch-only actions separate from session resources.
+/// The persisted Bot and HTTP representation do not change format.
 pub struct ResolvedPreset {
+    pub trigger: ResolvedTriggerConfig,
+    pub env: ResolvedEnvConfig,
+}
+
+pub struct ResolvedTriggerConfig {
     pub provider_model: Option<String>,
     pub thinking: Option<String>,
     pub native_skill: Option<String>,
+}
+
+pub struct ResolvedEnvConfig {
     pub extensions: Vec<ExtensionOption>,
 }
 
-impl ResolvedPreset {
+impl ResolvedEnvConfig {
     /// Inspect this creation's extension files or directory roots for readability.
     /// Directory discovery and package interpretation remain owned by the target agent.
     /// Never import, execute, or probe extension services.
