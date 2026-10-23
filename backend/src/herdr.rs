@@ -192,10 +192,9 @@ impl HerdrClient {
         })).collect())
     }
 
-    /// Resolve an original ID, not a label; only a successful inventory proving
-    /// absence permits fallback. Query/shape failures must not create elsewhere.
-    pub(crate) async fn resume_workspace(&self, original_id: Option<&str>) -> Result<(Workspace, Option<&'static str>), HerdrError> {
-        let reason = if let Some(id) = original_id {
+    /// Strict ID lookup: only a complete successful inventory can prove absence.
+    /// Recovery fallback policy belongs to the caller, not the CLI adapter.
+    pub(crate) async fn workspace_by_id(&self, id: &str) -> Result<Option<Workspace>, HerdrError> {
             let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
             let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
                 .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
@@ -210,12 +209,7 @@ impl HerdrClient {
                     original = Some(Workspace { id: id.to_owned(), label: label.to_owned() });
                 }
             }
-            if let Some(workspace) = original { return Ok((workspace, None)); }
-            "原 Workspace 已删除，已回退到配置的默认 Workspace；"
-        } else {
-            "缺少原 Workspace 信息，已回退到配置的默认 Workspace；"
-        };
-        self.workspace(self.workspace_name()).await.map(|workspace| (workspace, Some(reason)))
+            Ok(original)
     }
 
     /// 在指定 Workspace 中新建 Tab，并把 cwd 显式设为 zone 目录。

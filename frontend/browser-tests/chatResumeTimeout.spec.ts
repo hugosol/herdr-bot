@@ -36,6 +36,13 @@ for (const kind of ['pi', 'omp']) {
     expect(reply.status()).toBe(502)
     const result = await reply.json()
     expect(result.outcome).toBe('unconfirmed')
+    // P15/P20 existing-path ownership: selected Workspace fallback remains
+    // visible when native loading is unconfirmed, not replaced by success.
+    expect(result.degradations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'workspace', reason: expect.stringContaining('缺少原 Workspace'), strategy: expect.stringContaining('w-target') }),
+    ]))
+    await expect(row.getByRole('alert')).toContainText('缺少原 Workspace')
+    await expect(row.getByRole('alert')).toContainText('默认 Workspace')
     await expect(row.getByRole('alert')).toContainText('启动结果未确认')
     await expect(row.getByRole('alert')).toContainText('不能据此判断未启动')
     await expect(row.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled()
