@@ -103,11 +103,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
         },
         None => Vec::new(),
     };
-    let env = match catalog.resolve_env(agent, &selections) {
-        Ok(env) => env,
-        Err(error) => return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error.message(), None),
-    };
-    if let Err(error) = env.check_entrypoints() { return restore_failure(feedback, label, "settings", "invalid-agent-settings", &error, None); }
+    let env = feedback.environment(&catalog, agent, &selections);
     let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref()).await {
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
@@ -160,6 +156,26 @@ mod degradation {
     impl Feedback {
         pub(super) fn record(&mut self, element: &'static str, reason: String, strategy: String) {
             self.items.push(Item { element, reason, strategy });
+        }
+
+        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::bots::Agent, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
+            use crate::catalog::{ExtensionKind, ResolvedEnvConfig};
+            for id in selections {
+                if !catalog.extensions.iter().any(|extension| extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional) {
+                    self.record("extension", format!("扩展「{id}」的当前可选映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
+                }
+            }
+            ResolvedEnvConfig {
+                extensions: catalog.extensions.iter().filter(|extension| extension.agent == agent && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
+                    match extension.check_entrypoint() {
+                        Ok(()) => Some(extension.clone()),
+                        Err(reason) => {
+                            self.record("extension", reason, "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
+                            None
+                        }
+                    }
+                }).collect(),
+            }
         }
 
         pub(super) async fn native_load(&mut self, selected: &crate::history::HistorySelection, kind: &str) -> Result<(String, String), (&'static str, String)> {

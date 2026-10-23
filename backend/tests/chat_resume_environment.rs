@@ -163,6 +163,171 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
     }
 }
 
+// P5/P18, approved S2/S3: an independent stale optional ID must not discard
+// the valid fixed entry. Ordinary creation with the identical Bot must reject
+// before any external action; Resume must submit only the known-good literal set.
+#[tokio::test]
+async fn missing_optional_mapping_is_filtered_only_on_resume() {
+    for agent in ["pi", "omp"] {
+        let root = TempDir::new("missing selected mapping");
+        let herdr = HerdrFixture::new("missing selected mapping herdr");
+        configure(root.path(), &herdr);
+        catalog(root.path(), agent, "valid", true);
+        let file = native(root.path(), &herdr, agent, "native-filter-mapping");
+        let panel = Panel::start(root.path());
+        let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let saved = post(&panel, "/api/bots", bot(agent, "b", "Filter source")).await;
+        let id = saved["bots"][0]["id"].as_str().unwrap();
+        create(&panel, zone, id).await;
+        history(&panel, 1).await;
+        let options = root.path().join("options.toml");
+        fs::write(&options, fs::read_to_string(&options).unwrap().replace("id = 'b'", "id = 'not-selected'")).unwrap();
+        let before = herdr.calls().len();
+        let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"botId":id})).await;
+        let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"botId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
+        assert_eq!(rejected.status, 400, "{}", rejected.body);
+        assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "bot-extension-invalid");
+        assert_eq!(herdr.calls().len(), before);
+        let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-filter-mapping"})).await;
+        assert_eq!(result["outcome"], "restored");
+        assert_eq!(result["degradations"].as_array().unwrap().len(), 1);
+        assert!(result["degradations"][0]["reason"].as_str().unwrap().contains("b"));
+        assert!(result["degradations"][0]["reason"].as_str().unwrap().contains("映射缺失"));
+        assert!(result["degradations"][0]["strategy"].as_str().unwrap().contains("跳过"));
+        let calls = herdr.calls();
+        assert_eq!(calls[before..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
+    }
+}
+
+// P5/P18: the missing file is real, not a replacement mapping or adapter error.
+// Both fixed and selected optional entries must be independently removable while
+// the other literal entry remains; strict creation must not submit an agent.
+#[tokio::test]
+async fn missing_entrypoints_preserve_other_extensions_on_resume_only() {
+    for agent in ["pi", "omp"] {
+        for broken in ["fixed", "b"] {
+            entrypoint_case(agent, broken, "missing").await;
+        }
+    }
+}
+
+// P5: fixed identity/kind survives in the current catalog, but its entrypoint
+// mapping is absent. Deleting a whole fixed declaration instead means it is no
+// longer part of the latest fixed set, not a recoverable historical snapshot.
+#[tokio::test]
+async fn missing_fixed_and_optional_entry_mappings_are_item_local() {
+    for agent in ["pi", "omp"] {
+        for broken in ["fixed", "b"] {
+            entrypoint_case(agent, broken, "mapping").await;
+        }
+    }
+}
+
+// P5: exclusive Windows handles produce an actual PermissionDenied/sharing
+// failure at File::open, not NotFound. The production file check stays real.
+#[cfg(windows)]
+#[tokio::test]
+async fn unreadable_fixed_and_optional_entries_keep_the_other_valid_item() {
+    for agent in ["pi", "omp"] {
+        for broken in ["fixed", "b"] {
+            entrypoint_case(agent, broken, "unreadable").await;
+        }
+    }
+}
+
+async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
+    let root = TempDir::new("filter unavailable entry");
+    let herdr = HerdrFixture::new("filter unavailable entry herdr");
+    configure(root.path(), &herdr);
+    catalog(root.path(), agent, "valid", true);
+    let file = native(root.path(), &herdr, agent, "native-filter-entry");
+    let panel = Panel::start(root.path());
+    let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+    let zone = zones["zones"][0]["path"].as_str().unwrap();
+    let saved = post(&panel, "/api/bots", bot(agent, "b", "Entry source")).await;
+    let id = saved["bots"][0]["id"].as_str().unwrap();
+    create(&panel, zone, id).await;
+    history(&panel, 1).await;
+    let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"botId":id})).await;
+    let broken_file = root.path().join(format!("{agent}-{broken}-valid.ts"));
+    if failure == "mapping" {
+        let options = root.path().join("options.toml");
+        fs::write(&options, fs::read_to_string(&options).unwrap().replace(&format!("entrypoint = '{}'\n", broken_file.display()), "")).unwrap();
+    }
+    #[cfg(windows)]
+    let _exclusive = if failure == "unreadable" {
+        use std::os::windows::fs::OpenOptionsExt;
+        let held = fs::OpenOptions::new().read(true).share_mode(0).open(&broken_file).unwrap();
+        let error = fs::read(&broken_file).expect_err("fixture must genuinely fail to read an existing entry");
+        assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+        Some(held)
+    } else { None };
+    if failure == "missing" { fs::remove_file(&broken_file).unwrap(); }
+    let before = herdr.calls().len();
+    let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-filter-entry"})).await;
+    let after_resume = herdr.calls().len();
+    let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"botId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
+    assert_eq!(rejected.status, 500, "{}", rejected.body);
+    assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "extension-entrypoint-invalid");
+    assert_eq!(herdr.calls().len(), after_resume);
+    assert_eq!(result["outcome"], "restored");
+    assert!(result["message"].as_str().unwrap().contains("恢复存在降级"));
+    let items = result["degradations"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["element"], "extension");
+    assert!(items[0]["reason"].as_str().unwrap().contains(broken));
+    if failure != "mapping" { assert!(items[0]["reason"].as_str().unwrap().contains(broken_file.to_str().unwrap())); }
+    assert!(items[0]["reason"].as_str().unwrap().contains(match failure { "missing" => "入口不存在", "mapping" => "映射缺失", _ => "入口无法读取" }));
+    assert!(items[0]["strategy"].as_str().unwrap().contains("跳过"));
+    let valid = if broken == "fixed" { "b" } else { "fixed" };
+    let calls = herdr.calls();
+    let resumed = &calls[before..];
+    assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], json!(["--no-extensions","--extension",root.path().join(format!("{agent}-{valid}-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
+    assert!(!resumed.iter().any(|c| c["kind"] == "agent_prompt" || c["kind"] == "agent_input"));
+}
+
+// P6/P15: both real entry files disappear after a trusted source is recorded.
+// Empty is still explicit, not a reason to reload fixed/default extensions.
+// With no identity integration, a submitted command must remain unconfirmed.
+#[tokio::test]
+async fn empty_explicit_environment_retains_each_warning_without_assuming_confirmation() {
+    for agent in ["pi", "omp"] {
+        let root = TempDir::new("empty explicit environment");
+        let herdr = HerdrFixture::new("empty explicit environment herdr");
+        configure(root.path(), &herdr);
+        catalog(root.path(), agent, "valid", true);
+        let file = native(root.path(), &herdr, agent, "native-empty-explicit");
+        let panel = Panel::start(root.path());
+        let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let saved = post(&panel, "/api/bots", bot(agent, "b", "Empty source")).await;
+        create(&panel, zone, saved["bots"][0]["id"].as_str().unwrap()).await;
+        history(&panel, 1).await;
+        for id in ["fixed", "b"] { fs::remove_file(root.path().join(format!("{agent}-{id}-valid.ts"))).unwrap(); }
+        herdr.set_behavior(json!({"native_session":null}));
+        let before = herdr.calls().len();
+        let response = post_json_over_tcp(panel.addr, "/api/chats/resume", r#"{"sessionId":"native-empty-explicit"}"#).await;
+        assert_eq!(response.status, 502, "{}", response.body);
+        let result: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(result["outcome"], "unconfirmed");
+        assert_eq!(result["stage"], "confirm");
+        assert_eq!(result["progress"]["conversationConfirmed"], false);
+        let items = result["degradations"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        for (item, id) in items.iter().zip(["fixed", "b"]) {
+            assert_eq!(item["element"], "extension");
+            assert!(item["reason"].as_str().unwrap().contains(id));
+            assert!(item["reason"].as_str().unwrap().contains("入口不存在"));
+            assert!(item["strategy"].as_str().unwrap().contains("仍关闭扩展自动发现"));
+        }
+        let calls = herdr.calls();
+        let resumed = &calls[before..];
+        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], json!(["--no-extensions",if agent == "omp" {"--resume"} else {"--session"},file]));
+        assert!(!resumed.iter().any(|c| ["agent_prompt","agent_input","agent_focus"].contains(&c["kind"].as_str().unwrap())));
+    }
+}
+
 // P10: save valid trigger choices before removing either the model or the Skill
 // from the current catalog. Resolving the whole preset would wrongly block
 // restoration. The external start must still receive the selected environment;

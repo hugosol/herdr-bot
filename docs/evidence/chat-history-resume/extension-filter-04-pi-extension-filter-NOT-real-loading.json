@@ -1,0 +1,1081 @@
+{
+  "scope": "Controlled Herdr; not real extension loading",
+  "agent": "pi",
+  "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi",
+  "native": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\original.jsonl",
+  "botId": "tpl-18e12aea108266e8-0",
+  "partial": {
+    "degradations": [
+      {
+        "element": "extension",
+        "reason": "扩展「Selected optional」（selected-optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\selected-optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+        "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+      }
+    ],
+    "fallback": false,
+    "matchCount": 0,
+    "message": "恢复存在降级：扩展「Selected optional」（selected-optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\selected-optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 已在原 Workspace 恢复；已确认恢复同一 Pi 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+    "outcome": "restored",
+    "stage": "focused",
+    "target": {
+      "paneId": "w-target:p9b353c",
+      "tabId": "w-target:t9b353c",
+      "workspaceId": "w-target"
+    }
+  },
+  "empty": {
+    "agentName": "chat-82c8fa1995aa",
+    "code": "restore-unconfirmed",
+    "degradations": [
+      {
+        "element": "extension",
+        "reason": "扩展「Identity fixed」（identity-fixed）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\identity-fixed.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+        "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+      },
+      {
+        "element": "extension",
+        "reason": "扩展「Selected optional」（selected-optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\selected-optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+        "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+      }
+    ],
+    "fallback": false,
+    "message": "恢复存在降级：扩展「Identity fixed」（identity-fixed）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\identity-fixed.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 扩展「Selected optional」（selected-optional）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\selected-optional.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 Pi 启动结果未确认（confirm 阶段等待超时）：Herdr 的 agent get native identity 返回了无法理解的响应：native identity acquisition deadline expired 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+    "outcome": "unconfirmed",
+    "progress": {
+      "conversationConfirmed": false,
+      "focused": false,
+      "startSubmitted": true,
+      "tabCreated": true
+    },
+    "stage": "confirm",
+    "target": {
+      "paneId": "w-target:pcaf374",
+      "tabId": "w-target:tcaf374",
+      "workspaceId": "w-target"
+    }
+  },
+  "partialCalls": [
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1792761311741,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1792761311830,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "w-target",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi",
+        "--label",
+        "Filter pi 7865fe",
+        "--no-focus"
+      ],
+      "at": 1792761311845,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi",
+      "kind": "tab_create",
+      "label": "Filter pi 7865fe",
+      "workspace": "w-target"
+    },
+    {
+      "agent_kind": "pi",
+      "args": [
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\identity-fixed.ts",
+        "--session",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\original.jsonl"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-2276ea1711c1",
+        "--kind",
+        "pi",
+        "--pane",
+        "w-target:p9b353c",
+        "--timeout",
+        "30000",
+        "--",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\identity-fixed.ts",
+        "--session",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\original.jsonl"
+      ],
+      "at": 1792761311861,
+      "kind": "agent_start",
+      "name": "chat-2276ea1711c1",
+      "pane": "w-target:p9b353c"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-2276ea1711c1"
+      ],
+      "at": 1792761311877,
+      "kind": "agent_get",
+      "pid": 16176,
+      "target": "chat-2276ea1711c1"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "w-target:p9b353c"
+      ],
+      "kind": "agent_focus"
+    }
+  ],
+  "emptyCalls": [
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1792761312001,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "w-target",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi",
+        "--label",
+        "Filter pi 7865fe",
+        "--no-focus"
+      ],
+      "at": 1792761312015,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi",
+      "kind": "tab_create",
+      "label": "Filter pi 7865fe",
+      "workspace": "w-target"
+    },
+    {
+      "agent_kind": "pi",
+      "args": [
+        "--no-extensions",
+        "--session",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\original.jsonl"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-82c8fa1995aa",
+        "--kind",
+        "pi",
+        "--pane",
+        "w-target:pcaf374",
+        "--timeout",
+        "30000",
+        "--",
+        "--no-extensions",
+        "--session",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9JDjDD\\filter-pi\\original.jsonl"
+      ],
+      "at": 1792761312035,
+      "kind": "agent_start",
+      "name": "chat-82c8fa1995aa",
+      "pane": "w-target:pcaf374"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312051,
+      "kind": "agent_get",
+      "pid": 31556,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312170,
+      "kind": "agent_get",
+      "pid": 35060,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312295,
+      "kind": "agent_get",
+      "pid": 38676,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312422,
+      "kind": "agent_get",
+      "pid": 11532,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312543,
+      "kind": "agent_get",
+      "pid": 9400,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312679,
+      "kind": "agent_get",
+      "pid": 14432,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312820,
+      "kind": "agent_get",
+      "pid": 30772,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761312949,
+      "kind": "agent_get",
+      "pid": 10380,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313073,
+      "kind": "agent_get",
+      "pid": 11052,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313195,
+      "kind": "agent_get",
+      "pid": 25896,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313323,
+      "kind": "agent_get",
+      "pid": 16736,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313532,
+      "kind": "agent_get",
+      "pid": 35704,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313649,
+      "kind": "agent_get",
+      "pid": 11536,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313781,
+      "kind": "agent_get",
+      "pid": 26928,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761313904,
+      "kind": "agent_get",
+      "pid": 26932,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314025,
+      "kind": "agent_get",
+      "pid": 32436,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314151,
+      "kind": "agent_get",
+      "pid": 6076,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314278,
+      "kind": "agent_get",
+      "pid": 20472,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314405,
+      "kind": "agent_get",
+      "pid": 36900,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314526,
+      "kind": "agent_get",
+      "pid": 29356,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314657,
+      "kind": "agent_get",
+      "pid": 18020,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314780,
+      "kind": "agent_get",
+      "pid": 31636,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761314905,
+      "kind": "agent_get",
+      "pid": 15588,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315033,
+      "kind": "agent_get",
+      "pid": 12936,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315151,
+      "kind": "agent_get",
+      "pid": 25256,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315277,
+      "kind": "agent_get",
+      "pid": 38056,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315404,
+      "kind": "agent_get",
+      "pid": 38784,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315528,
+      "kind": "agent_get",
+      "pid": 30812,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315653,
+      "kind": "agent_get",
+      "pid": 16932,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315781,
+      "kind": "agent_get",
+      "pid": 33452,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761315901,
+      "kind": "agent_get",
+      "pid": 20992,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316027,
+      "kind": "agent_get",
+      "pid": 21180,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316152,
+      "kind": "agent_get",
+      "pid": 13516,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316277,
+      "kind": "agent_get",
+      "pid": 3572,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316403,
+      "kind": "agent_get",
+      "pid": 34000,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316530,
+      "kind": "agent_get",
+      "pid": 3728,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316653,
+      "kind": "agent_get",
+      "pid": 32868,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316784,
+      "kind": "agent_get",
+      "pid": 21392,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761316900,
+      "kind": "agent_get",
+      "pid": 35472,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317023,
+      "kind": "agent_get",
+      "pid": 22012,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317148,
+      "kind": "agent_get",
+      "pid": 21524,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317274,
+      "kind": "agent_get",
+      "pid": 20884,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317399,
+      "kind": "agent_get",
+      "pid": 29360,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317524,
+      "kind": "agent_get",
+      "pid": 8800,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317646,
+      "kind": "agent_get",
+      "pid": 41844,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317772,
+      "kind": "agent_get",
+      "pid": 13020,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761317901,
+      "kind": "agent_get",
+      "pid": 20084,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318028,
+      "kind": "agent_get",
+      "pid": 8920,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318146,
+      "kind": "agent_get",
+      "pid": 12712,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318278,
+      "kind": "agent_get",
+      "pid": 26756,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318399,
+      "kind": "agent_get",
+      "pid": 21824,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318525,
+      "kind": "agent_get",
+      "pid": 18032,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318647,
+      "kind": "agent_get",
+      "pid": 12056,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318780,
+      "kind": "agent_get",
+      "pid": 12444,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761318910,
+      "kind": "agent_get",
+      "pid": 3940,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319042,
+      "kind": "agent_get",
+      "pid": 27820,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319165,
+      "kind": "agent_get",
+      "pid": 2268,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319298,
+      "kind": "agent_get",
+      "pid": 27236,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319416,
+      "kind": "agent_get",
+      "pid": 1940,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319541,
+      "kind": "agent_get",
+      "pid": 29380,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319663,
+      "kind": "agent_get",
+      "pid": 10356,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319794,
+      "kind": "agent_get",
+      "pid": 10480,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761319915,
+      "kind": "agent_get",
+      "pid": 33544,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320039,
+      "kind": "agent_get",
+      "pid": 15492,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320167,
+      "kind": "agent_get",
+      "pid": 19560,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320290,
+      "kind": "agent_get",
+      "pid": 31876,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320418,
+      "kind": "agent_get",
+      "pid": 8484,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320543,
+      "kind": "agent_get",
+      "pid": 19924,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320668,
+      "kind": "agent_get",
+      "pid": 37296,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320799,
+      "kind": "agent_get",
+      "pid": 6348,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761320918,
+      "kind": "agent_get",
+      "pid": 20892,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321053,
+      "kind": "agent_get",
+      "pid": 10500,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321190,
+      "kind": "agent_get",
+      "pid": 25748,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321309,
+      "kind": "agent_get",
+      "pid": 33016,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321437,
+      "kind": "agent_get",
+      "pid": 8712,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321560,
+      "kind": "agent_get",
+      "pid": 34512,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321686,
+      "kind": "agent_get",
+      "pid": 4580,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321810,
+      "kind": "agent_get",
+      "pid": 28524,
+      "target": "chat-82c8fa1995aa"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-82c8fa1995aa"
+      ],
+      "at": 1792761321936,
+      "kind": "agent_get",
+      "pid": 8384,
+      "target": "chat-82c8fa1995aa"
+    }
+  ]
+}

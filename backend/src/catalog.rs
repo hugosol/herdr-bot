@@ -45,6 +45,7 @@ pub struct ExtensionOption {
     pub label: String,
     pub agent: Agent,
     pub kind: ExtensionKind,
+    #[serde(default)]
     pub entrypoint: PathBuf,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -173,9 +174,8 @@ impl Catalog {
                     extension.agent.label()
                 ));
             }
-            if extension.entrypoint.as_os_str().is_empty() {
-                return Err(format!("extension {} 缺少入口", extension.id));
-            }
+            // A missing entrypoint is an item-local availability failure. Strict
+            // launch rejects it below; Resume can skip it without losing peers.
         }
         for agent in &self.agents {
             if !self
@@ -365,9 +365,22 @@ impl ResolvedEnvConfig {
     /// Never import, execute, or probe extension services.
     /// A successful check is not a promise that files cannot change before the agent loads them.
     pub fn check_entrypoints(&self) -> Result<(), String> {
-        use std::io::Read;
         for extension in &self.extensions {
-            let check = || -> Result<(), String> {
+            extension.check_entrypoint()?;
+        }
+        Ok(())
+    }
+}
+
+impl ExtensionOption {
+    /// Check availability only; the agent remains responsible for loading.
+    pub fn check_entrypoint(&self) -> Result<(), String> {
+        use std::io::Read;
+        let extension = self;
+        let check = || -> Result<(), String> {
+                if extension.entrypoint.as_os_str().is_empty() {
+                    return Err("入口映射缺失".into());
+                }
                 if fs::metadata(&extension.entrypoint).is_ok_and(|metadata| metadata.is_dir()) {
                     let mut entries = fs::read_dir(&extension.entrypoint)
                         .map_err(|error| format!("入口目录无法读取：{error}"))?;
@@ -401,8 +414,6 @@ impl ResolvedEnvConfig {
                     extension.id,
                     extension.entrypoint.display()
                 )
-            })?;
-        }
-        Ok(())
+            })
     }
 }
