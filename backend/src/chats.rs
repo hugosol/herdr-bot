@@ -216,8 +216,8 @@ pub fn compose_initial_input(
     input: &str,
 ) -> String {
     let mut sections: Vec<&str> = Vec::new();
-    if !bot.prompt.is_empty() {
-        sections.push(bot.prompt.as_str());
+    if !bot.trigger.prompt.is_empty() {
+        sections.push(bot.trigger.prompt.as_str());
     }
     if !input.is_empty() {
         sections.push(input);
@@ -236,18 +236,23 @@ pub fn compose_initial_input(
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
 /// 原生会话位置与自动续接均由 agent 的有效配置决定，不覆盖目录或强制新建。
 /// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与 Bot 所选入口。
-pub fn agent_launch_args(preset: &crate::catalog::ResolvedPreset) -> Vec<String> {
+pub fn agent_launch_args(
+    env: &crate::catalog::ResolvedEnvConfig,
+    trigger: Option<&crate::catalog::ResolvedTriggerConfig>,
+) -> Vec<String> {
     let mut args = Vec::new();
-    if let Some(model) = &preset.provider_model {
-        args.push("--model".to_string());
-        args.push(model.clone());
-    }
-    if let Some(thinking) = &preset.thinking {
-        args.push("--thinking".to_string());
-        args.push(thinking.clone());
+    if let Some(trigger) = trigger {
+        if let Some(model) = &trigger.provider_model {
+            args.push("--model".to_string());
+            args.push(model.clone());
+        }
+        if let Some(thinking) = &trigger.thinking {
+            args.push("--thinking".to_string());
+            args.push(thinking.clone());
+        }
     }
     args.push("--no-extensions".to_string());
-    for extension in &preset.extensions {
+    for extension in &env.extensions {
         args.push("--extension".to_string());
         args.push(extension.entrypoint.to_string_lossy().into_owned());
     }
@@ -295,7 +300,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.agent_name = Some(agent_name.clone());
     }
-    let args = agent_launch_args(&preset);
+    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
     let kind = bot.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
@@ -307,7 +312,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.stage = Stage::Submitting;
     }
-    let text = compose_initial_input(&bot, preset.native_skill.as_deref(), &input);
+    let text = compose_initial_input(&bot, preset.trigger.native_skill.as_deref(), &input);
     if let Err(error) = herdr.prompt(&agent_name, &text).await {
         fail(&job, FailureStage::Submit, &error).await;
         return;
@@ -322,7 +327,7 @@ pub async fn run_creation(
     // The page and the creation result do not own this task. Never hold a creation,
     // current-registration or history lock while waiting for external identity.
     tokio::spawn(async move {
-        collect_native_history(herdr, history, creation_id, agent_name, kind, name).await;
+        collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, bot.id).await;
     });
 }
 
@@ -333,6 +338,8 @@ async fn collect_native_history(
     agent_name: String,
     kind: &'static str,
     name: String,
+    original_workspace_id: String,
+    source_bot_id: String,
 ) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut last_reason = String::from("native identity unavailable");
@@ -360,7 +367,7 @@ async fn collect_native_history(
     };
     // Exactly one persistence attempt after identity; no background write retries.
     if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(),
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_bot_id,
     ).await {
         eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
@@ -433,11 +440,13 @@ mod tests {
             name: "审查".to_string(),
             chat_name: rule.to_string(),
             agent: Agent::Omp,
-            model: "default".into(),
-            thinking: "default".into(),
-            skill: None,
-            prompt: String::new(),
-            extensions: Vec::new(),
+            trigger: crate::bots::TriggerConfig {
+                model: "default".into(),
+                thinking: "default".into(),
+                skill: None,
+                prompt: String::new(),
+            },
+            env: crate::bots::EnvConfig { extensions: Vec::new() },
         }
     }
 
@@ -490,7 +499,7 @@ mod tests {
     fn plain_input_is_submitted_once_without_extra_prefix() {
         let bot = bot("{chat.id}");
         assert_eq!(
-            compose_initial_input(&bot, bot.skill.as_deref(), "检查登录\n第二行"),
+            compose_initial_input(&bot, bot.trigger.skill.as_deref(), "检查登录\n第二行"),
             "检查登录\n第二行"
         );
     }
@@ -499,10 +508,10 @@ mod tests {
     #[test]
     fn skill_uses_one_native_invocation_prefix() {
         let mut bot = bot("{chat.id}");
-        bot.skill = Some("code-review".into());
-        bot.prompt = "固定指示".to_string();
+        bot.trigger.skill = Some("code-review".into());
+        bot.trigger.prompt = "固定指示".to_string();
         assert_eq!(
-            compose_initial_input(&bot, bot.skill.as_deref(), "本次任务"),
+            compose_initial_input(&bot, bot.trigger.skill.as_deref(), "本次任务"),
             "/skill:code-review 固定指示\n\n本次任务"
         );
     }

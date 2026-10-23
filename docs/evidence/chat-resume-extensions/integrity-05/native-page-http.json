@@ -1,0 +1,105 @@
+{
+  "scope": "Actual isolated Herdr/Pi/OMP and delivered browser; not human extension-set approval",
+  "receipts": [
+    {
+      "agent": "pi",
+      "status": 200,
+      "body": {
+        "degradations": [
+          {
+            "element": "extension",
+            "reason": "扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+            "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+          },
+          {
+            "element": "workspace",
+            "reason": "原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。",
+            "strategy": "已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。"
+          }
+        ],
+        "fallback": true,
+        "matchCount": 0,
+        "message": "恢复存在降级：扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 已确认恢复同一 Pi 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+        "outcome": "restored",
+        "stage": "focused",
+        "target": {
+          "paneId": "w1:p2",
+          "tabId": "w1:t2",
+          "workspaceId": "w1"
+        }
+      },
+      "pageText": "Integrity05 native pipiw-deleted-isolated-fixture1970/1/1 08:00:00新增备忘Resume恢复存在降级：扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 已确认恢复同一 Pi 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。Workspacew1Tabw1:t2Panew1:p2"
+    },
+    {
+      "agent": "omp",
+      "status": 200,
+      "body": {
+        "degradations": [
+          {
+            "element": "extensions",
+            "reason": "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。",
+            "strategy": "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。"
+          },
+          {
+            "element": "workspace",
+            "reason": "原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。",
+            "strategy": "已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。"
+          }
+        ],
+        "fallback": true,
+        "matchCount": 0,
+        "message": "恢复存在降级：历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。",
+        "outcome": "restored",
+        "stage": "focused",
+        "target": {
+          "paneId": "w1:p3",
+          "tabId": "w1:t3",
+          "workspaceId": "w1"
+        }
+      },
+      "pageText": "Integrity05 native ompompw-deleted-isolated-fixture1970/1/1 08:00:00新增备忘Resume恢复存在降级：历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。 采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。Workspacew1Tabw1:t3Panew1:p3"
+    },
+    {
+      "agent": "pi",
+      "scenario": "required identity extension missing",
+      "status": 502,
+      "body": {
+        "agentName": "chat-da9b6c34f810",
+        "code": "restore-unconfirmed",
+        "degradations": [
+          {
+            "element": "extension",
+            "reason": "扩展「Pi required identity」（pi-identity）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing-pi-identity.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+            "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+          },
+          {
+            "element": "extension",
+            "reason": "扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。",
+            "strategy": "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。"
+          },
+          {
+            "element": "workspace",
+            "reason": "原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。",
+            "strategy": "已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。"
+          }
+        ],
+        "fallback": true,
+        "message": "恢复存在降级：扩展「Pi required identity」（pi-identity）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing-pi-identity.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 Pi 启动结果未确认（confirm 阶段等待超时）：Herdr 的 agent get native identity 返回了无法理解的响应：native identity acquisition deadline expired 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。",
+        "outcome": "unconfirmed",
+        "progress": {
+          "conversationConfirmed": false,
+          "focused": false,
+          "startSubmitted": true,
+          "tabCreated": true
+        },
+        "stage": "confirm",
+        "target": {
+          "paneId": "w1:p4",
+          "tabId": "w1:t4",
+          "workspaceId": "w1"
+        }
+      },
+      "pageText": "Integrity05 native pipiw-deleted-isolated-fixture1970/1/1 08:00:00新增备忘Resume恢复存在降级：扩展「Pi required identity」（pi-identity）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing-pi-identity.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 扩展「Pi missing optional smoke」（pi-missing）入口 C:\\Users\\hugos\\AppData\\Local\\Temp\\resume-integrity05-native-avblp0zh\\missing.ts：入口不存在：系统找不到指定的文件。 (os error 2)。 跳过此扩展；保留其余可用项，仍关闭扩展自动发现。 原 Workspace 已删除（ID w-deleted-isolated-fixture，成功查询确认）。 已回退到配置的唯一默认 Workspace integrity05-default（w1）；保留历史原位置。 Pi 启动结果未确认（confirm 阶段等待超时）：Herdr 的 agent get native identity 返回了无法理解的响应：native identity acquisition deadline expired 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。Workspacew1Tabw1:t4Panew1:p4agent 启动名称（不代表已确认加载）chat-da9b6c34f810"
+    }
+  ]
+}

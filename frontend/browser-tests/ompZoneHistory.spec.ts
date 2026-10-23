@@ -66,7 +66,6 @@ test('OMP page closure during identity acquisition preserves history without con
   await expect(fresh.getByTestId('session-board')).not.toContainText(name!)
   await fresh.getByRole('button', { name: '查看历史会话' }).click()
   await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
-  await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText('C:/actual/native')
   await post('/api/sessions/events', { sessionId: 'omp-browser-exact-full-id', kind: 'register', data: { cwd: 'C:/actual/native', agentType: 'omp', sessionName: 'Connect name must not override Chat' } })
   await fresh.getByRole('button', { name: '查看当前会话' }).click()
   await expect(fresh.getByTestId('session-board')).toContainText('Connect name must not override Chat')

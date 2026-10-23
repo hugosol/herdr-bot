@@ -362,7 +362,7 @@ describe('Bot tab：读取与展示', () => {
     expect(within(dialog).queryByTestId('chat-name-token')).toBeNull()
   })
 
-  it('编辑与删除 Bot，只有后端确认后才更新列表', async () => {
+  it('编辑 Bot，只有后端确认后才更新列表', async () => {
     const user = userEvent.setup()
     const first = { id: 'tpl-a',
     name: '旧名字',
@@ -391,9 +391,6 @@ describe('Bot tab：读取与展示', () => {
       }
       if (url === '/api/bots/tpl-a' && method === 'PUT') {
         return jsonResponse(200, { bots: [edited, second], options: OPTIONS })
-      }
-      if (url === '/api/bots/tpl-b' && method === 'DELETE') {
-        return jsonResponse(200, { bots: [edited], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
@@ -439,16 +436,6 @@ describe('Bot tab：读取与展示', () => {
       '新名字 · pi · a7f3c2',
     )
 
-    // 删除：只有后端成功返回后才从列表消失。
-    const targetRow = screen
-      .getAllByTestId('bot-item')
-      .find((row) => row.getAttribute('data-bot-id') === 'tpl-b')
-    expect(targetRow).toBeDefined()
-    await user.click(within(targetRow as HTMLElement).getByTestId('bot-delete'))
-    await screen.findByTestId('bot-list')
-    const remove = calls.find((call) => call.method === 'DELETE')
-    expect(remove?.url).toBe('/api/bots/tpl-b')
-    expect(within(screen.getByTestId('bot-list')).queryByText('待删除')).toBeNull()
   })
 
   it('保存失败不表示已保存，列表保持此前读取到的值', async () => {

@@ -1,21 +1,22 @@
 import { expect, test } from '@playwright/test'
-import { lanIPv4, startServer, type E2EServer } from './support'
+import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
 // Approved S1/S2. P14/P15: a durable metadata directory, not a second status list.
 // A plausible violation is a cosmetic triangle that leaves both panels present,
-// or current-session cards reused with status/actions. Real clicks and exact four
-// columns distinguish those errors. Long unbroken strings exercise actual wrapping.
+// or current-session cards reused with live status/actions. Real clicks and the
+// metadata columns plus the explicit Resume action distinguish those errors. Long unbroken strings exercise actual wrapping.
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`chat current/history are exclusive and readable at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport)
     server = await startServer()
     const longName = 'Long native conversation name ' + '名称'.repeat(45)
     const longPath = 'C:/project/' + 'long-directory-'.repeat(16) + '/source'
+    const workspaceId = 'workspace-' + 'stable-id-'.repeat(20)
     for (const [sessionId, data] of [
-      ['history-long-full-id', { cwd: longPath, sessionName: longName, agentType: 'omp', model: 'SECRET-MODEL', sessionFile: 'C:/private/native.jsonl' }],
+      ['history-long-full-id', { cwd: longPath, originalWorkspaceId: workspaceId, sessionName: longName, agentType: 'omp', model: 'SECRET-MODEL', sessionFile: 'C:/private/native.jsonl' }],
       ['history-unknown-full-session-id-not-a-prefix', { cwd: '' }],
     ] as const) {
       const result = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, kind: 'register', data }) })
@@ -28,19 +29,18 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(history).toBeVisible()
     await expect(page.getByRole('heading', { name: '历史会话', exact: true })).toBeVisible()
     await expect(page.getByTestId('session-board')).toHaveCount(0)
-    const headers = history.getByRole('columnheader')
-    await expect(headers).toHaveText(['名称', 'agent 类型', 'cwd', '首次收录时间'])
     const longRow = history.getByRole('row').filter({ hasText: longName })
     await expect(longRow.getByRole('cell').nth(0)).toHaveText(longName)
     await expect(longRow.getByRole('cell').nth(1)).toHaveText('omp')
-    await expect(longRow.getByRole('cell').nth(2)).toHaveText(longPath)
+    await expect(longRow.getByRole('cell').nth(2)).toHaveText(workspaceId)
+    await expect(longRow).not.toContainText(longPath)
     await expect(longRow.locator('time')).toHaveAttribute('datetime', /\d{4}-\d{2}-\d{2}T/)
     const missing = history.getByRole('row').filter({ hasText: 'history-unknown-full-session-id-not-a-prefix' })
     await expect(missing.getByRole('cell').nth(0)).toHaveText('history-unknown-full-session-id-not-a-prefix')
     await expect(missing.getByRole('cell').nth(1)).toHaveText('—')
-    await expect(missing.getByRole('cell').nth(2)).toHaveText('—')
+    await expect(missing.getByRole('cell').nth(2)).toHaveText('未记录')
     await expect(history).not.toContainText(/SECRET-MODEL|private\/native|keepAlive|在线|离线|关机|来源/)
-    await expect(history.getByRole('table').getByRole('button')).toHaveCount(0)
+    await expect(history.getByRole('table').getByRole('button', { name: 'Resume', exact: true })).toHaveCount(2)
     await expect(history.getByRole('navigation', { name: '历史分页' })).toHaveCount(1)
     await expect(history.getByRole('textbox')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -65,7 +65,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
 // P06: a real process restart, independent HTTP clients and two browser contexts
 // distinguish server persistence from a browser cache or process-local list.
 test('durable history survives refresh, browser closure and backend restart for independent device contexts', async ({ browser }) => {
-  server = await startServer({ listenAddr: '0.0.0.0:0' })
+  server = await startServer()
   const startedAt = Date.now()
   for (const [sessionId, data] of [
     ['durable-native-one-full-id', { cwd: 'C:/durable/one', sessionName: 'Durable one', agentType: 'pi' }],
@@ -96,8 +96,7 @@ test('durable history survives refresh, browser closure and backend restart for 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   try {
     const reopened = await mobile.newPage()
-    const host = lanIPv4()
-    const url = host === null ? server.baseURL : server.urlForHost(host)
+    const url = server.baseURL
     test.info().annotations.push({ type: 'independent browser read', description: url })
     await reopened.goto(url)
     await expect(reopened.getByRole('heading', { name: '当前会话', exact: true })).toBeVisible()

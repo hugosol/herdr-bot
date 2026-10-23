@@ -46,6 +46,7 @@ pub mod countdown;
 pub mod git;
 pub mod herdr;
 pub mod history;
+pub mod resume;
 pub mod mdns;
 pub mod observation;
 pub mod operations;
@@ -141,6 +142,8 @@ pub struct AppState {
     pub herdr: Arc<herdr::HerdrClient>,
     /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Chat 列表。
     pub chat_creations: Arc<chats::ChatCreations>,
+    /// 同一历史 Chat 的实例内 Resume 资格；立即拒绝重复请求，不排队，与会话登记独立。
+    pub(crate) resume_executions: Arc<resume::ResumeExecutions>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
     pub create_parent_directory: Option<PathBuf>,
     /// 单个文件文本预览的大小上限（启动期配置，缺省 1 MiB）。
@@ -236,6 +239,7 @@ pub fn app_with_state(
         )),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
+        resume_executions: Arc::new(resume::ResumeExecutions::default()),
         create_parent_directory: config.zones.create_parent_directory.clone(),
         preview_limit_bytes: config.zones.preview_limit_bytes.get(),
         git_timeout: config.git.command_timeout_seconds.duration(),
@@ -266,8 +270,9 @@ pub fn app_with_state(
             "/api/sessions/events",
             get(observation::sse_observation).post(sessions::post_session_event),
         )
-        // 历史读取沿用局域网公开读取边界；没有独立的外部写入端点。
+        // 历史与备忘沿用浏览器局域网读写边界；不使用扩展上报的本机来源限制。
         .route("/api/sessions/history", get(history::get_history))
+        .route("/api/sessions/history/memo", axum::routing::put(history::put_memo))
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone))
@@ -287,6 +292,7 @@ pub fn app_with_state(
         )
         // 从已登记 zone 创建 Chat：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
         // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
+        .route("/api/chats/resume", post(resume::post_resume))
         .route("/api/chats/preview", post(preview_chat))
         .route("/api/chats", post(create_chat))
         .route("/api/chats/{id}", get(get_chat_creation))
@@ -1093,7 +1099,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
-    if let Err(message) = preset.check_entrypoints() {
+    if let Err(message) = preset.env.check_entrypoints() {
         return rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
             "extension-entrypoint-invalid",

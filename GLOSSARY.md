@@ -8,25 +8,37 @@ Windows 上的 agent 对话主界面。Bot 是可复用预设，Chat 是实际�
 用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Bot 可以用于多次发起 Chat。
 _Avoid_: bot-template, 模板, 对话实例
 
+**trigger config（发起配置）**:
+Bot 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
+_Avoid_: env config, 自动触发规则, 事件触发器
+
+**env config（会话环境配置）**:
+Bot 中定义对话所需环境资源的配置，与仅在发起时执行的动作不同；发起 Chat 与需要新进程的会话恢复使用它，恢复所指的是来源 Bot 的最新环境而非历史版本。它不表示操作系统环境变量或历史环境快照。
+_Avoid_: trigger config, 环境变量配置, 静态快照
+
 **Chat（对话）**:
 一个 agent 的实际对话，不以接入 connect-bot、保持在线或由 herdr 发起为成立条件；它与 Bot 预设、运行对话的进程和会话登记不同。
 _Avoid_: Bot, 会话登记, Herdr Tab, 进程
 
 **发起 Chat**:
-在某个 zone 中按所选 Bot 启动 agent 并提交初始指示；原生对话可能新建，也可能按 agent 的有效配置续接。
+在某个 zone 中应用所选 Bot 的 trigger config 与 env config，启动 agent 并提交初始指示的动作；它不等于强制新建原生对话，也不同于恢复指定历史 Chat。
 _Avoid_: 创建 Bot, 强制新建原生会话
+
+**来源 Bot**:
+明确用于发起某个 Chat 的 Bot，是该 Chat 恢复时选择最新会话环境的来源；不是按名称、目录或当前选择推测的 Bot，也不是历史配置快照。
+_Avoid_: 当前选中 Bot, Bot 快照, 推测来源
 
 **Bot 选项目录**:
 定义 Bot 可选项及其适用关系的共享清单，不是某个具体 Bot。
 _Avoid_: Bot, Bot 实例
 
 **Bot 固定扩展**:
-发起 Chat 时始终加载、不由 Bot 勾选决定的 agent 扩展。
-_Avoid_: 默认勾选扩展, 可选扩展
+Bot 会话环境中不由 Bot 勾选决定的 agent 扩展，与可选扩展共同构成有来源 Bot 时的环境选择；它不等于无来源 Bot 时的原生默认发现集合。
+_Avoid_: 默认勾选扩展, 可选扩展, 默认发现扩展
 
 **Bot 可选扩展**:
-由 Bot 保存选择、发起 Chat 时按该选择加载的 agent 扩展；可多选，也可以不选。
-_Avoid_: 固定扩展, 启动时临时选择
+由 Bot 保存选择、属于 env config 的 agent 扩展；可多选，也可以不选，不是发起时执行的初始 Skill 调用。
+_Avoid_: 固定扩展, 启动时临时选择, 初始 Skill 调用
 
 **agent session（会话）**:
 agent 原生的对话单元，是 Chat 在该 agent 中的身份；是否上报到主界面不决定它是否存在。
@@ -43,6 +55,10 @@ _Avoid_: Chat, 会话历史, 连接
 **历史会话列表**:
 由 zone 成功发起 Chat 或通过 connect-bot 成功接入所形成的持久目录，同一原生对话只有一条记录；它独立于当前会话登记，不承载对话正文。
 _Avoid_: 离线会话列表, 已结束对话列表, 原生对话文件
+
+**Chat 备忘**:
+用户为某个 Chat 手动维护的一份文字说明，由同一 herdr-bot 实例的访问设备共享；它不是聊天正文，也不是发给 agent 的指示。
+_Avoid_: 聊天消息, agent 记忆, 备忘流水
 
 **会话恢复**:
 在 herdr 中启动新的 agent 进程并加载指定原生对话，不表示复活原进程或默认继续中断的任务。

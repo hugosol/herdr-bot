@@ -1279,6 +1279,7 @@ async fn send(app: axum::Router, method: &str, uri: &str, body: String) -> (u16,
 /// - **受控来源**：`MockConnectInfo` 把对端地址设成 RFC 5737 的文档地址（本机不可能拥有），代表**不是
 ///   这台机器**的局域网设备——它的会话写入被拒且不建行，但关机操作照常可接受。
 #[tokio::test]
+#[ignore = "真实网卡验收：通过 scripts/run-mdns-tests.ps1 手动运行"]
 async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_events() {
     let Some(address) = local_nic_ipv4() else {
         panic!("本机没有可发布的局域网 IPv4，无法构造非回环来源的验证");
@@ -1288,7 +1289,7 @@ async fn a_non_loopback_source_may_monitor_and_clear_but_not_write_session_event
     let sessions = Arc::new(SessionsState::new());
     let double = RecordingPowerOff::new();
     let (app, _state) = herdr_bot::app_with_state(&config, double.clone(), Arc::clone(&sessions));
-    let server = TestServer::start_app_on(SocketAddr::from((address, 0)), app.clone()).await;
+    let server = TestServer::start_manual_app_on(SocketAddr::from((address, 0)), app.clone()).await;
     let addr = server.addr();
     assert!(
         !addr.ip().is_loopback(),

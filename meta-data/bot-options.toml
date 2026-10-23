@@ -13,9 +13,19 @@ label = 'Default Model'
 # default 不允许 provider_model/thinking 覆盖。
 [[models]]
 id = 'gpt-6.1-sol'
-label = 'GPT-6.1-sol'
+label = 'GPT-6.1-Sol'
 provider_model = 'openai-codex/gpt-6.1-sol'
 # 能力来自具体模型，不是 CLI 接受的所有级别。
+thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
+[[models]]
+id = 'gpt-6-luna'
+label = 'GPT-6-Luna'
+provider_model = 'openai-codex/gpt-6-luna'
+thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
+[[models]]
+id = 'gpt-6-astra'
+label = 'GPT-6-Astra'
+provider_model = 'openai-codex/gpt-6-astra'
 thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
 [[models]]
 id = 'deepseek-flash'

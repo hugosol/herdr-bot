@@ -11,6 +11,8 @@
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
 //! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
+//! - `agent list`（`behavior.agents` 预置已有目标；可拒绝查询或返回错误／非 JSON）
+//! - `agent focus PANE`（返回官方 `agent_info` 形状，并写入 `focused.json`；可拒绝或不确认焦点）
 //!
 //! 原生引用控制：`native_session` 是官方 `{source,agent,kind,value}`，`native_cwd`／
 //! `foreground_cwd` 为实际报告目录；`native_session_delay_ms`、`fail_agent_get` 和
@@ -24,7 +26,7 @@
 //! 空文本提交与真实 Herdr 一样以 `empty_agent_prompt` 拒绝；拒绝前仍写下调用记录，因为
 //! “herdr-bot 尝试提交什么”与“Herdr 是否接受”是两件需要分别观察的事实。
 //!
-//! 并发用例需要“只拦住其中一次创建”的受控屏障，因此还有三个可选门：
+//! 并发用例使用可选的外部屏障：`agent_list_gate`（查询阶段）、
 //! `tab_create_gate`（匹配 Tab 名称）、`agent_start_gate` 与 `prompt_gate`，各自是
 //! `{ "match": 子串, "wait_for_file": 路径, "timeout_ms": 毫秒 }`。调用先写入记录，再在匹配时
 //! 等待释放文件出现（或到超时）才返回；`match` 省略或为空表示不筛选，`timeout_ms` 缺省 30 秒。
@@ -53,6 +55,8 @@ fn main() {
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
+        Some("agent") if args.get(1).map(String::as_str) == Some("list") => agent_list(&args),
+        Some("agent") if args.get(1).map(String::as_str) == Some("focus") => agent_focus(&args),
         _ => usage(&args),
     }
 }
@@ -273,6 +277,18 @@ fn agent_start(args: &[String]) {
     }
 
     let workspace = pane.split(':').next().unwrap_or_default();
+    let tab = read_records("tabs.jsonl").into_iter().find(|tab| tab["pane_id"] == pane).unwrap();
+    let mut started = json!({"name":name,"agent":kind,"workspace_id":workspace,"tab_id":tab["tab_id"],"pane_id":pane,"cwd":tab["cwd"],"focused":false});
+    if let Some(cwd) = tab["cwd"].as_str().filter(|cwd| std::path::Path::new(cwd).is_dir()) {
+        env::set_current_dir(cwd).unwrap();
+        started["actual_cwd"] = json!(env::current_dir().unwrap());
+    }
+    record("started.jsonl", started);
+    // Herdr 0.9.5 returns this structured stderr envelope when its own
+    // readiness deadline expires, even though the CLI process itself exited.
+    if flag(&behavior, "timeout_agent_start") {
+        fail("timeout", "timed out waiting for agent startup");
+    }
     output(json!({
         "id": "cli:agent:start",
         "result": {
@@ -294,6 +310,36 @@ fn agent_start(args: &[String]) {
     }));
 }
 
+fn read_records(file: &str) -> Vec<Value> {
+    fs::read_to_string(data_dir().join(file)).unwrap_or_default().lines()
+        .map(|line| serde_json::from_str(line).unwrap()).collect()
+}
+
+fn agent_list(args: &[String]) {
+    let behavior = behavior();
+    record("calls.jsonl", json!({"kind":"agent_list","argv":args}));
+    wait_at_gate(&behavior, "agent_list_gate", &args.join(" "));
+    if flag(&behavior, "fail_agent_list") { fail("query_failed", "controlled agent query failure"); }
+    if flag(&behavior, "invalid_agent_list") { println!("not JSON"); return; }
+    if flag(&behavior, "error_agent_list") { output(json!({"error":{"code":"query_failed","message":"query refused"}})); return; }
+    output(json!({"result":{"type":"agent_list","agents":behavior.get("agents").cloned().unwrap_or(json!([]))}}));
+}
+
+fn agent_focus(args: &[String]) {
+    let behavior = behavior();
+    record("calls.jsonl", json!({"kind":"agent_focus","argv":args}));
+    if flag(&behavior, "fail_agent_focus") { fail("focus_failed", "controlled navigation failure"); }
+    let target = args.get(2).cloned().unwrap_or_default();
+    let mut agent = behavior.get("agents").and_then(Value::as_array)
+        .and_then(|agents| agents.iter().find(|agent| agent["pane_id"] == target)).cloned()
+        .or_else(|| read_records("started.jsonl").into_iter().find(|agent| agent["pane_id"] == target))
+        .unwrap_or_else(|| fail("unknown_agent", "focus target does not exist"));
+    fs::write(data_dir().join("focused.json"), json!(target).to_string()).unwrap();
+    // Public agent.focus returns AgentInfo, not a generic ok acknowledgement.
+    agent["focused"] = json!(!flag(&behavior, "unconfirmed_focus"));
+    output(json!({"result":{"type":"agent_info","agent":agent}}));
+}
+
 fn agent_get(args: &[String]) {
     let initial = behavior();
     let target = args.get(2).cloned().unwrap_or_default();
@@ -305,10 +351,11 @@ fn agent_get(args: &[String]) {
     }
     // Re-read after the gate so the external identity may arrive while a page is closed.
     let behavior = behavior();
+    let started = read_records("started.jsonl").into_iter().find(|agent| agent["name"] == target);
     output(json!({"result":{"agent":{
         "name":target,
         "agent_session":behavior.get("native_session").cloned().unwrap_or(Value::Null),
-        "cwd":behavior.get("native_cwd").cloned().unwrap_or(Value::Null),
+        "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
         "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
     }}}));
 }

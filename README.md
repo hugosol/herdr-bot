@@ -22,9 +22,25 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 以及 [`meta-data/bot-options.toml`](meta-data/bot-options.toml) 中的模型和扩展入口。
 配置相对路径以进程工作目录为基准。请从控制台启动，以便脚本继承可用的控制台。
 
+Bot 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`；
+思考级别按所选 agent 与模型的能力提供，Pi 的 Luna 支持 `off`，Astra 不支持。
+模型目录修改后下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
+删除 Bot 时先询问是否删除，取消不发出删除请求；删除不影响已经发起的 Chat。
+
 本机访问 `http://127.0.0.1:<端口>/`；局域网使用启动日志中的
 `http://herdr-bot.local:<端口>/`，无法解析时使用服务主机的局域网 IPv4。
 手机上的 `127.0.0.1` 指向手机自身。
+
+## Bot 配置与原生存储
+
+Bot 配置分为两组：
+
+- **trigger config（发起配置）**：初始消息、初始 Skill 调用、model 与 thinking，仅在发起 Chat 时应用。
+- **env config（会话环境配置）**：当前交付的是扩展配置；发起 Chat 时加载，Resume 需要新进程时也加载。
+
+初始 Skill 调用是随初始消息提交的动作，不是加载型 Skill；Bot 固定 prompt 与本次 input 都属于用户输入，不是系统提示词注入。加载型 skills 与系统提示词注入不在本次交付范围内。
+
+发起 Chat 同时应用两组配置，但不传 `--session-dir`；原生会话文件和附属记录由 agent 管理，herdr-bot 不搬动文件或修改 agent 原生配置。历史材料中的 `autoResume` 是 agent 自身的配置，不是本项目新增的自动续接功能，也不是保存来源 Bot 关联的理由。发起 Chat 不保证新建原生对话；来源 Bot 关联用于 Resume 时选择环境配置。
 
 ## 安全边界
 
@@ -32,6 +48,41 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 能访问服务的设备可以管理 Bot、启动 agent、执行配置脚本、操作 Git 和关闭整台 Windows 电脑。
 connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](docs/adr/0004-session-write-boundary-same-host.md)。
 页面确认不是服务端认证；测试或排障时不要调用真实关机，也不要用用户正在运行的对话做探针。
+
+## 历史 Chat Resume
+
+历史视图展示原 Herdr Workspace，不再展示 cwd；cwd 仍保存在历史中用于恢复。Workspace 按稳定 ID 记录，名称从 Herdr 尽力读取，无法读取名称时显示 ID；没有原位置的旧记录显示“未记录”，不按目录或当前焦点补猜。
+
+每条 Chat 可新增或编辑一份多行纯文本备忘，使用“保存／取消”显式提交或放弃修改；保存失败保留草稿。备忘由服务端持久保存，电脑与手机共享，不含时间戳或编辑历史，不发送给 agent，也不修改原生聊天记录。Resume 与重复接入不会覆盖备忘。独立调用者可发送 `PUT /api/sessions/history/memo`，JSON 为 `{"sessionId":"历史记录的完整身份","memo":"备忘内容"}`；只能修改已有历史记录。
+
+在 `chat` 的历史视图中，每条记录都有 `Resume` 入口，不要求当前会话仍登记或保留原 Herdr 绑定。
+独立调用者可发送 `POST /api/chats/resume`，JSON 只包含 `{"sessionId":"历史记录的完整身份"}`；
+额外的来源 Bot、扩展入口、环境配置、命令、参数、原生路径或输入字段会被拒绝；来源和环境只从服务端历史及当前配置读取，不能由调用者临时替换。原生身份及 Herdr 可执行文件同样由后端决定。
+
+每次操作重新查询 Herdr，以 Pi／OMP 原生 ID 匹配；路径引用读取原生文件头以核实 ID，不按名称或 cwd 猜测。
+找到目标后导航到其实际 Workspace／Tab／Pane，不搬迁、不创建副本、不提交输入。
+多个目标按 Workspace ID、Tab ID、Pane ID 的字典序稳定选择一个；定位成功后页面仅显示“已切换到当前herdr焦点”，不显示目标明细。
+影响匹配的原生身份暂不可读、Herdr 查询异常或聚焦未确认都会明确失败；不以失败冒充无匹配。
+
+正常发起并确认原生身份后，历史私下保留首次可信的来源 Bot 标识，并跨服务重启保存。
+已有目标只定位，即使 Bot 已修改，也不为了更新环境而重启、另开目标或提交输入。
+只有成功查找且没有匹配时，才在历史 cwd 中新建目标，使用当前配置的 agent 命令加载指定原生对话。环境按以下规则选择：
+
+- 来源 Bot 存在：读取该 Bot **最新 env config** 和**当前 Bot 选项目录**，不是创建时的快照或历史版本回放。固定／已选可选扩展逐项检查映射、入口存在性和可读性，只跳过不可用项，其余继续加载；即使全部被过滤，空显式集合仍关闭扩展自动发现。
+- 来源关联缺失或 Bot 已删除：使用 agent 原生默认扩展发现，不追加 Bot 固定／可选扩展；不按名称、cwd 或当前所选 Bot 猜测旧记录来源。
+- Bot 存储或配置无法可靠读取：明确报错，不冒充“Bot 已删除”切换到默认发现，也不自动修复。
+
+普通发起 Chat 仍拒绝无效扩展选择或不可用入口，不采用 Resume 的逐项容错策略。目录中仍保留标识与类型、但缺少或留空 `entrypoint` 的固定／可选项属于可定位的单项映射缺失；已选可选标识不在当前目录时也会逐项报告。删除整条固定项则表示它已不属于最新固定集合，不从历史快照补回。整个目录无法读取、无法解析或结构损坏仍明确失败，不被逐项过滤吞掉。
+优先使用身份一致的可用会话文件，文件不可用时仅回退到同一原生 ID；Pi 使用 `--session`，OMP 使用 `--resume`，不使用会自动继续中断任务的 `--restore`。
+恢复不重放 trigger config：不提交初始消息或初始 Skill 调用，不重新应用 Bot 的 model／thinking，也不自动继续中断任务。原生会话自身的模型恢复设置不由本项目重新解释。缺失工作目录、不可用原生对话、启动或聚焦失败均明确反馈，不以空白对话冒充成功。
+扩展过滤、默认发现、Herdr Workspace 回退或精确原生 ID 回退发生时，页面同时说明已发生的降级、已知原因与实际策略；降级不代表已确认成功，失败或启动结果未确认时也保留已有降级说明。
+缺少原 Workspace 的旧记录回退到配置的唯一默认 Workspace，并说明回退；默认位置不可用时不创建替代位置。
+`located` 表示已确认定位已有对话，`restored` 仅在确认同一原生身份、实际 cwd 和聚焦后返回；两者都只确认 Herdr 内部导航，不保证 Windows 桌面窗口置前。
+创建 Tab 或提交启动命令本身不算恢复成功。创建／启动等待或原生身份确认超时返回 HTTP `502`、`outcome: "unconfirmed"`／`restore-unconfirmed`，页面明确显示“启动结果未确认”，既不声称成功，也不声称未启动。
+恢复及失败／未确认结果的页面保留实际已取得的 Workspace／Tab／Pane ID 及启动名称供检查；HTTP 结果仍保留定位目标供调用者核对。未知标识不编造，启动名称不代表已确认加载。
+超时后不自动关闭、终止、重建、再次启动或提交输入，也没有后台重试；执行资格释放后，由用户再次点击 Resume，重新查询 Herdr。迟到的目标若已可识别，则定位该目标而不再次启动；查询、身份核实或聚焦失败仍不会创建副本。
+受控参数记录只能证明提交内容，不证明真实扩展加载、旧历史已加载或任务未继续。本轮真实扩展加载的 H-Pi／H-OMP 均待用户明确确认，不能借用既有原生恢复材料宣告通过；原生恢复与未自动继续任务的既有人工边界仍保留。详见 [验证边界](docs/integration-boundaries.md#验证边界)。
+缺少受支持 agent 类型的旧记录仍提供入口并明确反馈原因。会话事件同机写入限制保持不变。
 
 ## 旧数据一次性切换
 
@@ -55,4 +106,35 @@ python scripts\migrate-bot-chat-terminology.py --config herdr-bot.toml
 源码在 `backend/`（Rust/Axum）和 `frontend/`（React/Vite）。
 自动检查入口为 `cargo test --manifest-path backend\Cargo.toml`、
 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser`；
-浏览器检查需要构建后的前后端和本机 Chrome。
+浏览器检查需要构建后的前后端和本机 Chrome。Cargo 检查也需要 Node.js，以执行跨前后端的测试网络护栏。
+真实子进程测试读取启动端口后仍须持续消费 stdout，直到进程退出；提前关闭管道会与剩余启动日志竞争，导致进程异常退出。
+浏览器检查使用随仓库交付的 `meta-data/bot-options.toml`；修改显示标签时，须同步更新摘要的独立预期值及动态元数据测试中的替换样例（当前模型标签为 `GPT-6.1-Sol`）。
+Windows 浏览器 fixture 清理会等待服务退出事件后再判断 `taskkill` 的失败状态，避免将已退出但尚未被 Node 观察到的进程误报为清理失败；进程仍存活时继续报告错误。
+
+### 测试网络边界
+
+默认测试可以启动真实进程及 HTTP／SSE 服务，但只能监听数值回环地址；不得监听所有接口、本机网卡地址或发布真实 mDNS。
+Rust `TestServer::start_app_on` 和浏览器 `startServer` 在绑定前拒绝非回环地址，即使已设置手动授权也不放宽。
+普通测试应复用这些入口，不得自行导入网络模块或创建 listener。历史持久化、进程重启与多浏览器上下文测试仍走回环。
+
+真实 LAN／mDNS 验收须显式手动运行：
+
+```powershell
+# Rust：构建并复制到固定路径，再运行 ignored LAN／mDNS 用例。
+.\scripts\run-mdns-tests.ps1
+# 仅构建并打印 runner 路径，不打开监听。
+.\scripts\run-mdns-tests.ps1 -ListOnly
+# 浏览器：只运行真实 LAN 验收；前置构建要求同普通浏览器检查。
+npm --prefix frontend run test:browser:manual
+```
+
+Rust 脚本沿用原文件名，但现在覆盖 `mdns_failure`、`mdns_conflict`、`session_write_boundary` 和 `monitoring` 的手动用例。
+它把带哈希的 Cargo 测试程序复制为 `backend\target\debug\<测试名>_runner.exe`，避免重建换路径引起重复授权；
+直接 `cargo test -- --ignored` 不提供这一保证。手动入口设置 `HERDR_BOT_MANUAL_NETWORK=1`；这不是普通测试的绕过开关。
+真实 mDNS 用例需要独占 `herdr-bot.local`，运行前停止正在使用该名字的服务。只有用户明确需要配置规则时，才单独使用脚本的 `-ConfigureFirewall`；该选项会请求管理员权限并配置入站放行。
+
+`node scripts/check-test-network-policy.mjs` 检查跨前后端测试中的直接监听 API、网络模块导入、手动 helper 的调用位置及 Rust 手动用例的忽略标记。
+它通过 Cargo 的 `network_policy` 测试和 npm 的 `pretest`／`pretest:watch`／`pretest:browser`／`pretest:browser:manual` 自动执行；直接调用底层 Vitest／Playwright 不会执行 npm hook。
+护栏自身的回归检查为 `node --test scripts/check-test-network-policy.test.mjs`。
+例外限定到脚本内列出的具体基础设施函数和手动用例，不豁免整个目录。新增真实网络能力时必须同时审查手动入口、默认收集规则与固定 runner；不能只增加豁免。
+静态检查针对已知 API，配合运行时地址约束防误用，不是能识别任意第三方库或动态代码的网络沙箱。
