@@ -124,14 +124,14 @@ async fn missing_cwd_or_unrecognized_agent_type_never_starts_a_process() {
 }
 
 // P6/P12/P22: interactive readiness alone is not identity confirmation;
-// neither another conversation, a blank process nor a refused focus is success.
+// neither another conversation nor a refused focus is success. A blank process
+// that times out is covered as unconfirmed in chat_resume_timeout.rs.
 #[tokio::test]
-async fn failed_launch_wrong_or_absent_identity_and_focus_failure_cannot_be_success() {
+async fn failed_launch_wrong_identity_and_focus_failure_cannot_be_success() {
     for (behavior,stage,expected_last) in [
         (json!({"fail_tab_create":true}),"tab","tab_create"),
         (json!({"fail_agent_start":true}),"start","agent_start"),
         (json!({"native_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":"different-conversation"}}),"confirm","agent_get"),
-        (json!({}),"confirm","agent_get"),
         (json!({"native_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":"pi-old-exact"},"fail_agent_focus":true}),"focus","agent_focus"),
     ] {
         let root = TempDir::new("Pi confirmation failure");

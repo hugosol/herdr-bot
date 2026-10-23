@@ -110,6 +110,7 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
     };
     let tab = match state.herdr.create_tab(&workspace.id, cwd, selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
         Ok(tab) => tab,
+        Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
         Err(error) => return restore_failure(label, "tab", error.code(), &error.message(), None),
     };
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
@@ -117,6 +118,9 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
     let mut args = crate::chats::agent_launch_args(&preset);
     args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
     if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
+        if matches!(error, HerdrError::Timeout(_)) {
+            return startup_unconfirmed(label, "start", &error.message(), json!(target), Some(&name));
+        }
         return restore_failure(label, "start", error.code(), &error.message(), Some(&target));
     }
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -124,13 +128,21 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
         match state.herdr.restored_session(&name, kind, deadline).await {
             Ok(native) if native.session_id == id && std::path::Path::new(&native.cwd) == std::path::Path::new(cwd) => break,
             Ok(_) => return restore_failure(label, "confirm", "native-session-mismatch", &format!("{label} 加载的原生对话或实际工作目录与历史不符。"), Some(&target)),
-            Err(error) if tokio::time::Instant::now() >= deadline => return restore_failure(label, "confirm", "restore-unconfirmed", &error.message(), Some(&target)),
+            Err(error) if tokio::time::Instant::now() >= deadline => return startup_unconfirmed(label, "confirm", &error.message(), json!(target), Some(&name)),
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
         }
     }
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(label, "focus", error.code(), &error.message(), Some(&target)); }
     Json(json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"fallback":fallback_reason.is_some(),
         "message":format!("{}已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。", fallback_reason.unwrap_or("已在原 Workspace 恢复；"))})).into_response()
+}
+
+fn startup_unconfirmed(label: &str, stage: &str, detail: &str, target: serde_json::Value, agent_name: Option<&str>) -> Response {
+    (StatusCode::BAD_GATEWAY, Json(json!({"outcome":"unconfirmed","stage":stage,"code":"restore-unconfirmed",
+        "target":target,"agentName":agent_name,
+        "progress":{"tabCreated":(stage != "tab").then_some(true),"startSubmitted":stage != "tab","conversationConfirmed":false,"focused":false},
+        "message":format!("{label} 启动结果未确认（{stage} 阶段等待超时）：{detail} 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。")
+    }))).into_response()
 }
 
 fn restore_failure(label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::herdr::NavigationTarget>) -> Response {

@@ -93,8 +93,9 @@ async fn omp_unusable_sources_or_cwd_fail_without_creating_a_target() {
     }
 }
 
-// P6/P11/P12/P22: readiness alone must not report success. A blank process,
-// wrong identity/cwd, failed start or unconfirmed focus stays a visible failure;
+// P6/P11/P12/P22: readiness alone must not report success. Blank-process timeout
+// is covered as unconfirmed in chat_resume_timeout.rs. Wrong identity/cwd,
+// failed start or unconfirmed focus stays a visible failure;
 // no further focus/input or replacement launch may conceal the failed stage.
 #[tokio::test]
 async fn omp_requires_same_native_identity_actual_cwd_and_confirmed_focus() {
@@ -102,7 +103,6 @@ async fn omp_requires_same_native_identity_actual_cwd_and_confirmed_focus() {
         (json!({"fail_tab_create":true}),"tab","tab_create"),
         (json!({"fail_agent_start":true}),"start","agent_start"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"wrong-omp-chat"}}),"confirm","agent_get"),
-        (json!({}),"confirm","agent_get"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"omp-old-3b9f-exact"},"fail_agent_focus":true}),"focus","agent_focus"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"omp-old-3b9f-exact"},"unconfirmed_focus":true}),"focus","agent_focus"),
     ] {
