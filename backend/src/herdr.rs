@@ -444,10 +444,12 @@ impl HerdrClient {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() {
-            let detail = error_message_from_stderr(&stderr)
-                .unwrap_or_else(|| stderr.trim().to_string())
-                .trim()
-                .to_string();
+            if let Some(error) = serde_json::from_str::<Value>(stderr.trim()).ok()
+                .and_then(|value| value.get("error").map(|error| response_error(command_name, error)))
+            {
+                return Err(error);
+            }
+            let detail = stderr.trim().to_string();
             let detail = if detail.is_empty() {
                 format!("进程退出状态为 {}", output.status)
             } else {
@@ -471,8 +473,7 @@ impl HerdrClient {
             detail: format!("stdout 不是单个 JSON 响应：{error}"),
         })?;
         if let Some(error) = value.get("error") {
-            return Err(HerdrError::CommandFailed { command: command_name,
-                message: error.get("message").and_then(Value::as_str).unwrap_or("Herdr returned an error response").to_owned() });
+            return Err(response_error(command_name, error));
         }
         Ok(value)
     }
@@ -556,17 +557,16 @@ fn native_header(path: PathBuf, allow_title_metadata: bool, deadline: tokio::tim
     }
 }
 
-/// Herdr CLI 的错误 JSON 在 stderr；取出其中的 message，取不到时交给调用方使用原始文本。
-fn error_message_from_stderr(stderr: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(stderr.trim()).ok()?;
-    value
-        .pointer("/error/message")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| {
-            value
-                .pointer("/error/code")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
+/// Herdr 自身的就绪等待也可超时；CLI 已退出不代表外部启动未发生。
+/// 只按结构化 code 分类，不把错误描述中偶然出现的 timeout 当作超时。
+fn response_error(command: &'static str, error: &Value) -> HerdrError {
+    if error.get("code").and_then(Value::as_str) == Some("timeout") {
+        return HerdrError::Timeout(command);
+    }
+    HerdrError::CommandFailed {
+        command,
+        message: error.get("message").and_then(Value::as_str)
+            .or_else(|| error.get("code").and_then(Value::as_str))
+            .unwrap_or("Herdr returned an error response").to_owned(),
+    }
 }

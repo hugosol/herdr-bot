@@ -284,6 +284,11 @@ fn agent_start(args: &[String]) {
         started["actual_cwd"] = json!(env::current_dir().unwrap());
     }
     record("started.jsonl", started);
+    // Herdr 0.9.5 returns this structured stderr envelope when its own
+    // readiness deadline expires, even though the CLI process itself exited.
+    if flag(&behavior, "timeout_agent_start") {
+        fail("timeout", "timed out waiting for agent startup");
+    }
     output(json!({
         "id": "cli:agent:start",
         "result": {
