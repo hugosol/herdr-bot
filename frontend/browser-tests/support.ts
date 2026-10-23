@@ -368,11 +368,19 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
       if (process.platform === 'win32') {
         // Independent identity queries are real child processes. Killing only
         // their parent leaves a live copied EXE holding the test directory open.
-        const killed = Promise.withResolvers<void>()
+        const killed = Promise.withResolvers<number | null>()
         const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
         killer.once('error', killed.reject)
-        killer.once('exit', code => code === 0 || child.exitCode !== null ? killed.resolve() : killed.reject(new Error(`taskkill failed: ${code}`)))
-        await killed.promise
+        killer.once('exit', killed.resolve)
+        const code = await killed.promise
+        // taskkill can observe an already-exited process before Node delivers
+        // its exit event. Wait for that event before treating a nonzero code
+        // as a cleanup failure; do not hide a process that actually remains alive.
+        await exited.promise
+        if (code !== 0 && child.exitCode === null && child.signalCode === null) {
+          clearTimeout(exitTimer)
+          throw new Error(`taskkill failed: ${code}`)
+        }
       } else {
         child.kill()
       }

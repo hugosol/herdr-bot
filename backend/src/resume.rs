@@ -4,6 +4,31 @@ use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Resp
 use serde::Deserialize;
 use serde_json::json;
 use crate::{AppState, herdr::HerdrError};
+use std::{collections::HashMap, sync::{Arc, Mutex}};
+
+/// Exact saved Chat identities share a non-waiting permit within one app instance.
+/// Only selected history records enter this map; unrelated Chats never share a permit.
+#[derive(Default)]
+pub(crate) struct ResumeExecutions {
+    chats: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+}
+
+impl ResumeExecutions {
+    fn try_qualify(&self, session_id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        let permit = {
+            let mut chats = self.chats.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            match chats.get(session_id) {
+                Some(permit) => Arc::clone(permit),
+                None => {
+                    let permit = Arc::new(tokio::sync::Mutex::new(()));
+                    chats.insert(session_id.to_owned(), Arc::clone(&permit));
+                    permit
+                }
+            }
+        };
+        permit.try_lock_owned().ok()
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -15,6 +40,23 @@ pub(crate) async fn post_resume(State(state): State<AppState>, Json(request): Js
         Ok(None) => return crate::rejected_owned(StatusCode::NOT_FOUND, "unknown-chat", "找不到所选历史 Chat。".into()),
         Err(error) => return crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "history-unreadable", format!("读取历史会话失败：{error}")),
     };
+    let Some(permit) = state.resume_executions.try_qualify(&selected.session_id) else {
+        return crate::rejected_owned(StatusCode::CONFLICT, "resume-in-progress",
+            "同一 Chat 已有 Resume 正在执行；本次请求未执行，也不会排队。请等待完成后由用户重新发起。".into());
+    };
+    // The accepted operation owns its permit, not the HTTP connection. Dropping
+    // the request detaches this task rather than releasing a still-active Resume.
+    match tokio::spawn(async move {
+        let _permit = permit;
+        resume_selected(&state, &selected).await
+    }).await {
+        Ok(response) => response,
+        Err(_) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "resume-result-unavailable",
+            "无法确认 Resume 执行结果；请检查 Herdr 后再重试。".into()),
+    }
+}
+
+async fn resume_selected(state: &AppState, selected: &crate::history::HistorySelection) -> Response {
     let kind = match selected.agent_type.as_deref() {
         Some(kind @ ("pi" | "omp")) => kind,
         _ => return crate::rejected_owned(StatusCode::BAD_REQUEST, "unsupported-agent", "无法确定受支持的 agent 类型；尚未恢复。".into()),
