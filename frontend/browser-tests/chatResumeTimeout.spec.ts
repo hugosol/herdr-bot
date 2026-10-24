@@ -11,7 +11,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // P17-P19/P22: a ready shell is NOT confirmed history. Observe its retained
 // external target, visible uncertainty and a fresh user lookup after it appears.
 for (const kind of ['pi', 'omp']) {
-  test(`${kind} startup timeout identifies retained target and a user retry locates it without another launch`, async ({ page }) => {
+  test(`${kind} startup timeout identifies retained target and a user retry locates it without another launch`, { tag: '@time-contract' }, async ({ page }) => {
     server = await startServer({ herdr: {} })
     const cwd = path.join(path.dirname(server.configPath), `${kind} timeout cwd`)
     fs.mkdirSync(cwd)

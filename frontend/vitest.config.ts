@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
@@ -6,6 +7,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   test: {
+    // 复用 worker 的环境初始化，但各文件仍有独立 VM；不可用关闭隔离来换速度。
+    pool: 'vmThreads',
+    isolate: true,
+    maxWorkers: Math.min(availableParallelism(), 8),
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],

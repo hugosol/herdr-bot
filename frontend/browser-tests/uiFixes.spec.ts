@@ -36,11 +36,13 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 test.afterEach(async () => {
-  await server?.cleanup()
-  server = null
-  if (zoneRoot !== null) {
-    fs.rmSync(zoneRoot, { recursive: true, force: true })
-    zoneRoot = null
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    if (zoneRoot !== null) {
+      fs.rmSync(zoneRoot, { recursive: true, force: true })
+      zoneRoot = null
+    }
   }
 })
 

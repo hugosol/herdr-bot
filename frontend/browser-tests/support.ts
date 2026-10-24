@@ -5,7 +5,7 @@
  * 不经过任何前端 mock。Herdr / agent 控制不在本票范围，固定操作指向安全夹具即可。
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import net from 'node:net'
@@ -179,48 +179,57 @@ async function waitForBots(baseURL: string): Promise<void> {
   throw new Error(`herdr-bot 没有在 20 秒内开始提供 Bot 接口：${baseURL}`)
 }
 
-function startProcess(configPath: string, executable: string): Promise<{ child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string }> {
+type ServerProcess = {
+  child: ChildProcess
+  port: number
+  diagnostics: () => string
+  listening: Promise<void>
+}
+
+function startProcess(configPath: string, executable: string): ServerProcess {
   const child = spawn(executable, ['--config', configPath], {
     cwd: path.dirname(configPath),
+    // The copied fixture must never inherit a developer's external data root.
+    env: { ...process.env, HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr') },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
+  const log: string[] = []
+  let port = 0
+  const listening = Promise.withResolvers<void>()
+  let settled = false
+  const timer = setTimeout(() => {
+    if (settled) return
+    settled = true
+    listening.reject(new Error(`herdr-bot 没有在 30 秒内打印监听端口：\n${log.join('')}`))
+  }, 30_000)
 
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const log: string[] = []
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      child.kill()
-      reject(new Error(`herdr-bot 没有在 30 秒内打印监听端口：\n${log.join('')}`))
-    }, 30_000)
-
-    const reader = readline.createInterface({ input: child.stdout })
-    reader.on('line', (line) => {
-      log.push(`${line}\n`)
-      const match = line.match(/http:\/\/([^\s/]+):(\d+)\//)
-      if (match === null || settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve({ child, port: Number(match[2]), diagnostics: () => log.join('') })
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      log.push(chunk.toString('utf8'))
-    })
-    child.on('error', (error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      reject(error)
-    })
-    child.on('exit', (code) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      reject(new Error(`herdr-bot 提前退出（code ${code}）：\n${log.join('')}`))
-    })
+  const reader = readline.createInterface({ input: child.stdout })
+  reader.on('line', (line) => {
+    log.push(`${line}\n`)
+    const match = line.match(/http:\/\/([^\s/]+):(\d+)\//)
+    if (match === null || settled) return
+    settled = true
+    port = Number(match[2])
+    clearTimeout(timer)
+    listening.resolve()
   })
+  child.stderr.on('data', (chunk: Buffer) => {
+    log.push(chunk.toString('utf8'))
+  })
+  child.on('error', (error) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    listening.reject(error)
+  })
+  child.on('exit', (code) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    listening.reject(new Error(`herdr-bot 提前退出（code ${code}）：\n${log.join('')}`))
+  })
+  return { child, get port() { return port }, diagnostics: () => log.join(''), listening: listening.promise }
 }
 
 /** 普通浏览器验收只允许数值回环地址，不解析 hostname。 */
@@ -264,107 +273,134 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
   const storageFile = path.join(directory, 'bots.json')
   const metadataFile = path.join(directory, 'bot-options.toml')
-  // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
-  const extensionDirectory = path.join(directory, 'extensions')
-  fs.mkdirSync(extensionDirectory)
-  const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
-  fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
-    const id = prefix.match(/^id = '([^']+)'/m)![1]
-    const relative = `${id}.ts`
-    const entrypoint = path.join(extensionDirectory, relative)
-    fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
-    return `${prefix}'${entrypoint}'`
-  }))
   const herdrDirectory = path.join(directory, 'herdr')
-
   let herdrExecutable: string | undefined
-  if (options.herdr !== undefined) {
-    if (!fs.existsSync(herdrFixtureBinary)) {
-      throw new Error(
-        `缺少受控 Herdr 夹具 ${herdrFixtureBinary}；请先在 backend 目录执行 cargo build。`,
-      )
-    }
-    fs.mkdirSync(herdrDirectory, { recursive: true })
-    herdrExecutable = path.join(herdrDirectory, 'herdr-fixture.exe')
-    fs.copyFileSync(herdrFixtureBinary, herdrExecutable)
-    fs.writeFileSync(
-      path.join(herdrDirectory, 'workspaces.json'),
-      JSON.stringify(
-        options.herdr.workspaces ?? [
-          { workspace_id: 'w-other', label: 'other', focused: true, cwd: 'C:\\elsewhere\\focused' },
-          { workspace_id: 'w-target', label: 'bot-playground', focused: false },
-          { workspace_id: 'w-decoy', label: 'bot-playground-extra', focused: false },
-        ],
-      ),
-      'utf8',
-    )
-    fs.writeFileSync(
-      path.join(herdrDirectory, 'behavior.json'),
-      JSON.stringify(options.herdr.behavior ?? {}),
-      'utf8',
-    )
-  }
+  let running: ServerProcess | null = null
 
-  const configPath = writeConfig(
-    directory,
-    storageFile,
-    {
-      workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
-      executable: herdrExecutable,
-    },
-    await browserListenAddress(listenAddr),
-  )
-
-  let running: { child: ChildProcessWithoutNullStreams; port: number; diagnostics: () => string } | null = null
-
-  async function start() {
-    running = await startProcess(configPath, executable)
-    await waitForBots(`http://${localHost}:${running.port}`)
-  }
-
-  await start()
-
-  return {
-    get baseURL() {
-      if (running === null) throw new Error('herdr-bot 进程未运行')
-      return `http://${localHost}:${running.port}`
-    },
-    urlForHost(host: string) {
-      if (running === null) throw new Error('herdr-bot 进程未运行')
-      return `http://${host}:${running.port}`
-    },
-    storageFile,
-    metadataFile,
-    configPath,
-    diagnostics() { return running?.diagnostics() ?? '' },
-    async getBots() {
-      const response = await fetch(`${this.baseURL}/api/bots`)
-      if (!response.ok) {
-        throw new Error(`Bot 列表读取失败：HTTP ${response.status}`)
+  try {
+    // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
+    const extensionDirectory = path.join(directory, 'extensions')
+    fs.mkdirSync(extensionDirectory)
+    const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
+    fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
+      const id = prefix.match(/^id = '([^']+)'/m)![1]
+      const relative = `${id}.ts`
+      const entrypoint = path.join(extensionDirectory, relative)
+      fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
+      return `${prefix}'${entrypoint}'`
+    }))
+    if (options.herdr !== undefined) {
+      if (!fs.existsSync(herdrFixtureBinary)) {
+        throw new Error(
+          `缺少受控 Herdr 夹具 ${herdrFixtureBinary}；请先在 backend 目录执行 cargo build。`,
+        )
       }
-      return (await response.json()) as { bots: BotView[]; options: unknown }
-    },
-    herdrCalls() {
-      return readHerdrRecords(path.join(herdrDirectory, 'calls.jsonl'))
-    },
-    herdrTabs() {
-      return readHerdrRecords(path.join(herdrDirectory, 'tabs.jsonl'))
-    },
-    setHerdrBehavior(behavior: Record<string, unknown>) {
       fs.mkdirSync(herdrDirectory, { recursive: true })
+      herdrExecutable = path.join(herdrDirectory, 'herdr-fixture.exe')
+      fs.copyFileSync(herdrFixtureBinary, herdrExecutable)
       fs.writeFileSync(
-        path.join(herdrDirectory, 'behavior.json'),
-        JSON.stringify(behavior),
+        path.join(herdrDirectory, 'workspaces.json'),
+        JSON.stringify(
+          options.herdr.workspaces ?? [
+            { workspace_id: 'w-other', label: 'other', focused: true, cwd: 'C:\\elsewhere\\focused' },
+            { workspace_id: 'w-target', label: 'bot-playground', focused: false },
+            { workspace_id: 'w-decoy', label: 'bot-playground-extra', focused: false },
+          ],
+        ),
         'utf8',
       )
-    },
-    async stop() {
-      const child = running?.child
+      fs.writeFileSync(
+        path.join(herdrDirectory, 'behavior.json'),
+        JSON.stringify(options.herdr.behavior ?? {}),
+        'utf8',
+      )
+    }
+
+    const configPath = writeConfig(
+      directory,
+      storageFile,
+      {
+        workspaceName: options.herdr?.workspaceName ?? 'bot-playground',
+        executable: herdrExecutable,
+      },
+      await browserListenAddress(listenAddr),
+    )
+
+    async function start() {
+      running = startProcess(configPath, executable)
+      await running.listening
+      await waitForBots(`http://${localHost}:${running.port}`)
+    }
+
+    const server: E2EServer = {
+      get baseURL() {
+        if (running === null) throw new Error('herdr-bot 进程未运行')
+        return `http://${localHost}:${running.port}`
+      },
+      urlForHost(host: string) {
+        if (running === null) throw new Error('herdr-bot 进程未运行')
+        return `http://${host}:${running.port}`
+      },
+      storageFile,
+      metadataFile,
+      configPath,
+      diagnostics() { return running?.diagnostics() ?? '' },
+      async getBots() {
+        const response = await fetch(`${this.baseURL}/api/bots`)
+        if (!response.ok) {
+          throw new Error(`Bot 列表读取失败：HTTP ${response.status}`)
+        }
+        return (await response.json()) as { bots: BotView[]; options: unknown }
+      },
+      herdrCalls() {
+        return readHerdrRecords(path.join(herdrDirectory, 'calls.jsonl'))
+      },
+      herdrTabs() {
+        return readHerdrRecords(path.join(herdrDirectory, 'tabs.jsonl'))
+      },
+      setHerdrBehavior(behavior: Record<string, unknown>) {
+        fs.mkdirSync(herdrDirectory, { recursive: true })
+        fs.writeFileSync(
+          path.join(herdrDirectory, 'behavior.json'),
+          JSON.stringify(behavior),
+          'utf8',
+        )
+      },
+      stop,
+      async restart() {
+        await stop()
+        try { await start() }
+        catch (error) {
+          await cleanupAfterFailure(error)
+        }
+      },
+      cleanup,
+    }
+    await start()
+    return server
+  } catch (error) {
+    return cleanupAfterFailure(error)
+  }
+
+  async function cleanupAfterFailure(error: unknown): Promise<never> {
+    try { await cleanup() }
+    catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], '浏览器测试服务器初始化失败且资源清理失败', { cause: error })
+    }
+    throw error
+  }
+
+  async function stop() {
+    const child = running?.child
+    if (child === undefined) return
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
       running = null
-      if (child === undefined || child.exitCode !== null) return
-      const exited = Promise.withResolvers<void>()
-      child.once('exit', () => exited.resolve())
-      const exitTimer = setTimeout(() => exited.resolve(), 5000)
+      return
+    }
+    const exited = Promise.withResolvers<void>()
+    child.once('exit', () => exited.resolve())
+    const exitTimer = setTimeout(() => exited.resolve(), 5000)
+    try {
       if (process.platform === 'win32') {
         // Independent identity queries are real child processes. Killing only
         // their parent leaves a live copied EXE holding the test directory open.
@@ -378,39 +414,40 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
         // as a cleanup failure; do not hide a process that actually remains alive.
         await exited.promise
         if (code !== 0 && child.exitCode === null && child.signalCode === null) {
-          clearTimeout(exitTimer)
           throw new Error(`taskkill failed: ${code}`)
         }
       } else {
         child.kill()
       }
       await exited.promise
+      if (child.exitCode === null && child.signalCode === null) {
+        throw new Error('herdr-bot 测试进程没有在 5 秒内退出')
+      }
+      running = null
+    } finally {
       clearTimeout(exitTimer)
-    },
-    async restart() {
-      await this.stop()
-      await start()
-    },
-    async cleanup() {
-      await this.stop()
-      if (process.platform === 'win32' && herdrExecutable !== undefined) {
-        // taskkill /T can miss an identity reader spawned while it snapshots the
-        // tree. The backend is now stopped, so no new readers can appear. Reap
-        // only this fixture's copied executable and wait for its handles to close.
-        const reaped = Promise.withResolvers<void>()
-        const reaper = spawn('powershell.exe', ['-NoProfile', '-Command',
-            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Filter \"Name='herdr-fixture.exe'\" | Where-Object { $_.ExecutablePath -eq $env:HERDR_FIXTURE_EXECUTABLE } | ForEach-Object { $p = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; if ($p -and $p.Path -eq $env:HERDR_FIXTURE_EXECUTABLE) { Stop-Process -InputObject $p -ErrorAction SilentlyContinue; $p.WaitForExit() } }",
-          ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, HERDR_FIXTURE_EXECUTABLE: herdrExecutable } })
-        reaper.once('error', reaped.reject)
-        reaper.once('exit', (code) => code === 0 ? reaped.resolve() : reaped.reject(new Error(`fixture cleanup failed: ${code}`)))
-        await reaped.promise
-      }
-      try {
-        fs.chmodSync(storageFile, 0o666)
-      } catch {
-        // 文件可能不存在。
-      }
-      fs.rmSync(directory, { recursive: true, force: true })
-    },
+    }
+  }
+
+  async function cleanup() {
+    await stop()
+    if (process.platform === 'win32' && herdrExecutable !== undefined) {
+      // taskkill /T can miss an identity reader spawned while it snapshots the
+      // tree. The backend is now stopped, so no new readers can appear. Reap
+      // only this fixture's copied executable and wait for its handles to close.
+      const reaped = Promise.withResolvers<void>()
+      const reaper = spawn('powershell.exe', ['-NoProfile', '-Command',
+          "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Filter \"Name='herdr-fixture.exe'\" | Where-Object { $_.ExecutablePath -eq $env:HERDR_FIXTURE_EXECUTABLE } | ForEach-Object { $p = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; if ($p -and $p.Path -eq $env:HERDR_FIXTURE_EXECUTABLE) { Stop-Process -InputObject $p -ErrorAction SilentlyContinue; $p.WaitForExit() } }",
+        ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, HERDR_FIXTURE_EXECUTABLE: herdrExecutable } })
+      reaper.once('error', reaped.reject)
+      reaper.once('exit', (code) => code === 0 ? reaped.resolve() : reaped.reject(new Error(`fixture cleanup failed: ${code}`)))
+      await reaped.promise
+    }
+    try {
+      fs.chmodSync(storageFile, 0o666)
+    } catch {
+      // 文件可能不存在。
+    }
+    fs.rmSync(directory, { recursive: true, force: true })
   }
 }

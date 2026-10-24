@@ -12,8 +12,11 @@ test.beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'omp-zone-h
 test.afterEach(async () => {
   fs.writeFileSync(path.join(root, 'release'), 'cleanup')
   await delay(150)
-  await server?.cleanup(); server = null
-  fs.rmSync(root, { recursive: true, force: true })
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
 async function post(endpoint: string, body: unknown) {
   const response = await fetch(`${server!.baseURL}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -47,7 +50,7 @@ function native(id: string) { return { source: 'herdr:omp', agent: 'omp', kind: 
 
 // P01/P05/P17: independent history is not registration. A pending external read
 // must leave creation successful; closing the actual page must not cancel it.
-test('OMP page closure during identity acquisition preserves history without connecting; unregister keeps history', async ({ page, browser }) => {
+test('OMP page closure during identity acquisition preserves history without connecting; unregister keeps history', { tag: '@time-contract' }, async ({ page, browser }) => {
   const release = path.join(root, 'release')
   server = await startServer({ herdr: { behavior: { native_session: native('omp-browser-exact-full-id'), native_cwd: 'C:/actual/native', native_session_gate: { wait_for_file: release, timeout_ms: 40000 } } } })
   const zone = await prepare()
@@ -62,30 +65,31 @@ test('OMP page closure during identity acquisition preserves history without con
   fs.writeFileSync(release, 'ready')
   await expect.poll(async () => (await history()).sessions.map((r: {sessionId:string}) => r.sessionId)).toEqual(['omp-browser-exact-full-id'])
   const fresh = await browser.newPage()
-  await fresh.goto(server.baseURL)
-  await expect(fresh.getByTestId('session-board')).not.toContainText(name!)
-  await fresh.getByRole('button', { name: '查看历史会话' }).click()
-  await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
-  await post('/api/sessions/events', { sessionId: 'omp-browser-exact-full-id', kind: 'register', data: { cwd: 'C:/actual/native', agentType: 'omp', sessionName: 'Connect name must not override Chat' } })
-  await fresh.getByRole('button', { name: '查看当前会话' }).click()
-  await expect(fresh.getByTestId('session-board')).toContainText('Connect name must not override Chat')
-  await fresh.getByRole('button', { name: '查看历史会话' }).click()
-  await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
-  await post('/api/sessions/events', { sessionId: 'omp-browser-exact-full-id', kind: 'unregister' })
-  await fresh.getByRole('button', { name: '查看当前会话' }).click()
-  await expect(fresh.getByTestId('session-board')).not.toContainText('Connect name must not override Chat')
-  await fresh.getByRole('button', { name: '查看历史会话' }).click()
-  await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
-  expect((await history()).sessions).toHaveLength(1)
-  expect(server.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
-  expect(server.diagnostics()).not.toContain(`creation=${creation.id}`)
-  await fresh.screenshot({ path: test.info().outputPath('omp-history-after-unregister.png'), fullPage: true })
-  await fresh.close()
+  try {
+    await fresh.goto(server.baseURL)
+    await expect(fresh.getByTestId('session-board')).not.toContainText(name!)
+    await fresh.getByRole('button', { name: '查看历史会话' }).click()
+    await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
+    await post('/api/sessions/events', { sessionId: 'omp-browser-exact-full-id', kind: 'register', data: { cwd: 'C:/actual/native', agentType: 'omp', sessionName: 'Connect name must not override Chat' } })
+    await fresh.getByRole('button', { name: '查看当前会话' }).click()
+    await expect(fresh.getByTestId('session-board')).toContainText('Connect name must not override Chat')
+    await fresh.getByRole('button', { name: '查看历史会话' }).click()
+    await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
+    await post('/api/sessions/events', { sessionId: 'omp-browser-exact-full-id', kind: 'unregister' })
+    await fresh.getByRole('button', { name: '查看当前会话' }).click()
+    await expect(fresh.getByTestId('session-board')).not.toContainText('Connect name must not override Chat')
+    await fresh.getByRole('button', { name: '查看历史会话' }).click()
+    await expect(fresh.getByRole('region', { name: '历史会话' })).toContainText(name!)
+    expect((await history()).sessions).toHaveLength(1)
+    expect(server.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
+    expect(server.diagnostics()).not.toContain(`creation=${creation.id}`)
+    await fresh.screenshot({ path: test.info().outputPath('omp-history-after-unregister.png'), fullPage: true })
+  } finally { await fresh.close() }
 })
 
 // P30: a temporarily unavailable exact header may arrive before the budget;
 // taking only the physical first line (OMP title) would miss the literal ID.
-test('OMP exact header becoming readable before 30 seconds records once', async ({ page }) => {
+test('OMP exact header becoming readable before 30 seconds records once', { tag: '@time-contract' }, async ({ page }) => {
   const file = path.join(root, 'late-native.jsonl')
   server = await startServer({ herdr: { behavior: { native_session: { source: 'herdr:omp', agent: 'omp', kind: 'path', value: file } } } })
   const { creation } = await createInPage(page, await prepare())
@@ -103,7 +107,7 @@ test('OMP exact header becoming readable before 30 seconds records once', async 
 for (const failure of ['missing', 'wrong-agent', 'unreadable-header'] as const) {
   // P19/P22/P30: actual delivered process logs must identify creation and reason.
   // Restoration after the warning must not restart reads or write late history.
-  test(`OMP ${failure} identity expires with server-only correlated warning and no late retries`, async ({ page }) => {
+  test(`OMP ${failure} identity expires with server-only correlated warning and no late retries`, { tag: '@time-contract' }, async ({ page }) => {
     const file = path.join(root, 'missing-native.jsonl')
     const reference = failure === 'missing' ? null : failure === 'wrong-agent'
       ? { source: 'herdr:pi', agent: 'pi', kind: 'id', value: 'must-not-guess-omp' }
@@ -130,7 +134,7 @@ for (const failure of ['missing', 'wrong-agent', 'unreadable-header'] as const) 
 
 // P19/P22/P26/P30: real write failure, not a fake receipt. Restoring writable
 // storage cannot autonomously retry; creation and live registration stay intact.
-test('OMP history save failure leaves creation and current state intact and never retries the write', async ({ page }) => {
+test('OMP history save failure leaves creation and current state intact and never retries the write', { tag: '@time-contract' }, async ({ page }) => {
   const release = path.join(root, 'release')
   server = await startServer({ herdr: { behavior: { native_session: native('omp-save-failure-id'), native_cwd: 'C:/native', native_session_gate: { wait_for_file: release, timeout_ms: 40000 } } } })
   const { creation, dialog } = await createInPage(page, await prepare())

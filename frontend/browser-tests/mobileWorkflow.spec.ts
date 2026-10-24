@@ -77,11 +77,13 @@ let server: E2EServer | null = null
 let zoneRoot: string | null = null
 
 test.afterEach(async () => {
-  await server?.cleanup()
-  server = null
-  if (zoneRoot !== null) {
-    fs.rmSync(zoneRoot, { recursive: true, force: true })
-    zoneRoot = null
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    if (zoneRoot !== null) {
+      fs.rmSync(zoneRoot, { recursive: true, force: true })
+      zoneRoot = null
+    }
   }
 })
 
@@ -213,7 +215,7 @@ for (const profile of PROFILES) {
       hasTouch: profile.hasTouch,
     })
 
-    test(`${profile.label}浏览器完成 Bot 管理与从 zone 发起 Chat`, async ({ page }) => {
+    test(`${profile.label}浏览器完成 Bot 管理与从 zone 发起 Chat`, { tag: '@time-contract' }, async ({ page }) => {
       server = await startServer({
         herdr: {
           behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
@@ -365,7 +367,7 @@ for (const profile of PROFILES) {
 test.describe('移动尺寸失败结果', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
-  test('提交被拒绝时移动弹窗保留可读的现场说明并可自行关闭', async ({ page }) => {
+  test('提交被拒绝时移动弹窗保留可读的现场说明并可自行关闭', { tag: '@time-contract' }, async ({ page }) => {
     server = await startServer({
       herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, fail_prompt: true } },
     })

@@ -11,7 +11,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // the skipped item, while an empty explicit set without identity stays unconfirmed.
 // Herdr is controlled here: these argv observations do NOT prove real loading.
 for (const agent of ['pi', 'omp']) {
-  test(`${agent} page shows each filtered extension and preserves empty-set uncertainty`, async ({ page }, info) => {
+  test(`${agent} page shows each filtered extension and preserves empty-set uncertainty`, { tag: '@time-contract' }, async ({ page }, info) => {
     server = await startServer({ herdr: {} })
     const root = path.dirname(server.configPath)
     const cwd = path.join(root, `filter-${agent}`)

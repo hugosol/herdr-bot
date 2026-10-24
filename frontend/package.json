@@ -14,6 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "playwright test",
+    "test:browser:build": "npm run build && cargo build --manifest-path ../backend/Cargo.toml --bins --example safe_shutdown_shell && npm run test:browser --",
+    "test:browser:fast": "npm run test:browser -- --grep-invert @time-contract",
+    "test:browser:time-contract": "npm run test:browser -- --grep @time-contract",
+    "test:browser:partition": "node ../scripts/check-browser-test-partition.mjs",
     "test:browser:manual": "playwright test --config playwright.manual.config.ts"
   },
   "dependencies": {
@@ -25,6 +29,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.1.1",
