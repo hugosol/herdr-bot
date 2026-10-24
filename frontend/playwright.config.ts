@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os'
 import { defineConfig } from '@playwright/test'
 
 /**
@@ -13,8 +14,8 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  // Three alternating full runs verified file-level overlap; keep each file sequential.
-  workers: 2,
+  // Keep each file sequential; independent files use isolated server/storage fixtures.
+  workers: Math.min(availableParallelism(), 16),
   reporter: [['list']],
   use: {
     channel: 'chrome',
