@@ -435,9 +435,11 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
       // taskkill /T can miss an identity reader spawned while it snapshots the
       // tree. The backend is now stopped, so no new readers can appear. Reap
       // only this fixture's copied executable and wait for its handles to close.
+      // Get-Process reads the local process table without initializing CIM; still
+      // re-open each candidate by PID and verify its full executable path.
       const reaped = Promise.withResolvers<void>()
       const reaper = spawn('powershell.exe', ['-NoProfile', '-Command',
-          "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Filter \"Name='herdr-fixture.exe'\" | Where-Object { $_.ExecutablePath -eq $env:HERDR_FIXTURE_EXECUTABLE } | ForEach-Object { $p = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; if ($p -and $p.Path -eq $env:HERDR_FIXTURE_EXECUTABLE) { Stop-Process -InputObject $p -ErrorAction SilentlyContinue; $p.WaitForExit() } }",
+          "$ErrorActionPreference = 'Stop'; $candidates = @(Get-Process -Name 'herdr-fixture' -ErrorAction SilentlyContinue); $candidates | Where-Object { $_.Path -eq $env:HERDR_FIXTURE_EXECUTABLE } | ForEach-Object { $p = Get-Process -Id $_.Id -ErrorAction SilentlyContinue; if ($p -and $p.Path -eq $env:HERDR_FIXTURE_EXECUTABLE) { Stop-Process -InputObject $p -ErrorAction SilentlyContinue; $p.WaitForExit() } }",
         ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, HERDR_FIXTURE_EXECUTABLE: herdrExecutable } })
       reaper.once('error', reaped.reject)
       reaper.once('exit', (code) => code === 0 ? reaped.resolve() : reaped.reject(new Error(`fixture cleanup failed: ${code}`)))
