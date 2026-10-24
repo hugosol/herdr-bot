@@ -6,6 +6,7 @@ process.env.HERDR_BOT_MANUAL_NETWORK = '1'
 
 export default defineConfig({
   ...config,
+  workers: 1,
   testMatch: '**/lanAccess.manual.spec.ts',
   testIgnore: [],
 })

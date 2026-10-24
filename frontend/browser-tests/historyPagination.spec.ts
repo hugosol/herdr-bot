@@ -73,7 +73,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
 // P16: the independent HTTP client changes durable data while the browser stays
 // open. Exact old values + no read during a bounded observation window catch SSE
 // coupling/polling; navigation then requires fresh data, not a frozen snapshot.
-test('history stays still until navigation and always reopens with fresh durable results', async ({ page }) => {
+test('history stays still until navigation and always reopens with fresh durable results', { tag: '@time-contract' }, async ({ page }) => {
   server = await startServer()
   seed(123)
   const reads: string[] = []

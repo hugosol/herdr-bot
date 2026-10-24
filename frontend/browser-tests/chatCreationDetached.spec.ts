@@ -30,11 +30,13 @@ let server: E2EServer | null = null
 let zoneRoot: string | null = null
 
 test.afterEach(async () => {
-  await server?.cleanup()
-  server = null
-  if (zoneRoot !== null) {
-    fs.rmSync(zoneRoot, { recursive: true, force: true })
-    zoneRoot = null
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    if (zoneRoot !== null) {
+      fs.rmSync(zoneRoot, { recursive: true, force: true })
+      zoneRoot = null
+    }
   }
 })
 
@@ -161,7 +163,7 @@ test('浏览器断线后，已接受的创建继续完成且页面不假报成�
   await context.setOffline(false)
 })
 
-test('刷新页面只失去观察，不取消创建，也不承诺找回结果', async ({ page }) => {
+test('刷新页面只失去观察，不取消创建，也不承诺找回结果', { tag: '@time-contract' }, async ({ page }) => {
   server = await startServer({
     herdr: { behavior: { agent_start_delay_ms: 200, prompt_delay_ms: 2_500 } },
   })

@@ -23,11 +23,13 @@ let server: E2EServer | null = null
 let zoneRoot: string | null = null
 
 test.afterEach(async () => {
-  await server?.cleanup()
-  server = null
-  if (zoneRoot !== null) {
-    fs.rmSync(zoneRoot, { recursive: true, force: true })
-    zoneRoot = null
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    if (zoneRoot !== null) {
+      fs.rmSync(zoneRoot, { recursive: true, force: true })
+      zoneRoot = null
+    }
   }
 })
 
@@ -92,7 +94,7 @@ function callsOfKind(kind: string): Record<string, unknown>[] {
   return (server?.herdrCalls() ?? []).filter((call) => call.kind === kind)
 }
 
-test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名称、阶段、成功与定位', async ({
+test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名称、阶段、成功与定位', { tag: '@time-contract' }, async ({
   page,
 }) => {
   server = await startServer({
@@ -171,7 +173,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
 })
 
-test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的现场一致', async ({ page }) => {
+test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的现场一致', { tag: '@time-contract' }, async ({ page }) => {
   server = await startServer({ herdr: { behavior: { fail_prompt: true } } })
   const zones = await prepareZones(server.baseURL)
   await prepareBot(server.baseURL)

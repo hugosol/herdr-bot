@@ -13,7 +13,8 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  workers: 1,
+  // Three alternating full runs verified file-level overlap; keep each file sequential.
+  workers: 2,
   reporter: [['list']],
   use: {
     channel: 'chrome',

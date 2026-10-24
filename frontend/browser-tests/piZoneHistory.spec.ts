@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { startServer, type E2EServer } from './support'
@@ -9,9 +8,12 @@ import { zoneRowFor } from './ui'
 let server: E2EServer | null = null
 let root: string | null = null
 test.afterEach(async () => {
-  await server?.cleanup(); server = null
-  if (root) fs.rmSync(root, { recursive: true, force: true })
-  root = null
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    if (root) fs.rmSync(root, { recursive: true, force: true })
+    root = null
+  }
 })
 async function post(endpoint: string, body: unknown) {
   const response = await fetch(`${server!.baseURL}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -77,6 +79,30 @@ test('Pi without connect survives page close and history is independent of curre
   } finally { await reopened.close() }
 })
 
+// The caller never receives a cleanup handle when initialization rejects. The
+// fixture must still remove only the temporary tree allocated by that attempt.
+test('isolated browser server removes its temporary data when initialization rejects', async () => {
+  const marker = `startup-cleanup-${process.pid}-${Date.now()}`
+  const ownedDirectories = () => fs.readdirSync(os.tmpdir(), { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name.startsWith('herdr-bot browser '))
+    .map(entry => path.join(os.tmpdir(), entry.name))
+    .filter(directory => {
+      try { return fs.readFileSync(path.join(directory, 'herdr-bot.toml'), 'utf8').includes(marker) }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+        throw error
+      }
+    })
+  try {
+    // A quote makes this attempt's real TOML invalid; it does not alter any
+    // executable or shared fixture, and the backend must exit before listening.
+    await expect(startServer({ herdr: { workspaceName: `${marker}'` } })).rejects.toThrow('提前退出')
+    expect(ownedDirectories()).toEqual([])
+  } finally {
+    for (const directory of ownedDirectories()) fs.rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // A pending external query owns a Windows executable handle. Stopping only
 // the backend parent leaves that child alive and makes cleanup fail with EPERM.
 test('isolated browser server cleanup also stops its pending Herdr query child', async ({ page }) => {
@@ -84,21 +110,17 @@ test('isolated browser server cleanup also stops its pending Herdr query child',
   server!.setHerdrBehavior({ native_session_gate: { wait_for_file: path.join(root!, 'never-release'), timeout_ms: 60_000 } })
   await createInPage(page, zone)
   await expect.poll(() => server!.herdrCalls().some(c => c.kind === 'agent_get')).toBe(true)
-  const queryPid = Number(server!.herdrCalls().find(c => c.kind === 'agent_get')!.pid)
   const owned = server!
+  // Keep afterEach ownership if cleanup fails; never kill a recycled record PID.
+  await owned.cleanup()
   server = null
-  try { await owned.cleanup() }
-  finally {
-    // Only this recorded fixture PID is eligible for cleanup if the assertion fails.
-    spawnSync('taskkill.exe', ['/PID', String(queryPid), '/T', '/F'], { windowsHide: true })
-    fs.rmSync(path.dirname(owned.configPath), { recursive: true, force: true })
-  }
+  expect(fs.existsSync(path.dirname(owned.configPath))).toBe(false)
 })
 
 // P19/P22/P30: collect warnings from the delivered executable, not a mocked
 // logging function. Restored storage/identity without a new event stays absent.
 for (const failure of ['missing-identity', 'unreadable-header', 'save-failed'] as const) {
-  test(`Pi ${failure} is correlated in server diagnostics only and ends without retry`, async ({ page }, testInfo) => {
+  test(`Pi ${failure} is correlated in server diagnostics only and ends without retry`, { tag: '@time-contract' }, async ({ page }, testInfo) => {
     const { zone } = await prepare({})
     const native = path.join(root!, 'unavailable-native.jsonl')
     if (failure === 'save-failed') {

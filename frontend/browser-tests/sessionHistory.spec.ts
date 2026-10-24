@@ -82,14 +82,15 @@ test('durable history survives refresh, browser closure and backend restart for 
   expect(byId[1]).toEqual({ sessionId: 'durable-native-two-full-id', sessionName: null, agentType: null, cwd: 'C:/durable/two', firstRecordedAt: expect.any(Number) })
   for (const record of byId) { expect(record.firstRecordedAt).toBeGreaterThanOrEqual(startedAt); expect(record.firstRecordedAt).toBeLessThanOrEqual(savedBy) }
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-  const page = await desktop.newPage()
-  await page.goto(server.baseURL)
-  await page.getByRole('button', { name: '查看历史会话' }).click()
-  await expect(page.getByRole('row').filter({ hasText: 'Durable one' })).toBeVisible()
-  await page.reload()
-  await expect(page.getByRole('heading', { name: '当前会话', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '历史会话' })).toHaveCount(0)
-  await desktop.close()
+  try {
+    const page = await desktop.newPage()
+    await page.goto(server.baseURL)
+    await page.getByRole('button', { name: '查看历史会话' }).click()
+    await expect(page.getByRole('row').filter({ hasText: 'Durable one' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: '当前会话', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '历史会话' })).toHaveCount(0)
+  } finally { await desktop.close() }
   expect(await fetch(`${server.baseURL}/api/sessions/history`).then((response) => response.json())).toEqual(first)
   await server.restart()
   expect(await fetch(`${server.baseURL}/api/sessions/history`).then((response) => response.json())).toEqual(first)

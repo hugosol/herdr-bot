@@ -12,8 +12,11 @@ let root: string
 
 test.beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-source-history-')) })
 test.afterEach(async () => {
-  await server?.cleanup(); server = null
-  fs.rmSync(root, { recursive: true, force: true })
+  try { await server?.cleanup() }
+  finally {
+    server = null
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
 async function post(endpoint: string, body: unknown) {
   const response = await fetch(`${server!.baseURL}${endpoint}`, {

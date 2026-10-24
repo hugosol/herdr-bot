@@ -122,7 +122,7 @@ for (const agent of ['pi', 'omp']) {
 // Missing optional file is real; only Herdr supplies each external condition.
 for (const agent of ['pi', 'omp']) {
   for (const fault of ['start', 'mismatch', 'confirm', 'focus']) {
-    test(`${agent} filtered ${fault} keeps authoritative result and prior degradation on HTTP and page`, async ({ page }, info) => {
+    test(`${agent} filtered ${fault} keeps authoritative result and prior degradation on HTTP and page`, { tag: fault === 'confirm' ? '@time-contract' : [] }, async ({ page }, info) => {
       const s = await prepare(agent, 'filtered')
       server!.setHerdrBehavior({ ...s.identity,
         ...(fault === 'start' ? { fail_agent_start: true } : {}),
