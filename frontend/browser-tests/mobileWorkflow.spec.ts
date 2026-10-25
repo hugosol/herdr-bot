@@ -218,7 +218,7 @@ for (const profile of PROFILES) {
     test(`${profile.label}浏览器完成 Bot 管理与从 zone 发起 Chat`, { tag: '@time-contract' }, async ({ page }) => {
       server = await startServer({
         herdr: {
-          behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
+          behavior: { agent_start_delay_ms: 2_000, initial_message_delay_ms: 1_500 },
         },
       })
       const zone = await prepareZone(server.baseURL)
@@ -311,7 +311,7 @@ for (const profile of PROFILES) {
 
       await activate(dialog.getByTestId('chat-create-submit'), profile.hasTouch)
 
-      // “正在启动”是稳定阶段：受控 agent 未就绪前绝不提交初始输入。
+      // 初始消息随启动交付；请求尚未确认时仍处于启动阶段。
       await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
       await expectDialogInsideViewport(dialog)
       await expect
@@ -324,10 +324,8 @@ for (const profile of PROFILES) {
       await page.waitForTimeout(300)
       expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(0)
 
-      // 就绪后才进入“正在提交初始指示”；提交确认前没有成功文案。
-      await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {
-        timeout: 10_000,
-      })
+      expect(server.herdrCalls().find(call => call.kind === 'agent_start')?.initialMessage).toBe(MULTILINE_INPUT)
+      await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
       await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
 
       await expect(dialog.getByTestId('chat-create-success')).toHaveText(
@@ -344,9 +342,10 @@ for (const profile of PROFILES) {
       expect(tabs[0].cwd).toBe(zone)
       await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(tabs[0].tab_id))
       await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
-      const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
-      expect(prompts).toHaveLength(1)
-      expect(prompts[0].text).toBe(MULTILINE_INPUT)
+      const starts = server.herdrCalls().filter((call) => call.kind === 'agent_start')
+      expect(starts).toHaveLength(1)
+      expect(starts[0].initialMessage).toBe(MULTILINE_INPUT)
+      expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
 
       // 结果变长后弹窗仍在视口内；用户自己滚到操作区并关闭，页面停留在文件列表。
       await expectDialogInsideViewport(dialog)
@@ -359,7 +358,8 @@ for (const profile of PROFILES) {
       // 关闭弹窗不等于取消后端已接受的创建：外部没有额外创建或重发。
       await page.waitForTimeout(300)
       expect(server.herdrTabs()).toHaveLength(1)
-      expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(1)
+      expect(server.herdrCalls().filter((call) => call.kind === 'agent_start')).toHaveLength(1)
+      expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(0)
     })
   })
 }
@@ -369,7 +369,7 @@ test.describe('移动尺寸失败结果', () => {
 
   test('提交被拒绝时移动弹窗保留可读的现场说明并可自行关闭', { tag: '@time-contract' }, async ({ page }) => {
     server = await startServer({
-      herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, fail_prompt: true } },
+      herdr: { behavior: { agent_start_delay_ms: 500, initial_message_delay_ms: 1_200, fail_initial_message: true } },
     })
     const zone = await prepareZone(server.baseURL)
     await jsonPost(server.baseURL, '/api/bots', CREATION_BOT)
@@ -386,18 +386,17 @@ test.describe('移动尺寸失败结果', () => {
     await dialog.getByTestId('chat-input').fill('会被拒绝的指示')
     await dialog.getByTestId('chat-create-submit').tap()
 
-    // 两个阶段在失败前都能稳定观察，而不是碰巧截到瞬态。
+    // 明确拒绝前仍处于同一次启动请求中。
     await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
-    await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {
-      timeout: 10_000,
-    })
     await expect(dialog.getByTestId('chat-create-failure')).toBeVisible({ timeout: 10_000 })
     await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
 
     const failure = dialog.getByTestId('chat-create-failure')
     await failure.scrollIntoViewIfNeeded()
-    await expect(failure).toContainText('提交初始指示')
-    await expect(failure).toContainText('现场已存在：agent 已就绪，但初始指示的提交被明确拒绝')
+    await expect(failure).toContainText('启动')
+    const preserved = server.herdrTabs()[0]
+    await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(preserved.tab_id))
+    await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(preserved.pane_id))
     await expect(dialog.getByTestId('chat-result-name')).toBeVisible()
     await expect(dialog.getByTestId('chat-result-zone')).toHaveText(zone)
 
@@ -413,6 +412,7 @@ test.describe('移动尺寸失败结果', () => {
     // 失败不触发自动重建或重发，已创建的现场保留。
     await page.waitForTimeout(300)
     expect(server.herdrTabs()).toHaveLength(1)
-    expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(1)
+    expect(server.herdrCalls().filter((call) => call.kind === 'agent_start')).toHaveLength(1)
+    expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(0)
   })
 })

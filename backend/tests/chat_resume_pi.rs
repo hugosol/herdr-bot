@@ -207,6 +207,8 @@ async fn pi_id_only_and_unavailable_file_restore_the_exact_native_id() {
         assert_eq!(serde_json::from_str::<Value>(&reply.body).unwrap()["outcome"],"restored");
         let calls = herdr.calls();
         let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
+        assert_eq!(start["initialMessage"], "");
+        assert!(!start["argv"].as_array().unwrap().iter().any(|arg| arg == "--initial-message"));
         assert!(start["args"].as_array().unwrap().windows(2).any(|w| w == [json!("--session"),json!("pi-old-exact")]));
         assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
     }

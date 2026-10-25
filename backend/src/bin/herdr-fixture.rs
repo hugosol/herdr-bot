@@ -19,15 +19,15 @@
 //! `native_session_gate`（同下述 gate 格式）控制读取。gate 释放后重新读取 behavior，
 //! 所以身份可以在创建页面关闭之后才由外部提供；不会从其他创建或磁盘目录推导。
 //!
-//! `behavior.json` 可延迟或拒绝某一步，用来观察“启动中”“提交中”与失败边界：
-//! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`prompt_delay_ms`，
-//! 以及布尔值 `fail_workspace_list`、`fail_tab_create`、`fail_agent_start`、`fail_prompt`。
+//! `behavior.json` 可延迟或拒绝某一步，观察启动确认与失败边界：
+//! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`initial_message_delay_ms`，
+//! 以及布尔值 `fail_workspace_list`、`fail_tab_create`、`fail_agent_start`、`fail_initial_message`。
 //!
-//! 空文本提交与真实 Herdr 一样以 `empty_agent_prompt` 拒绝；拒绝前仍写下调用记录，因为
-//! “herdr-bot 尝试提交什么”与“Herdr 是否接受”是两件需要分别观察的事实。
+//! 初始消息记录在启动的 `initialMessage` 字段，空消息仅确认就绪；不支持额外 prompt 命令。
+//! 调用在确认前记录，因此超时不能被解释为没有发生外部副作用。
 //!
 //! 并发用例使用可选的外部屏障：`agent_list_gate`（查询阶段）、
-//! `tab_create_gate`（匹配 Tab 名称）、`agent_start_gate` 与 `prompt_gate`，各自是
+//! `tab_create_gate`（匹配 Tab 名称）、`agent_start_gate` 与 `initial_message_gate`，各自是
 //! `{ "match": 子串, "wait_for_file": 路径, "timeout_ms": 毫秒 }`。调用先写入记录，再在匹配时
 //! 等待释放文件出现（或到超时）才返回；`match` 省略或为空表示不筛选，`timeout_ms` 缺省 30 秒。
 //! 释放文件由用例创建，因此“一个创建受阻、另一个继续”来自外部进程的可控停顿，不是固定延时。
@@ -53,7 +53,6 @@ fn main() {
         }
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
-        Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("list") => agent_list(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("focus") => agent_focus(&args),
@@ -254,6 +253,7 @@ fn agent_start(args: &[String]) {
     };
     let kind = flag_value(args, "--kind").unwrap_or_default();
     let pane = flag_value(args, "--pane").unwrap_or_default();
+    let initial_message = flag_value(args, "--initial-message").unwrap_or_default();
     let extra: Vec<String> = match args.iter().position(|arg| arg == "--") {
         Some(index) => args[index + 1..].to_vec(),
         None => Vec::new(),
@@ -268,6 +268,7 @@ fn agent_start(args: &[String]) {
             "agent_kind": kind,
             "pane": pane,
             "args": extra,
+            "initialMessage": initial_message,
         }),
     );
     delay(&behavior, "agent_start_delay_ms");
@@ -284,6 +285,13 @@ fn agent_start(args: &[String]) {
         started["actual_cwd"] = json!(env::current_dir().unwrap());
     }
     record("started.jsonl", started);
+    if !initial_message.is_empty() {
+        delay(&behavior, "initial_message_delay_ms");
+        wait_at_gate(&behavior, "initial_message_gate", &initial_message);
+        if flag(&behavior, "fail_initial_message") {
+            fail("initial_message_failed", "受控夹具拒绝启动初始指示");
+        }
+    }
     // Herdr 0.9.5 returns this structured stderr envelope when its own
     // readiness deadline expires, even though the CLI process itself exited.
     if flag(&behavior, "timeout_agent_start") {
@@ -358,53 +366,6 @@ fn agent_get(args: &[String]) {
         "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
         "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
     }}}));
-}
-
-fn agent_prompt(args: &[String]) {
-    let behavior = behavior();
-    let Some(target) = args.get(2).cloned() else {
-        usage(args);
-    };
-    let text = args.get(3).cloned().unwrap_or_default();
-    record(
-        "calls.jsonl",
-        json!({
-            "at": now_ms(),
-            "kind": "agent_prompt",
-            "argv": args,
-            "target": target,
-            "text": text,
-        }),
-    );
-    delay(&behavior, "prompt_delay_ms");
-    wait_at_gate(&behavior, "prompt_gate", &text);
-    if text.is_empty() {
-        // 真实 Herdr 在写入 pane 之前就以 `empty_agent_prompt` 拒绝空文本；受控替身保持同一结果。
-        // 调用记录已经写下，因此测试能够证明 herdr-bot 确实尝试过这次提交，而不是跳过它。
-        fail("empty_agent_prompt", "agent prompt must not be empty");
-    }
-    if flag(&behavior, "fail_prompt") {
-        fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
-    }
-
-    output(json!({
-        "id": "cli:agent:prompt",
-        "result": {
-            "type": "agent_prompted",
-            "agent": {
-                "terminal_id": target,
-                "name": target,
-                "agent": "omp",
-                "agent_status": "working",
-                "interactive_ready": true,
-                "workspace_id": target.split(':').next().unwrap_or_default(),
-                "tab_id": "fixture:t0",
-                "pane_id": target,
-                "focused": false,
-                "revision": 2,
-            },
-        },
-    }));
 }
 
 /// 取 `--flag value` 的值；同名参数取第一次出现。

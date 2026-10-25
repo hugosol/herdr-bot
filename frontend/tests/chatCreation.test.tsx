@@ -50,14 +50,14 @@ const PREVIEW = {
   agent: 'omp',
 }
 
-function creation(stage: string, extra: Record<string, unknown> = {}) {
+function creation(stage: 'starting' | 'succeeded' | 'failed', extra: Record<string, unknown> = {}) {
   return {
     id: 'bc-1',
     name: PREVIEW.name,
     zone: PREVIEW.zone,
     botId: 'tpl-1',
     stage,
-    inputSubmitted: stage === 'succeeded',
+    inputSubmitted: false,
     ...extra,
   }
 }
@@ -74,7 +74,7 @@ async function openDialog(user: UserEvent, rowIndex = 1) {
   return screen.getByTestId('chat-creation-dialog')
 }
 
-/** 打开弹窗后创建立即进入指定的失败结果；用于检查页面侧的失败表述。 */
+/** 打开弹窗后创建立即进入指定失败结果，检查失败后的消费者行为。 */
 function mockCreationFailure(failed: Record<string, unknown>) {
   return mockFetch((url, method) => {
     if (url === '/api/zones' && method === 'GET') {
@@ -241,9 +241,14 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(calls.filter((call) => call.url === '/api/bots')).toHaveLength(1)
   })
 
-  it('接受后分别呈现正在启动与正在提交，两者确认后才显示成功并保留在弹窗', async () => {
+  it('启动确认前不显示成功或重复创建，确认后保留结果与输入原文', async () => {
     const user = userEvent.setup()
+    const initialInput = '  检查登录逻辑\n保留换行与尾部空格  '
     let polls = 0
+    let resolveLaunch!: (response: Response) => void
+    const launchResponse = new Promise<Response>((resolve) => {
+      resolveLaunch = resolve
+    })
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
@@ -265,33 +270,36 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       }
       if (url === '/api/chats/bc-1' && method === 'GET') {
         polls += 1
-        return jsonResponse(
-          200,
-          polls === 1
-            ? creation('submitting')
-            : creation('succeeded', {
-                tabId: 'w-target:t9',
-                paneId: 'w-target:p9',
-                agentName: 'chat-000000000009',
-              }),
-        )
+        return polls === 1
+          ? jsonResponse(200, creation('starting'))
+          : launchResponse
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
     const dialog = await openDialog(user, 0)
-    await user.type(within(dialog).getByTestId('chat-input'), '检查登录逻辑')
+    await user.click(within(dialog).getByTestId('chat-input'))
+    await user.paste(initialInput)
     await vi.waitFor(() =>
       expect(within(dialog).getByTestId('chat-name-preview')).toHaveTextContent(PREVIEW.name),
     )
     await user.click(within(dialog).getByTestId('chat-create-submit'))
 
-    expect(await within(dialog).findByText('正在启动')).toBeVisible()
-    expect(await within(dialog).findByText('正在提交初始指示')).toBeVisible()
-    expect(
-      await within(dialog).findByText('创建成功，初始指示已提交'),
-    ).toBeVisible()
+    await vi.waitFor(() => expect(polls).toBeGreaterThanOrEqual(1))
+    expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
+    expect(within(dialog).getByTestId('chat-input')).toHaveValue(initialInput)
+    expect(within(dialog).getByTestId('chat-create-submit')).toBeDisabled()
+    await user.dblClick(within(dialog).getByTestId('chat-create-submit'))
+    expect(calls.filter((call) => call.url === '/api/chats')).toHaveLength(1)
+
+    resolveLaunch(jsonResponse(200, creation('succeeded', {
+      inputSubmitted: true,
+      tabId: 'w-target:t9',
+      paneId: 'w-target:p9',
+      agentName: 'chat-000000000009',
+    })))
+    expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
     expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
     expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
 
@@ -309,7 +317,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       chatId: PREVIEW.chatId,
       expectedName: PREVIEW.name,
       chatNameRule: PREVIEW.chatNameRule,
-      input: '检查登录逻辑',
+      input: initialInput,
       workspaceTarget: 'current',
     })
     expect(body).not.toHaveProperty('workspace')
@@ -379,7 +387,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(await within(dialog).findByText('正在启动')).toBeVisible()
     expect(workspace).toBeDisabled()
     expect(within(dialog).getByRole('textbox', { name: /本次 Chat 名称/ })).toBeDisabled()
-    expect(await within(dialog).findByText('创建成功，初始指示已提交')).toBeVisible()
+    expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
     expect(workspace).toBeDisabled()
     expect(within(dialog).getByRole('textbox', { name: /本次 Chat 名称/ })).toBeDisabled()
     await user.click(within(dialog).getByTestId('chat-create-close'))
@@ -414,7 +422,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
         }))
       }
       if (url === '/api/chats/bc-2') {
-        return jsonResponse(200, creation('succeeded', { id: 'bc-2' }))
+        return jsonResponse(200, creation('succeeded', { id: 'bc-2', inputSubmitted: true }))
       }
       return jsonResponse(404, {})
     })
@@ -462,7 +470,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(calls.filter((call) => call.url === '/api/chats/preview')).toHaveLength(1)
   })
 
-  it.each(['tab', 'start', 'submit'])('%s 阶段失败仍锁定表单且不能重复创建', async (stage) => {
+  it.each(['tab', 'start'])('%s 阶段失败仍锁定表单且不能重复创建', async (stage) => {
     const user = userEvent.setup()
     const { calls } = mockCreationFailure(creation('failed', {
       failure: { stage, code: 'herdr-command-failed', message: '保留失败现场' },
@@ -481,62 +489,33 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(calls.filter((call) => call.url === '/api/chats')).toHaveLength(1)
   })
 
-  it('就绪或提交任一失败都不显示成功，并保留已知定位信息', async () => {
-    const user = userEvent.setup()
-    mockFetch((url, method) => {
-      if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
-      }
-      if (url === '/api/zones/overview' && method === 'GET') {
-        return jsonResponse(200, { zones: [] })
-      }
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, {
-          bots: [BOT],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
-        })
-      }
-      if (url === '/api/chats/preview' && method === 'POST') {
-        return jsonResponse(200, PREVIEW)
-      }
-      if (url === '/api/chats' && method === 'POST') {
-        return jsonResponse(202, creation('starting'))
-      }
-      if (url === '/api/chats/bc-1' && method === 'GET') {
-        return jsonResponse(
-          200,
-          creation('failed', {
-            tabId: 'w-target:t9',
-            paneId: 'w-target:p9',
-            failure: {
-              stage: 'start',
-              code: 'herdr-command-failed',
-              message: 'agent 没有在时限内就绪。',
-            },
-          }),
-        )
-      }
-      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
-    })
+  it.each(['herdr-command-failed', 'herdr-timeout'])(
+    '启动失败 %s 不显示成功，保留定位信息且不会重复创建',
+    async (code) => {
+      const user = userEvent.setup()
+      const { calls } = mockCreationFailure(creation('failed', {
+        tabId: 'w-target:t9',
+        paneId: 'w-target:p9',
+        agentName: 'chat-000000000009',
+        failure: { stage: 'start', code, message: '启动未确认成功' },
+      }))
 
-    render(<App />)
-    const dialog = await openDialog(user, 0)
-    await vi.waitFor(() =>
-      expect(within(dialog).getByTestId('chat-name-preview')).toHaveTextContent(PREVIEW.name),
-    )
-    await user.click(within(dialog).getByTestId('chat-create-submit'))
+      render(<App />)
+      const dialog = await submitCreation(user)
+      expect(await within(dialog).findByTestId('chat-create-failure')).toBeVisible()
+      expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
+      expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
+      expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
+      expect(within(dialog).getByTestId('chat-result-agent')).toHaveTextContent('chat-000000000009')
+      expect(within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })).toBeDisabled()
+      expect(within(dialog).getByTestId('chat-create-submit')).toBeDisabled()
+      await user.dblClick(within(dialog).getByTestId('chat-create-submit'))
+      expect(calls.filter((call) => call.url === '/api/chats')).toHaveLength(1)
+      expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+    },
+  )
 
-    const failure = await within(dialog).findByTestId('chat-create-failure')
-    expect(failure).toHaveTextContent('启动 agent')
-    expect(failure).toHaveTextContent('agent 没有在时限内就绪。')
-    expect(within(dialog).getByRole('combobox', { name: 'Herdr Workspace' })).toBeDisabled()
-    expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
-    expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
-    expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
-    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
-  })
-
-  it('初始 input 为空时不阻止提交，空正文仍交给后端与 Herdr 判定', async () => {
+  it('空 input 保持原样提交，未提交初始消息的后端成功仍显示成功', async () => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
@@ -560,14 +539,10 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/chats/bc-1' && method === 'GET') {
         return jsonResponse(
           200,
-          creation('failed', {
+          creation('succeeded', {
+            inputSubmitted: false,
             tabId: 'w-target:t9',
             paneId: 'w-target:p9',
-            failure: {
-              stage: 'submit',
-              code: 'herdr-command-failed',
-              message: 'Herdr 的 agent prompt 失败：agent prompt must not be empty。',
-            },
           }),
         )
       }
@@ -582,11 +557,12 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(within(dialog).getByTestId('chat-input')).toHaveValue('')
     await user.click(within(dialog).getByTestId('chat-create-submit'))
 
-    // 页面不前置组合校验：空 input 仍发出创建请求，并呈现后端/Herdr 的普通失败。
-    const failure = await within(dialog).findByTestId('chat-create-failure')
-    expect(failure).toHaveTextContent('提交初始指示')
-    expect(failure).toHaveTextContent('agent prompt must not be empty')
-    expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
+    expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
+    expect(within(dialog).queryByTestId('chat-create-failure')).toBeNull()
+    expect(within(dialog).getByTestId('chat-input')).toHaveValue('')
+    expect(within(dialog).getByTestId('chat-create-submit')).toBeDisabled()
+    expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
+    expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
 
     const createCall = calls.find(
       (call) => call.url === '/api/chats' && call.method === 'POST',
@@ -596,68 +572,4 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(body).not.toHaveProperty('workspace')
   })
 
-  it('提交被明确拒绝时说明现场已存在与提交失败，而不是结果未确认', async () => {
-    const user = userEvent.setup()
-    mockCreationFailure(
-      creation('failed', {
-        tabId: 'w-target:t9',
-        paneId: 'w-target:p9',
-        agentName: 'chat-000000000009',
-        failure: {
-          stage: 'submit',
-          code: 'herdr-command-failed',
-          message:
-            'agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。',
-        },
-      }),
-    )
-
-    render(<App />)
-    const dialog = await submitCreation(user)
-
-    const failure = await within(dialog).findByTestId('chat-create-failure')
-    expect(failure).toHaveTextContent('提交初始指示')
-    expect(failure).toHaveTextContent(
-      '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。',
-    )
-    expect(failure).not.toHaveTextContent('投递结果未确认')
-    expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
-    expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
-    expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
-    expect(within(dialog).getByTestId('chat-result-agent')).toHaveTextContent(
-      'chat-000000000009',
-    )
-    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
-  })
-
-  it('投递超时只表述为结果未确认，不宣称未发送也不显示成功', async () => {
-    const user = userEvent.setup()
-    mockCreationFailure(
-      creation('failed', {
-        tabId: 'w-target:t9',
-        paneId: 'w-target:p9',
-        agentName: 'chat-000000000009',
-        failure: {
-          stage: 'submit',
-          code: 'herdr-timeout',
-          message:
-            'agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。',
-        },
-      }),
-    )
-
-    render(<App />)
-    const dialog = await submitCreation(user)
-
-    const failure = await within(dialog).findByTestId('chat-create-failure')
-    expect(failure).toHaveTextContent('提交初始指示')
-    expect(failure).toHaveTextContent(
-      '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。',
-    )
-    expect(failure).not.toHaveTextContent('确定未发送')
-    expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
-    expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
-    expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')
-    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
-  })
 })

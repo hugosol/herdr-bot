@@ -406,12 +406,12 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
 
         assert_eq!(args[0], "--no-extensions", "原生存储选择留给 agent");
 
-        let prompt = calls_of_kind(&herdr, "agent_prompt")
+        let prompt = calls_of_kind(&herdr, "agent_start")
             .into_iter()
             .last()
             .expect("必须提交初始指示");
-        assert_eq!(prompt["target"], start["name"]);
-        assert_eq!(prompt["text"], input, "本次 input 必须按字面提交");
+        assert_eq!(prompt["name"], start["name"]);
+        assert_eq!(prompt["initialMessage"], input, "本次 input 必须按字面提交");
     }
 
     // 当前焦点指向另一个 Workspace；两次创建都只使用配置目标。
@@ -655,10 +655,9 @@ async fn assert_launch_from_public_entry(
         vec![
             "workspace_list",
             "tab_create",
-            "agent_start",
-            "agent_prompt"
+            "agent_start"
         ],
-        "一次创建只有一次启动与一次提交；启动参数在提交之前确定，没有启动后切换"
+        "一次创建只有一次携消息启动，没有启动后切换"
     );
 
     let start = created_calls
@@ -688,13 +687,13 @@ async fn assert_launch_from_public_entry(
 
     let prompt = created_calls
         .iter()
-        .find(|call| call["kind"] == "agent_prompt")
+        .find(|call| call["kind"] == "agent_start")
         .expect("必须提交初始指示");
     assert_eq!(
-        prompt["target"], start["name"],
+        prompt["name"], start["name"],
         "初始指示必须提交给本次启动的 agent"
     );
-    assert_eq!(prompt["text"], input, "初始指示按字面提交一次");
+    assert_eq!(prompt["initialMessage"], input, "初始指示按字面提交一次");
     finished
 }
 
@@ -772,13 +771,13 @@ async fn defaulted_model_and_thinking_are_absent_from_native_launch_arguments() 
     }
 }
 
-/// P27 / P32 / P33 / P34：启动被延迟时不提交；就绪后才进入提交阶段；提交确认后立即成功。
+/// 启动确认被延迟时保持 starting；消息随启动交付，确认后直接成功。
 #[tokio::test(flavor = "multi_thread")]
 async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn() {
     let herdr = HerdrFixture::new("bot creation stages");
     herdr.set_behavior(json!({
         "agent_start_delay_ms": 1_200,
-        "prompt_delay_ms": 1_200,
+        "initial_message_delay_ms": 1_200,
     }));
     let storage = TempDir::new("bot creation stage storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
@@ -801,7 +800,7 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
     let id = accepted["id"].as_str().expect("创建标识").to_string();
     assert_eq!(accepted["stage"], "starting", "接受后应处于正在启动");
 
-    // 启动调用已经被受控 Herdr 记录，但它在延迟中：此时不得有任何初始输入。
+    // 携消息启动已被外部记录，但尚未返回轮次开始确认。
     assert!(
         wait_until(Duration::from_secs(5), || {
             !calls_of_kind(&herdr, "agent_start").is_empty()
@@ -815,36 +814,28 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
         "就绪之前页面只能看到正在启动"
     );
     tokio::time::sleep(Duration::from_millis(250)).await;
-    assert!(
-        calls_of_kind(&herdr, "agent_prompt").is_empty(),
-        "目标就绪之前不得提交初始指示"
-    );
-
-    // 就绪之后才进入提交阶段；提交响应被延迟时，页面稳定看到提交阶段。
-    let submitting = wait_stage(&server, &id, "submitting").await;
-    assert_eq!(submitting["stage"], "submitting");
-    assert_eq!(submitting["inputSubmitted"], false, "提交尚未确认");
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    let still_submitting = creation(&server, &id).await;
+    assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+    assert_eq!(during_start["inputSubmitted"], false, "轮次开始尚未确认");
     assert_eq!(
-        still_submitting["stage"], "submitting",
-        "提交响应被延迟时不能提前显示成功"
+        calls_of_kind(&herdr, "agent_start")[0]["initialMessage"],
+        "等待就绪后提交",
+        "初始消息随唯一一次启动交付"
     );
 
     let succeeded = wait_stage(&server, &id, "succeeded").await;
     assert_eq!(succeeded["inputSubmitted"], true);
     assert_eq!(
-        calls_of_kind(&herdr, "agent_prompt").len(),
+        calls_of_kind(&herdr, "agent_start").len(),
         1,
         "只提交一次，不自动重发"
     );
-    // P34：受控 agent 在提交后仍为 working；成功不等待模型轮次结束。
-    let prompt = calls_of_kind(&herdr, "agent_prompt")
+    // 成功不等待模型轮次结束。
+    let prompt = calls_of_kind(&herdr, "agent_start")
         .pop()
         .expect("必须有提交记录");
-    assert_eq!(prompt["text"], "等待就绪后提交");
+    assert_eq!(prompt["initialMessage"], "等待就绪后提交");
 
-    // 时序：启动记录必须先于提交记录。
+    // 一条启动命令拥有消息交付；没有后续 prompt。
     let calls = herdr.calls();
     let kinds: Vec<&str> = calls
         .iter()
@@ -856,10 +847,9 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
         vec![
             "workspace_list",
             "tab_create",
-            "agent_start",
-            "agent_prompt"
+            "agent_start"
         ],
-        "一次创建只有一次 Workspace 查询、一次 Tab、一次启动、一次提交"
+        "一次创建只有一次 Workspace 查询、一次 Tab 与一次携消息启动"
     );
 }
 
@@ -867,7 +857,7 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
     let herdr = HerdrFixture::new("bot creation prompt failure");
-    herdr.set_behavior(json!({ "fail_prompt": true }));
+    herdr.set_behavior(json!({ "fail_initial_message": true }));
     let storage = TempDir::new("bot creation prompt failure storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
@@ -888,7 +878,7 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
 
     let failed = wait_stage(&server, id, "failed").await;
     assert_eq!(failed["stage"], "failed");
-    assert_eq!(failed["failure"]["stage"], "submit");
+    assert_eq!(failed["failure"]["stage"], "start");
     assert_eq!(failed["failure"]["code"], "herdr-command-failed");
     assert_eq!(failed["inputSubmitted"], false);
     assert!(
@@ -903,18 +893,8 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
         failed["agentName"].as_str().is_some(),
         "已启动的 agent 控制别名必须保留"
     );
-    let message = failed["failure"]["message"]
-        .as_str()
-        .expect("失败必须有可读说明");
-    assert!(message.contains("agent 已就绪"), "{message}");
-    assert!(message.contains("被明确拒绝"), "{message}");
-    assert!(message.contains("保留"), "{message}");
-    assert!(
-        !message.contains("未确认"),
-        "明确拒绝不能表述成结果未确认：{message}"
-    );
 
-    // 外部独立记录：agent 已就绪、投递已被夹具收到并拒绝；之后没有重发或清理动作。
+    // 外部独立记录：携消息启动被拒绝；之后没有重发或清理动作。
     let created_tab = herdr.tabs().pop().expect("受控 Herdr 必须记录已创建的 Tab");
     assert_eq!(failed["tabId"], created_tab["tab_id"]);
     assert_eq!(failed["paneId"], created_tab["pane_id"]);
@@ -922,7 +902,6 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
         "workspace_list".to_string(),
         "tab_create".to_string(),
         "agent_start".to_string(),
-        "agent_prompt".to_string(),
     ];
     assert_eq!(call_kinds(&herdr), expected_kinds);
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -938,8 +917,8 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retrying() {
     let herdr = HerdrFixture::new("bot creation prompt timeout");
-    // 夹具先记录这次投递，再睡过 adapter 的提交时限：外部副作用已经发生，结果却未知。
-    herdr.set_behavior(json!({ "prompt_delay_ms": 31_000 }));
+    // 夹具先记录携消息启动，再返回 Herdr 的确认超时；外部副作用可能已经发生。
+    herdr.set_behavior(json!({ "timeout_agent_start": true }));
     let storage = TempDir::new("bot creation prompt timeout storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
     let (zone_path, bot_id) = prepare_zone_and_bot(&server, &storage).await;
@@ -947,29 +926,19 @@ async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retryi
 
     let failed = wait_stage_within(&server, &id, "failed", Duration::from_secs(50)).await;
     assert_eq!(failed["stage"], "failed", "不能显示创建成功");
-    assert_eq!(failed["failure"]["stage"], "submit");
+    assert_eq!(failed["failure"]["stage"], "start");
     assert_eq!(failed["failure"]["code"], "herdr-timeout");
     assert_eq!(failed["inputSubmitted"], false, "超时不能被说成已确认提交");
     assert!(failed["tabId"].as_str().is_some());
     assert!(failed["paneId"].as_str().is_some());
     assert!(failed["agentName"].as_str().is_some());
 
-    let message = failed["failure"]["message"]
-        .as_str()
-        .expect("失败必须有可读说明");
-    assert!(message.contains("投递结果未确认"), "{message}");
-    assert!(message.contains("不能据此断定未发送"), "{message}");
-    assert!(
-        !message.contains("没有发送"),
-        "超时不能表述成确定未发送：{message}"
-    );
 
     // 外部独立记录：投递确实到达过夹具；之后没有重发、重建、关闭或删除。
     let expected_kinds = vec![
         "workspace_list".to_string(),
         "tab_create".to_string(),
         "agent_start".to_string(),
-        "agent_prompt".to_string(),
     ];
     assert_eq!(call_kinds(&herdr), expected_kinds);
     assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
@@ -982,9 +951,9 @@ async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retryi
     assert_eq!(herdr.tabs().len(), 1, "超时后不得关闭或删除现场");
 }
 
-/// P27 / P33：agent 启动失败后绝不提交初始指示；已创建的 Tab / Pane 仍可定位。
+/// 明确启动失败不补发初始指示；已创建的 Tab / Pane 仍可定位。
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failed_agent_start_never_submits_input() {
+async fn a_failed_agent_start_never_resends_input() {
     let herdr = HerdrFixture::new("bot creation start failure");
     herdr.set_behavior(json!({ "fail_agent_start": true }));
     let storage = TempDir::new("bot creation start failure storage");
@@ -1015,11 +984,6 @@ async fn a_failed_agent_start_never_submits_input() {
         failed["agentName"].as_str().is_some(),
         "已尝试启动的 agent 控制别名必须保留"
     );
-    let message = failed["failure"]["message"]
-        .as_str()
-        .expect("失败必须有可读说明");
-    assert!(message.contains("Tab 与 Pane 已创建"), "{message}");
-    assert!(message.contains("没有提交初始指示"), "{message}");
 
     // 外部独立记录：Tab 已创建并保留，启动被拒绝后没有任何提交或清理动作。
     assert_eq!(
@@ -1166,9 +1130,9 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
     );
     assert_eq!(fixture.herdr.tabs().len(), 1);
     assert_eq!(fixture.herdr.tabs()[0]["workspace"], "w-default");
-    let prompts = calls_of_kind(&fixture.herdr, "agent_prompt");
+    let prompts = calls_of_kind(&fixture.herdr, "agent_start");
     assert_eq!(prompts.len(), 1);
-    assert_eq!(prompts[0]["text"], "保留重试输入");
+    assert_eq!(prompts[0]["initialMessage"], "保留重试输入");
     let start = calls_of_kind(&fixture.herdr, "agent_start");
     assert_eq!(start.len(), 1);
     assert_eq!(start[0]["args"][0], "--no-extensions");
@@ -1180,7 +1144,6 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
             "workspace_list",
             "tab_create",
             "agent_start",
-            "agent_prompt",
         ]
     );
 }
@@ -1277,7 +1240,7 @@ async fn workspace_mismatches_fail_without_creating_a_tab() {
         );
         assert!(herdr.tabs().is_empty());
         assert!(calls_of_kind(&herdr, "tab_create").is_empty());
-        assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+        assert!(calls_of_kind(&herdr, "agent_start").is_empty());
     }
 }
 
@@ -1361,7 +1324,7 @@ async fn workspace_query_and_tab_failures_stop_the_creation_chain() {
         assert_eq!(call_kinds(&herdr), expected_kinds, "{label}");
         assert!(herdr.tabs().is_empty(), "{label}：不得留下未记录的 Tab");
         assert!(calls_of_kind(&herdr, "agent_start").is_empty());
-        assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+        assert!(calls_of_kind(&herdr, "agent_start").is_empty());
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(
             call_kinds(&herdr),
@@ -1533,8 +1496,7 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
         vec![
             "workspace_list",
             "tab_create",
-            "agent_start",
-            "agent_prompt"
+            "agent_start"
         ],
         "除既定控制步骤外不得有额外执行"
     );
@@ -1659,26 +1621,18 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
             "{skill} 提交确认后应成功：{finished}"
         );
 
-        let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+        let prompts = calls_of_kind(&inputs.herdr, "agent_start");
         let prompt = prompts.last().expect("受控 Herdr 必须收到初始指示");
         assert_eq!(
-            prompt["text"], expected,
+            prompt["initialMessage"], expected,
             "{skill} 的完整正文必须与预写字面样例逐字一致"
         );
 
-        // 正文只作为 agent prompt 的单个文本参数，不携带 system-role 消息或其他包装。
         let argv = prompt["argv"].as_array().expect("调用记录必须包含 argv");
-        assert_eq!(argv.len(), 4, "不得把正文拆成多条参数或附加角色字段");
-        assert_eq!(argv[0], "agent");
-        assert_eq!(argv[1], "prompt");
-        assert_eq!(argv[2], prompt["target"]);
-        assert_eq!(argv[3], expected);
-        assert!(
-            prompt.get("role").is_none(),
-            "初始指示不是 system-role 消息：{prompt}"
-        );
+        assert!(argv.windows(2).any(|pair| pair == [json!("--initial-message"), json!(expected)]));
+        assert!(calls_of_kind(&inputs.herdr, "agent_prompt").is_empty());
 
-        let text = prompt["text"].as_str().expect("正文是字符串");
+        let text = prompt["initialMessage"].as_str().expect("正文是字符串");
         assert!(
             text.starts_with(prefix),
             "{skill} 必须以独立字面的原生 Skill 前缀开头：{text}"
@@ -1702,11 +1656,9 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
             "workspace_list",
             "tab_create",
             "agent_start",
-            "agent_prompt",
             "workspace_list",
             "tab_create",
             "agent_start",
-            "agent_prompt",
         ],
         "每次创建只提交一次，不先单独发起 Skill 轮次"
     );
@@ -1729,10 +1681,10 @@ async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
             "正文提交确认后应成功：{finished}"
         );
 
-        let prompt_call = calls_of_kind(&inputs.herdr, "agent_prompt")
+        let prompt_call = calls_of_kind(&inputs.herdr, "agent_start")
             .pop()
             .expect("受控 Herdr 必须收到初始指示");
-        let text = prompt_call["text"].as_str().expect("正文是字符串");
+        let text = prompt_call["initialMessage"].as_str().expect("正文是字符串");
         assert_eq!(
             text, expected,
             "无 Skill 时正文必须与预写字面样例一致（prompt={prompt:?}, input={input:?}）"
@@ -1751,9 +1703,9 @@ async fn a_skill_only_bot_submits_the_bare_skill_call() {
     let finished = create_with(&inputs, input_bot(Some("teach"), ""), "", "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
 
-    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    let prompts = calls_of_kind(&inputs.herdr, "agent_start");
     assert_eq!(prompts.len(), 1, "Skill-only 也只提交一次");
-    assert_eq!(prompts[0]["text"], "/skill:teach");
+    assert_eq!(prompts[0]["initialMessage"], "/skill:teach");
 }
 
 /// P22 / P29：有 Skill 时，空的 prompt 或 input 只是缺少该分段；命令与剩余正文仍按约定合成。
@@ -1787,25 +1739,23 @@ async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
             "{skill} 提交确认后应成功：{finished}"
         );
 
-        let prompt_call = calls_of_kind(&inputs.herdr, "agent_prompt")
+        let prompt_call = calls_of_kind(&inputs.herdr, "agent_start")
             .pop()
             .expect("受控 Herdr 必须收到初始指示");
         assert_eq!(
-            prompt_call["text"], expected,
+            prompt_call["initialMessage"], expected,
             "{skill} 缺少一个分段时仍必须与预写字面样例一致"
         );
     }
 }
 
-/// P31：Skill、prompt、input 全空仍被公开入口接受并实际提交；受控 Herdr 像真实 Herdr 一样
-/// 拒绝空文本，创建按普通失败流程保留现场。不能前置组合校验、补造内容、跳过提交或假报成功。
+/// Skill、prompt、input 全空仅启动等待就绪，不发送空消息。
 #[tokio::test(flavor = "multi_thread")]
-async fn an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection() {
+async fn an_all_empty_bot_starts_ready_without_sending_a_message() {
     let inputs = input_fixture("bot initial all empty").await;
-    let finished = create_with(&inputs, input_bot(None, ""), "", "failed").await;
+    let finished = create_with(&inputs, input_bot(None, ""), "", "succeeded").await;
 
-    assert_eq!(finished["failure"]["stage"], "submit");
-    assert_eq!(finished["failure"]["code"], "herdr-command-failed");
+    assert!(finished.get("failure").is_none());
     assert_eq!(finished["inputSubmitted"], false);
     assert!(
         finished["tabId"].as_str().is_some(),
@@ -1815,30 +1765,13 @@ async fn an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection() 
         finished["paneId"].as_str().is_some(),
         "已创建的 Pane 标识必须保留：{finished}"
     );
-    let message = finished["failure"]["message"]
-        .as_str()
-        .expect("失败说明是字符串");
-    assert!(
-        message.contains("agent prompt must not be empty"),
-        "必须呈现 Herdr 的拒绝：{message}"
-    );
-    assert!(
-        message.contains("初始指示的提交被明确拒绝")
-            && message.contains("Tab、Pane 与 agent 已保留"),
-        "必须区分现场已存在而提交失败：{message}"
-    );
+    assert!(calls_of_kind(&inputs.herdr, "agent_prompt").is_empty());
 
-    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
-    assert_eq!(prompts.len(), 1, "全空也必须实际提交一次，不能跳过或重发");
-    assert_eq!(prompts[0]["text"], "", "不得补造内容");
-    assert_eq!(
-        prompts[0]["argv"]
-            .as_array()
-            .expect("调用记录包含 argv")
-            .len(),
-        4,
-        "空正文仍作为单个文本参数提交"
-    );
+    let prompts = calls_of_kind(&inputs.herdr, "agent_start");
+    assert_eq!(prompts.len(), 1, "全空仅启动一次，不补发");
+    assert_eq!(prompts[0]["initialMessage"], "", "不得补造内容");
+    assert!(!prompts[0]["argv"].as_array().expect("调用记录包含 argv")
+        .iter().any(|arg| arg == "--initial-message"));
 
     let calls = inputs.herdr.calls();
     let kinds: Vec<&str> = calls
@@ -1851,10 +1784,9 @@ async fn an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection() 
         vec![
             "workspace_list",
             "tab_create",
-            "agent_start",
-            "agent_prompt"
+            "agent_start"
         ],
-        "被拒绝后不得自动重发或继续其他步骤"
+        "空消息不得额外 prompt、重发或重建"
     );
 }
 
@@ -1877,16 +1809,16 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
     let finished = create_with(&inputs, input_bot(None, &prompt), input, "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
 
-    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    let prompts = calls_of_kind(&inputs.herdr, "agent_start");
     assert_eq!(prompts.len(), 1);
-    let recorded = prompts[0]["text"].as_str().expect("正文是字符串");
+    let recorded = prompts[0]["initialMessage"].as_str().expect("正文是字符串");
     assert_eq!(
         recorded, expected,
         "正文必须以单个参数原样到达 Herdr，引号、换行与 Shell 元字符都不被解释"
     );
     let argv = prompts[0]["argv"].as_array().expect("调用记录包含 argv");
-    assert_eq!(argv.len(), 4, "不得把正文拆成多条参数");
-    assert_eq!(argv[3], expected);
+    assert!(argv.windows(2).any(|pair| pair == [json!("--initial-message"), json!(expected)]));
+    assert!(calls_of_kind(&inputs.herdr, "agent_prompt").is_empty());
     let executed = marker.exists();
     let _ = fs::remove_file(&marker);
     assert!(
@@ -1906,8 +1838,7 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
         vec![
             "workspace_list",
             "tab_create",
-            "agent_start",
-            "agent_prompt"
+            "agent_start"
         ],
         "除既定控制步骤外不得有额外执行"
     );

@@ -35,10 +35,14 @@ Bot 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`�
 
 Bot 配置分为两组：
 
-- **trigger config（发起配置）**：初始消息、初始 Skill 调用、model 与 thinking，仅在发起 Chat 时应用。
+- **trigger config（发起配置）**：固定初始指示、初始 Skill 调用、model 与 thinking，仅在发起 Chat 时应用。
 - **env config（会话环境配置）**：扩展配置；发起 Chat 时加载，Resume 需要新进程时也加载。
 
 初始 Skill 调用是随初始消息提交的动作，不是加载型 Skill；Bot 固定 prompt 与本次 input 都属于用户输入，不是系统提示词注入。Bot 不提供加载型 Skill 或系统提示词注入。
+
+发起 Chat 时，初始 Skill、固定 prompt 与本次 input 合成一条初始消息，随 `herdr agent start --initial-message` 一次交付，不再额外调用 `agent prompt`。有消息时，确认本次目标 agent 已进入原生执行轮次即算发起成功，不等待首轮结束，也不代表模型服务已经接受请求；三部分全空时只等待 agent 就绪，不发送空消息。页面只呈现统一的启动阶段。
+
+此功能需要配套支持 `--initial-message`、`agent.start_with_message` 和启动轮次确认的 herdr，以及更新后的 Pi／OMP `herdr-agent-state` 扩展；CLI、运行中的 herdr 服务和 Bot 固定扩展入口都需使用配套版本。旧版本不受支持，不会回退到两步发送。若发起结果未确认，agent 仍可能已执行；已有目标保留，服务不会自动重试或补发。参见 [ADR 0012](docs/adr/0012-initial-message-with-agent-launch.md)。
 
 原生会话文件和附属记录由 agent 管理，herdr-bot 不搬动文件或修改 agent 原生配置。发起 Chat 不保证新建原生对话；agent 自身的自动续接设置不属于 herdr-bot 的功能。
 

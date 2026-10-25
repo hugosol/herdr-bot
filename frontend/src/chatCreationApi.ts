@@ -5,8 +5,8 @@
  * 创建请求返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
  */
 
-export type ChatCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
-export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'
+export type ChatCreationStage = 'starting' | 'succeeded' | 'failed'
+export type ChatFailureStage = 'workspace' | 'tab' | 'start'
 
 export type ChatPreview = {
   chatId: string
@@ -73,8 +73,8 @@ function isPreview(value: unknown): value is ChatPreview {
   )
 }
 
-const STAGES: ChatCreationStage[] = ['starting', 'submitting', 'succeeded', 'failed']
-const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start', 'submit']
+const STAGES: ChatCreationStage[] = ['starting', 'succeeded', 'failed']
+const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start']
 
 function isCreation(value: unknown): value is ChatCreation {
   if (typeof value !== 'object' || value === null) return false

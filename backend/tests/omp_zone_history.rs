@@ -98,7 +98,7 @@ async fn omp_without_connect_records_exact_header_after_title_without_changing_n
 // a zone name. A later independent register of the same ID remains eligible.
 #[tokio::test(flavor="multi_thread")]
 async fn failed_omp_start_and_submission_do_not_record_zone_but_register_can_record_same_identity() {
-    for failure in ["fail_agent_start", "fail_prompt"] {
+    for failure in ["fail_agent_start", "fail_initial_message"] {
         let root = TempDir::new("omp-failed-create-history");
         let herdr = HerdrFixture::new("omp-failed-create-herdr");
         let mut behavior = json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"omp-rejected-native-id"},"native_cwd":"C:/native"});
@@ -227,7 +227,7 @@ async fn omp_total_deadline_ends_missing_unreadable_and_pending_identity_without
         assert_eq!(history["total"],1,"{failure}");
         assert_eq!(history["sessions"][0]["sessionId"],"omp-current-budget-control");
         assert_eq!(herdr.calls().iter().filter(|c|c["kind"]=="agent_get").count(),reads,"{failure}: no reads after deadline");
-        assert_eq!(herdr.calls().iter().filter(|c|c["kind"]=="agent_prompt").count(),1);
+        assert_eq!(herdr.calls().iter().filter(|c|c["kind"]=="agent_start").count(),1);
         assert_eq!(read(&server,&format!("/api/chats/{}",done["id"].as_str().unwrap())).await,done);
         let after = current(&server).await;
         assert_eq!(after["sessions"],before["sessions"]);

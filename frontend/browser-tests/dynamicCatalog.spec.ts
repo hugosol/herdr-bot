@@ -54,8 +54,8 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   await expect.poll(async () => (await (await fetch(`${current.baseURL}/api/chats/${created.id}`)).json()).stage).toBe('succeeded')
   const start = current.herdrCalls().find((call) => call.kind === 'agent_start')
   expect((start?.args as string[]).slice(0, 4)).toEqual(['--model', 'catalog-provider/updated-gpt', '--thinking', 'high'])
-  const prompt = current.herdrCalls().find((call) => call.kind === 'agent_prompt')
-  expect(prompt?.text).toBe('/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行')
+  expect(start?.initialMessage).toBe('/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行')
+  expect(current.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
   expect((await current.getBots()).bots[0]).toEqual(saved)
   const persisted = JSON.parse(fs.readFileSync(current.storageFile, 'utf8')).bots[0]
   expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'thinking'])

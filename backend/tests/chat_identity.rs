@@ -318,14 +318,14 @@ async fn two_creations_in_one_zone_are_distinct_objects_under_the_same_display_n
         );
     }
 
-    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    let prompts = calls_of_kind(&herdr, "agent_start");
     assert_eq!(prompts.len(), 2);
-    assert_eq!(prompts[0]["target"], starts[0]["name"]);
-    assert_eq!(prompts[0]["text"], "第一任务");
-    assert_eq!(prompts[1]["target"], starts[1]["name"]);
-    assert_eq!(prompts[1]["text"], "第二任务");
+    assert_eq!(prompts[0]["name"], starts[0]["name"]);
+    assert_eq!(prompts[0]["initialMessage"], "第一任务");
+    assert_eq!(prompts[1]["name"], starts[1]["name"]);
+    assert_eq!(prompts[1]["initialMessage"], "第二任务");
     assert_ne!(
-        prompts[0]["target"], prompts[1]["target"],
+        prompts[0]["name"], prompts[1]["name"],
         "两次投递必须按各自的控制别名定位，不能靠显示名"
     );
 }
@@ -419,17 +419,17 @@ async fn same_name_creations_receive_their_own_configuration_and_input() {
     );
     assert_eq!(pi_args[4], "--no-extensions");
 
-    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    let prompts = calls_of_kind(&herdr, "agent_start");
     let omp_prompt = prompts
         .iter()
-        .find(|prompt| prompt["target"] == omp_start["name"])
+        .find(|prompt| prompt["name"] == omp_start["name"])
         .expect("OMP 必须收到自己的初始指示");
     let pi_prompt = prompts
         .iter()
-        .find(|prompt| prompt["target"] == pi_start["name"])
+        .find(|prompt| prompt["name"] == pi_start["name"])
         .expect("Pi 必须收到自己的初始指示");
-    assert_eq!(omp_prompt["text"], "OMP 固定指示\n\nOMP 本次任务");
-    assert_eq!(pi_prompt["text"], "Pi 固定指示\n\nPi 本次任务");
+    assert_eq!(omp_prompt["initialMessage"], "OMP 固定指示\n\nOMP 本次任务");
+    assert_eq!(pi_prompt["initialMessage"], "Pi 固定指示\n\nPi 本次任务");
 }
 
 /// P3 / P40：一次已接受的创建被挂起时，另一独立客户端编辑 Bot；本次仍按旧字面快照执行，
@@ -517,12 +517,12 @@ async fn an_accepted_creation_keeps_its_bot_snapshot_while_another_client_edits_
         ["--model", "deepseek/deepseek-flash", "--thinking", "high"],
         "必须使用旧快照的 model / thinking"
     );
-    let prompt = calls_of_kind(&herdr, "agent_prompt")
+    let prompt = calls_of_kind(&herdr, "agent_start")
         .pop()
         .expect("必须提交旧快照的初始指示");
-    assert_eq!(prompt["target"], start["name"]);
+    assert_eq!(prompt["name"], start["name"]);
     assert_eq!(
-        prompt["text"],
+        prompt["initialMessage"],
         "/skill:teach 旧固定指示 第一行\n旧固定指示 第二行\n\n旧本次任务 第一行\n旧本次任务 第二行",
         "必须按旧快照的 Skill、prompt 与本次 input 提交"
     );
@@ -551,10 +551,10 @@ async fn an_accepted_creation_keeps_its_bot_snapshot_while_another_client_edits_
         ],
         "下一次必须使用新配置的 model / thinking"
     );
-    let prompts = calls_of_kind(&herdr, "agent_prompt");
+    let prompts = calls_of_kind(&herdr, "agent_start");
     assert_eq!(prompts.len(), 2);
     assert_eq!(
-        prompts[1]["text"], "/skill:code-review 新固定指示\n\n新任务",
+        prompts[1]["initialMessage"], "/skill:code-review 新固定指示\n\n新任务",
         "下一次必须使用新配置的 Skill 与 prompt"
     );
     assert_eq!(herdr.tabs()[1]["label"], "alpha · 新Bot");
@@ -583,7 +583,7 @@ async fn editing_and_deleting_a_bot_does_not_touch_an_existing_chat() {
     let creation_id = finished["id"].as_str().expect("创建标识");
     let calls_before = control_calls(&herdr);
     let tabs_before = herdr.tabs();
-    assert_eq!(calls_before.len(), 4, "一次创建只有四项外部控制调用");
+    assert_eq!(calls_before.len(), 3, "一次创建只有 Workspace 查询、Tab 创建与携消息启动");
 
     let edited = edit_bot(
         &server,

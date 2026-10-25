@@ -147,7 +147,8 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         history(&panel,1).await;
         let initial = herdr.calls();
         assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-a-old.ts"))]));
-        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()["text"],"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
+        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["initialMessage"],"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
+        assert!(!initial.iter().any(|c| c["kind"] == "agent_prompt"));
         let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/bots/{id}"),Some(&bot(agent,"b","Source A renamed").to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);

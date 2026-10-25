@@ -78,7 +78,8 @@ test('Pi without connect survives page close and history is independent of curre
     await expect(reopened.getByTestId('session-board')).not.toContainText('Connect display name')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
     await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
-    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_start')).toHaveLength(1)
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(0)
   } finally { await reopened.close() }
 })
 
@@ -151,6 +152,7 @@ for (const failure of ['missing-identity', 'unreadable-header', 'save-failed'] a
     await page.waitForTimeout(600)
     expect((await history()).sessions).toEqual([])
     expect(server!.herdrCalls().filter(c => c.kind === 'agent_get')).toHaveLength(reads)
-    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_start')).toHaveLength(1)
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(0)
   })
 }

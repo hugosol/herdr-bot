@@ -127,7 +127,7 @@ async fn pi_exact_header_can_arrive_before_the_total_deadline() {
     fs::write(&native, b"{\"type\":\"session\",\"id\":\"pi-header-at-29s\",\"cwd\":\"C:/late/exact\"}\n").unwrap();
     tokio::time::resume();
     assert_eq!(wait_history(&server, "pi-header-at-29s").await["cwd"], "C:/late/exact");
-    assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 1);
+    assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(), 1);
 }
 
 // P22/P30: missing references, absent exact headers, and a still-running
@@ -172,7 +172,7 @@ async fn pi_identity_budget_ends_reads_and_never_collects_late_identity() {
         assert_eq!(after["shutdown"]["monitoredSessionIds"], json!(["current-timeout-control"]));
         assert_eq!(after["shutdown"]["phase"], "none");
         assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count(), reads_at_expiry, "{failure}: reads after deadline");
-        assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 1);
+        assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(), 1);
         let view = get(&server, &format!("/api/chats/{}", created["id"].as_str().unwrap())).await;
         assert_eq!(view, created);
     }
@@ -211,7 +211,7 @@ async fn pi_pending_identity_does_not_hold_creation_or_current_state() {
     assert_eq!(after["sessions"], before["sessions"]);
     assert_eq!(after["shutdown"]["monitoredSessionIds"], json!(["current-untouched"]));
     assert_eq!(after["shutdown"]["phase"], "none");
-    assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 2);
+    assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(), 2);
 }
 
 // P22/P26/P30: a real write failure must be terminal for this collection,
@@ -300,7 +300,7 @@ async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() 
 // explicit register is independently allowed; same ID is not blacklisted.
 #[tokio::test(flavor="multi_thread")]
 async fn pi_unconfirmed_start_and_submit_never_collect_but_register_still_can() {
-    for failure in ["fail_agent_start", "fail_prompt"] {
+    for failure in ["fail_agent_start", "fail_initial_message"] {
         let herdr = HerdrFixture::new(failure);
         let root = TempDir::new(failure);
         let mut behavior = json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-unconfirmed-id"},"native_cwd":"C:/native/unconfirmed"});

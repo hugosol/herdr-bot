@@ -126,7 +126,7 @@ async function submitAndCapture(page: Page, dialog: Locator, input: string) {
 
 test('浏览器断线后，已接受的创建继续完成且页面不假报成功', async ({ page, context }) => {
   server = await startServer({
-    herdr: { behavior: { agent_start_delay_ms: 2_500, prompt_delay_ms: 500 } },
+    herdr: { behavior: { agent_start_delay_ms: 2_500, initial_message_delay_ms: 500 } },
   })
   const zone = await prepareZone(server.baseURL)
   await prepareBot(server.baseURL)
@@ -151,9 +151,10 @@ test('浏览器断线后，已接受的创建继续完成且页面不假报成�
   expect(finished.name).toBe(accepted.name)
   await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
 
-  const prompts = callsOfKind('agent_prompt')
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('断线后继续的任务')
+  const starts = callsOfKind('agent_start')
+  expect(starts).toHaveLength(1)
+  expect(callsOfKind('agent_prompt')).toHaveLength(0)
+  expect(starts[0].initialMessage).toBe('断线后继续的任务')
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   expect(
@@ -165,7 +166,7 @@ test('浏览器断线后，已接受的创建继续完成且页面不假报成�
 
 test('刷新页面只失去观察，不取消创建，也不承诺找回结果', { tag: '@time-contract' }, async ({ page }) => {
   server = await startServer({
-    herdr: { behavior: { agent_start_delay_ms: 200, prompt_delay_ms: 2_500 } },
+    herdr: { behavior: { agent_start_delay_ms: 200, initial_message_delay_ms: 2_500 } },
   })
   const zone = await prepareZone(server.baseURL)
   await prepareBot(server.baseURL)
@@ -174,12 +175,18 @@ test('刷新页面只失去观察，不取消创建，也不承诺找回结果',
   const dialog = await openChatDialog(page, zone)
   const accepted = await submitAndCapture(page, dialog, '刷新后继续的任务')
   await expect(dialog.getByTestId('chat-create-stage')).toHaveText(
-    '正在提交初始指示',
+    '正在启动',
     { timeout: 10_000 },
   )
   await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
 
-  // 提交尚未确认时刷新：页面不再持有这次结果，也不显示成功。
+  await expect.poll(() => callsOfKind('agent_start').length, { timeout: 10_000 }).toBe(1)
+  expect(callsOfKind('agent_start')[0].initialMessage).toBe('刷新后继续的任务')
+  const pending = await (await fetch(`${server.baseURL}/api/chats/${accepted.id}`)).json()
+  expect(pending.stage).toBe('starting')
+  expect(pending.inputSubmitted).toBe(false)
+
+  // 启动尚未确认时刷新：页面不再持有这次结果，也不显示成功。
   await page.reload()
   await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
   await expect(page.getByText('创建成功，初始指示已提交')).toHaveCount(0)
@@ -187,19 +194,21 @@ test('刷新页面只失去观察，不取消创建，也不承诺找回结果',
   // 后端仍完成同一次创建；刷新没有引起重复提交、重建或关闭。
   const finished = await waitForCreationStage(server.baseURL, accepted.id, 'succeeded')
   expect(finished.inputSubmitted).toBe(true)
-  const prompts = callsOfKind('agent_prompt')
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('刷新后继续的任务')
+  const starts = callsOfKind('agent_start')
+  expect(starts).toHaveLength(1)
+  expect(callsOfKind('agent_prompt')).toHaveLength(0)
+  expect(starts[0].initialMessage).toBe('刷新后继续的任务')
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   await page.waitForTimeout(300)
-  expect(callsOfKind('agent_prompt')).toHaveLength(1)
+  expect(callsOfKind('agent_start')).toHaveLength(1)
+  expect(callsOfKind('agent_prompt')).toHaveLength(0)
   expect(tabs()).toHaveLength(1)
 })
 
 test('关闭页面只失去观察，已接受的创建仍在后端完成', async ({ page }) => {
   server = await startServer({
-    herdr: { behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 400 } },
+    herdr: { behavior: { agent_start_delay_ms: 2_000, initial_message_delay_ms: 400 } },
   })
   const zone = await prepareZone(server.baseURL)
   await prepareBot(server.baseURL)
@@ -217,9 +226,10 @@ test('关闭页面只失去观察，已接受的创建仍在后端完成', async
 
   const finished = await waitForCreationStage(server.baseURL, accepted.id, 'succeeded')
   expect(finished.inputSubmitted).toBe(true)
-  const prompts = callsOfKind('agent_prompt')
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('关闭页面后继续的任务')
+  const starts = callsOfKind('agent_start')
+  expect(starts).toHaveLength(1)
+  expect(callsOfKind('agent_prompt')).toHaveLength(0)
+  expect(starts[0].initialMessage).toBe('关闭页面后继续的任务')
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   expect(

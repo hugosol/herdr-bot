@@ -4,8 +4,8 @@
 //! 控制别名由后端单独生成，不拿可能重名、含中文或空格的 Tab 名当唯一身份。创建任务在后端运行，
 //! 与提交它的 HTTP 请求连接解耦；请求断开只失去观察，不会取消已经接受的创建。
 //!
-//! 生命周期只有四个可见阶段：`starting`（查找 Workspace、新建 Tab、启动 agent）、`submitting`
-//! （提交合成后的初始指示）、`succeeded`（就绪与提交都已确认）、`failed`。失败保留已经取得的
+//! 生命周期只有三个可见阶段：`starting`（查找 Workspace、新建 Tab、携消息启动 agent）、
+//! `succeeded`（非空消息确认轮次开始，空消息确认就绪）、`failed`。失败保留已经取得的
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
 use std::collections::HashMap;
@@ -28,11 +28,9 @@ pub const CHAT_ID_LEN: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
-    /// 正在查找 Workspace、新建 Tab 并等待 agent 就绪。
+    /// 正在查找 Workspace、新建 Tab 并等待携消息启动确认；空消息仅等就绪。
     Starting,
-    /// 目标 agent 已就绪，正在提交初始指示。
-    Submitting,
-    /// 就绪与提交都已确认。
+    /// 启动及非空初始消息的轮次开始已确认；空消息仅确认就绪。
     Succeeded,
     /// 任一步失败或超时；已取得的现场标识仍保留在结果里。
     Failed,
@@ -51,7 +49,6 @@ pub enum FailureStage {
     Workspace,
     Tab,
     Start,
-    Submit,
 }
 
 /// 一次失败的可定位说明。
@@ -85,7 +82,7 @@ pub struct ChatCreationView {
     /// 后端生成的 agent 控制别名；未开始启动时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
-    /// 只有初始指示提交被确认后才为 true；失败时不把未知说成已提交。
+    /// 非空初始消息的原生轮次开始确认后为 true；空消息成功或结果未知均为 false。
     pub input_submitted: bool,
     /// 失败阶段与说明；成功时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -303,24 +300,15 @@ pub async fn run_creation(
     let args = agent_launch_args(&preset.env, Some(&preset.trigger));
     let kind = bot.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
-    if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
-        fail(&job, FailureStage::Start, &error).await;
-        return;
-    }
-
-    {
-        let mut view = job.lock().await;
-        view.stage = Stage::Submitting;
-    }
     let text = compose_initial_input(&bot, preset.trigger.native_skill.as_deref(), &input);
-    if let Err(error) = herdr.prompt(&agent_name, &text).await {
-        fail(&job, FailureStage::Submit, &error).await;
+    if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args, &text).await {
+        fail(&job, FailureStage::Start, &error).await;
         return;
     }
 
     let creation_id = {
         let mut view = job.lock().await;
-        view.input_submitted = true;
+        view.input_submitted = !text.is_empty();
         view.stage = Stage::Succeeded;
         view.id.clone()
     };
@@ -404,16 +392,10 @@ fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
         }
         FailureStage::Tab => format!("{base} 新建 Tab 被拒绝；本次没有继续启动 agent。"),
         FailureStage::Start if outcome_unknown => format!(
-            "{base} Tab 与 Pane 已创建并保留；agent 的就绪状态未确认，因此没有提交初始指示。"
+            "{base} 发起结果未确认，agent 可能已执行，不能据此断定初始指示未发送。Tab、Pane 与 agent 标识已保留，不自动重试或补发。"
         ),
         FailureStage::Start => {
-            format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
-        }
-        FailureStage::Submit if outcome_unknown => format!(
-            "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
-        ),
-        FailureStage::Submit => {
-            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
+            format!("{base} agent 启动被明确拒绝。Tab、Pane 与 agent 标识已保留，不自动重试或补发。")
         }
     }
 }

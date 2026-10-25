@@ -107,7 +107,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
     let name = crate::chats::new_agent_name();
     args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
-    if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
+    if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args, "").await {
         if matches!(error, HerdrError::Timeout(_)) {
             return startup_unconfirmed(feedback, label, "start", &error.message(), json!(target), Some(&name));
         }

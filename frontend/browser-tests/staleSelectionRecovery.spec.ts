@@ -210,7 +210,7 @@ test('失效扩展在手机视口可显式移除，修正前页面与公开创�
   await expect(page.getByTestId('chat-create-success')).toBeVisible()
   expect(server.herdrTabs()).toHaveLength(1)
   expect(server.herdrCalls().filter(call => call.kind === 'agent_start')).toHaveLength(1)
-  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(1)
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
   await screenshot(page, info, 'corrected-extension-mobile-creation')
 })
 
@@ -283,7 +283,8 @@ test('同一真实持久文件的未知模型不阻止有效 Bot 读取编辑和
   expect((await request('/api/bots/valid-neighbor')).body.bot).toEqual({ ...valid, name: '有效邻居已编辑', prompt: '邻居新指示\n第二行' })
   expect((await request('/api/bots/unknown-model')).body.bot).toEqual(invalid)
   await succeeded(await create(zone, valid.id))
-  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)?.text).toBe('邻居新指示\n第二行\n\n恢复检查')
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)?.initialMessage).toBe('邻居新指示\n第二行\n\n恢复检查')
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
   await screenshot(page, info, 'valid-neighbor-preserves-invalid-bot')
 })
 

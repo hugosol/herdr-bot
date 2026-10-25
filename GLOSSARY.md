@@ -9,7 +9,7 @@ Windows 上的 agent 对话主界面。Bot 是可复用预设，Chat 是实际�
 _Avoid_: bot-template, 模板, 对话实例
 
 **trigger config（发起配置）**:
-Bot 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
+Bot 中仅在发起 Chat 时应用的初始设置与动作，包括固定初始指示、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
 _Avoid_: env config, 自动触发规则, 事件触发器
 
 **env config（会话环境配置）**:
@@ -20,8 +20,12 @@ _Avoid_: trigger config, 环境变量配置, 静态快照
 一个 agent 的实际对话，不以接入 connect-bot、保持在线或由 herdr 发起为成立条件；它与 Bot 预设、运行对话的进程和会话登记不同。
 _Avoid_: Bot, 会话登记, Herdr Tab, 进程
 
+**初始消息**:
+发起 Chat 时由初始 Skill 调用、Bot 固定指示与本次输入合成的一条消息，未配置的部分可以为空；这些内容不是分别发送的多条消息，也不是多个发起阶段。
+_Avoid_: 多条初始指示, 固定指示提交阶段
+
 **发起 Chat**:
-在某个 zone 中应用所选 Bot 的 trigger config 与 env config，启动 agent 并提交初始指示的动作；它不等于强制新建原生对话，也不同于恢复指定历史 Chat。
+在某个 zone 中应用所选 Bot 的 trigger config 与 env config，启动 agent 并在有初始消息时交付该消息的动作；它不等于强制新建原生对话，也不同于恢复指定历史 Chat。
 _Avoid_: 创建 Bot, 强制新建原生会话
 
 **来源 Bot**:

@@ -280,10 +280,10 @@ fn external_objects<'a>(herdr: &'a HerdrFixture, view: &Value) -> (Value, Value,
         .find(|call| call["name"] == agent_name)
         .cloned()
         .expect("外部记录必须包含这次创建的 agent 启动");
-    let prompts = calls_of_kind(herdr, "agent_prompt");
+    let prompts = calls_of_kind(herdr, "agent_start");
     let prompt = prompts
         .iter()
-        .find(|call| call["target"] == agent_name)
+        .find(|call| call["name"] == agent_name)
         .cloned()
         .expect("外部记录必须包含这次创建的初始指示提交");
     (tab, start, prompt)
@@ -296,7 +296,7 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
     let herdr = HerdrFixture::new("bot detach observations");
     herdr.set_behavior(json!({
         "agent_start_delay_ms": 1_200,
-        "prompt_delay_ms": 1_200,
+        "initial_message_delay_ms": 1_200,
     }));
     let storage = TempDir::new("bot detach observations storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
@@ -326,24 +326,21 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
         still_starting["stage"], "starting",
         "观察连接断开不能取消已接受的创建"
     );
-    assert!(
-        calls_of_kind(&herdr, "agent_prompt").is_empty(),
-        "就绪之前不得提交初始指示"
-    );
+    assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
 
     // 尚未投递确认：提交调用已经到达夹具但响应被延迟；再断开一条观察连接。
-    let submitting = wait_stage(&server, &id, "submitting").await;
-    assert_eq!(submitting["inputSubmitted"], false);
+    let pending_launch = wait_stage(&server, &id, "starting").await;
+    assert_eq!(pending_launch["inputSubmitted"], false);
     assert!(
         wait_until(Duration::from_secs(10), || {
-            !calls_of_kind(&herdr, "agent_prompt").is_empty()
+            !calls_of_kind(&herdr, "agent_start").is_empty()
         })
         .await,
         "受控 Herdr 必须已经收到初始指示提交"
     );
     assert_eq!(creation(&server, &id).await["inputSubmitted"], false);
     assert_eq!(
-        calls_of_kind(&herdr, "agent_prompt").len(),
+        calls_of_kind(&herdr, "agent_start").len(),
         1,
         "提交必须已经到达受控 Herdr"
     );
@@ -366,7 +363,6 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
             "workspace_list".to_string(),
             "tab_create".to_string(),
             "agent_start".to_string(),
-            "agent_prompt".to_string(),
         ],
         "断开观察连接后不得产生额外的创建、提交或清理动作"
     );
@@ -374,7 +370,7 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
     assert_eq!(tab["cwd"], zone_path);
     assert_eq!(tab["label"], accepted["name"]);
     assert_eq!(start["pane"], tab["pane_id"]);
-    assert_eq!(prompt["text"], "断线后的任务");
+    assert_eq!(prompt["initialMessage"], "断线后的任务");
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(call_kinds(&herdr), kinds, "连接断开不能伪装成重试或重建");
     assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
@@ -382,7 +378,7 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
 
 /// P50：提交请求的连接在结果返回前断开，后端已接受的创建仍继续完成。
 #[tokio::test(flavor = "multi_thread")]
-async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
+async fn accepted_creation_continues_when_the_pending_launch_client_disconnects() {
     let herdr = HerdrFixture::new("bot detach submit connection");
     herdr.set_behavior(json!({ "agent_start_delay_ms": 1_500 }));
     let storage = TempDir::new("bot detach submit connection storage");
@@ -410,7 +406,7 @@ async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
     // 独立外部记录：同一次创建继续到唯一一次提交完成。
     assert!(
         wait_until(Duration::from_secs(15), || {
-            calls_of_kind(&herdr, "agent_prompt").len() == 1
+            common::read_json_lines(&herdr.path().join("started.jsonl")).len() == 1
         })
         .await,
         "断线不能取消已接受的创建：{:?}",
@@ -419,22 +415,21 @@ async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
     let tab = herdr.tabs().pop().expect("受控 Herdr 必须记录 Tab");
     assert_eq!(tab["label"], preview["name"]);
     assert_eq!(tab["cwd"], zone_path);
-    let prompt = calls_of_kind(&herdr, "agent_prompt")
+    let prompt = calls_of_kind(&herdr, "agent_start")
         .pop()
         .expect("必须有提交记录");
-    assert_eq!(prompt["text"], "提交连接断开的任务");
+    assert_eq!(prompt["initialMessage"], "提交连接断开的任务");
     assert_eq!(
         call_kinds(&herdr),
         vec![
             "workspace_list".to_string(),
             "tab_create".to_string(),
             "agent_start".to_string(),
-            "agent_prompt".to_string(),
         ],
         "提交连接断开不得引起重发、重建或清理"
     );
     tokio::time::sleep(Duration::from_millis(400)).await;
-    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 1);
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 1);
     assert_eq!(herdr.tabs().len(), 1);
 }
 
@@ -484,12 +479,12 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
         assert_eq!(tab["cwd"], alpha_path, "两个创建都必须使用所选 zone 的目录");
         assert_eq!(tab["label"], view["name"]);
         assert_eq!(start["pane"], tab["pane_id"]);
-        assert_eq!(prompt["target"], start["name"]);
+        assert_eq!(prompt["name"], start["name"]);
     }
     let first_prompt = external_objects(&herdr, &first).2;
     let second_prompt = external_objects(&herdr, &second).2;
-    assert_eq!(first_prompt["text"], "同 zone 任务甲");
-    assert_eq!(second_prompt["text"], "同 zone 任务乙");
+    assert_eq!(first_prompt["initialMessage"], "同 zone 任务甲");
+    assert_eq!(second_prompt["initialMessage"], "同 zone 任务乙");
     assert_eq!(herdr.tabs().len(), 2, "同一 zone 的两次创建各有独立 Tab");
 
     // 不同 zone：同时提交后，每次创建使用自己 zone 的目录与字面任务。
@@ -516,11 +511,11 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
         "输入与目标必须对应同一个 zone"
     );
     assert_eq!(beta_tab["cwd"], beta_path, "输入与目标必须对应同一个 zone");
-    assert_eq!(alpha_prompt["text"], "跨 zone 任务甲");
-    assert_eq!(beta_prompt["text"], "跨 zone 任务乙");
+    assert_eq!(alpha_prompt["initialMessage"], "跨 zone 任务甲");
+    assert_eq!(beta_prompt["initialMessage"], "跨 zone 任务乙");
     assert_ne!(alpha_tab["tab_id"], beta_tab["tab_id"]);
     assert_eq!(herdr.tabs().len(), 4, "两次阶段共创建四个独立 Tab");
-    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 4);
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 4);
     assert_eq!(
         calls_of_kind(&herdr, "unsupported").len(),
         0,
@@ -534,7 +529,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     let herdr = HerdrFixture::new("bot concurrent submit barrier");
     let blocked_release = release_path(&herdr, "release-blocked-prompt");
     herdr.set_behavior(json!({
-        "prompt_gate": {
+        "initial_message_gate": {
             "match": "被阻塞的创建",
             "wait_for_file": blocked_release.to_string_lossy(),
             "timeout_ms": 20_000,
@@ -553,12 +548,12 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     // 受控夹具已经记录这次提交，但屏障让它的响应停在“正在提交”。
     assert!(
         wait_until(Duration::from_secs(10), || {
-            calls_of_kind(&herdr, "agent_prompt").len() == 1
+            calls_of_kind(&herdr, "agent_start").len() == 1
         })
         .await,
         "被阻塞的创建必须已经发起提交"
     );
-    let blocked = wait_stage(&server, &blocked_id, "submitting").await;
+    let blocked = wait_stage(&server, &blocked_id, "starting").await;
     assert_eq!(blocked["inputSubmitted"], false);
 
     // 第二个创建在第一个仍受阻时被接受并完整完成。
@@ -566,7 +561,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     let free = wait_stage(&server, &free_id, "succeeded").await;
     let blocked_during = creation(&server, &blocked_id).await;
     assert_eq!(
-        blocked_during["stage"], "submitting",
+        blocked_during["stage"], "starting",
         "第一个创建在屏障释放前不能完成"
     );
     assert_eq!(blocked_during["inputSubmitted"], false);
@@ -574,9 +569,9 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
 
     // 外部记录：第二个创建的完整链已经在第一个提交仍未确认时发生。
     let free_prompt = external_objects(&herdr, &free).2;
-    assert_eq!(free_prompt["text"], "率先完成的创建");
+    assert_eq!(free_prompt["initialMessage"], "率先完成的创建");
     assert_eq!(
-        calls_of_kind(&herdr, "agent_prompt").len(),
+        calls_of_kind(&herdr, "agent_start").len(),
         2,
         "每个已接受创建各提交一次"
     );
@@ -584,9 +579,9 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     release(&blocked_release);
     let blocked = wait_stage(&server, &blocked_id, "succeeded").await;
     let blocked_prompt = external_objects(&herdr, &blocked).2;
-    assert_eq!(blocked_prompt["text"], "被阻塞的创建");
+    assert_eq!(blocked_prompt["initialMessage"], "被阻塞的创建");
     assert_eq!(herdr.tabs().len(), 2);
-    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
     assert_eq!(calls_of_kind(&herdr, "unsupported").len(), 0);
 }
 
@@ -646,13 +641,9 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
         "第一个创建在启动屏障释放前不能进入后续阶段"
     );
     let free_prompt = external_objects(&herdr, &free).2;
-    assert_eq!(free_prompt["text"], "先完成的任务");
-    assert!(
-        calls_of_kind(&herdr, "agent_prompt")
-            .iter()
-            .all(|prompt| prompt["text"] != "启动被阻塞的任务"),
-        "受阻的创建不得提前提交"
-    );
+    assert_eq!(free_prompt["initialMessage"], "先完成的任务");
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
+    assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
 
     release(&blocked_release);
     let blocked = wait_stage(&server, &blocked_id, "succeeded").await;
@@ -662,9 +653,9 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
         &["--model", "deepseek/deepseek-flash", "--thinking", "high"],
         "启动受阻的创建",
     );
-    assert_eq!(blocked_prompt["text"], "启动被阻塞的任务");
+    assert_eq!(blocked_prompt["initialMessage"], "启动被阻塞的任务");
     assert_eq!(herdr.tabs().len(), 2);
-    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
 }
 
 /// P51：并发请求各自采用接受时的 Bot 快照；两个独立客户端在创建途中分别编辑 Bot，
@@ -680,7 +671,7 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
             "wait_for_file": start_release.to_string_lossy(),
             "timeout_ms": 20_000,
         },
-        "prompt_gate": {
+        "initial_message_gate": {
             "match": "快照 B 的输入",
             "wait_for_file": prompt_release.to_string_lossy(),
             "timeout_ms": 20_000,
@@ -734,7 +725,7 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
     let id_a = creation_a["id"].as_str().expect("创建标识").to_string();
     let id_b = creation_b["id"].as_str().expect("创建标识").to_string();
 
-    // 两个创建分别停在启动与提交屏障：它们都已接受，但都还没有完成。
+    // 两个创建分别停在启动就绪与轮次开始确认屏障：它们都已接受，但都还没有完成。
     assert!(
         wait_until(Duration::from_secs(10), || {
             calls_of_kind(&herdr, "agent_start").len() >= 2
@@ -744,13 +735,13 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
     );
     assert!(
         wait_until(Duration::from_secs(10), || {
-            calls_of_kind(&herdr, "agent_prompt").len() == 1
+            calls_of_kind(&herdr, "agent_start").len() == 2
         })
         .await,
-        "第二个创建必须已经发起提交"
+        "两个创建必须已经发起携消息启动"
     );
     assert_eq!(creation(&server, &id_a).await["stage"], "starting");
-    assert_eq!(creation(&server, &id_b).await["stage"], "submitting");
+    assert_eq!(creation(&server, &id_b).await["stage"], "starting");
 
     // 另一客户端在创建途中把两个 Bot 都改成完全不同的新版本。
     update_bot(
@@ -809,11 +800,11 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
         "创建 B 必须使用接受时的旧Bot启动参数",
     );
     assert_eq!(
-        prompt_a["text"],
+        prompt_a["initialMessage"],
         "/skill:teach 快照 A 的固定指示\n\n快照 A 的输入"
     );
     assert_eq!(
-        prompt_b["text"],
+        prompt_b["initialMessage"],
         "/skill:code-review 快照 B 的固定指示\n\n快照 B 的输入"
     );
     assert_eq!(herdr.tabs().len(), 2);
@@ -947,7 +938,7 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
     herdr.set_behavior(json!({
         "tab_create_gate": { "match": "old-旧快照-", "wait_for_file": tab_release, "timeout_ms": 25_000 },
         "agent_start_gate": { "match": "old-provider/old-model", "wait_for_file": start_release, "timeout_ms": 25_000 },
-        "prompt_gate": { "match": "旧本次输入", "wait_for_file": prompt_release, "timeout_ms": 25_000 },
+        "initial_message_gate": { "match": "旧本次输入", "wait_for_file": prompt_release, "timeout_ms": 25_000 },
     }));
     let storage = TempDir::new("full creation snapshot storage");
     let metadata = write_snapshot_catalog(&storage, "old");
@@ -998,7 +989,7 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &["new-fixed.ts", "new-connect.ts"],
     );
     assert_eq!(
-        new_prompt["text"],
+        new_prompt["initialMessage"],
         "/skill:new-native 新固定指示\n第二行\n\n新本次输入\n保留换行"
     );
 
@@ -1023,25 +1014,22 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         .await
     );
     assert_eq!(creation(&server, &old_id).await["stage"], "starting");
-    assert_eq!(
-        calls_of_kind(&herdr, "agent_prompt").len(),
-        1,
-        "旧 agent 就绪前不能提交"
-    );
+    assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
+    assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
     release(&start_release);
     assert!(
         wait_until(Duration::from_secs(10), || calls_of_kind(
             &herdr,
-            "agent_prompt"
+            "agent_start"
         )
         .len()
             == 2)
         .await
     );
-    let submitting = creation(&server, &old_id).await;
-    assert_eq!(submitting["stage"], "submitting");
+    let pending_launch = creation(&server, &old_id).await;
+    assert_eq!(pending_launch["stage"], "starting");
     assert_eq!(
-        submitting["inputSubmitted"], false,
+        pending_launch["inputSubmitted"], false,
         "外部提交尚未确认时不能报告成功"
     );
     release(&prompt_release);
@@ -1067,15 +1055,14 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
     );
     assert_ne!(old_start["name"], new_start["name"], "并发创建的 Herdr 控制对象必须独立");
     assert_eq!(
-        old_prompt["text"],
+        old_prompt["initialMessage"],
         "/skill:old-native 旧固定指示\n第二行\n\n旧本次输入\n保留换行"
     );
     assert_eq!(herdr.tabs().len(), 2);
     assert_eq!(calls_of_kind(&herdr, "workspace_list").len(), 2);
     assert_eq!(calls_of_kind(&herdr, "tab_create").len(), 2);
     assert_eq!(calls_of_kind(&herdr, "agent_start").len(), 2);
-    assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
-    assert_eq!(control_calls(&herdr).len(), 8, "没有额外重试、改配、关闭或重建调用");
+    assert_eq!(control_calls(&herdr).len(), 6, "没有额外重试、改配、关闭或重建调用");
     assert_eq!(creation(&server, &new_id).await, new_finished);
 }
 
@@ -1106,7 +1093,7 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
         &["old-fixed.ts", "old-tools.ts"],
     );
     assert_eq!(
-        original_prompt["text"],
+        original_prompt["initialMessage"],
         "/skill:old-native 旧固定指示\n第二行\n\n已有 Chat 的输入"
     );
 
@@ -1132,13 +1119,8 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
         &["new-fixed.ts", "new-connect.ts"],
     );
     assert_eq!(
-        new_prompt["text"],
+        new_prompt["initialMessage"],
         "/skill:new-native 新固定指示\n第二行\n\n后续 Chat 的输入"
-    );
-    assert_eq!(
-        control_calls(&herdr).len(),
-        original_calls.len() + 4,
-        "只增加另一次创建的四次外部调用"
     );
     assert_eq!(
         external_objects(&herdr, &existing),
@@ -1182,13 +1164,13 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
     assert_eq!(creation(&server, &new_id).await, new_chat);
 }
 
-/// P51：创建 Chat 不共享固定操作的执行资格；创建停在提交阶段时，固定操作仍被接受并执行。
+/// P51：创建 Chat 不共享固定操作的执行资格；创建停在携消息启动确认阶段时，固定操作仍被接受并执行。
 #[tokio::test(flavor = "multi_thread")]
 async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
     let herdr = HerdrFixture::new("bot concurrent fixed operations");
     let blocked_release = release_path(&herdr, "release-fixed-operation");
     herdr.set_behavior(json!({
-        "prompt_gate": {
+        "initial_message_gate": {
             "match": "与固定操作并行",
             "wait_for_file": blocked_release.to_string_lossy(),
             "timeout_ms": 20_000,
@@ -1213,13 +1195,13 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
         accept_creation(&server, &zone_path, bot_id, "与固定操作并行").await;
     assert!(
         wait_until(Duration::from_secs(10), || {
-            calls_of_kind(&herdr, "agent_prompt").len() == 1
+            calls_of_kind(&herdr, "agent_start").len() == 1
         })
         .await
     );
-    assert_eq!(creation(&server, &creation_id).await["stage"], "submitting");
+    assert_eq!(creation(&server, &creation_id).await["stage"], "starting");
 
-    // 创建仍停在提交阶段时，固定操作得到正常接受与执行，而不是忙碌拒绝。
+    // 创建仍停在携消息启动确认阶段时，固定操作得到正常接受与执行，而不是忙碌拒绝。
     let operation = post_over_tcp(server.addr(), "/api/operations/start").await;
     assert_eq!(
         operation.status, 200,
@@ -1240,7 +1222,7 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
     let finished = wait_stage(&server, &creation_id, "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
     assert_eq!(
-        external_objects(&herdr, &finished).2["text"],
+        external_objects(&herdr, &finished).2["initialMessage"],
         "与固定操作并行"
     );
     assert_eq!(herdr.tabs().len(), 1);
@@ -1294,7 +1276,7 @@ async fn concurrent_zone_creations_render_their_own_zone_names() {
         assert_eq!(tab["label"], view["name"]);
         assert_eq!(&tab["cwd"], expected_cwd);
         assert_eq!(
-            prompt["text"],
+            prompt["initialMessage"],
             if expected_cwd == &one_path {
                 "命名任务一"
             } else {

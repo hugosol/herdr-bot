@@ -166,6 +166,8 @@ async fn omp_id_only_and_unavailable_file_resume_only_the_selected_native_id() {
         assert_eq!(serde_json::from_str::<Value>(&reply.body).unwrap()["outcome"],"restored");
         let calls = herdr.calls();
         let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
+        assert_eq!(start["initialMessage"], "");
+        assert!(!start["argv"].as_array().unwrap().iter().any(|arg| arg == "--initial-message"));
         assert_eq!(start["args"],json!(["--resume","omp-old-3b9f-exact"]));
         assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
     }

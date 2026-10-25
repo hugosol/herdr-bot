@@ -10,16 +10,10 @@ import {
 import { fetchBots, type Bot } from './botApi'
 import { renderChatNameExample } from './chatNaming'
 
-const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
-  starting: '正在启动',
-  submitting: '正在提交初始指示',
-}
-
 const FAILURE_STAGE_LABELS: Record<string, string> = {
   workspace: '查找 Workspace',
   tab: '新建 Tab',
   start: '启动 agent',
-  submit: '提交初始指示',
 }
 
 /**
@@ -39,11 +33,9 @@ function failureOutcomeText(creation: ChatCreation): string {
     case 'tab':
       return '没有继续启动 agent；已经产生的对象如果存在会保留，不会自动删除或重建。'
     case 'start':
-      return '现场已存在：Tab 与 Pane 已创建并保留，初始指示尚未提交；不会自动重发。'
-    case 'submit':
       return failure.code === 'herdr-command-failed'
-        ? '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。'
-        : '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。'
+        ? '现场已保留：Herdr 返回了明确错误；不会自动重试或重发。'
+        : '现场已保留：发起结果未确认，agent 可能已执行，不能据此断定初始消息未发送；不会自动重试或重发。'
   }
   return '本次创建没有完成；不会自动重试。'
 }
@@ -51,9 +43,9 @@ function failureOutcomeText(creation: ChatCreation): string {
 /**
  * 从某个 zone 发起 Chat 的弹窗。
  *
- * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Bot。确认后页面轮询同一次创建：只有后端确认目标
- * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
- * 不自动切换会话列表。
+ * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Bot。页面只轮询同一次创建：
+ * 有初始消息时确认目标已开始处理，无初始消息时确认目标就绪；不等待模型首轮结束。
+ * 成功与失败都留在弹窗里，由用户关闭，不自动切换会话列表。
  */
 export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
   const [bots, setBots] = useState<Bot[] | null>(null)
@@ -334,9 +326,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
 
         {running && creation !== null && (
           <p className="chat-stage" data-testid="chat-create-stage" role="status">
-            {creation.stage === 'starting'
-              ? STAGE_LABELS.starting
-              : STAGE_LABELS.submitting}
+            正在启动
           </p>
         )}
 
@@ -378,7 +368,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
             data-kind="success"
             role="status"
           >
-            创建成功，初始指示已提交
+            {creation.inputSubmitted ? '创建成功，初始指示已提交' : '创建成功，agent 已就绪'}
           </p>
         )}
 

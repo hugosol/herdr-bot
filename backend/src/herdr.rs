@@ -26,8 +26,6 @@ const TAB_TIMEOUT: Duration = Duration::from_secs(20);
 const START_TIMEOUT: Duration = Duration::from_secs(40);
 /// 启动 agent 时交给 Herdr CLI 的等待就绪上限（毫秒，CLI 允许 3000..=300000）。
 const START_READY_TIMEOUT_MS: u32 = 30_000;
-/// 提交初始指示的时限。超时不证明未提交，调用方必须保留这一不确定性。
-const PROMPT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 与固定操作相同的无控制台窗口启动标志。
 #[cfg(windows)]
@@ -260,15 +258,16 @@ impl HerdrClient {
         })
     }
 
-    /// 在已存在的 pane 中启动 agent，并等待 Herdr 确认它已可交互。
+    /// 在已存在的 pane 中启动 agent，并由同一命令交付非空初始消息。
     ///
-    /// 返回成功就是“目标 agent 可以接收输入”的确认；失败或超时都不得继续提交初始指示。
+    /// 非空消息等待本次目标原生轮次开始；空消息仅等待可交互就绪。失败或超时均不补发。
     pub async fn start_agent(
         &self,
         name: &str,
         kind: &str,
         pane_id: &str,
         args: &[String],
+        initial_message: &str,
     ) -> Result<(), HerdrError> {
         let mut command = vec![
             "agent".to_string(),
@@ -281,6 +280,9 @@ impl HerdrClient {
             "--timeout".to_string(),
             START_READY_TIMEOUT_MS.to_string(),
         ];
+        if !initial_message.is_empty() {
+            command.extend(["--initial-message".to_string(), initial_message.to_string()]);
+        }
         if !args.is_empty() {
             command.push("--".to_string());
             command.extend_from_slice(args);
@@ -291,26 +293,6 @@ impl HerdrClient {
             .pointer("/result/agent")
             .ok_or_else(|| HerdrError::UnexpectedResponse {
                 command: "agent start",
-                detail: "响应缺少 result.agent".to_string(),
-            })?;
-        Ok(())
-    }
-
-    /// 把合成后的初始指示作为一次提交交给目标 agent。
-    ///
-    /// 不使用 `--wait`：创建成功只要求提交被确认，不等待模型完成一轮任务。超时或错误都不重试。
-    pub async fn prompt(&self, target: &str, text: &str) -> Result<(), HerdrError> {
-        let value = self
-            .run(
-                "agent prompt",
-                &["agent".into(), "prompt".into(), target.into(), text.into()],
-                PROMPT_TIMEOUT,
-            )
-            .await?;
-        value
-            .pointer("/result/agent")
-            .ok_or_else(|| HerdrError::UnexpectedResponse {
-                command: "agent prompt",
                 detail: "响应缺少 result.agent".to_string(),
             })?;
         Ok(())

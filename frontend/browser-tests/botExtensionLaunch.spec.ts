@@ -87,8 +87,9 @@ test('六种 Bot 集合准确显式启动，固定项不可取消，创建页面
     expect(start.agent_kind).toBe(scenario.agent)
     const args = start.args as string[]
     expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
-    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
-    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toBe('固定指示\n\n本次输入')
+    expect(server!.herdrCalls().filter(call => call.kind === 'agent_start')).toHaveLength(index + 1)
+    expect(start.initialMessage).toBe('固定指示\n\n本次输入')
+    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
   }
   for (const file of settings) expect(fs.readFileSync(file, 'utf8')).toBe('{"extensions":["ambient.ts"]}\n')
   expect(userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)).toEqual(userBefore)
@@ -126,7 +127,7 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   expect((await server!.getBots()).bots[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
   // Independent native-history reads are not launch/configuration controls.
-  expect(server!.herdrCalls().filter(call => call.kind !== 'agent_get').map(call => call.kind)).toEqual(['workspace_list', 'tab_create', 'agent_start', 'agent_prompt', 'workspace_list', 'tab_create', 'agent_start', 'agent_prompt'])
+  expect(server!.herdrCalls().filter(call => call.kind !== 'agent_get').map(call => call.kind)).toEqual(['workspace_list', 'tab_create', 'agent_start', 'workspace_list', 'tab_create', 'agent_start'])
   const evidence = testInfo.outputPath('controlled-herdr-dynamic-entry-mapping-NOT-real-loading.json')
   fs.writeFileSync(evidence, JSON.stringify({ calls: server!.herdrCalls(), tabs: server!.herdrTabs() }, null, 2))
   await testInfo.attach('controlled-herdr-dynamic-entry-mapping-NOT-real-loading', { path: evidence, contentType: 'application/json' })
@@ -163,7 +164,8 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
     await expect(page.getByTestId('chat-create-success')).toBeVisible()
     const start = server!.herdrCalls().find(call => call.kind === 'agent_start')!
     expect(start.args).toContain(directory)
-    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(1)
+    expect(start.initialMessage).toBe('固定指示\n\n本次输入')
+    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
     expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
   })
 }

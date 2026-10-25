@@ -70,7 +70,7 @@ test('局域网地址可管理共享 Bot 并从 zone 发起 Chat，不额外要�
 
   server = await startManualServer({
     listenAddr: '0.0.0.0:0',
-    herdr: { behavior: { agent_start_delay_ms: 400, prompt_delay_ms: 400 } },
+    herdr: { behavior: { agent_start_delay_ms: 400, initial_message_delay_ms: 400 } },
   })
   const lanURL = server.urlForHost(HOST)
   test.info().annotations.push({ type: '局域网入口', description: lanURL })
@@ -168,9 +168,7 @@ test('局域网地址可管理共享 Bot 并从 zone 发起 Chat，不额外要�
   await creation.getByTestId('chat-input').fill(INPUT)
   await activate(creation.getByTestId('chat-create-submit'), true)
   await expect(creation.getByTestId('chat-create-stage')).toHaveText('正在启动')
-  await expect(creation.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {
-    timeout: 10_000,
-  })
+  await expect(creation.getByTestId('chat-create-success')).toHaveCount(0)
   await expect(creation.getByTestId('chat-create-success')).toHaveText(
     '创建成功，初始指示已提交',
     { timeout: 10_000 },
@@ -183,9 +181,10 @@ test('局域网地址可管理共享 Bot 并从 zone 发起 Chat，不额外要�
   expect(tabs).toHaveLength(1)
   expect(tabs[0].label).toBe(previewName)
   expect(tabs[0].cwd).toBe(zone)
-  const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe(INPUT)
+  const starts = server.herdrCalls().filter((call) => call.kind === 'agent_start')
+  expect(starts).toHaveLength(1)
+  expect(starts[0].initialMessage).toBe(INPUT)
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(0)
 
   // 关闭后仍在文件列表；删除 Bot 经局域网地址完成，独立客户端确认已不可用。
   const close = creation.getByTestId('chat-create-close')
