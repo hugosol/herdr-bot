@@ -40,7 +40,13 @@ async fn omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_
     let herdr = HerdrFixture::new("omp-resume-file");
     let native = native_file(&root);
     let config = setup(&root,&herdr,Some(&native));
-    herdr.set_behavior(json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"path","value":native}}));
+    // No usable live match remains after skipping this stale candidate. Resume
+    // must still load the selected history, not stop or start a blank Chat.
+    herdr.set_behavior(json!({
+        "agents":[{"agent":"omp","workspace_id":"stale","tab_id":"stale:t1","pane_id":"stale:p1",
+            "agent_session":{"agent":"omp","source":"herdr:omp","kind":"path","value":root.path().join("missing.jsonl")}}],
+        "native_session":{"agent":"omp","source":"herdr:omp","kind":"path","value":native}
+    }));
     let reply = resume(&config).await;
     assert_eq!(reply.status,200,"{}",reply.body);
     let body: Value = serde_json::from_str(&reply.body).unwrap();
