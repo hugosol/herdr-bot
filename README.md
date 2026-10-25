@@ -139,6 +139,10 @@ Playwright 已按 worker 复用浏览器；没有显著只读准备成本的证�
 Rust `TestServer::start_app_on` 和浏览器 `startServer` 在绑定前拒绝非回环地址，即使已设置手动授权也不放宽。
 普通测试应复用这些入口，不得自行导入网络模块或创建 listener。历史持久化、进程重启与多浏览器上下文测试仍走回环。
 
+`session_window_config` 的每个服务实例使用测试临时目录内的独立历史文件；同一用例中的原实例与新实例也不共享历史文件。
+真实进程仍读取同一份被改写的配置，以验证窗口策略只在启动时加载；进程退出后由临时目录所有者尝试清理文件，不读写或清理仓库已有历史数据。
+可用 `cargo test --manifest-path backend/Cargo.toml --test session_window_config` 检查，追加 `-- --test-threads=1` 可串行诊断。
+
 真实 LAN／mDNS 验收须显式手动运行：
 
 ```powershell
