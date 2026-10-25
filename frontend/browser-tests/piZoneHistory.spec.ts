@@ -5,6 +5,9 @@ import path from 'node:path'
 import { startServer, type E2EServer } from './support'
 import { zoneRowFor } from './ui'
 
+// Parallel cases run in separate worker processes; each keeps its own server and cleanup hooks.
+test.describe.configure({ mode: 'parallel' })
+
 let server: E2EServer | null = null
 let root: string | null = null
 test.afterEach(async () => {
