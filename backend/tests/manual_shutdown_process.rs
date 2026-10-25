@@ -261,6 +261,10 @@ fn write_config(dir: &TempDir, countdown_seconds: u32) -> PathBuf {
     let script = fixtures.join("operations").join("success.bat");
     let operations = fixtures.join("operations");
     let config_path = dir.path().join("herdr-bot.toml");
+    // 同场景重启共享此文件；不同场景的持久历史只属于各自的临时目录。
+    let history_file = std::path::absolute(dir.path().join("history.json"))
+        .expect("解析临时历史文件的绝对路径");
+    let history_file = toml::Value::String(history_file.to_string_lossy().into_owned());
     std::fs::write(
         &config_path,
         format!(
@@ -269,6 +273,7 @@ fn write_config(dir: &TempDir, countdown_seconds: u32) -> PathBuf {
              [operations.stop]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [shutdown]\ncountdown_seconds = {countdown_seconds}\n\n\
              [mdns]\nenabled = false\n\n\
+             [sessions]\nhistory_file = {history_file}\n\n\
              [herdr]\nworkspace_name = 'bot-playground'\n",
             script = script.display(),
             operations = operations.display(),

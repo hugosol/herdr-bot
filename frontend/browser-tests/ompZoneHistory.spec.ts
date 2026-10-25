@@ -6,6 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { startServer, type E2EServer } from './support'
 import { zoneRowFor } from './ui'
 
+// Parallel cases run in separate worker processes; each keeps its own server and cleanup hooks.
+test.describe.configure({ mode: 'parallel' })
+
 let server: E2EServer | null = null
 let root = ''
 test.beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'omp-zone-history-browser-')) })

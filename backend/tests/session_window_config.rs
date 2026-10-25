@@ -8,6 +8,7 @@
 //! 变成精确时刻，不改变阈值本身。
 //!
 //! 本票只用真实 TCP／SSE 与真实进程观察行为：不读私有字段、不断言源文本，也不新增测试端点。
+//! 每个服务实例使用测试临时目录内的独立历史文件；真实进程退出后再由目录所有者清理，不写仓库运行数据。
 
 mod common;
 
@@ -57,13 +58,16 @@ struct WindowServer {
     sessions: Arc<SessionsState>,
     shutdown: Arc<ShutdownState>,
     clock: Arc<ManualClock>,
+    _storage: TempDir,
 }
 
 impl WindowServer {
     /// 从启动输入文本装配实例：策略只来自这次解析出来的配置。
     async fn start(sessions: &str) -> Self {
-        let config =
+        let storage = TempDir::new("session window history");
+        let mut config =
             herdr_bot::Config::from_toml(&config_text(sessions)).expect("启动输入必须可解析");
+        config.sessions.history_file = storage.path().join("history.json");
         let clock = Arc::new(ManualClock::new());
         let sessions = Arc::new(SessionsState::with_policy_and_clock(
             config.sessions.policy(),
@@ -76,6 +80,7 @@ impl WindowServer {
             sessions,
             shutdown: state.shutdown,
             clock,
+            _storage: storage,
         }
     }
 
@@ -491,7 +496,14 @@ async fn the_configured_online_window_blocks_and_then_allows_the_automatic_arran
 ///
 /// 本票的进程用例**从不**提交任何关机意图（不手动开始、不设置监听），因此关机动作用永不可达；
 /// 长倒计时只是把「万一」也压到一个小时之后。
-fn process_config_text(sessions: &str) -> String {
+fn process_config_text(sessions: &str, history_file: &Path) -> String {
+    // 只有只读元数据来自仓库；相对路径的运行数据由进程 cwd 所属的临时目录承接。
+    let metadata_file = common::repo_fixtures_dir()
+        .parent()
+        .expect("仓库根目录")
+        .join("meta-data/bot-options.toml");
+    let metadata_file = toml::Value::String(metadata_file.to_string_lossy().into_owned());
+    let history_file = toml::Value::String(history_file.to_string_lossy().into_owned());
     format!(
         "listen_addr = \"127.0.0.1:0\"\n\n\
          [operations.start]\nscript = 'unused.bat'\nworking_directory = '.'\n\n\
@@ -499,14 +511,17 @@ fn process_config_text(sessions: &str) -> String {
          [shutdown]\ncountdown_seconds = 3600\n\n\
          [mdns]\nenabled = false\n\n\
          [herdr]\nworkspace_name = 'bot-playground'\n\n\
-         {sessions}"
+         [bots]\nmetadata_file = {metadata_file}\n\n\
+         {sessions}\nhistory_file = {history_file}\n"
     )
 }
 
-/// 把一份启动输入写进临时目录，返回配置文件路径（真实进程只认文件）。
-fn write_process_config(dir: &TempDir, sessions: &str) -> PathBuf {
-    let config_path = dir.path().join("herdr-bot.toml");
-    std::fs::write(&config_path, process_config_text(sessions)).expect("写临时配置");
+/// 改写同一配置文件，但每个实例的历史文件独占临时目录内的不同路径。
+fn write_process_config(dir: &TempDir, instance: &str, sessions: &str) -> PathBuf {
+    let directory = std::path::absolute(dir.path()).expect("解析临时目录的绝对路径");
+    let config_path = directory.join("herdr-bot.toml");
+    let history_file = directory.join(format!("{instance}-history.json"));
+    std::fs::write(&config_path, process_config_text(sessions, &history_file)).expect("写临时配置");
     config_path
 }
 
@@ -521,7 +536,7 @@ impl Panel {
     /// 用给定配置文件启动真实二进制；返回时已经拿到它实际监听的端口。
     fn start(config_path: &Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
-            .current_dir(common::repo_fixtures_dir().parent().unwrap())
+            .current_dir(config_path.parent().expect("临时配置所在目录"))
             .arg("--config")
             .arg(config_path)
             .stdin(Stdio::null())
@@ -650,7 +665,7 @@ fn capture(mut source: Box<dyn Read + Send>, log: Arc<Mutex<Vec<u8>>>) {
 /// 非法配置下它必须在服务可用之前就结束：超过 20 秒仍在运行即判失败并结束它，用例不会挂住。
 fn run_expecting_immediate_exit(config_path: &Path) -> (std::process::ExitStatus, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
-        .current_dir(common::repo_fixtures_dir().parent().unwrap())
+        .current_dir(config_path.parent().expect("临时配置所在目录"))
         .arg("--config")
         .arg(config_path)
         .stdin(Stdio::null())
@@ -692,7 +707,11 @@ fn a_real_process_refuses_to_start_on_an_illegal_session_window() {
         ("offline_retention_seconds", "4294967296", "超过 u32 上界"),
     ] {
         let dir = TempDir::new("session window illegal config");
-        let config_path = write_process_config(&dir, &format!("[sessions]\n{field} = {literal}\n"));
+        let config_path = write_process_config(
+            &dir,
+            "invalid",
+            &format!("[sessions]\n{field} = {literal}\n"),
+        );
 
         let (status, output) = run_expecting_immediate_exit(&config_path);
 
@@ -726,6 +745,7 @@ async fn a_running_process_keeps_the_windows_it_started_with() {
     let dir = TempDir::new("session window no hot reload");
     let config_path = write_process_config(
         &dir,
+        "original",
         "[sessions]\nonline_timeout_seconds = 7\noffline_retention_seconds = 13\n",
     );
 
@@ -743,6 +763,7 @@ async fn a_running_process_keeps_the_windows_it_started_with() {
     // 运行中把文件改写为 10／30：它只影响**下一次**启动。
     write_process_config(
         &dir,
+        "restarted",
         "[sessions]\nonline_timeout_seconds = 10\noffline_retention_seconds = 30\n",
     );
 

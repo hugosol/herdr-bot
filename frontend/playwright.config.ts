@@ -14,7 +14,7 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  // Keep each file sequential; independent files use isolated server/storage fixtures.
+  // Files are sequential by default; OMP/Pi history specs opt into isolated parallel cases.
   workers: Math.min(availableParallelism(), 16),
   reporter: [['list']],
   use: {
