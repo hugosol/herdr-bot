@@ -9,11 +9,14 @@ export type NodeTemplate = {
   implementation: { type: 'chat' }
 }
 
-export async function listTemplates(signal?: AbortSignal): Promise<NodeTemplate[]> {
+export type TemplateProblem = { code: string; message: string; files: string[]; template_id?: string }
+export type TemplateCatalog = { templates: NodeTemplate[]; problems?: TemplateProblem[] }
+
+export async function listTemplates(signal?: AbortSignal): Promise<TemplateCatalog> {
   const response = await fetch('/api/scheduler/templates', { signal })
   const value = await response.json()
   if (!response.ok) throw new Error(typeof value?.message === 'string' ? value.message : `共享模板目录读取失败：HTTP ${response.status}`)
-  return value.templates as NodeTemplate[]
+  return value as TemplateCatalog
 }
 
 export type MapNode = {
