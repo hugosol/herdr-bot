@@ -1,4 +1,4 @@
-//! Service-level read-only Map directory; no client-supplied filesystem paths.
+//! Service-level static definitions and shared template editing; no client-supplied filesystem paths.
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -142,7 +142,7 @@ struct NodeTemplate {
     description: String,
     inputs: BTreeMap<String, String>,
     outputs: BTreeMap<String, String>,
-    implementation: TemplateImplementation,
+    implementation: JsonObject<TemplateImplementation>,
 }
 
 #[derive(Serialize)]
@@ -232,6 +232,133 @@ pub async fn list_templates(axum::extract::State(state): axum::extract::State<cr
         Ok(Ok(catalog)) => Json(catalog).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => DirectoryError { code: "template-directory-read-failed", message: format!("共享模板目录读取失败：{error}") }.into_response(),
+    }
+}
+
+// All scheduler mutations must hold this lock through final checks and commit.
+// External file editors do not participate; recheck their changes before commit.
+pub(crate) static DEFINITION_COMMIT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static NEXT_FILE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateIdentity { id: String }
+
+#[derive(Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct TemplateRevision { file: String, original: String }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateSave {
+    id: String,
+    content: String,
+    revision: Option<TemplateRevision>,
+}
+
+fn edit_error(code: &'static str, message: impl Into<String>) -> DirectoryError {
+    DirectoryError { code, message: message.into() }
+}
+
+// Resolve identity from current files, never from an ID interpreted as a path.
+fn template_target(directory: &Path, id: &str) -> Result<Option<TemplateRevision>, DirectoryError> {
+    let catalog = read_templates(directory)?;
+    if let Some(problem) = catalog.problems.iter().find(|problem| problem.template_id.as_deref() == Some(id)) {
+        return Err(edit_error("template-conflict", format!("{}；请重新加载。", problem.message)));
+    }
+    for file in read_files(directory).map_err(template_directory_error)?.files {
+        let path = directory.join(&file);
+        let metadata = fs::symlink_metadata(&path).map_err(|e| edit_error("template-conflict", format!("模板已变化：{e}；请重新加载。")))?;
+        if !metadata.is_file() || crate::browse::is_link_like(&metadata) {
+            return Err(edit_error("template-conflict", "模板文件已变化；请重新加载。"));
+        }
+        let original = fs::read_to_string(path).map_err(|e| edit_error("template-read-failed", format!("模板读取失败：{e}")))?;
+        if serde_json::from_str::<serde_json::Value>(&original).ok().and_then(|value| value.get("id").and_then(|v| v.as_str()).map(str::to_owned)).as_deref() == Some(id) {
+            return Ok(Some(TemplateRevision { file, original }));
+        }
+    }
+    Ok(None)
+}
+
+pub async fn new_template(request: Request) -> Response {
+    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
+        return edit_error("invalid-request", "新增草稿不接受查询参数或请求体。").into_response();
+    }
+    // Compile the documentation example into the application; no runtime repo access.
+    let mut example: serde_json::Value = serde_json::from_str(include_str!("../../docs/example/node-templates/weather-capability.json")).expect("bundled weather example");
+    example.as_object_mut().expect("example object").remove("id");
+    Json(example).into_response()
+}
+
+pub async fn edit_template(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    Json(identity): Json<TemplateIdentity>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("template-write-failed", "定义提交锁不可用。"))?;
+        let revision = template_target(&state.node_template_directory, &identity.id)?
+            .ok_or_else(|| edit_error("template-conflict", "模板已移除；请重新加载。"))?;
+        let mut content: serde_json::Value = serde_json::from_str(&revision.original)
+            .map_err(|e| edit_error("template-invalid", format!("模板 JSON 无效：{e}")))?;
+        content.as_object_mut().ok_or_else(|| edit_error("template-invalid", "模板必须为 JSON 对象。"))?.remove("id");
+        Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "content": content, "revision": revision }))
+    }).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("template-read-failed", error.to_string()).into_response(),
+    }
+}
+
+pub async fn save_template(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    Json(draft): Json<TemplateSave>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        if draft.id.is_empty() { return Err(edit_error("template-invalid", "模板 ID 不能为空。")); }
+        let mut content: serde_json::Value = serde_json::from_str(&draft.content)
+            .map_err(|e| edit_error("template-invalid", format!("模板 JSON 无效：{e}")))?;
+        let object = content.as_object_mut().ok_or_else(|| edit_error("template-invalid", "模板内容必须为 JSON 对象。"))?;
+        if object.contains_key("id") { return Err(edit_error("template-invalid", "请移除模板内容中的顶层 id；使用独立模板 ID。")); }
+        object.insert("id".into(), serde_json::Value::String(draft.id.clone()));
+        let JsonObject(template): JsonObject<NodeTemplate> = serde_path_to_error::deserialize(content)
+            .map_err(|e| edit_error("template-invalid", format!("模板结构无效：{e}")))?;
+        if template.schema_version != 1 { return Err(edit_error("template-invalid", "模板 schema_version 必须为 1。")); }
+        let bytes = serde_json::to_vec_pretty(&template).map_err(|e| edit_error("template-write-failed", e.to_string()))?;
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("template-write-failed", "定义提交锁不可用。"))?;
+        let root = prepare_directory(&state.node_template_directory).map_err(template_directory_error)?;
+        let check = || -> Result<(), DirectoryError> {
+            prepare_directory(&root).map_err(template_directory_error)?;
+            let current = template_target(&root, &draft.id)?;
+            if draft.revision.is_none() && current.is_some() {
+                return Err(edit_error("template-conflict", "模板 ID 已存在；请使用不同 ID 或重新加载。"));
+            }
+            if draft.revision != current { return Err(edit_error("template-conflict", "模板文件已变化或移除；请重新加载后再编辑。")); }
+            Ok(())
+        };
+        check()?;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let serial = NEXT_FILE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let name = format!("template-{stamp}-{}-{serial}", std::process::id());
+        let temporary = root.join(format!("{name}.tmp"));
+        let target = root.join(draft.revision.as_ref().map_or_else(|| format!("{name}.json"), |revision| revision.file.clone()));
+        let result = (|| {
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)
+                .map_err(|e| edit_error("template-write-failed", format!("模板写入失败：{e}")))?;
+            file.write_all(&bytes).and_then(|_| file.sync_all())
+                .map_err(|e| edit_error("template-write-failed", format!("模板写入失败：{e}")))?;
+            drop(file);
+            check()?;
+            if draft.revision.is_some() { fs::rename(&temporary, &target) } else { fs::hard_link(&temporary, &target) }
+                .map_err(|e| edit_error("template-write-failed", format!("模板写入失败：{e}")))?;
+            Ok(template)
+        })();
+        let _ = fs::remove_file(temporary);
+        result
+    }).await {
+        Ok(Ok(template)) => Json(template).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("template-write-failed", error.to_string()).into_response(),
     }
 }
 
