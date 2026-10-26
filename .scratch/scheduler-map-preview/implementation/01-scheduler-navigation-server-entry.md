@@ -8,7 +8,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** in-progress
+**Status:** closed
 
 ## Acceptance criteria
 
@@ -32,3 +32,6 @@
 - `npm --prefix frontend test`：27 文件、205 用例全部通过。
 - `npm --prefix frontend run test:browser:build -- --workers=4`：真实产物构建与网络护栏通过；157 passed / 5 failed。本票 3 个 S1 用例及迁移后的 Bot 浏览器用例通过。5 个失败为 `chatResume.spec.ts:29`（期望 identity-verification-failed，实际 invalid-cwd）与 `chatResumeIntegrity.spec.ts:257` 的 pi/omp × filtered/discovery 四场景（期望 failed，实际 unconfirmed）。未修改这些场景及后端，不宣称完整浏览器回归通过，也未证明它们是既有基线失败。
 - README 与 GLOSSARY 已同步 server 新入口；scheduler 仅导航，真实文件浏览与 node 明细仍不属于本票交付。
+- 2026-10-26 独立集成验收：宿主已将首次集成提交 `af44ebc295448c34c63d3f3204baf18391ec6bc0` 同步回本开发分支；接管时 HEAD 即为该提交，祖先检查通过，工作区干净且无冲突。
+- 本轮全局测试：`node scripts/test-backend.mjs` 通过，build、全部测试二进制与 doctest 均通过，0 binaries not dispatched；日志目录为 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-kxF4Xd`。`npm --prefix frontend test` 通过网络护栏，27 文件、205 用例全部通过；无需代码修复。
+- 本轮仅执行上述全局测试；复杂脚本、实机 smoke 与跨票据整体验收按本轮委派留给最终独立门禁，未重跑浏览器回归，前述 5 个浏览器失败不据本轮结果宣称已修复。本票已实现、测试且首次合入，故关闭；本轮验收记录提交仍由宿主排队合并，不在此直接操作集成分支。
