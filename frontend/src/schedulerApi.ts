@@ -83,6 +83,24 @@ export async function saveNode(file: string, draft: { id: string; content: strin
   if (!response.ok) throw new Error(value.message ?? `node 保存失败：HTTP ${response.status}`)
 }
 
+export async function checkNodeDeletion(file: string, id: string): Promise<{ id: string; revision: TemplateRevision }> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/check-delete`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `node 删除检查失败：HTTP ${response.status}`)
+  return value
+}
+
+export async function deleteNode(file: string, target: { id: string; revision: TemplateRevision }): Promise<WorkflowMap> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/delete`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(target),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `node 删除失败：HTTP ${response.status}`)
+  return value
+}
+
 export type WorkflowMap = {
   schema_version: 1
   title: string

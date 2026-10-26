@@ -86,6 +86,8 @@ node_template_directory = '.data/node-templates'
 
 “保存 node”校验整个所属 Map 的既有版本、结构和依赖，拒绝未知前置、自依赖和环，不自动修复。parameters 保留嵌套 JSON，不按模板 inputs 校验、不检查 zone／Bot 或模板是否存在、不补默认值；缺失模板仍在页面明确提示。保存成功立即重读 Map，保持当前文件并选中保存的 node，同时更新列表、详情与已展开依赖图。仅目标 node 改变，其他 node、Map 标题说明和其他文件不受影响；Map JSON 排版可能变化。
 
+选中 node 后可“删除 node”。页面先完整读取并校验所属 Map；若其他 node 的 `blocked_by` 引用它，会列出阻止删除的 node 标题与 ID，不显示最终确认，不级联删除、不清除依赖。只有检查完整且无引用时才询问最终确认；取消不改变文件。确认后的生产请求再次校验整个 Map、目标身份、依赖与检查时的文件版本，并在提交前复查外部变化；确认期间其他页面新增引用、修改或移除目标／Map 时拒绝删除，不能读取或校验 Map 时也拒绝，不猜测目标或隐式修复。失败显示具体原因且保留选择；可修正问题后重新确认。成功只移除目标 node，留在当前 Map、清除选择与详情，并更新列表和已展开依赖图；删除最后一个 node 后展示空态。没有强制删除、撤销或引用迁移。
+
 node ID 只在同 Map 内唯一，不同 Map 可复用。冲突版本以**整个 Map 文件**为单位：编辑 A 时同 Map 的 B 被页面或外部编辑器修改，或 Map 被移除，旧提交均失败，不覆盖新内容或自动合并。校验、写入失败和冲突保留独立 ID 与原始 JSON，提示重新加载时请先复制草稿，再放弃重开。返回 Map、选择其他 Map、模板管理、切换 tab／server、应用刷新或浏览器刷新前对已修改草稿确认放弃；取消保留草稿。不提供 node ID 重命名、跨 Map 搬移、独立 node 库或 Map JSON 编辑。
 
 同一应用实例内的模板与 node 写入、删除共用协调边界，形成明确提交顺序，保护最终冲突／引用检查与真实提交，提交前重查文件内容及身份。模板删除先提交后，仍可合法新增指向该缺失模板的 node；这不等同于允许删除已被引用的模板。直接文件维护仍受支持，但**请避免在页面提交期间用外部编辑器修改相关定义**：不参与协调的外部写入可能发生在最后检查之后，不保证与其跨文件原子提交。模板不是 Bot，保存能力说明不会发起 Chat 或执行工作。
@@ -195,6 +197,7 @@ Map 和 node 必须是使用上述命名字段的 JSON 对象，不能用位置�
 读取文件名由页面编码，不接受目录路径、zone、查询参数或请求体。
 模板写入使用 `GET /api/scheduler/templates/new`（打包示例草稿）、`POST /api/scheduler/templates/edit`（`{id}` 读取真实内容及冲突版本）与 `POST /api/scheduler/templates/save`（`{id, content, revision}`，content 是原始 JSON 字符串；新增 revision 为 null，修改提交读取时的原始版本）。保存不接受文件路径或文件名，服务端按当前全局身份解析目标并校验冲突；失败返回具体 message，不自动覆盖较新定义。
 node 写入使用 `GET /api/scheduler/maps/{filename}/nodes/new`（打包 A 示例及整个 Map 版本）、`POST /api/scheduler/maps/{filename}/nodes/edit`（`{id}`，读取真实 node 及整个 Map 版本）和 `POST /api/scheduler/maps/{filename}/nodes/save`（`{id, content, revision, create}`，content 是原始 JSON 字符串，create 为新增／修改布尔值）。revision 是打开编辑时返回的 `{file, original}`，绑定已选目录内的 Map 文件名与原始全文；整个文件有变化时必须重新加载。node ID 只作为 nodes 对象的 key，不作为路径；生产写入与读取共用原有目录和完整 Map 校验规则。
+node 删除使用 `POST /api/scheduler/maps/{filename}/nodes/check-delete`（`{id}`，完整检查后返回 `{id, revision}`，不修改文件）与 `POST /api/scheduler/maps/{filename}/nodes/delete`（提交同一 `{id, revision}`）。最终接口不信任先前页面检查，必须携带绑定整个 Map 的有效版本，重新验证目标和引用；不提供忽略依赖或绕过提交协调的路径。成功返回删除后的完整 Map，页面立即更新当前视图；取消确认不会调用最终接口。
 目录路径各级不跟随符号链接、Windows 目录联接或其他重解析点，列表与读取均拒绝链接项。
 所有业务文本（Map／node 标题、说明、模板的适用场景及输入输出说明、参数名和值）仅作文本显示，
 不按 HTML、样式、脚本或 agent 指令解释。参数即使包含服务主机上的绝对路径、目录外文件路径或执行指令，

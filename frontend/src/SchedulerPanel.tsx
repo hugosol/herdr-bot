@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, checkTemplateDelete, deleteTemplate, loadNodeDraft, saveNode, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
+import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, checkTemplateDelete, deleteTemplate, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
 import { TemplatePreview } from './TemplatePreview'
@@ -36,6 +36,20 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty])
+
+  async function removeSelectedNode() {
+    if (editingBusy || draft || file === null || selectedId === null) return
+    setEditingBusy(true)
+    setEditError(null)
+    try {
+      const target = await checkNodeDeletion(file, selectedId)
+      if (!window.confirm(`确认删除 node ${target.id}？仅删除当前 Map 中此 node，不可撤销。`)) return
+      const current = await deleteNode(file, target)
+      setPreview({ kind: 'ready', map: current })
+      setSelectedId(null)
+    } catch (error) { setEditError(error instanceof Error ? error.message : 'node 删除失败。') }
+    finally { setEditingBusy(false) }
+  }
 
   async function beginEdit(id: string | null, kind: Draft['kind'] = '模板') {
     if (!abandonDraft() || (kind === 'node' && file === null)) return
@@ -310,7 +324,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
                   nodeButtons.current.get(selectedId)?.focus()
                   setSelectedId(null)
                 }}>关闭</button></div>
-                {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button>}
+                {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
                   templateProblem={templateProblems[selectedId]} onTemplate={openTemplate} />
               </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次参数、前置依赖与共享模板。</p></div>}
