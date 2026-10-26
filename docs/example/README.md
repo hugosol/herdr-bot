@@ -134,4 +134,70 @@ node ID 是 `nodes` 的 key，只在所属 Map 内使用，不在值中重复添
 - 桌面与窄屏的 node 标题、ID、参数及模板说明是否可读。
 - 先看具体工作、再进入模板预览的层次与返回导航是否清楚；窄屏纵向滚动是否顺畅。
 
-已知限制：静态定义，不执行；当前支持共享模板及当前 Map 内 node 的新增与修改，不提供 ID 重命名、node 跨 Map 搬移、独立 node 库、文件名输入、Map JSON 编辑、内容搜索、自动文件监听、模板快照或跨文件原子快照；仅提供 Map 文件名本地筛选；外部文件写到一半可报错，写完后显式重载。窄屏为纵向布局，完整明细需要页面滚动。未承诺任意大图的性能或可读性，也未以本机回环检查宣称真实 LAN 已验收。用户未确认前不能把 P33 标为通过；收到反馈后应修正并重查受影响行为。
+上述四张图是静态浏览功能的历史材料，不作为下述定义管理 P36 的最终构建证据。用户未确认前，既有 P33 的主观项也不能仅凭截图标为通过。
+
+## 定义管理体验验收（P36）
+
+**人工部分未验收，尚无用户确认。** 自动操作事实、用户体验判断与未检查项应分别记录。所有自动工作（含跨操作验证）结束后，才向用户发起最终体验确认；若其后页面或数据行为改变，须刷新构建、复查受影响流程并重新生成相应截图。自动脚本或截图不能代替用户判断。
+
+### 可运行页面与自动复现
+
+沿用上面的隔离 PowerShell 启动步骤，页面为日志中实际打印的 `http://127.0.0.1:<动态端口>/`，不要使用真实配置或将样例复制到用户目录。服务进程、cwd、定义目录和持久路径均属于这一轮 `$demo`；关闭服务后可保留该目录核对修改。样例中的天气／额度／清单只是静态说明，**不要发起 Chat、点击固定操作或执行工作**。
+
+自动检查从仓库根目录执行，保留 npm 网络护栏：
+
+```powershell
+# 开发时定向重现 P36（先构建实际交付页面与后端）
+npm --prefix frontend run test:browser:build -- schedulerUsability.spec.ts --workers=1
+# 交付时执行完整浏览器入口，不使用过滤器
+npm --prefix frontend run test:browser:build -- --workers=1
+```
+
+`frontend/browser-tests/schedulerUsability.spec.ts` 在 1280 × 900 与 390 × 844 下分别启动独占真实应用，使用本目录上海 Map 与天气模板的副本，加一个独立损坏模板以核对诊断。该自动场景故意不复制 C／D 的模板，因此截图同时显示 `trip-summary`／`quota-estimate` 缺失；上方人工启动步骤复制全部模板，不应显示这两条缺失。它通过实际 Tab／Enter、键盘输入、浏览器确认框、真实校验错误和外部文件冲突验证两类对象新增／修改、模板往返和草稿恢复；不模拟后端响应，不使用用户数据。截图保存在 Playwright 打印的 `frontend/test-results/schedulerUsability-*` 用例目录中（文件名以 `desktop-`／`narrow-` 开头）：
+
+交付副本（1280 × 900／390 × 844）：
+
+|场景|桌面|窄屏|
+|---|---|---|
+|从 node 到共享模板预览，含文件诊断|[桌面预览](screenshots/desktop-template-preview.png)|[窄屏预览](screenshots/narrow-template-preview.png)|
+|JSON 校验失败且保留独立 ID／原始草稿|[桌面校验错误](screenshots/desktop-validation-draft.png)|[窄屏校验错误](screenshots/narrow-validation-draft.png)|
+|Map 外部变化后拒绝覆盖，保留草稿并提示重新加载|[桌面冲突](screenshots/desktop-conflict-draft.png)|[窄屏冲突](screenshots/narrow-conflict-draft.png)|
+|新模板的独立 ID 与内容 JSON 编辑|[桌面编辑](screenshots/desktop-template-editor.png)|[窄屏编辑](screenshots/narrow-template-editor.png)|
+
+这些文件必须与最终待验收构建一起生成；单次定向通过不能声称全部浏览器回归通过。完整回归会重新生成测试输出目录，分享材料应取自最后一次成功执行，避免链接到旧截图。
+
+### 人工操作步骤与独立核对点
+
+桌面与窄屏各执行一次；窄屏使用 390 × 844。可用浏览器设备工具设置 viewport，不要求真实 LAN。只用 Tab／Shift+Tab 走到目标，Enter／Space 激活按钮；JSON 用键盘全选、输入与上下移动，观察输入、错误和保存／返回按钮能否通过纵向滚动访问。
+
+1. 从第四个 `scheduler` 入口进入 `trip-readiness.json`，选择「上海出行天气 A」。点「模板明细」，核对模板 ID 为 `destination-weather`、输入 city／date、输出 forecast，点「修改模板」，ID 应只读，JSON 无顶层 id。仅修改 description 后保存，应立即预览新说明；「返回 Map」仍选中 A，再次进入可看到新说明。
+2. 返回并「修改 node」，确认 JSON 来自真实上海工作而非新增示例，改变 title 后保存，应立即选中新的标题。点「新增 node」，ID 初始为空，填 `manual-node`，把 JSON 改成下面的内容后保存；检查选中 `manual-node`、city 为杭州、parameters.id 为业务参数，且不发起 Chat。
+
+   ```json
+   {"title":"人工新增核对","node_template_id":"destination-weather","parameters":{"city":"杭州","id":"业务参数"},"blocked_by":[]}
+   ```
+
+3. 修改该 node，在 JSON 中输入 `{ "title": ` 后保存，检查错误可读、ID 仍为 `manual-node` 且原始输入未丢。改回合法内容，改变 title 后点「放弃编辑」：先取消，草稿必须保留；再操作并确认放弃，回到原持久内容。不要把“放弃”理解成撤销已保存的内容。
+4. 再修改该 node 并保留一份合法未保存草稿。在另一个编辑器中打开本轮 `$work/plans/trip-readiness.json`，只改变 Map description 并保存。回页面保存旧草稿，检查提示重新加载且没有成功预览，ID 与 JSON 仍在。**先复制需要保留的草稿**，放弃并重开后核对外部说明，再重做修改保存。Map 是冲突单位，即使改的是另一个 node 也会冲突；没有自动合并或自动重试。
+5. 点「模板管理」→「新增模板」，填 `manual-capability`，JSON 删除顶层 id（若手工粘入）并保持 schema_version、title、use_when、description、inputs、outputs、implementation 的结构；`implementation.type` 仅支持 `chat`。可把天气示例改为自己的静态核对说明，保存后应直接进入新模板预览，再返回列表并重新打开核对。
+6. 在本轮隔离 `$work/capabilities` 新建 `broken.json`，内容为 `{ invalid JSON`，刷新全部，检查问题明确列出该文件及结构错误，其他合法模板仍可打开。删除这个隔离故障文件并刷新，错误应消失；页面不会自动修复它。Map 中 C／D 的模板都已在上方完整启动步骤复制，因此不应凭空出现缺失错误。
+7. 尝试删除天气模板，应列出 `trip-readiness.json` 的 A／B 和 `another-trip.json` 的 E 等引用并阻止删除。选择 C 依赖的 A 尝试删除 node，应列出后继 C，不改写依赖。只删除刚建且无引用的 `manual-node`／`manual-capability`：先取消最终确认，核对仍存在；再确认，核对当前 Map 保留、node 详情清除／模板回到列表。不提供强制删除、级联或撤销。
+8. 编辑一份新草稿，试「返回 Map」、切 tab、刷新全部及浏览器刷新；取消放弃应继续处理原草稿，确认则执行所选动作。浏览器刷新使用原生提示，文案由浏览器决定。结束前不要将未保存草稿当作已持久化结果。
+
+### 请用户评价（等待所有自动工作结束后）
+
+请分别反馈桌面与窄屏的：
+
+- 阅读舒适度：标题、ID、参数、模板能力说明与诊断能否方便核对？
+- 编辑顺手程度：ID 与 JSON 分离、键盘移动、保存和返回、取消／确认放弃是否顺手？
+- 提示易懂程度：能否分清 JSON 校验失败、文件读取问题和冲突？是否清楚何时需先复制草稿再重新加载？删除引用提示是否足够明确？
+
+反馈请带上 viewport、操作步骤、相关截图及期望；未收到反馈或尚需修正的维度保持未验收。修改后复查受影响的完整流程并再次请求确认，只有用户明确确认后 P36 才全部完成。
+
+### 当前能力与已知限制
+
+支持当前 Map 的 node 及共享模板新增、修改、安全删除；ID 只读意味着不提供重命名。引用检查覆盖整个配置 Map 目录，损坏／不可读 Map 会阻止模板删除；不能把检查失败当零引用，不删引用者或创建副本。无引用对象仍需最终确认，提交时复核版本与引用。
+
+不提供 node 跨 Map 搬移、独立 node 库、文件名输入、Map JSON 编辑、内容搜索、自动文件监听或模板快照；仅提供 Map 文件名本地筛选。所有文本与 JSON 都作数据处理，scheduler 不调度或执行工作。浏览与打开草稿不安装示例或自动修复定义。
+
+同一应用实例协调写入；node 以整个 Map 为冲突单位，模板保留原文件与 ID 关联。提交前检查已发生的外部变化，但**不承诺任意外部编辑器与页面提交之间的跨文件原子性**；避免在页面提交期间直接编辑相关定义。文件写到一半可报错，写完后显式重载。窄屏纵向布局需要滚动，不据此声称任意大图均可读或性能达标。本机回环自动检查也不代表真实手机、LAN／mDNS 或主观舒适度已验收。
