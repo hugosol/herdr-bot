@@ -34,6 +34,9 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
     await expect(node).toContainText(id)
   }
   await expect(graph.getByRole('img')).toHaveCount(2)
+  // Hit testing uses viewport coordinates; visibility alone permits the graph
+  // to remain below the fold after the viewport controls and help text.
+  await graph.scrollIntoViewIfNeeded()
   // Observe actual rendered path endpoints against real node rectangles and
   // marker geometry, not merely a computed adjacency list or node count.
   for (const [source, title] of [['A', '准备甲'], ['B', '准备乙']]) {
