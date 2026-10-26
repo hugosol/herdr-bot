@@ -8,7 +8,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** in-progress
+**Status:** closed
 
 ## 依据与验收方式
 
@@ -34,3 +34,4 @@
 - 实际运行：`npm --prefix frontend run test:browser -- scheduler --workers=4` 为 86 passed（加入最后一个恢复用例前）；随后 `npm --prefix frontend run test:browser:build -- --workers=4` 构建当前前后端与安全壳、网络护栏通过，完整浏览器 **246 passed**。桌面 `template-preview.png` 与窄屏 `narrow-template-details.png` 位于对应 `frontend/test-results/`，已实际查看。README 与样例使用说明已更新；截图与自动可操作性不代替后续 P36 主观验收。
 - 其他实际验证：`npm --prefix frontend test` **27 files／205 tests passed**；`npm --prefix frontend run test:browser:partition` 通过，完整 246 = fast 222 + time-contract 24，且两分区不相交。后端生产代码未修改，未另跑完整后端回归（浏览器入口已构建并运行真实后端）。
 - 本票实现与自动验收已完成，交独立集成代理；依项目状态规则，尚未合入集成分支前保留 `in-progress`，不把 agent 完成等同于已合并。未操作集成分支工作区，未运行 retro。
+- 集成验收：首次合入提交 `63170f0c19ae00097a06dab66b2f10be1faef38c` 已同步到当前开发分支，祖先检查通过，接管时工作区干净且无冲突。当前同步状态运行 `node scripts/test-backend.mjs` 全局后端回归通过（build、所有派发二进制及 doctest 均通过，0 binaries not dispatched；日志目录 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-h6ylMn`）；`npm --prefix frontend test` 网络护栏通过，27 files／205 tests passed。本轮无需代码修复，票据关闭；仅在当前开发分支提交本验收记录，不操作集成工作区、不直接合入集成分支、不运行 retro。复杂脚本、实机 smoke 与跨票据整体验收仍由最终独立门禁负责，本轮未重跑浏览器验收。
