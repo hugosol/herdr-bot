@@ -47,6 +47,24 @@ export type MapNode = {
   blocked_by: string[]
 }
 
+export async function loadNodeDraft(file: string, id: string | null): Promise<{ id: string; content: string; revision: TemplateRevision; create: boolean }> {
+  const base = `/api/scheduler/maps/${encodeURIComponent(file)}/nodes`
+  const response = await fetch(`${base}/${id === null ? 'new' : 'edit'}`, id === null ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `node 读取失败：HTTP ${response.status}`)
+  return { ...value, content: JSON.stringify(value.content, null, 2) }
+}
+
+export async function saveNode(file: string, draft: { id: string; content: string; revision: TemplateRevision | null; create: boolean }): Promise<void> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/save`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `node 保存失败：HTTP ${response.status}`)
+}
+
 export type WorkflowMap = {
   schema_version: 1
   title: string
