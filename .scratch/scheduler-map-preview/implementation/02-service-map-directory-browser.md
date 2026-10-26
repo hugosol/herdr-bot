@@ -8,7 +8,7 @@
 
 **Blocked by:** 01 — scheduler 导航与 server 入口迁移。
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 ## Acceptance criteria
 

@@ -51,6 +51,7 @@ pub mod mdns;
 pub mod observation;
 pub mod operations;
 pub mod sessions;
+pub mod scheduler;
 pub mod shutdown;
 mod status_cache;
 pub mod sync;
@@ -82,7 +83,7 @@ use tower_http::services::ServeDir;
 pub use config::{
     BotsConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
-    StatusCacheTtlSeconds, ZonesConfig,
+    StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -136,6 +137,8 @@ pub struct AppState {
     /// 与固定操作、关机路径完全解耦：Bot 管理只读取与写入 Bot 存储文件，不执行任何脚本、
     /// 不创建也不关闭 Chat。
     pub bots: Arc<bots::Bots>,
+    /// Service-owned Map root, never derived from zone or request data.
+    pub map_directory: PathBuf,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
@@ -237,6 +240,7 @@ pub fn app_with_state(
             config.bots.storage_file.clone(),
             config.bots.metadata_file.clone(),
         )),
+        map_directory: config.scheduler.map_directory.clone(),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
         resume_executions: Arc::new(resume::ResumeExecutions::default()),
@@ -276,6 +280,7 @@ pub fn app_with_state(
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone))
+        .route("/api/scheduler/maps", get(scheduler::list_maps))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Bot：同一条路径读取列表与新增；单个 Bot 按标识读取、编辑与删除。

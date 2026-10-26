@@ -50,6 +50,25 @@ pub struct Config {
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
+    /// Service-level definition directories, relative to the process cwd.
+    #[serde(default)]
+    pub scheduler: SchedulerConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SchedulerConfig {
+    pub map_directory: PathBuf,
+    pub node_template_directory: PathBuf,
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            map_directory: PathBuf::from(".data/workflow-maps"),
+            node_template_directory: PathBuf::from(".data/node-templates"),
+        }
+    }
 }
 
 /// Herdr 控制设置（`[herdr]` 段）。

@@ -63,6 +63,7 @@ fn config(start_script: &Path, working_directory: &Path) -> herdr_bot::Config {
         bots: herdr_bot::BotsConfig::default(),
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
+        scheduler: herdr_bot::SchedulerConfig::default(),
     }
 }
 
