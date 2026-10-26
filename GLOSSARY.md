@@ -101,7 +101,7 @@ _Avoid_: 主界面, 管理后台, 仪表盘
 ## scheduler 与工作定义
 
 **scheduler 入口**:
-主界面浏览服务级 Map、依赖图并管理共享 node_template 能力说明的 tab；管理的是静态定义，不调度或执行工作。
+主界面浏览服务级 Map、依赖图并管理共享 Bot 能力说明的 tab；管理的是静态定义，不调度或执行工作。
 _Avoid_: 执行器, 运行监控, zone 计划
 
 **Map**:
@@ -109,20 +109,20 @@ _Avoid_: 执行器, 运行监控, zone 计划
 _Avoid_: 运行实例, Chat, 执行路由
 
 **node**:
-某张 Map 内的一项具体工作定义，引用共享 node_template 并给出本次参数与前置依赖；同一模板可用于多项不同工作。
+某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次参数与前置依赖；同一 Bot 可用于多项不同工作。
 _Avoid_: 执行实例, Task, 运行中的任务
 
-**node_template（共享节点模板）**:
-跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Task，也不是已实现执行能力的证明。
-_Avoid_: Task, 通用发起 Chat 动作, Map 内模板副本
+**Bot**:
+跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Task、运行中的 agent 或实际对话，也不是已实现执行能力的证明。
+_Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
 
 **前置依赖（blocked_by）**:
 某项工作所依赖的同一 Map 内其他工作；箭头从前置 node 指向依赖它的 node，不表示执行路由、材料传递或已实现的等待状态。
 _Avoid_: 数据流, 自动启动连线, 执行状态
 
 **执行实例**:
-静态工作定义的一次实际执行，与 Map、node 及共享 node_template 的定义不同；当前 scheduler 不创建或跟踪执行实例。
-_Avoid_: node, Map, 模板
+静态工作定义的一次实际执行，与 Map、node 及共享 Bot 的定义不同；当前 scheduler 不创建或跟踪执行实例。
+_Avoid_: node, Map, Bot
 
 ## zone 与文件
 

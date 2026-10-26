@@ -33,7 +33,7 @@ test('P7 Map default directory is created empty and preserves user files', async
   expect(fs.readFileSync(path.join(maps, 'personal.json'), 'utf8')).toBe(bytes)
 })
 
-// P5/P6/P9: literal whitelist, with distinct cwd/config, templates, zone and docs
+// P5/P6/P9: literal whitelist, with distinct cwd/config, bots, zone and docs
 // decoys. Resolving relative to the config, recursing, or using zone-local files
 // would each produce a different list from ['alpha.json', 'beta.JSON'].
 test('P5 P6 P9 two browsers share only configured top-level Maps regardless of zone', async ({ browser }) => {
@@ -46,11 +46,11 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
     ['notes.txt', 'not a Map'], ['nested/hidden.json', '{}'],
   ])
   for (const [name, bytes] of originals) fs.writeFileSync(path.join(maps, name), bytes)
-  for (const directory of [path.join(root, 'selected-maps'), path.join(server.cwd, 'shared-templates'), path.join(server.cwd, 'docs', 'example')]) {
+  for (const directory of [path.join(root, 'selected-maps'), path.join(server.cwd, 'shared-bots'), path.join(server.cwd, 'docs', 'example')]) {
     fs.mkdirSync(directory, { recursive: true })
     fs.writeFileSync(path.join(directory, 'excluded.json'), '{}')
   }
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'selected-maps'\nnode_template_directory = 'shared-templates'\n")
+  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'selected-maps'\nbot_directory = 'shared-bots'\n")
   await server.restart()
   const first = await browser.newContext()
   const second = await browser.newContext()

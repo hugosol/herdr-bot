@@ -140,7 +140,7 @@ pub struct AppState {
     /// Service-owned Map root, never derived from zone or request data.
     pub map_directory: PathBuf,
     /// Service-owned shared capability definitions, independent of Map storage.
-    pub node_template_directory: PathBuf,
+    pub bot_directory: PathBuf,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
@@ -243,7 +243,7 @@ pub fn app_with_state(
             config.tasks.metadata_file.clone(),
         )),
         map_directory: config.scheduler.map_directory.clone(),
-        node_template_directory: config.scheduler.node_template_directory.clone(),
+        bot_directory: config.scheduler.bot_directory.clone(),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
         resume_executions: Arc::new(resume::ResumeExecutions::default()),
@@ -290,12 +290,12 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/nodes/save", post(scheduler::save_node))
         .route("/api/scheduler/maps/{name}/nodes/check-delete", post(scheduler::check_delete_node))
         .route("/api/scheduler/maps/{name}/nodes/delete", post(scheduler::delete_node))
-        .route("/api/scheduler/templates", get(scheduler::list_templates))
-        .route("/api/scheduler/templates/new", get(scheduler::new_template))
-        .route("/api/scheduler/templates/edit", post(scheduler::edit_template))
-        .route("/api/scheduler/templates/save", post(scheduler::save_template))
-        .route("/api/scheduler/templates/check-delete", post(scheduler::check_template_delete))
-        .route("/api/scheduler/templates/delete", post(scheduler::delete_template))
+        .route("/api/scheduler/bots", get(scheduler::list_bots))
+        .route("/api/scheduler/bots/new", get(scheduler::new_bot))
+        .route("/api/scheduler/bots/edit", post(scheduler::edit_bot))
+        .route("/api/scheduler/bots/save", post(scheduler::save_bot))
+        .route("/api/scheduler/bots/check-delete", post(scheduler::check_bot_delete))
+        .route("/api/scheduler/bots/delete", post(scheduler::delete_bot))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Task：同一条路径读取列表与新增；单个 Task 按标识读取、编辑与删除。

@@ -6,24 +6,24 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const template = { schema_version: 1, id: 'shared', title: '共享审计', use_when: '', description: '仅核对账目', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
-const node = { title: '审计任务', node_template_id: 'shared', parameters: { id: { nested: true } }, blocked_by: [] }
+const bot = { schema_version: 1, id: 'shared', name: '共享审计', use_when: '', description: '仅核对账目', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
+const node = { title: '审计任务', bot_id: 'shared', parameters: { id: { nested: true } }, blocked_by: [] }
 const map = (nodes: Record<string, unknown>) => ({ schema_version: 1, title: '审计计划', description: '不执行工作', nodes })
 async function prepare() {
   server = await startServer({ separateCwd: true, herdr: {} })
-  const templates = path.join(server.cwd, '.data/node-templates'), maps = path.join(server.cwd, '.data/workflow-maps')
-  fs.mkdirSync(templates, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  const file = path.join(templates, 'business-name.JSON')
-  fs.writeFileSync(file, JSON.stringify(template) + '\n')
-  return { templates, maps, file }
+  const bots = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
+  fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
+  const file = path.join(bots, 'business-name.JSON')
+  fs.writeFileSync(file, JSON.stringify(bot) + '\n')
+  return { bots, maps, file }
 }
 async function open(page: Page) {
   await page.goto(server!.baseURL)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: '模板管理', exact: true }).click()
+  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
   await page.getByRole('button', { name: '共享审计 · shared', exact: true }).click()
 }
-const api = (page: Page, operation: string, data: unknown) => page.request.post(`${server!.baseURL}/api/scheduler/templates/${operation}`, { data })
+const api = (page: Page, operation: string, data: unknown) => page.request.post(`${server!.baseURL}/api/scheduler/bots/${operation}`, { data })
 
 // Approved seams S1 and S2. P21's independent expectation is both literal
 // Map/node locations and byte-preserved definitions. A current-Map-only check
@@ -37,7 +37,7 @@ test('P21 cross-Map references block both page and direct final deletion and lis
   await open(page)
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
-  await page.getByRole('button', { name: '删除模板', exact: true }).click()
+  await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
   const alert = page.getByRole('alert')
   for (const location of ['north.json', 'accountA', 'accountB', 'south.json', 'auditZ']) await expect(alert).toContainText(location)
   expect(confirmations).toBe(0)
@@ -45,12 +45,12 @@ test('P21 cross-Map references block both page and direct final deletion and lis
     const response = await api(page, operation, operation === 'delete' ? { id: 'shared', revision: { file: 'business-name.JSON', original: before } } : { id: 'shared' })
     expect(response.ok()).toBe(false)
     const value = await response.json()
-    expect(value.code).toBe('template-referenced')
+    expect(value.code).toBe('bot-referenced')
     for (const location of ['north.json', 'accountA', 'accountB', 'south.json', 'auditZ']) expect(value.message).toContain(location)
   }
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
   expect(fs.readFileSync(first, 'utf8')).toBe(north); expect(fs.readFileSync(second, 'utf8')).toBe(south)
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([template])
+  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot])
   expect(server!.herdrCalls()).toEqual([])
 })
 
@@ -66,7 +66,7 @@ test('P22 damaged and unreadable Maps and unreadable directory block deletion wi
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
   async function refused(location: string, reason: string) {
-    await page.getByRole('button', { name: '删除模板', exact: true }).click()
+    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
     const alert = page.getByRole('alert').filter({ hasText: '无法完整检查' })
     // Rust preserves configured '/' segments while Node path.join uses '\\'.
     // Compare the complete independently owned path without fixing spelling.
@@ -77,13 +77,13 @@ test('P22 damaged and unreadable Maps and unreadable directory block deletion wi
       const response = await api(page, operation, operation === 'delete' ? { id: 'shared', revision: { file: 'business-name.JSON', original: before } } : { id: 'shared' })
       expect(response.ok()).toBe(false)
       const value = await response.json()
-      expect(value.code).toBe('template-reference-check-failed')
+      expect(value.code).toBe('bot-reference-check-failed')
       expect(value.message.replaceAll('\\', '/')).toContain(location.replaceAll('\\', '/'))
       expect(value.message).toContain(reason)
     }
     expect(fs.readFileSync(file, 'utf8')).toBe(before)
-    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('shared')
-    expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([template])
+    await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('shared')
+    expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot])
   }
   fs.writeFileSync(broken, '{ broken JSON')
   await refused('broken.json', '结构无效')
@@ -110,19 +110,19 @@ test('P22 damaged and unreadable Maps and unreadable directory block deletion wi
 // S1/S2 P23/P29: cancellation must issue no final request; actual confirmation
 // removes the real file and returns a fresh list. Two literal identities expose
 // both ordinary deletion and last-item empty state without refreshing the page.
-test('P23 P29 cancel preserves a template, confirm returns the updated list and deleting the last template shows empty state', async ({ page }) => {
-  const { templates, file } = await prepare()
+test('P23 P29 cancel preserves a bot, confirm returns the updated list and deleting the last bot shows empty state', async ({ page }) => {
+  const { bots, file } = await prepare()
   const before = fs.readFileSync(file, 'utf8')
-  const other = { ...template, id: 'remaining', title: '保留能力' }
-  const otherFile = path.join(templates, 'remaining.json')
+  const other = { ...bot, id: 'remaining', name: '保留能力' }
+  const otherFile = path.join(bots, 'remaining.json')
   const otherBytes = JSON.stringify(other)
   fs.writeFileSync(otherFile, otherBytes)
   await open(page)
   const requests: string[] = []
   page.on('request', request => {
-    if (/\/templates\/(check-delete|delete)$/.test(request.url())) requests.push(request.url().split('/').at(-1)!)
+    if (/\/bots\/(check-delete|delete)$/.test(request.url())) requests.push(request.url().split('/').at(-1)!)
   })
-  const button = page.getByRole('button', { name: '删除模板', exact: true })
+  const button = page.getByRole('button', { name: '删除 Bot', exact: true })
   page.once('dialog', async dialog => {
     expect(dialog.type()).toBe('confirm')
     expect(dialog.message()).toContain('shared')
@@ -133,68 +133,68 @@ test('P23 P29 cancel preserves a template, confirm returns the updated list and 
   await expect(button).toBeEnabled()
   expect(requests).toEqual(['check-delete'])
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([template, other])
+  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot, other])
   // A direct caller must supply a current target revision, not just an ID.
   const bypass = await api(page, 'delete', { id: 'shared' })
   expect(bypass.ok()).toBe(false)
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
   page.once('dialog', dialog => dialog.accept())
   await button.click()
-  const list = page.getByRole('region', { name: '共享模板列表', exact: true })
+  const list = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
   await expect(list.getByRole('button', { name: '保留能力 · remaining', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '模板预览', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveCount(0)
   await expect(list.getByRole('button', { name: '共享审计 · shared', exact: true })).toHaveCount(0)
   expect(requests).toEqual(['check-delete', 'check-delete', 'delete'])
   expect(fs.existsSync(file)).toBe(false)
   expect(fs.readFileSync(otherFile, 'utf8')).toBe(otherBytes)
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([other])
+  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([other])
   expect((await api(page, 'edit', { id: 'shared' })).ok()).toBe(false)
   await list.getByRole('button', { name: '保留能力 · remaining', exact: true }).click()
   page.once('dialog', dialog => dialog.accept())
   await button.click()
-  await expect(page.getByTestId('scheduler-template-empty')).toBeVisible()
-  await expect(page.getByRole('region', { name: '模板预览', exact: true })).toHaveCount(0)
-  expect(fs.readdirSync(templates)).toEqual([])
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([])
+  await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveCount(0)
+  expect(fs.readdirSync(bots)).toEqual([])
+  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([])
   expect(server!.herdrCalls()).toEqual([])
 })
 
 // S1/S2: deny both target Delete and parent DeleteChild while retaining reads.
 // Reporting success or navigating to an empty list would hide the real failure.
-test('a real filesystem deletion failure keeps the template preview and reports the error without repair', async ({ page }) => {
-  const { file, templates } = await prepare()
+test('a real filesystem deletion failure keeps the bot preview and reports the error without repair', async ({ page }) => {
+  const { file, bots } = await prepare()
   const before = fs.readFileSync(file, 'utf8')
   const user = execFileSync('whoami.exe', [], { encoding: 'utf8' }).trim()
   await open(page)
   try {
     execFileSync('icacls.exe', [file, '/deny', `${user}:(DE)`])
-    execFileSync('icacls.exe', [templates, '/deny', `${user}:(DC)`])
+    execFileSync('icacls.exe', [bots, '/deny', `${user}:(DC)`])
     page.once('dialog', dialog => dialog.accept())
-    await page.getByRole('button', { name: '删除模板', exact: true }).click()
+    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('删除失败')
-    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('shared')
+    await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('shared')
     const target = await (await api(page, 'check-delete', { id: 'shared' })).json()
     const failed = await api(page, 'delete', target)
     expect(failed.ok()).toBe(false)
-    expect(await failed.json()).toMatchObject({ code: 'template-delete-failed', message: expect.stringContaining('business-name.JSON') })
+    expect(await failed.json()).toMatchObject({ code: 'bot-delete-failed', message: expect.stringContaining('business-name.JSON') })
     expect(fs.readFileSync(file, 'utf8')).toBe(before)
-    expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()).templates).toEqual([template])
+    expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot])
     expect(server!.herdrCalls()).toEqual([])
   } finally {
     execFileSync('icacls.exe', [file, '/remove:d', user])
-    execFileSync('icacls.exe', [templates, '/remove:d', user])
+    execFileSync('icacls.exe', [bots, '/remove:d', user])
   }
 })
 
 // S2 and S1: the approved ordering permits delete followed by saving a missing
-// template reference. Safety must not silently strengthen save validation.
-test('deleting an unused template still permits a later node with that missing template reference', async ({ page }) => {
+// bot reference. Safety must not silently strengthen save validation.
+test('deleting an unused bot still permits a later node with that missing bot reference', async ({ page }) => {
   const { file, maps } = await prepare()
   fs.writeFileSync(path.join(maps, 'later.json'), JSON.stringify(map({})))
   const target = await (await api(page, 'check-delete', { id: 'shared' })).json()
   const deleted = await api(page, 'delete', target)
   expect(deleted.status()).toBe(200)
-  expect(await deleted.json()).toEqual({ templates: [] })
+  expect(await deleted.json()).toEqual({ bots: [] })
   expect(fs.existsSync(file)).toBe(false)
   const base = `${server!.baseURL}/api/scheduler/maps/later.json/nodes`
   const draft = await (await page.request.get(`${base}/new`)).json()
@@ -206,7 +206,7 @@ test('deleting an unused template still permits a later node with that missing t
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'later.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '审计任务 allowedMissing', exact: true }).click()
-  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toContainText('缺失共享模板：shared')
+  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toContainText('缺失共享 Bot：shared')
   expect(fs.existsSync(file)).toBe(false)
   expect(server!.herdrCalls()).toEqual([])
 })
@@ -216,16 +216,16 @@ test('deleting an unused template still permits a later node with that missing t
 // remove a file here. The final production request must instead reject it.
 for (const change of ['target edit', 'target removal', 'new reference', 'ambiguous ID'] as const) {
   test(`P24 confirmation cannot authorize deletion after ${change}`, async ({ page }) => {
-    const { templates, maps, file } = await prepare()
+    const { bots, maps, file } = await prepare()
     await open(page)
     const before = fs.readFileSync(file, 'utf8')
     const preflight = await api(page, 'check-delete', { id: 'shared' })
     expect(preflight.status()).toBe(200)
     const target = await preflight.json()
     expect(target).toEqual({ id: 'shared', revision: { file: 'business-name.JSON', original: before } })
-    const duplicate = path.join(templates, 'duplicate.json'), late = path.join(maps, 'late.json')
-    const changed = JSON.stringify({ ...template, description: '外部编辑的新版本' })
-    const duplicateBytes = JSON.stringify({ ...template, title: '重复身份，不得任选' })
+    const duplicate = path.join(bots, 'duplicate.json'), late = path.join(maps, 'late.json')
+    const changed = JSON.stringify({ ...bot, description: '外部编辑的新版本' })
+    const duplicateBytes = JSON.stringify({ ...bot, name: '重复身份，不得任选' })
     const lateBytes = JSON.stringify(map({ lateNode: node }))
     const diagnostic = change === 'ambiguous ID' ? '冲突' : change === 'new reference' ? 'late.json / node lateNode' : '变化或移除'
     page.once('dialog', async dialog => {
@@ -236,20 +236,20 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
       if (change === 'ambiguous ID') fs.writeFileSync(duplicate, duplicateBytes)
       await dialog.accept()
     })
-    await page.getByRole('button', { name: '删除模板', exact: true }).click()
+    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
     await expect(page.getByRole('alert').filter({ hasText: diagnostic })).toBeVisible()
-    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toBeVisible()
     const direct = await api(page, 'delete', target)
     expect(direct.ok()).toBe(false)
     expect((await direct.json()).message).toContain(diagnostic)
     if (change === 'target removal') expect(fs.existsSync(file)).toBe(false)
     else expect(fs.readFileSync(file, 'utf8')).toBe(change === 'target edit' ? changed : before)
-    const catalog = await (await page.request.get(`${server!.baseURL}/api/scheduler/templates`)).json()
+    const catalog = await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()
     if (change === 'ambiguous ID') {
       expect(fs.readFileSync(duplicate, 'utf8')).toBe(duplicateBytes)
-      expect(catalog.templates).toEqual([])
-      expect(catalog.problems).toContainEqual(expect.objectContaining({ code: 'template-id-conflict', template_id: 'shared', files: ['business-name.JSON', 'duplicate.json'] }))
-    } else expect(catalog.templates).toEqual(change === 'target removal' ? [] : [{ ...template, ...(change === 'target edit' ? { description: '外部编辑的新版本' } : {}) }])
+      expect(catalog.bots).toEqual([])
+      expect(catalog.problems).toContainEqual(expect.objectContaining({ code: 'bot-id-conflict', bot_id: 'shared', files: ['business-name.JSON', 'duplicate.json'] }))
+    } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { description: '外部编辑的新版本' } : {}) }])
     if (change === 'new reference') {
       expect(fs.readFileSync(late, 'utf8')).toBe(lateBytes)
       expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/late.json`)).json()).toEqual(map({ lateNode: node }))

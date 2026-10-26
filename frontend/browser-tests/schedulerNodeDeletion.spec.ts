@@ -7,9 +7,9 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 const original = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
-  A: { title: '独立审计', node_template_id: 'audit', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] } }, blocked_by: [] as string[] },
-  B: { title: '后继工作', node_template_id: 'summary', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: ['A'] },
-  D: { title: '独立工作', node_template_id: 'missing', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: [] as string[] },
+  A: { title: '独立审计', bot_id: 'audit', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] } }, blocked_by: [] as string[] },
+  B: { title: '后继工作', bot_id: 'summary', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: ['A'] },
+  D: { title: '独立工作', bot_id: 'missing', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: [] as string[] },
 } }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {

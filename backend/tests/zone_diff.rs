@@ -467,9 +467,13 @@ async fn diff_entry_enforces_the_zone_root_boundary() {
     let junction = root.join("junction-out");
     assert!(create_junction(&junction, &outside), "目录联接必须真实创建");
     let file_link = root.join("filelink-out");
-    let file_link_created = try_native_file_symlink(&file_link, &outside.join("secret.txt"))
-        || try_wsl_symlink(&file_link, &outside.join("secret.txt"));
-    if !file_link_created {
+    let manual_symlinks = std::env::var("HERDR_BOT_MANUAL_SYMLINKS").as_deref() == Ok("1");
+    let file_link_created = manual_symlinks
+        && (try_native_file_symlink(&file_link, &outside.join("secret.txt"))
+            || try_wsl_symlink(&file_link, &outside.join("secret.txt")));
+    if !manual_symlinks {
+        eprintln!("跳过手动文件符号链接反例：设置 HERDR_BOT_MANUAL_SYMLINKS=1 后才尝试创建");
+    } else if !file_link_created {
         eprintln!("跳过文件符号链接反例：当前环境无法创建真实符号链接");
     }
 

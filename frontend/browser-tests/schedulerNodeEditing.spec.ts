@@ -6,11 +6,11 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const audit = { title: '独立审计', node_template_id: 'missing-audit-template', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] }, zone: 'unregistered-zone', bot: 'unregistered-bot' }, blocked_by: [] as string[] }
+const audit = { title: '独立审计', bot_id: 'missing-audit-template', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] }, zone: 'unregistered-zone', bot: 'unregistered-bot' }, blocked_by: [] as string[] }
 const original = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
-  B: { title: '保留的工作', node_template_id: 'other', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: [] as string[] },
-  C: { title: '保留的后继', node_template_id: 'summary', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: ['B'] },
-  D: { title: '保留的独立工作', node_template_id: 'independent', parameters: {}, blocked_by: [] as string[] },
+  B: { title: '保留的工作', bot_id: 'other', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: [] as string[] },
+  C: { title: '保留的后继', bot_id: 'summary', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: ['B'] },
+  D: { title: '保留的独立工作', bot_id: 'independent', parameters: {}, blocked_by: [] as string[] },
 } }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
@@ -46,17 +46,17 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
 // installation on opening, ignored edits, or updating only details not the graph.
 test('node creation starts with a disposable Shanghai draft and saves changed content into the current Map immediately', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  const templates = path.join(server!.cwd, '.data/node-templates'), templatesBefore = inventory(templates)
+  const bots = path.join(server!.cwd, '.data/bots'), botsBefore = inventory(bots)
   await page.getByText('依赖图', { exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
-  expect(JSON.parse(await json.inputValue())).toEqual({ title: '上海出行天气', node_template_id: 'destination-weather', parameters: { city: '上海', date: '2026-11-01', preferences: { walking: true, notes: ['带伞', null] } }, blocked_by: [] })
+  expect(JSON.parse(await json.inputValue())).toEqual({ title: '上海出行天气', bot_id: 'destination-weather', parameters: { city: '上海', date: '2026-11-01', preferences: { walking: true, notes: ['带伞', null] } }, blocked_by: [] })
   expect(inventory(root)).toEqual(before)
-  expect(inventory(templates)).toEqual(templatesBefore)
+  expect(inventory(bots)).toEqual(botsBefore)
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
   expect(inventory(root)).toEqual(before)
-  expect(inventory(templates)).toEqual(templatesBefore)
+  expect(inventory(bots)).toEqual(botsBefore)
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
   await id.fill('A/independent:id')
   await json.fill(JSON.stringify({ ...audit, blocked_by: ['B'] }))
@@ -65,12 +65,12 @@ test('node creation starts with a disposable Shanghai draft and saves changed co
   await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A/independent:id', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('complementary', { name: '节点检查器', exact: true })).toContainText('business-id')
-  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toHaveText('缺失共享模板：missing-audit-template')
+  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toHaveText('缺失共享 Bot：missing-audit-template')
   await expect(page.locator('svg')).toContainText('独立审计')
   await expect(page.getByRole('img', { name: 'B → A/independent:id', exact: true })).toHaveCount(1)
   expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'A/independent:id': { ...audit, blocked_by: ['B'] } } })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
-  expect(inventory(templates)).toEqual(templatesBefore)
+  expect(inventory(bots)).toEqual(botsBefore)
   expect(server!.herdrCalls()).toEqual([])
 })
 
@@ -86,7 +86,7 @@ test('editing a real node keeps identity, open parameters and all non-target def
   await expect(id).toHaveValue('A')
   await expect(id).toHaveAttribute('readonly', '')
   expect(JSON.parse(await json.inputValue())).toEqual(audit)
-  const changed = { title: '审计新版本', node_template_id: '', parameters: { id: 'edited-business-id', undeclared: { children: [null, true, { amount: 13 }] }, zone: 'unknown', bot: 'absent' }, blocked_by: ['C'] }
+  const changed = { title: '审计新版本', bot_id: '', parameters: { id: 'edited-business-id', undeclared: { children: [null, true, { amount: 13 }] }, zone: 'unknown', bot: 'absent' }, blocked_by: ['C'] }
   await json.fill(JSON.stringify(changed, null, 3))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
@@ -102,17 +102,17 @@ test('editing a real node keeps identity, open parameters and all non-target def
   expect(server!.herdrCalls()).toEqual([])
 })
 
-// P16: a registered template declares an input the node deliberately omits.
-// A conditional inputs validator could pass the missing-template cases above,
+// P16: a registered bot declares an input the node deliberately omits.
+// A conditional inputs validator could pass the missing-bot cases above,
 // but must fail this literal expectation. No parameter defaults may appear.
-test('registered template input descriptions do not constrain, complete or validate node parameters', async ({ page }) => {
+test('registered bot input descriptions do not constrain, complete or validate node parameters', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  const templates = path.join(server!.cwd, '.data/node-templates')
-  fs.writeFileSync(path.join(templates, 'known.json'), JSON.stringify({ schema_version: 1, id: 'declared-inputs', title: '已登记能力', use_when: '', description: '说明不是校验规则', inputs: { required_city: '城市说明，不是必填规则' }, outputs: { report: '报告说明' }, implementation: { type: 'chat' } }))
-  const templatesBefore = inventory(templates)
+  const bots = path.join(server!.cwd, '.data/bots')
+  fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ schema_version: 1, id: 'declared-inputs', name: '已登记能力', use_when: '', description: '说明不是校验规则', inputs: { required_city: '城市说明，不是必填规则' }, outputs: { report: '报告说明' }, implementation: { type: 'chat' } }))
+  const botsBefore = inventory(bots)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
-  const content = { ...audit, node_template_id: 'declared-inputs' }
+  const content = { ...audit, bot_id: 'declared-inputs' }
   await page.getByLabel('node ID', { exact: true }).fill('open-parameters')
   await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(content))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -123,7 +123,7 @@ test('registered template input descriptions do not constrain, complete or valid
   expect((await save(page, 'open-parameters', { ...content, parameters: {} }, edit.revision, false)).ok()).toBe(true)
   expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'open-parameters': { ...content, parameters: {} } } })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
-  expect(inventory(templates)).toEqual(templatesBefore)
+  expect(inventory(bots)).toEqual(botsBefore)
 })
 
 // P7 P14 P17: independent malformed inputs must fail for both creation and
@@ -147,7 +147,7 @@ test('strict node JSON rejects top-level identity, missing fields, wrong types a
     const missing: Record<string, unknown> = { ...audit }; delete missing[key]
     cases.push({ raw: JSON.stringify(missing), diagnostic: key })
   }
-  for (const [key, value] of [['title', null], ['title', 5], ['node_template_id', []], ['parameters', []], ['parameters', null], ['blocked_by', null], ['blocked_by', {}], ['blocked_by', [7]]] as const) {
+  for (const [key, value] of [['title', null], ['title', 5], ['bot_id', []], ['parameters', []], ['parameters', null], ['blocked_by', null], ['blocked_by', {}], ['blocked_by', [7]]] as const) {
     cases.push({ raw: JSON.stringify({ ...audit, [key]: value }), diagnostic: key })
   }
   for (const item of cases) {
@@ -164,7 +164,7 @@ test('strict node JSON rejects top-level identity, missing fields, wrong types a
       expect(inventory(root)).toEqual(before)
     }
   }
-  const validEmpty = { title: '', node_template_id: '', parameters: {}, blocked_by: [] }
+  const validEmpty = { title: '', bot_id: '', parameters: {}, blocked_by: [] }
   await json.fill(JSON.stringify(validEmpty))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
@@ -240,7 +240,7 @@ test('node saves preserve Map schema rules and reject unknown, self and cyclic d
     { value: { ...original, title: null }, diagnostic: 'title' },
     { value: { ...original, description: [] }, diagnostic: 'description' },
     { value: { ...original, nodes: [] }, diagnostic: 'nodes' },
-    { value: { ...original, nodes: { B: ['title', 'template', {}, []] } }, diagnostic: 'B' },
+    { value: { ...original, nodes: { B: ['title', 'bot', {}, []] } }, diagnostic: 'B' },
     { value: { ...original, nodes: { ...original.nodes, D: { ...original.nodes.D, parameters: [] } } }, diagnostic: 'parameters' },
   ]
   for (const key of Object.keys(original)) {
@@ -374,7 +374,7 @@ test('modified node drafts confirm return, Map and page switches, application re
           if (action === 'keyboard-tab') { await page.getByTestId('tab-scheduler').focus(); await page.keyboard.press('ArrowLeft') }
           else if (action === 'tab') await page.getByTestId('tab-tasks').click()
           else if (action === 'server') await page.getByTestId('server-button').click()
-          else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', manage: '模板管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
+          else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', manage: 'Bot 管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
         }
         page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.dismiss() })
         await exit()
@@ -384,7 +384,7 @@ test('modified node drafts confirm return, Map and page switches, application re
         await exit()
         await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
         if (action === 'file') await expect(page.getByRole('button', { name: 'untouched.json', exact: true })).toHaveAttribute('aria-pressed', 'true')
-        else if (action === 'manage') await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).toBeVisible()
+        else if (action === 'manage') await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
         else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()

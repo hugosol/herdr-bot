@@ -59,14 +59,14 @@ pub struct Config {
 #[serde(default, deny_unknown_fields)]
 pub struct SchedulerConfig {
     pub map_directory: PathBuf,
-    pub node_template_directory: PathBuf,
+    pub bot_directory: PathBuf,
 }
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             map_directory: PathBuf::from(".data/workflow-maps"),
-            node_template_directory: PathBuf::from(".data/node-templates"),
+            bot_directory: PathBuf::from(".data/bots"),
         }
     }
 }

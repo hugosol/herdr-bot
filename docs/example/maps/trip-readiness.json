@@ -5,7 +5,7 @@
   "nodes": {
     "A": {
       "title": "上海出行天气",
-      "node_template_id": "destination-weather",
+      "bot_id": "destination-weather",
       "parameters": {
         "city": "上海",
         "date": "2026-11-01",
@@ -15,7 +15,7 @@
     },
     "B": {
       "title": "北京出行天气",
-      "node_template_id": "destination-weather",
+      "bot_id": "destination-weather",
       "parameters": {
         "city": "北京",
         "date": "2026-11-02",
@@ -25,7 +25,7 @@
     },
     "C": {
       "title": "汇总出行准备",
-      "node_template_id": "trip-summary",
+      "bot_id": "trip-summary",
       "parameters": {
         "scope": "上海与北京的出行准备",
         "checklist": ["天气", "随身物品"]
@@ -34,7 +34,7 @@
     },
     "D": {
       "title": "独立额度估算",
-      "node_template_id": "quota-estimate",
+      "bot_id": "quota-estimate",
       "parameters": {
         "account": "人工示例账户",
         "remaining_percent": 25,

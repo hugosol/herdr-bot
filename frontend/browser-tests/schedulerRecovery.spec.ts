@@ -14,7 +14,7 @@ test('P22 missing blocked_by identifies the Map file, node and required field', 
   server = await startServer()
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
-  const bytes = '{"schema_version":1,"title":"Missing dependency field","description":"","nodes":{"work":{"title":"Work","node_template_id":"shared","parameters":{}}}}'
+  const bytes = '{"schema_version":1,"title":"Missing dependency field","description":"","nodes":{"work":{"title":"Work","bot_id":"shared","parameters":{}}}}'
   fs.writeFileSync(path.join(maps, 'missing-blocked-by.json'), bytes)
   const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/missing-blocked-by.json`)
   expect(response.status()).toBe(500)
@@ -51,7 +51,7 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const valid = { schema_version: 1, title: '', description: '', nodes: {
-    work: { title: '', node_template_id: '', parameters: {}, blocked_by: [] },
+    work: { title: '', bot_id: '', parameters: {}, blocked_by: [] },
   } }
   const cases: { name: string; value: unknown; expected: string[] }[] = []
   for (const field of ['schema_version', 'title', 'description', 'nodes'] as const) {
@@ -59,7 +59,7 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
     delete value[field]
     cases.push({ name: `missing-map-${field}`, value, expected: [`missing field \`${field}\``] })
   }
-  for (const field of ['title', 'node_template_id', 'parameters', 'blocked_by'] as const) {
+  for (const field of ['title', 'bot_id', 'parameters', 'blocked_by'] as const) {
     const work: Record<string, unknown> = { ...valid.nodes.work }
     delete work[field]
     cases.push({ name: `missing-node-${field}`, value: { ...valid, nodes: { work } }, expected: ['nodes.work', `missing field \`${field}\``] })
@@ -68,11 +68,11 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
     ['schema_version', '1', 'invalid type'], ['title', [], 'string'], ['description', false, 'string'], ['nodes', [], 'map'],
   ] as const) cases.push({ name: `type-map-${field}`, value: { ...valid, [field]: wrong }, expected: [field, diagnostic] })
   for (const [field, wrong, diagnostic] of [
-    ['title', 7, 'string'], ['node_template_id', {}, 'string'], ['parameters', [], 'map'], ['blocked_by', 'work', 'sequence'],
+    ['title', 7, 'string'], ['bot_id', {}, 'string'], ['parameters', [], 'map'], ['blocked_by', 'work', 'sequence'],
   ] as const) cases.push({ name: `type-node-${field}`, value: { ...valid, nodes: { work: { ...valid.nodes.work, [field]: wrong } } }, expected: [`nodes.work.${field}`, diagnostic] })
   cases.push(
-    { name: 'misspelled-blockedBy', value: { ...valid, nodes: { work: { title: '', node_template_id: '', parameters: {}, blockedBy: [] } } }, expected: ['nodes.work', 'unknown field `blockedBy`'] },
-    { name: 'unknown-map-field', value: { ...valid, node_templates: {} }, expected: ['unknown field `node_templates`'] },
+    { name: 'misspelled-blockedBy', value: { ...valid, nodes: { work: { title: '', bot_id: '', parameters: {}, blockedBy: [] } } }, expected: ['nodes.work', 'unknown field `blockedBy`'] },
+    { name: 'unknown-map-field', value: { ...valid, node_bots: {} }, expected: ['unknown field `node_bots`'] },
     { name: 'unknown-node-field', value: { ...valid, nodes: { work: { ...valid.nodes.work, typo: true } } }, expected: ['nodes.work', 'unknown field `typo`'] },
     { name: 'unknown-version', value: { ...valid, schema_version: 9 }, expected: ['schema_version', '1'] },
     { name: 'fractional-version', value: { ...valid, schema_version: 1.5 }, expected: ['schema_version', 'invalid type'] },
@@ -108,12 +108,12 @@ test('P23 unknown prerequisite, self-dependency and cycle reject the entire grap
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const cases = [
-    { name: 'unknown.json', nodes: { A: { title: 'Unknown', node_template_id: 'shared', parameters: {}, blocked_by: ['ghost'] } }, expected: ['node A', 'blocked_by', '未知', 'ghost'], absent: '自身' },
-    { name: 'self.json', nodes: { A: { title: 'Self', node_template_id: 'shared', parameters: {}, blocked_by: ['A'] } }, expected: ['node A', 'blocked_by', '自身'], absent: '未知' },
+    { name: 'unknown.json', nodes: { A: { title: 'Unknown', bot_id: 'shared', parameters: {}, blocked_by: ['ghost'] } }, expected: ['node A', 'blocked_by', '未知', 'ghost'], absent: '自身' },
+    { name: 'self.json', nodes: { A: { title: 'Self', bot_id: 'shared', parameters: {}, blocked_by: ['A'] } }, expected: ['node A', 'blocked_by', '自身'], absent: '未知' },
     { name: 'cycle.json', nodes: {
-      A: { title: 'Cycle A', node_template_id: 'shared', parameters: {}, blocked_by: ['B'] },
-      B: { title: 'Cycle B', node_template_id: 'shared', parameters: {}, blocked_by: ['A'] },
-      independent: { title: 'Must not salvage this node', node_template_id: 'shared', parameters: {}, blocked_by: [] },
+      A: { title: 'Cycle A', bot_id: 'shared', parameters: {}, blocked_by: ['B'] },
+      B: { title: 'Cycle B', bot_id: 'shared', parameters: {}, blocked_by: ['A'] },
+      independent: { title: 'Must not salvage this node', bot_id: 'shared', parameters: {}, blocked_by: [] },
     }, expected: ['依赖环', 'A', 'B'], absent: '未知' },
   ]
   for (const item of cases) fs.writeFileSync(path.join(maps, item.name), JSON.stringify({ schema_version: 1, title: 'Invalid relationships', description: '', nodes: item.nodes }))
@@ -135,15 +135,15 @@ test('P23 unknown prerequisite, self-dependency and cycle reject the entire grap
 
 // S1/S2/P22: explicit empty values have the specified type and are not omission.
 // Free parameter keys (even structural-looking keys) and every JSON value kind
-// must survive without template-input or real-resource validation.
+// must survive without bot-input or real-resource validation.
 test('P22 explicit empty objects arrays and text are legal and parameters stay open', async ({ page }) => {
   server = await startServer({ herdr: {} })
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const originals = new Map([
     ['empty-map.json', '{"schema_version":1,"title":"","description":"","nodes":{}}'],
-    ['empty-node.json', '{"schema_version":1,"title":"","description":"","nodes":{"E":{"title":"","node_template_id":"","parameters":{},"blocked_by":[]}}}'],
-    ['open-parameters.json', '{"schema_version":1,"title":"Open parameters","description":"","nodes":{"P":{"title":"Parameters","node_template_id":"not-a-real-template","parameters":{"blockedBy":[],"schema_version":99,"emptyObject":{},"text":"","nothing":null,"flag":false,"count":7,"nested":{"arbitrary-key":["raw",true,null]},"zone":"not-a-real-zone","Bot":"not-a-real-Bot"},"blocked_by":[]}}}'],
+    ['empty-node.json', '{"schema_version":1,"title":"","description":"","nodes":{"E":{"title":"","bot_id":"","parameters":{},"blocked_by":[]}}}'],
+    ['open-parameters.json', '{"schema_version":1,"title":"Open parameters","description":"","nodes":{"P":{"title":"Parameters","bot_id":"not-a-real-template","parameters":{"blockedBy":[],"schema_version":99,"emptyObject":{},"text":"","nothing":null,"flag":false,"count":7,"nested":{"arbitrary-key":["raw",true,null]},"zone":"not-a-real-zone","Bot":"not-a-real-Bot"},"blocked_by":[]}}}'],
   ])
   for (const [name, bytes] of originals) fs.writeFileSync(path.join(maps, name), bytes)
   const callsBefore = server.herdrCalls(), tabsBefore = server.herdrTabs()
@@ -175,7 +175,7 @@ test('P22 explicit empty objects arrays and text are legal and parameters stay o
 })
 
 // S1/S2/P24/P29: A -> bad B -> C with real disk failures, not route mocks or a
-// broken whole directory. An opened template must clear with the old node.
+// broken whole directory. An opened bot must clear with the old node.
 // Bad JSON, trailing JSON, bad structure, bad dependency
 // and a file removed after listing are separate scenarios. Each retains a valid
 // neighbor and independently named node/parameter text to expose stale results.
@@ -183,24 +183,24 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
   test(`P24 P29 ${failure}: clears the previous graph and details and opens a healthy neighbor`, async ({ page }, testInfo) => {
     server = await startServer({ herdr: {} })
     const maps = path.join(server.cwd, '.data', 'workflow-maps')
-    const templates = path.join(server.cwd, '.data', 'node-templates')
+    const bots = path.join(server.cwd, '.data', 'bots')
     fs.mkdirSync(maps, { recursive: true })
-    fs.mkdirSync(templates, { recursive: true })
-    const templateBytes = '{"schema_version":1,"id":"shared","title":"Shared recovery capability","use_when":"Inspect plans","description":"Read-only recovery evidence","inputs":{},"outputs":{},"implementation":{"type":"chat"}}'
-    fs.writeFileSync(path.join(templates, 'capability.json'), templateBytes)
+    fs.mkdirSync(bots, { recursive: true })
+    const botBytes = '{"schema_version":1,"id":"shared","name":"Shared recovery capability","use_when":"Inspect plans","description":"Read-only recovery evidence","inputs":{},"outputs":{},"implementation":{"type":"chat"}}'
+    fs.writeFileSync(path.join(bots, 'capability.json'), botBytes)
     const operationScript = path.join(server.cwd, 'record-operation.bat')
     const operationMarker = path.join(server.cwd, 'operation-executed.txt')
     fs.writeFileSync(operationScript, '@echo off\r\necho unexpected execution>>"%~dp0operation-executed.txt"\r\nexit /b 0\r\n')
     const config = fs.readFileSync(server.configPath, 'utf8')
     fs.writeFileSync(server.configPath, config.replace(/(\[operations\.(?:start|stop)\]\r?\nscript = )'[^']+'/g, `$1'${operationScript}'`))
     await server.restart()
-    const a = '{"schema_version":1,"title":"Healthy A","description":"First result","nodes":{"A":{"title":"Only A","node_template_id":"shared","parameters":{"target":"alpha-only"},"blocked_by":[]}}}'
-    const c = '{"schema_version":1,"title":"Healthy C","description":"Recovery result","nodes":{"C":{"title":"Only C","node_template_id":"shared","parameters":{"target":"charlie-only"},"blocked_by":[]}}}'
+    const a = '{"schema_version":1,"title":"Healthy A","description":"First result","nodes":{"A":{"title":"Only A","bot_id":"shared","parameters":{"target":"alpha-only"},"blocked_by":[]}}}'
+    const c = '{"schema_version":1,"title":"Healthy C","description":"Recovery result","nodes":{"C":{"title":"Only C","bot_id":"shared","parameters":{"target":"charlie-only"},"blocked_by":[]}}}'
     const badInputs = {
       json: '{"schema_version":1,"title":',
       'trailing-json': `${a} {"extra":"not allowed"}`,
-      structure: '{"schema_version":1,"title":"Invalid B","description":"","nodes":{"B":{"title":"Bad B","node_template_id":"shared","parameters":{},"blockedBy":[]}}}',
-      dependency: '{"schema_version":1,"title":"Invalid B","description":"","nodes":{"B":{"title":"Bad B","node_template_id":"shared","parameters":{},"blocked_by":["ghost"]}}}',
+      structure: '{"schema_version":1,"title":"Invalid B","description":"","nodes":{"B":{"title":"Bad B","bot_id":"shared","parameters":{},"blockedBy":[]}}}',
+      dependency: '{"schema_version":1,"title":"Invalid B","description":"","nodes":{"B":{"title":"Bad B","bot_id":"shared","parameters":{},"blocked_by":["ghost"]}}}',
       'file-load': a,
     }
     const expected = { json: 'EOF', 'trailing-json': 'trailing', structure: 'blockedBy', dependency: 'ghost', 'file-load': 'Map 文件读取失败' }
@@ -216,8 +216,8 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await nodes.getByRole('button', { name: 'Only A A', exact: true }).click()
     await expect(details).toContainText('alpha-only')
-    await details.getByRole('button', { name: '模板明细', exact: true }).click()
-    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toBeVisible()
+    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     if (failure === 'file-load') fs.unlinkSync(path.join(maps, 'b.json'))
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/b.json`)
@@ -228,7 +228,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     await expect(page.getByRole('alert')).toContainText('b.json')
     await expect(nodes).toHaveCount(0)
     await expect(details).toHaveCount(0)
-    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toHaveCount(0)
     await expect(page.getByTestId('panel-scheduler')).not.toContainText('alpha-only')
     await expect(list.getByRole('button', { name: 'c.json', exact: true })).toBeEnabled()
@@ -245,7 +245,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
       if (failure === 'file-load' && name === 'b.json') expect(fs.existsSync(path.join(maps, name))).toBe(false)
       else expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)
     }
-    expect(fs.readFileSync(path.join(templates, 'capability.json'), 'utf8')).toBe(templateBytes)
+    expect(fs.readFileSync(path.join(bots, 'capability.json'), 'utf8')).toBe(botBytes)
     expect(server.herdrCalls()).toEqual(callsBefore)
     expect(server.herdrTabs()).toEqual(tabsBefore)
     expect(fs.existsSync(operationMarker)).toBe(false)

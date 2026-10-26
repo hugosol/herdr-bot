@@ -16,10 +16,10 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
   fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({
     schema_version: 1, title: '并行与汇合', description: '独立预期：A → C，B → C；D 无连接。',
     nodes: {
-      A: { title: '准备甲', node_template_id: 'shared', parameters: {}, blocked_by: [] },
-      B: { title: '准备乙', node_template_id: 'shared', parameters: {}, blocked_by: [] },
-      C: { title: '汇合', node_template_id: 'shared', parameters: {}, blocked_by: ['A', 'B'] },
-      D: { title: '独立工作', node_template_id: 'shared', parameters: {}, blocked_by: [] },
+      A: { title: '准备甲', bot_id: 'shared', parameters: {}, blocked_by: [] },
+      B: { title: '准备乙', bot_id: 'shared', parameters: {}, blocked_by: [] },
+      C: { title: '汇合', bot_id: 'shared', parameters: {}, blocked_by: ['A', 'B'] },
+      D: { title: '独立工作', bot_id: 'shared', parameters: {}, blocked_by: [] },
     },
   }))
   await page.goto(server.baseURL)
@@ -75,33 +75,33 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
   await page.screenshot({ path: testInfo.outputPath('parallel-join-independent.png'), fullPage: true })
 })
 
-// S1; P13/P17 source is the literal JSON below, not template inputs. A plausible
-// violation is merging template inputs/defaults, validating zone/Bot resources,
+// S1; P13/P17 source is the literal JSON below, not bot inputs. A plausible
+// violation is merging bot inputs/defaults, validating zone/Bot resources,
 // or retaining A's parameters/dependencies after selecting B, then C and A again.
 // Real files and HTTP stay in path; only the external Herdr is record-only.
-test('P13 P17 same-template nodes show only current direct JSON parameters and prerequisites safely', async ({ page }, testInfo) => {
+test('P13 P17 same-bot nodes show only current direct JSON parameters and prerequisites safely', async ({ page }, testInfo) => {
   server = await startServer({ herdr: {} })
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const templates = path.join(server.cwd, '.data', 'node-templates')
+  const bots = path.join(server.cwd, '.data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
-  fs.mkdirSync(templates, { recursive: true })
+  fs.mkdirSync(bots, { recursive: true })
   const outsidePath = path.join(server.cwd, 'must-not-read.txt')
   fs.writeFileSync(outsidePath, 'OUTSIDE_SECRET_MUST_NOT_APPEAR')
-  const templateBytes = JSON.stringify({ schema_version: 1, id: 'shared', title: '共享业务能力',
+  const botBytes = JSON.stringify({ schema_version: 1, id: 'shared', name: '共享业务能力',
     use_when: '测试复用', description: '不是 node 参数',
     inputs: { target: 'TEMPLATE_DEFAULT_MUST_NOT_APPEAR', template_only: '不可补入参数' },
     outputs: {}, implementation: { type: 'chat' } })
   const mapBytes = JSON.stringify({ schema_version: 1, title: '<script>window.mapExecuted = true</script>',
     description: '<img src=x onerror="window.mapExecuted = true">', nodes: {
-      A: { title: '第一项', node_template_id: 'shared', parameters: {
+      A: { title: '第一项', bot_id: 'shared', parameters: {
         target: 'alpha-only', zone: 'zone-does-not-exist', Bot: 'bot-does-not-exist',
         extra_undeclared: { items: [1, true, null, { text: '<svg onload="window.mapExecuted = true">' }] },
         path: outsidePath, enabled: false, count: 7, empty: null,
       }, blocked_by: [] },
-      B: { title: '第二项', node_template_id: 'shared', parameters: { target: 'beta-only', list: ['two', 2] }, blocked_by: ['A'] },
-      C: { title: '第三项', node_template_id: 'shared', parameters: {}, blocked_by: ['B'] },
+      B: { title: '第二项', bot_id: 'shared', parameters: { target: 'beta-only', list: ['two', 2] }, blocked_by: ['A'] },
+      C: { title: '第三项', bot_id: 'shared', parameters: {}, blocked_by: ['B'] },
     } })
-  fs.writeFileSync(path.join(templates, 'not-the-id.json'), templateBytes)
+  fs.writeFileSync(path.join(bots, 'not-the-id.json'), botBytes)
   fs.writeFileSync(path.join(maps, 'parameters.json'), mapBytes)
   const callsBefore = server.herdrCalls()
   const tabsBefore = server.herdrTabs()
@@ -144,6 +144,6 @@ test('P13 P17 same-template nodes show only current direct JSON parameters and p
   expect(server.herdrCalls()).toEqual(callsBefore)
   expect(server.herdrTabs()).toEqual(tabsBefore)
   expect(fs.readFileSync(path.join(maps, 'parameters.json'), 'utf8')).toBe(mapBytes)
-  expect(fs.readFileSync(path.join(templates, 'not-the-id.json'), 'utf8')).toBe(templateBytes)
+  expect(fs.readFileSync(path.join(bots, 'not-the-id.json'), 'utf8')).toBe(botBytes)
   await page.screenshot({ path: testInfo.outputPath('current-node-parameters.png'), fullPage: true })
 })

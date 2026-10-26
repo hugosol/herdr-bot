@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "destination-weather",
-  "title": "目的地天气摘要",
+  "name": "目的地天气摘要",
   "use_when": "出行前需要了解目的地天气与随身物品建议时。",
   "description": "整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。",
   "inputs": {

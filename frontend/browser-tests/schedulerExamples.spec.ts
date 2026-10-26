@@ -11,7 +11,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // Approved seam S1. P31/P32 source: the guide's independently prescribed
 // A/B -> C, isolated D, and cross-Map E. Copy the delivered bytes, never build
 // equivalent fixtures here. A missing independent node, reversed/extra edge,
-// filename-based template identity, or wrong node parameters must disagree.
+// filename-based bot identity, or wrong node parameters must disagree.
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`P31 P32 delivered examples follow the guide at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
@@ -19,21 +19,21 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.goto(server.baseURL)
     await page.getByTestId('tab-scheduler').click()
     await expect(page.getByTestId('scheduler-empty')).toBeVisible()
-    await expect(page.getByTestId('scheduler-template-empty')).toBeVisible()
+    await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
     expect(fs.readdirSync(path.join(server.cwd, '.data', 'workflow-maps'))).toEqual([])
-    expect(fs.readdirSync(path.join(server.cwd, '.data', 'node-templates'))).toEqual([])
+    expect(fs.readdirSync(path.join(server.cwd, '.data', 'bots'))).toEqual([])
 
     // Same relative directories and copies as the PowerShell guide. The config
     // is intentionally elsewhere: resolving relative to its folder must fail.
     await server.stop()
-    fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'plans'\nnode_template_directory = 'capabilities'\n")
+    fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'plans'\nbot_directory = 'capabilities'\n")
     fs.mkdirSync(path.join(server.cwd, 'plans'))
     fs.mkdirSync(path.join(server.cwd, 'capabilities'))
     for (const filename of ['trip-readiness.json', 'another-trip.json']) {
       fs.copyFileSync(path.join(examples, 'maps', filename), path.join(server.cwd, 'plans', filename))
     }
     for (const filename of ['weather-capability.json', 'quota-capability.json', 'summary-capability.json']) {
-      fs.copyFileSync(path.join(examples, 'node-templates', filename), path.join(server.cwd, 'capabilities', filename))
+      fs.copyFileSync(path.join(examples, 'bots', filename), path.join(server.cwd, 'capabilities', filename))
     }
     await server.restart()
     await page.goto(server.baseURL)
@@ -70,7 +70,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       if (name === '汇总出行准备 C') {
         await expect(prerequisites.getByRole('listitem')).toHaveText(['上海出行天气 · A', '北京出行天气 · B'])
       } else await expect(prerequisites).toContainText('无前置依赖')
-      await expect(details.getByRole('button', { name: '模板明细', exact: true })).not.toHaveAttribute('aria-expanded')
+      await expect(details.getByRole('button', { name: 'Bot 明细', exact: true })).not.toHaveAttribute('aria-expanded')
       const expectedOverview = name === '汇总出行准备 C' ? [
         '出行准备清单汇总', '需要将多个目的地的准备事项整理为核对清单时。',
         '按指定范围整理准备事项与待确认问题；前置依赖不自动传入天气结果，也不预订或修改任何资源。',
@@ -85,23 +85,23 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
         'account', '人工区分账户的说明，不是登录凭据。', 'remaining_percent', '人工观察的剩余额度说明。',
         'observed_at', '人工观察时间；未知时可在参数中写 null。', 'estimate', '恢复时间估算及依据；不是实际额度记录。',
       ] : []
-      await details.getByRole('button', { name: '模板明细', exact: true }).click()
-      const templatePreview = page.getByRole('region', { name: '模板预览', exact: true })
+      await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+      const botPreview = page.getByRole('region', { name: 'Bot 预览', exact: true })
       for (const text of [...expectedOverview, 'chat']) {
-        await expect(templatePreview.getByText(text, { exact: true })).toBeVisible()
+        await expect(botPreview.getByText(text, { exact: true })).toBeVisible()
       }
       if (expectedInputsOutputs.length > 0) {
-        await templatePreview.getByRole('button', { name: '输入与输出', exact: true }).click()
+        await botPreview.getByRole('button', { name: '输入与输出', exact: true }).click()
         for (const text of expectedInputsOutputs) {
-          await expect(templatePreview.getByText(text, { exact: true })).toBeVisible()
+          await expect(botPreview.getByText(text, { exact: true })).toBeVisible()
         }
       }
       await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     }
     await page.screenshot({ path: testInfo.outputPath('graph.png'), fullPage: true })
     await nodes.getByRole('button', { name: '上海出行天气 A', exact: true }).click()
-    await details.getByRole('button', { name: '模板明细', exact: true }).click()
-    const capability = page.getByRole('region', { name: '模板预览', exact: true })
+    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
     for (const text of ['目的地天气摘要', '出行前需要了解目的地天气与随身物品建议时。',
       '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。', 'chat']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
@@ -114,23 +114,23 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true })
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await nodes.getByRole('button', { name: '北京出行天气 B', exact: true }).click()
-    await details.getByRole('button', { name: '模板明细', exact: true }).click()
+    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(capability.getByText('目的地天气摘要', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await page.getByRole('button', { name: 'another-trip.json', exact: true }).click()
     await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
     await expect(details.getByTestId('parameter-city')).toHaveText('广州')
     await expect(details.getByTestId('parameter-date')).toHaveText('2026-11-03')
-    await details.getByRole('button', { name: '模板明细', exact: true }).click()
+    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(capability.getByText('目的地天气摘要', { exact: true })).toBeVisible()
 
     // Follow the reload instructions against these same delivered files.
-    const template = path.join(server.cwd, 'capabilities', 'weather-capability.json')
-    fs.writeFileSync(template, fs.readFileSync(template, 'utf8').replace('目的地天气摘要', '更新后的目的地天气摘要'))
+    const bot = path.join(server.cwd, 'capabilities', 'weather-capability.json')
+    fs.writeFileSync(bot, fs.readFileSync(bot, 'utf8').replace('目的地天气摘要', '更新后的目的地天气摘要'))
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
-    await details.getByRole('button', { name: '模板明细', exact: true }).click()
+    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(capability.getByText('更新后的目的地天气摘要', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     fs.copyFileSync(path.join(examples, 'maps', 'another-trip.json'), path.join(server.cwd, 'plans', 'new-copy.json'))
