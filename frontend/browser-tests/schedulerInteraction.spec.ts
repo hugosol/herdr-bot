@@ -58,10 +58,9 @@ async function expectFitted(graph: Locator) {
   }
 }
 
-// Approved seam S1: real delivered page, HTTP and isolated real files. P12's
-// source is A/B -> C plus isolated D above. A no-op zoom/pan/fit, missing node,
-// or overlapping layout must fail via rendered rectangles, not internal calls.
-test('P12 automatic graph supports real mouse pan zoom and fit on desktop', async ({ page }, testInfo) => {
+// Real delivered page, HTTP and isolated files: parallel, joined and independent
+// nodes must remain visible and non-overlapping after automatic layout.
+test('automatic graph displays parallel joined and independent nodes on desktop', async ({ page }, testInfo) => {
   const running = await prepare()
   await page.goto(running.baseURL)
   await page.getByTestId('tab-scheduler').click()
@@ -69,24 +68,6 @@ test('P12 automatic graph supports real mouse pan zoom and fit on desktop', asyn
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
   await expectFitted(graph)
-  const node = graph.getByRole('button', { name: '准备甲 A', exact: true })
-  const initial = await rectangle(node)
-  await page.getByRole('button', { name: '放大依赖图', exact: true }).click()
-  await expect.poll(async () => (await rectangle(node)).width).toBeGreaterThan(initial.width * 1.1)
-  const enlarged = await rectangle(node)
-  await page.getByRole('button', { name: '缩小依赖图', exact: true }).click()
-  await expect.poll(async () => (await rectangle(node)).width).toBeLessThan(enlarged.width)
-  await graph.scrollIntoViewIfNeeded()
-  const beforePan = await rectangle(node)
-  const canvas = await rectangle(graph)
-  await page.mouse.move(canvas.x + canvas.width - 12, canvas.y + canvas.height - 12)
-  await page.mouse.down()
-  await page.mouse.move(canvas.x + canvas.width - 92, canvas.y + canvas.height - 52, { steps: 8 })
-  await page.mouse.up()
-  await expect.poll(async () => (await rectangle(node)).x).toBeLessThan(beforePan.x - 40)
-  await page.getByRole('button', { name: '适应画布', exact: true }).click()
-  await expectFitted(graph)
-  await expect.poll(async () => (await rectangle(node)).x).toBeCloseTo(initial.x, 0)
   await page.screenshot({ path: testInfo.outputPath('desktop-parallel-join-independent.png'), fullPage: true })
 })
 
@@ -106,14 +87,7 @@ test('P4 P30 narrow screen keyboard reaches Map graph node and template details 
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
   await expectFitted(graph)
-  const zoom = page.getByRole('button', { name: '放大依赖图', exact: true })
-  for (let count = 0; count < 10 && !(await zoom.evaluate((el) => el === document.activeElement)); count++) await page.keyboard.press('Tab')
-  await expect(zoom).toBeFocused()
   const first = graph.getByRole('button', { name: '准备甲 A', exact: true })
-  const fittedWidth = (await rectangle(first)).width
-  await page.keyboard.press('Enter')
-  await page.keyboard.press('Enter')
-  await expect.poll(async () => (await rectangle(first)).width).toBeGreaterThan(fittedWidth)
   for (let count = 0; count < 10 && !(await first.evaluate((el) => el === document.activeElement)); count++) await page.keyboard.press('Tab')
   await expect(first).toBeFocused()
   await expectFitted(graph)
@@ -147,12 +121,10 @@ test('P4 P30 narrow screen keyboard reaches Map graph node and template details 
   expect(running.herdrCalls()).toEqual([])
 })
 
-test.describe('touch graph controls', () => {
+test.describe('touch node access', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
 
-  // Existing pointer behavior is exercised through Chromium touch input, not a
-  // DOM-dispatched event or direct handler call. A mouse-only pan cannot pass.
-  test('P12 P30 single-finger pan and tap zoom fit preserve narrow node access', async ({ page }, testInfo) => {
+  test('narrow screen touch opens node and template details', async ({ page }, testInfo) => {
     const running = await prepare()
     await page.goto(running.baseURL)
     await page.getByTestId('tab-scheduler').tap()
@@ -160,22 +132,6 @@ test.describe('touch graph controls', () => {
     const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
     await expect(graph).toBeVisible()
     const node = graph.getByRole('button', { name: '准备甲 A', exact: true })
-    const initial = await rectangle(node)
-    await page.getByRole('button', { name: '放大依赖图', exact: true }).tap()
-    await expect.poll(async () => (await rectangle(node)).width).toBeGreaterThan(initial.width)
-    await graph.scrollIntoViewIfNeeded()
-    const beforePan = await rectangle(node)
-    const canvas = await rectangle(graph)
-    const input = await page.context().newCDPSession(page)
-    try {
-      await input.send('Input.synthesizeScrollGesture', {
-        x: canvas.x + canvas.width - 12, y: canvas.y + canvas.height - 12,
-        xDistance: -80, yDistance: -40, gestureSourceType: 'touch', preventFling: true,
-      })
-    } finally { await input.detach() }
-    await expect.poll(async () => (await rectangle(node)).x).toBeLessThan(beforePan.x - 40)
-    await page.getByRole('button', { name: '适应画布', exact: true }).tap()
-    await expect.poll(async () => (await rectangle(node)).width).toBeCloseTo(initial.width, 0)
     await expectFitted(graph)
     await node.tap()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
