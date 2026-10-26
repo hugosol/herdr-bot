@@ -1,22 +1,10 @@
-import { useId, useState } from 'react'
-import type { NodeTemplate, WorkflowMap } from './schedulerApi'
+import type { WorkflowMap } from './schedulerApi'
 
-function NamedDescriptions({ title, values }: { title: string; values: Record<string, string> }) {
-  const entries = Object.entries(values)
-  return <section aria-label={title}>
-    <h5>{title}</h5>
-    {entries.length === 0 ? <p>无。</p> : <dl>{entries.map(([name, description]) => <div key={name}>
-      <dt>{name}</dt><dd className="scheduler-text">{description}</dd>
-    </div>)}</dl>}
-  </section>
-}
-
-export function MapNodeDetails({ map, nodeId, template, templateStatus, templateProblem, onSelect }: {
-  map: WorkflowMap; nodeId: string; template: NodeTemplate | undefined; templateStatus: string | null; templateProblem?: string
+export function MapNodeDetails({ map, nodeId, templateProblem, onSelect, onTemplate }: {
+  map: WorkflowMap; nodeId: string; templateProblem?: string
   onSelect: (id: string) => void
+  onTemplate: (id: string) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const templateDetailsId = useId()
   const node = map.nodes[nodeId]
   const entries = Object.entries(node.parameters)
   const dependents = Object.keys(map.nodes).filter((id) => map.nodes[id].blocked_by.includes(nodeId))
@@ -45,21 +33,6 @@ export function MapNodeDetails({ map, nodeId, template, templateStatus, template
         <button type="button" aria-label={`查看后继节点 ${map.nodes[id].title} ${id}`} onClick={() => onSelect(id)}>{map.nodes[id].title} · {id}</button>
       </li>)}</ul>}
     </section>
-    <button type="button" aria-expanded={expanded} aria-controls={templateDetailsId} onClick={() => setExpanded((value) => !value)}>模板明细</button>
-    {expanded && <section id={templateDetailsId} aria-label="模板明细">
-      {templateProblem ? <p>{templateProblem}</p> : templateStatus !== null ? <p>{templateStatus}</p> : template === undefined
-        ? <p>未找到共享模板：{node.node_template_id}</p>
-        : <>
-          <h4 className="scheduler-text">{template.title}</h4>
-          <dl>
-            <dt>适用场景（use_when）</dt><dd className="scheduler-text">{template.use_when}</dd>
-            <dt>能力说明（description）</dt><dd className="scheduler-text">{template.description}</dd>
-            <dt>实现类型</dt><dd>{template.implementation.type}</dd>
-          </dl>
-          <NamedDescriptions title="输入说明（inputs）" values={template.inputs} />
-          <NamedDescriptions title="输出说明（outputs）" values={template.outputs} />
-          <p>仅展示能力定义，不启动 Chat 或执行任何工作。</p>
-        </>}
-    </section>}
+    <button type="button" onClick={() => onTemplate(node.node_template_id)}>模板明细</button>
   </section>
 }
