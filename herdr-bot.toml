@@ -69,8 +69,8 @@ registry_file = '.data/zones.json'
 
 # 服务级 Map / 共享模板目录，可独立指定，均相对进程 cwd 而非配置文件位置。
 # 修改配置需重启；Map 内容变化在 scheduler 点击“刷新 Map 列表”。
-# 首次读取自动创建 Map 目录及父目录，保留已有内容，不安装样例；链接/目录联接不被跟随。
-# 共享模板内容读取由后续模板预览能力提供。
+# 首次读取自动创建两个目录及父目录，保留已有内容，不安装样例；链接/目录联接不被跟随。
+# 共享模板按 JSON id 关联；当前仅预览，不执行。可复制样例和格式说明见 docs/example/README.md。
 # [scheduler]
 # map_directory = '.data/workflow-maps'
 # node_template_directory = '.data/node-templates'
