@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
+import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, loadNodeDraft, saveNode, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
 import { TemplatePreview } from './TemplatePreview'
@@ -9,7 +9,7 @@ type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Templates = { kind: 'loading' } | ({ kind: 'ready' } & TemplateCatalog) | { kind: 'error'; message: string }
 
-type Draft = { id: string; content: string; revision: TemplateRevision | null; initialId: string; initialContent: string }
+type Draft = { kind: '模板' | 'node'; create: boolean; id: string; content: string; revision: TemplateRevision | null; initialId: string; initialContent: string }
 
 export function SchedulerPanel({ active, navigationGuard }: { active: boolean; navigationGuard?: RefObject<(() => boolean) | null> }) {
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -19,7 +19,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   const dirty = draft !== null && (draft.id !== draft.initialId || draft.content !== draft.initialContent)
 
   function abandonDraft() {
-    if (editingBusy || (dirty && !window.confirm('放弃尚未保存的模板修改？'))) return false
+    if (editingBusy || (dirty && !window.confirm(`放弃尚未保存的${draft?.kind ?? '定义'}修改？`))) return false
     setDraft(null)
     setEditError(null)
     return true
@@ -37,30 +37,36 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty])
 
-  async function beginEdit(id: string | null) {
-    if (!abandonDraft()) return
+  async function beginEdit(id: string | null, kind: Draft['kind'] = '模板') {
+    if (!abandonDraft() || (kind === 'node' && file === null)) return
     setEditingBusy(true)
     try {
-      const loaded = await loadTemplateDraft(id)
-      setDraft({ ...loaded, initialId: loaded.id, initialContent: loaded.content })
-      setTemplateView(true)
-    } catch (error) { setEditError(error instanceof Error ? error.message : '模板读取失败。') }
+      const loaded = kind === '模板' ? await loadTemplateDraft(id) : await loadNodeDraft(file!, id)
+      setDraft({ ...loaded, kind, create: id === null, initialId: loaded.id, initialContent: loaded.content })
+      setTemplateView(kind === '模板')
+    } catch (error) { setEditError(error instanceof Error ? error.message : `${kind}读取失败。`) }
     finally { setEditingBusy(false) }
   }
 
-  async function submitTemplate() {
+  async function submitDefinition() {
     if (!draft || editingBusy) return
     setEditError(null)
     setEditingBusy(true)
     try {
       const value: unknown = JSON.parse(draft.content)
-      if (typeof value === 'object' && value !== null && Object.hasOwn(value, 'id')) throw new Error('请移除模板内容中的顶层 id；使用独立模板 ID。')
-      const saved = await saveTemplate({ id: draft.id, content: draft.content, revision: draft.revision })
-      const catalog = await listTemplates()
-      setTemplates({ kind: 'ready', ...catalog })
-      setTemplateId(saved.id)
+      if (typeof value === 'object' && value !== null && Object.hasOwn(value, 'id')) throw new Error(`请移除${draft.kind}内容中的顶层 id；使用独立${draft.kind} ID。`)
+      const payload = { id: draft.id, content: draft.content, revision: draft.revision }
+      if (draft.kind === '模板') {
+        const saved = await saveTemplate(payload)
+        setTemplates({ kind: 'ready', ...await listTemplates() })
+        setTemplateId(saved.id)
+      } else {
+        await saveNode(file!, { ...payload, create: draft.create })
+        setPreview({ kind: 'ready', map: await loadMap(file!) })
+        setSelectedId(draft.id)
+      }
       setDraft(null)
-    } catch (error) { setEditError(error instanceof Error ? error.message : '模板保存失败。') }
+    } catch (error) { setEditError(error instanceof Error ? error.message : `${draft.kind}保存失败。`) }
     finally { setEditingBusy(false) }
   }
 
@@ -159,7 +165,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   }
 
   function selectFile(name: string) {
-    if (name === file) return
+    if (name === file || !abandonDraft()) return
     setFile(name)
     setSelectedId(null)
     setGraphOpen(false)
@@ -178,6 +184,14 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
     setTemplateView(true)
   }
 
+  const editor = draft && <form className="scheduler-editor" aria-label={draft.kind === 'node' ? 'node 编辑' : '模板编辑'} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
+    <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : '模板'}</h3>
+    <label>{draft.kind} ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, id: event.target.value })} /></label>
+    <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
+    <label htmlFor="definition-content-json">{draft.kind}内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : '模板内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
+    <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>保存{draft.kind === 'node' ? ' node' : '模板'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>放弃编辑</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
+  </form>
+
   return <section className="scheduler" aria-label="Map 目录">
     <header className="scheduler-header">
       <div><p className="scheduler-eyebrow">静态工作定义</p><h2>scheduler <span>阅读优先</span></h2></div>
@@ -194,7 +208,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       }}>刷新全部</button>
       </div>
     </header>
-    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改共享模板；静态定义，不执行工作。</p>
+    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改当前 Map 的 node 与共享模板；静态定义，不执行工作。</p>
     <p className="scheduler-refresh-note">刷新会重新读取目录、当前 Map 和共享模板，并清除节点选择。</p>
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
@@ -218,12 +232,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       </nav>
       <h2 ref={templateHeading} tabIndex={-1}>{draft ? (draft.revision ? '修改模板' : '新增模板') : templateId === null ? '共享模板' : '模板预览'}</h2>
       {editError && <p role="alert">{editError}</p>}
-      {draft ? <form className="scheduler-editor" aria-label="模板编辑" onSubmit={(event) => { event.preventDefault(); void submitTemplate() }}>
-        <label>模板 ID<input value={draft.id} readOnly={draft.revision !== null} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, id: event.target.value })} /></label>
-        <p>内容不含顶层 id；保存逻辑补回独立 ID。保存期间请勿用外部编辑器修改定义。</p>
-        <label htmlFor="template-content-json">模板内容 JSON</label><textarea id="template-content-json" spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
-        <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>保存模板</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>放弃编辑</button></div>
-      </form> : templateId === null ? <section aria-label="共享模板列表">
+      {draft ? editor : templateId === null ? <section aria-label="共享模板列表">
         {templates.kind === 'ready' && templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
         {templates.kind === 'ready' && <ul className="scheduler-map-list">{templates.templates.map((item) => <li key={item.id}>
           <button type="button" onClick={() => setTemplateId(item.id)}>{item.title} · {item.id}</button>
@@ -251,12 +260,14 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
         <p className="scheduler-directory-note">仅列出目录直接包含的 JSON 文件。筛选不会重载或关闭当前 Map。</p>
       </aside>
       <div className="scheduler-main">
-
+        {editError && <p role="alert">{editError}</p>}
+        {draft?.kind === 'node' && editor}
+        {map && !draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>}
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览">
-          <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">只读定义</span></header>
+          <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
           <div className="scheduler-reading">
             <div className="scheduler-outline">
               <section aria-label="节点列表">
@@ -284,6 +295,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
                   nodeButtons.current.get(selectedId)?.focus()
                   setSelectedId(null)
                 }}>关闭</button></div>
+                {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
                   templateProblem={templateProblems[selectedId]} onTemplate={openTemplate} />
               </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次参数、前置依赖与共享模板。</p></div>}

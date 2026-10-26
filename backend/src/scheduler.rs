@@ -50,7 +50,7 @@ fn map_error(message: impl Into<String>) -> DirectoryError {
     DirectoryError { code: "map-read-failed", message: message.into() }
 }
 
-fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError> {
+fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryError> {
     // A filename is not a path. Reject both platform separators, Windows streams
     // and links, using the same ancestor boundary as the directory listing.
     if name.is_empty() || name.contains(['/', '\\', ':']) ||
@@ -62,11 +62,23 @@ fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError>
     if !metadata.is_file() || crate::browse::is_link_like(&metadata) {
         return Err(map_error("Map 文件不能是符号链接、重解析点或目录。"));
     }
-    let bytes = fs::read(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))?;
-    let mut deserializer = serde_json::Deserializer::from_slice(&bytes);
+    fs::read_to_string(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
+}
+
+fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError> {
+    parse_map(&read_map_source(directory, name)?)
+}
+
+fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
+    let mut deserializer = serde_json::Deserializer::from_str(source);
     let JsonObject(map): JsonObject<WorkflowMap> = serde_path_to_error::deserialize(&mut deserializer)
         .map_err(|e| map_error(format!("Map 结构无效：{e}")))?;
     deserializer.end().map_err(|e| map_error(format!("Map JSON 无效：{e}")))?;
+    validate_map(&map)?;
+    Ok(map)
+}
+
+fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     if map.schema_version != 1 { return Err(map_error("Map schema_version 必须为 1。")); }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
     // a successful graph. Kahn's traversal also bounds layout work on bad input.
@@ -99,7 +111,7 @@ fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError>
         let blocked = remaining.iter().filter_map(|(id, count)| (*count > 0).then_some(*id)).collect::<Vec<_>>().join("、");
         return Err(map_error(format!("Map blocked_by 存在依赖环；无法解除前置依赖的 node：{blocked}。")));
     }
-    Ok(map)
+    Ok(())
 }
 
 pub async fn get_map(
@@ -359,6 +371,112 @@ pub async fn save_template(
         Ok(Ok(template)) => Json(template).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => edit_error("template-write-failed", error.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeSave {
+    id: String,
+    content: String,
+    revision: TemplateRevision,
+    create: bool,
+}
+
+pub async fn new_node(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
+        return edit_error("invalid-request", "新增草稿不接受查询参数或请求体。").into_response();
+    }
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("node-write-failed", "定义提交锁不可用。"))?;
+        let original = read_map_source(&state.map_directory, &name)?;
+        parse_map(&original)?;
+        let mut example: serde_json::Value = serde_json::from_str(include_str!("../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
+        let content = example["nodes"]["A"].take();
+        Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
+    }).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+    }
+}
+
+pub async fn edit_node(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(identity): Json<TemplateIdentity>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("node-write-failed", "定义提交锁不可用。"))?;
+        let original = read_map_source(&state.map_directory, &name)?;
+        let map = parse_map(&original)?;
+        let node = map.nodes.get(&identity.id).ok_or_else(|| edit_error("node-conflict", "node 已移除；请重新加载。"))?;
+        Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "content": node, "revision": { "file": name, "original": original }, "create": false }))
+    }).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+    }
+}
+
+pub async fn save_node(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(draft): Json<NodeSave>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
+        let content: serde_json::Value = serde_json::from_str(&draft.content)
+            .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
+        let object = content.as_object().ok_or_else(|| edit_error("node-invalid", "node 内容必须为 JSON 对象。"))?;
+        if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
+        let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
+            .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("node-write-failed", "定义提交锁不可用。"))?;
+        let check = || -> Result<(), DirectoryError> {
+            let current = read_map_source(&state.map_directory, &name)
+                .map_err(|error| edit_error("node-conflict", format!("Map 文件已变化或移除：{}；请重新加载。", error.message)))?;
+            if draft.revision.file != name || draft.revision.original != current {
+                return Err(edit_error("node-conflict", "Map 文件已变化或移除；请重新加载后再编辑。"));
+            }
+            Ok(())
+        };
+        check()?;
+        let mut map = parse_map(&draft.revision.original)?;
+        if draft.create && map.nodes.contains_key(&draft.id) {
+            return Err(edit_error("node-conflict", "当前 Map 的 node ID 已存在；请使用不同 ID 或重新加载。"));
+        }
+        if !draft.create && !map.nodes.contains_key(&draft.id) {
+            return Err(edit_error("node-conflict", "node 已移除；请重新加载。"));
+        }
+        map.nodes.insert(draft.id, node);
+        validate_map(&map)?;
+        let bytes = serde_json::to_vec_pretty(&map).map_err(|e| edit_error("node-write-failed", e.to_string()))?;
+        let root = prepare_directory(&state.map_directory)?;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let serial = NEXT_FILE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = root.join(format!("node-{stamp}-{}-{serial}.tmp", std::process::id()));
+        let result = (|| {
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)
+                .map_err(|e| edit_error("node-write-failed", format!("node 写入失败：{e}")))?;
+            file.write_all(&bytes).and_then(|_| file.sync_all())
+                .map_err(|e| edit_error("node-write-failed", format!("node 写入失败：{e}")))?;
+            drop(file);
+            check()?;
+            fs::rename(&temporary, root.join(&name)).map_err(|e| edit_error("node-write-failed", format!("node 写入失败：{e}")))?;
+            Ok(map)
+        })();
+        let _ = fs::remove_file(temporary);
+        result
+    }).await {
+        Ok(Ok(map)) => Json(map).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("node-write-failed", error.to_string()).into_response(),
     }
 }
 

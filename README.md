@@ -5,7 +5,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 - `chat`：当前会话状态、历史会话及完成后关机监听。
 - `bot`：管理可复用的 Bot；Bot 不是实际对话。
 - `zone`：管理服务主机上的目录，浏览文件、审查 Git 变更，以及选择 Bot 发起 Chat。
-- `scheduler`：浏览服务级 Map、node 依赖图与本次参数，在同一 Tab 管理共享 node_template（新增、修改与预览）；不调度或执行工作。
+- `scheduler`：浏览服务级 Map、node 依赖图与本次参数，在同一 Tab 新增、修改当前 Map 的 node 并管理共享 node_template（新增、修改与预览）；不调度或执行工作。
 
 顶部 tab 顺序为 `chat`、`bot`、`zone`、`scheduler`；首次打开与整页刷新都回到 `chat`。
 右上角的 `server` 按钮在同一页面打开独立内容页，不打开新窗口；点击“返回”回到进入前的 tab。
@@ -80,7 +80,13 @@ node_template_directory = '.data/node-templates'
 
 显式“保存模板”经严格 JSON／结构校验与全局 ID 检查后实际写入，立即展示最新共享预览，不需要刷新全部；所有 Map 按模板 ID 引用同一能力，不产生每 Map 副本。保存失败保留 ID 和原始 JSON 草稿。两个页面或外部编辑器已修改／移除目标时，旧提交被拒绝并提示重新加载；请先复制需要保留的草稿，再放弃并重新打开编辑。返回、切换 tab／server、刷新全部和浏览器刷新时，有修改的草稿须确认放弃，取消继续编辑。
 
-同一应用实例内的写入协调最终检查与提交，提交前重查文件内容及身份。直接文件维护仍受支持，但**请避免在页面提交期间用外部编辑器修改相关定义**：不参与协调的外部写入可能发生在最后检查之后，不保证与其跨文件原子提交。模板不是 Bot，保存能力说明不会发起 Chat 或执行工作。
+当前 Map 可“新增 node”，选中 node 后可“修改 node”。复用同一套独立 ID／JSON 编辑器：新增 ID 为空，修改 ID 只读；JSON 不含顶层 `id`，但 parameters 中的 `id` 等开放参数合法。新增预填随应用打包的上海出行天气 A（单一来源 `docs/example/maps/trip-readiness.json`），不自动安装所引用的模板。打开与放弃不写文件，编辑已有 node 只载入真实内容，不混入示例。
+
+“保存 node”校验整个所属 Map 的既有版本、结构和依赖，拒绝未知前置、自依赖和环，不自动修复。parameters 保留嵌套 JSON，不按模板 inputs 校验、不检查 zone／Bot 或模板是否存在、不补默认值；缺失模板仍在页面明确提示。保存成功立即重读 Map，保持当前文件并选中保存的 node，同时更新列表、详情与已展开依赖图。仅目标 node 改变，其他 node、Map 标题说明和其他文件不受影响；Map JSON 排版可能变化。
+
+node ID 只在同 Map 内唯一，不同 Map 可复用。冲突版本以**整个 Map 文件**为单位：编辑 A 时同 Map 的 B 被页面或外部编辑器修改，或 Map 被移除，旧提交均失败，不覆盖新内容或自动合并。校验、写入失败和冲突保留独立 ID 与原始 JSON，提示重新加载时请先复制草稿，再放弃重开。返回 Map、选择其他 Map、模板管理、切换 tab／server、应用刷新或浏览器刷新前对已修改草稿确认放弃；取消保留草稿。不提供 node ID 重命名、跨 Map 搬移、独立 node 库或 Map JSON 编辑。
+
+同一应用实例内的模板与 node 写入共用协调边界，保护最终检查与真实提交，提交前重查文件内容及身份。直接文件维护仍受支持，但**请避免在页面提交期间用外部编辑器修改相关定义**：不参与协调的外部写入可能发生在最后检查之后，不保证与其跨文件原子提交。模板不是 Bot，保存能力说明不会发起 Chat 或执行工作。
 不需要横向滚动整页或切换到桌面宽度。截图和自动检查只证明控件可操作，完整人工体验验收（P33）仍需用户确认。
 依赖箭头仅来自 `blocked_by`：B 中写 `"blocked_by": ["A"]` 就显示 **A → B**，不是执行路由、材料传递或运行状态。
 
@@ -186,6 +192,7 @@ Map 和 node 必须是使用上述命名字段的 JSON 对象，不能用位置�
 生产读取接口为 `GET /api/scheduler/maps`（列表）、`GET /api/scheduler/maps/{filename}`（读取顶层 JSON）与 `GET /api/scheduler/templates`（当前共享模板目录）；
 读取文件名由页面编码，不接受目录路径、zone、查询参数或请求体。
 模板写入使用 `GET /api/scheduler/templates/new`（打包示例草稿）、`POST /api/scheduler/templates/edit`（`{id}` 读取真实内容及冲突版本）与 `POST /api/scheduler/templates/save`（`{id, content, revision}`，content 是原始 JSON 字符串；新增 revision 为 null，修改提交读取时的原始版本）。保存不接受文件路径或文件名，服务端按当前全局身份解析目标并校验冲突；失败返回具体 message，不自动覆盖较新定义。
+node 写入使用 `GET /api/scheduler/maps/{filename}/nodes/new`（打包 A 示例及整个 Map 版本）、`POST /api/scheduler/maps/{filename}/nodes/edit`（`{id}`，读取真实 node 及整个 Map 版本）和 `POST /api/scheduler/maps/{filename}/nodes/save`（`{id, content, revision, create}`，content 是原始 JSON 字符串，create 为新增／修改布尔值）。revision 是打开编辑时返回的 `{file, original}`，绑定已选目录内的 Map 文件名与原始全文；整个文件有变化时必须重新加载。node ID 只作为 nodes 对象的 key，不作为路径；生产写入与读取共用原有目录和完整 Map 校验规则。
 目录路径各级不跟随符号链接、Windows 目录联接或其他重解析点，列表与读取均拒绝链接项。
 所有业务文本（Map／node 标题、说明、模板的适用场景及输入输出说明、参数名和值）仅作文本显示，
 不按 HTML、样式、脚本或 agent 指令解释。参数即使包含服务主机上的绝对路径、目录外文件路径或执行指令，
