@@ -118,6 +118,10 @@ test('P4 P30 narrow screen keyboard reaches node list and template details and r
   await tabTo(page.getByRole('button', { name: '返回 Map', exact: true }))
   await page.keyboard.press('Space')
   await expect(template).toHaveCount(0)
+  // Returning reloads the Map. Wait for its controls before bounding Tab traversal;
+  // the transient loading view has fewer controls than the restored node view.
+  await expect(nodes).toBeVisible()
+  await expect(second).toHaveAttribute('aria-pressed', 'true')
   // Return using the native reverse tab order, then select another file/list.
   await tabTo(file, true)
   await expect(file).toBeInViewport()

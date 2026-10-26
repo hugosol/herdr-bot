@@ -8,7 +8,7 @@
 
 **Blocked by:** 02: 共享 node_template 新增、修改与返回原 node。
 
-**Status:** in-progress
+**Status:** closed
 
 ## 依据与范围
 
@@ -66,4 +66,15 @@ TDD：先运行新增 tracer，实际失败在不存在“新增 node”入口�
 - `npm --prefix frontend run test:browser:build -- --workers=4`：当前前后端构建及网络护栏通过，完整浏览器集合 263 个测试通过（本票新增 9 个）。
 
 本票 owned acceptance 无未验证项；P25／P32／P33／P34 跨操作验收仍归 06，不以本次结果代替人工体验确认或跨操作竞争验收。不承诺不参与应用协调的任意外部编辑器之间的跨文件原子性，说明已更新。
+
+### 合入同步后的全局验收
+
+当前开发分支已包含首次集成提交 `b177b000bded7a35588c90f501907953fd13d303`；接管时工作区干净，无待解决冲突。本票实现已合入，完成以下全局验收后关闭。
+
+- `node scripts/test-backend.mjs --binary-jobs 2`：完整 build、测试二进制及 doctest 通过，0 个二进制未派发；日志 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-5Ht81W\summary.json`。
+- `npm --prefix frontend test`：27 个文件、205 个测试通过，网络护栏通过。
+- 首次完整浏览器验收为 262 通过、1 失败：窄屏键盘返回 Map 测试在异步重读尚未完成时按 loading 页控件数量计算 Tab 上限，随后恢复的完整 Map 控件更多，导致反向遍历提前停止。测试现等待节点列表及保留选择恢复，再计算原生键盘遍历上限；仍通过实际 Tab／Shift+Tab 验证可达性，不直接设置焦点、不增加固定等待或放宽断言。
+- 修复后 `npm --prefix frontend run test:browser:build -- --workers=4`：前后端构建、网络护栏及完整浏览器集合 263/263 通过，包含原失败用例及本票全部 9 个用例。
+
+本轮仅完成项目全局测试，不替代最后独立门禁的复杂脚本、实机 smoke、跨票据整体验收或 P36 人工体验确认。同步后的测试修复和本记录提交到当前开发分支，交宿主排队合并，未直接操作集成分支或集成工作区。
 
