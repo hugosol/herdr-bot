@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, loadNodeDraft, saveNode, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
+import { listMaps, loadMap, listTemplates, loadTemplateDraft, saveTemplate, checkTemplateDelete, deleteTemplate, loadNodeDraft, saveNode, type TemplateRevision, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
 import { TemplatePreview } from './TemplatePreview'
@@ -45,6 +45,20 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       setDraft({ ...loaded, kind, create: id === null, initialId: loaded.id, initialContent: loaded.content })
       setTemplateView(kind === '模板')
     } catch (error) { setEditError(error instanceof Error ? error.message : `${kind}读取失败。`) }
+    finally { setEditingBusy(false) }
+  }
+
+  async function removeTemplate() {
+    if (templateId === null || editingBusy) return
+    setEditError(null)
+    setEditingBusy(true)
+    try {
+      const target = await checkTemplateDelete(templateId)
+      if (!window.confirm(`确认删除共享模板 ${target.id}？此操作无法撤销。`)) return
+      const catalog = await deleteTemplate(target)
+      setTemplates({ kind: 'ready', ...catalog })
+      setTemplateId(null)
+    } catch (error) { setEditError(error instanceof Error ? error.message : '模板删除失败。') }
     finally { setEditingBusy(false) }
   }
 
@@ -229,6 +243,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
         {(templateId !== null || draft !== null) && <button type="button" onClick={() => { if (abandonDraft()) setTemplateId(null) }}>返回模板列表</button>}
         {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>新增模板</button>}
         {!draft && template && !templateProblem && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(template.id)}>修改模板</button>}
+        {!draft && template && !templateProblem && <button type="button" disabled={editingBusy} onClick={() => void removeTemplate()}>删除模板</button>}
       </nav>
       <h2 ref={templateHeading} tabIndex={-1}>{draft ? (draft.revision ? '修改模板' : '新增模板') : templateId === null ? '共享模板' : '模板预览'}</h2>
       {editError && <p role="alert">{editError}</p>}

@@ -292,6 +292,8 @@ pub fn app_with_state(
         .route("/api/scheduler/templates/new", get(scheduler::new_template))
         .route("/api/scheduler/templates/edit", post(scheduler::edit_template))
         .route("/api/scheduler/templates/save", post(scheduler::save_template))
+        .route("/api/scheduler/templates/check-delete", post(scheduler::check_template_delete))
+        .route("/api/scheduler/templates/delete", post(scheduler::delete_template))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Bot：同一条路径读取列表与新增；单个 Bot 按标识读取、编辑与删除。

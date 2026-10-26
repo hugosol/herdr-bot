@@ -292,6 +292,90 @@ fn template_target(directory: &Path, id: &str) -> Result<Option<TemplateRevision
     Ok(None)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateDelete {
+    id: String,
+    revision: TemplateRevision,
+}
+
+fn check_template_references(directory: &Path, id: &str) -> Result<(), DirectoryError> {
+    let root = if directory.is_absolute() { directory.to_owned() } else {
+        std::env::current_dir().map_err(|error| edit_error("template-reference-check-failed",
+            format!("无法定位 Map 目录 {}：{error}", directory.display())))?.join(directory)
+    };
+    let directory = root.as_path();
+    let files = read_files(directory).map_err(|error| edit_error("template-reference-check-failed",
+        format!("无法完整检查 Map 目录 {}：{}", directory.display(), error.message)))?;
+    let mut references = Vec::new();
+    let mut failures = Vec::new();
+    for file in files.files {
+        match read_map(directory, &file) {
+            Ok(map) => {
+                for (node_id, node) in map.nodes {
+                    if node.0.node_template_id == id {
+                        references.push(format!("Map {file} / node {node_id}"));
+                    }
+                }
+            }
+            Err(error) => failures.push(format!("{}：{}", directory.join(file).display(), error.message)),
+        }
+    }
+    if !failures.is_empty() {
+        return Err(edit_error("template-reference-check-failed", format!("无法完整检查模板引用，禁止删除：{}{}",
+            failures.join("；"), if references.is_empty() { String::new() } else { format!("；已发现引用：{}", references.join("；")) })));
+    }
+    if !references.is_empty() {
+        return Err(edit_error("template-referenced", format!("模板 {id} 仍被引用，不能删除：{}", references.join("；"))));
+    }
+    Ok(())
+}
+
+pub async fn check_template_delete(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    Json(identity): Json<TemplateIdentity>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("template-delete-failed", "定义提交锁不可用。"))?;
+        let revision = template_target(&state.node_template_directory, &identity.id)?
+            .ok_or_else(|| edit_error("template-conflict", "模板已移除；请重新加载。"))?;
+        check_template_references(&state.map_directory, &identity.id)?;
+        Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "revision": revision }))
+    }).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("template-delete-failed", error.to_string()).into_response(),
+    }
+}
+
+pub async fn delete_template(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    Json(target): Json<TemplateDelete>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        // The same commit boundary protects node/template saves and deletions.
+        // Never carry the pre-confirmation reference result into this request.
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("template-delete-failed", "定义提交锁不可用。"))?;
+        let root = prepare_directory(&state.node_template_directory).map_err(template_directory_error)?;
+        let check_target = || -> Result<(), DirectoryError> {
+            if template_target(&root, &target.id)?.as_ref() != Some(&target.revision) {
+                return Err(edit_error("template-conflict", "模板文件已变化或移除；请重新加载后再删除。"));
+            }
+            Ok(())
+        };
+        check_target()?;
+        check_template_references(&state.map_directory, &target.id)?;
+        check_target()?;
+        fs::remove_file(root.join(&target.revision.file))
+            .map_err(|error| edit_error("template-delete-failed", format!("模板 {} 删除失败：{error}", target.revision.file)))?;
+        read_templates(&root)
+    }).await {
+        Ok(Ok(catalog)) => Json(catalog).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("template-delete-failed", error.to_string()).into_response(),
+    }
+}
+
 pub async fn new_template(request: Request) -> Response {
     if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
         return edit_error("invalid-request", "新增草稿不接受查询参数或请求体。").into_response();
