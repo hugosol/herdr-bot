@@ -19,6 +19,27 @@ export async function listTemplates(signal?: AbortSignal): Promise<TemplateCatal
   return value as TemplateCatalog
 }
 
+export type TemplateRevision = { file: string; original: string }
+
+export async function loadTemplateDraft(id: string | null): Promise<{ id: string; content: string; revision: TemplateRevision | null }> {
+  const response = await fetch(id === null ? '/api/scheduler/templates/new' : '/api/scheduler/templates/edit', id === null ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `模板读取失败：HTTP ${response.status}`)
+  return id === null ? { id: '', content: JSON.stringify(value, null, 2), revision: null }
+    : { id: value.id, content: JSON.stringify(value.content, null, 2), revision: value.revision }
+}
+
+export async function saveTemplate(draft: { id: string; content: string; revision: TemplateRevision | null }): Promise<NodeTemplate> {
+  const response = await fetch('/api/scheduler/templates/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `模板保存失败：HTTP ${response.status}`)
+  return value as NodeTemplate
+}
+
 export type MapNode = {
   title: string
   node_template_id: string

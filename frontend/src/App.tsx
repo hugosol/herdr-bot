@@ -69,6 +69,7 @@ export default function App({
   // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
   const [tab, setTab] = useState<TabKey>('sessions')
   const [serverOpen, setServerOpen] = useState(false)
+  const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   const serverBackRef = useRef<HTMLButtonElement>(null)
@@ -106,6 +107,7 @@ export default function App({
     // 方向键只属于顶层入口：阻止页面滚动，并同步选中态与焦点。
     event.preventDefault()
     const next = TAB_ORDER[nextIndex]
+    if (next !== tab && tab === 'scheduler' && schedulerNavigationGuard.current?.() === false) return
     setTab(next)
     tabRefs.current[next]?.focus()
   }
@@ -130,7 +132,7 @@ export default function App({
     <main className={!serverOpen && (tab === 'files' || tab === 'bots') ? 'panel panel--wide' : 'panel'}>
       <header className="app-header">
         <h1>herdr-bot</h1>
-        <button type="button" data-testid="server-button" hidden={serverOpen} onClick={() => setServerOpen(true)}>
+        <button type="button" data-testid="server-button" hidden={serverOpen} onClick={() => { if (tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>
           server
         </button>
       </header>
@@ -158,7 +160,7 @@ export default function App({
             ref={(node) => {
               tabRefs.current[key] = node
             }}
-            onClick={() => setTab(key)}
+            onClick={() => { if (key === tab || tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setTab(key) }}
           >
             {TAB_LABELS[key]}
           </button>
@@ -208,7 +210,7 @@ export default function App({
         data-testid="panel-scheduler"
         hidden={serverOpen || tab !== 'scheduler'}
       >
-        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} />
+        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard} />
       </div>
 
       <section
