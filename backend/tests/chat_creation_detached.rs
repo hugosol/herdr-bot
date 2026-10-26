@@ -1,7 +1,7 @@
 //! 浏览器断开与多客户端并发的公开接缝（S2 HTTP / S3 Herdr 控制）验收。
 //!
 //! 这里只使用公开 HTTP 入口与受控 Herdr 夹具自己写下的外部记录：创建被接受之后，观察连接的
-//! 断开不是取消；两个独立客户端同时提交时各自得到独立对象、Bot 快照与输入。期望值来自预写的
+//! 断开不是取消；两个独立客户端同时提交时各自得到独立对象、Task 快照与输入。期望值来自预写的
 //! 字面样例与夹具记录，不由 herdr-bot 的命名或合成函数生成。受控屏障只让某一次创建停在
 //! 启动或提交之前，用来证明另一个创建不会被它排队等待，而不是用“先后各成功一次”冒充并发。
 
@@ -40,7 +40,7 @@ fn config_with_operations(
 ) -> herdr_bot::Config {
     let mut config = common::config(script, operations);
     config.zones.registry_file = storage.path().join("zones.json");
-    config.bots.storage_file = storage.path().join("bots.json");
+    config.tasks.storage_file = storage.path().join("tasks.json");
     config.herdr = herdr_bot::HerdrConfig {
         workspace_name: "bot-playground".to_string(),
         executable: herdr.executable().to_path_buf(),
@@ -69,53 +69,53 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .expect("登记响应必须包含刚登记的目录")
 }
 
-/// 保存一个 Bot 并返回刚保存的对象（列表按创建顺序追加，新 Bot 在末尾）。
-async fn save_bot(server: &TestServer, bot: Value) -> Value {
-    let expected_name = bot["name"]
+/// 保存一个 Task 并返回刚保存的对象（列表按创建顺序追加，新 Task 在末尾）。
+async fn save_task(server: &TestServer, task: Value) -> Value {
+    let expected_name = task["name"]
         .as_str()
-        .expect("Bot样例必须有 name")
+        .expect("Task样例必须有 name")
         .to_string();
     let response =
-        post_json_over_tcp(server.addr(), "/api/bots", &bot.to_string()).await;
-    assert_eq!(response.status, 200, "保存Bot应成功：{}", response.body);
-    let body: Value = serde_json::from_str(&response.body).expect("Bot响应是 JSON");
-    let saved = body["bots"]
+        post_json_over_tcp(server.addr(), "/api/tasks", &task.to_string()).await;
+    assert_eq!(response.status, 200, "保存Task应成功：{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).expect("Task响应是 JSON");
+    let saved = body["tasks"]
         .as_array()
-        .expect("Bot响应必须有 bots")
+        .expect("Task响应必须有 tasks")
         .last()
-        .expect("保存后必须有一个Bot")
+        .expect("保存后必须有一个Task")
         .clone();
-    assert_eq!(saved["name"], expected_name, "刚保存的Bot必须在列表末尾");
+    assert_eq!(saved["name"], expected_name, "刚保存的Task必须在列表末尾");
     saved
 }
 
-async fn update_bot(server: &TestServer, id: &str, bot: Value) -> Value {
+async fn update_task(server: &TestServer, id: &str, task: Value) -> Value {
     let response = request_json_over_tcp(
         server.addr(),
         "PUT",
-        &format!("/api/bots/{id}"),
-        Some(&bot.to_string()),
+        &format!("/api/tasks/{id}"),
+        Some(&task.to_string()),
     )
     .await;
-    assert_eq!(response.status, 200, "编辑Bot应成功：{}", response.body);
-    serde_json::from_str(&response.body).expect("Bot响应是 JSON")
+    assert_eq!(response.status, 200, "编辑Task应成功：{}", response.body);
+    serde_json::from_str(&response.body).expect("Task响应是 JSON")
 }
 
-async fn preview(server: &TestServer, zone: &str, bot_id: &str) -> Value {
+async fn preview(server: &TestServer, zone: &str, task_id: &str) -> Value {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/chats/preview",
-        &json!({ "zone": zone, "botId": bot_id }).to_string(),
+        &json!({ "zone": zone, "taskId": task_id }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "预览应成功：{}", response.body);
     serde_json::from_str(&response.body).expect("预览响应是 JSON")
 }
 
-fn create_body(zone: &str, bot_id: &str, preview: &Value, input: &str) -> String {
+fn create_body(zone: &str, task_id: &str, preview: &Value, input: &str) -> String {
     json!({
         "zone": zone,
-        "botId": bot_id,
+        "taskId": task_id,
         "chatId": preview["chatId"],
         "input": input,
         "expectedName": preview["name"],
@@ -172,11 +172,11 @@ async fn wait_stage(server: &TestServer, id: &str, expected: &str) -> Value {
 async fn accept_creation(
     server: &TestServer,
     zone: &str,
-    bot_id: &str,
+    task_id: &str,
     input: &str,
 ) -> (String, Value) {
-    let preview = preview(server, zone, bot_id).await;
-    let response = create(server, &create_body(zone, bot_id, &preview, input)).await;
+    let preview = preview(server, zone, task_id).await;
+    let response = create(server, &create_body(zone, task_id, &preview, input)).await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
     assert_eq!(accepted["stage"], "starting");
@@ -207,11 +207,11 @@ fn call_kinds(herdr: &HerdrFixture) -> Vec<String> {
         .collect()
 }
 
-/// 预写的 Bot 字面样例：默认 model / thinking、无 Skill、固定 prompt 为空。
-fn default_bot(name: &str) -> Value {
+/// 预写的 Task 字面样例：默认 model / thinking、无 Skill、固定 prompt 为空。
+fn default_task(name: &str) -> Value {
     json!({
         "name": name,
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": "omp",
         "model": "default",
         "thinking": "default",
@@ -293,20 +293,20 @@ fn external_objects<'a>(herdr: &'a HerdrFixture, view: &Value) -> (Value, Value,
 /// 且只有一次初始化提交，没有关闭、重建或重发。
 #[tokio::test(flavor = "multi_thread")]
 async fn accepted_creation_continues_after_observation_connections_drop() {
-    let herdr = HerdrFixture::new("bot detach observations");
+    let herdr = HerdrFixture::new("task detach observations");
     herdr.set_behavior(json!({
         "agent_start_delay_ms": 1_200,
         "prompt_delay_ms": 1_200,
     }));
-    let storage = TempDir::new("bot detach observations storage");
+    let storage = TempDir::new("task detach observations storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot("审查")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let (id, accepted) = accept_creation(&server, &zone_path, bot_id, "断线后的任务").await;
+    let task = save_task(&server, default_task("审查")).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let (id, accepted) = accept_creation(&server, &zone_path, task_id, "断线后的任务").await;
 
     // 尚未就绪：创建仍处于正在启动，此时断开一条观察连接。
     let starting = creation(&server, &id).await;
@@ -383,18 +383,18 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
 /// P50：提交请求的连接在结果返回前断开，后端已接受的创建仍继续完成。
 #[tokio::test(flavor = "multi_thread")]
 async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
-    let herdr = HerdrFixture::new("bot detach submit connection");
+    let herdr = HerdrFixture::new("task detach submit connection");
     herdr.set_behavior(json!({ "agent_start_delay_ms": 1_500 }));
-    let storage = TempDir::new("bot detach submit connection storage");
+    let storage = TempDir::new("task detach submit connection storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot("审查")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview = preview(&server, &zone_path, bot_id).await;
-    let body = create_body(&zone_path, bot_id, &preview, "提交连接断开的任务");
+    let task = save_task(&server, default_task("审查")).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview = preview(&server, &zone_path, task_id).await;
+    let body = create_body(&zone_path, task_id, &preview, "提交连接断开的任务");
 
     // 只发送创建请求，不读取回执；受控 Herdr 收到 agent start 说明后端已经接手。
     let client = OpenJsonRequest::submit(server.addr(), "/api/chats", &body).await;
@@ -441,8 +441,8 @@ async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
 /// P51：两个独立客户端同时对同一 zone、再同时对不同 zone 提交；每次创建各有对象、输入与目标。
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_clients_get_independent_objects_and_inputs() {
-    let herdr = HerdrFixture::new("bot concurrent clients");
-    let storage = TempDir::new("bot concurrent clients storage");
+    let herdr = HerdrFixture::new("task concurrent clients");
+    let storage = TempDir::new("task concurrent clients storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let alpha = storage.path().join("alpha");
@@ -451,14 +451,14 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
     fs::create_dir_all(&beta).expect("创建 beta");
     let alpha_path = register(&server, &alpha).await;
     let beta_path = register(&server, &beta).await;
-    let bot = save_bot(&server, default_bot("并行")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识").to_string();
+    let task = save_task(&server, default_task("并行")).await;
+    let task_id = task["id"].as_str().expect("Task标识").to_string();
 
     // 同一 zone：两个独立客户端同时提交，各自先用独立的预览与字面 input。
-    let first_preview = preview(&server, &alpha_path, &bot_id).await;
-    let second_preview = preview(&server, &alpha_path, &bot_id).await;
-    let first_body = create_body(&alpha_path, &bot_id, &first_preview, "同 zone 任务甲");
-    let second_body = create_body(&alpha_path, &bot_id, &second_preview, "同 zone 任务乙");
+    let first_preview = preview(&server, &alpha_path, &task_id).await;
+    let second_preview = preview(&server, &alpha_path, &task_id).await;
+    let first_body = create_body(&alpha_path, &task_id, &first_preview, "同 zone 任务甲");
+    let second_body = create_body(&alpha_path, &task_id, &second_preview, "同 zone 任务乙");
     let (first_response, second_response) =
         tokio::join!(create(&server, &first_body), create(&server, &second_body));
     assert_eq!(first_response.status, 202, "{}", first_response.body);
@@ -493,10 +493,10 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
     assert_eq!(herdr.tabs().len(), 2, "同一 zone 的两次创建各有独立 Tab");
 
     // 不同 zone：同时提交后，每次创建使用自己 zone 的目录与字面任务。
-    let alpha_preview = preview(&server, &alpha_path, &bot_id).await;
-    let beta_preview = preview(&server, &beta_path, &bot_id).await;
-    let alpha_body = create_body(&alpha_path, &bot_id, &alpha_preview, "跨 zone 任务甲");
-    let beta_body = create_body(&beta_path, &bot_id, &beta_preview, "跨 zone 任务乙");
+    let alpha_preview = preview(&server, &alpha_path, &task_id).await;
+    let beta_preview = preview(&server, &beta_path, &task_id).await;
+    let alpha_body = create_body(&alpha_path, &task_id, &alpha_preview, "跨 zone 任务甲");
+    let beta_body = create_body(&beta_path, &task_id, &beta_preview, "跨 zone 任务乙");
     let (alpha_response, beta_response) =
         tokio::join!(create(&server, &alpha_body), create(&server, &beta_body));
     assert_eq!(alpha_response.status, 202, "{}", alpha_response.body);
@@ -531,7 +531,7 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
 /// P51：一个创建停在提交屏障时，另一个已接受的创建继续完成，不排队等待。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_creation_blocked_at_submission_does_not_queue_another() {
-    let herdr = HerdrFixture::new("bot concurrent submit barrier");
+    let herdr = HerdrFixture::new("task concurrent submit barrier");
     let blocked_release = release_path(&herdr, "release-blocked-prompt");
     herdr.set_behavior(json!({
         "prompt_gate": {
@@ -540,15 +540,15 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
             "timeout_ms": 20_000,
         },
     }));
-    let storage = TempDir::new("bot concurrent submit barrier storage");
+    let storage = TempDir::new("task concurrent submit barrier storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot("并发")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let (blocked_id, _) = accept_creation(&server, &zone_path, bot_id, "被阻塞的创建").await;
+    let task = save_task(&server, default_task("并发")).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let (blocked_id, _) = accept_creation(&server, &zone_path, task_id, "被阻塞的创建").await;
 
     // 受控夹具已经记录这次提交，但屏障让它的响应停在“正在提交”。
     assert!(
@@ -562,7 +562,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     assert_eq!(blocked["inputSubmitted"], false);
 
     // 第二个创建在第一个仍受阻时被接受并完整完成。
-    let (free_id, _) = accept_creation(&server, &zone_path, bot_id, "率先完成的创建").await;
+    let (free_id, _) = accept_creation(&server, &zone_path, task_id, "率先完成的创建").await;
     let free = wait_stage(&server, &free_id, "succeeded").await;
     let blocked_during = creation(&server, &blocked_id).await;
     assert_eq!(
@@ -593,7 +593,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
 /// P51：一个创建停在启动屏障时，另一个创建不被它阻塞。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_creation_blocked_before_readiness_does_not_queue_another() {
-    let herdr = HerdrFixture::new("bot concurrent start barrier");
+    let herdr = HerdrFixture::new("task concurrent start barrier");
     let blocked_release = release_path(&herdr, "release-blocked-start");
     herdr.set_behavior(json!({
         "agent_start_gate": {
@@ -602,17 +602,17 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
             "timeout_ms": 20_000,
         },
     }));
-    let storage = TempDir::new("bot concurrent start barrier storage");
+    let storage = TempDir::new("task concurrent start barrier storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let blocked_bot = save_bot(
+    let blocked_task = save_task(
         &server,
         json!({
             "name": "启动受阻",
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "omp",
             "model": "deepseek-flash",
             "thinking": "high",
@@ -621,12 +621,12 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
         }),
     )
     .await;
-    let free_bot = save_bot(&server, default_bot("起跑顺利")).await;
-    let blocked_bot_id = blocked_bot["id"].as_str().expect("Bot标识");
-    let free_bot_id = free_bot["id"].as_str().expect("Bot标识");
+    let free_task = save_task(&server, default_task("起跑顺利")).await;
+    let blocked_task_id = blocked_task["id"].as_str().expect("Task标识");
+    let free_task_id = free_task["id"].as_str().expect("Task标识");
 
     let (blocked_id, _) =
-        accept_creation(&server, &zone_path, blocked_bot_id, "启动被阻塞的任务").await;
+        accept_creation(&server, &zone_path, blocked_task_id, "启动被阻塞的任务").await;
     assert!(
         wait_until(Duration::from_secs(10), || {
             calls_of_kind(&herdr, "agent_start").len() == 1
@@ -638,7 +638,7 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
     assert_eq!(blocked["stage"], "starting");
 
     // 第二个创建在第一个仍未就绪时完成全部阶段。
-    let (free_id, _) = accept_creation(&server, &zone_path, free_bot_id, "先完成的任务").await;
+    let (free_id, _) = accept_creation(&server, &zone_path, free_task_id, "先完成的任务").await;
     let free = wait_stage(&server, &free_id, "succeeded").await;
     assert_eq!(
         creation(&server, &blocked_id).await["stage"],
@@ -667,11 +667,11 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
     assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
 }
 
-/// P51：并发请求各自采用接受时的 Bot 快照；两个独立客户端在创建途中分别编辑 Bot，
+/// P51：并发请求各自采用接受时的 Task 快照；两个独立客户端在创建途中分别编辑 Task，
 /// 已经接受的两次创建仍按旧字面配置与输入执行。
 #[tokio::test(flavor = "multi_thread")]
-async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
-    let herdr = HerdrFixture::new("bot concurrent snapshots");
+async fn concurrent_creations_keep_their_own_accepted_task_snapshots() {
+    let herdr = HerdrFixture::new("task concurrent snapshots");
     let start_release = release_path(&herdr, "release-snapshot-start");
     let prompt_release = release_path(&herdr, "release-snapshot-prompt");
     herdr.set_behavior(json!({
@@ -686,17 +686,17 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
             "timeout_ms": 20_000,
         },
     }));
-    let storage = TempDir::new("bot concurrent snapshots storage");
+    let storage = TempDir::new("task concurrent snapshots storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot_a = save_bot(
+    let task_a = save_task(
         &server,
         json!({
             "name": "并发旧版 A",
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "omp",
             "model": "deepseek-flash",
             "thinking": "high",
@@ -705,11 +705,11 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
         }),
     )
     .await;
-    let bot_b = save_bot(
+    let task_b = save_task(
         &server,
         json!({
             "name": "并发旧版 B",
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "pi",
             "model": "gpt-6.1-sol",
             "thinking": "low",
@@ -718,14 +718,14 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
         }),
     )
     .await;
-    let bot_a_id = bot_a["id"].as_str().expect("Bot标识").to_string();
-    let bot_b_id = bot_b["id"].as_str().expect("Bot标识").to_string();
+    let task_a_id = task_a["id"].as_str().expect("Task标识").to_string();
+    let task_b_id = task_b["id"].as_str().expect("Task标识").to_string();
 
     // 两个独立客户端同时提交，各自使用不同的已保存版本与字面 input。
-    let preview_a = preview(&server, &zone_path, &bot_a_id).await;
-    let preview_b = preview(&server, &zone_path, &bot_b_id).await;
-    let body_a = create_body(&zone_path, &bot_a_id, &preview_a, "快照 A 的输入");
-    let body_b = create_body(&zone_path, &bot_b_id, &preview_b, "快照 B 的输入");
+    let preview_a = preview(&server, &zone_path, &task_a_id).await;
+    let preview_b = preview(&server, &zone_path, &task_b_id).await;
+    let body_a = create_body(&zone_path, &task_a_id, &preview_a, "快照 A 的输入");
+    let body_b = create_body(&zone_path, &task_b_id, &preview_b, "快照 B 的输入");
     let (response_a, response_b) = tokio::join!(create(&server, &body_a), create(&server, &body_b));
     assert_eq!(response_a.status, 202, "{}", response_a.body);
     assert_eq!(response_b.status, 202, "{}", response_b.body);
@@ -752,13 +752,13 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
     assert_eq!(creation(&server, &id_a).await["stage"], "starting");
     assert_eq!(creation(&server, &id_b).await["stage"], "submitting");
 
-    // 另一客户端在创建途中把两个 Bot 都改成完全不同的新版本。
-    update_bot(
+    // 另一客户端在创建途中把两个 Task 都改成完全不同的新版本。
+    update_task(
         &server,
-        &bot_a_id,
+        &task_a_id,
         json!({
             "name": "并发新版 A",
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "pi",
             "model": "default",
             "thinking": "default",
@@ -767,12 +767,12 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
         }),
     )
     .await;
-    update_bot(
+    update_task(
         &server,
-        &bot_b_id,
+        &task_b_id,
         json!({
             "name": "并发新版 B",
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "omp",
             "model": "default",
             "thinking": "default",
@@ -786,8 +786,8 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
     release(&prompt_release);
     let finished_a = wait_stage(&server, &id_a, "succeeded").await;
     let finished_b = wait_stage(&server, &id_b, "succeeded").await;
-    assert_eq!(finished_a["botId"], bot_a_id);
-    assert_eq!(finished_b["botId"], bot_b_id);
+    assert_eq!(finished_a["taskId"], task_a_id);
+    assert_eq!(finished_b["taskId"], task_b_id);
     assert_eq!(finished_a["name"], preview_a["name"]);
     assert_eq!(finished_b["name"], preview_b["name"]);
 
@@ -801,12 +801,12 @@ async fn concurrent_creations_keep_their_own_accepted_bot_snapshots() {
     assert_launch_args(
         &start_a["args"],
         &["--model", "deepseek/deepseek-flash", "--thinking", "high"],
-        "创建 A 必须使用接受时的旧Bot启动参数",
+        "创建 A 必须使用接受时的旧Task启动参数",
     );
     assert_launch_args(
         &start_b["args"],
         &["--model", "openai-codex/gpt-6.1-sol", "--thinking", "low"],
-        "创建 B 必须使用接受时的旧Bot启动参数",
+        "创建 B 必须使用接受时的旧Task启动参数",
     );
     assert_eq!(
         prompt_a["text"],
@@ -895,19 +895,19 @@ entrypoint = '{}'
     metadata
 }
 
-fn snapshot_bot(revision: &str) -> Value {
+fn snapshot_task(revision: &str) -> Value {
     match revision {
         "old" => json!({
-            "name": "旧快照", "chatName": "old-{bot.name}-{chat.id}", "agent": "omp",
+            "name": "旧快照", "chatName": "old-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "high", "skill": "mapped-skill",
             "prompt": "旧固定指示\n第二行", "extensions": ["tools"],
         }),
         "new" => json!({
-            "name": "新快照", "chatName": "new-{bot.name}-{chat.id}", "agent": "omp",
+            "name": "新快照", "chatName": "new-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "low", "skill": "mapped-skill",
             "prompt": "新固定指示\n第二行", "extensions": ["connect"],
         }),
-        _ => panic!("未知Bot版本"),
+        _ => panic!("未知Task版本"),
     }
 }
 
@@ -935,9 +935,9 @@ fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], e
     );
 }
 
-/// S2 / P36：旧创建停在 Tab 返回之前，另一客户端改 Bot 和真实元数据后新建。
-/// 违反样例：阶段推进重新解析映射、只复制 Bot 未复制扩展，或全局队列使新创建等待旧创建。
-/// 观察：未释放旧屏障时新创建成功；旧创建在 Bot 已删除、元数据已移除后仍按旧字面配置完成。
+/// S2 / P36：旧创建停在 Tab 返回之前，另一客户端改 Task 和真实元数据后新建。
+/// 违反样例：阶段推进重新解析映射、只复制 Task 未复制扩展，或全局队列使新创建等待旧创建。
+/// 观察：未释放旧屏障时新创建成功；旧创建在 Task 已删除、元数据已移除后仍按旧字面配置完成。
 #[tokio::test(flavor = "multi_thread")]
 async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_independently() {
     let herdr = HerdrFixture::new("full creation snapshot");
@@ -952,15 +952,15 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
     let storage = TempDir::new("full creation snapshot storage");
     let metadata = write_snapshot_catalog(&storage, "old");
     let mut config = config_with(&herdr, &storage);
-    config.bots.metadata_file = metadata.clone();
+    config.tasks.metadata_file = metadata.clone();
     let server = TestServer::start(&config).await;
     let zone = storage.path().join("alpha");
     fs::create_dir(&zone).unwrap();
     let zone = register(&server, &zone).await;
-    let saved = save_bot(&server, snapshot_bot("old")).await;
-    let bot_id = saved["id"].as_str().unwrap();
+    let saved = save_task(&server, snapshot_task("old")).await;
+    let task_id = saved["id"].as_str().unwrap();
     let (old_id, old_accepted) =
-        accept_creation(&server, &zone, bot_id, "旧本次输入\n保留换行").await;
+        accept_creation(&server, &zone, task_id, "旧本次输入\n保留换行").await;
     assert!(
         wait_until(Duration::from_secs(10), || calls_of_kind(
             &herdr,
@@ -975,8 +975,8 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
     assert!(calls_of_kind(&herdr, "agent_start").is_empty());
 
     write_snapshot_catalog(&storage, "new");
-    update_bot(&server, bot_id, snapshot_bot("new")).await;
-    let (new_id, _) = accept_creation(&server, &zone, bot_id, "新本次输入\n保留换行").await;
+    update_task(&server, task_id, snapshot_task("new")).await;
+    let (new_id, _) = accept_creation(&server, &zone, task_id, "新本次输入\n保留换行").await;
     let new_finished = wait_stage(&server, &new_id, "succeeded").await;
     assert!(!tab_release.exists(), "新创建必须在旧创建释放之前完成");
     let old_blocked = creation(&server, &old_id).await;
@@ -1002,11 +1002,11 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         "/skill:new-native 新固定指示\n第二行\n\n新本次输入\n保留换行"
     );
 
-    // 已接受的旧创建不再依赖可变来源；删除 Bot 及元数据也不能触发重读/重配。
+    // 已接受的旧创建不再依赖可变来源；删除 Task 及元数据也不能触发重读/重配。
     let deleted = request_json_over_tcp(
         server.addr(),
         "DELETE",
-        &format!("/api/bots/{bot_id}"),
+        &format!("/api/tasks/{task_id}"),
         None,
     )
     .await;
@@ -1080,21 +1080,21 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
 }
 
 /// S2 / P37：先实际创建，再依次编辑、改元数据、删除来源；已有 Chat 的外部对象和调用不变。
-/// 违反样例：Bot 编辑向旧 agent 下发改配/重启，或后续创建误用旧映射/允许已删除来源。
+/// 违反样例：Task 编辑向旧 agent 下发改配/重启，或后续创建误用旧映射/允许已删除来源。
 #[tokio::test(flavor = "multi_thread")]
-async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
-    let herdr = HerdrFixture::new("existing bot isolation");
-    let storage = TempDir::new("existing bot isolation storage");
+async fn p37_task_and_metadata_changes_leave_existing_chats_untouched() {
+    let herdr = HerdrFixture::new("existing task isolation");
+    let storage = TempDir::new("existing task isolation storage");
     let metadata = write_snapshot_catalog(&storage, "old");
     let mut config = config_with(&herdr, &storage);
-    config.bots.metadata_file = metadata;
+    config.tasks.metadata_file = metadata;
     let server = TestServer::start(&config).await;
     let zone = storage.path().join("alpha");
     fs::create_dir(&zone).unwrap();
     let zone = register(&server, &zone).await;
-    let saved = save_bot(&server, snapshot_bot("old")).await;
-    let bot_id = saved["id"].as_str().unwrap();
-    let (id, _) = accept_creation(&server, &zone, bot_id, "已有 Chat 的输入").await;
+    let saved = save_task(&server, snapshot_task("old")).await;
+    let task_id = saved["id"].as_str().unwrap();
+    let (id, _) = accept_creation(&server, &zone, task_id, "已有 Chat 的输入").await;
     let existing = wait_stage(&server, &id, "succeeded").await;
     let original_calls = control_calls(&herdr);
     let original_tabs = herdr.tabs();
@@ -1110,19 +1110,19 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
         "/skill:old-native 旧固定指示\n第二行\n\n已有 Chat 的输入"
     );
 
-    update_bot(&server, bot_id, snapshot_bot("new")).await;
-    assert_eq!(control_calls(&herdr), original_calls, "编辑Bot不触碰外部 Chat");
+    update_task(&server, task_id, snapshot_task("new")).await;
+    assert_eq!(control_calls(&herdr), original_calls, "编辑Task不触碰外部 Chat");
     assert_eq!(herdr.tabs(), original_tabs);
     write_snapshot_catalog(&storage, "new");
     // 经公开读取触发当前元数据加载，而非仅写一个无人读取的文件。
-    let read = get_over_tcp(server.addr(), &format!("/api/bots/{bot_id}")).await;
+    let read = get_over_tcp(server.addr(), &format!("/api/tasks/{task_id}")).await;
     assert_eq!(read.status, 200, "{}", read.body);
     assert_eq!(control_calls(&herdr), original_calls, "元数据更新不触碰外部 Chat");
     assert_eq!(herdr.tabs(), original_tabs);
     assert_eq!(creation(&server, &id).await, existing);
 
     // 同一仍有效的来源立即使用新配置，不用重启服务或重新保存映射。
-    let (new_id, _) = accept_creation(&server, &zone, bot_id, "后续 Chat 的输入").await;
+    let (new_id, _) = accept_creation(&server, &zone, task_id, "后续 Chat 的输入").await;
     let new_chat = wait_stage(&server, &new_id, "succeeded").await;
     let (_, new_start, new_prompt) = external_objects(&herdr, &new_chat);
     assert_snapshot_launch(
@@ -1146,30 +1146,30 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
     );
     let before_delete_calls = control_calls(&herdr);
     let before_delete_tabs = herdr.tabs();
-    let stale_preview = preview(&server, &zone, bot_id).await;
+    let stale_preview = preview(&server, &zone, task_id).await;
     let deleted = request_json_over_tcp(
         server.addr(),
         "DELETE",
-        &format!("/api/bots/{bot_id}"),
+        &format!("/api/tasks/{task_id}"),
         None,
     )
     .await;
     assert_eq!(deleted.status, 200, "{}", deleted.body);
     write_snapshot_catalog(&storage, "old");
     assert_eq!(
-        get_over_tcp(server.addr(), &format!("/api/bots/{bot_id}"))
+        get_over_tcp(server.addr(), &format!("/api/tasks/{task_id}"))
             .await
             .status,
         404
     );
     let rejected = create(
         &server,
-        &create_body(&zone, bot_id, &stale_preview, "不能发送的输入"),
+        &create_body(&zone, task_id, &stale_preview, "不能发送的输入"),
     )
     .await;
     assert_eq!(rejected.status, 404, "{}", rejected.body);
     let rejected: Value = serde_json::from_str(&rejected.body).unwrap();
-    assert_eq!(rejected["code"], "bot-not-found");
+    assert_eq!(rejected["code"], "task-not-found");
     // 不只看页面列表：跨过一段调度窗口，独立外部日志与对象完全相同，两条已完成创建也不变。
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
@@ -1185,7 +1185,7 @@ async fn p37_bot_and_metadata_changes_leave_existing_chats_untouched() {
 /// P51：创建 Chat 不共享固定操作的执行资格；创建停在提交阶段时，固定操作仍被接受并执行。
 #[tokio::test(flavor = "multi_thread")]
 async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
-    let herdr = HerdrFixture::new("bot concurrent fixed operations");
+    let herdr = HerdrFixture::new("task concurrent fixed operations");
     let blocked_release = release_path(&herdr, "release-fixed-operation");
     herdr.set_behavior(json!({
         "prompt_gate": {
@@ -1194,8 +1194,8 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
             "timeout_ms": 20_000,
         },
     }));
-    let fixtures = FixtureTree::new("bot concurrent fixed operations fixtures");
-    let storage = TempDir::new("bot concurrent fixed operations storage");
+    let fixtures = FixtureTree::new("task concurrent fixed operations fixtures");
+    let storage = TempDir::new("task concurrent fixed operations storage");
     let server = TestServer::start(&config_with_operations(
         &herdr,
         &storage,
@@ -1207,10 +1207,10 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot("并行")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
+    let task = save_task(&server, default_task("并行")).await;
+    let task_id = task["id"].as_str().expect("Task标识");
     let (creation_id, _) =
-        accept_creation(&server, &zone_path, bot_id, "与固定操作并行").await;
+        accept_creation(&server, &zone_path, task_id, "与固定操作并行").await;
     assert!(
         wait_until(Duration::from_secs(10), || {
             calls_of_kind(&herdr, "agent_prompt").len() == 1
@@ -1249,8 +1249,8 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
 /// 并发创建的名称仍然遵守各自 zone 的末级目录名，而不是被另一请求覆盖。
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_zone_creations_render_their_own_zone_names() {
-    let herdr = HerdrFixture::new("bot concurrent zone names");
-    let storage = TempDir::new("bot concurrent zone names storage");
+    let herdr = HerdrFixture::new("task concurrent zone names");
+    let storage = TempDir::new("task concurrent zone names storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let one = storage.path().join("one");
@@ -1259,13 +1259,13 @@ async fn concurrent_zone_creations_render_their_own_zone_names() {
     fs::create_dir_all(&two).expect("创建 two");
     let one_path = register(&server, &one).await;
     let two_path = register(&server, &two).await;
-    let bot = save_bot(&server, default_bot("命名")).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
+    let task = save_task(&server, default_task("命名")).await;
+    let task_id = task["id"].as_str().expect("Task标识");
 
-    let one_preview = preview(&server, &one_path, &bot_id).await;
-    let two_preview = preview(&server, &two_path, &bot_id).await;
-    let one_body = create_body(&one_path, &bot_id, &one_preview, "命名任务一");
-    let two_body = create_body(&two_path, &bot_id, &two_preview, "命名任务二");
+    let one_preview = preview(&server, &one_path, &task_id).await;
+    let two_preview = preview(&server, &two_path, &task_id).await;
+    let one_body = create_body(&one_path, &task_id, &one_preview, "命名任务一");
+    let two_body = create_body(&two_path, &task_id, &two_preview, "命名任务二");
     let (one_response, two_response) =
         tokio::join!(create(&server, &one_body), create(&server, &two_body));
     let one_creation: Value = serde_json::from_str(&one_response.body).expect("创建回执是 JSON");

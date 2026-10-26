@@ -7,12 +7,12 @@ import App from '../src/App'
 /**
  * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
  *
- * 顶层顺序固定为 chat、bot、zone、scheduler；每次打开或整页刷新都从 chat 开始，
+ * 顶层顺序固定为 chat、task、zone、scheduler；每次打开或整页刷新都从 chat 开始，
  * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
  * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
  */
 describe('App 四 tab 骨架', () => {
-  it('整页恰四个 tab，顺序为 chat、bot、zone、scheduler，默认停在 chat', () => {
+  it('整页恰四个 tab，顺序为 chat、task、zone、scheduler，默认停在 chat', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
@@ -24,7 +24,7 @@ describe('App 四 tab 骨架', () => {
     // 同一时刻只有一个 tabpanel 在可访问性树里可见。
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-bots')).not.toBeVisible()
+    expect(screen.getByTestId('panel-tasks')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
@@ -38,7 +38,7 @@ describe('App 四 tab 骨架', () => {
     await user.tab()
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
     await user.tab()
-    expect(screen.getByTestId('tab-bots')).toHaveFocus()
+    expect(screen.getByTestId('tab-tasks')).toHaveFocus()
     await user.tab()
     expect(screen.getByTestId('tab-files')).toHaveFocus()
     await user.tab()
@@ -67,9 +67,9 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
 
     await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-bots')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-bots')).toHaveFocus()
-    expect(screen.getByTestId('panel-bots')).toBeVisible()
+    expect(screen.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-tasks')).toHaveFocus()
+    expect(screen.getByTestId('panel-tasks')).toBeVisible()
 
     await user.keyboard('{ArrowRight}')
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
@@ -113,7 +113,7 @@ describe('App 四 tab 骨架', () => {
 
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-bots')).not.toBeVisible()
+    expect(screen.getByTestId('panel-tasks')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })

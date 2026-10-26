@@ -501,7 +501,7 @@ fn process_config_text(sessions: &str, history_file: &Path) -> String {
     let metadata_file = common::repo_fixtures_dir()
         .parent()
         .expect("仓库根目录")
-        .join("meta-data/bot-options.toml");
+        .join("meta-data/task-options.toml");
     let metadata_file = toml::Value::String(metadata_file.to_string_lossy().into_owned());
     let history_file = toml::Value::String(history_file.to_string_lossy().into_owned());
     format!(
@@ -511,7 +511,7 @@ fn process_config_text(sessions: &str, history_file: &Path) -> String {
          [shutdown]\ncountdown_seconds = 3600\n\n\
          [mdns]\nenabled = false\n\n\
          [herdr]\nworkspace_name = 'bot-playground'\n\n\
-         [bots]\nmetadata_file = {metadata_file}\n\n\
+         [tasks]\nmetadata_file = {metadata_file}\n\n\
          {sessions}\nhistory_file = {history_file}\n"
     )
 }

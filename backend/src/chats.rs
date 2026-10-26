@@ -19,7 +19,7 @@ use serde::Serialize;
 use tokio::sync::Mutex;
 
 use crate::herdr::{HerdrClient, HerdrError};
-use crate::bots::Bot;
+use crate::tasks::Task;
 
 /// Chat 短实例标识的长度（小写十六进制字符数）。
 pub const CHAT_ID_LEN: usize = 6;
@@ -69,12 +69,12 @@ pub struct Failure {
 pub struct ChatCreationView {
     /// 本次创建的生命周期标识（不是 Herdr Tab ID）。
     pub id: String,
-    /// 按本次有效命名规则（创建覆盖或 Bot 默认）生成并实际用作 Tab 显示名的名称。
+    /// 按本次有效命名规则（创建覆盖或 Task 默认）生成并实际用作 Tab 显示名的名称。
     pub name: String,
     /// 发起创建的已登记 zone 目录。
     pub zone: String,
-    /// 创建被接受时使用的 Bot 标识。
-    pub bot_id: String,
+    /// 创建被接受时使用的 Task 标识。
+    pub task_id: String,
     pub stage: Stage,
     /// 已取得的 Herdr Tab 标识；未取得时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,12 +93,12 @@ pub struct ChatCreationView {
 }
 
 impl ChatCreationView {
-    pub fn starting(id: String, name: String, zone: String, bot_id: String) -> Self {
+    pub fn starting(id: String, name: String, zone: String, task_id: String) -> Self {
         Self {
             id,
             name,
             zone,
-            bot_id,
+            task_id,
             stage: Stage::Starting,
             tab_id: None,
             pane_id: None,
@@ -171,11 +171,11 @@ pub fn is_valid_chat_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-/// 按 Bot 的命名规则渲染展示名。
+/// 按 Task 的命名规则渲染展示名。
 ///
 /// 只有四个已承诺字段被替换；未知占位符保持原样。`{chat.id}` 取本次的短实例标识，不是 Herdr
 /// Tab ID。`zone.name` 是 zone 目录的末级名称。
-pub fn render_chat_name(rule: &str, zone: &str, bot: &Bot, chat_id: &str) -> String {
+pub fn render_chat_name(rule: &str, zone: &str, task: &Task, chat_id: &str) -> String {
     let zone_name = Path::new(zone)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -188,8 +188,8 @@ pub fn render_chat_name(rule: &str, zone: &str, bot: &Bot, chat_id: &str) -> Str
         remaining = &remaining[start..];
         let replacement = [
             ("{zone.name}", zone_name.as_str()),
-            ("{bot.name}", bot.name.as_str()),
-            ("{agent}", bot.agent.label()),
+            ("{task.name}", task.name.as_str()),
+            ("{agent}", task.agent.label()),
             ("{chat.id}", chat_id),
         ]
         .into_iter()
@@ -211,13 +211,13 @@ pub fn render_chat_name(rule: &str, zone: &str, bot: &Bot, chat_id: &str) -> Str
 /// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
 /// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
 pub fn compose_initial_input(
-    bot: &Bot,
+    task: &Task,
     native_skill: Option<&str>,
     input: &str,
 ) -> String {
     let mut sections: Vec<&str> = Vec::new();
-    if !bot.trigger.prompt.is_empty() {
-        sections.push(bot.trigger.prompt.as_str());
+    if !task.trigger.prompt.is_empty() {
+        sections.push(task.trigger.prompt.as_str());
     }
     if !input.is_empty() {
         sections.push(input);
@@ -235,7 +235,7 @@ pub fn compose_initial_input(
 ///
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
 /// 原生会话位置与自动续接均由 agent 的有效配置决定，不覆盖目录或强制新建。
-/// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与 Bot 所选入口。
+/// 两种 Agent 均关闭扩展自动发现，只显式加载本次快照的固定与 Task 所选入口。
 pub fn agent_launch_args(
     env: &crate::catalog::ResolvedEnvConfig,
     trigger: Option<&crate::catalog::ResolvedTriggerConfig>,
@@ -259,7 +259,7 @@ pub fn agent_launch_args(
     args
 }
 
-/// 执行一次已接受的创建；调用方已经固定了 Bot 与 zone 的当时取值。
+/// 执行一次已接受的创建；调用方已经固定了 Task 与 zone 的当时取值。
 ///
 /// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
 /// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
@@ -267,7 +267,7 @@ pub async fn run_creation(
     herdr: Arc<HerdrClient>,
     history: Arc<crate::history::History>,
     job: Arc<Mutex<ChatCreationView>>,
-    bot: Bot,
+    task: Task,
     preset: crate::catalog::ResolvedPreset,
     zone: String,
     input: String,
@@ -301,7 +301,7 @@ pub async fn run_creation(
         view.agent_name = Some(agent_name.clone());
     }
     let args = agent_launch_args(&preset.env, Some(&preset.trigger));
-    let kind = bot.agent.label();
+    let kind = task.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
         fail(&job, FailureStage::Start, &error).await;
@@ -312,7 +312,7 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.stage = Stage::Submitting;
     }
-    let text = compose_initial_input(&bot, preset.trigger.native_skill.as_deref(), &input);
+    let text = compose_initial_input(&task, preset.trigger.native_skill.as_deref(), &input);
     if let Err(error) = herdr.prompt(&agent_name, &text).await {
         fail(&job, FailureStage::Submit, &error).await;
         return;
@@ -327,7 +327,7 @@ pub async fn run_creation(
     // The page and the creation result do not own this task. Never hold a creation,
     // current-registration or history lock while waiting for external identity.
     tokio::spawn(async move {
-        collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, bot.id).await;
+        collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, task.id).await;
     });
 }
 
@@ -339,7 +339,7 @@ async fn collect_native_history(
     kind: &'static str,
     name: String,
     original_workspace_id: String,
-    source_bot_id: String,
+    source_task_id: String,
 ) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut last_reason = String::from("native identity unavailable");
@@ -367,7 +367,7 @@ async fn collect_native_history(
     };
     // Exactly one persistence attempt after identity; no background write retries.
     if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_bot_id,
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_task_id,
     ).await {
         eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
@@ -432,42 +432,42 @@ fn next_token() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bots::{Agent, Bot};
+    use crate::tasks::{Agent, Task};
 
-    fn bot(rule: &str) -> Bot {
-        Bot {
+    fn task(rule: &str) -> Task {
+        Task {
             id: "tpl-literal".to_string(),
             name: "审查".to_string(),
             chat_name: rule.to_string(),
             agent: Agent::Omp,
-            trigger: crate::bots::TriggerConfig {
+            trigger: crate::tasks::TriggerConfig {
                 model: "default".into(),
                 thinking: "default".into(),
                 skill: None,
                 prompt: String::new(),
             },
-            env: crate::bots::EnvConfig { extensions: Vec::new() },
+            env: crate::tasks::EnvConfig { extensions: Vec::new() },
         }
     }
 
     /// P8：四个已承诺字段与固定文字按预写的完整名称渲染，不依赖实现计算期望。
     #[test]
     fn renders_the_four_fields_with_literal_expected_names() {
-        let bot = bot("{zone.name} · {bot.name} · {agent} · {chat.id}");
+        let task = task("{zone.name} · {task.name} · {agent} · {chat.id}");
         assert_eq!(
             render_chat_name(
-                &bot.chat_name,
+                &task.chat_name,
                 r"C:\Projects\alpha",
-                &bot,
+                &task,
                 "a7f3c2"
             ),
             "alpha · 审查 · omp · a7f3c2"
         );
         assert_eq!(
             render_chat_name(
-                &bot.chat_name,
+                &task.chat_name,
                 r"D:\work\团队 目录",
-                &bot,
+                &task,
                 "0f1e2d"
             ),
             "团队 目录 · 审查 · omp · 0f1e2d"
@@ -477,9 +477,9 @@ mod tests {
     /// `{chat.id}` 是短实例标识；未知占位符保持原样，不被当作脚本或表达式执行。
     #[test]
     fn leaves_unknown_placeholders_literal() {
-        let bot = bot("{bot.name} · {chat.id} · {unknown} · {zone.name}");
+        let task = task("{task.name} · {chat.id} · {unknown} · {zone.name}");
         assert_eq!(
-            render_chat_name(&bot.chat_name, "/tmp/beta", &bot, "00a1b2"),
+            render_chat_name(&task.chat_name, "/tmp/beta", &task, "00a1b2"),
             "审查 · 00a1b2 · {unknown} · beta"
         );
     }
@@ -497,9 +497,9 @@ mod tests {
     /// 无 Skill、无 prompt、非空 input 时按字面提交本次任务。
     #[test]
     fn plain_input_is_submitted_once_without_extra_prefix() {
-        let bot = bot("{chat.id}");
+        let task = task("{chat.id}");
         assert_eq!(
-            compose_initial_input(&bot, bot.trigger.skill.as_deref(), "检查登录\n第二行"),
+            compose_initial_input(&task, task.trigger.skill.as_deref(), "检查登录\n第二行"),
             "检查登录\n第二行"
         );
     }
@@ -507,11 +507,11 @@ mod tests {
     /// 有 Skill 时只生成一次 `/skill:` 调用，名称后接普通空格与正文。
     #[test]
     fn skill_uses_one_native_invocation_prefix() {
-        let mut bot = bot("{chat.id}");
-        bot.trigger.skill = Some("code-review".into());
-        bot.trigger.prompt = "固定指示".to_string();
+        let mut task = task("{chat.id}");
+        task.trigger.skill = Some("code-review".into());
+        task.trigger.prompt = "固定指示".to_string();
         assert_eq!(
-            compose_initial_input(&bot, bot.trigger.skill.as_deref(), "本次任务"),
+            compose_initial_input(&task, task.trigger.skill.as_deref(), "本次任务"),
             "/skill:code-review 固定指示\n\n本次任务"
         );
     }

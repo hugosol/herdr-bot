@@ -10,25 +10,25 @@ fn setup(root: &TempDir, herdr: &HerdrFixture, file: Option<&Path>) -> herdr_bot
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
-    config.bots.metadata_file = root.path().join("options.toml");
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.tasks.metadata_file = root.path().join("options.toml");
     let integration = root.path().join("required-pi-integration.ts");
     std::fs::write(&integration,"throw new Error('must not execute during validation')").unwrap();
-    std::fs::write(&config.bots.metadata_file,format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[models]]\nid = 'bot-model'\nlabel = 'Bot Model'\nprovider_model = 'bot-provider/bot-model'\nthinking = {{ pi = ['high'] }}\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n",integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file,format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[models]]\nid = 'task-model'\nlabel = 'Task Model'\nprovider_model = 'task-provider/task-model'\nthinking = {{ pi = ['high'] }}\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n",integration.display())).unwrap();
     std::fs::write(&config.sessions.history_file, json!([{"sessionId":"pi-old-exact","sessionName":"Old Pi","agentType":"pi","cwd":root.path(),"sessionFile":file,"firstRecordedAt":1}]).to_string()).unwrap();
     config
 }
 async fn resume(config: &herdr_bot::Config) -> common::HttpResponse {
     let server = TestServer::start_app(herdr_bot::app_with_power_off(config, Arc::new(NeverPowerOff))).await;
-    let bot = post_json_over_tcp(server.addr(), "/api/bots", &json!({"name":"Distinct Bot", "chatName":"Bot Chat", "agent":"pi", "model":"bot-model", "thinking":"high", "prompt":"BOT INITIAL MUST NEVER BE SUBMITTED", "extensions":[]}).to_string()).await;
-    assert_eq!(bot.status,200,"{}",bot.body);
+    let task = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"Distinct Task", "chatName":"Task Chat", "agent":"pi", "model":"task-model", "thinking":"high", "prompt":"TASK INITIAL MUST NEVER BE SUBMITTED", "extensions":[]}).to_string()).await;
+    assert_eq!(task.status,200,"{}",task.body);
     post_json_over_tcp(server.addr(), "/api/chats/resume", r#"{"sessionId":"pi-old-exact"}"#).await
 }
 // P6/P8/P10/P11/P13/P14/P15/P22. The independent session header identifies
-// the history. A plausible violation would start a fresh Chat or apply a Bot
+// the history. A plausible violation would start a fresh Chat or apply a Task
 // preset; observe the external argv, no input, loaded identity and final focus.
 #[tokio::test]
-async fn pi_history_loads_file_in_recorded_cwd_then_focuses_without_input_or_bot_overrides() {
+async fn pi_history_loads_file_in_recorded_cwd_then_focuses_without_input_or_task_overrides() {
     let root = TempDir::new("Pi resume with spaces");
     let herdr = HerdrFixture::new("pi-resume-file");
     let native = root.path().join("old conversation.jsonl");
@@ -57,7 +57,7 @@ async fn pi_history_loads_file_in_recorded_cwd_then_focuses_without_input_or_bot
 }
 
 // P10/P12/P14: never load a different file or replace it with a blank launch.
-// Missing Bot fixed entries are not a precondition for source-less discovery.
+// Missing Task fixed entries are not a precondition for source-less discovery.
 #[tokio::test]
 async fn wrong_session_file_fails_before_creation() {
     let root = TempDir::new("Pi invalid restoration settings");

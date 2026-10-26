@@ -17,7 +17,7 @@ script = '{}'
 working_directory = '{}'
 [herdr]
 workspace_name = 'catalog-test'
-[bots]
+[tasks]
 storage_file = '{}'
 metadata_file = '{}'
 "#,
@@ -25,7 +25,7 @@ metadata_file = '{}'
         fixtures.display(),
         fixtures.join("success.bat").display(),
         fixtures.display(),
-        root.join("bots.json").display(),
+        root.join("tasks.json").display(),
         root.join("options.toml").display()
     ))
     .unwrap()
@@ -54,7 +54,7 @@ script = '{}'
 working_directory = '{}'
 [herdr]
 workspace_name = 'startup-catalog'
-[bots]
+[tasks]
 metadata_file = '{}'
 "#,
             fixtures.join("success.bat").display(),
@@ -145,13 +145,13 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
     use std::io::{BufRead, BufReader};
     let dir = TempDir::new("delivered metadata layout");
     fs::create_dir(dir.path().join("meta-data")).unwrap();
-    fs::write(dir.path().join("meta-data/bot-options.toml"), CATALOG).unwrap();
+    fs::write(dir.path().join("meta-data/task-options.toml"), CATALOG).unwrap();
     // A decoy beside the config must not be used.
     fs::write(dir.path().join("chat-options.toml"), "not TOML").unwrap();
     let root = common::repo_fixtures_dir().parent().unwrap().to_path_buf();
     let delivered = fs::read_to_string(root.join("herdr-bot.toml")).unwrap();
     let config_path = dir.path().join("herdr-bot.toml");
-    let defaulted = delivered.replace("metadata_file = 'meta-data/bot-options.toml'", "");
+    let defaulted = delivered.replace("metadata_file = 'meta-data/task-options.toml'", "");
     for shape in [&delivered, &defaulted] {
         fs::write(
             &config_path,
@@ -194,7 +194,7 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
             );
         }
         let port = received.unwrap();
-        let response = get_over_tcp(([127, 0, 0, 1], port).into(), "/api/bots").await;
+        let response = get_over_tcp(([127, 0, 0, 1], port).into(), "/api/tasks").await;
         child.kill().unwrap();
         child.wait().unwrap();
         assert_eq!(response.status, 200, "{}", response.body);
@@ -249,7 +249,7 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
     let metadata = dir.path().join("options.toml");
     fs::write(&metadata, CATALOG).unwrap();
     let server = TestServer::start(&configuration(dir.path())).await;
-    let response = get_over_tcp(server.addr(), "/api/bots").await;
+    let response = get_over_tcp(server.addr(), "/api/tasks").await;
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(body["options"]["models"], json!(["default", "lab-model"]));
@@ -257,18 +257,18 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
         body["options"]["thinking"]["omp"]["lab-model"],
         json!(["low", "high"])
     );
-    let saved = post_json_over_tcp(server.addr(), "/api/bots", &payload("high")).await;
+    let saved = post_json_over_tcp(server.addr(), "/api/tasks", &payload("high")).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let stored: Value =
-        serde_json::from_str(&fs::read_to_string(dir.path().join("bots.json")).unwrap())
+        serde_json::from_str(&fs::read_to_string(dir.path().join("tasks.json")).unwrap())
             .unwrap();
-    let bot = &stored["bots"][0];
-    assert_eq!(bot["model"], "lab-model");
-    assert_eq!(bot["skill"], "lab-skill");
-    assert_eq!(bot["prompt"], "第一行\n第二行");
-    assert_eq!(bot["extensions"], json!([]));
+    let task = &stored["tasks"][0];
+    assert_eq!(task["model"], "lab-model");
+    assert_eq!(task["skill"], "lab-skill");
+    assert_eq!(task["prompt"], "第一行\n第二行");
+    assert_eq!(task["extensions"], json!([]));
     assert_eq!(
-        bot.as_object().unwrap().len(),
+        task.as_object().unwrap().len(),
         9,
         "persist stable fields only"
     );
@@ -279,9 +279,9 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
             .replace("实验模型", "新版模型"),
     )
     .unwrap();
-    let rejected = post_json_over_tcp(server.addr(), "/api/bots", &payload("high")).await;
+    let rejected = post_json_over_tcp(server.addr(), "/api/tasks", &payload("high")).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
-    let accepted = post_json_over_tcp(server.addr(), "/api/bots", &payload("low")).await;
+    let accepted = post_json_over_tcp(server.addr(), "/api/tasks", &payload("low")).await;
     assert_eq!(accepted.status, 200, "{}", accepted.body);
     let body: Value = serde_json::from_str(&accepted.body).unwrap();
     assert_eq!(

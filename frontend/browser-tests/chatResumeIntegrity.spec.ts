@@ -42,10 +42,10 @@ async function prepare(agent: string, policy: Policy) {
   if (policy === 'filtered') {
     server.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: native } })
     await accepted('/api/zones', { path: cwd })
-    const saved = await accepted('/api/bots', { name, chatName: name, agent, model: 'default', thinking: 'default', prompt: 'INITIAL ONLY', extensions: ['optional'] })
-    const botId = saved.bots[0].id
-    const preview = await accepted('/api/chats/preview', { zone: cwd, botId })
-    const job = await accepted('/api/chats', { zone: cwd, botId, chatId: preview.chatId, input: 'SEED ONLY' })
+    const saved = await accepted('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', prompt: 'INITIAL ONLY', extensions: ['optional'] })
+    const taskId = saved.tasks[0].id
+    const preview = await accepted('/api/chats/preview', { zone: cwd, taskId: taskId })
+    const job = await accepted('/api/chats', { zone: cwd, taskId: taskId, chatId: preview.chatId, input: 'SEED ONLY' })
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/sessions/history`)).json()).total).toBe(1)
     fs.unlinkSync(optional)
@@ -101,7 +101,7 @@ for (const agent of ['pi', 'omp']) {
         for (const text of ['Optional marker', 'optional', '入口不存在', '跳过', '仍关闭扩展自动发现']) await expect(status).toContainText(text)
         await expect(status).not.toContainText('原生默认扩展发现')
       } else {
-        for (const text of ['缺少来源 Bot', '原生默认扩展发现', '不显式追加 Bot']) await expect(status).toContainText(text)
+        for (const text of ['缺少来源 Task', '原生默认扩展发现', '不显式追加 Task']) await expect(status).toContainText(text)
         await expect(status).not.toContainText('跳过此扩展')
       }
       expect(result.target.workspaceId).toBe('w-fallback')
@@ -268,8 +268,8 @@ for (const agent of ['pi', 'omp']) {
       // P11: an existing native target does not reload even an edited source
       // environment, nor require a currently readable launch catalog.
       if (policy === 'filtered') {
-        const { id: botId, ...bot } = (await server!.getBots()).bots[0]
-        const edited = await fetch(`${server!.baseURL}/api/bots/${botId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...bot, extensions: [], prompt: 'EDITED INITIAL NEVER REPLAY' }) })
+        const { id: taskId, ...task } = (await server!.getTasks()).tasks[0]
+        const edited = await fetch(`${server!.baseURL}/api/tasks/${taskId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...task, extensions: [], prompt: 'EDITED INITIAL NEVER REPLAY' }) })
         expect(edited.status).toBe(200)
       }
       fs.writeFileSync(server!.metadataFile, 'independently broken catalog !!!')

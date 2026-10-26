@@ -8,7 +8,7 @@ import {
 
 import { NAMING_FIELDS } from './chatNaming'
 
-const TOKEN_PATTERN = /(\{(?:zone\.name|bot\.name|agent|chat\.id)\})/
+const TOKEN_PATTERN = /(\{(?:zone\.name|task\.name|agent|chat\.id)\})/
 
 function tokenText(field: string): string {
   return `{${field}}`
@@ -286,18 +286,18 @@ export function ChatNameRuleEditor({
 
   return (
     <div className="chat-name-editor">
-      <label id="bot-chat-name-label" className="zone-form__label">
+      <label id="task-chat-name-label" className="zone-form__label">
         单行 chat-name 命名规则
       </label>
       <div
         ref={editor}
-        id="bot-chat-name"
+        id="task-chat-name"
         className="chat-name-editor__surface"
-        data-testid="bot-chat-name"
+        data-testid="task-chat-name"
         data-placeholder="输入固定文字，或插入下方变量"
         role="textbox"
-        aria-labelledby="bot-chat-name-label"
-        aria-describedby="bot-chat-name-hint"
+        aria-labelledby="task-chat-name-label"
+        aria-describedby="task-chat-name-hint"
         aria-multiline="false"
         aria-disabled={disabled}
         contentEditable={!disabled}
@@ -310,20 +310,20 @@ export function ChatNameRuleEditor({
         onDrop={onDrop}
       />
 
-      <p id="bot-chat-name-hint" className="bot-hint">
+      <p id="task-chat-name-hint" className="task-hint">
         文字可直接编辑；点击变量旁的 ×，或把光标放在变量后按退格，可整块删除。先定位光标再插入变量。
       </p>
 
-      <fieldset className="bot-fields">
+      <fieldset className="task-fields">
         <legend>插入命名字段</legend>
-        <div className="bot-field-buttons">
+        <div className="task-field-buttons">
           {NAMING_FIELDS.map((field) => (
             <button
               key={field.key}
               type="button"
               data-testid={`insert-${field.key}`}
               disabled={disabled}
-              aria-controls="bot-chat-name"
+              aria-controls="task-chat-name"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => insertField(field.token.slice(1, -1))}
             >

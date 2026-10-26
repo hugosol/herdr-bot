@@ -1,6 +1,6 @@
 # scheduler：可复制的静态定义样例
 
-这些是**人工编写的业务能力示例，不是已实现执行的证明**。天气、额度与清单都不会被查询、计算或生成；`chat` 仅声明实现类别，不启动 Chat。Map 与 node 是静态工作定义，不是运行状态或执行实例。共享 `node_template` 描述业务能力，Bot 则是发起 Chat 的可复用预设，两者不同。
+这些是**人工编写的业务能力示例，不是已实现执行的证明**。天气、额度与清单都不会被查询、计算或生成；`chat` 仅声明实现类别，不启动 Chat。Map 与 node 是静态工作定义，不是运行状态或执行实例。共享 `node_template` 描述业务能力，Task 则是发起 Chat 的可复用预设，两者不同。
 
 ## 文件与事先规定的核对结果
 
@@ -22,7 +22,7 @@ A、B 的不同参数不会被模板输入说明或彼此的内容覆盖。B 的
 
 ## 在隔离目录运行
 
-以下 PowerShell 从**仓库根目录**执行；先按根 [README](../../README.md#构建与运行) 安装依赖。所有可变数据均写入新建临时目录，不使用用户的 Bot、zone、Map 或模板。不将样例自动安装到用户数据。
+以下 PowerShell 从**仓库根目录**执行；先按根 [README](../../README.md#构建与运行) 安装依赖。所有可变数据均写入新建临时目录，不使用用户的 Task、zone、Map 或模板。不将样例自动安装到用户数据。
 
 先构建页面和现有安全关机壳；它与交付程序使用同一应用及读取接口，但不会真的关机。固定操作使用已有无害夹具。此页面仅供本机体验，不进行 LAN／mDNS 验收，也不要从此页面发起 Chat。
 
@@ -54,9 +54,9 @@ script = '$repo/fixtures/operations/success.bat'
 working_directory = '$repo/fixtures/operations'
 [herdr]
 workspace_name = 'scheduler-preview-unused'
-[bots]
-storage_file = '.data/bots.json'
-metadata_file = '$repo/meta-data/bot-options.toml'
+[tasks]
+storage_file = '.data/tasks.json'
+metadata_file = '$repo/meta-data/task-options.toml'
 [zones]
 registry_file = '.data/zones.json'
 [sessions]
@@ -86,7 +86,7 @@ try {
 6. 在模板预览点“修改模板”：独立 ID 只读，JSON 只加载当前真实内容且不含顶层 id。修改 title 或 description 后显式保存，直接显示新预览，无需“刷新全部”；“返回 Map”重读来源并保留仍存在的 node 选择。来源 node 或 Map 被外部移除则显示失效原因。所有引用同 ID 的 A、B、E 都读取同一份共享能力，不产生模板副本。若用外部编辑器改文件，显式刷新可重读；刷新全部会清除 node 选择、收起图。**避免在页面提交期间直接修改相关定义**，不承诺与不参与协调的外部编辑器跨文件原子提交。
    直接点页面上方“新增模板”（空列表也可新增）：ID 初始为空，JSON 预填天气示例除 id 外的完整内容。该示例随应用编译打包，以本目录 weather-capability.json 为单一内容来源，不要求部署时存在开发仓库。可以删改条目但保留必需结构；打开或放弃不会写文件。页面不要求文件名，保存后自动使用安全且不覆盖既有文件的名称，编辑已有模板保留原名。无效 JSON、结构错误、重复 ID 或旧版本冲突均保留原始草稿并显示原因，不跳到成功预览；需要重新加载时先复制草稿，再放弃并重开。修改后返回、切换 tab／server、刷新全部或浏览器刷新均确认放弃，取消继续编辑。
 7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、preferences 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather 模板。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、parameters 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和已展开图立即更新。其他 node 的嵌套参数与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
-   node 只在所属 Map 内唯一，不同 Map 可复用同一 ID；整个 Map 的未知前置、自依赖或环均被拒绝，不自动修复。未声明参数、嵌套 JSON、未登记 zone／Bot、缺失模板引用仍可保存，但页面明确提示缺失模板。失败保留独立 ID 与原始 JSON；整个 Map 文件是冲突单位，即使只改另一 node，旧草稿也须重新加载，不自动合并。离开编辑器、选择其他 Map、模板管理、切换页面或刷新均沿用草稿保护。**页面提交期间不要直接修改相关定义**。
+   node 只在所属 Map 内唯一，不同 Map 可复用同一 ID；整个 Map 的未知前置、自依赖或环均被拒绝，不自动修复。未声明参数、嵌套 JSON、未登记 zone／Task、缺失模板引用仍可保存，但页面明确提示缺失模板。失败保留独立 ID 与原始 JSON；整个 Map 文件是冲突单位，即使只改另一 node，旧草稿也须重新加载，不自动合并。离开编辑器、选择其他 Map、模板管理、切换页面或刷新均沿用草稿保护。**页面提交期间不要直接修改相关定义**。
    将另一个 JSON 副本放入隔离 plans，点击“刷新全部”看到新增文件；删除该副本后刷新则移除。刷新也重新读取当前 Map 与模板；不自动监听文件。
 8. 从 scheduler 点右上角 `server`，原页面内进入独立内容页，再点“返回 scheduler”。不要用新窗口或寻找第五个 tab。
 9. 窄屏使用约 390 × 844 viewport；按文件目录 → 节点清单 → node 详情纵向访问，再进入模板预览；通过“返回 Map”往返，图按需展开。滑动滚动页面；可用 Tab／Shift+Tab、Enter／Space 操作，图内聚焦节点会按需移入视口，顶部 tab 另支持方向键、Home／End。
@@ -112,7 +112,7 @@ try {
 |Map|`schema_version`: 1；`title`、`description`: 文本；`nodes`: Map 内 ID 到 node 的对象|
 |node|`title`、`node_template_id`: 文本；`parameters`: 命名参数对象；`blocked_by`: 同一 Map 内前置 ID 文本数组|
 |node_template|`schema_version`: 1；`id`、`title`、`use_when`、`description`: 文本；`inputs`、`outputs`: 名称到文本说明的对象；`implementation`: 对象|
-|implementation|`type`: 目前仅接受 `chat`；没有模型、Bot、命令、执行步骤等配置|
+|implementation|`type`: 目前仅接受 `chat`；没有模型、Task、命令、执行步骤等配置|
 
 node ID 是 `nodes` 的 key，只在所属 Map 内使用，不在值中重复添加 id。共享模板的 `id` 是跨 Map 身份，`node_template_id` 按它关联而非文件名。Map 不含 `node_templates`。B 的 `blocked_by` 含 A 就是 A → B；未知前置、自依赖或环均报错，不静默删边。
 
@@ -120,7 +120,7 @@ node ID 是 `nodes` 的 key，只在所属 Map 内使用，不在值中重复添
 
 固定结构严格检查必需字段、类型、未知字段和版本：误写 blockedBy、漏填 blocked_by、数组写成字符串、未知版本或未知实现类型都不支持。显式 `nodes: {}`、`parameters: {}`、`blocked_by: []`、`inputs: {}`／`outputs: {}` 和文本 `""` 合法，不等于漏填或 `null`；`implementation: {}` 则缺少必需 type。
 
-`parameters` **保持开放**：任意业务键与直接 JSON 值（文本、数字、布尔、null、数组、对象）均可，不做 inputs 匹配、必填性、参数类型、zone／Bot 存在性或结果有效性校验。固定结构不能用 null 代替必需类型。嵌套对象的 key 显示顺序不作承诺，JSON 值保持不变。所有业务文本只作文本显示；路径和指令也不读取或执行。
+`parameters` **保持开放**：任意业务键与直接 JSON 值（文本、数字、布尔、null、数组、对象）均可，不做 inputs 匹配、必填性、参数类型、zone／Task 存在性或结果有效性校验。固定结构不能用 null 代替必需类型。嵌套对象的 key 显示顺序不作承诺，JSON 值保持不变。所有业务文本只作文本显示；路径和指令也不读取或执行。
 
 ## 体验材料与保留项（P33）
 

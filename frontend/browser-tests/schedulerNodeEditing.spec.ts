@@ -372,7 +372,7 @@ test('modified node drafts confirm return, Map and page switches, application re
       } else {
         const exit = async () => {
           if (action === 'keyboard-tab') { await page.getByTestId('tab-scheduler').focus(); await page.keyboard.press('ArrowLeft') }
-          else if (action === 'tab') await page.getByTestId('tab-bots').click()
+          else if (action === 'tab') await page.getByTestId('tab-tasks').click()
           else if (action === 'server') await page.getByTestId('server-button').click()
           else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', manage: '模板管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
         }
@@ -385,7 +385,7 @@ test('modified node drafts confirm return, Map and page switches, application re
         await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
         if (action === 'file') await expect(page.getByRole('button', { name: 'untouched.json', exact: true })).toHaveAttribute('aria-pressed', 'true')
         else if (action === 'manage') await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).toBeVisible()
-        else if (action === 'tab') await expect(page.getByTestId('tab-bots')).toHaveAttribute('aria-selected', 'true')
+        else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()
         else await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()

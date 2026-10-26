@@ -15,8 +15,8 @@ function jsonResponse(status: number, body: unknown): Response {
 
 type RecordedCall = { url: string; method: string; body: string | null }
 
-/** 记录 Bot 请求并按用例给定的答复返回。 */
-function mockBotFetch(
+/** 记录 Task 请求并按用例给定的答复返回。 */
+function mockTaskFetch(
   reply: (url: string, method: string, body: string | null) => Promise<Response> | Response,
 ) {
   const calls: RecordedCall[] = []
@@ -50,14 +50,14 @@ const OPTIONS = {
   skills: ['teach', 'code-review'],
 }
 
-async function openBots(user: UserEvent) {
-  await user.click(screen.getByTestId('tab-bots'))
+async function openTasks(user: UserEvent) {
+  await user.click(screen.getByTestId('tab-tasks'))
 }
 
-async function saveBot(user: UserEvent, dialog: HTMLElement) {
-  await user.click(within(dialog).getByTestId('bot-next'))
-  await user.click(within(dialog).getByTestId('bot-next'))
-  await user.click(within(dialog).getByTestId('save-bot'))
+async function saveTask(user: UserEvent, dialog: HTMLElement) {
+  await user.click(within(dialog).getByTestId('task-next'))
+  await user.click(within(dialog).getByTestId('task-next'))
+  await user.click(within(dialog).getByTestId('save-task'))
 }
 
 /** 规整化编辑器 DOM：变量块按占位符读取，固定文字按文本节点读取。 */
@@ -89,19 +89,19 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('Bot tab：读取与展示', () => {
-  it('进入 bot 入口才读取共享 Bot，并显示字段与 chat-name 示例', async () => {
+describe('Task tab：读取与展示', () => {
+  it('进入 task 入口才读取共享 Task，并显示字段与 chat-name 示例', async () => {
     const user = userEvent.setup()
     const literal = { id: 'tpl-literal-1',
     name: '发布检查',
-    chatName: '{zone.name} · {bot.name} · {chat.id}',
+    chatName: '{zone.name} · {task.name} · {chat.id}',
     agent: 'pi',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
-    const { calls } = mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [literal], options: OPTIONS })
+    const { calls } = mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [literal], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
@@ -109,11 +109,11 @@ describe('Bot tab：读取与展示', () => {
     render(<App />)
     expect(calls).toHaveLength(0)
 
-    await openBots(user)
+    await openTasks(user)
 
-    const list = await screen.findByTestId('bot-list')
-    expect(calls[0]).toMatchObject({ url: '/api/bots', method: 'GET' })
-    const row = within(list).getByTestId('bot-item')
+    const list = await screen.findByTestId('task-list')
+    expect(calls[0]).toMatchObject({ url: '/api/tasks', method: 'GET' })
+    const row = within(list).getByTestId('task-item')
     expect(row).toHaveTextContent('发布检查')
     expect(row).toHaveTextContent('alpha · 发布检查 · a7f3c2')
     expect(row).not.toHaveTextContent('{zone.name}')
@@ -136,22 +136,22 @@ describe('Bot tab：读取与展示', () => {
 
   it('按 agent/model 能力限制 thinking，并在切换时保留或重置', async () => {
     const user = userEvent.setup()
-    mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [], options: OPTIONS })
+    mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
-    await openBots(user)
-    await screen.findByTestId('bot-empty')
-    await user.click(screen.getByTestId('bot-create-open'))
-    const dialog = screen.getByTestId('bot-dialog')
-    const agent = within(dialog).getByTestId('bot-agent') as HTMLSelectElement
-    const model = within(dialog).getByTestId('bot-model') as HTMLSelectElement
-    const thinking = within(dialog).getByTestId('bot-thinking') as HTMLSelectElement
-    const skill = within(dialog).getByTestId('bot-skill') as HTMLSelectElement
+    await openTasks(user)
+    await screen.findByTestId('task-empty')
+    await user.click(screen.getByTestId('task-create-open'))
+    const dialog = screen.getByTestId('task-dialog')
+    const agent = within(dialog).getByTestId('task-agent') as HTMLSelectElement
+    const model = within(dialog).getByTestId('task-model') as HTMLSelectElement
+    const thinking = within(dialog).getByTestId('task-thinking') as HTMLSelectElement
+    const skill = within(dialog).getByTestId('task-skill') as HTMLSelectElement
     const optionValues = (select: HTMLSelectElement) =>
       Array.from(select.options).map((option) => option.value)
 
@@ -234,111 +234,111 @@ describe('Bot tab：读取与展示', () => {
     )
   })
 
-  it('新增 Bot 时插入四个命名占位符、查看示例并保存完整字面值', async () => {
+  it('新增 Task 时插入四个命名占位符、查看示例并保存完整字面值', async () => {
     const user = userEvent.setup()
     const prompt = '第一行\n第二行：保留 "引号" 与反斜杠 \\'
     const saved = { id: 'tpl-created',
     name: '审查',
-    chatName: '{zone.name} · {bot.name} · {agent} · {chat.id}',
+    chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] }
-    const { calls } = mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [], options: OPTIONS })
+    const { calls } = mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [], options: OPTIONS })
       }
-      if (url === '/api/bots' && method === 'POST') {
-        return jsonResponse(200, { bots: [saved], options: OPTIONS })
+      if (url === '/api/tasks' && method === 'POST') {
+        return jsonResponse(200, { tasks: [saved], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
-    await openBots(user)
-    await screen.findByTestId('bot-empty')
-    await user.click(screen.getByTestId('bot-create-open'))
+    await openTasks(user)
+    await screen.findByTestId('task-empty')
+    await user.click(screen.getByTestId('task-create-open'))
 
-    const dialog = screen.getByTestId('bot-dialog')
-    const chatName = within(dialog).getByTestId('bot-chat-name') as HTMLElement
+    const dialog = screen.getByTestId('task-dialog')
+    const chatName = within(dialog).getByTestId('task-chat-name') as HTMLElement
     expect(within(dialog).getAllByTestId('chat-name-token')).toHaveLength(3)
-    expect(serializedRule(chatName)).toBe('{zone.name} · {bot.name} · {chat.id}')
+    expect(serializedRule(chatName)).toBe('{zone.name} · {task.name} · {chat.id}')
 
     // 编辑命名规则：只提供四个已承诺字段，每次插入都能在规则中观察到对应占位符。
     setRule(chatName, '')
     await user.click(within(dialog).getByTestId('insert-zone-name'))
     expect(serializedRule(chatName)).toBe('{zone.name}')
     expect(within(dialog).getAllByTestId('chat-name-token')).toHaveLength(1)
-    await user.click(within(dialog).getByTestId('insert-bot-name'))
-    expect(serializedRule(chatName)).toBe('{zone.name}{bot.name}')
+    await user.click(within(dialog).getByTestId('insert-task-name'))
+    expect(serializedRule(chatName)).toBe('{zone.name}{task.name}')
     await user.click(within(dialog).getByTestId('insert-agent'))
     await user.click(within(dialog).getByTestId('insert-chat-id'))
-    expect(serializedRule(chatName)).toBe('{zone.name}{bot.name}{agent}{chat.id}')
+    expect(serializedRule(chatName)).toBe('{zone.name}{task.name}{agent}{chat.id}')
     expect(within(dialog).getAllByTestId('chat-name-token')).toHaveLength(4)
     expect(within(dialog).getByTestId('chat-name-preview')).toHaveTextContent(
       'alpha审查ompa7f3c2',
     )
 
-    setRule(chatName, '{zone.name} · {bot.name} · {agent} · {chat.id}')
+    setRule(chatName, '{zone.name} · {task.name} · {agent} · {chat.id}')
     expect(serializedRule(chatName)).toBe(
-      '{zone.name} · {bot.name} · {agent} · {chat.id}',
+      '{zone.name} · {task.name} · {agent} · {chat.id}',
     )
 
-    await user.type(within(dialog).getByTestId('bot-name'), '审查')
+    await user.type(within(dialog).getByTestId('task-name'), '审查')
     expect(within(dialog).getByTestId('chat-name-preview')).toHaveTextContent(
       'alpha · 审查 · omp · a7f3c2',
     )
 
-    await user.selectOptions(within(dialog).getByTestId('bot-agent'), 'pi')
-    await user.selectOptions(within(dialog).getByTestId('bot-model'), 'deepseek-flash')
-    await user.selectOptions(within(dialog).getByTestId('bot-thinking'), 'max')
-    await user.selectOptions(within(dialog).getByTestId('bot-skill'), 'code-review')
-    await user.type(within(dialog).getByTestId('bot-prompt'), prompt)
-    await saveBot(user, dialog)
+    await user.selectOptions(within(dialog).getByTestId('task-agent'), 'pi')
+    await user.selectOptions(within(dialog).getByTestId('task-model'), 'deepseek-flash')
+    await user.selectOptions(within(dialog).getByTestId('task-thinking'), 'max')
+    await user.selectOptions(within(dialog).getByTestId('task-skill'), 'code-review')
+    await user.type(within(dialog).getByTestId('task-prompt'), prompt)
+    await saveTask(user, dialog)
 
-    await screen.findByTestId('bot-list')
-    expect(screen.queryByTestId('bot-dialog')).toBeNull()
+    await screen.findByTestId('task-list')
+    expect(screen.queryByTestId('task-dialog')).toBeNull()
     const post = calls.find((call) => call.method === 'POST')
-    expect(post?.url).toBe('/api/bots')
+    expect(post?.url).toBe('/api/tasks')
     expect(post?.body).not.toBeNull()
     expect(JSON.parse(post?.body ?? 'null')).toEqual({ name: '审查',
-    chatName: '{zone.name} · {bot.name} · {agent} · {chat.id}',
+    chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] })
-    const row = screen.getByTestId('bot-item')
+    const row = screen.getByTestId('task-item')
     expect(row).toHaveTextContent('审查')
     expect(row).toHaveTextContent('alpha · 审查 · pi · a7f3c2')
-    expect(row).not.toHaveTextContent('{bot.name}')
+    expect(row).not.toHaveTextContent('{task.name}')
     expect(row).toHaveTextContent('deepseek-flash')
     expect(row).toHaveTextContent('/code-review')
-    expect(screen.getByTestId('bot-feedback')).toHaveAttribute('data-kind', 'success')
+    expect(screen.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   })
 
   it('变量块可按退格或 × 整块删除，插入位置跟随光标而不是固定追加', async () => {
     const user = userEvent.setup()
-    mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [], options: OPTIONS })
+    mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
-    await openBots(user)
-    await screen.findByTestId('bot-empty')
-    await user.click(screen.getByTestId('bot-create-open'))
-    const dialog = screen.getByTestId('bot-dialog')
-    const chatName = within(dialog).getByTestId('bot-chat-name') as HTMLElement
+    await openTasks(user)
+    await screen.findByTestId('task-empty')
+    await user.click(screen.getByTestId('task-create-open'))
+    const dialog = screen.getByTestId('task-dialog')
+    const chatName = within(dialog).getByTestId('task-chat-name') as HTMLElement
 
-    // 退格紧跟在变量块之后：整个 {bot.name} 消失，固定分隔符仍留给用户编辑。
+    // 退格紧跟在变量块之后：整个 {task.name} 消失，固定分隔符仍留给用户编辑。
     const tokens = within(dialog).getAllByTestId('chat-name-token')
     expect(tokens).toHaveLength(3)
-    const afterBotToken = document.createRange()
-    afterBotToken.setStartAfter(tokens[1])
-    afterBotToken.collapse(true)
-    selectCollapsedRange(chatName, afterBotToken)
+    const afterTaskToken = document.createRange()
+    afterTaskToken.setStartAfter(tokens[1])
+    afterTaskToken.collapse(true)
+    selectCollapsedRange(chatName, afterTaskToken)
     fireEvent.keyDown(chatName, { key: 'Backspace' })
 
     expect(within(dialog).getAllByTestId('chat-name-token')).toHaveLength(2)
@@ -363,7 +363,7 @@ describe('Bot tab：读取与展示', () => {
     expect(within(dialog).queryByTestId('chat-name-token')).toBeNull()
   })
 
-  it('编辑 Bot，只有后端确认后才更新列表', async () => {
+  it('编辑 Task，只有后端确认后才更新列表', async () => {
     const user = userEvent.setup()
     const first = { id: 'tpl-a',
     name: '旧名字',
@@ -374,66 +374,66 @@ describe('Bot tab：读取与展示', () => {
     skill: null, prompt: '旧 prompt', extensions: [] }
     const second = { id: 'tpl-b',
     name: '待删除',
-    chatName: '{bot.name}',
+    chatName: '{task.name}',
     agent: 'pi',
     model: 'gpt-6.1-sol',
     thinking: 'off',
     skill: 'teach', prompt: '', extensions: [] }
     const edited = { ...first,
     name: '新名字',
-    chatName: '{bot.name} · {agent} · {chat.id}',
+    chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] }
-    const { calls } = mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [first, second], options: OPTIONS })
+    const { calls } = mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [first, second], options: OPTIONS })
       }
-      if (url === '/api/bots/tpl-a' && method === 'PUT') {
-        return jsonResponse(200, { bots: [edited, second], options: OPTIONS })
+      if (url === '/api/tasks/tpl-a' && method === 'PUT') {
+        return jsonResponse(200, { tasks: [edited, second], options: OPTIONS })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
-    await openBots(user)
-    const list = await screen.findByTestId('bot-list')
-    const rows = within(list).getAllByTestId('bot-item')
-    expect(rows.map((row) => row.getAttribute('data-bot-id'))).toEqual(['tpl-a', 'tpl-b'])
+    await openTasks(user)
+    const list = await screen.findByTestId('task-list')
+    const rows = within(list).getAllByTestId('task-item')
+    expect(rows.map((row) => row.getAttribute('data-task-id'))).toEqual(['tpl-a', 'tpl-b'])
 
     // 编辑：表单带回全部已保存值。
-    await user.click(within(rows[0]).getByTestId('bot-edit'))
-    const dialog = screen.getByTestId('bot-dialog')
-    expect((within(dialog).getByTestId('bot-name') as HTMLInputElement).value).toBe('旧名字')
-    const chatName = within(dialog).getByTestId('bot-chat-name') as HTMLElement
+    await user.click(within(rows[0]).getByTestId('task-edit'))
+    const dialog = screen.getByTestId('task-dialog')
+    expect((within(dialog).getByTestId('task-name') as HTMLInputElement).value).toBe('旧名字')
+    const chatName = within(dialog).getByTestId('task-chat-name') as HTMLElement
     expect(serializedRule(chatName)).toBe('{zone.name}')
     expect(within(dialog).getAllByTestId('chat-name-token')).toHaveLength(1)
-    expect((within(dialog).getByTestId('bot-prompt') as HTMLTextAreaElement).value).toBe(
+    expect((within(dialog).getByTestId('task-prompt') as HTMLTextAreaElement).value).toBe(
       '旧 prompt',
     )
-    await user.clear(within(dialog).getByTestId('bot-name'))
-    await user.type(within(dialog).getByTestId('bot-name'), '新名字')
-    setRule(chatName, '{bot.name} · {agent} · {chat.id}')
-    await user.selectOptions(within(dialog).getByTestId('bot-agent'), 'pi')
-    await user.selectOptions(within(dialog).getByTestId('bot-model'), 'gpt-6.1-sol')
-    await user.selectOptions(within(dialog).getByTestId('bot-thinking'), 'medium')
-    await user.selectOptions(within(dialog).getByTestId('bot-skill'), 'code-review')
-    await user.clear(within(dialog).getByTestId('bot-prompt'))
-    await user.type(within(dialog).getByTestId('bot-prompt'), '第一行\n第二行')
-    await saveBot(user, dialog)
+    await user.clear(within(dialog).getByTestId('task-name'))
+    await user.type(within(dialog).getByTestId('task-name'), '新名字')
+    setRule(chatName, '{task.name} · {agent} · {chat.id}')
+    await user.selectOptions(within(dialog).getByTestId('task-agent'), 'pi')
+    await user.selectOptions(within(dialog).getByTestId('task-model'), 'gpt-6.1-sol')
+    await user.selectOptions(within(dialog).getByTestId('task-thinking'), 'medium')
+    await user.selectOptions(within(dialog).getByTestId('task-skill'), 'code-review')
+    await user.clear(within(dialog).getByTestId('task-prompt'))
+    await user.type(within(dialog).getByTestId('task-prompt'), '第一行\n第二行')
+    await saveTask(user, dialog)
 
-    await screen.findByTestId('bot-list')
+    await screen.findByTestId('task-list')
     const put = calls.find((call) => call.method === 'PUT')
-    expect(put?.url).toBe('/api/bots/tpl-a')
+    expect(put?.url).toBe('/api/tasks/tpl-a')
     expect(JSON.parse(put?.body ?? 'null')).toEqual({ name: '新名字',
-    chatName: '{bot.name} · {agent} · {chat.id}',
+    chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
-    expect(screen.getAllByTestId('bot-item')[0]).toHaveTextContent('新名字')
-    expect(screen.getAllByTestId('bot-item')[0]).toHaveTextContent(
+    expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent('新名字')
+    expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent(
       '新名字 · pi · a7f3c2',
     )
 
@@ -448,47 +448,47 @@ describe('Bot tab：读取与展示', () => {
     model: 'default',
     thinking: 'default',
     skill: null, prompt: '', extensions: [] }
-    mockBotFetch((url, method) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [existing], options: OPTIONS })
+    mockTaskFetch((url, method) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [existing], options: OPTIONS })
       }
-      if (url === '/api/bots' && method === 'POST') {
+      if (url === '/api/tasks' && method === 'POST') {
         return jsonResponse(500, {
-          code: 'bots-write-failed',
-          message: '保存 Bot 失败：磁盘不可写；此前已保存的 Bot 保持不变。',
+          code: 'tasks-write-failed',
+          message: '保存 Task 失败：磁盘不可写；此前已保存的 Task 保持不变。',
         })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
 
     render(<App />)
-    await openBots(user)
-    await screen.findByTestId('bot-list')
-    await user.click(screen.getByTestId('bot-create-open'))
-    const dialog = screen.getByTestId('bot-dialog')
-    await user.type(within(dialog).getByTestId('bot-name'), '不应保存')
-    await saveBot(user, dialog)
+    await openTasks(user)
+    await screen.findByTestId('task-list')
+    await user.click(screen.getByTestId('task-create-open'))
+    const dialog = screen.getByTestId('task-dialog')
+    await user.type(within(dialog).getByTestId('task-name'), '不应保存')
+    await saveTask(user, dialog)
 
-    expect(await within(dialog).findByTestId('bot-form-error')).toHaveTextContent(
-      '保存 Bot 失败：磁盘不可写；此前已保存的 Bot 保持不变。',
+    expect(await within(dialog).findByTestId('task-form-error')).toHaveTextContent(
+      '保存 Task 失败：磁盘不可写；此前已保存的 Task 保持不变。',
     )
-    expect(screen.getByTestId('bot-dialog')).toBeVisible()
-    expect(screen.queryByTestId('bot-feedback')).toBeNull()
-    const list = screen.getByTestId('bot-list')
+    expect(screen.getByTestId('task-dialog')).toBeVisible()
+    expect(screen.queryByTestId('task-feedback')).toBeNull()
+    const list = screen.getByTestId('task-list')
     expect(list).toHaveTextContent('已保存')
     expect(list).not.toHaveTextContent('不应保存')
   })
 
   it('空值与多行 prompt 都能保存，Skill 可保持不选', async () => {
     const user = userEvent.setup()
-    const { calls } = mockBotFetch((url, method, body) => {
-      if (url === '/api/bots' && method === 'GET') {
-        return jsonResponse(200, { bots: [], options: OPTIONS })
+    const { calls } = mockTaskFetch((url, method, body) => {
+      if (url === '/api/tasks' && method === 'GET') {
+        return jsonResponse(200, { tasks: [], options: OPTIONS })
       }
-      if (url === '/api/bots' && method === 'POST') {
+      if (url === '/api/tasks' && method === 'POST') {
         const payload = JSON.parse(body ?? '{}')
         return jsonResponse(200, {
-          bots: [{ id: 'tpl-empty', ...payload }],
+          tasks: [{ id: 'tpl-empty', ...payload }],
           options: OPTIONS,
         })
       }
@@ -496,16 +496,16 @@ describe('Bot tab：读取与展示', () => {
     })
 
     render(<App />)
-    await openBots(user)
-    await screen.findByTestId('bot-empty')
-    await user.click(screen.getByTestId('bot-create-open'))
-    const dialog = screen.getByTestId('bot-dialog')
-    await user.type(within(dialog).getByTestId('bot-name'), '空 prompt Bot')
-    expect((within(dialog).getByTestId('bot-prompt') as HTMLTextAreaElement).value).toBe('')
-    expect((within(dialog).getByTestId('bot-skill') as HTMLSelectElement).value).toBe('')
-    await saveBot(user, dialog)
+    await openTasks(user)
+    await screen.findByTestId('task-empty')
+    await user.click(screen.getByTestId('task-create-open'))
+    const dialog = screen.getByTestId('task-dialog')
+    await user.type(within(dialog).getByTestId('task-name'), '空 prompt Bot')
+    expect((within(dialog).getByTestId('task-prompt') as HTMLTextAreaElement).value).toBe('')
+    expect((within(dialog).getByTestId('task-skill') as HTMLSelectElement).value).toBe('')
+    await saveTask(user, dialog)
 
-    await screen.findByTestId('bot-list')
+    await screen.findByTestId('task-list')
     const post = calls.find((call) => call.method === 'POST')
     expect(JSON.parse(post?.body ?? 'null')).toMatchObject({
       name: '空 prompt Bot',
@@ -514,6 +514,6 @@ describe('Bot tab：读取与展示', () => {
       model: 'default',
       thinking: 'default',
     })
-    expect(screen.getByTestId('bot-item')).toHaveTextContent('空 prompt Bot')
+    expect(screen.getByTestId('task-item')).toHaveTextContent('空 prompt Bot')
   })
 })

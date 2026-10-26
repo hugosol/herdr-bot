@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
-import { BotsPanel } from './BotsPanel'
+import { TasksPanel } from './TasksPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
 import { SchedulerPanel } from './SchedulerPanel'
@@ -30,16 +30,16 @@ const OPERATION_LABELS: Record<OperationName, string> = {
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
 /**
- * herdr-bot 主界面的四个顶层入口：chat → bot → zone → scheduler。
+ * herdr-bot 主界面的四个顶层入口：chat → task → zone → scheduler。
  * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
  */
-const TAB_ORDER = ['sessions', 'bots', 'files', 'scheduler'] as const
+const TAB_ORDER = ['sessions', 'tasks', 'files', 'scheduler'] as const
 
 type TabKey = (typeof TAB_ORDER)[number]
 
 const TAB_LABELS: Record<TabKey, string> = {
   sessions: 'chat',
-  bots: 'bot',
+  tasks: 'task',
   files: 'zone',
   scheduler: 'scheduler',
 }
@@ -129,7 +129,7 @@ export default function App({
   const feedback = feedbackFor(state)
 
   return (
-    <main className={!serverOpen && (tab === 'files' || tab === 'bots') ? 'panel panel--wide' : 'panel'}>
+    <main className={!serverOpen && (tab === 'files' || tab === 'tasks') ? 'panel panel--wide' : 'panel'}>
       <header className="app-header">
         <h1>herdr-bot</h1>
         <button type="button" data-testid="server-button" hidden={serverOpen} onClick={() => { if (tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>
@@ -137,7 +137,7 @@ export default function App({
         </button>
       </header>
 
-      {/* 四 tab 外壳：chat → bot → zone → scheduler，打开时默认停在 chat。
+      {/* 四 tab 外壳：chat → task → zone → scheduler，打开时默认停在 chat。
           四个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
           方向键在四个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
       <div
@@ -181,14 +181,14 @@ export default function App({
       </div>
 
       <div
-        id="panel-bots"
+        id="panel-tasks"
         role="tabpanel"
-        aria-labelledby="tab-bots"
+        aria-labelledby="tab-tasks"
         className="tabpanel"
-        data-testid="panel-bots"
-        hidden={serverOpen || tab !== 'bots'}
+        data-testid="panel-tasks"
+        hidden={serverOpen || tab !== 'tasks'}
       >
-        <BotsPanel active={!serverOpen && tab === 'bots'} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} />
       </div>
 
       <div

@@ -8,7 +8,7 @@ import { zoneRowFor } from './ui'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const bot = { name: '扩展启动', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '固定指示' }
+const task = { name: '扩展启动', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '固定指示' }
 async function post(endpoint: string, body: unknown) {
   return fetch(`${server!.baseURL}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
@@ -22,13 +22,13 @@ async function setup() {
   return { root, zone, original: fs.readFileSync(server.metadataFile, 'utf8') }
 }
 async function save(value: Record<string, unknown>) {
-  const response = await post('/api/bots', value)
+  const response = await post('/api/tasks', value)
   expect(response.status).toBe(200)
-  return (await response.json()).bots.at(-1)
+  return (await response.json()).tasks.at(-1)
 }
 async function create(zone: string, id: string, extra = {}) {
-  const preview = await (await post('/api/chats/preview', { zone, botId: id })).json()
-  return post('/api/chats', { zone, botId: id, chatId: preview.chatId, input: '本次输入', ...extra })
+  const preview = await (await post('/api/chats/preview', { zone, taskId: id })).json()
+  return post('/api/chats', { zone, taskId: id, chatId: preview.chatId, input: '本次输入', ...extra })
 }
 async function finish(response: Response) {
   expect(response.status).toBe(202)
@@ -47,7 +47,7 @@ async function dialog(page: Page, zone: string) {
 
 // S1/S2/S3 P16/P21/P22/P24: literal six-combination expectations, not generated from launch code.
 // Violation: ambient discovery remains on, fixed item is omitted, or unselected entries leak into args.
-test('六种 Bot 集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
+test('六种 Task 集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
   const { root, zone } = await setup()
   const ext = path.join(root, 'extensions')
   const cases = [
@@ -64,7 +64,7 @@ test('六种 Bot 集合准确显式启动，固定项不可取消，创建页面
   const userSettings = ['.omp/agent/config.yml', '.omp/agent/config.yaml', '.pi/agent/settings.json'].map(relative => path.join(os.homedir(), relative))
   const userBefore = userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)
   for (const [index, scenario] of cases.entries()) {
-    const saved = await save({ ...bot, ...scenario, entries: undefined })
+    const saved = await save({ ...task, ...scenario, entries: undefined })
     if (index === 0) {
       const form = await dialog(page, zone)
       await expect(form.locator('input[type=checkbox]')).toHaveCount(0)
@@ -99,10 +99,10 @@ test('六种 Bot 集合准确显式启动，固定项不可取消，创建页面
 })
 
 // P25/P26/P34/P39: same stable IDs resolve a fresh mapping, while unselected missing entries stay irrelevant.
-// Violation: stale bot path copies, or checking all files in the catalog instead of this creation's set.
+// Violation: stale task path copies, or checking all files in the catalog instead of this creation's set.
 test('同进程相同已保存标识使用新入口且忽略未选缺失入口，不执行扩展', async ({}, testInfo) => {
   const { root, zone, original } = await setup()
-  const saved = await save({ ...bot, extensions: ['omp-codebase-tools'] })
+  const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
   const persistedBefore = fs.readFileSync(server!.storageFile, 'utf8')
   fs.unlinkSync(path.join(root, 'extensions', 'omp-connect-bot.ts'))
   fs.unlinkSync(path.join(root, 'extensions', 'pi-model-cost.ts'))
@@ -123,7 +123,7 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed, '--extension', oldOptional])
   expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed, '--extension', freshOptional])
   expect(fs.readFileSync(server!.storageFile, 'utf8')).toBe(persistedBefore)
-  expect((await server!.getBots()).bots[0]).toEqual(saved)
+  expect((await server!.getTasks()).tasks[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
   // Independent native-history reads are not launch/configuration controls.
   expect(server!.herdrCalls().filter(call => call.kind !== 'agent_get').map(call => call.kind)).toEqual(['workspace_list', 'tab_create', 'agent_start', 'agent_prompt', 'workspace_list', 'tab_create', 'agent_start', 'agent_prompt'])
@@ -152,7 +152,7 @@ async function denyRead(file: string) {
 for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
   test(`目录入口 ${entry} 按原路径交给 agent 且不执行入口内容`, async ({ page }) => {
     const { root, zone } = await setup()
-    await save({ ...bot, extensions: ['omp-codebase-tools'] })
+    await save({ ...task, extensions: ['omp-codebase-tools'] })
     const directory = path.join(root, 'extensions', `${entry}.ts`)
     fs.unlinkSync(directory)
     fs.mkdirSync(directory)
@@ -174,7 +174,7 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
   for (const fault of ['missing', 'unreadable']) {
     test(`自动入口检查 ${entry}/${fault} 在页面及HTTP拒绝且无三个副作用`, async ({ page }) => {
       const { root, zone } = await setup()
-      const saved = await save({ ...bot, extensions: ['omp-codebase-tools'] })
+      const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
       const form = await dialog(page, zone)
       const file = path.join(root, 'extensions', `${entry}.ts`)
       let unlock: (() => Promise<void>) | undefined
@@ -203,10 +203,10 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
 }
 
 // P35 metadata and persisted selection categories must be rejected by create itself, even with a dialog already open.
-for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax', 'metadata-duplicate', 'metadata-relation', 'selection-removed', 'selection-agent', 'selection-fixed', 'selection-duplicate', 'bot-model', 'bot-thinking', 'bot-skill', 'bot-agent']) {
+for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax', 'metadata-duplicate', 'metadata-relation', 'selection-removed', 'selection-agent', 'selection-fixed', 'selection-duplicate', 'task-model', 'task-thinking', 'task-skill', 'task-agent']) {
   test(`前置配置检查 ${fault} 的公开创建和实际页面无外部副作用`, async ({ page }) => {
     const { root, zone, original } = await setup()
-    const saved = await save({ ...bot, extensions: ['omp-codebase-tools'] })
+    const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
     const form = await dialog(page, zone)
     let unlock: (() => Promise<void>) | undefined
     if (fault === 'metadata-missing') fs.unlinkSync(server!.metadataFile)
@@ -216,24 +216,24 @@ for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax
     if (fault === 'metadata-relation') fs.writeFileSync(server!.metadataFile, original.replace('omp = [', 'unknown = ['))
     if (fault.startsWith('selection-')) {
       const persisted = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
-      persisted.bots[0].extensions = {
+      persisted.tasks[0].extensions = {
         'selection-removed': ['removed-extension'], 'selection-agent': ['pi-codebase-tools'],
         'selection-fixed': ['omp-model-cost'], 'selection-duplicate': ['omp-codebase-tools', 'omp-codebase-tools'],
       }[fault]
       fs.writeFileSync(server!.storageFile, JSON.stringify(persisted))
     }
-    if (fault.startsWith('bot-')) {
+    if (fault.startsWith('task-')) {
       const persisted = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
-      const field = fault.slice('bot-'.length)
-      persisted.bots[0][field] = 'removed-choice'
-      if (field === 'thinking') persisted.bots[0].model = 'gpt-6.1-sol'
+      const field = fault.slice('task-'.length)
+      persisted.tasks[0][field] = 'removed-choice'
+      if (field === 'thinking') persisted.tasks[0].model = 'gpt-6.1-sol'
       fs.writeFileSync(server!.storageFile, JSON.stringify(persisted))
     }
     try {
-      const response = await post('/api/chats', { zone, botId: saved.id, chatId: 'abcdef', input: '本次输入' })
-      expect(response.status).toBe(fault.startsWith('metadata-') || fault === 'bot-agent' ? 500 : 400)
+      const response = await post('/api/chats', { zone, taskId: saved.id, chatId: 'abcdef', input: '本次输入' })
+      expect(response.status).toBe(fault.startsWith('metadata-') || fault === 'task-agent' ? 500 : 400)
       const error = await response.json()
-      expect(error.code).toBe(fault.startsWith('metadata-') ? 'metadata-invalid' : fault === 'bot-agent' ? 'bots-corrupt' : fault.startsWith('bot-') ? `${fault}-invalid` : 'bot-extension-invalid')
+      expect(error.code).toBe(fault.startsWith('metadata-') ? 'metadata-invalid' : fault === 'task-agent' ? 'tasks-corrupt' : fault.startsWith('task-') ? `${fault}-invalid` : 'task-extension-invalid')
       expect(error.message).toContain('未创建 Herdr Tab、未启动 agent、未提交输入')
       await form.getByTestId('chat-create-submit').click()
       await expect(page.getByTestId('chat-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')

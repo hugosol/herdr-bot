@@ -1,14 +1,14 @@
-//! Bot：由后端以文件持久保存，电脑与手机共享同一份。
+//! Task：由后端以文件持久保存，电脑与手机共享同一份。
 //!
-//! Bot 是创建 Chat 时复用的预设：显示名、Chat 自动命名规则、agent、模型、思考级别、可选 Skill
-//! 与固定 prompt。Bot 只在创建时被读取，编辑或删除不改变已经创建的 Chat。
+//! Task 是创建 Chat 时复用的预设：显示名、Chat 自动命名规则、agent、模型、思考级别、可选 Skill
+//! 与固定 prompt。Task 只在创建时被读取，编辑或删除不改变已经创建的 Chat。
 //!
 //! 持久化语义与 zone 登记相同：只有存储文件成功写入后才返回成功；写入先写同目录的临时文件并
-//! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何 Bot，不是读取错误；读取失败或内容
+//! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何 Task，不是读取错误；读取失败或内容
 //! 损坏都是明确错误，不会伪装成空列表，也不会覆盖原文件。同一实例内的读取与写入共用一把锁。
 //!
 //! agent / model / thinking / Skill 的可用选项由独立 TOML 目录维护；每次保存按当前元数据校验。
-//! 持久文件只保留稳定标识，不保存映射副本；读取不因单个选择失效而丢弃其他 Bot。
+//! 持久文件只保留稳定标识，不保存映射副本；读取不因单个选择失效而丢弃其他 Task。
 
 use std::ffi::OsString;
 use std::fs;
@@ -20,10 +20,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-/// Bot 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
-pub const DEFAULT_STORAGE_FILE: &str = ".data/bots.json";
+/// Task 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
+pub const DEFAULT_STORAGE_FILE: &str = ".data/tasks.json";
 
-/// Bot 可选的 agent 类型。
+/// Task 可选的 agent 类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Agent {
@@ -41,18 +41,18 @@ impl Agent {
     }
 }
 
-/// 一个已保存的 Bot。
+/// 一个已保存的 Task。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Bot {
+pub struct Task {
     /// 稳定标识；编辑以它为定位，不依赖可改动的显示名。
     pub id: String,
-    /// Bot 显示名，不是新 Chat 的固定名字。
+    /// Task 显示名，不是新 Chat 的固定名字。
     pub name: String,
     /// Chat 自动命名规则：单行固定文字与占位符。
     pub chat_name: String,
     pub agent: Agent,
-    // Flattening preserves the existing HTTP and persisted Bot format; these
+    // Flattening preserves the existing HTTP and persisted Task format; these
     // are distinct execution inputs, not a new disk format or legacy aliases.
     #[serde(flatten)]
     pub trigger: TriggerConfig,
@@ -80,7 +80,7 @@ pub struct EnvConfig {
 /// 一次新增或编辑请求的原始字段；字符串先按字段逐个校验，失败时给出明确类别。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BotInput {
+pub struct TaskInput {
     name: Option<String>,
     chat_name: Option<String>,
     agent: Option<String>,
@@ -92,8 +92,8 @@ pub struct BotInput {
     extensions: Vec<String>,
 }
 
-/// 校验后的 Bot 字段（不含标识）。
-struct BotFields {
+/// 校验后的 Task 字段（不含标识）。
+struct TaskFields {
     name: String,
     chat_name: String,
     agent: Agent,
@@ -104,32 +104,32 @@ struct BotFields {
     extensions: Vec<String>,
 }
 
-impl BotInput {
-    fn validate(self, catalog: &crate::catalog::Catalog) -> Result<BotFields, BotError> {
+impl TaskInput {
+    fn validate(self, catalog: &crate::catalog::Catalog) -> Result<TaskFields, TaskError> {
         let name = self.name.unwrap_or_default();
         if name.trim().is_empty() {
-            return Err(BotError::NameRequired);
+            return Err(TaskError::NameRequired);
         }
 
         let chat_name = self.chat_name.unwrap_or_default();
         if chat_name.trim().is_empty() {
-            return Err(BotError::ChatNameRequired);
+            return Err(TaskError::ChatNameRequired);
         }
         if chat_name.contains(|c| c == '\n' || c == '\r') {
-            return Err(BotError::ChatNameNotSingleLine);
+            return Err(TaskError::ChatNameNotSingleLine);
         }
 
         let agent = self
             .agent
             .as_deref()
-            .ok_or(BotError::AgentRequired)?
+            .ok_or(TaskError::AgentRequired)?
             .trim();
         let agent = catalog
             .agents
             .iter()
             .find(|candidate| candidate.id.label() == agent)
             .map(|candidate| candidate.id)
-            .ok_or_else(|| BotError::UnknownAgent(agent.to_string()))?;
+            .ok_or_else(|| TaskError::UnknownAgent(agent.to_string()))?;
 
         let model = self
             .model
@@ -154,7 +154,7 @@ impl BotInput {
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
         catalog.validate_extensions(agent, &self.extensions)?;
 
-        Ok(BotFields {
+        Ok(TaskFields {
             name,
             chat_name,
             agent,
@@ -167,9 +167,9 @@ impl BotInput {
     }
 }
 
-/// 一次 Bot 操作的明确失败类别。
+/// 一次 Task 操作的明确失败类别。
 #[derive(Debug)]
-pub enum BotError {
+pub enum TaskError {
     NameRequired,
     ChatNameRequired,
     ChatNameNotSingleLine,
@@ -193,33 +193,33 @@ pub enum BotError {
     WriteFailed(io::Error),
 }
 
-impl BotError {
+impl TaskError {
     /// 机器可读的稳定类别。
     pub fn code(&self) -> &'static str {
         match self {
-            Self::NameRequired => "bot-name-required",
-            Self::ChatNameRequired => "bot-chat-name-required",
-            Self::ChatNameNotSingleLine => "bot-chat-name-not-single-line",
-            Self::AgentRequired => "bot-agent-required",
-            Self::UnknownAgent(_) => "bot-agent-invalid",
-            Self::UnknownModel(_) => "bot-model-invalid",
-            Self::UnknownThinking(_) => "bot-thinking-invalid",
-            Self::ThinkingRequiresDefaultModel => "bot-thinking-requires-default-model",
-            Self::ThinkingUnsupported { .. } => "bot-thinking-unsupported",
-            Self::UnknownSkill(_) => "bot-skill-invalid",
-            Self::InvalidExtension(_) => "bot-extension-invalid",
+            Self::NameRequired => "task-name-required",
+            Self::ChatNameRequired => "task-chat-name-required",
+            Self::ChatNameNotSingleLine => "task-chat-name-not-single-line",
+            Self::AgentRequired => "task-agent-required",
+            Self::UnknownAgent(_) => "task-agent-invalid",
+            Self::UnknownModel(_) => "task-model-invalid",
+            Self::UnknownThinking(_) => "task-thinking-invalid",
+            Self::ThinkingRequiresDefaultModel => "task-thinking-requires-default-model",
+            Self::ThinkingUnsupported { .. } => "task-thinking-unsupported",
+            Self::UnknownSkill(_) => "task-skill-invalid",
+            Self::InvalidExtension(_) => "task-extension-invalid",
             Self::Metadata(_) => "metadata-invalid",
-            Self::NotFound => "bot-not-found",
-            Self::Unreadable(_) => "bots-unreadable",
-            Self::Corrupt(_) => "bots-corrupt",
-            Self::WriteFailed(_) => "bots-write-failed",
+            Self::NotFound => "task-not-found",
+            Self::Unreadable(_) => "tasks-unreadable",
+            Self::Corrupt(_) => "tasks-corrupt",
+            Self::WriteFailed(_) => "tasks-write-failed",
         }
     }
 
     /// 面向使用者的说明。
     pub fn message(&self) -> String {
         match self {
-            Self::NameRequired => "Bot显示名不能为空。".to_string(),
+            Self::NameRequired => "Task显示名不能为空。".to_string(),
             Self::ChatNameRequired => "chat-name 命名规则不能为空。".to_string(),
             Self::ChatNameNotSingleLine => {
                 "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
@@ -271,29 +271,29 @@ impl BotError {
                 )
             }
             Self::Metadata(detail) => detail.clone(),
-            Self::NotFound => "目标Bot不存在：可能已被删除。".to_string(),
+            Self::NotFound => "目标Task不存在：可能已被删除。".to_string(),
             Self::Unreadable(error) => {
-                format!("读取 Bot存储文件失败：{error}；没有把它当成空列表。")
+                format!("读取 Task存储文件失败：{error}；没有把它当成空列表。")
             }
             Self::Corrupt(detail) => {
-                format!("Bot存储文件内容无效：{detail}；请先修复该文件。")
+                format!("Task存储文件内容无效：{detail}；请先修复该文件。")
             }
             Self::WriteFailed(error) => {
-                format!("保存 Bot失败：{error}；此前已保存的Bot保持不变。")
+                format!("保存 Task失败：{error}；此前已保存的Task保持不变。")
             }
         }
     }
 }
 
-/// 持久保存在一个 JSON 文件里的 Bot 列表。
-pub struct Bots {
+/// 持久保存在一个 JSON 文件里的 Task 列表。
+pub struct Tasks {
     storage_file: PathBuf,
     metadata_file: PathBuf,
     /// 读取与读改写写共用：同一实例内任意时刻只有一个调用者在操作存储文件。
     lock: Mutex<()>,
 }
 
-impl Bots {
+impl Tasks {
     pub fn new(storage_file: PathBuf, metadata_file: PathBuf) -> Self {
         Self {
             storage_file,
@@ -302,7 +302,7 @@ impl Bots {
         }
     }
 
-    pub fn catalog(&self) -> Result<crate::catalog::Catalog, BotError> {
+    pub fn catalog(&self) -> Result<crate::catalog::Catalog, TaskError> {
         crate::catalog::Catalog::load(&self.metadata_file)
     }
 
@@ -311,29 +311,29 @@ impl Bots {
         &self.storage_file
     }
 
-    /// 读取当前 Bot 列表；文件尚不存在时是空列表。
-    pub async fn list(&self) -> Result<Vec<Bot>, BotError> {
+    /// 读取当前 Task 列表；文件尚不存在时是空列表。
+    pub async fn list(&self) -> Result<Vec<Task>, TaskError> {
         let _guard = self.lock.lock().await;
         self.read()
     }
 
-    /// 按标识读取一个 Bot；不存在是明确错误。
-    pub async fn get(&self, id: &str) -> Result<Bot, BotError> {
+    /// 按标识读取一个 Task；不存在是明确错误。
+    pub async fn get(&self, id: &str) -> Result<Task, TaskError> {
         let _guard = self.lock.lock().await;
         self.read()?
             .into_iter()
-            .find(|bot| bot.id == id)
-            .ok_or(BotError::NotFound)
+            .find(|task| task.id == id)
+            .ok_or(TaskError::NotFound)
     }
 
-    /// 新增一个 Bot；成功返回保存后的完整列表。
-    pub async fn create(&self, input: BotInput) -> Result<Vec<Bot>, BotError> {
+    /// 新增一个 Task；成功返回保存后的完整列表。
+    pub async fn create(&self, input: TaskInput) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
         let _guard = self.lock.lock().await;
-        let mut bots = self.read()?;
-        let id = next_id(&bots);
-        bots.push(Bot {
+        let mut tasks = self.read()?;
+        let id = next_id(&tasks);
+        tasks.push(Task {
             id,
             name: fields.name,
             chat_name: fields.chat_name,
@@ -346,24 +346,24 @@ impl Bots {
             },
             env: EnvConfig { extensions: fields.extensions },
         });
-        self.save(&bots)?;
-        Ok(bots)
+        self.save(&tasks)?;
+        Ok(tasks)
     }
 
-    /// 编辑一个 Bot；标识保持不变，只有存储成功后才返回新列表。
+    /// 编辑一个 Task；标识保持不变，只有存储成功后才返回新列表。
     pub async fn update(
         &self,
         id: &str,
-        input: BotInput,
-    ) -> Result<Vec<Bot>, BotError> {
+        input: TaskInput,
+    ) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
         let _guard = self.lock.lock().await;
-        let mut bots = self.read()?;
-        let target = bots
+        let mut tasks = self.read()?;
+        let target = tasks
             .iter_mut()
-            .find(|bot| bot.id == id)
-            .ok_or(BotError::NotFound)?;
+            .find(|task| task.id == id)
+            .ok_or(TaskError::NotFound)?;
         target.name = fields.name;
         target.chat_name = fields.chat_name;
         target.agent = fields.agent;
@@ -374,46 +374,46 @@ impl Bots {
             prompt: fields.prompt,
         };
         target.env = EnvConfig { extensions: fields.extensions };
-        self.save(&bots)?;
-        Ok(bots)
+        self.save(&tasks)?;
+        Ok(tasks)
     }
 
-    /// 删除一个 Bot；不改变任何已经创建的 Chat。
-    pub async fn delete(&self, id: &str) -> Result<Vec<Bot>, BotError> {
+    /// 删除一个 Task；不改变任何已经创建的 Chat。
+    pub async fn delete(&self, id: &str) -> Result<Vec<Task>, TaskError> {
         let _guard = self.lock.lock().await;
-        let mut bots = self.read()?;
-        let before = bots.len();
-        bots.retain(|bot| bot.id != id);
-        if bots.len() == before {
-            return Err(BotError::NotFound);
+        let mut tasks = self.read()?;
+        let before = tasks.len();
+        tasks.retain(|task| task.id != id);
+        if tasks.len() == before {
+            return Err(TaskError::NotFound);
         }
-        self.save(&bots)?;
-        Ok(bots)
+        self.save(&tasks)?;
+        Ok(tasks)
     }
 
     /// 读取并校验存储文件；文件不存在是空列表，其余失败都是明确错误。
-    fn read(&self) -> Result<Vec<Bot>, BotError> {
+    fn read(&self) -> Result<Vec<Task>, TaskError> {
         match fs::read_to_string(&self.storage_file) {
             Ok(raw) => {
-                let document: BotsDocument = serde_json::from_str(&raw)
-                    .map_err(|error| BotError::Corrupt(error.to_string()))?;
-                validate_document(&document.bots)?;
-                Ok(document.bots)
+                let document: TasksDocument = serde_json::from_str(&raw)
+                    .map_err(|error| TaskError::Corrupt(error.to_string()))?;
+                validate_document(&document.tasks)?;
+                Ok(document.tasks)
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-            Err(error) => Err(BotError::Unreadable(error)),
+            Err(error) => Err(TaskError::Unreadable(error)),
         }
     }
 
     /// 先把新内容写进同目录的临时文件并落盘，再原子替换存储文件。
     ///
     /// 任一步失败都删除临时文件并返回错误；原存储文件在替换成功之前保持原样。
-    fn save(&self, bots: &[Bot]) -> Result<(), BotError> {
-        let document = BotsDocument {
-            bots: bots.to_vec(),
+    fn save(&self, tasks: &[Task]) -> Result<(), TaskError> {
+        let document = TasksDocument {
+            tasks: tasks.to_vec(),
         };
         let content = serde_json::to_string_pretty(&document).map_err(|error| {
-            BotError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
+            TaskError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
         })?;
 
         let temporary = self.temporary_path();
@@ -425,11 +425,11 @@ impl Bots {
         })();
         if let Err(error) = written {
             let _ = fs::remove_file(&temporary);
-            return Err(BotError::WriteFailed(error));
+            return Err(TaskError::WriteFailed(error));
         }
         if let Err(error) = fs::rename(&temporary, &self.storage_file) {
             let _ = fs::remove_file(&temporary);
-            return Err(BotError::WriteFailed(error));
+            return Err(TaskError::WriteFailed(error));
         }
         Ok(())
     }
@@ -448,42 +448,42 @@ impl Bots {
 /// 存储文件的完整内容。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BotsDocument {
-    bots: Vec<Bot>,
+struct TasksDocument {
+    tasks: Vec<Task>,
 }
 
-/// 校验持久文件结构和 Bot 身份；选项适用性只在保存/创建时按当前目录校验。
-fn validate_document(bots: &[Bot]) -> Result<(), BotError> {
-    let mut seen = Vec::with_capacity(bots.len());
-    for bot in bots {
-        if bot.id.trim().is_empty() {
-            return Err(BotError::Corrupt("Bot缺少标识".to_string()));
+/// 校验持久文件结构和 Task 身份；选项适用性只在保存/创建时按当前目录校验。
+fn validate_document(tasks: &[Task]) -> Result<(), TaskError> {
+    let mut seen = Vec::with_capacity(tasks.len());
+    for task in tasks {
+        if task.id.trim().is_empty() {
+            return Err(TaskError::Corrupt("Task缺少标识".to_string()));
         }
-        if seen.contains(&bot.id) {
-            return Err(BotError::Corrupt("Bot标识重复".to_string()));
+        if seen.contains(&task.id) {
+            return Err(TaskError::Corrupt("Task标识重复".to_string()));
         }
-        seen.push(bot.id.clone());
+        seen.push(task.id.clone());
 
-        if bot.name.trim().is_empty() {
-            return Err(BotError::Corrupt(format!(
-                "Bot {} 缺少显示名",
-                bot.id
+        if task.name.trim().is_empty() {
+            return Err(TaskError::Corrupt(format!(
+                "Task {} 缺少显示名",
+                task.id
             )));
         }
-        if bot.chat_name.trim().is_empty()
-            || bot.chat_name.contains(|c| c == '\n' || c == '\r')
+        if task.chat_name.trim().is_empty()
+            || task.chat_name.contains(|c| c == '\n' || c == '\r')
         {
-            return Err(BotError::Corrupt(format!(
-                "Bot {} 的 chat-name 不是合法单行规则",
-                bot.id
+            return Err(TaskError::Corrupt(format!(
+                "Task {} 的 chat-name 不是合法单行规则",
+                task.id
             )));
         }
     }
     Ok(())
 }
 
-/// 生成一个不与现有 Bot 重复的标识。
-fn next_id(bots: &[Bot]) -> String {
+/// 生成一个不与现有 Task 重复的标识。
+fn next_id(tasks: &[Task]) -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     loop {
         let nanos = SystemTime::now()
@@ -491,10 +491,10 @@ fn next_id(bots: &[Bot]) -> String {
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
         let candidate = format!(
-            "tpl-{nanos:x}-{:x}",
+            "task-{nanos:x}-{:x}",
             COUNTER.fetch_add(1, Ordering::Relaxed)
         );
-        if !bots.iter().any(|bot| bot.id == candidate) {
+        if !tasks.iter().any(|task| task.id == candidate) {
             return candidate;
         }
     }

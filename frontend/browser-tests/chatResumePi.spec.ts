@@ -46,14 +46,14 @@ test('unavailable Pi file visibly selects the exact ID and retains degradation o
 
 // S1/S2/S3: no browser mocks; the page sends the real Resume request and
 // receives the same confirmed/failure result an independent HTTP caller sees.
-test('Pi Resume shows confirmed default-workspace fallback and visible failure, never a Bot launch', async ({ page }) => {
+test('Pi Resume shows confirmed default-workspace fallback and visible failure, never a Task launch', async ({ page }) => {
   server = await startServer({ herdr: {} })
   const cwd = path.join(path.dirname(server.configPath), 'Pi history cwd with spaces')
   fs.mkdirSync(cwd)
   const native = path.join(cwd, 'old pi conversation.jsonl')
   fs.writeFileSync(native, `${JSON.stringify({ type: 'session', id: 'pi-browser-exact', cwd })}\n`)
-  const bot = await fetch(`${server.baseURL}/api/bots`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'New Bot Chat', agent: 'pi', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED', extensions: [] }) })
-  expect(bot.status).toBe(200)
+  const task = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'New Bot Chat', agent: 'pi', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED', extensions: [] }) })
+  expect(task.status).toBe(200)
   const register = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'pi-browser-exact', kind: 'register', data: { cwd, agentType: 'pi', sessionName: 'Historical Pi', sessionFile: native } }) })
   expect(register.status).toBe(200)
   server.setHerdrBehavior({ native_session: { agent: 'pi', source: 'herdr:pi', kind: 'path', value: native } })

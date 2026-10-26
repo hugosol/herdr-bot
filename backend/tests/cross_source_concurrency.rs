@@ -31,9 +31,9 @@ async fn snapshot(server: &TestServer) -> Value {
 async fn event(server: &TestServer, id: &str, kind: &str, data: Value) -> Value {
     post(server, "/api/sessions/events", json!({"sessionId":id,"kind":kind,"data":data})).await
 }
-async fn create_pending(server: &TestServer, fixture: &HerdrFixture, zone: &str, bot: &str, count: usize) {
-    let preview = post(server, "/api/chats/preview", json!({"zone":zone,"botId":bot})).await;
-    let accepted = post(server, "/api/chats", json!({"zone":zone,"botId":bot,"chatId":preview["chatId"],"input":"/settings"})).await;
+async fn create_pending(server: &TestServer, fixture: &HerdrFixture, zone: &str, task: &str, count: usize) {
+    let preview = post(server, "/api/chats/preview", json!({"zone":zone,"taskId":task})).await;
+    let accepted = post(server, "/api/chats", json!({"zone":zone,"taskId":task,"chatId":preview["chatId"],"input":"/settings"})).await;
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let response = get_over_tcp(server.addr(), &format!("/api/chats/{}", accepted["id"].as_str().unwrap())).await;
@@ -69,7 +69,7 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         config.herdr.executable = fixture.executable().to_path_buf();
         config.herdr.workspace_name = "bot-playground".into();
         config.zones.registry_file = root.path().join("zones.json");
-        config.bots.storage_file = root.path().join("bots.json");
+        config.tasks.storage_file = root.path().join("tasks.json");
         config.sessions.history_file = root.path().join("history.json");
         config.shutdown.countdown_seconds = herdr_bot::CountdownSeconds::new(3600).unwrap();
         let clock = Arc::new(ManualClock::new());
@@ -79,19 +79,19 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         let zone = root.path().join("zone"); fs::create_dir(&zone).unwrap();
         let zones = post(&server, "/api/zones", json!({"path":zone})).await;
         let zone = zones["zones"][0]["path"].as_str().unwrap();
-        let bots = post(&server, "/api/bots", json!({"name":"Cross source", "chatName":"Zone first literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;
-        let first = bots["bots"][0]["id"].as_str().unwrap();
-        let renamed = post(&server, "/api/bots", json!({"name":"Cross source renamed", "chatName":"Zone final literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;
-        let renamed = renamed["bots"].as_array().unwrap().iter().find(|t| t["name"] == "Cross source renamed").unwrap()["id"].as_str().unwrap();
+        let tasks = post(&server, "/api/tasks", json!({"name":"Cross source", "chatName":"Zone first literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;
+        let first = tasks["tasks"][0]["id"].as_str().unwrap();
+        let renamed = post(&server, "/api/tasks", json!({"name":"Cross source renamed", "chatName":"Zone final literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;
+        let renamed = renamed["tasks"].as_array().unwrap().iter().find(|t| t["name"] == "Cross source renamed").unwrap()["id"].as_str().unwrap();
         assert_eq!(event(&server,id,"register",json!({"cwd":"C:/current","sessionName":"Connect first literal","agentType":agent})).await["historySaved"],true);
         let first_time = history(&server).await["sessions"][0]["firstRecordedAt"].clone();
         event(&server,id,"state",json!({"value":"working"})).await;
         post(&server,"/api/shutdown/monitor",json!({"sessionId":id,"selected":true})).await;
         let blocker = root.path().join("history.json.tmp");
-        for (round, bot, name) in [(1,first,"Zone first literal"), (2,renamed,"Zone final literal")] {
+        for (round, task, name) in [(1,first,"Zone first literal"), (2,renamed,"Zone final literal")] {
             let release = root.path().join(format!("release-{round}"));
             fixture.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"id","value":id},"native_cwd":"C:/native","native_session_gate":{"wait_for_file":release,"timeout_ms":40000}}));
-            create_pending(&server,&fixture,zone,bot,round).await;
+            create_pending(&server,&fixture,zone,task,round).await;
             clock.advance(Duration::from_secs(9));
             let intent_before_failure = snapshot(&server).await;
             fs::create_dir(&blocker).unwrap();

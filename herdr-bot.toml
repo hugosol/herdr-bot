@@ -75,11 +75,11 @@ registry_file = '.data/zones.json'
 # map_directory = '.data/workflow-maps'
 # node_template_directory = '.data/node-templates'
 
-# Bot 设置（可选，缺省为当前工作目录下的 .data/bots.json）。
-# Bot 由后端保存，本机与局域网设备共享；电脑与手机在“Bot”tab 中管理。
+# Task 设置（可选，缺省为当前工作目录下的 .data/tasks.json）。
+# Task 由后端保存，本机与局域网设备共享；电脑与手机在“Task”tab 中管理。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-[bots]
-storage_file = '.data/bots.json'
+[tasks]
+storage_file = '.data/tasks.json'
 # 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
-# 修改后下次打开 Bot 编辑、保存和创建立即读取，无需重启。
-metadata_file = 'meta-data/bot-options.toml'
+# 修改后下次打开 Task 编辑、保存和创建立即读取，无需重启。
+metadata_file = 'meta-data/task-options.toml'

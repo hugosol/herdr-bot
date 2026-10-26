@@ -270,7 +270,7 @@ test('modified template drafts confirm template selection, return, tab and serve
       if (action === 'keyboard-tab') {
         await page.getByTestId('tab-scheduler').focus()
         await page.keyboard.press('ArrowLeft')
-      } else if (action === 'tab') await page.getByTestId('tab-bots').click()
+      } else if (action === 'tab') await page.getByTestId('tab-tasks').click()
       else if (action === 'server') await page.getByTestId('server-button').click()
       else if (action === 'list') await destination.click()
       else await page.getByRole('button', { name: ({ map: '返回 Map', manage: '模板管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
@@ -290,7 +290,7 @@ test('modified template drafts confirm template selection, return, tab and serve
       await expect(destination).toHaveAttribute('aria-pressed', 'true')
       await expect(listing).toBeVisible()
     }
-    else if (action === 'tab') await expect(page.getByTestId('tab-bots')).toHaveAttribute('aria-selected', 'true')
+    else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
     else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
     else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()
     else await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).toBeVisible()

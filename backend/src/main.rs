@@ -12,7 +12,7 @@ mod runtime_data;
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
-    herdr_bot::catalog::Catalog::load(&config.bots.metadata_file)
+    herdr_bot::catalog::Catalog::load(&config.tasks.metadata_file)
         .map_err(|error| anyhow::anyhow!(error.message()))?;
     runtime_data::prepare(&config)?;
 
@@ -57,12 +57,12 @@ async fn main() -> anyhow::Result<()> {
         config.zones.registry_file.display()
     );
     println!(
-        "[herdr-bot] Bot 存储文件：{}",
-        config.bots.storage_file.display()
+        "[herdr-bot] Task 存储文件：{}",
+        config.tasks.storage_file.display()
     );
     println!(
-        "[herdr-bot] Bot 选项元数据：{}",
-        config.bots.metadata_file.display()
+        "[herdr-bot] Task 选项元数据：{}",
+        config.tasks.metadata_file.display()
     );
     println!(
         "[herdr-bot] 单文件预览上限：{} 字节",

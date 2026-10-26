@@ -1,43 +1,43 @@
 # herdr-bot
 
-Windows 上的 agent 对话主界面。Bot 是可复用预设，Chat 是实际对话，zone 是服务所在电脑上登记的目录。
+Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际对话，zone 是服务所在电脑上登记的目录。
 
-## Bot 与 Chat
+## Task 与 Chat
 
-**Bot**:
-用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Bot 可以用于多次发起 Chat。
-_Avoid_: bot-template, 模板, 对话实例
+**Task**:
+用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
+_Avoid_: Bot, bot-template, 模板, 对话实例
 
 **trigger config（发起配置）**:
-Bot 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
+Task 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
 _Avoid_: env config, 自动触发规则, 事件触发器
 
 **env config（会话环境配置）**:
-Bot 中定义对话所需环境资源的配置，与仅在发起时执行的动作不同；发起 Chat 与需要新进程的会话恢复使用它，恢复所指的是来源 Bot 的最新环境而非历史版本。它不表示操作系统环境变量或历史环境快照。
+Task 中定义对话所需环境资源的配置，与仅在发起时执行的动作不同；发起 Chat 与需要新进程的会话恢复使用它，恢复所指的是来源 Task 的最新环境而非历史版本。它不表示操作系统环境变量或历史环境快照。
 _Avoid_: trigger config, 环境变量配置, 静态快照
 
 **Chat（对话）**:
-一个 agent 的实际对话，不以接入 connect-bot、保持在线或由 herdr 发起为成立条件；它与 Bot 预设、运行对话的进程和会话登记不同。
-_Avoid_: Bot, 会话登记, Herdr Tab, 进程
+一个 agent 的实际对话，不以接入 connect-bot、保持在线或由 herdr 发起为成立条件；它与 Task 预设、运行对话的进程和会话登记不同。
+_Avoid_: Task, 会话登记, Herdr Tab, 进程
 
 **发起 Chat**:
-在某个 zone 中应用所选 Bot 的 trigger config 与 env config，启动 agent 并提交初始指示的动作；它不等于强制新建原生对话，也不同于恢复指定历史 Chat。
-_Avoid_: 创建 Bot, 强制新建原生会话
+在某个 zone 中应用所选 Task 的 trigger config 与 env config，启动 agent 并提交初始指示的动作；它不等于强制新建原生对话，也不同于恢复指定历史 Chat。
+_Avoid_: 创建 Task, 强制新建原生会话
 
-**来源 Bot**:
-明确用于发起某个 Chat 的 Bot，是该 Chat 恢复时选择最新会话环境的来源；不是按名称、目录或当前选择推测的 Bot，也不是历史配置快照。
-_Avoid_: 当前选中 Bot, Bot 快照, 推测来源
+**来源 Task**:
+明确用于发起某个 Chat 的 Task，是该 Chat 恢复时选择最新会话环境的来源；不是按名称、目录或当前选择推测的 Task，也不是历史配置快照。
+_Avoid_: 当前选中 Task, Task 快照, 推测来源
 
-**Bot 选项目录**:
-定义 Bot 可选项及其适用关系的共享清单，不是某个具体 Bot。
-_Avoid_: Bot, Bot 实例
+**Task 选项目录**:
+定义 Task 可选项及其适用关系的共享清单，不是某个具体 Task。
+_Avoid_: Task, Task 实例
 
-**Bot 固定扩展**:
-Bot 会话环境中不由 Bot 勾选决定的 agent 扩展，与可选扩展共同构成有来源 Bot 时的环境选择；它不等于无来源 Bot 时的原生默认发现集合。
+**Task 固定扩展**:
+Task 会话环境中不由 Task 勾选决定的 agent 扩展，与可选扩展共同构成有来源 Task 时的环境选择；它不等于无来源 Task 时的原生默认发现集合。
 _Avoid_: 默认勾选扩展, 可选扩展, 默认发现扩展
 
-**Bot 可选扩展**:
-由 Bot 保存选择、属于 env config 的 agent 扩展；可多选，也可以不选，不是发起时执行的初始 Skill 调用。
+**Task 可选扩展**:
+由 Task 保存选择、属于 env config 的 agent 扩展；可多选，也可以不选，不是发起时执行的初始 Skill 调用。
 _Avoid_: 固定扩展, 启动时临时选择, 初始 Skill 调用
 
 **agent session（会话）**:
@@ -45,8 +45,8 @@ agent 原生的对话单元，是 Chat 在该 agent 中的身份；是否上报�
 _Avoid_: 会话登记, 连接, 进程, 客户端
 
 **会话 agent 类型**:
-运行该会话的 agent 种类，例如 pi 或 omp，不是模型、agent 状态或 Bot 的类型。
-_Avoid_: 模型类型, Bot 类型, agent 状态
+运行该会话的 agent 种类，例如 pi 或 omp，不是模型、agent 状态或 Task 的类型。
+_Avoid_: 模型类型, Task 类型, agent 状态
 
 **会话登记**:
 herdr-bot 当前跟踪某个 agent session 的记录；登记消失不表示对话或聊天记录被删除。
@@ -84,11 +84,11 @@ _Avoid_: herdr, herdr-bot
 
 **chat 入口**:
 主界面呈现当前会话登记及历史会话列表的 tab，也是打开或整页刷新后的默认入口。
-_Avoid_: Bot 列表, 会话管理后台
+_Avoid_: Task 列表, 会话管理后台
 
-**bot 入口**:
-主界面管理 Bot 的 tab，不是实际对话列表。
-_Avoid_: Chat 列表, Bot 管理后台
+**task 入口**:
+主界面管理 Task 的 tab，不是实际对话列表。
+_Avoid_: Chat 列表, Task 管理后台
 
 **zone 入口**:
 主界面管理 zone 登记、进入文件浏览及发起 Chat 的 tab；登记路径属于服务所在电脑。
@@ -110,11 +110,11 @@ _Avoid_: 运行实例, Chat, 执行路由
 
 **node**:
 某张 Map 内的一项具体工作定义，引用共享 node_template 并给出本次参数与前置依赖；同一模板可用于多项不同工作。
-_Avoid_: 执行实例, Bot, 运行中的任务
+_Avoid_: 执行实例, Task, 运行中的任务
 
 **node_template（共享节点模板）**:
-跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Bot，也不是已实现执行能力的证明。
-_Avoid_: Bot, 通用发起 Chat 动作, Map 内模板副本
+跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Task，也不是已实现执行能力的证明。
+_Avoid_: Task, 通用发起 Chat 动作, Map 内模板副本
 
 **前置依赖（blocked_by）**:
 某项工作所依赖的同一 Map 内其他工作；箭头从前置 node 指向依赖它的 node，不表示执行路由、材料传递或已实现的等待状态。

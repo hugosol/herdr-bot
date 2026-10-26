@@ -27,7 +27,7 @@ fn config_with(herdr: &HerdrFixture, storage_dir: &TempDir) -> herdr_bot::Config
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
     config.zones.registry_file = storage_dir.path().join("zones.json");
-    config.bots.storage_file = storage_dir.path().join("bots.json");
+    config.tasks.storage_file = storage_dir.path().join("tasks.json");
     config.herdr = herdr_bot::HerdrConfig {
         workspace_name: "bot-playground".to_string(),
         executable: herdr.executable().to_path_buf(),
@@ -56,45 +56,45 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .expect("登记响应必须包含刚登记的目录")
 }
 
-/// 保存一个 Bot 并返回本次保存的完整对象（按请求中的显示名定位，不假设列表里只有一个）。
+/// 保存一个 Task 并返回本次保存的完整对象（按请求中的显示名定位，不假设列表里只有一个）。
 ///
-/// 接口按保存顺序返回完整列表；同一用例连续保存同名 Bot 时，本次保存的在最后。
-async fn save_bot(server: &TestServer, bot: Value) -> Value {
-    let name = bot["name"]
+/// 接口按保存顺序返回完整列表；同一用例连续保存同名 Task 时，本次保存的在最后。
+async fn save_task(server: &TestServer, task: Value) -> Value {
+    let name = task["name"]
         .as_str()
-        .expect("测试Bot必须有显示名")
+        .expect("测试Task必须有显示名")
         .to_string();
     let response =
-        post_json_over_tcp(server.addr(), "/api/bots", &bot.to_string()).await;
-    assert_eq!(response.status, 200, "保存Bot应成功：{}", response.body);
-    let body: Value = serde_json::from_str(&response.body).expect("Bot响应是 JSON");
-    body["bots"]
+        post_json_over_tcp(server.addr(), "/api/tasks", &task.to_string()).await;
+    assert_eq!(response.status, 200, "保存Task应成功：{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).expect("Task响应是 JSON");
+    body["tasks"]
         .as_array()
-        .expect("Bot响应必须有 bots")
+        .expect("Task响应必须有 tasks")
         .iter()
         .rev()
         .find(|saved| saved["name"] == name)
-        .unwrap_or_else(|| panic!("保存响应必须包含刚保存的Bot {name}"))
+        .unwrap_or_else(|| panic!("保存响应必须包含刚保存的Task {name}"))
         .clone()
 }
 
-/// 经公开读取接口取回一个已保存 Bot，作为“实际保存的是什么”的独立观察。
-async fn read_bot(server: &TestServer, id: &str) -> Value {
-    let response = get_over_tcp(server.addr(), &format!("/api/bots/{id}")).await;
+/// 经公开读取接口取回一个已保存 Task，作为“实际保存的是什么”的独立观察。
+async fn read_task(server: &TestServer, id: &str) -> Value {
+    let response = get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await;
     assert_eq!(
         response.status, 200,
-        "读取已保存Bot应成功：{}",
+        "读取已保存Task应成功：{}",
         response.body
     );
-    let body: Value = serde_json::from_str(&response.body).expect("Bot读取响应是 JSON");
-    body["bot"].clone()
+    let body: Value = serde_json::from_str(&response.body).expect("Task读取响应是 JSON");
+    body["task"].clone()
 }
 
-async fn preview(server: &TestServer, zone: &str, bot_id: &str) -> HttpResponse {
+async fn preview(server: &TestServer, zone: &str, task_id: &str) -> HttpResponse {
     post_json_over_tcp(
         server.addr(),
         "/api/chats/preview",
-        &json!({ "zone": zone, "botId": bot_id }).to_string(),
+        &json!({ "zone": zone, "taskId": task_id }).to_string(),
     )
     .await
 }
@@ -160,31 +160,31 @@ fn call_kinds(herdr: &HerdrFixture) -> Vec<String> {
         .collect()
 }
 
-/// 准备一个已登记的真实 zone 与一个已保存的 Bot，供故障矩阵用例复用。
-async fn prepare_zone_and_bot(server: &TestServer, storage: &TempDir) -> (String, String) {
+/// 准备一个已登记的真实 zone 与一个已保存的 Task，供故障矩阵用例复用。
+async fn prepare_zone_and_task(server: &TestServer, storage: &TempDir) -> (String, String) {
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(server, &zone).await;
-    let bot = save_bot(server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识").to_string();
-    (zone_path, bot_id)
+    let task = save_task(server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识").to_string();
+    (zone_path, task_id)
 }
 
 /// 经公开预览与创建入口接受一次创建，返回它的生命周期标识。
 async fn accept_creation(
     server: &TestServer,
     zone: &str,
-    bot_id: &str,
+    task_id: &str,
     input: &str,
 ) -> String {
-    let preview_response = preview(server, zone, bot_id).await;
+    let preview_response = preview(server, zone, task_id).await;
     assert_eq!(
         preview_response.status, 200,
         "预览应成功：{}",
         preview_response.body
     );
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
-    let response = create(server, create_body(zone, bot_id, &preview, input)).await;
+    let response = create(server, create_body(zone, task_id, &preview, input)).await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
     accepted["id"].as_str().expect("创建标识").to_string()
@@ -198,11 +198,11 @@ fn zone_leaf(path: &str) -> String {
         .into_owned()
 }
 
-/// 预写的 Bot 字面样例：默认 model / thinking、无 Skill、固定 prompt 为空。
-fn default_bot() -> Value {
+/// 预写的 Task 字面样例：默认 model / thinking、无 Skill、固定 prompt 为空。
+fn default_task() -> Value {
     json!({
         "name": "审查",
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": "omp",
         "model": "default",
         "thinking": "default",
@@ -212,10 +212,10 @@ fn default_bot() -> Value {
 }
 
 /// 创建请求沿用预览的名称与短标识。
-fn create_body(zone: &str, bot_id: &str, preview: &Value, input: &str) -> Value {
+fn create_body(zone: &str, task_id: &str, preview: &Value, input: &str) -> Value {
     json!({
         "zone": zone,
-        "botId": bot_id,
+        "taskId": task_id,
         "chatId": preview["chatId"],
         "input": input,
         "expectedName": preview["name"],
@@ -262,11 +262,11 @@ async fn input_fixture(label: &str) -> InputFixture {
     }
 }
 
-/// 预写的 Bot 配置：只改变 Skill 与固定 prompt，其余字段与交付默认值一致。
-fn input_bot(skill: Option<&str>, prompt: &str) -> Value {
+/// 预写的 Task 配置：只改变 Skill 与固定 prompt，其余字段与交付默认值一致。
+fn input_task(skill: Option<&str>, prompt: &str) -> Value {
     json!({
         "name": "审查",
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": "omp",
         "model": "default",
         "thinking": "default",
@@ -278,13 +278,13 @@ fn input_bot(skill: Option<&str>, prompt: &str) -> Value {
 /// 经公开预览与创建入口驱动一次创建，等待到达指定终态。
 async fn create_with(
     inputs: &InputFixture,
-    bot: Value,
+    task: Value,
     input: &str,
     expected_stage: &str,
 ) -> Value {
-    let saved = save_bot(&inputs.server, bot).await;
-    let bot_id = saved["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&inputs.server, &inputs.zone, bot_id).await;
+    let saved = save_task(&inputs.server, task).await;
+    let task_id = saved["id"].as_str().expect("Task标识");
+    let preview_response = preview(&inputs.server, &inputs.zone, task_id).await;
     assert_eq!(
         preview_response.status, 200,
         "预览应成功：{}",
@@ -293,7 +293,7 @@ async fn create_with(
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
     let response = create(
         &inputs.server,
-        create_body(&inputs.zone, bot_id, &preview, input),
+        create_body(&inputs.zone, task_id, &preview, input),
     )
     .await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
@@ -313,8 +313,8 @@ fn initialize_git(directory: &Path) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone_cwd() {
-    let herdr = HerdrFixture::new("bot creation zones");
-    let storage = TempDir::new("bot creation storage");
+    let herdr = HerdrFixture::new("task creation zones");
+    let storage = TempDir::new("task creation storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let normal = storage.path().join("普通 目录 alpha");
@@ -325,20 +325,20 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
 
     let normal_path = register(&server, &normal).await;
     let git_path = register(&server, &git).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
 
     // 两个 zone 各自创建一次；每次从公开预览取得本次名称与短标识。
     for (zone, input) in [
         (normal_path.as_str(), "普通任务：检查登录"),
         (git_path.as_str(), "Git 任务：检查差异"),
     ] {
-        let preview = preview(&server, zone, bot_id).await;
+        let preview = preview(&server, zone, task_id).await;
         assert_eq!(preview.status, 200, "预览应成功：{}", preview.body);
         let preview: Value = serde_json::from_str(&preview.body).expect("预览响应是 JSON");
         let chat_id = preview["chatId"].as_str().expect("预览必须有 chatId");
         assert!(
-            bots_like_chat_id(chat_id),
+            tasks_like_chat_id(chat_id),
             "短实例标识必须是六个小写十六进制字符：{chat_id}"
         );
         let expected_name = format!("{} · 审查 · {chat_id}", zone_leaf(zone));
@@ -347,7 +347,7 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
             "预览名称必须是预写字面样式的实例"
         );
 
-        let response = create(&server, create_body(zone, bot_id, &preview, input)).await;
+        let response = create(&server, create_body(zone, task_id, &preview, input)).await;
         assert_eq!(
             response.status, 202,
             "创建应被接受并返回后端拥有的生命周期：{}",
@@ -383,7 +383,7 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
         assert_eq!(finished["paneId"], last_tab["pane_id"]);
         assert_ne!(
             finished["tabId"], chat_id,
-            "bot.id 是短实例标识，不是 Herdr Tab ID"
+            "task.id 是短实例标识，不是 Herdr Tab ID"
         );
         assert!(
             expected_name.contains(chat_id),
@@ -429,36 +429,36 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn per_create_rule_uses_preview_context_without_changing_the_bot() {
-    let herdr = HerdrFixture::new("bot creation rule override");
-    let storage = TempDir::new("bot creation rule override storage");
+async fn per_create_rule_uses_preview_context_without_changing_the_task() {
+    let herdr = HerdrFixture::new("task creation rule override");
+    let storage = TempDir::new("task creation rule override storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
     // Replacement values deliberately contain recognized placeholders: they stay literal.
-    let zone_dir = storage.path().join("alpha-{bot.name}-{chat.id}");
+    let zone_dir = storage.path().join("alpha-{task.name}-{chat.id}");
     fs::create_dir_all(&zone_dir).expect("创建 zone");
     let zone = register(&server, &zone_dir).await;
-    let mut bot = default_bot();
-    bot["name"] = json!("审查-{agent}-{chat.id}");
-    let saved = save_bot(&server, bot).await;
-    let bot_id = saved["id"].as_str().expect("Bot标识");
-    let response = preview(&server, &zone, bot_id).await;
+    let mut task = default_task();
+    task["name"] = json!("审查-{agent}-{chat.id}");
+    let saved = save_task(&server, task).await;
+    let task_id = saved["id"].as_str().expect("Task标识");
+    let response = preview(&server, &zone, task_id).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
     let chat_id = preview["chatId"].as_str().expect("短标识");
-    assert_eq!(preview["zoneName"], "alpha-{bot.name}-{chat.id}");
-    assert_eq!(preview["botName"], "审查-{agent}-{chat.id}");
+    assert_eq!(preview["zoneName"], "alpha-{task.name}-{chat.id}");
+    assert_eq!(preview["taskName"], "审查-{agent}-{chat.id}");
     assert_eq!(preview["chatNameRule"], saved["chatName"]);
     assert_eq!(preview["agent"], "omp");
     assert_eq!(
         preview["name"],
-        format!("alpha-{{bot.name}}-{{chat.id}} · 审查-{{agent}}-{{chat.id}} · {chat_id}")
+        format!("alpha-{{task.name}}-{{chat.id}} · 审查-{{agent}}-{{chat.id}} · {chat_id}")
     );
     let expected = format!(
-        "自定 / {chat_id} / alpha-{{bot.name}}-{{chat.id}} / 审查-{{agent}}-{{chat.id}} / omp / {{unknown}} / {chat_id}"
+        "自定 / {chat_id} / alpha-{{task.name}}-{{chat.id}} / 审查-{{agent}}-{{chat.id}} / omp / {{unknown}} / {chat_id}"
     );
-    let mut body = create_body(&zone, bot_id, &preview, "检查自定名称");
+    let mut body = create_body(&zone, task_id, &preview, "检查自定名称");
     body["chatNameRule"] =
-        json!("自定 / {chat.id} / {zone.name} / {bot.name} / {agent} / {unknown} / {chat.id}");
+        json!("自定 / {chat.id} / {zone.name} / {task.name} / {agent} / {unknown} / {chat.id}");
     body["expectedName"] = json!(expected);
     let response = create(&server, body).await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -472,16 +472,16 @@ async fn per_create_rule_uses_preview_context_without_changing_the_bot() {
     .await;
     assert_eq!(finished["name"], expected);
     assert_eq!(herdr.tabs().last().expect("实际 Tab")["label"], expected);
-    assert_eq!(read_bot(&server, bot_id).await, saved);
+    assert_eq!(read_task(&server, task_id).await, saved);
 
-    // Omission still selects the stored bot rule for a later creation.
-    let response = self::preview(&server, &zone, bot_id).await;
+    // Omission still selects the stored task rule for a later creation.
+    let response = self::preview(&server, &zone, task_id).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let next_preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
     assert_eq!(next_preview["chatNameRule"], saved["chatName"]);
     let response = create(
         &server,
-        create_body(&zone, bot_id, &next_preview, "默认规则"),
+        create_body(&zone, task_id, &next_preview, "默认规则"),
     )
     .await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -497,16 +497,16 @@ async fn per_create_rule_uses_preview_context_without_changing_the_bot() {
         herdr.tabs().last().expect("默认规则 Tab")["label"],
         next_preview["name"]
     );
-    assert_eq!(read_bot(&server, bot_id).await, saved);
+    assert_eq!(read_task(&server, task_id).await, saved);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects() {
-    let herdr = HerdrFixture::new("bot creation invalid rule");
-    let storage = TempDir::new("bot creation invalid rule storage");
+    let herdr = HerdrFixture::new("task creation invalid rule");
+    let storage = TempDir::new("task creation invalid rule storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
-    let (zone, bot_id) = prepare_zone_and_bot(&server, &storage).await;
-    let response = preview(&server, &zone, &bot_id).await;
+    let (zone, task_id) = prepare_zone_and_task(&server, &storage).await;
+    let response = preview(&server, &zone, &task_id).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let preview: Value = serde_json::from_str(&response.body).expect("预览 JSON");
     for (rule, status, code) in [
@@ -516,7 +516,7 @@ async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects(
         ("first\rsecond", 400, "chat-name-rule-not-single-line"),
         ("changed {chat.id}", 409, "name-preview-stale"),
     ] {
-        let mut body = create_body(&zone, &bot_id, &preview, "不可提交");
+        let mut body = create_body(&zone, &task_id, &preview, "不可提交");
         body["chatNameRule"] = json!(rule);
         let response = create(&server, body).await;
         assert_eq!(response.status, status, "{rule:?}: {}", response.body);
@@ -532,11 +532,11 @@ async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects(
     // A nonblank rule can still render blank for a registered filesystem root.
     let root = Path::new(&zone).ancestors().last().expect("文件系统根目录");
     let root_zone = register(&server, root).await;
-    let response = self::preview(&server, &root_zone, &bot_id).await;
+    let response = self::preview(&server, &root_zone, &task_id).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let root_preview: Value = serde_json::from_str(&response.body).expect("根目录预览 JSON");
     assert_eq!(root_preview["zoneName"], "");
-    let mut body = create_body(&root_zone, &bot_id, &root_preview, "不可提交");
+    let mut body = create_body(&root_zone, &task_id, &root_preview, "不可提交");
     body["chatNameRule"] = json!("{zone.name}");
     body["expectedName"] = json!("");
     let response = create(&server, body).await;
@@ -545,11 +545,11 @@ async fn rejects_invalid_or_mismatched_creation_rules_before_herdr_side_effects(
     assert_eq!(rejected["code"], "chat-name-required");
     assert!(herdr.calls().is_empty());
     assert!(herdr.tabs().is_empty());
-    let saved = read_bot(&server, &bot_id).await;
-    assert_eq!(saved["chatName"], default_bot()["chatName"]);
+    let saved = read_task(&server, &task_id).await;
+    assert_eq!(saved["chatName"], default_task()["chatName"]);
 }
 
-fn bots_like_chat_id(value: &str) -> bool {
+fn tasks_like_chat_id(value: &str) -> bool {
     value.len() == 6
         && value
             .bytes()
@@ -592,7 +592,7 @@ const EXPLICIT_LAUNCH_CASES: [(&str, &str, &str, [&str; 4]); 4] = [
     ),
 ];
 
-/// 从公开入口保存 Bot、独立读回保存值，再创建一次并核对受控 Herdr 写下的外部启动记录。
+/// 从公开入口保存 Task、独立读回保存值，再创建一次并核对受控 Herdr 写下的外部启动记录。
 async fn assert_launch_from_public_entry(
     server: &TestServer,
     herdr: &HerdrFixture,
@@ -603,29 +603,29 @@ async fn assert_launch_from_public_entry(
     expected_args: Value,
     input: &str,
 ) -> Value {
-    let bot = json!({
+    let task = json!({
         "name": format!("启动配置 {agent} {model} {thinking}"),
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": agent,
         "model": model,
         "thinking": thinking,
         "skill": null,
         "prompt": "",
     });
-    let saved = save_bot(server, bot.clone()).await;
-    let bot_id = saved["id"].as_str().expect("Bot标识").to_string();
+    let saved = save_task(server, task.clone()).await;
+    let task_id = saved["id"].as_str().expect("Task标识").to_string();
 
     // 公开保存、独立读回与外部启动参数必须一致：先确认后端实际保存的就是这组值。
-    let stored = read_bot(server, &bot_id).await;
+    let stored = read_task(server, &task_id).await;
     for field in ["name", "agent", "model", "thinking"] {
         assert_eq!(
-            stored[field], bot[field],
-            "已保存Bot的 {field} 必须与公开保存值一致"
+            stored[field], task[field],
+            "已保存Task的 {field} 必须与公开保存值一致"
         );
     }
 
     let calls_before = herdr.calls().len();
-    let preview_response = preview(server, zone, &bot_id).await;
+    let preview_response = preview(server, zone, &task_id).await;
     assert_eq!(
         preview_response.status, 200,
         "预览应成功：{}",
@@ -633,7 +633,7 @@ async fn assert_launch_from_public_entry(
     );
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
 
-    let response = create(server, create_body(zone, &bot_id, &preview, input)).await;
+    let response = create(server, create_body(zone, &task_id, &preview, input)).await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
     let id = accepted["id"].as_str().expect("创建标识").to_string();
@@ -702,8 +702,8 @@ async fn assert_launch_from_public_entry(
 /// 使用完整 provider / model 与适用的 thinking 原生参数；Pi 的级别不含 auto。
 #[tokio::test(flavor = "multi_thread")]
 async fn explicit_agents_and_models_reach_herdr_as_native_launch_arguments() {
-    let herdr = HerdrFixture::new("bot launch explicit");
-    let storage = TempDir::new("bot launch explicit storage");
+    let herdr = HerdrFixture::new("task launch explicit");
+    let storage = TempDir::new("task launch explicit storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
@@ -731,8 +731,8 @@ async fn explicit_agents_and_models_reach_herdr_as_native_launch_arguments() {
 /// 只传 model。两个 agent 都从公开创建入口观察实际外部参数。
 #[tokio::test(flavor = "multi_thread")]
 async fn defaulted_model_and_thinking_are_absent_from_native_launch_arguments() {
-    let herdr = HerdrFixture::new("bot launch defaults");
-    let storage = TempDir::new("bot launch defaults storage");
+    let herdr = HerdrFixture::new("task launch defaults");
+    let storage = TempDir::new("task launch defaults storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
@@ -775,25 +775,25 @@ async fn defaulted_model_and_thinking_are_absent_from_native_launch_arguments() 
 /// P27 / P32 / P33 / P34：启动被延迟时不提交；就绪后才进入提交阶段；提交确认后立即成功。
 #[tokio::test(flavor = "multi_thread")]
 async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn() {
-    let herdr = HerdrFixture::new("bot creation stages");
+    let herdr = HerdrFixture::new("task creation stages");
     herdr.set_behavior(json!({
         "agent_start_delay_ms": 1_200,
         "prompt_delay_ms": 1_200,
     }));
-    let storage = TempDir::new("bot creation stage storage");
+    let storage = TempDir::new("task creation stage storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
 
     let response = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "等待就绪后提交"),
+        create_body(&zone_path, task_id, &preview, "等待就绪后提交"),
     )
     .await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
@@ -866,21 +866,21 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
 /// P33：提交被明确拒绝时不假报成功，并保留已创建的 Tab / agent 定位信息。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
-    let herdr = HerdrFixture::new("bot creation prompt failure");
+    let herdr = HerdrFixture::new("task creation prompt failure");
     herdr.set_behavior(json!({ "fail_prompt": true }));
-    let storage = TempDir::new("bot creation prompt failure storage");
+    let storage = TempDir::new("task creation prompt failure storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
     let response = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "会被拒绝的指示"),
+        create_body(&zone_path, task_id, &preview, "会被拒绝的指示"),
     )
     .await;
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
@@ -937,13 +937,13 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
 /// P36 / P37 / P38：投递超时无法确认结果时，只能表述为未确认；现场保留且不重发。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retrying() {
-    let herdr = HerdrFixture::new("bot creation prompt timeout");
+    let herdr = HerdrFixture::new("task creation prompt timeout");
     // 夹具先记录这次投递，再睡过 adapter 的提交时限：外部副作用已经发生，结果却未知。
     herdr.set_behavior(json!({ "prompt_delay_ms": 31_000 }));
-    let storage = TempDir::new("bot creation prompt timeout storage");
+    let storage = TempDir::new("task creation prompt timeout storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
-    let (zone_path, bot_id) = prepare_zone_and_bot(&server, &storage).await;
-    let id = accept_creation(&server, &zone_path, &bot_id, "超时的指示").await;
+    let (zone_path, task_id) = prepare_zone_and_task(&server, &storage).await;
+    let id = accept_creation(&server, &zone_path, &task_id, "超时的指示").await;
 
     let failed = wait_stage_within(&server, &id, "failed", Duration::from_secs(50)).await;
     assert_eq!(failed["stage"], "failed", "不能显示创建成功");
@@ -985,21 +985,21 @@ async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retryi
 /// P27 / P33：agent 启动失败后绝不提交初始指示；已创建的 Tab / Pane 仍可定位。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failed_agent_start_never_submits_input() {
-    let herdr = HerdrFixture::new("bot creation start failure");
+    let herdr = HerdrFixture::new("task creation start failure");
     herdr.set_behavior(json!({ "fail_agent_start": true }));
-    let storage = TempDir::new("bot creation start failure storage");
+    let storage = TempDir::new("task creation start failure storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
     let response = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "不应被提交"),
+        create_body(&zone_path, task_id, &preview, "不应被提交"),
     )
     .await;
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
@@ -1072,11 +1072,11 @@ async fn current_workspace_uses_exact_zone_basename_without_fallback() {
         workspaces
             .push(json!({"workspace_id":"w-default","label":"bot-playground","focused":true}));
         fixture.herdr.set_workspaces(json!(workspaces));
-        let bot = save_bot(&fixture.server, default_bot()).await;
-        let bot_id = bot["id"].as_str().unwrap();
-        let response = preview(&fixture.server, &fixture.zone, bot_id).await;
+        let task = save_task(&fixture.server, default_task()).await;
+        let task_id = task["id"].as_str().unwrap();
+        let response = preview(&fixture.server, &fixture.zone, task_id).await;
         let preview: Value = serde_json::from_str(&response.body).unwrap();
-        let mut body = create_body(&fixture.zone, bot_id, &preview, "测试输入");
+        let mut body = create_body(&fixture.zone, task_id, &preview, "测试输入");
         body["workspaceTarget"] = json!("current");
         let response = create(&fixture.server, body).await;
         assert_eq!(response.status, 202, "{}", response.body);
@@ -1116,12 +1116,12 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
     fixture.herdr.set_workspaces(json!([
         {"workspace_id":"w-default","label":"bot-playground"}
     ]));
-    let bot = save_bot(&fixture.server, default_bot()).await;
-    let bot_id = bot["id"].as_str().unwrap();
-    let response = preview(&fixture.server, &fixture.zone, bot_id).await;
+    let task = save_task(&fixture.server, default_task()).await;
+    let task_id = task["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &fixture.zone, task_id).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let preview: Value = serde_json::from_str(&response.body).unwrap();
-    let mut body = create_body(&fixture.zone, bot_id, &preview, "保留重试输入");
+    let mut body = create_body(&fixture.zone, task_id, &preview, "保留重试输入");
     body["workspaceTarget"] = json!("current");
     let response = create(&fixture.server, body.clone()).await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -1147,7 +1147,7 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
         vec!["workspace_list", "workspace_list"]
     );
 
-    // 只改 Workspace；名称、chatId、Bot 与 input 沿用同一次预览。
+    // 只改 Workspace；名称、chatId、Task 与 input 沿用同一次预览。
     body["workspaceTarget"] = json!("default");
     let response = create(&fixture.server, body).await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -1158,7 +1158,7 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
     let succeeded = wait_stage(&fixture.server, retry_id, "succeeded").await;
     assert_eq!(succeeded["name"], failed["name"]);
     assert_eq!(succeeded["name"], preview["name"]);
-    assert_eq!(succeeded["botId"], failed["botId"]);
+    assert_eq!(succeeded["taskId"], failed["taskId"]);
     assert_eq!(creation(&fixture.server, failed_id).await, failed);
     assert_eq!(
         creation(&fixture.server, repeated_id).await["stage"],
@@ -1190,11 +1190,11 @@ async fn current_workspace_rejects_root_without_a_directory_name() {
     let fixture = input_fixture("current workspace root").await;
     let root = Path::new(&fixture.zone).ancestors().last().unwrap();
     let zone = register(&fixture.server, root).await;
-    let bot = save_bot(&fixture.server, default_bot()).await;
-    let bot_id = bot["id"].as_str().unwrap();
-    let response = preview(&fixture.server, &zone, bot_id).await;
+    let task = save_task(&fixture.server, default_task()).await;
+    let task_id = task["id"].as_str().unwrap();
+    let response = preview(&fixture.server, &zone, task_id).await;
     let preview: Value = serde_json::from_str(&response.body).unwrap();
-    let mut body = create_body(&zone, bot_id, &preview, "不应提交");
+    let mut body = create_body(&zone, task_id, &preview, "不应提交");
     body["workspaceTarget"] = json!("current");
     let response = create(&fixture.server, body).await;
     assert_eq!(response.status, 400, "{}", response.body);
@@ -1227,21 +1227,21 @@ async fn workspace_mismatches_fail_without_creating_a_tab() {
             "workspace-ambiguous",
         ),
     ] {
-        let herdr = HerdrFixture::new(&format!("bot creation workspace {label}"));
+        let herdr = HerdrFixture::new(&format!("task creation workspace {label}"));
         herdr.set_workspaces(workspaces);
-        let storage = TempDir::new(&format!("bot creation workspace {label} storage"));
+        let storage = TempDir::new(&format!("task creation workspace {label} storage"));
         let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
         let zone = storage.path().join("alpha");
         fs::create_dir_all(&zone).expect("创建 zone");
         let zone_path = register(&server, &zone).await;
-        let bot = save_bot(&server, default_bot()).await;
-        let bot_id = bot["id"].as_str().expect("Bot标识");
-        let preview_response = preview(&server, &zone_path, bot_id).await;
+        let task = save_task(&server, default_task()).await;
+        let task_id = task["id"].as_str().expect("Task标识");
+        let preview_response = preview(&server, &zone_path, task_id).await;
         let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
         let response = create(
             &server,
-            create_body(&zone_path, bot_id, &preview, "不应被提交"),
+            create_body(&zone_path, task_id, &preview, "不应被提交"),
         )
         .await;
         let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
@@ -1284,14 +1284,14 @@ async fn workspace_mismatches_fail_without_creating_a_tab() {
 /// P42：Herdr 不可达时经公开创建入口失败；没有 Tab、agent 或 Workspace 副作用。
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unreachable_herdr_fails_before_any_tab_or_agent_control() {
-    let herdr = HerdrFixture::new("bot creation unreachable herdr");
-    let storage = TempDir::new("bot creation unreachable storage");
+    let herdr = HerdrFixture::new("task creation unreachable herdr");
+    let storage = TempDir::new("task creation unreachable storage");
     let mut config = config_with(&herdr, &storage);
     // 可执行文件不存在就是生产 adapter 的“无法启动或连接 Herdr”路径；不是命令被拒绝。
     config.herdr.executable = herdr.path().join("missing-herdr.exe");
     let server = TestServer::start(&config).await;
-    let (zone_path, bot_id) = prepare_zone_and_bot(&server, &storage).await;
-    let id = accept_creation(&server, &zone_path, &bot_id, "不应被提交").await;
+    let (zone_path, task_id) = prepare_zone_and_task(&server, &storage).await;
+    let id = accept_creation(&server, &zone_path, &task_id, "不应被提交").await;
 
     let failed = wait_stage(&server, &id, "failed").await;
     assert_eq!(failed["failure"]["stage"], "workspace");
@@ -1333,12 +1333,12 @@ async fn workspace_query_and_tab_failures_stop_the_creation_chain() {
             "没有继续启动 agent",
         ),
     ] {
-        let herdr = HerdrFixture::new(&format!("bot creation {label} failure chain"));
+        let herdr = HerdrFixture::new(&format!("task creation {label} failure chain"));
         herdr.set_behavior(behavior);
-        let storage = TempDir::new(&format!("bot creation {label} failure chain storage"));
+        let storage = TempDir::new(&format!("task creation {label} failure chain storage"));
         let server = TestServer::start(&config_with(&herdr, &storage)).await;
-        let (zone_path, bot_id) = prepare_zone_and_bot(&server, &storage).await;
-        let id = accept_creation(&server, &zone_path, &bot_id, "不应被提交").await;
+        let (zone_path, task_id) = prepare_zone_and_task(&server, &storage).await;
+        let id = accept_creation(&server, &zone_path, &task_id, "不应被提交").await;
 
         let failed = wait_stage(&server, &id, "failed").await;
         assert_eq!(failed["failure"]["stage"], failure_stage);
@@ -1374,19 +1374,19 @@ async fn workspace_query_and_tab_failures_stop_the_creation_chain() {
 /// P46：公开请求不能覆盖 Workspace；额外字段或查询参数在产生任何控制调用之前被拒绝。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_public_request_cannot_override_the_configured_workspace() {
-    let herdr = HerdrFixture::new("bot creation override");
-    let storage = TempDir::new("bot creation override storage");
+    let herdr = HerdrFixture::new("task creation override");
+    let storage = TempDir::new("task creation override storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
 
-    let mut with_workspace = create_body(&zone_path, bot_id, &preview, "普通任务");
+    let mut with_workspace = create_body(&zone_path, task_id, &preview, "普通任务");
     with_workspace["workspace"] = json!("w-other");
     let rejected = create(&server, with_workspace).await;
     assert_eq!(rejected.status, 400, "额外 Workspace 字段必须被拒绝");
@@ -1399,7 +1399,7 @@ async fn a_public_request_cannot_override_the_configured_workspace() {
     let rejected = post_json_over_tcp(
         server.addr(),
         "/api/chats?workspace=w-other",
-        &create_body(&zone_path, bot_id, &preview, "普通任务").to_string(),
+        &create_body(&zone_path, task_id, &preview, "普通任务").to_string(),
     )
     .await;
     assert_eq!(rejected.status, 400, "查询参数必须被拒绝");
@@ -1408,7 +1408,7 @@ async fn a_public_request_cannot_override_the_configured_workspace() {
     // 正常请求仍只使用服务端配置的目标。
     let accepted = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "普通任务"),
+        create_body(&zone_path, task_id, &preview, "普通任务"),
     )
     .await;
     assert_eq!(accepted.status, 202, "正常请求应被接受：{}", accepted.body);
@@ -1423,20 +1423,20 @@ async fn a_public_request_cannot_override_the_configured_workspace() {
 /// P43：创建 Chat 不自动登记 connect-bot 会话，也不修改关机监听或安排。
 #[tokio::test(flavor = "multi_thread")]
 async fn creating_a_chat_does_not_register_sessions_or_change_shutdown_state() {
-    let herdr = HerdrFixture::new("bot creation isolation");
-    let storage = TempDir::new("bot creation isolation storage");
+    let herdr = HerdrFixture::new("task creation isolation");
+    let storage = TempDir::new("task creation isolation storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
     let response = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "独立创建"),
+        create_body(&zone_path, task_id, &preview, "独立创建"),
     )
     .await;
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
@@ -1467,8 +1467,8 @@ async fn creating_a_chat_does_not_register_sessions_or_change_shutdown_state() {
 /// 包装层没有额外执行 Shell 代码。正文侧的同类覆盖由 04 负责。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
-    let herdr = HerdrFixture::new("bot creation shell name");
-    let storage = TempDir::new("bot creation shell storage");
+    let herdr = HerdrFixture::new("task creation shell name");
+    let storage = TempDir::new("task creation shell storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
@@ -1476,15 +1476,15 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
     let zone_path = register(&server, &zone).await;
 
     let marker: PathBuf = storage.path().join("shell-marker.txt");
-    let bot_name = format!(
+    let task_name = format!(
         "审查 \"quoted\" & echo injected > \"{}\" & 中文 $(echo pwned) %PATH% | ; 空格",
         marker.display()
     );
-    let bot = save_bot(
+    let task = save_task(
         &server,
         json!({
-            "name": bot_name,
-            "chatName": "{zone.name} · {bot.name} · {chat.id}",
+            "name": task_name,
+            "chatName": "{zone.name} · {task.name} · {chat.id}",
             "agent": "pi",
             "model": "default",
             "thinking": "default",
@@ -1493,17 +1493,17 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
         }),
     )
     .await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     assert_eq!(preview_response.status, 200, "{}", preview_response.body);
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
     let chat_id = preview["chatId"].as_str().expect("预览必须有 chatId");
-    let expected = format!("alpha · {bot_name} · {chat_id}");
+    let expected = format!("alpha · {task_name} · {chat_id}");
     assert_eq!(preview["name"], expected);
 
     let response = create(
         &server,
-        create_body(&zone_path, bot_id, &preview, "普通任务"),
+        create_body(&zone_path, task_id, &preview, "普通任务"),
     )
     .await;
     assert_eq!(response.status, 202, "{}", response.body);
@@ -1543,45 +1543,45 @@ async fn a_name_with_shell_special_characters_reaches_herdr_verbatim() {
 /// 未登记的目录不能作为 Chat 的 cwd。
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unregistered_zone_is_rejected_before_any_herdr_call() {
-    let herdr = HerdrFixture::new("bot creation unregistered");
-    let storage = TempDir::new("bot creation unregistered storage");
+    let herdr = HerdrFixture::new("task creation unregistered");
+    let storage = TempDir::new("task creation unregistered storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("not-registered");
     fs::create_dir_all(&zone).expect("创建目录");
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let rejected = preview(&server, &zone.display().to_string(), bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let rejected = preview(&server, &zone.display().to_string(), task_id).await;
     assert_eq!(rejected.status, 400);
     let body: Value = serde_json::from_str(&rejected.body).expect("拒绝是 JSON");
     assert_eq!(body["code"], "zone-not-registered");
     assert!(herdr.calls().is_empty());
 
-    let missing = preview(&server, "C:\\definitely\\missing", bot_id).await;
+    let missing = preview(&server, "C:\\definitely\\missing", task_id).await;
     assert_eq!(missing.status, 400);
     assert!(herdr.calls().is_empty());
 }
 
-/// P10 / P11：预览之后 Bot 被编辑时，创建不会悄悄改成一个没预览过的名称。
+/// P10 / P11：预览之后 Task 被编辑时，创建不会悄悄改成一个没预览过的名称。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
-    let herdr = HerdrFixture::new("bot creation stale preview");
-    let storage = TempDir::new("bot creation stale preview storage");
+    let herdr = HerdrFixture::new("task creation stale preview");
+    let storage = TempDir::new("task creation stale preview storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
 
     let zone = storage.path().join("alpha");
     fs::create_dir_all(&zone).expect("创建 zone");
     let zone_path = register(&server, &zone).await;
-    let bot = save_bot(&server, default_bot()).await;
-    let bot_id = bot["id"].as_str().expect("Bot标识");
-    let preview_response = preview(&server, &zone_path, bot_id).await;
+    let task = save_task(&server, default_task()).await;
+    let task_id = task["id"].as_str().expect("Task标识");
+    let preview_response = preview(&server, &zone_path, task_id).await;
     let stale_preview: Value =
         serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
 
-    // 另一个客户端在预览之后编辑 Bot；本次创建仍携带旧预览的名称。
+    // 另一个客户端在预览之后编辑 Task；本次创建仍携带旧预览的名称。
     let edited = json!({
         "name": "发布检查",
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": "omp",
         "model": "default",
         "thinking": "default",
@@ -1591,15 +1591,15 @@ async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
     let response = request_json_over_tcp(
         server.addr(),
         "PUT",
-        &format!("/api/bots/{bot_id}"),
+        &format!("/api/tasks/{task_id}"),
         Some(&edited.to_string()),
     )
     .await;
-    assert_eq!(response.status, 200, "编辑Bot应成功：{}", response.body);
+    assert_eq!(response.status, 200, "编辑Task应成功：{}", response.body);
 
     let stale = create(
         &server,
-        create_body(&zone_path, bot_id, &stale_preview, "普通任务"),
+        create_body(&zone_path, task_id, &stale_preview, "普通任务"),
     )
     .await;
     assert_eq!(stale.status, 409, "过期预览必须被拒绝：{}", stale.body);
@@ -1610,18 +1610,18 @@ async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
         "过期预览被拒绝时不得产生任何 Herdr 调用"
     );
 
-    // 重新预览后，名称来自编辑后的 Bot，创建正常继续。
-    let refreshed_response = preview(&server, &zone_path, bot_id).await;
+    // 重新预览后，名称来自编辑后的 Task，创建正常继续。
+    let refreshed_response = preview(&server, &zone_path, task_id).await;
     let refreshed: Value = serde_json::from_str(&refreshed_response.body).expect("预览响应是 JSON");
     assert!(
         refreshed["name"]
             .as_str()
             .is_some_and(|name| name.contains("alpha · 发布检查 · ")),
-        "重新预览必须反映新Bot：{refreshed}"
+        "重新预览必须反映新Task：{refreshed}"
     );
     let accepted = create(
         &server,
-        create_body(&zone_path, bot_id, &refreshed, "普通任务"),
+        create_body(&zone_path, task_id, &refreshed, "普通任务"),
     )
     .await;
     assert_eq!(accepted.status, 202, "{}", accepted.body);
@@ -1636,7 +1636,7 @@ async fn a_stale_preview_is_rejected_instead_of_silently_renaming() {
 /// Skill 轮次，prompt 中的 slash 文本也不会被再次解析成额外初始化步骤。
 #[tokio::test(flavor = "multi_thread")]
 async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
-    let inputs = input_fixture("bot initial skill invocation").await;
+    let inputs = input_fixture("task initial skill invocation").await;
 
     for (skill, prefix, extension_prefix, expected) in [
         ("teach", "/skill:teach ", "/teach ", PREWRITTEN_TEACH_BODY),
@@ -1649,7 +1649,7 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
     ] {
         let finished = create_with(
             &inputs,
-            input_bot(Some(skill), PREWRITTEN_PROMPT),
+            input_task(Some(skill), PREWRITTEN_PROMPT),
             PREWRITTEN_INPUT,
             "succeeded",
         )
@@ -1685,7 +1685,7 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
         );
         assert!(
             !text.starts_with(extension_prefix),
-            "{skill} 不得调用同名扩展命令或提示词Bot：{text}"
+            "{skill} 不得调用同名扩展命令或提示词Task：{text}"
         );
     }
 
@@ -1716,14 +1716,14 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
 /// 空 prompt、空 input 与两者都多行的样例分别按预写字面值保真。
 #[tokio::test(flavor = "multi_thread")]
 async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
-    let inputs = input_fixture("bot initial plain body").await;
+    let inputs = input_fixture("task initial plain body").await;
 
     for (prompt, input, expected) in [
         (PREWRITTEN_PROMPT, "", PREWRITTEN_PROMPT),
         ("", PREWRITTEN_INPUT, PREWRITTEN_INPUT),
         (PREWRITTEN_PROMPT, PREWRITTEN_INPUT, PREWRITTEN_PLAIN_BODY),
     ] {
-        let finished = create_with(&inputs, input_bot(None, prompt), input, "succeeded").await;
+        let finished = create_with(&inputs, input_task(None, prompt), input, "succeeded").await;
         assert_eq!(
             finished["inputSubmitted"], true,
             "正文提交确认后应成功：{finished}"
@@ -1746,9 +1746,9 @@ async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
 
 /// P31：Skill-only 仍从公开入口进入既定提交，正文是单独的 Skill 调用；不补造 prompt 或 input。
 #[tokio::test(flavor = "multi_thread")]
-async fn a_skill_only_bot_submits_the_bare_skill_call() {
-    let inputs = input_fixture("bot initial skill only").await;
-    let finished = create_with(&inputs, input_bot(Some("teach"), ""), "", "succeeded").await;
+async fn a_skill_only_task_submits_the_bare_skill_call() {
+    let inputs = input_fixture("task initial skill only").await;
+    let finished = create_with(&inputs, input_task(Some("teach"), ""), "", "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
 
     let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
@@ -1759,7 +1759,7 @@ async fn a_skill_only_bot_submits_the_bare_skill_call() {
 /// P22 / P29：有 Skill 时，空的 prompt 或 input 只是缺少该分段；命令与剩余正文仍按约定合成。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
-    let inputs = input_fixture("bot initial skill partial body").await;
+    let inputs = input_fixture("task initial skill partial body").await;
 
     for (skill, prompt, input, expected) in [
         (
@@ -1777,7 +1777,7 @@ async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
     ] {
         let finished = create_with(
             &inputs,
-            input_bot(Some(skill), prompt),
+            input_task(Some(skill), prompt),
             input,
             "succeeded",
         )
@@ -1800,9 +1800,9 @@ async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
 /// P31：Skill、prompt、input 全空仍被公开入口接受并实际提交；受控 Herdr 像真实 Herdr 一样
 /// 拒绝空文本，创建按普通失败流程保留现场。不能前置组合校验、补造内容、跳过提交或假报成功。
 #[tokio::test(flavor = "multi_thread")]
-async fn an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection() {
-    let inputs = input_fixture("bot initial all empty").await;
-    let finished = create_with(&inputs, input_bot(None, ""), "", "failed").await;
+async fn an_all_empty_task_attempts_submission_and_reports_the_herdr_rejection() {
+    let inputs = input_fixture("task initial all empty").await;
+    let finished = create_with(&inputs, input_task(None, ""), "", "failed").await;
 
     assert_eq!(finished["failure"]["stage"], "submit");
     assert_eq!(finished["failure"]["code"], "herdr-command-failed");
@@ -1862,7 +1862,7 @@ async fn an_all_empty_bot_attempts_submission_and_reports_the_herdr_rejection() 
 /// 包装层逐参数启动进程、不经过 Shell，因此正文不会被解释成命令，也不会产生额外执行。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
-    let inputs = input_fixture("bot initial shell body").await;
+    let inputs = input_fixture("task initial shell body").await;
     // 无空格路径，保证这里是一条真正的 Shell 重定向；如果包装层交给 Shell，它会被创建。
     let marker =
         std::env::temp_dir().join(format!("herdr-bot-body-shell-{}.txt", std::process::id()));
@@ -1874,7 +1874,7 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
     let input = "本次 'single' ! %CD% > < & 结束\n最后一行";
     let expected = format!("{prompt}\n\n{input}");
 
-    let finished = create_with(&inputs, input_bot(None, &prompt), input, "succeeded").await;
+    let finished = create_with(&inputs, input_task(None, &prompt), input, "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
 
     let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");

@@ -10,7 +10,7 @@ pub fn prepare(config: &Config) -> anyhow::Result<()> {
     fs::create_dir_all(".data").context("创建运行数据目录 .data 失败")?;
     for file in [
         &config.zones.registry_file,
-        &config.bots.storage_file,
+        &config.tasks.storage_file,
     ] {
         if let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) {
             fs::create_dir_all(parent)

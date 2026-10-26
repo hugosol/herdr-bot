@@ -2,16 +2,16 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
 import {
-  createBot,
-  deleteBot,
-  fetchBots,
-  updateBot,
-  type Bot,
-  type BotInput,
-  type BotList,
-  type BotOptions,
-  type BotResult,
-} from './botApi'
+  createTask,
+  deleteTask,
+  fetchTasks,
+  updateTask,
+  type Task,
+  type TaskInput,
+  type TaskList,
+  type TaskOptions,
+  type TaskResult,
+} from './taskApi'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'
 
 type Feedback = {
@@ -22,27 +22,27 @@ type Feedback = {
 type Dialog = { kind: 'create' } | { kind: 'edit'; id: string }
 
 /** 把一次失败归一化成面向使用者的说明；未得到可用响应时明确说“无法确认”。 */
-function describeFailure(result: BotResult, action: string): string {
+function describeFailure(result: TaskResult, action: string): string {
   return result.kind === 'rejected'
     ? result.message
-    : `无法确认 Bot${action}结果：请求没有得到可用响应。`
+    : `无法确认 Task${action}结果：请求没有得到可用响应。`
 }
 
-/** Bot 的展示值：默认值不显示成具体模型或级别。 */
-function modelLabel(bot: Pick<Bot, 'model'>): string {
-  return bot.model === 'default' ? '沿用 Agent 默认值' : bot.model
+/** Task 的展示值：默认值不显示成具体模型或级别。 */
+function modelLabel(task: Pick<Task, 'model'>): string {
+  return task.model === 'default' ? '沿用 Agent 默认值' : task.model
 }
 
-function thinkingLabel(bot: Pick<Bot, 'thinking'>): string {
-  return bot.thinking === 'default' ? '沿用 Agent 默认值' : bot.thinking
+function thinkingLabel(task: Pick<Task, 'thinking'>): string {
+  return task.thinking === 'default' ? '沿用 Agent 默认值' : task.thinking
 }
 
-function skillLabel(bot: Pick<Bot, 'skill'>): string {
-  return bot.skill === null ? '无' : `/${bot.skill}`
+function skillLabel(task: Pick<Task, 'skill'>): string {
+  return task.skill === null ? '无' : `/${task.skill}`
 }
 
-/** 新增 Bot 的初始表单：agent 必须有固定选择，其余使用默认值。 */
-function emptyDraft(): BotInput {
+/** 新增 Task 的初始表单：agent 必须有固定选择，其余使用默认值。 */
+function emptyDraft(): TaskInput {
   return {
     name: '',
     chatName: INITIAL_CHAT_NAME,
@@ -56,38 +56,38 @@ function emptyDraft(): BotInput {
 }
 
 /** 编辑时把已保存值放回表单。 */
-function draftFrom(bot: Bot): BotInput {
+function draftFrom(task: Task): TaskInput {
   return {
-    name: bot.name,
-    chatName: bot.chatName,
-    agent: bot.agent,
-    model: bot.model,
-    thinking: bot.thinking,
-    skill: bot.skill,
-    prompt: bot.prompt,
-    extensions: [...bot.extensions],
+    name: task.name,
+    chatName: task.chatName,
+    agent: task.agent,
+    model: task.model,
+    thinking: task.thinking,
+    skill: task.skill,
+    prompt: task.prompt,
+    extensions: [...task.extensions],
   }
 }
 
 /**
- * Bot：`bot` 入口中的新增、查看、编辑与删除。
+ * Task：`task` 入口中的新增、查看、编辑与删除。
  *
- * Bot 由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 bot 入口都重新读取，
+ * Task 由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 task 入口都重新读取，
  * 保存/删除成功后才用后端返回的完整列表更新界面；保存失败不表示已保存。
  */
-export function BotsPanel({ active }: { active: boolean }) {
-  const [data, setData] = useState<BotList | null>(null)
+export function TasksPanel({ active }: { active: boolean }) {
+  const [data, setData] = useState<TaskList | null>(null)
   const [loading, setLoading] = useState(false)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
-  const [draft, setDraft] = useState<BotInput>(emptyDraft)
+  const [draft, setDraft] = useState<TaskInput>(emptyDraft)
   const [formError, setFormError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Bot | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Task | null>(null)
   const deleteDialog = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -104,11 +104,11 @@ export function BotsPanel({ active }: { active: boolean }) {
 
     let cancelled = false
     setLoading(true)
-    void fetchBots().then((result) => {
+    void fetchTasks().then((result) => {
       if (cancelled) return
       setLoading(false)
       if (result.kind === 'ok') {
-        setData({ bots: result.bots, options: result.options })
+        setData({ tasks: result.tasks, options: result.options })
         setListFailure(null)
       } else {
         setData(null)
@@ -120,18 +120,18 @@ export function BotsPanel({ active }: { active: boolean }) {
     }
   }, [active])
 
-  async function openEditor(bot?: Bot) {
+  async function openEditor(task?: Task) {
     setLoading(true)
-    const result = await fetchBots()
+    const result = await fetchTasks()
     setLoading(false)
     if (result.kind !== 'ok') {
       setFeedback({ kind: 'error', text: describeFailure(result, '选项读取') })
       return
     }
-    setData({ bots: result.bots, options: result.options })
-    const current = bot ? result.bots.find((entry) => entry.id === bot.id) : undefined
-    if (bot && !current) {
-      setFeedback({ kind: 'error', text: '目标 Bot 不存在：可能已被删除。' })
+    setData({ tasks: result.tasks, options: result.options })
+    const current = task ? result.tasks.find((entry) => entry.id === task.id) : undefined
+    if (task && !current) {
+      setFeedback({ kind: 'error', text: '目标 Task 不存在：可能已被删除。' })
       return
     }
     setDialog(current ? { kind: 'edit', id: current.id } : { kind: 'create' })
@@ -142,7 +142,7 @@ export function BotsPanel({ active }: { active: boolean }) {
   }
 
   function openCreate() { void openEditor() }
-  function openEdit(bot: Bot) { void openEditor(bot) }
+  function openEdit(task: Task) { void openEditor(task) }
 
   function closeDialog() {
     setDialog(null)
@@ -150,7 +150,7 @@ export function BotsPanel({ active }: { active: boolean }) {
     setNotice(null)
   }
 
-  function changeAgent(agent: BotInput['agent']) {
+  function changeAgent(agent: TaskInput['agent']) {
     // 切换 Agent 不继承模型或同名扩展；切回也不恢复隐藏选择。
     setDraft((current) => ({
       ...current,
@@ -162,7 +162,7 @@ export function BotsPanel({ active }: { active: boolean }) {
     setNotice(null)
   }
 
-  function changeModel(model: BotInput['model']) {
+  function changeModel(model: TaskInput['model']) {
     const supported =
       model === 'default' ? [] : (data?.options.thinking[draft.agent]?.[model] ?? [])
     const retained = draft.thinking === 'default' || supported.includes(draft.thinking)
@@ -183,16 +183,16 @@ export function BotsPanel({ active }: { active: boolean }) {
     setDeleteTarget(null)
   }
 
-  async function remove(bot: Bot) {
+  async function remove(task: Task) {
     closeDeleteDialog()
-    setDeleting(bot.id)
+    setDeleting(task.id)
     setFeedback(null)
-    const result = await deleteBot(bot.id)
+    const result = await deleteTask(task.id)
     setDeleting(null)
     if (result.kind === 'ok') {
-      setData({ bots: result.bots, options: result.options })
+      setData({ tasks: result.tasks, options: result.options })
       setListFailure(null)
-      setFeedback({ kind: 'success', text: `已删除 Bot：${bot.name}` })
+      setFeedback({ kind: 'success', text: `已删除 Task：${task.name}` })
     } else {
       // 删除失败时列表保持此前从后端读到的值。
       setFeedback({ kind: 'error', text: describeFailure(result, '删除') })
@@ -208,7 +208,7 @@ export function BotsPanel({ active }: { active: boolean }) {
     }
 
     if (draft.name.trim() === '') {
-      setFormError('请填写 Bot 显示名。')
+      setFormError('请填写 Task 显示名。')
       return
     }
     if (draft.chatName.trim() === '') {
@@ -224,15 +224,15 @@ export function BotsPanel({ active }: { active: boolean }) {
     setFormError(null)
     const result =
       dialog.kind === 'create'
-        ? await createBot(draft)
-        : await updateBot(dialog.id, draft)
+        ? await createTask(draft)
+        : await updateTask(dialog.id, draft)
     setSaving(false)
 
     if (result.kind === 'ok') {
-      setData({ bots: result.bots, options: result.options })
+      setData({ tasks: result.tasks, options: result.options })
       setListFailure(null)
       setDialog(null)
-      setFeedback({ kind: 'success', text: `已保存 Bot：${draft.name}` })
+      setFeedback({ kind: 'success', text: `已保存 Task：${draft.name}` })
     } else {
       // 保存失败不改变列表，也不显示“已保存”。
       setFormError(describeFailure(result, '保存'))
@@ -243,7 +243,7 @@ export function BotsPanel({ active }: { active: boolean }) {
   const modelUnavailable = data !== null &&
     !(draft.model in (data.options.thinking[draft.agent] ?? {}))
 
-  const thinkingOptions: BotOptions['thinking'][string][string] =
+  const thinkingOptions: TaskOptions['thinking'][string][string] =
     draft.model === 'default'
       ? []
       : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
@@ -260,23 +260,23 @@ export function BotsPanel({ active }: { active: boolean }) {
   ]
 
   return (
-    <section className="bots" data-testid="bots">
-      <div className="bots__actions">
+    <section className="tasks" data-testid="tasks">
+      <div className="tasks__actions">
         <button
           type="button"
           className="zone-action zone-action--create"
-          data-testid="bot-create-open"
+          data-testid="task-create-open"
           disabled={data === null}
           onClick={openCreate}
         >
-          新增 Bot
+          新增 Task
         </button>
       </div>
 
       {feedback !== null && (
         <p
           className="zone-feedback"
-          data-testid="bot-feedback"
+          data-testid="task-feedback"
           data-kind={feedback.kind}
           role={feedback.kind === 'error' ? 'alert' : 'status'}
         >
@@ -285,81 +285,81 @@ export function BotsPanel({ active }: { active: boolean }) {
       )}
 
       {loading && data === null && (
-        <p className="zones__loading" data-testid="bot-loading" role="status">
-          正在读取 Bot……
+        <p className="zones__loading" data-testid="task-loading" role="status">
+          正在读取 Task……
         </p>
       )}
 
       {listFailure !== null && (
-        <p className="zone-error" data-testid="bot-list-error" role="alert">
+        <p className="zone-error" data-testid="task-list-error" role="alert">
           {listFailure}
         </p>
       )}
 
       {data !== null &&
-        (data.bots.length === 0 ? (
-          <p className="zones__empty" data-testid="bot-empty">
-            尚未保存任何 Bot。
+        (data.tasks.length === 0 ? (
+          <p className="zones__empty" data-testid="task-empty">
+            尚未保存任何 Task。
           </p>
         ) : (
-          <ul className="bot-list" data-testid="bot-list">
-            {data.bots.map((bot) => (
+          <ul className="task-list" data-testid="task-list">
+            {data.tasks.map((task) => (
               <li
-                key={bot.id}
-                className="bot-item"
-                data-testid="bot-item"
-                data-bot-id={bot.id}
+                key={task.id}
+                className="task-item"
+                data-testid="task-item"
+                data-task-id={task.id}
               >
-                <h2 className="bot-item__name">{bot.name}</h2>
-                <dl className="bot-item__fields">
+                <h2 className="task-item__name">{task.name}</h2>
+                <dl className="task-item__fields">
                   <div>
                     <dt>chat-name 示例</dt>
-                    <dd>{renderChatNameExample(bot.chatName, bot.name, bot.agent)}</dd>
+                    <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
                   </div>
                   <div>
                     <dt>agent</dt>
-                    <dd>{bot.agent}</dd>
+                    <dd>{task.agent}</dd>
                   </div>
                   <div>
                     <dt>model</dt>
-                    <dd>{modelLabel(bot)}</dd>
+                    <dd>{modelLabel(task)}</dd>
                   </div>
                   <div>
                     <dt>thinking</dt>
-                    <dd>{thinkingLabel(bot)}</dd>
+                    <dd>{thinkingLabel(task)}</dd>
                   </div>
                   <div>
                     <dt>Skill</dt>
-                    <dd>{skillLabel(bot)}</dd>
+                    <dd>{skillLabel(task)}</dd>
                   </div>
                   <div>
                     <dt>固定扩展</dt>
-                    <dd>{data.options.extensions?.filter((entry) => entry.agent === bot.agent && entry.kind === 'fixed').map((entry) => entry.label).join('、') || '无'}</dd>
+                    <dd>{data.options.extensions?.filter((entry) => entry.agent === task.agent && entry.kind === 'fixed').map((entry) => entry.label).join('、') || '无'}</dd>
                   </div>
                   <div>
                     <dt>可选扩展</dt>
-                    <dd>{bot.extensions.map((id) => data.options.extensions?.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd>
+                    <dd>{task.extensions.map((id) => data.options.extensions?.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd>
                   </div>
                 </dl>
-                <pre className="bot-item__prompt" data-testid="bot-prompt-view">
-                  {bot.prompt}
+                <pre className="task-item__prompt" data-testid="task-prompt-view">
+                  {task.prompt}
                 </pre>
-                <div className="bot-item__actions">
+                <div className="task-item__actions">
                   <button
                     type="button"
                     className="zone-dialog__cancel"
-                    data-testid="bot-edit"
+                    data-testid="task-edit"
                     disabled={saving || deleting !== null}
-                    onClick={() => openEdit(bot)}
+                    onClick={() => openEdit(task)}
                   >
                     编辑
                   </button>
                   <button
                     type="button"
                     className="zone-dialog__cancel"
-                    data-testid="bot-delete"
+                    data-testid="task-delete"
                     disabled={saving || deleting !== null}
-                    onClick={() => setDeleteTarget(bot)}
+                    onClick={() => setDeleteTarget(task)}
                   >
                     删除
                   </button>
@@ -372,30 +372,30 @@ export function BotsPanel({ active }: { active: boolean }) {
       {deleteTarget !== null && (
         <dialog
           ref={deleteDialog}
-          className="zone-dialog bot-delete-dialog"
-          data-testid="bot-delete-dialog"
-          aria-labelledby="bot-delete-question"
+          className="zone-dialog task-delete-dialog"
+          data-testid="task-delete-dialog"
+          aria-labelledby="task-delete-question"
           onCancel={(event) => {
             event.preventDefault()
             closeDeleteDialog()
           }}
         >
-          <h2 id="bot-delete-question" className="zone-dialog__title">
-            是否删除 Bot「{deleteTarget.name}」？
+          <h2 id="task-delete-question" className="zone-dialog__title">
+            是否删除 Task「{deleteTarget.name}」？
           </h2>
           <div className="zone-dialog__actions">
             <button
               type="button"
               className="zone-dialog__cancel"
-              data-testid="bot-delete-cancel"
+              data-testid="task-delete-cancel"
               onClick={closeDeleteDialog}
             >
               取消
             </button>
             <button
               type="button"
-              className="zone-dialog__cancel bot-delete-confirm"
-              data-testid="bot-delete-confirm"
+              className="zone-dialog__cancel task-delete-confirm"
+              data-testid="task-delete-confirm"
               onClick={() => void remove(deleteTarget)}
             >
               删除
@@ -407,49 +407,49 @@ export function BotsPanel({ active }: { active: boolean }) {
       {dialog !== null && data !== null && (
         <div className="zone-modal">
           <form
-            className="zone-dialog bot-dialog"
-            data-testid="bot-dialog"
+            className="zone-dialog task-dialog"
+            data-testid="task-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label={dialog.kind === 'create' ? '新增 Bot' : '编辑 Bot'}
+            aria-label={dialog.kind === 'create' ? '新增 Task' : '编辑 Task'}
             onSubmit={(event) => void submit(event)}
           >
             <h2 className="zone-dialog__title">
-              {dialog.kind === 'create' ? '新增 Bot' : '编辑 Bot'}
+              {dialog.kind === 'create' ? '新增 Task' : '编辑 Task'}
             </h2>
 
-            <p data-testid="bot-step" role="status">
-              {step} / 3 · {step === 1 ? 'Bot 预设' : step === 2 ? '扩展配置' : '确认保存'}
+            <p data-testid="task-step" role="status">
+              {step} / 3 · {step === 1 ? 'Task 预设' : step === 2 ? '扩展配置' : '确认保存'}
             </p>
-            <ol className="bot-steps" aria-label="Bot 编辑步骤">
-              {['Bot 预设', '扩展配置', '确认保存'].map((label, index) => (
+            <ol className="task-steps" aria-label="Task 编辑步骤">
+              {['Task 预设', '扩展配置', '确认保存'].map((label, index) => (
                 <li key={label} aria-current={step === index + 1 ? 'step' : undefined}>{label}</li>
               ))}
             </ol>
 
             {selectionErrors.length > 0 && (
-              <p className="zone-error" data-testid="bot-selection-error" role="alert">
-                {selectionErrors.join('；')}；请显式修正选择后再保存或创建。仅查看或切换步骤不会修正已保存 Bot。
+              <p className="zone-error" data-testid="task-selection-error" role="alert">
+                {selectionErrors.join('；')}；请显式修正选择后再保存或创建。仅查看或切换步骤不会修正已保存 Task。
               </p>
             )}
 
             {step === 1 && <>
-            <section className="bot-preview-card" aria-label="Chat 名称实时示例">
-              <span className="bot-preview-card__label">Chat 名称 · 实时示例</span>
+            <section className="task-preview-card" aria-label="Chat 名称实时示例">
+              <span className="task-preview-card__label">Chat 名称 · 实时示例</span>
               <output
-                className="bot-preview"
+                className="task-preview"
                 data-testid="chat-name-preview"
                 aria-live="polite"
               >
                 {renderChatNameExample(draft.chatName, draft.name, draft.agent) || '（空规则）'}
               </output>
-              <small className="bot-preview-card__hint">
+              <small className="task-preview-card__hint">
                 示例 zone：alpha；示例短标识：a7f3c2。发起 Chat 时由后端使用真实值。
               </small>
             </section>
 
-            <div className="bot-compose">
-              <div className="bot-compose__primary">
+            <div className="task-compose">
+              <div className="task-compose__primary">
                 <ChatNameRuleEditor
                   value={draft.chatName}
                   onChange={(chatName) => setDraft((current) => ({ ...current, chatName }))}
@@ -457,16 +457,16 @@ export function BotsPanel({ active }: { active: boolean }) {
                 />
               </div>
 
-              <fieldset className="bot-settings">
-                <legend>Agent 与 Bot 设置</legend>
+              <fieldset className="task-settings">
+                <legend>Agent 与 Task 设置</legend>
 
-                <label className="zone-form__label" htmlFor="bot-name">
-                  Bot 显示名
+                <label className="zone-form__label" htmlFor="task-name">
+                  Task 显示名
                 </label>
                 <input
-                  id="bot-name"
+                  id="task-name"
                   className="zone-form__input"
-                  data-testid="bot-name"
+                  data-testid="task-name"
                   type="text"
                   value={draft.name}
                   onChange={(event) =>
@@ -475,19 +475,19 @@ export function BotsPanel({ active }: { active: boolean }) {
                   autoComplete="off"
                   disabled={saving}
                 />
-                <p className="bot-hint">
-                  必填；只是 Bot 的显示名，不是新 Chat 的固定名字。
+                <p className="task-hint">
+                  必填；只是 Task 的显示名，不是新 Chat 的固定名字。
                 </p>
 
-                <label className="zone-form__label" htmlFor="bot-agent">
+                <label className="zone-form__label" htmlFor="task-agent">
                   agent
                 </label>
                 <select
-                  id="bot-agent"
+                  id="task-agent"
                   className="zone-form__input zone-form__select"
-                  data-testid="bot-agent"
+                  data-testid="task-agent"
                   value={draft.agent}
-                  onChange={(event) => changeAgent(event.target.value as BotInput['agent'])}
+                  onChange={(event) => changeAgent(event.target.value as TaskInput['agent'])}
                   disabled={saving}
                 >
                   {data.options.agents.map((agent) => (
@@ -497,15 +497,15 @@ export function BotsPanel({ active }: { active: boolean }) {
                   ))}
                 </select>
 
-                <label className="zone-form__label" htmlFor="bot-model">
+                <label className="zone-form__label" htmlFor="task-model">
                   model
                 </label>
                 <select
-                  id="bot-model"
+                  id="task-model"
                   className="zone-form__input zone-form__select"
-                  data-testid="bot-model"
+                  data-testid="task-model"
                   value={draft.model}
-                  onChange={(event) => changeModel(event.target.value as BotInput['model'])}
+                  onChange={(event) => changeModel(event.target.value as TaskInput['model'])}
                   disabled={saving}
                 >
                   {modelUnavailable && <option value={draft.model} disabled>{draft.model}（不可用）</option>}
@@ -516,18 +516,18 @@ export function BotsPanel({ active }: { active: boolean }) {
                   ))}
                 </select>
 
-                <label className="zone-form__label" htmlFor="bot-thinking">
+                <label className="zone-form__label" htmlFor="task-thinking">
                   thinking
                 </label>
                 <select
-                  id="bot-thinking"
+                  id="task-thinking"
                   className="zone-form__input zone-form__select"
-                  data-testid="bot-thinking"
+                  data-testid="task-thinking"
                   value={draft.thinking}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      thinking: event.target.value as BotInput['thinking'],
+                      thinking: event.target.value as TaskInput['thinking'],
                     }))
                   }
                   disabled={saving}
@@ -547,13 +547,13 @@ export function BotsPanel({ active }: { active: boolean }) {
                   </p>
                 )}
 
-                <label className="zone-form__label" htmlFor="bot-skill">
+                <label className="zone-form__label" htmlFor="task-skill">
                   Skill
                 </label>
                 <select
-                  id="bot-skill"
+                  id="task-skill"
                   className="zone-form__input zone-form__select"
-                  data-testid="bot-skill"
+                  data-testid="task-skill"
                   value={draft.skill ?? ''}
                   onChange={(event) =>
                     setDraft((current) => ({
@@ -561,7 +561,7 @@ export function BotsPanel({ active }: { active: boolean }) {
                       skill:
                         event.target.value === ''
                           ? null
-                          : (event.target.value as NonNullable<BotInput['skill']>),
+                          : (event.target.value as NonNullable<TaskInput['skill']>),
                     }))
                   }
                   disabled={saving}
@@ -574,13 +574,13 @@ export function BotsPanel({ active }: { active: boolean }) {
                   ))}
                 </select>
 
-                <label className="zone-form__label" htmlFor="bot-prompt">
+                <label className="zone-form__label" htmlFor="task-prompt">
                   固定 prompt（可多行、可为空）
                 </label>
                 <textarea
-                  id="bot-prompt"
-                  className="zone-form__input bot-prompt"
-                  data-testid="bot-prompt"
+                  id="task-prompt"
+                  className="zone-form__input task-prompt"
+                  data-testid="task-prompt"
                   value={draft.prompt}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, prompt: event.target.value }))
@@ -592,15 +592,15 @@ export function BotsPanel({ active }: { active: boolean }) {
             </div>
             </>}
 
-            {step === 2 && <section className="bot-extensions" aria-label="扩展配置">
-              <section data-testid="bot-fixed-extensions">
+            {step === 2 && <section className="task-extensions" aria-label="扩展配置">
+              <section data-testid="task-fixed-extensions">
                 <h3>固定扩展（始终加载，不可取消）</h3>
                 <p>{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</p>
               </section>
               <fieldset disabled={saving}>
                 <legend>可选扩展（可不选或多选）</legend>
                 {optionalExtensions.map((entry) => (
-                  <label key={entry.id} className="bot-extension">
+                  <label key={entry.id} className="task-extension">
                     <input type="checkbox" data-testid={`extension-${entry.id}`}
                       checked={draft.extensions.includes(entry.id)}
                       onChange={(event) => setDraft((current) => ({
@@ -614,7 +614,7 @@ export function BotsPanel({ active }: { active: boolean }) {
                   </label>
                 ))}
                 {unavailableExtensions.map((id) => (
-                  <label key={id} className="bot-extension">
+                  <label key={id} className="task-extension">
                     <input type="checkbox" data-testid={`extension-${id}`} checked
                       onChange={() => setDraft((current) => ({
                         ...current,
@@ -625,13 +625,13 @@ export function BotsPanel({ active }: { active: boolean }) {
                   </label>
                 ))}
               </fieldset>
-              <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与本 Bot 所选项。</p>
+              <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与本 Task 所选项。</p>
             </section>}
 
-            {step === 3 && <section data-testid="bot-summary" aria-label="确认保存摘要">
+            {step === 3 && <section data-testid="task-summary" aria-label="确认保存摘要">
               <h3>确认保存</h3>
-              <dl className="bot-item__fields">
-                <div><dt>Bot 显示名</dt><dd data-testid="summary-name">{draft.name}</dd></div>
+              <dl className="task-item__fields">
+                <div><dt>Task 显示名</dt><dd data-testid="summary-name">{draft.name}</dd></div>
                 <div><dt>chat-name 命名规则</dt><dd data-testid="summary-chatName">{draft.chatName}</dd></div>
                 <div><dt>Chat 名称示例</dt><dd>{renderChatNameExample(draft.chatName, draft.name, draft.agent)}</dd></div>
                 <div><dt>agent</dt><dd data-testid="summary-agent">{data.options.labels?.agents?.[draft.agent] ?? draft.agent}</dd></div>
@@ -643,14 +643,14 @@ export function BotsPanel({ active }: { active: boolean }) {
                 <div><dt>扩展自动发现</dt><dd data-testid="summary-discovery">关闭</dd></div>
               </dl>
               <h4>固定 prompt</h4>
-              <pre className="bot-item__prompt" data-testid="summary-prompt">{draft.prompt}</pre>
-              <p>仅在点击保存并收到成功确认后更新共享 Bot；摘要不表示扩展已实际加载。</p>
+              <pre className="task-item__prompt" data-testid="summary-prompt">{draft.prompt}</pre>
+              <p>仅在点击保存并收到成功确认后更新共享 Task；摘要不表示扩展已实际加载。</p>
             </section>}
 
             {formError !== null && (
               <p
                 className="zone-feedback"
-                data-testid="bot-form-error"
+                data-testid="task-form-error"
                 data-kind="error"
                 role="alert"
               >
@@ -662,24 +662,24 @@ export function BotsPanel({ active }: { active: boolean }) {
               <button
                 type="button"
                 className="zone-dialog__cancel"
-                data-testid="bot-cancel"
+                data-testid="task-cancel"
                 disabled={saving}
                 onClick={closeDialog}
               >
                 取消
               </button>
               {step !== 1 && <button type="button" className="zone-dialog__cancel"
-                data-testid="bot-back" disabled={saving}
+                data-testid="task-back" disabled={saving}
                 onClick={() => setStep(step === 3 ? 2 : 1)}>上一步</button>}
               {step === 3 ? <button
                 type="submit"
                 className="zone-register"
-                data-testid="save-bot"
+                data-testid="save-task"
                 disabled={saving}
               >
                 {saving ? '正在保存……' : '保存'}
               </button> : <button type="submit" className="zone-register"
-                data-testid="bot-next" disabled={saving}>下一步</button>}
+                data-testid="task-next" disabled={saving}>下一步</button>}
             </div>
           </form>
         </div>

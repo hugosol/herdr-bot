@@ -18,7 +18,7 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
   await expect(page.getByRole('tab', { selected: true })).toHaveText('scheduler')
   await page.keyboard.press('Home')
   const originalURL = page.url()
-  for (const [index, label] of ['chat', 'bot', 'zone', 'scheduler'].entries()) {
+  for (const [index, label] of ['chat', 'task', 'zone', 'scheduler'].entries()) {
     if (index > 0) await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('tab', { selected: true })).toHaveText(label)
     for (let i = 0; i <= index; i++) await page.keyboard.press('Shift+Tab')
@@ -119,7 +119,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 test('P1: ordered scheduler tabs open and reload at chat', async ({ page }) => {
   server = await startServer()
   await page.goto(server.baseURL)
-  await expect(page.getByRole('tab')).toHaveText(['chat', 'bot', 'zone', 'scheduler'])
+  await expect(page.getByRole('tab')).toHaveText(['chat', 'task', 'zone', 'scheduler'])
   await expect(page.getByRole('tab', { selected: true })).toHaveText('chat')
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
   await expect(page.getByTestId('panel-scheduler')).toBeVisible()

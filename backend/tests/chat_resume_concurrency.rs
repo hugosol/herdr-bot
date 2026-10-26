@@ -13,11 +13,11 @@ fn setup(root: &TempDir, herdr: &HerdrFixture) -> herdr_bot::Config {
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
-    config.bots.metadata_file = root.path().join("options.toml");
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.tasks.metadata_file = root.path().join("options.toml");
     let integration = root.path().join("required-pi-integration.ts");
     std::fs::write(&integration, "// controlled integration entrypoint").unwrap();
-    std::fs::write(&config.bots.metadata_file, format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file, format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
     std::fs::write(&config.sessions.history_file, json!([
         {"sessionId":"native-one","sessionName":"First Chat","agentType":"pi","cwd":root.path(),"firstRecordedAt":1},
         {"sessionId":"native-two","sessionName":"Second Chat","agentType":"pi","cwd":root.path(),"firstRecordedAt":2}
