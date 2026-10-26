@@ -49,11 +49,12 @@ export function SchedulerPanel({ active }: { active: boolean }) {
       },
     )
     return () => controller.abort()
-  }, [active, revision])
+  }, [active, file, revision])
   return <section className="scheduler" aria-label="Map 目录">
     <h2>scheduler</h2>
     <p>服务主机上的 Map，与当前 zone 无关。仅列出目录直接包含的 JSON 文件。</p>
     <button type="button" onClick={() => setRevision((value) => value + 1)}>刷新 Map 列表</button>
+    <button type="button" disabled={file === null} onClick={() => setRevision((value) => value + 1)}>重新加载当前 Map</button>
     {listing.kind === 'loading' && <p role="status">正在读取 Map 目录……</p>}
     {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}
     {listing.kind === 'ready' && (listing.files.length === 0
