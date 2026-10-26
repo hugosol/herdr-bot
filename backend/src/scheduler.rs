@@ -109,7 +109,20 @@ struct NodeTemplate {
 }
 
 #[derive(Serialize)]
-struct TemplateCatalog { templates: Vec<NodeTemplate> }
+struct TemplateProblem {
+    code: &'static str,
+    message: String,
+    files: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    template_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TemplateCatalog {
+    templates: Vec<NodeTemplate>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    problems: Vec<TemplateProblem>,
+}
 
 fn template_directory_error(error: DirectoryError) -> DirectoryError {
     DirectoryError {
@@ -127,19 +140,49 @@ fn read_templates(directory: &Path) -> Result<TemplateCatalog, DirectoryError> {
     // or reparse-point ancestors. Identity belongs to the parsed id, not the name.
     let files = read_files(directory).map_err(template_directory_error)?;
     let mut templates = Vec::with_capacity(files.files.len());
+    let mut problems = Vec::new();
+    let mut identities: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for name in files.files {
-        let bytes = fs::read(directory.join(&name)).map_err(|e| DirectoryError {
-            code: "template-read-failed", message: format!("共享模板 {name} 读取失败：{e}"),
-        })?;
-        let template: NodeTemplate = serde_json::from_slice(&bytes).map_err(|e| DirectoryError {
-            code: "template-read-failed", message: format!("共享模板 {name} 结构无效：{e}"),
-        })?;
+        let bytes = match fs::read(directory.join(&name)) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                problems.push(TemplateProblem { code: "template-read-failed", message: format!("共享模板 {name} 读取失败：{error}"), files: vec![name], template_id: None });
+                continue;
+            }
+        };
+        let template: NodeTemplate = match serde_json::from_slice(&bytes) {
+            Ok(template) => template,
+            Err(error) => {
+                let template_id = serde_json::from_slice::<serde_json::Value>(&bytes).ok()
+                    .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(str::to_owned));
+                problems.push(TemplateProblem { code: "template-invalid", message: format!("共享模板 {name} 结构无效：{error}"), files: vec![name], template_id });
+                continue;
+            }
+        };
         if template.schema_version != 1 {
-            return Err(DirectoryError { code: "template-read-failed", message: format!("共享模板 {name} 的 schema_version 必须为 1。") });
+            problems.push(TemplateProblem { code: "template-invalid", message: format!("共享模板 {name} 的 schema_version 必须为 1。"), files: vec![name], template_id: Some(template.id) });
+            continue;
         }
+        identities.entry(template.id.clone()).or_default().push(name);
         templates.push(template);
     }
-    Ok(TemplateCatalog { templates })
+    // Even an invalid definition can declare an identity. Never hide that
+    // ambiguity by choosing the remaining valid file as a winner.
+    for problem in &problems {
+        if let Some(id) = &problem.template_id {
+            identities.entry(id.clone()).or_default().extend(problem.files.iter().cloned());
+        }
+    }
+    templates.retain(|template| identities[&template.id].len() == 1);
+    let mut conflicts = Vec::new();
+    for (id, mut names) in identities {
+        if names.len() > 1 {
+            names.sort();
+            conflicts.push(TemplateProblem { code: "template-id-conflict", message: format!("共享模板 ID 冲突：{id}；相关文件：{}", names.join("、")), files: names, template_id: Some(id) });
+        }
+    }
+    conflicts.extend(problems);
+    Ok(TemplateCatalog { templates, problems: conflicts })
 }
 
 pub async fn list_templates(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
