@@ -12,7 +12,7 @@ struct WorkflowMap {
     schema_version: u32,
     title: String,
     description: String,
-    nodes: BTreeMap<String, MapNode>,
+    nodes: BTreeMap<String, JsonObject<MapNode>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -22,6 +22,28 @@ struct MapNode {
     node_template_id: String,
     parameters: BTreeMap<String, serde_json::Value>,
     blocked_by: Vec<String>,
+}
+
+// Serde's derived structs also accept positional arrays. Map and node definitions
+// require named JSON objects; forward only map access without copying the input.
+#[derive(Serialize)]
+#[serde(transparent)]
+struct JsonObject<T>(T);
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for JsonObject<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ObjectVisitor<T>(std::marker::PhantomData<T>);
+        impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for ObjectVisitor<T> {
+            type Value = JsonObject<T>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a JSON object with named fields")
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+                T::deserialize(serde::de::value::MapAccessDeserializer::new(map)).map(JsonObject)
+            }
+        }
+        deserializer.deserialize_map(ObjectVisitor(std::marker::PhantomData))
+    }
 }
 
 fn map_error(message: impl Into<String>) -> DirectoryError {
@@ -41,17 +63,24 @@ fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError>
         return Err(map_error("Map 文件不能是符号链接、重解析点或目录。"));
     }
     let bytes = fs::read(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))?;
-    let map: WorkflowMap = serde_json::from_slice(&bytes).map_err(|e| map_error(format!("Map 结构无效：{e}")))?;
+    let mut deserializer = serde_json::Deserializer::from_slice(&bytes);
+    let JsonObject(map): JsonObject<WorkflowMap> = serde_path_to_error::deserialize(&mut deserializer)
+        .map_err(|e| map_error(format!("Map 结构无效：{e}")))?;
+    deserializer.end().map_err(|e| map_error(format!("Map JSON 无效：{e}")))?;
     if map.schema_version != 1 { return Err(map_error("Map schema_version 必须为 1。")); }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
     // a successful graph. Kahn's traversal also bounds layout work on bad input.
     let mut remaining = BTreeMap::new();
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (id, node) in &map.nodes {
+        let node = &node.0;
         remaining.insert(id.as_str(), node.blocked_by.len());
         for prerequisite in &node.blocked_by {
-            if prerequisite == id || !map.nodes.contains_key(prerequisite) {
-                return Err(map_error(format!("node {id} 的 blocked_by 引用了自身或未知 node：{prerequisite}")));
+            if prerequisite == id {
+                return Err(map_error(format!("node {id} 的 blocked_by 引用了自身：{prerequisite}")));
+            }
+            if !map.nodes.contains_key(prerequisite) {
+                return Err(map_error(format!("node {id} 的 blocked_by 引用了未知 node：{prerequisite}")));
             }
             dependents.entry(prerequisite).or_default().push(id);
         }
@@ -66,7 +95,10 @@ fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError>
             if *count == 0 { ready.push_back(dependent); }
         }
     }
-    if visited != map.nodes.len() { return Err(map_error("Map blocked_by 存在依赖环。")); }
+    if visited != map.nodes.len() {
+        let blocked = remaining.iter().filter_map(|(id, count)| (*count > 0).then_some(*id)).collect::<Vec<_>>().join("、");
+        return Err(map_error(format!("Map blocked_by 存在依赖环；无法解除前置依赖的 node：{blocked}。")));
+    }
     Ok(map)
 }
 
@@ -80,7 +112,12 @@ pub async fn get_map(
             "code": "invalid-request", "message": "Map 读取不接受查询参数或请求体。",
         }))).into_response();
     }
-    match tokio::task::spawn_blocking(move || read_map(&state.map_directory, &name)).await {
+    match tokio::task::spawn_blocking(move || {
+        read_map(&state.map_directory, &name).map_err(|mut error| {
+            error.message = format!("Map 文件 {name}：{}", error.message);
+            error
+        })
+    }).await {
         Ok(Ok(map)) => Json(map).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => map_error(format!("Map 文件读取失败：{error}")).into_response(),
