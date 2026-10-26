@@ -49,8 +49,9 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Bot', async (
   // 既有 tab 仍可操作。
   await page.getByTestId('tab-files').click()
   await expect(page.getByTestId('panel-files')).toBeVisible()
-  await page.getByTestId('tab-control').click()
+  await page.getByTestId('server-button').click()
   await expect(page.getByTestId('start-button')).toBeEnabled()
+  await page.getByTestId('server-back').click()
   await page.getByTestId('tab-bots').click()
   await expect(page.getByTestId('bot-empty')).toBeVisible()
 

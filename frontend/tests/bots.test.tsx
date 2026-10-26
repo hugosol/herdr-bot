@@ -126,9 +126,10 @@ describe('Bot tab：读取与展示', () => {
     expect(row.textContent).toContain('第二行：保留 "引号" 与反斜杠 \\')
 
     // 既有 tab 仍可操作。
-    await user.click(screen.getByTestId('tab-control'))
-    expect(screen.getByTestId('panel-control')).toBeVisible()
+    await user.click(screen.getByTestId('server-button'))
+    expect(screen.getByTestId('server-page')).toBeVisible()
     expect(screen.getByTestId('start-button')).toBeEnabled()
+    await user.click(screen.getByTestId('server-back'))
     await user.click(screen.getByTestId('tab-files'))
     expect(screen.getByTestId('panel-files')).toBeVisible()
   })
