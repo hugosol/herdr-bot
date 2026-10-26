@@ -247,10 +247,13 @@ test('a controlled filesystem write failure preserves the ID and raw JSON until 
 
 // P19 S1: every real exit first cancels (same exact draft), then confirms
 // (original action runs). Native beforeunload is asserted by type, never text.
-test('modified template drafts confirm return, tab and server navigation, app refresh and browser refresh', async ({ page }) => {
+test('modified template drafts confirm template selection, return, tab and server navigation, app refresh and browser refresh', async ({ page }) => {
   server = await startServer({ separateCwd: true })
+  const root = path.join(server.cwd, '.data/node-templates')
+  fs.mkdirSync(root, { recursive: true })
+  fs.writeFileSync(path.join(root, 'navigation-target.json'), JSON.stringify({ ...content, id: 'navigation-target', title: '切换目标能力' }))
   await open(page)
-  const root = path.join(server.cwd, '.data/node-templates'), before = inventory(root)
+  const before = inventory(root)
   const raw = JSON.stringify(content, null, 3)
   for (const action of ['map', 'list', 'manage', 'refresh', 'tab', 'keyboard-tab', 'server']) {
     if (await page.getByTestId('server-back').isVisible()) await page.getByTestId('server-back').click()
@@ -259,13 +262,18 @@ test('modified template drafts confirm return, tab and server navigation, app re
     await page.getByRole('button', { name: '新增模板', exact: true }).click()
     await page.getByLabel('模板 ID', { exact: true }).fill('unsaved-identity')
     await page.getByLabel('模板内容 JSON', { exact: true }).fill(raw)
+    const listing = page.getByRole('region', { name: '共享模板列表', exact: true })
+    const destination = listing.getByRole('button', { name: '切换目标能力 · navigation-target', exact: true })
+    await expect(listing).toBeVisible()
+    await expect(destination).toBeEnabled()
     const exit = async () => {
       if (action === 'keyboard-tab') {
         await page.getByTestId('tab-scheduler').focus()
         await page.keyboard.press('ArrowLeft')
       } else if (action === 'tab') await page.getByTestId('tab-bots').click()
       else if (action === 'server') await page.getByTestId('server-button').click()
-      else await page.getByRole('button', { name: ({ map: '返回 Map', list: '返回模板列表', manage: '模板管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
+      else if (action === 'list') await destination.click()
+      else await page.getByRole('button', { name: ({ map: '返回 Map', manage: '模板管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
     }
     page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.dismiss() })
     await exit()
@@ -275,6 +283,13 @@ test('modified template drafts confirm return, tab and server navigation, app re
     await exit()
     await expect(page.getByRole('form', { name: '模板编辑', exact: true })).toHaveCount(0)
     if (action === 'map') await expect(page.getByRole('complementary', { name: 'Map 文件目录', exact: true })).toBeVisible()
+    else if (action === 'list') {
+      const preview = page.getByRole('region', { name: '模板预览', exact: true })
+      await expect(preview.getByText('navigation-target', { exact: true })).toBeVisible()
+      await expect(preview.getByText('切换目标能力', { exact: true })).toBeVisible()
+      await expect(destination).toHaveAttribute('aria-pressed', 'true')
+      await expect(listing).toBeVisible()
+    }
     else if (action === 'tab') await expect(page.getByTestId('tab-bots')).toHaveAttribute('aria-selected', 'true')
     else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
     else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()

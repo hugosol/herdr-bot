@@ -72,8 +72,25 @@
 .scheduler-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .scheduler-template-page { border: 1px solid var(--scheduler-line); border-radius: .65rem; background: #1b242d; padding: 1.5rem; min-width: 0; }
 .scheduler-template-page > h2 { font-size: 1.1rem; }
-.scheduler-template-page > .scheduler-details { max-width: 65rem; }
-.scheduler-template-page .scheduler-actions { justify-content: flex-start; }
+.scheduler-template-page > .scheduler-actions { justify-content: flex-start; }
+.scheduler-template-layout { display: grid; grid-template-columns: 18rem minmax(0, 1fr); border-top: 1px solid #465568; min-height: 35rem; }
+.scheduler-template-directory { padding: 1.2rem 1.3rem 1.2rem 0; border-right: 1px solid var(--scheduler-line); min-width: 0; }
+.scheduler-template-directory strong, .scheduler-template-directory small { display: block; overflow-wrap: anywhere; }
+.scheduler-template-directory small { color: var(--scheduler-muted); font: .75rem/1.8 Consolas, monospace; margin-top: .3rem; }
+.scheduler-template-main { min-width: 0; padding: 1.5rem 2rem; background: #1b212a; }
+.scheduler-template-main > .scheduler-actions { margin-bottom: 1rem; }
+.scheduler-template-main .scheduler-details h3 { font-size: 1.5rem; }
+.scheduler-template-sections { display: flex; flex-wrap: wrap; gap: .5rem; padding: 1.25rem 0 .7rem; margin-bottom: 2rem; border-bottom: 1px solid #465568; }
+.scheduler-template-main .scheduler-details dd { background: none; padding: 0; line-height: 1.9; margin-bottom: 2rem; }
+.scheduler-template-io { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
+.scheduler-template-io > section { border-top: 2px solid #7db3db; min-width: 0; }
+@media (max-width: 760px) {
+  .scheduler-template-page { padding: 1rem; }
+  .scheduler-template-layout, .scheduler-template-io { grid-template-columns: minmax(0, 1fr); }
+  .scheduler-template-directory { border-right: 0; padding-right: 0; }
+  .scheduler-template-directory .scheduler-map-list { max-height: 18rem; overflow: auto; }
+  .scheduler-template-main { padding: 1.25rem; }
+}
 .scheduler-editor { display: grid; gap: 1rem; min-width: 0; }
 .scheduler-editor label { display: grid; gap: .5rem; min-width: 0; }
 .scheduler-editor input, .scheduler-editor textarea { width: 100%; min-width: 0; border: 1px solid #465568; border-radius: .4rem; background: #11171e; color: #f2f4f8; padding: .75rem; font: inherit; }

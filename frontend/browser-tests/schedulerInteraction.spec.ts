@@ -111,6 +111,8 @@ test('P4 P30 narrow screen keyboard reaches node list and template details and r
   await page.keyboard.press('Enter')
   const template = page.getByRole('region', { name: '模板预览', exact: true })
   await expect(template.getByText('共享核对能力', { exact: true })).toBeVisible()
+  await tabTo(template.getByRole('button', { name: '输入与输出', exact: true }))
+  await page.keyboard.press('Enter')
   await template.getByText('核对摘要。', { exact: true }).scrollIntoViewIfNeeded()
   await expect(template.getByText('核对摘要。', { exact: true })).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

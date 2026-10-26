@@ -173,7 +173,6 @@ test('a real filesystem deletion failure keeps the template preview and reports 
     await page.getByRole('button', { name: '删除模板', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('删除失败')
     await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('shared')
-    await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).toHaveCount(0)
     const target = await (await api(page, 'check-delete', { id: 'shared' })).json()
     const failed = await api(page, 'delete', target)
     expect(failed.ok()).toBe(false)

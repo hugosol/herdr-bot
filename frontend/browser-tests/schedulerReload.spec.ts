@@ -199,7 +199,11 @@ test('P25 explicit reload replaces dependencies parameters and every template fi
   await expect(details.getByTestId('parameter-count')).toHaveText('17')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveCount(0)
   await details.getByRole('button', { name: '模板明细', exact: true }).click()
-  for (const text of ['新能力标题', '新适用说明', '新能力说明', 'target', '新输入说明', 'report', '新输出说明', 'chat']) {
+  for (const text of ['新能力标题', '新适用说明', '新能力说明', 'chat']) {
+    await expect(capability.getByText(text, { exact: true })).toBeVisible()
+  }
+  await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+  for (const text of ['target', '新输入说明', 'report', '新输出说明']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()

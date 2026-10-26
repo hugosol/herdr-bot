@@ -128,6 +128,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   const [graphOpen, setGraphOpen] = useState(false)
   const [templateView, setTemplateView] = useState(false)
   const [templateId, setTemplateId] = useState<string | null>(null)
+  const [templateFilter, setTemplateFilter] = useState('')
   const templateHeading = useRef<HTMLHeadingElement>(null)
   const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
 
@@ -182,6 +183,8 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   const busy = listing.kind === 'loading' || templates.kind === 'loading' || preview?.kind === 'loading'
   const visibleFiles = listing.kind === 'ready'
     ? listing.files.filter((name) => name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : []
+  const visibleTemplates = templates.kind === 'ready'
+    ? templates.templates.filter((item) => `${item.title} ${item.id}`.toLocaleLowerCase().includes(templateFilter.toLocaleLowerCase())) : []
   const templateProblems: Record<string, string> = Object.create(null)
   if (map && templates.kind === 'ready') {
     const available = new Set(templates.templates.map((template) => template.id))
@@ -254,23 +257,33 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
     {templateView ? <div className="scheduler-template-page">
       <nav aria-label="模板导航" className="scheduler-actions">
         <button type="button" onClick={() => void returnToMap()}>返回 Map</button>
-        {(templateId !== null || draft !== null) && <button type="button" onClick={() => { if (abandonDraft()) setTemplateId(null) }}>返回模板列表</button>}
         {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>新增模板</button>}
-        {!draft && template && !templateProblem && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(template.id)}>修改模板</button>}
-        {!draft && template && !templateProblem && <button type="button" disabled={editingBusy} onClick={() => void removeTemplate()}>删除模板</button>}
       </nav>
-      <h2 ref={templateHeading} tabIndex={-1}>{draft ? (draft.revision ? '修改模板' : '新增模板') : templateId === null ? '共享模板' : '模板预览'}</h2>
-      {editError && <p role="alert">{editError}</p>}
-      {draft ? editor : templateId === null ? <section aria-label="共享模板列表">
-        {templates.kind === 'ready' && templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
-        {templates.kind === 'ready' && <ul className="scheduler-map-list">{templates.templates.map((item) => <li key={item.id}>
-          <button type="button" onClick={() => setTemplateId(item.id)}>{item.title} · {item.id}</button>
-        </li>)}</ul>}
-      </section> : <section aria-label="模板预览" className="scheduler-details">
-        {templates.kind === 'ready' && (templateProblem
-          ? <p role="alert">共享模板 {templateId}：{templateProblem.message}</p>
-          : template ? <TemplatePreview template={template} /> : <p role="alert">缺失共享模板：{templateId}</p>)}
-      </section>}
+      <h2 ref={templateHeading} tabIndex={-1}>共享模板</h2>
+      <div className="scheduler-template-layout">
+        <section aria-label="共享模板列表" className="scheduler-template-directory">
+          <label className="scheduler-filter">筛选模板<input type="search" value={templateFilter} onChange={(event) => setTemplateFilter(event.target.value)} placeholder="名称或 ID…" /></label>
+          {templates.kind === 'ready' && <>
+            <p className="scheduler-filter-count" role="status">显示 {visibleTemplates.length} / {templates.templates.length}</p>
+            {templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
+            {templates.templates.length > 0 && visibleTemplates.length === 0 && <p>没有匹配的模板。清除筛选可查看全部。</p>}
+            <ul className="scheduler-map-list">{visibleTemplates.map((item) => <li key={item.id}>
+              <button type="button" disabled={editingBusy} aria-pressed={templateId === item.id} aria-label={`${item.title} · ${item.id}`} onClick={() => openTemplate(item.id)}><strong>{item.title}</strong><small>{item.id}</small></button>
+            </li>)}</ul>
+          </>}
+        </section>
+        <div className="scheduler-template-main">
+          {editError && <p role="alert">{editError}</p>}
+          {draft ? editor : templateId === null ? <div className="scheduler-placeholder"><h3>选择一个模板</h3><p>从左侧列表选择模板，查看能力说明与输入输出。</p></div> : <>
+            {template && !templateProblem && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(template.id)}>修改模板</button><button type="button" disabled={editingBusy} onClick={() => void removeTemplate()}>删除模板</button></div>}
+            <section aria-label="模板预览" className="scheduler-details">
+              {templates.kind === 'ready' && (templateProblem
+                ? <p role="alert">共享模板 {templateId}：{templateProblem.message}</p>
+                : template ? <TemplatePreview key={template.id} template={template} /> : <p role="alert">缺失共享模板：{templateId}</p>)}
+            </section>
+          </>}
+        </div>
+      </div>
     </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
         <div className="scheduler-section-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}</div>

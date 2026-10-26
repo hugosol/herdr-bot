@@ -71,20 +71,30 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
         await expect(prerequisites.getByRole('listitem')).toHaveText(['上海出行天气 · A', '北京出行天气 · B'])
       } else await expect(prerequisites).toContainText('无前置依赖')
       await expect(details.getByRole('button', { name: '模板明细', exact: true })).not.toHaveAttribute('aria-expanded')
-      const expectedTemplate = name === '汇总出行准备 C' ? [
+      const expectedOverview = name === '汇总出行准备 C' ? [
         '出行准备清单汇总', '需要将多个目的地的准备事项整理为核对清单时。',
         '按指定范围整理准备事项与待确认问题；前置依赖不自动传入天气结果，也不预订或修改任何资源。',
-        'scope', '本次清单涵盖的出行范围。', 'checklist', '人工给定的核对主题说明。',
-        'summary', '准备事项及待确认问题的清单；不是已经完成的工作。',
       ] : name === '独立额度估算 D' ? [
         '额度恢复时间估算', '需要根据人工观察的额度情况安排后续工作时。',
         '根据给定观察说明估算恢复时间与不确定性；不登录账户，不读取实际用量，也不承诺服务商重置规则。',
+      ] : ['目的地天气摘要']
+      const expectedInputsOutputs = name === '汇总出行准备 C' ? [
+        'scope', '本次清单涵盖的出行范围。', 'checklist', '人工给定的核对主题说明。',
+        'summary', '准备事项及待确认问题的清单；不是已经完成的工作。',
+      ] : name === '独立额度估算 D' ? [
         'account', '人工区分账户的说明，不是登录凭据。', 'remaining_percent', '人工观察的剩余额度说明。',
         'observed_at', '人工观察时间；未知时可在参数中写 null。', 'estimate', '恢复时间估算及依据；不是实际额度记录。',
-      ] : ['目的地天气摘要']
+      ] : []
       await details.getByRole('button', { name: '模板明细', exact: true }).click()
-      for (const text of [...expectedTemplate, 'chat']) {
-        await expect(page.getByRole('region', { name: '模板预览', exact: true }).getByText(text, { exact: true })).toBeVisible()
+      const templatePreview = page.getByRole('region', { name: '模板预览', exact: true })
+      for (const text of [...expectedOverview, 'chat']) {
+        await expect(templatePreview.getByText(text, { exact: true })).toBeVisible()
+      }
+      if (expectedInputsOutputs.length > 0) {
+        await templatePreview.getByRole('button', { name: '输入与输出', exact: true }).click()
+        for (const text of expectedInputsOutputs) {
+          await expect(templatePreview.getByText(text, { exact: true })).toBeVisible()
+        }
       }
       await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     }
@@ -93,9 +103,12 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     const capability = page.getByRole('region', { name: '模板预览', exact: true })
     for (const text of ['目的地天气摘要', '出行前需要了解目的地天气与随身物品建议时。',
-      '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。',
-      'city', '需要了解天气的城市名称。', 'date', '计划出行日期的文字说明。',
-      'forecast', '温度、降水与随身物品建议的文本摘要；不是已查询的天气结果。', 'chat']) {
+      '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。', 'chat']) {
+      await expect(capability.getByText(text, { exact: true })).toBeVisible()
+    }
+    await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+    for (const text of ['city', '需要了解天气的城市名称。', 'date', '计划出行日期的文字说明。',
+      'forecast', '温度、降水与随身物品建议的文本摘要；不是已查询的天气结果。']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true })

@@ -40,12 +40,15 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '模板管理', exact: true }).click()
   const listing = page.getByRole('region', { name: '共享模板列表', exact: true })
-  await expect(listing.getByRole('button')).toHaveText(['目的地天气摘要 · weather', '额度恢复时间 · quota'])
   await listing.getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   const capability = page.getByRole('region', { name: '模板预览', exact: true })
   const expectWeather = async () => {
-    for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。', '整理天气及穿衣建议；不预订行程。',
-      'city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。', 'chat']) {
+    for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。', '整理天气及穿衣建议；不预订行程。', 'chat']) {
+      await expect(capability.getByText(text, { exact: true })).toBeVisible()
+    }
+    await expect(capability.getByText('需要查询的城市名称。', { exact: true })).not.toBeVisible()
+    await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+    for (const text of ['city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
     await expect(capability.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
@@ -72,7 +75,12 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(capability.getByText('quota', { exact: true })).toBeVisible()
   for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">',
-    '<script>window.templateExecuted=true</script>', 'account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。', 'chat']) {
+    '<script>window.templateExecuted=true</script>', 'chat']) {
+    await expect(capability.getByText(text, { exact: true })).toBeVisible()
+  }
+  await expect(capability.locator('img, script')).toHaveCount(0)
+  await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+  for (const text of ['account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
   await expect(capability.getByText('目的地天气摘要', { exact: true })).toHaveCount(0)

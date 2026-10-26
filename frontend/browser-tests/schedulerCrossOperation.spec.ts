@@ -75,7 +75,7 @@ test('P32 complete template and node CRUD sequence survives a real service resta
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('73')
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('重启后仍保留修订二')
-  await page.getByRole('button', { name: '返回模板列表', exact: true }).click()
+  await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '共享模板列表', exact: true })).not.toContainText('删除的临时能力')
   expect(server!.herdrCalls()).toEqual([])
 })
