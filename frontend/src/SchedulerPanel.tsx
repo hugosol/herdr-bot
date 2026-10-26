@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listMaps, loadMap, type WorkflowMap } from './schedulerApi'
+import { listMaps, loadMap, listTemplates, type NodeTemplate, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
 import './scheduler.css'
@@ -8,6 +8,7 @@ type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind
 
 export function SchedulerPanel({ active }: { active: boolean }) {
   const [listing, setListing] = useState<Listing>({ kind: 'loading' })
+  const [templates, setTemplates] = useState<{ kind: 'loading' } | { kind: 'ready'; templates: NodeTemplate[] } | { kind: 'error'; message: string }>({ kind: 'loading' })
   const [revision, setRevision] = useState(0)
   const [file, setFile] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string } | null>(null)
@@ -37,6 +38,18 @@ export function SchedulerPanel({ active }: { active: boolean }) {
     )
     return () => controller.abort()
   }, [active, revision])
+  useEffect(() => {
+    if (!active) return
+    const controller = new AbortController()
+    setTemplates({ kind: 'loading' })
+    listTemplates(controller.signal).then(
+      (templates) => { if (!controller.signal.aborted) setTemplates({ kind: 'ready', templates }) },
+      (error: unknown) => {
+        if (!controller.signal.aborted) setTemplates({ kind: 'error', message: error instanceof Error ? error.message : '共享模板目录读取失败。' })
+      },
+    )
+    return () => controller.abort()
+  }, [active, revision])
   return <section className="scheduler" aria-label="Map 目录">
     <h2>scheduler</h2>
     <p>服务主机上的 Map，与当前 zone 无关。仅列出目录直接包含的 JSON 文件。</p>
@@ -48,6 +61,9 @@ export function SchedulerPanel({ active }: { active: boolean }) {
       : <ul data-testid="scheduler-map-list">{listing.files.map((name) => <li key={name}>
         <button type="button" aria-pressed={file === name} onClick={() => setFile(name)}>{name}</button>
       </li>)}</ul>)}
+    {templates.kind === 'loading' && <p role="status">正在读取共享模板目录……</p>}
+    {templates.kind === 'error' && <p role="alert" data-testid="scheduler-template-error">{templates.message}</p>}
+    {templates.kind === 'ready' && templates.templates.length === 0 && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
     {preview?.kind === 'loading' && <p role="status">正在读取 Map……</p>}
     {preview?.kind === 'error' && <p role="alert">{preview.message}</p>}
     {preview?.kind === 'ready' && <section aria-label="Map 预览">
@@ -55,7 +71,9 @@ export function SchedulerPanel({ active }: { active: boolean }) {
       <p className="scheduler-text">{preview.map.description}</p>
       <p>箭头仅表示 blocked_by 前置依赖，不表示执行、材料传递或运行状态。</p>
       <MapGraph map={preview.map} selectedId={selectedId} onSelect={setSelectedId} />
-      {selectedId !== null && <MapNodeDetails map={preview.map} nodeId={selectedId} />}
+      {selectedId !== null && <MapNodeDetails key={`${file}:${selectedId}`} map={preview.map} nodeId={selectedId}
+        template={templates.kind === 'ready' ? templates.templates.find((template) => template.id === preview.map.nodes[selectedId].node_template_id) : undefined}
+        templateStatus={templates.kind === 'loading' ? '正在读取共享模板目录……' : templates.kind === 'error' ? templates.message : null} />}
     </section>}
   </section>
 }

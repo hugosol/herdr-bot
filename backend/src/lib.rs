@@ -139,6 +139,8 @@ pub struct AppState {
     pub bots: Arc<bots::Bots>,
     /// Service-owned Map root, never derived from zone or request data.
     pub map_directory: PathBuf,
+    /// Service-owned shared capability definitions, independent of Map storage.
+    pub node_template_directory: PathBuf,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
@@ -241,6 +243,7 @@ pub fn app_with_state(
             config.bots.metadata_file.clone(),
         )),
         map_directory: config.scheduler.map_directory.clone(),
+        node_template_directory: config.scheduler.node_template_directory.clone(),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
         resume_executions: Arc::new(resume::ResumeExecutions::default()),
@@ -282,6 +285,7 @@ pub fn app_with_state(
         .route("/api/zones", get(list_zones).post(register_zone))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
+        .route("/api/scheduler/templates", get(scheduler::list_templates))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Bot：同一条路径读取列表与新增；单个 Bot 按标识读取、编辑与删除。

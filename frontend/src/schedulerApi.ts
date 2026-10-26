@@ -1,3 +1,21 @@
+export type NodeTemplate = {
+  schema_version: 1
+  id: string
+  title: string
+  use_when: string
+  description: string
+  inputs: Record<string, string>
+  outputs: Record<string, string>
+  implementation: { type: 'chat' }
+}
+
+export async function listTemplates(signal?: AbortSignal): Promise<NodeTemplate[]> {
+  const response = await fetch('/api/scheduler/templates', { signal })
+  const value = await response.json()
+  if (!response.ok) throw new Error(typeof value?.message === 'string' ? value.message : `共享模板目录读取失败：HTTP ${response.status}`)
+  return value.templates as NodeTemplate[]
+}
+
 export type MapNode = {
   title: string
   node_template_id: string
