@@ -7,12 +7,12 @@ import App from '../src/App'
 /**
  * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
  *
- * 顶层顺序固定为 chat、bot、zone、server；每次打开或整页刷新都从 chat 开始，
+ * 顶层顺序固定为 chat、bot、zone、scheduler；每次打开或整页刷新都从 chat 开始，
  * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
  * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
  */
 describe('App 四 tab 骨架', () => {
-  it('整页恰四个 tab，顺序为 chat、bot、zone、server，默认停在 chat', () => {
+  it('整页恰四个 tab，顺序为 chat、bot、zone、scheduler，默认停在 chat', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
@@ -26,7 +26,7 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
     expect(screen.getByTestId('panel-bots')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
-    expect(screen.getByTestId('panel-control')).not.toBeVisible()
+    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
   it('Tab 可聚焦四个 tab，Enter/Space 可切换', async () => {
@@ -34,18 +34,20 @@ describe('App 四 tab 骨架', () => {
     render(<App />)
 
     await user.tab()
+    expect(screen.getByTestId('server-button')).toHaveFocus()
+    await user.tab()
     expect(screen.getByTestId('tab-sessions')).toHaveFocus()
     await user.tab()
     expect(screen.getByTestId('tab-bots')).toHaveFocus()
     await user.tab()
     expect(screen.getByTestId('tab-files')).toHaveFocus()
     await user.tab()
-    expect(screen.getByTestId('tab-control')).toHaveFocus()
+    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
 
     // Space 激活当前聚焦的第四个入口。
     await user.keyboard(' ')
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('panel-control')).toBeVisible()
+    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('panel-scheduler')).toBeVisible()
     expect(screen.getByTestId('panel-sessions')).not.toBeVisible()
 
     // Shift+Tab 回到文件列表，Enter 激活它。
@@ -54,7 +56,7 @@ describe('App 四 tab 骨架', () => {
     await user.keyboard('{Enter}')
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-files')).toBeVisible()
-    expect(screen.getByTestId('panel-control')).not.toBeVisible()
+    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
   it('方向键在四个入口之间循环切换，并同步焦点', async () => {
@@ -75,8 +77,8 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('panel-files')).toBeVisible()
 
     await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-control')).toHaveFocus()
+    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
 
     // 右方向在末尾回到第一个入口。
     await user.keyboard('{ArrowRight}')
@@ -85,14 +87,14 @@ describe('App 四 tab 骨架', () => {
 
     // 左方向在开头绕到最后一个入口。
     await user.keyboard('{ArrowLeft}')
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-control')).toHaveFocus()
+    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
 
     // Home / End 直接跳到两端。
     await user.keyboard('{Home}')
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     await user.keyboard('{End}')
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
   })
 
   it('左右滑动不切换顶层 tab', async () => {
@@ -113,42 +115,41 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
     expect(screen.getByTestId('panel-bots')).not.toBeVisible()
     expect(screen.getByTestId('panel-files')).not.toBeVisible()
-    expect(screen.getByTestId('panel-control')).not.toBeVisible()
+    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
   it('重新打开页面仍停在会话列表，不恢复上次 tab', async () => {
     const user = userEvent.setup()
     const first = render(<App />)
 
-    await user.click(screen.getByTestId('tab-control'))
-    expect(screen.getByTestId('tab-control')).toHaveAttribute('aria-selected', 'true')
+    await user.click(screen.getByTestId('tab-scheduler'))
+    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
     first.unmount()
 
     // 整页刷新等价于重新挂载：没有可恢复的持久化 tab 状态。
     render(<App />)
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-control')).not.toBeVisible()
+    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
-  it('点击 tab 可来回切换，控制面板的固定操作仍原样可用', async () => {
+  it('server 独立内容页保留固定操作，返回后恢复此前的 scheduler tab', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByTestId('tab-sessions'))
-    expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('session-board')).toBeVisible()
-
-    await user.click(screen.getByTestId('tab-control'))
-    expect(screen.getByTestId('panel-control')).toBeVisible()
-    expect(screen.getByTestId('panel-sessions')).not.toBeVisible()
-
+    await user.click(screen.getByTestId('tab-scheduler'))
+    await user.click(screen.getByTestId('server-button'))
+    expect(screen.getByTestId('server-page')).toBeVisible()
+    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
+    expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.getByTestId('start-button')).toBeEnabled()
     expect(screen.getByTestId('stop-button')).toBeEnabled()
     expect(screen.getByTestId('operation-result')).toHaveTextContent('尚未提交操作。')
 
-    // 固定操作仍在 server 入口，入口名称已改为短标签。
-    expect(screen.getByTestId('tab-control')).toHaveTextContent('server')
+    await user.click(screen.getByRole('button', { name: '返回 scheduler' }))
+    expect(screen.getByTestId('panel-scheduler')).toBeVisible()
+    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
+    expect(screen.getByTestId('server-page')).not.toBeVisible()
   })
 
   it('整页可见标题为 herdr-bot', () => {

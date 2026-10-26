@@ -39,6 +39,12 @@ h1 {
   font-size: 1.5rem;
 }
 
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+.app-header h1 { margin: 0; }
+.app-header button, .server-back { min-height: 2.75rem; padding: 0.5rem 0.8rem; border: 1px solid #637587; border-radius: 0.35rem; background: #2b3541; color: #f2f4f8; cursor: pointer; }
+.app-header button:focus-visible, .server-back:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
+.tabs[hidden] { display: none; }
+
 /* ---------- 四 tab 外壳 ---------- */
 
 /* 四个入口等宽共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */

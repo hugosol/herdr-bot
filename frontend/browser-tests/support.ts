@@ -190,7 +190,11 @@ function startProcess(configPath: string, executable: string): ServerProcess {
   const child = spawn(executable, ['--config', configPath], {
     cwd: path.dirname(configPath),
     // The copied fixture must never inherit a developer's external data root.
-    env: { ...process.env, HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr') },
+    env: {
+      ...process.env,
+      HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr'),
+      HERDR_BOT_FIXTURE_RECORD_DIR: path.join(path.dirname(configPath), 'operations'),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })

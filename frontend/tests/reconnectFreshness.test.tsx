@@ -365,7 +365,7 @@ describe('页面只提交用户明确的关机意图（P49）', () => {
     expect(calls).toEqual([])
 
     // 唯一的业务写意图是用户明确提交的关机操作（手动入口只在控制面板上）。
-    fireEvent.click(page(0).getByTestId('tab-control'))
+    fireEvent.click(page(0).getByTestId('server-button'))
     fireEvent.click(page(0).getByTestId('shutdown-button'))
     fireEvent.click(page(0).getByTestId('shutdown-confirm-button'))
     await flush()

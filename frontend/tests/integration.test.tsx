@@ -183,10 +183,11 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
     expect(screen.getByTestId('shutdown-takeover')).toBeVisible()
 
-    await user.click(screen.getByTestId('tab-control'))
+    await user.click(screen.getByTestId('server-button'))
     expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
     expect(screen.getByTestId('shutdown-takeover')).toBeVisible()
 
+    await user.click(screen.getByTestId('server-back'))
     await user.click(screen.getByTestId('tab-sessions'))
     expect(screen.getByText('session-one')).toBeVisible()
     expect(screen.getByTestId('shutdown-countdown')).toBeVisible()
@@ -229,7 +230,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
 
     await user.click(screen.getByTestId('tab-files'))
     await screen.findByTestId('zone-list')
-    await user.click(screen.getByTestId('tab-control'))
+    await user.click(screen.getByTestId('server-button'))
     await user.click(screen.getByTestId('start-button'))
     await waitFor(() =>
       expect(screen.getByTestId('operation-result')).toHaveTextContent(
