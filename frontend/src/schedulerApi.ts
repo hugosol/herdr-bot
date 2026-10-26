@@ -40,6 +40,24 @@ export async function saveTemplate(draft: { id: string; content: string; revisio
   return value as NodeTemplate
 }
 
+export async function checkTemplateDelete(id: string): Promise<{ id: string; revision: TemplateRevision }> {
+  const response = await fetch('/api/scheduler/templates/check-delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `模板引用检查失败：HTTP ${response.status}`)
+  return value
+}
+
+export async function deleteTemplate(target: { id: string; revision: TemplateRevision }): Promise<TemplateCatalog> {
+  const response = await fetch('/api/scheduler/templates/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(target),
+  })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `模板删除失败：HTTP ${response.status}`)
+  return value as TemplateCatalog
+}
+
 export type MapNode = {
   title: string
   node_template_id: string
