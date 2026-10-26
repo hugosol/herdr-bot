@@ -6,7 +6,7 @@
 
 **Blocked by:** 04: 安全删除 node 并更新当前 Map；05: 跨 Map 引用保护下删除共享 node_template。
 
-**Status:** in-progress
+**Status:** closed
 
 ## 职责与 seam
 
@@ -56,4 +56,14 @@
 - `npm --prefix frontend run test:browser:build -- --workers=4`：完整当前前后端构建及网络护栏通过，**293 passed／1 skipped，294 collected**。唯一 skip 是上述 Windows 文件 symlink 权限限制，不是回归失败。
 - 竞争收据、单一文件通知流与平台覆盖／EPERM 原因作为 JSON 附件保存于 `frontend/test-results/schedulerCrossOperation-*/`。
 
-已与 07 协调：本票不改生产页面，截图无需因本票重拍；完整自动入口结束及文件 symlink 限制已通知 07。未请求提前人工验收，也不把自动通过当成人工体验确认。实现待独立集成；按项目规则，`closed` 留给测试且合入后的集成阶段设置。
+已与 07 协调：本票不改生产页面，截图无需因本票重拍；完整自动入口结束及文件 symlink 限制已通知 07。未请求提前人工验收，也不把自动通过当成人工体验确认。实现阶段留待独立集成关闭。
+
+### 2026-10-27 — 同步后独立集成验收
+
+接管原开发分支后确认工作区干净，HEAD 为宿主同步的集成提交 `05f757153981cfc1b13667586007a80aab93a0e3`，祖先检查成功，无待解决冲突。在原开发 worktree 顺序执行项目全部标准测试入口：
+
+- `node scripts/test-backend.mjs`：passed，build、全部 binaries、doctest 均通过，0 binaries 未派发；用时 112.8 秒。日志与 summary：`C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-8PIse4/`。
+- `npm --prefix frontend test`：网络护栏通过，27 files／205 tests passed。
+- `npm --prefix frontend run test:browser:build -- --workers=4`：当前前后端与安全关机壳构建、网络护栏通过；296 collected，295 passed／1 skipped，用时 2.8 分钟。唯一 skip 为 P33 文件符号链接用例，不宣称该场景通过。
+
+未出现需修复的回归或同步冲突；依据已合入且全局测试通过的结果关闭本票。本次仅更新本票状态与验收记录并提交到原开发分支，不直接操作集成分支。复杂脚本、实机 smoke 与跨票据独立整体验收仍留给最后门禁。
