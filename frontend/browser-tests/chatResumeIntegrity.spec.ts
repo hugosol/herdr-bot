@@ -250,7 +250,11 @@ for (const agent of ['pi', 'omp']) {
 
       const retryFailures = []
       for (const fault of ['query', 'identity']) {
-        server!.setHerdrBehavior(fault === 'query' ? { fail_agent_list: true } : { agents: [started] })
+        // Bad candidate identities are skippable. A matched identity with an
+        // invalid navigation target must still fail lookup without starting again.
+        server!.setHerdrBehavior(fault === 'query' ? { fail_agent_list: true } : {
+          agents: [{ ...started, agent_session: s.identity.native_session, pane_id: '' }],
+        })
         const retry = await clickResume(page, row)
         const failure = await retry.json()
         expect(retry.status()).toBe(502)
