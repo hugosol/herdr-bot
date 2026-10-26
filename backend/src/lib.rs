@@ -281,6 +281,7 @@ pub fn app_with_state(
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
+        .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
         // 新 zone 只使用配置的父目录与一个直接子目录名，客户端不能提交路径。
         .route("/api/zones/create", post(create_zone))
         // Bot：同一条路径读取列表与新增；单个 Bot 按标识读取、编辑与删除。

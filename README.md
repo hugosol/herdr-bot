@@ -5,7 +5,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 - `chat`：当前会话状态、历史会话及完成后关机监听。
 - `bot`：管理可复用的 Bot；Bot 不是实际对话。
 - `zone`：管理服务主机上的目录，浏览文件、审查 Git 变更，以及选择 Bot 发起 Chat。
-- `scheduler`：浏览服务级 Map 目录中的顶层 JSON 文件，区分空目录与读取错误。
+- `scheduler`：浏览服务级 Map 目录，选择真实 JSON 文件查看 node 依赖图与本次参数，区分空目录与读取错误。
 
 顶部 tab 顺序为 `chat`、`bot`、`zone`、`scheduler`；首次打开与整页刷新都回到 `chat`。
 右上角的 `server` 按钮在同一页面打开独立内容页，不打开新窗口；点击“返回”回到进入前的 tab。
@@ -64,11 +64,47 @@ node_template_directory = '.data/node-templates'
 ```
 
 两个字段均可独立省略，分别使用上述默认值。**相对路径按进程 cwd 解析，不按配置文件所在目录解析**；
-也可填写服务主机上的绝对路径。配置修改需要重启服务；目录内容变化只需刷新列表。
-共享模板目录的实际内容读取由后续模板预览能力提供；本页目前仅列出 Map 文件，不解析或执行定义。
-生产读取接口为 `GET /api/scheduler/maps`，不接受路径、zone、查询参数或请求体；
-目录路径各级不跟随符号链接、Windows 目录联接或其他重解析点，列表也排除链接项。
-仅允许准备必要目录，浏览不会修改定义、启动 Chat 或执行其中的脚本。
+也可填写服务主机上的绝对路径。配置修改需要重启服务；目录内容变化只需刷新列表，当前 Map 也会重新读取。
+点击文件名读取真实 Map，自动排列全部 node（包括独立 node）。卡片显示标题与 Map 内 ID；
+点击卡片或用 Tab 聚焦后按 Enter／Space，在下方核对**当前 node** 的本次参数与前置依赖。
+依赖箭头仅来自 `blocked_by`：B 中写 `"blocked_by": ["A"]` 就显示 **A → B**，不是执行路由、材料传递或运行状态。
+
+支持的 Map JSON 格式（所有结构字段均必需，`schema_version` 为整数 `1`；未知结构字段不受支持）：
+
+```json
+{
+  "schema_version": 1,
+  "title": "检查计划",
+  "description": "先准备，再核对；仅预览，不执行。",
+  "nodes": {
+    "A": {
+      "title": "准备",
+      "node_template_id": "review-work",
+      "parameters": { "target": "alpha", "options": { "items": [1, true, null] } },
+      "blocked_by": []
+    },
+    "B": {
+      "title": "核对",
+      "node_template_id": "review-work",
+      "parameters": { "target": "beta", "zone": "尚未登记的名称" },
+      "blocked_by": ["A"]
+    }
+  }
+}
+```
+
+Map 是服务级静态工作定义，`nodes` 对象的 key 是 Map 内 ID；node 是具体工作，不是执行实例。
+`node_template_id` 引用跨 Map 共享的业务能力模板，而不是 Bot，也不在 Map 内嵌入模板副本。
+共享模板内容由模板明细能力提供；依赖图和本次参数展示不依赖模板内容。
+`parameters` 是命名参数对象，允许任意直接 JSON 值及任意参数名，不检查是否声明于模板 inputs，
+不校验 zone、Bot 或其他资源是否存在，不补入模板默认值。字符串按文本显示，对象及数组使用缩进 JSON；
+选择另一个 node 后，参数与前置关系全部替换为新 node 的内容。
+
+生产读取接口为 `GET /api/scheduler/maps`（列表）与 `GET /api/scheduler/maps/{filename}`（读取顶层 JSON）；
+文件名由页面编码，不接受目录路径、zone、查询参数或请求体。
+目录路径各级不跟随符号链接、Windows 目录联接或其他重解析点，列表与读取均拒绝链接项。
+所有业务文本仅作文本显示；参数中的路径不会被读取，HTML／脚本样式文字不会执行。
+浏览只允许准备必要目录，不修改 Map 或模板，不启动 Chat，不执行定义。
 
 ## Bot 配置与原生存储
 
