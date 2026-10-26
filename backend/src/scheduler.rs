@@ -374,6 +374,91 @@ pub async fn save_template(
     }
 }
 
+// Both preflight and final deletion validate the entire owning Map. A failed
+// read/validation is never evidence that the target has no dependents.
+fn deletable_node(map: &WorkflowMap, id: &str) -> Result<(), DirectoryError> {
+    if !map.nodes.contains_key(id) {
+        return Err(edit_error("node-conflict", "node 已移除或无法识别；请重新加载。"));
+    }
+    let dependents: Vec<_> = map.nodes.iter()
+        .filter(|(_, node)| node.0.blocked_by.iter().any(|parent| parent == id))
+        .map(|(id, node)| format!("{}（{id}）", node.0.title)).collect();
+    if !dependents.is_empty() {
+        return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 依赖此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));
+    }
+    Ok(())
+}
+
+pub async fn check_delete_node(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(identity): Json<TemplateIdentity>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("node-write-failed", "定义提交锁不可用。"))?;
+        let original = read_map_source(&state.map_directory, &name)?;
+        deletable_node(&parse_map(&original)?, &identity.id)?;
+        Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "revision": { "file": name, "original": original } }))
+    }).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeDelete {
+    id: String,
+    revision: TemplateRevision,
+}
+
+pub async fn delete_node(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(target): Json<NodeDelete>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("node-write-failed", "定义提交锁不可用。"))?;
+        let check = || -> Result<WorkflowMap, DirectoryError> {
+            let original = read_map_source(&state.map_directory, &name)?;
+            let map = parse_map(&original)?;
+            deletable_node(&map, &target.id)?;
+            if target.revision.file != name || target.revision.original != original {
+                return Err(edit_error("node-conflict", "Map 文件已变化；请重新加载后再确认删除。"));
+            }
+            Ok(map)
+        };
+        let mut map = check()?;
+        map.nodes.remove(&target.id);
+        let bytes = serde_json::to_vec_pretty(&map).map_err(|e| edit_error("node-write-failed", e.to_string()))?;
+        let root = prepare_directory(&state.map_directory)?;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let serial = NEXT_FILE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = root.join(format!("node-delete-{stamp}-{}-{serial}.tmp", std::process::id()));
+        let result: Result<_, DirectoryError> = (|| {
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)
+                .map_err(|e| edit_error("node-write-failed", format!("node 删除写入失败：{e}")))?;
+            file.write_all(&bytes).and_then(|_| file.sync_all())
+                .map_err(|e| edit_error("node-write-failed", format!("node 删除写入失败：{e}")))?;
+            drop(file);
+            // External editors cannot take our lock: re-read and revalidate at
+            // the commit boundary, rather than trusting even the first check.
+            check()?;
+            fs::rename(&temporary, root.join(&name))
+                .map_err(|e| edit_error("node-write-failed", format!("node 删除写入失败：{e}")))?;
+            Ok(map)
+        })();
+        let _ = fs::remove_file(temporary);
+        result
+    }).await {
+        Ok(Ok(map)) => Json(map).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("node-write-failed", error.to_string()).into_response(),
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeSave {
