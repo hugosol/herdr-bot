@@ -31,8 +31,8 @@ function positions(map: WorkflowMap) {
   })
 }
 
-export function MapGraph({ map, selectedId, onSelect }: {
-  map: WorkflowMap; selectedId: string | null; onSelect: (id: string) => void
+export function MapGraph({ map, selectedId, onSelect, templateProblems = {} }: {
+  map: WorkflowMap; selectedId: string | null; onSelect: (id: string) => void; templateProblems?: Record<string, string>
 }) {
   const markerId = useId()
   const nodes = positions(map)
@@ -56,6 +56,7 @@ export function MapGraph({ map, selectedId, onSelect }: {
         <button type="button" className="scheduler-node" aria-pressed={selectedId === id}
           aria-label={`${map.nodes[id].title} ${id}`} onClick={() => onSelect(id)}>
           <strong>{map.nodes[id].title}</strong><span>{id}</span>
+          {templateProblems[id] && <small>{templateProblems[id]}</small>}
         </button>
       </foreignObject>)}
     </svg>

@@ -11,8 +11,8 @@ function NamedDescriptions({ title, values }: { title: string; values: Record<st
   </section>
 }
 
-export function MapNodeDetails({ map, nodeId, template, templateStatus }: {
-  map: WorkflowMap; nodeId: string; template: NodeTemplate | undefined; templateStatus: string | null
+export function MapNodeDetails({ map, nodeId, template, templateStatus, templateProblem }: {
+  map: WorkflowMap; nodeId: string; template: NodeTemplate | undefined; templateStatus: string | null; templateProblem?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   const templateDetailsId = useId()
@@ -21,6 +21,7 @@ export function MapNodeDetails({ map, nodeId, template, templateStatus }: {
   return <section aria-label="node 详情" className="scheduler-details">
     <h3>{node.title} · {nodeId}</h3>
     <p className="scheduler-text">node_template_id：{node.node_template_id}</p>
+    {templateProblem && <p role="alert">{templateProblem}</p>}
     <section aria-label="本次参数">
       <h4>本次参数</h4>
       {entries.length === 0 ? <p>没有参数。</p> : <dl>
@@ -38,7 +39,7 @@ export function MapNodeDetails({ map, nodeId, template, templateStatus }: {
     </section>
     <button type="button" aria-expanded={expanded} aria-controls={templateDetailsId} onClick={() => setExpanded((value) => !value)}>模板明细</button>
     {expanded && <section id={templateDetailsId} aria-label="模板明细">
-      {templateStatus !== null ? <p>{templateStatus}</p> : template === undefined
+      {templateProblem ? <p>{templateProblem}</p> : templateStatus !== null ? <p>{templateStatus}</p> : template === undefined
         ? <p>未找到共享模板：{node.node_template_id}</p>
         : <>
           <h4 className="scheduler-text">{template.title}</h4>
