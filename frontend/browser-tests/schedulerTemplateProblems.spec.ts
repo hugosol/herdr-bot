@@ -44,9 +44,12 @@ async function completeGraph(page: Page) {
 }
 
 async function normalDetails(page: Page) {
+  if (await page.getByRole('button', { name: '返回 Map', exact: true }).isVisible()) {
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '正常工作 B', exact: true }).click()
   await page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('button', { name: '模板明细', exact: true }).click()
-  const details = page.getByRole('region', { name: '模板明细', exact: true })
+  const details = page.getByRole('region', { name: '模板预览', exact: true })
   for (const text of ['正常能力说明', '需要核对材料时', '仅整理差异，不执行工作', '待核对的文本', '差异报告说明', 'chat']) await expect(details.getByText(text, { exact: true })).toBeVisible()
 }
 
@@ -89,7 +92,7 @@ test('P20 P29 an actual unreadable template file leaves the valid graph and norm
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true }).click()
     const node = page.getByRole('region', { name: 'node 详情', exact: true })
     await node.getByRole('button', { name: '模板明细', exact: true }).click()
-    const detail = page.getByRole('region', { name: '模板明细', exact: true })
+    const detail = page.getByRole('region', { name: '模板预览', exact: true })
     await expect(detail).toContainText('problem')
     await expect(detail).not.toContainText('chat')
     await expect(detail).not.toContainText('不可读取的业务说明')
@@ -103,7 +106,7 @@ test('P20 P29 an actual unreadable template file leaves the valid graph and norm
 
 // P21 S1/S2: two distinct business descriptions claim one id. First/last
 // winner indexing fails the zero-description check and both filename checks.
-test('P21 duplicate identity lists every conflicting file and never selects either capability', async ({ page }) => {
+test('P5 P35 duplicate identity diagnoses every conflicting file in list and node preview without choosing a winner', async ({ page }) => {
   const { templates } = await prepare()
   const first = JSON.stringify({ ...normal, id: 'problem', title: '禁止任选第一说明', description: 'FIRST_BUSINESS_TEXT' })
   const second = JSON.stringify({ ...normal, id: 'problem', title: '禁止任选第二说明', description: 'SECOND_BUSINESS_TEXT' })
@@ -121,9 +124,17 @@ test('P21 duplicate identity lists every conflicting file and never selects eith
   const node = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(node.getByRole('alert')).toContainText('冲突')
   await node.getByRole('button', { name: '模板明细', exact: true }).click()
-  const detail = page.getByRole('region', { name: '模板明细', exact: true })
+  const detail = page.getByRole('region', { name: '模板预览', exact: true })
   for (const text of ['first.json', 'second.json', 'problem']) await expect(detail).toContainText(text)
   for (const text of ['FIRST_BUSINESS_TEXT', 'SECOND_BUSINESS_TEXT', '禁止任选第一说明', '禁止任选第二说明', 'chat']) await expect(detail).not.toContainText(text)
+  await page.getByRole('button', { name: '返回模板列表', exact: true }).click()
+  const listing = page.getByRole('region', { name: '共享模板列表', exact: true })
+  await expect(listing.getByRole('button')).toHaveText(['正常能力说明 · normal'])
+  for (const text of ['冲突', 'problem', 'first.json', 'second.json']) await expect(issues).toContainText(text)
+  await listing.getByRole('button', { name: '正常能力说明 · normal', exact: true }).click()
+  await expect(detail.getByText('正常能力说明', { exact: true })).toBeVisible()
+  await expect(detail).not.toContainText('FIRST_BUSINESS_TEXT')
+  await expect(detail).not.toContainText('SECOND_BUSINESS_TEXT')
   await normalDetails(page)
   expect(fs.readFileSync(path.join(templates, 'first.json'), 'utf8')).toBe(first)
   expect(fs.readFileSync(path.join(templates, 'second.json'), 'utf8')).toBe(second)
@@ -148,7 +159,7 @@ test('P21 invalid duplicate declaration cannot make another file an unambiguous 
   const node = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(node.getByRole('alert')).toContainText('冲突')
   await node.getByRole('button', { name: '模板明细', exact: true }).click()
-  await expect(page.getByRole('region', { name: '模板明细', exact: true })).not.toContainText('不能选中的合法说明')
+  await expect(page.getByRole('region', { name: '模板预览', exact: true })).not.toContainText('不能选中的合法说明')
   await normalDetails(page)
 })
 
@@ -203,7 +214,7 @@ for (const example of invalidDefinitions) {
     const node = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(node.getByRole('alert')).toContainText('problem')
     await node.getByRole('button', { name: '模板明细', exact: true }).click()
-    const details = page.getByRole('region', { name: '模板明细', exact: true })
+    const details = page.getByRole('region', { name: '模板预览', exact: true })
     await expect(details.locator('h4, dl')).toHaveCount(0)
     await expect(details.getByText('chat', { exact: true })).toHaveCount(0)
     await normalDetails(page)
@@ -232,7 +243,7 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
   const node = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(node.getByRole('alert')).toHaveCount(0)
   await node.getByRole('button', { name: '模板明细', exact: true }).click()
-  const detail = page.getByRole('region', { name: '模板明细', exact: true })
+  const detail = page.getByRole('region', { name: '模板预览', exact: true })
   await expect(detail.getByText('chat', { exact: true })).toBeVisible()
   await expect(detail.getByRole('region', { name: '输入说明（inputs）', exact: true })).toContainText('无。')
   await expect(detail.getByRole('region', { name: '输出说明（outputs）', exact: true })).toContainText('无。')
@@ -241,7 +252,7 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
 // Approved S1, P19: fixed A -> B plus isolated C must survive a missing id.
 // A renderer that silently drops A or only reports a problem after expansion
 // violates the independently specified graph or the three visible locations.
-test('P19 missing template ID is visible on node details and page without losing any graph structure', async ({ page }) => {
+test('P5 P35 missing template ID stays distinct from an empty directory and preserves all definitions', async ({ page }) => {
   const { templates, maps } = await prepare()
   const mapBefore = fs.readFileSync(path.join(maps, 'plan.json'), 'utf8')
   const templateBefore = fs.readFileSync(path.join(templates, 'normal.json'), 'utf8')
@@ -256,7 +267,16 @@ test('P19 missing template ID is visible on node details and page without losing
   await expect(node.getByRole('alert')).toHaveText('缺失共享模板：problem')
   await expect(node.getByTestId('parameter-target')).toHaveText('原始参数')
   await node.getByRole('button', { name: '模板明细', exact: true }).click()
-  await expect(page.getByRole('region', { name: '模板明细', exact: true })).toHaveText('缺失共享模板：problem')
+  await expect(page.getByRole('region', { name: '模板预览', exact: true })).toHaveText('缺失共享模板：problem')
+  const catalog = await page.request.get(`${server!.baseURL}/api/scheduler/templates`)
+  expect(catalog.status()).toBe(200)
+  expect(await catalog.json()).toEqual({ templates: [normal] })
+  const mapResponse = await page.request.get(`${server!.baseURL}/api/scheduler/maps/plan.json`)
+  expect(mapResponse.status()).toBe(200)
+  expect(await mapResponse.json()).toEqual(plan)
+  await page.getByRole('button', { name: '返回模板列表', exact: true }).click()
+  await expect(page.getByTestId('scheduler-template-empty')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '共享模板列表', exact: true }).getByRole('button')).toHaveText(['正常能力说明 · normal'])
   await normalDetails(page)
   expect(server!.herdrCalls()).toEqual([])
   expect(fs.readFileSync(path.join(maps, 'plan.json'), 'utf8')).toBe(mapBefore)

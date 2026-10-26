@@ -93,11 +93,13 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   if (scenario === 'selection') {
     await page.getByRole('button', { name: 'next.json', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
     await page.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   }
   const map = await holdResponse(page, '**/api/scheduler/maps/current.json')
   const template = await holdResponse(page, '**/api/scheduler/templates')
@@ -107,11 +109,12 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     fs.writeFileSync(fixture.template, JSON.stringify(updatedTemplate))
     await expect(page.getByRole('button', { name: '刷新全部', exact: true })).toBeDisabled()
     await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('region', { name: '模板明细', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: '模板预览', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'next.json', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
     await page.getByRole('button', { name: '模板明细', exact: true }).click()
-    await expect(page.getByRole('region', { name: '模板明细', exact: true }).getByText('新能力说明', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '模板预览', exact: true }).getByText('新能力说明', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     map.release()
     template.release()
     await Promise.all([map.delivered, template.delivered])
@@ -134,8 +137,10 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await expect(details.getByRole('heading', { name: '新核对 · B', exact: true })).toBeVisible()
     await expect(details.getByTestId('parameter-target')).toHaveText('new-beta')
     await expect(details.getByTestId('parameter-count')).toHaveText('17')
-    const capability = page.getByRole('region', { name: '模板明细', exact: true })
+    const capability = page.getByRole('region', { name: '模板预览', exact: true })
+    await details.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(capability.getByText('新能力说明', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await expect(preview).not.toContainText('原')
   } finally {
     map.release()
@@ -166,10 +171,11 @@ test('P25 explicit reload replaces dependencies parameters and every template fi
   await page.getByRole('button', { name: 'current.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
-  const capability = page.getByRole('region', { name: '模板明细', exact: true })
+  const capability = page.getByRole('region', { name: '模板预览', exact: true })
   await expect(details.getByTestId('parameter-target')).toHaveText('old-beta')
   await details.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(capability.getByText('原能力说明', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
 
   const newMapBytes = `${JSON.stringify(updatedMap)}\n`
   const newTemplateBytes = `${JSON.stringify(updatedTemplate)}\n`
@@ -196,6 +202,7 @@ test('P25 explicit reload replaces dependencies parameters and every template fi
   for (const text of ['新能力标题', '新适用说明', '新能力说明', 'target', '新输入说明', 'report', '新输出说明', 'chat']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
+  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   await graph.getByRole('button', { name: '新准备 A', exact: true }).click()
   await expect(details.getByTestId('parameter-target')).toHaveText('new-alpha')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveText(['新核对 · B'])

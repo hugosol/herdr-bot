@@ -14,11 +14,10 @@ const weather = {
   outputs: { forecast: '温度、降水和穿衣建议的文本摘要。' }, implementation: { type: 'chat' },
 }
 
-// S1 P14/P15: these independently written expected texts distinguish a complete
-// capability description from merely echoing the node parameters or stale data.
-// Opening uses real keyboard input. Selecting a different template must collapse
-// and replace the previous description; no HTML is interpreted or work launched.
-test('P14 P15 details are opt-in and show every named capability field for the current node', async ({ page }) => {
+// Approved S1 P2/P3: literal capability fields distinguish a readable preview
+// from an editor, a stale/wrong identity, or node parameters. Both the list and
+// three nodes must open the same preview; the Map and old inline details are absent.
+test('P2 P3 list and nodes open the same readable preview for the exact shared identity', async ({ page }, testInfo) => {
   server = await startServer({ herdr: {} })
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   const templates = path.join(server.cwd, '.data', 'node-templates')
@@ -34,29 +33,44 @@ test('P14 P15 details are opt-in and show every named capability field for the c
   const mapBytes = JSON.stringify({ schema_version: 1, title: '业务核对', description: '只读定义', nodes: {
     A: { title: '查询上海', node_template_id: 'weather', parameters: { city: '上海' }, blocked_by: [] },
     B: { title: '核对额度', node_template_id: 'quota', parameters: { account: 'not-a-real-account' }, blocked_by: ['A'] },
+    C: { title: '查询北京', node_template_id: 'weather', parameters: { city: '北京' }, blocked_by: [] },
   } })
   fs.writeFileSync(path.join(maps, 'work.json'), mapBytes)
   await page.goto(server.baseURL)
   await page.getByTestId('tab-scheduler').click()
+  await page.getByRole('button', { name: '模板管理', exact: true }).click()
+  const listing = page.getByRole('region', { name: '共享模板列表', exact: true })
+  await expect(listing.getByRole('button')).toHaveText(['目的地天气摘要 · weather', '额度恢复时间 · quota'])
+  await listing.getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
+  const capability = page.getByRole('region', { name: '模板预览', exact: true })
+  const expectWeather = async () => {
+    for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。', '整理天气及穿衣建议；不预订行程。',
+      'city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。', 'chat']) {
+      await expect(capability.getByText(text, { exact: true })).toBeVisible()
+    }
+    await expect(capability.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
+    await expect(page.getByRole('region', { name: '模板明细', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toHaveCount(0)
+  }
+  await expectWeather()
+  await page.screenshot({ path: testInfo.outputPath('template-preview.png'), fullPage: true })
+  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   await page.getByRole('button', { name: 'work.json', exact: true }).click()
-  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '查询上海 A', exact: true }).click()
-  const details = page.getByRole('region', { name: 'node 详情', exact: true })
-  const toggle = details.getByRole('button', { name: '模板明细', exact: true })
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  await expect(page.getByRole('region', { name: '模板明细', exact: true })).toHaveCount(0)
-  await expect(page.getByText('目的地天气摘要', { exact: true })).toHaveCount(0)
-  await toggle.focus()
-  await page.keyboard.press('Enter')
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  const capability = page.getByRole('region', { name: '模板明细', exact: true })
-  for (const text of ['目的地天气摘要', '出行前需要了解目的地天气时。', '整理天气及穿衣建议；不预订行程。',
-    'city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。', 'chat']) {
-    await expect(capability.getByText(text, { exact: true })).toBeVisible()
+  for (const node of ['查询上海 A', '查询北京 C']) {
+    await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
+    const details = page.getByRole('region', { name: 'node 详情', exact: true })
+    await expect(capability).toHaveCount(0)
+    const entry = details.getByRole('button', { name: '模板明细', exact: true })
+    await expect(entry).not.toHaveAttribute('aria-expanded')
+    await entry.focus()
+    await page.keyboard.press('Enter')
+    await expectWeather()
+    await expect(details).toHaveCount(0)
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对额度 B', exact: true }).click()
-  await expect(details.getByRole('button', { name: '模板明细', exact: true })).toHaveAttribute('aria-expanded', 'false')
-  await expect(capability).toHaveCount(0)
-  await details.getByRole('button', { name: '模板明细', exact: true }).click()
+  await page.getByRole('button', { name: '模板明细', exact: true }).click()
+  await expect(capability.getByText('quota', { exact: true })).toBeVisible()
   for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">',
     '<script>window.templateExecuted=true</script>', 'account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。', 'chat']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
@@ -109,9 +123,10 @@ test('P6 P16 configured cwd templates are independent and reusable across nodes 
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(details.getByTestId('parameter-city')).toHaveText(city)
-    await expect(details.getByRole('button', { name: '模板明细', exact: true })).toHaveAttribute('aria-expanded', 'false')
+    await expect(details.getByRole('button', { name: '模板明细', exact: true })).not.toHaveAttribute('aria-expanded')
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
-    await expect(page.getByRole('region', { name: '模板明细', exact: true }).getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '模板预览', exact: true }).getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   }
   fs.renameSync(path.join(templates, 'not-weather.JSON'), path.join(templates, 'renamed-again.json'))
   // Re-enter the page to read current files; ticket 07 owns full explicit reload coverage.
@@ -120,7 +135,7 @@ test('P6 P16 configured cwd templates are independent and reusable across nodes 
   await page.getByRole('button', { name: 'second.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '广州天气 C', exact: true }).click()
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
-  await expect(page.getByRole('region', { name: '模板明细', exact: true })).toContainText('目的地天气摘要')
+  await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('目的地天气摘要')
   expect(await (await page.request.get(`${server.baseURL}/api/scheduler/templates`)).json()).toEqual({ templates: [weather] })
   expect(fs.readFileSync(path.join(templates, 'renamed-again.json'), 'utf8')).toBe(bytes)
 })
@@ -160,13 +175,15 @@ test('P7 P8 template parents are created while obstructing files report a distin
 // P8 S1+S2: deny the real Windows directory-list permission, keeping fs::read_dir
 // in the exercised production path. Both empty-success and stale-data fallbacks
 // would fail the explicit HTTP error and visible-error/absent-empty observations.
-test('P8 actual unreadable shared template directory reports read failure and recovers', async ({ page }) => {
+test('P5 P35 actual unreadable shared template directory reports read failure and recovers without rewriting definitions', async ({ page }) => {
   server = await startServer()
   const templates = path.join(server.cwd, '.data', 'node-templates')
   fs.mkdirSync(templates, { recursive: true })
-  fs.writeFileSync(path.join(templates, 'weather.json'), JSON.stringify(weather))
+  const bytes = `${JSON.stringify(weather, null, 2)}\n`
+  fs.writeFileSync(path.join(templates, 'weather.json'), bytes)
   await page.goto(server.baseURL)
   await page.getByTestId('tab-scheduler').click()
+  await page.getByRole('button', { name: '模板管理', exact: true }).click()
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/templates`)
   expect(initial.status()).toBe(200)
   expect(await initial.json()).toEqual({ templates: [weather] })
@@ -183,13 +200,15 @@ test('P8 actual unreadable shared template directory reports read failure and re
   } finally {
     execFileSync('icacls.exe', [templates, '/remove:d', user])
   }
-  fs.unlinkSync(path.join(templates, 'weather.json'))
   await page.getByRole('button', { name: '刷新全部' }).click()
   await expect(page.getByTestId('scheduler-template-error')).toHaveCount(0)
-  await expect(page.getByTestId('scheduler-template-empty')).toBeVisible()
-  const empty = await page.request.get(`${server.baseURL}/api/scheduler/templates`)
-  expect(empty.status()).toBe(200)
-  expect(await empty.json()).toEqual({ templates: [] })
+  await page.getByRole('region', { name: '共享模板列表', exact: true }).getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
+  await expect(page.getByRole('region', { name: '模板预览', exact: true })).toContainText('整理天气及穿衣建议；不预订行程。')
+  const recovered = await page.request.get(`${server.baseURL}/api/scheduler/templates`)
+  expect(recovered.status()).toBe(200)
+  expect(await recovered.json()).toEqual({ templates: [weather] })
+  expect(fs.readFileSync(path.join(templates, 'weather.json'), 'utf8')).toBe(bytes)
+  expect(fs.readdirSync(templates)).toEqual(['weather.json'])
 })
 
 // Approved S1 + S2: actual page and the exact HTTP catalog it calls, real files.

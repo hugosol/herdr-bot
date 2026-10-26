@@ -70,7 +70,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       if (name === '汇总出行准备 C') {
         await expect(prerequisites.getByRole('listitem')).toHaveText(['上海出行天气 · A', '北京出行天气 · B'])
       } else await expect(prerequisites).toContainText('无前置依赖')
-      await expect(details.getByRole('button', { name: '模板明细', exact: true })).toHaveAttribute('aria-expanded', 'false')
+      await expect(details.getByRole('button', { name: '模板明细', exact: true })).not.toHaveAttribute('aria-expanded')
       const expectedTemplate = name === '汇总出行准备 C' ? [
         '出行准备清单汇总', '需要将多个目的地的准备事项整理为核对清单时。',
         '按指定范围整理准备事项与待确认问题；前置依赖不自动传入天气结果，也不预订或修改任何资源。',
@@ -84,14 +84,14 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       ] : ['目的地天气摘要']
       await details.getByRole('button', { name: '模板明细', exact: true }).click()
       for (const text of [...expectedTemplate, 'chat']) {
-        await expect(page.getByRole('region', { name: '模板明细', exact: true }).getByText(text, { exact: true })).toBeVisible()
+        await expect(page.getByRole('region', { name: '模板预览', exact: true }).getByText(text, { exact: true })).toBeVisible()
       }
-      await details.getByRole('button', { name: '模板明细', exact: true }).click()
+      await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     }
     await page.screenshot({ path: testInfo.outputPath('graph.png'), fullPage: true })
     await nodes.getByRole('button', { name: '上海出行天气 A', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
-    const capability = page.getByRole('region', { name: '模板明细', exact: true })
+    const capability = page.getByRole('region', { name: '模板预览', exact: true })
     for (const text of ['目的地天气摘要', '出行前需要了解目的地天气与随身物品建议时。',
       '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。',
       'city', '需要了解天气的城市名称。', 'date', '计划出行日期的文字说明。',
@@ -99,9 +99,11 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true })
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await nodes.getByRole('button', { name: '北京出行天气 B', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(capability.getByText('目的地天气摘要', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await page.getByRole('button', { name: 'another-trip.json', exact: true }).click()
     await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
     await expect(details.getByTestId('parameter-city')).toHaveText('广州')
@@ -112,10 +114,12 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     // Follow the reload instructions against these same delivered files.
     const template = path.join(server.cwd, 'capabilities', 'weather-capability.json')
     fs.writeFileSync(template, fs.readFileSync(template, 'utf8').replace('目的地天气摘要', '更新后的目的地天气摘要'))
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(capability.getByText('更新后的目的地天气摘要', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     fs.copyFileSync(path.join(examples, 'maps', 'another-trip.json'), path.join(server.cwd, 'plans', 'new-copy.json'))
     await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     await expect(page.getByRole('button', { name: 'new-copy.json', exact: true })).toBeVisible()

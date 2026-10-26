@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { listMaps, loadMap, listTemplates, type TemplateCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
+import { TemplatePreview } from './TemplatePreview'
 import './scheduler.css'
 
 type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind: 'error'; message: string }
@@ -17,6 +18,9 @@ export function SchedulerPanel({ active }: { active: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [graphOpen, setGraphOpen] = useState(false)
+  const [templateView, setTemplateView] = useState(false)
+  const [templateId, setTemplateId] = useState<string | null>(null)
+  const templateHeading = useRef<HTMLHeadingElement>(null)
   const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
@@ -60,6 +64,12 @@ export function SchedulerPanel({ active }: { active: boolean }) {
     return () => controller.abort()
   }, [active, file, revision])
 
+  useEffect(() => {
+    if (templateView) templateHeading.current?.focus()
+  }, [templateView, templateId])
+
+  const template = templates.kind === 'ready' ? templates.templates.find((item) => item.id === templateId) : undefined
+  const templateProblem = templates.kind === 'ready' ? templates.problems?.find((item) => item.template_id === templateId) : undefined
   const map = preview?.kind === 'ready' ? preview.map : null
   const busy = listing.kind === 'loading' || templates.kind === 'loading' || preview?.kind === 'loading'
   const visibleFiles = listing.kind === 'ready'
@@ -88,9 +98,16 @@ export function SchedulerPanel({ active }: { active: boolean }) {
     nodeButtons.current.get(id)?.focus()
   }
 
+  function openTemplate(id: string | null) {
+    setTemplateId(id)
+    setTemplateView(true)
+  }
+
   return <section className="scheduler" aria-label="Map 目录">
     <header className="scheduler-header">
       <div><p className="scheduler-eyebrow">静态工作定义</p><h2>scheduler <span>阅读优先</span></h2></div>
+      <div className="scheduler-actions">
+      <button type="button" onClick={() => openTemplate(null)}>模板管理</button>
       <button type="button" disabled={busy} onClick={() => {
         setSelectedId(null)
         setGraphOpen(false)
@@ -99,11 +116,39 @@ export function SchedulerPanel({ active }: { active: boolean }) {
         setTemplates({ kind: 'loading' })
         setRevision((value) => value + 1)
       }}>刷新全部</button>
+      </div>
     </header>
     <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。只读定义，不执行工作。</p>
     <p className="scheduler-refresh-note">刷新会重新读取目录、当前 Map 和共享模板，并清除节点选择。</p>
     {busy && <p role="status">正在读取工作定义……</p>}
-    <div className="scheduler-layout">
+    <div className="scheduler-notices">
+      {templates.kind === 'loading' && <p>正在读取共享模板目录……</p>}
+      {templates.kind === 'error' && <p role="alert" data-testid="scheduler-template-error">{templates.message}</p>}
+      {!templateView && templates.kind === 'ready' && templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
+      {(Object.keys(templateProblems).length > 0 || (templates.kind === 'ready' && !!templates.problems?.length)) && <section aria-label="模板问题" className="scheduler-problems">
+        <h3>模板问题</h3><ul>
+          {templates.kind === 'ready' && templates.problems?.map((problem, index) => <li key={`file-${index}`}>{problem.message}</li>)}
+          {Object.entries(templateProblems).map(([id, message]) => <li key={id}>node {id}：{message}</li>)}
+        </ul>
+      </section>}
+    </div>
+    {templateView ? <div className="scheduler-template-page">
+      <nav aria-label="模板导航" className="scheduler-actions">
+        <button type="button" onClick={() => setTemplateView(false)}>返回 Map</button>
+        {templateId !== null && <button type="button" onClick={() => setTemplateId(null)}>返回模板列表</button>}
+      </nav>
+      <h2 ref={templateHeading} tabIndex={-1}>{templateId === null ? '共享模板' : '模板预览'}</h2>
+      {templateId === null ? <section aria-label="共享模板列表">
+        {templates.kind === 'ready' && templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
+        {templates.kind === 'ready' && <ul className="scheduler-map-list">{templates.templates.map((item) => <li key={item.id}>
+          <button type="button" onClick={() => setTemplateId(item.id)}>{item.title} · {item.id}</button>
+        </li>)}</ul>}
+      </section> : <section aria-label="模板预览" className="scheduler-details">
+        {templates.kind === 'ready' && (templateProblem
+          ? <p role="alert">共享模板 {templateId}：{templateProblem.message}</p>
+          : template ? <TemplatePreview template={template} /> : <p role="alert">缺失共享模板：{templateId}</p>)}
+      </section>}
+    </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
         <div className="scheduler-section-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}</div>
         <label className="scheduler-filter">筛选 Map 文件<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="输入文件名…" /></label>
@@ -121,17 +166,7 @@ export function SchedulerPanel({ active }: { active: boolean }) {
         <p className="scheduler-directory-note">仅列出目录直接包含的 JSON 文件。筛选不会重载或关闭当前 Map。</p>
       </aside>
       <div className="scheduler-main">
-        <div className="scheduler-notices">
-          {templates.kind === 'loading' && <p>正在读取共享模板目录……</p>}
-          {templates.kind === 'error' && <p role="alert" data-testid="scheduler-template-error">{templates.message}</p>}
-          {templates.kind === 'ready' && templates.templates.length === 0 && !templates.problems?.length && <p data-testid="scheduler-template-empty">共享模板目录没有模板 JSON 文件。</p>}
-          {(Object.keys(templateProblems).length > 0 || (templates.kind === 'ready' && !!templates.problems?.length)) && <section aria-label="模板问题" className="scheduler-problems">
-            <h3>模板问题</h3><ul>
-              {templates.kind === 'ready' && templates.problems?.map((problem, index) => <li key={`file-${index}`}>{problem.message}</li>)}
-              {Object.entries(templateProblems).map(([id, message]) => <li key={id}>node {id}：{message}</li>)}
-            </ul>
-          </section>}
-        </div>
+
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
@@ -164,14 +199,13 @@ export function SchedulerPanel({ active }: { active: boolean }) {
                   nodeButtons.current.get(selectedId)?.focus()
                   setSelectedId(null)
                 }}>关闭</button></div>
-                <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode} templateProblem={templateProblems[selectedId]}
-                  template={templates.kind === 'ready' ? templates.templates.find((template) => template.id === map.nodes[selectedId].node_template_id) : undefined}
-                  templateStatus={templates.kind === 'loading' ? '正在读取共享模板目录……' : templates.kind === 'error' ? templates.message : null} />
+                <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
+                  templateProblem={templateProblems[selectedId]} onTemplate={openTemplate} />
               </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次参数、前置依赖与共享模板。</p></div>}
             </aside>
           </div>
         </section>}
       </div>
-    </div>
+    </div>}
   </section>
 }
