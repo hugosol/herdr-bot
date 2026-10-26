@@ -92,7 +92,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
   const selectAndExpand = async () => {
     await expect(page.getByRole('heading', { name: html, exact: true })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true }).getByText(script, { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: `${style} A`, exact: true }).click()
+    await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: `${style} A`, exact: true }).click()
     await expect(page.getByTestId('parameter-path')).toHaveText(outside)
     await expect(page.getByTestId('parameter-instruction')).toHaveText(instruction)
     await expect(page.getByTestId('parameter-html')).toHaveText(html)
@@ -110,7 +110,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
   const catalog = await page.request.get(`${server.baseURL}/api/scheduler/templates`)
   expect(catalog.status()).toBe(200)
   expect((await catalog.json()).templates).toEqual([capability])
-  await page.getByRole('button', { name: 'Broken capability B', exact: true }).click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Broken capability B', exact: true }).click()
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(page.getByRole('region', { name: '模板明细', exact: true })).toContainText('结构无效')
   await unchanged()
@@ -122,7 +122,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
   await unchanged()
   await page.getByRole('button', { name: 'safe.json', exact: true }).click()
   await selectAndExpand()
-  for (const name of ['刷新 Map 列表', '重新加载当前 Map']) {
+  for (const name of ['刷新全部']) {
     const reloaded = page.waitForResponse(response => response.url().endsWith('/api/scheduler/maps/safe.json'))
     await page.getByRole('button', { name, exact: true }).click()
     expect((await reloaded).status()).toBe(200)
@@ -158,7 +158,7 @@ test('P27 actual Map and template readers reject traversal requests and outside 
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['inside.json'])
   await page.getByRole('button', { name: 'inside.json', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Inside plan', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Inside node A', exact: true }).click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Inside node A', exact: true }).click()
   await page.getByRole('button', { name: '模板明细', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Inside capability', exact: true })).toBeVisible()
   const inside = await page.request.get(`${server.baseURL}/api/scheduler/maps/inside.json`)
@@ -230,7 +230,7 @@ test('P28 preparing Map and template parents only creates empty directories and 
     expect(response.status()).toBe(200)
     expect(await response.json()).toEqual(expected)
   }
-  await page.getByRole('button', { name: '刷新 Map 列表', exact: true }).click()
+  await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
   await expect(page.getByTestId('scheduler-template-empty')).toBeVisible()
   expect(snapshot()).toEqual({ ...before,
@@ -264,7 +264,7 @@ for (const kind of ['maps', 'templates'] as const) {
       fs.writeFileSync(path.join(templates, 'inside.json'), templateBytes)
       await openScheduler(page)
       await page.getByRole('button', { name: 'inside.json', exact: true }).click()
-      await page.getByRole('button', { name: 'Inside node A', exact: true }).click()
+      await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Inside node A', exact: true }).click()
       await page.getByRole('button', { name: '模板明细', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Inside capability', exact: true })).toBeVisible()
       const alias = path.join(server.cwd, 'outside-link')

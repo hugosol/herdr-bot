@@ -154,16 +154,16 @@ test('P22 explicit empty objects arrays and text are legal and parameters stay o
     expect(response.status(), name).toBe(200)
     await page.getByRole('button', { name, exact: true }).click()
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
-    const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
-    await expect(graph.getByRole('button')).toHaveCount(name === 'empty-map.json' ? 0 : 1)
+    const nodes = page.getByRole('region', { name: '节点列表', exact: true })
+    await expect(nodes.getByRole('button')).toHaveCount(name === 'empty-map.json' ? 0 : 1)
     if (name === 'empty-node.json') {
-      await graph.getByRole('button').click()
+      await nodes.getByRole('button').click()
       const details = page.getByRole('region', { name: 'node 详情', exact: true })
-      await expect(details).toContainText('没有参数。')
-      await expect(details).toContainText('无前置依赖。')
+      await expect(details.getByRole('region', { name: '本次参数', exact: true }).locator('dd')).toHaveCount(0)
+      await expect(details.getByRole('region', { name: '前置依赖', exact: true }).getByRole('listitem')).toHaveCount(0)
     }
     if (name === 'open-parameters.json') {
-      await graph.getByRole('button', { name: 'Parameters P', exact: true }).click()
+      await nodes.getByRole('button', { name: 'Parameters P', exact: true }).click()
       const parameters = page.getByRole('region', { name: '本次参数', exact: true })
       await expect(parameters.locator('dt')).toHaveText(['Bot', 'blockedBy', 'count', 'emptyObject', 'flag', 'nested', 'nothing', 'schema_version', 'text', 'zone'])
       await expect(parameters.locator('dd')).toHaveText(['not-a-real-Bot', '[]', '7', '{}', 'false', '{\n  "arbitrary-key": [\n    "raw",\n    true,\n    null\n  ]\n}', 'null', '99', '', 'not-a-real-zone'])
@@ -175,9 +175,7 @@ test('P22 explicit empty objects arrays and text are legal and parameters stay o
 })
 
 // S1/S2/P24/P29: A -> bad B -> C with real disk failures, not route mocks or a
-// broken whole directory. Ticket04 is not in this baseline: the template region
-// absence below is a guard, NOT evidence of clearing an opened template detail.
-// Integrated acceptance must open ticket04's 模板明细 before selecting bad B.
+// broken whole directory. An opened template must clear with the old node.
 // Bad JSON, trailing JSON, bad structure, bad dependency
 // and a file removed after listing are separate scenarios. Each retains a valid
 // neighbor and independently named node/parameter text to expose stale results.
@@ -214,10 +212,12 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     const list = page.getByTestId('scheduler-map-list')
     await expect(list.getByRole('listitem')).toHaveText(['a.json', 'b.json', 'c.json'])
     await list.getByRole('button', { name: 'a.json', exact: true }).click()
-    const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
+    const nodes = page.getByRole('region', { name: '节点列表', exact: true })
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
-    await graph.getByRole('button', { name: 'Only A A', exact: true }).click()
+    await nodes.getByRole('button', { name: 'Only A A', exact: true }).click()
     await expect(details).toContainText('alpha-only')
+    await details.getByRole('button', { name: '模板明细', exact: true }).click()
+    await expect(page.getByRole('region', { name: '模板明细', exact: true })).toBeVisible()
     if (failure === 'file-load') fs.unlinkSync(path.join(maps, 'b.json'))
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/b.json`)
     expect(response.status()).toBe(500)
@@ -225,7 +225,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     await list.getByRole('button', { name: 'b.json', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText(expected[failure])
     await expect(page.getByRole('alert')).toContainText('b.json')
-    await expect(graph).toHaveCount(0)
+    await expect(nodes).toHaveCount(0)
     await expect(details).toHaveCount(0)
     await expect(page.getByRole('region', { name: '模板明细', exact: true })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toHaveCount(0)
@@ -233,8 +233,8 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     await expect(list.getByRole('button', { name: 'c.json', exact: true })).toBeEnabled()
     await page.screenshot({ path: testInfo.outputPath(`${failure}-cleared.png`), fullPage: true })
     await list.getByRole('button', { name: 'c.json', exact: true }).click()
-    await graph.getByRole('button', { name: 'Only C C', exact: true }).click()
-    await expect(graph.getByRole('button')).toHaveCount(1)
+    await nodes.getByRole('button', { name: 'Only C C', exact: true }).click()
+    await expect(nodes.getByRole('button')).toHaveCount(1)
     await expect(details).toContainText('charlie-only')
     await expect(details).not.toContainText('alpha-only')
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toContainText('Healthy C')

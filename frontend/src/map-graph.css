@@ -1,0 +1,141 @@
+.scheduler .scheduler-graph {
+  min-width: 0;
+  color: #e4ebf3;
+}
+
+.scheduler .scheduler-graph-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+
+.scheduler .scheduler-graph-tools button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: .5rem .8rem;
+  border: 1px solid #637587;
+  border-radius: .4rem;
+  background: #1b222c;
+  color: #e4ebf3;
+  cursor: pointer;
+}
+
+.scheduler .scheduler-graph-tools button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.scheduler .scheduler-graph-tools output {
+  min-width: 4.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #a9d0f0;
+}
+
+.scheduler .scheduler-graph-help,
+.scheduler .scheduler-graph-empty {
+  color: #95a3b5;
+  line-height: 1.6;
+}
+
+/* The viewport clips a zoomable canvas, rather than shrinking a tall SVG to fit.
+   Fit is an overview; zoom and keyboard focus keep individual nodes readable. */
+.scheduler .scheduler-graph-viewport {
+  width: 100%;
+  height: clamp(22rem, 55vh, 38rem);
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid #637587;
+  border-radius: .5rem;
+  background: #171d25;
+}
+
+.scheduler .scheduler-graph-viewport > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.scheduler .scheduler-graph-viewport[data-dragging] > svg {
+  cursor: grabbing;
+}
+
+.scheduler .scheduler-graph-edge {
+  fill: none;
+  stroke: #95a3b5;
+  stroke-width: 2;
+}
+
+.scheduler .scheduler-graph-edge-related {
+  stroke: #a9d0f0;
+  stroke-width: 3;
+  stroke-dasharray: 7 4;
+}
+
+.scheduler .scheduler-node {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: .2rem;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: .6rem .75rem;
+  overflow: auto;
+  border: 2px solid #637587;
+  border-radius: .5rem;
+  background: #1b222c;
+  color: #e4ebf3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scheduler .scheduler-node strong,
+.scheduler .scheduler-node span,
+.scheduler .scheduler-node small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.scheduler .scheduler-node span {
+  color: #95a3b5;
+  font-family: Consolas, monospace;
+  font-size: .85rem;
+}
+
+.scheduler .scheduler-node[aria-pressed="true"] {
+  border: 4px double #a9d0f0;
+  background: #253446;
+}
+
+.scheduler .scheduler-node-related {
+  border-style: dashed;
+  border-color: #a9d0f0;
+}
+
+.scheduler .scheduler-node-relation {
+  color: #a9d0f0;
+  font-weight: 600;
+}
+
+.scheduler .scheduler-node-problem {
+  color: #f1c7a1;
+}
+
+.scheduler .scheduler-graph-tools button:focus-visible,
+.scheduler .scheduler-node:focus-visible {
+  outline: 3px solid #e4ebf3;
+  outline-offset: -5px;
+}
+
+@media (forced-colors: active) {
+  .scheduler .scheduler-graph-edge { stroke: CanvasText; }
+  .scheduler .scheduler-graph-edge-related { stroke: Highlight; }
+  .scheduler .scheduler-node[aria-pressed="true"] { border-color: Highlight; }
+}

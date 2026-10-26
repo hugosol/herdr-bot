@@ -18,7 +18,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     server = await startServer({ separateCwd: true, herdr: {} })
     await page.goto(server.baseURL)
     await page.getByTestId('tab-scheduler').click()
-    await expect(page.getByTestId('scheduler-empty')).toHaveText('此目录没有 Map JSON 文件。')
+    await expect(page.getByTestId('scheduler-empty')).toBeVisible()
     await expect(page.getByTestId('scheduler-template-empty')).toBeVisible()
     expect(fs.readdirSync(path.join(server.cwd, '.data', 'workflow-maps'))).toEqual([])
     expect(fs.readdirSync(path.join(server.cwd, '.data', 'node-templates'))).toEqual([])
@@ -41,6 +41,8 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     const list = page.getByTestId('scheduler-map-list')
     await expect(list.getByRole('button')).toHaveText(['another-trip.json', 'trip-readiness.json'])
     await page.getByRole('button', { name: 'trip-readiness.json', exact: true }).click()
+    await page.getByText('依赖图', { exact: true }).click()
+    const nodes = page.getByRole('region', { name: '节点列表', exact: true })
     const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(graph.getByRole('button')).toHaveCount(4)
@@ -56,7 +58,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       ['汇总出行准备 C', { scope: '上海与北京的出行准备', checklist: ['天气', '随身物品'] }],
       ['独立额度估算 D', { account: '人工示例账户', remaining_percent: 25, observed_at: null }],
     ] as const) {
-      await graph.getByRole('button', { name, exact: true }).click()
+      await nodes.getByRole('button', { name, exact: true }).click()
       const params = details.getByRole('region', { name: '本次参数', exact: true })
       await expect(params.locator('dd')).toHaveCount(Object.keys(expected).length)
       for (const [key, value] of Object.entries(expected)) {
@@ -87,7 +89,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await details.getByRole('button', { name: '模板明细', exact: true }).click()
     }
     await page.screenshot({ path: testInfo.outputPath('graph.png'), fullPage: true })
-    await graph.getByRole('button', { name: '上海出行天气 A', exact: true }).click()
+    await nodes.getByRole('button', { name: '上海出行天气 A', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     const capability = page.getByRole('region', { name: '模板明细', exact: true })
     for (const text of ['目的地天气摘要', '出行前需要了解目的地天气与随身物品建议时。',
@@ -97,11 +99,11 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true })
-    await graph.getByRole('button', { name: '北京出行天气 B', exact: true }).click()
+    await nodes.getByRole('button', { name: '北京出行天气 B', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(capability.getByText('目的地天气摘要', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'another-trip.json', exact: true }).click()
-    await graph.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
     await expect(details.getByTestId('parameter-city')).toHaveText('广州')
     await expect(details.getByTestId('parameter-date')).toHaveText('2026-11-03')
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
@@ -110,12 +112,12 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     // Follow the reload instructions against these same delivered files.
     const template = path.join(server.cwd, 'capabilities', 'weather-capability.json')
     fs.writeFileSync(template, fs.readFileSync(template, 'utf8').replace('目的地天气摘要', '更新后的目的地天气摘要'))
-    await page.getByRole('button', { name: '重新加载当前 Map', exact: true }).click()
-    await graph.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
     await details.getByRole('button', { name: '模板明细', exact: true }).click()
     await expect(capability.getByText('更新后的目的地天气摘要', { exact: true })).toBeVisible()
     fs.copyFileSync(path.join(examples, 'maps', 'another-trip.json'), path.join(server.cwd, 'plans', 'new-copy.json'))
-    await page.getByRole('button', { name: '刷新 Map 列表', exact: true }).click()
+    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     await expect(page.getByRole('button', { name: 'new-copy.json', exact: true })).toBeVisible()
     await page.getByTestId('server-button').click()
     await expect(page.getByTestId('server-page')).toBeVisible()

@@ -11,13 +11,15 @@ function NamedDescriptions({ title, values }: { title: string; values: Record<st
   </section>
 }
 
-export function MapNodeDetails({ map, nodeId, template, templateStatus, templateProblem }: {
+export function MapNodeDetails({ map, nodeId, template, templateStatus, templateProblem, onSelect }: {
   map: WorkflowMap; nodeId: string; template: NodeTemplate | undefined; templateStatus: string | null; templateProblem?: string
+  onSelect: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const templateDetailsId = useId()
   const node = map.nodes[nodeId]
   const entries = Object.entries(node.parameters)
+  const dependents = Object.keys(map.nodes).filter((id) => map.nodes[id].blocked_by.includes(nodeId))
   return <section aria-label="node 详情" className="scheduler-details">
     <h3>{node.title} · {nodeId}</h3>
     <p className="scheduler-text">node_template_id：{node.node_template_id}</p>
@@ -34,8 +36,14 @@ export function MapNodeDetails({ map, nodeId, template, templateStatus, template
     <section aria-label="前置依赖">
       <h4>前置依赖</h4>
       {node.blocked_by.length === 0 ? <p>无前置依赖。</p> : <ul>
-        {node.blocked_by.map((id, index) => <li key={index}>{map.nodes[id].title} · {id}</li>)}
+        {node.blocked_by.map((id) => <li key={id}><button type="button" aria-label={`查看前置节点 ${map.nodes[id].title} ${id}`} onClick={() => onSelect(id)}>{map.nodes[id].title} · {id}</button></li>)}
       </ul>}
+    </section>
+    <section aria-label="依赖此节点">
+      <h4>依赖此节点</h4>
+      {dependents.length === 0 ? <p>无后继节点。</p> : <ul>{dependents.map((id) => <li key={id}>
+        <button type="button" aria-label={`查看后继节点 ${map.nodes[id].title} ${id}`} onClick={() => onSelect(id)}>{map.nodes[id].title} · {id}</button>
+      </li>)}</ul>}
     </section>
     <button type="button" aria-expanded={expanded} aria-controls={templateDetailsId} onClick={() => setExpanded((value) => !value)}>模板明细</button>
     {expanded && <section id={templateDetailsId} aria-label="模板明细">

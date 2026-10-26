@@ -33,6 +33,8 @@ async function openPlan(page: Page) {
 }
 
 async function completeGraph(page: Page) {
+  await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button')).toHaveCount(3)
+  await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph.getByRole('button')).toHaveCount(3)
   for (const name of ['问题工作 A', '正常工作 B', '独立工作 C']) await expect(graph.getByRole('button', { name, exact: true })).toBeVisible()
@@ -42,7 +44,7 @@ async function completeGraph(page: Page) {
 }
 
 async function normalDetails(page: Page) {
-  await page.getByRole('button', { name: '正常工作 B', exact: true }).click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '正常工作 B', exact: true }).click()
   await page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('button', { name: '模板明细', exact: true }).click()
   const details = page.getByRole('region', { name: '模板明细', exact: true })
   for (const text of ['正常能力说明', '需要核对材料时', '仅整理差异，不执行工作', '待核对的文本', '差异报告说明', 'chat']) await expect(details.getByText(text, { exact: true })).toBeVisible()
@@ -84,7 +86,7 @@ test('P20 P29 an actual unreadable template file leaves the valid graph and norm
     expect(response.status()).toBe(200)
     expect(await response.json()).toMatchObject({ templates: [normal], problems: [{ code: 'template-read-failed', files: ['unreadable.json'], message: expect.stringContaining('读取失败') }] })
     await expect(page.getByRole('region', { name: '模板问题', exact: true })).toContainText('unreadable.json')
-    await page.getByRole('button', { name: '问题工作 A', exact: true }).click()
+    await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true }).click()
     const node = page.getByRole('region', { name: 'node 详情', exact: true })
     await node.getByRole('button', { name: '模板明细', exact: true }).click()
     const detail = page.getByRole('region', { name: '模板明细', exact: true })
@@ -109,7 +111,7 @@ test('P21 duplicate identity lists every conflicting file and never selects eith
   fs.writeFileSync(path.join(templates, 'second.json'), second)
   await openPlan(page)
   const graph = await completeGraph(page)
-  await expect(graph.getByRole('button', { name: '问题工作 A', exact: true })).toContainText('冲突')
+  await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true })).toContainText('冲突')
   const response = await page.request.get(`${server!.baseURL}/api/scheduler/templates`)
   expect(response.status()).toBe(200)
   expect(await response.json()).toMatchObject({ templates: [normal], problems: [{ code: 'template-id-conflict', template_id: 'problem', files: ['first.json', 'second.json'] }] })
@@ -142,7 +144,7 @@ test('P21 invalid duplicate declaration cannot make another file an unambiguous 
     { code: 'template-id-conflict', template_id: 'problem', files: ['first.json', 'invalid.json'] },
     { code: 'template-invalid', template_id: 'problem', files: ['invalid.json'] },
   ] })
-  await page.getByRole('button', { name: '问题工作 A', exact: true }).click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true }).click()
   const node = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(node.getByRole('alert')).toContainText('冲突')
   await node.getByRole('button', { name: '模板明细', exact: true }).click()
@@ -197,7 +199,7 @@ for (const example of invalidDefinitions) {
     const issues = page.getByRole('region', { name: '模板问题', exact: true })
     await expect(issues).toContainText('invalid.json')
     await expect(issues).toContainText(example.diagnostic)
-    await page.getByRole('button', { name: '问题工作 A', exact: true }).click()
+    await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true }).click()
     const node = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(node.getByRole('alert')).toContainText('problem')
     await node.getByRole('button', { name: '模板明细', exact: true }).click()
@@ -244,8 +246,10 @@ test('P19 missing template ID is visible on node details and page without losing
   const mapBefore = fs.readFileSync(path.join(maps, 'plan.json'), 'utf8')
   const templateBefore = fs.readFileSync(path.join(templates, 'normal.json'), 'utf8')
   await openPlan(page)
+  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true })).toContainText('problem')
+  await expect(page.getByRole('region', { name: '模板问题', exact: true })).toContainText('problem')
   const graph = await completeGraph(page)
-  await expect(graph.getByRole('button', { name: '问题工作 A', exact: true })).toContainText('缺失共享模板：problem')
   await expect(page.getByRole('region', { name: '模板问题', exact: true })).toContainText('缺失共享模板：problem')
   await graph.getByRole('button', { name: '问题工作 A', exact: true }).click()
   const node = page.getByRole('region', { name: 'node 详情', exact: true })

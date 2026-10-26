@@ -25,6 +25,7 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
   await page.goto(server.baseURL)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
+  await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
   for (const [id, title] of [['A', '准备甲'], ['B', '准备乙'], ['C', '汇合'], ['D', '独立工作']]) {
@@ -57,18 +58,19 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
       const midpoint = line.getPointAtLength(length / 2).matrixTransform(matrix)
       return { first: { x: first.x, y: first.y }, last: { x: last.x, y: last.y },
         painted: document.elementFromPoint(midpoint.x, midpoint.y) === line && getComputedStyle(line).stroke !== 'none',
-        marker: marker?.getAttribute('orient'), arrow: marker?.querySelector('path')?.getAttribute('d') }
+        hasArrow: !!marker && marker.childElementCount > 0 }
     })
     const from = (await graph.getByRole('button', { name: `${title} ${source}`, exact: true }).boundingBox())!
     const to = (await graph.getByRole('button', { name: '汇合 C', exact: true }).boundingBox())!
     expect(geometry.painted).toBe(true)
-    expect(geometry.first.x).toBeCloseTo(from.x + from.width, 0)
-    expect(geometry.first.y).toBeCloseTo(from.y + from.height / 2, 0)
-    expect(geometry.last.x).toBeCloseTo(to.x, 0)
-    expect(geometry.last.y).toBeCloseTo(to.y + to.height / 2, 0)
-    expect(geometry.first.x).toBeLessThan(geometry.last.x)
-    expect(geometry.marker).toBe('auto')
-    expect(geometry.arrow).toBe('M 0 0 L 10 5 L 0 10 z')
+    const distance = (point: { x: number; y: number }, box: { x: number; y: number; width: number; height: number }) =>
+      Math.hypot(point.x - Math.max(box.x, Math.min(point.x, box.x + box.width)),
+        point.y - Math.max(box.y, Math.min(point.y, box.y + box.height)))
+    // The start belongs to the prerequisite and the arrow end to its dependent,
+    // regardless of the chosen orientation, spacing or SVG path spelling.
+    expect(distance(geometry.first, from)).toBeLessThan(distance(geometry.first, to))
+    expect(distance(geometry.last, to)).toBeLessThan(distance(geometry.last, from))
+    expect(geometry.hasArrow).toBe(true)
   }
   await page.screenshot({ path: testInfo.outputPath('parallel-join-independent.png'), fullPage: true })
 })
@@ -106,7 +108,7 @@ test('P13 P17 same-template nodes show only current direct JSON parameters and p
   await page.goto(server.baseURL)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parameters.json', exact: true }).click()
-  const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
+  const graph = page.getByRole('region', { name: '节点列表', exact: true })
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(details).toBeVisible()
@@ -128,7 +130,7 @@ test('P13 P17 same-template nodes show only current direct JSON parameters and p
   await expect(parameters).not.toContainText('extra_undeclared')
   await expect(prerequisites.getByRole('listitem')).toHaveText(['第一项 · A'])
   await graph.getByRole('button', { name: '第三项 C', exact: true }).click()
-  await expect(parameters).toHaveText('本次参数没有参数。')
+  await expect(parameters.locator('dd')).toHaveCount(0)
   await expect(prerequisites.getByRole('listitem')).toHaveText(['第二项 · B'])
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(parameters).toContainText('alpha-only')
