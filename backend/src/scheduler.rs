@@ -3,7 +3,89 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use axum::{Json, extract::Request, http::StatusCode, response::{IntoResponse, Response}};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, VecDeque};
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WorkflowMap {
+    schema_version: u32,
+    title: String,
+    description: String,
+    nodes: BTreeMap<String, MapNode>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MapNode {
+    title: String,
+    node_template_id: String,
+    parameters: BTreeMap<String, serde_json::Value>,
+    blocked_by: Vec<String>,
+}
+
+fn map_error(message: impl Into<String>) -> DirectoryError {
+    DirectoryError { code: "map-read-failed", message: message.into() }
+}
+
+fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError> {
+    // A filename is not a path. Reject both platform separators, Windows streams
+    // and links, using the same ancestor boundary as the directory listing.
+    if name.is_empty() || name.contains(['/', '\\', ':']) ||
+        !Path::new(name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("json")) {
+        return Err(map_error("Map 读取只接受目录内的 JSON 文件名。"));
+    }
+    let file = prepare_directory(directory)?.join(name);
+    let metadata = fs::symlink_metadata(&file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))?;
+    if !metadata.is_file() || crate::browse::is_link_like(&metadata) {
+        return Err(map_error("Map 文件不能是符号链接、重解析点或目录。"));
+    }
+    let bytes = fs::read(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))?;
+    let map: WorkflowMap = serde_json::from_slice(&bytes).map_err(|e| map_error(format!("Map 结构无效：{e}")))?;
+    if map.schema_version != 1 { return Err(map_error("Map schema_version 必须为 1。")); }
+    // Reject invalid dependencies rather than dropping an edge or manufacturing
+    // a successful graph. Kahn's traversal also bounds layout work on bad input.
+    let mut remaining = BTreeMap::new();
+    let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (id, node) in &map.nodes {
+        remaining.insert(id.as_str(), node.blocked_by.len());
+        for prerequisite in &node.blocked_by {
+            if prerequisite == id || !map.nodes.contains_key(prerequisite) {
+                return Err(map_error(format!("node {id} 的 blocked_by 引用了自身或未知 node：{prerequisite}")));
+            }
+            dependents.entry(prerequisite).or_default().push(id);
+        }
+    }
+    let mut ready: VecDeque<&str> = remaining.iter().filter_map(|(id, count)| (*count == 0).then_some(*id)).collect();
+    let mut visited = 0;
+    while let Some(id) = ready.pop_front() {
+        visited += 1;
+        for dependent in dependents.get(id).into_iter().flatten() {
+            let count = remaining.get_mut(dependent).expect("dependent is a Map node");
+            *count -= 1;
+            if *count == 0 { ready.push_back(dependent); }
+        }
+    }
+    if visited != map.nodes.len() { return Err(map_error("Map blocked_by 存在依赖环。")); }
+    Ok(map)
+}
+
+pub async fn get_map(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "code": "invalid-request", "message": "Map 读取不接受查询参数或请求体。",
+        }))).into_response();
+    }
+    match tokio::task::spawn_blocking(move || read_map(&state.map_directory, &name)).await {
+        Ok(Ok(map)) => Json(map).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => map_error(format!("Map 文件读取失败：{error}")).into_response(),
+    }
+}
 
 #[derive(Serialize)]
 struct MapFiles { files: Vec<String> }
