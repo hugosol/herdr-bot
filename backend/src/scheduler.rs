@@ -124,6 +124,74 @@ pub async fn get_map(
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ImplementationType { Chat }
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct TemplateImplementation { r#type: ImplementationType }
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NodeTemplate {
+    schema_version: u32,
+    id: String,
+    title: String,
+    use_when: String,
+    description: String,
+    inputs: BTreeMap<String, String>,
+    outputs: BTreeMap<String, String>,
+    implementation: TemplateImplementation,
+}
+
+#[derive(Serialize)]
+struct TemplateCatalog { templates: Vec<NodeTemplate> }
+
+fn template_directory_error(error: DirectoryError) -> DirectoryError {
+    DirectoryError {
+        code: match error.code {
+            "map-directory-create-failed" => "template-directory-create-failed",
+            "map-directory-link-rejected" => "template-directory-link-rejected",
+            _ => "template-directory-read-failed",
+        },
+        message: error.message.replacen("Map 目录", "共享模板目录", 1),
+    }
+}
+
+fn read_templates(directory: &Path) -> Result<TemplateCatalog, DirectoryError> {
+    // Reuse the Map directory boundary: only direct regular JSON files, no links
+    // or reparse-point ancestors. Identity belongs to the parsed id, not the name.
+    let files = read_files(directory).map_err(template_directory_error)?;
+    let mut templates = Vec::with_capacity(files.files.len());
+    for name in files.files {
+        let bytes = fs::read(directory.join(&name)).map_err(|e| DirectoryError {
+            code: "template-read-failed", message: format!("共享模板 {name} 读取失败：{e}"),
+        })?;
+        let template: NodeTemplate = serde_json::from_slice(&bytes).map_err(|e| DirectoryError {
+            code: "template-read-failed", message: format!("共享模板 {name} 结构无效：{e}"),
+        })?;
+        if template.schema_version != 1 {
+            return Err(DirectoryError { code: "template-read-failed", message: format!("共享模板 {name} 的 schema_version 必须为 1。") });
+        }
+        templates.push(template);
+    }
+    Ok(TemplateCatalog { templates })
+}
+
+pub async fn list_templates(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
+    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "code": "invalid-request", "message": "共享模板读取不接受路径、查询参数或请求体。",
+        }))).into_response();
+    }
+    match tokio::task::spawn_blocking(move || read_templates(&state.node_template_directory)).await {
+        Ok(Ok(catalog)) => Json(catalog).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => DirectoryError { code: "template-directory-read-failed", message: format!("共享模板目录读取失败：{error}") }.into_response(),
+    }
+}
+
 #[derive(Serialize)]
 struct MapFiles { files: Vec<String> }
 

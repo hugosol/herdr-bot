@@ -6,7 +6,7 @@
 
 **Blocked by:** 02 — 浏览服务级 Map 目录。
 
-**Status:** in-progress
+**Status:** closed
 
 ## Acceptance criteria
 
@@ -31,4 +31,8 @@
 - `npm --prefix frontend run test:browser:build -- schedulerGraph.spec.ts --workers=1`：2 passed；截图在 `frontend/test-results/schedulerGraph-*/`。
 - `npm --prefix frontend test`：27 文件、205 tests passed。`node scripts/test-backend.mjs`：build、全部 binaries、doctest passed，日志目录 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-FeHSqG`。
 - `npm --prefix frontend run test:browser:build -- --workers=4`：164 passed、5 failed；本票两例及 scheduler 既有八例全部通过。失败在未修改的 Chat 恢复验收：`chatResume.spec.ts:29` 预期 `identity-verification-failed` 实得 `invalid-cwd`；`chatResumeIntegrity.spec.ts:257` 四种 agent／mode 预期 `failed` 实得 `unconfirmed`。未跨票修补或重跑以掩盖失败；全量浏览器不宣称通过。
-- README 已同步真实文件读取、格式、参数展示与安全边界。本票自动验收完成；完整视图交互与窄屏由 09 认领，跨入口安全由 08 认领，P33 主观体验仍待用户。保留 `in-progress`，待独立集成合入后按规则关闭。
+- README 已同步真实文件读取、格式、参数展示与安全边界。本票自动验收完成；完整视图交互与窄屏由 09 认领，跨入口安全由 08 认领，P33 主观体验仍待用户。原实现交接时保留 `in-progress`，待独立集成合入后按规则关闭。
+- 独立集成验收：当前开发分支已包含首次合入提交 `d1023d977664c0ee6f15021f88272ee7b6f3588d`，接管时工作区干净且无冲突；不再次直接操作集成分支。
+- 全局浏览器故障定位：既有浏览器用例仍把不可核实的 inventory candidate 当作全局 lookup 失败，而生产实现和后端回归已经明确跳过坏候选。更新 `chatResume.spec.ts` 对空匹配后 cwd 检查的预期；`chatResumeIntegrity.spec.ts` 改用身份匹配但导航信息非法的不可跳过故障，保留 lookup 错误、无重复启动、目标保留等断言，不回退生产匹配策略。清除本包 Cargo 缓存并重建未消除这五个旧预期失败，缓存假设被排除；修正测试输入与预期后全量通过。
+- 本轮全局验收：`npm --prefix frontend test`：27 文件、205 tests passed；`npm --prefix frontend run test:browser:build`：169 passed（16 workers）；`node scripts/test-backend.mjs`：build、全部 binaries、doctest passed，0 binaries not dispatched，最终日志 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-G4wUC1\summary.json`。本票已实现、测试并首次合入，状态关闭；本轮验收修复提交至开发分支，交宿主排队合并。
+- 本轮未执行复杂脚本、实机 smoke 或跨票据整体验收；它们仍交最后独立门禁，P33 未代用户确认。

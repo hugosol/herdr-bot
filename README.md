@@ -63,7 +63,8 @@ map_directory = '.data/workflow-maps'
 node_template_directory = '.data/node-templates'
 ```
 
-两个字段均可独立省略，分别使用上述默认值。**相对路径按进程 cwd 解析，不按配置文件所在目录解析**；
+两个字段均可独立省略，分别使用上述默认值。共享模板默认目录为 `.data/node-templates/`，进入 scheduler 时同样自动创建缺失目录及父目录，保留用户文件且不安装样例；真实空目录与创建／读取失败分别显示正常空态和错误。
+两个目录只扫描直接包含的 JSON 文件，不递归读取。**相对路径按进程 cwd 解析，不按配置文件所在目录解析**；
 也可填写服务主机上的绝对路径。配置修改需要重启服务；目录内容变化只需刷新列表，当前 Map 也会重新读取。
 点击文件名读取真实 Map，自动排列全部 node（包括独立 node）。卡片显示标题与 Map 内 ID；
 点击卡片或用 Tab 聚焦后按 Enter／Space，在下方核对**当前 node** 的本次参数与前置依赖。
@@ -95,7 +96,27 @@ node_template_directory = '.data/node-templates'
 
 Map 是服务级静态工作定义，`nodes` 对象的 key 是 Map 内 ID；node 是具体工作，不是执行实例。
 `node_template_id` 引用跨 Map 共享的业务能力模板，而不是 Bot，也不在 Map 内嵌入模板副本。
-共享模板内容由模板明细能力提供；依赖图和本次参数展示不依赖模板内容。
+选择 node 后首先只显示具体工作；点击“模板明细”才展开共享能力说明，切换 node 后重新收起，避免把上一项说明误认为当前工作。
+模板按 JSON 中的 `id` 与 `node_template_id` 关联，**不按文件名**关联；同一 Map 多个 node、不同 Map 均可复用一个模板，文件重命名不改变身份。
+明细逐项显示标题、适用场景、能力说明、命名输入输出的文本说明和 `chat` 实现类型；这不表示可以执行或发起 Chat。依赖图和本次参数展示不依赖模板内容。
+
+共享模板 JSON 格式（`schema_version` 为整数 `1`；`inputs`／`outputs` 是名称到说明文本的对象）：
+
+```json
+{
+  "schema_version": 1,
+  "id": "review-work",
+  "title": "核对工作材料",
+  "use_when": "需要对照要求核对材料时。",
+  "description": "整理遗漏与差异，不修改原始材料。",
+  "inputs": { "target": "待核对的材料说明。" },
+  "outputs": { "review": "包含差异与依据的核对说明；不是已生成结果。" },
+  "implementation": { "type": "chat" }
+}
+```
+
+`implementation.type` 目前仅支持 `chat`（后端为仅含 `Chat` 的 Rust 枚举），不接受未知类型并静默回退。
+没有模型、Bot、启动指令等实际执行配置；输入输出说明不是参数验证规则，也不会按文字或参数去读取文件。
 `parameters` 是命名参数对象，允许任意直接 JSON 值及任意参数名，不检查是否声明于模板 inputs，
 不校验 zone、Bot 或其他资源是否存在，不补入模板默认值。字符串按文本显示，对象及数组使用缩进 JSON；
 选择另一个 node 后，参数与前置关系全部替换为新 node 的内容。
@@ -117,7 +138,7 @@ Map 和 node 必须是使用上述命名字段的 JSON 对象，不能用位置�
 例如文件在列表加载后被移走，会显示该文件读取错误，而不是让整个目录内的其他 Map 不可访问。
 浏览与恢复不会改写坏文件、自动补字段或执行任何 node。
 
-生产读取接口为 `GET /api/scheduler/maps`（列表）与 `GET /api/scheduler/maps/{filename}`（读取顶层 JSON）；
+生产读取接口为 `GET /api/scheduler/maps`（列表）、`GET /api/scheduler/maps/{filename}`（读取顶层 JSON）与 `GET /api/scheduler/templates`（当前共享模板目录）；
 文件名由页面编码，不接受目录路径、zone、查询参数或请求体。
 目录路径各级不跟随符号链接、Windows 目录联接或其他重解析点，列表与读取均拒绝链接项。
 所有业务文本仅作文本显示；参数中的路径不会被读取，HTML／脚本样式文字不会执行。

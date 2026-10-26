@@ -28,5 +28,7 @@ P22 的 Map／node 结构覆盖与 P29 的 Map 文件隔离覆盖仅由本票编
 
 ## Comments
 
+- 本轮集成接管：将集成提交 `6c1546e4326add93b0656a82bd84619e93d24c1b` 合回开发分支的 README 冲突已解决，同时保留 Map 错误定位／恢复说明与共享模板生产读取接口。按本轮指派运行项目全局测试：`node scripts/test-backend.mjs` 全部通过（169.1 秒，0 未派发，含 doctest；日志 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-ZD1gDx\summary.json`）；`npm --prefix frontend test` 27 个文件／205 个测试通过；`npm --prefix frontend run test:browser:build` 构建与网络护栏通过，全量 184 个浏览器测试通过。无需额外产品修复。本轮不执行复杂脚本、实机 smoke 或跨票据整体验收；已展开模板明细的 P24 专项仍留给最后独立门禁，不因全量现有用例通过而补勾。票据在宿主最终合入及剩余专项验收前保留 in-progress。
+
 - 首次执行：`frontend/browser-tests/schedulerRecovery.spec.ts` 经生产 S1/S2 验证 Map／node 严格格式、依赖拒绝及五类真实 A → B → C 恢复（非法 JSON、尾随 JSON、结构错误、依赖错误、列表后单文件被移走）。新用例 10 个；连同目录、图与导航回归实际 20/20 通过。`node scripts/test-backend.mjs` 全后端 build、全部测试二进制与 doctest 通过（162.2 秒，0 未派发；日志 `C:\Users\hugos\AppData\Local\Temp\herdr-backend-tests-qcREpF`）。README 已更新错误定位及恢复说明。
 - P24 的图与 node 详情清场、恢复已观察到；**已展开模板明细的清场仍未验证**：本基线没有 04 的模板明细功能。按 Main 明确指示，不 cherry-pick 04、不等待批次；由后续集成与既有 10 票验收在有效 A 中点击“模板明细”（`aria-expanded`，区域名“模板明细”）确认内容后，再选择无效 B 核对该区域消失，最后选择有效 C 确认正确关联。当前测试的区域不存在断言不作为这项证据。因此该验收框保持未勾选，票据待跨票检查与合并后才能 closed。
