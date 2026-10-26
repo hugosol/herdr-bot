@@ -41,6 +41,7 @@ fn config_with_operations(
         bots: herdr_bot::BotsConfig::default(),
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
+        scheduler: herdr_bot::SchedulerConfig::default(),
     }
 }
 

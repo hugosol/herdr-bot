@@ -4,6 +4,7 @@ import { runOperation, type FailureKind, type OperationName, type OperationResul
 import { BotsPanel } from './BotsPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
+import { SchedulerPanel } from './SchedulerPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
@@ -207,8 +208,7 @@ export default function App({
         data-testid="panel-scheduler"
         hidden={serverOpen || tab !== 'scheduler'}
       >
-        <h2>scheduler</h2>
-        <p>Map 文件浏览尚未提供。</p>
+        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} />
       </div>
 
       <section

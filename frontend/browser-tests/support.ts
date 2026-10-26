@@ -42,6 +42,8 @@ export type HerdrFixtureSetup = {
 export type StartServerOptions = {
   /** Existing record-only PowerOff shell; required for tests sending shutdown commands. */
   safeShutdown?: boolean
+  /** Keep the real process cwd separate from its configuration file. */
+  separateCwd?: boolean
   herdr?: HerdrFixtureSetup
   /** Axum 数值监听地址；普通入口只允许 127/8 或 [::1]，非回环仅供 startManualServer。 */
   listenAddr?: string
@@ -54,6 +56,7 @@ export type E2EServer = {
   storageFile: string
   metadataFile: string
   configPath: string
+  cwd: string
   /** Actual delivered backend stdout/stderr; diagnostic observation only. */
   diagnostics: () => string
   getBots: () => Promise<{ bots: BotView[]; options: unknown }>
@@ -186,9 +189,9 @@ type ServerProcess = {
   listening: Promise<void>
 }
 
-function startProcess(configPath: string, executable: string): ServerProcess {
+function startProcess(configPath: string, executable: string, cwd: string): ServerProcess {
   const child = spawn(executable, ['--config', configPath], {
-    cwd: path.dirname(configPath),
+    cwd,
     // The copied fixture must never inherit a developer's external data root.
     env: {
       ...process.env,
@@ -281,7 +284,9 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
   let herdrExecutable: string | undefined
   let running: ServerProcess | null = null
 
+  const cwd = options.separateCwd ? path.join(directory, 'process-cwd') : directory
   try {
+    fs.mkdirSync(cwd, { recursive: true })
     // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
     const extensionDirectory = path.join(directory, 'extensions')
     fs.mkdirSync(extensionDirectory)
@@ -331,7 +336,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
     )
 
     async function start() {
-      running = startProcess(configPath, executable)
+      running = startProcess(configPath, executable, cwd)
       await running.listening
       await waitForBots(`http://${localHost}:${running.port}`)
     }
@@ -348,6 +353,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
       storageFile,
       metadataFile,
       configPath,
+      cwd,
       diagnostics() { return running?.diagnostics() ?? '' },
       async getBots() {
         const response = await fetch(`${this.baseURL}/api/bots`)

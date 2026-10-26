@@ -661,7 +661,7 @@ fn component_eq(left: Component<'_>, right: Component<'_>) -> bool {
 ///
 /// Windows 上仅靠 `FileType::is_symlink` 不够：目录联接（junction）与其他 reparse point 也必须
 /// 拒绝。这里直接检查 `FILE_ATTRIBUTE_REPARSE_POINT`（0x400），因此不会跟随任何重解析点。
-fn is_link_like(metadata: &fs::Metadata) -> bool {
+pub(crate) fn is_link_like(metadata: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;

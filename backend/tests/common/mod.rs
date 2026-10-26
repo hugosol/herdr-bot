@@ -336,6 +336,7 @@ pub fn config_with_countdown(
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: herdr_bot::GitConfig::default(),
+        scheduler: herdr_bot::SchedulerConfig::default(),
     }
 }
 
