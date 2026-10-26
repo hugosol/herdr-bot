@@ -1,10 +1,10 @@
-//! 浏览器侧 Bot 管理与创建意图和会话事件写入的来源边界（P45）。
+//! 浏览器侧 Task 管理与创建意图和会话事件写入的来源边界（P45）。
 //!
-//! Bot 管理与“从 zone 创建 Chat”不是 connect-bot 会话登记：它们不读取 TCP 来源，局域网设备
+//! Task 管理与“从 zone 创建 Chat”不是 connect-bot 会话登记：它们不读取 TCP 来源，局域网设备
 //! 可直接使用，本版也没有账号、token 或权限系统。会话事件写入仍只接受本机来源（ADR 0004）。
 //!
 //! 本文件在同一个公开 HTTP 路由上，用同一个受控来源分别观察两种能力：来源是 RFC 5737 的文档
-//! 地址（本机不可能拥有），代表局域网设备。Bot 新增/读取、名称预览与创建请求被接受，而同一来源
+//! 地址（本机不可能拥有），代表局域网设备。Task 新增/读取、名称预览与创建请求被接受，而同一来源
 //! 的会话事件写入仍得到 `403 forbidden`。受控来源经 axum 的 `MockConnectInfo` 注入，与
 //! `session_write_boundary.rs` 使用同一条接缝；创建目标仍走受控 Herdr 夹具，夹具记录不冒充真实
 //! Herdr / agent 验收。
@@ -71,10 +71,10 @@ fn body_of(status: StatusCode, body: &str) -> Value {
 }
 
 #[tokio::test]
-async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_events() {
-    let herdr = common::HerdrFixture::new("bot source boundary");
-    let storage = common::TempDir::new("bot source boundary storage");
-    let zone_root = common::TempDir::new("bot source boundary zone");
+async fn lan_source_manages_tasks_and_creates_chats_but_cannot_write_session_events() {
+    let herdr = common::HerdrFixture::new("task source boundary");
+    let storage = common::TempDir::new("task source boundary storage");
+    let zone_root = common::TempDir::new("task source boundary zone");
     let workspace = zone_root.path().join("alpha");
     fs::create_dir_all(&workspace).expect("创建 zone 目录");
 
@@ -83,7 +83,7 @@ async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_even
     let operations = fixtures.join("operations");
     let mut config = common::config(&script, &operations);
     config.zones.registry_file = storage.path().join("zones.json");
-    config.bots.storage_file = storage.path().join("bots.json");
+    config.tasks.storage_file = storage.path().join("tasks.json");
     config.herdr = herdr_bot::HerdrConfig {
         workspace_name: "bot-playground".to_string(),
         executable: herdr.executable().to_path_buf(),
@@ -93,12 +93,12 @@ async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_even
     let app = herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), sessions);
     let lan = from_source(&app, LAN_SOURCE);
 
-    // Bot 读取与新增对局域网来源开放：这是与 connect-bot 会话写入不同的产品能力。
-    let (status, body) = send(lan.clone(), "GET", "/api/bots", None).await;
+    // Task 读取与新增对局域网来源开放：这是与 connect-bot 会话写入不同的产品能力。
+    let (status, body) = send(lan.clone(), "GET", "/api/tasks", None).await;
     assert_eq!(
         status,
         StatusCode::OK,
-        "局域网来源应能读取Bot与固定选项：{status} {body}"
+        "局域网来源应能读取Task与固定选项：{status} {body}"
     );
 
     let zone_body = json!({ "path": workspace }).to_string();
@@ -116,9 +116,9 @@ async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_even
         .expect("登记响应必须包含刚登记的目录")
         .to_string();
 
-    let bot = json!({
+    let task = json!({
         "name": "审查",
-        "chatName": "{zone.name} · {bot.name} · {chat.id}",
+        "chatName": "{zone.name} · {task.name} · {chat.id}",
         "agent": "omp",
         "model": "default",
         "thinking": "default",
@@ -126,25 +126,25 @@ async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_even
         "prompt": "",
     })
     .to_string();
-    let (status, body) = send(lan.clone(), "POST", "/api/bots", Some(&bot)).await;
+    let (status, body) = send(lan.clone(), "POST", "/api/tasks", Some(&task)).await;
     assert_eq!(
         status,
         StatusCode::OK,
-        "局域网来源应能保存Bot：{status} {body}"
+        "局域网来源应能保存Task：{status} {body}"
     );
     let saved = body_of(status, &body);
-    let bot_id = saved["bots"]
+    let task_id = saved["tasks"]
         .as_array()
-        .and_then(|bots| bots.first())
-        .and_then(|bot| bot["id"].as_str())
-        .expect("保存响应应包含Bot标识")
+        .and_then(|tasks| tasks.first())
+        .and_then(|task| task["id"].as_str())
+        .expect("保存响应应包含Task标识")
         .to_string();
 
     let (status, body) = send(
         lan.clone(),
         "POST",
         "/api/chats/preview",
-        Some(&json!({ "zone": zone, "botId": bot_id }).to_string()),
+        Some(&json!({ "zone": zone, "taskId": task_id }).to_string()),
     )
     .await;
     assert_eq!(
@@ -158,7 +158,7 @@ async fn lan_source_manages_bots_and_creates_chats_but_cannot_write_session_even
 
     let create = json!({
         "zone": zone,
-        "botId": bot_id,
+        "taskId": task_id,
         "chatId": chat_id,
         "expectedName": expected_name,
         "input": "局域网来源创建",

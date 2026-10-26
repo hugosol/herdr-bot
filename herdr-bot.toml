@@ -67,11 +67,19 @@ registry_file = '.data/zones.json'
 # 普通 UI 读取不续期；到期不自行轮询；手动刷新、文件事件与 Git 操作可提前更新。
 # status_cache_ttl_seconds = 10
 
-# Bot 设置（可选，缺省为当前工作目录下的 .data/bots.json）。
-# Bot 由后端保存，本机与局域网设备共享；电脑与手机在“Bot”tab 中管理。
+# 服务级 Map / 共享 Bot 目录，可独立指定，均相对进程 cwd 而非配置文件位置。
+# 修改配置需重启；Map 内容变化在 scheduler 点击“刷新 Map 列表”。
+# 首次读取自动创建两个目录及父目录，保留已有内容，不安装样例；链接/目录联接不被跟随。
+# 共享 Bot 按 JSON id 关联；当前仅预览，不执行。可复制样例和格式说明见 docs/example/README.md。
+# [scheduler]
+# map_directory = '.data/workflow-maps'
+# bot_directory = '.data/bots'
+
+# Task 设置（可选，缺省为当前工作目录下的 .data/tasks.json）。
+# Task 由后端保存，本机与局域网设备共享；电脑与手机在“Task”tab 中管理。
 # 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-[bots]
-storage_file = '.data/bots.json'
+[tasks]
+storage_file = '.data/tasks.json'
 # 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
-# 修改后下次打开 Bot 编辑、保存和创建立即读取，无需重启。
-metadata_file = 'meta-data/bot-options.toml'
+# 修改后下次打开 Task 编辑、保存和创建立即读取，无需重启。
+metadata_file = 'meta-data/task-options.toml'

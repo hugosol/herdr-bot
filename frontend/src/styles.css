@@ -39,6 +39,12 @@ h1 {
   font-size: 1.5rem;
 }
 
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+.app-header h1 { margin: 0; }
+.app-header button, .server-back { min-height: 2.75rem; padding: 0.5rem 0.8rem; border: 1px solid #637587; border-radius: 0.35rem; background: #2b3541; color: #f2f4f8; cursor: pointer; }
+.app-header button:focus-visible, .server-back:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
+.tabs[hidden] { display: none; }
+
 /* ---------- 四 tab 外壳 ---------- */
 
 /* 四个入口等宽共用一个面板宽度；选中态用底部色条表示，非当前分区不占版面。 */
@@ -284,7 +290,7 @@ h1 {
   color: #6b7280;
 }
 
-/* 发起 Chat 与编辑 Bot 共用控件尺寸和箭头，不依赖浏览器原生外观；选项仍使用原生菜单。 */
+/* 发起 Chat 与编辑 Task 共用控件尺寸和箭头，不依赖浏览器原生外观；选项仍使用原生菜单。 */
 .zone-form__select {
   appearance: none;
   flex: none;
@@ -2076,21 +2082,21 @@ h1 {
   line-height: 1.5;
 }
 
-/* Bot：列表与编辑表单沿用 zone 的卡片/弹窗样式，只补充字段与操作布局。 */
-.bots {
+/* Task：列表与编辑表单沿用 zone 的卡片/弹窗样式，只补充字段与操作布局。 */
+.tasks {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   text-align: left;
 }
 
-.bots__actions {
+.tasks__actions {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-.bot-list {
+.task-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2099,36 +2105,36 @@ h1 {
   gap: 0.75rem;
 }
 
-.bot-item {
+.task-item {
   padding: 1rem;
   border: 1px solid #2b313a;
   border-radius: 0.75rem;
   background: #14161a;
 }
 
-.bot-item__name {
+.task-item__name {
   margin: 0 0 0.5rem;
   font-size: 1.15rem;
 }
 
-.bot-item__fields {
+.task-item__fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.5rem 1rem;
   margin: 0;
 }
 
-.bot-item__fields dt {
+.task-item__fields dt {
   color: #8fa0b5;
   font-size: 0.85rem;
 }
 
-.bot-item__fields dd {
+.task-item__fields dd {
   margin: 0.15rem 0 0;
   word-break: break-word;
 }
 
-.bot-item__prompt {
+.task-item__prompt {
   margin: 0.75rem 0 0;
   padding: 0.6rem;
   border-radius: 0.5rem;
@@ -2138,36 +2144,36 @@ h1 {
   font-family: inherit;
 }
 
-.bot-item__actions {
+.task-item__actions {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
 
-.bot-dialog {
+.task-dialog {
   width: min(100%, 56rem);
 }
 
-.bot-delete-dialog {
+.task-delete-dialog {
   width: min(calc(100% - 2.5rem), 32rem);
   color: #f2f4f8;
 }
 
-.bot-delete-dialog::backdrop {
+.task-delete-dialog::backdrop {
   background: rgba(6, 8, 11, 0.88);
 }
 
-.bot-delete-dialog .zone-dialog__title {
+.task-delete-dialog .zone-dialog__title {
   overflow-wrap: anywhere;
 }
 
-.bot-delete-confirm {
+.task-delete-confirm {
   border-color: #a63838;
   background: #a63838;
   color: #ffffff;
 }
 
-.bot-steps {
+.task-steps {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 2rem;
@@ -2175,19 +2181,19 @@ h1 {
   color: #8fa0b5;
 }
 
-.bot-steps [aria-current="step"] {
+.task-steps [aria-current="step"] {
   color: #b5d5d0;
   font-weight: 700;
 }
 
-.bot-extensions fieldset {
+.task-extensions fieldset {
   min-width: 0;
   margin: 1rem 0;
   border: 1px solid #3f6d69;
   border-radius: 0.65rem;
 }
 
-.bot-extension {
+.task-extension {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -2195,14 +2201,14 @@ h1 {
   cursor: pointer;
 }
 
-.bot-extension input {
+.task-extension input {
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
 }
 
-/* 预览优先：名称示例置顶，命名规则与 agent/Bot 设置在其后并排。 */
-.bot-preview-card {
+/* 预览优先：名称示例置顶，命名规则与 agent/Task 设置在其后并排。 */
+.task-preview-card {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -2213,14 +2219,14 @@ h1 {
   background: linear-gradient(120deg, #1d313f, #182b28);
 }
 
-.bot-preview-card__label {
+.task-preview-card__label {
   color: #b5d5d0;
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.bot-preview {
+.task-preview {
   margin: 0;
   padding: 0;
   border: 0;
@@ -2231,23 +2237,23 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.bot-preview-card__hint {
+.task-preview-card__hint {
   color: #a9c4c0;
   line-height: 1.5;
 }
 
-.bot-compose {
+.task-compose {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: start;
 }
 
-.bot-compose__primary {
+.task-compose__primary {
   min-width: 0;
 }
 
-.bot-settings {
+.task-settings {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -2259,13 +2265,13 @@ h1 {
   background: #171a20;
 }
 
-.bot-settings legend {
+.task-settings legend {
   padding: 0 0.35rem;
   color: #a9b1bd;
   font-size: 0.9rem;
 }
 
-.bot-settings .bot-hint {
+.task-settings .task-hint {
   margin-top: -0.2rem;
 }
 
@@ -2344,39 +2350,39 @@ h1 {
 }
 
 .chat-name-token__remove:focus-visible,
-.bot-field-buttons button:focus-visible {
+.task-field-buttons button:focus-visible {
   outline: 2px solid #a9d0f0;
   outline-offset: 2px;
 }
 
-.chat-name-editor > .bot-hint {
+.chat-name-editor > .task-hint {
   margin: 0;
 }
 
-.chat-name-editor .bot-fields {
+.chat-name-editor .task-fields {
   margin: 0;
 }
 
-.bot-fields {
+.task-fields {
   margin: 0.75rem 0;
   padding: 0.75rem;
   border: 1px solid #2b313a;
   border-radius: 0.5rem;
 }
 
-.bot-fields legend {
+.task-fields legend {
   padding: 0 0.35rem;
   color: #8fa0b5;
   font-size: 0.85rem;
 }
 
-.bot-field-buttons {
+.task-field-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.bot-field-buttons button {
+.task-field-buttons button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2389,14 +2395,14 @@ h1 {
   cursor: pointer;
 }
 
-.bot-hint {
+.task-hint {
   margin: 0.5rem 0 0;
   color: #8fa0b5;
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
-.bot-prompt {
+.task-prompt {
   min-height: 6rem;
   resize: vertical;
   font-family: inherit;
@@ -2427,11 +2433,11 @@ h1 {
 }
 
 @media (max-width: 720px) {
-  .bot-compose {
+  .task-compose {
     grid-template-columns: 1fr;
   }
 
-  .bot-preview {
+  .task-preview {
     font-size: 1.15rem;
   }
 
@@ -2443,11 +2449,11 @@ h1 {
 }
 
 @media (max-width: 640px) {
-  .bot-item__fields {
+  .task-item__fields {
     grid-template-columns: 1fr;
   }
 
-  .bot-field-buttons button {
+  .task-field-buttons button {
     flex: 1 1 auto;
   }
 }

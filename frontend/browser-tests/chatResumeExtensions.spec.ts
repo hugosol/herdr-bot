@@ -28,11 +28,11 @@ for (const agent of ['pi', 'omp']) {
     server.setHerdrBehavior(identity)
     const post = (endpoint: string, body: unknown) => fetch(`${server!.baseURL}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     expect((await post('/api/zones', { path: cwd })).status).toBe(200)
-    const saved = await post('/api/bots', { name: `Filter ${agent}`, chatName: `Filter ${agent} {chat.id}`, agent, model: 'default', thinking: 'default', skill: null, prompt: 'ONLY INITIAL', extensions: ['selected-optional'] })
+    const saved = await post('/api/tasks', { name: `Filter ${agent}`, chatName: `Filter ${agent} {chat.id}`, agent, model: 'default', thinking: 'default', skill: null, prompt: 'ONLY INITIAL', extensions: ['selected-optional'] })
     expect(saved.status).toBe(200)
-    const botId = (await saved.json()).bots[0].id
-    const preview = await (await post('/api/chats/preview', { zone: cwd, botId })).json()
-    const launch = await post('/api/chats', { zone: cwd, botId, chatId: preview.chatId, input: 'seed' })
+    const taskId = (await saved.json()).tasks[0].id
+    const preview = await (await post('/api/chats/preview', { zone: cwd, taskId: taskId })).json()
+    const launch = await post('/api/chats', { zone: cwd, taskId: taskId, chatId: preview.chatId, input: 'seed' })
     expect(launch.status).toBe(202)
     const job = await launch.json()
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')
@@ -75,7 +75,7 @@ for (const agent of ['pi', 'omp']) {
     expect(emptyCalls.some(c => ['agent_prompt', 'agent_input', 'agent_focus'].includes(String(c.kind)))).toBe(false)
     await page.screenshot({ path: info.outputPath(`${agent}-empty-unconfirmed.png`), fullPage: true })
     const evidence = info.outputPath(`${agent}-extension-filter-NOT-real-loading.json`)
-    fs.writeFileSync(evidence, JSON.stringify({ scope: 'Controlled Herdr; not real extension loading', agent, cwd, native, botId, partial, empty, partialCalls: resumed, emptyCalls }, null, 2))
+    fs.writeFileSync(evidence, JSON.stringify({ scope: 'Controlled Herdr; not real extension loading', agent, cwd, native, taskId: taskId, partial, empty, partialCalls: resumed, emptyCalls }, null, 2))
     await info.attach('extension-filter-NOT-real-loading', { path: evidence, contentType: 'application/json' })
   })
 }

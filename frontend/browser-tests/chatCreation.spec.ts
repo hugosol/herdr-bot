@@ -9,9 +9,9 @@ import type { Page } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
 import { zoneRowFor } from './ui'
 
-const BOT = {
+const TASK = {
   name: '审查',
-  chatName: '{zone.name} · {bot.name} · {chat.id}',
+  chatName: '{zone.name} · {task.name} · {chat.id}',
   agent: 'omp',
   model: 'default',
   thinking: 'default',
@@ -65,9 +65,9 @@ async function prepareZones(baseURL: string) {
   }
 }
 
-async function prepareBot(baseURL: string, bot: Record<string, unknown> = BOT) {
-  const saved = await jsonPost(baseURL, '/api/bots', bot)
-  return saved.bots[saved.bots.length - 1] as { id: string }
+async function prepareTask(baseURL: string, task: Record<string, unknown> = TASK) {
+  const saved = await jsonPost(baseURL, '/api/tasks', task)
+  return saved.tasks[saved.tasks.length - 1] as { id: string }
 }
 
 async function openChatDialog(page: Page, zonePath: string, useCurrent = false) {
@@ -104,7 +104,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
     },
   })
   const zones = await prepareZones(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   // 两个 zone 行都有独立的“+”；分别打开时绑定正确的 zone。
@@ -128,7 +128,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   const previewName = `alpha · 发布检查 · ${shortId}`
   await expect(preview).toHaveText(previewName)
   expect(previewRequests).toEqual([])
-  expect((await server.getBots()).bots[0].chatName).toBe(BOT.chatName)
+  expect((await server.getTasks()).tasks[0].chatName).toBe(TASK.chatName)
 
   await dialog.getByTestId('chat-input').fill('普通任务：检查登录逻辑')
   await dialog.getByTestId('chat-create-submit').click()
@@ -176,7 +176,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
 test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的现场一致', { tag: '@time-contract' }, async ({ page }) => {
   server = await startServer({ herdr: { behavior: { fail_prompt: true } } })
   const zones = await prepareZones(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zones.normal)
@@ -220,7 +220,7 @@ test('目标 Workspace 不存在时失败留在弹窗，不假报成功也不自
     },
   })
   const zones = await prepareZones(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zones.normal)
@@ -254,8 +254,8 @@ test('Skill、固定 prompt 与本次 input 经真实页面合成一次原生 Sk
   const input = '本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
   const expected =
     '/skill:code-review 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
-  await prepareBot(server.baseURL, {
-    ...BOT,
+  await prepareTask(server.baseURL, {
+    ...TASK,
     skill: 'code-review',
     prompt,
   })
@@ -280,12 +280,12 @@ test('Skill、prompt、input 全空仍从页面提交，并由受控 Herdr 拒�
 }) => {
   server = await startServer({ herdr: { behavior: {} } })
   const zones = await prepareZones(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zones.normal)
   await expect(dialog.getByTestId('chat-name-preview')).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
-  // 不填写初始 input；Bot 既没有 Skill，固定 prompt 也为空。
+  // 不填写初始 input；Task 既没有 Skill，固定 prompt 也为空。
   await expect(dialog.getByTestId('chat-input')).toHaveValue('')
   await dialog.getByTestId('chat-create-submit').click()
 

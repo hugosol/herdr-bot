@@ -31,9 +31,9 @@ function mockFetch(
   return { calls, fetchMock }
 }
 
-const BOT = { id: 'tpl-1',
+const TASK = { id: 'tpl-1',
 name: '审查',
-chatName: '{zone.name} · {bot.name} · {chat.id}',
+chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'omp',
 model: 'default',
 thinking: 'default',
@@ -41,12 +41,12 @@ skill: null, prompt: '', extensions: [] }
 
 const PREVIEW = {
   chatId: 'a7f3c2',
-  chatNameRule: BOT.chatName,
-  botName: BOT.name,
+  chatNameRule: TASK.chatName,
+  taskName: TASK.name,
   zoneName: 'alpha',
   name: 'alpha · 审查 · a7f3c2',
   zone: 'C:\\work\\alpha',
-  botId: 'tpl-1',
+  taskId: 'tpl-1',
   agent: 'omp',
 }
 
@@ -55,7 +55,7 @@ function creation(stage: string, extra: Record<string, unknown> = {}) {
     id: 'bc-1',
     name: PREVIEW.name,
     zone: PREVIEW.zone,
-    botId: 'tpl-1',
+    taskId: 'tpl-1',
     stage,
     inputSubmitted: stage === 'succeeded',
     ...extra,
@@ -83,9 +83,9 @@ function mockCreationFailure(failed: Record<string, unknown>) {
     if (url === '/api/zones/overview' && method === 'GET') {
       return jsonResponse(200, { zones: [] })
     }
-    if (url === '/api/bots' && method === 'GET') {
+    if (url === '/api/tasks' && method === 'GET') {
       return jsonResponse(200, {
-        bots: [BOT],
+        tasks: [TASK],
         options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
       })
     }
@@ -112,22 +112,22 @@ async function submitCreation(user: UserEvent) {
 }
 
 describe('从 zone 发起 Chat：名称预览与阶段', () => {
-  it('Bot 管理的三参数示例不变，真实上下文保留原值与未知字段', () => {
-    const rule = '{zone.name}/{bot.name}/{agent}/{chat.id}/{unknown}'
+  it('Task 管理的三参数示例不变，真实上下文保留原值与未知字段', () => {
+    const rule = '{zone.name}/{task.name}/{agent}/{chat.id}/{unknown}'
     expect(renderChatNameExample(rule, '  审查  ', 'omp')).toBe('alpha/审查/omp/a7f3c2/{unknown}')
     expect(renderChatNameExample(rule, '  审查  ', 'pi', { zoneName: '实际目录', chatId: 'd4e5f6' })).toBe('实际目录/  审查  /pi/d4e5f6/{unknown}')
   })
 
   it.each([
-    { label: '空白规则', chatNameRule: '   ', botName: '审查' },
-    { label: '多行规则', chatNameRule: '第一行\n第二行', botName: '审查' },
-    { label: '空白渲染结果', chatNameRule: '{bot.name}', botName: '   ' },
-    { label: '多行渲染结果', chatNameRule: '{bot.name}', botName: '第一行\n第二行' },
-  ])('$label 禁止提交且不发送创建请求', async ({ chatNameRule, botName }) => {
+    { label: '空白规则', chatNameRule: '   ', taskName: '审查' },
+    { label: '多行规则', chatNameRule: '第一行\n第二行', taskName: '审查' },
+    { label: '空白渲染结果', chatNameRule: '{task.name}', taskName: '   ' },
+    { label: '多行渲染结果', chatNameRule: '{task.name}', taskName: '第一行\n第二行' },
+  ])('$label 禁止提交且不发送创建请求', async ({ chatNameRule, taskName }) => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url) => {
-      if (url === '/api/bots') return jsonResponse(200, { bots: [BOT], options: { agents: ['omp'], models: [], thinking: {}, skills: [] } })
-      if (url === '/api/chats/preview') return jsonResponse(200, { ...PREVIEW, chatNameRule, botName })
+      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK], options: { agents: ['omp'], models: [], thinking: {}, skills: [] } })
+      if (url === '/api/chats/preview') return jsonResponse(200, { ...PREVIEW, chatNameRule, taskName })
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
     render(<ChatCreationDialog zone={PREVIEW.zone} onClose={() => {}} />)
@@ -148,9 +148,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
       }
-      if (url === '/api/bots' && method === 'GET') {
+      if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] },
         })
       }
@@ -174,7 +174,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const preview = await within(dialog).findByTestId('chat-name-preview')
     await vi.waitFor(() => expect(preview).toHaveTextContent(PREVIEW.name))
     const rule = within(dialog).getByRole('textbox', { name: '本次 Chat 名称（可编辑规则）' })
-    expect(rule).toHaveValue(BOT.chatName)
+    expect(rule).toHaveValue(TASK.chatName)
     const requestCount = calls.length
     await user.clear(rule)
     expect(within(dialog).getByTestId('chat-create-submit')).toBeDisabled()
@@ -183,26 +183,26 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(preview.textContent).toBe('  alpha / 发布 / omp / a7f3c2 / {unknown}  ')
     expect(within(dialog).getByTestId('chat-create-submit')).toBeEnabled()
     expect(calls).toHaveLength(requestCount)
-    expect(BOT.chatName).toBe(PREVIEW.chatNameRule)
+    expect(TASK.chatName).toBe(PREVIEW.chatNameRule)
 
     const previewCall = calls.find((call) => call.url === '/api/chats/preview')
     expect(previewCall?.method).toBe('POST')
     expect(JSON.parse(previewCall?.body ?? '{}')).toEqual({
       zone: 'D:\\work\\beta',
-      botId: 'tpl-1',
+      taskId: 'tpl-1',
     })
   })
 
-  it('切换 Bot 重置规则，使用真实上下文和稳定标识提交本次编辑，拒绝后可重试', async () => {
+  it('切换 Task 重置规则，使用真实上下文和稳定标识提交本次编辑，拒绝后可重试', async () => {
     const user = userEvent.setup()
-    const second = { ...BOT, id: 'tpl-2', name: '发布', agent: 'pi', chatName: '{bot.name}/{zone.name}/{chat.id}' }
-    const secondPreview = { ...PREVIEW, botId: second.id, botName: second.name, agent: second.agent, chatNameRule: second.chatName, zoneName: '实际目录', chatId: 'b8c9d0', name: '发布/实际目录/b8c9d0' }
+    const second = { ...TASK, id: 'tpl-2', name: '发布', agent: 'pi', chatName: '{task.name}/{zone.name}/{chat.id}' }
+    const secondPreview = { ...PREVIEW, taskId: second.id, taskName: second.name, agent: second.agent, chatNameRule: second.chatName, zoneName: '实际目录', chatId: 'b8c9d0', name: '发布/实际目录/b8c9d0' }
     let attempts = 0
     const { calls } = mockFetch((url, method, body) => {
       if (url === '/api/zones') return jsonResponse(200, { zones: [{ path: PREVIEW.zone }] })
       if (url === '/api/zones/overview') return jsonResponse(200, { zones: [] })
-      if (url === '/api/bots') return jsonResponse(200, { bots: [BOT, second], options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] } })
-      if (url === '/api/chats/preview') return jsonResponse(200, JSON.parse(body ?? '{}').botId === second.id ? secondPreview : PREVIEW)
+      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK, second], options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] } })
+      if (url === '/api/chats/preview') return jsonResponse(200, JSON.parse(body ?? '{}').taskId === second.id ? secondPreview : PREVIEW)
       if (url === '/api/chats' && method === 'POST') {
         attempts += 1
         return attempts === 1
@@ -214,10 +214,10 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     render(<App />)
     const dialog = await openDialog(user, 0)
     const rule = within(dialog).getByRole('textbox', { name: '本次 Chat 名称（可编辑规则）' })
-    await vi.waitFor(() => expect(rule).toHaveValue(BOT.chatName))
+    await vi.waitFor(() => expect(rule).toHaveValue(TASK.chatName))
     await user.clear(rule)
     await user.paste('临时名称')
-    await user.selectOptions(within(dialog).getByTestId('bot'), second.id)
+    await user.selectOptions(within(dialog).getByTestId('task'), second.id)
     await vi.waitFor(() => expect(rule).toHaveValue(second.chatName))
     expect(within(dialog).getByTestId('chat-name-preview').textContent).toBe(secondPreview.name)
     const requestCount = calls.length
@@ -227,7 +227,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const submit = within(dialog).getByTestId('chat-create-submit')
     await user.click(submit)
     expect(JSON.parse(calls.find((call) => call.url === '/api/chats')?.body ?? '{}')).toEqual({
-      zone: PREVIEW.zone, botId: second.id, chatId: secondPreview.chatId,
+      zone: PREVIEW.zone, taskId: second.id, chatId: secondPreview.chatId,
       chatNameRule: '  {zone.name} / {agent} / {chat.id} / {unknown}  ',
       expectedName: '  实际目录 / pi / b8c9d0 / {unknown}  ', input: '', workspaceTarget: 'current',
     })
@@ -238,7 +238,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
     expect(rule).toBeDisabled()
     expect(calls.filter((call) => call.url === '/api/chats/preview')).toHaveLength(3)
-    expect(calls.filter((call) => call.url === '/api/bots')).toHaveLength(1)
+    expect(calls.filter((call) => call.url === '/api/tasks')).toHaveLength(1)
   })
 
   it('接受后分别呈现正在启动与正在提交，两者确认后才显示成功并保留在弹窗', async () => {
@@ -251,9 +251,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
       }
-      if (url === '/api/bots' && method === 'GET') {
+      if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
         })
       }
@@ -305,7 +305,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const body = JSON.parse(createCall?.body ?? '{}')
     expect(body).toEqual({
       zone: 'C:\\work\\alpha',
-      botId: 'tpl-1',
+      taskId: 'tpl-1',
       chatId: PREVIEW.chatId,
       expectedName: PREVIEW.name,
       chatNameRule: PREVIEW.chatNameRule,
@@ -328,9 +328,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
       }
-      if (url === '/api/bots' && method === 'GET') {
+      if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
         })
       }
@@ -362,12 +362,12 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     await user.click(within(dialog).getByTestId('chat-create-submit'))
     expect(workspace).toBeDisabled()
     expect(within(dialog).getByRole('textbox', { name: /本次 Chat 名称/ })).toBeDisabled()
-    expect(within(dialog).getByTestId('bot')).toBeDisabled()
+    expect(within(dialog).getByTestId('task')).toBeDisabled()
     expect(within(dialog).getByTestId('chat-input')).toBeDisabled()
     expect(workspace).toHaveValue('current')
     expect(JSON.parse(calls.find((call) => call.url === '/api/chats')?.body ?? '{}')).toEqual({
       zone: PREVIEW.zone,
-      botId: PREVIEW.botId,
+      taskId: PREVIEW.taskId,
       chatId: PREVIEW.chatId,
       expectedName: PREVIEW.name,
       chatNameRule: PREVIEW.chatNameRule,
@@ -397,9 +397,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     let resolveRetry!: (response: Response) => void
     const retryResponse = new Promise<Response>((resolve) => { resolveRetry = resolve })
     const { calls } = mockFetch((url, method) => {
-      if (url === '/api/bots') {
+      if (url === '/api/tasks') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
         })
       }
@@ -437,8 +437,8 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(workspace).toBeEnabled()
     expect(rule).toBeEnabled()
     expect(input).toBeEnabled()
-    expect(within(dialog).getByTestId('bot')).toBeEnabled()
-    expect(within(dialog).getByTestId('bot')).toHaveValue(BOT.id)
+    expect(within(dialog).getByTestId('task')).toBeEnabled()
+    expect(within(dialog).getByTestId('task')).toHaveValue(TASK.id)
     expect(input).toHaveValue('保留我的初始指示')
     expect(rule).toHaveValue(expectedRule)
     expect(within(dialog).getByTestId('chat-name-preview')).toHaveTextContent(expectedName)
@@ -454,9 +454,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
     const bodies = calls.filter((call) => call.url === '/api/chats').map((call) => JSON.parse(call.body ?? '{}'))
     expect(bodies).toEqual([
-      { zone: PREVIEW.zone, botId: BOT.id, chatId: PREVIEW.chatId,
+      { zone: PREVIEW.zone, taskId: TASK.id, chatId: PREVIEW.chatId,
         expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: 'current' },
-      { zone: PREVIEW.zone, botId: BOT.id, chatId: PREVIEW.chatId,
+      { zone: PREVIEW.zone, taskId: TASK.id, chatId: PREVIEW.chatId,
         expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: target },
     ])
     expect(calls.filter((call) => call.url === '/api/chats/preview')).toHaveLength(1)
@@ -472,7 +472,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     await within(dialog).findByTestId('chat-create-failure')
     for (const control of [
       within(dialog).getByTestId('chat-create-submit'),
-      within(dialog).getByTestId('bot'),
+      within(dialog).getByTestId('task'),
       within(dialog).getByTestId('chat-input'),
       within(dialog).getByRole('textbox', { name: /本次 Chat 名称/ }),
       within(dialog).getByRole('combobox', { name: 'Herdr Workspace' }),
@@ -490,9 +490,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
       }
-      if (url === '/api/bots' && method === 'GET') {
+      if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
         })
       }
@@ -545,9 +545,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
       }
-      if (url === '/api/bots' && method === 'GET') {
+      if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
-          bots: [BOT],
+          tasks: [TASK],
           options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
         })
       }

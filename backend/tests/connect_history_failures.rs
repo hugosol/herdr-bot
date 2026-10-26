@@ -78,12 +78,22 @@ async fn unreadable_and_invalid_storage_are_errors_and_never_overwritten() {
     assert_eq!(register(&server, "preserved-native-id", "Must not replace").await["historySaved"], false);
     drop(locked);
     assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), original);
-    std::fs::write(&config.sessions.history_file, b"invalid history content\n").unwrap();
-    let response = get_over_tcp(server.addr(), "/api/sessions/history").await;
-    assert_eq!(response.status, 500);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], "history-unreadable");
-    assert_eq!(register(&server, "unexpected-new-id", "Must not save").await["historySaved"], false);
-    assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), b"invalid history content\n");
+    let mut invalid_documents = vec![b"invalid history content\n".to_vec()];
+    for legacy_source in [json!("opaque-original-id"), Value::Null] {
+        let mut legacy: Value = serde_json::from_slice(&original).unwrap();
+        legacy[0]["sourceBotId"] = legacy_source;
+        // A new association alongside the retired key must not hide unmigrated data.
+        legacy[0]["sourceTaskId"] = json!("opaque-original-id");
+        invalid_documents.push(serde_json::to_vec(&legacy).unwrap());
+    }
+    for invalid in invalid_documents {
+        std::fs::write(&config.sessions.history_file, &invalid).unwrap();
+        let response = get_over_tcp(server.addr(), "/api/sessions/history").await;
+        assert_eq!(response.status, 500);
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], "history-unreadable");
+        assert_eq!(register(&server, "unexpected-new-id", "Must not save").await["historySaved"], false);
+        assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), invalid);
+    }
     std::fs::write(&config.sessions.history_file, original).unwrap();
     drop(server);
     let restarted = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;

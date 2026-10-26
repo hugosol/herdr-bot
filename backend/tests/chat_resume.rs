@@ -101,7 +101,7 @@ async fn client_can_only_select_history_not_supply_execution_content() {
     herdr.set_behavior(json!({"agents":[agent("pi","id","native-one","w1","w1:t1","w1:p1")]}));
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config,Arc::new(NeverPowerOff))).await;
     for (field,value) in [
-        ("sourceBotId",json!("attacker-source")), ("botId",json!("attacker-current-bot")),
+        ("sourceTaskId",json!("attacker-source")), ("taskId",json!("attacker-current-task")),
         ("extensions",json!(["C:/evil-extension.ts"])), ("entrypoint",json!("C:/evil-extension.ts")),
         ("envConfig",json!({"extensions":["attacker-extension"]})),
         ("executable",json!("evil.exe")), ("command",json!("Write-Output injected")),
@@ -144,28 +144,67 @@ async fn multiple_matches_use_stable_location_order_on_every_attempt() {
     assert!(calls.iter().all(|c| matches!(c["kind"].as_str().unwrap(),"agent_list" | "agent_focus" | "agent_get")));
 }
 
-// P24: unavailable evidence matters only if it could identify this kind of
-// conversation. Both scenarios have a known match; the first must still stop,
-// since otherwise it would silently omit a possible duplicate from stable choice.
+// A broken candidate must not hide valid matches, regardless of enumeration
+// order. Valid duplicates still use the existing stable navigation order.
 #[tokio::test]
-async fn unreadable_relevant_identity_stops_but_unrelated_agent_does_not() {
-    for (other_kind, expected_status) in [("pi",502), ("omp",200)] {
-        let root = TempDir::new("resume-unreadable");
-        let herdr = HerdrFixture::new("resume-unreadable");
+async fn invalid_candidate_identity_is_skipped_without_hiding_valid_matches() {
+    for kind in ["pi", "omp"] {
+        for fault in ["missing-file", "invalid-header", "missing-reference", "wrong-source", "empty-value", "unknown-kind", "relative-path"] {
+            let root = TempDir::new("resume-invalid-candidate");
+            let herdr = HerdrFixture::new("resume-invalid-candidate");
+            let config = config(&root, &herdr);
+            history(&config, kind, "native-one", None);
+            let path = root.path().join("broken.jsonl");
+            if fault == "invalid-header" { std::fs::write(&path, "not JSON\n").unwrap(); }
+            let mut broken = agent(kind, "path", path.to_str().unwrap(), "w0", "w0:t1", "w0:p1");
+            match fault {
+                "missing-reference" => broken["agent_session"] = Value::Null,
+                "wrong-source" => broken["agent_session"]["source"] = json!("untrusted"),
+                "empty-value" => broken["agent_session"]["value"] = json!(" "),
+                "unknown-kind" => broken["agent_session"]["kind"] = json!("unknown"),
+                "relative-path" => broken["agent_session"]["value"] = json!("relative.jsonl"),
+                _ => {}
+            }
+            let first = agent(kind, "id", "native-one", "w1", "w1:t1", "w1:p1");
+            let second = agent(kind, "id", "native-one", "w2", "w2:t1", "w2:p1");
+            let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+            for entries in [json!([broken.clone(), second.clone(), first.clone()]), json!([second, first, broken])] {
+                herdr.set_behavior(json!({"agents":entries}));
+                let reply = resume(&server, "native-one").await;
+                assert_eq!(reply.status, 200, "{kind}/{fault}: {}", reply.body);
+                let body: Value = serde_json::from_str(&reply.body).unwrap();
+                assert_eq!(body["outcome"], "located");
+                assert_eq!(body["target"]["paneId"], "w1:p1");
+                assert_eq!(body["matchCount"], 2);
+                assert!(body.get("degradations").is_none());
+            }
+            assert!(herdr.calls().iter().all(|c| matches!(c["kind"].as_str().unwrap(), "agent_list" | "agent_focus" | "agent_get")));
+            assert!(herdr.tabs().is_empty());
+        }
+    }
+}
+
+// Candidate tolerance must not swallow selected-history or navigation errors.
+#[tokio::test]
+async fn selected_identity_and_matched_navigation_errors_still_stop_lookup() {
+    for fault in ["selected-file", "navigation"] {
+        let root = TempDir::new("resume-nonskippable");
+        let herdr = HerdrFixture::new("resume-nonskippable");
         let config = config(&root, &herdr);
-        history(&config,"pi","native-one",None);
-        herdr.set_behavior(json!({"agents":[
-            agent("pi","id","native-one","w2","w2:t1","w2:p1"),
-            agent(other_kind,"path",root.path().join("unavailable.jsonl").to_str().unwrap(),"w1","w1:t1","w1:p1")
-        ]}));
-        let server = TestServer::start_app(herdr_bot::app_with_power_off(&config,Arc::new(NeverPowerOff))).await;
-        let reply = resume(&server,"native-one").await;
-        assert_eq!(reply.status,expected_status,"{}",reply.body);
+        let missing = root.path().join("selected-missing.jsonl");
+        let selected = if fault == "selected-file" { missing.to_str().unwrap() } else { "native-one" };
+        history(&config, "omp", selected, None);
+        let mut candidate = agent("omp", "id", "native-one", "w1", "w1:t1", "w1:p1");
+        if fault == "navigation" { candidate["pane_id"] = Value::Null; }
+        herdr.set_behavior(json!({"agents":[candidate]}));
+        let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+        let reply = resume(&server, selected).await;
+        assert_eq!(reply.status, 502, "{fault}: {}", reply.body);
         let body: Value = serde_json::from_str(&reply.body).unwrap();
-        if expected_status == 502 {
-            assert_eq!(body["code"],"identity-verification-failed");
-            assert_eq!(herdr.calls().len(),1);
-        } else { assert_eq!(body["outcome"],"located"); }
+        assert_eq!(body["stage"], "lookup");
+        assert_eq!(body["outcome"], "failed");
+        assert_eq!(body["code"], "identity-verification-failed");
+        assert_eq!(herdr.calls().iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["agent_list"]);
         assert!(herdr.tabs().is_empty());
     }
 }

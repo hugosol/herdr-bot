@@ -1,7 +1,7 @@
 //! Herdr 公开控制接口的生产 adapter：通过 `herdr` CLI 的新行分隔 JSON 输出执行控制命令。
 //!
 //! 这里刻意**不经过 Shell**：可执行文件与每个参数都作为独立进程参数提交，因此 Chat 名称、zone
-//! 目录、Bot prompt 与用户 input 中的引号、空格、换行或 Shell 元字符只作为数据到达 Herdr，
+//! 目录、Task prompt 与用户 input 中的引号、空格、换行或 Shell 元字符只作为数据到达 Herdr，
 //! 不会被解释成命令。选择 CLI 而不是直接连 socket 只是一个 adapter 选择；对上层而言，它只暴露
 //! Workspace 查询、Tab 创建、agent 启动/就绪、原生身份查找、已有目标聚焦与初始输入提交。
 //!
@@ -376,18 +376,7 @@ impl HerdrClient {
         let mut targets = Vec::new();
         for entry in entries {
             if entry.get("agent").and_then(Value::as_str) != Some(kind) { continue; }
-            let reference = entry.get("agent_session").filter(|reference| !reference.is_null())
-                .ok_or_else(|| native_error("matching agent kind has no verifiable native identity"))?;
-            if reference.get("agent").and_then(Value::as_str) != Some(kind)
-                || reference.get("source").and_then(Value::as_str) != Some(if kind == "omp" { "herdr:omp" } else { "herdr:pi" }) {
-                return Err(native_error("native identity agent/source is inconsistent"));
-            }
-            let value = nonempty(reference.get("value")).ok_or_else(|| native_error("native reference has no value"))?;
-            let candidate = match reference.get("kind").and_then(Value::as_str) {
-                Some("id") => std::borrow::Cow::Borrowed(value),
-                Some("path") => std::borrow::Cow::Owned(read_native_id(value, kind).await?),
-                _ => return Err(native_error("unsupported native reference kind")),
-            };
+            let Some(candidate) = candidate_native_id(entry, kind).await? else { continue; };
             if candidate == id { targets.push(NavigationTarget::from_agent(entry)?); }
         }
         // Opaque public IDs, lexicographically ordered; independent of enumeration
@@ -496,6 +485,48 @@ impl NavigationTarget {
         let field = |name| nonempty(agent.get(name)).map(str::to_owned)
             .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
         Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
+    }
+}
+
+/// Only candidate identity data is skippable. Inventory, selected-history,
+/// navigation and blocking-task failures still propagate to the caller.
+async fn candidate_native_id(entry: &Value, kind: &str) -> Result<Option<String>, HerdrError> {
+    let reference = (|| {
+        let reference = entry.get("agent_session").filter(|reference| !reference.is_null())
+            .ok_or_else(|| native_error("matching agent kind has no verifiable native identity"))?;
+        if reference.get("agent").and_then(Value::as_str) != Some(kind)
+            || reference.get("source").and_then(Value::as_str) != Some(if kind == "omp" { "herdr:omp" } else { "herdr:pi" }) {
+            return Err(native_error("native identity agent/source is inconsistent"));
+        }
+        let value = nonempty(reference.get("value")).ok_or_else(|| native_error("native reference has no value"))?;
+        match reference.get("kind").and_then(Value::as_str) {
+            Some("id") => Ok((value, false)),
+            Some("path") if std::path::Path::new(value).is_absolute() => Ok((value, true)),
+            Some("path") => Err(native_error("native reference path is not absolute")),
+            _ => Err(native_error("unsupported native reference kind")),
+        }
+    })();
+    let identity = match reference {
+        Ok((value, false)) => Ok(value.to_owned()),
+        Ok((value, true)) => {
+            let path = PathBuf::from(value);
+            let allow_title = kind == "omp";
+            let deadline = tokio::time::Instant::now() + QUERY_TIMEOUT;
+            // Await errors indicate a runtime/task failure, not bad candidate
+            // data: deliberately propagate them before handling reader results.
+            tokio::task::spawn_blocking(move || native_header(path, allow_title, deadline)).await
+                .map_err(|error| native_error(&format!("native identity reader failed: {error}")))?
+                .map(|identity| identity.session_id)
+        }
+        Err(error) => Err(error),
+    };
+    match identity {
+        Ok(id) => Ok(Some(id)),
+        Err(error) => {
+            eprintln!("[herdr-bot] warning: resume candidate skipped kind={kind} pane={:?} reference={:?}: {}",
+                entry.get("pane_id").and_then(Value::as_str), entry.get("agent_session"), error.message());
+            Ok(None)
+        }
     }
 }
 

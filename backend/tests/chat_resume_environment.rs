@@ -49,8 +49,8 @@ workspace_name = 'bot-playground'
 executable = '{}'
 [zones]
 registry_file = 'zones.json'
-[bots]
-storage_file = 'bots.json'
+[tasks]
+storage_file = 'tasks.json'
 metadata_file = 'options.toml'
 [sessions]
 history_file = 'history.json'
@@ -68,7 +68,7 @@ fn catalog(root: &Path, agent: &str, revision: &str, trigger: bool) {
     }
     fs::write(root.join("options.toml"), text).unwrap();
 }
-fn bot(agent: &str, selection: &str, name: &str) -> Value {
+fn task(agent: &str, selection: &str, name: &str) -> Value {
     json!({"name":name,"chatName":"Same name {chat.id}","agent":agent,"model":"launch-model","thinking":"high","skill":"launch-skill","prompt":"INITIAL ONLY","extensions":[selection]})
 }
 async fn post(panel: &Panel, path: &str, body: Value) -> Value {
@@ -81,9 +81,9 @@ async fn read(panel: &Panel, path: &str) -> Value {
     assert_eq!(response.status,200,"{path}: {}",response.body);
     serde_json::from_str(&response.body).unwrap()
 }
-async fn create(panel: &Panel, zone: &str, bot_id: &str) -> Value {
-    let preview = post(panel,"/api/chats/preview",json!({"zone":zone,"botId":bot_id})).await;
-    let created = post(panel,"/api/chats",json!({"zone":zone,"botId":bot_id,"chatId":preview["chatId"],"input":"USER INPUT"})).await;
+async fn create(panel: &Panel, zone: &str, task_id: &str) -> Value {
+    let preview = post(panel,"/api/chats/preview",json!({"zone":zone,"taskId":task_id})).await;
+    let created = post(panel,"/api/chats",json!({"zone":zone,"taskId":task_id,"chatId":preview["chatId"],"input":"USER INPUT"})).await;
     tokio::time::timeout(Duration::from_secs(10),async {
         loop {
             let done = read(panel,&format!("/api/chats/{}",created["id"].as_str().unwrap())).await;
@@ -141,14 +141,14 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let panel = Panel::start(root.path());
         let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
         let zone = zones["zones"][0]["path"].as_str().unwrap();
-        let saved = post(&panel,"/api/bots",bot(agent,"a","Source A")).await;
-        let id = saved["bots"][0]["id"].as_str().unwrap();
+        let saved = post(&panel,"/api/tasks",task(agent,"a","Source A")).await;
+        let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel,zone,id).await;
         history(&panel,1).await;
         let initial = herdr.calls();
         assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-a-old.ts"))]));
         assert_eq!(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()["text"],"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
-        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/bots/{id}"),Some(&bot(agent,"b","Source A renamed").to_string())).await;
+        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent,"b","Source A renamed").to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
         catalog(root.path(),agent,"current",true);
@@ -164,7 +164,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
 }
 
 // P5/P18, approved S2/S3: an independent stale optional ID must not discard
-// the valid fixed entry. Ordinary creation with the identical Bot must reject
+// the valid fixed entry. Ordinary creation with the identical Task must reject
 // before any external action; Resume must submit only the known-good literal set.
 #[tokio::test]
 async fn missing_optional_mapping_is_filtered_only_on_resume() {
@@ -177,17 +177,17 @@ async fn missing_optional_mapping_is_filtered_only_on_resume() {
         let panel = Panel::start(root.path());
         let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
         let zone = zones["zones"][0]["path"].as_str().unwrap();
-        let saved = post(&panel, "/api/bots", bot(agent, "b", "Filter source")).await;
-        let id = saved["bots"][0]["id"].as_str().unwrap();
+        let saved = post(&panel, "/api/tasks", task(agent, "b", "Filter source")).await;
+        let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel, zone, id).await;
         history(&panel, 1).await;
         let options = root.path().join("options.toml");
         fs::write(&options, fs::read_to_string(&options).unwrap().replace("id = 'b'", "id = 'not-selected'")).unwrap();
         let before = herdr.calls().len();
-        let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"botId":id})).await;
-        let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"botId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
+        let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"taskId":id})).await;
+        let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"taskId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
         assert_eq!(rejected.status, 400, "{}", rejected.body);
-        assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "bot-extension-invalid");
+        assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "task-extension-invalid");
         assert_eq!(herdr.calls().len(), before);
         let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-filter-mapping"})).await;
         assert_eq!(result["outcome"], "restored");
@@ -245,11 +245,11 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     let panel = Panel::start(root.path());
     let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
     let zone = zones["zones"][0]["path"].as_str().unwrap();
-    let saved = post(&panel, "/api/bots", bot(agent, "b", "Entry source")).await;
-    let id = saved["bots"][0]["id"].as_str().unwrap();
+    let saved = post(&panel, "/api/tasks", task(agent, "b", "Entry source")).await;
+    let id = saved["tasks"][0]["id"].as_str().unwrap();
     create(&panel, zone, id).await;
     history(&panel, 1).await;
-    let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"botId":id})).await;
+    let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"taskId":id})).await;
     let broken_file = root.path().join(format!("{agent}-{broken}-valid.ts"));
     if failure == "mapping" {
         let options = root.path().join("options.toml");
@@ -267,7 +267,7 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     let before = herdr.calls().len();
     let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-filter-entry"})).await;
     let after_resume = herdr.calls().len();
-    let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"botId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
+    let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"taskId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
     assert_eq!(rejected.status, 500, "{}", rejected.body);
     assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "extension-entrypoint-invalid");
     assert_eq!(herdr.calls().len(), after_resume);
@@ -301,8 +301,8 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         let panel = Panel::start(root.path());
         let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
         let zone = zones["zones"][0]["path"].as_str().unwrap();
-        let saved = post(&panel, "/api/bots", bot(agent, "b", "Empty source")).await;
-        create(&panel, zone, saved["bots"][0]["id"].as_str().unwrap()).await;
+        let saved = post(&panel, "/api/tasks", task(agent, "b", "Empty source")).await;
+        create(&panel, zone, saved["tasks"][0]["id"].as_str().unwrap()).await;
         history(&panel, 1).await;
         for id in ["fixed", "b"] { fs::remove_file(root.path().join(format!("{agent}-{id}-valid.ts"))).unwrap(); }
         herdr.set_behavior(json!({"native_session":null}));
@@ -331,7 +331,7 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
 // P10: save valid trigger choices before removing either the model or the Skill
 // from the current catalog. Resolving the whole preset would wrongly block
 // restoration. The external start must still receive the selected environment;
-// the same stale Bot must remain invalid for ordinary creation.
+// the same stale Task must remain invalid for ordinary creation.
 #[tokio::test]
 async fn invalid_model_or_initial_skill_does_not_block_environment_restoration() {
     for agent in ["pi", "omp"] {
@@ -344,13 +344,13 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             let panel = Panel::start(root.path());
             let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
             let zone = zones["zones"][0]["path"].as_str().unwrap().to_owned();
-            let saved = post(&panel,"/api/bots",bot(agent,"b","Source")).await;
-            let id = saved["bots"][0]["id"].as_str().unwrap();
+            let saved = post(&panel,"/api/tasks",task(agent,"b","Source")).await;
+            let id = saved["tasks"][0]["id"].as_str().unwrap();
             create(&panel,&zone,id).await;
             history(&panel,1).await;
             drop(panel);
             let options = fs::read_to_string(root.path().join("options.toml")).unwrap();
-            // Change only the catalog ID, leaving the saved Bot untouched.
+            // Change only the catalog ID, leaving the saved Task untouched.
             fs::write(root.path().join("options.toml"), options.replace(
                 if missing == "model" { "id = 'launch-model'" } else { "id = 'launch-skill'" },
                 "id = 'replacement-not-selected'",
@@ -363,11 +363,11 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             let calls = &calls[offset..];
             assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
             assert_eq!(calls.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-valid.ts")),"--extension",root.path().join(format!("{agent}-b-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
-            let preview = post(&panel,"/api/chats/preview",json!({"zone":zone,"botId":id})).await;
+            let preview = post(&panel,"/api/chats/preview",json!({"zone":zone,"taskId":id})).await;
             let before = herdr.calls().len();
-            let rejected = post_json_over_tcp(panel.addr,"/api/chats",&json!({"zone":zone,"botId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
+            let rejected = post_json_over_tcp(panel.addr,"/api/chats",&json!({"zone":zone,"taskId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
             assert_eq!(rejected.status,400,"{}",rejected.body);
-            assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"],if missing == "model" { "bot-model-invalid" } else { "bot-skill-invalid" });
+            assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"],if missing == "model" { "task-model-invalid" } else { "task-skill-invalid" });
             assert_eq!(herdr.calls().len(),before);
         }
     }
@@ -375,7 +375,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
 
 // P2/P3/P9: full identities share cwd/name/prefix but remain independent. Exercise
 // real launch intake and register in both orders and under an external identity
-// gate plus simultaneous HTTP writes. A later Bot B, forged register provenance
+// gate plus simultaneous HTTP writes. A later Task B, forged register provenance
 // or a default update must not replace A or erase first time/memo. Only a later
 // explicit launch can fill the separate source-less Chat. Resume after actual
 // process restarts is the sole observation of provenance.
@@ -394,14 +394,14 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let panel = Panel::start(root.path());
         let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
         let zone = zones["zones"][0]["path"].as_str().unwrap();
-        let saved = post(&panel,"/api/bots",bot("omp","a","Same display name")).await;
-        let source_a = saved["bots"][0]["id"].as_str().unwrap();
-        let saved = post(&panel,"/api/bots",bot("omp","b","Same display name")).await;
-        let source_b = saved["bots"][1]["id"].as_str().unwrap();
-        let sparse = json!({"cwd":" ","sessionName":" ","agentType":"","sessionFile":"relative.jsonl","sourceBotId":source_b});
+        let saved = post(&panel,"/api/tasks",task("omp","a","Same display name")).await;
+        let source_a = saved["tasks"][0]["id"].as_str().unwrap();
+        let saved = post(&panel,"/api/tasks",task("omp","b","Same display name")).await;
+        let source_b = saved["tasks"][1]["id"].as_str().unwrap();
+        let sparse = json!({"cwd":" ","sessionName":" ","agentType":"","sessionFile":"relative.jsonl","sourceTaskId":source_b});
         let first_time;
         if order == "register-first" {
-            register(&panel,target,json!({"cwd":root.path(),"sessionName":"Same name","sourceBotId":source_b})).await;
+            register(&panel,target,json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b})).await;
             let rows = history(&panel,2).await;
             first_time = rows["sessions"].as_array().unwrap().iter().find(|row| row["sessionId"] == target).unwrap()["firstRecordedAt"].clone();
             memo(&panel,target,"first memo\n保留").await;
@@ -422,7 +422,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
             let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
                 let barrier = barrier.clone();
                 let addr = panel.addr;
-                let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceBotId":source_b});
+                let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b});
                 tokio::spawn(async move {
                     barrier.wait().await;
                     let reply = post_json_over_tcp(addr,"/api/sessions/events",&json!({"sessionId":id,"kind":"register","data":data}).to_string()).await;
@@ -483,11 +483,11 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
 }
 
 // P7/P15: independently seeded legacy, external register, and real creation
-// followed by Bot deletion must all use native discovery. A fixed-only fallback
+// followed by Task deletion must all use native discovery. A fixed-only fallback
 // or a same-name/cwd source guess would leak --no-extensions or an entrypoint.
 // Approved seams: public HTTP, real process restart/disk, external CLI argv.
 #[tokio::test]
-async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() {
+async fn missing_source_and_deleted_task_use_native_discovery_without_guessing() {
     for agent in ["pi", "omp"] {
         for scenario in ["legacy", "external", "deleted"] {
             let root = TempDir::new("native discovery");
@@ -497,8 +497,8 @@ async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() 
             let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
             let panel = Panel::start(root.path());
             let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
-            let saved = post(&panel, "/api/bots", bot(agent, "a", "Same name")).await;
-            let source = saved["bots"][0]["id"].as_str().unwrap();
+            let saved = post(&panel, "/api/tasks", task(agent, "a", "Same name")).await;
+            let source = saved["tasks"][0]["id"].as_str().unwrap();
             match scenario {
                 "legacy" => fs::write(root.path().join("history.json"), serde_json::to_vec(&json!([{
                     "sessionId":"native-discovery-full-001", "sessionName":"Same name", "agentType":agent,
@@ -506,14 +506,14 @@ async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() 
                 }])).unwrap()).unwrap(),
                 "external" => register(&panel, "native-discovery-full-001", json!({
                     "sessionName":"Same name", "agentType":agent, "cwd":root.path(), "sessionFile":file,
-                    "originalWorkspaceId":"w-target", "sourceBotId":source
+                    "originalWorkspaceId":"w-target", "sourceTaskId":source
                 })).await,
                 "deleted" => {
                     create(&panel, zones["zones"][0]["path"].as_str().unwrap(), source).await;
                     history(&panel, 1).await;
-                    let reply = request_json_over_tcp(panel.addr, "DELETE", &format!("/api/bots/{source}"), None).await;
+                    let reply = request_json_over_tcp(panel.addr, "DELETE", &format!("/api/tasks/{source}"), None).await;
                     assert_eq!(reply.status, 200, "{}", reply.body);
-                    post(&panel, "/api/bots", bot(agent, "b", "Same name")).await;
+                    post(&panel, "/api/tasks", task(agent, "b", "Same name")).await;
                 }
                 _ => unreachable!(),
             }
@@ -526,7 +526,7 @@ async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() 
             assert_eq!(result["degradations"].as_array().unwrap().len(), 1, "{result}");
             let degradation = &result["degradations"][0];
             assert_eq!(degradation["element"], "extensions");
-            assert!(degradation["reason"].as_str().unwrap().contains(if scenario == "deleted" { "已删除" } else { "缺少来源 Bot" }), "{result}");
+            assert!(degradation["reason"].as_str().unwrap().contains(if scenario == "deleted" { "已删除" } else { "缺少来源 Task" }), "{result}");
             assert!(degradation["strategy"].as_str().unwrap().contains("原生默认扩展发现"), "{result}");
             let calls = herdr.calls();
             assert_eq!(calls[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],
@@ -538,7 +538,7 @@ async fn missing_source_and_deleted_bot_use_native_discovery_without_guessing() 
 }
 
 // P8/P17: public reads must not initialize or enrich storage. The independent
-// legacy fixture has no source, no name_from_zone, and no Bot/zone files.
+// legacy fixture has no source, no name_from_zone, and no Task/zone files.
 // Compare bytes AND modification time across requests and actual process restarts;
 // transient Workspace labels may change, but the persisted stable ID must not.
 #[tokio::test]
@@ -551,7 +551,8 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
     let history_file = root.path().join("history.json");
     let bytes = serde_json::to_vec_pretty(&json!([{
         "sessionId":"legacy-independent-001", "sessionName":"Same name", "agentType":"pi",
-        "cwd":root.path(), "firstRecordedAt":123, "originalWorkspaceId":"w-stable", "memo":"  unchanged\n备注  "
+        "cwd":root.path(), "firstRecordedAt":123, "originalWorkspaceId":"w-stable", "memo":"  unchanged\n备注  ",
+        "futureMetadata":{"opaque":"preserved unknown extension"}
     }])).unwrap();
     fs::write(&history_file, &bytes).unwrap();
     let modified = fs::metadata(&history_file).unwrap().modified().unwrap();
@@ -569,11 +570,11 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
             assert_eq!(row["originalWorkspaceId"], "w-stable");
             assert_eq!(row["originalWorkspaceName"], json!(label));
             assert_eq!(row["memo"], "  unchanged\n备注  ");
-            assert!(row.get("sourceBotId").is_none());
+            assert!(row.get("sourceTaskId").is_none());
             assert_eq!(fs::read(&history_file).unwrap(), bytes);
             assert_eq!(fs::metadata(&history_file).unwrap().modified().unwrap(), modified);
             assert_eq!(fs::read(root.path().join("options.toml")).unwrap(), catalog_bytes);
-            for absent in ["bots.json", "zones.json"] {
+            for absent in ["tasks.json", "zones.json"] {
                 assert!(!root.path().join(absent).exists(), "read initialized {absent}");
             }
         }
@@ -590,9 +591,9 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
 // after a successful ordinary launch, and observe HTTP plus no new external
 // Tab/start/input. A catch-all NotFound fallback would start native discovery.
 #[tokio::test]
-async fn unreadable_bot_storage_or_catalog_fails_without_start_or_repair() {
+async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
     for agent in ["pi", "omp"] {
-        for mechanism in ["bots-corrupt", "bots-unreadable", "catalog-parse", "catalog-unreadable"] {
+        for mechanism in ["tasks-corrupt", "tasks-unreadable", "catalog-parse", "catalog-unreadable"] {
             let root = TempDir::new("resume storage failures");
             let herdr = HerdrFixture::new("resume storage failure herdr");
             configure(root.path(), &herdr);
@@ -600,11 +601,11 @@ async fn unreadable_bot_storage_or_catalog_fails_without_start_or_repair() {
             native(root.path(), &herdr, agent, "native-error-full-001");
             let panel = Panel::start(root.path());
             let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
-            let saved = post(&panel, "/api/bots", bot(agent, "a", "Source")).await;
-            create(&panel, zones["zones"][0]["path"].as_str().unwrap(), saved["bots"][0]["id"].as_str().unwrap()).await;
+            let saved = post(&panel, "/api/tasks", task(agent, "a", "Source")).await;
+            create(&panel, zones["zones"][0]["path"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
             history(&panel, 1).await;
             let history_bytes = fs::read(root.path().join("history.json")).unwrap();
-            let affected = root.path().join(if mechanism.starts_with("bots") { "bots.json" } else { "options.toml" });
+            let affected = root.path().join(if mechanism.starts_with("tasks") { "tasks.json" } else { "options.toml" });
             let unreadable = mechanism.ends_with("unreadable");
             if unreadable {
                 fs::remove_file(&affected).unwrap();
@@ -620,7 +621,7 @@ async fn unreadable_bot_storage_or_catalog_fails_without_start_or_repair() {
             let result: Value = serde_json::from_str(&response.body).unwrap();
             assert_eq!(result["outcome"], "failed");
             assert_eq!(result["stage"], "settings");
-            assert_eq!(result["code"], if mechanism.starts_with("bots") { mechanism } else { "invalid-agent-settings" });
+            assert_eq!(result["code"], if mechanism.starts_with("tasks") { mechanism } else { "invalid-agent-settings" });
             assert_eq!(result["degradations"], json!([]), "a read error must not select discovery: {result}");
             assert!(!herdr.calls()[offset..].iter().any(|call| ["tab_create", "agent_start", "agent_prompt", "agent_input"].contains(&call["kind"].as_str().unwrap())));
             assert_eq!(herdr.tabs().len(), tab_count);

@@ -18,7 +18,9 @@ test('delivered mobile page distinguishes lookup, identity and focus failures wi
     ['error_agent_list', 'herdr-command-failed', 'query refused'],
     ['fail_agent_focus', 'herdr-command-failed', 'Herdr 聚焦失败'],
     ['unconfirmed_focus', 'herdr-unexpected-response', 'target navigation was not confirmed'],
-    ['unreadable_identity', 'identity-verification-failed', 'native header unavailable'],
+    // Unreadable inventory candidates are skipped; the empty match then checks
+    // restoration prerequisites. This history deliberately has no usable cwd.
+    ['unreadable_identity', 'invalid-cwd', '历史工作目录缺失'],
   ] as const) {
     const agents = fault === 'unreadable_identity'
       ? [{ ...target('w9:p8'), agent_session: { agent: 'pi', source: 'herdr:pi', kind: 'path', value: path.join(path.dirname(server.configPath), 'missing-native.jsonl') } }]
@@ -28,7 +30,7 @@ test('delivered mobile page distinguishes lookup, identity and focus failures wi
     await row.getByRole('button', { name: 'Resume', exact: true }).click()
     expect((await (await response).json()).code).toBe(code)
     await expect(row.getByRole('alert')).toContainText(text)
-    await expect(row.getByRole('alert')).toContainText('尚未恢复')
+    await expect(row.getByRole('alert')).toContainText(fault === 'unreadable_identity' ? '尚未确认恢复成功' : '尚未恢复')
     await expect(row.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled()
   }
   expect(server.herdrCalls().some(call => ['tab_create', 'agent_start', 'agent_prompt'].includes(String(call.kind)))).toBe(false)

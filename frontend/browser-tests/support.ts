@@ -1,7 +1,7 @@
 /**
  * 真实浏览器验收的支撑设施：启动隔离的真实 herdr-bot 进程。
  *
- * 每个测试使用独立临时目录与 Bot 存储文件；页面、公开 HTTP 接口与进程重启都来自交付二进制，
+ * 每个测试使用独立临时目录与 Task 存储文件；页面、公开 HTTP 接口与进程重启都来自交付二进制，
  * 不经过任何前端 mock。Herdr / agent 控制不在本票范围，固定操作指向安全夹具即可。
  */
 
@@ -20,7 +20,7 @@ const binary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-bot.exe'
 const fixtures = path.join(repoRoot, 'fixtures', 'operations')
 const herdrFixtureBinary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-fixture.exe')
 
-export type BotView = {
+export type TaskView = {
   id: string
   name: string
   chatName: string
@@ -42,6 +42,8 @@ export type HerdrFixtureSetup = {
 export type StartServerOptions = {
   /** Existing record-only PowerOff shell; required for tests sending shutdown commands. */
   safeShutdown?: boolean
+  /** Keep the real process cwd separate from its configuration file. */
+  separateCwd?: boolean
   herdr?: HerdrFixtureSetup
   /** Axum 数值监听地址；普通入口只允许 127/8 或 [::1]，非回环仅供 startManualServer。 */
   listenAddr?: string
@@ -54,9 +56,10 @@ export type E2EServer = {
   storageFile: string
   metadataFile: string
   configPath: string
+  cwd: string
   /** Actual delivered backend stdout/stderr; diagnostic observation only. */
   diagnostics: () => string
-  getBots: () => Promise<{ bots: BotView[]; options: unknown }>
+  getTasks: () => Promise<{ tasks: TaskView[]; options: unknown }>
   /** 受控 Herdr 自己写下的外部调用记录。 */
   herdrCalls: () => Record<string, unknown>[]
   /** 受控 Herdr 自己写下的新建 Tab 记录。 */
@@ -145,9 +148,9 @@ function writeConfig(
       '[zones]',
       `registry_file = '${path.join(directory, 'zones.json')}'`,
       '',
-      '[bots]',
+      '[tasks]',
       `storage_file = '${storage}'`,
-      `metadata_file = '${path.join(directory, 'bot-options.toml')}'`,
+      `metadata_file = '${path.join(directory, 'task-options.toml')}'`,
       '',
     ].join('\n'),
     'utf8',
@@ -165,18 +168,18 @@ function readHerdrRecords(file: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
-async function waitForBots(baseURL: string): Promise<void> {
+async function waitForTasks(baseURL: string): Promise<void> {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseURL}/api/bots`)
+      const response = await fetch(`${baseURL}/api/tasks`)
       if (response.ok) return
     } catch {
       // 进程尚未开始监听。
     }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error(`herdr-bot 没有在 20 秒内开始提供 Bot 接口：${baseURL}`)
+  throw new Error(`herdr-bot 没有在 20 秒内开始提供 Task 接口：${baseURL}`)
 }
 
 type ServerProcess = {
@@ -186,11 +189,15 @@ type ServerProcess = {
   listening: Promise<void>
 }
 
-function startProcess(configPath: string, executable: string): ServerProcess {
+function startProcess(configPath: string, executable: string, cwd: string): ServerProcess {
   const child = spawn(executable, ['--config', configPath], {
-    cwd: path.dirname(configPath),
+    cwd,
     // The copied fixture must never inherit a developer's external data root.
-    env: { ...process.env, HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr') },
+    env: {
+      ...process.env,
+      HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr'),
+      HERDR_BOT_FIXTURE_RECORD_DIR: path.join(path.dirname(configPath), 'operations'),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
@@ -271,17 +278,19 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
   }
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot browser '))
-  const storageFile = path.join(directory, 'bots.json')
-  const metadataFile = path.join(directory, 'bot-options.toml')
+  const storageFile = path.join(directory, 'tasks.json')
+  const metadataFile = path.join(directory, 'task-options.toml')
   const herdrDirectory = path.join(directory, 'herdr')
   let herdrExecutable: string | undefined
   let running: ServerProcess | null = null
 
+  const cwd = options.separateCwd ? path.join(directory, 'process-cwd') : directory
   try {
+    fs.mkdirSync(cwd, { recursive: true })
     // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
     const extensionDirectory = path.join(directory, 'extensions')
     fs.mkdirSync(extensionDirectory)
-    const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'bot-options.toml'), 'utf8')
+    const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'task-options.toml'), 'utf8')
     fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
       const id = prefix.match(/^id = '([^']+)'/m)![1]
       const relative = `${id}.ts`
@@ -327,9 +336,9 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
     )
 
     async function start() {
-      running = startProcess(configPath, executable)
+      running = startProcess(configPath, executable, cwd)
       await running.listening
-      await waitForBots(`http://${localHost}:${running.port}`)
+      await waitForTasks(`http://${localHost}:${running.port}`)
     }
 
     const server: E2EServer = {
@@ -344,13 +353,14 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
       storageFile,
       metadataFile,
       configPath,
+      cwd,
       diagnostics() { return running?.diagnostics() ?? '' },
-      async getBots() {
-        const response = await fetch(`${this.baseURL}/api/bots`)
+      async getTasks() {
+        const response = await fetch(`${this.baseURL}/api/tasks`)
         if (!response.ok) {
-          throw new Error(`Bot 列表读取失败：HTTP ${response.status}`)
+          throw new Error(`Task 列表读取失败：HTTP ${response.status}`)
         }
-        return (await response.json()) as { bots: BotView[]; options: unknown }
+        return (await response.json()) as { tasks: TaskView[]; options: unknown }
       },
       herdrCalls() {
         return readHerdrRecords(path.join(herdrDirectory, 'calls.jsonl'))

@@ -52,14 +52,14 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
 
   await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
 
-  await page.getByTestId('tab-bots').click()
-  await expect(page.getByTestId('bot-empty')).toBeVisible()
-  await page.getByTestId('bot-create-open').click()
-  const dialog = page.getByTestId('bot-dialog')
+  await page.getByTestId('tab-tasks').click()
+  await expect(page.getByTestId('task-empty')).toBeVisible()
+  await page.getByTestId('task-create-open').click()
+  const dialog = page.getByTestId('task-dialog')
   await expect(dialog).toBeVisible()
 
   // 选中项文本与控件值一致；实际渲染颜色对深色背景保持可读对比度。
-  const model = page.getByTestId('bot-model')
+  const model = page.getByTestId('task-model')
   const initialModel = await model.evaluate((select) => {
     const control = getComputedStyle(select)
     const option = select.selectedOptions[0]
@@ -86,8 +86,8 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   expect(selectedModel.selectedText).toBe('DeepSeek-Flash')
   expect(contrastRatio(selectedModel.color, selectedModel.backgroundColor)).toBeGreaterThan(4.5)
 
-  const thinking = page.getByTestId('bot-thinking')
-  const skill = page.getByTestId('bot-skill')
+  const thinking = page.getByTestId('task-thinking')
+  const skill = page.getByTestId('task-skill')
   await expect(thinking).toHaveValue('default')
   await expect(skill).toHaveValue('')
   expect(
@@ -96,7 +96,7 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   expect(await skill.evaluate((select) => select.selectedOptions[0]?.textContent)).toBe('无')
 
   // 变量编辑：光标位于 A 与 B 之间时插入，而不是追加到末尾。
-  const chatName = page.getByTestId('bot-chat-name')
+  const chatName = page.getByTestId('task-chat-name')
   await chatName.fill('AB')
   await page.keyboard.press('ArrowLeft')
   await page.getByTestId('insert-zone-name').click()

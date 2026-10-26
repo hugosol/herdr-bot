@@ -7,7 +7,7 @@ import {
   type ChatCreation,
   type ChatPreview,
 } from './chatCreationApi'
-import { fetchBots, type Bot } from './botApi'
+import { fetchTasks, type Task } from './taskApi'
 import { renderChatNameExample } from './chatNaming'
 
 const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
@@ -51,13 +51,13 @@ function failureOutcomeText(creation: ChatCreation): string {
 /**
  * 从某个 zone 发起 Chat 的弹窗。
  *
- * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Bot。确认后页面轮询同一次创建：只有后端确认目标
+ * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Task。确认后页面轮询同一次创建：只有后端确认目标
  * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
 export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
-  const [bots, setBots] = useState<Bot[] | null>(null)
-  const [botId, setBotId] = useState('')
+  const [tasks, setTasks] = useState<Task[] | null>(null)
+  const [taskId, setTaskId] = useState('')
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
   const [chatNameRule, setChatNameRule] = useState('')
@@ -72,21 +72,21 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
   const [observationError, setObservationError] = useState<string | null>(null)
   const previewSequence = useRef(0)
 
-  // 弹窗打开时读取后端共享 Bot；没有 Bot 时明确说明，而不是让确认按钮假装可用。
+  // 弹窗打开时读取后端共享 Task；没有 Task 时明确说明，而不是让确认按钮假装可用。
   useEffect(() => {
     let cancelled = false
-    void fetchBots().then((result) => {
+    void fetchTasks().then((result) => {
       if (cancelled) return
       if (result.kind === 'ok') {
-        setBots(result.bots)
-        setBotId(result.bots[0]?.id ?? '')
+        setTasks(result.tasks)
+        setTaskId(result.tasks[0]?.id ?? '')
         setLoadError(null)
       } else {
-        setBots(null)
+        setTasks(null)
         setLoadError(
           result.kind === 'rejected'
             ? result.message
-            : '无法读取 Bot：请求没有得到可用响应。',
+            : '无法读取 Task：请求没有得到可用响应。',
         )
       }
     })
@@ -95,9 +95,9 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
     }
   }, [])
 
-  // Bot 切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
+  // Task 切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
   useEffect(() => {
-    if (botId === '') {
+    if (taskId === '') {
       setPreview(null)
       return
     }
@@ -107,7 +107,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
     setPreview(null)
     setChatNameRule('')
     setPreviewError(null)
-    void previewChat(zone, botId).then((result) => {
+    void previewChat(zone, taskId).then((result) => {
       if (previewSequence.current !== sequence) return
       setPreviewing(false)
       if (result.kind === 'ok') {
@@ -122,7 +122,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
         )
       }
     })
-  }, [zone, botId, previewRevision])
+  }, [zone, taskId, previewRevision])
 
   // 已接受的创建由后端继续；页面只观察同一次创建，直到成功或失败。
   useEffect(() => {
@@ -152,7 +152,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
 
   const name = preview === null ? '' : renderChatNameExample(
     chatNameRule,
-    preview.botName,
+    preview.taskName,
     preview.agent,
     { zoneName: preview.zoneName, chatId: preview.chatId },
   )
@@ -172,7 +172,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
     setObservationError(null)
     const result = await createChat({
       zone,
-      botId: preview.botId,
+      taskId: preview.taskId,
       chatId: preview.chatId,
       expectedName: name,
       chatNameRule,
@@ -188,7 +188,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           ? result.message
           : '无法确认创建请求结果：请求没有得到可用响应。',
       )
-      // 预览可能已过期（Bot 被编辑）：丢弃旧名称，重新从后端取一次。
+      // 预览可能已过期（Task 被编辑）：丢弃旧名称，重新从后端取一次。
       setPreview(null)
       setPreviewRevision((revision) => revision + 1)
     }
@@ -196,7 +196,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
 
   const canSubmit =
     preview !== null && validName && !previewing && !submitting &&
-    (creation === null || workspaceFailed) && bots !== null
+    (creation === null || workspaceFailed) && tasks !== null
 
   return (
     <div className="zone-modal">
@@ -212,7 +212,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
         <p className="zone-dialog__hint">
           新 Chat 会在所选 Herdr Workspace 中新建独立 Tab；默认使用服务端配置，当前按 zone 目录名匹配。
           无论选择哪项，都以所选 zone 的目录作为工作目录。
-          创建前自动检查 Bot 的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自 Bot。
+          创建前自动检查 Task 的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自 Task。
           文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
         </p>
 
@@ -220,21 +220,21 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           zone：<code>{zone}</code>
         </p>
 
-        <label className="zone-form__label" htmlFor="bot">
-          Bot
+        <label className="zone-form__label" htmlFor="task">
+          Task
         </label>
         <select
-          id="bot"
+          id="task"
           className="zone-form__input zone-form__select"
-          data-testid="bot"
-          value={botId}
-          onChange={(event) => setBotId(event.target.value)}
-          disabled={bots === null || submitting || running || finished}
+          data-testid="task"
+          value={taskId}
+          onChange={(event) => setTaskId(event.target.value)}
+          disabled={tasks === null || submitting || running || finished}
         >
-          {bots !== null && bots.length === 0 && <option value="">没有可用的 Bot</option>}
-          {(bots ?? []).map((bot) => (
-            <option key={bot.id} value={bot.id}>
-              {bot.name}（{bot.agent}）
+          {tasks !== null && tasks.length === 0 && <option value="">没有可用的 Task</option>}
+          {(tasks ?? []).map((task) => (
+            <option key={task.id} value={task.id}>
+              {task.name}（{task.agent}）
             </option>
           ))}
         </select>
@@ -285,7 +285,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           aria-describedby="chat-name-hint"
         />
         <p id="chat-name-hint" className="zone-dialog__hint">
-          可修改固定文字，保留的占位符会自动转换；仅影响本次创建，不修改 Bot。
+          可修改固定文字，保留的占位符会自动转换；仅影响本次创建，不修改 Task。
         </p>
         <span className="zone-form__label">最终名称预览</span>
         <output
@@ -300,7 +300,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
               ? name || '请输入名称规则'
               : previewError !== null
                 ? '名称暂不可用'
-                : '选择 Bot 后显示'}
+                : '选择 Task 后显示'}
         </output>
         {preview !== null && !previewing && !validName && (
           <p className="zone-feedback" role="alert">名称必须是非空单行文字。</p>

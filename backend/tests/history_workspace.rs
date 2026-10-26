@@ -11,12 +11,12 @@ fn config(root: &TempDir, herdr: &HerdrFixture) -> herdr_bot::Config {
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
+    config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
-    config.bots.metadata_file = root.path().join("catalog.toml");
+    config.tasks.metadata_file = root.path().join("catalog.toml");
     let integration = root.path().join("required-pi.ts");
     std::fs::write(&integration, "// Controlled mandatory integration entrypoint").unwrap();
-    std::fs::write(&config.bots.metadata_file, format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file, format!("skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-state'\nlabel = 'Required integration'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
     config
 }
 async fn start(config: &herdr_bot::Config) -> TestServer {
@@ -40,9 +40,9 @@ async fn register(server: &TestServer, root: &TempDir, id: &str, origin: Option<
 fn native(herdr: &HerdrFixture, root: &TempDir, id: &str) {
     herdr.set_behavior(json!({"native_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":id},"native_cwd":root.path()}));
 }
-async fn create_chat(server: &TestServer, zone: &str, bot: &str) {
-    let preview = post(server, "/api/chats/preview", json!({"zone":zone,"botId":bot})).await;
-    let accepted = post(server, "/api/chats", json!({"zone":zone,"botId":bot,"chatId":preview["chatId"],"expectedName":preview["name"],"input":"test"})).await;
+async fn create_chat(server: &TestServer, zone: &str, task: &str) {
+    let preview = post(server, "/api/chats/preview", json!({"zone":zone,"taskId":task})).await;
+    let accepted = post(server, "/api/chats", json!({"zone":zone,"taskId":task,"chatId":preview["chatId"],"expectedName":preview["name"],"input":"test"})).await;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         let view = get(server, &format!("/api/chats/{}", accepted["id"].as_str().unwrap())).await;
@@ -74,16 +74,16 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     let server = start(&config).await;
     let zones = post(&server, "/api/zones", json!({"path":root.path()})).await;
     let zone = zones["zones"][0]["path"].as_str().unwrap();
-    let bots = post(&server, "/api/bots", json!({"name":"Same name","chatName":"Same name","agent":"pi","model":"default","thinking":"default","prompt":"","extensions":[]})).await;
-    let bot = bots["bots"][0]["id"].as_str().unwrap();
+    let tasks = post(&server, "/api/tasks", json!({"name":"Same name","chatName":"Same name","agent":"pi","model":"default","thinking":"default","prompt":"","extensions":[]})).await;
+    let task = tasks["tasks"][0]["id"].as_str().unwrap();
     native(&herdr, &root, "native-full-001");
-    create_chat(&server, zone, bot).await;
+    create_chat(&server, zone, task).await;
     let history = wait_identities(&server, &["native-full-001"]).await;
     assert_eq!(history["sessions"][0]["originalWorkspaceId"], "w-other");
     let memo = common::request_json_over_tcp(server.addr(), "PUT", "/api/sessions/history/memo",
         Some(&json!({"sessionId":"native-full-001","memo":"  shared note\n第二行  "}).to_string())).await;
     assert_eq!(memo.status, 200, "{}", memo.body);
-    create_chat(&server, zone, bot).await;
+    create_chat(&server, zone, task).await;
     // Collection is asynchronous; this read waits for both confirmed agent_gets.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     while herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count() < 2 {
@@ -93,7 +93,7 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     register(&server, &root, "native-full-001", Some("w-target")).await;
     wait_identities(&server, &["native-full-001"]).await;
     native(&herdr, &root, "native-full-002");
-    create_chat(&server, zone, bot).await;
+    create_chat(&server, zone, task).await;
     wait_identities(&server, &["native-full-001", "native-full-002"]).await;
     register(&server, &root, "native-full-002", None).await;
     for id in ["native-full-001", "native-full-002"] {

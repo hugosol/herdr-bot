@@ -12,11 +12,11 @@ fn setup(root: &TempDir, herdr: &HerdrFixture, kind: &str) -> herdr_bot::Config 
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
-    config.bots.metadata_file = root.path().join("options.toml");
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.tasks.metadata_file = root.path().join("options.toml");
     let integration = root.path().join("fixed-integration.ts");
     std::fs::write(&integration, "// controlled fixed integration").unwrap();
-    std::fs::write(&config.bots.metadata_file, format!("skills = []\n[[agents]]\nid = '{kind}'\nlabel = '{kind}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'fixed'\nlabel = 'Required integration'\nagent = '{kind}'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file, format!("skills = []\n[[agents]]\nid = '{kind}'\nlabel = '{kind}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'fixed'\nlabel = 'Required integration'\nagent = '{kind}'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
     std::fs::write(&config.sessions.history_file, json!([{"sessionId":"timeout-native","agentType":kind,"cwd":root.path(),"firstRecordedAt":1}]).to_string()).unwrap();
     config
 }
@@ -137,19 +137,12 @@ async fn pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_looku
         let queries = herdr.calls().iter().filter(|c| c["kind"] == "agent_list").count();
         assert_eq!(queries, 1, "busy operation did not query or queue");
         target["agent_session"] = json!({"agent":kind,"source":format!("herdr:{kind}"),"kind":"id","value":"timeout-native"});
-        // P19/P20/P24: a new operation must not bypass an uncertain lookup,
-        // an unreadable same-kind identity or a refused focus by replaying launch.
-        for (fault, stage, code) in [("query","lookup","herdr-command-failed"), ("identity","lookup","identity-verification-failed"), ("focus","focus","herdr-command-failed")] {
-            let mut candidate = target.clone();
-            let mut behavior = json!({"agents":[candidate]});
-            match fault {
-                "query" => behavior["fail_agent_list"] = json!(true),
-                "identity" => {
-                    candidate["agent_session"] = json!({"agent":kind,"source":format!("herdr:{kind}"),"kind":"path","value":root.path().join("unreadable-native.jsonl")});
-                    behavior["agents"] = json!([candidate]);
-                },
-                _ => behavior["fail_agent_focus"] = json!(true),
-            }
+        // P19/P20: query and focus failures still stop a new operation without
+        // replaying launch. Bad candidate identities are now skipped separately.
+        for (fault, stage, code) in [("query","lookup","herdr-command-failed"), ("focus","focus","herdr-command-failed")] {
+            let mut behavior = json!({"agents":[target.clone()]});
+            if fault == "query" { behavior["fail_agent_list"] = json!(true); }
+            else { behavior["fail_agent_focus"] = json!(true); }
             herdr.set_behavior(behavior);
             let reply = resume(addr).await;
             assert_eq!(reply.status, 502, "{kind}/{fault}: {}", reply.body);
@@ -161,7 +154,7 @@ async fn pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_looku
         let release = root.path().join("release-retry");
         herdr.set_behavior(json!({"agents":[target],"agent_list_gate":{"wait_for_file":release}}));
         let retry = tokio::spawn(resume(addr));
-        wait_call(&herdr, "agent_list", 5).await;
+        wait_call(&herdr, "agent_list", 4).await;
         busy(addr).await;
         std::fs::write(&release, b"release").unwrap();
         let reply = retry.await.unwrap();
@@ -170,7 +163,7 @@ async fn pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_looku
         assert_eq!(located["outcome"], "located");
         assert_eq!(located["target"], body["target"]);
         assert_eq!(std::fs::read_to_string(herdr.path().join("focused.json")).unwrap(), target["pane_id"].to_string());
-        assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_list").count(), 5);
+        assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_list").count(), 4);
         assert_retained(&herdr);
     }
 }

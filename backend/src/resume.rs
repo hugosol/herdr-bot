@@ -1,5 +1,5 @@
 //! Resume first locates a native conversation. Only a successful empty query
-//! permits a new process. Restoration loads the latest trusted Bot environment,
+//! permits a new process. Restoration loads the latest trusted Task environment,
 //! but never submits input or replays launch-only trigger configuration.
 use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Response}};
 use serde::Deserialize;
@@ -124,7 +124,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
     }
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(feedback, label, "focus", error.code(), &error.message(), Some(&target)); }
     feedback.response(StatusCode::OK, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,
-        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Bot 预设。")}))
+        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。")}))
 }
 
 // Recovery policy and feedback live together, independently of history enrichment.
@@ -149,34 +149,34 @@ mod degradation {
         }
 
         pub(super) async fn environment_args(&mut self, state: &AppState, selected: &crate::history::HistorySelection, kind: &str) -> Result<Vec<String>, (&'static str, String)> {
-            use crate::bots::{Agent, BotError};
+            use crate::tasks::{Agent, TaskError};
             let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
-            let bot = match selected.source_bot_id.as_deref() {
-                Some(id) => match state.bots.get(id).await {
-                    Ok(bot) => Some(bot),
-                    Err(BotError::NotFound) => {
-                        self.record("extensions", format!("来源 Bot 已删除（ID {id}，成功读取存储确认不存在）。"),
-                            "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。".into());
+            let task = match selected.source_task_id.as_deref() {
+                Some(id) => match state.tasks.get(id).await {
+                    Ok(task) => Some(task),
+                    Err(TaskError::NotFound) => {
+                        self.record("extensions", format!("来源 Task 已删除（ID {id}，成功读取存储确认不存在）。"),
+                            "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定／可选扩展。".into());
                         None
                     }
                     Err(error) => return Err((error.code(), error.message())),
                 },
                 None => {
-                    self.record("extensions", "历史记录缺少来源 Bot 关联；不按名称、cwd 或当前 Bot 推测来源。".into(),
-                        "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Bot 固定／可选扩展。".into());
+                    self.record("extensions", "历史记录缺少来源 Task 关联；不按名称、cwd 或当前 Task 推测来源。".into(),
+                        "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定／可选扩展。".into());
                     None
                 }
             };
-            let Some(bot) = bot else { return Ok(Vec::new()); };
-            if bot.agent != agent {
-                return Err(("bot-agent-mismatch", "来源 Bot 的 agent 类型与所选历史不一致；尚未恢复。".into()));
+            let Some(task) = task else { return Ok(Vec::new()); };
+            if task.agent != agent {
+                return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
-            let catalog = state.bots.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            let env = self.environment(&catalog, agent, &bot.env.extensions);
+            let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
+            let env = self.environment(&catalog, agent, &task.env.extensions);
             Ok(crate::chats::agent_launch_args(&env, None))
         }
 
-        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::bots::Agent, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
+        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::tasks::Agent, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
             use crate::catalog::{ExtensionKind, ResolvedEnvConfig};
             for id in selections {
                 if !catalog.extensions.iter().any(|extension| extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional) {
