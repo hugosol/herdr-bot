@@ -288,6 +288,8 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))
         .route("/api/scheduler/maps/{name}/nodes/save", post(scheduler::save_node))
+        .route("/api/scheduler/maps/{name}/nodes/check-delete", post(scheduler::check_delete_node))
+        .route("/api/scheduler/maps/{name}/nodes/delete", post(scheduler::delete_node))
         .route("/api/scheduler/templates", get(scheduler::list_templates))
         .route("/api/scheduler/templates/new", get(scheduler::new_template))
         .route("/api/scheduler/templates/edit", post(scheduler::edit_template))
