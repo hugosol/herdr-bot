@@ -11,7 +11,7 @@ Label: wayfinder:map
 - 基线：[第二阶段交接计划](../workflow-map-runtime-tracer-implementation-plan.md)。它是设计输入，不是已实现能力证明；本次确认的范围变化见下文，不能机械沿用旧文的排除项。
 - 每次会话遵循 wayfinder；grilling 票据使用 grilling 与 domain-modeling。发布决定使用 lighthouse，随后使用 backtracer。一次会话最多解决一张非研究票据。
 - 术语遵循 [GLOSSARY](../../GLOSSARY.md)：Map 是静态定义，Bot 是业务能力定义，Task 是发起预设，Chat 是实际对话。管理角色不等于 Bot 定义。
-- 本次只是 charting：下列内容是用户确认的努力边界与讨论恢复上下文，不是已解决的设计票据。各票据仍须产出自己的 Lighthouse 权威；Decisions so far 暂为空。
+- 下列努力边界来自建图阶段；已发布决定以 Decisions so far 链接的 Lighthouse 为权威。部分发布不代表源票全部完成，也不代表产品能力已实现。
 
 ### 已确认的努力边界
 
@@ -22,20 +22,23 @@ Label: wayfinder:map
 - 首版无额外业务质量校验。用户原话：“基本上只要是node能正常传达完成信号即可，不会有额外的校验。”完成、交付和放行如何机械衔接仍由对应票据决定。
 - extension 必须覆盖节点故障后的暂停、重试、结束操作，不仅预留空入口。自动策略与可调用执行能力分开；不因旧计划禁止自动重试而删掉管理者调用重试的能力。
 - 暂停等待人类主动监控与处理；不建专门人工审批／通知／接管系统。人类处理后给管理者 Chat 发消息，由管理者通过工具继续、重试或完成。暂停阻止新的派发，已有执行仍可反馈；恢复与“直接完成”的精确定义尚未确定。
-- 首版提供停止 Map 的工具入口，以 graceful shutdown 为设计方向；是否通知活动节点、等待多久及终态语义留待决定。不把 Run 停止等同于所有外部 Chat 已退出。
+- 停止新派发的需求由 pause／resume 承接，不再提供独立 stop 或 graceful shutdown 生命周期；不保证活动 Chat 退出。Q66 已明确修订原停止入口要求，权威见[停止生命周期范围处置](lighthouse/06-stop-lifecycle.md)。
 - 通用协作模块覆盖本次 Run 参与者之间的协作消息，包括指示、问题、回复、进度、交付通知和执行反馈；不接管完整 Chat transcript、模型流式输出或宿主心跳。用户最后一轮明确确认此范围。
 - 运行内核保持业务无关；首版执行接入限定 Task → omp Chat，不建设任意宿主插件平台。
 
 ### 暂定方案与未决输入
 
-- 暂定由管理者 Chat 直接运行 Map，不强制经过管理 Bot；用户要求 Bot／Task／Chat 绑定关系确定后回顾此方案。
-- 重试策略是否属于 Map 未决定；新执行身份、原 Chat 复用、旧反馈处理也未批准，不将先前建议当作结论。
+- 管理角色的绑定回顾已完成，见下方绑定决策；不再作为暂定方案。
+- 重试策略字段与循环范围已由[字段契约](lighthouse/02-map-definition-contract.md)收口；新执行身份、原 Chat 复用、旧反馈处理仍由状态机和故障票据决定。
 - 判断在当前管理者会话还是另开会话未决定。
 - 用户要求逐项讨论：Map JSON 覆盖性；管理者工具与状态流转；运行文件与内存一致性；chat 类型 Bot 的 node → Bot → Task → Chat 链；通用消息协作模块。下方均有对应票据。
 
 ## Decisions so far
 
-尚无已完成票据或已发布 Lighthouse；不把建图阶段的暂定方案当作已决契约。
+- [Bot、Task、Chat 与管理角色的绑定](lighthouse/01-execution-binding.md)：能力发现与执行分层、直接启动管理者、独立 Chat、统一 Workspace 及启动检查已确认；配置不变是本版前提。
+- [Map、Bot 与运行配置的契约边界](lighthouse/02-map-definition-contract.md)：阶段化 Bot 文档、Task 绑定、node 输入与位置、保存／启动校验及版本和示例处置已确定；管理配置、重试策略与循环范围边界已收口。
+
+- [运行状态机、管理者工具与决策 seam](lighthouse/03-runtime-state-operations.md)：已确定状态驱动管理者、单运行工具 action、独立完成／放行、逐项串行批量派发、失败记录与核实恢复边界、暂停及显式成功结束；通信与恢复细则按后续票据分工。
 
 ## Decision tickets
 
@@ -59,8 +62,10 @@ Label: wayfinder:map
 
 ## Out of scope
 
+- [停止 Map 与 graceful shutdown 生命周期](decision/06-stop-lifecycle.md)：独立停止设计不再需要，暂停承接停止新派发需求；[确认处置与依赖审查](lighthouse/06-stop-lifecycle.md)。依赖本票的持久化、接入、观察、交接票据改为消费运行状态机的暂停／恢复／成功结束输入；现有依赖行保留处置追踪，不将本票 resolved 当作 graceful shutdown 已设计完成，其他未解决前置仍阻塞。
+
 - 产品实现、实施票据执行、真实 Agent 运行验收：由后续实施阶段完成，本地图提供设计与验收契约。
-- LLM Plan、运行中改图、循环、定时调度、自动故障恢复及重启自动续跑。
+- LLM Plan（包括自动规划与 node 填写的过程编排）、运行中改图、专门建设循环能力、定时调度、自动故障恢复及重启自动续跑；循环排除项的收窄与合法动作组合边界见[字段契约](lighthouse/02-map-definition-contract.md)。
 - 专门的人工审批／通知／接管产品功能；不排除人类通过已有 Chat 参与故障处理。
 - 非 Chat 执行 Adapter、非 omp 宿主实现、通用插件市场和业务质量校验平台。
 - 完整聊天基础设施、transcript 汇总、通用事件总线平台及分布式多写入者运行存储。

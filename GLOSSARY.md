@@ -117,7 +117,7 @@ _Avoid_: 运行实例, Chat, 执行路由
 _Avoid_: 执行实例, Task, 运行中的任务
 
 **Bot**:
-跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Task、运行中的 agent 或实际对话，也不是已实现执行能力的证明。
+面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，说明何时选用、能解决什么问题、调用需要什么信息及预期输出；其能力可由 LLM 驱动自主完成，node 是在具体流程中对该能力的工作安排。它不是 Task、运行中的 agent 或 Chat，能力声明也不是已实现执行能力的证明。
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
 
 **前置依赖（blocked_by）**:

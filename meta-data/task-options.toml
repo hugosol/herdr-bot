@@ -45,6 +45,10 @@ native_name = 'teach'
 id = 'code-review'
 label = '/code-review'
 native_name = 'code-review'
+[[skills]]
+id = 'wayfinder'
+label = '/wayfinder'
+native_name = 'wayfinder'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
 # --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
