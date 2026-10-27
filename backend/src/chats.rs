@@ -282,7 +282,7 @@ pub async fn run_creation(
     };
 
     let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, &zone, &name).await {
+    let created = match herdr.create_tab(&workspace.id, Some(&zone), &name).await {
         Ok(created) => created,
         Err(error) => {
             fail(&job, FailureStage::Tab, &error).await;

@@ -185,7 +185,8 @@ fn workspace_list(args: &[String]) {
 fn tab_create(args: &[String]) {
     let behavior = behavior();
     let workspace = flag_value(args, "--workspace").unwrap_or_default();
-    let cwd = flag_value(args, "--cwd").unwrap_or_default();
+    let cwd = flag_value(args, "--cwd").unwrap_or_else(|| behavior.get("default_cwd").and_then(Value::as_str).map(str::to_owned)
+        .unwrap_or_else(|| env::current_dir().unwrap().to_string_lossy().into_owned()));
     let label = flag_value(args, "--label").unwrap_or_default();
     record(
         "calls.jsonl",

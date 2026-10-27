@@ -9,7 +9,7 @@
 //! 只表示 Herdr 接受了那一步；`agent.start` 的 CLI 语义是目标 agent 已可交互，`agent.prompt`
 //! 只表示提交被接受，不表示模型完成任务。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -212,29 +212,52 @@ impl HerdrClient {
             Ok(original)
     }
 
-    /// 在指定 Workspace 中新建 Tab，并把 cwd 显式设为 zone 目录。
+    /// Only exact checkout metadata proves ownership; labels and path basenames do not.
+    pub(crate) async fn main_worktree_for(&self, cwd: &str, timeout: Duration) -> Result<Option<String>, HerdrError> {
+        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
+            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
+        let mut roots = Vec::new();
+        for entry in entries {
+            let Some(checkout) = nonempty(entry.pointer("/worktree/checkout_path")) else { continue; };
+            if !crate::zones::same_path(&crate::zones::display_path(Path::new(checkout)), &crate::zones::display_path(Path::new(cwd))) { continue; }
+            let Some(key) = nonempty(entry.pointer("/worktree/repo_key")) else { continue; };
+            let key = PathBuf::from(key);
+            if !key.is_absolute() || !key.is_dir() { continue; }
+            let root = tokio::task::spawn_blocking(move || {
+                let output = crate::git::run_git(&key, &["worktree", "list", "--porcelain", "-z"], timeout).ok()?;
+                if !output.status.success() { return None; }
+                let text = std::str::from_utf8(&output.stdout).ok()?;
+                let mut fields = text.split('\0');
+                let root = fields.next()?.strip_prefix("worktree ")?;
+                if fields.take_while(|field| !field.is_empty()).any(|field| field == "bare") { return None; }
+                let root = crate::zones::display_path(Path::new(root));
+                (Path::new(&root).is_absolute() && Path::new(&root).is_dir()).then_some(root)
+            }).await.ok().flatten();
+            if let Some(root) = root
+                && !roots.iter().any(|known: &String| crate::zones::same_path(known, &root)) {
+                roots.push(root);
+            }
+        }
+        Ok(if roots.len() == 1 { roots.pop() } else { None })
+    }
+
+    /// 在指定 Workspace 中新建 Tab；未指定 cwd 时由 Herdr 选择目录。
     ///
     /// 不使用当前焦点 Workspace；`--no-focus` 避免创建动作改变用户在 Herdr 中的焦点。
     pub async fn create_tab(
         &self,
         workspace_id: &str,
-        cwd: &str,
+        cwd: Option<&str>,
         label: &str,
     ) -> Result<CreatedTab, HerdrError> {
+        let mut args = vec!["tab".into(), "create".into(), "--workspace".into(), workspace_id.into()];
+        if let Some(cwd) = cwd { args.extend(["--cwd".into(), cwd.into()]); }
+        args.extend(["--label".into(), label.into(), "--no-focus".into()]);
         let value = self
             .run(
                 "tab create",
-                &[
-                    "tab".into(),
-                    "create".into(),
-                    "--workspace".into(),
-                    workspace_id.into(),
-                    "--cwd".into(),
-                    cwd.into(),
-                    "--label".into(),
-                    label.into(),
-                    "--no-focus".into(),
-                ],
+                &args,
                 TAB_TIMEOUT,
             )
             .await?;

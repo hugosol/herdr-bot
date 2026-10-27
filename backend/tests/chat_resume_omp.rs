@@ -64,36 +64,23 @@ async fn omp_file_resumes_in_historical_cwd_without_task_overrides_or_input_then
     assert!(common::same_path(Path::new(actual[0]["actual_cwd"].as_str().unwrap()),root.path()));
 }
 
-// P10/P11/P12: shared preconditions must remain active for OMP. Another
-// conversation file or missing cwd cannot be permission to start a blank
-// process or silently replace the directory. Source-less history uses native
-// discovery, so Task fixed-entrypoint availability is not a precondition.
+// A different native conversation must fail before creating a target, even
+// though an unavailable historical cwd can now use the explicit fallback.
 #[tokio::test]
-async fn omp_unusable_sources_or_cwd_fail_without_creating_a_target() {
-    for scenario in ["wrong-file", "missing-cwd"] {
-        let root = TempDir::new("OMP invalid restore source");
-        let herdr = HerdrFixture::new("omp-invalid-source");
-        let native = root.path().join("another.jsonl");
-        std::fs::write(&native,format!("{}\n",json!({"type":"session","id":"another-omp-chat","cwd":root.path()}))).unwrap();
-        let config = setup(&root,&herdr,(scenario == "wrong-file").then_some(native.as_path()));
-        let (stage,code) = match scenario {
-            "missing-cwd" => {
-                let mut records: Value = serde_json::from_slice(&std::fs::read(&config.sessions.history_file).unwrap()).unwrap();
-                records[0]["cwd"] = json!(root.path().join("deleted working directory"));
-                std::fs::write(&config.sessions.history_file,records.to_string()).unwrap();
-                ("cwd","invalid-cwd")
-            }
-            _ => ("session","native-session-mismatch"),
-        };
-        let reply = resume(&config).await;
-        assert_eq!(reply.status,502,"{scenario}: {}",reply.body);
-        let body: Value = serde_json::from_str(&reply.body).unwrap();
-        assert_eq!(body["stage"],stage);
-        assert_eq!(body["code"],code);
-        assert!(body["message"].as_str().unwrap().contains("OMP 恢复"));
-        assert_eq!(herdr.calls().iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(),["agent_list"]);
-        assert!(herdr.tabs().is_empty());
-    }
+async fn omp_wrong_native_source_fails_without_creating_a_target() {
+    let root = TempDir::new("OMP invalid restore source");
+    let herdr = HerdrFixture::new("omp-invalid-source");
+    let native = root.path().join("another.jsonl");
+    std::fs::write(&native,format!("{}\n",json!({"type":"session","id":"another-omp-chat","cwd":root.path()}))).unwrap();
+    let config = setup(&root,&herdr,Some(native.as_path()));
+    let reply = resume(&config).await;
+    assert_eq!(reply.status,502,"{}",reply.body);
+    let body: Value = serde_json::from_str(&reply.body).unwrap();
+    assert_eq!(body["stage"],"session");
+    assert_eq!(body["code"],"native-session-mismatch");
+    assert!(body["message"].as_str().unwrap().contains("OMP 恢复"));
+    assert_eq!(herdr.calls().iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(),["agent_list"]);
+    assert!(herdr.tabs().is_empty());
 }
 
 // P6/P11/P12/P22: readiness alone must not report success. Blank-process timeout

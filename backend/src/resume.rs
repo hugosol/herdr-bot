@@ -82,9 +82,9 @@ async fn restore_history(state: &AppState, selected: &crate::history::HistorySel
 async fn restore_with_feedback(state: &AppState, selected: &crate::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
     use crate::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
-    let cwd = match selected.cwd.as_deref().filter(|cwd| std::path::Path::new(cwd).is_absolute() && std::path::Path::new(cwd).is_dir()) {
-        Some(cwd) => cwd,
-        None => return restore_failure(feedback, label, "cwd", "invalid-cwd", "历史工作目录缺失、不是绝对路径或已不可用。", None),
+    let cwd = match feedback.directory(&state.herdr, selected.cwd.as_deref(), state.git_timeout).await {
+        Ok(cwd) => cwd,
+        Err(error) => return restore_failure(feedback, label, "cwd", error.code(), &error.message(), None),
     };
     let (id, load) = match feedback.native_load(selected, kind).await {
         Ok(identity) => identity,
@@ -95,11 +95,11 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
         Err((code, message)) => return restore_failure(feedback, label, "settings", code, &message, None),
     };
 
-    let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref()).await {
+    let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref(), cwd.is_none()).await {
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
     };
-    let tab = match state.herdr.create_tab(&workspace.id, cwd, selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
+    let tab = match state.herdr.create_tab(&workspace.id, cwd.as_deref(), selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
         Ok(tab) => tab,
         Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
         Err(error) => return restore_failure(feedback, label, "tab", error.code(), &error.message(), None),
@@ -114,17 +114,20 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::history::Hist
         return restore_failure(feedback, label, "start", error.code(), &error.message(), Some(&target));
     }
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
+    let actual_cwd = loop {
         match state.herdr.restored_session(&name, kind, deadline).await {
-            Ok(native) if native.session_id == id && std::path::Path::new(&native.cwd) == std::path::Path::new(cwd) => break,
+            Ok(native) if native.session_id == id
+                && std::path::Path::new(&native.cwd).is_absolute()
+                && std::path::Path::new(&native.cwd).is_dir()
+                && cwd.as_deref().is_none_or(|cwd| crate::zones::same_path(&crate::zones::display_path(std::path::Path::new(&native.cwd)), &crate::zones::display_path(std::path::Path::new(cwd)))) => break native.cwd,
             Ok(_) => return restore_failure(feedback, label, "confirm", "native-session-mismatch", &format!("{label} 加载的原生对话或实际工作目录与历史不符。"), Some(&target)),
             Err(error) if tokio::time::Instant::now() >= deadline => return startup_unconfirmed(feedback, label, "confirm", &error.message(), json!(target), Some(&name)),
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
         }
-    }
+    };
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(feedback, label, "focus", error.code(), &error.message(), Some(&target)); }
-    feedback.response(StatusCode::OK, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,
-        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。")}))
+    feedback.response(StatusCode::OK, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"actualCwd":actual_cwd,
+        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，实际工作目录：{actual_cwd}。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。")}))
 }
 
 // Recovery policy and feedback live together, independently of history enrichment.
@@ -215,8 +218,23 @@ mod degradation {
             Ok((id.clone(), id))
         }
 
-        pub(super) async fn workspace(&mut self, herdr: &crate::herdr::HerdrClient, original_id: Option<&str>) -> Result<crate::herdr::Workspace, HerdrError> {
-            let reason = if let Some(id) = original_id {
+        pub(super) async fn directory(&mut self, herdr: &crate::herdr::HerdrClient, historical: Option<&str>, timeout: std::time::Duration) -> Result<Option<String>, HerdrError> {
+            if let Some(cwd) = historical.filter(|cwd| std::path::Path::new(cwd).is_absolute()) {
+                if std::path::Path::new(cwd).is_dir() { return Ok(Some(cwd.to_owned())); }
+                if let Some(root) = herdr.main_worktree_for(cwd, timeout).await? {
+                    self.record("cwd", format!("历史工作目录 {cwd} 不可用。"), format!("已依据准确工作树归属回退到主工作树 {root}；不修改历史会话元数据。"));
+                    return Ok(Some(root));
+                }
+            }
+            self.record("cwd", format!("历史工作目录 {} 缺失或不可用，无法确认可用的主工作树。", historical.unwrap_or("（未记录）")),
+                "在默认 Workspace 恢复，不指定 --cwd，由 Herdr 选择实际目录；不修改历史会话元数据。".into());
+            Ok(None)
+        }
+
+        pub(super) async fn workspace(&mut self, herdr: &crate::herdr::HerdrClient, original_id: Option<&str>, default_for_directory: bool) -> Result<crate::herdr::Workspace, HerdrError> {
+            let reason = if default_for_directory {
+                "历史目录不可用且无可靠主工作树，本次使用默认 Workspace。".into()
+            } else if let Some(id) = original_id {
                 if let Some(workspace) = herdr.workspace_by_id(id).await? { return Ok(workspace); }
                 format!("原 Workspace 已删除（ID {id}，成功查询确认）。")
             } else { "缺少原 Workspace 信息。".into() };
@@ -226,7 +244,7 @@ mod degradation {
         }
 
         pub(super) fn response(&self, status: StatusCode, mut value: serde_json::Value) -> Response {
-            value["fallback"] = json!(self.items.iter().any(|item| item.element == "workspace"));
+            value["fallback"] = json!(self.items.iter().any(|item| matches!(item.element, "workspace" | "cwd")));
             value["degradations"] = json!(self.items);
             if value["outcome"] == "restored" && !self.items.iter().any(|item| item.element == "workspace") {
                 value["message"] = json!(format!("已在原 Workspace 恢复；{}", value["message"].as_str().unwrap_or_default()));
