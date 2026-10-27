@@ -38,9 +38,10 @@ fn config_with_operations(
         shutdown: herdr_bot::ShutdownConfig::default(),
         sessions: herdr_bot::SessionsConfig::default(),
         zones: herdr_bot::ZonesConfig::default(),
-        bots: herdr_bot::BotsConfig::default(),
+        tasks: herdr_bot::TasksConfig::default(),
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
+        scheduler: herdr_bot::SchedulerConfig::default(),
     }
 }
 

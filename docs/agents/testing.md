@@ -39,6 +39,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - Vitest 的环境和并发见 [vitest.config.ts](../../frontend/vitest.config.ts)。组件使用 jsdom，纯逻辑测试可使用 Node；保持测试文件 VM 隔离，调整 worker 数而非关闭隔离。
 - 浏览器调度见 [playwright.config.ts](../../frontend/playwright.config.ts)。文件内并行场景保持每个用例独占服务、可变存储和 Herdr 副本；浏览器由 Playwright 按 worker 复用。
 - 资源受限或诊断并发问题时，给浏览器入口追加 `-- --workers=1`；Vitest 可追加 `-- --maxWorkers=4` 等覆盖参数。
+- 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。
 - `@time-contract` 标记真实预算、确认超时、迟到结果及无自主刷新／重试／重放的观察窗口，不按文件名或断言 timeout 分类。新增真实时间承诺时同步审查标签。
 
@@ -49,8 +50,30 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - **环境**：`HERDR_FIXTURE_DIR`、`HERDR_BOT_FIXTURE_RECORD_DIR` 会覆盖默认夹具位置；继承环境时保证它们不把不同用例导向同一可变目录。
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
 - **Windows 清理**：等待服务退出事件后再解释 `taskkill` 失败状态，避免把已退出但尚未被观察到的进程误报为存活；仍存活时报告错误。临时目录删除不代替进程结束。
-- **元数据**：修改 `meta-data/bot-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
+- **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
+
+## softlink（符号链接）手动验收
+
+真实文件／目录符号链接检查默认关闭，只有显式设置 `HERDR_BOT_MANUAL_SYMLINKS=1` 才尝试创建。普通浏览器回归与两个 scheduler 迁移工具的自检明确报告 manual-only 跳过；后端 zone 浏览／diff 的混合边界测试仍检查路径穿越和 junction，只跳过其中的符号链接部分，不调用 WSL 创建链接。即使当前终端已有管理员权限，未设置开关也不会自动运行符号链接检查。
+
+此开关仅用于测试，不修改产品的链接拒绝规则，不授权真实网卡监听，也不会自动提权或改变开发者模式。Windows 手动验收请使用具备符号链接权限的终端；缺少权限时仍须如实报告未验证，不能将 skip 当成通过。仅运行命令而不设置开关仍属于默认模式。
+
+以下 PowerShell 从仓库根目录执行，浏览器使用已构建的交付产物；源码更新后先按前面的构建入口构建。所有测试继续使用独占临时数据，不操作用户数据：
+
+```powershell
+$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
+$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
+try {
+  npm --prefix frontend run test:browser -- schedulerCrossOperation.spec.ts --grep 'file symbolic links' --workers=1
+  python -m unittest -v scripts/migrate-node-template-to-bot.py -k test_link_input_rejected_without_writing
+  python -m unittest -v scripts/migrate-bot-title-to-name.py -k test_symlinks_are_rejected_without_writes
+  cargo test --manifest-path backend/Cargo.toml --test zone_browse rejects_real_junctions_and_symlinks_without_reading_outside_content -- --exact --nocapture
+  cargo test --manifest-path backend/Cargo.toml --test zone_diff diff_entry_enforces_the_zone_root_boundary -- --exact --nocapture
+} finally {
+  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
+}
+```
 
 ## 网络护栏与手动验收
 

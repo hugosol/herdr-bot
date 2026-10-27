@@ -49,6 +49,8 @@ dist-ssr
 /bot-templates.json
 /bot-templates.json.tmp
 /*.pre-bot-chat
+*.pre-bot-to-task
+*.bot-to-task-migration.tmp
 
 # 旧根目录 agent 会话存储
 /bot-sessions/

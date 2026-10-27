@@ -56,7 +56,7 @@ export function FileListPanel({
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
-  // 从这一行的 zone 打开发起 Chat 弹窗；弹窗自身负责 Bot、名称预览与创建阶段。
+  // 从这一行的 zone 打开发起 Chat 弹窗；弹窗自身负责 Task、名称预览与创建阶段。
   const [chatZone, setChatZone] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [creation, setCreation] = useState<ZoneCreation>({ available: false })

@@ -9,9 +9,9 @@ import type { Locator, Page } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
 import { zoneRowFor } from './ui'
 
-const BOT = {
+const TASK = {
   name: '审查',
-  chatName: '{zone.name} · {bot.name} · {chat.id}',
+  chatName: '{zone.name} · {task.name} · {chat.id}',
   agent: 'omp',
   model: 'default',
   thinking: 'default',
@@ -62,9 +62,9 @@ async function prepareZone(baseURL: string) {
   return paths.find((candidate) => candidate.includes('alpha')) ?? zone
 }
 
-async function prepareBot(baseURL: string) {
-  const saved = await jsonPost(baseURL, '/api/bots', BOT)
-  return saved.bots[0] as { id: string }
+async function prepareTask(baseURL: string) {
+  const saved = await jsonPost(baseURL, '/api/tasks', TASK)
+  return saved.tasks[0] as { id: string }
 }
 
 async function openChatDialog(page: Page, zonePath: string) {
@@ -129,7 +129,7 @@ test('浏览器断线后，已接受的创建继续完成且页面不假报成�
     herdr: { behavior: { agent_start_delay_ms: 2_500, prompt_delay_ms: 500 } },
   })
   const zone = await prepareZone(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zone)
@@ -168,7 +168,7 @@ test('刷新页面只失去观察，不取消创建，也不承诺找回结果',
     herdr: { behavior: { agent_start_delay_ms: 200, prompt_delay_ms: 2_500 } },
   })
   const zone = await prepareZone(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zone)
@@ -202,7 +202,7 @@ test('关闭页面只失去观察，已接受的创建仍在后端完成', async
     herdr: { behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 400 } },
   })
   const zone = await prepareZone(server.baseURL)
-  await prepareBot(server.baseURL)
+  await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
 
   const dialog = await openChatDialog(page, zone)

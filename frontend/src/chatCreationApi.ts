@@ -1,7 +1,7 @@
 /**
  * 从 zone 发起 Chat 的接口客户端：页面与接口同源，请求地址直接使用相对路径。
  *
- * 后端预览提供 Bot 命名规则与真实上下文，页面本地预览本次规则编辑，创建时由后端再次校验名称。
+ * 后端预览提供 Task 命名规则与真实上下文，页面本地预览本次规则编辑，创建时由后端再次校验名称。
  * 创建请求返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
  */
 
@@ -12,10 +12,10 @@ export type ChatPreview = {
   chatId: string
   name: string
   zone: string
-  botId: string
+  taskId: string
   agent: string
   chatNameRule: string
-  botName: string
+  taskName: string
   zoneName: string
 }
 
@@ -29,7 +29,7 @@ export type ChatCreation = {
   id: string
   name: string
   zone: string
-  botId: string
+  taskId: string
   stage: ChatCreationStage
   tabId?: string
   paneId?: string
@@ -65,10 +65,10 @@ function isPreview(value: unknown): value is ChatPreview {
     isString(preview.chatId) &&
     isString(preview.name) &&
     isString(preview.zone) &&
-    isString(preview.botId) &&
+    isString(preview.taskId) &&
     isString(preview.agent) &&
     isString(preview.chatNameRule) &&
-    isString(preview.botName) &&
+    isString(preview.taskName) &&
     isString(preview.zoneName)
   )
 }
@@ -92,7 +92,7 @@ function isCreation(value: unknown): value is ChatCreation {
     isString(creation.id) &&
     isString(creation.name) &&
     isString(creation.zone) &&
-    isString(creation.botId) &&
+    isString(creation.taskId) &&
     isString(creation.stage) &&
     STAGES.includes(creation.stage as ChatCreationStage) &&
     isNullableString(creation.tabId) &&
@@ -146,14 +146,14 @@ function jsonInit(method: string, body: unknown): RequestInit {
 }
 
 /** 读取本次创建实际会使用的名称与短实例标识；不创建 Tab，也不启动 agent。 */
-export function previewChat(zone: string, botId: string): Promise<ChatResult<ChatPreview>> {
-  return request('/api/chats/preview', jsonInit('POST', { zone, botId }), isPreview)
+export function previewChat(zone: string, taskId: string): Promise<ChatResult<ChatPreview>> {
+  return request('/api/chats/preview', jsonInit('POST', { zone, taskId }), isPreview)
 }
 
 /** 接受一次创建；响应只表示后端已经接手，后续阶段由 `fetchChatCreation` 观察。 */
 export function createChat(input: {
   zone: string
-  botId: string
+  taskId: string
   chatId: string
   expectedName: string
   chatNameRule?: string

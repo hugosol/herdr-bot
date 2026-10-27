@@ -26,28 +26,28 @@ const preset = (agent: string) => ({ name: 'Same name', chatName: 'Same name', a
 // This checks submitted discovery policy, NOT real native extension loading.
 for (const agent of ['pi', 'omp']) {
   for (const scenario of ['legacy', 'external', 'deleted']) {
-    test(`${agent} ${scenario} displays native discovery reason without binding a decoy Bot`, async ({ page }) => {
+    test(`${agent} ${scenario} displays native discovery reason without binding a decoy Task`, async ({ page }) => {
       server = await startServer({ herdr: {} })
       const root = path.dirname(server.configPath)
       const id = `${agent}-independent-discovery-001`
       const file = path.join(root, `${id}.jsonl`)
       fs.writeFileSync(file, `${JSON.stringify({ type: 'session', version: 3, id, cwd: root })}\n`)
       const name = `${agent} ${scenario} history`
-      const source = (await post('/api/bots', preset(agent))).bots[0].id
+      const source = (await post('/api/tasks', preset(agent))).tasks[0].id
       server.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: file } })
       const historyFile = path.join(root, 'session-history.json')
       if (scenario === 'legacy') {
         fs.writeFileSync(historyFile, JSON.stringify([{ sessionId: id, sessionName: name, agentType: agent, cwd: root, sessionFile: file, firstRecordedAt: 123, originalWorkspaceId: 'w-target' }]))
       } else if (scenario === 'external') {
-        await post('/api/sessions/events', { sessionId: id, kind: 'register', data: { sessionName: name, agentType: agent, cwd: root, sessionFile: file, originalWorkspaceId: 'w-target', sourceBotId: source } })
+        await post('/api/sessions/events', { sessionId: id, kind: 'register', data: { sessionName: name, agentType: agent, cwd: root, sessionFile: file, originalWorkspaceId: 'w-target', sourceTaskId: source } })
       } else {
         const zone = (await post('/api/zones', { path: root })).zones[0].path
-        const preview = await post('/api/chats/preview', { zone, botId: source })
-        const created = await post('/api/chats', { zone, botId: source, chatId: preview.chatId, input: 'INITIAL ONLY' })
+        const preview = await post('/api/chats/preview', { zone, taskId: source })
+        const created = await post('/api/chats', { zone, taskId: source, chatId: preview.chatId, input: 'INITIAL ONLY' })
         await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${created.id}`)).json()).stage).toBe('succeeded')
         await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/sessions/history`)).json()).total).toBe(1)
-        expect((await fetch(`${server.baseURL}/api/bots/${source}`, { method: 'DELETE' })).status).toBe(200)
-        await post('/api/bots', preset(agent))
+        expect((await fetch(`${server.baseURL}/api/tasks/${source}`, { method: 'DELETE' })).status).toBe(200)
+        await post('/api/tasks', preset(agent))
       }
       const before = fs.readFileSync(historyFile)
       const nativeBefore = fs.readFileSync(file)
@@ -58,10 +58,10 @@ for (const agent of ['pi', 'omp']) {
       const result = await response.json()
       expect(result.outcome).toBe('restored')
       expect(result.degradations).toHaveLength(1)
-      expect(result.degradations[0]).toEqual({ element: 'extensions', reason: expect.stringContaining(scenario === 'deleted' ? '已删除' : '缺少来源 Bot'), strategy: expect.stringContaining('原生默认扩展发现') })
+      expect(result.degradations[0]).toEqual({ element: 'extensions', reason: expect.stringContaining(scenario === 'deleted' ? '已删除' : '缺少来源 Task'), strategy: expect.stringContaining('原生默认扩展发现') })
       await expect(row.getByRole('status')).toContainText(result.degradations[0].reason)
       await expect(row.getByRole('status')).toContainText('原生默认扩展发现')
-      await expect(row.getByRole('status')).toContainText('不显式追加 Bot 固定／可选扩展')
+      await expect(row.getByRole('status')).toContainText('不显式追加 Task 固定／可选扩展')
       const calls = server.herdrCalls().slice(offset)
       expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual([agent === 'pi' ? '--session' : '--resume', file])
       expect(calls.some(call => ['agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)
@@ -71,20 +71,20 @@ for (const agent of ['pi', 'omp']) {
     })
   }
 
-  // P17: independent real parse and OS-read failures, not a mocked Bot result.
-  // A catch-all deleted-Bot interpretation would wrongly create a Tab/start.
-  for (const mechanism of ['bots-corrupt', 'bots-unreadable', 'catalog-parse', 'catalog-unreadable']) {
+  // P17: independent real parse and OS-read failures, not a mocked Task result.
+  // A catch-all deleted-Task interpretation would wrongly create a Tab/start.
+  for (const mechanism of ['tasks-corrupt', 'tasks-unreadable', 'catalog-parse', 'catalog-unreadable']) {
     test(`${agent} ${mechanism} stays failed on HTTP and page without repair or launch`, async ({ page }) => {
       server = await startServer({ herdr: {} })
       const root = path.dirname(server.configPath)
-      const source = (await post('/api/bots', preset(agent))).bots[0].id
+      const source = (await post('/api/tasks', preset(agent))).tasks[0].id
       const id = `${agent}-error-independent-001`
       const native = path.join(root, `${id}.jsonl`)
       fs.writeFileSync(native, `${JSON.stringify({ type: 'session', version: 3, id, cwd: root })}\n`)
       const historyFile = path.join(root, 'session-history.json')
-      const bytes = JSON.stringify([{ sessionId: id, sessionName: 'Source read error', agentType: agent, cwd: root, sessionFile: native, firstRecordedAt: 123, originalWorkspaceId: 'w-target', sourceBotId: source }])
+      const bytes = JSON.stringify([{ sessionId: id, sessionName: 'Source read error', agentType: agent, cwd: root, sessionFile: native, firstRecordedAt: 123, originalWorkspaceId: 'w-target', sourceTaskId: source }])
       fs.writeFileSync(historyFile, bytes)
-      const affected = mechanism.startsWith('bots') ? server.storageFile : server.metadataFile
+      const affected = mechanism.startsWith('tasks') ? server.storageFile : server.metadataFile
       if (mechanism.endsWith('unreadable')) {
         fs.unlinkSync(affected)
         fs.mkdirSync(affected)
@@ -95,10 +95,10 @@ for (const agent of ['pi', 'omp']) {
       const result = await response.json()
       expect(result.outcome).toBe('failed')
       expect(result.stage).toBe('settings')
-      expect(result.code).toBe(mechanism.startsWith('bots') ? mechanism : 'invalid-agent-settings')
+      expect(result.code).toBe(mechanism.startsWith('tasks') ? mechanism : 'invalid-agent-settings')
       expect(result.degradations).toEqual([])
       await expect(row.getByRole('alert')).toContainText('尚未确认恢复成功')
-      await expect(row.getByRole('alert')).toContainText(mechanism.startsWith('bots') ? 'Bot存储文件' : '选项元数据')
+      await expect(row.getByRole('alert')).toContainText(mechanism.startsWith('tasks') ? 'Task存储文件' : '选项元数据')
       await expect(row.getByRole('status')).toHaveCount(0)
       expect(server.herdrTabs()).toHaveLength(0)
       expect(server.herdrCalls().some(call => ['agent_start', 'agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)

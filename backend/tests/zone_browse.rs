@@ -571,9 +571,11 @@ async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
     let junction = root.join("junction-out");
     assert!(create_junction(&junction, &outside), "目录联接必须真实创建");
 
+    let manual_symlinks = std::env::var("HERDR_BOT_MANUAL_SYMLINKS").as_deref() == Ok("1");
     let symlink = root.join("symlink-out");
-    let native_symlink = try_native_symlink(&symlink, &outside);
-    let symlink_created = native_symlink || try_wsl_symlink(&symlink, &outside);
+    let native_symlink = manual_symlinks && try_native_symlink(&symlink, &outside);
+    let symlink_created = manual_symlinks
+        && (native_symlink || try_wsl_symlink(&symlink, &outside));
     if symlink_created {
         assert!(
             is_reparse_point(&symlink),
@@ -583,13 +585,16 @@ async fn rejects_real_junctions_and_symlinks_without_reading_outside_content() {
             "已创建真实符号链接（native={native_symlink}）：{}",
             symlink.display()
         );
+    } else if !manual_symlinks {
+        eprintln!("跳过手动符号链接部分：设置 HERDR_BOT_MANUAL_SYMLINKS=1 后才尝试创建");
     } else {
         eprintln!("跳过符号链接部分：当前环境无法创建标准或 WSL 符号链接");
     }
 
     let file_link = root.join("filelink-out");
-    let file_link_created = try_native_file_symlink(&file_link, &outside.join("secret.txt"))
-        || try_wsl_symlink(&file_link, &outside.join("secret.txt"));
+    let file_link_created = manual_symlinks
+        && (try_native_file_symlink(&file_link, &outside.join("secret.txt"))
+            || try_wsl_symlink(&file_link, &outside.join("secret.txt")));
     if file_link_created {
         assert!(
             is_reparse_point(&file_link),

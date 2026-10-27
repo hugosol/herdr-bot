@@ -5,13 +5,13 @@ import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
-import { startServer, type E2EServer, type BotView } from './support'
+import { startServer, type E2EServer, type TaskView } from './support'
 import {
   activate,
   expectDialogInsideViewport,
   expectNoHorizontalOverflow,
   jsonPost,
-  saveBot,
+  saveTask,
   scrollToDialogAction,
   serializedChatRule,
   zoneRowFor,
@@ -20,8 +20,8 @@ import {
 /**
  * 电脑与手机尺寸下的真实浏览器工作流（P45 / H2 的自动部分）。
  *
- * 桌面与移动各用一份独立服务、独立目录和真实浏览器完成同一组操作：Bot 新增、读取、编辑、删除，
- * 以及从 zone 打开创建弹窗、选择 Bot、键盘输入、提交、观察两个阶段和成功/失败结果。移动尺寸另外
+ * 桌面与移动各用一份独立服务、独立目录和真实浏览器完成同一组操作：Task 新增、读取、编辑、删除，
+ * 以及从 zone 打开创建弹窗、选择 Task、键盘输入、提交、观察两个阶段和成功/失败结果。移动尺寸另外
  * 检查没有横向溢出、弹窗在视口内可滚动、关键控件保持触控目标，并用触摸事件点按。
  *
  * 手机实机体验（H2）仍需用户确认；本文件只证明窄屏真实浏览器的可用性，不冒充真机结论。
@@ -50,22 +50,22 @@ const PROFILES: Profile[] = [
   },
 ]
 
-const BOT = { name: '发布检查',
-chatName: '{zone.name} · {bot.name} · {agent} · {chat.id}',
+const TASK = { name: '发布检查',
+chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
 agent: 'pi',
 model: 'gpt-6.1-sol',
 thinking: 'high',
 skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
 
 const EDITED = { name: '发布检查（改）',
-chatName: '{bot.name} · {agent} · {chat.id}',
+chatName: '{task.name} · {agent} · {chat.id}',
 agent: 'omp',
 model: 'deepseek-flash',
 thinking: 'high',
 skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] }
 
-const CREATION_BOT = { name: '创建用',
-chatName: '{zone.name} · {bot.name} · {chat.id}',
+const CREATION_TASK = { name: '创建用',
+chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'omp',
 model: 'default',
 thinking: 'default',
@@ -96,7 +96,7 @@ async function prepareZone(baseURL: string) {
   return listed.zones[0].path as string
 }
 
-function botFields(view: BotView) {
+function taskFields(view: TaskView) {
   const { id: _id, ...fields } = view
   return fields
 }
@@ -138,9 +138,9 @@ async function expectTouchTargets(dialog: Locator) {
   }
 }
 
-async function openBots(page: Page, touch: boolean) {
-  await activate(page.getByTestId('tab-bots'), touch)
-  await expect(page.getByTestId('bot-empty')).toBeVisible()
+async function openTasks(page: Page, touch: boolean) {
+  await activate(page.getByTestId('tab-tasks'), touch)
+  await expect(page.getByTestId('task-empty')).toBeVisible()
 }
 
 async function openFiles(page: Page, touch: boolean) {
@@ -148,45 +148,45 @@ async function openFiles(page: Page, touch: boolean) {
   await expect(page.getByTestId('panel-files')).toBeVisible()
 }
 
-/** 通过页面新增一个 Bot，字号/触控只在移动档检查。 */
-async function addBotThroughUi(
+/** 通过页面新增一个 Task，字号/触控只在移动档检查。 */
+async function addTaskThroughUi(
   page: Page,
   options: {
     touch: boolean
     checkTouch: boolean
-    literal: typeof BOT | typeof EDITED | typeof CREATION_BOT
+    literal: typeof TASK | typeof EDITED | typeof CREATION_TASK
   },
 ) {
   const { touch, checkTouch, literal } = options
-  await activate(page.getByTestId('bot-create-open'), touch)
-  const dialog = page.getByTestId('bot-dialog')
+  await activate(page.getByTestId('task-create-open'), touch)
+  const dialog = page.getByTestId('task-dialog')
   await expect(dialog).toBeVisible()
   await expectDialogInsideViewport(dialog)
   if (checkTouch) await expectTouchTargets(dialog)
   // 取消与保存都要在视口内；窄屏下不能被主操作挤出屏幕左侧。
-  await scrollToDialogAction(dialog, page.getByTestId('bot-cancel'))
+  await scrollToDialogAction(dialog, page.getByTestId('task-cancel'))
 
   // 名称用真实键盘事件输入。
-  const name = page.getByTestId('bot-name')
+  const name = page.getByTestId('task-name')
   await name.click()
   await name.pressSequentially(literal.name)
 
-  const chatName = page.getByTestId('bot-chat-name')
+  const chatName = page.getByTestId('task-chat-name')
   await chatName.fill('')
   await activate(page.getByTestId('insert-zone-name'), touch)
-  await activate(page.getByTestId('insert-bot-name'), touch)
+  await activate(page.getByTestId('insert-task-name'), touch)
   await expect
     .poll(() => serializedChatRule(chatName))
-    .toBe('{zone.name}{bot.name}')
+    .toBe('{zone.name}{task.name}')
   await chatName.fill(literal.chatName)
 
-  await page.getByTestId('bot-agent').selectOption(literal.agent)
-  await page.getByTestId('bot-model').selectOption(literal.model)
-  await page.getByTestId('bot-thinking').selectOption(literal.thinking)
-  await page.getByTestId('bot-skill').selectOption(literal.skill ?? '')
+  await page.getByTestId('task-agent').selectOption(literal.agent)
+  await page.getByTestId('task-model').selectOption(literal.model)
+  await page.getByTestId('task-thinking').selectOption(literal.thinking)
+  await page.getByTestId('task-skill').selectOption(literal.skill ?? '')
 
   // 多行 prompt 用回车逐行输入，确认换行没有被表单或移动键盘吞掉。
-  const prompt = page.getByTestId('bot-prompt')
+  const prompt = page.getByTestId('task-prompt')
   await prompt.click()
   const lines = literal.prompt.split('\n')
   for (const [index, line] of lines.entries()) {
@@ -197,14 +197,14 @@ async function addBotThroughUi(
 
   const example = literal.chatName
     .replace('{zone.name}', 'alpha')
-    .replace('{bot.name}', literal.name)
+    .replace('{task.name}', literal.name)
     .replace('{agent}', literal.agent)
     .replace('{chat.id}', 'a7f3c2')
   await expect(page.getByTestId('chat-name-preview')).toHaveText(example)
 
-  await saveBot(page, touch)
-  await expect(page.getByTestId('bot-dialog')).toHaveCount(0)
-  await expect(page.getByTestId('bot-item')).toHaveCount(1)
+  await saveTask(page, touch)
+  await expect(page.getByTestId('task-dialog')).toHaveCount(0)
+  await expect(page.getByTestId('task-item')).toHaveCount(1)
 }
 
 for (const profile of PROFILES) {
@@ -215,7 +215,7 @@ for (const profile of PROFILES) {
       hasTouch: profile.hasTouch,
     })
 
-    test(`${profile.label}浏览器完成 Bot 管理与从 zone 发起 Chat`, { tag: '@time-contract' }, async ({ page }) => {
+    test(`${profile.label}浏览器完成 Task 管理与从 zone 发起 Chat`, { tag: '@time-contract' }, async ({ page }) => {
       server = await startServer({
         herdr: {
           behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
@@ -225,63 +225,63 @@ for (const profile of PROFILES) {
       await page.goto(server.baseURL)
       await expectNoHorizontalOverflow(page)
 
-      // Bot 新增：字段插入、配置联动、多行 prompt 与示例预览都在该尺寸可用。
-      await openBots(page, profile.hasTouch)
+      // Task 新增：字段插入、配置联动、多行 prompt 与示例预览都在该尺寸可用。
+      await openTasks(page, profile.hasTouch)
       await expectNoHorizontalOverflow(page)
-      await addBotThroughUi(page, {
+      await addTaskThroughUi(page, {
         touch: profile.hasTouch,
         checkTouch: profile.isMobile,
-        literal: BOT,
+        literal: TASK,
       })
       await expectNoHorizontalOverflow(page)
 
       // 独立客户端读取同一份已保存值（不是同页缓存）。
-      const shared = await server.getBots()
-      expect(shared.bots).toHaveLength(1)
-      expect(botFields(shared.bots[0])).toEqual(BOT)
+      const shared = await server.getTasks()
+      expect(shared.tasks).toHaveLength(1)
+      expect(taskFields(shared.tasks[0])).toEqual(TASK)
 
       // 编辑：带回已保存值，保存后独立客户端读到新字面值。
-      const row = page.getByTestId('bot-item')
-      await activate(row.getByTestId('bot-edit'), profile.hasTouch)
-      const editDialog = page.getByTestId('bot-dialog')
+      const row = page.getByTestId('task-item')
+      await activate(row.getByTestId('task-edit'), profile.hasTouch)
+      const editDialog = page.getByTestId('task-dialog')
       await expect(editDialog).toBeVisible()
       await expectDialogInsideViewport(editDialog)
-      await expect(page.getByTestId('bot-name')).toHaveValue(BOT.name)
-      await expect(page.getByTestId('bot-prompt')).toHaveValue(BOT.prompt)
+      await expect(page.getByTestId('task-name')).toHaveValue(TASK.name)
+      await expect(page.getByTestId('task-prompt')).toHaveValue(TASK.prompt)
 
-      await page.getByTestId('bot-name').fill(EDITED.name)
-      await page.getByTestId('bot-chat-name').fill(EDITED.chatName)
-      await page.getByTestId('bot-agent').selectOption(EDITED.agent)
-      await page.getByTestId('bot-model').selectOption(EDITED.model)
-      await page.getByTestId('bot-thinking').selectOption(EDITED.thinking)
-      await page.getByTestId('bot-skill').selectOption(EDITED.skill ?? '')
-      await page.getByTestId('bot-prompt').fill(EDITED.prompt)
-      await saveBot(page, profile.hasTouch)
+      await page.getByTestId('task-name').fill(EDITED.name)
+      await page.getByTestId('task-chat-name').fill(EDITED.chatName)
+      await page.getByTestId('task-agent').selectOption(EDITED.agent)
+      await page.getByTestId('task-model').selectOption(EDITED.model)
+      await page.getByTestId('task-thinking').selectOption(EDITED.thinking)
+      await page.getByTestId('task-skill').selectOption(EDITED.skill ?? '')
+      await page.getByTestId('task-prompt').fill(EDITED.prompt)
+      await saveTask(page, profile.hasTouch)
 
       await expect(row).toContainText(EDITED.name)
-      const afterEdit = await server.getBots()
-      expect(afterEdit.bots).toHaveLength(1)
-      expect(botFields(afterEdit.bots[0])).toEqual(EDITED)
+      const afterEdit = await server.getTasks()
+      expect(afterEdit.tasks).toHaveLength(1)
+      expect(taskFields(afterEdit.tasks[0])).toEqual(EDITED)
 
-      // 删除：页面与独立客户端都不再提供该 Bot。
-      await activate(row.getByTestId('bot-delete'), profile.hasTouch)
-      await expectDialogInsideViewport(page.getByTestId('bot-delete-dialog'))
-      await activate(page.getByTestId('bot-delete-confirm'), profile.hasTouch)
-      await expect(page.getByTestId('bot-empty')).toBeVisible()
-      expect((await server.getBots()).bots).toEqual([])
+      // 删除：页面与独立客户端都不再提供该 Task。
+      await activate(row.getByTestId('task-delete'), profile.hasTouch)
+      await expectDialogInsideViewport(page.getByTestId('task-delete-dialog'))
+      await activate(page.getByTestId('task-delete-confirm'), profile.hasTouch)
+      await expect(page.getByTestId('task-empty')).toBeVisible()
+      expect((await server.getTasks()).tasks).toEqual([])
       const removed = await fetch(
-        `${server.baseURL}/api/bots/${encodeURIComponent(afterEdit.bots[0].id)}`,
+        `${server.baseURL}/api/tasks/${encodeURIComponent(afterEdit.tasks[0].id)}`,
       )
       expect(removed.status).toBe(404)
 
-      // 再通过页面保存一个创建用 Bot；创建弹窗从同一份后端列表读取它。
-      await addBotThroughUi(page, {
+      // 再通过页面保存一个创建用 Task；创建弹窗从同一份后端列表读取它。
+      await addTaskThroughUi(page, {
         touch: profile.hasTouch,
         checkTouch: false,
-        literal: CREATION_BOT,
+        literal: CREATION_TASK,
       })
 
-      // 从 zone 行打开创建弹窗：绑定正确 zone，Bot 可选，名称由后端预览。
+      // 从 zone 行打开创建弹窗：绑定正确 zone，Task 可选，名称由后端预览。
       await openFiles(page, profile.hasTouch)
       const zoneRow = zoneRowFor(page, zone)
       await expect(zoneRow).toHaveCount(1)
@@ -292,7 +292,7 @@ for (const profile of PROFILES) {
       await expectDialogInsideViewport(dialog)
       if (profile.isMobile) await expectTouchTargets(dialog)
 
-      await dialog.getByTestId('bot').selectOption({ label: '创建用（omp）' })
+      await dialog.getByTestId('task').selectOption({ label: '创建用（omp）' })
       const preview = dialog.getByTestId('chat-name-preview')
       await expect(preview).toHaveText(/^alpha · 创建用 · [0-9a-f]{6}$/)
       const previewName = (await preview.textContent()) ?? ''
@@ -372,7 +372,7 @@ test.describe('移动尺寸失败结果', () => {
       herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, fail_prompt: true } },
     })
     const zone = await prepareZone(server.baseURL)
-    await jsonPost(server.baseURL, '/api/bots', CREATION_BOT)
+    await jsonPost(server.baseURL, '/api/tasks', CREATION_TASK)
 
     await page.goto(server.baseURL)
     await openFiles(page, true)

@@ -1,7 +1,7 @@
 //! Herdr 公开控制接口的生产 adapter：通过 `herdr` CLI 的新行分隔 JSON 输出执行控制命令。
 //!
 //! 这里刻意**不经过 Shell**：可执行文件与每个参数都作为独立进程参数提交，因此 Chat 名称、zone
-//! 目录、Bot prompt 与用户 input 中的引号、空格、换行或 Shell 元字符只作为数据到达 Herdr，
+//! 目录、Task prompt 与用户 input 中的引号、空格、换行或 Shell 元字符只作为数据到达 Herdr，
 //! 不会被解释成命令。选择 CLI 而不是直接连 socket 只是一个 adapter 选择；对上层而言，它只暴露
 //! Workspace 查询、Tab 创建、agent 启动/就绪、原生身份查找、已有目标聚焦与初始输入提交。
 //!

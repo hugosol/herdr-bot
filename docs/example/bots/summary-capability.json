@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "trip-summary",
+  "name": "出行准备清单汇总",
+  "use_when": "需要将多个目的地的准备事项整理为核对清单时。",
+  "description": "按指定范围整理准备事项与待确认问题；前置依赖不自动传入天气结果，也不预订或修改任何资源。",
+  "inputs": {
+    "scope": "本次清单涵盖的出行范围。",
+    "checklist": "人工给定的核对主题说明。"
+  },
+  "outputs": { "summary": "准备事项及待确认问题的清单；不是已经完成的工作。" },
+  "implementation": { "type": "chat" }
+}

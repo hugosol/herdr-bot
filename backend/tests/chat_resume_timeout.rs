@@ -12,11 +12,11 @@ fn setup(root: &TempDir, herdr: &HerdrFixture, kind: &str) -> herdr_bot::Config 
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
-    config.bots.metadata_file = root.path().join("options.toml");
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.tasks.metadata_file = root.path().join("options.toml");
     let integration = root.path().join("fixed-integration.ts");
     std::fs::write(&integration, "// controlled fixed integration").unwrap();
-    std::fs::write(&config.bots.metadata_file, format!("skills = []\n[[agents]]\nid = '{kind}'\nlabel = '{kind}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'fixed'\nlabel = 'Required integration'\nagent = '{kind}'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file, format!("skills = []\n[[agents]]\nid = '{kind}'\nlabel = '{kind}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'fixed'\nlabel = 'Required integration'\nagent = '{kind}'\nkind = 'fixed'\nentrypoint = '{}'\n", integration.display())).unwrap();
     std::fs::write(&config.sessions.history_file, json!([{"sessionId":"timeout-native","agentType":kind,"cwd":root.path(),"firstRecordedAt":1}]).to_string()).unwrap();
     config
 }

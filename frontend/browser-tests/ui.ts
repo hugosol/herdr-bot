@@ -36,11 +36,11 @@ export async function activate(locator: Locator, touch: boolean) {
   }
 }
 
-/** 从 Bot 预设逐步确认，再明确保存；每一步均操作真实页面。 */
-export async function saveBot(page: Page, touch = false) {
-  await activate(page.getByTestId('bot-next'), touch)
-  await activate(page.getByTestId('bot-next'), touch)
-  await activate(page.getByTestId('save-bot'), touch)
+/** 从 Task 预设逐步确认，再明确保存；每一步均操作真实页面。 */
+export async function saveTask(page: Page, touch = false) {
+  await activate(page.getByTestId('task-next'), touch)
+  await activate(page.getByTestId('task-next'), touch)
+  await activate(page.getByTestId('save-task'), touch)
 }
 
 /** 页面不得因弹窗或长路径出现横向滚动。 */

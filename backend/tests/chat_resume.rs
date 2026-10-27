@@ -101,7 +101,7 @@ async fn client_can_only_select_history_not_supply_execution_content() {
     herdr.set_behavior(json!({"agents":[agent("pi","id","native-one","w1","w1:t1","w1:p1")]}));
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config,Arc::new(NeverPowerOff))).await;
     for (field,value) in [
-        ("sourceBotId",json!("attacker-source")), ("botId",json!("attacker-current-bot")),
+        ("sourceTaskId",json!("attacker-source")), ("taskId",json!("attacker-current-task")),
         ("extensions",json!(["C:/evil-extension.ts"])), ("entrypoint",json!("C:/evil-extension.ts")),
         ("envConfig",json!({"extensions":["attacker-extension"]})),
         ("executable",json!("evil.exe")), ("command",json!("Write-Output injected")),

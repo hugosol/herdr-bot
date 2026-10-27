@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "destination-weather",
+  "name": "目的地天气摘要",
+  "use_when": "出行前需要了解目的地天气与随身物品建议时。",
+  "description": "整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。",
+  "inputs": {
+    "city": "需要了解天气的城市名称。",
+    "date": "计划出行日期的文字说明。"
+  },
+  "outputs": {
+    "forecast": "温度、降水与随身物品建议的文本摘要；不是已查询的天气结果。"
+  },
+  "implementation": { "type": "chat" }
+}

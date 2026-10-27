@@ -8,7 +8,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 
 // Approved S1/S2/S3: operate the delivered page, not a rendered component or
 // mocked fetch. P6/P10/P11/P13/P14/P15/P22 require identity + focus before
-// success, native resume without restore/input/Bot settings, and visible failure.
+// success, native resume without restore/input/Task settings, and visible failure.
 // A UI treating command submission as success would fail the wrong-ID scenario.
 test('OMP history Resume confirms identity and focus without input, and exposes failed native loading', async ({ page }) => {
   server = await startServer({ herdr: {} })
@@ -20,8 +20,8 @@ test('OMP history Resume confirms identity and focus without input, and exposes 
     { type: 'model_change', provider: 'native-provider', modelId: 'native-model' },
     { type: 'thinking_level_change', thinkingLevel: 'low' },
   ].map((line) => JSON.stringify(line)).join('\n') + '\n')
-  const bot = await fetch(`${server.baseURL}/api/bots`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'Bot Chat', agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED', extensions: [] }) })
-  expect(bot.status).toBe(200)
+  const task = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'Bot Chat', agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED', extensions: [] }) })
+  expect(task.status).toBe(200)
   const register = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'omp-browser-9ed4-exact', kind: 'register', data: { cwd, agentType: 'omp', sessionName: 'Historical OMP', sessionFile: native } }) })
   expect(register.status).toBe(200)
   server.setHerdrBehavior({ native_session: { agent: 'omp', source: 'herdr:omp', kind: 'path', value: native } })

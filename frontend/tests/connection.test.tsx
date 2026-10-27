@@ -58,13 +58,13 @@ describe('断线降级与重连', () => {
     render(<App sessionFeed={feed} />)
 
     // 先切到控制面板再断线：降级只属于会话列表，这里不呈现。
-    await user.click(screen.getByTestId('tab-control'))
+    await user.click(screen.getByTestId('server-button'))
     await push(sessions, 'interrupted')
     const banner = screen.getByTestId('connection-banner')
     expect(banner).not.toBeVisible()
-    expect(within(screen.getByTestId('panel-control')).queryByTestId('connection-banner')).toBeNull()
+    expect(within(screen.getByTestId('server-page')).queryByTestId('connection-banner')).toBeNull()
 
-    await user.click(screen.getByTestId('tab-sessions'))
+    await user.click(screen.getByTestId('server-back'))
     expect(screen.getByTestId('connection-banner')).toBeVisible()
     expect(screen.getByTestId('connection-banner')).toHaveTextContent('可能已经过期')
 

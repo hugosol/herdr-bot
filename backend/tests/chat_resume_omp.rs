@@ -11,18 +11,18 @@ fn setup(root: &TempDir, herdr: &HerdrFixture, file: Option<&Path>) -> herdr_bot
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.herdr.executable = herdr.executable().to_owned();
     config.sessions.history_file = root.path().join("history.json");
-    config.bots.storage_file = root.path().join("bots.json");
-    config.bots.metadata_file = root.path().join("options.toml");
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.tasks.metadata_file = root.path().join("options.toml");
     let integration = root.path().join("required-omp-integration.ts");
     std::fs::write(&integration,"throw new Error('validation must not execute extensions')").unwrap();
-    std::fs::write(&config.bots.metadata_file,format!("skills = []\n[[agents]]\nid = 'omp'\nlabel = 'OMP'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[models]]\nid = 'bot-model'\nlabel = 'Bot Model'\nprovider_model = 'bot-provider/bot-model'\nthinking = {{ omp = ['high'] }}\n[[extensions]]\nid = 'omp-state'\nlabel = 'Required integration'\nagent = 'omp'\nkind = 'fixed'\nentrypoint = '{}'\n",integration.display())).unwrap();
+    std::fs::write(&config.tasks.metadata_file,format!("skills = []\n[[agents]]\nid = 'omp'\nlabel = 'OMP'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[models]]\nid = 'task-model'\nlabel = 'Task Model'\nprovider_model = 'task-provider/task-model'\nthinking = {{ omp = ['high'] }}\n[[extensions]]\nid = 'omp-state'\nlabel = 'Required integration'\nagent = 'omp'\nkind = 'fixed'\nentrypoint = '{}'\n",integration.display())).unwrap();
     std::fs::write(&config.sessions.history_file, json!([{"sessionId":"omp-old-3b9f-exact","sessionName":"Old OMP","agentType":"omp","cwd":root.path(),"sessionFile":file,"firstRecordedAt":1}]).to_string()).unwrap();
     config
 }
 async fn resume(config: &herdr_bot::Config) -> common::HttpResponse {
     let server = TestServer::start_app(herdr_bot::app_with_power_off(config, Arc::new(NeverPowerOff))).await;
-    let bot = post_json_over_tcp(server.addr(), "/api/bots", &json!({"name":"Distinct Bot", "chatName":"Bot Chat", "agent":"omp", "model":"bot-model", "thinking":"high", "prompt":"BOT INITIAL MUST NEVER BE SUBMITTED", "extensions":[]}).to_string()).await;
-    assert_eq!(bot.status,200,"{}",bot.body);
+    let task = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"Distinct Task", "chatName":"Task Chat", "agent":"omp", "model":"task-model", "thinking":"high", "prompt":"TASK INITIAL MUST NEVER BE SUBMITTED", "extensions":[]}).to_string()).await;
+    assert_eq!(task.status,200,"{}",task.body);
     post_json_over_tcp(server.addr(), "/api/chats/resume", r#"{"sessionId":"omp-old-3b9f-exact"}"#).await
 }
 fn native_file(root: &TempDir) -> std::path::PathBuf {
@@ -31,11 +31,11 @@ fn native_file(root: &TempDir) -> std::path::PathBuf {
     file
 }
 // P6/P10/P11/P13/P14/P15/P22. Source: ticket requires exact native file,
-// recorded cwd, resume (not restore), no Bot settings/input, then identity and
+// recorded cwd, resume (not restore), no Task settings/input, then identity and
 // focus confirmation. A blank/new launch or restore flag would violate this;
 // observe the complete external sequence, literal argv and actual child cwd.
 #[tokio::test]
-async fn omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_focuses() {
+async fn omp_file_resumes_in_historical_cwd_without_task_overrides_or_input_then_focuses() {
     let root = TempDir::new("OMP resume cwd with spaces");
     let herdr = HerdrFixture::new("omp-resume-file");
     let native = native_file(&root);
@@ -67,7 +67,7 @@ async fn omp_file_resumes_in_historical_cwd_without_bot_overrides_or_input_then_
 // P10/P11/P12: shared preconditions must remain active for OMP. Another
 // conversation file or missing cwd cannot be permission to start a blank
 // process or silently replace the directory. Source-less history uses native
-// discovery, so Bot fixed-entrypoint availability is not a precondition.
+// discovery, so Task fixed-entrypoint availability is not a precondition.
 #[tokio::test]
 async fn omp_unusable_sources_or_cwd_fail_without_creating_a_target() {
     for scenario in ["wrong-file", "missing-cwd"] {

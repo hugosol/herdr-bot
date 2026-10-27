@@ -1,6 +1,6 @@
 //! Hand-maintained option metadata. Each operation loads one complete, validated snapshot.
 //! No generated defaults, watcher, or stale-cache fallback.
-use crate::bots::{Agent, Bot, BotError};
+use crate::tasks::{Agent, Task, TaskError};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -57,7 +57,7 @@ pub enum ExtensionKind {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BotOptions {
+pub struct TaskOptions {
     agents: Vec<String>,
     models: Vec<String>,
     thinking: BTreeMap<String, BTreeMap<String, Vec<String>>>,
@@ -67,7 +67,7 @@ pub struct BotOptions {
 }
 
 impl Catalog {
-    pub fn load(path: &Path) -> Result<Self, BotError> {
+    pub fn load(path: &Path) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
             let raw = fs::read_to_string(path).map_err(|e| format!("读取失败：{e}"))?;
             let catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
@@ -75,7 +75,7 @@ impl Catalog {
             Ok(catalog)
         })();
         result.map_err(|reason| {
-            BotError::Metadata(format!("选项元数据 {}：{reason}", path.display()))
+            TaskError::Metadata(format!("选项元数据 {}：{reason}", path.display()))
         })
     }
 
@@ -204,18 +204,18 @@ impl Catalog {
         model: &str,
         thinking: &str,
         skill: Option<&str>,
-    ) -> Result<(), BotError> {
+    ) -> Result<(), TaskError> {
         if !self.agents.iter().any(|v| v.id == agent) {
-            return Err(BotError::UnknownAgent(agent.label().into()));
+            return Err(TaskError::UnknownAgent(agent.label().into()));
         }
         let selected = self
             .models
             .iter()
             .find(|v| v.id == model)
             .filter(|v| v.id == "default" || v.thinking.contains_key(agent.label()))
-            .ok_or_else(|| BotError::UnknownModel(model.into()))?;
+            .ok_or_else(|| TaskError::UnknownModel(model.into()))?;
         if selected.id == "default" && thinking != "default" {
-            return Err(BotError::ThinkingRequiresDefaultModel);
+            return Err(TaskError::ThinkingRequiresDefaultModel);
         }
         if thinking != "default" {
             if !self.models.iter().any(|v| {
@@ -223,14 +223,14 @@ impl Catalog {
                     .values()
                     .any(|levels| levels.iter().any(|level| level == thinking))
             }) {
-                return Err(BotError::UnknownThinking(thinking.into()));
+                return Err(TaskError::UnknownThinking(thinking.into()));
             }
             if !self
                 .supported_thinking(agent, model)
                 .iter()
                 .any(|v| v == thinking)
             {
-                return Err(BotError::ThinkingUnsupported {
+                return Err(TaskError::ThinkingUnsupported {
                     agent,
                     model: model.into(),
                     thinking: thinking.into(),
@@ -240,7 +240,7 @@ impl Catalog {
         }
         if let Some(skill) = skill {
             if !self.skills.iter().any(|v| v.id == skill) {
-                return Err(BotError::UnknownSkill(skill.into()));
+                return Err(TaskError::UnknownSkill(skill.into()));
             }
         }
         Ok(())
@@ -250,7 +250,7 @@ impl Catalog {
         &self,
         agent: Agent,
         selections: &[String],
-    ) -> Result<(), BotError> {
+    ) -> Result<(), TaskError> {
         for (index, id) in selections.iter().enumerate() {
             if selections[..index].contains(id)
                 || !self.extensions.iter().any(|extension| {
@@ -259,13 +259,13 @@ impl Catalog {
                         && extension.kind == ExtensionKind::Optional
                 })
             {
-                return Err(BotError::InvalidExtension(id.clone()));
+                return Err(TaskError::InvalidExtension(id.clone()));
             }
         }
         Ok(())
     }
 
-    pub fn options(&self) -> BotOptions {
+    pub fn options(&self) -> TaskOptions {
         let mut thinking = BTreeMap::new();
         for agent in &self.agents {
             let mut models = BTreeMap::new();
@@ -302,7 +302,7 @@ impl Catalog {
                     .collect(),
             ),
         ]);
-        BotOptions {
+        TaskOptions {
             agents: self.agents.iter().map(|v| v.id.label().into()).collect(),
             models: self.models.iter().map(|v| v.id.clone()).collect(),
             skills: self.skills.iter().map(|v| v.id.clone()).collect(),
@@ -313,16 +313,16 @@ impl Catalog {
     }
 
     /// Resolve stable IDs once, before any external work; the caller owns this snapshot.
-    pub fn resolve(&self, bot: &Bot) -> Result<ResolvedPreset, BotError> {
-        self.validate_selection(bot.agent, &bot.trigger.model, &bot.trigger.thinking, bot.trigger.skill.as_deref())?;
+    pub fn resolve(&self, task: &Task) -> Result<ResolvedPreset, TaskError> {
+        self.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref())?;
         Ok(ResolvedPreset {
-            env: self.resolve_env(bot.agent, &bot.env.extensions)?,
+            env: self.resolve_env(task.agent, &task.env.extensions)?,
             trigger: ResolvedTriggerConfig {
                 provider_model: self.models.iter()
-                    .find(|v| v.id == bot.trigger.model)
+                    .find(|v| v.id == task.trigger.model)
                     .and_then(|v| v.provider_model.clone()),
-                thinking: (bot.trigger.thinking != "default").then(|| bot.trigger.thinking.clone()),
-                native_skill: bot.trigger.skill.as_ref()
+                thinking: (task.trigger.thinking != "default").then(|| task.trigger.thinking.clone()),
+                native_skill: task.trigger.skill.as_ref()
                     .and_then(|id| self.skills.iter().find(|v| &v.id == id))
                     .map(|v| v.native_name.clone()),
             },
@@ -330,8 +330,8 @@ impl Catalog {
     }
 
     /// Resolve only the current session environment. Trigger choices may have
-    /// become invalid since the Bot was saved and are deliberately not consulted.
-    pub fn resolve_env(&self, agent: Agent, selections: &[String]) -> Result<ResolvedEnvConfig, BotError> {
+    /// become invalid since the Task was saved and are deliberately not consulted.
+    pub fn resolve_env(&self, agent: Agent, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
         self.validate_extensions(agent, selections)?;
         Ok(ResolvedEnvConfig {
             extensions: self.extensions.iter().filter(|extension| {
@@ -343,7 +343,7 @@ impl Catalog {
 }
 
 /// A creation snapshot keeps launch-only actions separate from session resources.
-/// The persisted Bot and HTTP representation do not change format.
+/// The persisted Task and HTTP representation do not change format.
 pub struct ResolvedPreset {
     pub trigger: ResolvedTriggerConfig,
     pub env: ResolvedEnvConfig,

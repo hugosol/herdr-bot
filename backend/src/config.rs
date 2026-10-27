@@ -38,10 +38,10 @@ pub struct Config {
     /// `.data/zones.json`。
     #[serde(default)]
     pub zones: ZonesConfig,
-    /// Bot 的存储位置；整个 `[bots]` 段可缺省，缺省为进程工作目录下的
-    /// `.data/bots.json`。
+    /// Task 的存储位置；整个 `[tasks]` 段可缺省，缺省为进程工作目录下的
+    /// `.data/tasks.json`。
     #[serde(default)]
-    pub bots: BotsConfig,
+    pub tasks: TasksConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
     ///
     /// 这一段不是后备缺省：默认 Workspace 由部署者明确指定，缺失、空串或纯空白都会让
@@ -50,6 +50,25 @@ pub struct Config {
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
+    /// Service-level definition directories, relative to the process cwd.
+    #[serde(default)]
+    pub scheduler: SchedulerConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SchedulerConfig {
+    pub map_directory: PathBuf,
+    pub bot_directory: PathBuf,
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            map_directory: PathBuf::from(".data/workflow-maps"),
+            bot_directory: PathBuf::from(".data/bots"),
+        }
+    }
 }
 
 /// Herdr 控制设置（`[herdr]` 段）。
@@ -213,14 +232,14 @@ impl Default for ZonesConfig {
     }
 }
 
-/// Bot 设置（`[bots]` 段）。
+/// Task 设置（`[tasks]` 段）。
 ///
-/// Bot 由后端以文件持久保存，电脑与手机读取同一份；路径相对进程工作目录，与既有配置的
-/// 路径语义一致。存储文件不存在表示还没有任何 Bot，不是错误。
+/// Task 由后端以文件持久保存，电脑与手机读取同一份；路径相对进程工作目录，与既有配置的
+/// 路径语义一致。存储文件不存在表示还没有任何 Task，不是错误。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BotsConfig {
-    /// Bot 存储文件路径；缺省 `.data/bots.json`。
+pub struct TasksConfig {
+    /// Task 存储文件路径；缺省 `.data/tasks.json`。
     #[serde(default = "storage_file_by_default")]
     pub storage_file: PathBuf,
     /// 手工维护的选项目录；相对进程工作目录，运行中每次操作重新读取。
@@ -228,7 +247,7 @@ pub struct BotsConfig {
     pub metadata_file: PathBuf,
 }
 
-impl Default for BotsConfig {
+impl Default for TasksConfig {
     fn default() -> Self {
         Self {
             storage_file: storage_file_by_default(),
@@ -238,12 +257,12 @@ impl Default for BotsConfig {
 }
 
 fn metadata_file_by_default() -> PathBuf {
-    PathBuf::from("meta-data/bot-options.toml")
+    PathBuf::from("meta-data/task-options.toml")
 }
 
-/// `[bots] storage_file` 的缺省值：进程工作目录下的 `.data/bots.json`。
+/// `[tasks] storage_file` 的缺省值：进程工作目录下的 `.data/tasks.json`。
 fn storage_file_by_default() -> PathBuf {
-    PathBuf::from(crate::bots::DEFAULT_STORAGE_FILE)
+    PathBuf::from(crate::tasks::DEFAULT_STORAGE_FILE)
 }
 
 /// `[zones] registry_file` 的缺省值：进程工作目录下的 `.data/zones.json`。
@@ -1088,29 +1107,33 @@ workspace_name = 'bot-playground'
         );
     }
 
-    /// Bot 存储文件缺省为当前工作目录下的 .data/bots.json。
+    /// Task 存储文件缺省为当前工作目录下的 .data/tasks.json。
     #[test]
-    fn legacy_config_without_bots_section_uses_default_storage_file() {
+    fn legacy_config_without_tasks_section_uses_default_storage_file() {
         let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
         assert_eq!(
-            config.bots.storage_file,
-            PathBuf::from(".data/bots.json")
+            config.tasks.storage_file,
+            PathBuf::from(".data/tasks.json")
         );
     }
 
-    /// 显式配置的 Bot 存储路径按字面读取；拼错的字段名明确失败。
+    /// 显式配置的 Task 存储路径按字面读取；拼错的字段名明确失败。
     #[test]
-    fn explicit_bots_storage_file_is_read_verbatim() {
+    fn explicit_tasks_storage_file_is_read_verbatim() {
         let raw = format!(
-            "{LEGACY_CONFIG}\n[bots]\nstorage_file = 'D:\\\\bots\\\\bots.json'\n"
+            "{LEGACY_CONFIG}\n[tasks]\nstorage_file = 'D:\\\\tasks\\\\tasks.json'\n"
         );
-        let config = Config::from_toml(&raw).expect("合法Bot存储路径必须可解析");
+        let config = Config::from_toml(&raw).expect("合法Task存储路径必须可解析");
         assert_eq!(
-            config.bots.storage_file,
-            PathBuf::from(r"D:\bots\bots.json")
+            config.tasks.storage_file,
+            PathBuf::from(r"D:\tasks\tasks.json")
         );
 
-        let misspelled = format!("{LEGACY_CONFIG}\n[bots]\nstoragefile = 'x.json'\n");
+        let retired = format!("{LEGACY_CONFIG}\n[bots]\nstorage_file = 'x.json'\n");
+        let error = Config::from_toml(&retired).expect_err("旧预设段名不能作为运行时别名");
+        assert!(error.to_string().contains("unknown field") && error.to_string().contains("`bots`"));
+
+        let misspelled = format!("{LEGACY_CONFIG}\n[tasks]\nstoragefile = 'x.json'\n");
         let error = Config::from_toml(&misspelled).expect_err("写错的字段名必须导致解析失败");
         assert!(
             error.to_string().contains("unknown field")

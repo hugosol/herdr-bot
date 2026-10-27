@@ -1,9 +1,10 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
-import { BotsPanel } from './BotsPanel'
+import { TasksPanel } from './TasksPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
+import { SchedulerPanel } from './SchedulerPanel'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
@@ -29,18 +30,18 @@ const OPERATION_LABELS: Record<OperationName, string> = {
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
 /**
- * herdr-bot 主界面的四个顶层入口，按频繁程度排列：chat → bot → zone → server。
+ * herdr-bot 主界面的四个顶层入口：chat → task → zone → scheduler。
  * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
  */
-const TAB_ORDER = ['sessions', 'bots', 'files', 'control'] as const
+const TAB_ORDER = ['sessions', 'tasks', 'files', 'scheduler'] as const
 
 type TabKey = (typeof TAB_ORDER)[number]
 
 const TAB_LABELS: Record<TabKey, string> = {
   sessions: 'chat',
-  bots: 'bot',
+  tasks: 'task',
   files: 'zone',
-  control: 'server',
+  scheduler: 'scheduler',
 }
 
 type Feedback = {
@@ -67,8 +68,17 @@ export default function App({
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
   // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
   const [tab, setTab] = useState<TabKey>('sessions')
+  const [serverOpen, setServerOpen] = useState(false)
+  const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
+  const serverBackRef = useRef<HTMLButtonElement>(null)
+  const wasServerOpen = useRef(false)
+  useEffect(() => {
+    if (serverOpen) serverBackRef.current?.focus()
+    else if (wasServerOpen.current) tabRefs.current[tab]?.focus()
+    wasServerOpen.current = serverOpen
+  }, [serverOpen, tab])
   // 关机流程整屏接管期间，底层“启动/停止”不可操作（关机本身与它们的执行状态无关）。
   const [shutdownTakeover, setShutdownTakeover] = useState(false)
   // 后端权威的关机状态与观察流健康度：与 chat 入口同一条观察流，因此同一次订阅就够。
@@ -97,6 +107,7 @@ export default function App({
     // 方向键只属于顶层入口：阻止页面滚动，并同步选中态与焦点。
     event.preventDefault()
     const next = TAB_ORDER[nextIndex]
+    if (next !== tab && tab === 'scheduler' && schedulerNavigationGuard.current?.() === false) return
     setTab(next)
     tabRefs.current[next]?.focus()
   }
@@ -118,14 +129,20 @@ export default function App({
   const feedback = feedbackFor(state)
 
   return (
-    <main className={tab === 'files' || tab === 'bots' ? 'panel panel--wide' : 'panel'}>
-      <h1>herdr-bot</h1>
+    <main className={!serverOpen && (tab === 'files' || tab === 'tasks') ? 'panel panel--wide' : 'panel'}>
+      <header className="app-header">
+        <h1>herdr-bot</h1>
+        <button type="button" data-testid="server-button" hidden={serverOpen} onClick={() => { if (tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>
+          server
+        </button>
+      </header>
 
-      {/* 四 tab 外壳：chat → bot → zone → server，打开时默认停在 chat。
+      {/* 四 tab 外壳：chat → task → zone → scheduler，打开时默认停在 chat。
           四个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
           方向键在四个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
       <div
         className="tabs"
+        hidden={serverOpen}
         role="tablist"
         aria-label="herdr-bot 主界面分区"
         onKeyDown={selectAdjacentTab}
@@ -143,7 +160,7 @@ export default function App({
             ref={(node) => {
               tabRefs.current[key] = node
             }}
-            onClick={() => setTab(key)}
+            onClick={() => { if (key === tab || tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setTab(key) }}
           >
             {TAB_LABELS[key]}
           </button>
@@ -158,20 +175,20 @@ export default function App({
         aria-labelledby="tab-sessions"
         className="tabpanel"
         data-testid="panel-sessions"
-        hidden={tab !== 'sessions'}
+        hidden={serverOpen || tab !== 'sessions'}
       >
         <ChatPanel feed={sessionFeed} />
       </div>
 
       <div
-        id="panel-bots"
+        id="panel-tasks"
         role="tabpanel"
-        aria-labelledby="tab-bots"
+        aria-labelledby="tab-tasks"
         className="tabpanel"
-        data-testid="panel-bots"
-        hidden={tab !== 'bots'}
+        data-testid="panel-tasks"
+        hidden={serverOpen || tab !== 'tasks'}
       >
-        <BotsPanel active={tab === 'bots'} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} />
       </div>
 
       <div
@@ -180,19 +197,37 @@ export default function App({
         aria-labelledby="tab-files"
         className="tabpanel"
         data-testid="panel-files"
-        hidden={tab !== 'files'}
+        hidden={serverOpen || tab !== 'files'}
       >
-        <FileListPanel active={tab === 'files'} watchFeed={zoneWatchFeed} />
+        <FileListPanel active={!serverOpen && tab === 'files'} watchFeed={zoneWatchFeed} />
       </div>
 
       <div
-        id="panel-control"
+        id="panel-scheduler"
         role="tabpanel"
-        aria-labelledby="tab-control"
+        aria-labelledby="tab-scheduler"
         className="tabpanel"
-        data-testid="panel-control"
-        hidden={tab !== 'control'}
+        data-testid="panel-scheduler"
+        hidden={serverOpen || tab !== 'scheduler'}
       >
+        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard} />
+      </div>
+
+      <section
+        aria-labelledby="server-title"
+        data-testid="server-page"
+        hidden={!serverOpen}
+      >
+        <h2 id="server-title">server</h2>
+        <button
+          type="button"
+          data-testid="server-back"
+          className="server-back"
+          ref={serverBackRef}
+          onClick={() => setServerOpen(false)}
+        >
+          返回 {TAB_LABELS[tab]}
+        </button>
         <p className="scope-note">
           本页面只反馈脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
         </p>
@@ -237,11 +272,11 @@ export default function App({
             {feedback.text}
           </p>
         )}
-      </div>
+      </section>
 
-      {/* 全局关机提醒不能位于 hidden 的 tab 容器内；手动入口仍只在 server 入口可见。 */}
+      {/* 全局关机提醒不能位于 hidden 的内容页内；手动入口只在 server 页可见。 */}
       <ShutdownControl
-        showButton={tab === 'control'}
+        showButton={serverOpen}
         shutdown={shutdown}
         connection={connection}
         onTakeoverChange={setShutdownTakeover}

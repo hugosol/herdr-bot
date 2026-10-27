@@ -31,7 +31,7 @@ async function history() { return fetch(`${server!.baseURL}/api/sessions/history
 async function prepare() {
   const zone = path.join(root, 'zone'); fs.mkdirSync(zone)
   const zones = await post('/api/zones', { path: zone })
-  await post('/api/bots', { name: 'OMP history browser', chatName: 'OMP browser {chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+  await post('/api/tasks', { name: 'OMP history browser', chatName: 'OMP browser {chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
   return zones.zones[0].path as string
 }
 async function createInPage(page: Page, zone: string) {
