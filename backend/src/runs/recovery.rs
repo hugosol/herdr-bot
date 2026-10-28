@@ -80,7 +80,7 @@ pub async fn manager_reconcile_dispatch(
                     || effects.session_id.as_ref().is_some_and(|session| session != &identity.session_id)
                     || execution.chat.as_ref().is_some_and(|chat| chat.session_id != identity.session_id)
                     || run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id)
-                    || run.nodes.iter().any(|(id, node)| id != &input.node_id && node.execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_some_and(|chat| chat.session_id == identity.session_id)) {
+                    || run.nodes.values().any(|node| node.executions().any(|other| other.id != execution.id && other.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
                     return rejection(&state, &run, "dispatch-chat-mismatch", "原 Chat 的身份或 zone 不一致，或已属于其他执行；保持 failed，不替换执行。").await;
                 }
                 let chat = ChatReference { session_id: identity.session_id, workspace_id: workspace.clone(), tab_id: tab.clone(), pane_id: pane.clone(), agent_name: agent.clone() };

@@ -50,8 +50,8 @@ struct ReportRequest {
     body: String,
 }
 
-// Resolve only system-persisted current associations, never request metadata.
-async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String), Response> {
+// Retained execution identities may append history, never control current work.
+async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, String), Response> {
     let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
     let mut matched = None;
     for id in ids {
@@ -63,11 +63,13 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String), R
             return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "管理者身份不能提交节点报告。"));
         }
         for (node_id, node) in &run.nodes {
-            if node.execution.as_ref().and_then(|e| e.chat.as_ref()).is_some_and(|chat| chat.session_id == session_id) {
-                if matched.is_some() {
-                    return Err(error(StatusCode::FORBIDDEN, "node-ambiguous", "原生身份关联不唯一。"));
+            for execution in node.executions() {
+                if execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id) {
+                    if matched.is_some() {
+                        return Err(error(StatusCode::FORBIDDEN, "node-ambiguous", "原生身份关联不唯一。"));
+                    }
+                    matched = Some((run.clone(), node_id.clone(), execution.id.clone()));
                 }
-                matched = Some((run.clone(), node_id.clone()));
             }
         }
     }
@@ -86,7 +88,7 @@ pub async fn node_report(
         Ok(input) => input,
         Err(response) => return response,
     };
-    let (run, node_id) = match node_run(&state, &input.session_id).await {
+    let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
         Ok(binding) => binding,
         Err(response) => return response,
     };
@@ -97,7 +99,7 @@ pub async fn node_report(
             let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
             let _operation = lock.lock().await;
             let run = state.runs.read(&state, &run.id).await?;
-            let execution = run.nodes.get(&node_id).and_then(|n| n.execution.as_ref()).ok_or("当前执行关联已改变。")?;
+            let execution = run.nodes.get(&node_id).and_then(|node| node.executions().find(|execution| execution.id == execution_id)).ok_or("执行关联已改变。")?;
             let source = execution.chat.as_ref().filter(|chat| chat.session_id == input.session_id).ok_or("当前执行关联已改变。")?;
             let target = run.manager.as_ref().ok_or("本 Run 缺少管理者真实 Chat 关联。")?;
             let report = Report {

@@ -136,6 +136,47 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 
 业务参数仅 `nodeId`、`confirmed`、`reason`。只有执行阶段 failed 且有关联原 Chat 才能 recover；派发失败返回 `node-not-recoverable`。人工确认 `confirmed=true` 与非空修复依据缺一不可，否则返回 `recovery-confirmation-required`。成功将原执行跟踪恢复 running、清空当前 failure；原执行 ID/Task/zone/Chat 全部不变，history 保留原 failure、修复说明和 `action=recover`。这不是 Chat Resume，不调用宿主、不重新发起或恢复进程、不补发消息；即使 Run paused 也可执行，不恢复派发资格。已恢复 running 后再次 recover 拒绝，不重复追加成功记录。
 
+### 独立新执行：retry
+
+用户核实原 Chat、失败原因和已发生副作用，明确需要另起工作而非继续原执行时，管理者使用：
+
+```http
+POST /api/workflow/manager/retry
+Content-Type: application/json
+
+{"sessionId":"<公共 Session 能力取得的当前管理者身份>","nodeId":"A","confirmed":true,"reason":"用户已检查原 Chat 与部分产物；保留现场，另起独立执行"}
+```
+
+模型业务参数只有 `nodeId`、`confirmed` 和非空 `reason`；身份仍由 Session 自动取得。仅 **running Run 中的执行阶段 failed** 可以 retry。`confirmed=true` 是人工核实/同意的记录，不是自动安全判断或回滚授权。缺确认或空依据返回 HTTP 409、`retry-confirmation-required`；pending/running/completed node 返回 `node-not-retryable`。paused 明确返回 `run-paused`，必须先显式 resume；resume 本身不创建 Chat。终态优先返回 `run-terminal`。旧 node Chat、无关联身份和额外 Run/执行/角色字段不能调用管理者动作。
+
+派发阶段 failed 返回 `dispatch-reconciliation-required`，包括未知原生身份的异常窗口：先 reconcile_dispatch，不以 retry 的 confirmed 代替核实。确认未创建则恢复 pending，之后另行 dispatch；确认原 Chat 已创建则恢复原执行 running，若核实该执行无法继续，再 fail 记录执行失败后选择 retry。不确定保持 failed，不盲目启动另一 Chat。若原执行可继续，使用 recover，不是 retry。
+
+retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → node Task 的 trigger config/env config、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
+
+当前 `snapshot.nodes.<nodeId>.execution/failure` 只属于新尝试；`previousExecutions` 依次保留每次被替代执行及当时的 failure，当前事实读取不依赖 history 重放。首次节点的该数组为空。解析目标失败的新尝试仍有独立执行 ID，并保留原来源 Task/zone 引用用于解释失败；它不是可用目标或自动回退。`history.jsonl` 追加 `action=retry`、管理者 actor、依据、`previousExecution/previousFailure` 和新 `execution/failure`，不覆盖既有 dispatch/fail/报告历史。
+
+正常返回 HTTP 200，包含 `result` 与 status 相同的 `snapshot/ready/blocked/canFinish/reports/pendingReports`。`result.status` 为 running 或 failed；失败有 `failure.stage/message/effects`，实际新 `execution`、可得新 Chat、`persistenceError`、`historyError`。即使外部新 Chat 已启动而身份查询、关联保存或指示提交失败，也不把错误归到旧执行、不声称外部回滚。关联保存失败且失败事实也未能落盘时，snapshot 保持最后已提交的旧事实，result 与诊断保留新尝试和外部效果；不要因旧快照仍 failed 就盲目 retry。确认新 Chat 与磁盘后，按实际事实处理。普通读取/内部失败返回 `retry-failed` 或 `retry-internal`，不是自动重试许可。状态已提交而 history 追加失败仍是部分生效，不回滚新执行。
+
+旧执行 Chat 可以继续 report；后端按持久保留的原执行身份归属，记录原 executionId/source，不把它伪装成新执行报告。旧/新/旧/新的交错报告全部追加到 messages.jsonl，status 的 reports 保留完整正文历史；pendingReports 只按每个 node 的**当前适用执行**汇总最新报告 ID，不按全局最新时间选择。retry 后旧报告不能成为新执行待办，也不能完成新执行；新执行仍须管理者核实其结果并显式 complete。completed 后旧/新补充报告均不重开待办或 Run。
+
+用户处理路径：进入已关联管理者 Chat → 说明已核实的旧 Chat、产物位置、限制和另起执行意图 → 观察管理者 retry 结果的新执行/新 Chat 与保留的旧事实。不要手填 sessionId、编辑运行记录、为了获得 pending 状态而谎报原 Chat 未创建。manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须注入上述 recover/retry 区别、人工确认、暂停/终态拒绝及部分生效语义；node-chat 必须说明旧执行 report 只补历史，不能完成当前新执行。本仓库交付 HTTP 和运行说明；metadata 指定的外部角色入口未部署时，真实角色工具/Prompt/Herdr/omp 验收仍未完成。
+
+确定性 retry 入口：
+
+```text
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -- --nocapture
+```
+
+`backend/tests/workflow_dispatch/retry.rs` 使用真实 HTTP TestServer、独占磁盘和外部记录型 Herdr 副本：
+
+- `retry_saves_new_identity_before_full_trigger_and_retains_original_facts`：P13.03/P14.02/P15.03/P41.01/P68.07，初始指示门前的新身份落盘、独立字面完整触发配置、实际夹具 cwd/Workspace 和预留产物保留。
+- `late_old_reports_remain_history_without_controlling_new_execution`：P27.02/P41.01/P68.07，旧新报告交错、collect 仅当前适用 ID、旧身份不能变更当前执行、显式交接。
+- `retry_rejects_reuse_of_any_retained_native_identity`：P14.02/P41.01，多轮 retry 拒绝复用最早身份，原报告归属仍唯一。
+- `retry_startup_failures_keep_both_attempts_and_do_not_rollback`、`retry_association_failure_exposes_new_attempt_without_overwriting_old_snapshot`：P13.03/P45.03/P41.01，身份/指示/关联失败的实际启动效果及旧失败保留。
+- `paused_retry_requires_explicit_resume_and_human_confirmation`、`terminal_run_rejects_retry_without_new_chat_or_record_changes`、`uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled`、`unavailable_retry_targets_fail_without_fallback_or_reusing_old_execution`：P35.04/P36.03/P41.01/P14.02，拒绝路径与后续合法显式启动。
+
+这些检查保留 adapter 全部调用记录；无自主终止/重试/派发的断言覆盖请求与之后 **150ms 有界窗口**，不是无限期保证。夹具的启动记录不证明 omp 原生会话、真实工具注入或模型行为。真实 S3 复验需先部署角色入口并隔离 Herdr/zone/数据：让旧原生 Chat 留下互异标记产物并失败，经真实管理者工具 retry，核对新旧原生 session_id、zone、Workspace、实际完整输入和三份记录，再交错旧/新报告并观察当前待办。保存明确起止的无额外宿主动作窗口与人工干预；缺入口/隔离宿主时如实报告未验证，不以手填 HTTP 身份或受控身份代替。
+
 ### 人工已处理且确实可交接
 
 用户已人工补齐结果且确认可交接时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游或结束原 Chat；失败和原执行历史仍可读。需要向管理者补充正文时，在**已有关联的 node Chat** 使用现有 report 写明地址与限制；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
