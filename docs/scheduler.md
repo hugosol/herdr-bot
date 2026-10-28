@@ -62,6 +62,22 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 `blocked_by` 只引用同图 node ID。未知前置、自依赖或环拒绝整个保存，不能通过删边／删节点生成成功图。依赖错误指出相关 node；结构错误提供可用字段路径，例如 `nodes.work.input`。**非法保存不覆盖原定义**，失败保留独立 ID 与原始草稿；保存失败和冲突都不是成功预览。
 
+## 从选中 Map 校验启动配置
+
+在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单只提供 **manager 类型且 agent 为 omp 的管理者 Task**、已登记的管理者 zone、只读 Workspace 和可空的 Markdown“本次要求”。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
+
+“校验启动配置”调用真实后端整图预检。**校验通过仅表示当前配置有效，不表示已经启动**：当前此入口不创建 Run、Tab 或 Chat，也不向 agent 提交输入。实际启动与取得 Run ID 的能力由运行启动链路提供；不要把“配置校验通过”当作启动成功。Workspace 在这里展示推导名称，不表示 Herdr 已确认该目标存在。
+
+预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非 omp agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用 node Task；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
+
+拒绝保留发起页并逐项指出错误及来源 node／Bot／Task。用“修正 node”回到原 node 编辑器，用“修正 Bot”回到共享 Bot 配置，用“修正 Task”直接打开原 Task 编辑器；Task 已删除时明确显示不存在，不转成新增或默认 Task。zone 错误可回到 zone 登记入口，或回到原 node 修改路径。原 Map 文件损坏时按错误修复配置目录中的文件。修正后返回 scheduler，显式重新校验；刷新启动选项可重读 Task 和 zone，不自动重试启动。
+
+zone 引用按已登记路径解析，不是稳定 ID。注销只删除登记、不删除目录，但此前引用它的 Map 不能通过启动预检。同一路径重新登记后仍需重新检查整张 Map，不沿用先前结果；目录搬走、变成文件或被重定向后拒绝，不自动寻找搬迁位置、跟随目录联接或切换到新登记的替代路径。若主动改用新位置，应修改原 node 定义，而不是在发起页临时覆盖。目录内容没有版本身份保证，同一路径重新登记不表示旧内容被恢复。普通检查不创建真实符号链接。
+
+HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `managerTaskId`、`zone`、`userInput` 三个字符串；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
+
+可重复契约检查：`npm --prefix frontend run test:browser:build -- runPreflight.spec.ts --workers=1`。真实隔离页面及 HTTP 检查空图、缺失绑定、角色／agent、真实目录注销／重登记／搬迁／替换及原配置修正；结果目录保留页面截图与响应、文件核对、外部 Herdr 记录。外部调用缺席只承诺每个测试从服务启动至最终完成请求的有界窗口（90 秒用例上限），不声称无限期不存在；记录型 Herdr 只证明拒绝路径无启动调用，不证明原生宿主或模型执行质量。P8 的有效节点实际 cwd、P9 的有效 Run/Chat 关联由实际运行链路另行验收。
+
 ## 目录与定义管理
 
 进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。配置可独立省略：

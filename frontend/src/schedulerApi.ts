@@ -7,6 +7,22 @@ export type Bot = {
   task_id?: string
 }
 
+export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string }
+export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone'; message: string; nodeId?: string; botId?: string; taskId?: string }
+export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
+
+export async function preflightRun(file: string, input: RunPreflightInput): Promise<RunPreflightResult> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/preflight`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  const value = await response.json()
+  if (response.ok && typeof value?.workspaceName === 'string') return { kind: 'valid', workspaceName: value.workspaceName }
+  if (!response.ok && value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) {
+    return { kind: 'rejected', message: value.message, issues: value.issues }
+  }
+  throw new Error(value?.message ?? `启动预检未取得有效响应：HTTP ${response.status}`)
+}
+
 export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }
 export type BotCatalog = { bots: Bot[]; problems?: BotProblem[] }
 

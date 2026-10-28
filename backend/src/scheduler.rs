@@ -135,6 +135,137 @@ pub async fn get_map(
     }
 }
 
+/// Launch configuration is not a definition override or a Run allocation.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RunPreflightRequest {
+    pub manager_task_id: String,
+    pub zone: String,
+    pub user_input: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RunPreflight {
+    pub workspace_name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreflightIssue {
+    code: &'static str,
+    target: &'static str,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
+}
+
+impl PreflightIssue {
+    fn new(code: &'static str, target: &'static str, message: impl Into<String>) -> Self {
+        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None }
+    }
+}
+
+pub(crate) struct PreflightFailure(Vec<PreflightIssue>);
+impl IntoResponse for PreflightFailure {
+    fn into_response(self) -> Response {
+        (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "code": "run-preflight-rejected", "message": "启动预检未通过；请返回对应原配置修正后重新校验。",
+            "issues": self.0,
+        }))).into_response()
+    }
+}
+
+fn check_role(tasks: &[crate::tasks::Task], id: &str, role: crate::tasks::TaskType, target: &'static str) -> Option<PreflightIssue> {
+    use crate::tasks::{Agent, TaskType};
+    let role_name = if role == TaskType::Manager { "manager" } else { "node" };
+    let mut issue = match tasks.iter().find(|task| task.id == id) {
+        None => PreflightIssue::new("task-missing", target, format!("Task {id} 不存在；请在 task 入口配置并修正引用。")),
+        Some(task) if task.agent != Agent::Omp => PreflightIssue::new("task-agent-invalid", target, format!("Task {id} 必须使用 omp；请回到此 Task 修正。")),
+        Some(task) if task.task_type != role => PreflightIssue::new("task-role-invalid", target, format!("Task {id} 必须是 {role_name} 类型；请回到此 Task 修正。")),
+        Some(_) => return None,
+    };
+    issue.task_id = Some(id.to_owned());
+    Some(issue)
+}
+
+fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, target: &'static str) -> Result<&'a str, PreflightIssue> {
+    if requested.trim().is_empty() {
+        return Err(PreflightIssue::new("zone-required", target, "请选择或填写已登记 zone 的路径；请回到 zone 登记或 node 定义修正。"));
+    }
+    let root = crate::browse::registered_root(zones, requested).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
+    crate::browse::checked_root(root).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
+    Ok(root)
+}
+
+/// Shared by the read-only form and the real launch operation. Every call reads
+/// current definitions, Task roles and registered roots; it never allocates a
+/// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
+pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, input: &RunPreflightRequest) -> Result<RunPreflight, PreflightFailure> {
+    let map_directory = state.map_directory.clone();
+    let bot_directory = state.bot_directory.clone();
+    let name = name.to_owned();
+    let (map, bots) = tokio::task::spawn_blocking(move || {
+        let map = read_map(&map_directory, &name)?;
+        let bots = if map.nodes.is_empty() { BotCatalog { bots: Vec::new(), problems: Vec::new() } } else { read_bots(&bot_directory)? };
+        Ok::<_, DirectoryError>((map, bots))
+    }).await.map_err(|error| PreflightFailure(vec![PreflightIssue::new("definition-read-failed", "map", error.to_string())]))?
+        .map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
+    if map.nodes.is_empty() {
+        return Err(PreflightFailure(vec![PreflightIssue::new("map-empty", "map", "空 Map 不能启动；请返回 Map 新增 node。")]));
+    }
+    let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
+    let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
+    let mut issues = Vec::new();
+    if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
+    let manager_zone = match check_zone(&zones, &input.zone, "manager") {
+        Ok(zone) => Some(zone),
+        Err(issue) => { issues.push(issue); None },
+    };
+    for (id, node) in &map.nodes {
+        let node = &node.0;
+        let mut binding_issue = match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
+            None => Some(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请回到 Bot 管理修正引用或文件。", node.bot_id))),
+            Some(bot) => match bot.task_id.as_deref().filter(|id| !id.trim().is_empty()) {
+                None => Some(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定 Task；请回到此 Bot 配置 task_id。", bot.id))),
+                Some(task_id) => check_role(&tasks, task_id, crate::tasks::TaskType::Node, "task"),
+            },
+        };
+        if let Some(issue) = &mut binding_issue { issue.node_id = Some(id.clone()); issue.bot_id = Some(node.bot_id.clone()); }
+        issues.extend(binding_issue);
+        if let Err(mut issue) = check_zone(&zones, &node.zone, "node") { issue.node_id = Some(id.clone()); issues.push(issue); }
+    }
+    if !issues.is_empty() { return Err(PreflightFailure(issues)); }
+    let zone = manager_zone.expect("valid manager zone when no issues");
+    let workspace_name = Path::new(&zone).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    if workspace_name.is_empty() {
+        return Err(PreflightFailure(vec![PreflightIssue::new("workspace-name-unavailable", "manager", "管理者 zone 没有可推导的目录名称；请选择有目录名的 zone。")]));
+    }
+    // Reading the field is intentional: it is accepted verbatim, with no input
+    // quality gate or rewriting into node.input / Task.prompt.
+    let _ = &input.user_input;
+    Ok(RunPreflight { workspace_name })
+}
+
+pub async fn preflight_run(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    let input = match crate::chat_command_body(request, "Run 启动预检").await {
+        Ok(input) => input,
+        Err(error) => return error,
+    };
+    match check_run_preflight(&state, &name, &input).await {
+        Ok(checked) => Json(checked).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Bot {

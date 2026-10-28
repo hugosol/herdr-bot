@@ -285,6 +285,7 @@ pub fn app_with_state(
         .route("/api/zones", get(list_zones).post(register_zone))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
+        .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))
         .route("/api/scheduler/maps/{name}/nodes/save", post(scheduler::save_node))
