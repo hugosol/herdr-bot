@@ -6,7 +6,7 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const content = { schema_version: 1, name: '人工审计', use_when: '', description: '只核对账目，不查询天气', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
+const content = { name: '人工审计', when: '', plan_guide: '只核对账目，不查询天气', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
 async function open(page: Page) {
   await page.goto(server!.baseURL)
   await page.getByTestId('tab-scheduler').click()
@@ -29,7 +29,7 @@ test('empty bot list creates an independent-ID editable bundled draft and persis
   const id = page.getByLabel('Bot ID', { exact: true })
   const json = page.getByLabel('Bot 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
-  expect(JSON.parse(await json.inputValue())).toEqual({ schema_version: 1, name: '目的地天气摘要', use_when: '出行前需要了解目的地天气与随身物品建议时。', description: '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。', inputs: { city: '需要了解天气的城市名称。', date: '计划出行日期的文字说明。' }, outputs: { forecast: '温度、降水与随身物品建议的文本摘要；不是已查询的天气结果。' }, implementation: { type: 'chat' } })
+  expect(JSON.parse(await json.inputValue())).toEqual({ name: '目的地天气摘要', when: '出行前需要了解目的地天气与随身物品建议时。', plan_guide: '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。', node_guide: '请在 input 中说明城市、计划出行日期与偏好。输出温度、降水与随身物品建议的文本摘要，标明信息来源和不确定性。这是工作指引，不是字段校验规则。' })
   expect(inventory(root)).toEqual({})
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
   expect(inventory(root)).toEqual({})
@@ -72,7 +72,7 @@ test('editing loads only real content, keeps immutable identity and original fil
   await expect(id).toHaveAttribute('readonly', '')
   const json = page.getByLabel('Bot 内容 JSON', { exact: true })
   expect(JSON.parse(await json.inputValue())).toEqual(content)
-  const updated = { ...content, name: '', description: '审计新版本', outputs: { findings: '独立核对意见' } }
+  const updated = { ...content, name: '', plan_guide: '审计新版本', node_guide: '独立核对意见' }
   await json.fill(JSON.stringify(updated))
   await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('审计新版本')
@@ -103,16 +103,16 @@ test('invalid bot content cannot bypass validation and keeps the original ID and
     { raw: JSON.stringify({ ...content, schema_version: 8 }), diagnostic: 'schema_version' },
     { raw: JSON.stringify({ ...content, schema_version: 1.5 }), diagnostic: 'schema_version' },
     { raw: JSON.stringify({ ...content, typo: true }), diagnostic: 'typo' },
-    { raw: JSON.stringify({ ...content, implementation: { type: 'shell' } }), diagnostic: 'shell' },
-    { raw: JSON.stringify({ ...content, implementation: { type: 'chat', command: 'no' } }), diagnostic: 'command' },
-    { raw: JSON.stringify({ ...content, implementation: ['chat'] }), diagnostic: 'object' },
+    { raw: JSON.stringify({ ...content, implementation: { type: 'shell' } }), diagnostic: 'implementation' },
+    { raw: JSON.stringify({ ...content, implementation: { type: 'chat', command: 'no' } }), diagnostic: 'implementation' },
+    { raw: JSON.stringify({ ...content, implementation: ['chat'] }), diagnostic: 'implementation' },
     { raw: '[]', diagnostic: '对象' },
   ]
   for (const key of Object.keys(content)) {
     const missing: Record<string, unknown> = { ...content }; delete missing[key]
     cases.push({ raw: JSON.stringify(missing), diagnostic: key })
   }
-  for (const [key, value] of [['name', null], ['use_when', 4], ['description', []], ['inputs', []], ['outputs', { text: 2 }], ['implementation', null]] as const) {
+  for (const [key, value] of [['name', null], ['when', 4], ['plan_guide', []], ['node_guide', {}], ['task_id', 2]] as const) {
     cases.push({ raw: JSON.stringify({ ...content, [key]: value }), diagnostic: key })
   }
   for (const item of cases) {
@@ -129,7 +129,7 @@ test('invalid bot content cannot bypass validation and keeps the original ID and
       expect(inventory(root)).toEqual(before)
     }
   }
-  const validEmpty = { schema_version: 1, name: '', use_when: '', description: '', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
+  const validEmpty = { name: '', when: '', plan_guide: '', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
   await json.fill(JSON.stringify(validEmpty))
   await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('invalid-candidate')
@@ -171,15 +171,15 @@ test('global duplicate and concurrent same-ID creation reject without overwritin
   server = await startServer({ separateCwd: true })
   await open(page)
   const root = path.join(server.cwd, '.data/bots')
-  const requests = await Promise.all(['first contender', 'second contender'].map(description => page.request.post(`${server!.baseURL}/api/scheduler/bots/save`, {
-    data: { id: 'one-global-id', content: JSON.stringify({ ...content, description }), revision: null },
+  const requests = await Promise.all(['first contender', 'second contender'].map(plan_guide => page.request.post(`${server!.baseURL}/api/scheduler/bots/save`, {
+    data: { id: 'one-global-id', content: JSON.stringify({ ...content, plan_guide }), revision: null },
   })))
   expect(requests.filter(response => response.ok())).toHaveLength(1)
   expect(requests.filter(response => !response.ok())).toHaveLength(1)
   const loser = requests.find(response => !response.ok())!
   expect((await loser.json()).message).toContain('ID 已存在')
   const winner = await requests.find(response => response.ok())!.json()
-  expect(['first contender', 'second contender']).toContain(winner.description)
+  expect(['first contender', 'second contender']).toContain(winner.plan_guide)
   const before = inventory(root)
   expect(Object.keys(before)).toHaveLength(1)
   expect(JSON.parse(Object.values(before)[0])).toEqual(winner)
@@ -211,7 +211,7 @@ test('two clients and external modification or removal reject stale bot drafts a
   const root = path.join(server.cwd, '.data/bots')
   fs.mkdirSync(root, { recursive: true })
   const file = path.join(root, 'original.json')
-  const raw = '\n' + JSON.stringify({ ...content, description: '旧页面的未保存修改' }, null, 3) + '\n'
+  const raw = '\n' + JSON.stringify({ ...content, plan_guide: '旧页面的未保存修改' }, null, 3) + '\n'
   for (const mode of ['second-client', 'external-change', 'external-remove']) {
     fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id' }))
     await open(page)
@@ -225,12 +225,12 @@ test('two clients and external modification or removal reject stale bot drafts a
       await open(other)
       await other.getByRole('button', { name: '人工审计 · revision-id', exact: true }).click()
       await other.getByRole('button', { name: '修改 Bot', exact: true }).click()
-      await other.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, description: '第二客户端的新版本' }))
+      await other.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, plan_guide: '第二客户端的新版本' }))
       await other.getByRole('button', { name: '保存 Bot', exact: true }).click()
       await expect(other.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('第二客户端的新版本')
       await other.close()
     } else if (mode === 'external-change') {
-      fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id', description: '外部编辑器的新版本' }) + '\n')
+      fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id', plan_guide: '外部编辑器的新版本' }) + '\n')
     } else fs.unlinkSync(file)
     const newer = inventory(root)
     await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
@@ -359,9 +359,9 @@ test('saving a shared capability preserves live source selection and updates all
   const root = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
   fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(root, 'shared-original.json'), JSON.stringify({ ...content, id: 'shared-audit' }))
-  const node = { title: '核对账目', bot_id: 'shared-audit', parameters: {}, blocked_by: [] }
-  const first = { schema_version: 1, title: '原 Map', description: '保留元信息', nodes: { A: node, B: { ...node, title: '复核账目' } } }
-  const second = { schema_version: 1, title: '另一 Map', description: '', nodes: { C: { ...node, title: '跨 Map 核对' } } }
+  const node = { title: '核对账目', bot_id: 'shared-audit', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] }
+  const first = { title: '原 Map', description: '保留元信息', nodes: { A: node, B: { ...node, title: '复核账目' } } }
+  const second = { title: '另一 Map', description: '', nodes: { C: { ...node, title: '跨 Map 核对' } } }
   fs.writeFileSync(path.join(maps, 'first.json'), JSON.stringify(first))
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify(second))
   const mapBytes = inventory(maps)
@@ -371,7 +371,7 @@ test('saving a shared capability preserves live source selection and updates all
   await page.getByRole('button', { name: '核对账目 A', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await page.getByRole('button', { name: '修改 Bot', exact: true }).click()
-  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', description: '三个引用者均看到新版核对说明' }))
+  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }))
   await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()
@@ -390,7 +390,7 @@ test('saving a shared capability preserves live source selection and updates all
   }
   expect(inventory(maps)).toEqual(mapBytes)
   expect(Object.keys(inventory(root))).toEqual(['shared-original.json'])
-  expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', description: '三个引用者均看到新版核对说明' }])
+  expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }])
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ ...second, nodes: {} }))
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()

@@ -49,10 +49,9 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   const bots = path.join(server.cwd, '.data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
-  const capability = { schema_version: 1, id: 'catalog-life', name: '人工核对能力', use_when: '需要只读核对时',
-    description: '保留原始文本，不执行工作', inputs: { source: '原始说明' }, outputs: { note: '核对说明' }, implementation: { type: 'chat' } }
+  const capability = { id: 'catalog-life', name: '人工核对能力', when: '需要只读核对时', plan_guide: '保留原始文本，不执行工作', node_guide: JSON.stringify({ inputs: { source: '原始说明' }, outputs: { note: '核对说明' } }) }
   const healthy = { ...capability, id: 'healthy', name: '其他健康能力' }
-  const mapBytes = '{"schema_version":1,"title":"不改写的计划","description":"","nodes":{"A":{"title":"核对工作","bot_id":"catalog-life","parameters":{},"blocked_by":[]}}}\n'
+  const mapBytes = '{"title":"不改写的计划","description":"","nodes":{"A":{"title":"核对工作","bot_id":"catalog-life","input":"","zone":"unregistered-zone","blocked_by":[]}}}\n'
   const botBytes = `${JSON.stringify(capability, null, 2)}\n`
   const healthyBytes = `${JSON.stringify(healthy)}\n`
   const definition = path.join(bots, 'personal-name.json')
@@ -78,6 +77,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
+  await preview.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   expect(await catalog()).toEqual({ bots: [healthy, capability] })
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
@@ -86,9 +86,11 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   await filter.fill('healthy')
   await expect(listing.getByRole('button', { name: '其他健康能力 · healthy', exact: true })).toBeVisible()
   await expect(listing.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true })).toHaveCount(0)
+  await preview.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('no-matching-capability')
   await expect(listing.getByRole('button')).toHaveCount(0)
+  await preview.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('')
   await expect(listing.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -117,6 +119,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   fs.writeFileSync(definition, botBytes)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()
+  await preview.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toHaveCount(0)
   expect(await catalog()).toEqual({ bots: [healthy, capability] })

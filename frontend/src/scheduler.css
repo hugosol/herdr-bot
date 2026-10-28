@@ -81,12 +81,9 @@
 .scheduler-bot-main > .scheduler-actions { margin-bottom: 1rem; }
 .scheduler-bot-main .scheduler-details h3 { font-size: 1.5rem; }
 .scheduler-bot-sections { display: flex; flex-wrap: wrap; gap: .5rem; padding: 1.25rem 0 .7rem; margin-bottom: 2rem; border-bottom: 1px solid #465568; }
-.scheduler-bot-main .scheduler-details dd { background: none; padding: 0; line-height: 1.9; margin-bottom: 2rem; }
-.scheduler-bot-io { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
-.scheduler-bot-io > section { border-top: 2px solid #7db3db; min-width: 0; }
 @media (max-width: 760px) {
   .scheduler-bot-page { padding: 1rem; }
-  .scheduler-bot-layout, .scheduler-bot-io { grid-template-columns: minmax(0, 1fr); }
+  .scheduler-bot-layout { grid-template-columns: minmax(0, 1fr); }
   .scheduler-bot-directory { border-right: 0; padding-right: 0; }
   .scheduler-bot-directory .scheduler-map-list { max-height: 18rem; overflow: auto; }
   .scheduler-bot-main { padding: 1.25rem; }

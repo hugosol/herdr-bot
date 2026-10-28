@@ -9,7 +9,6 @@ use std::collections::{BTreeMap, VecDeque};
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WorkflowMap {
-    schema_version: u32,
     title: String,
     description: String,
     nodes: BTreeMap<String, JsonObject<MapNode>>,
@@ -20,7 +19,8 @@ struct WorkflowMap {
 struct MapNode {
     title: String,
     bot_id: String,
-    parameters: BTreeMap<String, serde_json::Value>,
+    input: String,
+    zone: String,
     blocked_by: Vec<String>,
 }
 
@@ -79,7 +79,6 @@ fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
 }
 
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
-    if map.schema_version != 1 { return Err(map_error("Map schema_version 必须为 1。")); }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
     // a successful graph. Kahn's traversal also bounds layout work on bad input.
     let mut remaining = BTreeMap::new();
@@ -137,24 +136,15 @@ pub async fn get_map(
 }
 
 #[derive(Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ImplementationType { Chat }
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct BotImplementation { r#type: ImplementationType }
-
-#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Bot {
-    schema_version: u32,
     id: String,
     name: String,
-    use_when: String,
-    description: String,
-    inputs: BTreeMap<String, String>,
-    outputs: BTreeMap<String, String>,
-    implementation: JsonObject<BotImplementation>,
+    when: String,
+    plan_guide: String,
+    node_guide: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -199,8 +189,8 @@ fn read_bots(directory: &Path) -> Result<BotCatalog, DirectoryError> {
                 continue;
             }
         };
-        let bot: Bot = match serde_json::from_slice(&bytes) {
-            Ok(bot) => bot,
+        let bot: Bot = match serde_json::from_slice::<JsonObject<Bot>>(&bytes) {
+            Ok(JsonObject(bot)) => bot,
             Err(error) => {
                 let bot_id = serde_json::from_slice::<serde_json::Value>(&bytes).ok()
                     .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(str::to_owned));
@@ -208,10 +198,6 @@ fn read_bots(directory: &Path) -> Result<BotCatalog, DirectoryError> {
                 continue;
             }
         };
-        if bot.schema_version != 1 {
-            problems.push(BotProblem { code: "bot-invalid", message: format!("共享 Bot {name} 的 schema_version 必须为 1。"), files: vec![name], bot_id: Some(bot.id) });
-            continue;
-        }
         identities.entry(bot.id.clone()).or_default().push(name);
         bots.push(bot);
     }
@@ -418,7 +404,6 @@ pub async fn save_bot(
         object.insert("id".into(), serde_json::Value::String(draft.id.clone()));
         let JsonObject(bot): JsonObject<Bot> = serde_path_to_error::deserialize(content)
             .map_err(|e| edit_error("bot-invalid", format!("Bot 结构无效：{e}")))?;
-        if bot.schema_version != 1 { return Err(edit_error("bot-invalid", "Bot schema_version 必须为 1。")); }
         let bytes = serde_json::to_vec_pretty(&bot).map_err(|e| edit_error("bot-write-failed", e.to_string()))?;
         let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("bot-write-failed", "定义提交锁不可用。"))?;
         let root = prepare_directory(&state.bot_directory).map_err(bot_directory_error)?;

@@ -6,10 +6,10 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const original = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
-  A: { title: '独立审计', bot_id: 'audit', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] } }, blocked_by: [] as string[] },
-  B: { title: '后继工作', bot_id: 'summary', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: ['A'] },
-  D: { title: '独立工作', bot_id: 'missing', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: [] as string[] },
+const original = { title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
+  A: { title: '独立审计', bot_id: 'audit', input: JSON.stringify({ id: 'business-id', extra: { list: [1, null, { approved: false }] } }), zone: 'unregistered-zone', blocked_by: [] as string[] },
+  B: { title: '后继工作', bot_id: 'summary', input: JSON.stringify({ nested: { order: ['keep', null, 7], enabled: true } }), zone: 'unregistered-zone', blocked_by: ['A'] },
+  D: { title: '独立工作', bot_id: 'missing', input: JSON.stringify({ untouched: [{ count: 9 }, null] }), zone: 'unregistered-zone', blocked_by: [] as string[] },
 } }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
@@ -88,7 +88,7 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('region', { name: '节点列表', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(1)
-  const expected = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: { A: original.nodes.A, B: original.nodes.B } }
+  const expected = { title: '保留 Map 标题', description: '保留 Map 说明', nodes: { A: original.nodes.A, B: original.nodes.B } }
   expect(await readMap(page)).toEqual(expected)
   expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual(expected)
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
@@ -104,8 +104,8 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: '新增 node', exact: true })).toBeVisible()
-  expect(await readMap(page)).toEqual({ schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
-  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual({ schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
+  expect(await readMap(page)).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(deleteRequests).toBe(3)
   expect(server!.herdrCalls()).toEqual([])
@@ -133,7 +133,7 @@ for (const change of ['external-target', 'external-dependent', 'application-depe
       const saved = await request(page, 'save', { id: 'B', content: JSON.stringify({ ...original.nodes.B, blocked_by: ['A', 'D'] }), revision: draft.revision, create: false })
       expect(saved.ok()).toBe(true)
     } else if (change === 'external-target') {
-      fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, D: { ...original.nodes.D, title: 'newer target', parameters: { external: [null, 19] } } } }))
+      fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, D: { ...original.nodes.D, title: 'newer target', input: JSON.stringify({ external: [null, 19] }) } } }))
     } else if (change === 'external-dependent') {
       fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, B: { ...original.nodes.B, blocked_by: ['A', 'D'] } } }))
     } else if (change === 'removed-target') {

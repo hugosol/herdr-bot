@@ -8,7 +8,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 ## 契约与范围
 
@@ -20,12 +20,12 @@
 
 ## 验收标准
 
-- [ ] **P1.01**（本票编写并执行的契约检查）：独立完整定义样例经真实读写入口往返；拒绝旧字段和版本；Map/node/Bot 只保存职责内定义，核对 Task/Chat 引用而非复制运行事实。
-- [ ] **P2.01**（本票编写并执行的契约检查）：三份 Bot 文档使用互异标记分别读取；允许空文本独立保存，不依赖其他文档已读，也不把 Markdown 当校验规则。
-- [ ] **P3.01**（本票编写并执行的契约检查）：分别保存 Bot 缺 task_id、node 引用不存在 Bot、无效 Task/zone 的内部合法定义，确认没有制造默认绑定。
-- [ ] **P4.01**（本票编写并执行的契约检查）：未知字段、错误类型、缺必需字段、不存在的同图依赖和环均明确拒绝，联合核对原定义未被错误覆盖。
-- [ ] 完成上述能力所需调用者、错误反馈和角色/用户指引；不留占位实现、假成功、运行时旧格式兼容或未接线入口。
-- [ ] 保留本票真实入口的可重复验证证据及检查结果；相关长期说明随能力更新，不只更新临时票据。
+- [x] **P1.01**（本票编写并执行的契约检查）：独立完整定义样例经真实读写入口往返；拒绝旧字段和版本；Map/node/Bot 只保存职责内定义，核对 Task/Chat 引用而非复制运行事实。
+- [x] **P2.01**（本票编写并执行的契约检查）：三份 Bot 文档使用互异标记分别读取；允许空文本独立保存，不依赖其他文档已读，也不把 Markdown 当校验规则。
+- [x] **P3.01**（本票编写并执行的契约检查）：分别保存 Bot 缺 task_id、node 引用不存在 Bot、无效 Task/zone 的内部合法定义，确认没有制造默认绑定。
+- [x] **P4.01**（本票编写并执行的契约检查）：未知字段、错误类型、缺必需字段、不存在的同图依赖和环均明确拒绝，联合核对原定义未被错误覆盖。
+- [x] 完成上述能力所需调用者、错误反馈和角色/用户指引；不留占位实现、假成功、运行时旧格式兼容或未接线入口。
+- [x] 保留本票真实入口的可重复验证证据及检查结果；相关长期说明随能力更新，不只更新临时票据。
 
 ## 验证与证据
 
@@ -48,4 +48,12 @@
 
 ## Comments
 
-尚未实施或验收；本票发布不代表其 promise 已通过。
+2026-10-28：本票实现与 P1.01／P2.01／P3.01／P4.01 已通过真实 scheduler／HTTP／文件检查；尚未合入集成分支，按仓库规则保留 in-progress，由独立集成代理接管后关闭。P2.02 属于票据 04，未在本票认领或宣称通过。
+
+- 新增 `frontend/browser-tests/schedulerDefinitionCutover.spec.ts` 三项契约场景：未绑定 Bot 与独立文档读取；非法／旧 Bot 定义拒绝并保留原文件；未绑定 node 保存、非法依赖与环拒绝并保留整个 Map。`schedulerNodeEditing.spec.ts` 另验证 Markdown 指引不校验空 input；既有 scheduler 严格格式、编辑、删除、重载、目录边界及样例用例同步切换。
+- TDD：新 Bot 格式最初保存失败、编辑器未关闭（artifact://20）；新 Map 最初无法显示 node（artifact://34）；最小切换后两项通过（artifact://39）。最后定向契约检查 `npm --prefix frontend run test:browser -- schedulerDefinitionCutover.spec.ts --workers=1`：3 passed。
+- 完整浏览器 `npm --prefix frontend run test:browser:build -- --workers=4`：289 passed、1 skipped（未授权真实文件符号链接）、1 failed。唯一失败在未改的 `tasks.spec.ts:192`，实际 Skill 选项多出 wayfinder；已交给 Task 票所有者与 Main，未更改其他票拥有的文件。完整结果见 artifact://88，不能宣称整个浏览器回归通过。本票 scheduler 全部用例在该轮通过。
+- `node scripts/test-backend.mjs --binary-jobs 2`：passed，含 build、全部已派发测试二进制和 doctest；summary 位于 `C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-8MaBvZ/summary.json`。
+- `npm --prefix frontend test`：27 files、205 tests passed；以上 npm 检查均经过既有网络护栏。
+- 最后定向场景保留实际截图／JSON：`frontend/test-results/schedulerDefinitionCutover-f12c3-ntly-without-a-Task-binding/` 下的 `unbound-bot-documents.png`、`saved-unbound-bot.json`；`schedulerDefinitionCutover-ddfd2-alid-edits-preserve-the-Map/` 下的 `invalid-dependency-preserves-map.png`、`preserved-map.json`、`external-launch-calls.json`（实际为 []）。外部调用缺席只观察测试启动至最后定义响应的有界窗口，不证明原生 Herdr／omp 或模型业务质量。
+- 长期文档更新 `docs/scheduler.md`、`docs/example/README.md`、独立 Map／Bot 样例和 GLOSSARY 中 node／Bot 责任说明。历史离线更名迁移工具保留其原职责，明确不完成本次格式切换；运行时无旧格式兼容。

@@ -6,29 +6,17 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const originalBot = {
-  schema_version: 1, id: 'shared', name: '原能力标题', use_when: '原适用说明',
-  description: '原能力说明', inputs: { target: '原输入说明' }, outputs: { report: '原输出说明' },
-  implementation: { type: 'chat' },
-}
-const updatedBot = {
-  schema_version: 1, id: 'shared', name: '新能力标题', use_when: '新适用说明',
-  description: '新能力说明', inputs: { target: '新输入说明' }, outputs: { report: '新输出说明' },
-  implementation: { type: 'chat' },
-}
-const originalMap = {
-  schema_version: 1, title: '原计划', description: '原计划说明', nodes: {
-    A: { title: '原准备', bot_id: 'shared', parameters: { target: 'old-alpha' }, blocked_by: [] },
-    B: { title: '原核对', bot_id: 'shared', parameters: { target: 'old-beta' }, blocked_by: ['A'] },
-  },
-}
-const updatedMap = {
-  schema_version: 1, title: '新计划', description: '新计划说明', nodes: {
-    A: { title: '新准备', bot_id: 'shared', parameters: { target: 'new-alpha' }, blocked_by: ['B'] },
-    B: { title: '新核对', bot_id: 'shared', parameters: { target: 'new-beta', count: 17 }, blocked_by: [] },
-    C: { title: '新独立项', bot_id: 'shared', parameters: {}, blocked_by: [] },
-  },
-}
+const originalBot = { id: 'shared', name: '原能力标题', when: '原适用说明', plan_guide: '原能力说明', node_guide: JSON.stringify({ inputs: { target: '原输入说明' }, outputs: { report: '原输出说明' } }) }
+const updatedBot = { id: 'shared', name: '新能力标题', when: '新适用说明', plan_guide: '新能力说明', node_guide: JSON.stringify({ inputs: { target: '新输入说明' }, outputs: { report: '新输出说明' } }) }
+const originalMap = { title: '原计划', description: '原计划说明', nodes: {
+  A: { title: '原准备', bot_id: 'shared', input: JSON.stringify({ target: 'old-alpha' }), zone: 'unregistered-zone', blocked_by: [] },
+  B: { title: '原核对', bot_id: 'shared', input: JSON.stringify({ target: 'old-beta' }), zone: 'unregistered-zone', blocked_by: ['A'] },
+} }
+const updatedMap = { title: '新计划', description: '新计划说明', nodes: {
+  A: { title: '新准备', bot_id: 'shared', input: JSON.stringify({ target: 'new-alpha' }), zone: 'unregistered-zone', blocked_by: ['B'] },
+  B: { title: '新核对', bot_id: 'shared', input: JSON.stringify({ target: 'new-beta', count: 17 }), zone: 'unregistered-zone', blocked_by: [] },
+  C: { title: '新独立项', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+} }
 
 // S1 P25: fixed before/after filenames distinguish a fresh directory read
 // from a startup-only list. Removed and newly created files share one process.
@@ -92,13 +80,15 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
   await page.getByRole('button', { name: 'current.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   if (scenario === 'selection') {
     await page.getByRole('button', { name: 'next.json', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
-    await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
+    await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
+  await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   }
   const map = await holdResponse(page, '**/api/scheduler/maps/current.json')
@@ -113,6 +103,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await page.getByRole('button', { name: 'next.json', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText('新能力说明', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     map.release()
@@ -135,10 +126,11 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await expect(preview.getByRole('img', { name: 'B → A', exact: true })).toBeAttached()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(details.getByRole('heading', { name: '新核对 · B', exact: true })).toBeVisible()
-    await expect(details.getByTestId('parameter-target')).toHaveText('new-beta')
-    await expect(details.getByTestId('parameter-count')).toHaveText('17')
+    await expect(details.getByTestId('node-input')).toContainText('new-beta')
+    await expect(details.getByTestId('node-input')).toContainText('17')
     const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await capability.getByRole('button', { name: '规划指引', exact: true }).click()
     await expect(capability.getByText('新能力说明', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '返回 Map', exact: true }).click()
     await expect(preview).not.toContainText('原')
@@ -172,8 +164,9 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  await expect(details.getByTestId('parameter-target')).toHaveText('old-beta')
+  await expect(details.getByTestId('node-input')).toContainText('old-beta')
   await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await capability.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(capability.getByText('原能力说明', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()
 
@@ -195,20 +188,21 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await expect(details).toHaveCount(0)
   await expect(capability).toHaveCount(0)
   await graph.getByRole('button', { name: '新核对 B', exact: true }).click()
-  await expect(details.getByTestId('parameter-target')).toHaveText('new-beta')
-  await expect(details.getByTestId('parameter-count')).toHaveText('17')
+  await expect(details.getByTestId('node-input')).toContainText('new-beta')
+  await expect(details.getByTestId('node-input')).toContainText('17')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveCount(0)
   await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
-  for (const text of ['新能力标题', '新适用说明', '新能力说明', 'chat']) {
-    await expect(capability.getByText(text, { exact: true })).toBeVisible()
-  }
-  await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+  await expect(capability.getByRole('heading', { name: '新能力标题', exact: true })).toBeVisible()
+  await expect(capability.getByRole('region', { name: '选用说明', exact: true })).toHaveText('新适用说明')
+  await capability.getByRole('button', { name: '规划指引', exact: true }).click()
+  await expect(capability.getByRole('region', { name: '规划指引', exact: true })).toHaveText('新能力说明')
+  await capability.getByRole('button', { name: '节点指引', exact: true }).click()
   for (const text of ['target', '新输入说明', 'report', '新输出说明']) {
-    await expect(capability.getByText(text, { exact: true })).toBeVisible()
+    await expect(capability.getByRole('region', { name: '节点指引', exact: true })).toContainText(text)
   }
   await page.getByRole('button', { name: '返回 Map', exact: true }).click()
   await graph.getByRole('button', { name: '新准备 A', exact: true }).click()
-  await expect(details.getByTestId('parameter-target')).toHaveText('new-alpha')
+  await expect(details.getByTestId('node-input')).toContainText('new-alpha')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveText(['新核对 · B'])
   await expect(preview).not.toContainText('原')
   expect(fs.readFileSync(fixture.map, 'utf8')).toBe(newMapBytes)

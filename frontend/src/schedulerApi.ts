@@ -1,12 +1,10 @@
 export type Bot = {
-  schema_version: 1
   id: string
   name: string
-  use_when: string
-  description: string
-  inputs: Record<string, string>
-  outputs: Record<string, string>
-  implementation: { type: 'chat' }
+  when: string
+  plan_guide: string
+  node_guide: string
+  task_id?: string
 }
 
 export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }
@@ -61,7 +59,8 @@ export async function deleteBot(target: { id: string; revision: BotRevision }): 
 export type MapNode = {
   title: string
   bot_id: string
-  parameters: Record<string, unknown>
+  input: string
+  zone: string
   blocked_by: string[]
 }
 
@@ -102,7 +101,6 @@ export async function deleteNode(file: string, target: { id: string; revision: B
 }
 
 export type WorkflowMap = {
-  schema_version: 1
   title: string
   description: string
   nodes: Record<string, MapNode>
