@@ -64,6 +64,45 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 真实宿主复验还需部署 metadata 指定的 manager-chat/node-chat，使用独占验收 zone、数据目录与 Herdr 实例：经 manager 实际工具先查 A/B ready、C 被 A/B 阻塞，再派发 A/B；保存原生 session_id、实际 cwd 和 Workspace ID、实际输入及三份记录。与 Task 的独立预期逐字段核对 model/thinking、初始 Skill、固定 prompt 和 node.input；管理者本次要求与 Bot/Map 文档使用互异标记，必须不出现在 node 实际初始输入中。让验收 node Chat 读取传入的 zone 外说明/记录路径，而不以服务端自己可读代替。最后重复派发，观察外部无新增启动。角色扩展未部署或无法隔离宿主时，这部分仍是未验证，不用上述受控结果替代。
 
+## 节点报告与独立通知
+
+已关联的当前 node Chat 使用 `report`，模型业务参数**只有正文**（`body`）。正文应包含可交接结果的地址、使用方法与限制；不要求 node 自报 Run、node、执行 ID 或接收者。角色扩展须从 toolkit 公共 Session 能力取得当前原生身份，并调用：
+
+```http
+POST /api/workflow/node/report
+Content-Type: application/json
+
+{"sessionId":"<公共 Session 能力取得的当前真实身份>","body":"结果地址与使用限制"}
+```
+
+后端按当前后端已管理 Run 的真实 node 执行关联归属，拒绝无关联、管理者身份、重复关联及调用方填写的 `runId`、`nodeId`、`target` 等额外字段。系统生成报告 `id`、`at`、`type=report`，保存 `runId`、`nodeId`、`executionId`、真实来源 `source` 和同 Run 管理者 `target`。sessionId 不是模型参数，也不是秘密凭据；同机信任限制与 manager 工具相同。重启后的旧 Run 不接受 report。
+
+每次成功提交都在 `messages.jsonl` 追加独立报告，包括同一执行的重复报告；不修改 `run.json` 或执行历史，不自动完成、暂停、重试或派发。暂停或已完成现场的当前关联 node 仍可补充事实，不重新打开已完成工作。报告记录缺失、损坏或尾部没有换行时明确报错，不当空文件重建、不截断后继续写。
+
+保存完成后才向目标管理者真实 agent 提交一次 Herdr 输入，正文明确标出 Run、node、报告 ID 和报告正文。文件锁及 Run 操作锁不跨投递。Herdr 提交确认仅表示接入层确认输入提交，不表示已阅读、严格顺序、原生 IRC 或必然打断正在进行的工作。
+
+返回结果分阶段解释：
+
+- 保存失败：HTTP 500，`code=report-save-failed`、`saved=false`、`notification.status=not-attempted`；不生成报告待办、不调用 Herdr。
+- 保存成功：HTTP 200，`saved=true` 及系统生成的完整 `report`；`notification.status` 分别为 `submitted` 或 `failed`，`reason` 说明提交结果。投递等待时，已保存报告已可直接读取，不必等待通知完成。
+- 诊断单独返回 `diagnostic.status=written|failed`。诊断写入失败也不撤销报告、不重投、不暂停。不因诊断失败把已保存报告假报为保存失败。
+
+**仅通知失败或诊断失败时不要重发 report。** 已保存事实仍在，管理者应直接读报告并显式处理交接；report、停轮和退出 Chat 都不代表 node completed。确有新的结果或需要更正正文时可以再 report，会产生新的独立历史，不覆盖旧记录。
+
+Run 详情返回 `reports` 完整追加历史及 `pendingReports`（node ID → 最新适用报告 ID），manager status/dispatch 的快照同样提供这些字段。待办仅取当前执行、当前仍可交接完成的 node（running，或 execution 阶段 failed）；completed 不列为待办。按追加顺序取同一 node 当前执行的最新报告，不借旧执行完成新执行。连续读取和 Herdr 通知提交都不清除待办。这是保存记录的派生视图，不是第四份业务记录；collect 的等待与检查语义应由 collect 能力单独验收。
+
+投递诊断使用 JSON stderr 记录 `event=workflow-report-delivery`、Run、报告 ID、完整目标 Chat 引用、`result` 及类型化 `reason`，不记录正文或可能回显正文的宿主错误详情。输入确认原因是 `input-submission-confirmed`，失败原因沿 Herdr adapter 错误类别。调用者仍从通知返回值取得具体错误。诊断不写入三份业务记录，也不成为重试队列。
+
+### 节点公共 Prompt 的部署要求
+
+node-chat 的实际工具与公共 Prompt 属于独立 my-agent-toolkit 交付。其 `PromptDeclaration` 应使用 `first-enabled-run` 注入本节报告职责：何时交接、正文写地址和限制、仅提供正文、报告不等于完成、保存与通知分离、仅通知失败不要重复 report；不以工具 description 代替注入。部署仍须将固定 node 角色入口接到公共 Session/HTTP/Prompt 与自动启用策略，配置稳定 endpoint 与预算，不依赖 node cwd 或 connect-bot 开关。本仓库的 HTTP 协议、静态入口配置或说明文字都不构成外部扩展已装配、原生工具实际调用或 Prompt 已注入的证据。
+
+### 报告验证入口与证据边界
+
+确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`。报告用例覆盖系统归属、真实文件追加、只读文件保存失败、受控外部投递失败/延迟、连续读取保留待办和真实关闭 stderr 管道的诊断写入失败。投递/诊断故障后均观察 **300 ms**，输出该窗口的外部进程调用记录，证明有限窗口无补投或自动重报，不声称无限期性质。受控 Herdr 副本只证明 adapter 的确定性处理，不证明真实模型、原生会话或通知质量。
+
+真实复验必须使用隔离 Herdr/omp 与已部署 node-chat：记录公共 Prompt 实际注入内容和原生 report 调用（业务参数仅 body），同时核对源/目标真实身份、当前执行、追加消息、状态不变和 manager 实际输入。制造保存失败、投递失败/延迟和诊断失败；分别保留输入提交结果与无自主重投窗口。若外部角色入口缺失，本仓库部分可通过，但 P24.01 的真实工具、P59.02 的公共 Prompt 及真实宿主通知证据仍未验证，不能用手填 HTTP 身份或受控 adapter 宣称这些项完整通过。
+
 ## 启动失败
 
 初始化失败不启动 Chat。原生身份或关联保存失败不提前提交指示。已启动的 Tab/agent 不会被假报回滚；初始指示提交失败也不代表外部端绝无接收效果。详情列出可得的 Workspace、Tab、pane、agent 及原生身份，说明哪些步骤已确认完成。先核实这些引用，再处理现场；不要盲目再次发起，异常窗口不承诺完整幂等。
