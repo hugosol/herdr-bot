@@ -30,6 +30,18 @@ run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
 - `history.jsonl`：追加执行/状态历史；新 Run 初始为空。
 - `messages.jsonl`：追加报告；新 Run 初始为空。
 
+### 独立读取与部分提交
+
+三类记录的读取入口就是初始指示给出的三个绝对路径：`run.json` 直接解析为完整当前事实，`history.jsonl` 和 `messages.jsonl` 逐行读取为追加历史和报告；不要通过重放历史或取最后一份报告来重建当前状态。`GET /api/workflow/runs/<Run ID>` 的 `run`/`reports` 提供当前事实与完整报告，管理者 `status` 另给派生准入及 `pendingReports`。历史从已有 `history.jsonl` 路径读取，不另建日志浏览 API。当前失败原因、首次完成说明与 `previousExecutions` 中的旧执行/失败仍保存在当前事实中；历史保留失败、recover、retry 和完成时的原因与说明。旧执行报告可晚到，但不能替代当前执行的交接依据。通知代次及待办索引是内存/查询派生值，不落成第四份业务记录，也不是已读或完成凭据。
+
+当前状态写入失败时，动作报错且不发布候选状态、不追加成功历史；应先查询已提交现场并排除文件问题。dispatch/retry 如果已经创建 Chat，其 `effects` 与 `persistenceError` 仍如实报告外部效果，不表示 Chat 已撤销。
+
+当前状态提交后，仅历史追加失败属于**部分生效**：非批次状态动作的响应、dispatch 的每项 `results[]`、retry 的 `result` 都保留 `historyError` 原因，并明确返回 `code=history-append-failed`、`stateCommitted=true` 和“当前状态已提交，但执行历史追加失败；状态未回滚”的说明。HTTP 200 在这里表示动作结果可解析，不表示所有记录都写入成功；调用者必须同时检查这些字段。批次仍处理其他合法目标。不得因为这一次错误自动封锁 Run、回滚事实或自动重试；当前磁盘状态及后续查询均保持已生效结果，排除文件问题后可显式执行下一次合法动作。重复已生效动作不会补写缺失的首次历史。若历史尾部残缺，仍拒绝向残缺记录追加，不能自动截断“修复”。
+
+用户应从 workflow 进入已关联的管理者 Chat，表达“检查当前事实与历史写入错误，核实后继续”，不要手填身份参数、修改运行文件或盲目重派。manager-chat 的公共 Prompt 必须解释上述已提交/未提交区别、读取三份路径与检查每项结果的责任；node-chat 应继续按真实执行身份报告，不把历史错误当作回滚或重做指令。本票的接口位于后端 HTTP 和三份持久记录；外部角色扩展的实际部署/Prompt 注入仍须独立 toolkit/Herdr 证据，不能以 HTTP 验收冒充。
+
+可重复确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch records:: -- --nocapture`。`current_write_failure_preserves_queries_disk_and_success_history` 使用真实只读当前文件，联合检查返回、后续查询、原字节和成功历史；`history_failure_reports_committed_completion_and_allows_next_action` 在状态提交后使历史追加失败，检查明确部分生效、缺失历史和后续合法 pause；`batch_history_failure_explains_each_committed_target_without_stopping_batch` 检查两个合法派发目标及失败 retry 的部分生效反馈。`independent_records_read_current_facts_without_replaying_history` 使用相互独立、故意不一致的当前/历史/旧执行报告样例；`operated_records_preserve_old_execution_recovery_completion_and_reports` 经真实 HTTP 执行 fail/recover/retry/report/complete，再核对三个文件、旧事实与 collect 不生成新业务记录。测试只替换外部 Herdr 为隔离记录型副本，文件写入与 TCP 入口真实，不证明模型、原生宿主或角色 Prompt。
+
 正常顺序为整图预检 → 三份记录全部初始化 → Workspace/Tab/agent 启动 → 获取原生 session_id → 持久保存 Run 的真实关联 → 提交初始指示。单文件更新使用同目录临时文件后替换，不先删除正式文件。不承诺三文件事务、断电恢复、多进程写入协议或外部 Chat 回滚。
 
 ## 基础管理者状态协议

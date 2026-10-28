@@ -6,6 +6,8 @@ mod common;
 mod recovery;
 #[path = "workflow_dispatch/retry.rs"]
 mod retry;
+#[path = "workflow_dispatch/records.rs"]
+mod records;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

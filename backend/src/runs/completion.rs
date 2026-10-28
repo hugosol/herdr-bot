@@ -172,8 +172,19 @@ async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Reques
 pub(super) async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(changed);
-    value["historyError"] = serde_json::json!(history_error);
+    history_feedback(&mut value, history_error);
     Ok(Json(value).into_response())
+}
+
+// History failure is a partial effect, not a failed/rolled-back state commit.
+// Preserve the OS detail while giving every action caller an actionable result.
+pub(super) fn history_feedback(value: &mut serde_json::Value, history_error: Option<String>) {
+    if history_error.is_some() {
+        value["code"] = serde_json::json!("history-append-failed");
+        value["stateCommitted"] = serde_json::json!(true);
+        value["message"] = serde_json::json!("当前状态已提交，但执行历史追加失败；状态未回滚。请先查询现场，不要盲目重试。");
+    }
+    value["historyError"] = serde_json::json!(history_error);
 }
 
 pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
