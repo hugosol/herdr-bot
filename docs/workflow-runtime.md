@@ -1,5 +1,42 @@
 # Map Run 运行说明
 
+需求、职责、批准承诺、排除项及验收责任见[长期需求与契约](workflow-contract.md)。本文是用户、管理者/节点及接入维护者的操作与协议参考；文中的检查命令不表示本次部署已通过，真实环境和人工验收状态见[证据边界](workflow-contract.md#验证边界与验收责任)。
+
+## 公开接口与持久字段参考
+
+以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
+
+| 方法及路径 | 请求与结果 |
+| --- | --- |
+| `POST /api/scheduler/maps/{filename}/preflight` | 仅 `managerTaskId`、`zone`、`userInput` 三个字符串；空要求传 `""`。整图检查成功返回 `workspaceName`，不创建 Run/Chat。 |
+| `POST /api/scheduler/maps/{filename}/runs` | 与 preflight 相同的严格请求，重新预检。完成启动返回 HTTP 201 详情包；启动失败可返回 HTTP 500 详情包，含已分配 `id`、可得事实及 `startupError`，不是“没创建过”的保证。预检/角色入口失败在分配前拒绝；不能忽略非 2xx 响应正文或盲目再次发起。 |
+| `GET /api/workflow/runs` | 返回 `runs` 数组及有效 `pollIntervalSeconds`；每项 `id`、可空 `run`、`managed`、`readError`。按创建时间倒序，同时间以 ID 排序；不可读项明确错误，不假造空 Run。 |
+| `GET /api/workflow/runs/{id}` | 详情包 `id`、可空 `run`、`managed`、`startupError`、`readError`；可读 Run 另含完整 `reports` 与 `pendingReports`。必要记录不可读明确失败；仅有启动错误但当前记录不可读时仍可返回错误现场。 |
+| `POST /api/workflow/manager/{action}` | action 为 status、dispatch、complete、fail、reconcile_dispatch、recover、retry、pause、resume、finish、collect；各自的严格业务参数及返回字段见下文，不是任意动作/状态修改入口。 |
+| `POST /api/workflow/node/report` | 传输身份加 `body`，分开返回保存、通知与诊断结果，详见报告章节。 |
+
+管理者角色公开 `run`（按 action 选择下文状态动作）与 `collect`，节点角色公开 `report`；HTTP 将 run 的各 action 分成上表路由，不表示另建一组可绕过角色约束的工具。运行角色传输请求中的 `sessionId` 由公共 Session 自动取得，模型仅给动作矩阵列出的业务参数。后端检查同机来源和已保存真实关联；不接受额外 Run/角色/执行/接收者归属。页面创建 Run 的配置请求与角色请求不是同一种身份协议。Map filename 和 Run ID 沿各自路径校验，不接受任意文件路径。
+
+### 三份记录的字段
+
+`run.json` 是一个完整对象；各 JSONL 文件每行一个完整对象，以换行结束。时间字段使用 Unix epoch **毫秒整数**，ID 是不透明字符串，不从名称/cwd/时间推导关联。以下可空项以 null 表示；初始化的节点执行、失败和完成均为空，旧执行数组为空。
+
+| 对象 | 序列化字段及意义 |
+| --- | --- |
+| Run | `id`；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者 `zone`、`workspaceName`；原文 `userInput`；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是定义快照。 |
+| Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
+| 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
+| execution | `id`、来源 `taskId`、定义 `zone`、可空 `chat` 引用。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
+| failure | `stage`、`message`；启动失败可含 `effects`，执行阶段失败不制造启动效果。详细阶段以实际响应为准，不能只看 failed。 |
+| effects | `recordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；只表示已观察阶段，不证明未确认阶段绝无效果。 |
+| completion | `id`、`at`、真实管理者 `actor` Chat 引用、原文 `reason`；保留首次交接事实。 |
+| finished | `id`、`at`、真实管理者 `actor` Chat 引用；重复 finish 不覆盖。 |
+| report | `id`、`type=report`、`at`、`runId`、`nodeId`、`executionId`、真实 `source`/`target` Chat 引用、`body`；只在 messages.jsonl 追加，不包含已读或投递成功事实。 |
+
+`history.jsonl` 保存按动作追加的执行/状态事实，不是重放协议：公共说明为操作 `id/at/actor/action`、目标 `nodeId`（节点动作）、`before/after`、说明 `reason` 及相关执行/失败引用。不同动作按需带 `execution`、`failure`、`previousExecution/previousFailure`、核实 `finding` 等；不要求所有事件有全部字段，不用历史字段缺席反推当前状态。具体 complete/fail/recover/retry/reconcile_dispatch/pause/resume/finish 的内容见对应章节。通知代次、collect 检查位置、managed、readError 和 manager startupError 都不是第四份持久业务记录。
+
+当前事实读取以 `run.json` 为准，`reports` 为全部追加报告，`pendingReports` 为 node ID → 当前适用报告 ID。status/动作使用 `snapshot` 而非详情的 `run` 字段；collect 不带报告正文。HTTP 成功码不能掩盖 `historyError` 或逐项失败，错误码、已生效字段和已发生效果必须一起解释，见[部分提交](#独立读取与部分提交)。
+
 ## 发起与观察
 
 在 scheduler 选中 Map，打开「+ 发起 Run」，选择 manager 类型的 omp Task 与已登记 zone。Workspace 名称来自管理者 zone 的目录名，不退回默认或当前 Workspace。可先校验配置；「启动 Run」会重新执行同一整图预检，然后创建独立 Run。三份 Bot 文档允许空文本，不是业务质量门禁。
@@ -61,7 +98,7 @@ workflow_poll_interval_seconds = 5
 
 当前状态提交后，仅历史追加失败属于**部分生效**：非批次状态动作的响应、dispatch 的每项 `results[]`、retry 的 `result` 都保留 `historyError` 原因，并明确返回 `code=history-append-failed`、`stateCommitted=true` 和“当前状态已提交，但执行历史追加失败；状态未回滚”的说明。HTTP 200 在这里表示动作结果可解析，不表示所有记录都写入成功；调用者必须同时检查这些字段。批次仍处理其他合法目标。不得因为这一次错误自动封锁 Run、回滚事实或自动重试；当前磁盘状态及后续查询均保持已生效结果，排除文件问题后可显式执行下一次合法动作。重复已生效动作不会补写缺失的首次历史。若历史尾部残缺，仍拒绝向残缺记录追加，不能自动截断“修复”。
 
-用户应从 workflow 进入已关联的管理者 Chat，表达“检查当前事实与历史写入错误，核实后继续”，不要手填身份参数、修改运行文件或盲目重派。manager-chat 的公共 Prompt 必须解释上述已提交/未提交区别、读取三份路径与检查每项结果的责任；node-chat 应继续按真实执行身份报告，不把历史错误当作回滚或重做指令。本票的接口位于后端 HTTP 和三份持久记录；外部角色扩展的实际部署/Prompt 注入仍须独立 toolkit/Herdr 证据，不能以 HTTP 验收冒充。
+用户应从 workflow 进入已关联的管理者 Chat，表达“检查当前事实与历史写入错误，核实后继续”，不要手填身份参数、修改运行文件或盲目重派。manager-chat 的公共 Prompt 必须解释上述已提交/未提交区别、读取三份路径与检查每项结果的责任；node-chat 应继续按真实执行身份报告，不把历史错误当作回滚或重做指令。本文描述的接口位于后端 HTTP 和三份持久记录；外部角色扩展的实际部署/Prompt 注入仍须独立 toolkit/Herdr 证据，不能以 HTTP 验收冒充。
 
 可重复确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch records:: -- --nocapture`。`current_write_failure_preserves_queries_disk_and_success_history` 使用真实只读当前文件，联合检查返回、后续查询、原字节和成功历史；`history_failure_reports_committed_completion_and_allows_next_action` 在状态提交后使历史追加失败，检查明确部分生效、缺失历史和后续合法 pause；`batch_history_failure_explains_each_committed_target_without_stopping_batch` 检查两个合法派发目标及失败 retry 的部分生效反馈。`independent_records_read_current_facts_without_replaying_history` 使用相互独立、故意不一致的当前/历史/旧执行报告样例；`operated_records_preserve_old_execution_recovery_completion_and_reports` 经真实 HTTP 执行 fail/recover/retry/report/complete，再核对三个文件、旧事实与 collect 不生成新业务记录。测试只替换外部 Herdr 为隔离记录型副本，文件写入与 TCP 入口真实，不证明模型、原生宿主或角色 Prompt。
 
@@ -345,7 +382,7 @@ node scripts/test-backend.mjs
 - `dispatch_reconciliation_keeps_uncertain_failed_then_confirmed_absence_pending` 和 `created_dispatch_reconciliation_observes_original_host_identity_without_start_or_input`：P39.01 的不确定/未创建/已创建三分支，原失败历史可读，不伪造提交效果。
 - `confirmed_recover_restores_original_execution_while_paused_without_relaunch`：P40.01，人工确认前提、paused 可恢复原跟踪且身份不变。
 - `manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports`：P42.01，执行失败不可借核实重写，显式交接才解除依赖，无假报告或自动传材料，原 Chat 可补充地址/限制。
-- `terminal_run_rejects_failure_reconciliation_recovery_and_manual_handoff`：P35.03，通过真实动作到达终态后拒绝本票全部变更，首次终态事实与外部调用不变。
+- `terminal_run_rejects_failure_reconciliation_recovery_and_manual_handoff`：P35.03，通过真实动作到达终态后拒绝上述全部状态变更，首次终态事实与外部调用不变。
 - `reconciliation_rejects_unverified_or_conflicting_chat_facts_without_mutation`、`failure_actions_reject_wrong_role_unknown_fields_and_invalid_transitions` 和 `failure_actions_do_not_publish_uncommitted_state_or_success_history`：真实身份观察冲突、权限/参数/状态准入及真实只读文件错误反馈。
 
 P68.06 由上述失败、三种核实、recover、人工 complete 的真实 adapter 全部调用记录支持：正常/拒绝/错误处理及之后 **150ms 有界观察窗口**无新增启动、终止、输入或自动重试；created 仅允许明确的只读 `agent_get`，测试中的显式原 Chat report 则只允许通知管理者。该证据不证明无限期无动作，也不证明真实 omp、模型决策或角色 Prompt 注入。
@@ -404,7 +441,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须覆盖上
 
 可重复确定性入口为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端交付检查为 `node scripts/test-backend.mjs`。`explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact` 核对独立 A/B → C 字面快照、只完成 A 的拒绝和首次说明/历史；`finish_requires_every_handoff_and_terminal_actions_preserve_success` 核对显式派发 C、结束条件、终态拒绝、查询和重复 finish；`reports_and_observed_chat_lifecycle_never_replace_explicit_handoff` 分别经 HTTP 提交 report、停轮状态事件、退出登记事件，再显式完成并验证迟到报告不重新打开工作。各负向观察窗口为 **150 ms**，测试输出保留实际外部调用列表、事件和动作/查询结果；有限窗口不证明无限期没有自动行为。会话事件是受控输入，外部 Herdr 副本不是原生 omp，不能宣称证明了真实 Chat 停轮/退出。
 
-真实宿主复验需要 metadata 指定的 manager-chat/node-chat 实际交付：在独占数据、zone 与 Herdr 实例中，通过公共角色工具执行前置 report 后保持 running（让该 Chat 继续收尾），确认 C 拒绝；管理者 complete A/B 后显式 dispatch C，全部 complete 后 finish，保留原生工具结果、Prompt 注入、Chat 身份/活动顺序、三份运行记录和无强制结束/自主派发的有界外部调用证据。角色入口缺失时，本仓库确定性检查可执行，但原生工具/Prompt/真实 Chat 仍未验证，不能用受控 HTTP 结果宣称本票完整宿主验收。
+真实宿主复验需要 metadata 指定的 manager-chat/node-chat 实际交付：在独占数据、zone 与 Herdr 实例中，通过公共角色工具执行前置 report 后保持 running（让该 Chat 继续收尾），确认 C 拒绝；管理者 complete A/B 后显式 dispatch C，全部 complete 后 finish，保留原生工具结果、Prompt 注入、Chat 身份/活动顺序、三份运行记录和无强制结束/自主派发的有界外部调用证据。角色入口缺失时，本仓库确定性检查可执行，但原生工具/Prompt/真实 Chat 仍未验证，不能用受控 HTTP 结果宣称完整宿主验收。
 
 ## 单节点真实宿主闭环验收
 
@@ -449,7 +486,7 @@ node.input 应明确要求写上述文件、读取文件核对内容，然后通
 
 ### 2026-10-28 实际前置检查：阻塞，未运行闭环
 
-在本票独占 worktree 检查当前部署，实际结果为 `herdr 0.9.5`、`omp/18.13.2`，两者可执行文件均可找到。metadata 的两个固定角色入口分别为：
+在当轮独占源码副本检查部署，实际结果为 `herdr 0.9.5`、`omp/18.13.2`，两者可执行文件均可找到。metadata 的两个固定角色入口分别为：
 
 ```text
 E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts
