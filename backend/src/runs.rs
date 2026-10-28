@@ -17,6 +17,8 @@ use std::{
 };
 use tokio::sync::Mutex;
 mod reports;
+mod recovery;
+pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
 pub use reports::node_report;
 pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
@@ -95,7 +97,10 @@ pub struct Effects {
 pub struct StartupFailure {
     pub stage: String,
     pub message: String,
-    pub effects: Effects,
+    // Execution failure records its original Chat through NodeExecution; it
+    // does not manufacture a new observation of startup/submission effects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effects: Option<Effects>,
 }
 #[derive(Default)]
 pub struct Runs {
@@ -238,7 +243,7 @@ pub async fn start_run(
             Some(StartupFailure {
                 stage: "internal".into(),
                 message: join.to_string(),
-                effects: Effects::default(),
+                effects: Some(Effects::default()),
             }),
         );
     }
@@ -398,7 +403,7 @@ async fn launch(
             Some(StartupFailure {
                 stage: stage.into(),
                 message,
-                effects,
+                effects: Some(effects),
             }),
         );
         return Err(());
@@ -626,7 +631,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str) -> serde_json::
         Ok(())
     }.await;
     if let Err(message) = result {
-        let failure = StartupFailure { stage: stage.into(), message, effects: effects.clone() };
+        let failure = StartupFailure { stage: stage.into(), message, effects: Some(effects.clone()) };
         let node = candidate.nodes.get_mut(id).unwrap();
         node.status = "failed".into();
         node.failure = Some(failure.clone());
