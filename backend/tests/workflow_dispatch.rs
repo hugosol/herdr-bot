@@ -74,6 +74,214 @@ impl Scenario {
     }
 }
 
+// Approved seams: S2 HTTP manager actions/status, S3 external host calls,
+// S4 persisted current facts/history. P17.02/P18.02/P20.02/P29.01/P68.03:
+// A/B -> C independently requires both predecessors completed. A plausible
+// violation is treating A's report or completion as permission to launch C.
+// Observe literal blocked/ready fields, unchanged host calls over 150ms, and
+// explicit completion's first reason/history through the real HTTP boundary.
+#[tokio::test]
+async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-complete").await;
+    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
+    let initial = fs::read(root.join("run.json")).unwrap();
+    let initial_calls = s.herdr.calls();
+    let pending = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"not started"}).to_string()).await;
+    assert_eq!(pending.status, 409, "{}", pending.body);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), initial);
+    assert!(common::read_json_lines(&root.join("history.jsonl")).is_empty());
+    assert_eq!(s.herdr.calls(), initial_calls);
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-complete-A"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-complete", &["A"]).await;
+    let calls = s.herdr.calls();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"A artifact is ready; Chat still cleaning up"}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let completed: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(completed["changed"], true);
+    assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
+    assert_eq!(completed["snapshot"]["nodes"]["A"]["completion"]["reason"], "A artifact is ready; Chat still cleaning up");
+    assert_eq!(completed["ready"], json!(["B"]));
+    assert_eq!(completed["blocked"], json!({"A":["node 状态为 completed，仅 pending 可派发"],"B":[],"C":["前置 B 尚未 completed"]}));
+    assert_eq!(completed["canFinish"], false);
+    assert_eq!(s.herdr.calls(), calls);
+    let first = fs::read(root.join("run.json")).unwrap();
+    let history = fs::read(root.join("history.jsonl")).unwrap();
+    let events = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[1]["action"], "complete");
+    assert_eq!(events[1]["before"], "running");
+    assert_eq!(events[1]["after"], "completed");
+    assert_eq!(events[1]["actor"], started["run"]["manager"]);
+    let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"MUST NOT OVERWRITE"}).to_string()).await;
+    assert_eq!(repeated.status, 200, "{}", repeated.body);
+    let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
+    assert_eq!(repeated["changed"], false);
+    assert_eq!(repeated["snapshot"], completed["snapshot"]);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), first);
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
+    let rejected = s.dispatch("manager-complete", &["C"]).await;
+    assert_eq!(rejected["results"], json!([{"nodeId":"C","status":"rejected","reasons":["前置 B 尚未 completed"]}]));
+    let query = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-complete"}).to_string()).await;
+    let query: Value = serde_json::from_str(&query.body).unwrap();
+    for field in ["snapshot", "ready", "blocked", "canFinish"] { assert_eq!(query[field], completed[field]); }
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(s.herdr.calls(), calls);
+    println!("P17.02/P18.02/P20.02/P68.03: observationWindowMs=150 calls={calls:?} complete={completed} query={query}");
+}
+
+// P17.02/P18.02/P20.02/P35.01: finish cannot infer handoff from live
+// Chat state. Independent graph expectations: C is ready only after A and B;
+// all completed permits finish, then no node is dispatchable. A plausible
+// violation overwrites the first finish or permits complete in terminal state.
+#[tokio::test]
+async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-finish").await;
+    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
+    let unfinished = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
+    assert_eq!(unfinished.status, 409, "{}", unfinished.body);
+    assert!(common::read_json_lines(&root.join("history.jsonl")).is_empty());
+    for node in ["A", "B", "C"] {
+        s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-finish-{node}")},"native_cwd":s.data.path().join("node-zone")}));
+        let dispatched = s.dispatch("manager-finish", &[node]).await;
+        assert_eq!(dispatched["results"][0]["status"], "running");
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-finish","nodeId":node,"reason":format!("{node} handoff ready while Chat active")}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let value: Value = serde_json::from_str(&response.body).unwrap();
+        if node == "B" {
+            assert_eq!(value["ready"], json!(["C"]));
+            assert_eq!(value["blocked"]["C"], json!([]));
+            assert_eq!(value["canFinish"], false);
+        }
+        if node == "C" { assert_eq!(value["canFinish"], true); }
+    }
+    let calls = s.herdr.calls();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let finished: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(finished["changed"], true);
+    assert_eq!(finished["snapshot"]["status"], "completed");
+    assert_eq!(finished["snapshot"]["finished"]["actor"], started["run"]["manager"]);
+    assert_eq!(finished["ready"], json!([]));
+    assert_eq!(finished["canFinish"], false);
+    let first = fs::read(root.join("run.json")).unwrap();
+    let history = fs::read(root.join("history.jsonl")).unwrap();
+    let events = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(events.len(), 7);
+    assert_eq!(events[6]["action"], "finish");
+    assert_eq!(events[6]["before"], "running");
+    assert_eq!(events[6]["after"], "completed");
+    let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
+    assert_eq!(repeated.status, 200, "{}", repeated.body);
+    let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
+    assert_eq!(repeated["changed"], false);
+    assert_eq!(repeated["snapshot"], finished["snapshot"]);
+    let terminal_complete = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-finish","nodeId":"A","reason":"overwrite terminal"}).to_string()).await;
+    assert_eq!(terminal_complete.status, 409, "{}", terminal_complete.body);
+    let rejected = s.dispatch("manager-finish", &["A", "C"]).await;
+    assert_eq!(rejected["results"], json!([
+        {"nodeId":"A","status":"rejected","reasons":["Run 状态为 completed","node 状态为 completed，仅 pending 可派发"]},
+        {"nodeId":"C","status":"rejected","reasons":["Run 状态为 completed","node 状态为 completed，仅 pending 可派发"]}
+    ]));
+    let query = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-finish"}).to_string()).await;
+    assert_eq!(query.status, 200, "{}", query.body);
+    let query: Value = serde_json::from_str(&query.body).unwrap();
+    for field in ["snapshot", "ready", "blocked", "canFinish"] { assert_eq!(query[field], finished[field]); }
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), first);
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(s.herdr.calls(), calls);
+    println!("P17.02/P18.02/P20.02/P35.01: observationWindowMs=150 calls={calls:?} finish={finished} query={query}");
+}
+
+// P28.02/P29.01/P68.03: reports, observed end-of-turn and session exit
+// must leave A running, whereas explicit complete clears its actionable report.
+// A plausible violation infers lifecycle completion or reopens work on a late
+// report. Session events are real HTTP inputs, not evidence of native omp exit.
+#[tokio::test]
+async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-lifecycle").await;
+    let id = started["id"].as_str().unwrap();
+    let root = s.config.scheduler.run_directory.join(id);
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-lifecycle-A"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-lifecycle", &["A"]).await;
+    let first_run = fs::read(root.join("run.json")).unwrap();
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"A artifact ready; cleanup continues"}).to_string()).await;
+    assert_eq!(report.status, 200, "{}", report.body);
+    let report: Value = serde_json::from_str(&report.body).unwrap();
+    let calls = s.herdr.calls();
+    for event in [
+        json!({"sessionId":"node-lifecycle-A","kind":"register","data":{"cwd":s.data.path().join("node-zone")}}),
+        json!({"sessionId":"node-lifecycle-A","kind":"state","data":{"value":"awaiting-input"}}),
+        json!({"sessionId":"node-lifecycle-A","kind":"unregister"})
+    ] {
+        let response = post_json_over_tcp(s.server.addr(), "/api/sessions/events", &event.to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let query = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-lifecycle"}).to_string()).await;
+        assert_eq!(query.status, 200, "{}", query.body);
+        let query: Value = serde_json::from_str(&query.body).unwrap();
+        assert_eq!(query["snapshot"]["nodes"]["A"]["status"], "running");
+        assert_eq!(query["snapshot"]["status"], "running");
+        assert_eq!(query["pendingReports"], json!({"A":report["report"]["id"]}));
+        assert_eq!(query["ready"], json!(["B"]));
+        assert_eq!(fs::read(root.join("run.json")).unwrap(), first_run);
+        assert_eq!(s.herdr.calls(), calls);
+        let rejected = s.dispatch("manager-lifecycle", &["C"]).await;
+        assert_eq!(rejected["results"][0]["reasons"], json!(["前置 A 尚未 completed","前置 B 尚未 completed"]));
+        assert_eq!(s.herdr.calls(), calls);
+        println!("P29.01/P68.03: observationWindowMs=150 event={event} calls={calls:?} query={query}");
+    }
+    // Register active work again: handoff and finish must not demand an exit.
+    for event in [json!({"sessionId":"node-lifecycle-A","kind":"register","data":{"cwd":s.data.path().join("node-zone")}}),json!({"sessionId":"node-lifecycle-A","kind":"state","data":{"value":"working"}})] {
+        let response = post_json_over_tcp(s.server.addr(), "/api/sessions/events", &event.to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+    }
+    for node in ["A", "B", "C"] {
+        if node != "A" {
+            s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-lifecycle-{node}")},"native_cwd":s.data.path().join("node-zone")}));
+            assert_eq!(s.dispatch("manager-lifecycle", &[node]).await["results"][0]["status"], "running");
+        }
+        let calls_before_complete = s.herdr.calls();
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-lifecycle","nodeId":node,"reason":"Handoff accepted; Chat may keep working"}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let value: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(value["pendingReports"], json!({}));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert_eq!(s.herdr.calls(), calls_before_complete);
+        if node == "A" {
+            let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-handoff cleanup note"}).to_string()).await;
+            assert_eq!(late.status, 200, "{}", late.body);
+            let query = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-lifecycle"}).to_string()).await;
+            let query: Value = serde_json::from_str(&query.body).unwrap();
+            assert_eq!(query["pendingReports"], json!({}));
+            assert_eq!(query["snapshot"], value["snapshot"]);
+        }
+        println!("P28.02/P68.03: postCompleteObservationWindowMs=150 calls={calls_before_complete:?} complete={value}");
+    }
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-lifecycle"}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let finished = fs::read(root.join("run.json")).unwrap();
+    let history = fs::read(root.join("history.jsonl")).unwrap();
+    let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-finish cleanup finished"}).to_string()).await;
+    assert_eq!(late.status, 200, "{}", late.body);
+    let calls = s.herdr.calls();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let query = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(query.status, 200, "{}", query.body);
+    let query: Value = serde_json::from_str(&query.body).unwrap();
+    assert_eq!(query["run"]["status"], "completed");
+    assert_eq!(query["run"]["nodes"]["A"]["status"], "completed");
+    assert_eq!(query["pendingReports"], json!({}));
+    assert_eq!(query["reports"].as_array().unwrap().len(), 3);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), finished);
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
+    assert_eq!(s.herdr.calls(), calls);
+    println!("P28.02/P29.01/P68.03: terminalObservationWindowMs=150 calls={calls:?} detail={query}");
+}
+
 // P24.01/P27.01/P28.01: independent literals require two append-only reports
 // from the real current node identity, never a state transition or read receipt.
 // A report attributed from caller-supplied metadata or cleared by reads violates
