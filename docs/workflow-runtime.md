@@ -408,6 +408,8 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须覆盖上
 
 ## 单节点真实宿主闭环验收
 
+多节点后续入口见 [真实 A／B → C 验收与通知取证](workflow-fan-in-acceptance.md)：固定双材料/第三份产物预期、预先写入 C 的材料地址、三个真实通知现场与报告后收尾的顺序证据。该指南不是已通过声明，单节点或角色部署前置条件缺失时不得用多节点准备结果代替。
+
 本节是进入多节点验收前的独立入口，只验证一个无前置 node 的 manager → dispatch → 实际文件/report → complete → finish。即使本节全部通过，也不代表 P62/P63 的 A/B → C、并行、汇合或多轮推进已经通过。HTTP TestServer、记录型 Herdr 副本和手填身份请求都不能代替本节。
 
 ### 独立预期与观察 seam
