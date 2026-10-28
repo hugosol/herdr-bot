@@ -96,6 +96,82 @@ finish 没有模型业务参数。running 或 paused 的 Run 全部节点 comple
 
 manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status → 读取报告/核实交接 → complete → 显式 dispatch 下游 → 全部完成后 finish 的职责与上述拒绝/部分生效语义注入真实管理者 Chat。node-chat 指引应明确 report、停轮、退出都不替代管理者交接。本仓库没有外部 toolkit 的角色工具实现；HTTP 路由与此说明不是工具已装配或 Prompt 已注入的证明，不通过手填 HTTP 身份冒充真实角色工具验收。
 
+## 失败核实、原执行恢复与人工交接
+
+失败不等于 Chat 已退出，更不等于运行应暂停。后端不会因派发或执行失败自动 retry、pause、终止 Chat、补发初始指示或传递材料。先读取 status、原 Chat 与三份记录，再请用户核实或修复现场。Run running/paused 均允许以下非启动动作；completed 终态全部拒绝（HTTP 409、`run-terminal`），保留首次 finish 事实。
+
+### 记录执行失败：fail
+
+`POST /api/workflow/manager/fail`：
+
+```json
+{"sessionId":"<公共 Session 能力取得的当前管理者身份>","nodeId":"A","reason":"已核实：缺少上游源文件，原 Chat 暂不能继续"}
+```
+
+只有 running node 可首次 fail；`reason` 必须非空。成功保存 `status=failed`、`failure.stage=execution`、`failure.message` 和原执行 ID、Task、zone、真实 Chat，不改变 Run 派发资格。执行失败不凭空生成启动效果字段；派发失败的 `failure.effects` 仍保留启动时观察到的实际效果。history 的 `action=fail` 包含首次原因、前后状态、执行引用、管理者 actor、操作 ID 与时间。重复 failed 的 fail 返回 `changed=false`，不覆盖首次失败、当前文件或历史，不调用宿主；它也不能把派发失败改成执行失败。pending/completed 首次 fail 返回 `node-not-failable`，空原因返回 `failure-reason-required`。
+
+### 只核实派发失败：reconcile_dispatch
+
+`POST /api/workflow/manager/reconcile_dispatch`：
+
+```json
+{"sessionId":"<当前管理者身份>","nodeId":"A","finding":"uncertain","reason":"用户尚不能确认原派发是否创建了 Chat"}
+```
+
+模型业务参数仅 `nodeId`、`finding`、`reason`；没有任意目标状态或调用者自报 Chat 归属。只有派发阶段 failed 可核实；执行阶段 failed 必须 recover 或确认可交接后 complete，返回 `node-not-dispatch-failed` 防止绕过。非空原因必须说明人工核实依据。
+
+- `finding=uncertain`：当前事实完全保持 failed，保留原失败原因与执行。`changed=false`，history 追加这次不确定核实及依据，但不触发宿主调用或派发。
+- `finding=not_created`：人工确认未创建原生 Chat，恢复 pending，清除当前失败/候选执行；旧执行、原失败与依据仍在 history。已记录真实 session_id 或 Chat 关联时拒绝 `dispatch-chat-already-known`，不能用此动作抹除已发生事实。pending 只表示再次有资格，不自动 dispatch；已有 Tab 也不会被关闭。
+- `finding=created`：用户确认原 Chat 存在并可跟踪，后端只对**原派发效果中记录的 agent** 调用只读原生身份查询。身份必须为真实 omp 会话、cwd 与原 zone 一致，不得替换已知原身份或复用管理者/其他节点身份；关联原执行的 Chat 后恢复 running。原执行 ID、Task、zone、Workspace/Tab/pane/agent 引用不变，不创建 Chat、不提交初始指示、不补发遗漏材料。缺少原派发现实目标或宿主身份不可确认时返回 `dispatch-chat-unverified`，身份/zone 冲突返回 `dispatch-chat-mismatch`，保持 failed。无已知原派发目标时不能通过猜测或直接编辑记录强行关联。
+
+每次成功核实的 history `action=reconcile_dispatch` 保留 `finding`、依据、原 failure/执行和当前执行引用；确认后当前 failure 清空，但失败历史不删除。created 查询失败不伪造成功，也不自动再查或启动。
+
+### 恢复原执行跟踪：recover
+
+`POST /api/workflow/manager/recover`：
+
+```json
+{"sessionId":"<当前管理者身份>","nodeId":"A","confirmed":true,"reason":"用户已补齐源文件，确认原 Chat 可继续"}
+```
+
+业务参数仅 `nodeId`、`confirmed`、`reason`。只有执行阶段 failed 且有关联原 Chat 才能 recover；派发失败返回 `node-not-recoverable`。人工确认 `confirmed=true` 与非空修复依据缺一不可，否则返回 `recovery-confirmation-required`。成功将原执行跟踪恢复 running、清空当前 failure；原执行 ID/Task/zone/Chat 全部不变，history 保留原 failure、修复说明和 `action=recover`。这不是 Chat Resume，不调用宿主、不重新发起或恢复进程、不补发消息；即使 Run paused 也可执行，不恢复派发资格。已恢复 running 后再次 recover 拒绝，不重复追加成功记录。
+
+### 人工已处理且确实可交接
+
+用户已人工补齐结果且确认可交接时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游或结束原 Chat；失败和原执行历史仍可读。需要向管理者补充正文时，在**已有关联的 node Chat** 使用现有 report 写明地址与限制；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
+
+### 错误、调用者与用户处理路径
+
+上述 HTTP 只接受同机、唯一当前管理者真实 session_id；角色扩展必须通过公共 Session 能力自动取得它，模型和用户不填写身份/Run/角色/归属。未知字段、无效 finding 或缺少必要参数明确拒绝，不存在任意状态后门。成功返回与 complete 相同的查询字段、`changed`、`historyError`。状态写入失败返回 HTTP 500、`fail-failed` / `recover-failed` / `reconcile-dispatch-failed`，不采用候选状态或追加成功历史；状态已提交但历史追加失败时保留生效快照并返回非空 `historyError`，不假称全部未生效或自动重试。
+
+用户从 workflow 查看 Run/node，进入已关联管理者 Chat 表达意图，而不是手填工具参数或编辑运行文件：
+
+1. 派发失败：查看已发生效果与原 Chat → 必要时普通 Resume 进入已存在 Chat → 核实「已创建 / 未创建 / 不确定」→ 将结论和依据告诉管理者，由其 reconcile_dispatch。不确定继续 failed，不盲目重复 dispatch。
+2. 执行失败：确认原 Chat 和当前原因 → 人工修复现场 → 告诉管理者「已修复，继续跟踪原执行」，由其 recover；需要恢复原生 Chat 进程时另用普通 Resume，它不代替 recover 或接管 Run。
+3. 人工处理后已可交接：告诉管理者结果地址、限制与确认依据，由其 complete；原 Chat 可用现有 report 补充，不制造假报告。下游只获得资格，管理者必须再显式决定派发。
+
+manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须包含上述动作矩阵、人工确认责任、禁止自动行为与错误/部分生效语义，node-chat 必须明确 report 不改变状态、失败后补充材料仍使用已有 Chat。**本仓库没有外部 toolkit 角色工具源码**，当前 HTTP 接线与说明不代表实际角色工具或 Prompt 已交付。metadata 指向的 `manager-chat.ts` 入口未部署时，真实工具/Herdr/omp 演练仍受阻；不能让用户手填 sessionId 或用受控原生身份宣称已验收。
+
+### 可重复验证与证据边界
+
+```text
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch recovery:: -- --nocapture
+node scripts/test-backend.mjs
+```
+
+`backend/tests/workflow_dispatch/recovery.rs` 通过真实 HTTP TestServer、独占磁盘及外部记录型 Herdr 副本检验：
+
+- `execution_fail_preserves_original_chat_first_reason_and_history_without_host_actions`：P20.04、P38.02，首次原因/原身份/查询/磁盘一致、重复 fail 不生效。
+- `dispatch_reconciliation_keeps_uncertain_failed_then_confirmed_absence_pending` 和 `created_dispatch_reconciliation_observes_original_host_identity_without_start_or_input`：P39.01 的不确定/未创建/已创建三分支，原失败历史可读，不伪造提交效果。
+- `confirmed_recover_restores_original_execution_while_paused_without_relaunch`：P40.01，人工确认前提、paused 可恢复原跟踪且身份不变。
+- `manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports`：P42.01，执行失败不可借核实重写，显式交接才解除依赖，无假报告或自动传材料，原 Chat 可补充地址/限制。
+- `terminal_run_rejects_failure_reconciliation_recovery_and_manual_handoff`：P35.03，通过真实动作到达终态后拒绝本票全部变更，首次终态事实与外部调用不变。
+- `reconciliation_rejects_unverified_or_conflicting_chat_facts_without_mutation`、`failure_actions_reject_wrong_role_unknown_fields_and_invalid_transitions` 和 `failure_actions_do_not_publish_uncommitted_state_or_success_history`：真实身份观察冲突、权限/参数/状态准入及真实只读文件错误反馈。
+
+P68.06 由上述失败、三种核实、recover、人工 complete 的真实 adapter 全部调用记录支持：正常/拒绝/错误处理及之后 **150ms 有界观察窗口**无新增启动、终止、输入或自动重试；created 仅允许明确的只读 `agent_get`，测试中的显式原 Chat report 则只允许通知管理者。该证据不证明无限期无动作，也不证明真实 omp、模型决策或角色 Prompt 注入。
+
+真实 S3 复验必须先部署 metadata 指定的角色入口并隔离 Herdr、zone、数据与原生 Chat，再由实际管理者工具分别处理三种核实、paused recover、人工 complete，保存原身份、输入/启动/终止记录、三份运行记录、明确起止的无新增动作观察窗口和用户意图/人工干预。缺入口或不可隔离宿主时报告未验证；HTTP 与受控 adapter 检查不能替代它。
+
 ## 暂停新执行与恢复派发资格
 
 管理者的 `pause` / `resume` 都没有模型业务参数。传输正文仅由公共 Session 能力提供真实身份，后端仍按唯一管理者关联与同机来源检查；node、未关联身份及额外的 Run/node/角色字段不能借此修改状态：

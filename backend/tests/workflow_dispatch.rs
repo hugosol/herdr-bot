@@ -2,6 +2,8 @@
 //! P8/P10/P13/P14/P15/P16: a prompt-first launch or a copied manager input
 //! would violate independent literal expectations at the host boundary.
 mod common;
+#[path = "workflow_dispatch/recovery.rs"]
+mod recovery;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

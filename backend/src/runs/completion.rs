@@ -169,14 +169,14 @@ async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Reques
     }
 }
 
-async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
+pub(super) async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(changed);
     value["historyError"] = serde_json::json!(history_error);
     Ok(Json(value).into_response())
 }
 
-async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
+pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(false);
     value["code"] = serde_json::json!(code);
@@ -184,7 +184,7 @@ async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Re
     Ok((StatusCode::CONFLICT, Json(value)).into_response())
 }
 
-async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
+pub(super) async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
     let paths = Runs::paths(state, id);
     let _guards = state.runs.files.lock(&paths).await;
     let previous = fs::read(&paths[1]).map_err(|e| e.to_string())?;
