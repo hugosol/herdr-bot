@@ -8,6 +8,8 @@ mod recovery;
 mod retry;
 #[path = "workflow_dispatch/records.rs"]
 mod records;
+#[path = "workflow_dispatch/integrity.rs"]
+mod integrity;
 #[path = "workflow_dispatch/security.rs"]
 mod security;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};

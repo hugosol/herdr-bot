@@ -139,10 +139,9 @@ impl Runs {
         let _guards = self.files.lock(&paths).await;
         // Required files are never silently recreated. JSONL is independently readable.
         for path in &paths[1..] {
-            fs::File::open(path).map_err(|e| e.to_string())?;
+            fs::File::open(path).map_err(|error| format!("{}：{error}", path.display()))?;
         }
-        serde_json::from_slice(&fs::read(&paths[0]).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())
+        FileStore::read_json(&paths[0])
     }
 }
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -164,6 +163,11 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
     };
     let mut value = serde_json::json!({"id":id,"run":run,"managed":managed,"startupError":failure,"readError":read_error});
     if let Some(run) = &run {
+        let paths = Runs::paths(state, id);
+        {
+            let _guards = state.runs.files.lock(&paths).await;
+            FileStore::read_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1])?;
+        }
         let reports = reports::summary(state, run, true).await?;
         value["reports"] = reports["reports"].clone();
         value["pendingReports"] = reports["pendingReports"].clone();
@@ -495,11 +499,15 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         .cloned()
         .collect::<Vec<_>>();
     let mut matched = None;
+    let mut read_error = None;
     let mut node_associated = false;
     for id in ids {
         let run = match state.runs.read(&state, &id).await {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(message) => {
+                read_error.get_or_insert(message);
+                continue;
+            }
         };
         node_associated |= run.nodes.values().any(|node| {
             node.executions().any(|execution| {
@@ -528,6 +536,11 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
             "原生身份同时关联节点执行与管理者，归属不唯一。",
         )),
         Some(run) => Ok(run),
+        None if read_error.is_some() => Err(error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "run-read-failed",
+            read_error.as_deref().unwrap(),
+        )),
         None => Err(error(
             StatusCode::FORBIDDEN,
             "manager-unassociated",
@@ -624,7 +637,6 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
 }
 
 async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Option<&str>) -> Result<(), String> {
-    use std::io::Write;
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
     let node = &run.nodes[id];
@@ -638,10 +650,7 @@ async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Op
             entry["previousFailure"] = serde_json::json!(previous.failure);
         }
     }
-    let mut bytes = serde_json::to_vec(&entry).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
-    let mut file = fs::OpenOptions::new().append(true).open(&paths[1]).map_err(|e| e.to_string())?;
-    file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())
+    FileStore::append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &entry)
 }
 
 async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>) -> serde_json::Value {

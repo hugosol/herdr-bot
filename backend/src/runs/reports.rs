@@ -17,12 +17,7 @@ pub struct Report {
 }
 
 fn read_reports(path: &std::path::Path) -> Result<Vec<Report>, String> {
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
-    if !bytes.is_empty() && bytes.last() != Some(&b'\n') {
-        return Err("报告记录尾部残缺；拒绝读取或继续追加。".into());
-    }
-    bytes.split(|b| *b == b'\n').filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice(line).map_err(|e| e.to_string())).collect()
+    FileStore::read_jsonl(path)
 }
 
 pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
@@ -54,10 +49,14 @@ struct ReportRequest {
 async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, String), Response> {
     let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
     let mut matched = None;
+    let mut read_error = None;
     for id in ids {
         let run = match state.runs.read(state, &id).await {
             Ok(run) => run,
-            Err(_) => continue,
+            Err(message) => {
+                read_error.get_or_insert(message);
+                continue;
+            }
         };
         if run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id) {
             return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "管理者身份不能提交节点报告。"));
@@ -73,7 +72,10 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
             }
         }
     }
-    matched.ok_or_else(|| error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的当前节点执行归属。"))
+    matched.ok_or_else(|| match read_error {
+        Some(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+        None => error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的当前节点执行归属。"),
+    })
 }
 
 pub async fn node_report(
@@ -110,11 +112,7 @@ pub async fn node_report(
             };
             let paths = Runs::paths(&state, &run.id);
             let _guards = state.runs.files.lock(&paths).await;
-            read_reports(&paths[2])?;
-            let mut bytes = serde_json::to_vec(&report).map_err(|e| e.to_string())?;
-            bytes.push(b'\n');
-            let mut file = fs::OpenOptions::new().append(true).open(&paths[2]).map_err(|e| e.to_string())?;
-            file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())?;
+            FileStore::append_jsonl::<Report>(&paths[2], &report)?;
             state.runs.changed(&run.id, true).await;
             report
         };

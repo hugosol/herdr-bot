@@ -58,6 +58,18 @@ run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
 
 正常顺序为整图预检 → 三份记录全部初始化 → Workspace/Tab/agent 启动 → 获取原生 session_id → 持久保存 Run 的真实关联 → 提交初始指示。单文件更新使用同目录临时文件后替换，不先删除正式文件。不承诺三文件事务、断电恢复、多进程写入协议或外部 Chat 回滚。
 
+### 损坏记录与 Windows 文件协调
+
+三份记录都是必要文件。缺失不会被当作空文件重新创建；当前记录不可解析、报告结构损坏、历史不是 JSON 对象或 JSONL 最后一条没有换行时，相关读取/追加明确报错，错误包含文件路径。详情读取同时检查历史记录是否可读，但不重放历史；管理者 status 的当前事实仍以 `run.json` 为准，不依赖历史推导。运行身份扫描无法读取记录时返回 `run-read-failed`，而不是把文件故障伪装成身份未关联；另一个可正常识别的独立 Run 仍可工作。旧 Run 未接管规则不变。
+
+历史的 dispatch、retry 和状态转换追加，以及报告追加，均在同一次文件集合协调内先检查已有完整记录，再执行追加；不向残尾或损坏 log 继续写，不自动截断、补换行、重建空数据或重试。若损坏是在外部启动等待期间出现，已发生的 Chat/已提交状态不能回滚；历史失败仍按上面的 `stateCommitted`/`historyError` 部分生效反馈处理。文件拒绝访问、只读或 Windows 不允许替换时，正式旧文件保持原字节；排除访问问题后须由调用者显式发起下一次合法操作。
+
+协调仅在当前服务实例内，集合路径按固定顺序取得锁；读取、初始化、整体替换和追加沿同一层进行。不相交的 Run 文件集合不会互相排队。文件访问锁不跨外部 Herdr 启动、初始输入、报告投递或 collect 等待；同 Run 的业务串行边界仍覆盖整个派发批次，不能把文件可读误解为状态操作可越过批次。没有新增跨文件原子、断电安全或多进程写入保证。
+
+用户遇到损坏提示，应保留原文件及错误路径，从 workflow 进入原管理者 Chat 表达“先核实保存事实、文件故障和已有外部效果，不要重派或修改记录”。不要手填身份、编辑运行 JSON、删除坏行或用空文件覆盖；部署维护者应先备份原字节，再依据可信记录处理存储故障。manager-chat 指引应明确：读取失败不是空 Run，历史追加失败不是状态回滚，先查已提交事实并说明未知项；node-chat 遇到报告保存失败须如实说明未保存，不宣称通知成功，也不因投递失败重复报告。角色 Prompt 的真实注入仍需外部 toolkit/宿主证据，本段不是替代验证。
+
+可重复 Windows 检查入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch integrity_ -- --nocapture`（P47.01/P48.01）。独占临时文件与真实 TCP 检查必要文件缺失、当前/报告/历史损坏、残尾、原字节保持、外部等待后拒绝追加及部分生效；Windows 专有用例用不共享 DELETE 的真实文件句柄阻止替换，核对旧句柄/正式路径字节和失败后的显式成功替换；并发用例交错 80 次详情读取与 40 次状态替换。外部 start gate 验证同 Run 可读且另一 Run 能保存 pause。再运行同一测试目标中的 `serialized_batch_finishes_before_pause_without_blocking_other_run_or_chat`、`collect_retains_merges_notifications_before_failed_delivery_and_keeps_pending_work` 和 `collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immediate`，联合验证批次、投递与 collect 的等待边界。gate/实际调用记录决定先后，负向窗口分别为 100/200 ms，不以任意等待推定排序。上述保持生产文件层及 Herdr 调用包装，外部 Herdr 使用记录型副本，只证明确定性文件访问/故障语义，不宣称原生宿主或模型行为通过。
+
 ## 基础管理者状态协议
 
 `POST /api/workflow/manager/status` 的传输正文仅为 `{"sessionId":"<当前真实原生身份>"}`，返回 `snapshot`，内容来自当前已提交的 `run.json`，不保存第二套 ready 状态。角色扩展必须通过公共 Session 能力自动取得身份；这不是模型业务参数，模型不提供 Run ID、角色或归属。
