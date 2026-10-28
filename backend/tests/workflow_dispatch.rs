@@ -8,6 +8,8 @@ mod recovery;
 mod retry;
 #[path = "workflow_dispatch/records.rs"]
 mod records;
+#[path = "workflow_dispatch/security.rs"]
+mod security;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
@@ -17,6 +19,7 @@ struct Scenario {
     herdr: HerdrFixture,
     config: herdr_bot::Config,
     server: TestServer,
+    app: axum::Router,
     zone: String,
     manager_task: String,
 }
@@ -49,7 +52,8 @@ impl Scenario {
         herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"manager-05"},"native_cwd":data.path()}));
         fs::create_dir_all(&config.scheduler.map_directory).unwrap();
         fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
-        let server = TestServer::start(&config).await;
+        let app = herdr_bot::app(&config);
+        let server = TestServer::start_app(app.clone()).await;
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();
         for path in [data.path(), node_zone.as_path()] {
@@ -69,7 +73,7 @@ impl Scenario {
             "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":node_zone,"blocked_by":[]},
             "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":node_zone,"blocked_by":["A","B"]}
         }}).to_string()).unwrap();
-        Self { data, herdr, config, server, zone, manager_task:ids.remove(0) }
+        Self { data, herdr, config, server, app, zone, manager_task:ids.remove(0) }
     }
     async fn start(&self, identity: &str) -> Value {
         self.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":identity},"native_cwd":self.data.path()}));

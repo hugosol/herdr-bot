@@ -50,6 +50,22 @@ run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
 
 后端先校验同机来源，再通过已保存的管理者原生身份解析唯一的当前后端 Run 归属；没有关联、重复关联、非管理者均拒绝，不按名称、Task、Tab 或 cwd 猜测。session_id 不是秘密认证凭据：接受同机进程冒用风险，不构成强认证或沙箱。重启后旧 Run 只读，普通 Chat Resume 不代表接管 Run。
 
+### 后端重启：历史现场只读
+
+管理归属仅存在于创建 Run 的当前后端进程；`managed=false` 是服务上下文事实，不是持久 Run 状态。真正重启服务后，旧 Run 仍可通过详情链接及 `GET /api/workflow/runs/<Run ID>` 读取，原 running/paused/completed 等状态、节点失败、执行与已知管理者/节点 Chat 关联、报告和三份记录保持原样。服务不扫描记录恢复控制权，不把 running 改写为 failed/completed，不发起执行，也不提供自动或手动接管入口。
+
+重启前的管理者身份调用 status、dispatch、complete、finish、pause、resume、fail、recover、retry、reconcile_dispatch、collect 均拒绝（HTTP 403、`manager-unassociated`）；旧节点身份 report 同样拒绝（HTTP 403、`node-unassociated`）。已有报告或 pendingReports 不恢复写入资格，collect 不进入等待、不返回正常快照；普通 Chat Resume 也不恢复 Run 管理。用户可继续读取保存事实、核实原 Chat 与产物，但不能通过改文件、重放初始指示或将 Resume 当作接管来继续旧 Run。角色工具应将拒绝反馈给调用者，不自动重试或另起执行。
+
+管理者启动失败的 `startupError` 仅保存在原后端内存，浏览器刷新可以查询；真正重启后为 null，不从业务历史重建到页面。已提交 Chat 关联仍保留，节点的持久 failure 则继续可见。需要跨进程查询启动诊断时，应由部署环境保留服务 stdout/stderr（含 Run ID、stage 和已发生效果）；三份业务记录不是诊断日志，也没有页面日志浏览入口。
+
+可重复确定性验收入口（仅数值回环、独占 cwd/数据/Herdr 记录型副本、真实服务进程与交付页面）：
+
+```text
+npm --prefix frontend run test:browser:build -- workflowStart.spec.ts --workers=1
+```
+
+`P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tools` 在真实 Run 中派发 running/failed 节点并产生报告/历史，再重启；核对所有管理动作与 report/collect 拒绝、完整详情与三份文件逐字不变、页面未接管说明及外部调用记录。`P54.02 real restart drops manager startup errors without rewriting business facts` 在真实启动指示故障后保留进程诊断，重启并刷新页面，核对错误消失、已知 Chat 与空业务历史保留。二者各保留截图、前后事实/文件、外部调用及 **1000ms 有界无新增调用窗口**；不以有限窗口声明永远没有自动行为。受控 Herdr 仅证明确定性宿主响应处理，不证明真实 omp 原生 Chat 或 toolkit Prompt 注入；后者仍需部署角色扩展及隔离真实 Herdr 后单独验收。
+
 status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`blocked`（每个 node 的当前阻塞原因数组）及 `canFinish`。依赖只在所有前置 node 为 completed 时满足；running、failed 等非 pending 节点不可首次派发。查询不保存第二套 ready 真相，不自动选择路线或创建 Chat。
 
 ### 管理者显式批量派发
@@ -69,6 +85,27 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 同批拒绝或启动失败不取消其他合法目标，不关闭或回滚已创建的 Chat。成功派发后 node 为 running；启动失败为 failed，保留执行 ID、来源 Task、zone、可得 Chat 关联及失败阶段/原因，并追加执行历史。正常已记录的 running/failed 再次 dispatch 均拒绝，不增加外部启动、不覆盖首次事实。崩溃或关联保存失败窗口不承诺完整幂等，先核实已发生效果，勿盲目重发。同 Run 派发批次互斥；不同 Run 的身份与事实独立。
 
 manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供 status/dispatch 及下文 complete/finish 指引，并将工具接到对应协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
+
+## 角色归属与来源集成检查
+
+运行工具的归属不能由 Run ID、Task 类型或工具调用者自报决定。后端只按保存的真实原生 session_id 查找关联：管理者必须在当前后端内有唯一 Run 归属，且不能同时关联任何 Run 的当前或保留节点执行。出现跨 Run 的 manager/node 身份冲突时，所有管理者动作统一返回 `403 manager-ambiguous`，不按先找到的角色授权；应核实实际 Chat 关联，不能用同机来源或重复请求绕过。无关联节点/管理者身份也不能因来源在回环地址而取得权限。旧节点执行仍可提交归属于原执行的历史报告，但不能冒充当前执行或管理者，迟到时间不改变报告适用性。
+
+可重复的后端契约检查入口：
+
+```text
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch security:: -- --nocapture
+node scripts/check-test-network-policy.mjs
+```
+
+`backend/tests/workflow_dispatch/security.rs` 通过既有 S2/S3/S4 interface 检查：
+
+- `two_run_role_and_retained_execution_matrix_rejects_scope_forgery`：同 Map/Task 的两个 Run，分别关联管理者、当前节点与保留旧执行；报告接收者/适用待办隔离；全部管理者路由拒绝节点及无关联调用；两个方向的 Run/role/execution/source 冒充和节点报告的自报归属均被拒绝。拒绝前后对照公开详情、三份记录字节及 150ms 窗口内实际外部调用。
+- `manager_authorization_rejects_cross_run_current_and_old_node_identity_collisions`：受控外部宿主返回跨 Run 重复身份，分别覆盖当前及保留旧节点执行与管理者角色冲突；全部管理者路由拒绝，不改两个 Run、不产生新外部调用。
+- `source_matrix_enforces_local_transport_and_session_association_separately`：真实回环 HTTP 启动后，在同一生产应用的 HTTP 边界注入独立 TCP 来源样例；IPv4/IPv6 回环允许已关联管理者查询，却拒绝无关联身份；三个文档地址样例对全部角色路由返回来源拒绝，即使请求携带已关联身份。没有监听 LAN 或发布 mDNS，受控 TCP 对端不是实际网卡验收。
+
+这些检查保留真实 HTTP 处理、持久化和生产 Herdr adapter；外部记录型 Herdr 是受控条件，测试中的入口占位文件只让后端配置检查可执行，**不证明角色扩展可加载、工具参数面正确、Prompt 已注入或 connect-bot 关闭时原生运行成功**。同机校验仍不是认证，session_id 仍不是秘密凭据，同机进程冒用风险不因测试通过而消失；没有新增 token。
+
+双角色部署验收还必须在独占 Herdr/omp 环境实际加载 metadata 指定的 `manager-chat.ts` 与 `node-chat.ts`，关闭 connect-bot，按普通 → manager → node → 普通切换 Task 类型，并使用两个不同 node cwd。通过真实工具与 Prompt/Session/HTTP 公共能力观察对应角色工具、首次启用指引、原生身份和实际请求目标；使用显式非默认 endpoint、config.path/configBaseDir 对照有效配置与真实请求，不按角色 ID 推导目录。还须在 toolkit 交付源码上检查角色 → common、common 不反向依赖角色、foundation 不依赖 business，且不引用 connect-bot 私有实现。缺少角色入口或源码时，这部分 P22.01 工具参数面、P58.01、P60.02、P67.04 必须报告未验证，不能用上述后端矩阵或入口文件存在替代运行证据。
 
 ## 派发验证入口与证据边界
 

@@ -36,7 +36,15 @@
 
 ## Comments
 
-本 worktree 已实现并按 S2/S4 验证，待独立集成；未合入前维持 `in-progress`，不把 agent 完成等同于 `closed`。
+本 worktree 已实现并按 S2/S4 验证，待宿主排队合入集成分支；未合入前维持 `in-progress`，不把 agent 完成等同于 `closed`。
+
+### 当前开发分支的独立集成验收（2026-10-29）
+
+- 接收集成提交 `d7ce8a31a7e680f0eb7fb8daed1237a578478feb` 后，解决 `backend/tests/workflow_dispatch.rs` 的追加模块冲突，同时保留本票 `records` 与角色安全票 `security`，不删除任何一侧覆盖。
+- `npm --prefix frontend run build` 通过，提供后端测试必需的静态资源；`npm --prefix frontend test -- --maxWorkers=2` 通过，27 个测试文件、205 项测试全部成功，npm 网络护栏通过。
+- 完整后端运行使用仓库允许的低并发入口，外层和目标内部均串行：`node --input-type=module -e "process.env.CARGO_TARGET_DIR='C:/Users/hugos/AppData/Local/Temp/hyper-ticket-hj8MCI-ticket14-preserved/target-ticket14'; const {main}=await import('./scripts/test-backend.mjs'); process.exitCode=await main(['--binary-jobs','1','--test-threads','1','--output-dir','C:/Users/hugos/AppData/Local/Temp/hyper-ticket-hj8MCI-ticket14-preserved/integration-global-tests']);"`。
+- 本轮完整后端 build、全部 binary 与 doctest 均通过，0 个目标未派发，用时 750.9 秒；`workflow_dispatch` 为 53 passed，包含 records 与 security；此前失败的 `zone_commit` 本轮亦通过。没有修改或放宽其断言；本轮低并发通过不证明此前失败根因已定位或并发条件下问题已修复。
+- 本轮汇总和逐目标原始日志保留于 `C:/Users/hugos/AppData/Local/Temp/hyper-ticket-hj8MCI-ticket14-preserved/integration-global-tests/`，不改写下列历史失败证据。按此次接管范围未执行浏览器/实机 smoke、复杂脚本或跨票据整体验收，它们留给最后独立门禁。
 
 - P43.01：`records::current_write_failure_preserves_queries_disk_and_success_history` 对 pause/fail/complete 注入真实 Windows 只读当前文件，联合检查 HTTP 错误、故障期间 status、磁盘及成功历史，并在恢复写权限后执行合法动作。首次即绿，证明已有提交语义，无制造无关 red。
 - P44.01：`records::history_failure_reports_committed_completion_and_allows_next_action` 与 `records::batch_history_failure_explains_each_committed_target_without_stopping_batch` 分别注入历史只读，核对完成/批次/失败 retry 已提交状态、缺失历史及下一次合法动作。两项先在缺少明确部分生效 code 的断言处 red，再补齐共享反馈转 green；保留 `historyError` 并新增 `code=history-append-failed/stateCommitted=true/message`。
