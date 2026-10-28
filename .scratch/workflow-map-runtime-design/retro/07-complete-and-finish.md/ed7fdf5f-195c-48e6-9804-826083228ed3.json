@@ -1,0 +1,153 @@
+{
+  "feature": "workflow-map-runtime-design",
+  "ticket": "07-complete-and-finish.md",
+  "run_id": "ed7fdf5f-195c-48e6-9804-826083228ed3",
+  "parent_session_id": "01a18240-bf0e-77a4-b381-a74e22e85081",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "d4cc7852-5c9d-4ba0-89fd-ab5fba7e75c1",
+  "started_at": "2026-10-28T13:57:15.848Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-10-28T14:10:37.444Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "07-complete-and-finishmd-d4cc7852-5c9d-4ba0-89fd",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-XUPdgE\\.scratch\\workflow-map-runtime-design\\implementation\\07-complete-and-finish.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-XUPdgE\\.scratch\\workflow-map-runtime-design\\implementation\\07-complete-and-finish.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement ticket 07 complete-and-finish in worktree",
+    "lastIntent": "Committing isolated completion ticket implementation",
+    "exitCode": 0,
+    "output": "{\n  \"ticket\": \"07-complete-and-finish\",\n  \"status\": \"implementation_committed; deterministic_verification_passed; native_acceptance_unverified\",\n  \"commit\": \"315938f\",\n  \"branch\": \"hyper/workflow-map-runtime-design/07-complete-and-finish-85e503-a67b868fd8ba\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-XUPdgE\",\n  \"delivered\": [\n    \"接通 manager complete/finish HTTP 入口，沿用真实管理者归属、同机来源检查与同 Run 业务串行边界。\",\n    \"complete 同次保存 completed 与首次交接说明/操作标识/时间/操作者，解除依赖但不自主派发或结束 Chat；pending、派发失败及终态拒绝。\",\n    \"finish 仅允许 running/paused 且所有节点 completed；保存首次终态事实，重复调用不追加成功历史；终态查询可用，complete/dispatch 拒绝变更。\",\n    \"动作返回同一串行边界内的快照、派生阻塞/ready/canFinish/报告待办及明确历史部分生效错误。\",\n    \"更新 docs/workflow-runtime.md，包含角色职责、协议、错误反馈、重复语义、验证入口及真实宿主复验限制。\"\n  ],\n  \"coverage\": [\n    {\n      \"criteria\": [\n        \"P17.02\",\n        \"P18.02\",\n        \"P20.02\"\n      ],\n      \"evidence\": [\n        \"explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact\",\n        \"finish_requires_every_handoff_and_terminal_actions_preserve_success\"\n      ],\n      \"result\": \"确定性 HTTP/持久化/外部记录型宿主检查通过：A/B→C 字面快照、只完成 A 时 C 拒绝、终态 dispatch 拒绝、首次说明与成功历史不被覆盖。\"\n    },\n    {\n      \"criteria\": [\n        \"P28.02\"\n      ],\n      \"evidence\": [\n        \"reports_and_observed_chat_lifecycle_never_replace_explicit_handoff\"\n      ],\n      \"result\": \"确定性检查通过：completed 清除可操作待办，完成后及 finish 后的新报告不重新打开节点或 Run。\"\n    },\n    {\n      \"criteria\": [\n        \"P29.01\",\n        \"P35.01\",\n        \"P68.03\"\n      ],\n      \"evidence\": [\n        \"explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact\",\n        \"finish_requires_every_handoff_and_terminal_actions_preserve_success\",\n        \"reports_and_observed_chat_lifecycle_never_replace_explicit_handoff\"\n      ],\n      \"result\": \"确定性检查通过：report、停轮状态事件和退出登记事件不完成节点；pending complete 拒绝；显式 complete 后才可显式派发下游；全部完成后才可 finish；各负向观察窗口 150ms，保留外部调用列表与快照。实际原生 Chat 行为未验证。\"\n    }\n  ],\n  \"verification\": {\n    \"red\": [\n      \"complete 定向测试首先以缺少 HTTP 入口的 404 失败。\",\n      \"finish 定向测试首先以缺少 HTTP 入口的 404 失败。\"\n    ],\n    \"passed\": [\n      \"cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact -- --exact --nocapture：1 passed。\",\n      \"cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch finish_requires_every_handoff_and_terminal_actions_preserve_success -- --exact --nocapture：1 passed。\",\n      \"cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch reports_and_observed_chat_lifecycle_never_replace_explicit_handoff -- --exact --nocapture：1 passed，已有报告/会话状态隔离行为保持正确。\",\n      \"npm --prefix frontend run build：通过。\",\n      \"node scripts/test-backend.mjs：最终通过，build、全部测试二进制、doctest 均通过，0 未派发，147.3s。\"\n    ],\n    \"resolved_setup_failures\": [\n      \"首次 complete 测试存在日志格式编译错误，修正后观察到真正入口缺失 red。\",\n      \"首次完整后端检查因缺少 backend/static/index.html 失败；首次前端构建因缺少 tsc 失败。执行 npm --prefix frontend ci --ignore-scripts 并成功构建后，完整后端重新运行通过。\"\n    ],\n    \"full_backend_summary\": \"C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-7PSSSH/summary.json\",\n    \"initial_backend_failure_summary\": \"C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-5vPrgF/summary.json\",\n    \"bounded_observation_artifacts\": [\n      \"artifact://296\",\n      \"artifact://299\",\n      \"artifact://301\"\n    ]\n  },\n  \"unverified\": [\n    \"metadata 指定的外部 my-agent-toolkit manager-chat/node-chat 入口未交付；未跨仓库修改。按 Main 确认的04–06边界交付当前工作树能力，不冒充完整原生验收。\",\n    \"真实 manager 工具公共 interface 调用、公共 Prompt first-enabled-run 实际注入、真实 omp Chat report 后继续收尾及停轮/退出/finish 活动顺序均未验证。会话事件和受控 Herdr 副本不能替代这些证据。\",\n    \"未执行浏览器验收：本票未更改页面能力；前端仅构建以满足后端进程测试前提。\"\n  ],\n  \"handoff\": \"本票实现已提交，worktree 可由独立集成代理接管；未操作集成分支工作区、未合入、未修改其他票据或工作流报告、未调用 retro。当前交付不宣称票据已合并或真实宿主完整验收完成。\"\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 801488,
+    "tokens": 89003,
+    "requests": 54,
+    "contextTokens": 81670,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 72040,
+      "output": 16963,
+      "cacheRead": 3038976,
+      "cacheWrite": 0,
+      "totalTokens": 3127979,
+      "reasoningTokens": 2472,
+      "cost": {
+        "input": 0.14407999999999996,
+        "output": 0.16962999999999995,
+        "cacheRead": 0.30389760000000005,
+        "cacheWrite": 0,
+        "total": 0.6176076
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\07-complete-and-finishmd-d4cc7852-5c9d-4ba0-89fd.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "ticket": "07-complete-and-finish",
+            "status": "implementation_committed; deterministic_verification_passed; native_acceptance_unverified",
+            "commit": "315938f",
+            "branch": "hyper/workflow-map-runtime-design/07-complete-and-finish-85e503-a67b868fd8ba",
+            "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-XUPdgE",
+            "delivered": [
+              "接通 manager complete/finish HTTP 入口，沿用真实管理者归属、同机来源检查与同 Run 业务串行边界。",
+              "complete 同次保存 completed 与首次交接说明/操作标识/时间/操作者，解除依赖但不自主派发或结束 Chat；pending、派发失败及终态拒绝。",
+              "finish 仅允许 running/paused 且所有节点 completed；保存首次终态事实，重复调用不追加成功历史；终态查询可用，complete/dispatch 拒绝变更。",
+              "动作返回同一串行边界内的快照、派生阻塞/ready/canFinish/报告待办及明确历史部分生效错误。",
+              "更新 docs/workflow-runtime.md，包含角色职责、协议、错误反馈、重复语义、验证入口及真实宿主复验限制。"
+            ],
+            "coverage": [
+              {
+                "criteria": [
+                  "P17.02",
+                  "P18.02",
+                  "P20.02"
+                ],
+                "evidence": [
+                  "explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact",
+                  "finish_requires_every_handoff_and_terminal_actions_preserve_success"
+                ],
+                "result": "确定性 HTTP/持久化/外部记录型宿主检查通过：A/B→C 字面快照、只完成 A 时 C 拒绝、终态 dispatch 拒绝、首次说明与成功历史不被覆盖。"
+              },
+              {
+                "criteria": [
+                  "P28.02"
+                ],
+                "evidence": [
+                  "reports_and_observed_chat_lifecycle_never_replace_explicit_handoff"
+                ],
+                "result": "确定性检查通过：completed 清除可操作待办，完成后及 finish 后的新报告不重新打开节点或 Run。"
+              },
+              {
+                "criteria": [
+                  "P29.01",
+                  "P35.01",
+                  "P68.03"
+                ],
+                "evidence": [
+                  "explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact",
+                  "finish_requires_every_handoff_and_terminal_actions_preserve_success",
+                  "reports_and_observed_chat_lifecycle_never_replace_explicit_handoff"
+                ],
+                "result": "确定性检查通过：report、停轮状态事件和退出登记事件不完成节点；pending complete 拒绝；显式 complete 后才可显式派发下游；全部完成后才可 finish；各负向观察窗口 150ms，保留外部调用列表与快照。实际原生 Chat 行为未验证。"
+              }
+            ],
+            "verification": {
+              "red": [
+                "complete 定向测试首先以缺少 HTTP 入口的 404 失败。",
+                "finish 定向测试首先以缺少 HTTP 入口的 404 失败。"
+              ],
+              "passed": [
+                "cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact -- --exact --nocapture：1 passed。",
+                "cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch finish_requires_every_handoff_and_terminal_actions_preserve_success -- --exact --nocapture：1 passed。",
+                "cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch reports_and_observed_chat_lifecycle_never_replace_explicit_handoff -- --exact --nocapture：1 passed，已有报告/会话状态隔离行为保持正确。",
+                "npm --prefix frontend run build：通过。",
+                "node scripts/test-backend.mjs：最终通过，build、全部测试二进制、doctest 均通过，0 未派发，147.3s。"
+              ],
+              "resolved_setup_failures": [
+                "首次 complete 测试存在日志格式编译错误，修正后观察到真正入口缺失 red。",
+                "首次完整后端检查因缺少 backend/static/index.html 失败；首次前端构建因缺少 tsc 失败。执行 npm --prefix frontend ci --ignore-scripts 并成功构建后，完整后端重新运行通过。"
+              ],
+              "full_backend_summary": "C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-7PSSSH/summary.json",
+              "initial_backend_failure_summary": "C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-5vPrgF/summary.json",
+              "bounded_observation_artifacts": [
+                "artifact://296",
+                "artifact://299",
+                "artifact://301"
+              ]
+            },
+            "unverified": [
+              "metadata 指定的外部 my-agent-toolkit manager-chat/node-chat 入口未交付；未跨仓库修改。按 Main 确认的04–06边界交付当前工作树能力，不冒充完整原生验收。",
+              "真实 manager 工具公共 interface 调用、公共 Prompt first-enabled-run 实际注入、真实 omp Chat report 后继续收尾及停轮/退出/finish 活动顺序均未验证。会话事件和受控 Herdr 副本不能替代这些证据。",
+              "未执行浏览器验收：本票未更改页面能力；前端仅构建以满足后端进程测试前提。"
+            ],
+            "handoff": "本票实现已提交，worktree 可由独立集成代理接管；未操作集成分支工作区、未合入、未修改其他票据或工作流报告、未调用 retro。当前交付不宣称票据已合并或真实宿主完整验收完成。"
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 80,
+      "charCount": 3758
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "07-complete-and-finishmd-d4cc7852-5c9d-4ba0-89fd",
+  "session_id": "01a182cd-01d8-701f-8795-7ffb34aa92ac",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\07-complete-and-finishmd-d4cc7852-5c9d-4ba0-89fd.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-XUPdgE",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\retro\\07-complete-and-finish.md\\ed7fdf5f-195c-48e6-9804-826083228ed3.md",
+  "retro_finished_at": "2026-10-28T14:13:49.526Z"
+}

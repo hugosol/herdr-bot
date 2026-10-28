@@ -1,0 +1,138 @@
+{
+  "feature": "workflow-map-runtime-design",
+  "ticket": "01-definition-cutover.md",
+  "run_id": "487682ba-8e95-4f4f-997a-c277df2ac4ff",
+  "parent_session_id": "01a18240-bf0e-77a4-b381-a74e22e85081",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "282f8123-7369-4d16-9627-5a4d043a3147",
+  "started_at": "2026-10-28T11:43:53.341Z",
+  "tdd_status": "failed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-10-28T12:12:01.977Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "01-definition-cutovermd-282f8123-7369-4d16-9627-",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-gs9Cpa\\.scratch\\workflow-map-runtime-design\\implementation\\01-definition-cutover.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-gs9Cpa\\.scratch\\workflow-map-runtime-design\\implementation\\01-definition-cutover.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement definition cutover ticket with TDD",
+    "lastIntent": "Committing isolated definition cutover",
+    "exitCode": 0,
+    "output": "{\n  \"ticket\": \"01-definition-cutover\",\n  \"status\": \"实现及本票验收完成，已提交；worktree 可交给独立集成代理。尚未合入，因此票据按仓库规则保留 in-progress。\",\n  \"commit\": \"36dc3b0\",\n  \"branch\": \"hyper/workflow-map-runtime-design/01-definition-cutover-905cd6-a67b868fd8ba\",\n  \"delivered\": [\n    \"Map/node/Bot 唯一新格式切换；拒绝版本及旧字段，无运行时兼容路径。\",\n    \"node 使用字符串 input 和显式 zone；Bot 使用独立 when、plan_guide、node_guide 文档及可缺省 task_id 引用。\",\n    \"同步更新真实 scheduler 编辑、预览、错误反馈、调用者、既有测试、独立样例和长期文档。\"\n  ],\n  \"acceptance\": [\n    {\n      \"id\": \"P1.01\",\n      \"result\": \"通过\",\n      \"evidence\": \"schedulerDefinitionCutover.spec.ts：真实 Bot/node 保存、HTTP 回读及持久文件核对；schedulerRecovery.spec.ts：Map 旧字段及版本拒绝。\"\n    },\n    {\n      \"id\": \"P2.01\",\n      \"result\": \"通过\",\n      \"evidence\": \"三个互异文档标记按逆序读取；逐份清空保存并核对其他文档不受影响；schedulerNodeEditing.spec.ts 验证 Markdown 指引不校验空 input。\"\n    },\n    {\n      \"id\": \"P3.01\",\n      \"result\": \"通过\",\n      \"evidence\": \"真实保存缺 task_id、无效 Task 引用、缺失 Bot 引用及未登记/失效 zone，精确回读确认没有默认绑定。\"\n    },\n    {\n      \"id\": \"P4.01\",\n      \"result\": \"通过\",\n      \"evidence\": \"未知字段、错误类型、缺必需字段、未知同图依赖、自依赖及双节点环均拒绝；联合检查原文件字节、回读结果和页面草稿保留。\"\n    }\n  ],\n  \"verification\": [\n    {\n      \"command\": \"npm --prefix frontend run test:browser -- schedulerDefinitionCutover.spec.ts --workers=1\",\n      \"result\": \"最后一次 3 passed；保留截图、Bot/Map JSON 和实际空外部启动记录。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend test\",\n      \"result\": \"27 files、205 tests passed。\"\n    },\n    {\n      \"command\": \"node scripts/test-backend.mjs --binary-jobs 2\",\n      \"result\": \"passed，包含构建、全部派发测试二进制及 doctest。\",\n      \"evidence\": \"C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-8MaBvZ/summary.json\"\n    },\n    {\n      \"command\": \"npm --prefix frontend run test:browser:build -- --workers=4\",\n      \"result\": \"289 passed、1 skipped、1 failed。本票 scheduler 用例全部通过；完整浏览器回归不能宣称全绿。\",\n      \"failure\": \"未修改的 tasks.spec.ts:192：实际 Skill 选项包含 wayfinder，独立预期缺少该项。已通知 Main 与 Task 票所有者；未修改其拥有的文件。\",\n      \"evidence\": \"artifact://88\"\n    }\n  ],\n  \"evidence_directories\": [\n    \"frontend/test-results/schedulerDefinitionCutover-f12c3-ntly-without-a-Task-binding/\",\n    \"frontend/test-results/schedulerDefinitionCutover-ddfd2-alid-edits-preserve-the-Map/\"\n  ],\n  \"limitations\": [\n    \"真实文件符号链接用例因没有显式授权保持跳过，不能算通过。\",\n    \"P2.02 的空文档启动属于票据 04，本票未认领或验证。\",\n    \"外部调用缺席仅证明隔离测试启动至最后定义响应的有界窗口；不宣称原生 Herdr/omp 或模型业务质量。\",\n    \"没有操作集成分支工作区、合入、reset、retro 或派发其他票据。\"\n  ]\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1688529,
+    "tokens": 295516,
+    "requests": 100,
+    "contextTokens": 231018,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 250029,
+      "output": 45487,
+      "cacheRead": 14490112,
+      "cacheWrite": 0,
+      "totalTokens": 14785628,
+      "reasoningTokens": 10851,
+      "cost": {
+        "input": 0.5000579999999999,
+        "output": 0.45487000000000016,
+        "cacheRead": 1.4490112000000004,
+        "cacheWrite": 0,
+        "total": 2.4039391999999995
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\01-definition-cutovermd-282f8123-7369-4d16-9627-.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "ticket": "01-definition-cutover",
+            "status": "实现及本票验收完成，已提交；worktree 可交给独立集成代理。尚未合入，因此票据按仓库规则保留 in-progress。",
+            "commit": "36dc3b0",
+            "branch": "hyper/workflow-map-runtime-design/01-definition-cutover-905cd6-a67b868fd8ba",
+            "delivered": [
+              "Map/node/Bot 唯一新格式切换；拒绝版本及旧字段，无运行时兼容路径。",
+              "node 使用字符串 input 和显式 zone；Bot 使用独立 when、plan_guide、node_guide 文档及可缺省 task_id 引用。",
+              "同步更新真实 scheduler 编辑、预览、错误反馈、调用者、既有测试、独立样例和长期文档。"
+            ],
+            "acceptance": [
+              {
+                "id": "P1.01",
+                "result": "通过",
+                "evidence": "schedulerDefinitionCutover.spec.ts：真实 Bot/node 保存、HTTP 回读及持久文件核对；schedulerRecovery.spec.ts：Map 旧字段及版本拒绝。"
+              },
+              {
+                "id": "P2.01",
+                "result": "通过",
+                "evidence": "三个互异文档标记按逆序读取；逐份清空保存并核对其他文档不受影响；schedulerNodeEditing.spec.ts 验证 Markdown 指引不校验空 input。"
+              },
+              {
+                "id": "P3.01",
+                "result": "通过",
+                "evidence": "真实保存缺 task_id、无效 Task 引用、缺失 Bot 引用及未登记/失效 zone，精确回读确认没有默认绑定。"
+              },
+              {
+                "id": "P4.01",
+                "result": "通过",
+                "evidence": "未知字段、错误类型、缺必需字段、未知同图依赖、自依赖及双节点环均拒绝；联合检查原文件字节、回读结果和页面草稿保留。"
+              }
+            ],
+            "verification": [
+              {
+                "command": "npm --prefix frontend run test:browser -- schedulerDefinitionCutover.spec.ts --workers=1",
+                "result": "最后一次 3 passed；保留截图、Bot/Map JSON 和实际空外部启动记录。"
+              },
+              {
+                "command": "npm --prefix frontend test",
+                "result": "27 files、205 tests passed。"
+              },
+              {
+                "command": "node scripts/test-backend.mjs --binary-jobs 2",
+                "result": "passed，包含构建、全部派发测试二进制及 doctest。",
+                "evidence": "C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-8MaBvZ/summary.json"
+              },
+              {
+                "command": "npm --prefix frontend run test:browser:build -- --workers=4",
+                "result": "289 passed、1 skipped、1 failed。本票 scheduler 用例全部通过；完整浏览器回归不能宣称全绿。",
+                "failure": "未修改的 tasks.spec.ts:192：实际 Skill 选项包含 wayfinder，独立预期缺少该项。已通知 Main 与 Task 票所有者；未修改其拥有的文件。",
+                "evidence": "artifact://88"
+              }
+            ],
+            "evidence_directories": [
+              "frontend/test-results/schedulerDefinitionCutover-f12c3-ntly-without-a-Task-binding/",
+              "frontend/test-results/schedulerDefinitionCutover-ddfd2-alid-edits-preserve-the-Map/"
+            ],
+            "limitations": [
+              "真实文件符号链接用例因没有显式授权保持跳过，不能算通过。",
+              "P2.02 的空文档启动属于票据 04，本票未认领或验证。",
+              "外部调用缺席仅证明隔离测试启动至最后定义响应的有界窗口；不宣称原生 Herdr/omp 或模型业务质量。",
+              "没有操作集成分支工作区、合入、reset、retro 或派发其他票据。"
+            ]
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 64,
+      "charCount": 2348
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "01-definition-cutovermd-282f8123-7369-4d16-9627-",
+  "tdd_error": "票据工作树不干净（hyper/workflow-map-runtime-design/01-definition-cutover-905cd6-a67b868fd8ba）：\n M .scratch/workflow-map-runtime-design/implementation/01-definition-cutover.md",
+  "session_id": "01a18252-e61d-7398-8e30-b41803dfb562",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\01-definition-cutovermd-282f8123-7369-4d16-9627-.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-gs9Cpa",
+  "retro_error": "Retro 执行失败。",
+  "retro_finished_at": "2026-10-28T12:17:02.072Z"
+}
