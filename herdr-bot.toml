@@ -78,6 +78,9 @@ registry_file = '.data/zones.json'
 # collect 后端等待上限，默认 90 分钟，正整数秒；与 connect-bot 的短上报预算独立。
 # 角色调用方的公共 HTTP timeoutMs 必须大于此值 × 1000（默认建议 5460000ms）。
 # collect_wait_seconds = 5400
+# workflow 仅可见时在每轮查询完成后等待此间隔；默认 5 秒，正整数秒（最大 4294967295）。
+# 隐藏/离开暂停、返回立即查询；慢请求与手动刷新不重叠。修改后重启服务，无页面设置。
+# workflow_poll_interval_seconds = 5
 # 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
 # run_instructions = 'E:\Developer\myhub\herdr-bot\docs\workflow-runtime.md'
 

@@ -63,6 +63,8 @@ pub struct SchedulerConfig {
     pub run_directory: PathBuf,
     pub run_instructions: PathBuf,
     pub collect_wait_seconds: CollectWaitSeconds,
+    /// Visible workflow page query interval; positive integer seconds.
+    pub workflow_poll_interval_seconds: std::num::NonZeroU32,
 }
 
 /// Backend collect deadline, independent of connect-bot's reporting budget.
@@ -92,6 +94,7 @@ impl Default for SchedulerConfig {
             run_directory: PathBuf::from(".data/workflow-runs"),
             run_instructions: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/workflow-runtime.md"),
             collect_wait_seconds: CollectWaitSeconds(90 * 60),
+            workflow_poll_interval_seconds: std::num::NonZeroU32::new(5).unwrap(),
         }
     }
 }

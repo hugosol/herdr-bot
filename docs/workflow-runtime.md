@@ -10,6 +10,10 @@
 
 取得 Run ID 后自动进入 workflow 的只读详情，链接形如 `#workflow/<Run ID>`。workflow 列出全部 Map 的 Run，按保存的创建时间倒序显示 Map 标识、时间、状态、completed 数量/节点总数及当前后端管理/历史现场未接管提示。点击 Run 标识查看详情；「刷新 Run」手动重读列表和所选现场，不创建 Run 或 Chat，不新增筛选、分组或状态操作。
 
+workflow 仅在该入口可见且浏览器文档可见时轮询，默认在上一轮查询结束后等待 **5 秒**；离开 workflow、打开 server 面板或隐藏浏览器文档时暂停，返回可见时立即查询。一次刷新按顺序读取列表、所选 Run 和当前定义/名称目录；慢响应期间不启动下一轮，重复手动刷新合并到在途查询，不取消后重新发起重叠请求。离开前已发出的查询可以结束，但旧入口或旧 Run 的迟到结果不会覆盖新选择。
+
+列表或 Run 查询失败时显示「更新失败」及最后一次完整成功查询时间，保留上次成功的列表、详情和图，不将 Run 改成 failed，也不显示假空列表。没有成功查询时明确显示尚无成功查询。可见时后续轮询或手动刷新成功后更新现场并清除更新错误；这是只读查询，不是重试派发、report、collect 或任何运行操作。当前 Map 本身缺失、非法或无法对应时仍遵守下文的不伪造历史图规则。
+
 只读图复用 scheduler 的依赖布局，箭头从前置 node 指向依赖它的 node；manager 不作为 node。图中同时使用状态文字、符号、边框/填充，选中态另用双线框，不按 Chat 在线或工作状态推断完成。pending 节点仅按当前 Run 状态与当前定义的依赖显示 ready/blocked；这只是读取时的说明，不自动派发。节点详情分开显示「当前定义」的 Bot/Task、zone/input、前置依赖与阻塞原因，以及「已保存执行」的 Task/zone/真实 Chat 标识、失败阶段及效果、交接完成说明/时间和当前执行适用报告正文/时间。没有执行或 Chat 关联时明确提示，不隐式补建。
 
 图始终注明来自**当前 Map，非历史定义快照**。当前 Map 丢失、不可解析或 node 标识集合无法与 Run 一一对应时，不画图也不按新名称误配旧 node；保留本次要求、保存的 Run/node 状态、失败、完成、当前/旧执行及报告与 Chat 关联。名称不可读时显示保存标识，不伪造过去的 Bot/Task/输入定义。运行期间仍应保持定义不变：同标识的定义修改不代表已保存历史定义，页面只将其标为当前定义。
@@ -17,6 +21,8 @@
 刷新链接、切换入口后返回、手动刷新只读取事实。本次要求不可编辑；详情中的 Run/node 状态不是 Chat 在线或轮次状态。没有启动进度页、状态操作按钮或日志浏览器。需要核实、修复、恢复跟踪或交接时，请向已关联管理者 Chat 表达意图；报告本身不完成 node，普通 Chat Resume 不接管旧 Run。当前入口展示真实关联标识，实际 Resume 和折叠执行历史另有独立交付边界。
 
 可重复页面契约检查：`npm --prefix frontend run test:browser:build -- workflowCurrent.spec.ts --workers=1`。P50.01 使用多 Map/时间/状态的独立字面记录核对完整倒序列表与完成数量；P51.01/P52.01 核对真实绘制的依赖方向、与在线工作中 Chat 不同的节点状态、独立选中态及当前定义/执行/报告详情；P57.01 先显示当前图，再分别删除、损坏、改成不对应的定义，手动读取并核对无伪造图、保存事实及旧关联可读。测试输出包含截图、记录与外部调用的前后对照，**750ms 有界观察窗口**内读取未启动执行；这不证明无限期无自动行为，也不证明真实 Herdr/omp 执行质量。
+
+可重复轮询/错误契约检查：`npm --prefix frontend run test:browser:build -- workflowRefresh.spec.ts --workers=1`。P55.01 在实际页面记录默认 5 秒节奏，持有真实 HTTP 响应跨越两个自定义周期并重复手动刷新，检查不重叠和保留内容；离开入口观察 1500ms、原生 Chrome 隐藏文档观察 2300ms，返回均检查立即查询。隐藏场景使用独占临时 Chrome profile、动态数值回环调试端口和公共 CDP 的 `noDefaults` 连接，避免普通自动化始终可见的覆盖；不改写 `document.visibilityState`，也不冻结定时器。P56.01 在真实服务中将独占 Run 根暂时变为普通文件、再损坏所选 Run JSON，检查 HTTP 500、上次列表/详情/图/时间不变，恢复文件后下一轮查询恢复现场；不调用任何 Run 状态动作。P67.03 配置为 1 秒并观察实际页面请求节奏，无页面配置入口。每次在 `frontend/test-results/workflowRefresh-*` 保留 JSON 原始请求时序及失败恢复截图；受控响应门仅改变时序，不替换业务字节。这些有界检查不证明无限期无请求，也不证明真实 omp/Herdr 模型行为。
 
 ## 记录及配置
 
@@ -28,7 +34,10 @@ map_directory = 'D:\service-data\maps'
 bot_directory = 'D:\service-data\bots'
 run_directory = 'D:\service-data\runs'
 run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
+workflow_poll_interval_seconds = 5
 ```
+
+`workflow_poll_interval_seconds` 是服务启动配置，默认 5 秒，允许 1..=4294967295 的整数秒；零、负数、小数或字符串会让启动失败。修改后重启服务，页面从 `GET /api/workflow/runs` 的 `pollIntervalSeconds` 读取有效值；没有页面设置、推送或独立配置平台。间隔从上一轮完整查询结束起算，慢响应不追赶漏掉的 tick。
 
 相对目录在服务启动时按服务工作目录解析一次；向 Chat 提供绝对路径，不按 Chat 的 zone/cwd 重新推导。默认 Run 根为 `.data/workflow-runs`。部署时应显式设置稳定的 `run_instructions`，不要依赖编译机器保留源码；默认指向随源码构建的本说明。
 

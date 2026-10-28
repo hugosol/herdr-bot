@@ -194,7 +194,7 @@ pub async fn list_runs(State(state): State<AppState>) -> Response {
         runs.push(serde_json::json!({"id":id,"run":run,"managed":active.contains_key(&id),"readError":read_error}));
     }
     runs.sort_by(|a, b| b["run"]["createdAt"].as_u64().unwrap_or(0).cmp(&a["run"]["createdAt"].as_u64().unwrap_or(0)).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
-    Json(serde_json::json!({"runs":runs})).into_response()
+    Json(serde_json::json!({"runs":runs,"pollIntervalSeconds":state.workflow_poll_interval_seconds})).into_response()
 }
 
 pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> Response {
