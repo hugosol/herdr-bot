@@ -1,6 +1,5 @@
 //! Explicit handoff is independent of reports, Chat activity and downstream launch.
 use super::*;
-use std::io::Write;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -172,8 +171,19 @@ async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Reques
 pub(super) async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(changed);
-    value["historyError"] = serde_json::json!(history_error);
+    history_feedback(&mut value, history_error);
     Ok(Json(value).into_response())
+}
+
+// History failure is a partial effect, not a failed/rolled-back state commit.
+// Preserve the OS detail while giving every action caller an actionable result.
+pub(super) fn history_feedback(value: &mut serde_json::Value, history_error: Option<String>) {
+    if history_error.is_some() {
+        value["code"] = serde_json::json!("history-append-failed");
+        value["stateCommitted"] = serde_json::json!(true);
+        value["message"] = serde_json::json!("当前状态已提交，但执行历史追加失败；状态未回滚。请先查询现场，不要盲目重试。");
+    }
+    value["historyError"] = serde_json::json!(history_error);
 }
 
 pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
@@ -187,15 +197,5 @@ pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: 
 pub(super) async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
     let paths = Runs::paths(state, id);
     let _guards = state.runs.files.lock(&paths).await;
-    let previous = fs::read(&paths[1]).map_err(|e| e.to_string())?;
-    if !previous.is_empty() && previous.last() != Some(&b'\n') {
-        return Err("状态已保存，但历史尾部残缺；拒绝继续追加。".into());
-    }
-    for line in previous.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
-        serde_json::from_slice::<serde_json::Value>(line).map_err(|e| e.to_string())?;
-    }
-    let mut bytes = serde_json::to_vec(event).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
-    let mut file = fs::OpenOptions::new().append(true).open(&paths[1]).map_err(|e| e.to_string())?;
-    file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())
+    FileStore::append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], event)
 }

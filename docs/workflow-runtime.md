@@ -18,7 +18,13 @@ workflow 仅在该入口可见且浏览器文档可见时轮询，默认在上�
 
 图始终注明来自**当前 Map，非历史定义快照**。当前 Map 丢失、不可解析或 node 标识集合无法与 Run 一一对应时，不画图也不按新名称误配旧 node；保留本次要求、保存的 Run/node 状态、失败、完成、当前/旧执行及报告与 Chat 关联。名称不可读时显示保存标识，不伪造过去的 Bot/Task/输入定义。运行期间仍应保持定义不变：同标识的定义修改不代表已保存历史定义，页面只将其标为当前定义。
 
-刷新链接、切换入口后返回、手动刷新只读取事实。本次要求不可编辑；详情中的 Run/node 状态不是 Chat 在线或轮次状态。没有启动进度页、状态操作按钮或日志浏览器。需要核实、修复、恢复跟踪或交接时，请向已关联管理者 Chat 表达意图；报告本身不完成 node，普通 Chat Resume 不接管旧 Run。当前入口展示真实关联标识，实际 Resume 和折叠执行历史另有独立交付边界。
+刷新链接、切换入口后返回、手动刷新只读取事实。本次要求不可编辑；详情中的 Run/node 状态不是 Chat 在线或轮次状态。没有启动进度页、状态操作按钮或日志浏览器。需要核实、修复、恢复跟踪或交接时，请向已关联管理者 Chat 表达意图；报告本身不完成 node，普通 Chat Resume 不接管旧 Run。管理者、当前执行与默认折叠的「旧执行历史」保留真实 Chat 关联并提供 Resume；旧报告单独显示执行 ID、来源 Chat、正文与时间，不混入当前执行适用报告。旧报告的来源 Chat 也可独立 Resume。无执行或 Chat 关联时只说明缺失，不创建执行。
+
+Resume 复用 chat 历史入口的实际定位／恢复：按所选原生 sessionId 查找，不按同名 Task、旧 Tab/pane、当前选中项或 cwd 猜测。已运行的 Chat 导航到 Herdr 内部焦点；需要新进程时加载指定原生对话并读取**来源 Task 最新 env config**，不重放初始 Skill、model/thinking、固定 prompt 或本次 input。恢复不是 recover、retry 或 Run 的 resume 状态动作，不改变节点状态、报告适用性或「历史现场 / 未接管」标记，也不恢复管理者写入资格。当前 Map 丢失、损坏或 node 无法可靠对应时不补造历史图，但这些已保存关联与折叠历史仍可使用。
+
+定位／恢复失败与结果未知使用既有错误反馈：已发生 Tab/启动效果不假报回滚，已提交启动不等于已确认加载同一 Chat；未知时先核实 Herdr，不自动重试、再次启动或补发输入。页面成功仅表示响应中确认的 Herdr 内部导航，不保证 Windows 窗口置前或任务已继续。用户需要交接或修复时，在已确认进入的管理者 Chat 表达意图；角色指引不得把普通 Chat Resume 当成自动派发或接管许可。
+
+可重复检查：`npm --prefix frontend run test:browser:build -- workflowHistory.spec.ts --workers=1`。P52.02/P57.02 用独立新旧执行、报告正文/时间和同名干扰 Chat，分别核对 Map 缺失、损坏和标识不对应时的实际 manager/当前/旧 Chat 入口、默认折叠历史与无关联节点；Resume 后观察 300ms，另对无关联节点观察 150ms。P15.04/P68.09 先经真实 HTTP 启动 Run 并派发节点，再修改来源 Task 的可选扩展与固定入口目录，通过 workflow Resume 核对最新 env argv、无 model/thinking/Skill/prompt/input 重放；当前管理与实际重启后的未接管场景各观察至少 350ms，并核对旧管理者写入资格仍被拒绝。P53.01 受控注入 manager 聚焦失败、旧 Chat 查找失败及当前 Chat 启动超时，核对明确失败与未知反馈、保留目标、状态与文件未变，之后观察 350ms 无自动重试。全部通过实际交付页面、HTTP、生产 Herdr CLI adapter 与持久文件核对；证据保存在 Playwright 输出目录中的截图与 JSON 文件/attachments，记录实际观察时长和外部调用。受控 Herdr 仅证明确定性调用与错误/未知语义，不证明真实宿主导航、扩展加载或原生 Chat 内容。真实 S3 复验需已部署 metadata 指定角色入口及独占命名 Herdr 实例，保存当前/旧/manager 原生身份、实际导航、来源 Task 环境变更前后加载和有起止的无输入重放记录；缺少这些前提应报告未验证，不将受控结果计作真实宿主通过，也不把有限窗口外推为无限期保证。
 
 可重复页面契约检查：`npm --prefix frontend run test:browser:build -- workflowCurrent.spec.ts --workers=1`。P50.01 使用多 Map/时间/状态的独立字面记录核对完整倒序列表与完成数量；P51.01/P52.01 核对真实绘制的依赖方向、与在线工作中 Chat 不同的节点状态、独立选中态及当前定义/执行/报告详情；P57.01 先显示当前图，再分别删除、损坏、改成不对应的定义，手动读取并核对无伪造图、保存事实及旧关联可读。测试输出包含截图、记录与外部调用的前后对照，**750ms 有界观察窗口**内读取未启动执行；这不证明无限期无自动行为，也不证明真实 Herdr/omp 执行质量。
 
@@ -47,7 +53,31 @@ workflow_poll_interval_seconds = 5
 - `history.jsonl`：追加执行/状态历史；新 Run 初始为空。
 - `messages.jsonl`：追加报告；新 Run 初始为空。
 
+### 独立读取与部分提交
+
+三类记录的读取入口就是初始指示给出的三个绝对路径：`run.json` 直接解析为完整当前事实，`history.jsonl` 和 `messages.jsonl` 逐行读取为追加历史和报告；不要通过重放历史或取最后一份报告来重建当前状态。`GET /api/workflow/runs/<Run ID>` 的 `run`/`reports` 提供当前事实与完整报告，管理者 `status` 另给派生准入及 `pendingReports`。历史从已有 `history.jsonl` 路径读取，不另建日志浏览 API。当前失败原因、首次完成说明与 `previousExecutions` 中的旧执行/失败仍保存在当前事实中；历史保留失败、recover、retry 和完成时的原因与说明。旧执行报告可晚到，但不能替代当前执行的交接依据。通知代次及待办索引是内存/查询派生值，不落成第四份业务记录，也不是已读或完成凭据。
+
+当前状态写入失败时，动作报错且不发布候选状态、不追加成功历史；应先查询已提交现场并排除文件问题。dispatch/retry 如果已经创建 Chat，其 `effects` 与 `persistenceError` 仍如实报告外部效果，不表示 Chat 已撤销。
+
+当前状态提交后，仅历史追加失败属于**部分生效**：非批次状态动作的响应、dispatch 的每项 `results[]`、retry 的 `result` 都保留 `historyError` 原因，并明确返回 `code=history-append-failed`、`stateCommitted=true` 和“当前状态已提交，但执行历史追加失败；状态未回滚”的说明。HTTP 200 在这里表示动作结果可解析，不表示所有记录都写入成功；调用者必须同时检查这些字段。批次仍处理其他合法目标。不得因为这一次错误自动封锁 Run、回滚事实或自动重试；当前磁盘状态及后续查询均保持已生效结果，排除文件问题后可显式执行下一次合法动作。重复已生效动作不会补写缺失的首次历史。若历史尾部残缺，仍拒绝向残缺记录追加，不能自动截断“修复”。
+
+用户应从 workflow 进入已关联的管理者 Chat，表达“检查当前事实与历史写入错误，核实后继续”，不要手填身份参数、修改运行文件或盲目重派。manager-chat 的公共 Prompt 必须解释上述已提交/未提交区别、读取三份路径与检查每项结果的责任；node-chat 应继续按真实执行身份报告，不把历史错误当作回滚或重做指令。本票的接口位于后端 HTTP 和三份持久记录；外部角色扩展的实际部署/Prompt 注入仍须独立 toolkit/Herdr 证据，不能以 HTTP 验收冒充。
+
+可重复确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch records:: -- --nocapture`。`current_write_failure_preserves_queries_disk_and_success_history` 使用真实只读当前文件，联合检查返回、后续查询、原字节和成功历史；`history_failure_reports_committed_completion_and_allows_next_action` 在状态提交后使历史追加失败，检查明确部分生效、缺失历史和后续合法 pause；`batch_history_failure_explains_each_committed_target_without_stopping_batch` 检查两个合法派发目标及失败 retry 的部分生效反馈。`independent_records_read_current_facts_without_replaying_history` 使用相互独立、故意不一致的当前/历史/旧执行报告样例；`operated_records_preserve_old_execution_recovery_completion_and_reports` 经真实 HTTP 执行 fail/recover/retry/report/complete，再核对三个文件、旧事实与 collect 不生成新业务记录。测试只替换外部 Herdr 为隔离记录型副本，文件写入与 TCP 入口真实，不证明模型、原生宿主或角色 Prompt。
+
 正常顺序为整图预检 → 三份记录全部初始化 → Workspace/Tab/agent 启动 → 获取原生 session_id → 持久保存 Run 的真实关联 → 提交初始指示。单文件更新使用同目录临时文件后替换，不先删除正式文件。不承诺三文件事务、断电恢复、多进程写入协议或外部 Chat 回滚。
+
+### 损坏记录与 Windows 文件协调
+
+三份记录都是必要文件。缺失不会被当作空文件重新创建；当前记录不可解析、报告结构损坏、历史不是 JSON 对象或 JSONL 最后一条没有换行时，相关读取/追加明确报错，错误包含文件路径。详情读取同时检查历史记录是否可读，但不重放历史；管理者 status 的当前事实仍以 `run.json` 为准，不依赖历史推导。运行身份扫描无法读取记录时返回 `run-read-failed`，而不是把文件故障伪装成身份未关联；另一个可正常识别的独立 Run 仍可工作。旧 Run 未接管规则不变。
+
+历史的 dispatch、retry 和状态转换追加，以及报告追加，均在同一次文件集合协调内先检查已有完整记录，再执行追加；不向残尾或损坏 log 继续写，不自动截断、补换行、重建空数据或重试。若损坏是在外部启动等待期间出现，已发生的 Chat/已提交状态不能回滚；历史失败仍按上面的 `stateCommitted`/`historyError` 部分生效反馈处理。文件拒绝访问、只读或 Windows 不允许替换时，正式旧文件保持原字节；排除访问问题后须由调用者显式发起下一次合法操作。
+
+协调仅在当前服务实例内，集合路径按固定顺序取得锁；读取、初始化、整体替换和追加沿同一层进行。不相交的 Run 文件集合不会互相排队。文件访问锁不跨外部 Herdr 启动、初始输入、报告投递或 collect 等待；同 Run 的业务串行边界仍覆盖整个派发批次，不能把文件可读误解为状态操作可越过批次。没有新增跨文件原子、断电安全或多进程写入保证。
+
+用户遇到损坏提示，应保留原文件及错误路径，从 workflow 进入原管理者 Chat 表达“先核实保存事实、文件故障和已有外部效果，不要重派或修改记录”。不要手填身份、编辑运行 JSON、删除坏行或用空文件覆盖；部署维护者应先备份原字节，再依据可信记录处理存储故障。manager-chat 指引应明确：读取失败不是空 Run，历史追加失败不是状态回滚，先查已提交事实并说明未知项；node-chat 遇到报告保存失败须如实说明未保存，不宣称通知成功，也不因投递失败重复报告。角色 Prompt 的真实注入仍需外部 toolkit/宿主证据，本段不是替代验证。
+
+可重复 Windows 检查入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch integrity_ -- --nocapture`（P47.01/P48.01）。独占临时文件与真实 TCP 检查必要文件缺失、当前/报告/历史损坏、残尾、原字节保持、外部等待后拒绝追加及部分生效；Windows 专有用例用不共享 DELETE 的真实文件句柄阻止替换，核对旧句柄/正式路径字节和失败后的显式成功替换；并发用例交错 80 次详情读取与 40 次状态替换。外部 start gate 验证同 Run 可读且另一 Run 能保存 pause。再运行同一测试目标中的 `serialized_batch_finishes_before_pause_without_blocking_other_run_or_chat`、`collect_retains_merges_notifications_before_failed_delivery_and_keeps_pending_work` 和 `collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immediate`，联合验证批次、投递与 collect 的等待边界。gate/实际调用记录决定先后，负向窗口分别为 100/200 ms，不以任意等待推定排序。上述保持生产文件层及 Herdr 调用包装，外部 Herdr 使用记录型副本，只证明确定性文件访问/故障语义，不宣称原生宿主或模型行为通过。
 
 ## 基础管理者状态协议
 

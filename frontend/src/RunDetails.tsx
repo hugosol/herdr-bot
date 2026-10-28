@@ -1,6 +1,7 @@
 import { RunList } from './RunList'
 import { RunCurrentView } from './RunCurrentView'
 import { useWorkflowRefresh } from './useWorkflowRefresh'
+import { SavedChat } from './RunChat'
 export function selectedRunId(): string | null {
   const match = /^#workflow\/([a-zA-Z0-9-]+)$/.exec(window.location.hash)
   return match?.[1] ?? null
@@ -27,7 +28,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
     {run && <>
       <dl><dt>Map</dt><dd>{run.map}</dd><dt>Run 状态</dt><dd>{run.status}</dd><dt>管理者 Task</dt><dd>{run.managerTaskId}</dd><dt>管理者 zone</dt><dd>{run.zone}</dd><dt>Workspace</dt><dd>{run.workspaceName}</dd></dl>
       <h3>本次要求（只读）</h3><pre data-testid="run-user-input">{run.userInput}</pre>
-      <h3>管理者 Chat</h3>{run.manager ? <dl>{Object.entries(run.manager).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl> : <p>尚无已保存管理者 Chat 关联。</p>}
+      <h3>管理者 Chat</h3>{run.manager ? <SavedChat label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
       {snapshot?.current && <RunCurrentView run={run} reports={detail?.reports ?? []} current={snapshot.current} />}
     </>}
   </section>

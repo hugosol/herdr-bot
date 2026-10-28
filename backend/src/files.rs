@@ -30,6 +30,31 @@ impl FileStore {
         }
         guards
     }
+    pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
+        let bytes = fs::read(path).map_err(|error| format!("{}：{error}", path.display()))?;
+        serde_json::from_slice(&bytes).map_err(|error| format!("{}：记录损坏：{error}", path.display()))
+    }
+    pub fn read_jsonl<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Vec<T>, String> {
+        let bytes = fs::read(path).map_err(|error| format!("{}：{error}", path.display()))?;
+        if !bytes.is_empty() && bytes.last() != Some(&b'\n') {
+            return Err(format!("{}：JSONL 尾部残缺；拒绝读取或继续追加。", path.display()));
+        }
+        bytes.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()).enumerate()
+            .map(|(line, bytes)| serde_json::from_slice(bytes)
+                .map_err(|error| format!("{}：记录 {} 损坏：{error}", path.display(), line + 1)))
+            .collect()
+    }
+    // Caller holds collection coordination across validation and append.
+    // Neither missing files nor damaged tails are repaired by this operation.
+    pub fn append_jsonl<T: serde::de::DeserializeOwned>(path: &Path, record: &impl serde::Serialize) -> Result<(), String> {
+        Self::read_jsonl::<T>(path)?;
+        let mut bytes = serde_json::to_vec(record).map_err(|error| error.to_string())?;
+        bytes.push(b'\n');
+        let mut file = OpenOptions::new().append(true).open(path)
+            .map_err(|error| format!("{}：{error}", path.display()))?;
+        file.write_all(&bytes).and_then(|_| file.sync_all())
+            .map_err(|error| format!("{}：{error}", path.display()))
+    }
     pub fn create(path: &Path, bytes: &[u8]) -> io::Result<()> {
         let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
         file.write_all(bytes)?;

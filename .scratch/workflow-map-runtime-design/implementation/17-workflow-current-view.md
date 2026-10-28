@@ -60,4 +60,12 @@
 - 前端回归：`npm --prefix frontend test -- --maxWorkers=4`，27文件/205测试通过。
 - 浏览器分区：`npm --prefix frontend run test:browser:partition`，311 = 278 fast + 33 time-contract，集合互斥且完整，通过。
 - 完整后端：`node scripts/test-backend.mjs`，所有已发现二进制与 doctest 通过，0未派发；日志及 summary 位于 `C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-MQKpKg/`。
-- 长期用户/角色说明已更新 `docs/workflow-runtime.md`。本票不需要真实模型/宿主执行质量评价，浏览器通过的是交付页面和真实 HTTP/文件行为；受控 Herdr 记录仅支持有界无隐式启动结论，不冒称实际 Resume 或 toolkit 原生能力验收。未运行全量311例浏览器套件；本票所属验收无未完成项。
+- 长期用户/角色说明已更新 `docs/workflow-runtime.md`。本票不需要真实模型/宿主执行质量评价，浏览器通过的是交付页面和真实 HTTP/文件行为；受控 Herdr 记录仅支持有界无隐式启动结论，不冒称实际 Resume 或 toolkit 原生能力验收。原开发阶段未运行全量311例浏览器套件；本票所属验收无未完成项。
+
+2026-10-29 独立集成复验：当前开发分支已包含宿主同步的 `d341af250346775d4607d7994a74c5b070f42195`，无需再次合入或解决冲突；未操作集成工作区。
+
+- `npm --prefix frontend test -- --maxWorkers=4`：27文件、205测试通过，网络护栏通过。
+- `npm --prefix frontend run test:browser:build -- --workers=2`：完整311例发现，310通过、1例真实文件符号链接按既有人工授权规则跳过；TypeScript/Vite/后端二进制构建与网络护栏通过，耗时303.42秒。未授权或执行实机 smoke、LAN/mDNS、真实关机及跨票据整体验收。
+- 首次 `node scripts/test-backend.mjs`：`zone_sync::configured_timeout_stops_the_running_command_and_keeps_effective_pull_state` 的资格恢复断言失败（预期200，实际409 `git-write-in-progress`），doctest未执行；原始日志保留于 `C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-dPIrzG/`。
+- 该超时用例独立运行通过；短暂记录 taskkill 失败结果的诊断版本完整后端也通过（`herdr-backend-tests-0tpYzt`）。没有观察到足以支持修改仓库写资格安全语义的诊断证据，全部临时诊断已移除，未把猜测作为产品修复。
+- 恢复原始源码后再次执行原命令 `node scripts/test-backend.mjs`：所有发现的后端二进制及 doctest 通过、0未派发，耗时154.03秒；最终干净源码证据为 `C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-r7X1Ql/summary.json`。保留首次偶发失败事实，不宣称已消除其根因。
