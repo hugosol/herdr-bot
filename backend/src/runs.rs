@@ -468,11 +468,17 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         .cloned()
         .collect::<Vec<_>>();
     let mut matched = None;
+    let mut node_associated = false;
     for id in ids {
         let run = match state.runs.read(&state, &id).await {
             Ok(v) => v,
             Err(_) => continue,
         };
+        node_associated |= run.nodes.values().any(|node| {
+            node.executions().any(|execution| {
+                execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)
+            })
+        });
         if run
             .manager
             .as_ref()
@@ -489,6 +495,11 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         }
     }
     match matched {
+        Some(_) if node_associated => Err(error(
+            StatusCode::FORBIDDEN,
+            "manager-ambiguous",
+            "原生身份同时关联节点执行与管理者，归属不唯一。",
+        )),
         Some(run) => Ok(run),
         None => Err(error(
             StatusCode::FORBIDDEN,

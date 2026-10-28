@@ -74,6 +74,27 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供 status/dispatch 及下文 complete/finish 指引，并将工具接到对应协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
 
+## 角色归属与来源集成检查
+
+运行工具的归属不能由 Run ID、Task 类型或工具调用者自报决定。后端只按保存的真实原生 session_id 查找关联：管理者必须在当前后端内有唯一 Run 归属，且不能同时关联任何 Run 的当前或保留节点执行。出现跨 Run 的 manager/node 身份冲突时，所有管理者动作统一返回 `403 manager-ambiguous`，不按先找到的角色授权；应核实实际 Chat 关联，不能用同机来源或重复请求绕过。无关联节点/管理者身份也不能因来源在回环地址而取得权限。旧节点执行仍可提交归属于原执行的历史报告，但不能冒充当前执行或管理者，迟到时间不改变报告适用性。
+
+可重复的后端契约检查入口：
+
+```text
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch security:: -- --nocapture
+node scripts/check-test-network-policy.mjs
+```
+
+`backend/tests/workflow_dispatch/security.rs` 通过既有 S2/S3/S4 interface 检查：
+
+- `two_run_role_and_retained_execution_matrix_rejects_scope_forgery`：同 Map/Task 的两个 Run，分别关联管理者、当前节点与保留旧执行；报告接收者/适用待办隔离；全部管理者路由拒绝节点及无关联调用；两个方向的 Run/role/execution/source 冒充和节点报告的自报归属均被拒绝。拒绝前后对照公开详情、三份记录字节及 150ms 窗口内实际外部调用。
+- `manager_authorization_rejects_cross_run_current_and_old_node_identity_collisions`：受控外部宿主返回跨 Run 重复身份，分别覆盖当前及保留旧节点执行与管理者角色冲突；全部管理者路由拒绝，不改两个 Run、不产生新外部调用。
+- `source_matrix_enforces_local_transport_and_session_association_separately`：真实回环 HTTP 启动后，在同一生产应用的 HTTP 边界注入独立 TCP 来源样例；IPv4/IPv6 回环允许已关联管理者查询，却拒绝无关联身份；三个文档地址样例对全部角色路由返回来源拒绝，即使请求携带已关联身份。没有监听 LAN 或发布 mDNS，受控 TCP 对端不是实际网卡验收。
+
+这些检查保留真实 HTTP 处理、持久化和生产 Herdr adapter；外部记录型 Herdr 是受控条件，测试中的入口占位文件只让后端配置检查可执行，**不证明角色扩展可加载、工具参数面正确、Prompt 已注入或 connect-bot 关闭时原生运行成功**。同机校验仍不是认证，session_id 仍不是秘密凭据，同机进程冒用风险不因测试通过而消失；没有新增 token。
+
+双角色部署验收还必须在独占 Herdr/omp 环境实际加载 metadata 指定的 `manager-chat.ts` 与 `node-chat.ts`，关闭 connect-bot，按普通 → manager → node → 普通切换 Task 类型，并使用两个不同 node cwd。通过真实工具与 Prompt/Session/HTTP 公共能力观察对应角色工具、首次启用指引、原生身份和实际请求目标；使用显式非默认 endpoint、config.path/configBaseDir 对照有效配置与真实请求，不按角色 ID 推导目录。还须在 toolkit 交付源码上检查角色 → common、common 不反向依赖角色、foundation 不依赖 business，且不引用 connect-bot 私有实现。缺少角色入口或源码时，这部分 P22.01 工具参数面、P58.01、P60.02、P67.04 必须报告未验证，不能用上述后端矩阵或入口文件存在替代运行证据。
+
 ## 派发验证入口与证据边界
 
 确定性派发检查入口为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端交付检查为 `node scripts/test-backend.mjs`（先按测试指引构建前端）。这些测试使用真实 HTTP TestServer、每例独占的实际文件及外部记录型 Herdr 副本，覆盖关联提交屏障、完整字面触发输入、批内拒绝/失败/成功、重复拒绝、Run 隔离、磁盘故障与 Workspace 不回退。夹具进程记录实际 cwd，但它不是 omp 原生 Chat，也不验证模型或公共 Prompt 注入。
