@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { MapGraph } from './MapGraph'
-import { listBots, loadMap, type Bot, type WorkflowMap } from './schedulerApi'
-import { fetchTasks, type Task } from './taskApi'
+import type { CurrentDefinition } from './useWorkflowRefresh'
 import type { Report, Run } from './workflowApi'
 import { SavedChat } from './RunChat'
 import './workflow.css'
@@ -10,38 +9,9 @@ function FactTime({ at }: { at: number }) {
   return <time dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleString()}</time>
 }
 
-export function RunCurrentView({ run, reports, active }: { run: Run; reports: Report[]; active: boolean }) {
-  const [map, setMap] = useState<WorkflowMap | null>(null)
-  const [mapError, setMapError] = useState<string | null>(null)
-  const [bots, setBots] = useState<Bot[]>([])
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [catalogErrors, setCatalogErrors] = useState<string[]>([])
+export function RunCurrentView({ run, reports, current }: { run: Run; reports: Report[]; current: CurrentDefinition }) {
+  const { map, mapError, bots, tasks, catalogErrors } = current
   const [selected, setSelected] = useState<string | null>(null)
-  useEffect(() => {
-    if (!active) return
-    const controller = new AbortController()
-    setMap(null); setMapError(null); setBots([]); setTasks([]); setCatalogErrors([])
-    void loadMap(run.map, controller.signal).then(value => {
-      if (controller.signal.aborted) return
-      const savedIds = Object.keys(run.nodes), currentIds = Object.keys(value.nodes)
-      if (savedIds.length !== currentIds.length || savedIds.some(id => !Object.hasOwn(value.nodes, id))) {
-        setMapError('当前 node 标识集合与 Run 不一致，无法可靠对应。')
-        return
-      }
-      setMap(value)
-    }).catch(error => { if (!controller.signal.aborted) setMapError(error instanceof Error ? error.message : 'Map 无法读取。') })
-    void listBots(controller.signal).then(value => {
-      if (controller.signal.aborted) return
-      setBots(value.bots)
-      if (value.problems?.length) setCatalogErrors(errors => [...errors, ...value.problems!.map(problem => problem.message)])
-    }).catch(error => { if (!controller.signal.aborted) setCatalogErrors(errors => [...errors, `Bot 名称不可读：${String(error)}`]) })
-    void fetchTasks().then(value => {
-      if (controller.signal.aborted) return
-      if (value.kind === 'ok') setTasks(value.tasks)
-      else setCatalogErrors(errors => [...errors, 'Task 目录不可读；显示保存标识。'])
-    })
-    return () => controller.abort()
-  }, [run, active])
   const nodeId = selected && run.nodes[selected] ? selected : Object.keys(run.nodes)[0]
   const node = run.nodes[nodeId]
   const definition = map?.nodes[nodeId]

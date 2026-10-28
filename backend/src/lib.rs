@@ -146,6 +146,7 @@ pub struct AppState {
     pub run_directory: PathBuf,
     pub run_instructions: PathBuf,
     pub collect_wait: Duration,
+    pub workflow_poll_interval_seconds: u32,
     pub runs: Arc<runs::Runs>,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
@@ -253,6 +254,7 @@ pub fn app_with_state(
         run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
         run_instructions: std::path::absolute(&config.scheduler.run_instructions).expect("resolve Run instructions"),
         collect_wait: config.scheduler.collect_wait_seconds.duration(),
+        workflow_poll_interval_seconds: config.scheduler.workflow_poll_interval_seconds.get(),
         runs: Arc::new(runs::Runs::default()),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
