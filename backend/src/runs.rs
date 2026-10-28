@@ -170,6 +170,33 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
     }
     Ok(value)
 }
+pub async fn list_runs(State(state): State<AppState>) -> Response {
+    let active = state.runs.active.lock().await.clone();
+    let mut ids: std::collections::BTreeSet<String> = active.keys().cloned().collect();
+    match fs::read_dir(&state.run_directory) {
+        Ok(entries) => {
+            for entry in entries {
+                let entry = match entry { Ok(entry) => entry, Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()) };
+                let kind = match entry.file_type() { Ok(kind) => kind, Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()) };
+                let Some(id) = entry.file_name().to_str().map(str::to_owned) else { continue };
+                if kind.is_dir() && !id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { ids.insert(id); }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()),
+    }
+    let mut runs = Vec::with_capacity(ids.len());
+    for id in ids {
+        let (run, read_error) = match state.runs.read(&state, &id).await {
+            Ok(run) => (Some(run), None),
+            Err(e) => (None, Some(e)),
+        };
+        runs.push(serde_json::json!({"id":id,"run":run,"managed":active.contains_key(&id),"readError":read_error}));
+    }
+    runs.sort_by(|a, b| b["run"]["createdAt"].as_u64().unwrap_or(0).cmp(&a["run"]["createdAt"].as_u64().unwrap_or(0)).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
+    Json(serde_json::json!({"runs":runs})).into_response()
+}
+
 pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
         return error(StatusCode::BAD_REQUEST, "run-id-invalid", "Run 标识无效。");
