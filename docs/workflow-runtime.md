@@ -102,6 +102,87 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 
 真实宿主复验需要 metadata 指定的 manager-chat/node-chat 实际交付：在独占数据、zone 与 Herdr 实例中，通过公共角色工具执行前置 report 后保持 running（让该 Chat 继续收尾），确认 C 拒绝；管理者 complete A/B 后显式 dispatch C，全部 complete 后 finish，保留原生工具结果、Prompt 注入、Chat 身份/活动顺序、三份运行记录和无强制结束/自主派发的有界外部调用证据。角色入口缺失时，本仓库确定性检查可执行，但原生工具/Prompt/真实 Chat 仍未验证，不能用受控 HTTP 结果宣称本票完整宿主验收。
 
+## 单节点真实宿主闭环验收
+
+本节是进入多节点验收前的独立入口，只验证一个无前置 node 的 manager → dispatch → 实际文件/report → complete → finish。即使本节全部通过，也不代表 P62/P63 的 A/B → C、并行、汇合或多轮推进已经通过。HTTP TestServer、记录型 Herdr 副本和手填身份请求都不能代替本节。
+
+### 独立预期与观察 seam
+
+开始前先保存本轮预期，不能读取实际产物后再改预期。固定 node ID 为 `ONE`，`blocked_by=[]`，输出为 node zone 根目录的 `single-node-result.txt`。文件必须是无 BOM 的 UTF-8，行尾仅 LF，末尾有一个 LF，完整内容固定为：
+
+```text
+workflow-single-node
+answer=42
+```
+
+这个字面预期独立于模型与运行实现；不要用模型报告、服务返回值或被测实现生成期望值。以下 PowerShell 在本轮实际 node zone 已保存为 `$nodeZone` 后核对原始字节；缺文件会报错，不生成替代产物，错误内容、BOM 或 CRLF 都不能通过。保存本段原文作为启动前预期，并在 manager 核对时保留实际执行结果；本次环境阻塞，尚未执行此产物检查。
+
+```powershell
+$expected = [Text.Encoding]::UTF8.GetBytes("workflow-single-node`nanswer=42`n")
+$artifact = Join-Path $nodeZone 'single-node-result.txt'
+$actual = [IO.File]::ReadAllBytes($artifact)
+if ([Convert]::ToBase64String($actual) -cne [Convert]::ToBase64String($expected)) {
+    throw "实际产物字节与独立预期不符：$artifact"
+}
+Write-Output "产物字节符合独立预期：$artifact"
+```
+
+node.input 应明确要求写上述文件、读取文件核对内容，然后通过真实 node 角色工具 report 绝对路径、编码和限制。管理者本次要求为：只派发 ONE；使用 status 与记录读取观察进展；收到 report 后亲自读取实际文件并与事先保存的预期逐字节比较；只有吻合才 complete ONE（非空 reason 记录文件地址与核对结论），再显式 finish。collect 未交付时不得伪造 collect 或以循环代替其承诺。
+
+观察 seam 是实际交付页面的发起 Run 入口、真实 manager/node 角色工具及其公共 Session 身份、node 实际文件、三份运行记录与 Herdr 原生 Chat。可区分的具体违规是“node 报告成功但未写文件或内容错误”：仅凭 report 或 completed 快照会漏过；独立读取实际文件并比较完整字节才能拒绝它。此真实场景未可执行时，不制造受控模型的 red/green 来声称覆盖。
+
+### 隔离与执行顺序
+
+1. 按[测试指引](agents/testing.md)构建交付页面和安全关机壳。参考[静态样例的隔离配置](example/README.md#在隔离目录运行)，但不要对其用户配置或静态多节点样例直接发起 Chat。为本轮新建独占 service cwd、数据根、manager zone、node zone 和证据目录；配置数值回环动态端口、`mdns.enabled=false`、显式 `scheduler.run_directory` 和稳定的本说明绝对路径。三份记录留在 node zone 外。所有存储路径都归本轮所有，不能只把配置文件放到 Temp 却沿用用户数据。
+2. 先核实当前 metadata 指定的 manager-chat/node-chat 是真实部署入口，能够加载公共 Session、角色工具及 `first-enabled-run` Prompt；同时核实 omp 未启用 autoResume。确认可以通过本轮独占的 Herdr 实例/命名 session 隔离 Workspace、Tab 和 agent。命名 session 或配置隔离未建立前不要调用用户的默认 Herdr 实例；只存在 Herdr 可执行文件不足以证明隔离可用。任一前提缺失就保存真实错误并停止，不修改 metadata 指向空扩展、不手写运行事实。
+3. 在隔离服务的实际页面登记两个 zone，创建 manager/node 类型的 omp Task，固定本轮 model/thinking、初始 Skill、prompt 和扩展选择并保存其预期。创建一个引用 node Task 的 Bot 和仅含 ONE 的 Map，node.zone 为独占 node zone，输入采用上述字面任务。启动前保存这些实际定义及本次要求；运行期间不再修改。
+4. 经 scheduler 页面显式发起 Run，保存页面结果及 Run ID。由真实 manager 使用角色工具查 status，确认 ONE ready，显式 dispatch ONE；不能由验收脚本手填 sessionId 冒充管理者。记录 manager 与 node 不同的原生 session_id、实际 cwd、Workspace/Tab/pane/agent 关联、公共 Prompt 实际注入与工具原始参数/结果。应由角色扩展取得身份，不允许模型提供归属。
+5. node 在自身 cwd 写文件并调用真实 report。管理者用 status 与传入记录路径读取已保存报告，亲自读取该绝对文件，核对以上独立字节预期；随后显式 complete ONE，再 finish。若 manager 停轮，可人工要求继续核对/完成，但每次补充输入、时间、对象原生身份和原因都必须保留，不声称强制续轮。通知失败与保存失败分开解释，不盲目重报或重派。
+6. 保存实际文件的原始字节、全部原生工具结果、两份原生 Chat 引用/可供复查的对话、最终 `run.json`、`history.jsonl`、`messages.jsonl` 和完整人工干预记录。用 status/记录确认 ONE completed、非空首次 completion reason、Run completed、首次 finished 事实，以及对应 report/complete/finish 历史。缺失的记录应标为缺失，不能生成空记录充数。任何保存/历史/通知部分失败均单列，不凭最终状态抹去。
+7. 持续消费所属服务/agent 的 stdout/stderr；正常或失败退出都只清理本轮拥有的进程与资源。保留证据后再删除临时数据，不关闭用户已有 Workspace/Chat，不调用真实关机。保存准确的启动命令、配置、版本和清理结果，以便从新临时目录重复执行。
+
+### 2026-10-28 实际前置检查：阻塞，未运行闭环
+
+在本票独占 worktree 检查当前部署，实际结果为 `herdr 0.9.5`、`omp/18.13.2`，两者可执行文件均可找到。metadata 的两个固定角色入口分别为：
+
+```text
+E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts
+E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\node-chat.ts
+```
+
+实际目录读取仅见 `codebase-tools.ts` 与 `connect-bot.ts`；对以上两个绝对路径执行 `Test-Path -PathType Leaf` 均为 `false`。对 toolkit 文件名另行查找也未找到这两个角色入口。可重复前置检查（PowerShell；这是部署检查，不是闭环通过证明）：
+
+```powershell
+$paths = @(
+    'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts',
+    'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\node-chat.ts'
+)
+$checks = @($paths | ForEach-Object {
+    [pscustomobject]@{ path = $_; isFile = (Test-Path -LiteralPath $_ -PathType Leaf) }
+})
+$checks | ConvertTo-Json
+if (@($checks | Where-Object { -not $_.isFile }).Count -gt 0) { exit 2 }
+```
+
+上述带退出码的前置检查已实际执行，退出码 **2**，原始结果为：
+
+```json
+[
+    {
+        "path": "E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\manager-chat.ts",
+        "isFile": false
+    },
+    {
+        "path": "E:\\Developer\\myhub\\my-agent-toolkit\\entrypoints\\omp-auto\\node-chat.ts",
+        "isFile": false
+    }
+]
+```
+
+本次检查在创建服务、Run 或 Chat 之前停止，未接触用户对话/产物，未创建持续运行的验收子进程；版本/部署探针均已退出，无遗留清理对象。没有可交付的原生身份、工具调用、实际产物或三份运行记录；它们是**未产生**，不是验收通过。检查期间第一次 PowerShell 调用因外层 shell 展开 `$` 而语法失败，改用单引号包裹 PowerShell 程序后才得到两个 `false`；没有通过修改运行事实或模型输入干预结果。除此之外没有运行内人工干预，因为本轮尚未启动。
+
+当前精确阻塞是独立 my-agent-toolkit 尚未部署上述真实角色入口，不能执行要求的原生身份/Prompt/工具路径。Herdr 隔离启动、模型访问与完整闭环也仍未验证，不能从可执行文件版本推断可用；没有证据据此修复宿主运行 bug。部署真实入口后须从新的独占环境按本节全程复验并另存实际证据；本次前置检查不能解除单节点宿主验收，也不能将 P62/P63 标为完成。
+
 ## 节点报告与独立通知
 
 已关联的当前 node Chat 使用 `report`，模型业务参数**只有正文**（`body`）。正文应包含可交接结果的地址、使用方法与限制；不要求 node 自报 Run、node、执行 ID 或接收者。角色扩展须从 toolkit 公共 Session 能力取得当前原生身份，并调用：
