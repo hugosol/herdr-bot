@@ -8,7 +8,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 - **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。
-- **workflow**：按 Run 链接读取基础事实、本次要求、真实管理者关联及当前后端启动错误；刷新不重新启动。配置与限制见 [Map Run 运行说明](docs/workflow-runtime.md)。
+- **workflow**：倒序查看全部 Run、只读状态图、当前/旧执行与报告，Resume 已关联 Chat；可见时轮询，查询失败保留上次内容，刷新不重新启动。需求、配置与限制见 [Map Run 长期契约](docs/workflow-contract.md)与[运行说明](docs/workflow-runtime.md)。
 - **server**：调用预先配置的启动／停止脚本，以及手动关机。
 
 ## 构建与运行
@@ -41,6 +41,7 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 - [使用说明](docs/usage.md)：页面导航、server 操作、Task 配置与历史 Chat 恢复。
 - [scheduler 使用与参考](docs/scheduler.md)：目录配置、定义管理、JSON 格式、接口和问题排查。
+- [Map Run 长期需求与契约](docs/workflow-contract.md)：职责、全部承诺、状态规则、接口/记录索引、重要取舍、排除项与 Agent/人工验收边界；无需临时设计材料。
 - [scheduler 样例与体验指引](docs/example/README.md)：可复制样例、隔离运行与人工验收。
 - [workflow 运行与故障处理](docs/workflow-runtime.md#故障处理速查先看现场再向管理者表达意图)：查看失败、Resume、核实/修复与向管理者表达恢复、重试或人工交接意图。
 - [领域术语](GLOSSARY.md)与[架构决策](docs/adr/)。
