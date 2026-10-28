@@ -96,6 +96,39 @@ finish 没有模型业务参数。running 或 paused 的 Run 全部节点 comple
 
 manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status → 读取报告/核实交接 → complete → 显式 dispatch 下游 → 全部完成后 finish 的职责与上述拒绝/部分生效语义注入真实管理者 Chat。node-chat 指引应明确 report、停轮、退出都不替代管理者交接。本仓库没有外部 toolkit 的角色工具实现；HTTP 路由与此说明不是工具已装配或 Prompt 已注入的证明，不通过手填 HTTP 身份冒充真实角色工具验收。
 
+## 暂停新执行与恢复派发资格
+
+管理者的 `pause` / `resume` 都没有模型业务参数。传输正文仅由公共 Session 能力提供真实身份，后端仍按唯一管理者关联与同机来源检查；node、未关联身份及额外的 Run/node/角色字段不能借此修改状态：
+
+```http
+POST /api/workflow/manager/pause
+Content-Type: application/json
+
+{"sessionId":"<公共 Session 能力取得的当前管理者身份>"}
+```
+
+`resume` 使用相同正文，路径为 `POST /api/workflow/manager/resume`。不要把普通 Chat 的 **Resume**（定位或恢复原生对话）当作此状态动作；普通 Resume 不接管 Run，也不恢复派发资格。
+
+- `pause` 将 running Run 转为 paused，排在同 Run 已接受的完整派发批次之后生效。它不关闭或终止任何 Chat、不等待它们停轮或退出。生效后 `ready=[]`，新 dispatch 的逐项结果为 `rejected`，原因含 `Run 状态为 paused`，不产生宿主启动调用。
+- 已有执行仍可 report，管理者仍可在确认可交接后 complete。报告仍只通知管理者，不自动完成。paused Run 全部节点 completed 后可以直接 finish，无需先 resume，活动 Chat 不阻止成功。
+- `resume` 只将 paused Run 转回 running，重新给出由当前事实与依赖派生的 `ready` / `blocked`。它不自动 dispatch、retry、补发输入或终止已有 Chat；管理者必须另外显式选择目标并 dispatch。
+- 已在目标状态时重复 pause/resume 返回 `changed=false` 与当前查询字段，不重写当前记录、不覆盖首次操作 ID/时间/actor、不重复追加成功历史，也不产生外部调用。一次真正的反向转换后再次调用是新的显式状态动作，不是重复请求。
+- completed 终态的 pause/resume 返回 HTTP 409、`code=run-terminal`、`changed=false` 和当前查询字段，不改变首次 finish 事实。重复 finish 仍返回首次结果。
+
+成功动作返回与 complete/finish 相同的 `snapshot`、`ready`、`blocked`、`canFinish`、`reports`、`pendingReports`、`changed` 与 `historyError`。当前状态在 `run.json`，首次生效转换在 `history.jsonl` 中保留 `id`、`at`、真实管理者 `actor`、`action=pause/resume`、`before`、`after`。所有检查、写入和返回快照沿用同 Run 动作串行边界；文件锁不跨宿主调用。当前事实保存失败返回 HTTP 500、`pause-failed` / `resume-failed`，不采用未提交状态、不追加成功历史；历史追加失败则如实返回已生效状态和非空 `historyError`，不回滚、不自动修复或重试。
+
+### 用户与管理者操作指引
+
+人类需要处理现场时，先从 workflow 查看 Run 与节点事实并进入已关联的管理者 Chat，表达「暂停新派发」；由管理者调用 pause，而不是退出所有节点 Chat、关闭 Tab 或直接编辑运行文件。已有 node 可以继续提交含结果地址与限制的 report，管理者可以确认 complete；暂停不表示工作已经完成。处理后表达「恢复派发资格」，由管理者 resume、重新读取状态并决定下一次显式 dispatch。不要将 resume 工具成功当作下游已启动。若全部工作已交接，直接 finish，不必为结束而恢复派发。
+
+manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须覆盖上述边界及重复/终态/部分生效反馈；node-chat 应明确 pause 不撤回其已有工作或报告职责。这是角色指引的交付要求，不是本仓库已交付外部工具或已验证真实 Prompt 注入的声明。当前 worktree 只交付 HTTP 能力和本文；metadata 指向的外部角色入口未部署时，真实角色工具与 Herdr/omp 链路仍未验证，不能让用户手填 sessionId 代替。
+
+### 暂停与恢复的验证入口及证据边界
+
+可重复检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端检查为 `node scripts/test-backend.mjs`。`pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_fact` 覆盖 P18.03、P20.03 的 pause 分区、P36.01 和 P68.04 的 pause 分区；`resume_restores_only_eligibility_until_explicit_dispatch_and_preserves_first_fact` 覆盖 P20.03 的 resume 分区、P37.01 和 P68.04 的 resume 分区；`paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_are_rejected` 覆盖 P35.02。测试复用真实 HTTP TestServer、独占临时记录及外部记录型 Herdr 副本，先实际派发/暂停，再尝试 dispatch、report、complete，并实际 resume 后观察，最后显式派发；另一路径在 paused 下直接结束。输出保留动作/查询、历史和真实外部调用列表。每个无自主行为观察窗口为 **150 ms**，不把有限窗口宣称为无限期保证，也不把受控 working 事件或宿主副本当作原生 Chat 活动证据。
+
+真实角色复验须先实际部署 manager-chat/node-chat 并隔离 Herdr、数据及验收 zone。由真实 manager 工具 pause，保留状态、拒绝派发结果、实际外部启动/终止记录；已有 node Chat 继续 report 与 complete；由真实工具 resume，记录明确起止的观察窗口内无新增启动，之后显式 dispatch 才新增执行。再在 paused 且 Chat 仍活动的现场直接 finish，核对终态拒绝和首次历史。不具备真实角色入口/隔离宿主时如实保留未验项，HTTP 结果不替代真实工具、Prompt、原生身份或模型执行证据。
+
 ### 完成与结束的验证入口及边界
 
 可重复确定性入口为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端交付检查为 `node scripts/test-backend.mjs`。`explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact` 核对独立 A/B → C 字面快照、只完成 A 的拒绝和首次说明/历史；`finish_requires_every_handoff_and_terminal_actions_preserve_success` 核对显式派发 C、结束条件、终态拒绝、查询和重复 finish；`reports_and_observed_chat_lifecycle_never_replace_explicit_handoff` 分别经 HTTP 提交 report、停轮状态事件、退出登记事件，再显式完成并验证迟到报告不重新打开工作。各负向观察窗口为 **150 ms**，测试输出保留实际外部调用列表、事件和动作/查询结果；有限窗口不证明无限期没有自动行为。会话事件是受控输入，外部 Herdr 副本不是原生 omp，不能宣称证明了真实 Chat 停轮/退出。

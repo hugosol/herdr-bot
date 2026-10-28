@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 mod reports;
 mod completion;
 pub use reports::node_report;
-pub use completion::{manager_complete, manager_finish};
+pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
