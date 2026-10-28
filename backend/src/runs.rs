@@ -721,12 +721,16 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
             record_dispatch(state, run, id, retry_reason).await.err()
         } else { None };
         eprintln!("[workflow] run={} node={} action={} execution={} stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, if retry_reason.is_some() { "retry-failed" } else { "dispatch-failed" }, execution, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
-        return serde_json::json!({"nodeId":id,"status":"failed","execution":execution,"failure":failure,"effects":effects,"persistenceError":persistence_error,"historyError":history_error});
+        let mut value = serde_json::json!({"nodeId":id,"status":"failed","execution":execution,"failure":failure,"effects":effects,"persistenceError":persistence_error});
+        completion::history_feedback(&mut value, history_error);
+        return value;
     }
     *run = candidate;
     let history_error = record_dispatch(state, run, id, retry_reason).await.err();
     if let Some(message) = &history_error {
         eprintln!("[workflow] run={} node={} dispatch-history error={}；状态已提交，未回滚。", run.id, id, message);
     }
-    serde_json::json!({"nodeId":id,"status":"running","effects":effects,"historyError":history_error})
+    let mut value = serde_json::json!({"nodeId":id,"status":"running","effects":effects});
+    completion::history_feedback(&mut value, history_error);
+    value
 }
