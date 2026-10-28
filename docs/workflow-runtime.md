@@ -117,6 +117,21 @@ Content-Type: application/json
 
 成功动作返回与 complete/finish 相同的 `snapshot`、`ready`、`blocked`、`canFinish`、`reports`、`pendingReports`、`changed` 与 `historyError`。当前状态在 `run.json`，首次生效转换在 `history.jsonl` 中保留 `id`、`at`、真实管理者 `actor`、`action=pause/resume`、`before`、`after`。所有检查、写入和返回快照沿用同 Run 动作串行边界；文件锁不跨宿主调用。当前事实保存失败返回 HTTP 500、`pause-failed` / `resume-failed`，不采用未提交状态、不追加成功历史；历史追加失败则如实返回已生效状态和非空 `historyError`，不回滚、不自动修复或重试。
 
+### 完整批次与并发调用
+
+同 Run 的业务串行边界覆盖**整个显式派发数组**（包括逐项拒绝、启动失败、其余目标的实际启动及最终结果/快照），不是只覆盖某个 node 或一次文件写入。在途批次 `[A,B]` 尚未返回时提交 pause，pause 不能在 A 与 B 之间生效，也不能撤回 B 或终止 A；它在完整批次之后检查最新事实并保存 paused。批次响应仍描述该批次完成时的 running Run，后续 pause 响应描述 paused Run，两个响应都保留已启动 A/B 的事实，不互相覆盖。等待中的后续 dispatch 同样重新检查最新状态与依赖；先前 status 的 ready 或等待前的 pending 不是启动授权。
+
+文件协调与业务排队不同：宿主启动/输入受阻时，同 Run 的只读 status 仍可读取**已提交**记录（例如初始输入尚未确认，节点仍 pending，但真实 Chat 关联已保存），不保证只读查询会等到整批完成。不要把这个中间快照当作可以绕过排队的理由。独立 Run 的动作不排在本 Run 的批次或 pause 后面；已启动 Chat 的活动上报也不受这条业务队列控制。节点 report/管理者 complete 等需要修改本 Run 业务事实的动作仍在同 Run 边界排队，不能把“Chat 继续工作”理解为业务写入可以穿插进批次。
+
+遇到慢派发时，用户应保留现有 Chat 与现场，等待批次结果和 pause 的明确回执，不关闭 Tab、编辑记录或根据旧 ready 重发。manager-chat 应说明这些顺序及中间查询的含义；node-chat 应继续自己的工作/报告职责，不把管理者提交 pause 当作撤回已有任务。宿主报错、当前事实保存失败与历史部分失败继续按原有明确反馈处理，不通过自动重试或假快照隐藏问题。
+
+可重复确定性检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch serialized_ -- --nocapture`。
+
+- `serialized_dispatch_rechecks_pending_snapshot_after_in_flight_launch`（P17.03）在 A 的外部初始输入门闩处先观察 pending/ready，再提交同目标 dispatch；释放后必须按 running 拒绝，结果/快照一致且无第二次宿主启动。
+- `serialized_batch_finishes_before_pause_without_blocking_other_run_or_chat`（P21.01、P36.02，并覆盖 P17.03 的 pause 重检）分别在 A、B 初始输入处设门闩，观察同 Run pause 无响应、同 Run 文件查询成功、另一 Run 的 B 真正启动以及既有 Chat 事件经 SSE 可见；最终历史必须依次为 dispatch A、dispatch B、pause，批次与 pause 的快照分别保留对应边界事实。
+
+门闩释放和外部调用记录确定先后，不以任意 sleep 推定排队次序。每道门闩的负向 HTTP 观察窗口为 **200 ms**，正向调用有独立有界期限；输出保留中间查询、动作快照、历史与外部调用列表。测试保留真实 TCP、文件写入/读取和生产 Herdr 调用包装层，仅外部 Herdr 可执行文件使用记录型副本；状态上报是受控输入，不是原生 omp 执行或真实角色工具/Prompt 已验证的证据。实际宿主复验仍需已部署的角色扩展与隔离 Herdr/zone，不能用本检查替代。
+
 ### 用户与管理者操作指引
 
 人类需要处理现场时，先从 workflow 查看 Run 与节点事实并进入已关联的管理者 Chat，表达「暂停新派发」；由管理者调用 pause，而不是退出所有节点 Chat、关闭 Tab 或直接编辑运行文件。已有 node 可以继续提交含结果地址与限制的 report，管理者可以确认 complete；暂停不表示工作已经完成。处理后表达「恢复派发资格」，由管理者 resume、重新读取状态并决定下一次显式 dispatch。不要将 resume 工具成功当作下游已启动。若全部工作已交接，直接 finish，不必为结束而恢复派发。

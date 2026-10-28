@@ -606,6 +606,14 @@ impl OpenJsonRequest {
         OpenJsonRequest { stream }
     }
 
+    /// 读取已发出请求的真实响应；可由调用方持有 future 跨越受控事件屏障。
+    pub async fn response(mut self) -> HttpResponse {
+        use tokio::io::AsyncReadExt;
+        let mut raw = Vec::new();
+        self.stream.read_to_end(&mut raw).await.expect("读取响应");
+        parse_response(&raw)
+    }
+
     /// 客户端主动中止连接，不读取属于这次请求的任何响应。
     pub fn abort(self) {
         drop(self.stream);

@@ -74,6 +74,137 @@ impl Scenario {
     }
 }
 
+// Approved S2/S3/S4 seams. P17.03: A is still pending while its real
+// initial-input call is gated. A queued dispatch must recheck the later running
+// fact, not authorize from that pending snapshot. Literal rejection + no second
+// host call distinguish stale authorization; both action snapshots must agree.
+#[tokio::test]
+async fn serialized_dispatch_rechecks_pending_snapshot_after_in_flight_launch() {
+    let s = Scenario::new().await;
+    s.start("manager-recheck").await;
+    let release = s.data.path().join("recheck-release");
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-recheck-A"},"native_cwd":s.data.path().join("node-zone"),"prompt_gate":{"wait_for_file":release,"timeout_ms":30000}}));
+    let addr = s.server.addr();
+    let first = common::OpenJsonRequest::submit(addr, "/api/workflow/manager/dispatch", &json!({"sessionId":"manager-recheck","nodes":["A"]}).to_string()).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count() == 2).await, "initial input must reach the external gate");
+    let query = post_json_over_tcp(addr, "/api/workflow/manager/status", &json!({"sessionId":"manager-recheck"}).to_string()).await;
+    assert_eq!(query.status, 200, "{}", query.body);
+    let before: Value = serde_json::from_str(&query.body).unwrap();
+    assert_eq!(before["snapshot"]["nodes"]["A"]["status"], "pending");
+    assert_eq!(before["ready"], json!(["A", "B"]));
+    let queued = common::OpenJsonRequest::submit(addr, "/api/workflow/manager/dispatch", &json!({"sessionId":"manager-recheck","nodes":["A"]}).to_string()).await;
+    let queued = queued.response();
+    tokio::pin!(queued);
+    // Bounded negative HTTP observation, not a sleep used to order operations.
+    assert!(tokio::time::timeout(Duration::from_millis(200), &mut queued).await.is_err(), "same-Run action must wait for the gated launch");
+    let calls = s.herdr.calls();
+    fs::write(&release, b"release").unwrap();
+    let first = tokio::time::timeout(Duration::from_secs(5), first.response()).await.unwrap();
+    assert_eq!(first.status, 200, "{}", first.body);
+    let first: Value = serde_json::from_str(&first.body).unwrap();
+    assert_eq!(first["results"][0]["status"], "running");
+    let queued = tokio::time::timeout(Duration::from_secs(5), &mut queued).await.unwrap();
+    assert_eq!(queued.status, 200, "{}", queued.body);
+    let queued: Value = serde_json::from_str(&queued.body).unwrap();
+    assert_eq!(queued["results"], json!([{"nodeId":"A","status":"rejected","reasons":["node 状态为 running，仅 pending 可派发"]}]));
+    assert_eq!(queued["snapshot"]["nodes"]["A"]["status"], "running");
+    assert_eq!(queued["ready"], json!(["B"]));
+    for field in ["snapshot", "ready", "blocked", "canFinish"] {
+        assert_eq!(queued[field], first[field]);
+    }
+    assert_eq!(s.herdr.calls(), calls, "queued dispatch must not create another Chat");
+    println!("P17.03 observationWindowMs=200 before={before} first={first} queued={queued} calls={calls:?}");
+}
+
+// Approved S2/S3/S4 seams. P21.01/P36.02 (also P17.03): contract requires
+// pause AFTER both A and B, not between targets. Two external input gates expose
+// both intervals. Same-Run reads must pass (file coordination is not held), an
+// independent Run must actually launch, and an existing Chat must still publish
+// activity. Pending HTTP observations are bounded to 200ms per gate; gates, not
+// elapsed time, establish order. History and literal action snapshots distinguish
+// a per-target lock, a global lock, or a pause based on the old pending snapshot.
+#[tokio::test]
+async fn serialized_batch_finishes_before_pause_without_blocking_other_run_or_chat() {
+    let s = Scenario::new().await;
+    let first = s.start("manager-batch").await;
+    let other = s.start("manager-independent").await;
+    let root = s.config.scheduler.run_directory.join(first["id"].as_str().unwrap());
+    let release_a = s.data.path().join("batch-A-release");
+    let release_b = s.data.path().join("batch-B-release");
+    let addr = s.server.addr();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"batch-node-A"},"native_cwd":s.data.path().join("node-zone"),"prompt_gate":{"match":"Node ID: A","wait_for_file":release_a,"timeout_ms":30000}}));
+    let batch = common::OpenJsonRequest::submit(addr, "/api/workflow/manager/dispatch", &json!({"sessionId":"manager-batch","nodes":["A","B"]}).to_string()).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|c| c["kind"] == "agent_prompt" && c["text"].as_str().is_some_and(|t| t.contains("Node ID: A")))).await, "A must reach its external input gate");
+    let pause = common::OpenJsonRequest::submit(addr, "/api/workflow/manager/pause", &json!({"sessionId":"manager-batch"}).to_string()).await;
+    let pause = pause.response();
+    tokio::pin!(pause);
+    assert!(tokio::time::timeout(Duration::from_millis(200), &mut pause).await.is_err(), "pause must wait while A input is in flight");
+    let query = tokio::time::timeout(Duration::from_secs(5), post_json_over_tcp(addr, "/api/workflow/manager/status", &json!({"sessionId":"manager-batch"}).to_string())).await.expect("business wait must not hold Run file coordination");
+    assert_eq!(query.status, 200, "{}", query.body);
+    let during_a: Value = serde_json::from_str(&query.body).unwrap();
+    assert_eq!(during_a["snapshot"]["status"], "running");
+    assert_eq!(during_a["snapshot"]["nodes"]["A"]["status"], "pending");
+    assert_eq!(during_a["snapshot"]["nodes"]["B"]["status"], "pending");
+    assert_eq!(during_a["snapshot"]["nodes"]["A"]["execution"]["chat"]["sessionId"], "batch-node-A");
+
+    // Exercise an actual independent launch, not just a status read that never
+    // needs the business boundary. B does not match the held A input gate.
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"independent-node-B"},"native_cwd":s.data.path().join("node-zone")}));
+    let independent = tokio::time::timeout(Duration::from_secs(5), s.dispatch("manager-independent", &["B"])).await.expect("independent Run must advance before A gate is released");
+    assert_eq!(independent["snapshot"]["id"], other["id"]);
+    assert_eq!(independent["results"][0]["status"], "running");
+    assert_eq!(independent["snapshot"]["nodes"]["B"]["execution"]["chat"]["sessionId"], "independent-node-B");
+    for event in [json!({"sessionId":"batch-node-A","kind":"register","data":{"cwd":s.data.path().join("node-zone")}}), json!({"sessionId":"batch-node-A","kind":"state","data":{"value":"working"}})] {
+        let response = tokio::time::timeout(Duration::from_secs(5), post_json_over_tcp(addr, "/api/sessions/events", &event.to_string())).await.expect("existing Chat activity must not wait for batch/pause");
+        assert_eq!(response.status, 200, "{}", response.body);
+    }
+    let mut feed = common::sse::SseConnection::open(addr, "/api/sessions/events", &[]).await;
+    assert_eq!(feed.status, 200);
+    let sessions = feed.next_event("snapshot").await.json();
+    assert!(sessions["sessions"].as_array().unwrap().iter().any(|c| c["sessionId"] == "batch-node-A" && c["state"] == "working"));
+    assert!(!release_a.exists());
+    assert!(!release_b.exists());
+
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"batch-node-B"},"native_cwd":s.data.path().join("node-zone"),"prompt_gate":{"match":"Node ID: B","wait_for_file":release_b,"timeout_ms":30000}}));
+    fs::write(&release_a, b"release").unwrap();
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt" && c["text"].as_str().is_some_and(|t| t.contains("Node ID: B"))).count() == 2).await, "same batch B must still launch after A, before pause");
+    assert!(tokio::time::timeout(Duration::from_millis(200), &mut pause).await.is_err(), "pause must wait for the FULL batch, not just A");
+    let query = tokio::time::timeout(Duration::from_secs(5), post_json_over_tcp(addr, "/api/workflow/manager/status", &json!({"sessionId":"manager-batch"}).to_string())).await.expect("second host gate must also leave Run files readable");
+    assert_eq!(query.status, 200, "{}", query.body);
+    let during_b: Value = serde_json::from_str(&query.body).unwrap();
+    assert_eq!(during_b["snapshot"]["status"], "running");
+    assert_eq!(during_b["snapshot"]["nodes"]["A"]["status"], "running");
+    assert_eq!(during_b["snapshot"]["nodes"]["B"]["status"], "pending");
+    assert_eq!(during_b["snapshot"]["nodes"]["B"]["execution"]["chat"]["sessionId"], "batch-node-B");
+    let before_b = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(before_b.len(), 1);
+    assert_eq!(before_b[0]["action"], "dispatch");
+    assert_eq!(before_b[0]["nodeId"], "A");
+    fs::write(&release_b, b"release").unwrap();
+    let batch = tokio::time::timeout(Duration::from_secs(5), batch.response()).await.unwrap();
+    assert_eq!(batch.status, 200, "{}", batch.body);
+    let batch: Value = serde_json::from_str(&batch.body).unwrap();
+    assert_eq!(batch["results"].as_array().unwrap().iter().map(|r| (r["nodeId"].as_str().unwrap(), r["status"].as_str().unwrap())).collect::<Vec<_>>(), vec![("A", "running"), ("B", "running")]);
+    assert_eq!(batch["snapshot"]["status"], "running", "batch result snapshot precedes queued pause");
+    assert_eq!(batch["snapshot"]["nodes"]["A"]["status"], "running");
+    assert_eq!(batch["snapshot"]["nodes"]["B"]["status"], "running");
+    let paused = tokio::time::timeout(Duration::from_secs(5), &mut pause).await.unwrap();
+    assert_eq!(paused.status, 200, "{}", paused.body);
+    let paused: Value = serde_json::from_str(&paused.body).unwrap();
+    assert_eq!(paused["changed"], true);
+    assert_eq!(paused["snapshot"]["status"], "paused");
+    assert_eq!(paused["snapshot"]["nodes"], batch["snapshot"]["nodes"], "pause must recheck and preserve both newly committed executions");
+    assert_eq!(paused["ready"], json!([]));
+    let history = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(history.iter().map(|e| (e["action"].as_str().unwrap(), e["nodeId"].as_str())).collect::<Vec<_>>(), vec![("dispatch", Some("A")), ("dispatch", Some("B")), ("pause", None)]);
+    let disk: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(disk, paused["snapshot"]);
+    let calls = s.herdr.calls();
+    assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_start").count(), 5, "two managers + independent B + full A/B batch, with no stop/relaunch");
+    assert!(calls.iter().all(|c| matches!(c["kind"].as_str(), Some("workspace_list" | "tab_create" | "agent_start" | "agent_get" | "agent_prompt"))));
+    println!("P17.03/P21.01/P36.02 observationWindowMsPerGate=200 duringA={during_a} independent={independent} chat={sessions} duringB={during_b} batch={batch} pause={paused} history={history:?} calls={calls:?}");
+}
+
 // Approved S2/S3/S4 seams. P18.03/P20.03/P36.01/P68.04: pause only
 // changes dispatch eligibility. A plausible violation stops A or blocks its
 // report/complete along with B's dispatch. Keep real HTTP, persistence and host

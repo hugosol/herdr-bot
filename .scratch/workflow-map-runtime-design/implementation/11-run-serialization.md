@@ -8,7 +8,7 @@
 
 **Blocked by:** 09 — 暂停新执行与恢复派发资格
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 ## 契约与范围
 
@@ -20,11 +20,11 @@
 
 ## 验收标准
 
-- [ ] **P17.03**（本票编写并执行的契约检查）：并发变化后后续动作重新检查当前事实，动作结果及快照来自同一业务串行边界，不用旧快照授权。
-- [ ] **P21.01**（本票编写并执行的契约检查）：受控延迟的完整派发批次与同 Run pause、另一 Run 调用并发；以事件顺序证明同 Run 串行、独立 Run 与既有 Chat 不受阻，分别观察业务串行与文件等待，不用任意 sleep 推断。
-- [ ] **P36.02**（本票编写并执行的契约检查）：pause 排在完整在途批次后生效，不中途撤回已启动目标。
-- [ ] 完成上述能力所需调用者、错误反馈和角色/用户指引；不留占位实现、假成功、运行时旧格式兼容或未接线入口。
-- [ ] 保留本票真实入口的可重复验证证据及检查结果；相关长期说明随能力更新，不只更新临时票据。
+- [x] **P17.03**（本票编写并执行的契约检查）：并发变化后后续动作重新检查当前事实，动作结果及快照来自同一业务串行边界，不用旧快照授权。
+- [x] **P21.01**（本票编写并执行的契约检查）：受控延迟的完整派发批次与同 Run pause、另一 Run 调用并发；以事件顺序证明同 Run 串行、独立 Run 与既有 Chat 不受阻，分别观察业务串行与文件等待，不用任意 sleep 推断。
+- [x] **P36.02**（本票编写并执行的契约检查）：pause 排在完整在途批次后生效，不中途撤回已启动目标。
+- [x] 完成上述能力所需调用者、错误反馈和角色/用户指引；不留占位实现、假成功、运行时旧格式兼容或未接线入口。
+- [x] 保留本票真实入口的可重复验证证据及检查结果；相关长期说明随能力更新，不只更新临时票据。
 
 ## 验证与证据
 
@@ -51,4 +51,11 @@
 
 ## Comments
 
-尚未实施或验收；本票发布不代表其 promise 已通过。
+本票实现与所拥有的确定性检查已完成，待独立集成；按仓库规则合入后才能标记 closed。已有运行实现已持有完整批次业务锁、在锁内重读事实并生成动作快照，因此保留该实现，不为本票重复引入锁或新的运行 seam。
+
+- P17.03：新增 `serialized_dispatch_rechecks_pending_snapshot_after_in_flight_launch`；外部初始输入门闩期间 pending/ready 的同目标请求，在释放后必须拒绝为 running，动作快照一致且没有第二次宿主启动。定向命令 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch serialized_dispatch_rechecks_pending_snapshot_after_in_flight_launch -- --exact --nocapture` 通过。临时注入“使用排队前 Run、不在锁内重读”后在字面拒绝断言失败；恢复后通过，故障代码未保留。
+- P21.01/P36.02：新增 `serialized_batch_finishes_before_pause_without_blocking_other_run_or_chat`；A/B 两道外部门闩下 pause 分别无响应，同 Run 文件查询均成功，独立 Run 实际启动 B、既有 Chat 的 working 上报经真实 SSE 可见；历史严格为 dispatch A → dispatch B → pause，批次 running 与后续 paused 快照均保留两项执行。定向同名 `--exact --nocapture` 命令通过。临时把业务锁改为逐项目标持有，在“pause must wait for the FULL batch”断言失败；恢复后全量 workflow suite 通过。负向 HTTP 窗口每道门闩 200ms，不用 sleep 定序。
+- 更新长期 `docs/workflow-runtime.md`：完整批次/只读文件观察/不同 Run/Chat 活动/业务写入排队的区别、角色/用户处置与复验命令；新增测试 helper 仅为已发出真实 TCP 请求读取结果，不新增产品接口。
+- `npm --prefix frontend ci --no-audit --no-fund`、`npm --prefix frontend run build` 通过（第一次 build 因尚未安装 tsc 失败，安装依赖后解决）。全量后端首次因未构建静态页在 herdr_config 失败；补齐前端构建后重跑 `node scripts/test-backend.mjs --binary-jobs 2`：60 个 binary 通过、1 个失败，0 未派发；`workflow_dispatch` **21/21 通过**。唯一失败是范围外 `zone_sync::configured_timeout_stops_the_running_command_and_keeps_effective_pull_state`，预期 200 实得 409 git-write-in-progress；doctest 未运行，不宣称全后端通过，也未修改/重跑该范围外失败。
+- 实际日志：`C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-mcVKEA/summary.json`；本票 suite `binary-050.stdout.log`；范围外失败 `binary-060.stdout.log`。定向 `--nocapture` 输出含实际调用、查询、历史和动作结果，可用长期说明中的 `serialized_` 命令重新生成。
+- 证据边界：HTTP/SSE、文件和生产 Herdr 调用包装层真实；外部 Herdr 是隔离记录型副本，Chat 事件为受控输入。本票不声称原生 omp/真实角色工具或 Prompt 注入已验证；共享 promise 的其他分区不由本票宣称完成。
