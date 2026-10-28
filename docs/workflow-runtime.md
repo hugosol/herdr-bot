@@ -175,7 +175,7 @@ if ([Convert]::ToBase64String($actual) -cne [Convert]::ToBase64String($expected)
 Write-Output "产物字节符合独立预期：$artifact"
 ```
 
-node.input 应明确要求写上述文件、读取文件核对内容，然后通过真实 node 角色工具 report 绝对路径、编码和限制。管理者本次要求为：只派发 ONE；使用 status 与记录读取观察进展；收到 report 后亲自读取实际文件并与事先保存的预期逐字节比较；只有吻合才 complete ONE（非空 reason 记录文件地址与核对结论），再显式 finish。collect 未交付时不得伪造 collect 或以循环代替其承诺。
+node.input 应明确要求写上述文件、读取文件核对内容，然后通过真实 node 角色工具 report 绝对路径、编码和限制。管理者本次要求为：只派发 ONE；使用 status 与记录读取观察进展；收到 report 后亲自读取实际文件并与事先保存的预期逐字节比较；只有吻合才 complete ONE（非空 reason 记录文件地址与核对结论），再显式 finish。后端 collect 已提供，但真实角色工具尚未部署时不得伪造工具调用或以循环代替其承诺。
 
 观察 seam 是实际交付页面的发起 Run 入口、真实 manager/node 角色工具及其公共 Session 身份、node 实际文件、三份运行记录与 Herdr 原生 Chat。可区分的具体违规是“node 报告成功但未写文件或内容错误”：仅凭 report 或 completed 快照会漏过；独立读取实际文件并比较完整字节才能拒绝它。此真实场景未可执行时，不制造受控模型的 red/green 来声称覆盖。
 
@@ -269,6 +269,44 @@ node-chat 的实际工具与公共 Prompt 属于独立 my-agent-toolkit 交付�
 确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`。报告用例覆盖系统归属、真实文件追加、只读文件保存失败、受控外部投递失败/延迟、连续读取保留待办和真实关闭 stderr 管道的诊断写入失败。投递/诊断故障后均观察 **300 ms**，输出该窗口的外部进程调用记录，证明有限窗口无补投或自动重报，不声称无限期性质。受控 Herdr 副本只证明 adapter 的确定性处理，不证明真实模型、原生会话或通知质量。
 
 真实复验必须使用隔离 Herdr/omp 与已部署 node-chat：记录公共 Prompt 实际注入内容和原生 report 调用（业务参数仅 body），同时核对源/目标真实身份、当前执行、追加消息、状态不变和 manager 实际输入。制造保存失败、投递失败/延迟和诊断失败；分别保留输入提交结果与无自主重投窗口。若外部角色入口缺失，本仓库部分可通过，但 P24.01 的真实工具、P59.02 的公共 Prompt 及真实宿主通知证据仍未验证，不能用手填 HTTP 身份或受控 adapter 宣称这些项完整通过。
+
+## 收取报告、等待与取消
+
+管理者角色的 `collect` 没有必填业务参数。角色扩展必须从公共 Session 取得当前原生身份，而不是让模型填 Run/node/执行 ID。后端入口是 `POST /api/workflow/manager/collect`，传输体仅为 `{"sessionId":"当前原生身份"}`；身份必须唯一关联到本后端当前管理的 Run。未知/node 身份拒绝，额外业务字段拒绝；不接受自报归属。后端重启不恢复检查位置或等待者，旧 Run 不因存在已保存报告获得 collect 资格。
+
+成功结果包括 `reason`、`snapshot`、`pendingReports`（node ID → 最新适用报告 ID），以及与 status 相同的 `ready`、`blocked`、`canFinish`。**collect 不返回 `reports`，也不重复报告正文。** 管理者按标识读取已传入的 `messages.jsonl` 或 Run 详情，然后亲自核对交接材料；通知检查不是已读回执，也不是 complete。连续 collect 不会清除尚未完成的待办。
+
+| `reason` | 现场与下一步 |
+| --- | --- |
+| `paused` | Run 已暂停，立即返回当前快照；已有 Chat 可以继续 report/交接。由管理者决定后续 complete、resume 或满足条件后 finish。 |
+| `completed` | Run 已显式结束，立即返回终态快照；不重新打开工作。 |
+| `notification` | 至少一份保存成功的报告尚未经过 collect 检查；返回最新现场，通知可以合并，待办按 node 汇总。 |
+| `no-running` | 没有未检查通知，也没有 running node，避免无限空等；根据 ready/blocked 显式派发、处理失败或 finish。 |
+| `timeout` | 等待正常到期；返回当时快照，不把 Run/node 改成 failed/paused，不自主派发或重试。 |
+
+暂停/结束优先返回自身原因；这些成功快照也检查此前已有通知。通知 generation 与检查位置仅在内存，无人等待时仍保留；报告必须先保存才产生通知，不依赖 Herdr 正文投递完成。一次检查只覆盖同一操作入口内的已保存现场，检查后的新通知留给后续 collect。状态变更可以唤醒等待以重新检查，但不能冒充报告通知。不额外规定“有 ready node 就必须立即返回”：仍有 running node、无新通知时可以等待。
+
+后端通过既有服务配置 `[scheduler].collect_wait_seconds` 设定等待上限，默认 **5400 秒（90 分钟）**，正整数、最大 4294967295。更改后重启生效。等待不占用文件锁或 Run 状态操作入口；pause、complete 与 report 不需等 collect 到期。不存在 collect 游标文件、持久等待者、后台补投或业务轮询循环。
+
+调用方公共 HTTP 的**整个请求预算必须大于后端期限**，默认建议 `timeoutMs=5460000`（91 分钟）；短配置如后端 1 秒，调用方可用 3 秒。不要复用 connect-bot 的短上报预算。HTTP 200 响应头可能先于等待结果到达，只有完整、合法 JSON 正文才是成功快照。等待阶段发生读取故障时后端终止未完成的响应体，不生成正常 timeout 或空快照；初始检查失败返回明确错误。调用方遇到取消、断线、预算耗尽或读取失败必须反馈错误，**不自主重试、不伪造正常结果、不据此改变运行状态**。需要再检查时由管理者明确发起新的 collect。
+
+### 角色调用方及公共能力的部署边界
+
+后端等待由 HTTP 响应体持有，不派生脱离请求的任务；真实连接断开会释放等待和通知接收者，随后新请求仍能收取新的通知。工具中断与 Chat 结束必须经 toolkit 公共 HTTP 的调用方取消能力断开正在进行的请求；取消不保证取得任何快照。manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应注入上述原因、交接核实责任、预算与取消/网络错误处理，不以工具 description 代替实际注入。
+
+本仓库没有 manager-chat/node-chat 的工具源码，也没有共享 toolkit 的修改工作区；不能复制 connect-bot 私有客户端或在本仓库造第二套客户端。实际部署目录 `my-agent-toolkit/entrypoints/omp-auto` 仅有 codebase-tools/connect-bot，缺少 manager-chat/node-chat；其公共 `framework/interface/general/http-contract.ts` 的 `HttpRequestOptions` 当前只有 method/headers/body/timeoutMs/proxy，没有调用方取消信号，失败类别只有 configuration/timeout/transport。外仓必须先补齐公共取消能力及角色接线、生命周期取消与较长预算，才能验证真实工具中断/Chat 结束及实际预算。上述部署要求不是这些缺失能力已实现的声明。
+
+### 可重复的 collect 验证与证据范围
+
+确定性入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`；完整后端交付检查用 `node scripts/test-backend.mjs`。用例通过独占数据、动态数值回环 TestServer 与隔离的 Herdr 记录型副本观察：
+
+- `report_save_failure_has_no_message_pending_item_or_host_delivery`：真实只读文件保存失败后 collect 等待完整 **1 秒**并返回 timeout/空待办，无幽灵通知和投递调用（P25.02）。
+- `collect_retains_merges_notifications_before_failed_delivery_and_keeps_pending_work`：无人等待时两份报告的通知保留/合并，外部投递被 gate 阻塞时先收取；连续 paused 检查仍保留待办，检查后新报告唤醒下次等待；投递失败后 **150 ms** 无自主补投（P26.02/P28.03/P31.01）。
+- `collect_without_active_execution_returns_reason_and_body_free_snapshot` 及 `collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immediate`：分别核对 no-running、等待中的 pause/最后一项交接唤醒、completed；仍有 running 时 ready 不强制立即返回（P30.01）。
+- `collect_configured_expiry_and_tcp_disconnect_leave_facts_and_next_notification_intact`：核对默认 90 分钟/有效短配置、1 秒正常到期、实际读取响应头后连续三次关闭 TCP、**150 ms** 无状态/外部调用变化，后续新请求仍收到通知（P32.01、P33.01/P67.02/P68.05 的后端分区）。其泄漏敏感性通过临时将等待移入独立后台任务验证：旧请求错误消费新通知时，后续请求返回 timeout 而不是 notification，测试失败；正确实现恢复后复验。
+- `collect_late_read_failure_breaks_transport_without_fake_snapshot_or_state_changes`：响应头之后制造真实文件损坏，观察未完成传输没有任何伪造 JSON 正文，恢复文件后新请求正常；**150 ms** 窗口内无额外 host 调用/状态修改。
+
+这些检查只证明真实后端 HTTP/文件/受控宿主故障行为，有限窗口不代表无限期保证。**P33.01/P60.01 的公共 toolkit 调用方取消及真实角色生命周期、P32.01/P67.02 的实际调用方长预算、P68.05 的角色工具无重试/错误反馈仍未验证**；不能把 TCP 断开或测试客户端超时冒充公共 toolkit 取消。真实验收须先在独立外仓交付公共取消和 manager-chat，再在独占 Herdr/omp 中用实际角色工具验证中断、Chat 结束、网络失败与较长预算，保留原始工具错误、窗口与外部 HTTP 调用证据。未具备这些前提时不宣称整条 promise 通过。
 
 ## 启动失败
 
