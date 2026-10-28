@@ -39,6 +39,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
   const literal = { name: '发布检查',
   chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
   agent: 'pi',
+    taskType: 'normal',
   model: 'deepseek-flash',
   thinking: 'max',
   skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
@@ -138,6 +139,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
   expect(fieldsOf(afterEdit.tasks[0])).toEqual({ name: '发布检查（改）',
   chatName: '{task.name} · {agent} · {chat.id}',
   agent: 'omp',
+    taskType: 'normal',
   model: 'gpt-6.1-sol',
   thinking: 'xhigh',
   skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] })
@@ -194,6 +196,7 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
     'grill-with-docs',
     'teach',
     'code-review',
+    'wayfinder',
   ])
 
   // model 默认时 thinking 只能沿用默认值。
@@ -291,6 +294,7 @@ test('保存失败不表示已保存；预先写定的 Task 经真实进程重�
   const old = { name: '重启保留',
   chatName: '{zone.name} · {task.name} · {chat.id}',
   agent: 'omp',
+    taskType: 'normal',
   model: 'gpt-6.1-sol',
   thinking: 'high',
   skill: 'teach', prompt: '重启前的第一行\n重启前的第二行', extensions: [] }

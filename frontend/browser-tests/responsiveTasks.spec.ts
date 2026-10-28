@@ -44,7 +44,7 @@ for (const profile of [
     }
     const draft = {
       name: 'P49 发布巡检', chatName: '巡检 {zone.name}{task.name}{agent}{chat.id}',
-      agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', skill: 'code-review',
+      agent: 'omp', taskType: 'normal', model: 'gpt-6.1-sol', thinking: 'high', skill: 'code-review',
       prompt: '第一行：检查发布\n第二行：保留中文、"引号" 与 C:\\alpha',
       extensions: ['omp-codebase-tools', 'omp-connect-bot'],
     }

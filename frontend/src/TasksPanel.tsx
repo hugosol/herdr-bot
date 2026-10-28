@@ -47,6 +47,7 @@ function emptyDraft(): TaskInput {
     name: '',
     chatName: INITIAL_CHAT_NAME,
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null,
@@ -61,6 +62,7 @@ function draftFrom(task: Task): TaskInput {
     name: task.name,
     chatName: task.chatName,
     agent: task.agent,
+    taskType: task.taskType,
     model: task.model,
     thinking: task.thinking,
     skill: task.skill,
@@ -162,6 +164,14 @@ export function TasksPanel({ active }: { active: boolean }) {
     setNotice(null)
   }
 
+  function changeType(taskType: TaskInput['taskType']) {
+    setDraft((current) => ({ ...current, taskType,
+      ...(taskType !== 'normal' && current.agent !== 'omp'
+        ? { agent: 'omp' as const, model: 'default', thinking: 'default', extensions: [] } : {}),
+    }))
+    setNotice(null)
+  }
+
   function changeModel(model: TaskInput['model']) {
     const supported =
       model === 'default' ? [] : (data?.options.thinking[draft.agent]?.[model] ?? [])
@@ -250,7 +260,7 @@ export function TasksPanel({ active }: { active: boolean }) {
 
   const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
   const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
-  const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed')
+  const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed' && (entry.taskType == null || entry.taskType === draft.taskType))
   const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
   const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
   const selectionErrors = [
@@ -312,6 +322,7 @@ export function TasksPanel({ active }: { active: boolean }) {
               >
                 <h2 className="task-item__name">{task.name}</h2>
                 <dl className="task-item__fields">
+                  <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
                   <div>
                     <dt>chat-name 示例</dt>
                     <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
@@ -334,7 +345,7 @@ export function TasksPanel({ active }: { active: boolean }) {
                   </div>
                   <div>
                     <dt>固定扩展</dt>
-                    <dd>{data.options.extensions?.filter((entry) => entry.agent === task.agent && entry.kind === 'fixed').map((entry) => entry.label).join('、') || '无'}</dd>
+                    <dd>{data.options.extensions?.filter((entry) => entry.agent === task.agent && entry.kind === 'fixed' && (entry.taskType == null || entry.taskType === task.taskType)).map((entry) => entry.label).join('、') || '无'}</dd>
                   </div>
                   <div>
                     <dt>可选扩展</dt>
@@ -479,6 +490,15 @@ export function TasksPanel({ active }: { active: boolean }) {
                   必填；只是 Task 的显示名，不是新 Chat 的固定名字。
                 </p>
 
+                <label className="zone-form__label" htmlFor="task-type">Task 类型</label>
+                <select id="task-type" data-testid="task-type" className="zone-form__input zone-form__select"
+                  value={draft.taskType} onChange={(event) => changeType(event.target.value as TaskInput['taskType'])} disabled={saving}>
+                  <option value="normal">普通（normal）</option>
+                  <option value="manager">流程管理者（manager）</option>
+                  <option value="node">节点执行者（node）</option>
+                </select>
+                <p className="task-hint">manager/node 仅支持 omp；对应角色扩展固定加载，不可取消或混装。类型不是某次执行身份。</p>
+
                 <label className="zone-form__label" htmlFor="task-agent">
                   agent
                 </label>
@@ -491,7 +511,7 @@ export function TasksPanel({ active }: { active: boolean }) {
                   disabled={saving}
                 >
                   {data.options.agents.map((agent) => (
-                    <option key={agent} value={agent}>
+                    <option key={agent} value={agent} disabled={draft.taskType !== 'normal' && agent !== 'omp'}>
                       {data.options.labels?.agents?.[agent] ?? agent}
                     </option>
                   ))}
@@ -634,6 +654,7 @@ export function TasksPanel({ active }: { active: boolean }) {
                 <div><dt>Task 显示名</dt><dd data-testid="summary-name">{draft.name}</dd></div>
                 <div><dt>chat-name 命名规则</dt><dd data-testid="summary-chatName">{draft.chatName}</dd></div>
                 <div><dt>Chat 名称示例</dt><dd>{renderChatNameExample(draft.chatName, draft.name, draft.agent)}</dd></div>
+                <div><dt>Task 类型</dt><dd data-testid="summary-taskType">{draft.taskType}</dd></div>
                 <div><dt>agent</dt><dd data-testid="summary-agent">{data.options.labels?.agents?.[draft.agent] ?? draft.agent}</dd></div>
                 <div><dt>model</dt><dd data-testid="summary-model">{data.options.labels?.models?.[draft.model] ?? modelLabel(draft)}</dd></div>
                 <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>

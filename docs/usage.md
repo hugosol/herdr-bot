@@ -25,6 +25,26 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 模型目录修改后下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
 删除 Task 时先询问是否删除，取消不发出删除请求；删除不影响已经发起的 Chat。
 
+## Task 类型与固定角色扩展
+
+在现有 task 入口新增或编辑 Task 时，第一步选择用途：普通（`normal`，新建默认）、流程管理者（`manager`）或节点执行者（`node`）。用途不等于 agent 类型，也不绑定某次 Run 身份。manager/node 仅允许 omp；从 pi 切换为角色类型时页面切到 omp，并重置不适用的模型、思考级别及可选扩展。普通类型仍可选 omp 或 pi。直接 HTTP 保存也执行同样的类型/agent 约束。
+
+第二步的固定扩展随用途变化：manager 包含 manager-chat，node 包含 node-chat，普通类型不加载两者。角色扩展不出现在可选复选框中，不能取消或混装；其他固定项与可选项仍沿用当前 Task 选项目录。保存的 `extensions` 仅是可选项稳定 ID，不应手工放入角色扩展 ID。发起 Chat 和需要新进程的 Resume 都根据来源 Task 的最新类型选择环境；不会偷偷为错误配置补齐角色。修改类型不改变已运行 Chat 的身份、工具或状态。
+
+角色入口映射位于 `meta-data/task-options.toml`（`taskType` 限定角色固定项）。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 对应交付及宿主环境提供；配置保存或页面展示成功不代表这些能力已运行验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
+
+### 旧 Task 显式迁移
+
+升级前停止 herdr-bot，备份实际配置与数据，再在仓库根目录执行（路径替换为服务的真实工作目录与配置文件）：
+
+```powershell
+python scripts/migrate-task-types.py --root 'E:\path\to\server-cwd' --config 'E:\path\to\herdr-bot.toml'
+```
+
+工具按配置解析 Task 与历史路径，为每个未分类旧 Task 显式写入 `taskType: "normal"`，不根据名称、prompt 或扩展猜测角色。ID、显示名、chat-name、agent、model、thinking、初始 Skill、prompt 和全部可选扩展保持原值；历史 Chat 的来源 Task、备忘、cwd、Workspace 及原生文件完全不改写。原 Task 文件保留为同路径 `.pre-task-types` 备份；重复执行已迁移文件不写入。备份冲突、残留 staging、路径重叠、非法结构或链接路径会拒绝迁移，不覆盖正式文件。更早的 Bot→Task 更名必须先完成。
+
+升级后未迁移的 Task 文件会明确报 `tasks-corrupt`，不会在运行时自动补类型。迁移成功后重启服务，从 task 列表核对完整预设，再在历史 Chat 使用 Resume；Resume 读取来源 Task 最新环境，不重放任何 trigger config。若要恢复备份，先停服并保留失败现场，再由操作者将备份还原；旧文件只能由旧版本读取，不能作为新版本的缺省兼容路径。
+
 ## Task 配置与原生存储
 
 Task 配置分为两组：

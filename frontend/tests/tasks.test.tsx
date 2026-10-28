@@ -96,6 +96,7 @@ describe('Task tab：读取与展示', () => {
     name: '发布检查',
     chatName: '{zone.name} · {task.name} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
@@ -241,6 +242,7 @@ describe('Task tab：读取与展示', () => {
     name: '审查',
     chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] }
@@ -304,6 +306,7 @@ describe('Task tab：读取与展示', () => {
     expect(JSON.parse(post?.body ?? 'null')).toEqual({ name: '审查',
     chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] })
@@ -369,6 +372,7 @@ describe('Task tab：读取与展示', () => {
     name: '旧名字',
     chatName: '{zone.name}',
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null, prompt: '旧 prompt', extensions: [] }
@@ -376,6 +380,7 @@ describe('Task tab：读取与展示', () => {
     name: '待删除',
     chatName: '{task.name}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'off',
     skill: 'teach', prompt: '', extensions: [] }
@@ -383,6 +388,7 @@ describe('Task tab：读取与展示', () => {
     name: '新名字',
     chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] }
@@ -429,6 +435,7 @@ describe('Task tab：读取与展示', () => {
     expect(JSON.parse(put?.body ?? 'null')).toEqual({ name: '新名字',
     chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
@@ -445,6 +452,7 @@ describe('Task tab：读取与展示', () => {
     name: '已保存',
     chatName: '{zone.name}',
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null, prompt: '', extensions: [] }

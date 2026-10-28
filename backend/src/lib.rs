@@ -930,6 +930,7 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::ChatNameNotSingleLine
         | TaskError::AgentRequired
         | TaskError::UnknownAgent(_)
+        | TaskError::InvalidTaskType
         | TaskError::UnknownModel(_)
         | TaskError::UnknownThinking(_)
         | TaskError::ThinkingRequiresDefaultModel
