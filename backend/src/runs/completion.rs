@@ -116,6 +116,59 @@ pub async fn manager_finish(
     }
 }
 
+pub async fn manager_pause(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> Response {
+    dispatch_eligibility(state, peer, request, "pause", "paused").await
+}
+
+pub async fn manager_resume(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> Response {
+    dispatch_eligibility(state, peer, request, "resume", "running").await
+}
+
+// Eligibility transitions never call the host: existing Chat activity and node
+// facts are independent, and restoring eligibility is not a dispatch request.
+async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Request, action: &'static str, target: &'static str) -> Response {
+    if !crate::sessions::is_local_source(peer.ip()) {
+        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
+    }
+    let input: StatusRequest = match crate::chat_command_body(request, "暂停或恢复派发资格").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let run = match manager_run(&state, &input.session_id).await {
+        Ok(run) => run,
+        Err(response) => return response,
+    };
+    let work = tokio::spawn(async move {
+        let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
+        let _operation = lock.lock().await;
+        let mut run = state.runs.read(&state, &run.id).await?;
+        if !matches!(run.status.as_str(), "running" | "paused") {
+            return rejection(&state, &run, "run-terminal", "Run 已结束，不接受状态变更。").await;
+        }
+        if run.status == target {
+            return outcome(&state, &run, false, None).await;
+        }
+        let before = std::mem::replace(&mut run.status, target.into());
+        save_run(&state, &run).await?;
+        let event = serde_json::json!({"id":crate::chats::new_creation_id(),"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"actor":run.manager,"action":action,"before":before,"after":target});
+        let history_error = record_transition(&state, &run.id, &event).await.err();
+        outcome(&state, &run, true, history_error).await
+    }).await;
+    match work {
+        Ok(Ok(response)) => response,
+        Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{action}-failed"), &message),
+        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{action}-internal"), &join.to_string()),
+    }
+}
+
 async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
     let mut value = snapshot(state, run).await?;
     value["changed"] = serde_json::json!(changed);
