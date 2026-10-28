@@ -85,7 +85,7 @@ use tower_http::services::ServeDir;
 pub use config::{
     TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
-    StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig,
+    StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -145,6 +145,7 @@ pub struct AppState {
     pub bot_directory: PathBuf,
     pub run_directory: PathBuf,
     pub run_instructions: PathBuf,
+    pub collect_wait: Duration,
     pub runs: Arc<runs::Runs>,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
@@ -251,6 +252,7 @@ pub fn app_with_state(
         bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
         run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
         run_instructions: std::path::absolute(&config.scheduler.run_instructions).expect("resolve Run instructions"),
+        collect_wait: config.scheduler.collect_wait_seconds.duration(),
         runs: Arc::new(runs::Runs::default()),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
@@ -297,6 +299,7 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
         .route("/api/workflow/runs/{id}", get(runs::get_run))
         .route("/api/workflow/manager/status", post(runs::manager_status))
+        .route("/api/workflow/manager/collect", post(runs::manager_collect))
         .route("/api/workflow/manager/dispatch", post(runs::manager_dispatch))
         .route("/api/workflow/manager/complete", post(runs::manager_complete))
         .route("/api/workflow/manager/fail", post(runs::manager_fail))

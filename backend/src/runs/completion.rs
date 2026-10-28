@@ -170,14 +170,14 @@ async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Reques
 }
 
 pub(super) async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
-    let mut value = snapshot(state, run).await?;
+    let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(changed);
     value["historyError"] = serde_json::json!(history_error);
     Ok(Json(value).into_response())
 }
 
 pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
-    let mut value = snapshot(state, run).await?;
+    let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(false);
     value["code"] = serde_json::json!(code);
     value["message"] = serde_json::json!(message);

@@ -20,6 +20,8 @@ mod reports;
 mod recovery;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
+mod collect;
+pub use collect::manager_collect;
 pub use reports::node_report;
 pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
 
@@ -107,6 +109,7 @@ pub struct Runs {
     files: FileStore,
     active: Mutex<BTreeMap<String, Option<StartupFailure>>>,
     operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
+    signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
 }
 impl Runs {
     fn paths(state: &AppState, id: &str) -> [PathBuf; 3] {
@@ -147,7 +150,7 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
     };
     let mut value = serde_json::json!({"id":id,"run":run,"managed":managed,"startupError":failure,"readError":read_error});
     if let Some(run) = &run {
-        let reports = reports::summary(state, run).await?;
+        let reports = reports::summary(state, run, true).await?;
         value["reports"] = reports["reports"].clone();
         value["pendingReports"] = reports["pendingReports"].clone();
     }
@@ -432,7 +435,7 @@ pub async fn manager_status(
         Err(e) => return e,
     };
     match manager_run(&state, &input.session_id).await {
-        Ok(run) => match snapshot(&state, &run).await {
+        Ok(run) => match snapshot(&state, &run, true).await {
             Ok(value) => Json(value).into_response(),
             Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "definition-read-failed", &message),
         },
@@ -498,11 +501,11 @@ fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) ->
     }
     reasons
 }
-async fn snapshot(state: &AppState, run: &Run) -> Result<serde_json::Value, String> {
+async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
     let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
     let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
     let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
-    let mut value = reports::summary(state, run).await?;
+    let mut value = reports::summary(state, run, include_reports).await?;
     value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
     value["ready"] = serde_json::json!(ready);
     value["blocked"] = serde_json::json!(blocked_by);
@@ -548,7 +551,7 @@ pub async fn manager_dispatch(
             }
             results.push(dispatch_one(&state, &mut run, &id).await);
         }
-        let mut response = snapshot(&state, &run).await?;
+        let mut response = snapshot(&state, &run, true).await?;
         response["results"] = serde_json::Value::Array(results);
         Ok::<_, String>(response)
     }).await;
@@ -562,7 +565,9 @@ pub async fn manager_dispatch(
 async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
-    FileStore::replace(&paths[0], &serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    FileStore::replace(&paths[0], &serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    state.runs.changed(&run.id, false).await;
+    Ok(())
 }
 
 async fn record_dispatch(state: &AppState, run: &Run, id: &str) -> Result<(), String> {
