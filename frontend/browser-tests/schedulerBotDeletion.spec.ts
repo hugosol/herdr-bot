@@ -6,9 +6,9 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const bot = { schema_version: 1, id: 'shared', name: '共享审计', use_when: '', description: '仅核对账目', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
-const node = { title: '审计任务', bot_id: 'shared', parameters: { id: { nested: true } }, blocked_by: [] }
-const map = (nodes: Record<string, unknown>) => ({ schema_version: 1, title: '审计计划', description: '不执行工作', nodes })
+const bot = { id: 'shared', name: '共享审计', when: '', plan_guide: '仅核对账目', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
+const node = { title: '审计任务', bot_id: 'shared', input: JSON.stringify({ id: { nested: true } }), zone: 'unregistered-zone', blocked_by: [] }
+const map = (nodes: Record<string, unknown>) => ({ title: '审计计划', description: '不执行工作', nodes })
 async function prepare() {
   server = await startServer({ separateCwd: true, herdr: {} })
   const bots = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
@@ -224,7 +224,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
     const target = await preflight.json()
     expect(target).toEqual({ id: 'shared', revision: { file: 'business-name.JSON', original: before } })
     const duplicate = path.join(bots, 'duplicate.json'), late = path.join(maps, 'late.json')
-    const changed = JSON.stringify({ ...bot, description: '外部编辑的新版本' })
+    const changed = JSON.stringify({ ...bot, plan_guide: '外部编辑的新版本' })
     const duplicateBytes = JSON.stringify({ ...bot, name: '重复身份，不得任选' })
     const lateBytes = JSON.stringify(map({ lateNode: node }))
     const diagnostic = change === 'ambiguous ID' ? '冲突' : change === 'new reference' ? 'late.json / node lateNode' : '变化或移除'
@@ -249,7 +249,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
       expect(fs.readFileSync(duplicate, 'utf8')).toBe(duplicateBytes)
       expect(catalog.bots).toEqual([])
       expect(catalog.problems).toContainEqual(expect.objectContaining({ code: 'bot-id-conflict', bot_id: 'shared', files: ['business-name.JSON', 'duplicate.json'] }))
-    } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { description: '外部编辑的新版本' } : {}) }])
+    } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { plan_guide: '外部编辑的新版本' } : {}) }])
     if (change === 'new reference') {
       expect(fs.readFileSync(late, 'utf8')).toBe(lateBytes)
       expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/late.json`)).json()).toEqual(map({ lateNode: node }))

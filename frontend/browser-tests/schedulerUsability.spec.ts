@@ -86,7 +86,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await expect(botID).toHaveValue('destination-weather')
     await expect(botID).toHaveAttribute('readonly', '')
     const weather = JSON.parse(await botJSON.inputValue())
-    await type(page, botJSON, JSON.stringify({ ...weather, description: '人工核对新版天气说明，不执行查询。' }, null, 2))
+    await type(page, botJSON, JSON.stringify({ ...weather, plan_guide: '人工核对新版天气说明，不执行查询。' }, null, 2))
     await activate(page, button('保存 Bot'))
     await expect(preview).toContainText('人工核对新版天气说明，不执行查询。')
     await activate(page, button('返回 Map'))
@@ -112,7 +112,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await fitted(page)
     await error.scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath(`${size}-validation-draft.png`), fullPage: true })
-    const newNode = { title: '键盘新增工作', bot_id: 'destination-weather', parameters: { city: '杭州', id: '保留业务参数' }, blocked_by: [] }
+    const newNode = { title: '键盘新增工作', bot_id: 'destination-weather', input: JSON.stringify({ city: '杭州', id: '保留业务参数' }), zone: 'unregistered-zone', blocked_by: [] }
     const raw = JSON.stringify(newNode, null, 2)
     await type(page, nodeJSON, raw)
     await discard(page, button('放弃编辑'), false)
@@ -145,7 +145,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await activate(page, button('Bot 管理'))
     await activate(page, button('新增 Bot'))
     await type(page, botID, 'keyboard-bot')
-    const capability = { schema_version: 1, name: '键盘核对能力', use_when: '人工核对时。', description: '只作静态说明。', inputs: { city: '城市名称。' }, outputs: { summary: '说明文本。' }, implementation: { type: 'chat' } }
+    const capability = { name: '键盘核对能力', when: '人工核对时。', plan_guide: '只作静态说明。', node_guide: JSON.stringify({ inputs: { city: '城市名称。' }, outputs: { summary: '说明文本。' } }) }
     await type(page, botJSON, JSON.stringify(capability, null, 2))
     await page.screenshot({ path: testInfo.outputPath(`${size}-bot-editor.png`), fullPage: true })
     await fitted(page)

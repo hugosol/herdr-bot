@@ -13,15 +13,12 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
   server = await startServer()
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({
-    schema_version: 1, title: '并行与汇合', description: '独立预期：A → C，B → C；D 无连接。',
-    nodes: {
-      A: { title: '准备甲', bot_id: 'shared', parameters: {}, blocked_by: [] },
-      B: { title: '准备乙', bot_id: 'shared', parameters: {}, blocked_by: [] },
-      C: { title: '汇合', bot_id: 'shared', parameters: {}, blocked_by: ['A', 'B'] },
-      D: { title: '独立工作', bot_id: 'shared', parameters: {}, blocked_by: [] },
-    },
-  }))
+  fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({ title: '并行与汇合', description: '独立预期：A → C，B → C；D 无连接。', nodes: {
+    A: { title: '准备甲', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+    B: { title: '准备乙', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+    C: { title: '汇合', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['A', 'B'] },
+    D: { title: '独立工作', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+  } }))
   await page.goto(server.baseURL)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
@@ -87,20 +84,12 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   fs.mkdirSync(bots, { recursive: true })
   const outsidePath = path.join(server.cwd, 'must-not-read.txt')
   fs.writeFileSync(outsidePath, 'OUTSIDE_SECRET_MUST_NOT_APPEAR')
-  const botBytes = JSON.stringify({ schema_version: 1, id: 'shared', name: '共享业务能力',
-    use_when: '测试复用', description: '不是 node 参数',
-    inputs: { target: 'TEMPLATE_DEFAULT_MUST_NOT_APPEAR', template_only: '不可补入参数' },
-    outputs: {}, implementation: { type: 'chat' } })
-  const mapBytes = JSON.stringify({ schema_version: 1, title: '<script>window.mapExecuted = true</script>',
-    description: '<img src=x onerror="window.mapExecuted = true">', nodes: {
-      A: { title: '第一项', bot_id: 'shared', parameters: {
-        target: 'alpha-only', zone: 'zone-does-not-exist', Bot: 'bot-does-not-exist',
-        extra_undeclared: { items: [1, true, null, { text: '<svg onload="window.mapExecuted = true">' }] },
-        path: outsidePath, enabled: false, count: 7, empty: null,
-      }, blocked_by: [] },
-      B: { title: '第二项', bot_id: 'shared', parameters: { target: 'beta-only', list: ['two', 2] }, blocked_by: ['A'] },
-      C: { title: '第三项', bot_id: 'shared', parameters: {}, blocked_by: ['B'] },
-    } })
+  const botBytes = JSON.stringify({ id: 'shared', name: '共享业务能力', when: '测试复用', plan_guide: '不是 node 参数', node_guide: JSON.stringify({ inputs: { target: 'TEMPLATE_DEFAULT_MUST_NOT_APPEAR', template_only: '不可补入参数' }, outputs: {} }) })
+  const mapBytes = JSON.stringify({ title: '<script>window.mapExecuted = true</script>', description: '<img src=x onerror="window.mapExecuted = true">', nodes: {
+    A: { title: '第一项', bot_id: 'shared', input: ['alpha-only', 'zone-does-not-exist', 'bot-does-not-exist', 'extra_undeclared', '<svg onload="window.mapExecuted = true">', outsidePath, 'false 7 null'].join('\n'), zone: 'unregistered-zone', blocked_by: [] },
+    B: { title: '第二项', bot_id: 'shared', input: JSON.stringify({ target: 'beta-only', list: ['two', 2] }), zone: 'unregistered-zone', blocked_by: ['A'] },
+    C: { title: '第三项', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['B'] },
+  } })
   fs.writeFileSync(path.join(bots, 'not-the-id.json'), botBytes)
   fs.writeFileSync(path.join(maps, 'parameters.json'), mapBytes)
   const callsBefore = server.herdrCalls()
@@ -113,24 +102,24 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(details).toBeVisible()
   await expect(details.getByRole('heading', { name: '第一项 · A', exact: true })).toBeVisible()
-  const parameters = details.getByRole('region', { name: '本次参数', exact: true })
+  const parameters = details.getByRole('region', { name: '本次输入', exact: true })
   const prerequisites = details.getByRole('region', { name: '前置依赖', exact: true })
   for (const text of ['alpha-only', 'zone-does-not-exist', 'bot-does-not-exist', 'extra_undeclared', outsidePath, 'false', '7', 'null']) {
     await expect(parameters).toContainText(text)
   }
-  await expect(parameters.getByTestId('parameter-extra_undeclared')).toHaveText('{\n  "items": [\n    1,\n    true,\n    null,\n    {\n      "text": "<svg onload=\\"window.mapExecuted = true\\">"\n    }\n  ]\n}')
+  await expect(parameters.getByTestId('node-input')).toContainText('extra_undeclared')
   await expect(prerequisites).toContainText('无前置依赖')
   await expect(details).not.toContainText('template_only')
   await expect(details).not.toContainText('TEMPLATE_DEFAULT_MUST_NOT_APPEAR')
   await graph.getByRole('button', { name: '第二项 B', exact: true }).click()
   await expect(details.getByRole('heading', { name: '第二项 · B', exact: true })).toBeVisible()
   await expect(parameters).toContainText('beta-only')
-  await expect(parameters.getByTestId('parameter-list')).toHaveText('[\n  "two",\n  2\n]')
+  await expect(parameters.getByTestId('node-input')).toHaveText('{"target":"beta-only","list":["two",2]}')
   await expect(parameters).not.toContainText('alpha-only')
   await expect(parameters).not.toContainText('extra_undeclared')
   await expect(prerequisites.getByRole('listitem')).toHaveText(['第一项 · A'])
   await graph.getByRole('button', { name: '第三项 C', exact: true }).click()
-  await expect(parameters.locator('dd')).toHaveCount(0)
+  await expect(parameters.getByTestId('node-input')).toHaveText('{}')
   await expect(prerequisites.getByRole('listitem')).toHaveText(['第二项 · B'])
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(parameters).toContainText('alpha-only')

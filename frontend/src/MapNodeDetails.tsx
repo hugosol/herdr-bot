@@ -6,20 +6,15 @@ export function MapNodeDetails({ map, nodeId, botProblem, onSelect, onBot }: {
   onBot: (id: string) => void
 }) {
   const node = map.nodes[nodeId]
-  const entries = Object.entries(node.parameters)
   const dependents = Object.keys(map.nodes).filter((id) => map.nodes[id].blocked_by.includes(nodeId))
   return <section aria-label="node 详情" className="scheduler-details">
     <h3>{node.title} · {nodeId}</h3>
     <p className="scheduler-text">bot_id：{node.bot_id}</p>
     {botProblem && <p role="alert">{botProblem}</p>}
-    <section aria-label="本次参数">
-      <h4>本次参数</h4>
-      {entries.length === 0 ? <p>没有参数。</p> : <dl>
-        {entries.map(([name, value]) => <div key={name}>
-          <dt>{name}</dt>
-          <dd><pre data-testid={`parameter-${name}`}>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre></dd>
-        </div>)}
-      </dl>}
+    <p className="scheduler-text">zone 路径引用：{node.zone || '尚未绑定 zone'}</p>
+    <section aria-label="本次输入">
+      <h4>本次输入</h4>
+      <pre className="scheduler-text" data-testid="node-input">{node.input}</pre>
     </section>
     <section aria-label="前置依赖">
       <h4>前置依赖</h4>

@@ -12,18 +12,13 @@ async function prepare() {
   const bots = path.join(server.cwd, '.data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
-  fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({
-    schema_version: 1, title: '并行、汇合与独立工作', description: 'A、B 汇合到 C；D 独立。', nodes: {
-      A: { title: '准备甲', bot_id: 'shared', parameters: { city: '上海' }, blocked_by: [] },
-      B: { title: '准备乙', bot_id: 'shared', parameters: { city: '北京' }, blocked_by: [] },
-      C: { title: '汇合', bot_id: 'shared', parameters: { result: '核对两项准备' }, blocked_by: ['A', 'B'] },
-      D: { title: '独立工作', bot_id: 'shared', parameters: {}, blocked_by: [] },
-    },
-  }))
-  fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({
-    schema_version: 1, id: 'shared', name: '共享核对能力', use_when: '需要核对城市时。',
-    description: '只读能力说明。', inputs: { city: '目标城市。' }, outputs: { summary: '核对摘要。' }, implementation: { type: 'chat' },
-  }))
+  fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({ title: '并行、汇合与独立工作', description: 'A、B 汇合到 C；D 独立。', nodes: {
+    A: { title: '准备甲', bot_id: 'shared', input: JSON.stringify({ city: '上海' }), zone: 'unregistered-zone', blocked_by: [] },
+    B: { title: '准备乙', bot_id: 'shared', input: JSON.stringify({ city: '北京' }), zone: 'unregistered-zone', blocked_by: [] },
+    C: { title: '汇合', bot_id: 'shared', input: JSON.stringify({ result: '核对两项准备' }), zone: 'unregistered-zone', blocked_by: ['A', 'B'] },
+    D: { title: '独立工作', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+  } }))
+  fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享核对能力', when: '需要核对城市时。', plan_guide: '只读能力说明。', node_guide: JSON.stringify({ inputs: { city: '目标城市。' }, outputs: { summary: '核对摘要。' } }) }))
   return server
 }
 
@@ -99,22 +94,22 @@ test('P4 P30 narrow screen keyboard reaches node list and bot details and return
   await expect(first).toBeFocused()
   await page.keyboard.press('Enter')
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
-  await expect(details.getByTestId('parameter-city')).toHaveText('上海')
+  await expect(details.getByTestId('node-input')).toContainText('上海')
   const second = nodes.getByRole('button', { name: '准备乙 B', exact: true })
   await tabTo(second)
   await page.keyboard.press('Space')
   await expect(second).toHaveAttribute('aria-pressed', 'true')
-  await expect(details.getByTestId('parameter-city')).toHaveText('北京')
+  await expect(details.getByTestId('node-input')).toContainText('北京')
   const toggle = details.getByRole('button', { name: 'Bot 明细', exact: true })
   await tabTo(toggle)
   await expect(toggle).toBeFocused()
   await page.keyboard.press('Enter')
   const bot = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(bot.getByText('共享核对能力', { exact: true })).toBeVisible()
-  await tabTo(bot.getByRole('button', { name: '输入与输出', exact: true }))
+  await tabTo(bot.getByRole('button', { name: '节点指引', exact: true }))
   await page.keyboard.press('Enter')
-  await bot.getByText('核对摘要。', { exact: true }).scrollIntoViewIfNeeded()
-  await expect(bot.getByText('核对摘要。', { exact: true })).toBeInViewport()
+  await bot.getByRole('region', { name: '节点指引', exact: true }).scrollIntoViewIfNeeded()
+  await expect(bot.getByRole('region', { name: '节点指引', exact: true })).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('narrow-bot-details.png'), fullPage: true })
   await tabTo(page.getByRole('button', { name: '返回 Map', exact: true }))
@@ -142,7 +137,7 @@ test('filtering to no matches preserves the current Map and selected node withou
   const selected = nodes.getByRole('button', { name: '准备甲 A', exact: true })
   await selected.click()
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
-  await expect(details.getByTestId('parameter-city')).toHaveText('上海')
+  await expect(details.getByTestId('node-input')).toContainText('上海')
   await expect(page.getByRole('button', { name: '刷新全部', exact: true })).toBeEnabled()
   const beforeFilter = reads
   const filter = page.getByLabel('筛选 Map 文件', { exact: true })
@@ -151,7 +146,7 @@ test('filtering to no matches preserves the current Map and selected node withou
   await expect(page.getByTestId('scheduler-empty')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '并行、汇合与独立工作', exact: true })).toBeVisible()
   await expect(selected).toHaveAttribute('aria-pressed', 'true')
-  await expect(details.getByTestId('parameter-city')).toHaveText('上海')
+  await expect(details.getByTestId('node-input')).toContainText('上海')
   await filter.fill('PARALLEL')
   await expect(page.getByTestId('scheduler-map-list').getByRole('button')).toHaveCount(1)
   await filter.clear()
@@ -161,11 +156,9 @@ test('filtering to no matches preserves the current Map and selected node withou
 
 test('list graph and prerequisite navigation share selection and Map changes reset reading state', async ({ page }) => {
   const running = await prepare()
-  fs.writeFileSync(path.join(running.cwd, '.data', 'workflow-maps', 'other.json'), JSON.stringify({
-    schema_version: 1, title: '另一计划', description: '', nodes: {
-      X: { title: '其他工作', bot_id: 'shared', parameters: { city: '广州' }, blocked_by: [] },
-    },
-  }))
+  fs.writeFileSync(path.join(running.cwd, '.data', 'workflow-maps', 'other.json'), JSON.stringify({ title: '另一计划', description: '', nodes: {
+    X: { title: '其他工作', bot_id: 'shared', input: JSON.stringify({ city: '广州' }), zone: 'unregistered-zone', blocked_by: [] },
+  } }))
   await page.goto(running.baseURL)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
@@ -174,14 +167,14 @@ test('list graph and prerequisite navigation share selection and Map changes res
   const nodes = page.getByRole('region', { name: '节点列表', exact: true })
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   await nodes.getByRole('button', { name: '准备甲 A', exact: true }).click()
-  await expect(details.getByTestId('parameter-city')).toHaveText('上海')
+  await expect(details.getByTestId('node-input')).toContainText('上海')
   await page.getByText('依赖图', { exact: true }).click()
   await expect(graph.getByRole('button', { name: '准备甲 A', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await graph.getByRole('button', { name: '汇合 C', exact: true }).click()
   await expect(nodes.getByRole('button', { name: '汇合 C', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(details.getByTestId('parameter-result')).toHaveText('核对两项准备')
+  await expect(details.getByTestId('node-input')).toContainText('核对两项准备')
   await details.getByRole('button', { name: '查看前置节点 准备乙 B', exact: true }).click()
-  await expect(details.getByTestId('parameter-city')).toHaveText('北京')
+  await expect(details.getByTestId('node-input')).toContainText('北京')
   await expect(nodes.getByRole('button', { name: '准备乙 B', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(graph.getByRole('button', { name: '准备乙 B', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await details.getByRole('button', { name: '查看后继节点 汇合 C', exact: true }).click()
@@ -226,7 +219,7 @@ test.describe('touch node access', () => {
     const node = nodes.getByRole('button', { name: '准备甲 A', exact: true })
     await node.tap()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
-    await expect(details.getByTestId('parameter-city')).toHaveText('上海')
+    await expect(details.getByTestId('node-input')).toContainText('上海')
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).tap()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText('共享核对能力', { exact: true })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('narrow-touch-details.png'), fullPage: true })
