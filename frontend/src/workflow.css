@@ -1,0 +1,21 @@
+.panel:has(#panel-workflow:not([hidden])) { width: min(100%, 80rem); }
+.workflow-table-scroll { overflow-x: auto; }
+[aria-label="workflow"] a { color: #a9d0f0; }
+[aria-label="workflow"] table { width: 100%; min-width: 44rem; border-collapse: collapse; text-align: left; }
+[aria-label="workflow"] th, [aria-label="workflow"] td { padding: .65rem; border-bottom: 1px solid #637587; overflow-wrap: anywhere; }
+[aria-label="workflow"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+[aria-label="workflow"] dd { margin: .3rem 0 1rem; overflow-wrap: anywhere; }
+.workflow-current { min-width: 0; }
+.workflow-node-details { margin-top: 1rem; padding: 1rem; border: 1px solid #637587; border-radius: .5rem; }
+.workflow-node-state { font-weight: bold; }
+.workflow-current .scheduler-node[data-node-state="ready"] { border-color: #8bb8cf; background: #21313a; }
+.workflow-current .scheduler-node[data-node-state="blocked"] { border-style: dotted; background: #292831; }
+.workflow-current .scheduler-node[data-node-state="running"] { border-width: 3px; background: #243e50; }
+.workflow-current .scheduler-node[data-node-state="completed"] { border-color: #95c7a2; background: #24392c; }
+.workflow-current .scheduler-node[data-node-state="failed"] { border-width: 3px; border-color: #e3b090; background: #422e29; }
+/* Selection remains independent of state/relation styles, including forced colors. */
+.workflow-current .scheduler-node[aria-pressed="true"] { border: 4px double #e4ebf3; outline: 2px solid #a9d0f0; outline-offset: -7px; }
+@media (forced-colors: active) {
+  .workflow-current .scheduler-node[data-node-state] { border-color: CanvasText; background: Canvas; }
+  .workflow-current .scheduler-node[aria-pressed="true"] { border-color: Highlight; outline-color: Highlight; }
+}

@@ -46,8 +46,9 @@ function constrain(view: View, size: Size, width: number, height: number): View 
   return { ...view, x: axis(view.x, width * view.scale, size.width), y: axis(view.y, height * view.scale, size.height) }
 }
 
-export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
+export function MapGraph({ map, selectedId, onSelect, botProblems = {}, nodeStates = {} }: {
   map: WorkflowMap; selectedId: string | null; onSelect: (id: string) => void; botProblems?: Record<string, string>
+  nodeStates?: Record<string, { status: string; label: string }>
 }) {
   const instanceId = useId()
   const markerId = `${instanceId}-arrow`
@@ -168,9 +169,10 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
           }))}
           {nodes.map(({ id, x, y }) => <foreignObject key={id} x={x} y={y} width={nodeWidth} height={nodeHeight}>
             <button type="button" className={`scheduler-node${prerequisites.has(id) || successors.has(id) ? ' scheduler-node-related' : ''}`}
-              aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
+              data-node-state={nodeStates[id]?.status} aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
               onFocus={() => revealNode(id)} onClick={() => onSelect(id)}>
               <strong>{map.nodes[id].title}</strong><span>{id}</span>
+              {nodeStates[id] && <small className="workflow-node-state">{nodeStates[id].label}</small>}
               {prerequisites.has(id) && <small className="scheduler-node-relation">直接前置</small>}
               {successors.has(id) && <small className="scheduler-node-relation">直接后继</small>}
               {botProblems[id] && <small className="scheduler-node-problem">{botProblems[id]}</small>}

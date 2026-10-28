@@ -139,7 +139,7 @@ test('P54.02 real restart drops manager startup errors without rewriting busines
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
-  await expect(page.getByText(/历史现场 \/ 未接管/)).toBeVisible()
+  await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
   await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
   await page.reload()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
