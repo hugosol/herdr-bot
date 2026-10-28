@@ -1,0 +1,69 @@
+{
+  "ticket": "22-recovery-guide-rehearsal",
+  "complete": false,
+  "status": "blocked-on-real-role-deployment",
+  "approvedSeams": {
+    "P64.01": "S1 actual delivered workflow page and S3 actual manager/node tools and Herdr",
+    "P65.01": "S3 actual injected role Prompt and actual tool parameter surfaces, compared with approved action matrix and four failure scenarios"
+  },
+  "guide": "docs/workflow-runtime.md#故障处理速查先看现场再向管理者表达意图",
+  "guideDiscovery": "README.md documentation index",
+  "guideReview": {
+    "performed": true,
+    "independentExpectation": "Approved contract P64/P65 and spec action matrix, failure/user guidance decisions; existing public HTTP semantics in the long-term runtime guide.",
+    "reviewedActions": ["status", "dispatch", "complete", "fail", "reconcile_dispatch", "recover", "retry", "pause", "resume", "finish", "collect", "node report"],
+    "fixedGaps": [
+      "A user-first failed-node to selected Chat Resume to manager natural-language intent to refreshed result path was not collected in one place; technical HTTP examples could be mistaken for user steps.",
+      "Four distinct natural-language intentions and independent observations now distinguish original recovery, independent retry, manual handoff and notification-only failure.",
+      "Dispatch uncertainty and real Chat verification are explicitly required before new work; a Tab alone is not a Chat identity.",
+      "A single role matrix now separates state authority, actual execution and material handoff, with collect reasons and model parameter restrictions.",
+      "Restart read-only, ordinary Resume versus recover/run resume, missing associations, unknown Resume result and partial persistence effects are part of the user path.",
+      "H2 rehearsal instructions require actual first-enabled-run content, source sessions, full intervention records, independent expectations and bounded external-call evidence rather than descriptions or a final completed screenshot.",
+      "Root README now directly links to the long-term recovery guide."
+    ],
+    "notProven": "This is review of delivered documentation and backend contracts, not review of an installed role implementation or actual injected Prompt."
+  },
+  "deterministicCheck": {
+    "command": "powershell -NoProfile -Command '$env:CARGO_TARGET_DIR = \"C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-0v1Id3-cargo-target\"; cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture'",
+    "result": "53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out",
+    "testDurationSeconds": 4.69,
+    "wallTimeSeconds": 26.89,
+    "log": "workflow-dispatch.log",
+    "logCapture": "Complete tool-output line ranges retained; line separators restored between raw range chunks. This is test output, not a byte-for-byte native process capture.",
+    "boundary": "Existing real TCP HTTP TestServer, exclusive temporary files/cwd/dynamic numeric loopback ports and recording external Herdr fixture. These tests prove deterministic backend constraints only, not native roles, actual Prompt, model behavior or a natural-language rehearsal.",
+    "tddDecision": "No new test or fabricated red was added: existing tests already exercise the backend constraints. The ticket-owned real S1/S3 checks cannot run without deployed roles; keyword tests or a controlled model would weaken the criteria.",
+    "supportingTests": {
+      "originalRecovery": "recovery::confirmed_recover_restores_original_execution_while_paused_without_relaunch",
+      "independentRetry": "retry::retry_saves_new_identity_before_full_trigger_and_retains_original_facts",
+      "oldReportApplicability": "retry::late_old_reports_remain_history_without_controlling_new_execution",
+      "manualHandoff": "recovery::manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports",
+      "notificationOnlyFailure": "collect_retains_merges_notifications_before_failed_delivery_and_keeps_pending_work",
+      "dispatchUncertainty": "recovery::dispatch_reconciliation_keeps_uncertain_failed_then_confirmed_absence_pending",
+      "confirmedCreatedChat": "recovery::created_dispatch_reconciliation_observes_original_host_identity_without_start_or_input",
+      "collectCancellationAndExpiryBackendPartition": "collect_configured_expiry_and_tcp_disconnect_leave_facts_and_next_notification_intact"
+    },
+    "negativeEvidenceWindows": "Recovery/manual handoff/old-report applicability/collect delivery tests include 150ms external-call windows; the retained log includes explicit call evidence where emitted. These are finite controlled-backend observations, not real native no-action evidence."
+  },
+  "criteria": {
+    "P64.01": {
+      "passed": false,
+      "delivered": "Long-term actionable user path, four natural-language examples, result observations, safe error handling and reproducible native rehearsal/evidence requirements.",
+      "actualRehearsal": "Not executed: both deployed fixed role entrypoints are absent before any service, Run or native Chat was created.",
+      "missingEvidence": ["actual failure page and selected Chat Resume", "actual repair/verification and natural-language interaction", "real recover/retry/manual complete/notification-only failure outcomes", "actual native identities and artifacts", "rehearsal interventions and guide usability observations"]
+    },
+    "P65.01": {
+      "passed": false,
+      "delivered": "Documentation reviewed against approved full action matrix, collect, parameter restrictions and four failure distinctions; 53 existing backend constraint tests passed.",
+      "actualInjection": "Not captured: manager-chat.ts and node-chat.ts are not deployed. Neither tool descriptions nor this guide are treated as actual Prompt evidence.",
+      "missingEvidence": ["installed manager/node public tool schemas", "actual first-enabled-run injected content and session linkage", "comparison of those actual injections with all four native failure procedures"]
+    }
+  },
+  "nativePrerequisites": "native-prerequisites.json",
+  "H2": {
+    "P70Owner": "ticket 25",
+    "humanJudgment": "not performed; not passed",
+    "evidencePackage": "Partial preparation only: guide/matrix, actual missing-deployment evidence and deterministic backend output. No native transcript, screenshot, tool result or artifact exists to hand off as a completed rehearsal.",
+    "resumeCondition": "Deploy the real metadata-defined role entrypoints and establish an isolated native Herdr/omp environment. The executing Agent must then run all four documented procedures and capture actual role Prompt/tool evidence; only the final qualitative judgment belongs to the user."
+  },
+  "scope": "No external toolkit files, other tickets, workflow reports, integration workspace or user Herdr resources modified. No merge, retro or additional ticket dispatch."
+}

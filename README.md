@@ -42,6 +42,7 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 - [使用说明](docs/usage.md)：页面导航、server 操作、Task 配置与历史 Chat 恢复。
 - [scheduler 使用与参考](docs/scheduler.md)：目录配置、定义管理、JSON 格式、接口和问题排查。
 - [scheduler 样例与体验指引](docs/example/README.md)：可复制样例、隔离运行与人工验收。
+- [workflow 运行与故障处理](docs/workflow-runtime.md#故障处理速查先看现场再向管理者表达意图)：查看失败、Resume、核实/修复与向管理者表达恢复、重试或人工交接意图。
 - [领域术语](GLOSSARY.md)与[架构决策](docs/adr/)。
 - [测试指引](docs/agents/testing.md)：验证入口、夹具隔离与手动网络验收。
 
