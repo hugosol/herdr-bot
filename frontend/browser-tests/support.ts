@@ -337,9 +337,24 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
     )
 
     async function start() {
-      running = startProcess(configPath, executable, cwd)
-      await running.listening
-      await waitForTasks(`http://${localHost}:${running.port}`)
+      for (let attempt = 0; ; attempt++) {
+        running = startProcess(configPath, executable, cwd)
+        try {
+          await running.listening
+        } catch (error) {
+          // The probe cannot reserve its port across process creation. Only a
+          // confirmed bind collision may allocate another dynamic fixture port;
+          // fixed addresses and every other startup failure remain failures.
+          const bindCollision = /绑定监听地址失败：[\s\S]*os error (?:10048|98|48)\)/.test(running.diagnostics())
+          if (!listenAddr.endsWith(':0') || !bindCollision || attempt >= 31) throw error
+          const address = await browserListenAddress(listenAddr)
+          const config = fs.readFileSync(configPath, 'utf8')
+          fs.writeFileSync(configPath, config.replace(/^listen_addr = "[^"]*"/m, `listen_addr = "${address}"`))
+          continue
+        }
+        await waitForTasks(`http://${localHost}:${running.port}`)
+        return
+      }
     }
 
     const server: E2EServer = {
@@ -410,7 +425,9 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
     }
     const exited = Promise.withResolvers<void>()
     child.once('exit', () => exited.resolve())
-    const exitTimer = setTimeout(() => exited.resolve(), 5000)
+    // Give Node a full confirmation window after the termination command has
+    // completed; taskkill itself can take longer than this under global load.
+    let exitTimer: NodeJS.Timeout | undefined
     try {
       if (process.platform === 'win32') {
         // Independent identity queries are real child processes. Killing only
@@ -420,6 +437,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
         killer.once('error', killed.reject)
         killer.once('exit', killed.resolve)
         const code = await killed.promise
+        exitTimer = setTimeout(() => exited.resolve(), 5000)
         // taskkill can observe an already-exited process before Node delivers
         // its exit event. Wait for that event before treating a nonzero code
         // as a cleanup failure; do not hide a process that actually remains alive.
@@ -429,6 +447,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
         }
       } else {
         child.kill()
+        exitTimer = setTimeout(() => exited.resolve(), 5000)
       }
       await exited.promise
       if (child.exitCode === null && child.signalCode === null) {
