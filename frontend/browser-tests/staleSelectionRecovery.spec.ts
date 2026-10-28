@@ -21,7 +21,7 @@ label = '归档模型'
 provider_model = 'archive/original'
 thinking = { omp = ['low', 'high'], pi = ['low'] }
 `
-const PRESET = { name: '待修正 Bot', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'archive-model', thinking: 'high', skill: null, prompt: '保留第一行\n保留第二行', extensions: ['archive-tools'] }
+const PRESET = { taskType: 'normal', name: '待修正 Bot', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'archive-model', thinking: 'high', skill: null, prompt: '保留第一行\n保留第二行', extensions: ['archive-tools'] }
 function catalog(model = MODEL, optional = true, recovered = false) {
   const root = path.dirname(server.metadataFile)
   const fixed = path.join(root, recovered ? 'repaired-cost.ts' : 'cost.ts')

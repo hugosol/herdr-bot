@@ -1,7 +1,8 @@
 //! Task：由后端以文件持久保存，电脑与手机共享同一份。
 //!
 //! Task 是创建 Chat 时复用的预设：显示名、Chat 自动命名规则、agent、模型、思考级别、可选 Skill
-//! 与固定 prompt。Task 只在创建时被读取，编辑或删除不改变已经创建的 Chat。
+//! 与固定 prompt。trigger config 只在发起时应用；需要新进程的 Resume 读取来源 Task 最新 env
+//! config 与用途类型，不重放初始指示。编辑或删除不改变已经运行的 Chat。
 //!
 //! 持久化语义与 zone 登记相同：只有存储文件成功写入后才返回成功；写入先写同目录的临时文件并
 //! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何 Task，不是读取错误；读取失败或内容
@@ -41,6 +42,18 @@ impl Agent {
     }
 }
 
+/// Task 用途；历史存储必须显式迁移，不提供读取缺省值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskType { Normal, Manager, Node }
+
+impl TaskType {
+    pub fn validate_agent(self, agent: Agent) -> Result<(), TaskError> {
+        if self != Self::Normal && agent != Agent::Omp { return Err(TaskError::InvalidTaskType); }
+        Ok(())
+    }
+}
+
 /// 一个已保存的 Task。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -52,6 +65,7 @@ pub struct Task {
     /// Chat 自动命名规则：单行固定文字与占位符。
     pub chat_name: String,
     pub agent: Agent,
+    pub task_type: TaskType,
     // Flattening preserves the existing HTTP and persisted Task format; these
     // are distinct execution inputs, not a new disk format or legacy aliases.
     #[serde(flatten)]
@@ -84,6 +98,7 @@ pub struct TaskInput {
     name: Option<String>,
     chat_name: Option<String>,
     agent: Option<String>,
+    task_type: Option<String>,
     model: Option<String>,
     thinking: Option<String>,
     skill: Option<String>,
@@ -97,6 +112,7 @@ struct TaskFields {
     name: String,
     chat_name: String,
     agent: Agent,
+    task_type: TaskType,
     model: String,
     thinking: String,
     skill: Option<String>,
@@ -131,6 +147,12 @@ impl TaskInput {
             .map(|candidate| candidate.id)
             .ok_or_else(|| TaskError::UnknownAgent(agent.to_string()))?;
 
+        let task_type = match self.task_type.as_deref().unwrap_or("normal") {
+            "normal" => TaskType::Normal, "manager" => TaskType::Manager, "node" => TaskType::Node,
+            _ => return Err(TaskError::InvalidTaskType),
+        };
+        task_type.validate_agent(agent)?;
+
         let model = self
             .model
             .as_deref()
@@ -158,6 +180,7 @@ impl TaskInput {
             name,
             chat_name,
             agent,
+            task_type,
             model,
             thinking,
             skill,
@@ -175,6 +198,7 @@ pub enum TaskError {
     ChatNameNotSingleLine,
     AgentRequired,
     UnknownAgent(String),
+    InvalidTaskType,
     UnknownModel(String),
     UnknownThinking(String),
     ThinkingRequiresDefaultModel,
@@ -202,6 +226,7 @@ impl TaskError {
             Self::ChatNameNotSingleLine => "task-chat-name-not-single-line",
             Self::AgentRequired => "task-agent-required",
             Self::UnknownAgent(_) => "task-agent-invalid",
+            Self::InvalidTaskType => "invalid-task-type",
             Self::UnknownModel(_) => "task-model-invalid",
             Self::UnknownThinking(_) => "task-thinking-invalid",
             Self::ThinkingRequiresDefaultModel => "task-thinking-requires-default-model",
@@ -225,6 +250,7 @@ impl TaskError {
                 "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
             }
             Self::AgentRequired => "请选择当前选项目录中的 agent。".to_string(),
+            Self::InvalidTaskType => "Task 类型必须为 normal、manager 或 node；manager/node 仅允许 omp。".to_string(),
             Self::UnknownAgent(value) => {
                 format!("agent 不在当前选项目录中，收到：{value}。")
             }
@@ -338,6 +364,7 @@ impl Tasks {
             name: fields.name,
             chat_name: fields.chat_name,
             agent: fields.agent,
+            task_type: fields.task_type,
             trigger: TriggerConfig {
                 model: fields.model,
                 thinking: fields.thinking,
@@ -367,6 +394,7 @@ impl Tasks {
         target.name = fields.name;
         target.chat_name = fields.chat_name;
         target.agent = fields.agent;
+        target.task_type = fields.task_type;
         target.trigger = TriggerConfig {
             model: fields.model,
             thinking: fields.thinking,

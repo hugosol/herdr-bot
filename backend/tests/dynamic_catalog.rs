@@ -267,9 +267,10 @@ async fn current_metadata_drives_public_options_save_validation_and_stable_stora
     assert_eq!(task["skill"], "lab-skill");
     assert_eq!(task["prompt"], "第一行\n第二行");
     assert_eq!(task["extensions"], json!([]));
+    assert_eq!(task["taskType"], "normal");
     assert_eq!(
         task.as_object().unwrap().len(),
-        9,
+        10,
         "persist stable fields only"
     );
     fs::write(

@@ -1,6 +1,6 @@
 //! Hand-maintained option metadata. Each operation loads one complete, validated snapshot.
 //! No generated defaults, watcher, or stale-cache fallback.
-use crate::tasks::{Agent, Task, TaskError};
+use crate::tasks::{Agent, Task, TaskError, TaskType};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -45,6 +45,8 @@ pub struct ExtensionOption {
     pub label: String,
     pub agent: Agent,
     pub kind: ExtensionKind,
+    #[serde(default)]
+    pub task_type: Option<TaskType>,
     #[serde(default)]
     pub entrypoint: PathBuf,
 }
@@ -167,6 +169,9 @@ impl Catalog {
             }
         }
         for extension in &self.extensions {
+            if extension.task_type.is_some_and(|role| role == TaskType::Normal || extension.agent != Agent::Omp || extension.kind != ExtensionKind::Fixed) {
+                return Err(format!("角色扩展 {} 必须是 omp manager/node 固定扩展", extension.id));
+            }
             if !self.agents.iter().any(|v| v.id == extension.agent) {
                 return Err(format!(
                     "extension {} 引用未知 agent {}",
@@ -316,7 +321,7 @@ impl Catalog {
     pub fn resolve(&self, task: &Task) -> Result<ResolvedPreset, TaskError> {
         self.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref())?;
         Ok(ResolvedPreset {
-            env: self.resolve_env(task.agent, &task.env.extensions)?,
+            env: self.resolve_env(task.agent, task.task_type, &task.env.extensions)?,
             trigger: ResolvedTriggerConfig {
                 provider_model: self.models.iter()
                     .find(|v| v.id == task.trigger.model)
@@ -331,11 +336,15 @@ impl Catalog {
 
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
-    pub fn resolve_env(&self, agent: Agent, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
+    pub fn resolve_env(&self, agent: Agent, task_type: TaskType, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
+        task_type.validate_agent(agent)?;
         self.validate_extensions(agent, selections)?;
+        if task_type != TaskType::Normal && !self.extensions.iter().any(|extension| extension.task_type == Some(task_type) && extension.agent == agent && extension.kind == ExtensionKind::Fixed) {
+            return Err(TaskError::Metadata("当前目录缺少对应 Task 类型的固定角色扩展。".into()));
+        }
         Ok(ResolvedEnvConfig {
             extensions: self.extensions.iter().filter(|extension| {
-                extension.agent == agent && (extension.kind == ExtensionKind::Fixed
+                extension.applies_to(agent, task_type) && (extension.kind == ExtensionKind::Fixed
                     || selections.contains(&extension.id))
             }).cloned().collect(),
         })
@@ -373,6 +382,10 @@ impl ResolvedEnvConfig {
 }
 
 impl ExtensionOption {
+    pub fn applies_to(&self, agent: Agent, task_type: TaskType) -> bool {
+        self.agent == agent && self.task_type.is_none_or(|role| role == task_type)
+    }
+
     /// Check availability only; the agent remains responsible for loading.
     pub fn check_entrypoint(&self) -> Result<(), String> {
         use std::io::Read;

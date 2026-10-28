@@ -64,6 +64,22 @@ label = 'model-cost'
 agent = 'omp'
 kind = 'fixed'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp\model-cost.ts'
+# Role extensions are fixed by Task purpose, never selectable. Entrypoints are
+# delivered by my-agent-toolkit; configuring a Task does not verify native loading.
+[[extensions]]
+id = 'omp-manager-chat'
+label = 'manager-chat'
+agent = 'omp'
+kind = 'fixed'
+taskType = 'manager'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts'
+[[extensions]]
+id = 'omp-node-chat'
+label = 'node-chat'
+agent = 'omp'
+kind = 'fixed'
+taskType = 'node'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\node-chat.ts'
 [[extensions]]
 id = 'omp-codebase-tools'
 label = 'codebase-tools'

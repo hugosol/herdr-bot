@@ -175,11 +175,12 @@ mod degradation {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            let env = self.environment(&catalog, agent, &task.env.extensions);
+            task.task_type.validate_agent(agent).map_err(|error| (error.code(), error.message()))?;
+            let env = self.environment(&catalog, agent, task.task_type, &task.env.extensions);
             Ok(crate::chats::agent_launch_args(&env, None))
         }
 
-        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::tasks::Agent, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
+        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::tasks::Agent, task_type: crate::tasks::TaskType, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
             use crate::catalog::{ExtensionKind, ResolvedEnvConfig};
             for id in selections {
                 if !catalog.extensions.iter().any(|extension| extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional) {
@@ -187,7 +188,7 @@ mod degradation {
                 }
             }
             ResolvedEnvConfig {
-                extensions: catalog.extensions.iter().filter(|extension| extension.agent == agent && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
+                extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, task_type) && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
                     match extension.check_entrypoint() {
                         Ok(()) => Some(extension.clone()),
                         Err(reason) => {

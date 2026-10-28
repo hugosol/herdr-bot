@@ -25,6 +25,7 @@ export type TaskView = {
   name: string
   chatName: string
   agent: string
+  taskType: string
   model: string
   thinking: string
   skill: string | null
