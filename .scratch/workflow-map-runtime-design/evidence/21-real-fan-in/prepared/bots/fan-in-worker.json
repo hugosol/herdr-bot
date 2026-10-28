@@ -1,0 +1,7 @@
+{
+    "id":  "fan-in-worker",
+    "name":  "双材料验收节点",
+    "when":  "只用于独占真实验收目录。",
+    "plan_guide":  "按 Map 输入派发，依赖不会自动传递材料。",
+    "node_guide":  "按自身输入实际读写材料并使用真实角色 report。report、停轮和退出均不等于 completed。"
+}

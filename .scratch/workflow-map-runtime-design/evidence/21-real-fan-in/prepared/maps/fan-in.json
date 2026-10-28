@@ -1,0 +1,34 @@
+{
+    "title":  "真实双材料汇合验收",
+    "description":  "A/B 独立并行，只有 A → C 和 B → C。不是执行结果。",
+    "nodes":  {
+                  "A":  {
+                            "title":  "数量材料与报告后收尾",
+                            "bot_id":  "fan-in-worker",
+                            "zone":  "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\A",
+                            "blocked_by":  [
+
+                                           ],
+                            "input":  "写入 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\A\\material-a.txt，无 BOM UTF-8、LF、末尾 LF，完整正文为 source=A\\nitem=blue-widget\\nunits=7\\n（将 \\n 写为 LF）。读取核对。等待 working-report.release 后 report 材料地址/编码/限制，说明还在收尾。然后等待 collect-report.release，再 report 一条新的事实：材料不变、收尾尚未结束。随后用实际工具等待 tail.release，期间不改交接材料，释放后写 tail-finished.txt 记真实 UTC 时间并结束。等待文件只读检查，每次最长 180 秒，超时明确停止并报告，不制造 gate、不静默重试。gate 目录：C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\gates。所有报告使用实际 node 角色工具；投递失败不为同一事实重报。不要读取 expected 目录。"
+                        },
+                  "B":  {
+                            "title":  "单价材料",
+                            "bot_id":  "fan-in-worker",
+                            "zone":  "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\B",
+                            "blocked_by":  [
+
+                                           ],
+                            "input":  "写入 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\B\\material-b.txt，无 BOM UTF-8、LF、末尾 LF，完整正文为 source=B\\nitem=blue-widget\\nunit_price=6\\n（将 \\n 写为 LF）。读取核对。等待 idle-report.release 后 report 材料地址/编码/限制；之后可结束。等待文件只读检查，每次最长 180 秒，超时明确停止并报告，不制造 gate、不静默重试。gate 目录：C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\gates。所有报告使用实际 node 角色工具；投递失败不为同一事实重报。不要读取 expected 目录。"
+                        },
+                  "C":  {
+                            "title":  "读取双材料并汇合",
+                            "bot_id":  "fan-in-worker",
+                            "zone":  "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\C",
+                            "blocked_by":  [
+                                               "A",
+                                               "B"
+                                           ],
+                            "input":  "必须用真实读取工具分别读取 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\A\\material-a.txt 和 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\B\\material-b.txt；不得从 expected、运行说明或报告正文抄材料。核对两份 item 一致，从 A 取 units、B 取 unit_price，相乘得 total。写入 C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\C\\combined.txt，无 BOM UTF-8、LF、末尾 LF，依次为 item=值、units=值、unit_price=值、total=值四行。读取核对，再 report 地址/两个来源/编码/限制。等待文件只读检查，每次最长 180 秒，超时明确停止并报告，不制造 gate、不静默重试。gate 目录：C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\gates。所有报告使用实际 node 角色工具；投递失败不为同一事实重报。不要读取 expected 目录。"
+                        }
+              }
+}

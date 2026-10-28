@@ -1,0 +1,2 @@
+# Independent byte expectations must remain LF after Windows checkout.
+*.txt text eol=lf
