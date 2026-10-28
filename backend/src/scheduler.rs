@@ -148,6 +148,8 @@ pub(crate) struct RunPreflightRequest {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RunPreflight {
     pub workspace_name: String,
+    #[serde(skip)]
+    pub node_ids: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -248,7 +250,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     // Reading the field is intentional: it is accepted verbatim, with no input
     // quality gate or rewriting into node.input / Task.prompt.
     let _ = &input.user_input;
-    Ok(RunPreflight { workspace_name })
+    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect() })
 }
 
 pub async fn preflight_run(

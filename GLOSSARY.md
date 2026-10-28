@@ -109,7 +109,7 @@ _Avoid_: 主界面, 管理后台, 仪表盘
 ## scheduler 与工作定义
 
 **scheduler 入口**:
-主界面浏览服务级 Map、依赖图并管理共享 Bot 能力说明的 tab；管理的是静态定义，不调度或执行工作。
+主界面浏览和编辑服务级 Map、依赖图及共享 Bot 能力说明，并显式发起 Run 的 tab；静态定义的保存与实际运行是不同动作。
 _Avoid_: 执行器, 运行监控, zone 计划
 
 **Map**:
@@ -128,9 +128,13 @@ _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, �
 某项工作所依赖的同一 Map 内其他工作；箭头从前置 node 指向依赖它的 node，不表示执行路由、材料传递或已实现的等待状态。
 _Avoid_: 数据流, 自动启动连线, 执行状态
 
-**执行实例**:
-静态工作定义的一次实际执行，与 Map、node 及共享 Bot 的定义不同；当前 scheduler 不创建或跟踪执行实例。
-_Avoid_: node, Map, Bot
+**Run（运行）**:
+一张 Map 的一次独立运行，持有本次管理者配置、本次要求、真实 Chat 关联和运行事实；它不是静态 Map、单个 node 或 Chat 在线状态。
+_Avoid_: Map 实例, Bot 实例, node, Chat
+
+**workflow 入口**:
+主界面读取 Run 及其运行事实的 tab；查看或刷新已有 Run 不等于再次发起工作。
+_Avoid_: scheduler, 启动进度页
 
 ## zone 与文件
 

@@ -23,6 +23,17 @@ export async function preflightRun(file: string, input: RunPreflightInput): Prom
   throw new Error(value?.message ?? `启动预检未取得有效响应：HTTP ${response.status}`)
 }
 
+export async function startRun(file: string, input: RunPreflightInput): Promise<{ id: string } | Extract<RunPreflightResult, { kind: 'rejected' }>> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/runs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  const value = await response.json()
+  // Startup failures also carry a Run ID and belong on its refreshable detail.
+  if (typeof value?.id === 'string') return { id: value.id }
+  if (value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) return { kind: 'rejected', message: value.message, issues: value.issues }
+  throw new Error(value?.message ?? `启动未取得有效响应：HTTP ${response.status}；不会自动重试，请先核实现场。`)
+}
+
 export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }
 export type BotCatalog = { bots: Bot[]; problems?: BotProblem[] }
 

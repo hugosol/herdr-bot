@@ -243,7 +243,7 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
       }}>刷新全部</button>
       </div>
     </header>
-    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改当前 Map 的 node 与共享 Bot；静态定义，不执行工作。</p>
+    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改当前 Map 的 node 与共享 Bot；保存静态定义不执行工作，需显式发起 Run。</p>
     <p className="scheduler-refresh-note">刷新会重新读取目录、当前 Map 和共享 Bot，并清除节点选择。</p>
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">

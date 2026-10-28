@@ -119,7 +119,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 test('P1: ordered scheduler tabs open and reload at chat', async ({ page }) => {
   server = await startServer()
   await page.goto(server.baseURL)
-  await expect(page.getByRole('tab')).toHaveText(['chat', 'task', 'zone', 'scheduler'])
+  await expect(page.getByRole('tab')).toHaveText(['chat', 'task', 'zone', 'scheduler', 'workflow'])
   await expect(page.getByRole('tab', { selected: true })).toHaveText('chat')
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
   await expect(page.getByTestId('panel-scheduler')).toBeVisible()

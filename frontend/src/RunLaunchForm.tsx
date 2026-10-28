@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchTasks, type Task } from './taskApi'
 import { fetchZones, type ZoneRegistration } from './zoneApi'
-import { preflightRun, type PreflightIssue, type RunPreflightInput, type RunPreflightResult } from './schedulerApi'
+import { preflightRun, startRun, type PreflightIssue, type RunPreflightInput, type RunPreflightResult } from './schedulerApi'
 
 type Props = {
   file: string
@@ -13,7 +13,7 @@ type Props = {
   onZones: () => void
 }
 
-/** A real read-only preflight, not a successful launch or a fabricated Run. */
+/** Preflight and launch share the backend's whole-Map admission check. */
 export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, onZones }: Props) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [zones, setZones] = useState<ZoneRegistration[]>([])
@@ -59,6 +59,19 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
     finally { setBusy(false) }
   }
 
+  async function launch() {
+    if (busy || loading) return
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    try {
+      const result = await startRun(file, input)
+      if ('id' in result) window.location.hash = `workflow/${encodeURIComponent(result.id)}`
+      else setResult(result)
+    } catch (failure) { setError(failure instanceof Error ? failure.message : '启动未取得有效响应；不会自动重试，请先核实现场。') }
+    finally { setBusy(false) }
+  }
+
   function correction(issue: PreflightIssue) {
     if (issue.taskId) return <>
       <button type="button" onClick={() => onTask(issue.taskId)}>修正 Task {issue.taskId}</button>
@@ -78,7 +91,7 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
   const workspaceName = input.zone.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? ''
   return <form className="scheduler-run-form" aria-label="发起 Run" onSubmit={event => { event.preventDefault(); void check() }}>
     <h3>发起 Run · {file}</h3>
-    <p>选择管理者配置并检查整张 Map。当前入口只做启动预检；校验通过不等于已启动，不创建 Run 或 Chat。</p>
+    <p>选择管理者配置并检查整张 Map。校验不创建 Run 或 Chat；启动 Run 会再次预检，保存本次要求并启动真实管理者，取得标识后进入只读详情。</p>
     <label>管理者 Task<select aria-label="管理者 Task" value={input.managerTaskId} disabled={loading || busy} onChange={event => change({ managerTaskId: event.target.value })}>
       <option value="">请选择管理者 Task</option>
       {tasks.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
@@ -99,7 +112,8 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
     </li>)}</ul></div>}
     {result?.kind === 'valid' && <p role="status">配置校验通过，Workspace：{result.workspaceName}。尚未启动，未创建 Run 或 Chat。</p>}
     <div className="scheduler-actions">
-      <button type="submit" disabled={loading || busy}>{busy ? '正在校验……' : '校验启动配置'}</button>
+      <button type="button" disabled={loading || busy} onClick={() => void launch()}>启动 Run</button>
+      <button type="submit" disabled={loading || busy}>{busy ? '正在处理……' : '校验启动配置'}</button>
       <button type="button" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}>刷新启动选项</button>
       <button type="button" disabled={busy} onClick={onClose}>返回 Map</button>
     </div>
