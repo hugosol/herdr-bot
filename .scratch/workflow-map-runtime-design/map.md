@@ -65,7 +65,7 @@ Label: wayfinder:map
 
 当前决策票均已 resolved。2026-10-28 Traverse 全图审计发现的两组决策缺口已由用户逐项确认并发布，配套交接遗漏已纳入原权威及验收；无剩余待决批次或可见 fog。恢复与证据见[跨模块设计收敛与实施交接契约的 Handoff](decision/10-spec-acceptance.md#handoff)。最终交接决定见[跨模块设计收敛与实施交接契约](lighthouse/10-spec-acceptance.md)。
 
-2026-10-28 用户明确暂不发布 spec.md：本轮结束的是决策流程，不宣称最终 spec 已交付。下一步待用户授权后按已发布决定整理具体接口/schema、配置键和实施交接文档；若整理发现新行为选择或冲突，再进入决策。长期文档须独立承接最终契约，不依赖将删除的临时材料。真实产品实现与行为验证仍属于后续实施。
+2026-10-28 决策收尾时用户要求暂不发布 spec.md；随后用户明确请求生成 spec，现已发布[omp Map 运行系统：需求与设计 Spec](spec.md)，标记 ready-for-agent。随后已发布[获批运行契约](contract.md)，承诺、观察 seam 与验收责任以该契约为准；下一步执行 `/to-tickets .scratch/workflow-map-runtime-design/contract.md`。具体接口/schema、配置键按契约及既有惯例落实；若发现新行为选择、冲突或 seam 不成立，先修订契约再调整票据。长期文档须独立承接最终契约，不依赖将删除的临时材料。真实产品实现与行为验证仍属于后续实施。
 
 ## Out of scope
 
