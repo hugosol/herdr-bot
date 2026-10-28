@@ -1,0 +1,178 @@
+{
+  "observationMs": 739,
+  "scope": "Controlled Herdr adapter; not native host evidence or indefinite guarantee",
+  "condition": "missing",
+  "calls": [
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "manager-pane"
+      ],
+      "kind": "agent_focus"
+    },
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "current-pane"
+      ],
+      "kind": "agent_focus"
+    },
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "old-pane"
+      ],
+      "kind": "agent_focus"
+    }
+  ],
+  "detail": {
+    "id": "history-run",
+    "managed": false,
+    "pendingReports": {
+      "A": "report-new"
+    },
+    "readError": null,
+    "reports": [
+      {
+        "at": 5000,
+        "body": "CURRENT APPLICABLE BODY",
+        "executionId": "exec-new",
+        "id": "report-new",
+        "nodeId": "A",
+        "runId": "history-run",
+        "source": {
+          "agentName": "saved-name",
+          "paneId": "saved-pane-current-native",
+          "sessionId": "current-native",
+          "tabId": "saved-current-native",
+          "workspaceId": "saved-workspace"
+        },
+        "target": {
+          "agentName": "saved-name",
+          "paneId": "saved-pane-manager-native",
+          "sessionId": "manager-native",
+          "tabId": "saved-manager-native",
+          "workspaceId": "saved-workspace"
+        },
+        "type": "report"
+      },
+      {
+        "at": 2000,
+        "body": "OLD BODY NOT APPLICABLE",
+        "executionId": "exec-old",
+        "id": "report-old",
+        "nodeId": "A",
+        "runId": "history-run",
+        "source": {
+          "agentName": "saved-name",
+          "paneId": "saved-pane-old-native",
+          "sessionId": "old-native",
+          "tabId": "saved-old-native",
+          "workspaceId": "saved-workspace"
+        },
+        "target": {
+          "agentName": "saved-name",
+          "paneId": "saved-pane-manager-native",
+          "sessionId": "manager-native",
+          "tabId": "saved-manager-native",
+          "workspaceId": "saved-workspace"
+        },
+        "type": "report"
+      }
+    ],
+    "run": {
+      "createdAt": 1000,
+      "finished": null,
+      "id": "history-run",
+      "manager": {
+        "agentName": "saved-name",
+        "paneId": "saved-pane-manager-native",
+        "sessionId": "manager-native",
+        "tabId": "saved-manager-native",
+        "workspaceId": "saved-workspace"
+      },
+      "managerTaskId": "manager-task",
+      "map": "missing.json",
+      "nodes": {
+        "A": {
+          "completion": null,
+          "execution": {
+            "chat": {
+              "agentName": "saved-name",
+              "paneId": "saved-pane-current-native",
+              "sessionId": "current-native",
+              "tabId": "saved-current-native",
+              "workspaceId": "saved-workspace"
+            },
+            "id": "exec-new",
+            "taskId": "task-new",
+            "zone": "C:/new-zone"
+          },
+          "failure": null,
+          "previousExecutions": [
+            {
+              "execution": {
+                "chat": {
+                  "agentName": "saved-name",
+                  "paneId": "saved-pane-old-native",
+                  "sessionId": "old-native",
+                  "tabId": "saved-old-native",
+                  "workspaceId": "saved-workspace"
+                },
+                "id": "exec-old",
+                "taskId": "task-old",
+                "zone": "C:/old-zone"
+              },
+              "failure": {
+                "message": "OLD FAILURE",
+                "stage": "execution"
+              }
+            }
+          ],
+          "status": "running"
+        },
+        "B": {
+          "completion": null,
+          "execution": null,
+          "failure": null,
+          "previousExecutions": [],
+          "status": "pending"
+        }
+      },
+      "status": "running",
+      "userInput": "KEEP USER INPUT",
+      "workspaceName": "saved-workspace",
+      "zone": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser 9NuSio\\process-cwd"
+    },
+    "startupError": null
+  },
+  "savedRecords": [
+    "{\"id\":\"history-run\",\"map\":\"missing.json\",\"createdAt\":1000,\"managerTaskId\":\"manager-task\",\"zone\":\"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-bot browser 9NuSio\\\\process-cwd\",\"workspaceName\":\"saved-workspace\",\"userInput\":\"KEEP USER INPUT\",\"status\":\"running\",\"manager\":{\"sessionId\":\"manager-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-manager-native\",\"paneId\":\"saved-pane-manager-native\",\"agentName\":\"saved-name\"},\"finished\":null,\"nodes\":{\"A\":{\"status\":\"running\",\"execution\":{\"id\":\"exec-new\",\"taskId\":\"task-new\",\"zone\":\"C:/new-zone\",\"chat\":{\"sessionId\":\"current-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-current-native\",\"paneId\":\"saved-pane-current-native\",\"agentName\":\"saved-name\"}},\"failure\":null,\"completion\":null,\"previousExecutions\":[{\"execution\":{\"id\":\"exec-old\",\"taskId\":\"task-old\",\"zone\":\"C:/old-zone\",\"chat\":{\"sessionId\":\"old-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-old-native\",\"paneId\":\"saved-pane-old-native\",\"agentName\":\"saved-name\"}},\"failure\":{\"stage\":\"execution\",\"message\":\"OLD FAILURE\"}}]},\"B\":{\"status\":\"pending\",\"execution\":null,\"failure\":null,\"completion\":null,\"previousExecutions\":[]}}}",
+    "",
+    "{\"id\":\"report-new\",\"type\":\"report\",\"at\":5000,\"runId\":\"history-run\",\"nodeId\":\"A\",\"executionId\":\"exec-new\",\"source\":{\"sessionId\":\"current-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-current-native\",\"paneId\":\"saved-pane-current-native\",\"agentName\":\"saved-name\"},\"target\":{\"sessionId\":\"manager-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-manager-native\",\"paneId\":\"saved-pane-manager-native\",\"agentName\":\"saved-name\"},\"body\":\"CURRENT APPLICABLE BODY\"}\n{\"id\":\"report-old\",\"type\":\"report\",\"at\":2000,\"runId\":\"history-run\",\"nodeId\":\"A\",\"executionId\":\"exec-old\",\"source\":{\"sessionId\":\"old-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-old-native\",\"paneId\":\"saved-pane-old-native\",\"agentName\":\"saved-name\"},\"target\":{\"sessionId\":\"manager-native\",\"workspaceId\":\"saved-workspace\",\"tabId\":\"saved-manager-native\",\"paneId\":\"saved-pane-manager-native\",\"agentName\":\"saved-name\"},\"body\":\"OLD BODY NOT APPLICABLE\"}\n"
+  ]
+}
