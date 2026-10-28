@@ -4,7 +4,7 @@
 
 ## 页面导航
 
-顶部 tab 顺序为 `chat`、`task`、`zone`、`scheduler`；首次打开与整页刷新都回到 `chat`。
+顶部 tab 顺序为 `chat`、`task`、`zone`、`scheduler`、`workflow`；普通地址打开或刷新回到 `chat`，显式 `#workflow/<Run ID>` 链接则读取对应 Run 详情，不重新启动。scheduler 发起与角色 Task 前提、三份记录及启动失败处置见[Map Run 运行说明](workflow-runtime.md)。
 右上角的 `server` 按钮在同一页面打开独立内容页，不打开新窗口；点击“返回”回到进入前的 tab。
 键盘可用 Tab／Shift+Tab 聚焦入口，Enter／Space 激活；顶部 tab 还支持左右方向键及 Home／End 导航。
 进入 server 后焦点移到返回按钮，返回后恢复到此前 tab。

@@ -5,6 +5,7 @@ import { TasksPanel } from './TasksPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
 import { SchedulerPanel } from './SchedulerPanel'
+import { RunDetails, selectedRunId } from './RunDetails'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
@@ -29,11 +30,8 @@ const OPERATION_LABELS: Record<OperationName, string> = {
  */
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
-/**
- * herdr-bot 主界面的四个顶层入口：chat → task → zone → scheduler。
- * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
- */
-const TAB_ORDER = ['sessions', 'tasks', 'files', 'scheduler'] as const
+/** Default entry is chat; an explicit Run permalink opens workflow read-only. */
+const TAB_ORDER = ['sessions', 'tasks', 'files', 'scheduler', 'workflow'] as const
 
 type TabKey = (typeof TAB_ORDER)[number]
 
@@ -42,6 +40,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   tasks: 'task',
   files: 'zone',
   scheduler: 'scheduler',
+  workflow: 'workflow',
 }
 
 type Feedback = {
@@ -66,12 +65,21 @@ export default function App({
   zoneWatchFeed?: ZoneWatchFeed
 } = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
-  // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
-  const [tab, setTab] = useState<TabKey>('sessions')
+  const [runId, setRunId] = useState(selectedRunId)
+  const [tab, setTab] = useState<TabKey>(() => selectedRunId() ? 'workflow' : 'sessions')
+  useEffect(() => {
+    const navigate = () => {
+      const id = selectedRunId()
+      setRunId(id)
+      if (id) setTab('workflow')
+    }
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
   const [serverOpen, setServerOpen] = useState(false)
   const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
-  // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
+  // 五个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   const serverBackRef = useRef<HTMLButtonElement>(null)
   const wasServerOpen = useRef(false)
@@ -138,9 +146,9 @@ export default function App({
         </button>
       </header>
 
-      {/* 四 tab 外壳：chat → task → zone → scheduler，打开时默认停在 chat。
-          四个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
-          方向键在四个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
+      {/* chat → task → zone → scheduler → workflow；Run 链接可直接进入只读详情。
+          五个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
+          方向键在入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
       <div
         className="tabs"
         hidden={serverOpen}
@@ -214,6 +222,10 @@ export default function App({
         <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard}
           onTask={(id) => { setTaskEditRequest(id ? { id } : null); setTab('tasks') }}
           onZones={() => setTab('files')} />
+      </div>
+
+      <div id="panel-workflow" role="tabpanel" aria-labelledby="tab-workflow" className="tabpanel" hidden={serverOpen || tab !== 'workflow'}>
+        <RunDetails id={runId} active={!serverOpen && tab === 'workflow'} />
       </div>
 
       <section

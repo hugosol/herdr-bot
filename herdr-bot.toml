@@ -70,10 +70,13 @@ registry_file = '.data/zones.json'
 # 服务级 Map / 共享 Bot 目录，可独立指定，均相对进程 cwd 而非配置文件位置。
 # 修改配置需重启；Map 内容变化在 scheduler 点击“刷新 Map 列表”。
 # 首次读取自动创建两个目录及父目录，保留已有内容，不安装样例；链接/目录联接不被跟随。
-# 共享 Bot 按 JSON id 关联；当前仅预览，不执行。可复制样例和格式说明见 docs/example/README.md。
+# 共享 Bot 按 JSON id 关联；发起 Run 需完整角色 Task 及 toolkit 扩展。样例见 docs/example/README.md。
 # [scheduler]
 # map_directory = '.data/workflow-maps'
 # bot_directory = '.data/bots'
+# run_directory = '.data/workflow-runs'
+# 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
+# run_instructions = 'E:\Developer\myhub\herdr-bot\docs\workflow-runtime.md'
 
 # Task 设置（可选，缺省为当前工作目录下的 .data/tasks.json）。
 # Task 由后端保存，本机与局域网设备共享；电脑与手机在“Task”tab 中管理。

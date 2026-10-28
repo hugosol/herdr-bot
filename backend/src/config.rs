@@ -60,6 +60,8 @@ pub struct Config {
 pub struct SchedulerConfig {
     pub map_directory: PathBuf,
     pub bot_directory: PathBuf,
+    pub run_directory: PathBuf,
+    pub run_instructions: PathBuf,
 }
 
 impl Default for SchedulerConfig {
@@ -67,6 +69,8 @@ impl Default for SchedulerConfig {
         Self {
             map_directory: PathBuf::from(".data/workflow-maps"),
             bot_directory: PathBuf::from(".data/bots"),
+            run_directory: PathBuf::from(".data/workflow-runs"),
+            run_instructions: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/workflow-runtime.md"),
         }
     }
 }

@@ -5,17 +5,18 @@ import { describe, expect, it } from 'vitest'
 import App from '../src/App'
 
 /**
- * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
+ * 五 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
  *
- * 顶层顺序固定为 chat、task、zone、scheduler；每次打开或整页刷新都从 chat 开始，
- * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
- * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
+ * 顶层顺序固定为 chat、task、zone、scheduler、workflow；每次打开或整页刷新都从 chat 开始，
+ * 不恢复上次 tab。五个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
+ * 方向键在五个入口之间循环切换并同步焦点。左右滑动不参与切换。
  */
-describe('App 四 tab 骨架', () => {
-  it('整页恰四个 tab，顺序为 chat、task、zone、scheduler，默认停在 chat', () => {
+describe('App 五 tab 骨架', () => {
+  it('整页恰五个 tab，顺序为 chat、task、zone、scheduler、workflow，默认停在 chat', () => {
     render(<App />)
 
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
+    expect(tabs.map(tab => tab.textContent)).toEqual(['chat', 'task', 'zone', 'scheduler', 'workflow'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
     expect(tabs[2]).toHaveAttribute('aria-selected', 'false')
@@ -29,7 +30,7 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
-  it('Tab 可聚焦四个 tab，Enter/Space 可切换', async () => {
+  it('Tab 可聚焦五个 tab，Enter/Space 可切换', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -59,7 +60,7 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
-  it('方向键在四个入口之间循环切换，并同步焦点', async () => {
+  it('方向键在五个入口之间循环切换，并同步焦点', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -80,6 +81,10 @@ describe('App 四 tab 骨架', () => {
     expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
 
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByTestId('tab-workflow')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-workflow')).toHaveFocus()
+
     // 右方向在末尾回到第一个入口。
     await user.keyboard('{ArrowRight}')
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
@@ -87,14 +92,14 @@ describe('App 四 tab 骨架', () => {
 
     // 左方向在开头绕到最后一个入口。
     await user.keyboard('{ArrowLeft}')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
+    expect(screen.getByTestId('tab-workflow')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-workflow')).toHaveFocus()
 
     // Home / End 直接跳到两端。
     await user.keyboard('{Home}')
     expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
     await user.keyboard('{End}')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-workflow')).toHaveAttribute('aria-selected', 'true')
   })
 
   it('左右滑动不切换顶层 tab', async () => {

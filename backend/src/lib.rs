@@ -52,6 +52,8 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod scheduler;
+pub mod runs;
+pub mod files;
 pub mod shutdown;
 mod status_cache;
 pub mod sync;
@@ -141,6 +143,9 @@ pub struct AppState {
     pub map_directory: PathBuf,
     /// Service-owned shared capability definitions, independent of Map storage.
     pub bot_directory: PathBuf,
+    pub run_directory: PathBuf,
+    pub run_instructions: PathBuf,
+    pub runs: Arc<runs::Runs>,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
@@ -242,8 +247,11 @@ pub fn app_with_state(
             config.tasks.storage_file.clone(),
             config.tasks.metadata_file.clone(),
         )),
-        map_directory: config.scheduler.map_directory.clone(),
-        bot_directory: config.scheduler.bot_directory.clone(),
+        map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
+        bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
+        run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
+        run_instructions: std::path::absolute(&config.scheduler.run_instructions).expect("resolve Run instructions"),
+        runs: Arc::new(runs::Runs::default()),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
         resume_executions: Arc::new(resume::ResumeExecutions::default()),
@@ -286,6 +294,9 @@ pub fn app_with_state(
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
         .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
+        .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
+        .route("/api/workflow/runs/{id}", get(runs::get_run))
+        .route("/api/workflow/manager/status", post(runs::manager_status))
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))
         .route("/api/scheduler/maps/{name}/nodes/save", post(scheduler::save_node))
