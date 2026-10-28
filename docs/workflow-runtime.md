@@ -38,6 +38,22 @@ run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
 
 后端先校验同机来源，再通过已保存的管理者原生身份解析唯一的当前后端 Run 归属；没有关联、重复关联、非管理者均拒绝，不按名称、Task、Tab 或 cwd 猜测。session_id 不是秘密认证凭据：接受同机进程冒用风险，不构成强认证或沙箱。重启后旧 Run 只读，普通 Chat Resume 不代表接管 Run。
 
+### 后端重启：历史现场只读
+
+管理归属仅存在于创建 Run 的当前后端进程；`managed=false` 是服务上下文事实，不是持久 Run 状态。真正重启服务后，旧 Run 仍可通过详情链接及 `GET /api/workflow/runs/<Run ID>` 读取，原 running/paused/completed 等状态、节点失败、执行与已知管理者/节点 Chat 关联、报告和三份记录保持原样。服务不扫描记录恢复控制权，不把 running 改写为 failed/completed，不发起执行，也不提供自动或手动接管入口。
+
+重启前的管理者身份调用 status、dispatch、complete、finish、pause、resume、fail、recover、retry、reconcile_dispatch、collect 均拒绝（HTTP 403、`manager-unassociated`）；旧节点身份 report 同样拒绝（HTTP 403、`node-unassociated`）。已有报告或 pendingReports 不恢复写入资格，collect 不进入等待、不返回正常快照；普通 Chat Resume 也不恢复 Run 管理。用户可继续读取保存事实、核实原 Chat 与产物，但不能通过改文件、重放初始指示或将 Resume 当作接管来继续旧 Run。角色工具应将拒绝反馈给调用者，不自动重试或另起执行。
+
+管理者启动失败的 `startupError` 仅保存在原后端内存，浏览器刷新可以查询；真正重启后为 null，不从业务历史重建到页面。已提交 Chat 关联仍保留，节点的持久 failure 则继续可见。需要跨进程查询启动诊断时，应由部署环境保留服务 stdout/stderr（含 Run ID、stage 和已发生效果）；三份业务记录不是诊断日志，也没有页面日志浏览入口。
+
+可重复确定性验收入口（仅数值回环、独占 cwd/数据/Herdr 记录型副本、真实服务进程与交付页面）：
+
+```text
+npm --prefix frontend run test:browser:build -- workflowStart.spec.ts --workers=1
+```
+
+`P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tools` 在真实 Run 中派发 running/failed 节点并产生报告/历史，再重启；核对所有管理动作与 report/collect 拒绝、完整详情与三份文件逐字不变、页面未接管说明及外部调用记录。`P54.02 real restart drops manager startup errors without rewriting business facts` 在真实启动指示故障后保留进程诊断，重启并刷新页面，核对错误消失、已知 Chat 与空业务历史保留。二者各保留截图、前后事实/文件、外部调用及 **1000ms 有界无新增调用窗口**；不以有限窗口声明永远没有自动行为。受控 Herdr 仅证明确定性宿主响应处理，不证明真实 omp 原生 Chat 或 toolkit Prompt 注入；后者仍需部署角色扩展及隔离真实 Herdr 后单独验收。
+
 status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`blocked`（每个 node 的当前阻塞原因数组）及 `canFinish`。依赖只在所有前置 node 为 completed 时满足；running、failed 等非 pending 节点不可首次派发。查询不保存第二套 ready 真相，不自动选择路线或创建 Chat。
 
 ### 管理者显式批量派发
