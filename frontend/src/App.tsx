@@ -69,6 +69,7 @@ export default function App({
   // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
   const [tab, setTab] = useState<TabKey>('sessions')
   const [serverOpen, setServerOpen] = useState(false)
+  const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
@@ -188,7 +189,7 @@ export default function App({
         data-testid="panel-tasks"
         hidden={serverOpen || tab !== 'tasks'}
       >
-        <TasksPanel active={!serverOpen && tab === 'tasks'} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)} />
       </div>
 
       <div
@@ -210,7 +211,9 @@ export default function App({
         data-testid="panel-scheduler"
         hidden={serverOpen || tab !== 'scheduler'}
       >
-        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard} />
+        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard}
+          onTask={(id) => { setTaskEditRequest(id ? { id } : null); setTab('tasks') }}
+          onZones={() => setTab('files')} />
       </div>
 
       <section

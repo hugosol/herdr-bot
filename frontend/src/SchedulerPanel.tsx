@@ -3,6 +3,7 @@ import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, del
 import { MapGraph } from './MapGraph'
 import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
+import { RunLaunchForm } from './RunLaunchForm'
 import './scheduler.css'
 
 type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind: 'error'; message: string }
@@ -11,7 +12,8 @@ type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'er
 
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string }
 
-export function SchedulerPanel({ active, navigationGuard }: { active: boolean; navigationGuard?: RefObject<(() => boolean) | null> }) {
+export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { active: boolean; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
+  const [launchOpen, setLaunchOpen] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingBusy, setEditingBusy] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -197,6 +199,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
 
   function selectFile(name: string) {
     if (name === file || !abandonDraft()) return
+    setLaunchOpen(false)
     setFile(name)
     setSelectedId(null)
     setGraphOpen(false)
@@ -305,7 +308,15 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       <div className="scheduler-main">
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && editor}
-        {map && !draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>}
+        {map && !draft && <div className="scheduler-actions">
+          <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
+          <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+        </div>}
+        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
+          onClose={() => { setLaunchOpen(false); void returnToMap() }}
+          onNode={(id) => { setSelectedId(id); void beginEdit(id, 'node') }}
+          onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
+          onTask={onTask} onZones={onZones} /></div>}
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}

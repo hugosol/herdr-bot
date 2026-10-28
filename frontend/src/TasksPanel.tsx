@@ -77,7 +77,7 @@ function draftFrom(task: Task): TaskInput {
  * Task 由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 task 入口都重新读取，
  * 保存/删除成功后才用后端返回的完整列表更新界面；保存失败不表示已保存。
  */
-export function TasksPanel({ active }: { active: boolean }) {
+export function TasksPanel({ active, editRequest, onEditRequestHandled }: { active: boolean; editRequest: { id: string } | null; onEditRequestHandled: () => void }) {
   const [data, setData] = useState<TaskList | null>(null)
   const [loading, setLoading] = useState(false)
   const [listFailure, setListFailure] = useState<string | null>(null)
@@ -122,7 +122,13 @@ export function TasksPanel({ active }: { active: boolean }) {
     }
   }, [active])
 
-  async function openEditor(task?: Task) {
+  useEffect(() => {
+    if (!active || !editRequest) return
+    void openEditor(editRequest.id)
+    onEditRequestHandled()
+  }, [active, editRequest])
+
+  async function openEditor(taskId?: string) {
     setLoading(true)
     const result = await fetchTasks()
     setLoading(false)
@@ -131,8 +137,8 @@ export function TasksPanel({ active }: { active: boolean }) {
       return
     }
     setData({ tasks: result.tasks, options: result.options })
-    const current = task ? result.tasks.find((entry) => entry.id === task.id) : undefined
-    if (task && !current) {
+    const current = taskId === undefined ? undefined : result.tasks.find((entry) => entry.id === taskId)
+    if (taskId !== undefined && !current) {
       setFeedback({ kind: 'error', text: '目标 Task 不存在：可能已被删除。' })
       return
     }
@@ -144,7 +150,7 @@ export function TasksPanel({ active }: { active: boolean }) {
   }
 
   function openCreate() { void openEditor() }
-  function openEdit(task: Task) { void openEditor(task) }
+  function openEdit(task: Task) { void openEditor(task.id) }
 
   function closeDialog() {
     setDialog(null)
