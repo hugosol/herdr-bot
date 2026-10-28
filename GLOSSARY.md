@@ -8,6 +8,10 @@ Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际�
 用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
 _Avoid_: Bot, bot-template, 模板, 对话实例
 
+**Task 类型**:
+Task 的用途分类，区分普通用途、流程管理者和节点执行者；它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
+_Avoid_: agent 类型, Run 角色绑定, Chat 类型
+
 **trigger config（发起配置）**:
 Task 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
 _Avoid_: env config, 自动触发规则, 事件触发器

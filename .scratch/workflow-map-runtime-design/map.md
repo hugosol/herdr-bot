@@ -23,26 +23,28 @@ Label: wayfinder:map
 - extension 必须覆盖节点故障后的暂停、重试、结束操作，不仅预留空入口。自动策略与可调用执行能力分开；不因旧计划禁止自动重试而删掉管理者调用重试的能力。
 - 暂停等待人类主动监控与处理；不建专门人工审批／通知／接管系统。人类处理后给管理者 Chat 发消息，由管理者通过工具继续、重试或完成。暂停阻止新的派发，已有执行仍可反馈；恢复与手动完成消费[故障恢复原则](lighthouse/05-fault-pause-retry.md)及其引用的状态机动作契约。
 - 停止新派发的需求由 pause／resume 承接，不再提供独立 stop 或 graceful shutdown 生命周期；不保证活动 Chat 退出。Q66 已明确修订原停止入口要求，权威见[停止生命周期范围处置](lighthouse/06-stop-lifecycle.md)。
-- 通用协作模块覆盖本次 Run 参与者之间的协作消息，包括指示、问题、回复、进度、交付通知和执行反馈；不接管完整 Chat transcript、模型流式输出或宿主心跳。用户最后一轮明确确认此范围。
+- 协作范围已按接入会话收窄为节点交接报告、manager collect 与 Herdr 单向正文通知；通用双向消息/广播后置，现行范围见[通信契约](lighthouse/04-collaboration-protocol.md)。
 - 运行内核保持业务无关；首版执行接入限定 Task → omp Chat，不建设任意宿主插件平台。
 
 ### 暂定方案与未决输入
 
 - 管理角色的绑定回顾已完成，见下方绑定决策；不再作为暂定方案。
-- 重试策略字段与循环范围已由[字段契约](lighthouse/02-map-definition-contract.md)收口；原 Chat 恢复、新 Chat 重试及旧报告不得冒充新执行依据已由[故障恢复原则](lighthouse/05-fault-pause-retry.md)收口；保存职责已由[持久化契约](lighthouse/07-persistence-consistency.md)确定，精确可信身份表示仍由接入票据落实。
-- 通信在既有关联 Chat 内自动输入与继续，不为消息另开决策会话；工具注册与宿主注入由接入票落实，见[通信契约](lighthouse/04-collaboration-protocol.md)。
+- 重试策略字段与循环范围已由[字段契约](lighthouse/02-map-definition-contract.md)收口；原 Chat 恢复、新 Chat 重试及旧报告不得冒充新执行依据已由[故障恢复原则](lighthouse/05-fault-pause-retry.md)收口；保存职责已由[持久化契约](lighthouse/07-persistence-consistency.md)确定，身份与工具接入已由[接入契约](lighthouse/08-omp-tool-integration.md)收口。
+- 报告通知采用 Herdr 通用输入，不承诺原生 IRC 语义；collect 不依赖正文投递，详见[通信契约](lighthouse/04-collaboration-protocol.md)。
 - 用户要求逐项讨论：Map JSON 覆盖性；管理者工具与状态流转；运行文件与内存一致性；chat 类型 Bot 的 node → Bot → Task → Chat 链；通用消息协作模块。下方均有对应票据。
 
 ## Decisions so far
 
-- [Bot、Task、Chat 与管理角色的绑定](lighthouse/01-execution-binding.md)：能力发现与执行分层、直接启动管理者、独立 Chat、统一 Workspace 及启动检查已确认；配置不变是本版前提。
-- [Map、Bot 与运行配置的契约边界](lighthouse/02-map-definition-contract.md)：阶段化 Bot 文档、Task 绑定、node 输入与位置、保存／启动校验及版本和示例处置已确定；管理配置、重试策略与循环范围边界已收口。
+- [Bot、Task、Chat 与管理角色的绑定](lighthouse/01-execution-binding.md)：能力发现与执行分层、直接启动管理者、独立 Chat、统一 Workspace 及启动检查已确认；配置不变与用户确认 omp 未开启自动续接为本版前提，Workspace 从 manager zone 推导。
+- [Map、Bot 与运行配置的契约边界](lighthouse/02-map-definition-contract.md)：阶段化 Bot 文档、Task 绑定、node 输入与位置、保存／启动校验及版本和示例处置已确定；管理配置、重试策略与循环范围边界已收口；Traverse 已收口 zone 路径引用、Task 一次性类型迁移及保存／角色扩展约束。
 
 - [运行状态机、管理者工具与决策 seam](lighthouse/03-runtime-state-operations.md)：completed 已修订为交接完成并解除下游依赖，移除独立放行；管理者仍显式操作，保留串行派发、故障核实、暂停及成功结束，并补齐最小人工恢复动作。
-- [通用协作消息、交付与决策会话](lighthouse/04-collaboration-protocol.md)：两类结构化消息、IRC 式自动输入、管理者专用 collect、合并检查与交接待办、可配置 90 分钟等待及提示词边界已确定。
+- [通用协作消息、交付与决策会话](lighthouse/04-collaboration-protocol.md)：首版保留结构化交接报告、管理者 collect 与 Herdr 单向输入；后置通用双向协作，collect 不依赖投递。
 - [节点故障、等待人工处理与重试](lighthouse/05-fault-pause-retry.md)：人工处理现场，管理者通过工具恢复、重试或完成；状态与交接分别补齐，纳入用户指南和管理者工具指引，不穷举复杂故障路径。
-- [运行事实与内存文件一致性](lighthouse/07-persistence-consistency.md)：三文件布局、业务无关文件层、按文件加锁及提交顺序已确定；接受跨文件部分提交，统一传播错误，后端重启只读旧 Run。
-- [omp extension 接入与可信执行身份（部分）](lighthouse/08-omp-tool-integration.md)：确定 herdr-bot 统筹 HTTP 通信，并先调查 connect-bot 复用；传输细节与扩展组织仍未决。
+- [运行事实与内存文件一致性](lighthouse/07-persistence-consistency.md)：三文件布局、按文件协调及部分提交已确定，重启只读旧 Run；补充本次 user_input 原文保存、启动后不编辑。
+- [omp extension 接入与可信执行身份](lighthouse/08-omp-tool-integration.md)：孪生扩展、身份关联、启动顺序与三个工具已收口；manager input 末尾追加用户要求，不传递到 node；Traverse 补齐自动启用策略、配置定位及完整 Task trigger 的交接覆盖。
+- [运行启动、只读图与人工观察路径](lighthouse/09-observation-experience.md)：scheduler 发起、workflow 只读观察与 Resume 已确定；管理者启动过程仅日志、错误在当前后端内存供详情展示，重启后查日志，不显示启动进度；Task 类型配置复用现有管理入口。
+- [跨模块设计收敛与实施交接契约](lighthouse/10-spec-acceptance.md)：六组验收、固定文件主链路、独立长期文档、使用指引和四阶段实施顺序已确认；Traverse 审计及补充验收已收口；用户要求暂不发布 spec.md。
 
 ## Decision tickets
 
@@ -61,8 +63,9 @@ Label: wayfinder:map
 
 ## Not yet specified
 
-- 各模块契约落定后，核对常见故障恢复的跨模块契约是否一致；不重新展开已收窄的复杂故障枚举，已有暂停、重试、停止问题不重复列为 fog。
-- 明确实际接入约束后，评估是否需要新的外部事实研究或轻量原型票据；目前不预设研究结论，也不运行真实验收。
+当前决策票均已 resolved。2026-10-28 Traverse 全图审计发现的两组决策缺口已由用户逐项确认并发布，配套交接遗漏已纳入原权威及验收；无剩余待决批次或可见 fog。恢复与证据见[跨模块设计收敛与实施交接契约的 Handoff](decision/10-spec-acceptance.md#handoff)。最终交接决定见[跨模块设计收敛与实施交接契约](lighthouse/10-spec-acceptance.md)。
+
+2026-10-28 用户明确暂不发布 spec.md：本轮结束的是决策流程，不宣称最终 spec 已交付。下一步待用户授权后按已发布决定整理具体接口/schema、配置键和实施交接文档；若整理发现新行为选择或冲突，再进入决策。长期文档须独立承接最终契约，不依赖将删除的临时材料。真实产品实现与行为验证仍属于后续实施。
 
 ## Out of scope
 
@@ -73,4 +76,5 @@ Label: wayfinder:map
 - 专门的人工审批／通知／接管产品功能；不排除人类通过已有 Chat 参与故障处理。
 - 非 Chat 执行 Adapter、非 omp 宿主实现、通用插件市场和业务质量校验平台。
 - 完整聊天基础设施、transcript 汇总、通用事件总线平台及分布式多写入者运行存储。
+- 首版通用双向消息、同伴通信、广播、extension 接收长连接和原生 IRC 保证；[通信范围修订](lighthouse/04-collaboration-protocol.md)。不增加强制续轮、会话切换处理、独立凭据或 --session-dir 存储迁移，见[接入范围](lighthouse/08-omp-tool-integration.md)。
 - 跨文件事务／自动回滚、后端重启后重新接管旧 Run、全仓库文件操作迁移：范围及接受的风险见[持久化契约](lighthouse/07-persistence-consistency.md)。

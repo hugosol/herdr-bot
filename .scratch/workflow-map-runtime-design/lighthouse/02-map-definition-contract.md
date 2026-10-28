@@ -32,13 +32,21 @@ Task.prompt 保存可复用背景、工作方法与固定业务限制；本次�
 
 确认来源：Q19/Q20 用户同意，按后提出的 Q20 顶层结构替代 Q19 嵌套候选；Q21 用户“允许，这样创建bot时的顺序可以更灵活”。
 
+### Task 类型与必需角色扩展
+
+2026-10-28 接入会话 Q8 用户“同意，添加新字段task类型作为区别”，批准 Task 新增类型区分普通、manager、node；它与 omp/pi agent 类型不同。manager 类型固定包含 manager-chat，node 类型固定包含 node-chat，角色扩展不可取消或替换，不同时加载两侧；其他扩展、模型和业务指示仍按现有 Task 管理。允许多个同类型 Task，不按显示名识别角色，不要求全部 node 共用一个 Task。
+
+该决定替代启动时临时追加扩展、仅默认勾选可取消的候选：扩展选择由 Task 统一管理，运行启动校验所选 manager 与节点 Task 的角色要求，不静默补齐。首版运行仅支持 omp。具体扩展布局消费[接入契约](08-omp-tool-integration.md)。
+
+2026-10-28 Traverse 审计补充：新建 Task 默认普通类型；manager/node 仅允许 omp，界面限制选择，后端在保存时同样拒绝非法组合，不静默更换 agent 或类型。普通类型保留现有 agent 选项。角色扩展只由 Task 类型决定，不进入可选扩展清单：普通不加载两侧角色扩展，manager 固定加载 manager-chat，node 固定加载 node-chat；切换类型时固定扩展随之变化，其他可选扩展仍按既有规则管理，后端拒绝绕过类型规则的配置。确认来源：本次审计 Q3/Q4 用户“Q3 Q4,同意”，随后同意统一发布。Task 不保存 run_id 或本次执行关联，Chat 数据也不增加归属字段，当前关联在 run.json。
+
 ### Map 与 node
 
-Map 保留 title、description、nodes；node 保留 title、bot_id、blocked_by，以单个字符串 input 替代 parameters，并增加必填 zone_id。input 沿用发起 Chat 的输入规则，允许 Markdown，不新增变量插值、槽位补全或结构化业务参数系统。zone_id 引用登记的 zone，使用规则沿用发起 Chat，不保存具体路径、不使用运行时默认位置，失效不自行更换。
+Map 保留 title、description、nodes；node 保留 title、bot_id、blocked_by，以单个字符串 input 替代 parameters，并增加必填 zone_id。input 沿用发起 Chat 的输入规则，允许 Markdown，不新增变量插值、槽位补全或结构化业务参数系统。节点位置直接记录服务器上的 zone 路径，沿用现有登记及发起 Chat 的路径校验，不新增稳定 zone ID、不使用运行时默认位置，失效不自行更换。本文原字段称呼 zone_id 不再表示独立登记 ID；最终序列化字段名由 spec 按路径语义收敛。取消登记后不能启动，重新登记同一路径后可重新通过登记检查，其他启动校验仍有效；不保证目录搬迁后引用自动跟随。
 
 input 表达本次背景、工作要求、交付内容和交接要求。Task 表达固定要求，两者不另复制为 node outputs 或独立交付方式字段。Bot 的预期产出是能力发现说明，不自动生成本次交付要求。blocked_by 只表达前置依赖，不承载材料传递或自动派发；实际交接由协作模块承接，寻址、材料引用和送达契约由[通用协作消息、交付与决策会话](../decision/04-collaboration-protocol.md)决定。允许在 input 引用尚待产生的材料，不要求定义时存在产物正文。
 
-修订：旧部分结果中的必填 zone 泛称落实为 zone_id，标识而非路径已决定；独立命名交付声明的候选由 input 方案替代。确认来源：Q1 同意依赖边界；Q4 用户“node.input已经可以承载这个功能”；Q16 指定单个文本字符串；Q17 指定 zone_id；Q30 确认完整字段收口。
+修订：原 Q17/Q30 的“zone_id 保存标识而非路径”已被 2026-10-28 Traverse 审计 Q1 用户“既然如此那就直接记录路径”明确替代，最终授权统一发布。原因是现有 zone 登记仅有 path，没有独立稳定 ID；沿用路径避免新增身份与迁移机制。独立命名交付声明仍由 input 方案替代；原 Q1/Q4/Q16 的依赖与输入决定不变。
 
 ### 保存与启动的边界
 
@@ -50,7 +58,9 @@ input 表达本次背景、工作要求、交付内容和交接要求。Task 表
 
 ### 格式版本、示例与运行期间修改
 
-Map、Bot 移除 schema_version，按当前唯一格式解析，继续严格拒绝未知字段。不每次保存递增版本，不设计多格式读取或运行时兼容。用户确认存量只有示例，无需历史数据迁移；后续实施按新契约重建示例，本次不执行。
+Map、Bot 移除 schema_version，按当前唯一格式解析，继续严格拒绝未知字段。不每次保存递增版本，不设计多格式读取或运行时兼容。用户确认 Map/Bot 存量只有示例，无需历史数据迁移；后续实施按新契约重建示例，本次不执行。该豁免不适用于 Task。
+
+已有 Task 通过一次性迁移显式补为普通类型，保留 ID、名称、全部配置及历史 Chat 的来源关联；需要流程角色时再由用户修改类型，不按名称、prompt 或扩展猜测角色。不增加运行时缺失类型字段的旧格式兼容。确认来源：2026-10-28 Traverse 审计 Q2 用户“同意，一次性迁移即可”，随后同意统一发布；迁移是后续实施交付，不在本次执行。
 
 平时可以编辑配置，后续启动使用修改后的配置；本版不要求当前 Run 动态加载变更。沿用运行期间配置不变的前提，不新增配置快照、版本锁定、变更检测或编辑锁；也不因此保证运行中修改的行为。
 
@@ -58,7 +68,7 @@ Map、Bot 移除 schema_version，按当前唯一格式解析，继续严格拒�
 
 ### 管理配置、重试与循环边界
 
-管理者的 Task、zone、Herdr Workspace 属本次运行的启动配置，不放入 Map 或 Bot，不增加默认管理者或覆盖层；直接启动管理者的职责消费[绑定决策](01-execution-binding.md)。具体启动接口由接入与观察票据决定。
+管理者的 Task、zone 及从 zone 推导的实际 Herdr Workspace 属本次运行的启动配置，不放入 Map 或 Bot，不增加默认管理者或覆盖层；直接启动管理者的职责消费[绑定决策](01-execution-binding.md)。具体启动接口由接入与观察票据决定。
 
 Map、Bot 及运行配置首版不增加 max_retries、自动重试条件等声明式策略字段。管理者选择是否重试，流程代码检查合法性、落实动作并记录事实。工具的状态约束、新执行身份、Chat 复用及迟到反馈由状态机和故障票据决定，不保证任意状态均可重试。
 
@@ -72,21 +82,21 @@ Map、Bot 及运行配置首版不增加 max_retries、自动重试条件等声�
 
 ## Decision
 
-采用阶段化 Bot 指导文档与直接 Task 绑定，node 使用具体 input 和 zone_id；静态定义、运行配置及通信执行各守职责。定义可保存与可启动分开，首版不保留格式版本、历史迁移或声明式重试策略。
+采用阶段化 Bot 指导文档与直接 Task 绑定，node 使用具体 input 和 zone 路径；静态定义、运行配置及通信执行各守职责。定义可保存与可启动分开；Map/Bot 重建示例，Task 一次性补齐类型，不保留旧格式运行时兼容或声明式重试策略。
 
 ## User stories
 
 1. As a 规划 Agent, I want 按阶段读取 Bot 的适用说明与指导, so that 我能选择能力并填写具体 node，而不把能力说明注入执行提示词。
 2. As a Bot 维护者, I want 分步完善指导与 Task 绑定, so that 我能灵活创建定义而无需伪造执行配置。
-3. As a 流程作者, I want 用 input 和 zone_id 表达本次工作与位置, so that 节点能沿用 Task 发起 Chat 的输入和位置规则。
+3. As a 流程作者, I want 用 input 和 zone 路径表达本次工作与位置, so that 节点能沿用 Task 发起 Chat 的输入和位置规则。
 4. As a 运行启动者, I want 启动前拒绝已知无效的外部引用, so that 不因可提前发现的配置错误执行部分流程。
 5. As a 管理者, I want 使用合法运行工具决定是否再次执行, so that 无需额外声明式策略也能处理重试，而不把未设计的返工能力当成保证。
 
 ## Preconditions
 
 - 消费[绑定决策](01-execution-binding.md)的 Bot/Task/Chat 分层、独立 Chat、管理者启动、Workspace 与配置不变前提。
-- Task 发起 Chat 的实际输入、zone 解析及 omp 能力必须由接入设计核实；本票不证明宿主已支持。
-- 存量仅有示例；用户已免除历史迁移需求。
+- Task 发起 Chat 的实际输入、zone 解析及 omp 能力必须由接入设计核实；本票不证明宿主已支持。zone 登记现有 path 由 backend/src/zones.rs 的 RegisteredZone 与 frontend/src/zoneApi.ts 的 ZoneRegistration 提供，不依赖尚不存在的稳定 ID。
+- Map/Bot 存量仅有示例；其迁移豁免不覆盖 Task。Task 需按本票约定一次性补齐类型，既有身份、配置与历史来源关联保持不变。
 
 ## Postconditions
 
