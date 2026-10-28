@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react'
 import { MapGraph } from './MapGraph'
 import { listBots, loadMap, type Bot, type WorkflowMap } from './schedulerApi'
 import { fetchTasks, type Task } from './taskApi'
-import type { ChatReference, Report, Run } from './workflowApi'
+import type { Report, Run } from './workflowApi'
+import { SavedChat } from './RunChat'
 import './workflow.css'
 
-function SavedChat({ chat }: { chat: ChatReference | null }) {
-  return chat ? <dl>{Object.entries(chat).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl> : <p>尚无已保存 Chat 关联。</p>
-}
 function FactTime({ at }: { at: number }) {
   return <time dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleString()}</time>
 }
@@ -75,17 +73,17 @@ export function RunCurrentView({ run, reports, active }: { run: Run; reports: Re
         {node.status === 'pending' && <p>{blockers.length ? `前置未完成：${blockers.join('、')}` : '前置依赖已满足。'}{run.status !== 'running' && ` Run 状态为 ${run.status}，不可派发。`}</p>}
       </> : <p>当前定义不可用；仅显示保存事实。</p>}
       <h4>当前执行（已保存事实）</h4>
-      {node.execution ? <><dl><dt>执行 ID</dt><dd>{node.execution.id}</dd><dt>执行 Task</dt><dd>{taskName(node.execution.taskId)}</dd><dt>执行 zone</dt><dd>{node.execution.zone}</dd></dl><SavedChat chat={node.execution.chat} /></> : <p>尚无当前执行或 Chat 关联；读取不会创建执行。</p>}
+      {node.execution ? <><dl><dt>执行 ID</dt><dd>{node.execution.id}</dd><dt>执行 Task</dt><dd>{taskName(node.execution.taskId)}</dd><dt>执行 zone</dt><dd>{node.execution.zone}</dd></dl><SavedChat label="当前执行 Chat" chat={node.execution.chat} /></> : <p>尚无当前执行或 Chat 关联；读取不会创建执行。</p>}
       {node.failure && <section aria-label="节点失败"><h4>失败原因 · {node.failure.stage}</h4><p>{node.failure.message}</p>{node.failure.effects && <dl>{Object.entries(node.failure.effects).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '未知')}</dd></div>)}</dl>}</section>}
       {node.completion && <section aria-label="交接完成说明"><h4>完成说明</h4><p>{node.completion.reason}</p><FactTime at={node.completion.at} /></section>}
       <section aria-label="当前执行适用报告"><h4>当前执行适用报告</h4>{applicable.length ? applicable.map(report => <article key={report.id}><p>{report.id} · <FactTime at={report.at} /></p><pre>{report.body}</pre></article>) : <p>尚无当前执行适用报告。</p>}</section>
-      <section aria-label="已保存旧执行事实"><h4>已保存旧执行事实</h4>
+      <details key={nodeId} aria-label="已保存旧执行事实"><summary>旧执行历史（{node.previousExecutions.length} 次已保存执行）</summary>
         {node.previousExecutions.length ? node.previousExecutions.map((fact, index) => <article key={fact.execution?.id ?? index}>
-          {fact.execution ? <><dl><dt>旧执行 ID</dt><dd>{fact.execution.id}</dd><dt>旧执行 Task</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>旧执行 zone</dt><dd>{fact.execution.zone}</dd></dl><SavedChat chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
+          {fact.execution ? <><dl><dt>旧执行 ID</dt><dd>{fact.execution.id}</dd><dt>旧执行 Task</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>旧执行 zone</dt><dd>{fact.execution.zone}</dd></dl><SavedChat label="旧执行 Chat" chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
           {fact.failure && <p>旧失败 · {fact.failure.stage}：{fact.failure.message}</p>}
         </article>) : <p>尚无已保存旧执行。</p>}
-        {reports.filter(report => report.nodeId === nodeId && report.executionId !== node.execution?.id).map(report => <article key={report.id}><p>旧报告 · {report.id} · 执行 {report.executionId} · <FactTime at={report.at} /></p><pre>{report.body}</pre><SavedChat chat={report.source} /></article>)}
-      </section>
+        {reports.filter(report => report.nodeId === nodeId && report.executionId !== node.execution?.id).map(report => <article key={report.id}><p>旧报告 · {report.id} · 执行 {report.executionId} · <FactTime at={report.at} /></p><pre>{report.body}</pre><SavedChat label="旧报告来源 Chat" chat={report.source} /></article>)}
+      </details>
     </section>}
     <p>只读入口不提供状态操作。需要核实或交接，请向已关联管理者 Chat 表达意图；报告不自动完成节点，普通 Chat Resume 不接管 Run。</p>
   </section>
