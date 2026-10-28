@@ -1,4 +1,5 @@
-//! Run startup and read-only facts. Startup errors are intentionally process-local.
+//! Run startup, manager queries and explicit node dispatch.
+//! Manager startup errors are process-local; node dispatch failures are persisted.
 use crate::{AppState, files::FileStore};
 use axum::{
     Json,
@@ -29,6 +30,16 @@ pub struct ChatReference {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NodeState {
     pub status: String,
+    pub execution: Option<NodeExecution>,
+    pub failure: Option<StartupFailure>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NodeExecution {
+    pub id: String,
+    pub task_id: String,
+    pub zone: String,
+    pub chat: Option<ChatReference>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -44,7 +55,7 @@ pub struct Run {
     pub status: String,
     pub nodes: BTreeMap<String, NodeState>,
 }
-#[derive(Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Effects {
     pub records_initialized: bool,
@@ -58,7 +69,7 @@ pub struct Effects {
     pub input_attempted: bool,
     pub input_submitted: bool,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupFailure {
     pub stage: String,
@@ -69,6 +80,7 @@ pub struct StartupFailure {
 pub struct Runs {
     files: FileStore,
     active: Mutex<BTreeMap<String, Option<StartupFailure>>>,
+    operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
 }
 impl Runs {
     fn paths(state: &AppState, id: &str) -> [PathBuf; 3] {
@@ -180,6 +192,8 @@ pub async fn start_run(
                     id,
                     NodeState {
                         status: "pending".into(),
+                        execution: None,
+                        failure: None,
                     },
                 )
             })
@@ -385,6 +399,16 @@ pub async fn manager_status(
         Ok(v) => v,
         Err(e) => return e,
     };
+    match manager_run(&state, &input.session_id).await {
+        Ok(run) => match snapshot(&state, &run) {
+            Ok(value) => Json(value).into_response(),
+            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "definition-read-failed", &message),
+        },
+        Err(response) => response,
+    }
+}
+
+async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response> {
     let ids = state
         .runs
         .active
@@ -402,24 +426,190 @@ pub async fn manager_status(
         if run
             .manager
             .as_ref()
-            .is_some_and(|manager| manager.session_id == input.session_id)
+            .is_some_and(|manager| manager.session_id == session_id)
         {
             if matched.is_some() {
-                return error(
+                return Err(error(
                     StatusCode::FORBIDDEN,
                     "manager-ambiguous",
                     "原生身份关联不唯一。",
-                );
+                ));
             }
             matched = Some(run);
         }
     }
     match matched {
-        Some(run) => Json(serde_json::json!({"snapshot":run})).into_response(),
-        None => error(
+        Some(run) => Ok(run),
+        None => Err(error(
             StatusCode::FORBIDDEN,
             "manager-unassociated",
             "当前原生身份没有唯一的管理者归属。",
-        ),
+        )),
     }
+}
+
+fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if run.status != "running" { reasons.push(format!("Run 状态为 {}", run.status)); }
+    match run.nodes.get(id) {
+        None => reasons.push("node 不在本次 Run 中".into()),
+        Some(node) if node.status != "pending" => reasons.push(format!("node 状态为 {}，仅 pending 可派发", node.status)),
+        _ => {}
+    }
+    match dependencies.get(id) {
+        None => reasons.push("node 不在当前 Map 中".into()),
+        Some(ids) => for dependency in ids {
+            if !run.nodes.get(dependency).is_some_and(|node| node.status == "completed") {
+                reasons.push(format!("前置 {dependency} 尚未 completed"));
+            }
+        }
+    }
+    reasons
+}
+fn snapshot(state: &AppState, run: &Run) -> Result<serde_json::Value, String> {
+    let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+    let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
+    let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
+    Ok(serde_json::json!({"snapshot":run,"ready":ready,"blocked":blocked_by,"canFinish":run.nodes.values().all(|node| node.status == "completed")}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DispatchRequest {
+    session_id: String,
+    nodes: Vec<String>,
+}
+pub async fn manager_dispatch(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> Response {
+    if !crate::sessions::is_local_source(peer.ip()) {
+        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
+    }
+    let input: DispatchRequest = match crate::chat_command_body(request, "派发节点").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let run = match manager_run(&state, &input.session_id).await {
+        Ok(run) => run,
+        Err(response) => return response,
+    };
+    // Accepted external work outlives a disconnected tool request. The business
+    // lock spans the batch, while file locks never span host calls.
+    let work = tokio::spawn(async move {
+        let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
+        let _operation = lock.lock().await;
+        let mut run = state.runs.read(&state, &run.id).await?;
+        let mut results = Vec::with_capacity(input.nodes.len());
+        for id in input.nodes {
+            let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+            let reasons = blocked(&run, &id, &dependencies);
+            if !reasons.is_empty() {
+                results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
+                continue;
+            }
+            results.push(dispatch_one(&state, &mut run, &id).await);
+        }
+        let mut response = snapshot(&state, &run)?;
+        response["results"] = serde_json::Value::Array(results);
+        Ok::<_, String>(response)
+    }).await;
+    match work {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-failed", &message),
+        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-internal", &join.to_string()),
+    }
+}
+
+async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
+    let paths = Runs::paths(state, &run.id);
+    let _guards = state.runs.files.lock(&paths).await;
+    FileStore::replace(&paths[0], &serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
+async fn record_dispatch(state: &AppState, run: &Run, id: &str) -> Result<(), String> {
+    use std::io::Write;
+    let paths = Runs::paths(state, &run.id);
+    let _guards = state.runs.files.lock(&paths).await;
+    let node = &run.nodes[id];
+    let entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
+    let mut bytes = serde_json::to_vec(&entry).map_err(|e| e.to_string())?;
+    bytes.push(b'\n');
+    let mut file = fs::OpenOptions::new().append(true).open(&paths[1]).map_err(|e| e.to_string())?;
+    file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())
+}
+
+async fn dispatch_one(state: &AppState, run: &mut Run, id: &str) -> serde_json::Value {
+    let mut effects = Effects { records_initialized: true, ..Effects::default() };
+    let mut stage = "resolve";
+    let mut candidate = run.clone();
+    let result: Result<(), String> = async {
+        let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
+        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&target.task)).map_err(|e| e.message())?;
+        preset.env.check_entrypoints()?;
+        let node = candidate.nodes.get_mut(id).unwrap();
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), zone: target.zone.clone(), chat: None });
+        stage = "workspace";
+        let workspace_id = &run.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;
+        let workspace = state.herdr.workspace_by_id(workspace_id).await.map_err(|e| e.message())?.ok_or("管理者实际 Workspace 不可用；不回退默认 Workspace")?;
+        effects.workspace_id = Some(workspace.id.clone());
+        stage = "tab";
+        let name = crate::chats::render_chat_name(&target.task.chat_name, &target.zone, &target.task, &crate::chats::new_chat_id());
+        let tab = state.herdr.create_tab(&workspace.id, Some(&target.zone), &name).await.map_err(|e| e.message())?;
+        effects.tab_id = Some(tab.tab_id.clone());
+        effects.pane_id = Some(tab.pane_id.clone());
+        let agent = crate::chats::new_agent_name();
+        effects.agent_name = Some(agent.clone());
+        stage = "start";
+        state.herdr.start_agent(&agent, "omp", &tab.pane_id, &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger))).await.map_err(|e| e.message())?;
+        effects.agent_started = true;
+        stage = "identity";
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let identity = tokio::time::timeout_at(deadline, state.herdr.native_session(&agent, "omp", deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
+        effects.session_id = Some(identity.session_id.clone());
+        if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_some_and(|chat| chat.session_id == identity.session_id)) {
+            return Err("宿主未返回独立的新原生 Chat 身份".into());
+        }
+        if !crate::zones::same_path(&identity.cwd, &target.zone) {
+            return Err(format!("原生 Chat cwd 与定义 zone 不一致：{}", identity.cwd));
+        }
+        node.execution.as_mut().unwrap().chat = Some(ChatReference { session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(), tab_id: tab.tab_id, pane_id: tab.pane_id, agent_name: agent.clone() });
+        stage = "association";
+        save_run(state, &candidate).await?;
+        *run = candidate.clone();
+        effects.association_saved = true;
+        stage = "history";
+        state.history.record_zone(&identity.session_id, &name, "omp", &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id).await.map_err(|e| e.to_string())?;
+        stage = "submit";
+        let paths = Runs::paths(state, &run.id);
+        let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.input);
+        let text = crate::chats::compose_initial_input(&target.task, preset.trigger.native_skill.as_deref(), &input);
+        effects.input_attempted = true;
+        state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
+        effects.input_submitted = true;
+        candidate.nodes.get_mut(id).unwrap().status = "running".into();
+        stage = "state";
+        save_run(state, &candidate).await?;
+        Ok(())
+    }.await;
+    if let Err(message) = result {
+        let failure = StartupFailure { stage: stage.into(), message, effects: effects.clone() };
+        let node = candidate.nodes.get_mut(id).unwrap();
+        node.status = "failed".into();
+        node.failure = Some(failure.clone());
+        let persistence_error = save_run(state, &candidate).await.err();
+        let history_error = if persistence_error.is_none() {
+            *run = candidate;
+            record_dispatch(state, run, id).await.err()
+        } else { None };
+        eprintln!("[workflow] run={} node={} dispatch-failed stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
+        return serde_json::json!({"nodeId":id,"status":"failed","failure":failure,"effects":effects,"persistenceError":persistence_error,"historyError":history_error});
+    }
+    *run = candidate;
+    let history_error = record_dispatch(state, run, id).await.err();
+    if let Some(message) = &history_error {
+        eprintln!("[workflow] run={} node={} dispatch-history error={}；状态已提交，未回滚。", run.id, id, message);
+    }
+    serde_json::json!({"nodeId":id,"status":"running","effects":effects,"historyError":history_error})
 }
