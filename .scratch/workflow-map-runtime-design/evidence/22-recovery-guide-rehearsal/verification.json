@@ -65,5 +65,19 @@
     "evidencePackage": "Partial preparation only: guide/matrix, actual missing-deployment evidence and deterministic backend output. No native transcript, screenshot, tool result or artifact exists to hand off as a completed rehearsal.",
     "resumeCondition": "Deploy the real metadata-defined role entrypoints and establish an isolated native Herdr/omp environment. The executing Agent must then run all four documented procedures and capture actual role Prompt/tool evidence; only the final qualitative judgment belongs to the user."
   },
+  "takeover": {
+    "previousImplementationCommit": "0415bcf2a37cd1d34f3b25a3507a3fee329fb018",
+    "previousExecutionReport": "C:/Users/hugos/AppData/Local/Temp/hyper-auto-coding-bRLjB7/implement-4fec5fe0-3e6f-4582-ac6f-5828d15a40bc.md",
+    "executionRecovery": "Previous invocation reported aborted despite retaining its implementation commit. This invocation preserves that work and returns a normal structured handoff; normal execution completion is not contract acceptance.",
+    "ownership": "Previous implementing Agent confirmed it no longer writes this worktree; takeover owns subsequent edits.",
+    "additionalObservedEvidence": [
+      "Read the actual deployed E:/Developer/myhub/my-agent-toolkit/entrypoints/omp-auto directory: only codebase-tools.ts and connect-bot.ts are present.",
+      "A filename search for manager-chat* and node-chat* throughout the actual toolkit, including hidden and ignored files, returned no files.",
+      "Main explicitly confirmed no new deployment path or implementation commit is available and directed a normal handoff without marking the ticket or promises passed."
+    ],
+    "verificationReuse": "The retained 53-pass workflow_dispatch result was not rerun. No new tests, browser rehearsal, native role loading or Prompt capture was executed during takeover.",
+    "acceptanceUnchanged": "P64.01 and P65.01 remain unverified and not passed. H2 evidence remains partial; P70 remains separately owned. Preserve in-progress; do not close based on this invocation finishing normally.",
+    "requiredContinuation": "Deploy the actual manager-chat/node-chat implementation and provide an isolated Herdr/omp environment, then run all four real S1/S3 procedures and capture actual tool schemas, first-enabled-run injections, native identities, interventions and observed outcomes."
+  },
   "scope": "No external toolkit files, other tickets, workflow reports, integration workspace or user Herdr resources modified. No merge, retro or additional ticket dispatch."
 }
