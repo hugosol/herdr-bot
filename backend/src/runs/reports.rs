@@ -25,7 +25,7 @@ fn read_reports(path: &std::path::Path) -> Result<Vec<Report>, String> {
         .map(|line| serde_json::from_slice(line).map_err(|e| e.to_string())).collect()
 }
 
-pub(super) async fn summary(state: &AppState, run: &Run) -> Result<serde_json::Value, String> {
+pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
     let reports = read_reports(&paths[2])?;
@@ -38,7 +38,9 @@ pub(super) async fn summary(state: &AppState, run: &Run) -> Result<serde_json::V
             pending.insert(&report.node_id, &report.id);
         }
     }
-    Ok(serde_json::json!({"reports":reports,"pendingReports":pending}))
+    let mut value = serde_json::json!({"pendingReports":pending});
+    if include_reports { value["reports"] = serde_json::to_value(&reports).map_err(|e| e.to_string())?; }
+    Ok(value)
 }
 
 #[derive(Deserialize)]
@@ -111,6 +113,7 @@ pub async fn node_report(
             bytes.push(b'\n');
             let mut file = fs::OpenOptions::new().append(true).open(&paths[2]).map_err(|e| e.to_string())?;
             file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())?;
+            state.runs.changed(&run.id, true).await;
             report
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
