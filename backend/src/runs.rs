@@ -16,6 +16,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex;
+mod reports;
+pub use reports::node_report;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -119,9 +121,13 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
         Err(error) if failure.is_some() => (None, Some(error)),
         Err(error) => return Err(error),
     };
-    Ok(
-        serde_json::json!({"id":id,"run":run,"managed":managed,"startupError":failure,"readError":read_error}),
-    )
+    let mut value = serde_json::json!({"id":id,"run":run,"managed":managed,"startupError":failure,"readError":read_error});
+    if let Some(run) = &run {
+        let reports = reports::summary(state, run).await?;
+        value["reports"] = reports["reports"].clone();
+        value["pendingReports"] = reports["pendingReports"].clone();
+    }
+    Ok(value)
 }
 pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
@@ -400,7 +406,7 @@ pub async fn manager_status(
         Err(e) => return e,
     };
     match manager_run(&state, &input.session_id).await {
-        Ok(run) => match snapshot(&state, &run) {
+        Ok(run) => match snapshot(&state, &run).await {
             Ok(value) => Json(value).into_response(),
             Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "definition-read-failed", &message),
         },
@@ -466,11 +472,16 @@ fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) ->
     }
     reasons
 }
-fn snapshot(state: &AppState, run: &Run) -> Result<serde_json::Value, String> {
+async fn snapshot(state: &AppState, run: &Run) -> Result<serde_json::Value, String> {
     let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
     let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
     let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
-    Ok(serde_json::json!({"snapshot":run,"ready":ready,"blocked":blocked_by,"canFinish":run.nodes.values().all(|node| node.status == "completed")}))
+    let mut value = reports::summary(state, run).await?;
+    value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
+    value["ready"] = serde_json::json!(ready);
+    value["blocked"] = serde_json::json!(blocked_by);
+    value["canFinish"] = serde_json::json!(run.nodes.values().all(|node| node.status == "completed"));
+    Ok(value)
 }
 
 #[derive(Deserialize)]
@@ -511,7 +522,7 @@ pub async fn manager_dispatch(
             }
             results.push(dispatch_one(&state, &mut run, &id).await);
         }
-        let mut response = snapshot(&state, &run)?;
+        let mut response = snapshot(&state, &run).await?;
         response["results"] = serde_json::Value::Array(results);
         Ok::<_, String>(response)
     }).await;

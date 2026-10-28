@@ -74,6 +74,214 @@ impl Scenario {
     }
 }
 
+// P24.01/P27.01/P28.01: independent literals require two append-only reports
+// from the real current node identity, never a state transition or read receipt.
+// A report attributed from caller-supplied metadata or cleared by reads violates
+// this scenario at the HTTP, persisted-message and external-input seams.
+#[tokio::test]
+async fn node_reports_are_system_attributed_append_only_and_do_not_complete_work() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-report").await;
+    let id = started["id"].as_str().unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-report"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-report", &["A"]).await;
+    let root = s.config.scheduler.run_directory.join(id);
+    let before = fs::read(root.join("run.json")).unwrap();
+    let mut reports = Vec::new();
+    for body in ["Result: C:\\results\\one.txt; draft only", "Result: C:\\results\\two.txt; reviewed"] {
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-report","body":body}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let value: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(value["saved"], true);
+        assert_eq!(value["notification"]["status"], "submitted");
+        assert_eq!(value["report"]["body"], body);
+        reports.push(value["report"].clone());
+    }
+    assert_ne!(reports[0]["id"], reports[1]["id"]);
+    for report in &reports {
+        assert!(!report["id"].as_str().unwrap().is_empty());
+        assert!(report["at"].as_u64().unwrap() >= started["run"]["createdAt"].as_u64().unwrap());
+        assert_eq!(report["type"], "report");
+        assert_eq!(report["runId"], id);
+        assert_eq!(report["nodeId"], "A");
+        let run: Value = serde_json::from_slice(&before).unwrap();
+        assert_eq!(report["executionId"], run["nodes"]["A"]["execution"]["id"]);
+        assert_eq!(report["source"]["sessionId"], "node-report");
+        assert_eq!(report["target"]["sessionId"], "manager-report");
+    }
+    assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), reports);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
+    for _ in 0..2 {
+        let response = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let value: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(value["reports"], json!(reports));
+        assert_eq!(value["pendingReports"], json!({"A":reports[1]["id"]}));
+    }
+    let calls = s.herdr.calls();
+    let inputs: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(inputs.len(), 4);
+    for (input, report) in inputs[2..].iter().zip(&reports) {
+        assert_eq!(input["target"], started["run"]["manager"]["agentName"]);
+        assert!(input["text"].as_str().unwrap().contains(report["body"].as_str().unwrap()));
+        assert!(input["text"].as_str().unwrap().contains(report["id"].as_str().unwrap()));
+        assert!(input["text"].as_str().unwrap().contains("node: A"));
+    }
+}
+
+// P25.01: a real Windows read-only messages file must reject persistence.
+// The external adapter remains real so any accidental prompt is observable.
+#[tokio::test]
+async fn report_save_failure_has_no_message_pending_item_or_host_delivery() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-save-error").await;
+    let id = started["id"].as_str().unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-save-error"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-save-error", &["A"]).await;
+    let path = s.config.scheduler.run_directory.join(id).join("messages.jsonl");
+    let original = fs::metadata(&path).unwrap().permissions();
+    let mut readonly = original.clone();
+    readonly.set_readonly(true);
+    fs::set_permissions(&path, readonly).unwrap();
+    let calls = s.herdr.calls();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-save-error","body":"must not persist or notify"}).to_string()).await;
+    fs::set_permissions(&path, original).unwrap();
+    assert_eq!(response.status, 500, "{}", response.body);
+    let value: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(value["code"], "report-save-failed");
+    assert_eq!(value["saved"], false);
+    assert_eq!(value["notification"]["status"], "not-attempted");
+    assert!(fs::read(&path).unwrap().is_empty());
+    let response = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    let value: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(value["reports"], json!([]));
+    assert_eq!(value["pendingReports"], json!({}));
+    assert_eq!(s.herdr.calls(), calls);
+}
+
+// P26.01/P28.01/P68.02: the external prompt gate holds delivery after
+// persistence. Saved reports must already be visible to the manager; a failed
+// single attempt must not pause or resend during the 300 ms post-result window.
+#[tokio::test]
+async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-notify-error").await;
+    let id = started["id"].as_str().unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-notify-error"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-notify-error", &["A"]).await;
+    let root = s.config.scheduler.run_directory.join(id);
+    let before = fs::read(root.join("run.json")).unwrap();
+    let release = s.data.path().join("notify-release");
+    s.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let addr = s.server.addr();
+    let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-notify-error","body":"SENSITIVE-RESULT: saved before notification"}).to_string()).await });
+    common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count() == 3).await;
+    assert!(!request.is_finished());
+    let reports = common::read_json_lines(&root.join("messages.jsonl"));
+    assert_eq!(reports.len(), 1);
+    let report_id = reports[0]["id"].clone();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-notify-error"}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let status: Value = serde_json::from_str(&response.body).unwrap();
+    fs::write(release, b"release").unwrap();
+    let response = request.await.unwrap();
+    assert_eq!(status["pendingReports"], json!({"A":report_id}));
+    assert_eq!(response.status, 200, "{}", response.body);
+    let value: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(value["saved"], true);
+    assert_eq!(value["notification"]["status"], "failed");
+    assert!(!value["notification"]["reason"].as_str().unwrap().is_empty());
+    assert_eq!(value["report"]["id"], report_id);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), reports);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
+    let calls = s.herdr.calls();
+    assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), 3);
+    println!("P26.01/P68.02 external calls after 300ms: {}", json!(calls));
+}
+
+// P24.01: neither a manager/unknown session nor forged ownership fields may
+// produce a report or manager input. The model-facing body is the only business
+// argument; sessionId belongs to the trusted public Session transport adapter.
+#[tokio::test]
+async fn report_rejects_non_node_identity_and_caller_supplied_ownership() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-reject").await;
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-reject"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("manager-reject", &["A"]).await;
+    let calls = s.herdr.calls();
+    for (body, expected) in [
+        (json!({"sessionId":"manager-reject","body":"manager cannot report"}), 403),
+        (json!({"sessionId":"unassociated","body":"no binding"}), 403),
+        (json!({"sessionId":"node-reject","body":"forged","runId":"another-run"}), 400),
+        (json!({"sessionId":"node-reject","body":"forged","nodeId":"B"}), 400),
+        (json!({"sessionId":"node-reject","body":"forged","target":"another-chat"}), 400),
+        (json!({"sessionId":"node-reject"}), 400),
+    ] {
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &body.to_string()).await;
+        assert_eq!(response.status, expected, "{}", response.body);
+    }
+    assert!(fs::read(s.config.scheduler.run_directory.join(started["id"].as_str().unwrap()).join("messages.jsonl")).unwrap().is_empty());
+    assert_eq!(s.herdr.calls(), calls);
+}
+
+// P61.01/P68.02: isolate the production diagnostic sink in a child process.
+// Closing its stderr pipe is a real OS write failure, not a mocked logger.
+// Independent literals prohibit report text in diagnostics; 300 ms of actual
+// external calls after the result distinguishes one attempt from retry loops.
+#[tokio::test]
+async fn report_delivery_diagnostics_are_body_free_and_sink_failure_never_retries() {
+    const MODE: &str = "HERDR_REPORT_DIAGNOSTIC_TEST_MODE";
+    if let Ok(mode) = std::env::var(MODE) {
+        let s = Scenario::new().await;
+        let started = s.start("manager-diagnostic").await;
+        let id = started["id"].as_str().unwrap();
+        s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-diagnostic"},"native_cwd":s.data.path().join("node-zone")}));
+        s.dispatch("manager-diagnostic", &["A"]).await;
+        let before = fs::read(s.config.scheduler.run_directory.join(id).join("run.json")).unwrap();
+        let failed = mode != "success";
+        s.herdr.set_behavior(json!({"fail_prompt":failed}));
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-diagnostic","body":"SENSITIVE-DIAGNOSTIC-BODY"}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let value: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(value["saved"], true);
+        assert_eq!(value["notification"]["status"], if failed {"failed"} else {"submitted"});
+        assert_eq!(value["diagnostic"]["status"], if mode == "broken" {"failed"} else {"written"});
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let root = s.config.scheduler.run_directory.join(id);
+        assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), vec![value["report"].clone()]);
+        assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
+        let calls = s.herdr.calls();
+        assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), 3);
+        println!("REPORT-EVIDENCE {}", json!({"runId":id,"reportId":value["report"]["id"],"targetChat":started["run"]["manager"],"result":value["notification"]["status"],"externalCalls":calls,"observationMs":300}));
+        return;
+    }
+    for mode in ["success", "failure", "broken"] {
+        let cwd = TempDir::new("report diagnostic child cwd");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "report_delivery_diagnostics_are_body_free_and_sink_failure_never_retries", "--nocapture"])
+            .env(MODE, mode).current_dir(cwd.path())
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().unwrap();
+        if mode == "broken" { drop(child.stderr.take()); }
+        let output = child.wait_with_output().unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "{mode}\n{stdout}\n{stderr}");
+        let evidence: Value = serde_json::from_str(stdout.lines().find_map(|line| line.strip_prefix("REPORT-EVIDENCE ")).unwrap()).unwrap();
+        if mode != "broken" {
+            assert!(!stderr.contains("SENSITIVE-DIAGNOSTIC-BODY"));
+            let diagnostic: Value = serde_json::from_str(stderr.lines().find(|line| line.contains("workflow-report-delivery")).unwrap()).unwrap();
+            assert_eq!(diagnostic["runId"], evidence["runId"]);
+            assert_eq!(diagnostic["reportId"], evidence["reportId"]);
+            assert_eq!(diagnostic["targetChat"], evidence["targetChat"]);
+            assert_eq!(diagnostic["result"], evidence["result"]);
+            assert!(!diagnostic["reason"].as_str().unwrap().is_empty());
+        }
+        println!("P61.01/P68.02 mode={mode} stderr={stderr} evidence={evidence}");
+    }
+}
+
 #[tokio::test]
 async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_workspace() {
     let s = Scenario::new().await;
