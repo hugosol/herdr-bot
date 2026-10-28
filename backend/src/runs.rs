@@ -1,4 +1,4 @@
-//! Run startup, manager queries and explicit node dispatch.
+//! Run startup, manager queries, explicit node dispatch and handoff/finish.
 //! Manager startup errors are process-local; node dispatch failures are persisted.
 use crate::{AppState, files::FileStore};
 use axum::{
@@ -17,7 +17,9 @@ use std::{
 };
 use tokio::sync::Mutex;
 mod reports;
+mod completion;
 pub use reports::node_report;
+pub use completion::{manager_complete, manager_finish};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -34,6 +36,15 @@ pub struct NodeState {
     pub status: String,
     pub execution: Option<NodeExecution>,
     pub failure: Option<StartupFailure>,
+    pub completion: Option<Completion>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Completion {
+    pub id: String,
+    pub at: u64,
+    pub actor: ChatReference,
+    pub reason: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -42,6 +53,13 @@ pub struct NodeExecution {
     pub task_id: String,
     pub zone: String,
     pub chat: Option<ChatReference>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Finished {
+    pub id: String,
+    pub at: u64,
+    pub actor: ChatReference,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -55,6 +73,7 @@ pub struct Run {
     pub user_input: String,
     pub manager: Option<ChatReference>,
     pub status: String,
+    pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -190,6 +209,7 @@ pub async fn start_run(
         user_input: input.user_input,
         manager: None,
         status: "running".into(),
+        finished: None,
         nodes: checked
             .node_ids
             .into_iter()
@@ -200,6 +220,7 @@ pub async fn start_run(
                         status: "pending".into(),
                         execution: None,
                         failure: None,
+                        completion: None,
                     },
                 )
             })
@@ -480,7 +501,7 @@ async fn snapshot(state: &AppState, run: &Run) -> Result<serde_json::Value, Stri
     value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
     value["ready"] = serde_json::json!(ready);
     value["blocked"] = serde_json::json!(blocked_by);
-    value["canFinish"] = serde_json::json!(run.nodes.values().all(|node| node.status == "completed"));
+    value["canFinish"] = serde_json::json!(matches!(run.status.as_str(), "running" | "paused") && run.nodes.values().all(|node| node.status == "completed"));
     Ok(value)
 }
 

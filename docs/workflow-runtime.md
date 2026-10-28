@@ -56,13 +56,51 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 同批拒绝或启动失败不取消其他合法目标，不关闭或回滚已创建的 Chat。成功派发后 node 为 running；启动失败为 failed，保留执行 ID、来源 Task、zone、可得 Chat 关联及失败阶段/原因，并追加执行历史。正常已记录的 running/failed 再次 dispatch 均拒绝，不增加外部启动、不覆盖首次事实。崩溃或关联保存失败窗口不承诺完整幂等，先核实已发生效果，勿盲目重发。同 Run 派发批次互斥；不同 Run 的身份与事实独立。
 
-manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供上述 status/dispatch 指引，并将工具接到上述协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
+manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供 status/dispatch 及下文 complete/finish 指引，并将工具接到对应协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
 
 ## 派发验证入口与证据边界
 
 确定性派发检查入口为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端交付检查为 `node scripts/test-backend.mjs`（先按测试指引构建前端）。这些测试使用真实 HTTP TestServer、每例独占的实际文件及外部记录型 Herdr 副本，覆盖关联提交屏障、完整字面触发输入、批内拒绝/失败/成功、重复拒绝、Run 隔离、磁盘故障与 Workspace 不回退。夹具进程记录实际 cwd，但它不是 omp 原生 Chat，也不验证模型或公共 Prompt 注入。
 
 真实宿主复验还需部署 metadata 指定的 manager-chat/node-chat，使用独占验收 zone、数据目录与 Herdr 实例：经 manager 实际工具先查 A/B ready、C 被 A/B 阻塞，再派发 A/B；保存原生 session_id、实际 cwd 和 Workspace ID、实际输入及三份记录。与 Task 的独立预期逐字段核对 model/thinking、初始 Skill、固定 prompt 和 node.input；管理者本次要求与 Bot/Map 文档使用互异标记，必须不出现在 node 实际初始输入中。让验收 node Chat 读取传入的 zone 外说明/记录路径，而不以服务端自己可读代替。最后重复派发，观察外部无新增启动。角色扩展未部署或无法隔离宿主时，这部分仍是未验证，不用上述受控结果替代。
+
+## 显式交接完成与结束 Run
+
+管理者检查结果确实可交接后才使用 `complete`，不必等执行 Chat 停轮或退出。管理者工具的业务参数只有 `nodeId` 与 `reason`；`reason` 必须为非空说明，应记录接受的结果、地址及限制，原文保留。传输身份仍由公共 Session 能力自动取得，不让模型或用户手填归属：
+
+```http
+POST /api/workflow/manager/complete
+Content-Type: application/json
+
+{"sessionId":"<当前管理者真实身份>","nodeId":"A","reason":"结果已可交接；清理工作仍在原 Chat 继续"}
+```
+
+Run running 或 paused 时，running node 可以完成；人工已处理并确认可交接的执行阶段 failed 也可完成，但 pending 或派发阶段 failed 不能借 complete 跳过工作或核实。完成不产生报告、不补发材料、不结束原 Chat、不自主派发下游。所需结果地址与限制仍应通过原 Chat 的 report 补齐，后端不额外判断结果质量。A/B → C 中只完成 A 不够：C 仍由 B 阻塞；两者均 completed 后，管理者须另行显式 dispatch C。
+
+成功后返回 `changed=true`、`snapshot`、`ready`、`blocked`、`canFinish`、`reports` 和 `pendingReports`。说明与操作 ID、时间、真实管理者 `actor` 保存在 `snapshot.nodes.<nodeId>.completion`，状态与说明在同次当前事实写入中提交；对应 history 的 `action=complete` 含前后状态、说明与执行引用。同 Run 动作与整个派发批次串行，动作快照在该边界内生成，后续动作仍检查最新事实。completed node 不再列入可操作报告待办；补充 report 不重新打开节点或 Run。
+
+Run 尚未结束时重复 complete 返回 `changed=false`，不覆盖首次说明、时间、操作 ID 或成功历史。拒绝返回 HTTP 409，并附 `code`、原因、`changed=false` 和当前查询字段；例如 `node-not-completable`、`completion-reason-required`、`node-unknown` 或 `run-terminal`。无关联身份仍按管理者权限拒绝，不接受额外 Run/归属字段。
+
+全部节点 completed 后，管理者显式结束本次 Run：
+
+```http
+POST /api/workflow/manager/finish
+Content-Type: application/json
+
+{"sessionId":"<当前管理者真实身份>"}
+```
+
+finish 没有模型业务参数。running 或 paused 的 Run 全部节点 completed 才能成功；仍有未完成节点返回 HTTP 409、`code=nodes-incomplete`，不自动完成它们。成功返回 `changed=true` 及同样的查询字段，Run 变为 completed，`snapshot.finished` 保留首次操作 ID、时间与真实管理者，history 追加 `action=finish`。`canFinish` 表示**当前仍可执行 finish**，所以终态为 false；重复 finish 仍返回已有成功事实、`changed=false`，不追加历史。终态可查询、可接收当前 node 的补充报告，但拒绝 complete 和新 dispatch；dispatch 拒绝项不会调用宿主。活动中的 Chat 不阻止完成或 finish，也不被这些动作强制结束。
+
+当前事实保存失败返回 HTTP 500、`complete-failed` 或 `finish-failed`，不采用候选状态或追加成功历史。当前事实已保存但历史追加失败时，仍返回已生效快照与非空 `historyError`，不要当作全部未生效或盲目重试。三份记录不承诺跨文件事务；重复调用也不会修复或重复追加首次缺失的历史。
+
+manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status → 读取报告/核实交接 → complete → 显式 dispatch 下游 → 全部完成后 finish 的职责与上述拒绝/部分生效语义注入真实管理者 Chat。node-chat 指引应明确 report、停轮、退出都不替代管理者交接。本仓库没有外部 toolkit 的角色工具实现；HTTP 路由与此说明不是工具已装配或 Prompt 已注入的证明，不通过手填 HTTP 身份冒充真实角色工具验收。
+
+### 完成与结束的验证入口及边界
+
+可重复确定性入口为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture`，完整后端交付检查为 `node scripts/test-backend.mjs`。`explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact` 核对独立 A/B → C 字面快照、只完成 A 的拒绝和首次说明/历史；`finish_requires_every_handoff_and_terminal_actions_preserve_success` 核对显式派发 C、结束条件、终态拒绝、查询和重复 finish；`reports_and_observed_chat_lifecycle_never_replace_explicit_handoff` 分别经 HTTP 提交 report、停轮状态事件、退出登记事件，再显式完成并验证迟到报告不重新打开工作。各负向观察窗口为 **150 ms**，测试输出保留实际外部调用列表、事件和动作/查询结果；有限窗口不证明无限期没有自动行为。会话事件是受控输入，外部 Herdr 副本不是原生 omp，不能宣称证明了真实 Chat 停轮/退出。
+
+真实宿主复验需要 metadata 指定的 manager-chat/node-chat 实际交付：在独占数据、zone 与 Herdr 实例中，通过公共角色工具执行前置 report 后保持 running（让该 Chat 继续收尾），确认 C 拒绝；管理者 complete A/B 后显式 dispatch C，全部 complete 后 finish，保留原生工具结果、Prompt 注入、Chat 身份/活动顺序、三份运行记录和无强制结束/自主派发的有界外部调用证据。角色入口缺失时，本仓库确定性检查可执行，但原生工具/Prompt/真实 Chat 仍未验证，不能用受控 HTTP 结果宣称本票完整宿主验收。
 
 ## 节点报告与独立通知
 
