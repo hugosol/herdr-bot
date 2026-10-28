@@ -18,6 +18,8 @@ use std::{
 use tokio::sync::Mutex;
 mod reports;
 mod recovery;
+mod retry;
+pub use retry::manager_retry;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
 mod collect;
@@ -41,6 +43,18 @@ pub struct NodeState {
     pub execution: Option<NodeExecution>,
     pub failure: Option<StartupFailure>,
     pub completion: Option<Completion>,
+    pub previous_executions: Vec<ExecutionFact>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionFact {
+    pub execution: Option<NodeExecution>,
+    pub failure: Option<StartupFailure>,
+}
+impl NodeState {
+    fn executions(&self) -> impl Iterator<Item = &NodeExecution> {
+        self.execution.iter().chain(self.previous_executions.iter().filter_map(|fact| fact.execution.as_ref()))
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -229,6 +243,7 @@ pub async fn start_run(
                         execution: None,
                         failure: None,
                         completion: None,
+                        previous_executions: Vec::new(),
                     },
                 )
             })
@@ -549,7 +564,7 @@ pub async fn manager_dispatch(
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            results.push(dispatch_one(&state, &mut run, &id).await);
+            results.push(dispatch_one(&state, &mut run, &id, None).await);
         }
         let mut response = snapshot(&state, &run, true).await?;
         response["results"] = serde_json::Value::Array(results);
@@ -570,22 +585,36 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     Ok(())
 }
 
-async fn record_dispatch(state: &AppState, run: &Run, id: &str) -> Result<(), String> {
+async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Option<&str>) -> Result<(), String> {
     use std::io::Write;
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
     let node = &run.nodes[id];
-    let entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
+    let mut entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
+    if let Some(reason) = retry_reason {
+        entry["action"] = serde_json::json!("retry");
+        entry["reason"] = serde_json::json!(reason);
+        entry["actor"] = serde_json::json!(run.manager);
+        if let Some(previous) = node.previous_executions.last() {
+            entry["previousExecution"] = serde_json::json!(previous.execution);
+            entry["previousFailure"] = serde_json::json!(previous.failure);
+        }
+    }
     let mut bytes = serde_json::to_vec(&entry).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     let mut file = fs::OpenOptions::new().append(true).open(&paths[1]).map_err(|e| e.to_string())?;
     file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|e| e.to_string())
 }
 
-async fn dispatch_one(state: &AppState, run: &mut Run, id: &str) -> serde_json::Value {
+async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>) -> serde_json::Value {
     let mut effects = Effects { records_initialized: true, ..Effects::default() };
     let mut stage = "resolve";
     let mut candidate = run.clone();
+    if retry_reason.is_some() {
+        let node = candidate.nodes.get_mut(id).unwrap();
+        node.previous_executions.push(ExecutionFact { execution: node.execution.take(), failure: node.failure.take() });
+        node.completion = None;
+    }
     let result: Result<(), String> = async {
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&target.task)).map_err(|e| e.message())?;
@@ -610,7 +639,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str) -> serde_json::
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         let identity = tokio::time::timeout_at(deadline, state.herdr.native_session(&agent, "omp", deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
         effects.session_id = Some(identity.session_id.clone());
-        if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_some_and(|chat| chat.session_id == identity.session_id)) {
+        if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.executions().any(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
             return Err("宿主未返回独立的新原生 Chat 身份".into());
         }
         if !crate::zones::same_path(&identity.cwd, &target.zone) {
@@ -638,18 +667,26 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str) -> serde_json::
     if let Err(message) = result {
         let failure = StartupFailure { stage: stage.into(), message, effects: Some(effects.clone()) };
         let node = candidate.nodes.get_mut(id).unwrap();
+        if retry_reason.is_some() && node.execution.is_none() {
+            // Resolution failed before a target was usable. Retain a distinct
+            // attempt referencing the failed source, never the old Chat.
+            node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), zone: previous.zone.clone(), chat: None,
+            });
+        }
         node.status = "failed".into();
         node.failure = Some(failure.clone());
+        let execution = serde_json::json!(node.execution);
         let persistence_error = save_run(state, &candidate).await.err();
         let history_error = if persistence_error.is_none() {
             *run = candidate;
-            record_dispatch(state, run, id).await.err()
+            record_dispatch(state, run, id, retry_reason).await.err()
         } else { None };
-        eprintln!("[workflow] run={} node={} dispatch-failed stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
-        return serde_json::json!({"nodeId":id,"status":"failed","failure":failure,"effects":effects,"persistenceError":persistence_error,"historyError":history_error});
+        eprintln!("[workflow] run={} node={} action={} execution={} stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, if retry_reason.is_some() { "retry-failed" } else { "dispatch-failed" }, execution, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
+        return serde_json::json!({"nodeId":id,"status":"failed","execution":execution,"failure":failure,"effects":effects,"persistenceError":persistence_error,"historyError":history_error});
     }
     *run = candidate;
-    let history_error = record_dispatch(state, run, id).await.err();
+    let history_error = record_dispatch(state, run, id, retry_reason).await.err();
     if let Some(message) = &history_error {
         eprintln!("[workflow] run={} node={} dispatch-history error={}；状态已提交，未回滚。", run.id, id, message);
     }

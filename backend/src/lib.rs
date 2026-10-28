@@ -304,6 +304,7 @@ pub fn app_with_state(
         .route("/api/workflow/manager/complete", post(runs::manager_complete))
         .route("/api/workflow/manager/fail", post(runs::manager_fail))
         .route("/api/workflow/manager/recover", post(runs::manager_recover))
+        .route("/api/workflow/manager/retry", post(runs::manager_retry))
         .route("/api/workflow/manager/reconcile_dispatch", post(runs::manager_reconcile_dispatch))
         .route("/api/workflow/manager/finish", post(runs::manager_finish))
         .route("/api/workflow/manager/pause", post(runs::manager_pause))
