@@ -29,7 +29,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
     {!id && <p>从 scheduler 选择 Map 并发起 Run；详情链接可刷新或重新进入，不会再次启动。</p>}
     {id && <><p>Run ID：<code>{id}</code></p><button type="button" onClick={() => setRevision(value => value + 1)}>刷新 Run</button></>}
     {error && <p role="alert">{error} 不会自动重试或改写 Run。</p>}
-    {detail && !detail.managed && <p>历史现场 / 未接管：当前后端只读取已保存事实。</p>}
+    {detail && !detail.managed && <p>历史现场 / 未接管：当前后端只读取已保存事实。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。</p>}
     {detail?.startupError && <section role="alert" aria-label="管理者启动错误">
       <h3>管理者启动失败 · {detail.startupError.stage}</h3><p>{detail.startupError.message}</p>
       <p>已发生的外部效果未回滚；不会自动重试。请先核实下列真实引用，再决定如何处理。</p>

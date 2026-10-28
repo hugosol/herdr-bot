@@ -28,6 +28,132 @@ async function fixture() {
   return { server, zone, ids }
 }
 
+// Approved seams: delivered page + HTTP, process restart, external Herdr recorder
+// and the three real record files. P28.04/P49.01/P68.08 source: ticket 16.
+// Plausible violation: startup scans saved identities and re-enables management
+// or lets a pending report bypass the process-local ownership restriction.
+// Keep report/collect and every mutation real; only the external host is controlled.
+test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tools @time-contract', async ({ page }, info) => {
+  const { server, zone, ids } = await fixture()
+  const mapPath = path.join(server.cwd, '.data/workflow-maps/launch.json')
+  const map = JSON.parse(fs.readFileSync(mapPath, 'utf8'))
+  map.nodes.B = { ...map.nodes.A, title: 'B' }
+  map.nodes.C = { ...map.nodes.A, title: 'C' }
+  fs.writeFileSync(mapPath, JSON.stringify(map))
+  const post = (route: string, data: object) => page.request.post(`${server.baseURL}${route}`, { data })
+  const started = await post('/api/scheduler/maps/launch.json/runs', { managerTaskId: ids.manager, zone, userInput: '保存原始现场' })
+  expect(started.status()).toBe(201)
+  const { id } = await started.json()
+  for (const nodeId of ['A', 'B']) {
+    server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: `restart-node-${nodeId}` } })
+    const response = await post('/api/workflow/manager/dispatch', { sessionId: 'browser-manager-04', nodes: [nodeId] })
+    expect(response.status()).toBe(200)
+    expect((await response.json()).results[0].status).toBe('running')
+  }
+  const reported = await post('/api/workflow/node/report', { sessionId: 'restart-node-A', body: '重启前报告：结果地址与限制仍需管理者核实' })
+  expect(reported.status()).toBe(200)
+  const failed = await post('/api/workflow/manager/fail', { sessionId: 'browser-manager-04', nodeId: 'B', reason: '已核实的节点执行故障' })
+  expect(failed.status()).toBe(200)
+  const before = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()
+  expect(before.managed).toBe(true)
+  expect(before.run.status).toBe('running')
+  expect(before.run.nodes.A.status).toBe('running')
+  expect(before.run.nodes.B.status).toBe('failed')
+  expect(before.run.nodes.B.failure.stage).toBe('execution')
+  expect(before.pendingReports.A).toBeDefined()
+  const root = path.join(server.cwd, '.data/workflow-runs', id)
+  const records = () => Object.fromEntries(['run.json', 'history.jsonl', 'messages.jsonl'].map(file => [file, fs.readFileSync(path.join(root, file), 'utf8')]))
+  const saved = records(), calls = server.herdrCalls()
+  await server.restart()
+  const restarted = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()
+  expect(restarted).toEqual({ ...before, managed: false })
+  await page.goto(`${server.baseURL}/#workflow/${id}`)
+  // User guidance criterion: a still-running saved state must not invite a
+  // manual takeover or suggest ordinary Chat Resume restores management.
+  await expect(page.getByText('历史现场 / 未接管：当前后端只读取已保存事实。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。', { exact: true })).toBeVisible()
+  await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
+  await expect(page.getByText('A：running', { exact: true })).toBeVisible()
+  await expect(page.getByText('B：failed', { exact: true })).toBeVisible()
+  const outcomes = []
+  for (const [action, fields] of [
+    ['status', {}], ['collect', {}], ['dispatch', { nodes: ['C'] }],
+    ['complete', { nodeId: 'A', reason: '确认可交接' }], ['finish', {}],
+    ['pause', {}], ['resume', {}], ['fail', { nodeId: 'A', reason: '核实失败' }],
+    ['recover', { nodeId: 'B', confirmed: true, reason: '已修复' }],
+    ['retry', { nodeId: 'B', confirmed: true, reason: '人工确认另起执行' }],
+    ['reconcile_dispatch', { nodeId: 'B', finding: 'created', reason: '人工核实' }],
+  ] as const) {
+    const response = await post(`/api/workflow/manager/${action}`, { sessionId: 'browser-manager-04', ...fields })
+    const body = await response.json()
+    outcomes.push({ action, status: response.status(), body })
+    expect(response.status(), action).toBe(403)
+    expect(body.code, action).toBe('manager-unassociated')
+  }
+  for (const sessionId of ['restart-node-A', 'restart-node-B']) {
+    const response = await post('/api/workflow/node/report', { sessionId, body: '不能在重启后追加' })
+    const body = await response.json()
+    outcomes.push({ action: 'report', sessionId, status: response.status(), body })
+    expect(response.status()).toBe(403)
+    expect(body.code).toBe('node-unassociated')
+  }
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
+  // Bounded absence evidence: 1000ms after all rejected tools and page reload.
+  await page.waitForTimeout(1000)
+  expect(server.herdrCalls()).toEqual(calls)
+  expect(records()).toEqual(saved)
+  expect(await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()).toEqual(restarted)
+  fs.writeFileSync(info.outputPath('restart-read-only-evidence.json'), JSON.stringify({ before, restarted, recordsBefore: saved, recordsAfter: records(), outcomes, callsBefore: calls, callsAfter: server.herdrCalls(), observationMs: 1000 }, null, 2))
+  await page.screenshot({ path: info.outputPath('restart-read-only.png') })
+})
+
+// P54.02 source: ticket 16. Violation: reconstructing process-local startup
+// errors from persisted business history on restart. Observe the actual page
+// and byte-identical records; diagnostics are captured separately, not replayed.
+// The preceding restart test independently proves persistent node failure.
+test('P54.02 real restart drops manager startup errors without rewriting business facts @time-contract', async ({ page }, info) => {
+  const { server, zone, ids } = await fixture()
+  server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'failed-manager-restart' }, fail_prompt: true })
+  const response = await page.request.post(`${server.baseURL}/api/scheduler/maps/launch.json/runs`, { data: { managerTaskId: ids.manager, zone, userInput: '不应出现在诊断里的本次要求' } })
+  expect(response.status()).toBe(500)
+  const before = await response.json()
+  expect(before.startupError.stage).toBe('submit')
+  expect(before.run.manager.sessionId).toBe('failed-manager-restart')
+  await page.goto(`${server.baseURL}/#workflow/${before.id}`)
+  await expect(page.getByRole('alert', { name: '管理者启动错误' })).toBeVisible()
+  const diagnostics = server.diagnostics()
+  expect(diagnostics).toContain(`run=${before.id} manager-start stage=submit`)
+  expect(diagnostics).not.toContain('不应出现在诊断里的本次要求')
+  // Preserve process diagnostics outside the three business files before exit.
+  fs.writeFileSync(info.outputPath('pre-restart-diagnostics.log'), diagnostics)
+  const root = path.join(server.cwd, '.data/workflow-runs', before.id)
+  const saved = Object.fromEntries(['run.json', 'history.jsonl', 'messages.jsonl'].map(file => [file, fs.readFileSync(path.join(root, file), 'utf8')]))
+  expect(saved['history.jsonl']).toBe('')
+  expect(saved['messages.jsonl']).toBe('')
+  expect(JSON.parse(saved['run.json'])).not.toHaveProperty('startupError')
+  const calls = server.herdrCalls()
+  await server.restart()
+  const after = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${before.id}`)).json()
+  expect(after).toEqual({ ...before, managed: false, startupError: null })
+  // The helper reuses its allocated port; a hash-only goto is not a refresh.
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
+  await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
+  await expect(page.getByText(/历史现场 \/ 未接管/)).toBeVisible()
+  await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
+  await page.waitForTimeout(1000)
+  await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
+  expect(server.diagnostics()).not.toContain('manager-start')
+  expect(server.herdrCalls()).toEqual(calls)
+  const recordsAfter = Object.fromEntries(['run.json', 'history.jsonl', 'messages.jsonl'].map(file => [file, fs.readFileSync(path.join(root, file), 'utf8')]))
+  expect(recordsAfter).toEqual(saved)
+  expect(fs.readFileSync(info.outputPath('pre-restart-diagnostics.log'), 'utf8')).toBe(diagnostics)
+  fs.writeFileSync(info.outputPath('restart-manager-error-evidence.json'), JSON.stringify({ before, after, recordsBefore: saved, recordsAfter, callsBefore: calls, callsAfter: server.herdrCalls(), observationMs: 1000 }, null, 2))
+  await page.screenshot({ path: info.outputPath('restart-no-manager-error.png') })
+})
+
 test('P12 invalid start stays on the launch form without external effects', async ({ page }, info) => {
   const { server } = await fixture()
   await page.goto(server.baseURL)
