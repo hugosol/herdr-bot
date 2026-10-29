@@ -252,7 +252,7 @@ export default function App({
           </button>
           <h1 className="layout-brand">herdr-bot</h1>
         </div>
-        <button type="button" data-action="server" data-testid="server-button" hidden={serverOpen} onClick={() => { if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>server</button>
+        <button type="button" data-action="server" data-testid={serverOpen ? 'server-back' : 'server-button'} ref={serverBackRef} onClick={() => { if (serverOpen) setServerOpen(false); else if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>{serverOpen ? '返回' : 'server'}</button>
       </header>
       <div className="layout-shell">
         <nav className="layout-nav" hidden={serverOpen} aria-label="主导航"
@@ -330,15 +330,6 @@ export default function App({
         hidden={!serverOpen}
       >
         <h2 id="server-title">server</h2>
-        <button
-          type="button"
-          data-testid="server-back"
-          className="server-back"
-          ref={serverBackRef}
-          onClick={() => setServerOpen(false)}
-        >
-          返回 {TAB_LABELS[tab]}
-        </button>
         <p className="scope-note">
           本页面只反馈脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
         </p>

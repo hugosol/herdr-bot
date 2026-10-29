@@ -17,7 +17,7 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
   server = await startServer({ separateCwd: true, herdr: {} })
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
   const content = { name: '合同能力', when: 'WHEN_ONLY **何时选用**', plan_guide: 'PLAN_ONLY\n- 规划说明', node_guide: 'NODE_ONLY\n# 非校验规则：必须有业务输入' }
   await page.getByLabel('Bot ID', { exact: true }).fill('shared-contract')

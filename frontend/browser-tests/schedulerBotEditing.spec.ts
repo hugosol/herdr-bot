@@ -10,7 +10,7 @@ const content = { name: '人工审计', when: '', plan_guide: '只核对账目�
 async function open(page: Page) {
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
 }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 
@@ -284,10 +284,10 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
   await open(page)
   const before = inventory(root)
   const raw = JSON.stringify(content, null, 3)
-  for (const action of ['map', 'list', 'manage', 'refresh', 'tab', 'keyboard-tab', 'hash', 'server']) {
+  for (const action of ['map', 'list', 'refresh', 'tab', 'keyboard-tab', 'hash', 'server']) {
     if (await page.getByTestId('server-back').isVisible()) await page.getByTestId('server-back').click()
     await page.getByTestId('tab-scheduler').click()
-    await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+    await page.getByTestId('tab-bot').click()
     await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
     await page.getByLabel('Bot ID', { exact: true }).fill('unsaved-identity')
     await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
@@ -313,7 +313,8 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
       else if (action === 'hash') await page.evaluate(() => { window.location.hash = '#workflow/navigation-run' })
       else if (action === 'server') await page.getByTestId('server-button').click()
       else if (action === 'list') await destination.click()
-      else await page.getByRole('button', { name: ({ map: '返回 Map', manage: 'Bot 管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
+      else if (action === 'map') await page.getByTestId('tab-scheduler').click()
+      else await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     }
     page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.dismiss() })
     await exit()
@@ -340,7 +341,7 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
     expect(inventory(root)).toEqual(before)
   }
   await page.getByTestId('server-back').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
   await page.getByLabel('Bot ID', { exact: true }).fill('native-refresh-draft')
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
@@ -388,7 +389,7 @@ test('saving a shared capability preserves live source selection and updates all
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }))
   await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('button', { name: '核对账目 A', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('核对账目 · A')
   for (const [filename, button] of [['first.json', '核对账目 A'], ['first.json', '复核账目 B'], ['second.json', '跨 Map 核对 C']]) {
@@ -397,7 +398,7 @@ test('saving a shared capability preserves live source selection and updates all
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('共享能力新版')
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
     await expect(page.getByRole('button', { name: button, exact: true })).toHaveAttribute('aria-pressed', 'true')
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${filename}`)
     expect(await response.json()).toEqual(filename === 'first.json' ? first : second)
@@ -407,14 +408,14 @@ test('saving a shared capability preserves live source selection and updates all
   expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }])
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ ...second, nodes: {} }))
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('alert')).toContainText('来源 node C 已移除')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'first.json', exact: true }).click()
   await page.getByRole('button', { name: '核对账目 A', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   fs.unlinkSync(path.join(maps, 'first.json'))
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('alert')).toContainText('来源 Map 已失效')
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toHaveCount(0)
   expect(server.herdrCalls()).toEqual([])

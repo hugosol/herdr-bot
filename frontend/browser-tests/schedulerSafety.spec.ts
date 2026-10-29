@@ -100,7 +100,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     await details.getByRole('button', { name: '原始定义', exact: true }).click()
     expect(JSON.parse(await details.getByLabel('Bot 原始定义').innerText())).toEqual(capability)
     await unchanged()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('button', { name: 'safe.json', exact: true }).click()
   await selectAndExpand()
@@ -114,7 +114,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('结构无效')
   await unchanged()
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'broken.json', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: 'Map 文件 broken.json' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toHaveCount(0)

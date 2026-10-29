@@ -82,14 +82,14 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   if (scenario === 'selection') {
     await page.getByRole('button', { name: 'next.json', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   const map = await holdResponse(page, '**/api/scheduler/maps/current.json')
   const bot = await holdResponse(page, '**/api/scheduler/bots')
@@ -105,7 +105,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: '规划指引', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText('新能力说明', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
     map.release()
     bot.release()
     await Promise.all([map.delivered, bot.delivered])
@@ -132,7 +132,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await capability.getByRole('button', { name: '规划指引', exact: true }).click()
     await expect(capability.getByText('新能力说明', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
     await expect(preview).not.toContainText('原')
   } finally {
     map.release()
@@ -168,7 +168,7 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await capability.getByRole('button', { name: '规划指引', exact: true }).click()
   await expect(capability.getByText('原能力说明', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
 
   const newMapBytes = `${JSON.stringify(updatedMap)}\n`
   const newBotBytes = `${JSON.stringify(updatedBot)}\n`
@@ -200,7 +200,7 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   for (const text of ['target', '新输入说明', 'report', '新输出说明']) {
     await expect(capability.getByRole('region', { name: '节点指引', exact: true })).toContainText(text)
   }
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await graph.getByRole('button', { name: '新准备 A', exact: true }).click()
   await expect(details.getByTestId('node-input')).toContainText('new-alpha')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveText(['新核对 · B'])

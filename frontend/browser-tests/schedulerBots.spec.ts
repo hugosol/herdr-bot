@@ -30,7 +30,7 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   fs.writeFileSync(path.join(maps, 'work.json'), mapBytes)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
   await listing.getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
@@ -50,7 +50,7 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   }
   await expectWeather()
   await page.screenshot({ path: testInfo.outputPath('bot-preview.png'), fullPage: true })
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'work.json', exact: true }).click()
   for (const node of ['查询上海 A', '查询北京 C']) {
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
@@ -62,7 +62,7 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
     await page.keyboard.press('Enter')
     await expectWeather()
     await expect(details).toHaveCount(0)
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对额度 B', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
@@ -128,7 +128,7 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
     await expect(details.getByRole('button', { name: 'Bot 明细', exact: true })).not.toHaveAttribute('aria-expanded')
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   fs.renameSync(path.join(bots, 'not-weather.JSON'), path.join(bots, 'renamed-again.json'))
   // Re-enter the page to read current files; ticket 07 owns full explicit reload coverage.
@@ -185,7 +185,7 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   fs.writeFileSync(path.join(bots, 'weather.json'), bytes)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(initial.status()).toBe(200)
   expect(await initial.json()).toEqual({ bots: [weather] })

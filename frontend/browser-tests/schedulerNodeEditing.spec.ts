@@ -345,7 +345,7 @@ test('modified node drafts confirm return, Map and page switches, application re
   const raw = '  ' + JSON.stringify(audit, null, 3) + '\n'
   for (const create of [true, false]) {
     await page.setViewportSize({ width: create ? 1280 : 390, height: create ? 900 : 844 })
-    for (const action of ['map', 'file', 'manage', 'refresh', 'tab', 'keyboard-tab', 'server', 'browser']) {
+    for (const action of ['map', 'file', 'bot-tab', 'refresh', 'tab', 'keyboard-tab', 'server', 'browser']) {
       if (await page.getByTestId('server-back').isVisible()) await page.getByTestId('server-back').click()
       await page.getByTestId('tab-scheduler').click()
       const back = page.getByRole('button', { name: '返回 Map', exact: true })
@@ -374,7 +374,8 @@ test('modified node drafts confirm return, Map and page switches, application re
           if (action === 'keyboard-tab') { await page.getByTestId('tab-scheduler').focus(); await page.keyboard.press('Home') }
           else if (action === 'tab') await page.getByTestId('tab-tasks').click()
           else if (action === 'server') await page.getByTestId('server-button').click()
-          else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', manage: 'Bot 管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
+          else if (action === 'bot-tab') await page.getByTestId('tab-bot').click()
+          else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
         }
         page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.dismiss() })
         await exit()
@@ -384,7 +385,7 @@ test('modified node drafts confirm return, Map and page switches, application re
         await exit()
         await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
         if (action === 'file') await expect(page.getByRole('button', { name: 'untouched.json', exact: true })).toHaveAttribute('aria-pressed', 'true')
-        else if (action === 'manage') await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
+        else if (action === 'bot-tab') await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
         else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()

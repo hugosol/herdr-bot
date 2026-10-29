@@ -105,7 +105,11 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
 
   async function returnToMap() {
     if (!abandonDraft()) return
-    setBotView(false)
+    if (botView) setBotView(false)
+    else await refreshMapOnReturn()
+  }
+
+  async function refreshMapOnReturn() {
     setReturnProblem(null)
     if (file === null) return
     setPreview({ kind: 'loading' })
@@ -136,6 +140,15 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const schedulerRoot = useRef<HTMLElement>(null)
   const botHeading = useRef<HTMLHeadingElement>(null)
   const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
+  const previousBotView = useRef(botView)
+
+  useEffect(() => {
+    if (!active) return
+    const returningFromBot = previousBotView.current && !botView
+    previousBotView.current = botView
+    // Outer navigation already checks the draft guard and owns focus.
+    if (returningFromBot) void refreshMapOnReturn()
+  })
 
   useEffect(() => {
     if (!active || file === null) return
@@ -231,24 +244,17 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>保存{draft.kind === 'node' ? ' node' : ' Bot'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>放弃编辑</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
   </form>
 
+  const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={() => {
+    if (!abandonDraft()) return
+    setSelectedId(null)
+    setGraphOpen(false)
+    if (file !== null) setPreview({ kind: 'loading' })
+    setListing({ kind: 'loading' })
+    setBots({ kind: 'loading' })
+    setRevision((value) => value + 1)
+  }}>刷新全部</button>
+
   return <section ref={schedulerRoot} className="scheduler" aria-label="Map 目录">
-    <header className="scheduler-header">
-      <div><p className="scheduler-eyebrow">静态工作定义</p><h2>scheduler <span>阅读优先</span></h2></div>
-      <div className="scheduler-actions">
-      <button type="button" onClick={() => openBot(null)}>Bot 管理</button>
-      <button type="button" disabled={busy || editingBusy} onClick={() => {
-        if (!abandonDraft()) return
-        setSelectedId(null)
-        setGraphOpen(false)
-        if (file !== null) setPreview({ kind: 'loading' })
-        setListing({ kind: 'loading' })
-        setBots({ kind: 'loading' })
-        setRevision((value) => value + 1)
-      }}>刷新全部</button>
-      </div>
-    </header>
-    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改当前 Map 的 node 与共享 Bot；保存静态定义不执行工作，需显式发起 Run。</p>
-    <p className="scheduler-refresh-note">刷新会重新读取目录、当前 Map 和共享 Bot，并清除节点选择。</p>
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
       {returnProblem && <p role="alert">{returnProblem}</p>}
@@ -263,11 +269,13 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       </section>}
     </div>
     {botView ? <div className="scheduler-bot-page">
-      <nav aria-label="Bot 导航" className="scheduler-actions">
-        <button type="button" onClick={() => void returnToMap()}>返回 Map</button>
-        {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>新增 Bot</button>}
-      </nav>
-      <h2 ref={botHeading} tabIndex={-1}>共享 Bot</h2>
+      <div className="scheduler-bot-heading">
+        <h2 ref={botHeading} tabIndex={-1}>共享 Bot</h2>
+        <div className="scheduler-actions">
+          {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>新增 Bot</button>}
+          {refreshButton}
+        </div>
+      </div>
       <div className="scheduler-bot-layout">
         <section aria-label="共享 Bot 列表" className="scheduler-bot-directory">
           <label className="scheduler-filter">筛选 Bot<input type="search" value={botFilter} onChange={(event) => setBotFilter(event.target.value)} placeholder="名称或 ID…" /></label>
@@ -294,7 +302,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       </div>
     </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
-        <div className="scheduler-section-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}</div>
+        <div className="scheduler-section-heading scheduler-directory-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
         <label className="scheduler-filter">筛选 Map 文件<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="输入文件名…" /></label>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
         {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}

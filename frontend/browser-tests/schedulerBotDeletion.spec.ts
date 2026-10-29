@@ -20,7 +20,7 @@ async function prepare() {
 async function open(page: Page) {
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '共享审计 · shared', exact: true }).click()
 }
 const api = (page: Page, operation: string, data: unknown) => page.request.post(`${server!.baseURL}/api/scheduler/bots/${operation}`, { data })

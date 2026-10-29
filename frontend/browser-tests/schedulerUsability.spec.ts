@@ -89,7 +89,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await type(page, botJSON, JSON.stringify({ ...weather, plan_guide: '人工核对新版天气说明，不执行查询。' }, null, 2))
     await activate(page, button('保存 Bot'))
     await expect(preview).toContainText('人工核对新版天气说明，不执行查询。')
-    await activate(page, button('返回 Map'))
+    await activate(page, page.getByTestId('tab-scheduler'))
     await expect(selected).toHaveAttribute('aria-pressed', 'true')
     await activate(page, button('修改 node'))
     const nodeJSON = page.getByLabel('node 内容 JSON', { exact: true })
@@ -142,7 +142,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await type(page, nodeJSON, JSON.stringify({ ...newNode, title: '冲突后重新保存' }, null, 2))
     await activate(page, button('保存 node'))
     await expect(button('冲突后重新保存 keyboard-node')).toHaveAttribute('aria-pressed', 'true')
-    await activate(page, button('Bot 管理'))
+    await activate(page, page.getByTestId('tab-bot'))
     await activate(page, button('新增 Bot'))
     await type(page, botID, 'keyboard-bot')
     const capability = { name: '键盘核对能力', when: '人工核对时。', plan_guide: '只作静态说明。', node_guide: JSON.stringify({ inputs: { city: '城市名称。' }, outputs: { summary: '说明文本。' } }) }

@@ -43,8 +43,8 @@ async function completeGraph(page: Page) {
 }
 
 async function normalDetails(page: Page) {
-  if (await page.getByRole('button', { name: '返回 Map', exact: true }).isVisible()) {
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  if (await page.getByTestId('tab-scheduler').isVisible()) {
+    await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '正常工作 B', exact: true }).click()
   await page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('button', { name: 'Bot 明细', exact: true }).click()

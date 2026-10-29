@@ -6,25 +6,15 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-// Approved S1: an actual empty directory, not a stub response. Contract P1
-// requires adjacent controls and same-Tab navigation; opening a popup or showing
-// the Map listing instead cannot satisfy these independent observations.
-test('P1 bot management beside refresh opens an empty list in the same Tab', async ({ page, context }) => {
+// An actual empty directory and same-page navigation, not a stub response.
+test('P1 bot tab opens an empty list in the same page', async ({ page, context }) => {
   server = await startServer({ separateCwd: true })
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  const refresh = page.getByRole('button', { name: '刷新全部', exact: true })
-  const manage = page.getByRole('button', { name: 'Bot 管理', exact: true })
-  await expect(refresh).toBeEnabled()
-  await expect(manage).toBeVisible()
-  const refreshBox = await refresh.boundingBox()
-  const manageBox = await manage.boundingBox()
-  expect(Math.abs(refreshBox!.y - manageBox!.y)).toBeLessThan(8)
-  expect(Math.abs(refreshBox!.x - manageBox!.x)).toBeLessThan(250)
   const originalURL = page.url()
   const openedPages: unknown[] = []
   context.on('page', (opened) => openedPages.push(opened))
-  await manage.click()
+  await page.getByTestId('tab-bot').click()
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
   await expect(listing).toBeVisible()
   await expect(listing).toContainText('共享 Bot 目录没有 Bot JSON 文件。')
@@ -36,7 +26,7 @@ test('P1 bot management beside refresh opens an empty list in the same Tab', asy
   const response = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(response.status()).toBe(200)
   expect(await response.json()).toEqual({ bots: [] })
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('complementary', { name: 'Map 文件目录', exact: true })).toBeVisible()
 })
 
@@ -74,7 +64,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   }
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await preview.getByRole('button', { name: '规划指引', exact: true }).click()

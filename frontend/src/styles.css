@@ -39,9 +39,6 @@ h1 {
   font-size: 1.5rem;
 }
 
-.server-back { min-height: 2.75rem; padding: 0.5rem 0.8rem; border: 1px solid #637587; border-radius: 0.35rem; background: #2b3541; color: #f2f4f8; cursor: pointer; }
-.server-back:focus-visible { outline: 2px solid #a9d0f0; outline-offset: 2px; }
-
 .tabpanel[hidden] {
   display: none;
 }

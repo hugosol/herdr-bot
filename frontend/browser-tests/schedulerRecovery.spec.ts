@@ -211,7 +211,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     await expect(details).toContainText('alpha-only')
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
     if (failure === 'file-load') fs.unlinkSync(path.join(maps, 'b.json'))
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/b.json`)
     expect(response.status()).toBe(500)
