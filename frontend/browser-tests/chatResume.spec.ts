@@ -18,14 +18,14 @@ test('delivered mobile page distinguishes lookup, identity and focus failures wi
     ['error_agent_list', 'herdr-command-failed', 'query refused'],
     ['fail_agent_focus', 'herdr-command-failed', 'Herdr 聚焦失败'],
     ['unconfirmed_focus', 'herdr-unexpected-response', 'target navigation was not confirmed'],
-    // Unreadable inventory candidates are skipped; the empty match then checks
-    // restoration prerequisites. This history deliberately has no usable cwd.
-    ['unreadable_identity', 'invalid-cwd', '历史工作目录缺失'],
+    // Unreadable candidates are skipped. Refused workspace evidence must make
+    // the subsequent cwd fallback fail visibly, never focus a guessed identity.
+    ['unreadable_identity', 'herdr-command-failed', 'Herdr'],
   ] as const) {
     const agents = fault === 'unreadable_identity'
       ? [{ ...target('w9:p8'), agent_session: { agent: 'pi', source: 'herdr:pi', kind: 'path', value: path.join(path.dirname(server.configPath), 'missing-native.jsonl') } }]
       : [target('w9:p8')]
-    server.setHerdrBehavior({ agents, [fault]: true })
+    server.setHerdrBehavior({ agents, [fault]: true, ...(fault === 'unreadable_identity' ? { fail_workspace_list: true } : {}) })
     const response = page.waitForResponse((response) => response.url().endsWith('/api/chats/resume') && response.request().method() === 'POST')
     await row.getByRole('button', { name: 'Resume', exact: true }).click()
     expect((await (await response).json()).code).toBe(code)
@@ -50,7 +50,7 @@ async function register(sessionId: string, data: Record<string, unknown>) {
 // S1 delivered page + S2 requests + S3 observed CLI. A hidden button for
 // unregistered/unknown records or a frontend-only success cannot satisfy this.
 test('every historical Chat offers Resume after unregister and process restart; multiple targets are selected without a picker', async ({ page }) => {
-  server = await startServer({ herdr: { behavior: { agents: [target('w9:p8'), target('w9:p2')] } } })
+  server = await startServer({ herdr: { behavior: { agents: [target('w9:p8'), target('w9:p2')], fail_tab_create: true } } })
   await register('native-browser', { cwd: 'C:/old', agentType: 'pi', sessionName: 'Connected Chat' })
   await register('unknown-old-record', { cwd: 'C:/old' })
   const removed = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'native-browser', kind: 'unregister', data: {} }) })
@@ -66,7 +66,7 @@ test('every historical Chat offers Resume after unregister and process restart; 
     const reply = await fetch(`${server.baseURL}/api/chats/resume`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId }) })
     expect(reply.status).toBe(sessionId === 'unknown-old-record' ? 400 : sessionId === 'legacy-native' ? 502 : 200)
     const result = await reply.json()
-    expect(sessionId === 'native-browser' ? result.outcome : result.code).toBe(sessionId === 'native-browser' ? 'located' : sessionId === 'legacy-native' ? 'invalid-cwd' : 'unsupported-agent')
+    expect(sessionId === 'native-browser' ? result.outcome : result.code).toBe(sessionId === 'native-browser' ? 'located' : sessionId === 'legacy-native' ? 'herdr-command-failed' : 'unsupported-agent')
   }
   await page.goto(server.baseURL)
   await page.getByRole('button', { name: '查看历史会话' }).click()
@@ -81,9 +81,55 @@ test('every historical Chat offers Resume after unregister and process restart; 
   expect(server.herdrTabs()).toEqual([])
   const legacy = history.getByRole('row').filter({ hasText: 'Legacy Chat' })
   await legacy.getByRole('button', { name: 'Resume', exact: true }).click()
-  await expect(legacy.getByRole('alert')).toContainText('历史工作目录缺失')
+  await expect(legacy.getByRole('alert')).toContainText('Tab')
   const unknown = history.getByRole('row').filter({ hasText: 'unknown-old-record' })
   await unknown.getByRole('button', { name: 'Resume', exact: true }).click()
   await expect(unknown.getByRole('alert')).toContainText('无法确定受支持的 agent 类型')
   await page.screenshot({ path: test.info().outputPath('resume-multiple-and-unknown.png'), fullPage: true })
 })
+
+for (const agent of ['omp', 'pi']) {
+  test(`${agent} deleted cwd renders default-workspace degradation and actual directory without rewriting history`, async ({ page }) => {
+    server = await startServer({ herdr: { workspaces: [
+      { workspace_id: 'w-original', label: 'Original workspace' },
+      { workspace_id: 'w-default', label: 'bot-playground' },
+      { workspace_id: 'w-focused', label: 'Focused decoy', focused: true },
+    ] } })
+    const root = path.dirname(server.configPath)
+    const deleted = path.join(root, 'deleted historical checkout')
+    fs.mkdirSync(deleted)
+    fs.rmdirSync(deleted)
+    const actual = path.join(root, 'Herdr default actual directory')
+    fs.mkdirSync(actual)
+    const native = path.join(root, 'preserved native conversation.jsonl')
+    const id = `${agent}-deleted-cwd-exact-native`
+    const nativeBytes = `${JSON.stringify({ type: 'session', version: 3, id, cwd: deleted })}\n`
+    fs.writeFileSync(native, nativeBytes)
+    const historyFile = path.join(root, 'session-history.json')
+    const bytes = `  ${JSON.stringify([{ sessionId: id, sessionName: 'Deleted cwd history', agentType: agent, cwd: deleted, sessionFile: native, originalWorkspaceId: 'w-original', firstRecordedAt: 123, memo: 'Keep exact bytes', futureMetadata: { opaque: true } }])}\n`
+    fs.writeFileSync(historyFile, bytes)
+    await server.restart()
+    server.setHerdrBehavior({ default_cwd: actual, native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: native } })
+    await page.goto(server.baseURL)
+    await page.getByRole('button', { name: '查看历史会话' }).click()
+    const row = page.getByRole('row').filter({ hasText: 'Deleted cwd history' })
+    const response = page.waitForResponse(r => r.url().endsWith('/api/chats/resume') && r.request().method() === 'POST')
+    await row.getByRole('button', { name: 'Resume', exact: true }).click()
+    const reply = await response
+    expect(reply.status()).toBe(200)
+    const result = await reply.json()
+    expect(result.outcome).toBe('restored')
+    expect(path.resolve(result.actualCwd).toLowerCase()).toBe(path.resolve(actual).toLowerCase())
+    await expect(row.getByRole('status')).toContainText('恢复存在降级')
+    await expect(row.getByRole('status')).toContainText(result.actualCwd)
+    const calls = server.herdrCalls()
+    const tab = calls.find(c => c.kind === 'tab_create')!
+    expect(tab.workspace).toBe('w-default')
+    expect(tab.argv).not.toContain('--cwd')
+    expect(calls.find(c => c.kind === 'agent_start')!.args).toEqual([agent === 'pi' ? '--session' : '--resume', native])
+    expect(calls.some(c => c.kind === 'agent_prompt')).toBe(false)
+    expect(fs.readFileSync(historyFile, 'utf8')).toBe(bytes)
+    expect(fs.readFileSync(native, 'utf8')).toBe(nativeBytes)
+    await page.screenshot({ path: test.info().outputPath(`${agent}-deleted-cwd-degradation.png`), fullPage: true })
+  })
+}

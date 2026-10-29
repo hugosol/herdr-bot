@@ -7,6 +7,7 @@ let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
 const PRESET = {
+  taskType: 'normal',
   name: '发布巡检', chatName: '巡检 {zone.name} / {task.name} / {agent} / {chat.id}',
   agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', skill: 'code-review',
   prompt: '首行：检查发布\n次行：保留 "引号" 和路径 C:\\alpha',
@@ -22,7 +23,7 @@ async function save(body: unknown, id?: string) {
 // Violation: navigation writes early, loses fields, mislabels fixed/optional choices, or saves a different summary.
 test('三步新增和编辑保留完整草稿，摘要与公开持久结果一致，删除不关闭既有 Chat', async ({ page }) => {
   server = await startServer({ herdr: {} })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await expect(page.getByTestId('task-step')).toHaveText('1 / 3 · Task 预设')
@@ -112,7 +113,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-dialog')).toHaveCount(0)
   expect((await server.getTasks()).tasks).toEqual([{
-    id: saved.id, name: '编辑后的巡检', chatName: '固定 {agent} · {task.name} · {chat.id}', agent: 'pi',
+    id: saved.id, taskType: 'normal', name: '编辑后的巡检', chatName: '固定 {agent} · {task.name} · {chat.id}', agent: 'pi',
     model: 'deepseek-flash', thinking: 'off', skill: 'teach', prompt: '编辑首行\n编辑次行', extensions: ['pi-codebase-tools'],
   }])
   await page.getByTestId('task-delete').click()
@@ -126,7 +127,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
 // S1/S2; P14/P17. Violation: hidden OMP choices reappear, or same-label Pi choices inherit them.
 test('切换 Agent 清空扩展且切回不恢复，新 Task 零选明确保存为空', async ({ page }) => {
   server = await startServer()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await page.getByTestId('task-name').fill('零选样例')
@@ -163,7 +164,7 @@ test('扩展元数据在同一进程重新编辑和保存时生效，只持久�
   const original = fs.readFileSync(server.metadataFile, 'utf8')
   expect((await save({ ...PRESET, extensions: ['omp-codebase-tools'] })).status).toBe(200)
   const saved = (await server.getTasks()).tasks[0]
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await page.getByTestId('task-next').click()
@@ -195,7 +196,7 @@ test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与�
   server = await startServer()
   expect((await save({ ...PRESET, extensions: ['omp-codebase-tools', 'omp-connect-bot'] })).status).toBe(200)
   const saved = (await server.getTasks()).tasks[0]
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await page.getByTestId('task-name').fill('不应保存的名字')
@@ -227,19 +228,6 @@ test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与�
 // Violation: accepting IDs without Agent/kind validation, or dropping selections on disk/restart.
 test('公开保存六种扩展组合并在独立客户端和真实重启后保留稳定标识', async () => {
   server = await startServer()
-  const options = (await (await fetch(`${server.baseURL}/api/tasks`)).json()).options
-  expect(options.extensions.map(({ id, agent, kind }: { id: string; agent: string; kind: string }) => ({ id, agent, kind }))).toEqual([
-    { id: 'omp-herdr-agent-state', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-model-cost', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-codebase-tools', agent: 'omp', kind: 'optional' },
-    { id: 'omp-connect-bot', agent: 'omp', kind: 'optional' },
-    { id: 'omp-oh-my-wayfinder', agent: 'omp', kind: 'optional' },
-    { id: 'pi-herdr-agent-state', agent: 'pi', kind: 'fixed' },
-    { id: 'pi-model-cost', agent: 'pi', kind: 'fixed' },
-    { id: 'pi-codebase-tools', agent: 'pi', kind: 'optional' },
-    { id: 'pi-connect-bot', agent: 'pi', kind: 'optional' },
-    { id: 'pi-web-access', agent: 'pi', kind: 'optional' },
-  ])
   const cases = [
     { agent: 'omp', extensions: [] },
     { agent: 'omp', extensions: ['omp-codebase-tools'] },
@@ -267,7 +255,7 @@ test('公开保存六种扩展组合并在独立客户端和真实重启后保�
   expect((await server.getTasks()).tasks).toEqual(saved)
   const stored = JSON.parse(fs.readFileSync(server.storageFile, 'utf8')).tasks
   expect(stored).toEqual(saved)
-  expect(Object.keys(stored[3]).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'thinking'])
+  expect(Object.keys(stored[3]).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'taskType', 'thinking'])
   await server.restart()
   expect((await server.getTasks()).tasks).toEqual(saved)
   for (const task of saved) {

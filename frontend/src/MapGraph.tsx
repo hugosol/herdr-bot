@@ -1,42 +1,25 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { WorkflowMap } from './schedulerApi'
+import { orderedMapNodeIds } from './mapNodeOrder'
 import './map-graph.css'
 
-// Lay out every node, not only those incident to an edge. Kahn traversal assigns
-// each dependent a column after all its prerequisites; the API rejects cycles.
-function positions(map: WorkflowMap) {
-  const ids = Object.keys(map.nodes)
-  const levels = new Map(ids.map((id) => [id, 0]))
-  const remaining = new Map(ids.map((id) => [id, map.nodes[id].blocked_by.length]))
-  const dependents = new Map<string, string[]>()
-  for (const id of ids) for (const prerequisite of map.nodes[id].blocked_by) {
-    const next = dependents.get(prerequisite) ?? []
-    next.push(id)
-    dependents.set(prerequisite, next)
-  }
-  const ready = ids.filter((id) => remaining.get(id) === 0)
-  for (let index = 0; index < ready.length; index++) {
-    const id = ready[index]
-    for (const next of dependents.get(id) ?? []) {
-      levels.set(next, Math.max(levels.get(next)!, levels.get(id)! + 1))
-      remaining.set(next, remaining.get(next)! - 1)
-      if (remaining.get(next) === 0) ready.push(next)
-    }
-  }
+// Every node is included, even if it has no edges. Shared display ordering puts
+// prerequisites before dependents and preserves definition order for parallel rows.
+function positions(map: WorkflowMap, nodeHeight: number) {
+  const levels = new Map<string, number>()
   const rows = new Map<number, number>()
-  return ids.map((id) => {
-    const column = levels.get(id)!
+  return orderedMapNodeIds(map).map((id) => {
+    const column = map.nodes[id].blocked_by.reduce((level, parent) => Math.max(level, levels.get(parent)! + 1), 0)
+    levels.set(id, column)
     const row = rows.get(column) ?? 0
     rows.set(column, row + 1)
-    return { id, x: 24 + column * 300, y: 24 + row * 136 }
+    return { id, x: 24 + column * 300, y: 24 + row * (nodeHeight + 32) }
   })
 }
 
 type View = { scale: number; x: number; y: number }
 type Size = { width: number; height: number }
 const nodeWidth = 220
-const nodeHeight = 104
-const maximumScale = 2.5
 
 // Keep a large graph reachable at both ends; center graphs smaller than the viewport.
 function constrain(view: View, size: Size, width: number, height: number): View {
@@ -51,18 +34,17 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
 }) {
   const instanceId = useId()
   const markerId = `${instanceId}-arrow`
-  const helpId = `${instanceId}-help`
   const viewportRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [size, setSize] = useState<Size>({ width: 640, height: 384 })
   const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0 })
-  const nodes = useMemo(() => positions(map), [map])
+  const nodeHeight = 104
+  const nodes = useMemo(() => positions(map, nodeHeight), [map, nodeHeight])
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const width = Math.max(280, ...nodes.map((node) => node.x + nodeWidth + 24))
   const height = Math.max(152, ...nodes.map((node) => node.y + nodeHeight + 24))
   const fitScale = Math.min(1, size.width / width, size.height / height)
-  const minimumScale = Math.min(0.1, fitScale)
   const prerequisites = new Set(selectedId === null ? [] : map.nodes[selectedId]?.blocked_by ?? [])
   const successors = new Set(nodes.filter(({ id }) => selectedId !== null && map.nodes[id].blocked_by.includes(selectedId)).map(({ id }) => id))
 
@@ -102,33 +84,18 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
       const y = top < 16 ? current.y + 16 - top : bottom > size.height - 16 ? current.y + size.height - 16 - bottom : current.y
       return constrain({ scale, x, y }, size, width, height)
     })
-  }, [byId, size, width, height])
+  }, [byId, size, width, height, nodeHeight])
 
   useLayoutEffect(() => {
-    // Selection reveals its node but does not reset the user's zoom or fit the Map.
+    // Selection reveals its node without fitting the Map again.
     if (selectedId !== null) revealNode(selectedId)
   }, [selectedId, revealNode])
-
-  function zoom(factor: number) {
-    setView((current) => {
-      const scale = Math.max(minimumScale, Math.min(maximumScale, current.scale * factor))
-      const ratio = scale / current.scale
-      return constrain({ scale, x: size.width / 2 - (size.width / 2 - current.x) * ratio, y: size.height / 2 - (size.height / 2 - current.y) * ratio }, size, width, height)
-    })
-  }
 
   if (nodes.length === 0) return <p className="scheduler-graph-empty">此 Map 没有 node。</p>
 
   return <div className="scheduler-graph">
-    <div className="scheduler-graph-tools" role="group" aria-label="依赖图视图控制">
-      <button type="button" aria-label="缩小依赖图" disabled={view.scale <= minimumScale} onClick={() => zoom(1 / 1.25)}>−</button>
-      <output aria-label="依赖图缩放比例">{Math.round(view.scale * 100)}%</output>
-      <button type="button" aria-label="放大依赖图" disabled={view.scale >= maximumScale} onClick={() => zoom(1.25)}>+</button>
-      <button type="button" onClick={() => setView(constrain({ scale: fitScale, x: 0, y: 0 }, size, width, height))}>适应全部</button>
-    </div>
-    <p id={helpId} className="scheduler-graph-help">拖动空白处平移；用 Tab 聚焦节点，Enter 或空格选择。加减按钮缩放，适应全部恢复总览。选中节点以双线框标示，直接前置与后继以标签和虚线边标示。</p>
     <div className="scheduler-graph-viewport" ref={viewportRef} data-dragging={dragging || undefined}>
-      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="Map 依赖图" aria-describedby={helpId}
+      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="Map 依赖图"
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0 || dragRef.current || (event.target instanceof Element && event.target.closest('button'))) return
           event.preventDefault()
@@ -169,8 +136,12 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
           {nodes.map(({ id, x, y }) => <foreignObject key={id} x={x} y={y} width={nodeWidth} height={nodeHeight}>
             <button type="button" className={`scheduler-node${prerequisites.has(id) || successors.has(id) ? ' scheduler-node-related' : ''}`}
               aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
+              data-report-policy={map.nodes[id].report_policy ?? 'auto'}
               onFocus={() => revealNode(id)} onClick={() => onSelect(id)}>
-              <strong>{map.nodes[id].title}</strong><span>{id}</span>
+              {map.nodes[id].report_policy === 'manual' && <svg className="scheduler-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <polygon points="7,1 93,1 99,13 99,87 93,99 7,99 1,87 1,13" vectorEffect="non-scaling-stroke" />
+              </svg>}
+              <strong title={map.nodes[id].title}>{map.nodes[id].title}</strong><span className="scheduler-node-id-label" title={id}>{id}</span>
               {prerequisites.has(id) && <small className="scheduler-node-relation">直接前置</small>}
               {successors.has(id) && <small className="scheduler-node-relation">直接后继</small>}
               {botProblems[id] && <small className="scheduler-node-problem">{botProblems[id]}</small>}

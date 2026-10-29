@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
+
+beforeEach(() => {
+  window.history.replaceState(null, '', '/?layout=expanded')
+})
 
 /** 一个只提供客户端真正用到的成员的 JSON 答复。 */
 function jsonResponse(status: number, body: unknown): Response {
@@ -96,6 +100,7 @@ describe('Task tab：读取与展示', () => {
     name: '发布检查',
     chatName: '{zone.name} · {task.name} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
@@ -234,6 +239,47 @@ describe('Task tab：读取与展示', () => {
     )
   })
 
+  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和可选扩展，角色固定扩展按类型筛选并保存', async (agent) => {
+    const user = userEvent.setup()
+    const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
+      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', extensions: [`${agent}-tools`] }
+    const options = { ...OPTIONS, extensions: (['omp', 'pi'] as const).flatMap(host => [
+      { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', entrypoint: '/state.ts' },
+      { id: `${host}-manager-chat`, label: `${host} manager-chat`, agent: host, kind: 'fixed', entrypoint: '/manager.ts' },
+      { id: `${host}-node-chat`, label: `${host} node-chat`, agent: host, kind: 'fixed', entrypoint: '/node.ts' },
+      { id: `${host}-tools`, label: `${host} 工具`, agent: host, kind: 'optional', entrypoint: '/tools.ts' },
+    ]) }
+    const { calls } = mockTaskFetch((url, method, body) => {
+      if (url === '/api/tasks' && method === 'GET') return jsonResponse(200, { tasks: [original], options })
+      if (url === '/api/tasks/role-task' && method === 'PUT') return jsonResponse(200, { tasks: [{ id: original.id, ...JSON.parse(body!) }], options })
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+    render(<App />)
+    await openTasks(user)
+    await user.click(await screen.findByTestId('task-edit'))
+    const dialog = screen.getByTestId('task-dialog')
+    expect(within(within(dialog).getByTestId('task-type')).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['normal', 'manager'])
+    for (const role of ['manager', 'normal', 'manager']) {
+      await user.selectOptions(within(dialog).getByTestId('task-type'), role)
+      expect(within(dialog).getByTestId('task-agent')).toHaveValue(agent)
+      expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
+      expect(within(dialog).getByTestId('task-thinking')).toHaveValue('high')
+      await user.click(within(dialog).getByTestId('task-next'))
+      const fixed = within(dialog).getByTestId('task-fixed-extensions')
+      expect(fixed).toHaveTextContent(`${agent} 状态`)
+      expect(fixed).not.toHaveTextContent(`${agent === 'pi' ? 'omp' : 'pi'} `)
+      if (role === 'manager') expect(fixed).toHaveTextContent(`${agent} manager-chat`)
+      else expect(fixed).not.toHaveTextContent('manager-chat')
+      expect(fixed).not.toHaveTextContent('node-chat')
+      expect(within(dialog).getByTestId(`extension-${agent}-tools`)).toBeChecked()
+      expect(within(fixed).queryByRole('checkbox')).toBeNull()
+      await user.click(within(dialog).getByTestId('task-back'))
+    }
+    await saveTask(user, dialog)
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager' })
+    expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
+  })
+
   it('新增 Task 时插入四个命名占位符、查看示例并保存完整字面值', async () => {
     const user = userEvent.setup()
     const prompt = '第一行\n第二行：保留 "引号" 与反斜杠 \\'
@@ -241,6 +287,7 @@ describe('Task tab：读取与展示', () => {
     name: '审查',
     chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] }
@@ -304,6 +351,7 @@ describe('Task tab：读取与展示', () => {
     expect(JSON.parse(post?.body ?? 'null')).toEqual({ name: '审查',
     chatName: '{zone.name} · {task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt, extensions: [] })
@@ -369,6 +417,7 @@ describe('Task tab：读取与展示', () => {
     name: '旧名字',
     chatName: '{zone.name}',
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null, prompt: '旧 prompt', extensions: [] }
@@ -376,6 +425,7 @@ describe('Task tab：读取与展示', () => {
     name: '待删除',
     chatName: '{task.name}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'off',
     skill: 'teach', prompt: '', extensions: [] }
@@ -383,6 +433,7 @@ describe('Task tab：读取与展示', () => {
     name: '新名字',
     chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] }
@@ -429,6 +480,7 @@ describe('Task tab：读取与展示', () => {
     expect(JSON.parse(put?.body ?? 'null')).toEqual({ name: '新名字',
     chatName: '{task.name} · {agent} · {chat.id}',
     agent: 'pi',
+    taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
     skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
@@ -445,6 +497,7 @@ describe('Task tab：读取与展示', () => {
     name: '已保存',
     chatName: '{zone.name}',
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null, prompt: '', extensions: [] }

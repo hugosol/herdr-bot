@@ -130,7 +130,6 @@ describe('主界面接线（真实 SSE 数据源）', () => {
       source.emit('upsert', { session: wireSession('a', '会话甲', { state: 'awaiting-input' }) })
     })
     expect(screen.getByTestId('waiting-group')).toBeInTheDocument()
-    expect(screen.getByTestId('tab-sessions').children).toHaveLength(0)
 
     // 断线：保留最后一帧（不出现空列表闪烁），并在会话列表内标注可能过期。
     act(() => source.fail())

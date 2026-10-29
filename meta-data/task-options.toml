@@ -45,6 +45,10 @@ native_name = 'teach'
 id = 'code-review'
 label = '/code-review'
 native_name = 'code-review'
+[[skills]]
+id = 'wayfinder'
+label = '/wayfinder'
+native_name = 'wayfinder'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
 # --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
@@ -60,6 +64,21 @@ label = 'model-cost'
 agent = 'omp'
 kind = 'fixed'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp\model-cost.ts'
+# Stable manager-chat/node-chat IDs have code-owned execution-role applicability.
+# Node roles load only for workflow execution, never standalone normal Tasks.
+# Entrypoints remain configurable; saving a Task does not verify native loading.
+[[extensions]]
+id = 'omp-manager-chat'
+label = 'manager-chat'
+agent = 'omp'
+kind = 'fixed'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts'
+[[extensions]]
+id = 'omp-node-chat'
+label = 'node-chat'
+agent = 'omp'
+kind = 'fixed'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\node-chat.ts'
 [[extensions]]
 id = 'omp-codebase-tools'
 label = 'codebase-tools'
@@ -90,6 +109,18 @@ label = 'model-cost'
 agent = 'pi'
 kind = 'fixed'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi\model-cost.ts'
+[[extensions]]
+id = 'pi-manager-chat'
+label = 'manager-chat'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\manager-chat.ts'
+[[extensions]]
+id = 'pi-node-chat'
+label = 'node-chat'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\node-chat.ts'
 [[extensions]]
 id = 'pi-codebase-tools'
 label = 'codebase-tools'

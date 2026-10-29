@@ -1,0 +1,3 @@
+source=A
+item=blue-widget
+units=7

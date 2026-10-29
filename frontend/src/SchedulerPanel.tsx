@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type BotRevision, type BotCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
+import { orderedMapNodeIds } from './mapNodeOrder'
 import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
+import { BotTaskSelect } from './BotTaskSelect'
+import { RunLaunchForm } from './RunLaunchForm'
 import './scheduler.css'
 
 type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind: 'error'; message: string }
@@ -11,7 +14,10 @@ type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'er
 
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string }
 
-export function SchedulerPanel({ active, navigationGuard }: { active: boolean; navigationGuard?: RefObject<(() => boolean) | null> }) {
+export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones }: { active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
+  const botView = view === 'bot'
+  const setBotView = (showBot: boolean) => onViewChange(showBot ? 'bot' : 'map')
+  const [launchOpen, setLaunchOpen] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingBusy, setEditingBusy] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -100,7 +106,11 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
 
   async function returnToMap() {
     if (!abandonDraft()) return
-    setBotView(false)
+    if (botView) setBotView(false)
+    else await refreshMapOnReturn()
+  }
+
+  async function refreshMapOnReturn() {
     setReturnProblem(null)
     if (file === null) return
     setPreview({ kind: 'loading' })
@@ -125,19 +135,26 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   const [preview, setPreview] = useState<Preview | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
-  const [graphOpen, setGraphOpen] = useState(false)
-  const [botView, setBotView] = useState(false)
   const [botId, setBotId] = useState<string | null>(null)
   const [botFilter, setBotFilter] = useState('')
+  const schedulerRoot = useRef<HTMLElement>(null)
   const botHeading = useRef<HTMLHeadingElement>(null)
   const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
+  const previousBotView = useRef(botView)
+
+  useEffect(() => {
+    if (!active) return
+    const returningFromBot = previousBotView.current && !botView
+    previousBotView.current = botView
+    // Outer navigation already checks the draft guard and owns focus.
+    if (returningFromBot) void refreshMapOnReturn()
+  })
 
   useEffect(() => {
     if (!active || file === null) return
     const controller = new AbortController()
     setPreview({ kind: 'loading' })
     setSelectedId(null)
-    setGraphOpen(false)
     loadMap(file, controller.signal).then(
       (map) => { if (!controller.signal.aborted) setPreview({ kind: 'ready', map }) },
       (error: unknown) => {
@@ -174,7 +191,8 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
   }, [active, file, revision])
 
   useEffect(() => {
-    if (botView) botHeading.current?.focus()
+    // Internal Bot links move into their content; outer navigation keeps its own focus.
+    if (botView && schedulerRoot.current?.contains(document.activeElement)) botHeading.current?.focus()
   }, [botView, botId])
 
   const bot = bots.kind === 'ready' ? bots.bots.find((item) => item.id === botId) : undefined
@@ -197,9 +215,9 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
 
   function selectFile(name: string) {
     if (name === file || !abandonDraft()) return
+    setLaunchOpen(false)
     setFile(name)
     setSelectedId(null)
-    setGraphOpen(false)
     setPreview({ kind: 'loading' })
     setBots({ kind: 'loading' })
   }
@@ -219,28 +237,22 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
     <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3>
     <label>{draft.kind} ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, id: event.target.value })} /></label>
     <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
+    <p>{draft.kind === 'node' ? 'node 必须填写 title、bot_id、字符串 input、字符串 zone 路径和 blocked_by。允许暂未登记的 Bot 或 zone；同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
+    {draft.kind === 'Bot' && <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => setDraft({ ...draft, content })} />}
     <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
-    <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>保存{draft.kind === 'node' ? ' node' : ' Bot'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>放弃编辑</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
+    <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>{draft.kind === 'Bot' ? 'save' : '保存 node'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>{draft.kind === 'Bot' ? 'cancel' : '放弃编辑'}</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
   </form>
 
-  return <section className="scheduler" aria-label="Map 目录">
-    <header className="scheduler-header">
-      <div><p className="scheduler-eyebrow">静态工作定义</p><h2>scheduler <span>阅读优先</span></h2></div>
-      <div className="scheduler-actions">
-      <button type="button" onClick={() => openBot(null)}>Bot 管理</button>
-      <button type="button" disabled={busy || editingBusy} onClick={() => {
-        if (!abandonDraft()) return
-        setSelectedId(null)
-        setGraphOpen(false)
-        if (file !== null) setPreview({ kind: 'loading' })
-        setListing({ kind: 'loading' })
-        setBots({ kind: 'loading' })
-        setRevision((value) => value + 1)
-      }}>刷新全部</button>
-      </div>
-    </header>
-    <p className="scheduler-intro">浏览服务主机上的 Map，与当前 zone 无关。可新增和修改当前 Map 的 node 与共享 Bot；静态定义，不执行工作。</p>
-    <p className="scheduler-refresh-note">刷新会重新读取目录、当前 Map 和共享 Bot，并清除节点选择。</p>
+  const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={() => {
+    if (!abandonDraft()) return
+    setSelectedId(null)
+    if (file !== null) setPreview({ kind: 'loading' })
+    setListing({ kind: 'loading' })
+    setBots({ kind: 'loading' })
+    setRevision((value) => value + 1)
+  }}>{botView ? 'refresh' : '刷新全部'}</button>
+
+  return <section ref={schedulerRoot} className="scheduler" aria-label="Map 目录">
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
       {returnProblem && <p role="alert">{returnProblem}</p>}
@@ -255,11 +267,13 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       </section>}
     </div>
     {botView ? <div className="scheduler-bot-page">
-      <nav aria-label="Bot 导航" className="scheduler-actions">
-        <button type="button" onClick={() => void returnToMap()}>返回 Map</button>
-        {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>新增 Bot</button>}
-      </nav>
-      <h2 ref={botHeading} tabIndex={-1}>共享 Bot</h2>
+      <div className="scheduler-bot-heading">
+        <h2 ref={botHeading} tabIndex={-1}>bot</h2>
+        <div className="scheduler-actions">
+          {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>new</button>}
+          {refreshButton}
+        </div>
+      </div>
       <div className="scheduler-bot-layout">
         <section aria-label="共享 Bot 列表" className="scheduler-bot-directory">
           <label className="scheduler-filter">筛选 Bot<input type="search" value={botFilter} onChange={(event) => setBotFilter(event.target.value)} placeholder="名称或 ID…" /></label>
@@ -274,8 +288,8 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
         </section>
         <div className="scheduler-bot-main">
           {editError && <p role="alert">{editError}</p>}
-          {draft ? editor : botId === null ? <div className="scheduler-placeholder"><h3>选择一个 Bot</h3><p>从左侧列表选择 Bot，查看能力说明与输入输出。</p></div> : <>
-            {bot && !botProblem && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>修改 Bot</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>删除 Bot</button></div>}
+          {draft ? editor : botId === null ? <div className="scheduler-placeholder"><h3>选择一个 Bot</h3><p>从左侧列表选择 Bot，分别阅读 when、plan_guide 和 node_guide。</p></div> : <>
+            {bot && !botProblem && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>edit</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>delete</button></div>}
             <section aria-label="Bot 预览" className="scheduler-details">
               {bots.kind === 'ready' && (botProblem
                 ? <p role="alert">共享 Bot {botId}：{botProblem.message}</p>
@@ -286,7 +300,7 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
       </div>
     </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
-        <div className="scheduler-section-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}</div>
+        <div className="scheduler-section-heading scheduler-directory-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
         <label className="scheduler-filter">筛选 Map 文件<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="输入文件名…" /></label>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
         {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}
@@ -299,23 +313,33 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
               <button type="button" aria-pressed={file === name} onClick={() => selectFile(name)}>{name}</button>
             </li>)}</ul>
           </>)}
-        <p className="scheduler-directory-note">仅列出目录直接包含的 JSON 文件。筛选不会重载或关闭当前 Map。</p>
       </aside>
       <div className="scheduler-main">
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && editor}
-        {map && !draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>}
+        {map && !draft && <div className="scheduler-actions">
+          <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
+          <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+        </div>}
+        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
+          onClose={() => { setLaunchOpen(false); void returnToMap() }}
+          onNode={(id) => { setSelectedId(id); void beginEdit(id, 'node') }}
+          onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
+          onTask={onTask} onZones={onZones} /></div>}
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览">
           <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
+          <MapGraph map={map} selectedId={selectedId} onSelect={setSelectedId} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">
               <section aria-label="节点列表">
               <div className="scheduler-section-heading"><h4>节点与前置依赖</h4><span>{Object.keys(map.nodes).length} 个节点</span></div>
               {Object.keys(map.nodes).length === 0 && <p>此 Map 没有 node。</p>}
-              <ul className="scheduler-node-list">{Object.entries(map.nodes).map(([id, node]) => <li key={id}>
+              <ul className="scheduler-node-list">{orderedMapNodeIds(map).map(id => {
+                const node = map.nodes[id]
+                return <li key={id}>
                 <button type="button" ref={(element) => { if (element) nodeButtons.current.set(id, element); else nodeButtons.current.delete(id) }}
                   aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} onClick={() => setSelectedId(id)}>
                   <span className="scheduler-node-id">{id}</span><span className="scheduler-node-summary"><strong>{node.title}</strong>
@@ -323,13 +347,8 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
                     <span>Bot：{node.bot_id}</span>{botProblems[id] && <span className="scheduler-node-warning">{botProblems[id]}</span>}
                   </span><span aria-hidden="true">→</span>
                 </button>
-              </li>)}</ul>
+              </li>})}</ul>
               </section>
-              <details className="scheduler-graph-disclosure" open={graphOpen} onToggle={(event) => setGraphOpen(event.currentTarget.open)}>
-                <summary>依赖图</summary>
-                <p>前置 node → 依赖它的 node。箭头仅表示 blocked_by，不表示执行、材料传递或运行状态。</p>
-                {graphOpen && <MapGraph map={map} selectedId={selectedId} onSelect={setSelectedId} botProblems={botProblems} />}
-              </details>
             </div>
             <aside className="scheduler-inspector" aria-label="节点检查器">
               {selectedId !== null && Object.hasOwn(map.nodes, selectedId) ? <>
@@ -339,8 +358,9 @@ export function SchedulerPanel({ active, navigationGuard }: { active: boolean; n
                 }}>关闭</button></div>
                 {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
-                  botProblem={botProblems[selectedId]} onBot={openBot} />
-              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次参数、前置依赖与共享 Bot。</p></div>}
+                  botProblem={botProblems[selectedId]} onBot={openBot}
+                  bot={bots.kind === 'ready' && !botProblems[selectedId] ? bots.bots.find((bot) => bot.id === map.nodes[selectedId].bot_id) : undefined} />
+              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone 路径引用、前置依赖与共享 Bot。</p></div>}
             </aside>
           </div>
         </section>}

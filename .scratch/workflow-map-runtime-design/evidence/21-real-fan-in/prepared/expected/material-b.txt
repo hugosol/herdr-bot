@@ -1,0 +1,3 @@
+source=B
+item=blue-widget
+unit_price=6

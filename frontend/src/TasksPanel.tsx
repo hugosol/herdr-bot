@@ -21,6 +21,12 @@ type Feedback = {
 
 type Dialog = { kind: 'create' } | { kind: 'edit'; id: string }
 
+function isVisibleFixedExtension(entry: NonNullable<TaskOptions['extensions']>[number], task: Pick<Task, 'agent' | 'taskType'>): boolean {
+  return entry.agent === task.agent && entry.kind === 'fixed'
+    && entry.id !== `${task.agent}-node-chat`
+    && (entry.id !== `${task.agent}-manager-chat` || task.taskType === 'manager')
+}
+
 /** 把一次失败归一化成面向使用者的说明；未得到可用响应时明确说“无法确认”。 */
 function describeFailure(result: TaskResult, action: string): string {
   return result.kind === 'rejected'
@@ -47,6 +53,7 @@ function emptyDraft(): TaskInput {
     name: '',
     chatName: INITIAL_CHAT_NAME,
     agent: 'omp',
+    taskType: 'normal',
     model: 'default',
     thinking: 'default',
     skill: null,
@@ -61,6 +68,7 @@ function draftFrom(task: Task): TaskInput {
     name: task.name,
     chatName: task.chatName,
     agent: task.agent,
+    taskType: task.taskType,
     model: task.model,
     thinking: task.thinking,
     skill: task.skill,
@@ -75,7 +83,7 @@ function draftFrom(task: Task): TaskInput {
  * Task 由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 task 入口都重新读取，
  * 保存/删除成功后才用后端返回的完整列表更新界面；保存失败不表示已保存。
  */
-export function TasksPanel({ active }: { active: boolean }) {
+export function TasksPanel({ active, editRequest, onEditRequestHandled }: { active: boolean; editRequest: { id: string } | null; onEditRequestHandled: () => void }) {
   const [data, setData] = useState<TaskList | null>(null)
   const [loading, setLoading] = useState(false)
   const [listFailure, setListFailure] = useState<string | null>(null)
@@ -120,7 +128,13 @@ export function TasksPanel({ active }: { active: boolean }) {
     }
   }, [active])
 
-  async function openEditor(task?: Task) {
+  useEffect(() => {
+    if (!active || !editRequest) return
+    void openEditor(editRequest.id)
+    onEditRequestHandled()
+  }, [active, editRequest])
+
+  async function openEditor(taskId?: string) {
     setLoading(true)
     const result = await fetchTasks()
     setLoading(false)
@@ -129,8 +143,8 @@ export function TasksPanel({ active }: { active: boolean }) {
       return
     }
     setData({ tasks: result.tasks, options: result.options })
-    const current = task ? result.tasks.find((entry) => entry.id === task.id) : undefined
-    if (task && !current) {
+    const current = taskId === undefined ? undefined : result.tasks.find((entry) => entry.id === taskId)
+    if (taskId !== undefined && !current) {
       setFeedback({ kind: 'error', text: '目标 Task 不存在：可能已被删除。' })
       return
     }
@@ -142,7 +156,7 @@ export function TasksPanel({ active }: { active: boolean }) {
   }
 
   function openCreate() { void openEditor() }
-  function openEdit(task: Task) { void openEditor(task) }
+  function openEdit(task: Task) { void openEditor(task.id) }
 
   function closeDialog() {
     setDialog(null)
@@ -159,6 +173,11 @@ export function TasksPanel({ active }: { active: boolean }) {
       thinking: 'default',
       extensions: [],
     }))
+    setNotice(null)
+  }
+
+  function changeType(taskType: TaskInput['taskType']) {
+    setDraft((current) => ({ ...current, taskType }))
     setNotice(null)
   }
 
@@ -250,7 +269,7 @@ export function TasksPanel({ active }: { active: boolean }) {
 
   const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
   const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
-  const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed')
+  const fixedExtensions = extensions.filter((entry) => isVisibleFixedExtension(entry, draft))
   const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
   const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
   const selectionErrors = [
@@ -312,6 +331,7 @@ export function TasksPanel({ active }: { active: boolean }) {
               >
                 <h2 className="task-item__name">{task.name}</h2>
                 <dl className="task-item__fields">
+                  <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
                   <div>
                     <dt>chat-name 示例</dt>
                     <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
@@ -334,7 +354,7 @@ export function TasksPanel({ active }: { active: boolean }) {
                   </div>
                   <div>
                     <dt>固定扩展</dt>
-                    <dd>{data.options.extensions?.filter((entry) => entry.agent === task.agent && entry.kind === 'fixed').map((entry) => entry.label).join('、') || '无'}</dd>
+                    <dd>{data.options.extensions?.filter((entry) => isVisibleFixedExtension(entry, task)).map((entry) => entry.label).join('、') || '无'}</dd>
                   </div>
                   <div>
                     <dt>可选扩展</dt>
@@ -478,6 +498,14 @@ export function TasksPanel({ active }: { active: boolean }) {
                 <p className="task-hint">
                   必填；只是 Task 的显示名，不是新 Chat 的固定名字。
                 </p>
+
+                <label className="zone-form__label" htmlFor="task-type">Task 类型</label>
+                <select id="task-type" data-testid="task-type" className="zone-form__input zone-form__select"
+                  value={draft.taskType} onChange={(event) => changeType(event.target.value as TaskInput['taskType'])} disabled={saving}>
+                  <option value="normal">普通（normal）</option>
+                  <option value="manager">流程管理者（manager）</option>
+                </select>
+                <p className="task-hint">普通 Task 支持独立启动和 Bot 节点绑定；manager 专用于流程管理。两种类型均支持 omp 和 pi，节点角色仅在实际流程执行时加载。</p>
 
                 <label className="zone-form__label" htmlFor="task-agent">
                   agent
@@ -634,6 +662,7 @@ export function TasksPanel({ active }: { active: boolean }) {
                 <div><dt>Task 显示名</dt><dd data-testid="summary-name">{draft.name}</dd></div>
                 <div><dt>chat-name 命名规则</dt><dd data-testid="summary-chatName">{draft.chatName}</dd></div>
                 <div><dt>Chat 名称示例</dt><dd>{renderChatNameExample(draft.chatName, draft.name, draft.agent)}</dd></div>
+                <div><dt>Task 类型</dt><dd data-testid="summary-taskType">{draft.taskType}</dd></div>
                 <div><dt>agent</dt><dd data-testid="summary-agent">{data.options.labels?.agents?.[draft.agent] ?? draft.agent}</dd></div>
                 <div><dt>model</dt><dd data-testid="summary-model">{data.options.labels?.models?.[draft.model] ?? modelLabel(draft)}</dd></div>
                 <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>

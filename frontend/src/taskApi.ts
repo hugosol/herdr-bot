@@ -5,6 +5,7 @@
  * 能力事实（agent / model / thinking / skill）由后端公开，保存失败时页面不能表示已保存。
  */
 
+export type TaskType = 'normal' | 'manager'
 export type TaskAgent = 'omp' | 'pi'
 export type TaskModel = string
 export type TaskThinking = string
@@ -16,6 +17,7 @@ export type Task = {
   name: string
   chatName: string
   agent: TaskAgent
+  taskType: TaskType
   model: TaskModel
   thinking: TaskThinking
   skill: TaskSkill | null
@@ -65,6 +67,7 @@ function isTask(value: unknown): value is Task {
     typeof task.name === 'string' &&
     typeof task.chatName === 'string' &&
     typeof task.agent === 'string' &&
+    ['normal', 'manager'].includes(task.taskType as string) &&
     typeof task.model === 'string' &&
     typeof task.thinking === 'string' &&
     (task.skill === null || typeof task.skill === 'string') &&

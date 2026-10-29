@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
   "title": "另一张出行计划（人工示例）",
   "description": "跨 Map 复用 destination-weather；不复制 Bot，也不执行查询。",
   "nodes": {
     "E": {
       "title": "广州出行天气",
       "bot_id": "destination-weather",
-      "parameters": { "city": "广州", "date": "2026-11-03" },
+      "input": "城市：广州\n日期：2026-11-03",
+      "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     }
   }

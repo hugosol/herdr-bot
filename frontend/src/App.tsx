@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
+import './navigation.css'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from './api'
 import { TasksPanel } from './TasksPanel'
 import { FileListPanel } from './FileListPanel'
 import { ChatPanel } from './ChatPanel'
 import { SchedulerPanel } from './SchedulerPanel'
+import { RunDetails, selectedRunId } from './RunDetails'
 import { EMPTY_SESSION_FEED, type SessionFeed } from './sessionFeed'
 import { ShutdownControl } from './ShutdownControl'
 import { useSessionFeedSnapshot } from './useSessionFeed'
@@ -29,19 +31,24 @@ const OPERATION_LABELS: Record<OperationName, string> = {
  */
 type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
-/**
- * herdr-bot 主界面的四个顶层入口：chat → task → zone → scheduler。
- * 打开或整页刷新永远从 chat 开始（见 `useState` 初值），没有恢复上次 tab 的持久化状态。
- */
-const TAB_ORDER = ['sessions', 'tasks', 'files', 'scheduler'] as const
-
+const TAB_GROUPS = {
+  work: ['sessions', 'files', 'workflow'],
+  config: ['tasks', 'bot', 'scheduler'],
+} as const
+const TAB_ORDER = [...TAB_GROUPS.work, ...TAB_GROUPS.config]
 type TabKey = (typeof TAB_ORDER)[number]
-
+type NavigationGroup = keyof typeof TAB_GROUPS
 const TAB_LABELS: Record<TabKey, string> = {
-  sessions: 'chat',
-  tasks: 'task',
-  files: 'zone',
-  scheduler: 'scheduler',
+  sessions: 'chat', files: 'zone', workflow: 'workflow',
+  tasks: 'task', bot: 'bot', scheduler: 'scheduler',
+}
+const TAB_ICONS: Record<TabKey, string> = {
+  sessions: 'M4 4h16v12H9l-5 4V4Z',
+  files: 'M3 6h7l2 2h9v12H3V6Z',
+  workflow: 'm12 3 9 9-9 9-9-9 9-9Z',
+  tasks: 'M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1',
+  bot: 'M5 7h14v13H5V7ZM12 3v4M8 12h1M15 12h1M9 16h6',
+  scheduler: 'M4 4h16v16H4V4ZM4 9h16M9 9v11M15 9v11',
 }
 
 type Feedback = {
@@ -66,11 +73,119 @@ export default function App({
   zoneWatchFeed?: ZoneWatchFeed
 } = {}) {
   const [state, setState] = useState<PanelState>({ kind: 'idle' })
-  // 每次打开或整页刷新都从 chat 开始：这里没有读取任何持久化的 tab 状态。
-  const [tab, setTab] = useState<TabKey>('sessions')
+  const [initialRunId] = useState(() => {
+    const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined
+    return navigation?.type === 'reload' ? null : selectedRunId()
+  })
+  const [runId, setRunId] = useState(initialRunId)
+  const [tab, setTab] = useState<TabKey>(initialRunId ? 'workflow' : 'sessions')
+  const [layout, setLayout] = useState<'compact' | 'expanded'>(() => new URL(window.location.href).searchParams.get('layout') === 'expanded' ? 'expanded' : 'compact')
+  const [group, setGroup] = useState<NavigationGroup>('work')
+  const lastTabs = useRef<Record<NavigationGroup, TabKey>>({ work: initialRunId ? 'workflow' : 'sessions', config: 'tasks' })
+  const [navigationFade, setNavigationFade] = useState(false)
   const [serverOpen, setServerOpen] = useState(false)
+  const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
-  // 四个 tab 都是原生按钮，都在 Tab 顺序里；方向键切换时把焦点一起移到新入口。
+  const acceptedHash = useRef(window.location.hash)
+  const touchStart = useRef<{ id: number; x: number; y: number; horizontal: boolean } | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const navViewport = useRef<HTMLDivElement>(null)
+  const schedulerTab = tab === 'scheduler' || tab === 'bot'
+  const visibleTabs: readonly TabKey[] = layout === 'expanded' ? TAB_ORDER : TAB_GROUPS[group]
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.set('layout', layout)
+    window.history.replaceState(window.history.state, '', url)
+  }, [layout])
+
+  useEffect(() => {
+    // Reload starts at Chat. Retire the old Run route so clicking that same
+    // Run link later still produces a real hash navigation.
+    const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (navigation?.type !== 'reload' || !selectedRunId()) return
+    const url = new URL(window.location.href)
+    url.hash = 'workflow'
+    window.history.replaceState(window.history.state, '', url)
+    acceptedHash.current = window.location.hash
+  }, [])
+
+  useEffect(() => {
+    if (!navigationFade) return
+    const timer = window.setTimeout(() => setNavigationFade(false), 200)
+    return () => window.clearTimeout(timer)
+  }, [navigationFade, layout, group])
+
+  function selectTab(next: TabKey, guarded = true) {
+    if (next !== tab && guarded && schedulerTab && schedulerNavigationGuard.current?.() === false) return false
+    const nextGroup = (TAB_GROUPS.work as readonly TabKey[]).includes(next) ? 'work' : 'config'
+    if (tab === 'workflow' && next !== 'workflow' && selectedRunId()) {
+      const url = new URL(window.location.href)
+      url.hash = 'workflow'
+      window.history.replaceState(window.history.state, '', url)
+      acceptedHash.current = window.location.hash
+    }
+    lastTabs.current[nextGroup] = next
+    setGroup(nextGroup)
+    setTab(next)
+    return true
+  }
+
+  useEffect(() => {
+    const navigate = () => {
+      if (window.location.hash === acceptedHash.current) return
+      const id = selectedRunId()
+      const workflowRoute = id !== null || window.location.hash === '#workflow'
+      if (workflowRoute && !selectTab('workflow')) {
+        const url = new URL(window.location.href)
+        url.hash = acceptedHash.current
+        window.history.replaceState(window.history.state, '', url)
+        return
+      }
+      acceptedHash.current = window.location.hash
+      setRunId(id)
+      if (workflowRoute) setServerOpen(false)
+    }
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  })
+
+  function cancelSwipe() {
+    touchStart.current = null
+    setDragging(false)
+    setDragOffset(0)
+  }
+
+  function moveSwipe(event: TouchEvent<HTMLElement>) {
+    const start = touchStart.current
+    if (!start || layout !== 'compact') return
+    if (event.touches.length !== 1 || event.touches[0].identifier !== start.id) { cancelSwipe(); return }
+    const dx = event.touches[0].clientX - start.x
+    const dy = event.touches[0].clientY - start.y
+    if (!start.horizontal) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return
+      if (Math.abs(dx) <= Math.abs(dy) * 1.5) { cancelSwipe(); return }
+      start.horizontal = true
+      setDragging(true)
+    }
+    const width = navViewport.current?.clientWidth ?? 0
+    setDragOffset(group === 'work' ? Math.max(-width, Math.min(0, dx)) : Math.min(width, Math.max(0, dx)))
+  }
+
+  function finishSwipe(event: TouchEvent<HTMLElement>) {
+    const start = touchStart.current
+    cancelSwipe()
+    if (!start?.horizontal || layout !== 'compact' || event.touches.length !== 0 || event.changedTouches.length !== 1) return
+    event.preventDefault()
+    const end = event.changedTouches[0]
+    const width = navViewport.current?.clientWidth ?? 0
+    if (end.identifier !== start.id || width === 0) return
+    const dx = end.clientX - start.x
+    if ((group === 'work' && dx <= -width / 3) || (group === 'config' && dx >= width / 3)) {
+      selectTab(lastTabs.current[group === 'work' ? 'config' : 'work'])
+    }
+  }
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   const serverBackRef = useRef<HTMLButtonElement>(null)
   const wasServerOpen = useRef(false)
@@ -85,20 +200,22 @@ export default function App({
   const { shutdown, connection } = useSessionFeedSnapshot(sessionFeed)
 
   function selectAdjacentTab(event: KeyboardEvent<HTMLDivElement>) {
-    const index = TAB_ORDER.indexOf(tab)
+    const index = visibleTabs.indexOf(tab)
     let nextIndex: number
     switch (event.key) {
+      case 'ArrowDown':
       case 'ArrowRight':
-        nextIndex = (index + 1) % TAB_ORDER.length
+        nextIndex = (index + 1) % visibleTabs.length
         break
+      case 'ArrowUp':
       case 'ArrowLeft':
-        nextIndex = (index - 1 + TAB_ORDER.length) % TAB_ORDER.length
+        nextIndex = (index - 1 + visibleTabs.length) % visibleTabs.length
         break
       case 'Home':
         nextIndex = 0
         break
       case 'End':
-        nextIndex = TAB_ORDER.length - 1
+        nextIndex = visibleTabs.length - 1
         break
       default:
         return
@@ -106,10 +223,8 @@ export default function App({
 
     // 方向键只属于顶层入口：阻止页面滚动，并同步选中态与焦点。
     event.preventDefault()
-    const next = TAB_ORDER[nextIndex]
-    if (next !== tab && tab === 'scheduler' && schedulerNavigationGuard.current?.() === false) return
-    setTab(next)
-    tabRefs.current[next]?.focus()
+    const next = visibleTabs[nextIndex]
+    if (selectTab(next)) tabRefs.current[next]?.focus()
   }
 
   async function submit(operation: OperationName) {
@@ -129,43 +244,32 @@ export default function App({
   const feedback = feedbackFor(state)
 
   return (
-    <main className={!serverOpen && (tab === 'files' || tab === 'tasks') ? 'panel panel--wide' : 'panel'}>
-      <header className="app-header">
-        <h1>herdr-bot</h1>
-        <button type="button" data-testid="server-button" hidden={serverOpen} onClick={() => { if (tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>
-          server
-        </button>
-      </header>
-
-      {/* 四 tab 外壳：chat → task → zone → scheduler，打开时默认停在 chat。
-          四个 tab 都是原生按钮——Tab 键逐个聚焦、Enter/Space 触发点击；
-          方向键在四个入口之间循环切换并同步焦点。左右滑动不参与顶层切换。 */}
-      <div
-        className="tabs"
-        hidden={serverOpen}
-        role="tablist"
-        aria-label="herdr-bot 主界面分区"
-        onKeyDown={selectAdjacentTab}
-      >
-        {TAB_ORDER.map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`tab-${key}`}
-            className={tab === key ? 'tab is-active' : 'tab'}
-            data-testid={`tab-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`panel-${key}`}
-            ref={(node) => {
-              tabRefs.current[key] = node
-            }}
-            onClick={() => { if (key === tab || tab !== 'scheduler' || schedulerNavigationGuard.current?.() !== false) setTab(key) }}
-          >
-            {TAB_LABELS[key]}
+    <div className={navigationFade ? 'app-layout navigation-fade' : 'app-layout'} data-layout={layout} data-group={group}>
+      <header className="layout-header">
+        <div className="layout-header-start">
+          <button type="button" data-action="layout" aria-label={layout === 'compact' ? '展开导航' : '收起导航'} aria-expanded={layout === 'expanded'} onClick={() => { setNavigationFade(true); setLayout(layout === 'compact' ? 'expanded' : 'compact') }}>
+            <span aria-hidden="true">☰</span><span className="layout-toggle-label">{layout === 'compact' ? '展开' : '收起'}</span>
           </button>
-        ))}
-      </div>
+          <h1 className="layout-brand">herdr-bot</h1>
+        </div>
+        <button type="button" data-action="server" data-testid={serverOpen ? 'server-back' : 'server-button'} ref={serverBackRef} onClick={() => { if (serverOpen) setServerOpen(false); else if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>{serverOpen ? '返回' : 'server'}</button>
+      </header>
+      <div className="layout-shell">
+        <nav className="layout-nav" hidden={serverOpen} aria-label="主导航"
+          onTouchStart={(event) => { cancelSwipe(); const touch = event.touches[0]; touchStart.current = layout === 'compact' && event.touches.length === 1 ? { id: touch.identifier, x: touch.clientX, y: touch.clientY, horizontal: false } : null }}
+          onTouchMove={moveSwipe}
+          onTouchCancel={cancelSwipe} onTouchEnd={finishSwipe}>
+          <div className="layout-nav-viewport" ref={navViewport}>
+          <div role="tablist" aria-label="herdr-bot 主界面分区" onKeyDown={selectAdjacentTab} className="layout-nav-track" data-dragging={dragging} style={layout === 'compact' ? { transform: `translateX(calc(${group === 'work' ? '0%' : '-100%'} + ${dragOffset}px))` } : undefined}>
+            {(['work', 'config'] as const).map((navGroup) => <div key={navGroup} className="layout-nav-group" inert={layout === 'compact' && group !== navGroup} aria-hidden={layout === 'compact' && group !== navGroup ? true : undefined}>
+              {TAB_GROUPS[navGroup].map((key) => <button key={key} type="button" role="tab" id={`tab-${key}`} className={tab === key ? 'layout-nav-item is-active' : 'layout-nav-item'} data-testid={`tab-${key}`} aria-selected={tab === key} aria-controls={key === 'bot' ? 'panel-scheduler' : `panel-${key}`} ref={(node) => { tabRefs.current[key] = node }} onClick={() => selectTab(key)}>
+                <svg className="layout-nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={TAB_ICONS[key]} /></svg><span>{TAB_LABELS[key]}</span>
+              </button>)}
+            </div>)}
+          </div>
+          </div>
+        </nav>
+        <main className={!serverOpen && (tab === 'files' || tab === 'tasks') ? 'panel panel--wide layout-content' : 'panel layout-content'}>
 
       {/* 分区内容常驻、只切换可见性：切走再切回不会丢掉已提交操作的结果反馈，
           关机的整屏接管也不会被切 tab 打断。 */}
@@ -188,7 +292,7 @@ export default function App({
         data-testid="panel-tasks"
         hidden={serverOpen || tab !== 'tasks'}
       >
-        <TasksPanel active={!serverOpen && tab === 'tasks'} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)} />
       </div>
 
       <div
@@ -205,12 +309,19 @@ export default function App({
       <div
         id="panel-scheduler"
         role="tabpanel"
-        aria-labelledby="tab-scheduler"
+        aria-labelledby={tab === 'bot' ? 'tab-bot' : 'tab-scheduler'}
         className="tabpanel"
         data-testid="panel-scheduler"
-        hidden={serverOpen || tab !== 'scheduler'}
+        hidden={serverOpen || !schedulerTab}
       >
-        <SchedulerPanel active={!serverOpen && tab === 'scheduler'} navigationGuard={schedulerNavigationGuard} />
+        <SchedulerPanel active={!serverOpen && schedulerTab} view={tab === 'bot' ? 'bot' : 'map'}
+          onViewChange={(view) => { selectTab(view === 'bot' ? 'bot' : 'scheduler', false) }} navigationGuard={schedulerNavigationGuard}
+          onTask={(id) => { if (selectTab('tasks')) setTaskEditRequest(id ? { id } : null) }}
+          onZones={() => { selectTab('files') }} />
+      </div>
+
+      <div id="panel-workflow" role="tabpanel" aria-labelledby="tab-workflow" className="tabpanel" hidden={serverOpen || tab !== 'workflow'}>
+        <RunDetails id={runId} active={!serverOpen && tab === 'workflow'} />
       </div>
 
       <section
@@ -219,15 +330,6 @@ export default function App({
         hidden={!serverOpen}
       >
         <h2 id="server-title">server</h2>
-        <button
-          type="button"
-          data-testid="server-back"
-          className="server-back"
-          ref={serverBackRef}
-          onClick={() => setServerOpen(false)}
-        >
-          返回 {TAB_LABELS[tab]}
-        </button>
         <p className="scope-note">
           本页面只反馈脚本调用情况，不表示后台程序已经启动、已经就绪或已经彻底停止。
         </p>
@@ -281,7 +383,9 @@ export default function App({
         connection={connection}
         onTakeoverChange={setShutdownTakeover}
       />
-    </main>
+        </main>
+      </div>
+    </div>
   )
 }
 

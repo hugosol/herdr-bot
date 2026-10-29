@@ -1,45 +1,33 @@
 {
-  "schema_version": 1,
   "title": "出行准备核对（人工示例）",
   "description": "A、B 并行准备后汇合到 C；D 独立。仅演示静态定义，不执行天气查询、额度估算或汇总。",
   "nodes": {
     "A": {
       "title": "上海出行天气",
       "bot_id": "destination-weather",
-      "parameters": {
-        "city": "上海",
-        "date": "2026-11-01",
-        "preferences": { "walking": true, "notes": ["带伞", null] }
-      },
+      "input": "城市：上海\n日期：2026-11-01\n偏好：步行；带伞。",
+      "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     },
     "B": {
       "title": "北京出行天气",
       "bot_id": "destination-weather",
-      "parameters": {
-        "city": "北京",
-        "date": "2026-11-02",
-        "zone": "尚未登记的出行资料目录"
-      },
+      "input": "城市：北京\n日期：2026-11-02",
+      "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     },
     "C": {
       "title": "汇总出行准备",
       "bot_id": "trip-summary",
-      "parameters": {
-        "scope": "上海与北京的出行准备",
-        "checklist": ["天气", "随身物品"]
-      },
+      "input": "范围：上海与北京的出行准备\n核对主题：天气、随身物品。材料位置由管理者明确提供。",
+      "zone": "C:/example/travel-not-registered",
       "blocked_by": ["A", "B"]
     },
     "D": {
       "title": "独立额度估算",
       "bot_id": "quota-estimate",
-      "parameters": {
-        "account": "人工示例账户",
-        "remaining_percent": 25,
-        "observed_at": null
-      },
+      "input": "账户：人工示例账户\n人工观察的剩余额度：25%\n观察时间：未知。",
+      "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     }
   }

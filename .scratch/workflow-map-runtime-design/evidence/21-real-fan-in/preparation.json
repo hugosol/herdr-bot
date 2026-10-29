@@ -1,0 +1,17 @@
+{
+  "verification": "Only executes the documented preparation; not real Agent acceptance",
+  "exitCode": 0,
+  "stdout": "{\n    \"root\":  \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\",\n    \"map\":  \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\\\maps\\\\fan-in.json\",\n    \"managerInput\":  \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\\\manager-input.txt\",\n    \"actualArtifactsExist\":  [\n                                 false,\n                                 false,\n                                 false\n                             ],\n    \"runFiles\":  [\n\n                 ]\n}\n",
+  "stderr": "",
+  "manifest": {
+    "root": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e",
+    "map": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\maps\\fan-in.json",
+    "managerInput": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\manager-input.txt",
+    "actualArtifactsExist": [
+      false,
+      false,
+      false
+    ],
+    "runFiles": []
+  }
+}

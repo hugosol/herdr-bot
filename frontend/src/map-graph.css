@@ -3,44 +3,12 @@
   color: #e4ebf3;
 }
 
-.scheduler .scheduler-graph-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .5rem;
-}
-
-.scheduler .scheduler-graph-tools button {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: .5rem .8rem;
-  border: 1px solid #637587;
-  border-radius: .4rem;
-  background: #1b222c;
-  color: #e4ebf3;
-  cursor: pointer;
-}
-
-.scheduler .scheduler-graph-tools button:disabled {
-  opacity: .5;
-  cursor: default;
-}
-
-.scheduler .scheduler-graph-tools output {
-  min-width: 4.5rem;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  color: #a9d0f0;
-}
-
-.scheduler .scheduler-graph-help,
 .scheduler .scheduler-graph-empty {
   color: #95a3b5;
   line-height: 1.6;
 }
 
-/* The viewport clips a zoomable canvas, rather than shrinking a tall SVG to fit.
-   Fit is an overview; zoom and keyboard focus keep individual nodes readable. */
+/* Fit the dependency overview to a bounded viewport. */
 .scheduler .scheduler-graph-viewport {
   width: 100%;
   height: clamp(22rem, 55vh, 38rem);
@@ -81,7 +49,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: .2rem;
   width: 100%;
   height: 100%;
@@ -103,7 +71,22 @@
   overflow-wrap: anywhere;
 }
 
-.scheduler .scheduler-node span {
+.scheduler .scheduler-node > * {
+  flex-shrink: 0;
+}
+
+.scheduler .scheduler-node strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.scheduler .scheduler-node-id-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #95a3b5;
   font-family: Consolas, monospace;
   font-size: .85rem;
@@ -128,14 +111,55 @@
   color: #f1c7a1;
 }
 
-.scheduler .scheduler-graph-tools button:focus-visible,
 .scheduler .scheduler-node:focus-visible {
   outline: 3px solid #e4ebf3;
   outline-offset: -5px;
 }
 
+/* Clip only the decorative shape, never the button, its text, or its focus ring. */
+.scheduler .scheduler-node[data-report-policy="manual"] {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+}
+.scheduler .scheduler-node-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: visible;
+  pointer-events: none;
+}
+.scheduler .scheduler-node-shape polygon {
+  fill: #1b222c;
+  stroke: #637587;
+  stroke-width: 2;
+}
+.scheduler .scheduler-node-related .scheduler-node-shape polygon {
+  stroke: #a9d0f0;
+  stroke-dasharray: 6 4;
+}
+.scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon {
+  fill: #253446;
+  stroke: #a9d0f0;
+  stroke-width: 4;
+  stroke-dasharray: none;
+}
+
 @media (forced-colors: active) {
+  .scheduler .scheduler-node { border-color: ButtonText; background: ButtonFace; color: ButtonText; }
+  .scheduler .scheduler-node-id-label,
+  .scheduler .scheduler-node-relation,
+  .scheduler .scheduler-node-problem { color: ButtonText; }
+  .scheduler .scheduler-node-related { border-color: Highlight; }
   .scheduler .scheduler-graph-edge { stroke: CanvasText; }
   .scheduler .scheduler-graph-edge-related { stroke: Highlight; }
   .scheduler .scheduler-node[aria-pressed="true"] { border-color: Highlight; }
+  .scheduler .scheduler-node[data-report-policy="manual"] { border-color: transparent; background: transparent; }
+  .scheduler .scheduler-node-shape polygon { fill: ButtonFace; stroke: ButtonText; }
+  .scheduler .scheduler-node-related .scheduler-node-shape polygon,
+  .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon { fill: ButtonFace; stroke: Highlight; }
 }

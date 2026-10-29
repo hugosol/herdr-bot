@@ -1,160 +1,127 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 
-/**
- * 四 tab 骨架：顺序、默认入口、键盘可达与“滑动不切 tab”。
- *
- * 顶层顺序固定为 chat、task、zone、scheduler；每次打开或整页刷新都从 chat 开始，
- * 不恢复上次 tab。四个 tab 都是原生按钮：Tab 可逐个聚焦，Enter/Space 触发点击；
- * 方向键在四个入口之间循环切换并同步焦点。左右滑动不参与切换。
- */
-describe('App 四 tab 骨架', () => {
-  it('整页恰四个 tab，顺序为 chat、task、zone、scheduler，默认停在 chat', () => {
+beforeEach(() => {
+  window.history.replaceState(null, '', '/')
+})
+
+describe('App navigation', () => {
+  it('defaults to Chat with only work entries visible and one active page', () => {
     render(<App />)
-
-    const tabs = within(screen.getByRole('tablist')).getAllByRole('tab')
-    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
-    expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
-    expect(tabs[2]).toHaveAttribute('aria-selected', 'false')
-    expect(tabs[3]).toHaveAttribute('aria-selected', 'false')
-
-    // 同一时刻只有一个 tabpanel 在可访问性树里可见。
+    expect(within(screen.getByRole('tablist')).getAllByRole('tab').map(tab => tab.textContent)).toEqual(['chat', 'zone', 'workflow'])
+    expect(screen.getByRole('tab', { name: 'chat' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
     expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-tasks')).not.toBeVisible()
-    expect(screen.getByTestId('panel-files')).not.toBeVisible()
     expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
   })
 
-  it('Tab 可聚焦四个 tab，Enter/Space 可切换', async () => {
+  it('retains native keyboard activation and wraps through visible entries', async () => {
     const user = userEvent.setup()
     render(<App />)
-
+    screen.getByRole('tab', { name: 'chat' }).focus()
     await user.tab()
-    expect(screen.getByTestId('server-button')).toHaveFocus()
-    await user.tab()
-    expect(screen.getByTestId('tab-sessions')).toHaveFocus()
-    await user.tab()
-    expect(screen.getByTestId('tab-tasks')).toHaveFocus()
-    await user.tab()
-    expect(screen.getByTestId('tab-files')).toHaveFocus()
-    await user.tab()
-    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
-
-    // Space 激活当前聚焦的第四个入口。
+    expect(screen.getByRole('tab', { name: 'zone' })).toHaveFocus()
     await user.keyboard(' ')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('panel-scheduler')).toBeVisible()
-    expect(screen.getByTestId('panel-sessions')).not.toBeVisible()
-
-    // Shift+Tab 回到文件列表，Enter 激活它。
-    await user.tab({ shift: true })
-    expect(screen.getByTestId('tab-files')).toHaveFocus()
-    await user.keyboard('{Enter}')
-    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('panel-files')).toBeVisible()
-    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'workflow' })).toHaveFocus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'chat' })).toHaveFocus()
+    await user.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: 'workflow' })).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(screen.getByRole('tab', { name: 'chat' })).toHaveAttribute('aria-selected', 'true')
+    await user.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: 'workflow' })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('方向键在四个入口之间循环切换，并同步焦点', async () => {
+  it('switches groups only from a deliberate navigation-strip swipe and remembers each group selection', async () => {
     const user = userEvent.setup()
     render(<App />)
-
-    await user.click(screen.getByTestId('tab-sessions'))
-    expect(screen.getByTestId('tab-sessions')).toHaveFocus()
-
-    await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-tasks')).toHaveFocus()
-    expect(screen.getByTestId('panel-tasks')).toBeVisible()
-
-    await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-files')).toHaveFocus()
-    expect(screen.getByTestId('panel-files')).toBeVisible()
-
-    await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
-
-    // 右方向在末尾回到第一个入口。
-    await user.keyboard('{ArrowRight}')
-    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-sessions')).toHaveFocus()
-
-    // 左方向在开头绕到最后一个入口。
-    await user.keyboard('{ArrowLeft}')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
-
-    // Home / End 直接跳到两端。
-    await user.keyboard('{Home}')
-    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
-    await user.keyboard('{End}')
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    const nav = screen.getByRole('navigation', { name: '主导航' })
+    Object.defineProperty(nav.querySelector('.layout-nav-viewport'), 'clientWidth', { value: 300 })
+    const swipe = (target: HTMLElement, from: number, to: number) => {
+      fireEvent.touchStart(target, { touches: [{ identifier: 1, clientX: from, clientY: 20 }] })
+      fireEvent.touchMove(target, { touches: [{ identifier: 1, clientX: to, clientY: 20 }] })
+      fireEvent.touchEnd(target, { touches: [], changedTouches: [{ identifier: 1, clientX: to, clientY: 20 }] })
+    }
+    await user.click(screen.getByRole('tab', { name: 'zone' }))
+    swipe(screen.getByTestId('panel-files'), 20, 200)
+    swipe(nav, 280, 181)
+    expect(screen.getByRole('tab', { name: 'zone' })).toHaveAttribute('aria-selected', 'true')
+    swipe(nav, 280, 190)
+    expect(screen.getByRole('tab', { name: 'zone' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.touchStart(nav, { touches: [{ identifier: 1, clientX: 20, clientY: 20 }] })
+    fireEvent.touchCancel(nav)
+    fireEvent.touchEnd(nav, { touches: [], changedTouches: [{ identifier: 1, clientX: 200, clientY: 20 }] })
+    expect(screen.queryByRole('tab', { name: 'task' })).toBeNull()
+    swipe(nav, 280, 180)
+    await user.click(screen.getByRole('tab', { name: 'bot' }))
+    swipe(nav, 20, 120)
+    expect(screen.getByRole('tab', { name: 'zone' })).toHaveAttribute('aria-selected', 'true')
+    swipe(nav, 280, 180)
+    expect(screen.getByRole('tab', { name: 'bot' })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('左右滑动不切换顶层 tab', async () => {
-    render(<App />)
-    const tablist = screen.getByRole('tablist')
-
-    fireEvent.touchStart(tablist, {
-      touches: [{ identifier: 1, clientX: 300, clientY: 20 }],
-    })
-    fireEvent.touchMove(tablist, {
-      touches: [{ identifier: 1, clientX: 20, clientY: 20 }],
-    })
-    fireEvent.touchEnd(tablist, {
-      changedTouches: [{ identifier: 1, clientX: 20, clientY: 20 }],
-    })
-
-    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-tasks')).not.toBeVisible()
-    expect(screen.getByTestId('panel-files')).not.toBeVisible()
-    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
-  })
-
-  it('重新打开页面仍停在会话列表，不恢复上次 tab', async () => {
+  it('persists only layout in the URL without replacing mounted page instances or query/hash data', async () => {
+    window.history.replaceState(null, '', '/?other=keep#anchor')
     const user = userEvent.setup()
     const first = render(<App />)
-
-    await user.click(screen.getByTestId('tab-scheduler'))
-    expect(screen.getByTestId('tab-scheduler')).toHaveAttribute('aria-selected', 'true')
+    const chat = screen.getByTestId('panel-sessions')
+    await user.click(screen.getByRole('button', { name: '展开导航' }))
+    expect(screen.getByRole('tab', { name: 'bot' })).toBeVisible()
+    expect(screen.getByTestId('panel-sessions')).toBe(chat)
+    expect(window.location.search).toContain('other=keep')
+    expect(window.location.search).toContain('layout=expanded')
+    expect(window.location.hash).toBe('#anchor')
+    await user.click(screen.getByRole('tab', { name: 'scheduler' }))
     first.unmount()
-
-    // 整页刷新等价于重新挂载：没有可恢复的持久化 tab 状态。
     render(<App />)
-    expect(screen.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('panel-sessions')).toBeVisible()
-    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
+    expect(screen.getByRole('tab', { name: 'chat' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: '收起导航' })).toBeVisible()
   })
 
-  it('server 独立内容页保留固定操作，返回后恢复此前的 scheduler tab', async () => {
+  it('ignores an existing Run hash on reload without reactivating it on layout changes', async () => {
+    window.history.replaceState(null, '', '/?layout=expanded#workflow/old-run')
+    const timing = Object.getOwnPropertyDescriptor(performance, 'getEntriesByType')
+    Object.defineProperty(performance, 'getEntriesByType', { configurable: true, value: vi.fn(() => [{ type: 'reload' }]) })
+    try {
+      const user = userEvent.setup()
+      render(<App />)
+      expect(screen.getByRole('tab', { name: 'chat' })).toHaveAttribute('aria-selected', 'true')
+      await user.click(screen.getByRole('button', { name: '收起导航' }))
+      expect(screen.getByRole('tab', { name: 'chat' })).toHaveAttribute('aria-selected', 'true')
+      expect(window.location.hash).toBe('#workflow')
+    } finally {
+      if (timing) Object.defineProperty(performance, 'getEntriesByType', timing)
+      else Reflect.deleteProperty(performance, 'getEntriesByType')
+    }
+  })
+
+  it('returns from Server to the selected scheduler subview and restores focus', async () => {
+    window.history.replaceState(null, '', '/?layout=expanded')
     const user = userEvent.setup()
     render(<App />)
-
-    await user.click(screen.getByTestId('tab-scheduler'))
+    await user.click(screen.getByRole('tab', { name: 'bot' }))
     await user.click(screen.getByTestId('server-button'))
     expect(screen.getByTestId('server-page')).toBeVisible()
-    expect(screen.getByTestId('panel-scheduler')).not.toBeVisible()
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.getByTestId('start-button')).toBeEnabled()
     expect(screen.getByTestId('stop-button')).toBeEnabled()
-    expect(screen.getByTestId('operation-result')).toHaveTextContent('尚未提交操作。')
-
-    await user.click(screen.getByRole('button', { name: '返回 scheduler' }))
+    expect(screen.getByTestId('server-back')).toHaveAccessibleName('返回')
+    expect(screen.queryByTestId('server-button')).toBeNull()
+    await user.click(screen.getByTestId('server-back'))
+    expect(screen.getByTestId('server-button')).toHaveTextContent('server')
     expect(screen.getByTestId('panel-scheduler')).toBeVisible()
-    expect(screen.getByTestId('tab-scheduler')).toHaveFocus()
-    expect(screen.getByTestId('server-page')).not.toBeVisible()
+    expect(screen.getByRole('tab', { name: 'bot' })).toHaveFocus()
+    expect(screen.getByRole('region', { name: '共享 Bot 列表' })).toBeVisible()
   })
 
-  it('整页可见标题为 herdr-bot', () => {
+  it('keeps the application heading', () => {
     render(<App />)
-
     expect(screen.getByRole('heading', { level: 1, name: 'herdr-bot' })).toBeVisible()
   })
 })

@@ -7,12 +7,11 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const normal = { schema_version: 1, id: 'normal', name: '正常能力说明', use_when: '需要核对材料时',
-  description: '仅整理差异，不执行工作', inputs: { source: '待核对的文本' }, outputs: { report: '差异报告说明' }, implementation: { type: 'chat' } }
-const plan = { schema_version: 1, title: 'Bot 问题隔离计划', description: '', nodes: {
-  A: { title: '问题工作', bot_id: 'problem', parameters: { target: '原始参数' }, blocked_by: [] },
-  B: { title: '正常工作', bot_id: 'normal', parameters: {}, blocked_by: ['A'] },
-  C: { title: '独立工作', bot_id: 'normal', parameters: {}, blocked_by: [] },
+const normal = { id: 'normal', name: '正常能力说明', when: '需要核对材料时', plan_guide: '仅整理差异，不执行工作', node_guide: JSON.stringify({ inputs: { source: '待核对的文本' }, outputs: { report: '差异报告说明' } }) }
+const plan = { title: 'Bot 问题隔离计划', description: '', nodes: {
+  A: { title: '问题工作', bot_id: 'problem', input: JSON.stringify({ target: '原始参数' }), zone: 'unregistered-zone', blocked_by: [] },
+  B: { title: '正常工作', bot_id: 'normal', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['A'] },
+  C: { title: '独立工作', bot_id: 'normal', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
 } }
 
 async function prepare() {
@@ -27,14 +26,13 @@ async function prepare() {
 }
 
 async function openPlan(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'plan.json', exact: true }).click()
 }
 
 async function completeGraph(page: Page) {
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button')).toHaveCount(3)
-  await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph.getByRole('button')).toHaveCount(3)
   for (const name of ['问题工作 A', '正常工作 B', '独立工作 C']) await expect(graph.getByRole('button', { name, exact: true })).toBeVisible()
@@ -44,15 +42,18 @@ async function completeGraph(page: Page) {
 }
 
 async function normalDetails(page: Page) {
-  if (await page.getByRole('button', { name: '返回 Map', exact: true }).isVisible()) {
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  if (await page.getByTestId('tab-scheduler').isVisible()) {
+    await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '正常工作 B', exact: true }).click()
   await page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('button', { name: 'Bot 明细', exact: true }).click()
   const details = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  for (const text of ['正常能力说明', '需要核对材料时', '仅整理差异，不执行工作', 'chat']) await expect(details.getByText(text, { exact: true })).toBeVisible()
-  await details.getByRole('button', { name: '输入与输出', exact: true }).click()
-  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByText(text, { exact: true })).toBeVisible()
+  await expect(details.getByText('正常能力说明', { exact: true })).toBeVisible()
+  await expect(details.getByRole('region', { name: 'when', exact: true })).toHaveText('需要核对材料时')
+  await details.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await expect(details.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('仅整理差异，不执行工作')
+  await details.getByRole('button', { name: 'node_guide', exact: true }).click()
+  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
 }
 
 // S1 + production S2, P20/P29: a real bad file coexists with a normal
@@ -110,8 +111,8 @@ test('P20 P29 an actual unreadable bot file leaves the valid graph and normal ca
 // winner indexing fails the zero-description check and both filename checks.
 test('P5 P35 duplicate identity diagnoses every conflicting file in list and node preview without choosing a winner', async ({ page }) => {
   const { bots } = await prepare()
-  const first = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第一说明', description: 'FIRST_BUSINESS_TEXT' })
-  const second = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第二说明', description: 'SECOND_BUSINESS_TEXT' })
+  const first = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第一说明', plan_guide: 'FIRST_BUSINESS_TEXT' })
+  const second = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第二说明', plan_guide: 'SECOND_BUSINESS_TEXT' })
   fs.writeFileSync(path.join(bots, 'first.json'), first)
   fs.writeFileSync(path.join(bots, 'second.json'), second)
   await openPlan(page)
@@ -168,7 +169,7 @@ test('P21 invalid duplicate declaration cannot make another file an unambiguous 
 // Existing strict serde behavior is retained, not replaced with an internal
 // validation seam. Missing/defaulting, null coercion, permissive structures or
 // fallback-to-chat would expose a bad capability instead of a local diagnostic.
-const requiredFields = ['schema_version', 'id', 'name', 'use_when', 'description', 'inputs', 'outputs', 'implementation'] as const
+const requiredFields = ['id', 'name', 'when', 'plan_guide', 'node_guide'] as const
 const invalidDefinitions: { name: string; value: Record<string, unknown>; diagnostic: string }[] = []
 for (const field of requiredFields) {
   const base: Record<string, unknown> = { ...normal, id: 'problem' }
@@ -176,24 +177,19 @@ for (const field of requiredFields) {
   delete omitted[field]
   invalidDefinitions.push({ name: `missing ${field}`, value: omitted, diagnostic: `missing field \`${field}\`` })
   invalidDefinitions.push({ name: `null ${field}`, value: { ...base, [field]: null }, diagnostic: 'invalid type' })
-  invalidDefinitions.push({ name: `wrong type ${field}`, value: { ...base, [field]: field === 'schema_version' ? '1' : 7 }, diagnostic: 'invalid type' })
+  invalidDefinitions.push({ name: `wrong type ${field}`, value: { ...base, [field]: 7 }, diagnostic: 'invalid type' })
 }
 invalidDefinitions.push(
   { name: 'unknown root field', value: { ...normal, id: 'problem', useWhen: 'typo' }, diagnostic: 'unknown field `useWhen`' },
-  { name: 'unsupported version', value: { ...normal, id: 'problem', schema_version: 2 }, diagnostic: 'schema_version 必须为 1' },
-  { name: 'fractional version', value: { ...normal, id: 'problem', schema_version: 1.5 }, diagnostic: 'invalid type' },
-  { name: 'empty implementation object', value: { ...normal, id: 'problem', implementation: {} }, diagnostic: 'missing field `type`' },
-  { name: 'unknown implementation field', value: { ...normal, id: 'problem', implementation: { type: 'chat', command: 'never-run' } }, diagnostic: 'unknown field `command`' },
-  // The contract requires a structure diagnostic, not a specific enum-parser
-  // phrase. Serde reports "expected value" for these two shapes; acceptance
-  // remains rejection, zero fabricated capability, and normal-file isolation.
-  { name: 'null implementation type', value: { ...normal, id: 'problem', implementation: { type: null } }, diagnostic: '结构无效' },
-  { name: 'wrong implementation type shape', value: { ...normal, id: 'problem', implementation: { type: [] } }, diagnostic: '结构无效' },
-  { name: 'unsupported implementation type', value: { ...normal, id: 'problem', implementation: { type: 'shell' } }, diagnostic: 'unknown variant `shell`' },
-  { name: 'empty implementation type', value: { ...normal, id: 'problem', implementation: { type: '' } }, diagnostic: 'unknown variant' },
-  { name: 'null named input description', value: { ...normal, id: 'problem', inputs: { source: null } }, diagnostic: 'expected a string' },
-  { name: 'nontext named output description', value: { ...normal, id: 'problem', outputs: { report: {} } }, diagnostic: 'expected a string' },
-  { name: 'array inputs', value: { ...normal, id: 'problem', inputs: [] }, diagnostic: 'expected a map' },
+  { name: 'legacy version one', value: { ...normal, id: 'problem', schema_version: 1 }, diagnostic: 'unknown field `schema_version`' },
+  { name: 'unsupported version', value: { ...normal, id: 'problem', schema_version: 2 }, diagnostic: 'unknown field `schema_version`' },
+  { name: 'fractional version', value: { ...normal, id: 'problem', schema_version: 1.5 }, diagnostic: 'unknown field `schema_version`' },
+  { name: 'legacy implementation', value: { ...normal, id: 'problem', implementation: { type: 'chat' } }, diagnostic: 'unknown field `implementation`' },
+  { name: 'legacy inputs', value: { ...normal, id: 'problem', inputs: {} }, diagnostic: 'unknown field `inputs`' },
+  { name: 'legacy outputs', value: { ...normal, id: 'problem', outputs: {} }, diagnostic: 'unknown field `outputs`' },
+  { name: 'legacy description', value: { ...normal, id: 'problem', description: '' }, diagnostic: 'unknown field `description`' },
+  { name: 'legacy use_when', value: { ...normal, id: 'problem', use_when: '' }, diagnostic: 'unknown field `use_when`' },
+  { name: 'nontext Task reference', value: { ...normal, id: 'problem', task_id: {} }, diagnostic: 'expected a string' },
 )
 for (const example of invalidDefinitions) {
   test(`P20 P22 P29 bot structure rejects ${example.name} without hiding normal bots`, async ({ page }) => {
@@ -228,16 +224,18 @@ for (const example of invalidDefinitions) {
 // keys or null. No unapproved business-text length or name quota is added.
 test('P22 explicit empty descriptions named objects and long text are valid rather than omitted', async ({ page }) => {
   const { bots } = await prepare()
-  const empty = { schema_version: 1, id: 'problem', name: '', use_when: '', description: '', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
+  const empty = { id: 'problem', name: '', when: '', plan_guide: '', node_guide: '' }
   const longText = '完整能力文本'.repeat(2500)
-  const named = { ...empty, id: 'named', description: longText, inputs: { '': '', undeclared_business_name: '' }, outputs: { result: '' } }
+  const named = { ...empty, id: 'named', plan_guide: longText, node_guide: '# 业务指引\n不是校验规则' }
   fs.writeFileSync(path.join(bots, 'empty.json'), JSON.stringify(empty))
   fs.writeFileSync(path.join(bots, 'named.json'), JSON.stringify(named))
   await openPlan(page)
   const graph = await completeGraph(page)
   const response = await page.request.get(`${server!.baseURL}/api/scheduler/bots`)
   expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual({ bots: [empty, named, normal] })
+  const catalog = await response.json()
+  expect(catalog.bots).toHaveLength(3)
+  expect(catalog).toEqual({ bots: expect.arrayContaining([empty, named, normal]) })
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toHaveCount(0)
   await expect(graph.getByRole('button', { name: '问题工作 A', exact: true })).not.toContainText('缺失')
   await graph.getByRole('button', { name: '问题工作 A', exact: true }).click()
@@ -245,21 +243,21 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
   await expect(node.getByRole('alert')).toHaveCount(0)
   await node.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   const detail = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  await expect(detail.getByText('chat', { exact: true })).toBeVisible()
-  await detail.getByRole('button', { name: '输入与输出', exact: true }).click()
-  await expect(detail.getByRole('region', { name: '输入说明（inputs）', exact: true })).toContainText('无。')
-  await expect(detail.getByRole('region', { name: '输出说明（outputs）', exact: true })).toContainText('无。')
+  for (const title of ['node_guide', 'plan_guide', 'when']) {
+    await detail.getByRole('button', { name: title, exact: true }).click()
+    await expect(detail.getByRole('region', { name: title, exact: true })).toBeEmpty()
+  }
 })
 
 // Approved S1, P19: fixed A -> B plus isolated C must survive a missing id.
-// A renderer that silently drops A or only reports a problem after expansion
+// A renderer that silently drops A or omits its problem from the permanent graph
 // violates the independently specified graph or the three visible locations.
 test('P5 P35 missing bot ID stays distinct from an empty directory and preserves all definitions', async ({ page }) => {
   const { bots, maps } = await prepare()
   const mapBefore = fs.readFileSync(path.join(maps, 'plan.json'), 'utf8')
   const botBefore = fs.readFileSync(path.join(bots, 'normal.json'), 'utf8')
   await openPlan(page)
-  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true })).toContainText('problem')
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toContainText('problem')
   const graph = await completeGraph(page)
@@ -267,7 +265,7 @@ test('P5 P35 missing bot ID stays distinct from an empty directory and preserves
   await graph.getByRole('button', { name: '问题工作 A', exact: true }).click()
   const node = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(node.getByRole('alert')).toHaveText('缺失共享 Bot：problem')
-  await expect(node.getByTestId('parameter-target')).toHaveText('原始参数')
+  await expect(node.getByTestId('node-input')).toHaveText('{"target":"原始参数"}')
   await node.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveText('缺失共享 Bot：problem')
   const catalog = await page.request.get(`${server!.baseURL}/api/scheduler/bots`)

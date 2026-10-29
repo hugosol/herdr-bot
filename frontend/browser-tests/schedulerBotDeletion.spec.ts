@@ -6,9 +6,9 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const bot = { schema_version: 1, id: 'shared', name: '共享审计', use_when: '', description: '仅核对账目', inputs: {}, outputs: {}, implementation: { type: 'chat' } }
-const node = { title: '审计任务', bot_id: 'shared', parameters: { id: { nested: true } }, blocked_by: [] }
-const map = (nodes: Record<string, unknown>) => ({ schema_version: 1, title: '审计计划', description: '不执行工作', nodes })
+const bot = { id: 'shared', name: '共享审计', when: '', plan_guide: '仅核对账目', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
+const node = { title: '审计任务', bot_id: 'shared', input: JSON.stringify({ id: { nested: true } }), zone: 'unregistered-zone', blocked_by: [] }
+const map = (nodes: Record<string, unknown>) => ({ title: '审计计划', description: '不执行工作', nodes })
 async function prepare() {
   server = await startServer({ separateCwd: true, herdr: {} })
   const bots = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
@@ -18,9 +18,9 @@ async function prepare() {
   return { bots, maps, file }
 }
 async function open(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '共享审计 · shared', exact: true }).click()
 }
 const api = (page: Page, operation: string, data: unknown) => page.request.post(`${server!.baseURL}/api/scheduler/bots/${operation}`, { data })
@@ -37,7 +37,7 @@ test('P21 cross-Map references block both page and direct final deletion and lis
   await open(page)
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
-  await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+  await page.getByRole('button', { name: 'delete', exact: true }).click()
   const alert = page.getByRole('alert')
   for (const location of ['north.json', 'accountA', 'accountB', 'south.json', 'auditZ']) await expect(alert).toContainText(location)
   expect(confirmations).toBe(0)
@@ -66,7 +66,7 @@ test('P22 damaged and unreadable Maps and unreadable directory block deletion wi
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
   async function refused(location: string, reason: string) {
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     const alert = page.getByRole('alert').filter({ hasText: '无法完整检查' })
     // Rust preserves configured '/' segments while Node path.join uses '\\'.
     // Compare the complete independently owned path without fixing spelling.
@@ -122,7 +122,7 @@ test('P23 P29 cancel preserves a bot, confirm returns the updated list and delet
   page.on('request', request => {
     if (/\/bots\/(check-delete|delete)$/.test(request.url())) requests.push(request.url().split('/').at(-1)!)
   })
-  const button = page.getByRole('button', { name: '删除 Bot', exact: true })
+  const button = page.getByRole('button', { name: 'delete', exact: true })
   page.once('dialog', async dialog => {
     expect(dialog.type()).toBe('confirm')
     expect(dialog.message()).toContain('shared')
@@ -133,7 +133,9 @@ test('P23 P29 cancel preserves a bot, confirm returns the updated list and delet
   await expect(button).toBeEnabled()
   expect(requests).toEqual(['check-delete'])
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot, other])
+  const catalog = await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()
+  expect(catalog.bots).toHaveLength(2)
+  expect(catalog.bots).toEqual(expect.arrayContaining([bot, other]))
   // A direct caller must supply a current target revision, not just an ID.
   const bypass = await api(page, 'delete', { id: 'shared' })
   expect(bypass.ok()).toBe(false)
@@ -170,7 +172,7 @@ test('a real filesystem deletion failure keeps the bot preview and reports the e
     execFileSync('icacls.exe', [file, '/deny', `${user}:(DE)`])
     execFileSync('icacls.exe', [bots, '/deny', `${user}:(DC)`])
     page.once('dialog', dialog => dialog.accept())
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('删除失败')
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('shared')
     const target = await (await api(page, 'check-delete', { id: 'shared' })).json()
@@ -202,7 +204,7 @@ test('deleting an unused bot still permits a later node with that missing bot re
   expect(saved.status()).toBe(200)
   expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/later.json`)).json()).toEqual(map({ allowedMissing: node }))
   expect(JSON.parse(fs.readFileSync(path.join(maps, 'later.json'), 'utf8'))).toEqual(map({ allowedMissing: node }))
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'later.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '审计任务 allowedMissing', exact: true }).click()
@@ -224,7 +226,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
     const target = await preflight.json()
     expect(target).toEqual({ id: 'shared', revision: { file: 'business-name.JSON', original: before } })
     const duplicate = path.join(bots, 'duplicate.json'), late = path.join(maps, 'late.json')
-    const changed = JSON.stringify({ ...bot, description: '外部编辑的新版本' })
+    const changed = JSON.stringify({ ...bot, plan_guide: '外部编辑的新版本' })
     const duplicateBytes = JSON.stringify({ ...bot, name: '重复身份，不得任选' })
     const lateBytes = JSON.stringify(map({ lateNode: node }))
     const diagnostic = change === 'ambiguous ID' ? '冲突' : change === 'new reference' ? 'late.json / node lateNode' : '变化或移除'
@@ -236,7 +238,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
       if (change === 'ambiguous ID') fs.writeFileSync(duplicate, duplicateBytes)
       await dialog.accept()
     })
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     await expect(page.getByRole('alert').filter({ hasText: diagnostic })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toBeVisible()
     const direct = await api(page, 'delete', target)
@@ -249,7 +251,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
       expect(fs.readFileSync(duplicate, 'utf8')).toBe(duplicateBytes)
       expect(catalog.bots).toEqual([])
       expect(catalog.problems).toContainEqual(expect.objectContaining({ code: 'bot-id-conflict', bot_id: 'shared', files: ['business-name.JSON', 'duplicate.json'] }))
-    } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { description: '外部编辑的新版本' } : {}) }])
+    } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { plan_guide: '外部编辑的新版本' } : {}) }])
     if (change === 'new reference') {
       expect(fs.readFileSync(late, 'utf8')).toBe(lateBytes)
       expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/late.json`)).json()).toEqual(map({ lateNode: node }))

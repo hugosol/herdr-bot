@@ -606,7 +606,7 @@ struct EventAccepted {
 ///
 /// 同机经 mDNS 主机名接入时源地址就是本机网卡地址，因此这一条同时保住了默认端点
 /// `herdr-bot.local:8787` 的同机可用性。
-fn is_local_source(ip: IpAddr) -> bool {
+pub(crate) fn is_local_source(ip: IpAddr) -> bool {
     ip.is_loopback()
         || if_addrs::get_if_addrs()
             .is_ok_and(|interfaces| interfaces.iter().any(|interface| interface.addr.ip() == ip))

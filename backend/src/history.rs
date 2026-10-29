@@ -28,6 +28,9 @@ struct HistoryRecord {
     first_recorded_at: u64,
     // Kept only in the on-disk document, never in the public read model.
     session_file: Option<String>,
+    // Exact path accepted before the first native write. Never supplied by register.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    startup_identity_path: Option<String>,
     // Trusted creation provenance is write-once and never accepted from register.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_task_id: Option<String>,
@@ -88,6 +91,7 @@ pub(crate) struct HistorySelection {
     pub agent_type: Option<String>,
     pub cwd: Option<String>,
     pub session_file: Option<String>,
+    pub startup_identity_path: Option<String>,
     pub session_name: Option<String>,
     pub original_workspace_id: Option<String>,
     pub source_task_id: Option<String>,
@@ -118,7 +122,7 @@ impl History {
         let _guard = self.lock.lock().await;
         Ok(self.read()?.into_iter().find(|record| record.session_id == session_id)
             .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type,
-                cwd: record.cwd, session_file: record.session_file, session_name: record.session_name,
+                cwd: record.cwd, session_file: record.session_file, startup_identity_path: record.startup_identity_path, session_name: record.session_name,
                 original_workspace_id: record.original_workspace_id, source_task_id: record.source_task_id }))
     }
 
@@ -131,8 +135,9 @@ impl History {
         session_file: Option<&str>,
         original_workspace_id: Option<&str>,
         source_task_id: &str,
+        startup_identity_path: Option<&str>,
     ) -> io::Result<()> {
-        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, original_workspace_id, Some(source_task_id), true).await
+        self.record(session_id, Some(name), Some(agent_type), cwd, session_file, original_workspace_id, Some(source_task_id), true, startup_identity_path).await
     }
 
     pub async fn register(
@@ -144,7 +149,7 @@ impl History {
         session_file: Option<&str>,
         original_workspace_id: Option<&str>,
     ) -> io::Result<()> {
-        self.record(session_id, session_name, agent_type, cwd, session_file, original_workspace_id, None, false).await
+        self.record(session_id, session_name, agent_type, cwd, session_file, original_workspace_id, None, false, None).await
     }
 
     async fn record(
@@ -157,6 +162,7 @@ impl History {
         original_workspace_id: Option<&str>,
         source_task_id: Option<&str>,
         from_zone: bool,
+        startup_identity_path: Option<&str>,
     ) -> io::Result<()> {
         let _guard = self.lock.lock().await;
         let mut records = self.read()?;
@@ -167,6 +173,8 @@ impl History {
         let source_task_id = valid_text(source_task_id);
         let session_file = valid_text(session_file)
             .filter(|value| Path::new(value).is_absolute());
+        let startup_identity_path = valid_text(startup_identity_path)
+            .filter(|path| from_zone && matches!(agent_type, Some("omp" | "pi")) && Some(*path) == session_file);
 
         if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
             if from_zone || !record.name_from_zone {
@@ -182,6 +190,9 @@ impl History {
             if record.source_task_id.is_none() {
                 record.source_task_id = source_task_id.map(str::to_owned);
             }
+            if record.startup_identity_path.is_none() {
+                record.startup_identity_path = startup_identity_path.map(str::to_owned);
+            }
         } else {
             let first_recorded_at = self.clock.unix_millis();
             records.push(HistoryRecord {
@@ -192,6 +203,7 @@ impl History {
                 cwd: cwd.map(str::to_owned),
                 first_recorded_at,
                 session_file: session_file.map(str::to_owned),
+                startup_identity_path: startup_identity_path.map(str::to_owned),
                 source_task_id: source_task_id.map(str::to_owned),
                 _legacy_source_association: (),
                 original_workspace_id: original_workspace_id.map(str::to_owned),

@@ -1,0 +1,121 @@
+{
+  "feature": "workflow-map-runtime-design",
+  "ticket": "17-workflow-current-view.md",
+  "run_id": "f655694c-a228-443d-bf93-761d3960f2fe",
+  "parent_session_id": "01a18240-bf0e-77a4-b381-a74e22e85081",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "d7f65e22-beef-4d47-a99d-1072f8954d9d",
+  "started_at": "2026-10-28T15:56:59.473Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-10-28T16:17:37.911Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "17-workflow-current-viewmd-d7f65e22-beef-4d47-a9",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fohw1L\\.scratch\\workflow-map-runtime-design\\implementation\\17-workflow-current-view.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fohw1L\\.scratch\\workflow-map-runtime-design\\implementation\\17-workflow-current-view.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement workflow current view ticket",
+    "lastIntent": "Committing isolated workflow current view",
+    "exitCode": 0,
+    "output": "{\n  \"status\": \"implemented-and-verified\",\n  \"commit\": \"c304487\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-fohw1L\",\n  \"handoff\": \"本票实现已提交，可交由独立集成代理接管；未操作或合入集成分支。票据保持 in-progress，待合入后按仓库规则关闭。\",\n  \"delivered\": [\n    \"新增只读 Run 列表 HTTP 入口及 workflow 页面：全部 Map 的 Run 按创建时间倒序展示，含完成数量和未接管提示。\",\n    \"复用既有图布局及依赖方向，通过状态文字、标记、边框/填充和独立选中态呈现节点状态，不使用 Chat 在线状态代替。\",\n    \"节点详情区分当前定义与保存执行，展示 Bot/Task、zone/input、依赖与阻塞、失败效果、完成说明及适用报告正文/时间；无关联不隐式创建执行。\",\n    \"当前 Map 丢失、损坏或 node 标识不能一一对应时不画历史图，仍可读取保存事实、本次要求、报告和新旧执行关联；缺名显示保存标识。\",\n    \"更新长期运行说明及本票验收记录；协调并修正既有重启测试的详情说明定位，未修改共享 support.ts。\"\n  ],\n  \"acceptance\": {\n    \"P50.01\": \"workflowCurrent.spec.ts 的列表契约用例通过；多 Map、三种时间/状态、完成数量、未接管、桌面及390px页面检查。\",\n    \"P51.01\": \"真实页面检查 SVG 绘制端点、方向、文字/标记/边框及选中态；completed 节点的 Chat 实际在线工作中，running 节点没有在线登记。\",\n    \"P52.01\": \"真实页面逐项检查当前定义/保存执行差异、阻塞、失败、完成说明、报告正文/时间及无关联提示；750ms窗口外部调用与三份记录未改变。\",\n    \"P57.01\": \"missing、invalid、mismatch 三个契约用例通过，保留当前及旧执行、报告、Task/zone/Chat标识且不伪造历史图。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"npm --prefix frontend run test:browser:build -- workflowCurrent.spec.ts workflowStart.spec.ts schedulerGraph.spec.ts --workers=1\",\n      \"result\": \"最终12/12通过，包括本票5例；TypeScript、Vite、后端构建和网络护栏通过。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend test -- --maxWorkers=4\",\n      \"result\": \"27文件、205测试通过。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend run test:browser:partition\",\n      \"result\": \"通过：311 = 278 fast + 33 time-contract，集合完整且互斥。\"\n    },\n    {\n      \"command\": \"node scripts/test-backend.mjs\",\n      \"result\": \"完整后端二进制及doctest通过，0未派发；192.7秒。\"\n    }\n  ],\n  \"evidence\": {\n    \"browser\": \"frontend/test-results/workflowCurrent-*/ 下保留桌面/移动截图、fallback截图及记录/外部调用前后对照JSON；测试入口可重复生成。\",\n    \"backend\": \"C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-MQKpKg/summary.json\",\n    \"tdd\": \"列表、图详情及不可用定义/旧报告场景均先观察行为失败，再实现并通过。\"\n  },\n  \"limitations\": [\n    \"未运行全量311例浏览器套件，已运行本票及受影响的启动/重启和scheduler图回归。\",\n    \"实际 Resume、折叠历史、轮询及共享 promise 的其他覆盖分区不属于本票，未宣称完成。\",\n    \"受控 Herdr 只提供确定性外部调用证据，不宣称验证真实 Herdr/omp 执行质量。\"\n  ],\n  \"unfinishedOwnedCriteria\": []\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1237986,
+    "tokens": 163497,
+    "requests": 85,
+    "contextTokens": 129411,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 137354,
+      "output": 26143,
+      "cacheRead": 6670464,
+      "cacheWrite": 0,
+      "totalTokens": 6833961,
+      "reasoningTokens": 5841,
+      "cost": {
+        "input": 0.2747079999999999,
+        "output": 0.26143,
+        "cacheRead": 0.6670464000000002,
+        "cacheWrite": 0,
+        "total": 1.2031843999999998
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\17-workflow-current-viewmd-d7f65e22-beef-4d47-a9.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "status": "implemented-and-verified",
+            "commit": "c304487",
+            "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-fohw1L",
+            "handoff": "本票实现已提交，可交由独立集成代理接管；未操作或合入集成分支。票据保持 in-progress，待合入后按仓库规则关闭。",
+            "delivered": [
+              "新增只读 Run 列表 HTTP 入口及 workflow 页面：全部 Map 的 Run 按创建时间倒序展示，含完成数量和未接管提示。",
+              "复用既有图布局及依赖方向，通过状态文字、标记、边框/填充和独立选中态呈现节点状态，不使用 Chat 在线状态代替。",
+              "节点详情区分当前定义与保存执行，展示 Bot/Task、zone/input、依赖与阻塞、失败效果、完成说明及适用报告正文/时间；无关联不隐式创建执行。",
+              "当前 Map 丢失、损坏或 node 标识不能一一对应时不画历史图，仍可读取保存事实、本次要求、报告和新旧执行关联；缺名显示保存标识。",
+              "更新长期运行说明及本票验收记录；协调并修正既有重启测试的详情说明定位，未修改共享 support.ts。"
+            ],
+            "acceptance": {
+              "P50.01": "workflowCurrent.spec.ts 的列表契约用例通过；多 Map、三种时间/状态、完成数量、未接管、桌面及390px页面检查。",
+              "P51.01": "真实页面检查 SVG 绘制端点、方向、文字/标记/边框及选中态；completed 节点的 Chat 实际在线工作中，running 节点没有在线登记。",
+              "P52.01": "真实页面逐项检查当前定义/保存执行差异、阻塞、失败、完成说明、报告正文/时间及无关联提示；750ms窗口外部调用与三份记录未改变。",
+              "P57.01": "missing、invalid、mismatch 三个契约用例通过，保留当前及旧执行、报告、Task/zone/Chat标识且不伪造历史图。"
+            },
+            "verification": [
+              {
+                "command": "npm --prefix frontend run test:browser:build -- workflowCurrent.spec.ts workflowStart.spec.ts schedulerGraph.spec.ts --workers=1",
+                "result": "最终12/12通过，包括本票5例；TypeScript、Vite、后端构建和网络护栏通过。"
+              },
+              {
+                "command": "npm --prefix frontend test -- --maxWorkers=4",
+                "result": "27文件、205测试通过。"
+              },
+              {
+                "command": "npm --prefix frontend run test:browser:partition",
+                "result": "通过：311 = 278 fast + 33 time-contract，集合完整且互斥。"
+              },
+              {
+                "command": "node scripts/test-backend.mjs",
+                "result": "完整后端二进制及doctest通过，0未派发；192.7秒。"
+              }
+            ],
+            "evidence": {
+              "browser": "frontend/test-results/workflowCurrent-*/ 下保留桌面/移动截图、fallback截图及记录/外部调用前后对照JSON；测试入口可重复生成。",
+              "backend": "C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-MQKpKg/summary.json",
+              "tdd": "列表、图详情及不可用定义/旧报告场景均先观察行为失败，再实现并通过。"
+            },
+            "limitations": [
+              "未运行全量311例浏览器套件，已运行本票及受影响的启动/重启和scheduler图回归。",
+              "实际 Resume、折叠历史、轮询及共享 promise 的其他覆盖分区不属于本票，未宣称完成。",
+              "受控 Herdr 只提供确定性外部调用证据，不宣称验证真实 Herdr/omp 执行质量。"
+            ],
+            "unfinishedOwnedCriteria": []
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 48,
+      "charCount": 2073
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "17-workflow-current-viewmd-d7f65e22-beef-4d47-a9",
+  "session_id": "01a1833a-a09f-7574-8f96-c9b7abe41fbf",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\17-workflow-current-viewmd-d7f65e22-beef-4d47-a9.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fohw1L",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\retro\\17-workflow-current-view.md\\f655694c-a228-443d-bf93-761d3960f2fe.md",
+  "retro_finished_at": "2026-10-28T16:21:25.701Z"
+}
