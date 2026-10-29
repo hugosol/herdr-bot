@@ -79,13 +79,13 @@ try {
 ### 依次操作
 
 1. 初始是 `chat`；点击左上角展开导航后选择 `scheduler`，或在顶部导航条左滑到配置组再选择。列表恰有 `another-trip.json` 和 `trip-readiness.json`，不应出现三个 Bot 文件。
-2. 选择 `trip-readiness.json`，默认显示节点清单与详情空态，依赖图收起。核对 A、B、C、D 标题与 ID，以及 C 的 A／B 前置关系。可在目录输入文件名筛选；没有匹配项时仍保留当前 Map 和 node，清空筛选恢复目录。
-3. 从节点清单逐项选择 A、B、C、D，与上表核对本次输入与 zone和依赖。详情中的前置与后继节点可点击定位，关闭详情后焦点回到节点清单。点“Bot 明细”进入共享 Bot 预览，外侧同步选中 `bot`，点外侧 `scheduler` 入口继续核对工作；不再内联展开。也可从外侧 `bot` 入口打开共享列表，再按名称与 ID 预览。展开“依赖图”核对 A → C、B → C，D 独立；图与清单选中联动。拖动图内空白处平移，加减按钮缩放，“适应全部”恢复总览；不拖动编辑节点或创建连接。
-4. A、B 进入同一个「目的地天气摘要」预览（ID 为 `destination-weather`）；每次通过外侧 `scheduler` 入口回到节点清单。分别切换“选用说明”“规划指引”“节点指引”阅读三份独立文档，允许任意顺序；“原始定义”只读展示完整 JSON。左侧列表始终保留，可按名称或 ID 筛选；筛选无匹配时右侧仍保留已选 Bot。C 为「出行准备清单汇总」，D 为「额度恢复时间估算」。逐项文本以交付 Bot JSON 为准；它们都是预期说明，不是实际结果。
+2. 选择 `trip-readiness.json`，默认显示节点清单与详情空态，依赖图在节点清单上方常驻展开。核对 A、B、C、D 标题与 ID，以及 C 的 A／B 前置关系。可在目录输入文件名筛选；没有匹配项时仍保留当前 Map 和 node，清空筛选恢复目录。
+3. 从节点清单逐项选择 A、B、C、D，与上表核对本次输入与 zone和依赖。详情直接展示关联 Bot 的 `node_guide` 原文；前置与后继节点可点击定位，关闭详情后焦点回到节点清单。点“Bot 明细”进入共享 Bot 预览，外侧同步选中 `bot`，点外侧 `scheduler` 入口继续核对工作；不再内联展开。也可从外侧 `bot` 入口打开共享列表，再按名称与 ID 预览。在依赖图核对 A → C、B → C，D 独立；图与清单选中联动。图自动适应视口，可拖动图内空白处平移；不拖动编辑节点或创建连接。
+4. A、B 进入同一个「目的地天气摘要」预览（ID 为 `destination-weather`）；每次通过外侧 `scheduler` 入口回到节点清单。分别切换 `when`、`plan_guide`、`node_guide` 阅读三份独立文档，允许任意顺序；`json` 只读展示完整 JSON。左侧列表始终保留，可按名称或 ID 筛选；筛选无匹配时右侧仍保留已选 Bot。C 为「出行准备清单汇总」，D 为「额度恢复时间估算」。逐项文本以交付 Bot JSON 为准；它们都是预期说明，不是实际结果。
 5. 选择 `another-trip.json` 与 E，核对广州、日期和同一「目的地天气摘要」。可以在隔离 capabilities 内重命名 weather 文件，点击“刷新全部”，关联仍按 id 成立。
-6. 在 Bot 预览点“修改 Bot”：独立 ID 只读，JSON 只加载当前真实内容且不含顶层 id。修改 name 或 plan_guide 后显式保存，直接显示新预览，无需“刷新全部”；外侧 `scheduler` 入口重读来源并保留仍存在的 node 选择。来源 node 或 Map 被外部移除则显示失效原因。所有引用同 ID 的 A、B、E 都读取同一份共享能力，不产生 Bot 副本。若用外部编辑器改文件，显式刷新可重读；刷新全部会清除 node 选择、收起图。**避免在页面提交期间直接修改相关定义**，不承诺与不参与协调的外部编辑器跨文件原子提交。
-   直接点页面上方“新增 Bot”（空列表也可新增）：ID 初始为空，JSON 预填天气示例除 id 外的完整内容。该示例随应用编译打包，以本目录 weather-capability.json 为单一内容来源，不要求部署时存在开发仓库。可以删改条目但保留必需结构；打开或放弃不会写文件。页面不要求文件名，保存后自动使用安全且不覆盖既有文件的名称，编辑已有 Bot 保留原名。无效 JSON、结构错误、重复 ID 或旧版本冲突均保留原始草稿并显示原因，不跳到成功预览；需要重新加载时先复制草稿，再放弃并重开。修改后返回、切换 tab／server、刷新全部或浏览器刷新均确认放弃，取消继续编辑。
-7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、步行／带伞说明、示例 zone 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather Bot。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、input、zone 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和已展开图立即更新。其他 node 的输入、zone 与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
+6. 在 Bot 预览点 `edit`：独立 ID 只读，JSON 只加载当前真实内容且不含顶层 id。修改 name 或 plan_guide 后显式保存，直接显示新预览，无需 `refresh`；外侧 `scheduler` 入口重读来源并保留仍存在的 node 选择。来源 node 或 Map 被外部移除则显示失效原因。所有引用同 ID 的 A、B、E 都读取同一份共享能力，不产生 Bot 副本。若用外部编辑器改文件，显式刷新可重读；刷新会清除 node 选择，依赖图仍常驻展示（Bot 页按钮为 `refresh`，Map 页为“刷新全部”）。**避免在页面提交期间直接修改相关定义**，不承诺与不参与协调的外部编辑器跨文件原子提交。
+   直接点页面上方 `new`（空列表也可新增）：ID 初始为空，JSON 预填天气示例除 id 外的完整内容。该示例随应用编译打包，以本目录 weather-capability.json 为单一内容来源，不要求部署时存在开发仓库。可以删改条目但保留必需结构；打开或放弃不会写文件。页面不要求文件名，保存后自动使用安全且不覆盖既有文件的名称，编辑已有 Bot 保留原名。无效 JSON、结构错误、重复 ID 或旧版本冲突均保留原始草稿并显示原因，不跳到成功预览；需要重新加载时先复制草稿，再放弃并重开。修改后返回、切换 tab／server、刷新全部或浏览器刷新均确认放弃，取消继续编辑。
+7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、步行／带伞说明、示例 zone 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather Bot。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、input、zone 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和依赖图立即更新。其他 node 的输入、zone 与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
    node 只在所属 Map 内唯一，不同 Map 可复用同一 ID；整个 Map 的未知前置、自依赖或环均被拒绝，不自动修复。字符串 input（包括 Markdown）、未登记 zone／Task、缺失 Bot 引用仍可保存，但页面明确提示缺失 Bot。失败保留独立 ID 与原始 JSON；整个 Map 文件是冲突单位，即使只改另一 node，旧草稿也须重新加载，不自动合并。离开编辑器、选择其他 Map、Bot 管理、切换页面或刷新均沿用草稿保护。**页面提交期间不要直接修改相关定义**。
    将另一个 JSON 副本放入隔离 plans，点击“刷新全部”看到新增文件；删除该副本后刷新则移除。刷新也重新读取当前 Map 与 Bot；不自动监听文件。
 8. 从 scheduler 点右上角 `server`，原页面内进入独立内容页，再点右上角原位置的“返回”。不要用新窗口或在功能分组中寻找 server。
@@ -167,7 +167,7 @@ npm --prefix frontend run test:browser:build -- --workers=1
 
 桌面与窄屏各执行一次；窄屏使用 390 × 844。可用浏览器设备工具设置 viewport，不要求真实 LAN。只用 Tab／Shift+Tab 走到目标，Enter／Space 激活按钮；JSON 用键盘全选、输入与上下移动，观察输入、错误和保存／返回按钮能否通过纵向滚动访问。
 
-1. 从外侧 `scheduler` 入口进入 `trip-readiness.json`，选择「上海出行天气 A」。点「Bot 明细」，核对 Bot ID 为 `destination-weather`，分别阅读选用说明、规划指引和节点指引，点「修改 Bot」，ID 应只读，JSON 无顶层 id。仅修改 plan_guide 后保存，应立即预览新说明；通过外侧 `scheduler` 返回后仍选中 A，再次进入可看到新说明。
+1. 从外侧 `scheduler` 入口进入 `trip-readiness.json`，选择「上海出行天气 A」。点「Bot 明细」，核对 Bot ID 为 `destination-weather`，分别阅读 `when`、`plan_guide` 和 `node_guide`，点 `edit`，ID 应只读，JSON 无顶层 id。仅修改 plan_guide 后保存，应立即预览新说明；通过外侧 `scheduler` 返回后仍选中 A，再次进入可看到新说明。
 2. 返回并「修改 node」，确认 JSON 来自真实上海工作而非新增示例，改变 title 后保存，应立即选中新的标题。点「新增 node」，ID 初始为空，填 `manual-node`，把 JSON 改成下面的内容后保存；检查选中 `manual-node`、input 原文包含杭州和业务说明，zone 路径原样保存，且不发起 Chat。
 
    ```json
@@ -176,8 +176,8 @@ npm --prefix frontend run test:browser:build -- --workers=1
 
 3. 修改该 node，在 JSON 中输入 `{ "title": ` 后保存，检查错误可读、ID 仍为 `manual-node` 且原始输入未丢。改回合法内容，改变 title 后点「放弃编辑」：先取消，草稿必须保留；再操作并确认放弃，回到原持久内容。不要把“放弃”理解成撤销已保存的内容。
 4. 再修改该 node 并保留一份合法未保存草稿。在另一个编辑器中打开本轮 `$work/plans/trip-readiness.json`，只改变 Map description 并保存。回页面保存旧草稿，检查提示重新加载且没有成功预览，ID 与 JSON 仍在。**先复制需要保留的草稿**，放弃并重开后核对外部说明，再重做修改保存。Map 是冲突单位，即使改的是另一个 node 也会冲突；没有自动合并或自动重试。
-5. 点外侧 `bot` →「新增 Bot」，填 `manual-capability`，JSON 删除顶层 id（若手工粘入）并保持 name、when、plan_guide、node_guide 的必需字符串结构；task_id 可省略，三份文档可分别清空。不要保留 schema_version 或旧字段。可把天气示例改为自己的静态核对说明，保存后应直接进入新 Bot 预览，左侧列表同步更新，可直接选择其他 Bot 再选回核对。编辑时列表仍保留；修改草稿后选择另一 Bot，取消放弃应保留原草稿，确认才切换。
-6. 在本轮隔离 `$work/capabilities` 新建 `broken.json`，内容为 `{ invalid JSON`，刷新全部，检查问题明确列出该文件及结构错误，其他合法 Bot 仍可打开。删除这个隔离故障文件并刷新，错误应消失；页面不会自动修复它。Map 中 C／D 的 Bot 都已在上方完整启动步骤复制，因此不应凭空出现缺失错误。
+5. 点外侧 `bot` → `new`，填 `manual-capability`，JSON 删除顶层 id（若手工粘入）并保持 name、when、plan_guide、node_guide 的必需字符串结构；task_id 可省略，三份文档可分别清空。不要保留 schema_version 或旧字段。可把天气示例改为自己的静态核对说明，保存后应直接进入新 Bot 预览，左侧列表同步更新，可直接选择其他 Bot 再选回核对。编辑时列表仍保留；修改草稿后选择另一 Bot，取消放弃应保留原草稿，确认才切换。
+6. 在本轮隔离 `$work/capabilities` 新建 `broken.json`，内容为 `{ invalid JSON`，点击 `refresh`，检查问题明确列出该文件及结构错误，其他合法 Bot 仍可打开。删除这个隔离故障文件并刷新，错误应消失；页面不会自动修复它。Map 中 C／D 的 Bot 都已在上方完整启动步骤复制，因此不应凭空出现缺失错误。
 7. 尝试删除天气 Bot，应列出 `trip-readiness.json` 的 A／B 和 `another-trip.json` 的 E 等引用并阻止删除。选择 C 依赖的 A 尝试删除 node，应列出后继 C，不改写依赖。只删除刚建且无引用的 `manual-node`／`manual-capability`：先取消最终确认，核对仍存在；再确认，核对当前 Map 保留、node 详情清除／Bot 回到列表。不提供强制删除、级联或撤销。
 8. 编辑一份新草稿，试切换外侧入口、刷新全部及浏览器刷新；node 编辑还可试「返回 Map」；取消放弃应继续处理原草稿，确认则执行所选动作。浏览器刷新使用原生提示，文案由浏览器决定。结束前不要将未保存草稿当作已持久化结果。
 

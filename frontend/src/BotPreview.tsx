@@ -2,9 +2,9 @@ import { useState } from 'react'
 import type { Bot } from './schedulerApi'
 
 const documents = [
-  { key: 'when', title: '选用说明' },
-  { key: 'plan_guide', title: '规划指引' },
-  { key: 'node_guide', title: '节点指引' },
+  { key: 'when', title: 'when' },
+  { key: 'plan_guide', title: 'plan_guide' },
+  { key: 'node_guide', title: 'node_guide' },
 ] as const
 
 export function BotPreview({ bot }: { bot: Bot }) {
@@ -15,7 +15,7 @@ export function BotPreview({ bot }: { bot: Bot }) {
     <p className="scheduler-text">Task 引用：{bot.task_id ?? '尚未绑定 Task'}</p>
     <nav className="scheduler-bot-sections" aria-label="Bot 内容分区">
       {documents.map(({ key, title }) => <button type="button" key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{title}</button>)}
-      <button type="button" aria-pressed={section === 'raw'} onClick={() => setSection('raw')}>原始定义</button>
+      <button type="button" aria-pressed={section === 'raw'} onClick={() => setSection('raw')}>json</button>
     </nav>
     {documents.map(({ key, title }) => <section key={key} aria-label={title} hidden={section !== key}>
       <pre className="scheduler-text">{bot[key]}</pre>

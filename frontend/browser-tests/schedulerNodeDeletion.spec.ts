@@ -63,7 +63,6 @@ test('P20 referenced node deletion is refused by the page and direct production 
 // A final deletion must expose the genuine empty state, not stale details.
 test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates all current views through the last node', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  await page.getByText('依赖图', { exact: true }).click()
   await select(page, '独立工作 D')
   let checked = false, checkedBeforeDialog = false, deleteRequests = 0
   page.on('response', response => {
@@ -100,7 +99,9 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByText('此 Map 没有 node。', { exact: true })).toBeVisible()
-  await expect(page.locator('details').filter({ has: page.getByText('依赖图', { exact: true }) }).getByText('此 Map 没有 node。', { exact: true })).toBeVisible()
+  const emptyGraph = page.getByRole('region', { name: 'Map 预览', exact: true }).locator('.scheduler-graph-empty')
+  await expect(emptyGraph).toBeVisible()
+  await expect(emptyGraph).toHaveText('此 Map 没有 node。')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: '新增 node', exact: true })).toBeVisible()

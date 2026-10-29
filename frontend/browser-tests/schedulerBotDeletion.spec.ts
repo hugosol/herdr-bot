@@ -37,7 +37,7 @@ test('P21 cross-Map references block both page and direct final deletion and lis
   await open(page)
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
-  await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+  await page.getByRole('button', { name: 'delete', exact: true }).click()
   const alert = page.getByRole('alert')
   for (const location of ['north.json', 'accountA', 'accountB', 'south.json', 'auditZ']) await expect(alert).toContainText(location)
   expect(confirmations).toBe(0)
@@ -66,7 +66,7 @@ test('P22 damaged and unreadable Maps and unreadable directory block deletion wi
   let confirmations = 0
   page.on('dialog', async dialog => { confirmations++; await dialog.dismiss() })
   async function refused(location: string, reason: string) {
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     const alert = page.getByRole('alert').filter({ hasText: '无法完整检查' })
     // Rust preserves configured '/' segments while Node path.join uses '\\'.
     // Compare the complete independently owned path without fixing spelling.
@@ -122,7 +122,7 @@ test('P23 P29 cancel preserves a bot, confirm returns the updated list and delet
   page.on('request', request => {
     if (/\/bots\/(check-delete|delete)$/.test(request.url())) requests.push(request.url().split('/').at(-1)!)
   })
-  const button = page.getByRole('button', { name: '删除 Bot', exact: true })
+  const button = page.getByRole('button', { name: 'delete', exact: true })
   page.once('dialog', async dialog => {
     expect(dialog.type()).toBe('confirm')
     expect(dialog.message()).toContain('shared')
@@ -133,7 +133,9 @@ test('P23 P29 cancel preserves a bot, confirm returns the updated list and delet
   await expect(button).toBeEnabled()
   expect(requests).toEqual(['check-delete'])
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
-  expect((await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([bot, other])
+  const catalog = await (await page.request.get(`${server!.baseURL}/api/scheduler/bots`)).json()
+  expect(catalog.bots).toHaveLength(2)
+  expect(catalog.bots).toEqual(expect.arrayContaining([bot, other]))
   // A direct caller must supply a current target revision, not just an ID.
   const bypass = await api(page, 'delete', { id: 'shared' })
   expect(bypass.ok()).toBe(false)
@@ -170,7 +172,7 @@ test('a real filesystem deletion failure keeps the bot preview and reports the e
     execFileSync('icacls.exe', [file, '/deny', `${user}:(DE)`])
     execFileSync('icacls.exe', [bots, '/deny', `${user}:(DC)`])
     page.once('dialog', dialog => dialog.accept())
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('删除失败')
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('shared')
     const target = await (await api(page, 'check-delete', { id: 'shared' })).json()
@@ -236,7 +238,7 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
       if (change === 'ambiguous ID') fs.writeFileSync(duplicate, duplicateBytes)
       await dialog.accept()
     })
-    await page.getByRole('button', { name: '删除 Bot', exact: true }).click()
+    await page.getByRole('button', { name: 'delete', exact: true }).click()
     await expect(page.getByRole('alert').filter({ hasText: diagnostic })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toBeVisible()
     const direct = await api(page, 'delete', target)

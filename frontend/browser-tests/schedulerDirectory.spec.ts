@@ -33,6 +33,43 @@ test('P7 Map default directory is created empty and preserves user files', async
   expect(fs.readFileSync(path.join(maps, 'personal.json'), 'utf8')).toBe(bytes)
 })
 
+// S1/S2: real file timestamps distinguish newest-first order from filename or
+// creation order, including filename ties and an explicit refresh after retiming.
+test('Maps list newest modifications first with filename ties and refresh after timestamp changes', async ({ page }) => {
+  server = await startServer()
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-scheduler').click()
+  await expect(page.getByTestId('scheduler-empty')).toBeVisible()
+  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const older = new Date('2026-01-01T00:00:00Z')
+  const newer = new Date('2026-01-02T00:00:00Z')
+  const newest = new Date('2026-01-03T00:00:00Z')
+  const originals = new Map([
+    ['zeta.json', '{"title":"zeta","description":"","nodes":{}}\n'],
+    ['alpha.json', '{"title":"alpha","description":"","nodes":{}}\n'],
+    ['beta.JSON', '{"title":"beta","description":"","nodes":{}}\n'],
+  ])
+  for (const [name, bytes] of originals) {
+    const file = path.join(maps, name)
+    fs.writeFileSync(file, bytes)
+    const modified = name === 'alpha.json' ? older : newer
+    fs.utimesSync(file, modified, modified)
+  }
+  await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['beta.JSON', 'zeta.json', 'alpha.json'])
+  const initial = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
+  expect(initial.status()).toBe(200)
+  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'] })
+
+  fs.utimesSync(path.join(maps, 'alpha.json'), newest, newest)
+  await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha.json', 'beta.JSON', 'zeta.json'])
+  const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
+  expect(refreshed.status()).toBe(200)
+  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'] })
+  for (const [name, bytes] of originals) expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)
+})
+
 // P5/P6/P9: literal whitelist, with distinct cwd/config, bots, zone and docs
 // decoys. Resolving relative to the config, recursing, or using zone-local files
 // would each produce a different list from ['alpha.json', 'beta.JSON'].
@@ -45,7 +82,12 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
     ['alpha.json', '{"literal":"alpha"}\n'], ['beta.JSON', '{"literal":"beta"}\n'],
     ['notes.txt', 'not a Map'], ['nested/hidden.json', '{}'],
   ])
-  for (const [name, bytes] of originals) fs.writeFileSync(path.join(maps, name), bytes)
+  const mapTime = new Date('2026-01-01T00:00:00Z')
+  for (const [name, bytes] of originals) {
+    const file = path.join(maps, name)
+    fs.writeFileSync(file, bytes)
+    fs.utimesSync(file, mapTime, mapTime)
+  }
   for (const directory of [path.join(root, 'selected-maps'), path.join(server.cwd, 'shared-bots'), path.join(server.cwd, 'docs', 'example')]) {
     fs.mkdirSync(directory, { recursive: true })
     fs.writeFileSync(path.join(directory, 'excluded.json'), '{}')

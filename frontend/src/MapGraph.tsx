@@ -20,7 +20,6 @@ function positions(map: WorkflowMap, nodeHeight: number) {
 type View = { scale: number; x: number; y: number }
 type Size = { width: number; height: number }
 const nodeWidth = 220
-const maximumScale = 2.5
 
 // Keep a large graph reachable at both ends; center graphs smaller than the viewport.
 function constrain(view: View, size: Size, width: number, height: number): View {
@@ -35,7 +34,6 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
 }) {
   const instanceId = useId()
   const markerId = `${instanceId}-arrow`
-  const helpId = `${instanceId}-help`
   const viewportRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -47,7 +45,6 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
   const width = Math.max(280, ...nodes.map((node) => node.x + nodeWidth + 24))
   const height = Math.max(152, ...nodes.map((node) => node.y + nodeHeight + 24))
   const fitScale = Math.min(1, size.width / width, size.height / height)
-  const minimumScale = Math.min(0.1, fitScale)
   const prerequisites = new Set(selectedId === null ? [] : map.nodes[selectedId]?.blocked_by ?? [])
   const successors = new Set(nodes.filter(({ id }) => selectedId !== null && map.nodes[id].blocked_by.includes(selectedId)).map(({ id }) => id))
 
@@ -90,30 +87,15 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
   }, [byId, size, width, height, nodeHeight])
 
   useLayoutEffect(() => {
-    // Selection reveals its node but does not reset the user's zoom or fit the Map.
+    // Selection reveals its node without fitting the Map again.
     if (selectedId !== null) revealNode(selectedId)
   }, [selectedId, revealNode])
-
-  function zoom(factor: number) {
-    setView((current) => {
-      const scale = Math.max(minimumScale, Math.min(maximumScale, current.scale * factor))
-      const ratio = scale / current.scale
-      return constrain({ scale, x: size.width / 2 - (size.width / 2 - current.x) * ratio, y: size.height / 2 - (size.height / 2 - current.y) * ratio }, size, width, height)
-    })
-  }
 
   if (nodes.length === 0) return <p className="scheduler-graph-empty">此 Map 没有 node。</p>
 
   return <div className="scheduler-graph">
-    <div className="scheduler-graph-tools" role="group" aria-label="依赖图视图控制">
-      <button type="button" aria-label="缩小依赖图" disabled={view.scale <= minimumScale} onClick={() => zoom(1 / 1.25)}>−</button>
-      <output aria-label="依赖图缩放比例">{Math.round(view.scale * 100)}%</output>
-      <button type="button" aria-label="放大依赖图" disabled={view.scale >= maximumScale} onClick={() => zoom(1.25)}>+</button>
-      <button type="button" onClick={() => setView(constrain({ scale: fitScale, x: 0, y: 0 }, size, width, height))}>适应全部</button>
-    </div>
-    <p id={helpId} className="scheduler-graph-help">拖动空白处平移；用 Tab 聚焦节点，Enter 或空格选择。加减按钮缩放，适应全部恢复总览。选中节点以双线框标示，直接前置与后继以标签和虚线边标示。</p>
     <div className="scheduler-graph-viewport" ref={viewportRef} data-dragging={dragging || undefined}>
-      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="Map 依赖图" aria-describedby={helpId}
+      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="Map 依赖图"
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0 || dragRef.current || (event.target instanceof Element && event.target.closest('button'))) return
           event.preventDefault()

@@ -80,7 +80,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     assertNoExecution()
   }
   await openScheduler(page)
-  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['broken.json', 'safe.json'])
+  await expect.poll(async () => (await page.getByTestId('scheduler-map-list').getByRole('listitem').allTextContents()).sort()).toEqual(['broken.json', 'safe.json'])
   await unchanged()
   const selectAndExpand = async () => {
     await expect(page.getByRole('heading', { name: html, exact: true })).toBeVisible()
@@ -93,11 +93,11 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     const details = page.getByRole('region', { name: 'Bot 预览', exact: true })
     await expect(details.getByRole('heading', { name: script, exact: true })).toBeVisible()
-    for (const [title, value] of [['选用说明', html], ['规划指引', instruction], ['节点指引', style + '\n' + html + '\n' + script]]) {
+    for (const [title, value] of [['when', html], ['plan_guide', instruction], ['node_guide', style + '\n' + html + '\n' + script]]) {
       await details.getByRole('button', { name: title, exact: true }).click()
       await expect(details.getByRole('region', { name: title, exact: true })).toHaveText(value)
     }
-    await details.getByRole('button', { name: '原始定义', exact: true }).click()
+    await details.getByRole('button', { name: 'json', exact: true }).click()
     expect(JSON.parse(await details.getByLabel('Bot 原始定义').innerText())).toEqual(capability)
     await unchanged()
     await page.getByTestId('tab-scheduler').click()

@@ -38,11 +38,11 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
     for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
-    await capability.getByRole('button', { name: '规划指引', exact: true }).click()
-    await expect(capability.getByRole('region', { name: '规划指引', exact: true })).toHaveText('整理天气及穿衣建议；不预订行程。')
-    await capability.getByRole('button', { name: '节点指引', exact: true }).click()
+    await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
+    await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('整理天气及穿衣建议；不预订行程。')
+    await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
     for (const text of ['city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。']) {
-      await expect(capability.getByRole('region', { name: '节点指引', exact: true })).toContainText(text)
+      await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
     }
     await expect(capability.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Bot 明细', exact: true })).toHaveCount(0)
@@ -70,12 +70,12 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
-  await capability.getByRole('button', { name: '规划指引', exact: true }).click()
-  await expect(capability.getByRole('region', { name: '规划指引', exact: true })).toHaveText('<script>window.templateExecuted=true</script>')
+  await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('<script>window.templateExecuted=true</script>')
   await expect(capability.locator('img, script')).toHaveCount(0)
-  await capability.getByRole('button', { name: '节点指引', exact: true }).click()
+  await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
   for (const text of ['account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。']) {
-    await expect(capability.getByRole('region', { name: '节点指引', exact: true })).toContainText(text)
+    await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
   }
   await expect(capability.getByText('目的地天气摘要', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).templateExecuted)).toBeUndefined()
@@ -119,7 +119,7 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   expect(catalog.status()).toBe(200)
   expect(await catalog.json()).toEqual({ bots: [weather] })
   const listing = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
-  expect(await listing.json()).toEqual({ files: ['first.json', 'second.json', 'template-decoy.json'] })
+  expect((await listing.json()).files.sort()).toEqual(['first.json', 'second.json', 'template-decoy.json'])
   for (const [filename, node, city] of [['first.json', '上海天气 A', '上海'], ['first.json', '北京天气 B', '北京'], ['second.json', '广州天气 C', '广州']]) {
     await page.getByRole('button', { name: filename, exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
@@ -193,7 +193,7 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   try {
     execFileSync('icacls.exe', [bots, '/deny', `${user}:(RD)`])
     expect(() => fs.readdirSync(bots)).toThrow()
-    await page.getByRole('button', { name: '刷新全部' }).click()
+    await page.getByRole('button', { name: 'refresh' }).click()
     await expect(page.getByTestId('scheduler-bot-error')).toBeVisible()
     await expect(page.getByTestId('scheduler-bot-empty')).toHaveCount(0)
     const failure = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
@@ -202,7 +202,7 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   } finally {
     execFileSync('icacls.exe', [bots, '/remove:d', user])
   }
-  await page.getByRole('button', { name: '刷新全部' }).click()
+  await page.getByRole('button', { name: 'refresh' }).click()
   await expect(page.getByTestId('scheduler-bot-error')).toHaveCount(0)
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('整理天气及穿衣建议；不预订行程。')

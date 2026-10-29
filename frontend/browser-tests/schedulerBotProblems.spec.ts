@@ -33,7 +33,6 @@ async function openPlan(page: Page) {
 
 async function completeGraph(page: Page) {
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button')).toHaveCount(3)
-  await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph.getByRole('button')).toHaveCount(3)
   for (const name of ['问题工作 A', '正常工作 B', '独立工作 C']) await expect(graph.getByRole('button', { name, exact: true })).toBeVisible()
@@ -50,11 +49,11 @@ async function normalDetails(page: Page) {
   await page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('button', { name: 'Bot 明细', exact: true }).click()
   const details = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(details.getByText('正常能力说明', { exact: true })).toBeVisible()
-  await expect(details.getByRole('region', { name: '选用说明', exact: true })).toHaveText('需要核对材料时')
-  await details.getByRole('button', { name: '规划指引', exact: true }).click()
-  await expect(details.getByRole('region', { name: '规划指引', exact: true })).toHaveText('仅整理差异，不执行工作')
-  await details.getByRole('button', { name: '节点指引', exact: true }).click()
-  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByRole('region', { name: '节点指引', exact: true })).toContainText(text)
+  await expect(details.getByRole('region', { name: 'when', exact: true })).toHaveText('需要核对材料时')
+  await details.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await expect(details.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('仅整理差异，不执行工作')
+  await details.getByRole('button', { name: 'node_guide', exact: true }).click()
+  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
 }
 
 // S1 + production S2, P20/P29: a real bad file coexists with a normal
@@ -234,7 +233,9 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
   const graph = await completeGraph(page)
   const response = await page.request.get(`${server!.baseURL}/api/scheduler/bots`)
   expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual({ bots: [empty, named, normal] })
+  const catalog = await response.json()
+  expect(catalog.bots).toHaveLength(3)
+  expect(catalog).toEqual({ bots: expect.arrayContaining([empty, named, normal]) })
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toHaveCount(0)
   await expect(graph.getByRole('button', { name: '问题工作 A', exact: true })).not.toContainText('缺失')
   await graph.getByRole('button', { name: '问题工作 A', exact: true }).click()
@@ -242,21 +243,21 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
   await expect(node.getByRole('alert')).toHaveCount(0)
   await node.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   const detail = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  for (const title of ['节点指引', '规划指引', '选用说明']) {
+  for (const title of ['node_guide', 'plan_guide', 'when']) {
     await detail.getByRole('button', { name: title, exact: true }).click()
     await expect(detail.getByRole('region', { name: title, exact: true })).toBeEmpty()
   }
 })
 
 // Approved S1, P19: fixed A -> B plus isolated C must survive a missing id.
-// A renderer that silently drops A or only reports a problem after expansion
+// A renderer that silently drops A or omits its problem from the permanent graph
 // violates the independently specified graph or the three visible locations.
 test('P5 P35 missing bot ID stays distinct from an empty directory and preserves all definitions', async ({ page }) => {
   const { bots, maps } = await prepare()
   const mapBefore = fs.readFileSync(path.join(maps, 'plan.json'), 'utf8')
   const botBefore = fs.readFileSync(path.join(bots, 'normal.json'), 'utf8')
   await openPlan(page)
-  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '问题工作 A', exact: true })).toContainText('problem')
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toContainText('problem')
   const graph = await completeGraph(page)

@@ -22,7 +22,6 @@ test('P10 P11 unordered Map keeps stable dependency layers in list and graph wit
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
-  await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
   // The persisted JSON is C/B/A/D, but the service serializes its parsed Map
@@ -41,8 +40,8 @@ test('P10 P11 unordered Map keeps stable dependency layers in list and graph wit
     await expect(node).toContainText(id)
   }
   await expect(graph.getByRole('img')).toHaveCount(2)
-  // Hit testing uses viewport coordinates; visibility alone permits the graph
-  // to remain below the fold after the viewport controls and help text.
+  // Hit testing uses viewport coordinates; visibility alone does not guarantee
+  // the graph's painted edges are within the viewport.
   await graph.scrollIntoViewIfNeeded()
   // Observe actual rendered path endpoints against real node rectangles and
   // marker geometry, not merely a computed adjacency list or node count.
@@ -118,8 +117,8 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   }
   await expect(parameters.getByTestId('node-input')).toContainText('extra_undeclared')
   await expect(prerequisites).toContainText('无前置依赖')
-  await expect(details).not.toContainText('template_only')
-  await expect(details).not.toContainText('TEMPLATE_DEFAULT_MUST_NOT_APPEAR')
+  await expect(parameters).not.toContainText('template_only')
+  await expect(parameters).not.toContainText('TEMPLATE_DEFAULT_MUST_NOT_APPEAR')
   await graph.getByRole('button', { name: '第二项 B', exact: true }).click()
   await expect(details.getByRole('heading', { name: '第二项 · B', exact: true })).toBeVisible()
   await expect(parameters).toContainText('beta-only')

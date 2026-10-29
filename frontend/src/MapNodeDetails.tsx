@@ -1,7 +1,7 @@
 import type { WorkflowMap } from './schedulerApi'
 
-export function MapNodeDetails({ map, nodeId, botProblem, onSelect, onBot }: {
-  map: WorkflowMap; nodeId: string; botProblem?: string
+export function MapNodeDetails({ map, nodeId, botProblem, nodeGuide, onSelect, onBot }: {
+  map: WorkflowMap; nodeId: string; botProblem?: string; nodeGuide?: string
   onSelect: (id: string) => void
   onBot: (id: string) => void
 }) {
@@ -16,6 +16,10 @@ export function MapNodeDetails({ map, nodeId, botProblem, onSelect, onBot }: {
       <h4>本次输入</h4>
       <pre className="scheduler-text" data-testid="node-input">{node.input}</pre>
     </section>
+    {nodeGuide !== undefined && <section aria-label="node_guide">
+      <h4>node_guide</h4>
+      <pre className="scheduler-text">{nodeGuide}</pre>
+    </section>}
     <section aria-label="前置依赖">
       <h4>前置依赖</h4>
       {node.blocked_by.length === 0 ? <p>无前置依赖。</p> : <ul>

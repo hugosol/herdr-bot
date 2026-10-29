@@ -847,11 +847,16 @@ fn read_files(directory: &Path) -> Result<MapFiles, DirectoryError> {
         let metadata = fs::symlink_metadata(&path).map_err(|e| DirectoryError::io("map-directory-read-failed", "读取", e))?;
         if !metadata.is_file() || crate::browse::is_link_like(&metadata) { continue; }
         if path.extension().is_some_and(|value| value.eq_ignore_ascii_case("json")) {
-            if let Some(name) = entry.file_name().to_str() { files.push(name.to_owned()); }
+            if let Some(name) = entry.file_name().to_str() {
+                let modified = metadata.modified().map_err(|e| DirectoryError::io("map-directory-read-failed", "读取", e))?;
+                files.push((name.to_owned(), modified));
+            }
         }
     }
-    files.sort();
-    Ok(MapFiles { files })
+    files.sort_by(|(left_name, left_time), (right_name, right_time)| {
+        right_time.cmp(left_time).then_with(|| left_name.cmp(right_name))
+    });
+    Ok(MapFiles { files: files.into_iter().map(|(name, _)| name).collect() })
 }
 
 pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {

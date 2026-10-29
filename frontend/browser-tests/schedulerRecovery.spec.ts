@@ -203,7 +203,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
     const list = page.getByTestId('scheduler-map-list')
-    await expect(list.getByRole('listitem')).toHaveText(['a.json', 'b.json', 'c.json'])
+    await expect.poll(async () => (await list.getByRole('listitem').allTextContents()).sort()).toEqual(['a.json', 'b.json', 'c.json'])
     await list.getByRole('button', { name: 'a.json', exact: true }).click()
     const nodes = page.getByRole('region', { name: '节点列表', exact: true })
     const details = page.getByRole('region', { name: 'node 详情', exact: true })

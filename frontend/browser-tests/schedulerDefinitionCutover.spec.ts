@@ -18,14 +18,14 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByTestId('tab-bot').click()
-  await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
+  await page.getByRole('button', { name: 'new', exact: true }).click()
   const content = { name: '合同能力', when: 'WHEN_ONLY **何时选用**', plan_guide: 'PLAN_ONLY\n- 规划说明', node_guide: 'NODE_ONLY\n# 非校验规则：必须有业务输入' }
   await page.getByLabel('Bot ID', { exact: true }).fill('shared-contract')
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify(content))
-  await page.getByRole('button', { name: '保存 Bot', exact: true }).click()
+  await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('form', { name: 'Bot 编辑', exact: true })).toHaveCount(0)
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  for (const [tab, text] of [['节点指引', content.node_guide], ['规划指引', content.plan_guide], ['选用说明', content.when]]) {
+  for (const [tab, text] of [['node_guide', content.node_guide], ['plan_guide', content.plan_guide], ['when', content.when]]) {
     await preview.getByRole('button', { name: tab, exact: true }).click()
     await expect(preview.getByRole('region', { name: tab, exact: true })).toHaveText(text)
   }

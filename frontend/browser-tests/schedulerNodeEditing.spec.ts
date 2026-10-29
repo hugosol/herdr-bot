@@ -47,7 +47,6 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
 test('node creation starts with a disposable Shanghai draft and saves changed content into the current Map immediately', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
   const bots = path.join(server!.cwd, '.data/bots'), botsBefore = inventory(bots)
-  await page.getByText('依赖图', { exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
@@ -79,7 +78,6 @@ test('node creation starts with a disposable Shanghai draft and saves changed co
 // disagrees with these independent HTTP and visible edge observations.
 test('editing a real node keeps identity, open parameters and all non-target definitions while updating every current view', async ({ page }) => {
   const root = await setup(page, { ...original, nodes: { ...original.nodes, A: audit } }), before = inventory(root)
-  await page.getByText('依赖图', { exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
