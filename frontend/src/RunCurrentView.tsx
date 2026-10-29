@@ -33,6 +33,10 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
     const botId = map?.nodes[id]?.bot_id
     return [id, bots.find(candidate => candidate.id === botId)?.name || botId || '不可读']
   }))
+  const nodeReportPolicies: Record<string, 'auto' | 'manual'> = Object.fromEntries(ids.map(id => {
+    const execution = run.nodes[id]?.execution
+    return [id, execution ? execution.reportPolicy ?? 'auto' : map?.nodes[id]?.report_policy ?? 'auto']
+  }))
   const animateRunning = managed && run.status === 'running'
   const blockers = definition?.blocked_by.filter(id => run.nodes[id]?.status !== 'completed') ?? []
   const states = Object.fromEntries(ids.map(id => {
@@ -61,12 +65,13 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
         <section className="workflow-graph-panel" aria-label="只读状态图">
           <header><div><p className="workflow-eyebrow">RUN OVERVIEW</p><h2>{map?.title || '工作流现场'}</h2></div><span className="workflow-muted">前置 → 后续 · 当前 Map 定义</span></header>
           {mapError && <p role="alert">当前 Map 不可用：{mapError} 不补造历史图。</p>}
-          {map && <WorkflowRunGraph map={map} selectedId={nodeId ?? null} onSelect={setSelected} nodeStates={states} nodeTasks={nodeTasks} nodeBots={nodeBots} animateRunning={animateRunning} />}
+          {map && <WorkflowRunGraph map={map} selectedId={nodeId ?? null} onSelect={setSelected} nodeStates={states} nodeTasks={nodeTasks} nodeBots={nodeBots} nodeReportPolicies={nodeReportPolicies} animateRunning={animateRunning} />}
           <p className="workflow-graph-note">图来自当前 Map，非历史定义快照。Task 名称来自当前目录；有执行时使用保存的执行 Task，未派发时为当前配置。箭头仅表示依赖，不表示自动执行或材料传递。{!animateRunning && '当前不播放运行动画。'}</p>
         </section>
         {catalogErrors.map((message, index) => <p role="alert" key={index}>{message}</p>)}
         {node && <section aria-label="当前节点详情" className="workflow-node-details">
           <header className="workflow-node-detail-heading"><div><p className="workflow-eyebrow">NODE / {nodeId}</p><h2>{map?.nodes[nodeId]?.title ?? nodeId}</h2><p className="workflow-detail-task">Task · {nodeTasks[nodeId]} {nodeTaskIds[nodeId] && <code>{nodeTaskIds[nodeId]}</code>}<small>{node.execution ? '已保存执行' : '当前配置'}</small></p></div><WorkflowStatus status={node.status} saved={!managed} animate={animateRunning} /></header>
+          <p className="workflow-muted">report_policy: {nodeReportPolicies[nodeId] ?? 'auto'}</p>
           <section aria-label="当前执行适用报告" className="workflow-current-reports"><h3 className="workflow-eyebrow">当前执行适用报告</h3>{applicable.length ? applicable.map(report => <article key={report.id}><p className="workflow-report-meta">{report.id} · <FactTime at={report.at} /></p><pre>{report.body}</pre></article>) : <p className="workflow-muted">尚无当前执行适用报告。</p>}</section>
           <div className="workflow-node-journal">
             <section className="workflow-journal-entry" aria-label="当前工作要求"><span className="workflow-journal-dot" aria-hidden="true" /><h3>工作要求</h3>{definition ? <><p>{definition.input || '当前定义未填写工作要求。'}</p><p className="workflow-muted">来自当前 Map 定义，非历史执行快照。</p></> : <p>当前定义不可用，不补造历史工作要求。</p>}</section>
@@ -84,7 +89,7 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
           </details>
           <details key={`history-${nodeId}`} aria-label="已保存旧执行事实"><summary>旧执行历史（{node.previousExecutions.length} 次已保存执行）</summary>
             {node.previousExecutions.length ? node.previousExecutions.map((fact, index) => <article key={fact.execution?.id ?? index}>
-              {fact.execution ? <><dl><dt>旧执行 ID</dt><dd>{fact.execution.id}</dd><dt>旧执行 Task</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>旧执行 zone</dt><dd>{fact.execution.zone}</dd></dl><SavedChat label="旧执行 Chat" chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
+              {fact.execution ? <><dl><dt>旧执行 ID</dt><dd>{fact.execution.id}</dd><dt>旧执行 Task</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>旧执行 zone</dt><dd>{fact.execution.zone}</dd><dt>report_policy</dt><dd>{fact.execution.reportPolicy ?? 'auto'}</dd></dl><SavedChat label="旧执行 Chat" chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
               {fact.failure && <p>旧失败 · {fact.failure.stage}：{fact.failure.message}</p>}
             </article>) : <p>尚无已保存旧执行。</p>}
             {reports.filter(report => report.nodeId === nodeId && report.executionId !== node.execution?.id).map(report => <article key={report.id}><p>旧报告 · {report.id} · 执行 {report.executionId} · <FactTime at={report.at} /></p><pre>{report.body}</pre><SavedChat label="旧报告来源 Chat" chat={report.source} /></article>)}

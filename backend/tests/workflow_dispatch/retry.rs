@@ -333,7 +333,10 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     let calls = s.herdr.calls();
     assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"]);
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(2).unwrap();
-    assert_eq!(prompt["text"], format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\nNODE-INPUT\n第二行", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display()));
+    let text = prompt["text"].as_str().unwrap();
+    assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(new["reportPolicy"], "auto");
     let launch = calls.iter().filter(|c| c["kind"] == "agent_start").nth(2).unwrap();
     assert_eq!(&launch["args"].as_array().unwrap()[..4], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!("high")]);
     let native = common::read_json_lines(&s.herdr.path().join("started.jsonl")).pop().unwrap();

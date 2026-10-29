@@ -14,12 +14,51 @@ struct WorkflowMap {
     nodes: BTreeMap<String, JsonObject<MapNode>>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportPolicy {
+    #[default]
+    Auto,
+    Manual,
+}
+
+impl<'de> Deserialize<'de> for ReportPolicy {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PolicyVisitor;
+        impl serde::de::Visitor<'_> for PolicyVisitor {
+            type Value = ReportPolicy;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("the string auto or manual")
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                match value {
+                    "auto" => Ok(ReportPolicy::Auto),
+                    "manual" => Ok(ReportPolicy::Manual),
+                    _ => Err(E::unknown_variant(value, &["auto", "manual"])),
+                }
+            }
+        }
+        deserializer.deserialize_str(PolicyVisitor)
+    }
+}
+
+impl ReportPolicy {
+    pub(crate) fn control_section(self) -> &'static str {
+        match self {
+            Self::Auto => "report_policy: auto\nReport handoff-ready results without waiting for user confirmation. Reporting does not complete the node; the manager still decides complete.",
+            Self::Manual => "report_policy: manual\nBefore every handoff-ready report, show the user a summary, result locations and limitations in this node Chat, ask whether to send the report, then stop the turn and wait. Send report only after the user confirms in natural language here. If changes are requested, make them first, show the revised result and ask again. Supplements and corrections also require this confirmation. Reporting does not complete the node; the manager still decides complete.",
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MapNode {
     title: String,
     bot_id: String,
     input: String,
+    #[serde(default)]
+    report_policy: ReportPolicy,
     zone: String,
     blocked_by: Vec<String>,
 }
@@ -74,9 +113,15 @@ pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap
     Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
 }
 
+pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Result<ReportPolicy, String> {
+    let map = read_map(directory, name).map_err(|e| e.message)?;
+    map.nodes.get(id).map(|node| node.0.report_policy).ok_or_else(|| "node 不在当前 Map 中".into())
+}
+
 pub(crate) struct DispatchTarget {
     pub title: String,
     pub input: String,
+    pub report_policy: ReportPolicy,
     pub zone: String,
     pub task: crate::tasks::Task,
 }
@@ -93,7 +138,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
-    Ok(DispatchTarget { title: node.title, input: node.input, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -709,7 +754,8 @@ pub async fn new_node(
         let original = read_map_source(&state.map_directory, &name)?;
         parse_map(&original)?;
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
-        let content = example["nodes"]["A"].take();
+        let mut content = example["nodes"]["A"].take();
+        content["report_policy"] = serde_json::json!(ReportPolicy::default());
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     }).await {
         Ok(Ok(value)) => Json(value).into_response(),

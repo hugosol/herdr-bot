@@ -71,6 +71,8 @@ pub struct NodeExecution {
     pub task_id: String,
     pub agent: crate::tasks::Agent,
     pub zone: String,
+    #[serde(default)]
+    pub report_policy: crate::scheduler::ReportPolicy,
     pub chat: Option<ChatReference>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -696,10 +698,10 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
     }
     let result: Result<(), String> = async {
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
+        let node = candidate.nodes.get_mut(id).unwrap();
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, chat: None });
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
-        let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), chat: None });
         stage = "workspace";
         let workspace_id = &run.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;
         let workspace = state.herdr.workspace_by_id(workspace_id).await.map_err(|e| e.message())?.ok_or("管理者实际 Workspace 不可用；不回退默认 Workspace")?;
@@ -733,7 +735,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         state.history.record_zone(&identity.session_id, &name, target.task.agent.label(), &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id, identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
         stage = "submit";
         let paths = Runs::paths(state, &run.id);
-        let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.input);
+        let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.report_policy.control_section(), target.input);
         let text = crate::chats::compose_initial_input(&target.task, preset.trigger.native_skill.as_deref(), &input);
         effects.input_attempted = true;
         state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
@@ -750,7 +752,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), chat: None,
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), chat: None,
             });
         }
         node.status = "failed".into();

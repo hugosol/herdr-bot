@@ -92,7 +92,6 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await expect(preview).toContainText('人工核对新版天气说明，不执行查询。')
     await activate(page, page.getByTestId('tab-scheduler'))
     await expect(selected).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('region', { name: 'node_guide', exact: true }).locator('pre')).toHaveText(editedGuide)
     await activate(page, button('修改 node'))
     const nodeJSON = page.getByLabel('node 内容 JSON', { exact: true })
     const node = JSON.parse(await nodeJSON.inputValue())

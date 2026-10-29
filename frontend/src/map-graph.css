@@ -116,6 +116,39 @@
   outline-offset: -5px;
 }
 
+/* Clip only the decorative shape, never the button, its text, or its focus ring. */
+.scheduler .scheduler-node[data-report-policy="manual"] {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+}
+.scheduler .scheduler-node-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: visible;
+  pointer-events: none;
+}
+.scheduler .scheduler-node-shape polygon {
+  fill: #1b222c;
+  stroke: #637587;
+  stroke-width: 2;
+}
+.scheduler .scheduler-node-related .scheduler-node-shape polygon {
+  stroke: #a9d0f0;
+  stroke-dasharray: 6 4;
+}
+.scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon {
+  fill: #253446;
+  stroke: #a9d0f0;
+  stroke-width: 4;
+  stroke-dasharray: none;
+}
+
 @media (forced-colors: active) {
   .scheduler .scheduler-node { border-color: ButtonText; background: ButtonFace; color: ButtonText; }
   .scheduler .scheduler-node-id-label,
@@ -125,4 +158,8 @@
   .scheduler .scheduler-graph-edge { stroke: CanvasText; }
   .scheduler .scheduler-graph-edge-related { stroke: Highlight; }
   .scheduler .scheduler-node[aria-pressed="true"] { border-color: Highlight; }
+  .scheduler .scheduler-node[data-report-policy="manual"] { border-color: transparent; background: transparent; }
+  .scheduler .scheduler-node-shape polygon { fill: ButtonFace; stroke: ButtonText; }
+  .scheduler .scheduler-node-related .scheduler-node-shape polygon,
+  .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon { fill: ButtonFace; stroke: Highlight; }
 }

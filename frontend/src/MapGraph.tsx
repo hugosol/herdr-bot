@@ -136,7 +136,11 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
           {nodes.map(({ id, x, y }) => <foreignObject key={id} x={x} y={y} width={nodeWidth} height={nodeHeight}>
             <button type="button" className={`scheduler-node${prerequisites.has(id) || successors.has(id) ? ' scheduler-node-related' : ''}`}
               aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
+              data-report-policy={map.nodes[id].report_policy ?? 'auto'}
               onFocus={() => revealNode(id)} onClick={() => onSelect(id)}>
+              {map.nodes[id].report_policy === 'manual' && <svg className="scheduler-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <polygon points="7,1 93,1 99,13 99,87 93,99 7,99 1,87 1,13" vectorEffect="non-scaling-stroke" />
+              </svg>}
               <strong title={map.nodes[id].title}>{map.nodes[id].title}</strong><span className="scheduler-node-id-label" title={id}>{id}</span>
               {prerequisites.has(id) && <small className="scheduler-node-relation">直接前置</small>}
               {successors.has(id) && <small className="scheduler-node-relation">直接后继</small>}

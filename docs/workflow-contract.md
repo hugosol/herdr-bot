@@ -18,7 +18,7 @@
 | Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。Task 用途仅 normal/manager，均可选择 omp 或 pi；node 是本次 Chat 的执行角色，普通 Task 可同时用于独立发起与节点派发，不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
 | 管理者 Chat | 独占状态操作，读取记录与材料并判断交接，显式派发、完成、恢复或结束；不把报告、停轮、退出当完成，不强制持续续轮。不是业务 node。 |
-| 节点 Chat | 在定义 zone 做工作，以 report 正文说明结果地址、用法与限制，可在交接后继续不影响结果的收尾；不能自改流程状态。 |
+| 节点 Chat | 在定义 zone 做工作，按本次 `reportPolicy` 以 report 正文说明结果地址、用法与限制：auto 自行报告，manual 每次先展示摘要/地址/限制、询问并停轮等待本 node Chat 用户自然语言确认；修改后及补充更正同样重新确认。可在交接后继续不影响结果的收尾；不能自改流程状态。 |
 | 后端 | 检查同机来源、真实原生身份与 Run/执行归属、依赖和状态；串行同 Run 业务动作，保存当前事实与历史，提供报告和 collect。模型判断不能替代这些约束。 |
 | Herdr／agent／toolkit | Herdr 托管原生 Chat 与输入提交，各 Task 选择的 omp 或 pi 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
 | Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察、定位/恢复已关联 Chat；不暗中创建、接管或改状态。 |
@@ -35,6 +35,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 - 三份记录先初始化，真实 Chat 身份关联保存后才提交初始指示。每次派发/retry 是独立原生 Chat，不以新 Tab 证明隔离。用户确认 omp 未开 autoResume；不改原生存储目录。
 - Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 不自动获得它、Bot 文档或整张 Map。所有必要路径由环境保证可读，不新增服务端可读性门禁。
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
+- Map node 的 `report_policy` 为可选 snake_case 字段，仅 auto/manual，默认 auto，非法值拒绝；dispatch/retry 读取当前 Map 并固定为执行的 camelCase `reportPolicy`。旧记录缺字段按 auto，无迁移；恢复原 Chat/执行沿用保存值，不热更新。初始输入在业务 input 外独立给出策略控制段。manual 只是提示词约束，不新增审批门禁、状态或按钮，不改变管理者 complete 职责。
 - report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
 - 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。

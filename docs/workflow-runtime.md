@@ -26,7 +26,7 @@
 | Run | `id`；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者 `zone`、`workspaceName`；原文 `userInput`；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是定义快照。 |
 | Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
-| execution | `id`、来源 `taskId`、定义 `zone`、可空 `chat` 引用。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
+| execution | `id`、来源 `taskId`、实际宿主 `agent`、定义 `zone`、`reportPolicy`（`auto` 或 `manual`）、可空 `chat` 引用。策略在 dispatch/retry 解析当前 Map 时固定；旧记录缺少 `reportPolicy` 时按 `auto` 读取，无迁移、不因查询改写文件。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
 | failure | `stage`、`message`；启动失败可含 `effects`，执行阶段失败不制造启动效果。详细阶段以实际响应为准，不能只看 failed。 |
 | effects | `recordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；只表示已观察阶段，不证明未确认阶段绝无效果。 |
 | completion | `id`、`at`、真实管理者 `actor` Chat 引用、原文 `reason`；保留首次交接事实。 |
@@ -174,7 +174,7 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 每个合法目标沿 node → Bot → 普通（normal）Task（omp/pi） 解析完整 trigger config 和 env config，在定义中仍登记且有效的 zone 创建独立原生 Chat。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与定义 zone 一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
 
-节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 仅包含自身 node 标识/名称、运行说明及三份记录的绝对路径，最后保留 node.input 原文；不附 manager user_input、Bot 文档或完整 Map。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
+节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `report_policy: auto|manual` 及行为定义，最后保留 node.input 原文；不附 manager user_input、Bot 文档或完整 Map。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
 同批拒绝或启动失败不取消其他合法目标，不关闭或回滚已创建的 Chat。成功派发后 node 为 running；启动失败为 failed，保留执行 ID、来源 Task、zone、可得 Chat 关联及失败阶段/原因，并追加执行历史。正常已记录的 running/failed 再次 dispatch 均拒绝，不增加外部启动、不覆盖首次事实。崩溃或关联保存失败窗口不承诺完整幂等，先核实已发生效果，勿盲目重发。同 Run 派发批次互斥；不同 Run 的身份与事实独立。
 
@@ -549,6 +549,10 @@ if (@($checks | Where-Object { -not $_.isFile }).Count -gt 0) { exit 2 }
 当前精确阻塞是独立 my-agent-toolkit 尚未部署上述真实角色入口，不能执行要求的原生身份/Prompt/工具路径。Herdr 隔离启动、模型访问与完整闭环也仍未验证，不能从可执行文件版本推断可用；没有证据据此修复宿主运行 bug。部署真实入口后须从新的独占环境按本节全程复验并另存实际证据；本次前置检查不能解除单节点宿主验收，也不能将 P62/P63 标为完成。
 
 ## 节点报告与独立通知
+
+Map node 的可选 `report_policy` 只接受 `auto`／`manual`，省略默认 `auto`；派发时保存为本次 `execution.reportPolicy`，不是 Run 创建时的整图快照。auto 在可交接时直接报告；manual 每次准备报告都先在 node Chat 展示摘要、结果地址及限制，询问用户、停止当前轮次并等待此 Chat 的自然语言确认，然后才调用 report。用户要求修改时先修改，再展示、再确认；补充和更正也必须确认。业务 input 不是策略的唯一来源。这个约束只由提示词落实，不新增后端审批门禁、确认字段、状态或按钮，不改变 manager complete 的判断职责。
+
+恢复原 Chat、recover 和派发核实沿用已保存执行的策略，不从当前 Map 改写，也不重放策略控制段；retry 是新执行，重新读取当前 Map，旧执行仍保留原值。已有 Chat 不热更新；旧执行缺字段按 auto 解释，无需迁移。若 retry 连当前 Map/node 都无法解析，失败来源记录没有可执行策略，默认 auto 不代表启动或允许回退；修正后再次 retry 才重新选择有效目标与策略。
 
 已关联的当前 node Chat 使用 `report`，模型业务参数**只有正文**（`body`）。正文应包含可交接结果的地址、使用方法与限制；不要求 node 自报 Run、node、执行 ID 或接收者。角色扩展须从 toolkit 公共 Session 能力取得当前原生身份，并调用：
 

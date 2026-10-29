@@ -7,13 +7,14 @@ import './workflow-run-graph.css'
 type Edge = { source: string; target: string; path: string }
 type GraphGeometry = { width: number; height: number; edges: Edge[] }
 
-export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTasks, nodeBots, animateRunning }: {
+export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTasks, nodeBots, nodeReportPolicies, animateRunning }: {
   map: WorkflowMap
   selectedId: string | null
   onSelect: (id: string) => void
   nodeStates: Record<string, { status: string; label: string }>
   nodeTasks: Record<string, string>
   nodeBots: Record<string, string>
+  nodeReportPolicies: Record<string, 'auto' | 'manual'>
   animateRunning: boolean
 }) {
   const markerId = `${useId()}-workflow-arrow`
@@ -81,7 +82,11 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
           const status = nodeStates[id]?.status ?? 'pending'
           return <button key={id} type="button" className={`workflow-run-graph-node${selectedId === id ? ' is-selected' : ''}`}
             ref={element => { if (element) buttonsRef.current.set(id, element); else buttonsRef.current.delete(id) }}
-            aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} data-node-id={id} data-node-state={status} onClick={() => onSelect(id)}>
+            aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} data-node-id={id} data-node-state={status}
+            data-report-policy={nodeReportPolicies[id] ?? 'auto'} onClick={() => onSelect(id)}>
+            {nodeReportPolicies[id] === 'manual' && <svg className="workflow-run-graph-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polygon points="7,1 93,1 99,9 99,91 93,99 7,99 1,91 1,9" vectorEffect="non-scaling-stroke" />
+            </svg>}
             <span className="workflow-run-graph-node-top"><code>{id}</code><WorkflowStatus status={status} saved={!animateRunning} animate={animateRunning} /></span>
             <strong>{node.title}</strong>
             <span className="workflow-run-graph-task"><span>Task</span>{nodeTasks[id] ?? '—'}</span>

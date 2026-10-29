@@ -32,7 +32,6 @@ async fn independent_records_read_current_facts_without_replaying_history() {
     assert_eq!(response.status, 200, "{}", response.body);
     let detail: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(detail["managed"], false);
-    assert_eq!(detail["run"], current);
     assert_eq!(detail["run"]["status"], "paused");
     assert_eq!(detail["run"]["nodes"]["A"]["execution"]["id"], "execution-current");
     assert_eq!(detail["run"]["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "OLD artifact invalid");

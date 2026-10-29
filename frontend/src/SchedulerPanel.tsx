@@ -359,7 +359,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
                 {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
                   botProblem={botProblems[selectedId]} onBot={openBot}
-                  nodeGuide={bots.kind === 'ready' && !botProblems[selectedId] ? bots.bots.find((bot) => bot.id === map.nodes[selectedId].bot_id)?.node_guide : undefined} />
+                  bot={bots.kind === 'ready' && !botProblems[selectedId] ? bots.bots.find((bot) => bot.id === map.nodes[selectedId].bot_id) : undefined} />
               </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone 路径引用、前置依赖与共享 Bot。</p></div>}
             </aside>
           </div>

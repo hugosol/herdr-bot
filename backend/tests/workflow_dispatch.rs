@@ -16,6 +16,8 @@ mod security;
 mod pi;
 #[path = "workflow_dispatch/roles.rs"]
 mod roles;
+#[path = "workflow_dispatch/report_policy.rs"]
+mod report_policy;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
@@ -1122,7 +1124,10 @@ async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_
     assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "node-native-05");
     let calls = s.herdr.calls();
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(1).unwrap();
-    assert_eq!(prompt["text"], format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\nNODE-INPUT\n第二行", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display()));
+    let text = prompt["text"].as_str().unwrap();
+    assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(saved["nodes"]["A"]["execution"]["reportPolicy"], "auto");
     let start = calls.iter().filter(|c| c["kind"] == "agent_start").nth(1).unwrap();
     assert_eq!(&start["args"].as_array().unwrap()[..4], &[json!("--model"),json!("openai-codex/gpt-6.1-sol"),json!("--thinking"),json!("high")]);
     let tab = s.herdr.tabs().pop().unwrap();
