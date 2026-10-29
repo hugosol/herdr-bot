@@ -160,11 +160,26 @@
   border-bottom: 1px solid var(--layout-line);
 }
 
+.app-layout[data-layout="compact"] .layout-nav-viewport {
+  max-width: 560px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.app-layout[data-layout="compact"] .layout-nav-track {
+  display: flex;
+  transition: transform 240ms ease-out;
+}
+
+.app-layout[data-layout="compact"] .layout-nav-track[data-dragging="true"] {
+  transition: none;
+}
+
 .app-layout[data-layout="compact"] .layout-nav-group {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 560px;
-  margin: 0 auto;
+  flex: 0 0 100%;
+  width: 100%;
   gap: 8px;
 }
 
@@ -298,6 +313,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-layout[data-layout="compact"] .layout-nav-track {
+    transition: none;
+  }
   .navigation-fade .layout-nav {
     animation: none;
   }

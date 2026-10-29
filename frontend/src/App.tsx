@@ -87,7 +87,10 @@ export default function App({
   const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   const acceptedHash = useRef(window.location.hash)
-  const touchStart = useRef<{ id: number; x: number; y: number } | null>(null)
+  const touchStart = useRef<{ id: number; x: number; y: number; horizontal: boolean } | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const navViewport = useRef<HTMLDivElement>(null)
   const schedulerTab = tab === 'scheduler' || tab === 'bot'
   const visibleTabs: readonly TabKey[] = layout === 'expanded' ? TAB_ORDER : TAB_GROUPS[group]
 
@@ -117,7 +120,6 @@ export default function App({
   function selectTab(next: TabKey, guarded = true) {
     if (next !== tab && guarded && schedulerTab && schedulerNavigationGuard.current?.() === false) return false
     const nextGroup = (TAB_GROUPS.work as readonly TabKey[]).includes(next) ? 'work' : 'config'
-    if (nextGroup !== group) setNavigationFade(true)
     if (tab === 'workflow' && next !== 'workflow' && selectedRunId()) {
       const url = new URL(window.location.href)
       url.hash = 'workflow'
@@ -149,17 +151,40 @@ export default function App({
     return () => window.removeEventListener('hashchange', navigate)
   })
 
+  function cancelSwipe() {
+    touchStart.current = null
+    setDragging(false)
+    setDragOffset(0)
+  }
+
+  function moveSwipe(event: TouchEvent<HTMLElement>) {
+    const start = touchStart.current
+    if (!start || layout !== 'compact') return
+    if (event.touches.length !== 1 || event.touches[0].identifier !== start.id) { cancelSwipe(); return }
+    const dx = event.touches[0].clientX - start.x
+    const dy = event.touches[0].clientY - start.y
+    if (!start.horizontal) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return
+      if (Math.abs(dx) <= Math.abs(dy) * 1.5) { cancelSwipe(); return }
+      start.horizontal = true
+      setDragging(true)
+    }
+    const width = navViewport.current?.clientWidth ?? 0
+    setDragOffset(group === 'work' ? Math.max(-width, Math.min(0, dx)) : Math.min(width, Math.max(0, dx)))
+  }
+
   function finishSwipe(event: TouchEvent<HTMLElement>) {
     const start = touchStart.current
-    touchStart.current = null
-    if (!start || layout !== 'compact' || event.touches.length !== 0 || event.changedTouches.length !== 1) return
-    const end = event.changedTouches[0]
-    const dx = end.clientX - start.x
-    const dy = end.clientY - start.y
-    if (end.identifier !== start.id || Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    cancelSwipe()
+    if (!start?.horizontal || layout !== 'compact' || event.touches.length !== 0 || event.changedTouches.length !== 1) return
     event.preventDefault()
-    const nextGroup = dx > 0 ? 'config' : 'work'
-    if (nextGroup !== group) selectTab(lastTabs.current[nextGroup])
+    const end = event.changedTouches[0]
+    const width = navViewport.current?.clientWidth ?? 0
+    if (end.identifier !== start.id || width === 0) return
+    const dx = end.clientX - start.x
+    if ((group === 'work' && dx <= -width / 3) || (group === 'config' && dx >= width / 3)) {
+      selectTab(lastTabs.current[group === 'work' ? 'config' : 'work'])
+    }
   }
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({})
   const serverBackRef = useRef<HTMLButtonElement>(null)
@@ -231,15 +256,17 @@ export default function App({
       </header>
       <div className="layout-shell">
         <nav className="layout-nav" hidden={serverOpen} aria-label="主导航"
-          onTouchStart={(event) => { const touch = event.touches[0]; touchStart.current = event.touches.length === 1 ? { id: touch.identifier, x: touch.clientX, y: touch.clientY } : null }}
-          onTouchMove={(event) => { if (event.touches.length !== 1) touchStart.current = null }}
-          onTouchCancel={() => { touchStart.current = null }} onTouchEnd={finishSwipe}>
-          <div role="tablist" aria-label="herdr-bot 主界面分区" onKeyDown={selectAdjacentTab}>
-            {(['work', 'config'] as const).map((navGroup) => <div key={navGroup} className="layout-nav-group" hidden={layout === 'compact' && group !== navGroup}>
+          onTouchStart={(event) => { cancelSwipe(); const touch = event.touches[0]; touchStart.current = layout === 'compact' && event.touches.length === 1 ? { id: touch.identifier, x: touch.clientX, y: touch.clientY, horizontal: false } : null }}
+          onTouchMove={moveSwipe}
+          onTouchCancel={cancelSwipe} onTouchEnd={finishSwipe}>
+          <div className="layout-nav-viewport" ref={navViewport}>
+          <div role="tablist" aria-label="herdr-bot 主界面分区" onKeyDown={selectAdjacentTab} className="layout-nav-track" data-dragging={dragging} style={layout === 'compact' ? { transform: `translateX(calc(${group === 'work' ? '0%' : '-100%'} + ${dragOffset}px))` } : undefined}>
+            {(['work', 'config'] as const).map((navGroup) => <div key={navGroup} className="layout-nav-group" inert={layout === 'compact' && group !== navGroup} aria-hidden={layout === 'compact' && group !== navGroup ? true : undefined}>
               {TAB_GROUPS[navGroup].map((key) => <button key={key} type="button" role="tab" id={`tab-${key}`} className={tab === key ? 'layout-nav-item is-active' : 'layout-nav-item'} data-testid={`tab-${key}`} aria-selected={tab === key} aria-controls={key === 'bot' ? 'panel-scheduler' : `panel-${key}`} ref={(node) => { tabRefs.current[key] = node }} onClick={() => selectTab(key)}>
                 <svg className="layout-nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={TAB_ICONS[key]} /></svg><span>{TAB_LABELS[key]}</span>
               </button>)}
             </div>)}
+          </div>
           </div>
         </nav>
         <main className={!serverOpen && (tab === 'files' || tab === 'tasks') ? 'panel panel--wide layout-content' : 'panel layout-content'}>
