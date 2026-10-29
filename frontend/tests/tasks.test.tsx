@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
+
+beforeEach(() => {
+  window.history.replaceState(null, '', '/?layout=expanded')
+})
 
 /** 一个只提供客户端真正用到的成员的 JSON 答复。 */
 function jsonResponse(status: number, body: unknown): Response {

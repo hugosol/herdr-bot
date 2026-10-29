@@ -65,7 +65,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     fs.copyFileSync(path.join(examples, 'maps/trip-readiness.json'), path.join(maps, 'trip-readiness.json'))
     fs.copyFileSync(path.join(examples, 'bots/weather-capability.json'), path.join(bots, 'weather-capability.json'))
     fs.writeFileSync(path.join(bots, 'broken.json'), '{ invalid JSON')
-    await page.goto(server.baseURL)
+    await page.goto(`${server.baseURL}?layout=expanded`)
     const button = (name: string) => page.getByRole('button', { name, exact: true })
     await activate(page, page.getByTestId('tab-scheduler'))
     await fitted(page)

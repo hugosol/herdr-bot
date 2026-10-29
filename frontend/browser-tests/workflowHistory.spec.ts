@@ -185,7 +185,13 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   expect(current.managed).toBe(true)
   expect(current.run.nodes.A.status).toBe('running')
   await host.restart()
+  const runURLBeforeReload1 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload1)
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
   // Same current Chat in an unmanaged Run can still Resume; never restore the
   // manager's process-local write permission as a side effect of navigation.

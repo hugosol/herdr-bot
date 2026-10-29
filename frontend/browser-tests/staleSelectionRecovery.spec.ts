@@ -76,7 +76,7 @@ async function setup() {
   return { zone, saved: saved.body.tasks[0] as TaskView }
 }
 async function edit(page: Page, id: string) {
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.locator(`[data-task-id="${id}"]`).getByTestId('task-edit').click()
 }
@@ -164,7 +164,7 @@ test('失效扩展在手机视口可显式移除，修正前页面与公开创�
   await page.setViewportSize({ width: 390, height: 844 })
   const { zone, saved } = await setup()
   fs.writeFileSync(server.metadataFile, catalog(MODEL, false))
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-files').click()
   await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
   await expect(page.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')
@@ -228,7 +228,7 @@ for (const scenario of [
     await expect(page.getByTestId('task-model')).toHaveValue('archive-model')
     await expect(page.getByTestId('task-thinking')).toHaveValue('high')
     const creator = await context.newPage()
-    await creator.goto(server.baseURL)
+    await creator.goto(`${server.baseURL}?layout=expanded`)
     await creator.getByTestId('tab-files').click()
     await zoneRowFor(creator, zone).getByTestId('zone-create-chat').click()
     await expect(creator.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')
@@ -302,7 +302,7 @@ for (const fault of ['损坏', '移走']) {
     const originalURL = server.baseURL
     await edit(page, saved.id)
     const creator = await context.newPage()
-    await creator.goto(server.baseURL)
+    await creator.goto(`${server.baseURL}?layout=expanded`)
     await creator.getByTestId('tab-files').click()
     await zoneRowFor(creator, zone).getByTestId('zone-create-chat').click()
     await expect(creator.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')

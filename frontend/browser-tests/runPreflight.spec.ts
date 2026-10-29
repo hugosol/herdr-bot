@@ -154,7 +154,7 @@ test('P9.01 selected Map launch form offers only launch configuration and return
   const stored = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
   stored.tasks.push({ ...stored.tasks.find((task: { id: string }) => task.id === fixture.ids.manager), id: 'pi-manager', name: 'Pi 管理者', agent: 'pi' })
   fs.writeFileSync(server!.storageFile, JSON.stringify(stored))
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
@@ -186,7 +186,7 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   const fixture = await launchFixture()
   fixture.map.nodes.B.zone = `${fixture.zone}-unregistered`
   fs.writeFileSync(fixture.mapFile, JSON.stringify(fixture.map))
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
@@ -224,7 +224,7 @@ test('P9.01 missing Task reference returns to the original Bot binding', async (
   const fixture = await launchFixture()
   fixture.bot.task_id = 'missing-task'
   fs.writeFileSync(fixture.botFile, JSON.stringify(fixture.bot))
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()

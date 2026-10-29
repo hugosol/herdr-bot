@@ -68,7 +68,7 @@ test('P32 complete bot and node CRUD sequence survives a real service restart', 
   expect(JSON.parse(fs.readFileSync(path.join(bots, files.retained), 'utf8'))).toEqual({ ...retained, id: 'retained' })
   expect(fs.existsSync(path.join(bots, files.removed))).toBe(false)
   expect(fs.readdirSync(bots).sort()).toEqual(['business-name.JSON', files.retained].sort())
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'quarter.JSON', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '保留核对工作 retainedNode', exact: true }).click()
@@ -248,7 +248,7 @@ for (const kind of ['maps', 'bots'] as const) {
 }
 
 async function openScheduler(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
 }
 

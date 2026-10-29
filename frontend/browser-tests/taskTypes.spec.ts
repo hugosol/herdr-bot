@@ -12,7 +12,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // the corresponding non-cancellable role extension.
 test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', async ({ page }, info) => {
   server = await startServer()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await expect(page.getByTestId('task-type')).toHaveValue('normal')
@@ -160,7 +160,7 @@ test('P6.01 explicit old Task migration preserves fields and Chat source through
   expect(fs.readFileSync(server.storageFile, 'utf8')).toBe(migratedBytes)
   await server.restart()
   expect((await server.getTasks()).tasks).toEqual(expected)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByRole('button', { name: '查看历史会话' }).click()
   const outcomes = []
   for (const item of history) {

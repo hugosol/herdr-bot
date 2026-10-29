@@ -18,7 +18,7 @@ async function prepare() {
   return { bots, maps, file }
 }
 async function open(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
   await page.getByRole('button', { name: '共享审计 · shared', exact: true }).click()
@@ -202,7 +202,7 @@ test('deleting an unused bot still permits a later node with that missing bot re
   expect(saved.status()).toBe(200)
   expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/later.json`)).json()).toEqual(map({ allowedMissing: node }))
   expect(JSON.parse(fs.readFileSync(path.join(maps, 'later.json'), 'utf8'))).toEqual(map({ allowedMissing: node }))
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'later.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '审计任务 allowedMissing', exact: true }).click()

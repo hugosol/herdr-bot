@@ -13,7 +13,9 @@ type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'er
 
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string }
 
-export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { active: boolean; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
+export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones }: { active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
+  const botView = view === 'bot'
+  const setBotView = (showBot: boolean) => onViewChange(showBot ? 'bot' : 'map')
   const [launchOpen, setLaunchOpen] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingBusy, setEditingBusy] = useState(false)
@@ -129,9 +131,9 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [graphOpen, setGraphOpen] = useState(false)
-  const [botView, setBotView] = useState(false)
   const [botId, setBotId] = useState<string | null>(null)
   const [botFilter, setBotFilter] = useState('')
+  const schedulerRoot = useRef<HTMLElement>(null)
   const botHeading = useRef<HTMLHeadingElement>(null)
   const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
 
@@ -177,7 +179,8 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
   }, [active, file, revision])
 
   useEffect(() => {
-    if (botView) botHeading.current?.focus()
+    // Internal Bot links move into their content; outer navigation keeps its own focus.
+    if (botView && schedulerRoot.current?.contains(document.activeElement)) botHeading.current?.focus()
   }, [botView, botId])
 
   const bot = bots.kind === 'ready' ? bots.bots.find((item) => item.id === botId) : undefined
@@ -228,7 +231,7 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
     <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>保存{draft.kind === 'node' ? ' node' : ' Bot'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>放弃编辑</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
   </form>
 
-  return <section className="scheduler" aria-label="Map 目录">
+  return <section ref={schedulerRoot} className="scheduler" aria-label="Map 目录">
     <header className="scheduler-header">
       <div><p className="scheduler-eyebrow">静态工作定义</p><h2>scheduler <span>阅读优先</span></h2></div>
       <div className="scheduler-actions">

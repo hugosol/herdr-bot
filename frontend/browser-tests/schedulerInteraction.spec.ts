@@ -57,7 +57,7 @@ async function expectFitted(graph: Locator) {
 // nodes must remain visible and non-overlapping after automatic layout.
 test('automatic graph displays parallel joined and independent nodes on desktop', async ({ page }, testInfo) => {
   const running = await prepare()
-  await page.goto(running.baseURL)
+  await page.goto(`${running.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
   await page.getByText('依赖图', { exact: true }).click()
@@ -73,7 +73,7 @@ test('automatic graph displays parallel joined and independent nodes on desktop'
 test('P4 P30 narrow screen keyboard reaches node list and bot details and returns', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const running = await prepare()
-  await page.goto(running.baseURL)
+  await page.goto(`${running.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   // Bound traversal by the actual controls, not an incidental fixed Tab count.
   const tabTo = async (target: Locator, reverse = false) => {
@@ -130,7 +130,7 @@ test('filtering to no matches preserves the current Map and selected node withou
   const running = await prepare()
   let reads = 0
   page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/scheduler/')) reads++ })
-  await page.goto(running.baseURL)
+  await page.goto(`${running.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
   const nodes = page.getByRole('region', { name: '节点列表', exact: true })
@@ -159,7 +159,7 @@ test('list graph and prerequisite navigation share selection and Map changes res
   fs.writeFileSync(path.join(running.cwd, '.data', 'workflow-maps', 'other.json'), JSON.stringify({ title: '另一计划', description: '', nodes: {
     X: { title: '其他工作', bot_id: 'shared', input: JSON.stringify({ city: '广州' }), zone: 'unregistered-zone', blocked_by: [] },
   } }))
-  await page.goto(running.baseURL)
+  await page.goto(`${running.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
@@ -211,7 +211,7 @@ test.describe('touch node access', () => {
 
   test('narrow screen touch opens node and bot details', async ({ page }, testInfo) => {
     const running = await prepare()
-    await page.goto(running.baseURL)
+    await page.goto(`${running.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').tap()
     await page.getByRole('button', { name: 'parallel.json', exact: true }).tap()
     const nodes = page.getByRole('region', { name: '节点列表', exact: true })

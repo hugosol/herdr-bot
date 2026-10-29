@@ -19,7 +19,7 @@ test('P10 P11 unordered Map keeps stable dependency layers in list and graph wit
     A: { title: '准备甲', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
     D: { title: '独立工作', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
   } }))
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
   await page.getByText('依赖图', { exact: true }).click()
@@ -103,7 +103,7 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   fs.writeFileSync(path.join(maps, 'parameters.json'), mapBytes)
   const callsBefore = server.herdrCalls()
   const tabsBefore = server.herdrTabs()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'parameters.json', exact: true }).click()
   const graph = page.getByRole('region', { name: '节点列表', exact: true })

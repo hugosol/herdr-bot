@@ -19,7 +19,7 @@ test('同一真实进程重新打开编辑、保存和创建各自读取当前�
   const savedResponse = await post('/api/tasks', literal)
   expect(savedResponse.ok).toBe(true)
   const saved = (await savedResponse.json()).tasks[0]
-  await page.goto(current.baseURL)
+  await page.goto(`${current.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await expect(page.getByTestId('task-prompt')).toHaveValue('固定第一行\n固定第二行')

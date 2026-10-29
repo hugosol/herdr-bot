@@ -87,7 +87,7 @@ test('局域网地址可管理共享 Task 并从 zone 发起 Chat，不额外要
     }
   })
 
-  await page.goto(lanURL)
+  await page.goto(`${lanURL}?layout=expanded`)
   expect(new URL(page.url()).origin).toBe(new URL(lanURL).origin)
   await expect(page.getByRole('heading', { name: 'herdr-bot' })).toBeVisible()
   expect(await page.locator('input[type="password"]').count(), '页面不应要求登录或密码').toBe(0)

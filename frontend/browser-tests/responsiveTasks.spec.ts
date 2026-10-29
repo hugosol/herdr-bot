@@ -49,7 +49,7 @@ for (const profile of [
       extensions: ['omp-codebase-tools', 'omp-connect-bot'],
     }
     try {
-      await page.goto(server.baseURL)
+      await page.goto(`${server.baseURL}?layout=expanded`)
       await action('tab-tasks')
       await action('task-create-open')
       await page.getByTestId('task-name').fill(draft.name)

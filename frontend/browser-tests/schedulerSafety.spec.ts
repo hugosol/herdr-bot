@@ -32,7 +32,7 @@ function assertNoExecution() {
 }
 
 async function openScheduler(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
 }
 

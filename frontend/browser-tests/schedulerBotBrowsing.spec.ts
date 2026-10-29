@@ -11,7 +11,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // the Map listing instead cannot satisfy these independent observations.
 test('P1 bot management beside refresh opens an empty list in the same Tab', async ({ page, context }) => {
   server = await startServer({ separateCwd: true })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   const refresh = page.getByRole('button', { name: '刷新全部', exact: true })
   const manage = page.getByRole('button', { name: 'Bot 管理', exact: true })
@@ -72,7 +72,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
     expect(response.status()).toBe(200)
     return response.json()
   }
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()

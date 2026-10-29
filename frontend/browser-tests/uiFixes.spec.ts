@@ -48,7 +48,7 @@ test.afterEach(async () => {
 
 test('顶层标签、变量块增删、光标插入和下拉开字对比度', async ({ page }) => {
   server = await startServer()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
 
   await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
 
@@ -143,7 +143,7 @@ test('手机宽度下 zone 只显示末级名称与数字角标', async ({ page 
   await jsonPost(server.baseURL, '/api/zones', { path: second })
 
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-files').click()
   await expect(page.getByTestId('zone-list')).toBeVisible()
 

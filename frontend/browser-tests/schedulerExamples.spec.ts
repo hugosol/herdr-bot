@@ -14,7 +14,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
   test(`P31 P32 delivered examples follow the guide at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     server = await startServer({ separateCwd: true, herdr: {} })
-    await page.goto(server.baseURL)
+    await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
     await expect(page.getByTestId('scheduler-empty')).toBeVisible()
     await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
@@ -27,7 +27,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     for (const name of ['trip-readiness.json', 'another-trip.json']) fs.copyFileSync(path.join(examples, 'maps', name), path.join(server.cwd, 'plans', name))
     for (const name of ['weather-capability.json', 'quota-capability.json', 'summary-capability.json']) fs.copyFileSync(path.join(examples, 'bots', name), path.join(server.cwd, 'capabilities', name))
     await server.restart()
-    await page.goto(server.baseURL)
+    await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
     await expect(page.getByTestId('scheduler-map-list').getByRole('button')).toHaveText(['another-trip.json', 'trip-readiness.json'])
     await page.getByRole('button', { name: 'trip-readiness.json', exact: true }).click()

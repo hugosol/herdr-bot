@@ -98,7 +98,13 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
     expect(response.status()).toBe(403)
     expect(body.code).toBe('node-unassociated')
   }
+  const runURLBeforeReload1 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload1)
   await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
   // Bounded absence evidence: 1000ms after all rejected tools and page reload.
   await page.waitForTimeout(1000)
@@ -138,13 +144,25 @@ test('P54.02 real restart drops manager startup errors without rewriting busines
   const after = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${before.id}`)).json()
   expect(after).toEqual({ ...before, managed: false, startupError: null })
   // The helper reuses its allocated port; a hash-only goto is not a refresh.
+  const runURLBeforeReload2 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload2)
   await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
   await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
   await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
+  const runURLBeforeReload3 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload3)
   await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
   await page.waitForTimeout(1000)
@@ -160,7 +178,7 @@ test('P54.02 real restart drops manager startup errors without rewriting busines
 
 test('P12 invalid start stays on the launch form without external effects', async ({ page }, info) => {
   const { server } = await fixture()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
   await page.getByRole('button', { name: 'launch.json', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
@@ -185,7 +203,13 @@ test('P45 P54 startup failure and real partial effects survive browser refresh @
   await expect(page.getByRole('alert', { name: '管理者启动错误' })).toContainText('已发生的外部效果未回滚')
   await expect(page.getByText('failed-manager-04', { exact: true })).toHaveCount(2)
   const calls = server.herdrCalls()
+  const runURLBeforeReload4 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload4)
   await expect(page.getByRole('heading', { name: '管理者启动失败 · submit' })).toBeVisible()
   await page.waitForTimeout(750)
   expect(server.herdrCalls()).toEqual(calls)
@@ -200,7 +224,7 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   const runRoot = path.join(path.dirname(server.configPath), 'nondefault-run-records')
   fs.appendFileSync(server.configPath, `\n[scheduler]\nrun_directory = '${runRoot}'\n`)
   await server.restart()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
   await page.getByRole('button', { name: 'launch.json', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
@@ -222,7 +246,13 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
   const count = server.herdrCalls().filter(call => call.kind === 'agent_start').length
   expect(count).toBe(1)
+  const runURLBeforeReload5 = page.url()
+
   await page.reload()
+
+  await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
+
+  await page.goto(runURLBeforeReload5)
   await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
   await page.waitForTimeout(750)
   await page.getByRole('tab', { name: 'chat', exact: true }).click()

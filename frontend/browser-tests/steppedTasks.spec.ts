@@ -23,7 +23,7 @@ async function save(body: unknown, id?: string) {
 // Violation: navigation writes early, loses fields, mislabels fixed/optional choices, or saves a different summary.
 test('三步新增和编辑保留完整草稿，摘要与公开持久结果一致，删除不关闭既有 Chat', async ({ page }) => {
   server = await startServer({ herdr: {} })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await expect(page.getByTestId('task-step')).toHaveText('1 / 3 · Task 预设')
@@ -127,7 +127,7 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
 // S1/S2; P14/P17. Violation: hidden OMP choices reappear, or same-label Pi choices inherit them.
 test('切换 Agent 清空扩展且切回不恢复，新 Task 零选明确保存为空', async ({ page }) => {
   server = await startServer()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await page.getByTestId('task-name').fill('零选样例')
@@ -164,7 +164,7 @@ test('扩展元数据在同一进程重新编辑和保存时生效，只持久�
   const original = fs.readFileSync(server.metadataFile, 'utf8')
   expect((await save({ ...PRESET, extensions: ['omp-codebase-tools'] })).status).toBe(200)
   const saved = (await server.getTasks()).tasks[0]
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await page.getByTestId('task-next').click()
@@ -196,7 +196,7 @@ test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与�
   server = await startServer()
   expect((await save({ ...PRESET, extensions: ['omp-codebase-tools', 'omp-connect-bot'] })).status).toBe(200)
   const saved = (await server.getTasks()).tasks[0]
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await page.getByTestId('task-name').fill('不应保存的名字')

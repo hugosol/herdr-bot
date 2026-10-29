@@ -44,7 +44,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
   thinking: 'max',
   skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
 
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await expect(page.getByTestId('tab-tasks')).toHaveText('task')
 
   // 既有 tab 仍可操作。
@@ -178,7 +178,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
 
 test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', async ({ page }) => {
   server = await startServer()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await expect(page.getByTestId('task-empty')).toBeVisible()
   await createOpen(page)
@@ -306,7 +306,7 @@ test('保存失败不表示已保存；预先写定的 Task 经真实进程重�
   expect(created.status).toBe(200)
   const saved = (await created.json()).tasks[0] as TaskView
 
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await expect(page.getByTestId('task-item')).toContainText('重启保留')
 
@@ -327,7 +327,7 @@ test('保存失败不表示已保存；预先写定的 Task 经真实进程重�
   await page.getByTestId('task-cancel').click()
   await server.restart()
   // 新进程可能监听新的临时端口：按新的公开入口重新打开页面，而不是重载旧地址。
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await expect(page.getByTestId('task-item')).toContainText('重启保留')
   await expect(page.getByTestId('task-item')).not.toContainText('不应保存')

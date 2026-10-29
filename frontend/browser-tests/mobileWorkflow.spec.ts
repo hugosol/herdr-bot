@@ -225,7 +225,7 @@ for (const profile of PROFILES) {
         },
       })
       const zone = await prepareZone(server.baseURL)
-      await page.goto(server.baseURL)
+      await page.goto(`${server.baseURL}?layout=expanded`)
       await expectNoHorizontalOverflow(page)
 
       // Task 新增：字段插入、配置联动、多行 prompt 与示例预览都在该尺寸可用。
@@ -377,7 +377,7 @@ test.describe('移动尺寸失败结果', () => {
     const zone = await prepareZone(server.baseURL)
     await jsonPost(server.baseURL, '/api/tasks', CREATION_TASK)
 
-    await page.goto(server.baseURL)
+    await page.goto(`${server.baseURL}?layout=expanded`)
     await openFiles(page, true)
     const zoneRow = zoneRowFor(page, zone)
     await zoneRow.getByTestId('zone-create-chat').tap()

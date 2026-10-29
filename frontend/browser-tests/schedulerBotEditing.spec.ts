@@ -8,7 +8,7 @@ let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 const content = { name: '人工审计', when: '', plan_guide: '只核对账目，不查询天气', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
 async function open(page: Page) {
-  await page.goto(server!.baseURL)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
 }
@@ -284,13 +284,23 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
   await open(page)
   const before = inventory(root)
   const raw = JSON.stringify(content, null, 3)
-  for (const action of ['map', 'list', 'manage', 'refresh', 'tab', 'keyboard-tab', 'server']) {
+  for (const action of ['map', 'list', 'manage', 'refresh', 'tab', 'keyboard-tab', 'hash', 'server']) {
     if (await page.getByTestId('server-back').isVisible()) await page.getByTestId('server-back').click()
     await page.getByTestId('tab-scheduler').click()
     await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
     await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
     await page.getByLabel('Bot ID', { exact: true }).fill('unsaved-identity')
     await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
+    await expect(page.getByTestId('tab-bot')).toHaveAttribute('aria-selected', 'true')
+    if (action === 'map') {
+      const url = page.url()
+      await page.getByRole('button', { name: '收起导航' }).click()
+      await expect(page.getByLabel('Bot 内容 JSON', { exact: true })).toHaveValue(raw)
+      await page.getByRole('button', { name: '展开导航' }).click()
+      expect(page.url()).toBe(url)
+      await expect(page.getByTestId('tab-bot')).toHaveAttribute('aria-selected', 'true')
+    }
+    const priorHash = new URL(page.url()).hash
     const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
     const destination = listing.getByRole('button', { name: '切换目标能力 · navigation-target', exact: true })
     await expect(listing).toBeVisible()
@@ -298,14 +308,17 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
     const exit = async () => {
       if (action === 'keyboard-tab') {
         await page.getByTestId('tab-scheduler').focus()
-        await page.keyboard.press('ArrowLeft')
+        await page.keyboard.press('Home')
       } else if (action === 'tab') await page.getByTestId('tab-tasks').click()
+      else if (action === 'hash') await page.evaluate(() => { window.location.hash = '#workflow/navigation-run' })
       else if (action === 'server') await page.getByTestId('server-button').click()
       else if (action === 'list') await destination.click()
       else await page.getByRole('button', { name: ({ map: '返回 Map', manage: 'Bot 管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
     }
     page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.dismiss() })
     await exit()
+    if (action === 'hash') await expect.poll(() => new URL(page.url()).hash).toBe(priorHash)
+    await expect(page.getByTestId('tab-bot')).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByLabel('Bot ID', { exact: true })).toHaveValue('unsaved-identity')
     await expect(page.getByLabel('Bot 内容 JSON', { exact: true })).toHaveValue(raw)
     page.once('dialog', dialog => { expect(dialog.type()).toBe('confirm'); return dialog.accept() })
@@ -320,7 +333,8 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
       await expect(listing).toBeVisible()
     }
     else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
-    else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+    else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
+    else if (action === 'hash') await expect(page.getByTestId('tab-workflow')).toHaveAttribute('aria-selected', 'true')
     else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()
     else await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
     expect(inventory(root)).toEqual(before)
@@ -365,7 +379,7 @@ test('saving a shared capability preserves live source selection and updates all
   fs.writeFileSync(path.join(maps, 'first.json'), JSON.stringify(first))
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify(second))
   const mapBytes = inventory(maps)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'first.json', exact: true }).click()
   await page.getByRole('button', { name: '核对账目 A', exact: true }).click()

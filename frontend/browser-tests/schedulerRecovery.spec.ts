@@ -23,7 +23,7 @@ test('P22 missing blocked_by identifies the Map file, node and required field', 
   expect(problem.message).toContain('missing-blocked-by.json')
   expect(problem.message).toContain('nodes.work')
   expect(problem.message).toContain('missing field `blocked_by`')
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'missing-blocked-by.json', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('nodes.work')
@@ -86,7 +86,7 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
     { name: 'empty-node-object', value: { ...valid, nodes: { work: {} } }, expected: ['nodes.work', 'missing field'] },
   )
   for (const item of cases) fs.writeFileSync(path.join(maps, `${item.name}.json`), JSON.stringify(item.value))
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   for (const item of cases) {
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${item.name}.json`)
@@ -118,7 +118,7 @@ test('P23 unknown prerequisite, self-dependency and cycle reject the entire grap
     }, expected: ['依赖环', 'A', 'B'], absent: '未知' },
   ]
   for (const item of cases) fs.writeFileSync(path.join(maps, item.name), JSON.stringify({ title: 'Invalid relationships', description: '', nodes: item.nodes }))
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   for (const item of cases) {
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${item.name}`)
@@ -146,7 +146,7 @@ test('P22 empty Map and empty node text remain legal without external bindings',
     ['text-input.json', '{"title":"Text input","description":"","nodes":{"P":{"title":"Input","bot_id":"missing-bot","input":"# required: city; {not JSON}","zone":"unregistered-zone","blocked_by":[]}}}'],
   ])
   for (const [name, bytes] of originals) fs.writeFileSync(path.join(maps, name), bytes)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   for (const [name, bytes] of originals) {
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${name}`)
@@ -200,7 +200,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     const originals = { 'a.json': a, 'b.json': badInputs[failure], 'c.json': c }
     for (const [name, bytes] of Object.entries(originals)) fs.writeFileSync(path.join(maps, name), bytes)
     const callsBefore = server.herdrCalls(), tabsBefore = server.herdrTabs()
-    await page.goto(server.baseURL)
+    await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
     const list = page.getByTestId('scheduler-map-list')
     await expect(list.getByRole('listitem')).toHaveText(['a.json', 'b.json', 'c.json'])

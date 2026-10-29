@@ -18,7 +18,7 @@ async function setup(page: Page, source: unknown = original) {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'work.JSON'), JSON.stringify(source))
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'work.JSON', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()

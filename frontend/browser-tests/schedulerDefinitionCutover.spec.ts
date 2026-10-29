@@ -15,7 +15,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // or requiring Task binding before saving. Each tab is opened in reverse order.
 test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task binding', async ({ page }, testInfo) => {
   server = await startServer({ separateCwd: true, herdr: {} })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
   await page.getByRole('button', { name: '新增 Bot', exact: true }).click()
@@ -103,7 +103,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   } }
   const file = path.join(root, 'contract.json')
   fs.writeFileSync(file, JSON.stringify(original))
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'contract.json', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对 B', exact: true }).click()

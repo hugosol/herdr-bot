@@ -19,7 +19,7 @@ async function setup(page: Page, source: unknown = original) {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'work.JSON'), JSON.stringify(source))
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'work.JSON', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
@@ -66,7 +66,7 @@ test('node creation starts with a disposable Shanghai draft and saves changed co
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A/independent:id', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('complementary', { name: '节点检查器', exact: true })).toContainText('business-id')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toHaveText('缺失共享 Bot：missing-audit-template')
-  await expect(page.locator('svg')).toContainText('独立审计')
+  await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toContainText('独立审计')
   await expect(page.getByRole('img', { name: 'B → A/independent:id', exact: true })).toHaveCount(1)
   expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'A/independent:id': { ...audit, blocked_by: ['B'] } } })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
@@ -275,7 +275,7 @@ test('another node or external editor changing the whole Map rejects old drafts 
     await page.getByLabel('node 内容 JSON', { exact: true }).fill(raw)
     if (mode === 'other-node-client') {
       const other = await context.newPage()
-      await other.goto(server!.baseURL)
+      await other.goto(`${server!.baseURL}?layout=expanded`)
       await other.getByTestId('tab-scheduler').click()
       await other.getByRole('button', { name: 'work.JSON', exact: true }).click()
       await other.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '保留的工作 B', exact: true }).click()
@@ -371,7 +371,7 @@ test('modified node drafts confirm return, Map and page switches, application re
         await browserPage.detach()
       } else {
         const exit = async () => {
-          if (action === 'keyboard-tab') { await page.getByTestId('tab-scheduler').focus(); await page.keyboard.press('ArrowLeft') }
+          if (action === 'keyboard-tab') { await page.getByTestId('tab-scheduler').focus(); await page.keyboard.press('Home') }
           else if (action === 'tab') await page.getByTestId('tab-tasks').click()
           else if (action === 'server') await page.getByTestId('server-button').click()
           else await page.getByRole('button', { name: ({ map: '返回 Map', file: 'untouched.json', manage: 'Bot 管理', refresh: '刷新全部' } as Record<string, string>)[action], exact: true }).click()
@@ -386,7 +386,7 @@ test('modified node drafts confirm return, Map and page switches, application re
         if (action === 'file') await expect(page.getByRole('button', { name: 'untouched.json', exact: true })).toHaveAttribute('aria-pressed', 'true')
         else if (action === 'manage') await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
         else if (action === 'tab') await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
-        else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
+        else if (action === 'keyboard-tab') await expect(page.getByTestId('tab-sessions')).toHaveAttribute('aria-selected', 'true')
         else if (action === 'server') await expect(page.getByTestId('server-page')).toBeVisible()
         else await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
       }

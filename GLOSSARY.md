@@ -112,6 +112,10 @@ _Avoid_: 主界面, 管理后台, 仪表盘
 
 ## scheduler 与工作定义
 
+**bot 入口**:
+主界面管理跨 Map 共享的 Bot 能力定义的入口，与 scheduler 中的 Bot 关联访问指向同一组定义；不是 Task 预设或运行中的 agent 列表。
+_Avoid_: Task 列表, agent 列表, Bot 执行器
+
 **scheduler 入口**:
 主界面浏览和编辑服务级 Map、依赖图及共享 Bot 能力说明，并显式发起 Run 的 tab；静态定义的保存与实际运行是不同动作。
 _Avoid_: 执行器, 运行监控, zone 计划
