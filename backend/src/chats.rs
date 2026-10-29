@@ -344,7 +344,7 @@ async fn collect_native_history(
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut last_reason = String::from("native identity unavailable");
     let identity = loop {
-        match tokio::time::timeout_at(deadline, herdr.native_session(&agent_name, kind, deadline)).await {
+        match tokio::time::timeout_at(deadline, herdr.started_session(&agent_name, kind, deadline)).await {
             Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
             Ok(Ok(_)) => {
                 eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
@@ -367,7 +367,7 @@ async fn collect_native_history(
     };
     // Exactly one persistence attempt after identity; no background write retries.
     if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_task_id,
+        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_task_id, identity.startup_identity_path.as_deref(),
     ).await {
         eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }

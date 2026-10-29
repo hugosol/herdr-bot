@@ -53,6 +53,7 @@ pub struct NativeSession {
     pub session_id: String,
     pub cwd: String,
     pub session_file: Option<String>,
+    pub(crate) startup_identity_path: Option<String>,
 }
 
 /// Herdr 控制失败：每个类别都说明失败发生在哪个控制步骤，不把未知说成确定。
@@ -342,15 +343,21 @@ impl HerdrClient {
     /// One read-only identity attempt. The caller owns the overall acquisition
     /// deadline; this method never scans directories or invokes agent commands.
     pub async fn native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
-        self.read_native_session(target, kind, deadline, false).await
+        self.read_native_session(target, kind, deadline, false, false).await
+    }
+
+    /// Only a just-started agent may use OMP's allocated-but-unwritten path as
+    /// identity evidence. Recovery/reconciliation must not inherit this rule.
+    pub async fn started_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        self.read_native_session(target, kind, deadline, false, true).await
     }
 
     /// Restoration must observe the process cwd, not merely the old file header.
     pub(crate) async fn restored_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
-        self.read_native_session(target, kind, deadline, true).await
+        self.read_native_session(target, kind, deadline, true, false).await
     }
 
-    async fn read_native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant, require_live_cwd: bool) -> Result<NativeSession, HerdrError> {
+    async fn read_native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant, require_live_cwd: bool, newly_started: bool) -> Result<NativeSession, HerdrError> {
         if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
         let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
         if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
@@ -369,13 +376,16 @@ impl HerdrClient {
             Some("id") => {
                 let cwd = nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd")))
                     .ok_or_else(|| native_error("native ID has no reported cwd"))?;
-                Ok(NativeSession { session_id: reference_value.to_owned(), cwd: cwd.to_owned(), session_file: None })
+                Ok(NativeSession { session_id: reference_value.to_owned(), cwd: cwd.to_owned(), session_file: None, startup_identity_path: None })
             }
             Some("path") => {
                 let path = PathBuf::from(reference_value);
                 if !path.is_absolute() { return Err(native_error("native reference path is not absolute")); }
                 let allow_title_metadata = kind == "omp";
-                let mut native = tokio::task::spawn_blocking(move || native_header(path, allow_title_metadata, deadline)).await
+                let pending = if newly_started && kind == "omp" {
+                    pending_omp_session(&path, nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd"))))
+                } else { None };
+                let mut native = tokio::task::spawn_blocking(move || native_header_or_pending(path, allow_title_metadata, deadline, pending)).await
                     .map_err(|error| native_error(&format!("native header reader failed: {error}")))??;
                 if require_live_cwd {
                     native.cwd = nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd")))
@@ -389,17 +399,28 @@ impl HerdrClient {
 
     /// Query the live inventory on every attempt; names, cwd and registration
     /// liveness are never native conversation identities.
-    pub(crate) async fn matching_targets(&self, kind: &str, session_id: &str) -> Result<Vec<NavigationTarget>, HerdrError> {
+    pub(crate) async fn matching_targets(&self, kind: &str, selected: &crate::history::HistorySelection) -> Result<Vec<NavigationTarget>, HerdrError> {
+        let session_id = selected.session_id.as_str();
         let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
         let entries = value.pointer("/result/agents").and_then(Value::as_array)
             .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
+        if kind == "omp" && let Some(path) = selected.startup_identity_path.as_ref() {
+            let path = PathBuf::from(path);
+            let pending = saved_pending_omp_session(selected);
+            let deadline = tokio::time::Instant::now() + QUERY_TIMEOUT;
+            let identity = tokio::task::spawn_blocking(move || native_header_or_pending(path, true, deadline, pending)).await
+                .map_err(|error| native_error(&format!("native identity reader failed: {error}")))??;
+            if identity.session_id != session_id {
+                return Err(native_error("saved startup path belongs to another native session"));
+            }
+        }
         let id = if std::path::Path::new(session_id).is_absolute() {
             std::borrow::Cow::Owned(read_native_id(session_id, kind).await?)
         } else { std::borrow::Cow::Borrowed(session_id) };
         let mut targets = Vec::new();
         for entry in entries {
             if entry.get("agent").and_then(Value::as_str) != Some(kind) { continue; }
-            let Some(candidate) = candidate_native_id(entry, kind).await? else { continue; };
+            let Some(candidate) = candidate_native_id(entry, kind, selected).await? else { continue; };
             if candidate == id { targets.push(NavigationTarget::from_agent(entry)?); }
         }
         // Opaque public IDs, lexicographically ordered; independent of enumeration
@@ -513,7 +534,7 @@ impl NavigationTarget {
 
 /// Only candidate identity data is skippable. Inventory, selected-history,
 /// navigation and blocking-task failures still propagate to the caller.
-async fn candidate_native_id(entry: &Value, kind: &str) -> Result<Option<String>, HerdrError> {
+async fn candidate_native_id(entry: &Value, kind: &str, selected: &crate::history::HistorySelection) -> Result<Option<String>, HerdrError> {
     let reference = (|| {
         let reference = entry.get("agent_session").filter(|reference| !reference.is_null())
             .ok_or_else(|| native_error("matching agent kind has no verifiable native identity"))?;
@@ -537,9 +558,20 @@ async fn candidate_native_id(entry: &Value, kind: &str) -> Result<Option<String>
             let deadline = tokio::time::Instant::now() + QUERY_TIMEOUT;
             // Await errors indicate a runtime/task failure, not bad candidate
             // data: deliberately propagate them before handling reader results.
-            tokio::task::spawn_blocking(move || native_header(path, allow_title, deadline)).await
-                .map_err(|error| native_error(&format!("native identity reader failed: {error}")))?
-                .map(|identity| identity.session_id)
+            let saved_path = kind == "omp" && selected.startup_identity_path.as_deref() == Some(value);
+            let pending = saved_pending_omp_session(selected)
+                .filter(|identity| kind == "omp" && identity.session_file.as_deref() == Some(value));
+            let result = tokio::task::spawn_blocking(move || native_header_or_pending(path, allow_title, deadline, pending)).await
+                .map_err(|error| native_error(&format!("native identity reader failed: {error}")))?;
+            if saved_path {
+                let identity = result?;
+                if identity.session_id != selected.session_id {
+                    return Err(native_error("saved startup path belongs to another native session"));
+                }
+                Ok(identity.session_id)
+            } else {
+                result.map(|identity| identity.session_id)
+            }
         }
         Err(error) => Err(error),
     };
@@ -563,6 +595,50 @@ pub(crate) async fn read_native_id(path: &str, kind: &str) -> Result<String, Her
         .map(|identity| identity.session_id)
 }
 
+fn saved_pending_omp_session(selected: &crate::history::HistorySelection) -> Option<NativeSession> {
+    if selected.agent_type.as_deref() != Some("omp") { return None; }
+    let path = Path::new(selected.startup_identity_path.as_deref()?);
+    pending_omp_session(path, selected.cwd.as_deref())
+        .filter(|identity| identity.session_id == selected.session_id)
+}
+
+/// OMP's default native filename embeds the already-minted session ID. This
+/// is only evidence for a new launch or an exact persisted startup mapping;
+/// it must never turn an arbitrary missing history file into a live identity.
+fn pending_omp_session(path: &Path, cwd: Option<&str>) -> Option<NativeSession> {
+    if !path.is_absolute() { return None; }
+    let cwd = cwd.filter(|cwd| Path::new(cwd).is_absolute())?;
+    let name = path.file_name()?.to_str()?.strip_suffix(".jsonl")?;
+    let (timestamp, id) = name.split_once('_')?;
+    let stamp = timestamp.as_bytes();
+    if stamp.len() != 24 || !stamp.iter().enumerate().all(|(index, byte)| match index {
+        4 | 7 | 13 | 16 | 19 => *byte == b'-',
+        10 => *byte == b'T',
+        23 => *byte == b'Z',
+        _ => byte.is_ascii_digit(),
+    }) { return None; }
+    let number = |range: std::ops::Range<usize>| timestamp.get(range)?.parse::<u32>().ok();
+    let year = number(0..4)?;
+    let month = number(5..7)?;
+    let day = number(8..10)?;
+    let days = match month {
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        _ => return None,
+    };
+    if !(1..=days).contains(&day) || number(11..13)? > 23 || number(14..16)? > 59 || number(17..19)? > 59 {
+        return None;
+    }
+    if id.len() != 36 || !id.bytes().enumerate().all(|(index, byte)| match index {
+        8 | 13 | 18 | 23 => byte == b'-',
+        _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+    }) { return None; }
+    let file = path.to_str()?.to_owned();
+    Some(NativeSession { session_id: id.to_owned(), cwd: cwd.to_owned(), session_file: Some(file.clone()), startup_identity_path: Some(file) })
+}
+
 fn native_error(detail: &str) -> HerdrError {
     HerdrError::UnexpectedResponse { command: "agent get native identity", detail: detail.to_owned() }
 }
@@ -575,12 +651,21 @@ fn nonempty(value: Option<&Value>) -> Option<&str> {
 /// before the session header; Pi starts with the session header. Neither agent
 /// is inferred from the JSON shape, and conversation entries are never imported.
 fn native_header(path: PathBuf, allow_title_metadata: bool, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+    native_header_or_pending(path, allow_title_metadata, deadline, None)
+}
+
+fn native_header_or_pending(path: PathBuf, allow_title_metadata: bool, deadline: tokio::time::Instant, pending: Option<NativeSession>) -> Result<NativeSession, HerdrError> {
     use std::io::Read;
     if tokio::time::Instant::now() >= deadline {
         return Err(native_error("native identity acquisition deadline expired"));
     }
-    let mut file = std::fs::File::open(&path)
-        .map_err(|error| native_error(&format!("native header unavailable: {error}")))?;
+    let mut file = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && pending.is_some() => {
+            return Ok(pending.unwrap());
+        }
+        Err(error) => return Err(native_error(&format!("native header unavailable: {error}"))),
+    };
     let mut line = Vec::with_capacity(512);
     let mut remaining = 64 * 1024;
     loop {
@@ -609,7 +694,7 @@ fn native_header(path: PathBuf, allow_title_metadata: bool, deadline: tokio::tim
             Some("session") => {
                 let id = nonempty(metadata.get("id")).ok_or_else(|| native_error("native header has no ID"))?;
                 let cwd = nonempty(metadata.get("cwd")).ok_or_else(|| native_error("native header has no cwd"))?;
-                return Ok(NativeSession { session_id: id.to_owned(), cwd: cwd.to_owned(), session_file: Some(path.to_string_lossy().into_owned()) });
+                return Ok(NativeSession { session_id: id.to_owned(), cwd: cwd.to_owned(), session_file: Some(path.to_string_lossy().into_owned()), startup_identity_path: None });
             }
             _ => return Err(native_error("expected native session header, not conversation content")),
         }

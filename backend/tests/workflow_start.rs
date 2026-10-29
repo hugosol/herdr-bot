@@ -207,6 +207,184 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     );
 }
 
+// The literal identities are independent expected values from canonical OMP
+// filenames. Keep the native files absent: creating empty files would bypass
+// the startup timing condition and exercise a malformed-header failure instead.
+#[tokio::test]
+async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_instructions() {
+    let (data, herdr, config, server, zone, ids) = fixture().await;
+    let manager_file = data.path().join(
+        "2026-10-29T02-02-16-097Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl",
+    );
+    let node_file = data.path().join(
+        "2026-10-29T02-02-17-097Z_01a18564-c889-700c-92c3-5aa0460154fe.jsonl",
+    );
+    let release = data.path().join("missing-native-manager-prompt-release");
+    herdr.set_behavior(json!({
+        "native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":manager_file},
+        "native_cwd":data.path(),
+        "prompt_gate":{"wait_for_file":release,"timeout_ms":10000}
+    }));
+    let addr = server.addr();
+    let manager_task = ids[0].clone();
+    let manager_zone = zone.clone();
+    let request = tokio::spawn(async move {
+        post_json_over_tcp(addr, "/api/scheduler/maps/work.json/runs", &json!({
+            "managerTaskId":manager_task,"zone":manager_zone,"userInput":"missing native startup"
+        }).to_string()).await
+    });
+    assert!(common::wait_until(std::time::Duration::from_secs(5), || {
+        herdr.calls().iter().any(|call| call["kind"] == "agent_prompt")
+    }).await, "manager must reach the external first-instruction gate without a native file");
+    let root = fs::read_dir(&config.scheduler.run_directory)
+        .unwrap().next().unwrap().unwrap().path();
+    let committed: Value =
+        serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(committed["manager"]["sessionId"], "01a18564-c4a1-700b-81b2-4ffb35f043ed");
+    assert_eq!(committed["managerTaskId"], ids[0]);
+    let history: Value =
+        serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    let manager = history.as_array().unwrap().iter()
+        .find(|row| row["sessionId"] == "01a18564-c4a1-700b-81b2-4ffb35f043ed").unwrap();
+    assert_eq!(manager["sourceTaskId"], ids[0]);
+    assert_eq!(manager["agentType"], "omp");
+    assert_eq!(manager["cwd"], zone);
+    assert_eq!(manager["sessionFile"], json!(manager_file));
+    assert_eq!(manager["startupIdentityPath"], json!(manager_file));
+    assert!(!manager_file.exists(), "startup must not manufacture the native file");
+    fs::write(release, b"release").unwrap();
+    let response = request.await.unwrap();
+    assert_eq!(response.status, 201, "{}", response.body);
+    let started: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(started["run"]["manager"]["sessionId"], "01a18564-c4a1-700b-81b2-4ffb35f043ed");
+    let status = post_json_over_tcp(server.addr(), "/api/workflow/manager/status",
+        &json!({"sessionId":"01a18564-c4a1-700b-81b2-4ffb35f043ed"}).to_string()).await;
+    assert_eq!(status.status, 200, "{}", status.body);
+    assert_eq!(serde_json::from_str::<Value>(&status.body).unwrap()["snapshot"]["id"], committed["id"]);
+
+    let node_release = data.path().join("missing-native-node-prompt-release");
+    herdr.set_behavior(json!({
+        "native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":node_file},
+        "native_cwd":data.path(),
+        "prompt_gate":{"wait_for_file":node_release,"timeout_ms":10000}
+    }));
+    let addr = server.addr();
+    let dispatch = tokio::spawn(async move {
+        post_json_over_tcp(addr, "/api/workflow/manager/dispatch", &json!({
+            "sessionId":"01a18564-c4a1-700b-81b2-4ffb35f043ed","nodes":["A"]
+        }).to_string()).await
+    });
+    assert!(common::wait_until(std::time::Duration::from_secs(5), || {
+        herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count() == 2
+    }).await, "node must reach its first-instruction gate without a native file");
+    let saved: Value =
+        serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "01a18564-c889-700c-92c3-5aa0460154fe");
+    assert_eq!(saved["nodes"]["A"]["execution"]["zone"], zone);
+    let history: Value =
+        serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    let node = history.as_array().unwrap().iter()
+        .find(|row| row["sessionId"] == "01a18564-c889-700c-92c3-5aa0460154fe").unwrap();
+    assert_eq!(node["sourceTaskId"], ids[1]);
+    assert_eq!(node["agentType"], "omp");
+    assert_eq!(node["cwd"], zone);
+    assert_eq!(node["sessionFile"], json!(node_file));
+    assert_eq!(node["startupIdentityPath"], json!(node_file));
+    let native = common::read_json_lines(&herdr.path().join("started.jsonl")).pop().unwrap();
+    assert_eq!(native["actual_cwd"], zone);
+    assert_eq!(herdr.tabs().last().unwrap()["cwd"], zone);
+    assert!(!manager_file.exists());
+    assert!(!node_file.exists());
+    fs::write(node_release, b"release").unwrap();
+    let dispatched = dispatch.await.unwrap();
+    assert_eq!(dispatched.status, 200, "{}", dispatched.body);
+    let result: Value = serde_json::from_str(&dispatched.body).unwrap();
+    assert_eq!(result["results"][0]["status"], "running");
+    assert_eq!(result["results"][0]["effects"]["inputSubmitted"], true);
+    assert!(!manager_file.exists(), "manager file must remain owned by OMP");
+    assert!(!node_file.exists(), "node file must remain owned by OMP");
+}
+
+#[tokio::test]
+async fn existing_omp_file_header_takes_precedence_over_canonical_filename() {
+    let (data, herdr, config, server, zone, ids) = fixture().await;
+    let file = data.path().join("2026-10-29T02-02-16-097Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl");
+    let contents = format!("{}\n", json!({"type":"session","id":"actual-header-identity","cwd":data.path()}));
+    fs::write(&file, &contents).unwrap();
+    herdr.set_behavior(json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"path","value":file}}));
+    let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs", &json!({
+        "managerTaskId":ids[0],"zone":zone,"userInput":""
+    }).to_string()).await;
+    assert_eq!(response.status, 201, "{}", response.body);
+    let started: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(started["run"]["manager"]["sessionId"], "actual-header-identity");
+    let history: Value = serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    assert_eq!(history[0]["sessionId"], "actual-header-identity");
+    assert_eq!(fs::read_to_string(&file).unwrap(), contents);
+}
+
+// A plausible but unsafe implementation extracts any filename suffix, or
+// falls back after every read/header error. Only official missing canonical
+// paths with a reported working directory qualify for the startup exception.
+#[tokio::test]
+async fn invalid_native_paths_and_existing_header_errors_never_submit_instructions() {
+    for case in [
+        "uuid-only", "invalid-timestamp", "invalid-uuid", "wrong-extension",
+        "relative-path", "empty-file", "invalid-json", "wrong-header-type",
+        "missing-header-id", "unreadable-directory", "wrong-source", "wrong-agent", "missing-cwd",
+    ] {
+        let (data, herdr, config, server, zone, ids) = fixture().await;
+        let canonical = data.path().join(
+            "2026-10-29T02-02-16-097Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl",
+        );
+        let file = match case {
+            "uuid-only" => data.path().join("01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl"),
+            "invalid-timestamp" => data.path().join("2026-99-99T99-99-99-999Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl"),
+            "invalid-uuid" => data.path().join("2026-10-29T02-02-16-097Z_not-a-uuid.jsonl"),
+            "wrong-extension" => data.path().join("2026-10-29T02-02-16-097Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.txt"),
+            "relative-path" => std::path::PathBuf::from("2026-10-29T02-02-16-097Z_01a18564-c4a1-700b-81b2-4ffb35f043ed.jsonl"),
+            _ => canonical,
+        };
+        let bytes = match case {
+            "empty-file" => Some(""),
+            "invalid-json" => Some("not json\n"),
+            "wrong-header-type" => Some("{\"type\":\"message\",\"id\":\"not-a-session\"}\n"),
+            "missing-header-id" => Some("{\"type\":\"session\"}\n"),
+            _ => None,
+        };
+        if let Some(bytes) = bytes {
+            fs::write(&file, bytes).unwrap();
+        } else if case == "unreadable-directory" {
+            fs::create_dir(&file).unwrap();
+        }
+        herdr.set_behavior(json!({
+            "native_session":{
+                "source":if case == "wrong-source" { "custom:omp" } else { "herdr:omp" },
+                "agent":if case == "wrong-agent" { "pi" } else { "omp" },
+                "kind":"path","value":file
+            },
+            "native_cwd":if case == "missing-cwd" { Value::Null } else { json!(data.path()) }
+        }));
+        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+            &json!({"managerTaskId":ids[0],"zone":zone,"userInput":""}).to_string()).await;
+        assert_eq!(response.status, 500, "{case}: {}", response.body);
+        let failure: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(failure["startupError"]["stage"], "identity", "{case}: {}", response.body);
+        assert_eq!(failure["startupError"]["effects"]["inputAttempted"], false, "{case}");
+        assert!(herdr.calls().iter().all(|call| call["kind"] != "agent_prompt"), "{case}");
+        let root = config.scheduler.run_directory.join(failure["id"].as_str().unwrap());
+        let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+        assert!(saved["manager"].is_null(), "{case}");
+        if let Some(bytes) = bytes {
+            assert_eq!(fs::read(&file).unwrap(), bytes.as_bytes(), "{case}");
+        } else if case == "unreadable-directory" {
+            assert!(file.is_dir());
+        } else if case != "relative-path" {
+            assert!(!file.exists(), "{case}: rejection must not manufacture a native file");
+        }
+    }
+}
+
 // P13: an initialization error must precede every external call; an identity
 // error can leave a real Chat, but cannot submit an instruction. Neither error
 // is recorded as a persisted business failure or retried autonomously.

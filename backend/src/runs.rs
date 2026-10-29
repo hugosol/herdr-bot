@@ -374,7 +374,7 @@ async fn launch(
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         let identity = tokio::time::timeout_at(
             deadline,
-            state.herdr.native_session(&agent, "omp", deadline),
+            state.herdr.started_session(&agent, "omp", deadline),
         )
         .await
         .map_err(|_| "获取原生身份超时".to_owned())?
@@ -407,6 +407,7 @@ async fn launch(
                 identity.session_file.as_deref(),
                 Some(&workspace.id),
                 &task.id,
+                identity.startup_identity_path.as_deref(),
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -684,7 +685,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         effects.agent_started = true;
         stage = "identity";
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        let identity = tokio::time::timeout_at(deadline, state.herdr.native_session(&agent, "omp", deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
+        let identity = tokio::time::timeout_at(deadline, state.herdr.started_session(&agent, "omp", deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
         effects.session_id = Some(identity.session_id.clone());
         if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.executions().any(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
             return Err("宿主未返回独立的新原生 Chat 身份".into());
@@ -698,7 +699,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         *run = candidate.clone();
         effects.association_saved = true;
         stage = "history";
-        state.history.record_zone(&identity.session_id, &name, "omp", &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id).await.map_err(|e| e.to_string())?;
+        state.history.record_zone(&identity.session_id, &name, "omp", &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id, identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
         stage = "submit";
         let paths = Runs::paths(state, &run.id);
         let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.input);

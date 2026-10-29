@@ -23,6 +23,8 @@
 | Herdr／omp／toolkit | Herdr 托管原生 Chat 与输入提交，omp 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
 | Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察、定位/恢复已关联 Chat；不暗中创建、接管或改状态。 |
 
+新启动 omp 的文件可能尚未落盘；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
+
 术语以[领域词汇](../GLOSSARY.md)为准；尊重 [Task 命名](adr/0012-rename-bot-preset-to-task.md)、[Bot 命名](adr/0013-rename-node-template-to-bot.md)、[zone 与 Workspace 区分](adr/0009-rename-workspace-to-zone-for-herdr.md)和[同机写入边界](adr/0004-session-write-boundary-same-host.md)。历史 ADR 中旧词由其现行术语注记解释，不恢复旧别名。
 
 ## 状态与关键取舍

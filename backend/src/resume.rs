@@ -62,7 +62,7 @@ async fn resume_selected(state: &AppState, selected: &crate::history::HistorySel
         Some(kind @ ("pi" | "omp")) => kind,
         _ => return crate::rejected_owned(StatusCode::BAD_REQUEST, "unsupported-agent", "无法确定受支持的 agent 类型；尚未恢复。".into()),
     };
-    let targets = match state.herdr.matching_targets(kind, &selected.session_id).await {
+    let targets = match state.herdr.matching_targets(kind, selected).await {
         Ok(targets) => targets,
         Err(error) => return failure("lookup", &error),
     };
