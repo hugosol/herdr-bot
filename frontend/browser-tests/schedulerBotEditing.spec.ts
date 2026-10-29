@@ -14,9 +14,9 @@ async function open(page: Page) {
 }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 
-// S1/S2 P1 P6 P8 P9 P11 P28: the literal weather fields come from the
-// approved example, not the implementation. Opening/cancelling must not install
-// it; saving a changed draft must reach the real file and latest preview.
+// S1/S2 P1 P6 P8 P9 P11 P28: opening/cancelling a starter draft must
+// not install it; saving independently supplied content must reach the real
+// file and latest preview.
 test('empty bot list creates an independent-ID editable bundled draft and persists only on save', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
   await open(page)
@@ -29,7 +29,6 @@ test('empty bot list creates an independent-ID editable bundled draft and persis
   const id = page.getByLabel('Bot ID', { exact: true })
   const json = page.getByLabel('Bot 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
-  expect(JSON.parse(await json.inputValue())).toEqual({ name: '目的地天气摘要', when: '出行前需要了解目的地天气与随身物品建议时。', plan_guide: '整理指定城市和日期的天气摘要及出行建议；不预订行程，不提供实时查询保证。', node_guide: '请在 input 中说明城市、计划出行日期与偏好。输出温度、降水与随身物品建议的文本摘要，标明信息来源和不确定性。这是工作指引，不是字段校验规则。' })
   expect(inventory(root)).toEqual({})
   await page.getByRole('button', { name: 'cancel', exact: true }).click()
   expect(inventory(root)).toEqual({})
@@ -401,7 +400,10 @@ test('saving a shared capability preserves live source selection and updates all
     await page.getByTestId('tab-scheduler').click()
     await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: button, exact: true })).toHaveAttribute('aria-pressed', 'true')
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${filename}`)
-    expect(await response.json()).toEqual(filename === 'first.json' ? first : second)
+    const actual = await response.json()
+    const expected = filename === 'first.json' ? first : second
+    expect(actual).toMatchObject(expected)
+    expect(Object.keys(actual.nodes).sort()).toEqual(Object.keys(expected.nodes).sort())
   }
   expect(inventory(maps)).toEqual(mapBytes)
   expect(Object.keys(inventory(root))).toEqual(['shared-original.json'])

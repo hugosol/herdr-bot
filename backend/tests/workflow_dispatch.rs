@@ -18,6 +18,8 @@ mod pi;
 mod roles;
 #[path = "workflow_dispatch/report_policy.rs"]
 mod report_policy;
+#[path = "workflow_dispatch/map_deletion.rs"]
+mod map_deletion;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

@@ -58,6 +58,18 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 `report_policy` 是独立于业务 `input` 的提示词约束：`auto` 在结果可交接时自行发送 report；`manual` 每次发送前先在本 node Chat 展示摘要、结果地址和限制，询问用户并停轮等待，用户在此 Chat 自然语言确认后才发送。要求修改时先修改、重新展示并确认；补充或更正报告也重新确认。它不新增审批状态、按钮或后端 report/complete 门禁，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
 
+## 删除 Map 与历史 Run
+
+选中 Map 后点击详情操作区的“删除 Map”，弹窗会显示文件名，并提供三个选项，不再追加确认：
+
+- **删除历史**：不可撤销地删除 Map 定义（含全部 node），同时删除关联 Run 的状态、执行历史和报告记录。
+- **保留历史**：只删除 Map 定义，关联 Run 仍可在 workflow 中查看；当前 Map 与依赖图会显示不可用，不补造历史定义。
+- **取消**：不删除任何内容。
+
+删除不以 Run 的持久状态或 Chat 是否在线／工作中为门槛；仍标为 `running` 的记录也可清理。两种删除都不会停止 Chat，也不会删除 Chat、原生对话历史、共享 Bot、Task 或 zone 内工作文件。删除历史后，相关 Chat 后续针对该 Run 的上报或操作可能失败；正在进行的后端写入不会重新创建已删除的 Run 历史。
+
+成功后刷新 Map 列表并清空该 Map 的详情和节点选择。格式损坏但仍列在目录中的 Map 也可删除。失败会显示具体错误；若历史删除只完成了一部分，或删除完成后目录读取失败，提示会明确说明，不宣称全部成功。响应丢失时应取消弹窗并刷新核实，不盲目重复提交。
+
 ## 保存与校验边界
 
 内部结构合法即可保存：Bot 可没有 `task_id`，可引用不存在的 Task；node 可引用不存在的 Bot 或尚未登记／失效的 zone 路径。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是登记目录的路径引用，不是稳定 zone ID，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
@@ -143,4 +155,6 @@ revision 为 `{file, original}`，绑定服务端目录内文件名与原始全�
 
 目录及各级父路径不跟随符号链接、目录联接或重解析点，目录项也不能越界读取。全部标题、文档、input、zone 仅作文本显示，不按 HTML、CSS、脚本或 Agent 指令执行；文中路径不触发文件读取或 Chat。浏览、筛选、预览、恢复、刷新不改写现存定义；只有显式保存／确认删除才修改目标。
 
-可重复契约检查在 `frontend/browser-tests/schedulerDefinitionCutover.spec.ts`：真实隔离 scheduler 保存未绑定定义、分别读三份文档、提交非法依赖并核对原文件。完整入口、安全约束和人工网络／链接规则见 [测试指引](agents/testing.md)。这些定义检查不证明真实 Herdr／omp 启动或业务执行质量。
+可重复契约检查在 `frontend/browser-tests/schedulerDefinitionCutover.spec.ts`：真实隔离 scheduler 保存未绑定定义、分别读三份文档、提交非法依赖并核对原文件。node 读取／保存会显式补全省略的 `report_policy`；CRUD 检查保护节点 ID 集合、业务输入、依赖与非目标内容，不要求返回对象逐字等于省略默认字段的输入。失败与取消仍按原始文件字节检查未写入。策略默认值、非法值和执行期间的策略保持由 `backend/tests/workflow_dispatch/report_policy.rs` 专门验证。
+
+完整浏览器回归使用 `npm --prefix frontend run test:browser:build`，同时覆盖既有 scheduler 编辑／删除与 workflow Resume；前端单元测试或图形专项冒烟不能替代此入口。完整入口、安全约束和人工网络／链接规则见 [测试指引](agents/testing.md)。这些定义检查不证明真实 Herdr／omp 启动或业务执行质量。

@@ -6,6 +6,11 @@
 .scheduler button:focus-visible, .scheduler input:focus-visible, .scheduler summary:focus-visible { outline: 2px solid var(--scheduler-accent); outline-offset: 2px; }
 .scheduler button[aria-pressed="true"] { border-color: #7db3db; background: #294661; }
 .scheduler button:disabled { opacity: .55; cursor: default; }
+.scheduler-map-delete-dialog { width: min(calc(100% - 2.5rem), 36rem); color: #f2f4f8; }
+.scheduler-map-delete-dialog::backdrop { background: rgba(6, 8, 11, .88); }
+.scheduler-map-delete-dialog .zone-dialog__title { overflow-wrap: anywhere; }
+.scheduler-map-delete-dialog .zone-dialog__actions { display: flex; flex-wrap: wrap; }
+.scheduler-map-delete-dialog .zone-dialog__actions > button { flex: 1 1 6rem; min-width: 0; }
 .scheduler-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
 .scheduler-actions > button { flex-shrink: 0; background: #202a37; }
 .scheduler-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); border: 1px solid var(--scheduler-line); border-radius: .65rem; background: #1b212a; overflow: hidden; min-height: 34rem; }

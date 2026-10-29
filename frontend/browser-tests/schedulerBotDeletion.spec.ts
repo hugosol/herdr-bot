@@ -202,8 +202,12 @@ test('deleting an unused bot still permits a later node with that missing bot re
   const draft = await (await page.request.get(`${base}/new`)).json()
   const saved = await page.request.post(`${base}/save`, { data: { id: 'allowedMissing', content: JSON.stringify(node), revision: draft.revision, create: true } })
   expect(saved.status()).toBe(200)
-  expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/later.json`)).json()).toEqual(map({ allowedMissing: node }))
-  expect(JSON.parse(fs.readFileSync(path.join(maps, 'later.json'), 'utf8'))).toEqual(map({ allowedMissing: node }))
+  const reread = await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/later.json`)).json()
+  const persisted = JSON.parse(fs.readFileSync(path.join(maps, 'later.json'), 'utf8'))
+  for (const actual of [await saved.json(), reread, persisted]) {
+    expect(actual).toMatchObject(map({ allowedMissing: node }))
+    expect(Object.keys(actual.nodes)).toEqual(['allowedMissing'])
+  }
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'later.json', exact: true }).click()
@@ -254,7 +258,9 @@ for (const change of ['target edit', 'target removal', 'new reference', 'ambiguo
     } else expect(catalog.bots).toEqual(change === 'target removal' ? [] : [{ ...bot, ...(change === 'target edit' ? { plan_guide: '外部编辑的新版本' } : {}) }])
     if (change === 'new reference') {
       expect(fs.readFileSync(late, 'utf8')).toBe(lateBytes)
-      expect(await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/late.json`)).json()).toEqual(map({ lateNode: node }))
+      const lateMap = await (await page.request.get(`${server!.baseURL}/api/scheduler/maps/late.json`)).json()
+      expect(lateMap).toMatchObject(map({ lateNode: node }))
+      expect(Object.keys(lateMap.nodes)).toEqual(['lateNode'])
     }
     expect(server!.herdrCalls()).toEqual([])
   })

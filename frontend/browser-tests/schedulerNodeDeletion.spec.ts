@@ -53,7 +53,6 @@ test('P20 referenced node deletion is refused by the page and direct production 
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '阻止删除' })).toContainText('B')
   expect(confirmations).toBe(0)
-  expect(await readMap(page)).toEqual(original)
   expect(inventory(root)).toEqual(before)
   expect(server!.herdrCalls()).toEqual([])
 })
@@ -77,7 +76,6 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('button', { name: '删除 node', exact: true })).toBeEnabled()
   expect(checkedBeforeDialog).toBe(true)
   expect(deleteRequests).toBe(0)
-  expect(await readMap(page)).toEqual(original)
   expect(inventory(root)).toEqual(before)
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('独立工作')
   page.once('dialog', dialog => dialog.accept())
@@ -88,8 +86,10 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(1)
   const expected = { title: '保留 Map 标题', description: '保留 Map 说明', nodes: { A: original.nodes.A, B: original.nodes.B } }
-  expect(await readMap(page)).toEqual(expected)
-  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual(expected)
+  const remaining = await readMap(page)
+  expect(remaining).toMatchObject(expected)
+  expect(Object.keys(remaining.nodes).sort()).toEqual(['A', 'B'])
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual(remaining)
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   await select(page, '后继工作 B')
   page.once('dialog', dialog => dialog.accept())
@@ -150,9 +150,6 @@ for (const change of ['external-target', 'external-dependent', 'application-depe
     const direct = await request(page, 'delete', target)
     expect(direct.ok()).toBe(false)
     expect(inventory(root)).toEqual(newer)
-    if (change !== 'invalid-map' && change !== 'removed-map') {
-      expect(await readMap(page)).toEqual(JSON.parse(newer['work.JSON']))
-    }
     expect(server!.herdrCalls()).toEqual([])
   })
 }
@@ -194,7 +191,6 @@ test('unreadable or invalid Map and ambiguous identities never authorize deletio
     expect((await request(page, 'delete', payload)).ok()).toBe(false)
     expect(inventory(root)).toEqual(before)
   }
-  expect(await readMap(page)).toEqual(original)
   expect(server!.herdrCalls()).toEqual([])
 })
 
@@ -216,13 +212,14 @@ test('filesystem deletion commit failure is explicit and preserves definitions u
     const removed = await request(page, 'delete', target)
     expect(removed.ok()).toBe(false)
     expect((await removed.json()).message).toContain('删除写入失败')
-    expect(await readMap(page)).toEqual(original)
     expect(inventory(root)).toEqual(before)
   } finally { execFileSync('icacls.exe', [root, '/remove:d', user]) }
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { A: original.nodes.A, B: original.nodes.B } })
+  const remaining = await readMap(page)
+  expect(remaining).toMatchObject({ ...original, nodes: { A: original.nodes.A, B: original.nodes.B } })
+  expect(Object.keys(remaining.nodes).sort()).toEqual(['A', 'B'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(server!.herdrCalls()).toEqual([])
 })
