@@ -36,7 +36,7 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
         setError([taskResult, zoneResult].filter(value => value.kind !== 'ok').map(value => value.kind === 'rejected' ? value.message : '配置读取未取得有效响应，请手动刷新选项。').join('；'))
         return
       }
-      setTasks(taskResult.tasks.filter(task => task.taskType === 'manager' && task.agent === 'omp'))
+      setTasks(taskResult.tasks.filter(task => task.taskType === 'manager'))
       setZones(zoneResult.zones)
       setResult(null)
     })
@@ -96,7 +96,7 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
       <option value="">请选择管理者 Task</option>
       {tasks.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
     </select></label>
-    {!loading && tasks.length === 0 && <p>没有可选的 manager 类型 omp Task。<button type="button" onClick={() => onTask()}>管理 Task</button></p>}
+    {!loading && tasks.length === 0 && <p>没有可选的 manager 类型 Task。<button type="button" onClick={() => onTask()}>管理 Task</button></p>}
     <label>管理者 zone<select aria-label="管理者 zone" value={input.zone} disabled={loading || busy} onChange={event => change({ zone: event.target.value })}>
       <option value="">请选择已登记 zone</option>
       {zones.map(zone => <option key={zone.path} value={zone.path}>{zone.path}</option>)}

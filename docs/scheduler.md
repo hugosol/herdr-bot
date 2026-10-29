@@ -64,11 +64,11 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 ## 从选中 Map 校验启动配置
 
-在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单只提供 **manager 类型且 agent 为 omp 的管理者 Task**、已登记的管理者 zone、只读 Workspace 和可空的 Markdown“本次要求”。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
+在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单只提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace 和可空的 Markdown“本次要求”。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
 
 “校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录、启动真实管理者并在原生身份关联保存成功后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
 
-预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非 omp agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用 node Task；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
+预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用 node Task；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
 拒绝保留发起页并逐项指出错误及来源 node／Bot／Task。用“修正 node”回到原 node 编辑器，用“修正 Bot”回到共享 Bot 配置，用“修正 Task”直接打开原 Task 编辑器；Task 已删除时明确显示不存在，不转成新增或默认 Task。zone 错误可回到 zone 登记入口，或回到原 node 修改路径。原 Map 文件损坏时按错误修复配置目录中的文件。修正后返回 scheduler，显式重新校验；刷新启动选项可重读 Task 和 zone，不自动重试启动。
 

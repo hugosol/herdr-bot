@@ -169,8 +169,8 @@ impl Catalog {
             }
         }
         for extension in &self.extensions {
-            if extension.task_type.is_some_and(|role| role == TaskType::Normal || extension.agent != Agent::Omp || extension.kind != ExtensionKind::Fixed) {
-                return Err(format!("角色扩展 {} 必须是 omp manager/node 固定扩展", extension.id));
+            if extension.task_type.is_some_and(|role| role == TaskType::Normal || extension.kind != ExtensionKind::Fixed) {
+                return Err(format!("角色扩展 {} 必须是 manager/node 固定扩展", extension.id));
             }
             if !self.agents.iter().any(|v| v.id == extension.agent) {
                 return Err(format!(
@@ -337,7 +337,6 @@ impl Catalog {
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
     pub fn resolve_env(&self, agent: Agent, task_type: TaskType, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
-        task_type.validate_agent(agent)?;
         self.validate_extensions(agent, selections)?;
         if task_type != TaskType::Normal && !self.extensions.iter().any(|extension| extension.task_type == Some(task_type) && extension.agent == agent && extension.kind == ExtensionKind::Fixed) {
             return Err(TaskError::Metadata("当前目录缺少对应 Task 类型的固定角色扩展。".into()));

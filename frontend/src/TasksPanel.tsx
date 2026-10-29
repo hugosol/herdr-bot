@@ -171,10 +171,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   }
 
   function changeType(taskType: TaskInput['taskType']) {
-    setDraft((current) => ({ ...current, taskType,
-      ...(taskType !== 'normal' && current.agent !== 'omp'
-        ? { agent: 'omp' as const, model: 'default', thinking: 'default', extensions: [] } : {}),
-    }))
+    setDraft((current) => ({ ...current, taskType }))
     setNotice(null)
   }
 
@@ -503,7 +500,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <option value="manager">流程管理者（manager）</option>
                   <option value="node">节点执行者（node）</option>
                 </select>
-                <p className="task-hint">manager/node 仅支持 omp；对应角色扩展固定加载，不可取消或混装。类型不是某次执行身份。</p>
+                <p className="task-hint">manager/node 支持 omp 和 pi；对应角色扩展固定加载，不可取消或混装。类型不是某次执行身份。</p>
 
                 <label className="zone-form__label" htmlFor="task-agent">
                   agent
@@ -517,7 +514,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   disabled={saving}
                 >
                   {data.options.agents.map((agent) => (
-                    <option key={agent} value={agent} disabled={draft.taskType !== 'normal' && agent !== 'omp'}>
+                    <option key={agent} value={agent}>
                       {data.options.labels?.agents?.[agent] ?? agent}
                     </option>
                   ))}

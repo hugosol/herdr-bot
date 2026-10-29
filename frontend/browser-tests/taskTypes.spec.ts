@@ -8,9 +8,9 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-// P5.01 / S1,S2: literal contract expectations. A page showing both role
-// extensions or letting manager retain pi must fail at the actual controls.
-test('P5.01 Task types constrain agent and non-cancellable role extensions', async ({ page }, info) => {
+// P5.01 / S1,S2: changing Task purpose preserves its host and selects only
+// the corresponding non-cancellable role extension.
+test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', async ({ page }, info) => {
   server = await startServer()
   await page.goto(server.baseURL)
   await page.getByTestId('tab-tasks').click()
@@ -19,27 +19,25 @@ test('P5.01 Task types constrain agent and non-cancellable role extensions', asy
   await page.getByTestId('task-name').fill('类型切换')
   await page.getByTestId('task-agent').selectOption('pi')
   await page.getByTestId('task-type').selectOption('manager')
-  await expect(page.getByTestId('task-agent')).toHaveValue('omp')
-  await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeDisabled()
+  await expect(page.getByTestId('task-agent')).toHaveValue('pi')
+  await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
   await page.getByTestId('task-next').click()
   await expect(page.getByTestId('task-fixed-extensions')).toContainText('manager-chat')
   await expect(page.getByTestId('task-fixed-extensions')).not.toContainText('node-chat')
-  await expect(page.getByTestId('extension-omp-manager-chat')).toHaveCount(0)
-  await expect(page.getByTestId('extension-omp-node-chat')).toHaveCount(0)
+  await expect(page.getByTestId('extension-pi-manager-chat')).toHaveCount(0)
+  await expect(page.getByTestId('extension-pi-node-chat')).toHaveCount(0)
   await page.getByTestId('task-next').click()
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-dialog')).toBeHidden()
   let saved = (await server.getTasks()).tasks[0]
-  expect(saved).toMatchObject({ taskType: 'manager', agent: 'omp', extensions: [] })
+  expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi', extensions: [] })
   await expect(page.getByTestId('task-item')).toContainText('manager-chat')
   await expect(page.getByTestId('task-item')).not.toContainText('node-chat')
   for (const role of ['node', 'normal']) {
     await page.getByTestId('task-edit').click()
     await page.getByTestId('task-type').selectOption(role)
-    if (role === 'normal') {
-      await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
-      await page.getByTestId('task-agent').selectOption('pi')
-    }
+    await expect(page.getByTestId('task-agent')).toHaveValue('pi')
+    await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
     await page.getByTestId('task-next').click()
     const fixed = page.getByTestId('task-fixed-extensions')
     await expect(fixed).not.toContainText('manager-chat')
@@ -49,11 +47,8 @@ test('P5.01 Task types constrain agent and non-cancellable role extensions', asy
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-dialog')).toBeHidden()
     saved = (await server.getTasks()).tasks[0]
-    expect(saved).toMatchObject({ taskType: role, extensions: [] })
+    expect(saved).toMatchObject({ taskType: role, agent: 'pi', extensions: [] })
   }
-  const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...saved, id: undefined, agent: 'pi', taskType: 'manager' }) })
-  expect(response.status).toBe(400)
-  expect((await response.json()).code).toBe('invalid-task-type')
   await page.screenshot({ path: info.outputPath('task-types.png'), fullPage: true })
   fs.writeFileSync(info.outputPath('task-types.json'), JSON.stringify(await server.getTasks(), null, 2))
 })

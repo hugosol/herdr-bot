@@ -15,12 +15,12 @@
 | --- | --- |
 | 规划者、Map、node | Map 是服务级静态定义；node 给出 Bot 引用、input 原文、zone 路径与同图依赖。边不传材料、不自动启动。运行期间保持定义与 Task 不变。 |
 | Bot | 跨 Map 共享的业务能力文档；when、plan_guide、node_guide 分别供选用、规划与工作理解，可独立为空；不是执行实例、运行门禁或自动注入。 |
-| Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。manager/node 是用途类型且仅允许 omp；不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
+| Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。manager/node 是用途类型，可选择 omp 或 pi；不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
 | 管理者 Chat | 独占状态操作，读取记录与材料并判断交接，显式派发、完成、恢复或结束；不把报告、停轮、退出当完成，不强制持续续轮。不是业务 node。 |
 | 节点 Chat | 在定义 zone 做工作，以 report 正文说明结果地址、用法与限制，可在交接后继续不影响结果的收尾；不能自改流程状态。 |
 | 后端 | 检查同机来源、真实原生身份与 Run/执行归属、依赖和状态；串行同 Run 业务动作，保存当前事实与历史，提供报告和 collect。模型判断不能替代这些约束。 |
-| Herdr／omp／toolkit | Herdr 托管原生 Chat 与输入提交，omp 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
+| Herdr／agent／toolkit | Herdr 托管原生 Chat 与输入提交，各 Task 选择的 omp 或 pi 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
 | Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察、定位/恢复已关联 Chat；不暗中创建、接管或改状态。 |
 
 新启动 omp 的文件可能尚未落盘；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
@@ -54,7 +54,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P2 | 三份 Bot 文档独立读取、独立可空，不成为业务门禁。 | [定义格式](scheduler.md#定义职责与唯一格式) |
 | P3 | 内部合法、外部 Bot/Task/zone 未完善仍能保存，不补绑定。 | [保存边界](scheduler.md#保存与校验边界) |
 | P4 | 未知字段、错类型、漏字段、非法依赖或环拒绝且保留原定义。 | [保存边界](scheduler.md#保存与校验边界) |
-| P5 | Task 类型可配置，角色仅 omp、固定扩展不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
+| P5 | Task 类型可配置，角色支持 omp/pi、固定扩展不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P6 | 显式 Task 迁移保留身份、完整配置与 Chat 来源，重启/Resume 可读，不猜角色。 | [一次迁移](usage.md#旧-task-显式迁移) |
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P8 | zone 按已登记路径重检；注销拒绝、重登记再检，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
@@ -141,7 +141,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 以下不是尚待补齐的隐含产品承诺，也不能由正常操作、失败或重启偷偷引入：
 
 - 自动生成 Map/LLM Plan、规划编排、运行中改图、专门循环系统、定时调度、声明式自动重试、后台选路。合法既有动作组合不被额外禁止，但不据此新增返工机制。
-- 非 omp 执行、非 Chat adapter、通用宿主/策略插件平台，或内置 Git/worktree/TDD/自动集成业务阶段。
+- omp/pi 之外的宿主、非 Chat adapter、通用宿主/策略插件平台，或内置 Git/worktree/TDD/自动集成业务阶段。
 - Bot 文档自动注入、插值、动态传参、user_input 下发、Delivery/产物绑定/复制/校验/快照或额外质量门禁。
 - 独立放行、stop/graceful shutdown、pausing/stopping/stopped 生命周期、强制结束或等待所有 Chat 退出；pause 只阻止新执行。
 - manager→node/同伴消息、广播、普通双向协作、extension 接收长连接、原生 IRC、强制续轮、联系人/归属查询工具。

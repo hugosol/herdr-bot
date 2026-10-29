@@ -68,7 +68,7 @@ test('P7.01 empty Map is rejected before any Run or Chat side effect', async ({ 
 
 // P7.01: independent invalid bindings, including dependent B rather than just
 // ready A. A root-only check, normal-role acceptance, or fallback zone must fail.
-test('P7.01 whole graph and manager bindings reject missing resources and wrong roles or agents', async ({ request }, info) => {
+test('P7.01 whole graph and manager bindings reject missing resources and wrong roles', async ({ request }, info) => {
   const fixture = await launchFixture()
   const evidence: unknown[] = []
   const originalTasks = fs.readFileSync(server!.storageFile, 'utf8')
@@ -78,12 +78,10 @@ test('P7.01 whole graph and manager bindings reject missing resources and wrong 
     { code: 'bot-task-required', target: 'bot', mutate: () => { fixture.bot.task_id = '' } },
     { code: 'task-missing', target: 'task', mutate: () => { fixture.bot.task_id = 'absent' } },
     { code: 'task-role-invalid', target: 'task', mutate: () => { fixture.bot.task_id = fixture.ids.normal } },
-    { code: 'task-agent-invalid', target: 'task', mutate: () => { const tasks = JSON.parse(originalTasks); tasks.tasks.find((task: { id: string }) => task.id === fixture.ids.node).agent = 'pi'; fs.writeFileSync(server!.storageFile, JSON.stringify(tasks)) } },
     { code: 'zone-required', target: 'node', mutate: () => { fixture.map.nodes.B.zone = '' } },
     { code: 'zone-not-registered', target: 'node', mutate: () => { fixture.map.nodes.B.zone = path.join(fixture.zonePath, 'missing') } },
     { code: 'task-missing', target: 'manager', mutate: () => { fixture.data.managerTaskId = 'absent' } },
     { code: 'task-role-invalid', target: 'manager', mutate: () => { fixture.data.managerTaskId = fixture.ids.node } },
-    { code: 'task-agent-invalid', target: 'manager', mutate: () => { const tasks = JSON.parse(originalTasks); tasks.tasks.find((task: { id: string }) => task.id === fixture.ids.manager).agent = 'pi'; fs.writeFileSync(server!.storageFile, JSON.stringify(tasks)) } },
     { code: 'zone-required', target: 'manager', mutate: () => { fixture.data.zone = '' } },
   ]
   for (const scenario of scenarios) {
@@ -147,14 +145,14 @@ test('P8.01 unregister and same-path registration recheck current graph without 
   fs.writeFileSync(info.outputPath('zone-path-lifecycle-evidence.json'), JSON.stringify(evidence, null, 2))
 })
 
-// P9.01: only manager/omp Tasks belong in the picker. A name or node override,
+// P9.01: only manager Tasks belong in the picker, regardless of host. A name or node override,
 // mutable Workspace, or generic error that cannot reach the original Task fails.
 test('P9.01 selected Map launch form offers only launch configuration and returns errors to the original Task', async ({ page }, info) => {
   const fixture = await launchFixture()
   fixture.bot.task_id = fixture.ids.normal
   fs.writeFileSync(fixture.botFile, JSON.stringify(fixture.bot))
   const stored = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
-  stored.tasks.push({ ...stored.tasks.find((task: { id: string }) => task.id === fixture.ids.manager), id: 'invalid-agent-manager', name: '不可选 pi 管理者', agent: 'pi' })
+  stored.tasks.push({ ...stored.tasks.find((task: { id: string }) => task.id === fixture.ids.manager), id: 'pi-manager', name: 'Pi 管理者', agent: 'pi' })
   fs.writeFileSync(server!.storageFile, JSON.stringify(stored))
   await page.goto(server!.baseURL)
   await page.getByTestId('tab-scheduler').click()
@@ -162,8 +160,8 @@ test('P9.01 selected Map launch form offers only launch configuration and return
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
   const form = page.getByRole('form', { name: '发起 Run', exact: true })
   await expect(form).toBeVisible()
-  await expect(form.getByLabel('管理者 Task', { exact: true }).locator('option')).toHaveText(['请选择管理者 Task', 'manager'])
-  await form.getByLabel('管理者 Task', { exact: true }).selectOption(fixture.ids.manager)
+  await expect(form.getByLabel('管理者 Task', { exact: true }).locator('option')).toHaveText(['请选择管理者 Task', 'manager', 'Pi 管理者'])
+  await form.getByLabel('管理者 Task', { exact: true }).selectOption('pi-manager')
   await form.getByLabel('管理者 zone', { exact: true }).selectOption(fixture.zone)
   await expect(form.getByLabel('Workspace', { exact: true })).toHaveValue('registered-zone')
   await expect(form.getByLabel('Workspace', { exact: true })).toHaveAttribute('readonly', '')

@@ -55,6 +55,14 @@ class TaskTypeMigrationTests(unittest.TestCase):
         self.assertEqual(staging.read_bytes(), b"retain failed migration evidence")
         self.assertEqual(self.store.read_bytes(), before)
 
+    def test_legacy_normal_cutover_preserves_already_typed_pi_roles(self):
+        manager = {**self.task, "id": "pi-manager", "taskType": "manager"}
+        node = {**self.task, "id": "pi-node", "taskType": "node"}
+        self.store.write_text(json.dumps({"tasks": [self.task, manager, node]}), encoding="utf-8")
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.store.read_bytes()), {"tasks": [{**self.task, "taskType": "normal"}, manager, node]})
+
     def test_prior_task_with_omitted_optional_fields_preserves_its_identity_and_fields(self):
         # The previous Task reader allowed omitted Skill and optional extensions.
         del self.task["skill"]

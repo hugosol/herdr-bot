@@ -30,9 +30,8 @@ fn tasks_of(response: &HttpResponse) -> Vec<Value> {
         .clone()
 }
 
-// P5.01 / S2: the contract requires default normal and omp-only roles.
-// A server accepting manager+pi is a plausible bypass of page-only validation;
-// observe actual HTTP rejection and the unchanged persisted Task list.
+// Both hosts support every Task role; role extensions remain fixed resources,
+// never caller-selectable permissions. Observe the persisted HTTP contract.
 #[tokio::test]
 async fn task_types_are_enforced_through_direct_http() {
     let dir = TempDir::new("task types HTTP");
@@ -43,31 +42,27 @@ async fn task_types_are_enforced_through_direct_http() {
     let initial = tasks_of(&created);
     assert_eq!(initial[0]["taskType"], "normal");
     let id = initial[0]["id"].as_str().unwrap();
-    for role in ["manager", "node"] {
-        input["taskType"] = json!(role);
-        let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
-        assert_eq!(rejected.status, 400, "{}", rejected.body);
-        assert!(rejected.body.contains("invalid-task-type"));
-        assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), initial);
-    }
-    input["agent"] = json!("omp");
-    for role in ["manager", "node", "normal"] {
-        input["taskType"] = json!(role);
-        let changed = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
-        assert_eq!(changed[0]["taskType"], role);
-        assert_eq!(changed[0]["id"], id);
-        for extensions in [json!(["omp-manager-chat"]), json!(["omp-node-chat"]), json!(["omp-manager-chat", "omp-node-chat"])] {
-            input["extensions"] = extensions;
-            let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
+    for agent in ["pi", "omp"] {
+        input["agent"] = json!(agent);
+        for role in ["manager", "node", "normal"] {
+            input["taskType"] = json!(role);
+            let changed = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
+            assert_eq!(changed[0]["taskType"], role);
+            assert_eq!(changed[0]["agent"], agent);
+            assert_eq!(changed[0]["id"], id);
+            for extensions in [json!(["omp-manager-chat"]), json!(["omp-node-chat"]), json!(["omp-manager-chat", "omp-node-chat"]), json!(["pi-manager-chat"]), json!(["pi-node-chat"]), json!(["pi-manager-chat", "pi-node-chat"])] {
+                input["extensions"] = extensions;
+                let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
+                assert_eq!(rejected.status, 400, "{}", rejected.body);
+                assert!(rejected.body.contains("task-extension-invalid"));
+            }
+            input["extensions"] = json!([]);
+            let mut cancellation = input.clone();
+            cancellation["fixedExtensions"] = json!([]);
+            let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&cancellation.to_string())).await;
             assert_eq!(rejected.status, 400, "{}", rejected.body);
-            assert!(rejected.body.contains("task-extension-invalid"));
+            assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), changed);
         }
-        input["extensions"] = json!([]);
-        let mut cancellation = input.clone();
-        cancellation["fixedExtensions"] = json!([]);
-        let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&cancellation.to_string())).await;
-        assert_eq!(rejected.status, 400, "{}", rejected.body);
-        assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), changed);
     }
     input["taskType"] = json!("administrator");
     let rejected = post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await;

@@ -9,8 +9,12 @@ Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际�
 _Avoid_: Bot, bot-template, 模板, 对话实例
 
 **Task 类型**:
-Task 的用途分类，区分普通用途、流程管理者和节点执行者；它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
+Task 的用途分类，区分普通用途和流程管理者；普通 Task 既可独立发起 Chat，也可用于 node 执行，节点执行者不是独立 Task 类型。它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
 _Avoid_: agent 类型, Run 角色绑定, Chat 类型
+
+**节点执行角色**:
+Chat 在某次 Run 中承担某个 node 工作的执行身份，由该次 workflow 派发确立，恢复该 Chat 时沿用原执行关联，而非根据来源 Task 的用途分类重新赋予；同一普通 Task 可用于独立 Chat 和不同的节点执行。
+_Avoid_: node 类型 Task, 节点专用 Task
 
 **trigger config（发起配置）**:
 Task 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。

@@ -235,6 +235,47 @@ describe('Task tab：读取与展示', () => {
     )
   })
 
+  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和可选扩展，角色固定扩展按类型筛选并保存', async (agent) => {
+    const user = userEvent.setup()
+    const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
+      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', extensions: [`${agent}-tools`] }
+    const options = { ...OPTIONS, extensions: (['omp', 'pi'] as const).flatMap(host => [
+      { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', taskType: null, entrypoint: '/state.ts' },
+      { id: `${host}-manager`, label: `${host} manager-chat`, agent: host, kind: 'fixed', taskType: 'manager', entrypoint: '/manager.ts' },
+      { id: `${host}-node`, label: `${host} node-chat`, agent: host, kind: 'fixed', taskType: 'node', entrypoint: '/node.ts' },
+      { id: `${host}-tools`, label: `${host} 工具`, agent: host, kind: 'optional', taskType: null, entrypoint: '/tools.ts' },
+    ]) }
+    const { calls } = mockTaskFetch((url, method, body) => {
+      if (url === '/api/tasks' && method === 'GET') return jsonResponse(200, { tasks: [original], options })
+      if (url === '/api/tasks/role-task' && method === 'PUT') return jsonResponse(200, { tasks: [{ id: original.id, ...JSON.parse(body!) }], options })
+      return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
+    })
+    render(<App />)
+    await openTasks(user)
+    await user.click(await screen.findByTestId('task-edit'))
+    const dialog = screen.getByTestId('task-dialog')
+    for (const role of ['manager', 'node', 'normal', 'manager']) {
+      await user.selectOptions(within(dialog).getByTestId('task-type'), role)
+      expect(within(dialog).getByTestId('task-agent')).toHaveValue(agent)
+      expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
+      expect(within(dialog).getByTestId('task-thinking')).toHaveValue('high')
+      await user.click(within(dialog).getByTestId('task-next'))
+      const fixed = within(dialog).getByTestId('task-fixed-extensions')
+      expect(fixed).toHaveTextContent(`${agent} 状态`)
+      expect(fixed).not.toHaveTextContent(`${agent === 'pi' ? 'omp' : 'pi'} `)
+      if (role === 'manager') expect(fixed).toHaveTextContent(`${agent} manager-chat`)
+      else expect(fixed).not.toHaveTextContent('manager-chat')
+      if (role === 'node') expect(fixed).toHaveTextContent(`${agent} node-chat`)
+      else expect(fixed).not.toHaveTextContent('node-chat')
+      expect(within(dialog).getByTestId(`extension-${agent}-tools`)).toBeChecked()
+      expect(within(fixed).queryByRole('checkbox')).toBeNull()
+      await user.click(within(dialog).getByTestId('task-back'))
+    }
+    await saveTask(user, dialog)
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager' })
+    expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
+  })
+
   it('新增 Task 时插入四个命名占位符、查看示例并保存完整字面值', async () => {
     const user = userEvent.setup()
     const prompt = '第一行\n第二行：保留 "引号" 与反斜杠 \\'

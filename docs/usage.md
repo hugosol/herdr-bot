@@ -33,7 +33,7 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 ## Task 类型与固定角色扩展
 
-在现有 task 入口新增或编辑 Task 时，第一步选择用途：普通（`normal`，新建默认）、流程管理者（`manager`）或节点执行者（`node`）。用途不等于 agent 类型，也不绑定某次 Run 身份。manager/node 仅允许 omp；从 pi 切换为角色类型时页面切到 omp，并重置不适用的模型、思考级别及可选扩展。普通类型仍可选 omp 或 pi。直接 HTTP 保存也执行同样的类型/agent 约束。
+在现有 task 入口新增或编辑 Task 时，第一步选择用途：普通（`normal`，新建默认）、流程管理者（`manager`）或节点执行者（`node`）。用途不等于 agent 类型，也不绑定某次 Run 身份。三种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及可选扩展。直接 HTTP 保存仍严格校验用途及对应宿主的固定角色扩展。
 
 第二步的固定扩展随用途变化：manager 包含 manager-chat，node 包含 node-chat，普通类型不加载两者。角色扩展不出现在可选复选框中，不能取消或混装；其他固定项与可选项仍沿用当前 Task 选项目录。保存的 `extensions` 仅是可选项稳定 ID，不应手工放入角色扩展 ID。发起 Chat 和需要新进程的 Resume 都根据来源 Task 的最新类型选择环境；不会偷偷为错误配置补齐角色。修改类型不改变已运行 Chat 的身份、工具或状态。
 

@@ -23,7 +23,7 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
   }
   const manager = reference('manager-native'), current = reference('current-native'), old = reference('old-native')
   const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', userInput: 'KEEP USER INPUT', status: 'running', manager, finished: null, nodes: {
-    A: { status: 'running', execution: { id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
+    A: { status: 'running', execution: { agent: 'omp', id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { agent: 'omp', id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }
   const reports = [

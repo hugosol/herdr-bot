@@ -84,7 +84,7 @@ def migrate(root: Path, config_path: str) -> bool:
         if "taskType" not in task:
             task["taskType"] = "normal"
             changed = True
-        elif task["taskType"] not in ("normal", "manager", "node") or (task["taskType"] != "normal" and task["agent"] != "omp"):
+        elif task["taskType"] not in ("normal", "manager", "node"):
             raise MigrationConflict(f"Task {identity}: invalid taskType/agent combination")
     if not changed:
         return False

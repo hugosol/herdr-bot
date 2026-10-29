@@ -47,13 +47,6 @@ impl Agent {
 #[serde(rename_all = "lowercase")]
 pub enum TaskType { Normal, Manager, Node }
 
-impl TaskType {
-    pub fn validate_agent(self, agent: Agent) -> Result<(), TaskError> {
-        if self != Self::Normal && agent != Agent::Omp { return Err(TaskError::InvalidTaskType); }
-        Ok(())
-    }
-}
-
 /// 一个已保存的 Task。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -151,7 +144,6 @@ impl TaskInput {
             "normal" => TaskType::Normal, "manager" => TaskType::Manager, "node" => TaskType::Node,
             _ => return Err(TaskError::InvalidTaskType),
         };
-        task_type.validate_agent(agent)?;
 
         let model = self
             .model
@@ -250,7 +242,7 @@ impl TaskError {
                 "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
             }
             Self::AgentRequired => "请选择当前选项目录中的 agent。".to_string(),
-            Self::InvalidTaskType => "Task 类型必须为 normal、manager 或 node；manager/node 仅允许 omp。".to_string(),
+            Self::InvalidTaskType => "Task 类型必须为 normal、manager 或 node。".to_string(),
             Self::UnknownAgent(value) => {
                 format!("agent 不在当前选项目录中，收到：{value}。")
             }

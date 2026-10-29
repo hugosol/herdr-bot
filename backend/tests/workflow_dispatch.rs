@@ -12,6 +12,8 @@ mod records;
 mod integrity;
 #[path = "workflow_dispatch/security.rs"]
 mod security;
+#[path = "workflow_dispatch/pi.rs"]
+mod pi;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

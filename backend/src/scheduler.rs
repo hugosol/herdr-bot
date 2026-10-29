@@ -88,8 +88,8 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
     let task_id = bot.task_id.as_deref().ok_or("Bot 未绑定 Task")?;
     let task = state.tasks.get(task_id).await.map_err(|e| e.message())?;
-    if task.task_type != crate::tasks::TaskType::Node || task.agent != crate::tasks::Agent::Omp {
-        return Err("node 必须绑定 node 类型的 omp Task".into());
+    if task.task_type != crate::tasks::TaskType::Node {
+        return Err("node 必须绑定 node 类型的 Task".into());
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
@@ -210,11 +210,10 @@ impl IntoResponse for PreflightFailure {
 }
 
 fn check_role(tasks: &[crate::tasks::Task], id: &str, role: crate::tasks::TaskType, target: &'static str) -> Option<PreflightIssue> {
-    use crate::tasks::{Agent, TaskType};
+    use crate::tasks::TaskType;
     let role_name = if role == TaskType::Manager { "manager" } else { "node" };
     let mut issue = match tasks.iter().find(|task| task.id == id) {
         None => PreflightIssue::new("task-missing", target, format!("Task {id} 不存在；请在 task 入口配置并修正引用。")),
-        Some(task) if task.agent != Agent::Omp => PreflightIssue::new("task-agent-invalid", target, format!("Task {id} 必须使用 omp；请回到此 Task 修正。")),
         Some(task) if task.task_type != role => PreflightIssue::new("task-role-invalid", target, format!("Task {id} 必须是 {role_name} 类型；请回到此 Task 修正。")),
         Some(_) => return None,
     };

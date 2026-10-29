@@ -69,6 +69,7 @@ pub struct Completion {
 pub struct NodeExecution {
     pub id: String,
     pub task_id: String,
+    pub agent: crate::tasks::Agent,
     pub zone: String,
     pub chat: Option<ChatReference>,
 }
@@ -363,7 +364,7 @@ async fn launch(
             .herdr
             .start_agent(
                 &agent,
-                "omp",
+                task.agent.label(),
                 &tab.pane_id,
                 &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger)),
             )
@@ -374,7 +375,7 @@ async fn launch(
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         let identity = tokio::time::timeout_at(
             deadline,
-            state.herdr.started_session(&agent, "omp", deadline),
+            state.herdr.started_session(&agent, task.agent.label(), deadline),
         )
         .await
         .map_err(|_| "获取原生身份超时".to_owned())?
@@ -402,7 +403,7 @@ async fn launch(
             .record_zone(
                 &identity.session_id,
                 &name,
-                "omp",
+                task.agent.label(),
                 &identity.cwd,
                 identity.session_file.as_deref(),
                 Some(&workspace.id),
@@ -668,7 +669,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&target.task)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), zone: target.zone.clone(), chat: None });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), chat: None });
         stage = "workspace";
         let workspace_id = &run.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;
         let workspace = state.herdr.workspace_by_id(workspace_id).await.map_err(|e| e.message())?.ok_or("管理者实际 Workspace 不可用；不回退默认 Workspace")?;
@@ -681,11 +682,11 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         let agent = crate::chats::new_agent_name();
         effects.agent_name = Some(agent.clone());
         stage = "start";
-        state.herdr.start_agent(&agent, "omp", &tab.pane_id, &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger))).await.map_err(|e| e.message())?;
+        state.herdr.start_agent(&agent, target.task.agent.label(), &tab.pane_id, &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger))).await.map_err(|e| e.message())?;
         effects.agent_started = true;
         stage = "identity";
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        let identity = tokio::time::timeout_at(deadline, state.herdr.started_session(&agent, "omp", deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
+        let identity = tokio::time::timeout_at(deadline, state.herdr.started_session(&agent, target.task.agent.label(), deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
         effects.session_id = Some(identity.session_id.clone());
         if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.executions().any(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
             return Err("宿主未返回独立的新原生 Chat 身份".into());
@@ -699,7 +700,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         *run = candidate.clone();
         effects.association_saved = true;
         stage = "history";
-        state.history.record_zone(&identity.session_id, &name, "omp", &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id, identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
+        state.history.record_zone(&identity.session_id, &name, target.task.agent.label(), &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id, identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
         stage = "submit";
         let paths = Runs::paths(state, &run.id);
         let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.input);
@@ -719,7 +720,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), zone: previous.zone.clone(), chat: None,
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), chat: None,
             });
         }
         node.status = "failed".into();

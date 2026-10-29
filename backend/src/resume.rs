@@ -175,7 +175,6 @@ mod degradation {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            task.task_type.validate_agent(agent).map_err(|error| (error.code(), error.message()))?;
             let env = self.environment(&catalog, agent, task.task_type, &task.env.extensions);
             Ok(crate::chats::agent_launch_args(&env, None))
         }

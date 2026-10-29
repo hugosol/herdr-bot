@@ -1,5 +1,5 @@
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
-export type Execution = { id: string; taskId: string; zone: string; chat: ChatReference | null }
+export type Execution = { id: string; taskId: string; agent: 'omp' | 'pi'; zone: string; chat: ChatReference | null }
 export type Failure = { stage: string; message: string; effects?: Record<string, unknown> }
 export type NodeState = {
   status: string

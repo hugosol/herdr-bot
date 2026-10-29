@@ -71,7 +71,7 @@ pub async fn manager_reconcile_dispatch(
                     return rejection(&state, &run, "dispatch-chat-unverified", "缺少原派发现实目标，无法关联真实 Chat；保持 failed，不猜测身份。").await;
                 };
                 let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-                let identity = match tokio::time::timeout_at(deadline, state.herdr.native_session(agent, "omp", deadline)).await {
+                let identity = match tokio::time::timeout_at(deadline, state.herdr.native_session(agent, execution.agent.label(), deadline)).await {
                     Ok(Ok(identity)) => identity,
                     Ok(Err(error)) => return rejection(&state, &run, "dispatch-chat-unverified", &format!("未确认原 Chat：{}；保持 failed。", error.message())).await,
                     Err(_) => return rejection(&state, &run, "dispatch-chat-unverified", "读取原 Chat 身份超时；保持 failed。").await,
