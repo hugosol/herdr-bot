@@ -94,7 +94,7 @@ bot_directory = '.data/bots'
 
 Map 文件列表按文件最后修改时间倒序排列，时间相同按文件名升序；刷新全部重新读取顺序。列表选择 Map 后，依赖图在节点清单上方常驻展示，无折叠入口、图外说明或缩放工具栏。节点清单与 workflow 共用依赖层级排序：前置层在前，同层沿服务返回的当前定义顺序稳定排列；图中对应为从左到右的层级、同列从上到下的稳定顺序，不改写 Map 文件，也不改变实际执行顺序。选择 node 显示本次输入、zone、Bot ID、关联 Bot 的 `node_guide` 原文与依赖；Bot 缺失或无效时保留问题提示，不沿用旧指引。前置／后继可点击定位，关闭详情后焦点回节点清单。依赖图自动布局全部 node，包括独立项；自动适应视口，保留平移与键盘选择。箭头来自 `blocked_by`，如 B 依赖 A 就显示 A → B，不表示执行、材料传递或 Chat 在线状态。无节点的 Map 可阅读，不等于可以启动。
 
-外侧 `bot` 入口打开左右分栏列表与详情，标题为 `bot`；列表按文件最后修改时间倒序排列，同时间按文件名升序，可按名称／ID 筛选。操作按钮为 `new`、`refresh`、`edit`、`delete`；node 的“Bot 明细”进入同一预览。分别切换 `when`、`plan_guide`、`node_guide`，或通过 `json` 看只读原始定义。Task 显示为引用或“尚未绑定 Task”，不嵌入 Task 配置。原始 JSON 不是编辑器。通过外侧 `scheduler` 返回 Map 时重查来源并保留仍存在的 node 选择；来源已移除时显示原因。窄屏按目录、依赖图、节点、详情纵向阅读。
+外侧 `bot` 入口打开左右分栏列表与详情，标题为 `bot`；列表按文件最后修改时间倒序排列，同时间按文件名升序，可按名称／ID 筛选。操作按钮为 `new`、`refresh`、`edit`、`delete`；node 的“Bot 明细”进入同一预览。分别切换 `when`、`plan_guide`、`node_guide`，或通过 `json` 看只读原始定义。只读预览以独立 Task 栏显示绑定 Task 的当前名称，替代直接显示 `task_id` 的引用行；未绑定、引用不存在或名称读取失败时显示对应提示，不嵌入 Task 配置。原始 JSON 仍保留 `task_id`；刷新 Bot 后重新读取 Task 名称。原始 JSON 不是编辑器。通过外侧 `scheduler` 返回 Map 时重查来源并保留仍存在的 node 选择；来源已移除时显示原因。窄屏按目录、依赖图、节点、详情纵向阅读。
 
 Bot 列表（含空态）可新增，预览可修改；当前 Map 可新增 node，选中 node 可修改。ID 独立输入，新增初始为空，修改时只读，JSON 不含顶层 `id`。node ID 是 `nodes` 的 key，Bot ID 由服务端补回。ID 不是文件路径。新草稿使用打包的 [天气 Bot](example/bots/weather-capability.json)／[上海 A](example/maps/trip-readiness.json)，部署不依赖开发仓库；打开、修改草稿或放弃不写定义，也不自动安装依赖。
 
