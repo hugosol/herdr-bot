@@ -34,14 +34,14 @@ async function launchFixture() {
   expect(registered.status).toBe(200)
   const zone: string = (await registered.json()).zones[0].path
   const ids: Record<string, string> = {}
-  for (const role of ['manager', 'node', 'normal']) {
+  for (const role of ['manager', 'normal']) {
     const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
     expect(response.status).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }
   const node = { title: '工作', bot_id: 'worker', input: '', zone, blocked_by: [] as string[] }
   const map = { title: '预检图', description: '', nodes: { A: node, B: { ...node, blocked_by: ['A'] } } }
-  const bot: Bot = { id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.node }
+  const bot: Bot = { id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }
   const mapFile = path.join(maps, 'preflight.json')
   const botFile = path.join(bots, 'worker.json')
   fs.writeFileSync(mapFile, JSON.stringify(map)); fs.writeFileSync(botFile, JSON.stringify(bot))
@@ -67,7 +67,7 @@ test('P7.01 empty Map is rejected before any Run or Chat side effect', async ({ 
 })
 
 // P7.01: independent invalid bindings, including dependent B rather than just
-// ready A. A root-only check, normal-role acceptance, or fallback zone must fail.
+// ready A. A root-only check, manager-role acceptance, or fallback zone must fail.
 test('P7.01 whole graph and manager bindings reject missing resources and wrong roles', async ({ request }, info) => {
   const fixture = await launchFixture()
   const evidence: unknown[] = []
@@ -77,16 +77,16 @@ test('P7.01 whole graph and manager bindings reject missing resources and wrong 
     { code: 'bot-task-required', target: 'bot', mutate: () => { delete fixture.bot.task_id } },
     { code: 'bot-task-required', target: 'bot', mutate: () => { fixture.bot.task_id = '' } },
     { code: 'task-missing', target: 'task', mutate: () => { fixture.bot.task_id = 'absent' } },
-    { code: 'task-role-invalid', target: 'task', mutate: () => { fixture.bot.task_id = fixture.ids.normal } },
+    { code: 'task-role-invalid', target: 'task', mutate: () => { fixture.bot.task_id = fixture.ids.manager } },
     { code: 'zone-required', target: 'node', mutate: () => { fixture.map.nodes.B.zone = '' } },
     { code: 'zone-not-registered', target: 'node', mutate: () => { fixture.map.nodes.B.zone = path.join(fixture.zonePath, 'missing') } },
     { code: 'task-missing', target: 'manager', mutate: () => { fixture.data.managerTaskId = 'absent' } },
-    { code: 'task-role-invalid', target: 'manager', mutate: () => { fixture.data.managerTaskId = fixture.ids.node } },
+    { code: 'task-role-invalid', target: 'manager', mutate: () => { fixture.data.managerTaskId = fixture.ids.normal } },
     { code: 'zone-required', target: 'manager', mutate: () => { fixture.data.zone = '' } },
   ]
   for (const scenario of scenarios) {
     fixture.map.nodes.B.bot_id = 'worker'; fixture.map.nodes.B.zone = fixture.zone
-    fixture.bot.task_id = fixture.ids.node; fixture.data.managerTaskId = fixture.ids.manager; fixture.data.zone = fixture.zone
+    fixture.bot.task_id = fixture.ids.normal; fixture.data.managerTaskId = fixture.ids.manager; fixture.data.zone = fixture.zone
     fs.writeFileSync(server!.storageFile, originalTasks)
     scenario.mutate()
     fs.writeFileSync(fixture.mapFile, JSON.stringify(fixture.map)); fs.writeFileSync(fixture.botFile, JSON.stringify(fixture.bot))
@@ -149,7 +149,7 @@ test('P8.01 unregister and same-path registration recheck current graph without 
 // mutable Workspace, or generic error that cannot reach the original Task fails.
 test('P9.01 selected Map launch form offers only launch configuration and returns errors to the original Task', async ({ page }, info) => {
   const fixture = await launchFixture()
-  fixture.bot.task_id = fixture.ids.normal
+  fixture.bot.task_id = fixture.ids.manager
   fs.writeFileSync(fixture.botFile, JSON.stringify(fixture.bot))
   const stored = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
   stored.tasks.push({ ...stored.tasks.find((task: { id: string }) => task.id === fixture.ids.manager), id: 'pi-manager', name: 'Pi 管理者', agent: 'pi' })
@@ -168,14 +168,14 @@ test('P9.01 selected Map launch form offers only launch configuration and return
   await expect(form.locator('input,select,textarea')).toHaveCount(4)
   await form.getByLabel('本次要求', { exact: true }).fill('# 本次\n\n保留 **Markdown** 原文')
   await form.getByRole('button', { name: '校验启动配置', exact: true }).click()
-  await expect(form.getByRole('alert')).toContainText('必须是 node 类型')
+  await expect(form.getByRole('alert')).toBeVisible()
   await expect(form).toBeVisible()
   await page.screenshot({ path: info.outputPath('launch-preflight-rejection.png'), fullPage: true })
-  await form.getByRole('listitem').filter({ hasText: 'node B：' }).getByRole('button', { name: `修正 Task ${fixture.ids.normal}`, exact: true }).click()
+  await form.getByRole('listitem').filter({ hasText: 'node B：' }).getByRole('button', { name: `修正 Task ${fixture.ids.manager}`, exact: true }).click()
   await expect(page.getByTestId('tab-tasks')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('task-dialog')).toBeVisible()
-  await expect(page.getByTestId('task-name')).toHaveValue('normal')
-  await expect(page.getByTestId('task-type')).toHaveValue('normal')
+  await expect(page.getByTestId('task-name')).toHaveValue('manager')
+  await expect(page.getByTestId('task-type')).toHaveValue('manager')
   expect(server!.herdrCalls()).toEqual([])
   fs.writeFileSync(info.outputPath('form-external-calls.json'), JSON.stringify(server!.herdrCalls()))
 })

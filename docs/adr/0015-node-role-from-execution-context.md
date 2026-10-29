@@ -1,6 +1,6 @@
 # 普通与节点 Task 合并，节点角色由执行上下文确定
 
-- 状态：accepted（设计决策；不表示执行代码已切换）
+- 状态：accepted
 - 日期：2026-10-29
 
 Task 类型收敛为普通（normal）与流程管理者（manager），取消独立 node 类型。同一个普通 Task 可从 zone 独立发起 Chat，也可经 node → Bot → Task 关系用于 workflow 节点派发，避免为了不同发起方式维护重复预设；manager 类型暂时保留。Task 类型与会话 agent 类型正交，保留当前 omp、pi 对 manager 和 node 的支持，不重新加入 omp 专属限制。

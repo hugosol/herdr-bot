@@ -15,7 +15,7 @@
 | --- | --- |
 | 规划者、Map、node | Map 是服务级静态定义；node 给出 Bot 引用、input 原文、zone 路径与同图依赖。边不传材料、不自动启动。运行期间保持定义与 Task 不变。 |
 | Bot | 跨 Map 共享的业务能力文档；when、plan_guide、node_guide 分别供选用、规划与工作理解，可独立为空；不是执行实例、运行门禁或自动注入。 |
-| Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。manager/node 是用途类型，可选择 omp 或 pi；不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
+| Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。Task 用途仅 normal/manager，均可选择 omp 或 pi；node 是本次 Chat 的执行角色，普通 Task 可同时用于独立发起与节点派发，不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
 | 管理者 Chat | 独占状态操作，读取记录与材料并判断交接，显式派发、完成、恢复或结束；不把报告、停轮、退出当完成，不强制持续续轮。不是业务 node。 |
 | 节点 Chat | 在定义 zone 做工作，以 report 正文说明结果地址、用法与限制，可在交接后继续不影响结果的收尾；不能自改流程状态。 |
@@ -23,7 +23,7 @@
 | Herdr／agent／toolkit | Herdr 托管原生 Chat 与输入提交，各 Task 选择的 omp 或 pi 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
 | Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察、定位/恢复已关联 Chat；不暗中创建、接管或改状态。 |
 
-新启动 omp 的文件可能尚未落盘；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
+新启动 omp / pi 的文件可能尚未落盘（pi 在首次用户或助手消息出现后创建文件）；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
 
 术语以[领域词汇](../GLOSSARY.md)为准；尊重 [Task 命名](adr/0012-rename-bot-preset-to-task.md)、[Bot 命名](adr/0013-rename-node-template-to-bot.md)、[zone 与 Workspace 区分](adr/0009-rename-workspace-to-zone-for-herdr.md)和[同机写入边界](adr/0004-session-write-boundary-same-host.md)。历史 ADR 中旧词由其现行术语注记解释，不恢复旧别名。
 
@@ -54,7 +54,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P2 | 三份 Bot 文档独立读取、独立可空，不成为业务门禁。 | [定义格式](scheduler.md#定义职责与唯一格式) |
 | P3 | 内部合法、外部 Bot/Task/zone 未完善仍能保存，不补绑定。 | [保存边界](scheduler.md#保存与校验边界) |
 | P4 | 未知字段、错类型、漏字段、非法依赖或环拒绝且保留原定义。 | [保存边界](scheduler.md#保存与校验边界) |
-| P5 | Task 类型可配置，角色支持 omp/pi、固定扩展不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
+| P5 | Task 类型仅 normal/manager；普通 Task 可独立发起及节点派发，节点固定扩展由执行上下文强制选择，角色支持 omp/pi、不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P6 | 显式 Task 迁移保留身份、完整配置与 Chat 来源，重启/Resume 可读，不猜角色。 | [一次迁移](usage.md#旧-task-显式迁移) |
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P8 | zone 按已登记路径重检；注销拒绝、重登记再检，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
@@ -122,7 +122,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P55 | 可见 workflow 才按有效配置轮询，默认 5 秒、同页不重叠，返回立即读取。 | [轮询](workflow-runtime.md#发起与观察) |
 | P56 | 查询失败保留上次成功内容，显示更新失败/最后成功时间，恢复后更新，不改状态。 | [查询反馈](workflow-runtime.md#发起与观察) |
 | P57 | 图注明当前定义；丢失/损坏/不对应不伪造历史图，保存事实/关联仍可读。 | [历史降级](workflow-runtime.md#发起与观察) |
-| P58 | 双角色随 Task 类型自动启用，不同 node cwd 下读取稳定配置。 | [部署检查](workflow-runtime.md#角色归属与来源集成检查) |
+| P58 | manager 角色随 manager Task 启用，node 角色随节点派发及关联 Resume 启用，不同 node cwd 下读取稳定配置。 | [部署检查](workflow-runtime.md#角色归属与来源集成检查) |
 | P59 | 实际 Chat 通过公共 Prompt 获得角色指引，工具参数不暴露自报身份/归属。 | [角色矩阵](workflow-runtime.md#角色责任与批准动作矩阵) |
 | P60 | 扩展经公共能力工作、支持取消，不依赖 connect-bot 开关或私有实现。 | [公共能力](workflow-runtime.md#角色调用方及公共能力的部署边界) |
 | P61 | 报告投递诊断含 Run/报告/目标/结果/原因，不重复正文；诊断失败不撤销/重投。 | [诊断](workflow-runtime.md#节点报告与独立通知) |

@@ -21,6 +21,12 @@ type Feedback = {
 
 type Dialog = { kind: 'create' } | { kind: 'edit'; id: string }
 
+function isVisibleFixedExtension(entry: NonNullable<TaskOptions['extensions']>[number], task: Pick<Task, 'agent' | 'taskType'>): boolean {
+  return entry.agent === task.agent && entry.kind === 'fixed'
+    && entry.id !== `${task.agent}-node-chat`
+    && (entry.id !== `${task.agent}-manager-chat` || task.taskType === 'manager')
+}
+
 /** 把一次失败归一化成面向使用者的说明；未得到可用响应时明确说“无法确认”。 */
 function describeFailure(result: TaskResult, action: string): string {
   return result.kind === 'rejected'
@@ -263,7 +269,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
 
   const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
   const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
-  const fixedExtensions = extensions.filter((entry) => entry.kind === 'fixed' && (entry.taskType == null || entry.taskType === draft.taskType))
+  const fixedExtensions = extensions.filter((entry) => isVisibleFixedExtension(entry, draft))
   const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
   const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
   const selectionErrors = [
@@ -348,7 +354,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   </div>
                   <div>
                     <dt>固定扩展</dt>
-                    <dd>{data.options.extensions?.filter((entry) => entry.agent === task.agent && entry.kind === 'fixed' && (entry.taskType == null || entry.taskType === task.taskType)).map((entry) => entry.label).join('、') || '无'}</dd>
+                    <dd>{data.options.extensions?.filter((entry) => isVisibleFixedExtension(entry, task)).map((entry) => entry.label).join('、') || '无'}</dd>
                   </div>
                   <div>
                     <dt>可选扩展</dt>
@@ -498,9 +504,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   value={draft.taskType} onChange={(event) => changeType(event.target.value as TaskInput['taskType'])} disabled={saving}>
                   <option value="normal">普通（normal）</option>
                   <option value="manager">流程管理者（manager）</option>
-                  <option value="node">节点执行者（node）</option>
                 </select>
-                <p className="task-hint">manager/node 支持 omp 和 pi；对应角色扩展固定加载，不可取消或混装。类型不是某次执行身份。</p>
+                <p className="task-hint">普通 Task 支持独立启动和 Bot 节点绑定；manager 专用于流程管理。两种类型均支持 omp 和 pi，节点角色仅在实际流程执行时加载。</p>
 
                 <label className="zone-form__label" htmlFor="task-agent">
                   agent

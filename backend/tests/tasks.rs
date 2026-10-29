@@ -44,7 +44,7 @@ async fn task_types_are_enforced_through_direct_http() {
     let id = initial[0]["id"].as_str().unwrap();
     for agent in ["pi", "omp"] {
         input["agent"] = json!(agent);
-        for role in ["manager", "node", "normal"] {
+        for role in ["manager", "normal"] {
             input["taskType"] = json!(role);
             let changed = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
             assert_eq!(changed[0]["taskType"], role);
@@ -64,10 +64,19 @@ async fn task_types_are_enforced_through_direct_http() {
             assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), changed);
         }
     }
-    input["taskType"] = json!("administrator");
-    let rejected = post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await;
-    assert_eq!(rejected.status, 400, "{}", rejected.body);
-    assert!(rejected.body.contains("invalid-task-type"));
+    for agent in ["omp", "pi"] {
+        input["agent"] = json!(agent);
+        for invalid in ["node", "administrator"] {
+            input["taskType"] = json!(invalid);
+            for response in [
+                post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await,
+                common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await,
+            ] {
+                assert_eq!(response.status, 400, "{}", response.body);
+                assert!(response.body.contains("invalid-task-type"));
+            }
+        }
+    }
 }
 
 #[tokio::test]

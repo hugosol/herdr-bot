@@ -14,6 +14,8 @@ mod integrity;
 mod security;
 #[path = "workflow_dispatch/pi.rs"]
 mod pi;
+#[path = "workflow_dispatch/roles.rs"]
+mod roles;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
@@ -66,7 +68,7 @@ impl Scenario {
         let zone = data.path().to_string_lossy().into_owned();
         let mut ids = Vec::new();
         for role in ["manager", "node"] {
-            let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":role,"agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":if role == "node" {"NODE-FIXED"} else {"MANAGER-FIXED"},"extensions":[]}).to_string()).await;
+            let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":if role == "node" {"normal"} else {"manager"},"agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":if role == "node" {"NODE-FIXED"} else {"MANAGER-FIXED"},"extensions":[]}).to_string()).await;
             assert_eq!(response.status, 200, "{}", response.body);
             let body: Value = serde_json::from_str(&response.body).unwrap();
             ids.push(body["tasks"].as_array().unwrap().iter().find(|t| t["name"] == role).unwrap()["id"].as_str().unwrap().to_owned());

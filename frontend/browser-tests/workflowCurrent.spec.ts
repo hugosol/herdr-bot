@@ -33,7 +33,7 @@ async function currentFixture() {
   const { server, root } = context
   const maps = path.join(server.cwd, '.data/workflow-maps'), bots = path.join(server.cwd, '.data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
-  const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'node', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+  const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
   expect(taskResponse.status).toBe(200)
   const taskId = (await taskResponse.json()).tasks[0].id
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', plan_guide: '', node_guide: '', task_id: taskId }))

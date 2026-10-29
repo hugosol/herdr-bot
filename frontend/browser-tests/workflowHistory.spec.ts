@@ -129,7 +129,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const zone = (await post('/api/zones', { path: host.cwd })).zones[0].path
   const base = { agent: 'omp', chatName: '{chat.id}', model: 'gpt-6.1-sol', thinking: 'high', skill: 'teach', extensions: [] }
   const managerTask = (await post('/api/tasks', { ...base, name: 'Manager source', taskType: 'manager', prompt: 'MANAGER INITIAL' })).tasks[0]
-  const nodeConfig = { ...base, name: 'Node source', taskType: 'node', prompt: 'NODE INITIAL ONLY', extensions: ['omp-connect-bot'] }
+  const nodeConfig = { ...base, name: 'Node source', taskType: 'normal', prompt: 'NODE INITIAL ONLY', extensions: ['omp-connect-bot'] }
   const nodeTask = (await post('/api/tasks', nodeConfig)).tasks.find((task: { name: string }) => task.name === 'Node source')
   const maps = path.join(host.cwd, '.data/workflow-maps'), bots = path.join(host.cwd, '.data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })

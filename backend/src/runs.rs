@@ -135,6 +135,36 @@ impl Runs {
             root.join("messages.jsonl"),
         ]
     }
+    /// Recover role from persisted execution identity, including retired attempts.
+    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::catalog::ExecutionRole>, String> {
+        let entries = match fs::read_dir(&state.run_directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut role = None;
+        for entry in entries {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
+            let id = entry.file_name().to_string_lossy().into_owned();
+            let run = self.read(state, &id).await?;
+            let manager = run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id);
+            let nodes = run.nodes.values().flat_map(NodeState::executions)
+                .filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id));
+            for execution in nodes {
+                if role.is_some() || manager || execution.task_id != task_id || execution.agent != agent {
+                    return Err("原生 Chat 的持久执行关联不唯一或与来源 Task 不一致。".into());
+                }
+                role = Some(crate::catalog::ExecutionRole::Node);
+            }
+            if manager {
+                if role.is_some() || run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联不唯一或与来源 Task 不一致。".into()); }
+                role = Some(crate::catalog::ExecutionRole::Manager);
+            }
+        }
+        Ok(role)
+    }
+
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
         let paths = Self::paths(state, id);
         let _guards = self.files.lock(&paths).await;
@@ -666,7 +696,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
     }
     let result: Result<(), String> = async {
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
-        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&target.task)).map_err(|e| e.message())?;
+        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         let node = candidate.nodes.get_mut(id).unwrap();
         node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), chat: None });

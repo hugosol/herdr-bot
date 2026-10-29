@@ -33,11 +33,25 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 ## Task 类型与固定角色扩展
 
-在现有 task 入口新增或编辑 Task 时，第一步选择用途：普通（`normal`，新建默认）、流程管理者（`manager`）或节点执行者（`node`）。用途不等于 agent 类型，也不绑定某次 Run 身份。三种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及可选扩展。直接 HTTP 保存仍严格校验用途及对应宿主的固定角色扩展。
+在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）或流程管理者（`manager`）。两种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及可选扩展。普通 Task 既可从 zone 独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行。
 
-第二步的固定扩展随用途变化：manager 包含 manager-chat，node 包含 node-chat，普通类型不加载两者。角色扩展不出现在可选复选框中，不能取消或混装；其他固定项与可选项仍沿用当前 Task 选项目录。保存的 `extensions` 仅是可选项稳定 ID，不应手工放入角色扩展 ID。发起 Chat 和需要新进程的 Resume 都根据来源 Task 的最新类型选择环境；不会偷偷为错误配置补齐角色。修改类型不改变已运行 Chat 的身份、工具或状态。
+角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项与可选项仍沿用 Task 选项目录，保存的 `extensions` 仅是可选项稳定 ID。
 
-角色入口映射位于 `meta-data/task-options.toml`（`taskType` 限定角色固定项）。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 对应交付及宿主环境提供；配置保存或页面展示成功不代表这些能力已运行验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
+扩展入口位置仍位于 `meta-data/task-options.toml`；代码按稳定 ID `omp-manager-chat`、`pi-manager-chat`、`omp-node-chat`、`pi-node-chat` 识别固定角色，元数据不再支持 `taskType` 适用规则。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 及宿主环境提供；配置保存或页面展示成功不代表原生加载已验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
+
+需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但从持久 Run 中的原 Chat 执行关联恢复节点角色，包含 retry 前保留的旧执行；不新建执行、不重放 trigger config。独立普通 Chat 不因此获得节点角色。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
+
+### 节点 Task 合并的一次性迁移
+
+升级到仅有 `normal / manager` 的版本前，先停止 herdr-bot，并备份实际配置与数据。在仓库根目录执行（两个参数均须显式给出，替换为服务的真实进程工作目录与配置文件）：
+
+```powershell
+python scripts/migrate-node-tasks-to-normal.py --root 'E:\实际服务工作目录' --config 'herdr-bot.toml'
+```
+
+工具只将已有 `taskType: "node"` 原地改为 `"normal"`，omp、pi 一致；保留 Task ID、全部其他配置及重复预设，不自动去重，不改 Bot、Map、Run、历史 Chat 或原生会话的引用。原始 Task 文件按字节备份为同路径 `.pre-node-tasks-to-normal`，再次执行已转换文件不写入。路径重叠、链接、残留 staging 或冲突备份会明确拒绝，不覆盖已有数据。
+
+新版不接受 `node` Task 类型，也不在运行时自动迁移。使用自定义 `tasks.metadata_file` 时，同步移除扩展条目中的 `taskType` 适用配置，保留上述稳定角色 ID、对应 agent、`kind = 'fixed'` 及真实入口路径；数据迁移工具不改写元数据文件。完成后再启动服务，核对 Task 列表及原 Bot 绑定；节点执行身份与既有 Chat 的恢复语义不因 Task 分类转换而改变。若数据还没有 `taskType` 字段，先执行下节的历史分类迁移，再执行本节合并迁移。
 
 ### 旧 Task 显式迁移
 
@@ -66,7 +80,7 @@ Task 配置分为两组：
 
 在 `chat` 的历史视图中使用 `Resume` 返回 Pi／OMP 原生对话，不要求该 Chat 仍在当前登记中。已有目标只做 Herdr 内部导航；需要新进程时，加载同一原生对话，不自动继续中断任务，也不重放 Task 的发起配置或发送新 prompt。Herdr 内部导航不保证 Windows 窗口置前。
 
-新启动的 omp 会话可能尚未写入原生文件。herdr-bot 可按[受限原生路径规则](adr/0014-unpersisted-omp-startup-identity.md)保存身份及预期路径，但这不代表文件已落盘或当前可从磁盘恢复。历史文件中的内部 `startupIdentityPath` 仅由可信发起流程写入，普通 register 上报不能设置或覆盖；历史列表不公开该字段。Resume 只对保存的 ID、启动路径与当前官方引用完全吻合的未落盘候选允许定位，不把任意缺失文件当作在线 Chat。实际读取对应文件时若发现身份冲突，明确拒绝，不跳过冲突后启动替代 Chat、不改绑历史；不新增后台落盘检查。原进程已不存在时仍按既有精确 ID 加载及恢复确认流程处理，未确认同一会话不报告成功。
+新启动的 omp / pi 会话可能尚未写入原生文件；pi 在首次用户或助手消息出现后才创建文件。herdr-bot 可按[受限原生路径规则](adr/0014-unpersisted-omp-startup-identity.md)保存身份及预期路径，但这不代表文件已落盘或当前可从磁盘恢复。历史文件中的内部 `startupIdentityPath` 仅由可信发起流程写入，普通 register 上报不能设置或覆盖；历史列表不公开该字段。Resume 只对保存的 ID、启动路径与当前官方引用完全吻合的未落盘候选允许定位，不把任意缺失文件当作在线 Chat。实际读取对应文件时若发现身份冲突，明确拒绝，不跳过冲突后启动替代 Chat、不改绑历史；不新增后台落盘检查。原进程已不存在时仍按既有精确 ID 加载及恢复确认流程处理，未确认同一会话不报告成功。
 
 新进程优先使用仍然有效的历史工作目录。目录缺失、已删除或不可用时，只有 Herdr Workspace 的 worktree 元数据能够精确关联历史 checkout 路径，且通过元数据中的共享 Git 目录查询 worktree 信息，能够核实唯一且可用的主仓库根目录，才回退到该主目录；不会从目录名称推测关联。无法可靠证明主目录时，在配置的默认 Herdr Workspace 中新建 Tab，不传 `--cwd`，由 Herdr 选择实际工作目录。默认 Workspace 按配置名称唯一匹配，不采用当前焦点或列表中的第一个 Workspace；无法唯一找到时明确失败。主目录回退仍优先使用原 Workspace，原 Workspace 不可用时才使用默认 Workspace；交给 Herdr 选目录时则直接使用配置的默认 Workspace。
 

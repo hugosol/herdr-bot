@@ -81,7 +81,7 @@ $managerInput = @"
 } | ConvertTo-Json -Depth 4
 ```
 
-这些定义未绑定 Task，不能启动。前置检查通过后，在隔离服务的实际页面登记 manager/A/B/C 四个 zone；创建 manager/node 类型的 omp Task，将 Bot 绑定 node Task。保存完整 trigger/env 配置、model/thinking、初始 Skill、prompt、扩展及定义的启动前快照。manager 本次要求使用生成的 `manager-input.txt`。不得把 expected 文件当作实际产物。
+这些定义未绑定 Task，不能启动。前置检查通过后，在隔离服务的实际页面登记 manager/A/B/C 四个 zone；创建 manager 和普通（normal）类型的 omp Task，将 Bot 绑定普通 Task。保存完整 trigger/env 配置、model/thinking、初始 Skill、prompt、扩展及定义的启动前快照。manager 本次要求使用生成的 `manager-input.txt`。不得把 expected 文件当作实际产物。
 
 ## 部署门与启动
 

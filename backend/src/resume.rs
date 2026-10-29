@@ -175,19 +175,33 @@ mod degradation {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            let env = self.environment(&catalog, agent, task.task_type, &task.env.extensions);
+            let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
+                .map_err(|message| ("execution-association-invalid", message))?
+                .unwrap_or_else(|| task.task_type.into());
+            let env = self.environment(&catalog, agent, role, &task.env.extensions);
             Ok(crate::chats::agent_launch_args(&env, None))
         }
 
-        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::tasks::Agent, task_type: crate::tasks::TaskType, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
-            use crate::catalog::{ExtensionKind, ResolvedEnvConfig};
+        pub(super) fn environment(&mut self, catalog: &crate::catalog::Catalog, agent: crate::tasks::Agent, role: crate::catalog::ExecutionRole, selections: &[String]) -> crate::catalog::ResolvedEnvConfig {
+            use crate::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
+            let role_name = match role {
+                ExecutionRole::Standalone => None,
+                ExecutionRole::Manager => Some("manager"),
+                ExecutionRole::Node => Some("node"),
+            };
+            if let Some(role_name) = role_name {
+                let id = format!("{}-{role_name}-chat", agent.label());
+                if !catalog.extensions.iter().any(|extension| extension.id == id) {
+                    self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
+                }
+            }
             for id in selections {
                 if !catalog.extensions.iter().any(|extension| extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional) {
                     self.record("extension", format!("扩展「{id}」的当前可选映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
                 }
             }
             ResolvedEnvConfig {
-                extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, task_type) && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
+                extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
                     match extension.check_entrypoint() {
                         Ok(()) => Some(extension.clone()),
                         Err(reason) => {

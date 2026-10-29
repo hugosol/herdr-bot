@@ -38,7 +38,7 @@ async fn role_hosts_launch_independently_and_history_preserves_each_actual_agent
     for (manager, node) in [("pi", "omp"), ("omp", "pi"), ("pi", "pi")] {
         let s = Scenario::new().await;
         set_role(&s, "manager", manager, "manager").await;
-        let node_task = set_role(&s, "node", node, "node").await;
+        let node_task = set_role(&s, "node", node, "normal").await;
         let started = start(&s, manager).await;
         assert_eq!(started["run"]["manager"]["sessionId"], "mixed-manager");
         identity(&s, node, "mixed-node", true);
@@ -75,14 +75,14 @@ async fn role_hosts_launch_independently_and_history_preserves_each_actual_agent
 #[tokio::test]
 async fn pi_reconciliation_reads_original_execution_after_task_host_changes_and_retry_uses_new_host() {
     let s = Scenario::new().await;
-    set_role(&s, "node", "pi", "node").await;
+    set_role(&s, "node", "pi", "normal").await;
     start(&s, "omp").await;
     s.herdr.set_behavior(json!({"fail_agent_get":true}));
     let failed = s.dispatch("mixed-manager", &["A"]).await;
     assert_eq!(failed["snapshot"]["nodes"]["A"]["failure"]["stage"], "identity");
     let original = &failed["snapshot"]["nodes"]["A"]["execution"];
     assert_eq!(original["agent"], "pi");
-    set_role(&s, "node", "omp", "node").await;
+    set_role(&s, "node", "omp", "normal").await;
     let before = s.herdr.calls();
     // Current Task is OMP; this already-started execution is still Pi.
     identity(&s, "pi", "original-pi", true);
@@ -108,13 +108,13 @@ async fn pi_reconciliation_reads_original_execution_after_task_host_changes_and_
 async fn pi_roles_reject_wrong_native_host_and_whole_graph_rejects_wrong_task_role() {
     let s = Scenario::new().await;
     set_role(&s, "manager", "pi", "manager").await;
-    set_role(&s, "node", "pi", "normal").await;
+    set_role(&s, "node", "pi", "manager").await;
     let before = s.herdr.calls();
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":""}).to_string()).await;
     assert_eq!(response.status, 400, "{}", response.body);
     assert!(response.body.contains("task-role-invalid"));
     assert_eq!(s.herdr.calls(), before, "preflight must not start any host");
-    set_role(&s, "node", "pi", "node").await;
+    set_role(&s, "node", "pi", "normal").await;
     identity(&s, "omp", "wrong-manager-host", false);
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":""}).to_string()).await;
     assert_eq!(response.status, 500, "{}", response.body);

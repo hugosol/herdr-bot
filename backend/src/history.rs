@@ -174,7 +174,7 @@ impl History {
         let session_file = valid_text(session_file)
             .filter(|value| Path::new(value).is_absolute());
         let startup_identity_path = valid_text(startup_identity_path)
-            .filter(|path| from_zone && agent_type == Some("omp") && Some(*path) == session_file);
+            .filter(|path| from_zone && matches!(agent_type, Some("omp" | "pi")) && Some(*path) == session_file);
 
         if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
             if from_zone || !record.name_from_zone {

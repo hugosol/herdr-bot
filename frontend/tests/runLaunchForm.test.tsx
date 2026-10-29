@@ -6,7 +6,7 @@ import type { Task } from '../src/taskApi'
 
 const options = { agents: ['omp', 'pi'], models: ['default'], thinking: {}, skills: [] }
 const tasks: Task[] = (['omp', 'pi'] as const).flatMap(agent =>
-  (['normal', 'manager', 'node'] as const).map(taskType => ({
+  (['normal', 'manager'] as const).map(taskType => ({
     id: `${agent}-${taskType}`, name: `${agent} ${taskType}`, agent, taskType,
     chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [],
   })))

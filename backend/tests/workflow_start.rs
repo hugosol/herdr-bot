@@ -15,6 +15,10 @@ async fn fixture() -> (
     String,
     Vec<String>,
 ) {
+    fixture_for_agent("omp").await
+}
+
+async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Config, TestServer, String, Vec<String>) {
     let data = TempDir::new("workflow start records");
     let herdr = HerdrFixture::new("workflow manager external");
     let fixtures = common::repo_fixtures_dir();
@@ -67,7 +71,7 @@ async fn fixture() -> (
         .to_owned();
     let mut ids = Vec::new();
     for role in ["manager", "node"] {
-        let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":role,"agent":"omp","chatName":"{chat.id}","model":"default","thinking":"default","skill":null,"prompt":"FIXED-MANAGER-ROLE","extensions":[]}).to_string()).await;
+        let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":if role == "node" {"normal"} else {"manager"},"agent":agent,"chatName":"{chat.id}","model":"default","thinking":"default","skill":null,"prompt":"FIXED-MANAGER-ROLE","extensions":[]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         ids.push(
@@ -303,6 +307,44 @@ async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_ins
     assert_eq!(result["results"][0]["effects"]["inputSubmitted"], true);
     assert!(!manager_file.exists(), "manager file must remain owned by OMP");
     assert!(!node_file.exists(), "node file must remain owned by OMP");
+}
+
+#[tokio::test]
+async fn missing_pi_node_file_still_submits_initial_instructions_after_association() {
+    let (data, herdr, config, server, zone, ids) = fixture_for_agent("pi").await;
+    herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"pi-manager"},"native_cwd":data.path()}));
+    let started = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+        &json!({"managerTaskId":ids[0],"zone":zone,"userInput":""}).to_string()).await;
+    assert_eq!(started.status, 201, "{}", started.body);
+    let run: Value = serde_json::from_str(&started.body).unwrap();
+    let file = data.path().join("2026-10-29T06-31-42-214Z_01a1865b-7185-74a2-af0e-9d7eb972c0ee.jsonl");
+    let release = data.path().join("pi-node-input-release");
+    herdr.set_behavior(json!({
+        "native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":file},
+        "native_cwd":data.path(), "prompt_gate":{"wait_for_file":release,"timeout_ms":10000}
+    }));
+    let addr = server.addr();
+    let request = tokio::spawn(async move {
+        post_json_over_tcp(addr, "/api/workflow/manager/dispatch",
+            &json!({"sessionId":"pi-manager","nodes":["A"]}).to_string()).await
+    });
+    assert!(common::wait_until(std::time::Duration::from_secs(5), || {
+        herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count() == 2
+    }).await, "pi node never received initial instructions while its native file was absent");
+    let root = config.scheduler.run_directory.join(run["id"].as_str().unwrap());
+    let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "01a1865b-7185-74a2-af0e-9d7eb972c0ee");
+    let history: Value = serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    let node = history.as_array().unwrap().iter().find(|entry| entry["sessionId"] == "01a1865b-7185-74a2-af0e-9d7eb972c0ee").unwrap();
+    assert_eq!(node["startupIdentityPath"], json!(file));
+    assert_eq!(node["agentType"], "pi");
+    assert!(!file.exists(), "herdr-bot must not manufacture native files");
+    fs::write(release, "release").unwrap();
+    let response = request.await.unwrap();
+    assert_eq!(response.status, 200, "{}", response.body);
+    let result: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(result["results"][0]["status"], "running");
+    assert_eq!(result["results"][0]["effects"]["inputSubmitted"], true);
 }
 
 #[tokio::test]

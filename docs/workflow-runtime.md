@@ -168,7 +168,7 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 模型业务参数只有目标 node ID 数组；不得让模型填写 sessionId、Run ID、角色或归属。后端按真实管理者关联解析本次 Run，逐项重新检查状态与依赖，返回 `results` 和与 status 相同的查询字段。每项包含 `nodeId`、`status`（`rejected`、`failed` 或 `running`）。拒绝项有 `reasons`，启动失败项有 `failure.stage/message/effects`；已发生的 Workspace、Tab、pane、agent、原生身份及指示尝试/确认均如实保留。`persistenceError` 表示失败事实未能落盘，`historyError` 表示当前事实已提交但追加历史失败；调用者不能把它们当作全量成功或自动重试理由。
 
-每个合法目标沿 node → Bot → node 类型 omp Task 解析完整 trigger config 和 env config，在定义中仍登记且有效的 zone 创建独立原生 Chat。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与定义 zone 一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
+每个合法目标沿 node → Bot → 普通（normal）Task（omp/pi） 解析完整 trigger config 和 env config，在定义中仍登记且有效的 zone 创建独立原生 Chat。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与定义 zone 一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
 
 节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 仅包含自身 node 标识/名称、运行说明及三份记录的绝对路径，最后保留 node.input 原文；不附 manager user_input、Bot 文档或完整 Map。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
@@ -195,7 +195,7 @@ node scripts/check-test-network-policy.mjs
 
 这些检查保留真实 HTTP 处理、持久化和生产 Herdr adapter；外部记录型 Herdr 是受控条件，测试中的入口占位文件只让后端配置检查可执行，**不证明角色扩展可加载、工具参数面正确、Prompt 已注入或 connect-bot 关闭时原生运行成功**。同机校验仍不是认证，session_id 仍不是秘密凭据，同机进程冒用风险不因测试通过而消失；没有新增 token。
 
-双角色部署验收还必须在独占 Herdr/omp 环境实际加载 metadata 指定的 `manager-chat.ts` 与 `node-chat.ts`，关闭 connect-bot，按普通 → manager → node → 普通切换 Task 类型，并使用两个不同 node cwd。通过真实工具与 Prompt/Session/HTTP 公共能力观察对应角色工具、首次启用指引、原生身份和实际请求目标；使用显式非默认 endpoint、config.path/configBaseDir 对照有效配置与真实请求，不按角色 ID 推导目录。还须在 toolkit 交付源码上检查角色 → common、common 不反向依赖角色、foundation 不依赖 business，且不引用 connect-bot 私有实现。缺少角色入口或源码时，这部分 P22.01 工具参数面、P58.01、P60.02、P67.04 必须报告未验证，不能用上述后端矩阵或入口文件存在替代运行证据。
+双角色部署验收还必须在独占 Herdr/omp 环境实际加载 metadata 指定的 `manager-chat.ts` 与 `node-chat.ts`，关闭 connect-bot，验证普通 Task 独立启动 → 同一普通 Task 节点派发 → 节点 Chat Resume，并另行验证 manager Task 的 manager 角色，并使用两个不同 node cwd。通过真实工具与 Prompt/Session/HTTP 公共能力观察对应角色工具、首次启用指引、原生身份和实际请求目标；使用显式非默认 endpoint、config.path/configBaseDir 对照有效配置与真实请求，不按角色 ID 推导目录。还须在 toolkit 交付源码上检查角色 → common、common 不反向依赖角色、foundation 不依赖 business，且不引用 connect-bot 私有实现。缺少角色入口或源码时，这部分 P22.01 工具参数面、P58.01、P60.02、P67.04 必须报告未验证，不能用上述后端矩阵或入口文件存在替代运行证据。
 
 ## 派发验证入口与证据边界
 
@@ -345,7 +345,7 @@ Content-Type: application/json
 
 派发阶段 failed 返回 `dispatch-reconciliation-required`，包括未知原生身份的异常窗口：先 reconcile_dispatch，不以 retry 的 confirmed 代替核实。确认未创建则恢复 pending，之后另行 dispatch；确认原 Chat 已创建则恢复原执行 running，若核实该执行无法继续，再 fail 记录执行失败后选择 retry。不确定保持 failed，不盲目启动另一 Chat。若原执行可继续，使用 recover，不是 retry。
 
-retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → node Task 的 trigger config/env config、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
+retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → 普通 Task 的 trigger config/env config，并按节点执行上下文固定加载对应宿主的 node-chat、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
 
 当前 `snapshot.nodes.<nodeId>.execution/failure` 只属于新尝试；`previousExecutions` 依次保留每次被替代执行及当时的 failure，当前事实读取不依赖 history 重放。首次节点的该数组为空。解析目标失败的新尝试仍有独立执行 ID，并保留原来源 Task/zone 引用用于解释失败；它不是可用目标或自动回退。`history.jsonl` 追加 `action=retry`、管理者 actor、依据、`previousExecution/previousFailure` 和新 `execution/failure`，不覆盖既有 dispatch/fail/报告历史。
 
@@ -496,7 +496,7 @@ node.input 应明确要求写上述文件、读取文件核对内容，然后通
 
 1. 按[测试指引](agents/testing.md)构建交付页面和安全关机壳。参考[静态样例的隔离配置](example/README.md#在隔离目录运行)，但不要对其用户配置或静态多节点样例直接发起 Chat。为本轮新建独占 service cwd、数据根、manager zone、node zone 和证据目录；配置数值回环动态端口、`mdns.enabled=false`、显式 `scheduler.run_directory` 和稳定的本说明绝对路径。三份记录留在 node zone 外。所有存储路径都归本轮所有，不能只把配置文件放到 Temp 却沿用用户数据。
 2. 先核实当前 metadata 指定的 manager-chat/node-chat 是真实部署入口，能够加载公共 Session、角色工具及 `first-enabled-run` Prompt；同时核实 omp 未启用 autoResume。确认可以通过本轮独占的 Herdr 实例/命名 session 隔离 Workspace、Tab 和 agent。命名 session 或配置隔离未建立前不要调用用户的默认 Herdr 实例；只存在 Herdr 可执行文件不足以证明隔离可用。任一前提缺失就保存真实错误并停止，不修改 metadata 指向空扩展、不手写运行事实。
-3. 在隔离服务的实际页面登记两个 zone，创建 manager/node 类型的 omp Task，固定本轮 model/thinking、初始 Skill、prompt 和扩展选择并保存其预期。创建一个引用 node Task 的 Bot 和仅含 ONE 的 Map，node.zone 为独占 node zone，输入采用上述字面任务。启动前保存这些实际定义及本次要求；运行期间不再修改。
+3. 在隔离服务的实际页面登记两个 zone，创建 manager 和普通（normal）类型的 omp Task，固定本轮 model/thinking、初始 Skill、prompt 和扩展选择并保存其预期。创建一个引用普通 Task 的 Bot 和仅含 ONE 的 Map，node.zone 为独占 node zone，输入采用上述字面任务。启动前保存这些实际定义及本次要求；运行期间不再修改。
 4. 经 scheduler 页面显式发起 Run，保存页面结果及 Run ID。由真实 manager 使用角色工具查 status，确认 ONE ready，显式 dispatch ONE；不能由验收脚本手填 sessionId 冒充管理者。记录 manager 与 node 不同的原生 session_id、实际 cwd、Workspace/Tab/pane/agent 关联、公共 Prompt 实际注入与工具原始参数/结果。应由角色扩展取得身份，不允许模型提供归属。
 5. node 在自身 cwd 写文件并调用真实 report。管理者用 status 与传入记录路径读取已保存报告，亲自读取该绝对文件，核对以上独立字节预期；随后显式 complete ONE，再 finish。若 manager 停轮，可人工要求继续核对/完成，但每次补充输入、时间、对象原生身份和原因都必须保留，不声称强制续轮。通知失败与保存失败分开解释，不盲目重报或重派。
 6. 保存实际文件的原始字节、全部原生工具结果、两份原生 Chat 引用/可供复查的对话、最终 `run.json`、`history.jsonl`、`messages.jsonl` 和完整人工干预记录。用 status/记录确认 ONE completed、非空首次 completion reason、Run completed、首次 finished 事实，以及对应 report/complete/finish 历史。缺失的记录应标为缺失，不能生成空记录充数。任何保存/历史/通知部分失败均单列，不凭最终状态抹去。

@@ -64,21 +64,20 @@ label = 'model-cost'
 agent = 'omp'
 kind = 'fixed'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp\model-cost.ts'
-# Role extensions are fixed by Task purpose, never selectable. Entrypoints are
-# delivered by my-agent-toolkit; configuring a Task does not verify native loading.
+# Stable manager-chat/node-chat IDs have code-owned execution-role applicability.
+# Node roles load only for workflow execution, never standalone normal Tasks.
+# Entrypoints remain configurable; saving a Task does not verify native loading.
 [[extensions]]
 id = 'omp-manager-chat'
 label = 'manager-chat'
 agent = 'omp'
 kind = 'fixed'
-taskType = 'manager'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\manager-chat.ts'
 [[extensions]]
 id = 'omp-node-chat'
 label = 'node-chat'
 agent = 'omp'
 kind = 'fixed'
-taskType = 'node'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\omp-auto\node-chat.ts'
 [[extensions]]
 id = 'omp-codebase-tools'
@@ -115,14 +114,12 @@ id = 'pi-manager-chat'
 label = 'manager-chat'
 agent = 'pi'
 kind = 'fixed'
-taskType = 'manager'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\manager-chat.ts'
 [[extensions]]
 id = 'pi-node-chat'
 label = 'node-chat'
 agent = 'pi'
 kind = 'fixed'
-taskType = 'node'
 entrypoint = 'E:\Developer\myhub\my-agent-toolkit\entrypoints\pi-auto\node-chat.ts'
 [[extensions]]
 id = 'pi-codebase-tools'

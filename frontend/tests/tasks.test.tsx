@@ -240,10 +240,10 @@ describe('Task tab：读取与展示', () => {
     const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
       taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', extensions: [`${agent}-tools`] }
     const options = { ...OPTIONS, extensions: (['omp', 'pi'] as const).flatMap(host => [
-      { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', taskType: null, entrypoint: '/state.ts' },
-      { id: `${host}-manager`, label: `${host} manager-chat`, agent: host, kind: 'fixed', taskType: 'manager', entrypoint: '/manager.ts' },
-      { id: `${host}-node`, label: `${host} node-chat`, agent: host, kind: 'fixed', taskType: 'node', entrypoint: '/node.ts' },
-      { id: `${host}-tools`, label: `${host} 工具`, agent: host, kind: 'optional', taskType: null, entrypoint: '/tools.ts' },
+      { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', entrypoint: '/state.ts' },
+      { id: `${host}-manager-chat`, label: `${host} manager-chat`, agent: host, kind: 'fixed', entrypoint: '/manager.ts' },
+      { id: `${host}-node-chat`, label: `${host} node-chat`, agent: host, kind: 'fixed', entrypoint: '/node.ts' },
+      { id: `${host}-tools`, label: `${host} 工具`, agent: host, kind: 'optional', entrypoint: '/tools.ts' },
     ]) }
     const { calls } = mockTaskFetch((url, method, body) => {
       if (url === '/api/tasks' && method === 'GET') return jsonResponse(200, { tasks: [original], options })
@@ -254,7 +254,8 @@ describe('Task tab：读取与展示', () => {
     await openTasks(user)
     await user.click(await screen.findByTestId('task-edit'))
     const dialog = screen.getByTestId('task-dialog')
-    for (const role of ['manager', 'node', 'normal', 'manager']) {
+    expect(within(within(dialog).getByTestId('task-type')).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['normal', 'manager'])
+    for (const role of ['manager', 'normal', 'manager']) {
       await user.selectOptions(within(dialog).getByTestId('task-type'), role)
       expect(within(dialog).getByTestId('task-agent')).toHaveValue(agent)
       expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
@@ -265,8 +266,7 @@ describe('Task tab：读取与展示', () => {
       expect(fixed).not.toHaveTextContent(`${agent === 'pi' ? 'omp' : 'pi'} `)
       if (role === 'manager') expect(fixed).toHaveTextContent(`${agent} manager-chat`)
       else expect(fixed).not.toHaveTextContent('manager-chat')
-      if (role === 'node') expect(fixed).toHaveTextContent(`${agent} node-chat`)
-      else expect(fixed).not.toHaveTextContent('node-chat')
+      expect(fixed).not.toHaveTextContent('node-chat')
       expect(within(dialog).getByTestId(`extension-${agent}-tools`)).toBeChecked()
       expect(within(fixed).queryByRole('checkbox')).toBeNull()
       await user.click(within(dialog).getByTestId('task-back'))

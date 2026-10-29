@@ -16,7 +16,7 @@ async function fixture() {
   expect(response.status).toBe(200)
   const zone = (await response.json()).zones[0].path
   const ids: Record<string, string> = {}
-  for (const role of ['manager', 'node']) {
+  for (const role of ['manager', 'normal']) {
     response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE', extensions: [] }) })
     expect(response.status).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
@@ -24,7 +24,7 @@ async function fixture() {
   const maps = path.join(server.cwd, '.data/workflow-maps'), bots = path.join(server.cwd, '.data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'launch.json'), JSON.stringify({ title: '启动图', description: '', nodes: { A: { title: 'A', bot_id: 'worker', input: 'NODE ONLY', zone, blocked_by: [] } } }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.node }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   return { server, zone, ids }
 }
 

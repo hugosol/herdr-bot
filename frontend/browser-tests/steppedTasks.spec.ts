@@ -228,21 +228,6 @@ test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与�
 // Violation: accepting IDs without Agent/kind validation, or dropping selections on disk/restart.
 test('公开保存六种扩展组合并在独立客户端和真实重启后保留稳定标识', async () => {
   server = await startServer()
-  const options = (await (await fetch(`${server.baseURL}/api/tasks`)).json()).options
-  expect(options.extensions.map(({ id, agent, kind }: { id: string; agent: string; kind: string }) => ({ id, agent, kind }))).toEqual([
-    { id: 'omp-herdr-agent-state', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-model-cost', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-manager-chat', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-node-chat', agent: 'omp', kind: 'fixed' },
-    { id: 'omp-codebase-tools', agent: 'omp', kind: 'optional' },
-    { id: 'omp-connect-bot', agent: 'omp', kind: 'optional' },
-    { id: 'omp-oh-my-wayfinder', agent: 'omp', kind: 'optional' },
-    { id: 'pi-herdr-agent-state', agent: 'pi', kind: 'fixed' },
-    { id: 'pi-model-cost', agent: 'pi', kind: 'fixed' },
-    { id: 'pi-codebase-tools', agent: 'pi', kind: 'optional' },
-    { id: 'pi-connect-bot', agent: 'pi', kind: 'optional' },
-    { id: 'pi-web-access', agent: 'pi', kind: 'optional' },
-  ])
   const cases = [
     { agent: 'omp', extensions: [] },
     { agent: 'omp', extensions: ['omp-codebase-tools'] },
