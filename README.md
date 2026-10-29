@@ -8,7 +8,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 - **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。
-- **workflow**：倒序查看全部 Run、只读状态图、当前/旧执行与报告，Resume 已关联 Chat；可见时轮询，查询失败保留上次内容，刷新不重新启动。需求、配置与限制见 [Map Run 长期契约](docs/workflow-contract.md)与[运行说明](docs/workflow-runtime.md)。
+- **workflow**：按日期倒序浏览和筛选全部 Run；全宽详情中用固定节点列表、横向状态图与报告查看现场，图中显示 Task 名称及独立运行标记，Resume 已关联 Chat；返回保留列表上下文，可见时轮询，查询失败保留上次内容，刷新不重新启动。需求、配置与限制见 [Map Run 长期契约](docs/workflow-contract.md)与[运行说明](docs/workflow-runtime.md)。
 - **server**：调用预先配置的启动／停止脚本，以及手动关机。
 
 ## 构建与运行

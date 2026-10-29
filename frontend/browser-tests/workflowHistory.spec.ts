@@ -68,7 +68,7 @@ test(`P52.02 P53.01 P57.02 ${condition} Map retains current and collapsed old hi
   const applicable = details.getByRole('region', { name: '当前执行适用报告', exact: true })
   await expect(applicable).toContainText('CURRENT APPLICABLE BODY')
   await expect(applicable).not.toContainText('OLD BODY NOT APPLICABLE')
-  const history = details.locator('details')
+  const history = details.locator('details[aria-label="已保存旧执行事实"]')
   await expect(history).not.toHaveAttribute('open')
   await expect(history.getByText('OLD FAILURE')).not.toBeVisible()
   await history.getByText('旧执行历史', { exact: false }).click()
@@ -79,6 +79,7 @@ test(`P52.02 P53.01 P57.02 ${condition} Map retains current and collapsed old hi
   await expect(history).toContainText('OLD BODY NOT APPLICABLE')
   await expect(applicable.locator('time')).toHaveAttribute('datetime', '1970-01-01T00:00:05.000Z')
   await expect(history.locator('time')).toHaveAttribute('datetime', '1970-01-01T00:00:02.000Z')
+  await page.locator('.workflow-run-background > summary').click()
   for (const [scope, id, pane] of [
     [page.getByRole('region', { name: '管理者 Chat', exact: true }), 'manager-native', 'manager-pane'],
     [current, 'current-native', 'current-pane'],
@@ -100,7 +101,7 @@ test(`P52.02 P53.01 P57.02 ${condition} Map retains current and collapsed old hi
   expect(detail.run.nodes.A.status).toBe('running')
   expect(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))).toEqual(before)
   await page.screenshot({ path: info.outputPath('current-old-manager-resume.png'), fullPage: true })
-  await page.getByRole('button', { name: 'B：pending', exact: true }).click()
+  await page.getByRole('navigation', { name: '已保存节点状态' }).locator('[data-node-id="B"]').click()
   await expect(details.getByRole('button', { name: 'Resume', exact: true })).toHaveCount(0)
   await expect(details).toContainText('尚无当前执行或 Chat 关联')
   await page.waitForTimeout(150)
@@ -215,7 +216,8 @@ test('P53.01 P68.09 manager current old Resume failures and unknown outcomes nev
   const before = files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))
   await page.goto(`${server.baseURL}/#workflow/history-run`)
   const details = page.getByRole('region', { name: '当前节点详情', exact: true })
-  await details.locator('summary').click()
+  await details.locator('details[aria-label="已保存旧执行事实"] > summary').click()
+  await page.locator('.workflow-run-background > summary').click()
   const cases = [
     { scope: page.getByRole('region', { name: '管理者 Chat', exact: true }), id: 'manager-native', behavior: { agents: [target('manager-native', 'manager-pane')], fail_agent_focus: true }, code: 'herdr-command-failed', text: 'Herdr 聚焦失败', outcome: 'failed' },
     { scope: details.getByRole('region', { name: '旧执行 Chat', exact: true }), id: 'old-native', behavior: { fail_agent_list: true }, code: 'herdr-command-failed', text: '查找／身份核实失败', outcome: 'failed' },
@@ -248,7 +250,7 @@ test('P53.01 P68.09 manager current old Resume failures and unknown outcomes nev
   expect(detail.run.status).toBe('running')
   expect(detail.run.nodes.A.status).toBe('running')
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
-  await expect(details).toContainText('节点状态：running')
+  await expect(details.locator('.workflow-status')).toHaveAttribute('data-status', 'running')
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: info.outputPath('resume-failures-unconfirmed.png'), fullPage: true })

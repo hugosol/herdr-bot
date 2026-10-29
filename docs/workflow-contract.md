@@ -114,7 +114,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 
 | 编号 | 应满足的结果／不可弱化的边界 | 长期参考 |
 | --- | --- | --- |
-| P50 | workflow 跨 Map 倒序列全部 Run、完成数和未接管提示，不增加列表操作/筛选。 | [观察](workflow-runtime.md#发起与观察) |
+| P50 | workflow 默认跨 Map 倒序、按日期列全部 Run；时间在前，无表头/归属列，完成数仅 n/m；提供显式组合筛选，进详情隐藏列表，返回保留筛选/滚动，详情区分未接管事实；不增加运行控制。 | [观察](workflow-runtime.md#发起与观察) |
 | P51 | 只读图用文字与视觉标记，不以颜色/Chat 状态独自替代 node 状态；manager 不是 node。 | [观察](workflow-runtime.md#发起与观察) |
 | P52 | 详情区分当前定义/执行/适用报告/旧历史及各 Chat，无关联不补建。 | [观察](workflow-runtime.md#发起与观察) |
 | P53 | Resume 指定 Chat，如实成功/失败/未知，不改节点、不接管旧 Run。 | [观察](workflow-runtime.md#发起与观察)、[普通恢复](usage.md#历史-chat-resume) |

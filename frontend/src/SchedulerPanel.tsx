@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type BotRevision, type BotCatalog, type WorkflowMap } from './schedulerApi'
 import { MapGraph } from './MapGraph'
+import { orderedMapNodeIds } from './mapNodeOrder'
 import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { RunLaunchForm } from './RunLaunchForm'
@@ -327,7 +328,9 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
               <section aria-label="节点列表">
               <div className="scheduler-section-heading"><h4>节点与前置依赖</h4><span>{Object.keys(map.nodes).length} 个节点</span></div>
               {Object.keys(map.nodes).length === 0 && <p>此 Map 没有 node。</p>}
-              <ul className="scheduler-node-list">{Object.entries(map.nodes).map(([id, node]) => <li key={id}>
+              <ul className="scheduler-node-list">{orderedMapNodeIds(map).map(id => {
+                const node = map.nodes[id]
+                return <li key={id}>
                 <button type="button" ref={(element) => { if (element) nodeButtons.current.set(id, element); else nodeButtons.current.delete(id) }}
                   aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} onClick={() => setSelectedId(id)}>
                   <span className="scheduler-node-id">{id}</span><span className="scheduler-node-summary"><strong>{node.title}</strong>
@@ -335,7 +338,7 @@ export function SchedulerPanel({ active, navigationGuard, onTask, onZones }: { a
                     <span>Bot：{node.bot_id}</span>{botProblems[id] && <span className="scheduler-node-warning">{botProblems[id]}</span>}
                   </span><span aria-hidden="true">→</span>
                 </button>
-              </li>)}</ul>
+              </li>})}</ul>
               </section>
               <details className="scheduler-graph-disclosure" open={graphOpen} onToggle={(event) => setGraphOpen(event.currentTarget.open)}>
                 <summary>依赖图</summary>

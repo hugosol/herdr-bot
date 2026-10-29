@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: .2rem;
   width: 100%;
   height: 100%;
@@ -103,7 +103,22 @@
   overflow-wrap: anywhere;
 }
 
-.scheduler .scheduler-node span {
+.scheduler .scheduler-node > * {
+  flex-shrink: 0;
+}
+
+.scheduler .scheduler-node strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.scheduler .scheduler-node-id-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #95a3b5;
   font-family: Consolas, monospace;
   font-size: .85rem;
@@ -135,6 +150,11 @@
 }
 
 @media (forced-colors: active) {
+  .scheduler .scheduler-node { border-color: ButtonText; background: ButtonFace; color: ButtonText; }
+  .scheduler .scheduler-node-id-label,
+  .scheduler .scheduler-node-relation,
+  .scheduler .scheduler-node-problem { color: ButtonText; }
+  .scheduler .scheduler-node-related { border-color: Highlight; }
   .scheduler .scheduler-graph-edge { stroke: CanvasText; }
   .scheduler .scheduler-graph-edge-related { stroke: Highlight; }
   .scheduler .scheduler-node[aria-pressed="true"] { border-color: Highlight; }

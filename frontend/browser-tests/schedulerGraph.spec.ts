@@ -9,14 +9,14 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // Approved seam: S1, the delivered page reading real isolated files. Independent
 // source: P10/P11's fixed A/B -> C, isolated D; never derive expected edges from
 // the returned graph. A reversed arrow or edge-only node list must fail here.
-test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrows', async ({ page }, testInfo) => {
+test('P10 P11 unordered Map keeps stable dependency layers in list and graph with only prerequisite-to-dependent arrows', async ({ page }, testInfo) => {
   server = await startServer()
   const maps = path.join(server.cwd, '.data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({ title: '并行与汇合', description: '独立预期：A → C，B → C；D 无连接。', nodes: {
-    A: { title: '准备甲', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
-    B: { title: '准备乙', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
     C: { title: '汇合', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['A', 'B'] },
+    B: { title: '准备乙', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
+    A: { title: '准备甲', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
     D: { title: '独立工作', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
   } }))
   await page.goto(server.baseURL)
@@ -25,6 +25,15 @@ test('P10 P11 real Map shows every node and only prerequisite-to-dependent arrow
   await page.getByText('依赖图', { exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
+  // The persisted JSON is C/B/A/D, but the service serializes its parsed Map
+  // in canonical key order. Preserve parallel order from the actual definition
+  // the page receives, not the original file's insignificant JSON key order.
+  const current = await (await page.request.get(`${server.baseURL}/api/scheduler/maps/parallel.json`)).json()
+  const peers = Object.keys(current.nodes).filter(id => id !== 'C')
+  const expectedOrder = [...peers, 'C'].map(id => `${current.nodes[id].title} ${id}`)
+  const outline = page.getByRole('region', { name: '节点列表', exact: true })
+  expect(await outline.getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual(expectedOrder)
+  expect(await graph.getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual(expectedOrder)
   for (const [id, title] of [['A', '准备甲'], ['B', '准备乙'], ['C', '汇合'], ['D', '独立工作']]) {
     const node = graph.getByRole('button', { name: `${title} ${id}`, exact: true })
     await expect(node).toBeVisible()

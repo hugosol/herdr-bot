@@ -71,9 +71,11 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
   // User guidance criterion: a still-running saved state must not invite a
   // manual takeover or suggest ordinary Chat Resume restores management.
   await expect(page.getByText('历史现场 / 未接管：当前后端只读取已保存事实。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。', { exact: true })).toBeVisible()
+  await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
-  await expect(page.getByText('A：running', { exact: true })).toBeVisible()
-  await expect(page.getByText('B：failed', { exact: true })).toBeVisible()
+  const navigation = page.getByRole('navigation', { name: '已保存节点状态' })
+  await expect(navigation.locator('[data-node-id="A"]')).toHaveAttribute('data-node-state', 'running')
+  await expect(navigation.locator('[data-node-id="B"]')).toHaveAttribute('data-node-state', 'failed')
   const outcomes = []
   for (const [action, fields] of [
     ['status', {}], ['collect', {}], ['dispatch', { nodes: ['C'] }],
@@ -138,10 +140,12 @@ test('P54.02 real restart drops manager startup errors without rewriting busines
   // The helper reuses its allocated port; a hash-only goto is not a refresh.
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Run 详情' })).toBeVisible()
+  await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
   await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
   await page.reload()
+  await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('failed-manager-restart', { exact: true })).toBeVisible()
   await page.waitForTimeout(1000)
   await expect(page.getByRole('alert', { name: '管理者启动错误' })).toHaveCount(0)
@@ -214,6 +218,7 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   expect(server.herdrCalls().find(call => call.kind === 'agent_prompt')?.text).toContain(path.join(runRoot, runId, 'run.json'))
   await expect(page.getByTestId('run-user-input')).toHaveText(requirements)
   await expect(page.getByRole('textbox', { name: '本次要求' })).toHaveCount(0)
+  await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
   const count = server.herdrCalls().filter(call => call.kind === 'agent_start').length
   expect(count).toBe(1)

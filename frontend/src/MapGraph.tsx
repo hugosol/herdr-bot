@@ -1,41 +1,25 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { WorkflowMap } from './schedulerApi'
+import { orderedMapNodeIds } from './mapNodeOrder'
 import './map-graph.css'
 
-// Lay out every node, not only those incident to an edge. Kahn traversal assigns
-// each dependent a column after all its prerequisites; the API rejects cycles.
-function positions(map: WorkflowMap) {
-  const ids = Object.keys(map.nodes)
-  const levels = new Map(ids.map((id) => [id, 0]))
-  const remaining = new Map(ids.map((id) => [id, map.nodes[id].blocked_by.length]))
-  const dependents = new Map<string, string[]>()
-  for (const id of ids) for (const prerequisite of map.nodes[id].blocked_by) {
-    const next = dependents.get(prerequisite) ?? []
-    next.push(id)
-    dependents.set(prerequisite, next)
-  }
-  const ready = ids.filter((id) => remaining.get(id) === 0)
-  for (let index = 0; index < ready.length; index++) {
-    const id = ready[index]
-    for (const next of dependents.get(id) ?? []) {
-      levels.set(next, Math.max(levels.get(next)!, levels.get(id)! + 1))
-      remaining.set(next, remaining.get(next)! - 1)
-      if (remaining.get(next) === 0) ready.push(next)
-    }
-  }
+// Every node is included, even if it has no edges. Shared display ordering puts
+// prerequisites before dependents and preserves definition order for parallel rows.
+function positions(map: WorkflowMap, nodeHeight: number) {
+  const levels = new Map<string, number>()
   const rows = new Map<number, number>()
-  return ids.map((id) => {
-    const column = levels.get(id)!
+  return orderedMapNodeIds(map).map((id) => {
+    const column = map.nodes[id].blocked_by.reduce((level, parent) => Math.max(level, levels.get(parent)! + 1), 0)
+    levels.set(id, column)
     const row = rows.get(column) ?? 0
     rows.set(column, row + 1)
-    return { id, x: 24 + column * 300, y: 24 + row * 136 }
+    return { id, x: 24 + column * 300, y: 24 + row * (nodeHeight + 32) }
   })
 }
 
 type View = { scale: number; x: number; y: number }
 type Size = { width: number; height: number }
 const nodeWidth = 220
-const nodeHeight = 104
 const maximumScale = 2.5
 
 // Keep a large graph reachable at both ends; center graphs smaller than the viewport.
@@ -46,9 +30,8 @@ function constrain(view: View, size: Size, width: number, height: number): View 
   return { ...view, x: axis(view.x, width * view.scale, size.width), y: axis(view.y, height * view.scale, size.height) }
 }
 
-export function MapGraph({ map, selectedId, onSelect, botProblems = {}, nodeStates = {} }: {
+export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
   map: WorkflowMap; selectedId: string | null; onSelect: (id: string) => void; botProblems?: Record<string, string>
-  nodeStates?: Record<string, { status: string; label: string }>
 }) {
   const instanceId = useId()
   const markerId = `${instanceId}-arrow`
@@ -58,7 +41,8 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {}, nodeStat
   const [dragging, setDragging] = useState(false)
   const [size, setSize] = useState<Size>({ width: 640, height: 384 })
   const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0 })
-  const nodes = useMemo(() => positions(map), [map])
+  const nodeHeight = 104
+  const nodes = useMemo(() => positions(map, nodeHeight), [map, nodeHeight])
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const width = Math.max(280, ...nodes.map((node) => node.x + nodeWidth + 24))
   const height = Math.max(152, ...nodes.map((node) => node.y + nodeHeight + 24))
@@ -103,7 +87,7 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {}, nodeStat
       const y = top < 16 ? current.y + 16 - top : bottom > size.height - 16 ? current.y + size.height - 16 - bottom : current.y
       return constrain({ scale, x, y }, size, width, height)
     })
-  }, [byId, size, width, height])
+  }, [byId, size, width, height, nodeHeight])
 
   useLayoutEffect(() => {
     // Selection reveals its node but does not reset the user's zoom or fit the Map.
@@ -169,10 +153,9 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {}, nodeStat
           }))}
           {nodes.map(({ id, x, y }) => <foreignObject key={id} x={x} y={y} width={nodeWidth} height={nodeHeight}>
             <button type="button" className={`scheduler-node${prerequisites.has(id) || successors.has(id) ? ' scheduler-node-related' : ''}`}
-              data-node-state={nodeStates[id]?.status} aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
+              aria-pressed={selectedId === id} aria-label={`${map.nodes[id].title} ${id}`}
               onFocus={() => revealNode(id)} onClick={() => onSelect(id)}>
-              <strong>{map.nodes[id].title}</strong><span>{id}</span>
-              {nodeStates[id] && <small className="workflow-node-state">{nodeStates[id].label}</small>}
+              <strong title={map.nodes[id].title}>{map.nodes[id].title}</strong><span className="scheduler-node-id-label" title={id}>{id}</span>
               {prerequisites.has(id) && <small className="scheduler-node-relation">直接前置</small>}
               {successors.has(id) && <small className="scheduler-node-relation">直接后继</small>}
               {botProblems[id] && <small className="scheduler-node-problem">{botProblems[id]}</small>}
