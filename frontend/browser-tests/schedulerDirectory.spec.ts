@@ -196,8 +196,13 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
 test('P7 P8 missing parents are created and an obstructing file produces a visible creation error', async ({ page }) => {
   server = await startServer({ separateCwd: true })
   const maps = path.join(server.cwd, 'missing', 'parents', 'maps')
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'missing/parents/maps'\n")
+  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'missing/parents/maps'\nbot_directory = 'missing/parents/bots'\n")
   await server.restart()
+  // Independent catalog scopes may initialize their shared missing parents at
+  // the same time. Neither request may turn the other's mkdir into a 500.
+  const initialCatalogs = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+    page.request.get(`${server.baseURL}/api/scheduler/${index % 2 === 0 ? 'maps' : 'bots'}`)))
+  for (const response of initialCatalogs) expect(response.status()).toBe(200)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()

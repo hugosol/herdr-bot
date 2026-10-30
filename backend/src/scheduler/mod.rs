@@ -859,7 +859,14 @@ fn prepare_directory(access: &FileAccess, directory: &Path) -> Result<PathBuf, D
         let metadata = match access.symlink_metadata(&checked) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                access.create_dir(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "创建", e))?;
+                // Map and Bot catalog reads can create a shared missing parent
+                // concurrently. Recheck the winner's entry below, including the
+                // link and directory checks; AlreadyExists alone is not success.
+                match access.create_dir(&checked) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "创建", error)),
+                }
                 access.symlink_metadata(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "检查", e))?
             }
             Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "检查", error)),
