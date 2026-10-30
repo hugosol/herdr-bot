@@ -12,7 +12,7 @@ mod runtime_data;
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
-    herdr_bot::catalog::Catalog::load(&config.tasks.metadata_file)
+    herdr_bot::tasks::catalog::Catalog::load(&config.tasks.metadata_file)
         .map_err(|error| anyhow::anyhow!(error.message()))?;
     runtime_data::prepare(&config)?;
 

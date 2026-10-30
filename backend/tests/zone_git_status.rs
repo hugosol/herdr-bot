@@ -690,7 +690,7 @@ fn cached_status_shares_canonical_aliases_but_not_separate_worktrees() {
             linked.to_str().unwrap(),
         ],
     );
-    let state = herdr_bot::sync::SyncState::with_ttl(std::time::Duration::from_secs(60));
+    let state = herdr_bot::zones::git::sync::SyncState::with_ttl(std::time::Duration::from_secs(60));
     let timeout = std::time::Duration::from_secs(30);
     let root_name = root.to_str().unwrap();
     assert_eq!(

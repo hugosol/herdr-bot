@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { RunDetail } from '../src/workflowApi'
+import type { RunDetail } from '../src/workflow/workflowApi'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RunDetails, selectedRunId } from '../src/RunDetails'
+import { RunDetails, selectedRunId } from '../src/workflow/RunDetails'
 
 const initialScroll = Object.getOwnPropertyDescriptor(window, 'scrollY')!
 afterEach(() => {

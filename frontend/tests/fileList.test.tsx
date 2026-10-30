@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
+import App from '../src/app/App'
 
 /** 一个只提供客户端真正用到的成员的 JSON 答复。 */
 function jsonResponse(status: number, body: unknown): Response {

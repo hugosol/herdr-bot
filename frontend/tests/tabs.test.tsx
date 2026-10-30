@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
+import App from '../src/app/App'
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/')

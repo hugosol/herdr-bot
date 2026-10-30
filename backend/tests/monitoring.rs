@@ -59,7 +59,7 @@ impl PowerOff for RecordingPowerOff {
 struct MonitoringServer {
     server: TestServer,
     double: Arc<RecordingPowerOff>,
-    shutdown: Arc<herdr_bot::countdown::ShutdownState>,
+    shutdown: Arc<herdr_bot::shutdown::ShutdownState>,
     sessions: Arc<SessionsState>,
     /// 受控时刻；`None` 表示这个装配走真实挂钟（用于「必须真的等窗口过去」的用例）。
     clock: Option<Arc<ManualClock>>,

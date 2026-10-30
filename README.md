@@ -48,4 +48,21 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 - [领域术语](GLOSSARY.md)与[架构决策](docs/adr/)。
 - [测试指引](docs/agents/testing.md)：验证入口、夹具隔离与手动网络验收。
 
-源码在 `backend/`（Rust/Axum）和 `frontend/`（React/Vite）。
+## 源码归属
+
+源码按功能模块组织，不按视图、请求、hook 等技术类型分散目录：
+
+| 功能 | 前端 `frontend/src/` | 后端 `backend/src/` |
+| --- | --- | --- |
+| 应用装配 | `main.tsx`、`app/` | `lib.rs`、`main.rs` 及启动配置文件 |
+| Task 与选项目录 | `tasks/` | `tasks/`（含 `catalog.rs`） |
+| Chat 发起、恢复与历史 | `chats/` | `chats/`（含 Herdr adapter） |
+| 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
+| zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
+| Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
+| Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
+| 固定操作与关机 | `server/operationsApi.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
+
+跨模块引用指向实际所属文件，不通过旧路径兼容转发。前端全局样式暂集中在 `app/styles.css`；后端 `runs.rs` 与同名目录共同构成一个 Rust 模块。目录归类不改变 Task、Chat、Map、Run 的含义或执行时序。
+
+测试继续位于 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/`，不随源码迁移；执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。

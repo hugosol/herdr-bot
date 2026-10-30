@@ -18,15 +18,15 @@
 //!
 //! 另有两条关机命令：`POST /api/shutdown/start`（手动确认后的开始意图）与
 //! `POST /api/shutdown/cancel`（全局取消）。它们不直接关机：开始意图只在后端建立一个**权威倒计时**
-//! （见 [`countdown`]），到期后由后端自己调用本机 Windows 优雅关机（见 [`shutdown`]）。
+//! （见 [`shutdown`]），到期后由后端自己调用本机 Windows 优雅关机（见 [`shutdown::power_off`]）。
 //! 关机与固定操作**完全解耦**——不获取执行资格、不排队、不执行“停止”脚本，因此脚本操作执行期间
 //! 它照样被接受；两条命令的请求面同样封闭，带查询串或请求体的调用被拒绝且不产生任何副作用。
 //!
 //! 还有一条 `POST /api/shutdown/monitor`：为某个会话设置或撤销**完成后关机监听**（明确的目标选中值，
-//! 不按当前状态翻转）。集合与自动触发规则同样由 [`countdown`] 在一把锁内裁定：只有当前在线且工作中的
+//! 不按当前状态翻转）。集合与自动触发规则同样由 [`shutdown`] 在一把锁内裁定：只有当前在线且工作中的
 //! 未监听会话可新增，集合非空且全部成员当前等待用户输入才成立唯一的自动安排。
 //!
-//! 浏览器读取会话与关机状态用同一条只读长连接（见 [`observation`]）：首帧同时给出会话快照与关机状态，
+//! 浏览器读取会话与关机状态用同一条只读长连接（见 [`sessions::observation`]）：首帧同时给出会话快照与关机状态，
 //! 之后关机变化以独立命名事件携带完整状态。没有第二条关机观察连接。
 //!
 //! 同一实例内任意时刻至多一个脚本操作在执行：两个操作共用一个执行资格，资格从操作被接受到脚本
@@ -37,29 +37,16 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod chats;
-pub mod browse;
-pub mod catalog;
 pub mod clock;
-pub mod commit;
 pub mod config;
-pub mod countdown;
-pub mod git;
-pub mod herdr;
-pub mod history;
-pub mod resume;
 pub mod mdns;
-pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod scheduler;
 pub mod runs;
 pub mod files;
 pub mod shutdown;
-mod status_cache;
-pub mod sync;
 pub mod tasks;
-pub mod watch;
-pub mod zone_create;
 pub mod zones;
 
 use std::convert::Infallible;
@@ -87,10 +74,16 @@ pub use config::{
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
-pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
+use chats::{herdr, history, resume};
+use sessions::observation;
+use tasks::catalog;
+use zones::{browse, watch};
+use zones::git::{self, commit, sync};
+
+pub use shutdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
 pub use sessions::SessionPolicy;
-pub use shutdown::{PowerOff, PowerOffFailure, SystemPowerOff};
+pub use shutdown::power_off::{PowerOff, PowerOffFailure, SystemPowerOff};
 
 use operations::Invocation;
 use zones::{RegisteredZone, ZoneError};
@@ -129,7 +122,7 @@ pub struct AppState {
     ///
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
     /// 实际关机动作接缝由它持有（注入的记录型实现只用于自动化与人工验收的安全外壳）。
-    pub shutdown: Arc<countdown::ShutdownState>,
+    pub shutdown: Arc<shutdown::ShutdownState>,
     /// zone 登记列表：由后端以文件持久保存，电脑与手机共享同一份。
     ///
     /// 与固定操作、关机路径完全解耦：登记只读取与写入登记文件，不执行任何脚本。
@@ -223,7 +216,7 @@ pub fn app_with_state(
     power_off: Arc<dyn PowerOff>,
     sessions: Arc<sessions::SessionsState>,
 ) -> (Router, AppState) {
-    let shutdown = countdown::ShutdownState::new(
+    let shutdown = shutdown::ShutdownState::new(
         Arc::clone(&sessions),
         Arc::clone(&power_off),
         config.shutdown.countdown_seconds.duration(),
@@ -452,7 +445,7 @@ async fn stop_operation(State(state): State<AppState>, request: Request) -> Resp
 ///
 /// 它与固定操作的执行资格**完全解耦**：不获取、不释放、不排队，也不执行“停止”脚本，因此脚本操作
 /// 执行期间它照样被接受。回执只说明开始意图被接受（`outcome` 是安排当前阶段），**不**表示关机指令
-/// 已经发出；到期执行由后端自己负责（见 [`countdown`]）。
+/// 已经发出；到期执行由后端自己负责（见 [`shutdown`]）。
 async fn start_shutdown(State(state): State<AppState>, request: Request) -> Response {
     // 请求面与其他命令一样封闭，且拒绝发生在建立安排之前：被拒绝的请求不产生任何关机意图。
     if let Some(rejection) = reject_unclosed_request(request).await {
@@ -697,7 +690,7 @@ async fn create_zone(State(state): State<AppState>, request: Request) -> Respons
     };
     let timeout = state.git_timeout;
     let created = match tokio::task::spawn_blocking(move || {
-        zone_create::create_and_init(&parent, &name, timeout)
+        zones::create::create_and_init(&parent, &name, timeout)
     })
     .await
     {
@@ -799,8 +792,8 @@ async fn zone_create_name(request: Request) -> Result<String, Response> {
 }
 
 /// 把创建 zone 的失败翻译成稳定 HTTP 类别；失败消息保留目录路径与失败阶段。
-fn zone_create_error_response(error: zone_create::CreateZoneError) -> Response {
-    use zone_create::CreateZoneError;
+fn zone_create_error_response(error: zones::create::CreateZoneError) -> Response {
+    use zones::create::CreateZoneError;
     let status = match &error {
         CreateZoneError::AlreadyExists { .. } => StatusCode::CONFLICT,
         CreateZoneError::ParentNotAbsolute(_)

@@ -150,7 +150,7 @@ impl Runs {
         let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
         for ancestor in root.ancestors() {
             match fs::symlink_metadata(ancestor) {
-                Ok(metadata) if crate::browse::is_link_like(&metadata) || !metadata.is_dir() =>
+                Ok(metadata) if crate::zones::browse::is_link_like(&metadata) || !metadata.is_dir() =>
                     return Err(format!("Run 目录不能经过链接或非目录：{}", ancestor.display())),
                 Ok(_) => {},
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
@@ -161,7 +161,7 @@ impl Runs {
             Ok(entries) => for entry in entries {
                 let entry = entry.map_err(|e| e.to_string())?;
                 let metadata = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
-                if crate::browse::is_link_like(&metadata) {
+                if crate::zones::browse::is_link_like(&metadata) {
                     return Err(format!("无法安全检查 Run 关联：{} 是链接或重解析点。", entry.path().display()));
                 }
                 if !metadata.is_dir() { continue; }
@@ -210,7 +210,7 @@ impl Runs {
         ]
     }
     /// Recover role from persisted execution identity, including retired attempts.
-    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::catalog::ExecutionRole>, String> {
+    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let entries = match fs::read_dir(&state.run_directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -229,11 +229,11 @@ impl Runs {
                 if role.is_some() || manager || execution.task_id != task_id || execution.agent != agent {
                     return Err("原生 Chat 的持久执行关联不唯一或与来源 Task 不一致。".into());
                 }
-                role = Some(crate::catalog::ExecutionRole::Node);
+                role = Some(crate::tasks::catalog::ExecutionRole::Node);
             }
             if manager {
                 if role.is_some() || run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联不唯一或与来源 Task 不一致。".into()); }
-                role = Some(crate::catalog::ExecutionRole::Manager);
+                role = Some(crate::tasks::catalog::ExecutionRole::Manager);
             }
         }
         Ok(role)
@@ -252,7 +252,7 @@ impl Runs {
 }
 fn validate_history_tree(path: &std::path::Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}：{e}", path.display()))?;
-    if crate::browse::is_link_like(&metadata) {
+    if crate::zones::browse::is_link_like(&metadata) {
         return Err(format!("Run 历史不能包含链接或重解析点：{}", path.display()));
     }
     if metadata.is_dir() {
@@ -491,7 +491,7 @@ async fn launch(
     state: &AppState,
     mut run: Run,
     task: crate::tasks::Task,
-    preset: crate::catalog::ResolvedPreset,
+    preset: crate::tasks::catalog::ResolvedPreset,
 ) -> Result<(), ()> {
     let mut effects = Effects::default();
     let mut stage = "initialize";
@@ -854,7 +854,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
         let node = candidate.nodes.get_mut(id).unwrap();
         node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, chat: None });
-        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
+        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         stage = "workspace";
         let workspace_id = &run.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;

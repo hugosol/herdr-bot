@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import type { ConnectionStatus, SessionFeed, SessionFeedSnapshot } from '../src/sessionFeed'
-import { NO_SHUTDOWN, remainingSeconds, type ShutdownView } from '../src/shutdownView'
+import App from '../src/app/App'
+import type { ConnectionStatus, SessionFeed, SessionFeedSnapshot } from '../src/chats/sessionFeed'
+import { NO_SHUTDOWN, remainingSeconds, type ShutdownView } from '../src/server/shutdown/shutdownView'
 
 /** 服务端时钟的一个固定取值：用例不依赖真实时间，也不断言实现里的计算公式。 */
 const SERVER_TIME = 1_700_000_000_000

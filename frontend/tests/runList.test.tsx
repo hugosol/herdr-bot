@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { RunList } from '../src/RunList'
-import type { RunEntry } from '../src/useWorkflowRefresh'
+import { RunList } from '../src/workflow/RunList'
+import type { RunEntry } from '../src/workflow/useWorkflowRefresh'
 
 function entry(id: string, createdAt: number, map = 'alpha.json', status = 'running', managed = true): RunEntry {
   return { id, managed, readError: null, run: { map, createdAt, status, nodes: { a: { status: 'completed' }, b: { status: 'pending' } } } }

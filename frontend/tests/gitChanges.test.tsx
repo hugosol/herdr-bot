@@ -2,9 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import type { BrowseEntry } from '../src/browseApi'
-import type { GitChange, GitStatus, ZoneSummary } from '../src/gitApi'
+import App from '../src/app/App'
+import type { BrowseEntry } from '../src/zones/browser/browseApi'
+import type { GitChange, GitStatus, ZoneSummary } from '../src/zones/git/gitApi'
 import { treeResponse } from './treeResponse'
 
 const ZONE = 'C:\\work\\repository'

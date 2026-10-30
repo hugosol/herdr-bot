@@ -1,10 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import App from './App'
-import { createSseSessionFeed } from './sseSessionFeed'
-import { createZoneWatchFeed } from './zoneWatch'
-import './styles.css'
+import App from './app/App'
+import { createSseSessionFeed } from './chats/sseSessionFeed'
+import { createZoneWatchFeed } from './zones/zoneWatch'
+import './app/styles.css'
 
 const root = document.getElementById('root')
 if (!root) {

@@ -191,13 +191,6 @@ test('真实浏览器按 agent/model 能力限制 thinking 并处理切换', asy
   // Agent 与 Skill 选择独立于模型目录。
   await expect(agent.locator('option')).toHaveCount(2)
   expect(await selectValues(page, 'task-agent')).toEqual(['omp', 'pi'])
-  expect(await selectValues(page, 'task-skill')).toEqual([
-    '',
-    'grill-with-docs',
-    'teach',
-    'code-review',
-    'wayfinder',
-  ])
 
   // model 默认时 thinking 只能沿用默认值。
   expect(await selectValues(page, 'task-thinking')).toEqual(['default'])

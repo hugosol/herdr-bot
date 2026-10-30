@@ -2,16 +2,16 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import type { BrowseEntry } from '../src/browseApi'
+import App from '../src/app/App'
+import type { BrowseEntry } from '../src/zones/browser/browseApi'
 import { treeResponse } from './treeResponse'
 import type {
   ConnectionStatus,
   SessionFeed,
   SessionFeedSnapshot,
   SessionView,
-} from '../src/sessionFeed'
-import type { ShutdownView } from '../src/shutdownView'
+} from '../src/chats/sessionFeed'
+import type { ShutdownView } from '../src/server/shutdown/shutdownView'
 
 const ZONE = 'C:\\work\\project'
 const SERVER_TIME = 1_700_000_000_000
