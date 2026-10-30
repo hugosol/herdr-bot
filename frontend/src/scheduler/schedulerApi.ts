@@ -141,7 +141,9 @@ export async function loadMap(name: string, signal?: AbortSignal): Promise<Workf
   return value as WorkflowMap
 }
 
-export async function listMaps(signal?: AbortSignal): Promise<string[]> {
+export type MapCatalog = { files: string[]; titles?: Record<string, string> }
+
+export async function listMaps(signal?: AbortSignal): Promise<MapCatalog> {
   const response = await fetch('/api/scheduler/maps', { signal })
   const value: unknown = await response.json()
   if (!response.ok) {
@@ -149,8 +151,10 @@ export async function listMaps(signal?: AbortSignal): Promise<string[]> {
       ? value.message : `Map 目录读取失败：HTTP ${response.status}`)
   }
   if (typeof value !== 'object' || value === null || !('files' in value) ||
-      !Array.isArray(value.files) || !value.files.every((name) => typeof name === 'string')) {
+      !Array.isArray(value.files) || !value.files.every((name) => typeof name === 'string') ||
+      ('titles' in value && (typeof value.titles !== 'object' || value.titles === null || Array.isArray(value.titles) ||
+        !Object.values(value.titles).every((title) => typeof title === 'string')))) {
     throw new Error('Map 目录响应无效。')
   }
-  return value.files
+  return value as MapCatalog
 }

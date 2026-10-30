@@ -56,18 +56,85 @@ test('Maps list newest modifications first with filename ties and refresh after 
     fs.utimesSync(file, modified, modified)
   }
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['beta.JSON', 'zeta.json', 'alpha.json'])
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['beta', 'zeta', 'alpha'])
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(initial.status()).toBe(200)
-  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'] })
+  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
 
   fs.utimesSync(path.join(maps, 'alpha.json'), newest, newest)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha.json', 'beta.JSON', 'zeta.json'])
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha', 'beta', 'zeta'])
   const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(refreshed.status()).toBe(200)
-  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'] })
+  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
   for (const [name, bytes] of originals) expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)
+})
+
+test('Map titles display and filter independently of filenames with duplicate selection fallback and refresh', async ({ page }) => {
+  server = await startServer()
+  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  fs.mkdirSync(maps, { recursive: true })
+  const modified = new Date('2026-01-01T00:00:00Z')
+  const originals = new Map([
+    ['first.json', JSON.stringify({ title: 'Shared itinerary', description: 'First file identity', nodes: {} })],
+    ['second.json', JSON.stringify({ title: 'Shared itinerary', description: 'Second file identity', nodes: {} })],
+    ['empty.json', JSON.stringify({ title: '', description: '', nodes: {} })],
+    ['whitespace.json', JSON.stringify({ title: ' \t\n ', description: '', nodes: {} })],
+    ['invalid.json', '{"title":"Must not display invalid title","description":"","nodes":[] }'],
+  ])
+  for (const [name, bytes] of originals) {
+    const file = path.join(maps, name)
+    fs.writeFileSync(file, bytes)
+    fs.utimesSync(file, modified, modified)
+  }
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-scheduler').click()
+  const list = page.getByTestId('scheduler-map-list')
+  await expect(list.getByRole('button')).toHaveText(['empty.json', 'Shared itinerary', 'invalid.json', 'Shared itinerary', 'whitespace.json'])
+  const response = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
+  expect(response.status()).toBe(200)
+  expect(await response.json()).toEqual({
+    files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
+    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Shared itinerary' },
+  })
+  const filter = page.getByLabel('筛选 Map', { exact: true })
+  await filter.fill('SHARED ITINERARY')
+  await expect(list.getByRole('button')).toHaveText(['Shared itinerary', 'Shared itinerary'])
+  await filter.fill('SECOND.JSON')
+  await expect(list.getByRole('button')).toHaveText(['Shared itinerary'])
+  await filter.clear()
+  const first = list.locator('[data-map-file="first.json"]')
+  const second = list.locator('[data-map-file="second.json"]')
+  const preview = page.getByRole('region', { name: 'Map 预览', exact: true })
+  await first.click()
+  await expect(preview).toContainText('First file identity')
+  await expect(first).toHaveAttribute('aria-pressed', 'true')
+  await expect(second).toHaveAttribute('aria-pressed', 'false')
+  await second.click()
+  await expect(preview).toContainText('Second file identity')
+  await expect(second).toHaveAttribute('aria-pressed', 'true')
+  await expect(first).toHaveAttribute('aria-pressed', 'false')
+  await list.getByRole('button', { name: 'invalid.json', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('invalid.json')
+  await second.click()
+  await expect(preview).toContainText('Second file identity')
+
+  const updated = JSON.stringify({ title: 'Updated itinerary', description: 'Second file identity', nodes: {} })
+  fs.writeFileSync(path.join(maps, 'second.json'), updated)
+  fs.utimesSync(path.join(maps, 'second.json'), modified, modified)
+  await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+  await expect(list.getByRole('button')).toHaveText(['empty.json', 'Shared itinerary', 'invalid.json', 'Updated itinerary', 'whitespace.json'])
+  await expect(second).toHaveAttribute('aria-pressed', 'true')
+  await expect(preview.getByRole('heading', { name: 'Updated itinerary', exact: true })).toBeVisible()
+  await expect(preview).toContainText('Second file identity')
+  const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
+  expect(await refreshed.json()).toEqual({
+    files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
+    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Updated itinerary' },
+  })
+  for (const [name, bytes] of originals) {
+    expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(name === 'second.json' ? updated : bytes)
+  }
 })
 
 // P5/P6/P9: literal whitelist, with distinct cwd/config, bots, zone and docs

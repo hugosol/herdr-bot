@@ -21,7 +21,7 @@ test('P10 P11 unordered Map keeps stable dependency layers in list and graph wit
   } }))
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'parallel.json', exact: true }).click()
+  await page.getByRole('button', { name: '并行与汇合', exact: true }).click()
   const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
   await expect(graph).toBeVisible()
   // The persisted JSON is C/B/A/D, but the service serializes its parsed Map
@@ -104,7 +104,7 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   const tabsBefore = server.herdrTabs()
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'parameters.json', exact: true }).click()
+  await page.getByRole('button', { name: '<script>window.mapExecuted = true</script>', exact: true }).click()
   const graph = page.getByRole('region', { name: '节点列表', exact: true })
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()

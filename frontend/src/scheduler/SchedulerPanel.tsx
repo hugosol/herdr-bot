@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type BotRevision, type BotCatalog, type WorkflowMap } from './schedulerApi'
+import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
 import { MapGraph } from './MapGraph'
 import { orderedMapNodeIds } from './mapNodeOrder'
 import { MapNodeDetails } from './MapNodeDetails'
@@ -8,7 +8,7 @@ import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
 import './scheduler.css'
 
-type Listing = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind: 'error'; message: string }
+type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
 
@@ -56,11 +56,13 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
           ? value.message : `删除请求返回 HTTP ${response.status}；请刷新核实当前 Map 和 Run 状态。`)
         return
       }
-      if (typeof value !== 'object' || value === null || !('files' in value) || !Array.isArray(value.files) || !value.files.every((name): name is string => typeof name === 'string')) {
+      if (typeof value !== 'object' || value === null || !('files' in value) || !Array.isArray(value.files) || !value.files.every((name): name is string => typeof name === 'string') ||
+          ('titles' in value && (typeof value.titles !== 'object' || value.titles === null || Array.isArray(value.titles) ||
+            !Object.values(value.titles).every((title) => typeof title === 'string')))) {
         setDeleteMapError('删除请求已返回成功，但目录响应不可用；请取消后刷新核实当前 Map 和 Run 状态。')
         return
       }
-      setListing({ kind: 'ready', files: value.files })
+      setListing({ kind: 'ready', ...value as MapCatalog })
       setFile(null)
       setPreview(null)
       setSelectedId(null)
@@ -228,7 +230,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     const controller = new AbortController()
     setListing({ kind: 'loading' })
     listMaps(controller.signal).then(
-      (files) => { if (!controller.signal.aborted) setListing({ kind: 'ready', files }) },
+      (catalog) => { if (!controller.signal.aborted) setListing({ kind: 'ready', ...catalog }) },
       (error: unknown) => {
         if (!controller.signal.aborted) setListing({ kind: 'error', message: error instanceof Error ? error.message : 'Map 目录读取失败。' })
       },
@@ -259,7 +261,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const map = preview?.kind === 'ready' ? preview.map : null
   const busy = listing.kind === 'loading' || bots.kind === 'loading' || preview?.kind === 'loading'
   const visibleFiles = listing.kind === 'ready'
-    ? listing.files.filter((name) => name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : []
+    ? listing.files.filter((name) => `${listing.titles?.[name] ?? ''} ${name}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : []
   const visibleBots = bots.kind === 'ready'
     ? bots.bots.filter((item) => `${item.name} ${item.id}`.toLocaleLowerCase().includes(botFilter.toLocaleLowerCase())) : []
   const botProblems: Record<string, string> = Object.create(null)
@@ -360,7 +362,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
         <div className="scheduler-section-heading scheduler-directory-heading"><h3 ref={directoryHeading} tabIndex={-1}>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
-        <label className="scheduler-filter">筛选 Map 文件<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="输入文件名…" /></label>
+        <label className="scheduler-filter">筛选 Map<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="名称或文件名…" /></label>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
         {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}
         {listing.kind === 'ready' && (listing.files.length === 0
@@ -369,7 +371,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <p className="scheduler-filter-count" role="status">显示 {visibleFiles.length} / {listing.files.length}</p>
             {visibleFiles.length === 0 && <p>没有匹配的 Map 文件。清除筛选可查看全部。</p>}
             <ul data-testid="scheduler-map-list" className="scheduler-map-list">{visibleFiles.map((name) => <li key={name}>
-              <button type="button" aria-pressed={file === name} onClick={() => selectFile(name)}>{name}</button>
+              <button type="button" data-map-file={name} aria-pressed={file === name} onClick={() => selectFile(name)}>{listing.titles?.[name]?.trim() ? listing.titles[name] : name}</button>
             </li>)}</ul>
           </>)}
       </aside>

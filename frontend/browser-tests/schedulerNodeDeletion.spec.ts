@@ -20,7 +20,7 @@ async function setup(page: Page, source: unknown = original) {
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'work.JSON', exact: true }).click()
+  await page.locator('[data-map-file="work.JSON"]').click()
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
   return root
 }
@@ -81,7 +81,7 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-map-file="work.JSON"]')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('region', { name: '节点列表', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(1)
@@ -103,7 +103,7 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(emptyGraph).toBeVisible()
   await expect(emptyGraph).toHaveText('此 Map 没有 node。')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-map-file="work.JSON"]')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: '新增 node', exact: true })).toBeVisible()
   expect(await readMap(page)).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
   expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })

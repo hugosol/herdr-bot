@@ -105,7 +105,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   fs.writeFileSync(file, JSON.stringify(original))
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'contract.json', exact: true }).click()
+  await page.getByRole('button', { name: original.title, exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对 B', exact: true }).click()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   const changed = { title: '核对新定义', bot_id: 'not-created', input: '# 独立工作输入\n不注入 Bot 文档', zone: 'C:/does-not-exist', blocked_by: ['A'] }

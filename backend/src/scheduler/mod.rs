@@ -812,6 +812,23 @@ pub async fn save_node(
 #[derive(Serialize)]
 struct MapFiles { files: Vec<String> }
 
+#[derive(Serialize)]
+struct MapCatalog {
+    files: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    titles: BTreeMap<String, String>,
+}
+
+fn read_map_catalog(access: &FileAccess, directory: &Path) -> Result<MapCatalog, DirectoryError> {
+    let files = read_files(access, directory)?.files;
+    let titles = files.iter().filter_map(|name| {
+        let map = read_map(access, directory, name).ok()?;
+        if map.title.trim().is_empty() { return None; }
+        Some((name.clone(), map.title))
+    }).collect();
+    Ok(MapCatalog { files, titles })
+}
+
 struct DirectoryError { code: &'static str, message: String }
 impl DirectoryError {
     fn io(code: &'static str, action: &str, error: std::io::Error) -> Self {
@@ -910,7 +927,7 @@ pub async fn delete_map(
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-delete-failed", |access| {
         let path = map_file_path(access, &state.map_directory, &name)?;
         access.remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
-        read_files(access, &state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
+        read_map_catalog(access, &state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
     })).await {
         Ok(Ok(files)) => Json(files).into_response(),
         Ok(Err(error)) => error.into_response(),
@@ -924,7 +941,7 @@ pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::
             "code": "invalid-request", "message": "Map 列表不接受路径、查询参数或请求体。",
         }))).into_response();
     }
-    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-directory-read-failed", |access| read_files(access, &state.map_directory))).await {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-directory-read-failed", |access| read_map_catalog(access, &state.map_directory))).await {
         Ok(Ok(files)) => Json(files).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => DirectoryError { code: "map-directory-read-failed", message: format!("Map 目录读取失败：{error}") }.into_response(),
