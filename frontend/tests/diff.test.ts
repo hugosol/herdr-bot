@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
-import { diffRows, splitLines } from '../src/diff'
+import { diffRows, splitLines } from '../src/zones/git/diff'
 
 describe('diff 行结束符', () => {
   it('CRLF 与 LF 的相同内容不产生行级差异', () => {

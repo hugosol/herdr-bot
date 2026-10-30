@@ -2,9 +2,9 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import { ChatCreationDialog } from '../src/ChatCreationDialog'
-import { renderChatNameExample } from '../src/chatNaming'
+import App from '../src/app/App'
+import { ChatCreationDialog } from '../src/chats/ChatCreationDialog'
+import { renderChatNameExample } from '../src/tasks/chatNaming'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {

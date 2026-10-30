@@ -19,7 +19,7 @@ use std::time::Duration;
 use common::sse::{SseConnection, SseFrame};
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
 use herdr_bot::clock::ManualClock;
-use herdr_bot::countdown::ShutdownState;
+use herdr_bot::shutdown::ShutdownState;
 use herdr_bot::sessions::{SessionPolicy, SessionsState};
 use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};

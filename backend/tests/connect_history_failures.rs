@@ -35,19 +35,18 @@ async fn explicit_register_recovers_new_and_existing_records_without_rewriting_f
     let clock = Arc::new(ServerClock(std::sync::atomic::AtomicU64::new(1_700_000_001_000)));
     let sessions = Arc::new(herdr_bot::sessions::SessionsState::with_policy_and_clock(config.sessions.policy(), clock.clone()));
     let server = TestServer::start_app(herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), sessions)).await;
-    let staging = root.path().join("history.json.tmp");
-    std::fs::create_dir(&staging).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     assert_eq!(register(&server, "new-native-id", "Never saved").await["historySaved"], false);
-    std::fs::remove_dir(&staging).unwrap();
+    drop(blocked);
     clock.0.store(1_700_000_002_000, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(register(&server, "new-native-id", "First saved").await["historySaved"], true);
-    std::fs::create_dir(&staging).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     clock.0.store(1_700_000_003_000, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(register(&server, "new-native-id", "Rejected update").await["historySaved"], false);
     let saved: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/sessions/history").await.body).unwrap();
     assert_eq!(saved["sessions"][0]["sessionName"], "First saved");
     assert_eq!(saved["sessions"][0]["firstRecordedAt"], 1_700_000_002_000u64);
-    std::fs::remove_dir(&staging).unwrap();
+    drop(blocked);
     clock.0.store(1_700_000_004_000, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(register(&server, "new-native-id", "Recovered update").await["historySaved"], true);
     register(&server, "new-native-id", "Recovered update").await;
@@ -110,16 +109,14 @@ async fn failed_history_has_no_autonomous_write_retry() {
     let mut config = common::config(Path::new("unused.bat"), root.path());
     config.sessions.history_file = root.path().join("history.json");
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
-    let staging = root.path().join("history.json.tmp");
-    std::fs::create_dir(&staging).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     assert_eq!(register(&server, "never-background-retry", "Not yet saved").await["historySaved"], false);
-    std::fs::remove_dir(&staging).unwrap();
+    drop(blocked);
     tokio::time::pause();
     for _ in 0..12 {
         tokio::time::advance(std::time::Duration::from_secs(3600)).await;
         tokio::task::yield_now().await;
         assert!(!config.sessions.history_file.exists(), "no timer may retry the failed write");
-        assert!(!staging.exists(), "no staging write may be scheduled");
     }
     tokio::time::resume();
     assert_eq!(register(&server, "never-background-retry", "Explicit retry").await["historySaved"], true);
@@ -128,7 +125,7 @@ async fn failed_history_has_no_autonomous_write_retry() {
     assert_eq!(response["sessions"][0]["sessionName"], "Explicit retry");
 }
 
-// S2, P18/P19/P21: a locked-out staging path makes a real write fail. A plausible
+// S2, P18/P19/P21: a readable destination that denies replacement makes a real write fail. A plausible
 // violation is returning the ordinary success receipt, leaving the caller unable to warn.
 // The independent expected receipt distinguishes registration from persistence.
 #[tokio::test]
@@ -139,14 +136,14 @@ async fn accepted_connect_distinguishes_history_failure_and_preserves_previous_d
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
     assert_eq!(register(&server, "native-old-id", "Saved name").await["historySaved"], true);
     let before: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/sessions/history").await.body).unwrap();
-    std::fs::create_dir(root.path().join("history.json.tmp")).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     let failed = register(&server, "native-old-id", "Failed name").await;
     assert_eq!(failed["outcome"], "registered");
     assert_eq!(failed["historySaved"], false);
     assert_eq!(failed["historyWarning"]["code"], "history-save-failed");
     assert!(failed["historyWarning"]["message"].as_str().is_some_and(|s| !s.is_empty()));
     drop(server);
-    std::fs::remove_dir(root.path().join("history.json.tmp")).unwrap();
+    drop(blocked);
     let restarted = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
     let after: Value = serde_json::from_str(&get_over_tcp(restarted.addr(), "/api/sessions/history").await.body).unwrap();
     assert_eq!(after, before, "independent restarted read must retain exact previous fields");

@@ -51,7 +51,7 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   await expectWeather()
   await page.screenshot({ path: testInfo.outputPath('bot-preview.png'), fullPage: true })
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'work.json', exact: true }).click()
+  await page.getByRole('button', { name: '业务核对', exact: true }).click()
   for (const node of ['查询上海 A', '查询北京 C']) {
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
@@ -119,9 +119,13 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   expect(catalog.status()).toBe(200)
   expect(await catalog.json()).toEqual({ bots: [weather] })
   const listing = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
-  expect((await listing.json()).files.sort()).toEqual(['first.json', 'second.json', 'template-decoy.json'])
+  const mapCatalog = await listing.json()
+  expect({ ...mapCatalog, files: mapCatalog.files.sort() }).toEqual({
+    files: ['first.json', 'second.json', 'template-decoy.json'],
+    titles: { 'first.json': '第一张计划', 'second.json': '第二张计划' },
+  })
   for (const [filename, node, city] of [['first.json', '上海天气 A', '上海'], ['first.json', '北京天气 B', '北京'], ['second.json', '广州天气 C', '广州']]) {
-    await page.getByRole('button', { name: filename, exact: true }).click()
+    await page.locator(`[data-map-file="${filename}"]`).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(details.getByTestId('node-input')).toContainText(city)
@@ -134,7 +138,7 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   // Re-enter the page to read current files; ticket 07 owns full explicit reload coverage.
   await page.reload()
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'second.json', exact: true }).click()
+  await page.getByRole('button', { name: '第二张计划', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '广州天气 C', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('目的地天气摘要')

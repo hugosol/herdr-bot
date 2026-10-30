@@ -1,6 +1,0 @@
-{
-  "verification": "Documented byte check fails when no actual Agent artifacts exist; NOT P62.01 evidence",
-  "exitCode": 1,
-  "stdout": "",
-  "stderr": "Exception calling \"ReadAllBytes\" with \"1\" argument(s): \"Could not find file 'C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-fan-in-7216e435-fe52-45c1-9744-46dbacd7514e\\A\\material-a.txt'.\"\nAt line:6 char:9\n+     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($actual)) - ...\n+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    + CategoryInfo          : NotSpecified: (:) [], ParentContainsErrorRecordException\n    + FullyQualifiedErrorId : FileNotFoundException\n \n"
-}

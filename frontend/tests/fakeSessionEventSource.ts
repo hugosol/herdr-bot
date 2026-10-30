@@ -1,4 +1,4 @@
-import type { SessionEventSource } from '../src/sseSessionFeed'
+import type { SessionEventSource } from '../src/chats/sseSessionFeed'
 
 /**
  * 假 `EventSource`：jsdom 里没有真的 `EventSource`，这里按同一形状（命名事件 + `data:` 载荷）手动派发

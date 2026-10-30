@@ -1267,6 +1267,52 @@ async fn association_write_failure_exposes_native_chat_without_submitting_or_cla
 }
 
 #[tokio::test]
+async fn node_history_failure_retains_saved_identity_without_initial_prompt() {
+    let s = Scenario::new().await;
+    let started = s.start("manager-history").await;
+    let release = s.data.path().join("history-identity-release");
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-history-failed"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let request = common::OpenJsonRequest::submit(
+        s.server.addr(), "/api/workflow/manager/dispatch",
+        &json!({"sessionId":"manager-history","nodes":["A"]}).to_string(),
+    ).await;
+    assert!(common::wait_until(Duration::from_secs(5), || {
+        s.herdr.calls().iter().filter(|call| call["kind"] == "agent_get").count() == 2
+    }).await);
+    let original_history = fs::read(&s.config.sessions.history_file).unwrap();
+    fs::remove_file(&s.config.sessions.history_file).unwrap();
+    fs::create_dir(&s.config.sessions.history_file).unwrap();
+    fs::write(release, b"release").unwrap();
+    let response = request.response().await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let batch: Value = serde_json::from_str(&response.body).unwrap();
+    let result = &batch["results"][0];
+    assert_eq!(result["status"], "failed");
+    assert_eq!(result["failure"]["stage"], "history");
+    assert_eq!(result["effects"]["sessionId"], "node-history-failed");
+    assert_eq!(result["effects"]["agentStarted"], true);
+    assert_eq!(result["effects"]["associationSaved"], true);
+    assert_eq!(result["effects"]["inputAttempted"], false);
+    assert_eq!(result["effects"]["inputSubmitted"], false);
+    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
+    let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved, batch["snapshot"]);
+    assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "node-history-failed");
+    assert_eq!(saved["nodes"]["A"]["failure"], result["failure"]);
+    assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[0]["failure"], result["failure"]);
+    assert!(s.config.sessions.history_file.is_dir());
+    let calls = s.herdr.calls();
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 2);
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_prompt").count(), 1);
+    let queried = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-history"}).to_string()).await;
+    assert_eq!(queried.status, 200, "{}", queried.body);
+    assert_eq!(serde_json::from_str::<Value>(&queried.body).unwrap()["snapshot"], saved);
+    assert_eq!(s.herdr.calls(), calls);
+    fs::remove_dir(&s.config.sessions.history_file).unwrap();
+    fs::write(&s.config.sessions.history_file, original_history).unwrap();
+}
+
+#[tokio::test]
 async fn missing_manager_workspace_never_falls_back_or_creates_a_tab() {
     let s = Scenario::new().await;
     s.start("manager-workspace").await;

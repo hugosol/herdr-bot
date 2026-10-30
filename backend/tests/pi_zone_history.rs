@@ -229,14 +229,13 @@ async fn pi_save_failure_does_not_retry_or_change_current_intent() {
     post(&server, "/api/shutdown/monitor", json!({"sessionId":"current-save-control","selected":true})).await;
     let mut before = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
     let before = before.next_frame().await.json();
-    let blocker = root.path().join("history.json.tmp");
-    fs::create_dir(&blocker).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&root.path().join("history.json"));
     assert_eq!(create(&server, &zone, &task).await["stage"], "succeeded");
     wait_get(&herdr).await;
     fs::write(release, b"release").unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(get(&server, "/api/sessions/history").await["total"], 1);
-    fs::remove_dir(blocker).unwrap();
+    drop(blocked);
     tokio::time::sleep(Duration::from_millis(400)).await;
     let history = get(&server, "/api/sessions/history").await;
     assert_eq!(history["total"], 1);
@@ -272,7 +271,8 @@ async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() 
         let mut before = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
         let before = before.next_frame().await.json();
         assert_eq!(before["shutdown"]["phase"], "counting-down");
-        if outcome == "save-failed" { fs::create_dir(root.path().join("history.json.tmp")).unwrap(); }
+        let blocked = (outcome == "save-failed")
+            .then(|| common::HistoryWriteBlock::new(&root.path().join("history.json")));
         assert_eq!(create(&server, &zone, &task).await["stage"], "succeeded");
         wait_get(&herdr).await;
         if outcome == "timeout" {
@@ -286,6 +286,8 @@ async fn pi_history_outcomes_never_cancel_or_reschedule_an_existing_countdown() 
             if outcome == "success" { wait_history(&server, "pi-countdown-outcome").await; }
             else { tokio::time::sleep(Duration::from_millis(400)).await; }
         }
+        drop(blocked);
+        assert_eq!(get(&server, "/api/sessions/history").await["total"], if outcome == "success" { 1 } else { 0 }, "{outcome}");
         let mut after = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
         let after = after.next_frame().await.json();
         for field in ["phase", "arrangementId", "deadline", "monitoredSessionIds"] {

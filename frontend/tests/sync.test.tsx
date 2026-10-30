@@ -2,10 +2,10 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import { createZoneWatchFeed } from '../src/zoneWatch'
+import App from '../src/app/App'
+import { createZoneWatchFeed } from '../src/zones/zoneWatch'
 import { FakeZoneEventSource, resetFakeZoneEventSources } from './fakeZoneEventSource'
-import type { BrowseEntry } from '../src/browseApi'
+import type { BrowseEntry } from '../src/zones/browser/browseApi'
 import { treeResponse } from './treeResponse'
 import type {
   GitChange,
@@ -13,7 +13,7 @@ import type {
   SyncAccepted,
   UpstreamRef,
   ZoneSummary,
-} from '../src/gitApi'
+} from '../src/zones/git/gitApi'
 
 const ZONE = 'C:\\work\\repository'
 

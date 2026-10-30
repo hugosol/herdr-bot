@@ -92,18 +92,23 @@ async fn retry_rejects_reuse_of_any_retained_native_identity() {
     assert_eq!(report(&s, "retry-old", "Original remains unambiguous").await["executionId"], old["id"]);
 }
 
-// P13.03/P45.03/P41.01: controlled identity/submit failure must retain a
+// P13.03/P45.03/P41.01: controlled identity/history/submit failure must retain a
 // distinct attempt and old failure; errors cannot be attributed to the old Chat.
 // Existing shared launch behavior is verified directly, without fabricated red.
 #[tokio::test]
 async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
-    for stage in ["identity", "submit"] {
+    for stage in ["identity", "history", "submit"] {
         let s = Scenario::new().await;
         let (started, old) = failed_execution(&s).await;
         let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
         let artifact = s.data.path().join("node-zone/old-artifact");
         fs::write(&artifact, "keep old side effects").unwrap();
         let before_calls = s.herdr.calls().len();
+        let original_history = fs::read(&s.config.sessions.history_file).unwrap();
+        if stage == "history" {
+            fs::remove_file(&s.config.sessions.history_file).unwrap();
+            fs::create_dir(&s.config.sessions.history_file).unwrap();
+        }
         s.herdr.set_behavior(if stage == "identity" { json!({"fail_agent_get":true}) } else { json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-submit-failure"},"native_cwd":s.data.path().join("node-zone"),"fail_prompt":true}) });
         let retried = action(&s, "retry", retry_body(), 200).await;
         let node = &retried["snapshot"]["nodes"]["A"];
@@ -114,12 +119,12 @@ async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
         assert_eq!(node["previousExecutions"][0]["failure"]["message"], "Original execution left partial output");
         let effects = &retried["result"]["effects"];
         assert_eq!(effects["agentStarted"], true);
-        assert_eq!(effects["associationSaved"], stage == "submit");
+        assert_eq!(effects["associationSaved"], stage != "identity");
         assert_eq!(effects["inputAttempted"], stage == "submit");
         assert_eq!(effects["inputSubmitted"], false);
         assert_ne!(effects["agentName"], old["chat"]["agentName"]);
         assert_ne!(effects["tabId"], old["chat"]["tabId"]);
-        if stage == "submit" { assert_eq!(node["execution"]["chat"]["sessionId"], "retry-submit-failure"); }
+        if stage != "identity" { assert_eq!(node["execution"]["chat"]["sessionId"], "retry-submit-failure"); }
         else { assert!(node["execution"]["chat"].is_null()); }
         assert_eq!(common::read_json_lines(&s.herdr.path().join("started.jsonl")).len(), 3);
         let events = common::read_json_lines(&root.join("history.jsonl"));
@@ -128,12 +133,16 @@ async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
         assert_eq!(events[2]["previousExecution"], old);
         assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap(), retried["snapshot"]);
         let calls = s.herdr.calls();
-        assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), if stage == "identity" { 2 } else { 3 });
-        let expected = if stage == "identity" { vec!["workspace_list", "tab_create", "agent_start", "agent_get"] } else { vec!["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"] };
+        assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), if stage == "submit" { 3 } else { 2 });
+        let expected = if stage == "submit" { vec!["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"] } else { vec!["workspace_list", "tab_create", "agent_start", "agent_get"] };
         assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), expected);
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(s.herdr.calls(), calls);
         assert_eq!(fs::read_to_string(artifact).unwrap(), "keep old side effects");
+        if stage == "history" {
+            fs::remove_dir(&s.config.sessions.history_file).unwrap();
+            fs::write(&s.config.sessions.history_file, original_history).unwrap();
+        }
     }
 }
 

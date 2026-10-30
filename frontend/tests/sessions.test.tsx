@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import App from '../src/App'
-import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/sessionFeed'
-import { NO_SHUTDOWN } from '../src/shutdownView'
+import App from '../src/app/App'
+import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/chats/sessionFeed'
+import { NO_SHUTDOWN } from '../src/server/shutdown/shutdownView'
 
 /**
  * 假数据源：会话列表的组件测试只通过注入的数据源驱动，不接触全局 EventSource——

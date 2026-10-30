@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
-import type { Bot } from '../src/schedulerApi'
+import type { Bot } from '../src/scheduler/schedulerApi'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -156,7 +156,7 @@ test('P9.01 selected Map launch form offers only launch configuration and return
   fs.writeFileSync(server!.storageFile, JSON.stringify(stored))
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
+  await page.getByRole('button', { name: '预检图', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
   const form = page.getByRole('form', { name: '发起 Run', exact: true })
   await expect(form).toBeVisible()
@@ -188,7 +188,7 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   fs.writeFileSync(fixture.mapFile, JSON.stringify(fixture.map))
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
+  await page.getByRole('button', { name: '预检图', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
   let form = page.getByRole('form', { name: '发起 Run', exact: true })
   await form.getByLabel('管理者 Task', { exact: true }).selectOption(fixture.ids.manager)
@@ -226,7 +226,7 @@ test('P9.01 missing Task reference returns to the original Bot binding', async (
   fs.writeFileSync(fixture.botFile, JSON.stringify(fixture.bot))
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'preflight.json', exact: true }).click()
+  await page.getByRole('button', { name: '预检图', exact: true }).click()
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
   const form = page.getByRole('form', { name: '发起 Run', exact: true })
   await form.getByLabel('管理者 Task', { exact: true }).selectOption(fixture.ids.manager)

@@ -28,7 +28,7 @@ async function prepare() {
 async function openPlan(page: Page) {
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'plan.json', exact: true }).click()
+  await page.getByRole('button', { name: plan.title, exact: true }).click()
 }
 
 async function completeGraph(page: Page) {

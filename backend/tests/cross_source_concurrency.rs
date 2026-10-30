@@ -87,14 +87,13 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         let first_time = history(&server).await["sessions"][0]["firstRecordedAt"].clone();
         event(&server,id,"state",json!({"value":"working"})).await;
         post(&server,"/api/shutdown/monitor",json!({"sessionId":id,"selected":true})).await;
-        let blocker = root.path().join("history.json.tmp");
         for (round, task, name) in [(1,first,"Zone first literal"), (2,renamed,"Zone final literal")] {
             let release = root.path().join(format!("release-{round}"));
             fixture.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"id","value":id},"native_cwd":"C:/native","native_session_gate":{"wait_for_file":release,"timeout_ms":40000}}));
             create_pending(&server,&fixture,zone,task,round).await;
             clock.advance(Duration::from_secs(9));
             let intent_before_failure = snapshot(&server).await;
-            fs::create_dir(&blocker).unwrap();
+            let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
             let failed = event(&server,id,"register",json!({"cwd":"C:/current","sessionName":"Failed connect rename","agentType":agent})).await;
             assert_eq!(failed["outcome"],"registered");
             assert_eq!(failed["historySaved"],false);
@@ -114,7 +113,7 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
                 assert_eq!(current["shutdown"]["phase"],"counting-down");
                 assert_eq!(current["shutdown"]["monitoredSessionIds"],json!([]));
             }
-            fs::remove_dir(&blocker).unwrap();
+            drop(blocked);
             fs::write(&release,b"identity ready").unwrap();
             wait_name(&server,name).await;
             assert_eq!(history(&server).await["sessions"][0]["firstRecordedAt"],first_time);

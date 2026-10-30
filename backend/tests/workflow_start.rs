@@ -546,6 +546,60 @@ async fn association_failure_never_submits_and_exposes_real_started_effects() {
     fs::write(root.join("run.json"), original).unwrap();
 }
 
+// A failed Chat-history write follows a committed Run association, but must
+// still stop before initial input. Only the startup diagnostic is process-local.
+#[tokio::test]
+async fn manager_history_failure_retains_saved_identity_without_initial_prompt() {
+    let (data, herdr, config, server, zone, ids) = fixture().await;
+    let release = data.path().join("history-identity-release");
+    herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"manager-history-failed"},"native_cwd":data.path(),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let request = common::OpenJsonRequest::submit(
+        server.addr(),
+        "/api/scheduler/maps/work.json/runs",
+        &json!({"managerTaskId":ids[0],"zone":zone,"userInput":""}).to_string(),
+    ).await;
+    assert!(common::wait_until(std::time::Duration::from_secs(5), || {
+        herdr.calls().iter().any(|call| call["kind"] == "agent_get")
+    }).await);
+    let history = &config.sessions.history_file;
+    let original_history = fs::read(history).ok();
+    if history.exists() { fs::remove_file(history).unwrap(); }
+    fs::create_dir_all(history).unwrap();
+    fs::write(release, b"release").unwrap();
+    let response = request.response().await;
+    assert_eq!(response.status, 500, "{}", response.body);
+    let failure: Value = serde_json::from_str(&response.body).unwrap();
+    let error = &failure["startupError"];
+    assert_eq!(error["stage"], "history");
+    assert_eq!(error["effects"]["sessionId"], "manager-history-failed");
+    assert_eq!(error["effects"]["agentStarted"], true);
+    assert_eq!(error["effects"]["associationSaved"], true);
+    assert_eq!(error["effects"]["inputAttempted"], false);
+    assert_eq!(error["effects"]["inputSubmitted"], false);
+    let id = failure["id"].as_str().unwrap();
+    let root = config.scheduler.run_directory.join(id);
+    let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved["manager"]["sessionId"], "manager-history-failed");
+    assert!(saved.get("startupError").is_none());
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), b"");
+    assert!(history.is_dir(), "failed history publication must not replace the fault");
+    let calls = herdr.calls();
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 1);
+    assert!(calls.iter().all(|call| call["kind"] != "agent_prompt"));
+    let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(detail.status, 200, "{}", detail.body);
+    assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["startupError"], *error);
+    let restarted = TestServer::start(&config).await;
+    let detail = get_over_tcp(restarted.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(detail.status, 200, "{}", detail.body);
+    let detail: Value = serde_json::from_str(&detail.body).unwrap();
+    assert!(detail.get("startupError").is_none() || detail["startupError"].is_null());
+    assert_eq!(detail["run"]["manager"], saved["manager"]);
+    assert_eq!(herdr.calls(), calls);
+    fs::remove_dir(history).unwrap();
+    if let Some(bytes) = original_history { fs::write(history, bytes).unwrap(); }
+}
+
 #[tokio::test]
 async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requirements() {
     let (_data, herdr, config, server, zone, ids) = fixture().await;

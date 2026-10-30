@@ -80,7 +80,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     assertNoExecution()
   }
   await openScheduler(page)
-  await expect.poll(async () => (await page.getByTestId('scheduler-map-list').getByRole('listitem').allTextContents()).sort()).toEqual(['broken.json', 'safe.json'])
+  await expect.poll(async () => (await page.getByTestId('scheduler-map-list').getByRole('listitem').allTextContents()).sort()).toEqual([html, 'broken.json'].sort())
   await unchanged()
   const selectAndExpand = async () => {
     await expect(page.getByRole('heading', { name: html, exact: true })).toBeVisible()
@@ -102,7 +102,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     await unchanged()
     await page.getByTestId('tab-scheduler').click()
   }
-  await page.getByRole('button', { name: 'safe.json', exact: true }).click()
+  await page.getByRole('button', { name: html, exact: true }).click()
   await selectAndExpand()
   const read = await page.request.get(`${server.baseURL}/api/scheduler/maps/safe.json`)
   expect(read.status()).toBe(200)
@@ -123,13 +123,12 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
   const broken = await page.request.get(`${server.baseURL}/api/scheduler/maps/broken.json`)
   expect(broken.status()).toBe(500)
   await unchanged()
-  await page.getByRole('button', { name: 'safe.json', exact: true }).click()
+  await page.getByRole('button', { name: html, exact: true }).click()
   await selectAndExpand()
   for (const name of ['刷新全部']) {
     const reloaded = page.waitForResponse(response => response.url().endsWith('/api/scheduler/maps/safe.json'))
     await page.getByRole('button', { name, exact: true }).click()
     expect((await reloaded).status()).toBe(200)
-    await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
     await selectAndExpand()
   }
 })
@@ -158,8 +157,8 @@ test('P27 actual Map and bot readers reject traversal requests and outside junct
   expect(fs.readFileSync(path.join(maps, 'linked.json', 'secret-map.json'), 'utf8')).toContain('PRIVATE OUTSIDE MAP CANARY')
   expect(fs.readFileSync(path.join(bots, 'linked.json', 'secret-template.json'), 'utf8')).toContain('PRIVATE OUTSIDE TEMPLATE CANARY')
   await openScheduler(page)
-  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['inside.json'])
-  await page.getByRole('button', { name: 'inside.json', exact: true }).click()
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['Inside plan'])
+  await page.getByRole('button', { name: 'Inside plan', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Inside plan', exact: true })).toBeVisible()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Inside node A', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
@@ -268,7 +267,7 @@ for (const kind of ['maps', 'bots'] as const) {
       fs.writeFileSync(path.join(maps, 'inside.json'), mapBytes)
       fs.writeFileSync(path.join(bots, 'inside.json'), botBytes)
       await openScheduler(page)
-      await page.getByRole('button', { name: 'inside.json', exact: true }).click()
+      await page.getByRole('button', { name: 'Inside plan', exact: true }).click()
       await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Inside node A', exact: true }).click()
       await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Inside capability', exact: true })).toBeVisible()

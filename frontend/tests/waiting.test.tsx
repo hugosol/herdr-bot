@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import App from '../src/App'
-import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/sessionFeed'
-import { NO_SHUTDOWN } from '../src/shutdownView'
+import App from '../src/app/App'
+import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../src/chats/sessionFeed'
+import { NO_SHUTDOWN } from '../src/server/shutdown/shutdownView'
 
 /** 造一个会话；只写这条用例关心的字段，其余走缺省值。 */
 function session(sessionId: string, sessionName: string, rest: Partial<SessionView> = {}): SessionView {

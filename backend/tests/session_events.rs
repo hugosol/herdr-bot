@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{HttpResponse, TestServer, post_json_over_tcp, post_over_tcp};
-use herdr_bot::observation::Observation;
+use herdr_bot::sessions::observation::Observation;
 use herdr_bot::sessions::{SessionPolicy, SessionsState};
 use herdr_bot::{PowerOff, PowerOffFailure};
 use serde_json::{Value, json};

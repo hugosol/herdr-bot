@@ -65,13 +65,12 @@ async fn missing_identity_and_failed_writes_preserve_existing_history() {
     assert_eq!(missing.status, 404);
     assert_eq!(serde_json::from_str::<Value>(&missing.body).unwrap()["code"], "unknown-chat");
     assert_eq!(read(&server).await, before);
-    let blocker = root.path().join("history.json.tmp");
-    std::fs::create_dir(&blocker).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     let failed = save(&server, "native-one", "unsaved draft\nretained by client").await;
     assert_eq!(failed.status, 500);
     assert_eq!(serde_json::from_str::<Value>(&failed.body).unwrap()["code"], "history-save-failed");
     assert_eq!(read(&server).await, before);
-    std::fs::remove_dir(blocker).unwrap();
+    drop(blocked);
     assert_eq!(save(&server, "native-one", "retry").await.status, 200);
     std::fs::write(&config.sessions.history_file, b"broken history").unwrap();
     assert_eq!(save(&server, "native-one", "must not replace").await.status, 500);

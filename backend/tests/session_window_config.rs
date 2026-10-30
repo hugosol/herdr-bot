@@ -24,7 +24,7 @@ use common::{HttpResponse, TempDir, TestServer, post_json_over_tcp};
 use herdr_bot::PowerOff;
 use herdr_bot::PowerOffFailure;
 use herdr_bot::clock::ManualClock;
-use herdr_bot::countdown::ShutdownState;
+use herdr_bot::shutdown::ShutdownState;
 use herdr_bot::sessions::SessionsState;
 use serde_json::{Value, json};
 

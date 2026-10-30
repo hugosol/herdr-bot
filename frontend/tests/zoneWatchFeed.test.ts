@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EMPTY_ZONE_WATCH, createZoneWatchFeed } from '../src/zoneWatch'
+import { EMPTY_ZONE_WATCH, createZoneWatchFeed } from '../src/zones/zoneWatch'
 import { FakeZoneEventSource, resetFakeZoneEventSources } from './fakeZoneEventSource'
 
 const ZONE = 'C:\\work\\project'

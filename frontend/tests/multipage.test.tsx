@@ -13,8 +13,8 @@ import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../src/App'
-import { createSseSessionFeed } from '../src/sseSessionFeed'
+import App from '../src/app/App'
+import { createSseSessionFeed } from '../src/chats/sseSessionFeed'
 import { FakeSessionEventSource, resetFakeEventSources } from './fakeSessionEventSource'
 
 /** 服务端时钟的一个固定取值：用例不依赖真实时间。 */

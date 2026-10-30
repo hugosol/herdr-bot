@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
-import { zoneDisplayName } from '../src/zoneDisplay'
+import { zoneDisplayName } from '../src/zones/zoneDisplay'
 
 describe('zoneDisplayName', () => {
   it('只保留 Windows 与 POSIX 路径的末级目录名', () => {

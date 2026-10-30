@@ -1,8 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
-import { RunLaunchForm } from '../src/RunLaunchForm'
-import type { Task } from '../src/taskApi'
+import { RunLaunchForm } from '../src/scheduler/RunLaunchForm'
+import type { Task } from '../src/tasks/taskApi'
 
 const options = { agents: ['omp', 'pi'], models: ['default'], thinking: {}, skills: [] }
 const tasks: Task[] = (['omp', 'pi'] as const).flatMap(agent =>

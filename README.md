@@ -48,4 +48,28 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 - [领域术语](GLOSSARY.md)与[架构决策](docs/adr/)。
 - [测试指引](docs/agents/testing.md)：验证入口、夹具隔离与手动网络验收。
 
-源码在 `backend/`（Rust/Axum）和 `frontend/`（React/Vite）。
+## 源码归属
+
+源码按功能模块组织，不按视图、请求、hook 等技术类型分散目录：
+
+| 功能 | 前端 `frontend/src/` | 后端 `backend/src/` |
+| --- | --- | --- |
+| 应用装配 | `main.tsx`、`app/` | `lib.rs`、`main.rs` 及启动配置文件 |
+| Task 与选项目录 | `tasks/` | `tasks/`（含 `catalog.rs`） |
+| Chat 发起、恢复与历史 | `chats/` | `chats/`（含 Herdr adapter） |
+| 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
+| zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
+| Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
+| Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
+| 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
+| 固定操作与关机 | `server/operationsApi.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
+
+Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航，`schedulerApi.ts` 作为 HTTP adapter。
+
+Run 专用 Chat 启动集中在 `backend/src/runs/startup.rs`：管理者启动、node 派发与显式 retry 共用启动、真实身份确认、关联保存、Chat 历史记录和首次指示提交协议，并由该 module 完成成功状态与失败收尾。管理者／node 的 Workspace、身份校验和关联写入差异在内部明确处理，不通过阶段回调拼装。调用者保留授权、预检、批次顺序及 node 的 Run 操作锁；独立 Chat 发起、会话恢复和人工恢复事实不进入此协议。
+
+跨模块引用指向实际所属文件，不通过旧路径兼容转发。前端全局样式暂集中在 `app/styles.css`；后端 `runs.rs` 与同名目录共同构成一个 Rust 模块。目录归类不改变 Task、Chat、Map、Run 的含义或执行时序。
+
+系统持久数据的读写、枚举、删除，以及产品代码直接执行的文件变更统一经过 `files.rs`。普通 JSON 读改存与条件发布使用常用操作；复合操作通过 `FileStore::with`／`with_async` 的受限访问对象完成，不能嵌套取得协调范围，也不能在范围内调用 Herdr／Git 等外部操作。目录与后代文件重叠协调，不相关的数据仍独立推进；调用者保留业务规则及 Run 操作锁，不持有原生文件锁。文件格式、路径及部分生效语义不变，不提供跨文件事务或自动修复；适用范围和取舍见 [ADR 0016](docs/adr/0016-unified-file-persistence.md)。
+
+测试继续位于 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/`，不随源码迁移；执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。

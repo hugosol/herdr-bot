@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { DiffContent } from '../src/DiffContent'
-import type { ChangeDiff } from '../src/diffApi'
+import { DiffContent } from '../src/zones/git/DiffContent'
+import type { ChangeDiff } from '../src/zones/git/diffApi'
 
 function diff(oldLines: string[], newLines: string[]): ChangeDiff {
   return {

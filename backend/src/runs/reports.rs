@@ -16,14 +16,11 @@ pub struct Report {
     pub body: String,
 }
 
-fn read_reports(path: &std::path::Path) -> Result<Vec<Report>, String> {
-    FileStore::read_jsonl(path)
-}
-
 pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
     let paths = Runs::paths(state, &run.id);
-    let _guards = state.runs.files.lock(&paths).await;
-    let reports = read_reports(&paths[2])?;
+    let reports = state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+        access.read_jsonl::<Report>(&paths[2])
+    })).await.map_err(|e| e.to_string())??;
     let mut pending = BTreeMap::new();
     for report in &reports {
         if run.nodes.get(&report.node_id).is_some_and(|node| {
@@ -111,11 +108,13 @@ pub async fn node_report(
                 source: source.clone(), target: target.clone(), body: input.body,
             };
             let paths = Runs::paths(&state, &run.id);
-            let _guards = state.runs.files.lock(&paths).await;
-            state.runs.ensure_retained(&run.id).await?;
-            FileStore::append_jsonl::<Report>(&paths[2], &report)?;
-            state.runs.changed(&run.id, true).await;
-            report
+            let owned = state.clone();
+            state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+                owned.runs.ensure_retained(&run.id).await?;
+                access.append_jsonl::<Report>(&paths[2], &report)?;
+                owned.runs.changed(&run.id, true).await;
+                Ok::<_, String>(report)
+            })).await.map_err(|e| e.to_string())??
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
         let delivery = state.herdr.prompt(&report.target.agent_name, &text).await;

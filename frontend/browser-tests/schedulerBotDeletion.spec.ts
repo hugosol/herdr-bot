@@ -210,7 +210,7 @@ test('deleting an unused bot still permits a later node with that missing bot re
   }
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'later.json', exact: true }).click()
+  await page.locator('[data-map-file="later.json"]').click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '审计任务 allowedMissing', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toContainText('缺失共享 Bot：shared')
   expect(fs.existsSync(file)).toBe(false)

@@ -72,7 +72,7 @@ test('P32 complete bot and node CRUD sequence survives a real service restart', 
   expect(fs.readdirSync(bots).sort()).toEqual(['business-name.JSON', files.retained].sort())
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'quarter.JSON', exact: true }).click()
+  await page.getByRole('button', { name: plan.title, exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '保留核对工作 retainedNode', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('73')
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
@@ -289,7 +289,7 @@ test('P34 malicious definitions remain inert through preview edit save delete an
     expect(JSON.stringify(await read(client, botsAPI))).not.toContain(secretText)
   }
   await openScheduler(page)
-  await page.getByRole('button', { name: 'quarter.JSON', exact: true }).click()
+  await page.getByRole('button', { name: plan.title, exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对工作 A', exact: true }).click()
   await expect(page.getByTestId('node-input')).toContainText(html)
   await expect(page.getByTestId('node-input')).toContainText(secret)

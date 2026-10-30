@@ -72,7 +72,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     const problems = page.getByRole('region', { name: 'Bot 问题', exact: true })
     await expect(problems).toContainText('broken.json')
     await expect(problems).toContainText('结构无效')
-    await activate(page, button('trip-readiness.json'))
+    await activate(page, button('出行准备核对（人工示例）'))
     const selected = page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '上海出行天气 A', exact: true })
     await activate(page, selected)
     await activate(page, button('Bot 明细'))
