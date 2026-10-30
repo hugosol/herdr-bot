@@ -1,12 +1,37 @@
 export type Bot = {
-  schema_version: 1
   id: string
   name: string
-  use_when: string
-  description: string
-  inputs: Record<string, string>
-  outputs: Record<string, string>
-  implementation: { type: 'chat' }
+  when: string
+  plan_guide: string
+  node_guide: string
+  task_id?: string
+}
+
+export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string }
+export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone'; message: string; nodeId?: string; botId?: string; taskId?: string }
+export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
+
+export async function preflightRun(file: string, input: RunPreflightInput): Promise<RunPreflightResult> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/preflight`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  const value = await response.json()
+  if (response.ok && typeof value?.workspaceName === 'string') return { kind: 'valid', workspaceName: value.workspaceName }
+  if (!response.ok && value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) {
+    return { kind: 'rejected', message: value.message, issues: value.issues }
+  }
+  throw new Error(value?.message ?? `启动预检未取得有效响应：HTTP ${response.status}`)
+}
+
+export async function startRun(file: string, input: RunPreflightInput): Promise<{ id: string } | Extract<RunPreflightResult, { kind: 'rejected' }>> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/runs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  const value = await response.json()
+  // Startup failures also carry a Run ID and belong on its refreshable detail.
+  if (typeof value?.id === 'string') return { id: value.id }
+  if (value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) return { kind: 'rejected', message: value.message, issues: value.issues }
+  throw new Error(value?.message ?? `启动未取得有效响应：HTTP ${response.status}；不会自动重试，请先核实现场。`)
 }
 
 export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }
@@ -61,8 +86,10 @@ export async function deleteBot(target: { id: string; revision: BotRevision }): 
 export type MapNode = {
   title: string
   bot_id: string
-  parameters: Record<string, unknown>
+  input: string
+  zone: string
   blocked_by: string[]
+  report_policy?: 'auto' | 'manual'
 }
 
 export async function loadNodeDraft(file: string, id: string | null): Promise<{ id: string; content: string; revision: BotRevision; create: boolean }> {
@@ -102,7 +129,6 @@ export async function deleteNode(file: string, target: { id: string; revision: B
 }
 
 export type WorkflowMap = {
-  schema_version: 1
   title: string
   description: string
   nodes: Record<string, MapNode>

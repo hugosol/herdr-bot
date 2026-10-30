@@ -1,0 +1,27 @@
+{
+  "ticket": "18-history-and-resume.md",
+  "implementationStatus": "Implemented; deterministic contracts verified; native S3 evidence blocked by undeployed configured role entrypoints",
+  "red": {
+    "command": "npm --prefix frontend run test:browser -- workflowHistory.spec.ts --workers=1",
+    "result": "Failed before implementation: current execution Chat region/control absent; expected current-native but locator not found",
+    "notes": "Initial missing npm dependencies and one ambiguous ownership locator were corrected before this behavioral red. Environment and failure semantics already existed in backend Resume and were verified without manufacturing a failure."
+  },
+  "finalVerification": [
+    {"command": "npm --prefix frontend test -- --maxWorkers=4", "exitCode": 0, "result": "27 test files; 205 tests passed"},
+    {"command": "npm --prefix frontend run test:browser:build -- workflowHistory.spec.ts workflowCurrent.spec.ts chatResume.spec.ts chatResumeContract.spec.ts chatResumeExtensions.spec.ts --workers=1", "exitCode": 0, "result": "Frontend TypeScript/Vite build, backend binaries/example build and network guard passed; 20 browser tests passed, including all 5 ticket-18 scenarios"},
+    {"command": "npm --prefix frontend run test:browser:partition", "exitCode": 0, "result": {"full": 316, "fast": 278, "time": 38}}
+  ],
+  "coverage": {
+    "P15.04": "Actual HTTP Run start/dispatch establishes source Task; workflow Resume after source extension selection/fixed entry changes submits literal latest-env argv and no launch model/thinking or prompt/input. Controlled CLI only; real env loading not verified.",
+    "P52.02": "Three unavailable-Map samples distinguish literal new/old reports, timestamps, execution Task/zone and default-collapsed history; all manager/current/old buttons request the exact native session and navigate controlled host to distinct target panes. Unassociated node does not create execution.",
+    "P53.01": "Manager/current/old navigation, managed and real-restart unmanaged Resume, focus/query failure and startup unconfirmed outcomes; preserved Run/node state and files, preserved unassociated manager rejection. Real native host remains unverified.",
+    "P57.02": "Missing, invalid and node-mismatched current definitions retain saved execution/report history and functional manager/current/old Resume without fabricated graph.",
+    "P68.09": "Bounded external call records show no input replay, autonomous retry or implicit ownership acquisition. Locate scenarios observe at least 300ms plus 150ms unassociated-node window; restored managed/unmanaged and failure cases observe at least 350ms. No indefinite absence claim."
+  },
+  "limitations": [
+    "Configured manager-chat.ts and node-chat.ts role entrypoints are absent; see native-prerequisites.json.",
+    "Controlled Herdr receipts establish adapter behavior, not real Herdr navigation, native Chat content or real extension/Prompt loading.",
+    "No backend source changed; full backend test suite was not run. All exercised builds/tests are listed above.",
+    "Ticket status, other tickets and workflow reports were intentionally unchanged; native S3 acceptance must not be marked passed."
+  ]
+}

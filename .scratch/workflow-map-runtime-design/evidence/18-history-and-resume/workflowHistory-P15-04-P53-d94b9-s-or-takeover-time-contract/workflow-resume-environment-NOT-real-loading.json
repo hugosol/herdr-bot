@@ -1,0 +1,473 @@
+{
+  "scope": "Controlled CLI adapter; not native loading or indefinite guarantee",
+  "initialCalls": [
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1793204954283,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "workflow-workspace",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+        "--label",
+        "52c778",
+        "--no-focus"
+      ],
+      "at": 1793204954404,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "kind": "tab_create",
+      "label": "52c778",
+      "workspace": "workflow-workspace"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--model",
+        "openai-codex/gpt-6.1-sol",
+        "--thinking",
+        "high",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-manager-chat.ts"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-8fc21fcc4347",
+        "--kind",
+        "omp",
+        "--pane",
+        "workflow-workspace:pc3473c",
+        "--timeout",
+        "30000",
+        "--",
+        "--model",
+        "openai-codex/gpt-6.1-sol",
+        "--thinking",
+        "high",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-manager-chat.ts"
+      ],
+      "at": 1793204954541,
+      "kind": "agent_start",
+      "name": "chat-8fc21fcc4347",
+      "pane": "workflow-workspace:pc3473c"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-8fc21fcc4347"
+      ],
+      "at": 1793204954620,
+      "kind": "agent_get",
+      "pid": 6396,
+      "target": "chat-8fc21fcc4347"
+    },
+    {
+      "argv": [
+        "agent",
+        "prompt",
+        "chat-8fc21fcc4347",
+        "/skill:teach MANAGER INITIAL\n\nRun ID: bc-5ccae140bb6d\nMap: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-maps\\resume.json\n运行说明: C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-piludu\\docs\\workflow-runtime.md\n当前状态: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\run.json\n执行历史: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\history.jsonl\n报告记录: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\messages.jsonl\n\nRUN INPUT ONLY"
+      ],
+      "at": 1793204954767,
+      "kind": "agent_prompt",
+      "target": "chat-8fc21fcc4347",
+      "text": "/skill:teach MANAGER INITIAL\n\nRun ID: bc-5ccae140bb6d\nMap: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-maps\\resume.json\n运行说明: C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-piludu\\docs\\workflow-runtime.md\n当前状态: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\run.json\n执行历史: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\history.jsonl\n报告记录: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\messages.jsonl\n\nRUN INPUT ONLY"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1793204954955,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "workflow-workspace",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+        "--label",
+        "b4d704",
+        "--no-focus"
+      ],
+      "at": 1793204955135,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "kind": "tab_create",
+      "label": "b4d704",
+      "workspace": "workflow-workspace"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--model",
+        "openai-codex/gpt-6.1-sol",
+        "--thinking",
+        "high",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-connect-bot.ts"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-0940e35e5313",
+        "--kind",
+        "omp",
+        "--pane",
+        "workflow-workspace:p5a6bf0",
+        "--timeout",
+        "30000",
+        "--",
+        "--model",
+        "openai-codex/gpt-6.1-sol",
+        "--thinking",
+        "high",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\extensions\\omp-connect-bot.ts"
+      ],
+      "at": 1793204955307,
+      "kind": "agent_start",
+      "name": "chat-0940e35e5313",
+      "pane": "workflow-workspace:p5a6bf0"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-0940e35e5313"
+      ],
+      "at": 1793204955439,
+      "kind": "agent_get",
+      "pid": 20640,
+      "target": "chat-0940e35e5313"
+    },
+    {
+      "argv": [
+        "agent",
+        "prompt",
+        "chat-0940e35e5313",
+        "/skill:teach NODE INITIAL ONLY\n\nNode ID: A\nNode: Actual dispatch\n运行说明: C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-piludu\\docs\\workflow-runtime.md\n当前状态: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\run.json\n执行历史: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\history.jsonl\n报告记录: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\messages.jsonl\n\nNODE INPUT ONLY"
+      ],
+      "at": 1793204955598,
+      "kind": "agent_prompt",
+      "target": "chat-0940e35e5313",
+      "text": "/skill:teach NODE INITIAL ONLY\n\nNode ID: A\nNode: Actual dispatch\n运行说明: C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-piludu\\docs\\workflow-runtime.md\n当前状态: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\run.json\n执行历史: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\history.jsonl\n报告记录: C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\.data\\workflow-runs\\bc-5ccae140bb6d\\messages.jsonl\n\nNODE INPUT ONLY"
+    }
+  ],
+  "restored": {
+    "status": 200,
+    "body": {
+      "actualCwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "degradations": [],
+      "fallback": false,
+      "matchCount": 0,
+      "message": "已在原 Workspace 恢复；已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，实际工作目录：C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。",
+      "outcome": "restored",
+      "stage": "focused",
+      "target": {
+        "paneId": "workflow-workspace:pe9718c",
+        "tabId": "workflow-workspace:te9718c",
+        "workspaceId": "workflow-workspace"
+      }
+    }
+  },
+  "again": {
+    "status": 200,
+    "body": {
+      "actualCwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "degradations": [],
+      "fallback": false,
+      "matchCount": 0,
+      "message": "已在原 Workspace 恢复；已确认恢复同一 OMP 原生对话并完成 Herdr 内部导航，实际工作目录：C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。",
+      "outcome": "restored",
+      "stage": "focused",
+      "target": {
+        "paneId": "workflow-workspace:pea5488",
+        "tabId": "workflow-workspace:tea5488",
+        "workspaceId": "workflow-workspace"
+      }
+    }
+  },
+  "managedObservationMs": 358,
+  "unmanagedObservationMs": 494,
+  "elapsedSinceManagedObservation": 2407,
+  "calls": [
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1793204956054,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "workflow-workspace",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+        "--label",
+        "b4d704",
+        "--no-focus"
+      ],
+      "at": 1793204956218,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "kind": "tab_create",
+      "label": "b4d704",
+      "workspace": "workflow-workspace"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-codebase-tools.ts",
+        "--resume",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\real-dispatch-node.jsonl"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-15109796e7d0",
+        "--kind",
+        "omp",
+        "--pane",
+        "workflow-workspace:pe9718c",
+        "--timeout",
+        "30000",
+        "--",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-codebase-tools.ts",
+        "--resume",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\real-dispatch-node.jsonl"
+      ],
+      "at": 1793204956339,
+      "kind": "agent_start",
+      "name": "chat-15109796e7d0",
+      "pane": "workflow-workspace:pe9718c"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-15109796e7d0"
+      ],
+      "at": 1793204956450,
+      "kind": "agent_get",
+      "pid": 46092,
+      "target": "chat-15109796e7d0"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "workflow-workspace:pe9718c"
+      ],
+      "kind": "agent_focus"
+    },
+    {
+      "argv": [
+        "agent",
+        "list"
+      ],
+      "kind": "agent_list"
+    },
+    {
+      "argv": [
+        "workspace",
+        "list"
+      ],
+      "at": 1793204958121,
+      "kind": "workspace_list"
+    },
+    {
+      "argv": [
+        "tab",
+        "create",
+        "--workspace",
+        "workflow-workspace",
+        "--cwd",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+        "--label",
+        "b4d704",
+        "--no-focus"
+      ],
+      "at": 1793204958198,
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd",
+      "kind": "tab_create",
+      "label": "b4d704",
+      "workspace": "workflow-workspace"
+    },
+    {
+      "agent_kind": "omp",
+      "args": [
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-codebase-tools.ts",
+        "--resume",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\real-dispatch-node.jsonl"
+      ],
+      "argv": [
+        "agent",
+        "start",
+        "chat-3f2d30007a41",
+        "--kind",
+        "omp",
+        "--pane",
+        "workflow-workspace:pea5488",
+        "--timeout",
+        "30000",
+        "--",
+        "--no-extensions",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-herdr-agent-state.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-model-cost.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-node-chat.ts",
+        "--extension",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\latest-extensions\\omp-codebase-tools.ts",
+        "--resume",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd\\real-dispatch-node.jsonl"
+      ],
+      "at": 1793204958287,
+      "kind": "agent_start",
+      "name": "chat-3f2d30007a41",
+      "pane": "workflow-workspace:pea5488"
+    },
+    {
+      "argv": [
+        "agent",
+        "get",
+        "chat-3f2d30007a41"
+      ],
+      "at": 1793204958376,
+      "kind": "agent_get",
+      "pid": 31436,
+      "target": "chat-3f2d30007a41"
+    },
+    {
+      "argv": [
+        "agent",
+        "focus",
+        "workflow-workspace:pea5488"
+      ],
+      "kind": "agent_focus"
+    }
+  ],
+  "current": {
+    "id": "bc-5ccae140bb6d",
+    "managed": true,
+    "pendingReports": {},
+    "readError": null,
+    "reports": [],
+    "run": {
+      "createdAt": 1793204954163,
+      "finished": null,
+      "id": "bc-5ccae140bb6d",
+      "manager": {
+        "agentName": "chat-8fc21fcc4347",
+        "paneId": "workflow-workspace:pc3473c",
+        "sessionId": "real-dispatch-manager",
+        "tabId": "workflow-workspace:tc3473c",
+        "workspaceId": "workflow-workspace"
+      },
+      "managerTaskId": "task-18e2be67ac4adc10-0",
+      "map": "resume.json",
+      "nodes": {
+        "A": {
+          "completion": null,
+          "execution": {
+            "chat": {
+              "agentName": "chat-0940e35e5313",
+              "paneId": "workflow-workspace:p5a6bf0",
+              "sessionId": "real-dispatch-node",
+              "tabId": "workflow-workspace:t5a6bf0",
+              "workspaceId": "workflow-workspace"
+            },
+            "id": "bc-40ccb6994b39",
+            "taskId": "task-18e2be67ad379730-1",
+            "zone": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd"
+          },
+          "failure": null,
+          "previousExecutions": [],
+          "status": "running"
+        }
+      },
+      "status": "running",
+      "userInput": "RUN INPUT ONLY",
+      "workspaceName": "process-cwd",
+      "zone": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser Eds35W\\process-cwd"
+    },
+    "startupError": null
+  },
+  "savedRecords": [
+    "{\n  \"id\": \"bc-5ccae140bb6d\",\n  \"map\": \"resume.json\",\n  \"createdAt\": 1793204954163,\n  \"managerTaskId\": \"task-18e2be67ac4adc10-0\",\n  \"zone\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-bot browser Eds35W\\\\process-cwd\",\n  \"workspaceName\": \"process-cwd\",\n  \"userInput\": \"RUN INPUT ONLY\",\n  \"manager\": {\n    \"sessionId\": \"real-dispatch-manager\",\n    \"workspaceId\": \"workflow-workspace\",\n    \"tabId\": \"workflow-workspace:tc3473c\",\n    \"paneId\": \"workflow-workspace:pc3473c\",\n    \"agentName\": \"chat-8fc21fcc4347\"\n  },\n  \"status\": \"running\",\n  \"finished\": null,\n  \"nodes\": {\n    \"A\": {\n      \"status\": \"running\",\n      \"execution\": {\n        \"id\": \"bc-40ccb6994b39\",\n        \"taskId\": \"task-18e2be67ad379730-1\",\n        \"zone\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-bot browser Eds35W\\\\process-cwd\",\n        \"chat\": {\n          \"sessionId\": \"real-dispatch-node\",\n          \"workspaceId\": \"workflow-workspace\",\n          \"tabId\": \"workflow-workspace:t5a6bf0\",\n          \"paneId\": \"workflow-workspace:p5a6bf0\",\n          \"agentName\": \"chat-0940e35e5313\"\n        }\n      },\n      \"failure\": null,\n      \"completion\": null,\n      \"previousExecutions\": []\n    }\n  }\n}",
+    "{\"action\":\"dispatch\",\"at\":1793204955622,\"execution\":{\"chat\":{\"agentName\":\"chat-0940e35e5313\",\"paneId\":\"workflow-workspace:p5a6bf0\",\"sessionId\":\"real-dispatch-node\",\"tabId\":\"workflow-workspace:t5a6bf0\",\"workspaceId\":\"workflow-workspace\"},\"id\":\"bc-40ccb6994b39\",\"taskId\":\"task-18e2be67ad379730-1\",\"zone\":\"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-bot browser Eds35W\\\\process-cwd\"},\"failure\":null,\"nodeId\":\"A\",\"status\":\"running\"}\n",
+    ""
+  ]
+}

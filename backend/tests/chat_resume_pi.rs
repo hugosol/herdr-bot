@@ -98,11 +98,11 @@ async fn default_workspace_must_resolve_uniquely_before_creating_any_target() {
     }
 }
 
-// P11/P12: missing cwd and invalid agent metadata are visible failures,
-// never permission to infer an agent from a JSON file or replace the cwd.
+// Invalid agent metadata remains a visible failure, never permission to infer
+// an agent from a JSON file. Missing cwd is covered by the fallback contracts.
 #[tokio::test]
-async fn missing_cwd_or_unrecognized_agent_type_never_starts_a_process() {
-    for (kind,cwd,code) in [(json!("pi"),json!("Z:/definitely-missing-resume-cwd"),"invalid-cwd"),(Value::Null,Value::Null,"unsupported-agent"),(json!("unknown"),Value::Null,"unsupported-agent"),(json!("claude"),Value::Null,"unsupported-agent")] {
+async fn unrecognized_agent_type_never_starts_a_process() {
+    for (kind,cwd,code) in [(Value::Null,Value::Null,"unsupported-agent"),(json!("unknown"),Value::Null,"unsupported-agent"),(json!("claude"),Value::Null,"unsupported-agent")] {
         let root = TempDir::new("Pi invalid history");
         let herdr = HerdrFixture::new("pi-invalid-history");
         let config = setup(&root,&herdr,None);

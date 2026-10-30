@@ -9,10 +9,46 @@ use std::collections::{BTreeMap, VecDeque};
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WorkflowMap {
-    schema_version: u32,
     title: String,
     description: String,
     nodes: BTreeMap<String, JsonObject<MapNode>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportPolicy {
+    #[default]
+    Auto,
+    Manual,
+}
+
+impl<'de> Deserialize<'de> for ReportPolicy {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PolicyVisitor;
+        impl serde::de::Visitor<'_> for PolicyVisitor {
+            type Value = ReportPolicy;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("the string auto or manual")
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                match value {
+                    "auto" => Ok(ReportPolicy::Auto),
+                    "manual" => Ok(ReportPolicy::Manual),
+                    _ => Err(E::unknown_variant(value, &["auto", "manual"])),
+                }
+            }
+        }
+        deserializer.deserialize_str(PolicyVisitor)
+    }
+}
+
+impl ReportPolicy {
+    pub(crate) fn control_section(self) -> &'static str {
+        match self {
+            Self::Auto => "report_policy: auto\nReport handoff-ready results without waiting for user confirmation. Reporting does not complete the node; the manager still decides complete.",
+            Self::Manual => "report_policy: manual\nBefore every handoff-ready report, show the user a summary, result locations and limitations in this node Chat, ask whether to send the report, then stop the turn and wait. Send report only after the user confirms in natural language here. If changes are requested, make them first, show the revised result and ask again. Supplements and corrections also require this confirmation. Reporting does not complete the node; the manager still decides complete.",
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -20,7 +56,10 @@ struct WorkflowMap {
 struct MapNode {
     title: String,
     bot_id: String,
-    parameters: BTreeMap<String, serde_json::Value>,
+    input: String,
+    #[serde(default)]
+    report_policy: ReportPolicy,
+    zone: String,
     blocked_by: Vec<String>,
 }
 
@@ -50,7 +89,7 @@ fn map_error(message: impl Into<String>) -> DirectoryError {
     DirectoryError { code: "map-read-failed", message: message.into() }
 }
 
-fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryError> {
+fn map_file_path(directory: &Path, name: &str) -> Result<PathBuf, DirectoryError> {
     // A filename is not a path. Reject both platform separators, Windows streams
     // and links, using the same ancestor boundary as the directory listing.
     if name.is_empty() || name.contains(['/', '\\', ':']) ||
@@ -62,11 +101,49 @@ fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryErro
     if !metadata.is_file() || crate::browse::is_link_like(&metadata) {
         return Err(map_error("Map 文件不能是符号链接、重解析点或目录。"));
     }
-    fs::read_to_string(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
+    Ok(file)
+}
+
+fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryError> {
+    fs::read_to_string(map_file_path(directory, name)?)
+        .map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
 }
 
 fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError> {
     parse_map(&read_map_source(directory, name)?)
+}
+
+pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let map = read_map(directory, name).map_err(|e| e.message)?;
+    Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
+}
+
+pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Result<ReportPolicy, String> {
+    let map = read_map(directory, name).map_err(|e| e.message)?;
+    map.nodes.get(id).map(|node| node.0.report_policy).ok_or_else(|| "node 不在当前 Map 中".into())
+}
+
+pub(crate) struct DispatchTarget {
+    pub title: String,
+    pub input: String,
+    pub report_policy: ReportPolicy,
+    pub zone: String,
+    pub task: crate::tasks::Task,
+}
+
+pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str) -> Result<DispatchTarget, String> {
+    let mut definition = read_map(&state.map_directory, map).map_err(|e| e.message)?;
+    let node = definition.nodes.remove(id).ok_or("node 不在当前 Map 中")?.0;
+    let bots = read_bots(&state.bot_directory).map_err(|e| e.message)?;
+    let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
+    let task_id = bot.task_id.as_deref().ok_or("Bot 未绑定 Task")?;
+    let task = state.tasks.get(task_id).await.map_err(|e| e.message())?;
+    if task.task_type != crate::tasks::TaskType::Normal {
+        return Err("node 必须绑定 normal 类型的 Task".into());
+    }
+    let zones = state.zones.list().await.map_err(|e| e.message())?;
+    let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
+    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -79,7 +156,6 @@ fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
 }
 
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
-    if map.schema_version != 1 { return Err(map_error("Map schema_version 必须为 1。")); }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
     // a successful graph. Kahn's traversal also bounds layout work on bad input.
     let mut remaining = BTreeMap::new();
@@ -136,25 +212,148 @@ pub async fn get_map(
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ImplementationType { Chat }
+/// Launch configuration is not a definition override or a Run allocation.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RunPreflightRequest {
+    pub manager_task_id: String,
+    pub zone: String,
+    pub user_input: String,
+}
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct BotImplementation { r#type: ImplementationType }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RunPreflight {
+    pub workspace_name: String,
+    #[serde(skip)]
+    pub node_ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreflightIssue {
+    code: &'static str,
+    target: &'static str,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
+}
+
+impl PreflightIssue {
+    fn new(code: &'static str, target: &'static str, message: impl Into<String>) -> Self {
+        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None }
+    }
+}
+
+pub(crate) struct PreflightFailure(Vec<PreflightIssue>);
+impl IntoResponse for PreflightFailure {
+    fn into_response(self) -> Response {
+        (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "code": "run-preflight-rejected", "message": "启动预检未通过；请返回对应原配置修正后重新校验。",
+            "issues": self.0,
+        }))).into_response()
+    }
+}
+
+fn check_role(tasks: &[crate::tasks::Task], id: &str, role: crate::tasks::TaskType, target: &'static str) -> Option<PreflightIssue> {
+    use crate::tasks::TaskType;
+    let role_name = if role == TaskType::Manager { "manager" } else { "normal" };
+    let mut issue = match tasks.iter().find(|task| task.id == id) {
+        None => PreflightIssue::new("task-missing", target, format!("Task {id} 不存在；请在 task 入口配置并修正引用。")),
+        Some(task) if task.task_type != role => PreflightIssue::new("task-role-invalid", target, format!("Task {id} 必须是 {role_name} 类型；请回到此 Task 修正。")),
+        Some(_) => return None,
+    };
+    issue.task_id = Some(id.to_owned());
+    Some(issue)
+}
+
+fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, target: &'static str) -> Result<&'a str, PreflightIssue> {
+    if requested.trim().is_empty() {
+        return Err(PreflightIssue::new("zone-required", target, "请选择或填写已登记 zone 的路径；请回到 zone 登记或 node 定义修正。"));
+    }
+    let root = crate::browse::registered_root(zones, requested).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
+    crate::browse::checked_root(root).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
+    Ok(root)
+}
+
+/// Shared by the read-only form and the real launch operation. Every call reads
+/// current definitions, Task roles and registered roots; it never allocates a
+/// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
+pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, input: &RunPreflightRequest) -> Result<RunPreflight, PreflightFailure> {
+    let map_directory = state.map_directory.clone();
+    let bot_directory = state.bot_directory.clone();
+    let name = name.to_owned();
+    let (map, bots) = tokio::task::spawn_blocking(move || {
+        let map = read_map(&map_directory, &name)?;
+        let bots = if map.nodes.is_empty() { BotCatalog { bots: Vec::new(), problems: Vec::new() } } else { read_bots(&bot_directory)? };
+        Ok::<_, DirectoryError>((map, bots))
+    }).await.map_err(|error| PreflightFailure(vec![PreflightIssue::new("definition-read-failed", "map", error.to_string())]))?
+        .map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
+    if map.nodes.is_empty() {
+        return Err(PreflightFailure(vec![PreflightIssue::new("map-empty", "map", "空 Map 不能启动；请返回 Map 新增 node。")]));
+    }
+    let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
+    let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
+    let mut issues = Vec::new();
+    if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
+    let manager_zone = match check_zone(&zones, &input.zone, "manager") {
+        Ok(zone) => Some(zone),
+        Err(issue) => { issues.push(issue); None },
+    };
+    for (id, node) in &map.nodes {
+        let node = &node.0;
+        let mut binding_issue = match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
+            None => Some(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请回到 Bot 管理修正引用或文件。", node.bot_id))),
+            Some(bot) => match bot.task_id.as_deref().filter(|id| !id.trim().is_empty()) {
+                None => Some(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定 Task；请回到此 Bot 配置 task_id。", bot.id))),
+                Some(task_id) => check_role(&tasks, task_id, crate::tasks::TaskType::Normal, "task"),
+            },
+        };
+        if let Some(issue) = &mut binding_issue { issue.node_id = Some(id.clone()); issue.bot_id = Some(node.bot_id.clone()); }
+        issues.extend(binding_issue);
+        if let Err(mut issue) = check_zone(&zones, &node.zone, "node") { issue.node_id = Some(id.clone()); issues.push(issue); }
+    }
+    if !issues.is_empty() { return Err(PreflightFailure(issues)); }
+    let zone = manager_zone.expect("valid manager zone when no issues");
+    let workspace_name = Path::new(&zone).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    if workspace_name.is_empty() {
+        return Err(PreflightFailure(vec![PreflightIssue::new("workspace-name-unavailable", "manager", "管理者 zone 没有可推导的目录名称；请选择有目录名的 zone。")]));
+    }
+    // Reading the field is intentional: it is accepted verbatim, with no input
+    // quality gate or rewriting into node.input / Task.prompt.
+    let _ = &input.user_input;
+    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect() })
+}
+
+pub async fn preflight_run(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    let input = match crate::chat_command_body(request, "Run 启动预检").await {
+        Ok(input) => input,
+        Err(error) => return error,
+    };
+    match check_run_preflight(&state, &name, &input).await {
+        Ok(checked) => Json(checked).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Bot {
-    schema_version: u32,
     id: String,
     name: String,
-    use_when: String,
-    description: String,
-    inputs: BTreeMap<String, String>,
-    outputs: BTreeMap<String, String>,
-    implementation: JsonObject<BotImplementation>,
+    when: String,
+    plan_guide: String,
+    node_guide: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -199,8 +398,8 @@ fn read_bots(directory: &Path) -> Result<BotCatalog, DirectoryError> {
                 continue;
             }
         };
-        let bot: Bot = match serde_json::from_slice(&bytes) {
-            Ok(bot) => bot,
+        let bot: Bot = match serde_json::from_slice::<JsonObject<Bot>>(&bytes) {
+            Ok(JsonObject(bot)) => bot,
             Err(error) => {
                 let bot_id = serde_json::from_slice::<serde_json::Value>(&bytes).ok()
                     .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(str::to_owned));
@@ -208,10 +407,6 @@ fn read_bots(directory: &Path) -> Result<BotCatalog, DirectoryError> {
                 continue;
             }
         };
-        if bot.schema_version != 1 {
-            problems.push(BotProblem { code: "bot-invalid", message: format!("共享 Bot {name} 的 schema_version 必须为 1。"), files: vec![name], bot_id: Some(bot.id) });
-            continue;
-        }
         identities.entry(bot.id.clone()).or_default().push(name);
         bots.push(bot);
     }
@@ -418,7 +613,6 @@ pub async fn save_bot(
         object.insert("id".into(), serde_json::Value::String(draft.id.clone()));
         let JsonObject(bot): JsonObject<Bot> = serde_path_to_error::deserialize(content)
             .map_err(|e| edit_error("bot-invalid", format!("Bot 结构无效：{e}")))?;
-        if bot.schema_version != 1 { return Err(edit_error("bot-invalid", "Bot schema_version 必须为 1。")); }
         let bytes = serde_json::to_vec_pretty(&bot).map_err(|e| edit_error("bot-write-failed", e.to_string()))?;
         let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("bot-write-failed", "定义提交锁不可用。"))?;
         let root = prepare_directory(&state.bot_directory).map_err(bot_directory_error)?;
@@ -565,7 +759,8 @@ pub async fn new_node(
         let original = read_map_source(&state.map_directory, &name)?;
         parse_map(&original)?;
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
-        let content = example["nodes"]["A"].take();
+        let mut content = example["nodes"]["A"].take();
+        content["report_policy"] = serde_json::json!(ReportPolicy::default());
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     }).await {
         Ok(Ok(value)) => Json(value).into_response(),
@@ -703,11 +898,60 @@ fn read_files(directory: &Path) -> Result<MapFiles, DirectoryError> {
         let metadata = fs::symlink_metadata(&path).map_err(|e| DirectoryError::io("map-directory-read-failed", "读取", e))?;
         if !metadata.is_file() || crate::browse::is_link_like(&metadata) { continue; }
         if path.extension().is_some_and(|value| value.eq_ignore_ascii_case("json")) {
-            if let Some(name) = entry.file_name().to_str() { files.push(name.to_owned()); }
+            if let Some(name) = entry.file_name().to_str() {
+                let modified = metadata.modified().map_err(|e| DirectoryError::io("map-directory-read-failed", "读取", e))?;
+                files.push((name.to_owned(), modified));
+            }
         }
     }
-    files.sort();
-    Ok(MapFiles { files })
+    files.sort_by(|(left_name, left_time), (right_name, right_time)| {
+        right_time.cmp(left_time).then_with(|| left_name.cmp(right_name))
+    });
+    Ok(MapFiles { files: files.into_iter().map(|(name, _)| name).collect() })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MapDelete {
+    delete_history: bool,
+}
+
+pub async fn delete_map(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    let input: MapDelete = match crate::chat_command_body(request, "删除 Map").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let lock = state.runs.map_lock(&name).await;
+    let _operation = lock.lock().await;
+    // Validate the file boundary without parsing its definition: broken JSON is
+    // still a safely identifiable Map file which the user must be able to remove.
+    if let Err(error) = map_file_path(&state.map_directory, &name) {
+        return error.into_response();
+    }
+    match read_files(&state.map_directory) {
+        Ok(files) if files.files.contains(&name) => {},
+        Ok(_) => return edit_error("map-delete-failed", "删除只接受列表中的确切 Map 文件名。").into_response(),
+        Err(error) => return error.into_response(),
+    }
+    if input.delete_history {
+        if let Err(message) = state.runs.delete_map_history(&state, &name).await {
+            return edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")).into_response();
+        }
+    }
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("map-delete-failed", "定义提交锁不可用。"))?;
+        let path = map_file_path(&state.map_directory, &name)?;
+        fs::remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
+        read_files(&state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
+    }).await {
+        Ok(Ok(files)) => Json(files).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" )).into_response(),
+    }
 }
 
 pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {

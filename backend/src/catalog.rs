@@ -1,6 +1,6 @@
 //! Hand-maintained option metadata. Each operation loads one complete, validated snapshot.
 //! No generated defaults, watcher, or stale-cache fallback.
-use crate::tasks::{Agent, Task, TaskError};
+use crate::tasks::{Agent, Task, TaskError, TaskType};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -64,6 +64,16 @@ pub struct TaskOptions {
     skills: Vec<String>,
     labels: BTreeMap<String, BTreeMap<String, String>>,
     extensions: Vec<ExtensionOption>,
+}
+
+/// Runtime context is supplied by the launch owner, never by extension metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionRole { Standalone, Manager, Node }
+
+impl From<TaskType> for ExecutionRole {
+    fn from(task_type: TaskType) -> Self {
+        match task_type { TaskType::Normal => Self::Standalone, TaskType::Manager => Self::Manager }
+    }
 }
 
 impl Catalog {
@@ -167,6 +177,11 @@ impl Catalog {
             }
         }
         for extension in &self.extensions {
+            if let Some((agent, _)) = extension.role() {
+                if extension.agent != agent || extension.kind != ExtensionKind::Fixed {
+                    return Err(format!("角色扩展 {} 必须属于对应 agent 且为固定扩展", extension.id));
+                }
+            }
             if !self.agents.iter().any(|v| v.id == extension.agent) {
                 return Err(format!(
                     "extension {} 引用未知 agent {}",
@@ -314,9 +329,13 @@ impl Catalog {
 
     /// Resolve stable IDs once, before any external work; the caller owns this snapshot.
     pub fn resolve(&self, task: &Task) -> Result<ResolvedPreset, TaskError> {
+        self.resolve_for_role(task, task.task_type.into())
+    }
+
+    pub fn resolve_for_role(&self, task: &Task, role: ExecutionRole) -> Result<ResolvedPreset, TaskError> {
         self.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref())?;
         Ok(ResolvedPreset {
-            env: self.resolve_env(task.agent, &task.env.extensions)?,
+            env: self.resolve_env(task.agent, role, &task.env.extensions)?,
             trigger: ResolvedTriggerConfig {
                 provider_model: self.models.iter()
                     .find(|v| v.id == task.trigger.model)
@@ -331,11 +350,14 @@ impl Catalog {
 
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
-    pub fn resolve_env(&self, agent: Agent, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
+    pub fn resolve_env(&self, agent: Agent, role: ExecutionRole, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
         self.validate_extensions(agent, selections)?;
+        if role != ExecutionRole::Standalone && !self.extensions.iter().any(|extension| extension.role() == Some((agent, role))) {
+            return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
+        }
         Ok(ResolvedEnvConfig {
             extensions: self.extensions.iter().filter(|extension| {
-                extension.agent == agent && (extension.kind == ExtensionKind::Fixed
+                extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed
                     || selections.contains(&extension.id))
             }).cloned().collect(),
         })
@@ -373,6 +395,20 @@ impl ResolvedEnvConfig {
 }
 
 impl ExtensionOption {
+    fn role(&self) -> Option<(Agent, ExecutionRole)> {
+        match self.id.as_str() {
+            "omp-manager-chat" => Some((Agent::Omp, ExecutionRole::Manager)),
+            "pi-manager-chat" => Some((Agent::Pi, ExecutionRole::Manager)),
+            "omp-node-chat" => Some((Agent::Omp, ExecutionRole::Node)),
+            "pi-node-chat" => Some((Agent::Pi, ExecutionRole::Node)),
+            _ => None,
+        }
+    }
+
+    pub fn applies_to(&self, agent: Agent, role: ExecutionRole) -> bool {
+        self.agent == agent && self.role().is_none_or(|required| required == (agent, role))
+    }
+
     /// Check availability only; the agent remains responsible for loading.
     pub fn check_entrypoint(&self) -> Result<(), String> {
         use std::io::Read;

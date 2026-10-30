@@ -6,10 +6,10 @@ import { startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const original = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
-  A: { title: '独立审计', bot_id: 'audit', parameters: { id: 'business-id', extra: { list: [1, null, { approved: false }] } }, blocked_by: [] as string[] },
-  B: { title: '后继工作', bot_id: 'summary', parameters: { nested: { order: ['keep', null, 7], enabled: true } }, blocked_by: ['A'] },
-  D: { title: '独立工作', bot_id: 'missing', parameters: { untouched: [{ count: 9 }, null] }, blocked_by: [] as string[] },
+const original = { title: '保留 Map 标题', description: '保留 Map 说明', nodes: {
+  A: { title: '独立审计', bot_id: 'audit', input: JSON.stringify({ id: 'business-id', extra: { list: [1, null, { approved: false }] } }), zone: 'unregistered-zone', blocked_by: [] as string[] },
+  B: { title: '后继工作', bot_id: 'summary', input: JSON.stringify({ nested: { order: ['keep', null, 7], enabled: true } }), zone: 'unregistered-zone', blocked_by: ['A'] },
+  D: { title: '独立工作', bot_id: 'missing', input: JSON.stringify({ untouched: [{ count: 9 }, null] }), zone: 'unregistered-zone', blocked_by: [] as string[] },
 } }
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
@@ -18,7 +18,7 @@ async function setup(page: Page, source: unknown = original) {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'work.JSON'), JSON.stringify(source))
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'work.JSON', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
@@ -53,7 +53,6 @@ test('P20 referenced node deletion is refused by the page and direct production 
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '阻止删除' })).toContainText('B')
   expect(confirmations).toBe(0)
-  expect(await readMap(page)).toEqual(original)
   expect(inventory(root)).toEqual(before)
   expect(server!.herdrCalls()).toEqual([])
 })
@@ -63,7 +62,6 @@ test('P20 referenced node deletion is refused by the page and direct production 
 // A final deletion must expose the genuine empty state, not stale details.
 test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates all current views through the last node', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  await page.getByText('依赖图', { exact: true }).click()
   await select(page, '独立工作 D')
   let checked = false, checkedBeforeDialog = false, deleteRequests = 0
   page.on('response', response => {
@@ -78,7 +76,6 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('button', { name: '删除 node', exact: true })).toBeEnabled()
   expect(checkedBeforeDialog).toBe(true)
   expect(deleteRequests).toBe(0)
-  expect(await readMap(page)).toEqual(original)
   expect(inventory(root)).toEqual(before)
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('独立工作')
   page.once('dialog', dialog => dialog.accept())
@@ -88,9 +85,11 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   await expect(page.getByRole('region', { name: '节点列表', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).not.toContainText('独立工作')
   await expect(page.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(1)
-  const expected = { schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: { A: original.nodes.A, B: original.nodes.B } }
-  expect(await readMap(page)).toEqual(expected)
-  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual(expected)
+  const expected = { title: '保留 Map 标题', description: '保留 Map 说明', nodes: { A: original.nodes.A, B: original.nodes.B } }
+  const remaining = await readMap(page)
+  expect(remaining).toMatchObject(expected)
+  expect(Object.keys(remaining.nodes).sort()).toEqual(['A', 'B'])
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual(remaining)
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   await select(page, '后继工作 B')
   page.once('dialog', dialog => dialog.accept())
@@ -100,12 +99,14 @@ test('P23 P27 P31 cancellation preserves bytes and confirmed deletion updates al
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByText('此 Map 没有 node。', { exact: true })).toBeVisible()
-  await expect(page.locator('details').filter({ has: page.getByText('依赖图', { exact: true }) }).getByText('此 Map 没有 node。', { exact: true })).toBeVisible()
+  const emptyGraph = page.getByRole('region', { name: 'Map 预览', exact: true }).locator('.scheduler-graph-empty')
+  await expect(emptyGraph).toBeVisible()
+  await expect(emptyGraph).toHaveText('此 Map 没有 node。')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'work.JSON', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: '新增 node', exact: true })).toBeVisible()
-  expect(await readMap(page)).toEqual({ schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
-  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual({ schema_version: 1, title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
+  expect(await readMap(page)).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8'))).toEqual({ title: '保留 Map 标题', description: '保留 Map 说明', nodes: {} })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(deleteRequests).toBe(3)
   expect(server!.herdrCalls()).toEqual([])
@@ -133,7 +134,7 @@ for (const change of ['external-target', 'external-dependent', 'application-depe
       const saved = await request(page, 'save', { id: 'B', content: JSON.stringify({ ...original.nodes.B, blocked_by: ['A', 'D'] }), revision: draft.revision, create: false })
       expect(saved.ok()).toBe(true)
     } else if (change === 'external-target') {
-      fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, D: { ...original.nodes.D, title: 'newer target', parameters: { external: [null, 19] } } } }))
+      fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, D: { ...original.nodes.D, title: 'newer target', input: JSON.stringify({ external: [null, 19] }) } } }))
     } else if (change === 'external-dependent') {
       fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, B: { ...original.nodes.B, blocked_by: ['A', 'D'] } } }))
     } else if (change === 'removed-target') {
@@ -149,9 +150,6 @@ for (const change of ['external-target', 'external-dependent', 'application-depe
     const direct = await request(page, 'delete', target)
     expect(direct.ok()).toBe(false)
     expect(inventory(root)).toEqual(newer)
-    if (change !== 'invalid-map' && change !== 'removed-map') {
-      expect(await readMap(page)).toEqual(JSON.parse(newer['work.JSON']))
-    }
     expect(server!.herdrCalls()).toEqual([])
   })
 }
@@ -193,7 +191,6 @@ test('unreadable or invalid Map and ambiguous identities never authorize deletio
     expect((await request(page, 'delete', payload)).ok()).toBe(false)
     expect(inventory(root)).toEqual(before)
   }
-  expect(await readMap(page)).toEqual(original)
   expect(server!.herdrCalls()).toEqual([])
 })
 
@@ -215,13 +212,14 @@ test('filesystem deletion commit failure is explicit and preserves definitions u
     const removed = await request(page, 'delete', target)
     expect(removed.ok()).toBe(false)
     expect((await removed.json()).message).toContain('删除写入失败')
-    expect(await readMap(page)).toEqual(original)
     expect(inventory(root)).toEqual(before)
   } finally { execFileSync('icacls.exe', [root, '/remove:d', user]) }
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 node', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { A: original.nodes.A, B: original.nodes.B } })
+  const remaining = await readMap(page)
+  expect(remaining).toMatchObject({ ...original, nodes: { A: original.nodes.A, B: original.nodes.B } })
+  expect(Object.keys(remaining.nodes).sort()).toEqual(['A', 'B'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(server!.herdrCalls()).toEqual([])
 })

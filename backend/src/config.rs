@@ -60,6 +60,30 @@ pub struct Config {
 pub struct SchedulerConfig {
     pub map_directory: PathBuf,
     pub bot_directory: PathBuf,
+    pub run_directory: PathBuf,
+    pub run_instructions: PathBuf,
+    pub collect_wait_seconds: CollectWaitSeconds,
+    /// Visible workflow page query interval; positive integer seconds.
+    pub workflow_poll_interval_seconds: std::num::NonZeroU32,
+}
+
+/// Backend collect deadline, independent of connect-bot's reporting budget.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(try_from = "u64")]
+pub struct CollectWaitSeconds(u64);
+impl CollectWaitSeconds {
+    pub fn new(seconds: u64) -> Result<Self, String> {
+        if seconds == 0 || seconds > u32::MAX as u64 {
+            return Err("collect_wait_seconds 必须为 1..=4294967295 秒。".into());
+        }
+        Ok(Self(seconds))
+    }
+    pub fn get(self) -> u64 { self.0 }
+    pub fn duration(self) -> Duration { Duration::from_secs(self.0) }
+}
+impl TryFrom<u64> for CollectWaitSeconds {
+    type Error = String;
+    fn try_from(value: u64) -> Result<Self, Self::Error> { Self::new(value) }
 }
 
 impl Default for SchedulerConfig {
@@ -67,6 +91,10 @@ impl Default for SchedulerConfig {
         Self {
             map_directory: PathBuf::from(".data/workflow-maps"),
             bot_directory: PathBuf::from(".data/bots"),
+            run_directory: PathBuf::from(".data/workflow-runs"),
+            run_instructions: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/workflow-runtime.md"),
+            collect_wait_seconds: CollectWaitSeconds(90 * 60),
+            workflow_poll_interval_seconds: std::num::NonZeroU32::new(5).unwrap(),
         }
     }
 }

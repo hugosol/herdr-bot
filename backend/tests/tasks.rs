@@ -30,6 +30,55 @@ fn tasks_of(response: &HttpResponse) -> Vec<Value> {
         .clone()
 }
 
+// Both hosts support every Task role; role extensions remain fixed resources,
+// never caller-selectable permissions. Observe the persisted HTTP contract.
+#[tokio::test]
+async fn task_types_are_enforced_through_direct_http() {
+    let dir = TempDir::new("task types HTTP");
+    let server = TestServer::start(&config_with_tasks(&dir.path().join("tasks.json"))).await;
+    let mut input = json!({"name":"manager in name is not a role", "chatName":"{task.name}",
+        "agent":"pi", "model":"default", "thinking":"", "skill":null, "prompt":"node"});
+    let created = post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await;
+    let initial = tasks_of(&created);
+    assert_eq!(initial[0]["taskType"], "normal");
+    let id = initial[0]["id"].as_str().unwrap();
+    for agent in ["pi", "omp"] {
+        input["agent"] = json!(agent);
+        for role in ["manager", "normal"] {
+            input["taskType"] = json!(role);
+            let changed = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
+            assert_eq!(changed[0]["taskType"], role);
+            assert_eq!(changed[0]["agent"], agent);
+            assert_eq!(changed[0]["id"], id);
+            for extensions in [json!(["omp-manager-chat"]), json!(["omp-node-chat"]), json!(["omp-manager-chat", "omp-node-chat"]), json!(["pi-manager-chat"]), json!(["pi-node-chat"]), json!(["pi-manager-chat", "pi-node-chat"])] {
+                input["extensions"] = extensions;
+                let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
+                assert_eq!(rejected.status, 400, "{}", rejected.body);
+                assert!(rejected.body.contains("task-extension-invalid"));
+            }
+            input["extensions"] = json!([]);
+            let mut cancellation = input.clone();
+            cancellation["fixedExtensions"] = json!([]);
+            let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&cancellation.to_string())).await;
+            assert_eq!(rejected.status, 400, "{}", rejected.body);
+            assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), changed);
+        }
+    }
+    for agent in ["omp", "pi"] {
+        input["agent"] = json!(agent);
+        for invalid in ["node", "administrator"] {
+            input["taskType"] = json!(invalid);
+            for response in [
+                post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await,
+                common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await,
+            ] {
+                assert_eq!(response.status, 400, "{}", response.body);
+                assert!(response.body.contains("invalid-task-type"));
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn saves_a_complete_literal_task_and_independent_clients_read_it() {
     let dir = TempDir::new("task task literal");

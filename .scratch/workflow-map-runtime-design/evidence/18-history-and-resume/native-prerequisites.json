@@ -1,0 +1,12 @@
+{
+  "scope": "Prerequisite discovery only; no user Herdr session or conversation was operated",
+  "commands": [
+    {"command": "where.exe herdr omp", "result": ["C:\\Users\\hugos\\.herdr\\packages\\standalone\\releases\\0.9.5-x86_64-pc-windows-msvc\\herdr.exe", "D:\\nvm4w\\nodejs\\omp", "D:\\nvm4w\\nodejs\\omp.cmd"]},
+    {"command": "herdr --help", "result": "Named sessions (--session <name>) and HERDR_CONFIG_PATH are supported; no isolated instance was provisioned or operated"}
+  ],
+  "metadataConfiguredRoleEntrypoints": [
+    {"path": "E:/Developer/myhub/my-agent-toolkit/entrypoints/omp-auto/manager-chat.ts", "exactPathGlobResult": "Path not found"},
+    {"path": "E:/Developer/myhub/my-agent-toolkit/entrypoints/omp-auto/node-chat.ts", "exactPathGlobResult": "Path not found"}
+  ],
+  "unverified": "Real manager/current/old native Chat navigation and real latest-env loading / no-trigger-replay require deployed roles and an isolated named Herdr/omp environment. Controlled CLI adapter browser evidence must not be counted as these native-host checks."
+}

@@ -5,6 +5,10 @@
 
 将跨 Map 共享、由 node 引用的业务能力定义从 **node_template** 全量更名为 **Bot**，使名称与概念的实际定位及大众固有认知匹配。这是纯重命名，不改变能力内容、参数、依赖、校验规则或执行逻辑；Bot 不是运行中的 agent、Chat 或执行实例，也不是用于发起 Chat 的 Task。Bot 仍由 scheduler 管理，不新增独立入口。
 
+## 后续导航调整
+
+2026-10-29，用户选定 B 紧凑工具栏方案并要求正式实现，取代上文“不新增独立入口”的导航约束：Bot 在配置组中拥有独立入口，仍复用原有 Bot 管理功能及 scheduler 的关联访问。该调整仅改变入口组织，不改变本决策的名称、定义、API、存储或执行逻辑。
+
 ## 与既有命名决策的关系
 
 [ADR 0012](0012-rename-bot-preset-to-task.md) 将发起 Chat 的预设命名为 Task，该决策保持有效。本决策重新将 Bot 用于共享业务能力，而不恢复 [ADR 0011](0011-bot-chat-terminology.md) 中 Bot 表示发起 Chat 预设的旧含义。Map、node、Task、Chat 的含义与关系不变。

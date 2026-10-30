@@ -7,12 +7,7 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const weather = {
-  schema_version: 1, id: 'weather', name: '目的地天气摘要',
-  use_when: '出行前需要了解目的地天气时。', description: '整理天气及穿衣建议；不预订行程。',
-  inputs: { city: '需要查询的城市名称。', date: '计划出行日期。' },
-  outputs: { forecast: '温度、降水和穿衣建议的文本摘要。' }, implementation: { type: 'chat' },
-}
+const weather = { id: 'weather', name: '目的地天气摘要', when: '出行前需要了解目的地天气时。', plan_guide: '整理天气及穿衣建议；不预订行程。', node_guide: JSON.stringify({ inputs: { city: '需要查询的城市名称。', date: '计划出行日期。' }, outputs: { forecast: '温度、降水和穿衣建议的文本摘要。' } }) }
 
 // Approved S1 P2/P3: literal capability fields distinguish a readable preview
 // from an editor, a stale/wrong identity, or node parameters. Both the list and
@@ -25,31 +20,29 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   fs.mkdirSync(bots, { recursive: true })
   const weatherBytes = `${JSON.stringify(weather)}\n`
   fs.writeFileSync(path.join(bots, 'different-filename.json'), weatherBytes)
-  const quotaBytes = JSON.stringify({ schema_version: 1, id: 'quota', name: '额度恢复时间',
-    use_when: '<img src=x onerror="window.templateExecuted=true">',
-    description: '<script>window.templateExecuted=true</script>',
-    inputs: { account: '仅作说明的账户名称。' }, outputs: { reset: '预计恢复时间；不是实际结果。' }, implementation: { type: 'chat' } })
+  const quotaBytes = JSON.stringify({ id: 'quota', name: '额度恢复时间', when: '<img src=x onerror="window.templateExecuted=true">', plan_guide: '<script>window.templateExecuted=true</script>', node_guide: JSON.stringify({ inputs: { account: '仅作说明的账户名称。' }, outputs: { reset: '预计恢复时间；不是实际结果。' } }) })
   fs.writeFileSync(path.join(bots, 'quota-description.json'), quotaBytes)
-  const mapBytes = JSON.stringify({ schema_version: 1, title: '业务核对', description: '只读定义', nodes: {
-    A: { title: '查询上海', bot_id: 'weather', parameters: { city: '上海' }, blocked_by: [] },
-    B: { title: '核对额度', bot_id: 'quota', parameters: { account: 'not-a-real-account' }, blocked_by: ['A'] },
-    C: { title: '查询北京', bot_id: 'weather', parameters: { city: '北京' }, blocked_by: [] },
+  const mapBytes = JSON.stringify({ title: '业务核对', description: '只读定义', nodes: {
+    A: { title: '查询上海', bot_id: 'weather', input: JSON.stringify({ city: '上海' }), zone: 'unregistered-zone', blocked_by: [] },
+    B: { title: '核对额度', bot_id: 'quota', input: JSON.stringify({ account: 'not-a-real-account' }), zone: 'unregistered-zone', blocked_by: ['A'] },
+    C: { title: '查询北京', bot_id: 'weather', input: JSON.stringify({ city: '北京' }), zone: 'unregistered-zone', blocked_by: [] },
   } })
   fs.writeFileSync(path.join(maps, 'work.json'), mapBytes)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
   await listing.getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
   const expectWeather = async () => {
-    for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。', '整理天气及穿衣建议；不预订行程。', 'chat']) {
+    for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
-    await expect(capability.getByText('需要查询的城市名称。', { exact: true })).not.toBeVisible()
-    await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+    await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
+    await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('整理天气及穿衣建议；不预订行程。')
+    await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
     for (const text of ['city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。']) {
-      await expect(capability.getByText(text, { exact: true })).toBeVisible()
+      await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
     }
     await expect(capability.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Bot 明细', exact: true })).toHaveCount(0)
@@ -57,7 +50,7 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
   }
   await expectWeather()
   await page.screenshot({ path: testInfo.outputPath('bot-preview.png'), fullPage: true })
-  await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+  await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: 'work.json', exact: true }).click()
   for (const node of ['查询上海 A', '查询北京 C']) {
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
@@ -69,19 +62,20 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
     await page.keyboard.press('Enter')
     await expectWeather()
     await expect(details).toHaveCount(0)
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对额度 B', exact: true }).click()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await expect(capability.getByText('quota', { exact: true })).toBeVisible()
-  for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">',
-    '<script>window.templateExecuted=true</script>', 'chat']) {
+  for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
+  await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('<script>window.templateExecuted=true</script>')
   await expect(capability.locator('img, script')).toHaveCount(0)
-  await capability.getByRole('button', { name: '输入与输出', exact: true }).click()
+  await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
   for (const text of ['account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。']) {
-    await expect(capability.getByText(text, { exact: true })).toBeVisible()
+    await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
   }
   await expect(capability.getByText('目的地天气摘要', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).templateExecuted)).toBeUndefined()
@@ -110,31 +104,31 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   fs.mkdirSync(wrongCwd)
   fs.writeFileSync(path.join(wrongCwd, 'not-weather.JSON'), JSON.stringify({ ...weather, name: '配置目录错误能力' }))
   fs.writeFileSync(path.join(bots, 'plan-decoy.txt'), 'not a Map')
-  fs.writeFileSync(path.join(maps, 'first.json'), JSON.stringify({ schema_version: 1, title: '第一张计划', description: '', nodes: {
-    A: { title: '上海天气', bot_id: 'weather', parameters: { city: '上海' }, blocked_by: [] },
-    B: { title: '北京天气', bot_id: 'weather', parameters: { city: '北京' }, blocked_by: ['A'] },
+  fs.writeFileSync(path.join(maps, 'first.json'), JSON.stringify({ title: '第一张计划', description: '', nodes: {
+    A: { title: '上海天气', bot_id: 'weather', input: JSON.stringify({ city: '上海' }), zone: 'unregistered-zone', blocked_by: [] },
+    B: { title: '北京天气', bot_id: 'weather', input: JSON.stringify({ city: '北京' }), zone: 'unregistered-zone', blocked_by: ['A'] },
   } }))
-  fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ schema_version: 1, title: '第二张计划', description: '', nodes: {
-    C: { title: '广州天气', bot_id: 'weather', parameters: { city: '广州' }, blocked_by: [] },
+  fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ title: '第二张计划', description: '', nodes: {
+    C: { title: '广州天气', bot_id: 'weather', input: JSON.stringify({ city: '广州' }), zone: 'unregistered-zone', blocked_by: [] },
   } }))
   fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'plans'\nbot_directory = 'capabilities'\n")
   await server.restart()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   const catalog = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(catalog.status()).toBe(200)
   expect(await catalog.json()).toEqual({ bots: [weather] })
   const listing = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
-  expect(await listing.json()).toEqual({ files: ['first.json', 'second.json', 'template-decoy.json'] })
+  expect((await listing.json()).files.sort()).toEqual(['first.json', 'second.json', 'template-decoy.json'])
   for (const [filename, node, city] of [['first.json', '上海天气 A', '上海'], ['first.json', '北京天气 B', '北京'], ['second.json', '广州天气 C', '广州']]) {
     await page.getByRole('button', { name: filename, exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
-    await expect(details.getByTestId('parameter-city')).toHaveText(city)
+    await expect(details.getByTestId('node-input')).toContainText(city)
     await expect(details.getByRole('button', { name: 'Bot 明细', exact: true })).not.toHaveAttribute('aria-expanded')
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '返回 Map', exact: true }).click()
+    await page.getByTestId('tab-scheduler').click()
   }
   fs.renameSync(path.join(bots, 'not-weather.JSON'), path.join(bots, 'renamed-again.json'))
   // Re-enter the page to read current files; ticket 07 owns full explicit reload coverage.
@@ -157,7 +151,7 @@ test('P7 P8 bot parents are created while obstructing files report a distinct cr
   fs.appendFileSync(server.configPath, "\n[scheduler]\nbot_directory = 'missing/parents/bots'\n")
   await server.restart()
   expect(fs.existsSync(parent)).toBe(false)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
   expect(fs.readdirSync(bots)).toEqual([])
@@ -189,9 +183,9 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   fs.mkdirSync(bots, { recursive: true })
   const bytes = `${JSON.stringify(weather, null, 2)}\n`
   fs.writeFileSync(path.join(bots, 'weather.json'), bytes)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await page.getByRole('button', { name: 'Bot 管理', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(initial.status()).toBe(200)
   expect(await initial.json()).toEqual({ bots: [weather] })
@@ -199,7 +193,7 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   try {
     execFileSync('icacls.exe', [bots, '/deny', `${user}:(RD)`])
     expect(() => fs.readdirSync(bots)).toThrow()
-    await page.getByRole('button', { name: '刷新全部' }).click()
+    await page.getByRole('button', { name: 'refresh' }).click()
     await expect(page.getByTestId('scheduler-bot-error')).toBeVisible()
     await expect(page.getByTestId('scheduler-bot-empty')).toHaveCount(0)
     const failure = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
@@ -208,7 +202,7 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
   } finally {
     execFileSync('icacls.exe', [bots, '/remove:d', user])
   }
-  await page.getByRole('button', { name: '刷新全部' }).click()
+  await page.getByRole('button', { name: 'refresh' }).click()
   await expect(page.getByTestId('scheduler-bot-error')).toHaveCount(0)
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('整理天气及穿衣建议；不预订行程。')
@@ -226,7 +220,7 @@ test('P7 shared bot default creates empty parents and preserves existing definit
   server = await startServer({ separateCwd: true })
   const directory = path.join(server.cwd, '.data', 'bots')
   expect(fs.existsSync(directory)).toBe(false)
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByTestId('scheduler-bot-empty')).toHaveText('共享 Bot 目录没有 Bot JSON 文件。')
   expect(fs.readdirSync(directory)).toEqual([])

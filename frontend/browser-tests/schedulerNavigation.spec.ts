@@ -8,29 +8,32 @@ import { startServer, type E2EServer } from './support'
 // focus on return must fail, even though a click handler might otherwise work.
 test('P2/P4: keyboard opens a same-page server view and returns to each originating tab', async ({ page, context }) => {
   server = await startServer({ safeShutdown: true })
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: '收起导航' })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'server', exact: true })).toBeFocused()
-  // Reach and activate scheduler through the browser's native Tab order.
-  for (let i = 0; i < 4; i++) await page.keyboard.press('Tab')
+  // Traverse the visible native controls rather than assuming an old tab count.
+  const scheduler = page.getByRole('tab', { name: 'scheduler', exact: true })
+  const controls = await page.locator('button').count()
+  for (let i = 0; i < controls && !await scheduler.evaluate(node => node === document.activeElement); i++) await page.keyboard.press('Tab')
   await expect(page.getByRole('tab', { name: 'scheduler', exact: true })).toBeFocused()
   await page.keyboard.press('Space')
   await expect(page.getByRole('tab', { selected: true })).toHaveText('scheduler')
   await page.keyboard.press('Home')
   const originalURL = page.url()
-  for (const [index, label] of ['chat', 'task', 'zone', 'scheduler'].entries()) {
+  for (const [index, label] of ['chat', 'zone', 'workflow', 'task', 'bot', 'scheduler'].entries()) {
     if (index > 0) await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('tab', { selected: true })).toHaveText(label)
     for (let i = 0; i <= index; i++) await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('button', { name: 'server', exact: true })).toBeFocused()
-    const serverBox = await page.getByRole('button', { name: 'server', exact: true }).boundingBox()
-    const titleBox = await page.getByRole('heading', { name: 'herdr-bot', exact: true }).boundingBox()
-    expect(serverBox!.x).toBeGreaterThan(titleBox!.x + titleBox!.width)
     await page.keyboard.press(index % 2 === 0 ? 'Enter' : 'Space')
     await expect(page.getByRole('region', { name: 'server', exact: true })).toBeVisible()
     await expect(page.getByRole('tablist')).toHaveCount(0)
     await expect(page.getByRole('tabpanel')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: `返回 ${label}`, exact: true })).toBeFocused()
+    await expect(page.getByTestId('server-back')).toHaveAccessibleName('返回')
+    await expect(page.getByTestId('server-button')).toHaveCount(0)
+    await expect(page.getByTestId('server-back')).toBeFocused()
     expect(page.url()).toBe(originalURL)
     expect(context.pages()).toHaveLength(1)
     await page.keyboard.press('Tab')
@@ -60,7 +63,7 @@ test('P3: relocated server preserves success, failure, pending and authoritative
   const records = () => fs.existsSync(path.join(recordRoot, 'calls.tsv'))
     ? fs.readFileSync(path.join(recordRoot, 'calls.tsv'), 'utf8').trim().split('\n').map(line => line.trim().split('\t').slice(3, 5))
     : []
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('server-button').click()
   await expect(page.getByTestId('server-page')).toContainText('不表示后台程序已经启动、已经就绪或已经彻底停止')
   await page.getByTestId('start-button').click()
@@ -79,7 +82,7 @@ test('P3: relocated server preserves success, failure, pending and authoritative
   const heldScript = path.resolve('../fixtures/operations/long-running.bat')
   fs.writeFileSync(server.configPath, originalConfig.replace(/(\[operations.start\]\nscript = ')[^']+'/, `$1${heldScript}'`))
   await server.restart()
-  await page.goto(server.baseURL)
+  await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('server-button').click()
   const ended = page.waitForResponse(response => response.url().endsWith('/api/operations/start'))
   await page.getByTestId('start-button').click()
@@ -114,16 +117,16 @@ test('P3: relocated server preserves success, failure, pending and authoritative
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-// Approved seam S1, P1: the contract fixes these literal labels and chat default.
-// A retained server tab or persisted scheduler selection must fail this real-page check.
-test('P1: ordered scheduler tabs open and reload at chat', async ({ page }) => {
+test('P1: compact work navigation expands on desktop and reload preserves layout but returns to Chat', async ({ page }) => {
   server = await startServer()
   await page.goto(server.baseURL)
-  await expect(page.getByRole('tab')).toHaveText(['chat', 'task', 'zone', 'scheduler'])
   await expect(page.getByRole('tab', { selected: true })).toHaveText('chat')
+  await expect(page.getByRole('tab', { name: 'task', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '展开导航' }).click()
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
   await expect(page.getByTestId('panel-scheduler')).toBeVisible()
   await page.reload()
   await expect(page.getByRole('tab', { selected: true })).toHaveText('chat')
+  await expect(page.getByRole('button', { name: '收起导航' })).toBeVisible()
   await expect(page.getByTestId('panel-sessions')).toBeVisible()
 })

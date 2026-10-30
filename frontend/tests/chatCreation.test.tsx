@@ -35,6 +35,7 @@ const TASK = { id: 'tpl-1',
 name: '审查',
 chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'omp',
+taskType: 'normal',
 model: 'default',
 thinking: 'default',
 skill: null, prompt: '', extensions: [] }

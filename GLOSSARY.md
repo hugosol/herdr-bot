@@ -8,6 +8,14 @@ Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际�
 用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
 _Avoid_: Bot, bot-template, 模板, 对话实例
 
+**Task 类型**:
+Task 的用途分类，区分普通用途和流程管理者；普通 Task 既可独立发起 Chat，也可用于 node 执行，节点执行者不是独立 Task 类型。它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
+_Avoid_: agent 类型, Run 角色绑定, Chat 类型
+
+**节点执行角色**:
+Chat 在某次 Run 中承担某个 node 工作的执行身份，由该次 workflow 派发确立，恢复该 Chat 时沿用原执行关联，而非根据来源 Task 的用途分类重新赋予；同一普通 Task 可用于独立 Chat 和不同的节点执行。
+_Avoid_: node 类型 Task, 节点专用 Task
+
 **trigger config（发起配置）**:
 Task 中仅在发起 Chat 时应用的初始设置与动作，包括初始消息、初始 Skill 调用、模型与思考级别；它不是恢复对话时重新执行的指示。
 _Avoid_: env config, 自动触发规则, 事件触发器
@@ -61,8 +69,12 @@ _Avoid_: 离线会话列表, 已结束对话列表, 原生对话文件
 _Avoid_: 聊天消息, agent 记忆, 备忘流水
 
 **会话恢复**:
-在 herdr 中启动新的 agent 进程并加载指定原生对话，不表示复活原进程或默认继续中断的任务。
+在 herdr 中启动新的 agent 进程并加载指定原生对话，不表示复活原进程、还原历史代码现场或默认继续中断的任务。
 _Avoid_: 重连原进程, 继续执行任务
+
+**恢复工作目录**:
+恢复某个 Chat 时，新的 agent 进程实际使用的目录；它可以不同于该 Chat 历史记录中的工作目录，不改变所恢复的原生对话身份。
+_Avoid_: Herdr Workspace, 历史代码现场
 
 ## 主界面与外部系统
 
@@ -100,8 +112,12 @@ _Avoid_: 主界面, 管理后台, 仪表盘
 
 ## scheduler 与工作定义
 
+**bot 入口**:
+主界面管理跨 Map 共享的 Bot 能力定义的入口，与 scheduler 中的 Bot 关联访问指向同一组定义；不是 Task 预设或运行中的 agent 列表。
+_Avoid_: Task 列表, agent 列表, Bot 执行器
+
 **scheduler 入口**:
-主界面浏览服务级 Map、依赖图并管理共享 Bot 能力说明的 tab；管理的是静态定义，不调度或执行工作。
+主界面浏览和编辑服务级 Map、依赖图及共享 Bot 能力说明，并显式发起 Run 的 tab；静态定义的保存与实际运行是不同动作。
 _Avoid_: 执行器, 运行监控, zone 计划
 
 **Map**:
@@ -109,20 +125,36 @@ _Avoid_: 执行器, 运行监控, zone 计划
 _Avoid_: 运行实例, Chat, 执行路由
 
 **node**:
-某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次参数与前置依赖；同一 Bot 可用于多项不同工作。
+某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次输入、zone 路径引用与前置依赖；同一 Bot 可用于多项不同工作。
 _Avoid_: 执行实例, Task, 运行中的任务
 
 **Bot**:
-跨 Map 共享、相对稳定的业务能力定义，说明适用需求、能力边界、命名输入输出及实现类别；它不是用于发起 Chat 的 Task、运行中的 agent 或实际对话，也不是已实现执行能力的证明。
+面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，分别提供选用说明、规划指引与节点指引，并可引用用于执行的 Task；node 是具体流程中对该能力的工作安排。它不是 Task、运行中的 agent 或 Chat，能力文档不是运行校验规则，也不是已实现执行能力的证明。
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
 
 **前置依赖（blocked_by）**:
 某项工作所依赖的同一 Map 内其他工作；箭头从前置 node 指向依赖它的 node，不表示执行路由、材料传递或已实现的等待状态。
 _Avoid_: 数据流, 自动启动连线, 执行状态
 
-**执行实例**:
-静态工作定义的一次实际执行，与 Map、node 及共享 Bot 的定义不同；当前 scheduler 不创建或跟踪执行实例。
-_Avoid_: node, Map, Bot
+**Run（运行）**:
+一张 Map 的一次独立运行，持有本次管理者配置、本次要求、真实 Chat 关联和运行事实；它不是静态 Map、单个 node 或 Chat 在线状态。
+_Avoid_: Map 实例, Bot 实例, node, Chat
+
+**Run 名称**:
+用户为某次 Run 维护的人类可读标识；它不是 Run 的唯一身份，也不是 Map、Workspace 或 Chat 的名称，不参与运行逻辑。
+_Avoid_: Run ID, Map 标题, Workspace 名称, Chat 名称
+
+**报告提交策略（report_policy）**:
+node 对交付报告发送时机的约定：auto 在结果可交接时发送，manual 在用户确认后发送；它不改变管理者的交接验收职责。
+_Avoid_: 自动完成策略, 审批状态, 流程放行开关
+
+**报告发送确认**:
+用户在对应节点 Chat 中明确同意节点发送交付报告的意思表达；它不等于管理者接受交接，也不授予节点完成或下游执行资格。
+_Avoid_: 节点完成确认, 交接验收, 流程放行
+
+**workflow 入口**:
+主界面读取 Run 及其运行事实的 tab；查看或刷新已有 Run 不等于再次发起工作。
+_Avoid_: scheduler, 启动进度页
 
 ## zone 与文件
 

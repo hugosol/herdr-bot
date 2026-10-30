@@ -39,16 +39,16 @@ async fn identity_expressions_match_only_the_same_native_conversation() {
         history(&config, "omp", selected, Some(&native));
         let mut target = agent("omp", "id", candidate, "w2", "w2:t8", "w2:p3");
         target["agent_status"] = json!("done");
-        herdr.set_behavior(json!({"agents":[target]}));
+        herdr.set_behavior(json!({"agents":[target],"fail_workspace_list":true}));
         let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
         let reply = resume(&server, selected).await;
         assert_eq!(reply.status, if expected == "located" { 200 } else { 502 }, "{}", reply.body);
         let body: Value = serde_json::from_str(&reply.body).unwrap();
         assert_eq!(body["outcome"], expected);
-        // A different identity now reaches restoration preconditions, not focus.
-        // This fixture deliberately has no available historical working directory.
-        if expected == "failed" { assert_eq!(body["code"], "invalid-cwd"); }
-        assert!(herdr.calls().iter().all(|call| matches!(call["kind"].as_str().unwrap(), "agent_list" | "agent_focus" | "agent_get")));
+        // A different identity reaches cwd fallback, not the decoy's focus.
+        // Refusing workspace evidence must remain a failure, not success.
+        if expected == "failed" { assert_eq!(body["code"], "herdr-command-failed"); }
+        assert!(herdr.calls().iter().all(|call| matches!(call["kind"].as_str().unwrap(), "agent_list" | "agent_focus" | "agent_get" | "workspace_list")));
         assert!(herdr.tabs().is_empty());
     }
 }
@@ -255,4 +255,133 @@ async fn native_path_matches_saved_id_and_focuses_actual_location_without_input(
     assert_eq!(calls[1]["argv"], json!(["agent","focus","w9:p7"]));
     assert_eq!(std::fs::read_to_string(herdr.path().join("focused.json")).unwrap(), "\"w9:p7\"");
     assert!(herdr.tabs().is_empty());
+}
+
+// Public HTTP + literal CLI evidence: cwd fallback must never manufacture a
+// native identity, write historical metadata, or submit a continuation prompt.
+#[tokio::test]
+async fn unavailable_cwd_restores_exact_native_identity_in_configured_default_workspace() {
+    for kind in ["omp", "pi"] {
+        for scenario in ["missing", "deleted", "file", "unproven-worktree", "wrong-identity", "invalid-actual-cwd"] {
+            let root = TempDir::new("resume cwd fallback");
+            let herdr = HerdrFixture::new("resume cwd fallback herdr");
+            let mut config = config(&root, &herdr);
+            config.herdr.workspace_name = "Configured default".into();
+            config.tasks.storage_file = root.path().join("tasks.json");
+            config.tasks.metadata_file = root.path().join("options.toml");
+            std::fs::write(&config.tasks.metadata_file, "skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[agents]]\nid = 'omp'\nlabel = 'OMP'\n[[models]]\nid = 'default'\nlabel = 'Default'\n").unwrap();
+            let old = root.path().join("deleted checkout");
+            std::fs::create_dir(&old).unwrap();
+            std::fs::remove_dir(&old).unwrap();
+            if scenario == "file" { std::fs::write(&old, "not a directory").unwrap(); }
+            let actual = root.path().join("Herdr selected actual cwd");
+            std::fs::create_dir(&actual).unwrap();
+            let native = root.path().join("original native.jsonl");
+            let native_bytes = format!("{}\n", json!({"type":"session","version":3,"id":"native-fallback-exact","cwd":old}));
+            std::fs::write(&native, &native_bytes).unwrap();
+            let history_bytes = format!("  {}\n", json!([{"sessionId":"native-fallback-exact","sessionName":"Fallback Chat","agentType":kind,"cwd":if scenario == "missing" { Value::Null } else { json!(old) },"sessionFile":native,"originalWorkspaceId":"w-original","memo":"preserve unchanged","firstRecordedAt":123,"futureMetadata":{"opaque":true}}]));
+            std::fs::write(&config.sessions.history_file, &history_bytes).unwrap();
+            herdr.set_workspaces(json!([
+                {"workspace_id":"w-original","label":"Original workspace","cwd":root.path(),"worktree":{"checkout_path":root.path().join("different checkout"),"repo_root":root.path()}},
+                {"workspace_id":"w-default","label":"Configured default"},
+                {"workspace_id":"w-decoy","label":"bot-playground","focused":true}
+            ]));
+            let mut behavior = json!({"default_cwd":actual,"native_session":{"agent":kind,"source":format!("herdr:{kind}"),"kind":"path","value":native}});
+            if scenario == "wrong-identity" { behavior["native_session"] = json!({"agent":kind,"source":format!("herdr:{kind}"),"kind":"id","value":"different-native"}); }
+            if scenario == "invalid-actual-cwd" { behavior["native_cwd"] = json!(root.path().join("missing actual cwd")); }
+            herdr.set_behavior(behavior);
+            let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+            let response = resume(&server, "native-fallback-exact").await;
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            let calls = herdr.calls();
+            let tab = calls.iter().find(|c| c["kind"] == "tab_create").unwrap();
+            assert_eq!(tab["workspace"], "w-default", "{kind}/{scenario}: {body}");
+            assert!(!tab["argv"].as_array().unwrap().contains(&json!("--cwd")));
+            let start = calls.iter().find(|c| c["kind"] == "agent_start").unwrap();
+            assert_eq!(start["args"], json!([if kind == "pi" { "--session" } else { "--resume" }, native]));
+            assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
+            assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), history_bytes.as_bytes());
+            assert_eq!(std::fs::read(&native).unwrap(), native_bytes.as_bytes());
+            if matches!(scenario, "wrong-identity" | "invalid-actual-cwd") {
+                assert_eq!(response.status, 502, "{kind}/{scenario}: {body}");
+                assert_eq!(body["outcome"], "failed");
+                assert!(!calls.iter().any(|c| c["kind"] == "agent_focus"));
+            } else {
+                assert_eq!(response.status, 200, "{kind}/{scenario}: {body}");
+                assert_eq!(body["outcome"], "restored");
+                assert!(common::same_path(Path::new(body["actualCwd"].as_str().unwrap()), &actual));
+                assert!(body["message"].as_str().unwrap().contains(body["actualCwd"].as_str().unwrap()));
+                let started = common::read_json_lines(&herdr.path().join("started.jsonl"));
+                assert!(common::same_path(Path::new(started[0]["actual_cwd"].as_str().unwrap()), &actual));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn exact_worktree_metadata_proves_main_root_before_default_cwd_fallback() {
+    for kind in ["omp", "pi"] {
+        for proof in ["exact", "stale-repo-root", "different-checkout", "missing-key", "relative-key", "non-git", "ambiguous"] {
+            let root = TempDir::new("resume worktree evidence");
+            let herdr = HerdrFixture::new("resume worktree evidence herdr");
+            let mut config = config(&root, &herdr);
+            config.tasks.storage_file = root.path().join("tasks.json");
+            config.tasks.metadata_file = root.path().join("options.toml");
+            std::fs::write(&config.tasks.metadata_file, "skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[agents]]\nid = 'omp'\nlabel = 'OMP'\n[[models]]\nid = 'default'\nlabel = 'Default'\n").unwrap();
+            let old = root.path().join("deleted linked checkout");
+            let main_root = root.path().join("main root");
+            let default_cwd = root.path().join("default cwd");
+            std::fs::create_dir(&main_root).unwrap();
+            std::fs::create_dir(&default_cwd).unwrap();
+            if proof != "non-git" {
+                let initialized = std::process::Command::new("git").args(["init", "--quiet"]).arg(&main_root).output().unwrap();
+                assert!(initialized.status.success(), "{}", String::from_utf8_lossy(&initialized.stderr));
+            }
+            if proof == "ambiguous" {
+                let initialized = std::process::Command::new("git").args(["init", "--quiet"]).arg(&default_cwd).output().unwrap();
+                assert!(initialized.status.success(), "{}", String::from_utf8_lossy(&initialized.stderr));
+            }
+            let native = root.path().join("original.jsonl");
+            std::fs::write(&native, format!("{}\n", json!({"type":"session","id":"native-main-root","cwd":old}))).unwrap();
+            let bytes = json!([{"sessionId":"native-main-root","agentType":kind,"cwd":old,"sessionFile":native,"originalWorkspaceId":"w-original","firstRecordedAt":123}]).to_string();
+            std::fs::write(&config.sessions.history_file, &bytes).unwrap();
+            // repo_root is only a Herdr hint and can name the deleted checkout.
+            // The shared Git directory, not that hint, proves the main root.
+            let metadata_root = if proof == "stale-repo-root" { json!(old) } else { json!(main_root) };
+            let metadata_key = match proof {
+                "missing-key" => Value::Null,
+                "relative-key" => json!("relative/.git"),
+                "non-git" => json!(default_cwd),
+                _ => json!(main_root.join(".git")),
+            };
+            let mut workspaces = json!([
+                {"workspace_id":"w-original","label":"Original","worktree":{"checkout_path":if proof == "different-checkout" { json!(root.path().join("other")) } else { json!(old) },"repo_root":metadata_root,"repo_key":metadata_key}},
+                {"workspace_id":"w-default","label":"bot-playground"}
+            ]);
+            if proof == "ambiguous" {
+                workspaces.as_array_mut().unwrap().push(json!({"workspace_id":"w-conflict","label":"Other","worktree":{"checkout_path":old,"repo_root":default_cwd,"repo_key":default_cwd.join(".git")}}));
+            }
+            herdr.set_workspaces(workspaces);
+            herdr.set_behavior(json!({"default_cwd":default_cwd,"native_session":{"agent":kind,"source":format!("herdr:{kind}"),"kind":"path","value":native}}));
+            let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+            let response = resume(&server, "native-main-root").await;
+            assert_eq!(response.status, 200, "{kind}/{proof}: {}", response.body);
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            let calls = herdr.calls();
+            let tab = calls.iter().find(|c| c["kind"] == "tab_create").unwrap();
+            let args = tab["argv"].as_array().unwrap();
+            if matches!(proof, "exact" | "stale-repo-root") {
+                assert_eq!(tab["workspace"], "w-original");
+                let cwd_index = args.iter().position(|arg| arg == "--cwd").unwrap();
+                assert!(common::same_path(Path::new(args[cwd_index + 1].as_str().unwrap()), &main_root));
+                assert!(common::same_path(Path::new(body["actualCwd"].as_str().unwrap()), &main_root));
+            } else {
+                assert_eq!(tab["workspace"], "w-default");
+                assert!(!args.contains(&json!("--cwd")));
+                assert!(common::same_path(Path::new(body["actualCwd"].as_str().unwrap()), &default_cwd));
+            }
+            assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), bytes.as_bytes());
+            assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
+        }
+    }
 }

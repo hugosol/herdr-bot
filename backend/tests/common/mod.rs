@@ -317,9 +317,13 @@ pub fn config_with_countdown(
         // 会话窗口在这些用例里不是受测对象：取缺省（在线 10 秒、离线保留 30 秒）。
         // 需要驱动配置窗口的用例自己解析 TOML 并注入策略（见 `session_window_config.rs`）。
         sessions: herdr_bot::SessionsConfig {
-            history_file: std::env::temp_dir().join("herdr-bot fixture checks").join(format!(
-                "history-{}-{}.json", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)
-            )),
+            history_file: std::env::temp_dir()
+                .join("herdr-bot fixture checks")
+                .join(format!(
+                    "history-{}-{}.json",
+                    std::process::id(),
+                    COUNTER.fetch_add(1, Ordering::Relaxed)
+                )),
             ..herdr_bot::SessionsConfig::default()
         },
         // zone 登记文件同样不是这些用例的受测对象；需要隔离存储的用例自己改写这个路径。
@@ -600,6 +604,14 @@ impl OpenJsonRequest {
             .expect("发送请求");
         stream.flush().await.expect("发送请求");
         OpenJsonRequest { stream }
+    }
+
+    /// 读取已发出请求的真实响应；可由调用方持有 future 跨越受控事件屏障。
+    pub async fn response(mut self) -> HttpResponse {
+        use tokio::io::AsyncReadExt;
+        let mut raw = Vec::new();
+        self.stream.read_to_end(&mut raw).await.expect("读取响应");
+        parse_response(&raw)
     }
 
     /// 客户端主动中止连接，不读取属于这次请求的任何响应。

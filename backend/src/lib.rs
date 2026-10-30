@@ -52,6 +52,8 @@ pub mod observation;
 pub mod operations;
 pub mod sessions;
 pub mod scheduler;
+pub mod runs;
+pub mod files;
 pub mod shutdown;
 mod status_cache;
 pub mod sync;
@@ -83,7 +85,7 @@ use tower_http::services::ServeDir;
 pub use config::{
     TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
-    StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig,
+    StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
 pub use countdown::{CancelOutcome, MonitorRefusal, ShutdownPhase, ShutdownState, ShutdownView};
 pub use operations::{ScriptOperation, console_available};
@@ -141,6 +143,11 @@ pub struct AppState {
     pub map_directory: PathBuf,
     /// Service-owned shared capability definitions, independent of Map storage.
     pub bot_directory: PathBuf,
+    pub run_directory: PathBuf,
+    pub run_instructions: PathBuf,
+    pub collect_wait: Duration,
+    pub workflow_poll_interval_seconds: u32,
+    pub runs: Arc<runs::Runs>,
     /// Herdr 公开控制接口的生产 adapter；默认 Workspace 名称来自启动期配置，当前模式按 zone 根目录名匹配。
     ///
     /// 每个创建各自调用它，不共享创建资格：两个独立客户端同时提交时分别创建。
@@ -242,8 +249,13 @@ pub fn app_with_state(
             config.tasks.storage_file.clone(),
             config.tasks.metadata_file.clone(),
         )),
-        map_directory: config.scheduler.map_directory.clone(),
-        bot_directory: config.scheduler.bot_directory.clone(),
+        map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
+        bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
+        run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
+        run_instructions: std::path::absolute(&config.scheduler.run_instructions).expect("resolve Run instructions"),
+        collect_wait: config.scheduler.collect_wait_seconds.duration(),
+        workflow_poll_interval_seconds: config.scheduler.workflow_poll_interval_seconds.get(),
+        runs: Arc::new(runs::Runs::default()),
         herdr: Arc::new(herdr::HerdrClient::new(&config.herdr)),
         chat_creations: Arc::new(chats::ChatCreations::new()),
         resume_executions: Arc::new(resume::ResumeExecutions::default()),
@@ -285,6 +297,23 @@ pub fn app_with_state(
         .route("/api/zones", get(list_zones).post(register_zone))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
+        .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
+        .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
+        .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
+        .route("/api/workflow/runs", get(runs::list_runs))
+        .route("/api/workflow/runs/{id}", get(runs::get_run).patch(runs::rename_run))
+        .route("/api/workflow/manager/status", post(runs::manager_status))
+        .route("/api/workflow/manager/collect", post(runs::manager_collect))
+        .route("/api/workflow/manager/dispatch", post(runs::manager_dispatch))
+        .route("/api/workflow/manager/complete", post(runs::manager_complete))
+        .route("/api/workflow/manager/fail", post(runs::manager_fail))
+        .route("/api/workflow/manager/recover", post(runs::manager_recover))
+        .route("/api/workflow/manager/retry", post(runs::manager_retry))
+        .route("/api/workflow/manager/reconcile_dispatch", post(runs::manager_reconcile_dispatch))
+        .route("/api/workflow/manager/finish", post(runs::manager_finish))
+        .route("/api/workflow/manager/pause", post(runs::manager_pause))
+        .route("/api/workflow/manager/resume", post(runs::manager_resume))
+        .route("/api/workflow/node/report", post(runs::node_report))
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))
         .route("/api/scheduler/maps/{name}/nodes/save", post(scheduler::save_node))
@@ -930,6 +959,7 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::ChatNameNotSingleLine
         | TaskError::AgentRequired
         | TaskError::UnknownAgent(_)
+        | TaskError::InvalidTaskType
         | TaskError::UnknownModel(_)
         | TaskError::UnknownThinking(_)
         | TaskError::ThinkingRequiresDefaultModel

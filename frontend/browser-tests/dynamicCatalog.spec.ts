@@ -19,7 +19,7 @@ test('同一真实进程重新打开编辑、保存和创建各自读取当前�
   const savedResponse = await post('/api/tasks', literal)
   expect(savedResponse.ok).toBe(true)
   const saved = (await savedResponse.json()).tasks[0]
-  await page.goto(current.baseURL)
+  await page.goto(`${current.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-edit').click()
   await expect(page.getByTestId('task-prompt')).toHaveValue('固定第一行\n固定第二行')
@@ -58,7 +58,7 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   expect(prompt?.text).toBe('/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行')
   expect((await current.getTasks()).tasks[0]).toEqual(saved)
   const persisted = JSON.parse(fs.readFileSync(current.storageFile, 'utf8')).tasks[0]
-  expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'thinking'])
+  expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'taskType', 'thinking'])
 
   // Saving rechecks current capabilities independently from the options previously displayed.
   fs.writeFileSync(current.metadataFile, original.replace("omp = ['low', 'medium', 'high', 'xhigh', 'max']", "omp = ['low']"))

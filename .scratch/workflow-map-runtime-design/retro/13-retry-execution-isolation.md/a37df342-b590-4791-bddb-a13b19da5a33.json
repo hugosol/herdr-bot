@@ -1,0 +1,123 @@
+{
+  "feature": "workflow-map-runtime-design",
+  "ticket": "13-retry-execution-isolation.md",
+  "run_id": "a37df342-b590-4791-bddb-a13b19da5a33",
+  "parent_session_id": "01a18240-bf0e-77a4-b381-a74e22e85081",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "983814bd-72db-444f-b450-0b91d9c8c7d3",
+  "started_at": "2026-10-28T15:32:24.088Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-10-28T15:49:33.251Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "13-retry-execution-isolationmd-983814bd-72db-444",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-1VMomO\\.scratch\\workflow-map-runtime-design\\implementation\\13-retry-execution-isolation.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-1VMomO\\.scratch\\workflow-map-runtime-design\\implementation\\13-retry-execution-isolation.md。\n集成分支：feature/workflow-phase2-run-map\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement retry execution isolation ticket",
+    "lastIntent": "Committing isolated retry ticket implementation",
+    "exitCode": 0,
+    "output": "{\n  \"status\": \"实现已提交，可交由独立集成代理接管；真实宿主验收受外部入口缺失阻塞，不宣称票据全部验收或已合入。\",\n  \"commit\": \"65ab362\",\n  \"branch\": \"hyper/workflow-map-runtime-design/13-retry-execution-isolation-ed9c22-9156471a482f\",\n  \"worktree\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-1VMomO\",\n  \"delivered\": [\n    \"新增 POST /api/workflow/manager/retry，复用完整 dispatch 启动路径，要求人工确认和非空依据，拒绝 paused、终态、非失败节点及未核实派发失败。\",\n    \"新旧执行身份隔离；previousExecutions 保留旧执行与失败，retry 历史保留人工依据。身份/关联/输入失败返回实际新执行及外部效果，不误归旧执行，不声称回滚。\",\n    \"旧执行仍可追加报告，但待办仅采用当前适用执行的最新报告；任何保留的旧原生身份均不得复用为新执行。\",\n    \"更新长期运行说明，包含用户处理路径、角色工具要求、错误与部分生效语义、复验命令和证据边界。\"\n  ],\n  \"criteriaEvidence\": {\n    \"P13.03\": \"retry_saves_new_identity_before_full_trigger_and_retains_original_facts；retry_association_failure_exposes_new_attempt_without_overwriting_old_snapshot；retry_startup_failures_keep_both_attempts_and_do_not_rollback\",\n    \"P14.02\": \"上述成功启动测试核对独立受控身份、实际夹具 cwd/Workspace；unavailable_retry_targets_fail_without_fallback_or_reusing_old_execution；retry_rejects_reuse_of_any_retained_native_identity。真实 omp 身份部分未验证。\",\n    \"P15.03\": \"成功启动测试以独立字面预期核对 model/thinking、Skill、固定 prompt、完整 node 输入；真实 omp 部分未验证。\",\n    \"P27.02\": \"late_old_reports_remain_history_without_controlling_new_execution：旧/新报告交错、完整持久历史、collect 仅当前最新适用 ID、旧身份不能 complete 当前执行。\",\n    \"P35.04\": \"terminal_run_rejects_retry_without_new_chat_or_record_changes\",\n    \"P36.03\": \"paused_retry_requires_explicit_resume_and_human_confirmation\",\n    \"P41.01\": \"成功/失败 retry、保留产物、paused 拒绝、uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled，以及旧报告隔离测试；真实原生 Chat 部分未验证。\",\n    \"P45.03\": \"身份/输入失败与关联落盘故障测试，核对新执行、实际启动记录、错误归属和未提交快照。\",\n    \"P68.07\": \"成功/失败路径核对预留产物、新旧 Chat 引用和全部允许的宿主调用；请求后 150ms 有界窗口无额外动作。有限窗口不证明无限期无动作。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --target-dir C:/Users/hugos/AppData/Local/Temp/hyper-ticket-1VMomO-target --test workflow_dispatch -- --nocapture\",\n      \"result\": \"45 passed，0 failed；含本票 9 个 retry 测试。最终运行输出 artifact://502。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend ci\",\n      \"result\": \"成功安装依赖。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend run build\",\n      \"result\": \"通过 TypeScript 检查和 Vite 构建。\"\n    },\n    {\n      \"command\": \"node scripts/test-backend.mjs --binary-jobs 2（CARGO_TARGET_DIR 为本 worktree 独占目录）\",\n      \"result\": \"完整默认后端入口通过：build、全部已派发测试二进制、doctest 均 passed，0 binaries not dispatched。日志目录 C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-SGwe9G；summary.json 保留结果。之后仅加强外部调用断言，最终 workflow_dispatch 45 项全部通过。\"\n    },\n    {\n      \"command\": \"逐片运行 retry 定向测试\",\n      \"result\": \"已观察并修复真实 red：仍为旧身份、旧报告 403、复用最早身份误成功、关联故障缺少新执行引用、目标解析失败缺少独立尝试 ID；对应 green 均通过。\"\n    }\n  ],\n  \"unverified\": [\n    \"metadata 指定的 E:/Developer/myhub/my-agent-toolkit/entrypoints/omp-auto/manager-chat.ts 与 node-chat.ts 均不存在（glob 返回 Path not found）。因此无法验证真实角色工具装配、Prompt 注入或通过真实管理者工具发起 retry。\",\n    \"真实 Herdr/omp 原生新旧 Chat、实际完整 trigger 输入及原生报告交错尚未验收；受控宿主证据不替代此项。长期说明已提供可重复隔离复验步骤。\",\n    \"未修改其他票据、工作流报告或外部 toolkit；未操作集成分支工作区、未合入、未调用 retro。票据未标 closed（仓库规则要求实现、测试并已合入）。\"\n  ]\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1029011,
+    "tokens": 127190,
+    "requests": 60,
+    "contextTokens": 118682,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 102815,
+      "output": 24375,
+      "cacheRead": 4815488,
+      "cacheWrite": 0,
+      "totalTokens": 4942678,
+      "reasoningTokens": 4545,
+      "cost": {
+        "input": 0.20563000000000006,
+        "output": 0.24374999999999997,
+        "cacheRead": 0.48154880000000005,
+        "cacheWrite": 0,
+        "total": 0.9309288
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\13-retry-execution-isolationmd-983814bd-72db-444.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "status": "实现已提交，可交由独立集成代理接管；真实宿主验收受外部入口缺失阻塞，不宣称票据全部验收或已合入。",
+            "commit": "65ab362",
+            "branch": "hyper/workflow-map-runtime-design/13-retry-execution-isolation-ed9c22-9156471a482f",
+            "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-1VMomO",
+            "delivered": [
+              "新增 POST /api/workflow/manager/retry，复用完整 dispatch 启动路径，要求人工确认和非空依据，拒绝 paused、终态、非失败节点及未核实派发失败。",
+              "新旧执行身份隔离；previousExecutions 保留旧执行与失败，retry 历史保留人工依据。身份/关联/输入失败返回实际新执行及外部效果，不误归旧执行，不声称回滚。",
+              "旧执行仍可追加报告，但待办仅采用当前适用执行的最新报告；任何保留的旧原生身份均不得复用为新执行。",
+              "更新长期运行说明，包含用户处理路径、角色工具要求、错误与部分生效语义、复验命令和证据边界。"
+            ],
+            "criteriaEvidence": {
+              "P13.03": "retry_saves_new_identity_before_full_trigger_and_retains_original_facts；retry_association_failure_exposes_new_attempt_without_overwriting_old_snapshot；retry_startup_failures_keep_both_attempts_and_do_not_rollback",
+              "P14.02": "上述成功启动测试核对独立受控身份、实际夹具 cwd/Workspace；unavailable_retry_targets_fail_without_fallback_or_reusing_old_execution；retry_rejects_reuse_of_any_retained_native_identity。真实 omp 身份部分未验证。",
+              "P15.03": "成功启动测试以独立字面预期核对 model/thinking、Skill、固定 prompt、完整 node 输入；真实 omp 部分未验证。",
+              "P27.02": "late_old_reports_remain_history_without_controlling_new_execution：旧/新报告交错、完整持久历史、collect 仅当前最新适用 ID、旧身份不能 complete 当前执行。",
+              "P35.04": "terminal_run_rejects_retry_without_new_chat_or_record_changes",
+              "P36.03": "paused_retry_requires_explicit_resume_and_human_confirmation",
+              "P41.01": "成功/失败 retry、保留产物、paused 拒绝、uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled，以及旧报告隔离测试；真实原生 Chat 部分未验证。",
+              "P45.03": "身份/输入失败与关联落盘故障测试，核对新执行、实际启动记录、错误归属和未提交快照。",
+              "P68.07": "成功/失败路径核对预留产物、新旧 Chat 引用和全部允许的宿主调用；请求后 150ms 有界窗口无额外动作。有限窗口不证明无限期无动作。"
+            },
+            "verification": [
+              {
+                "command": "cargo test --manifest-path backend/Cargo.toml --target-dir C:/Users/hugos/AppData/Local/Temp/hyper-ticket-1VMomO-target --test workflow_dispatch -- --nocapture",
+                "result": "45 passed，0 failed；含本票 9 个 retry 测试。最终运行输出 artifact://502。"
+              },
+              {
+                "command": "npm --prefix frontend ci",
+                "result": "成功安装依赖。"
+              },
+              {
+                "command": "npm --prefix frontend run build",
+                "result": "通过 TypeScript 检查和 Vite 构建。"
+              },
+              {
+                "command": "node scripts/test-backend.mjs --binary-jobs 2（CARGO_TARGET_DIR 为本 worktree 独占目录）",
+                "result": "完整默认后端入口通过：build、全部已派发测试二进制、doctest 均 passed，0 binaries not dispatched。日志目录 C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-SGwe9G；summary.json 保留结果。之后仅加强外部调用断言，最终 workflow_dispatch 45 项全部通过。"
+              },
+              {
+                "command": "逐片运行 retry 定向测试",
+                "result": "已观察并修复真实 red：仍为旧身份、旧报告 403、复用最早身份误成功、关联故障缺少新执行引用、目标解析失败缺少独立尝试 ID；对应 green 均通过。"
+              }
+            ],
+            "unverified": [
+              "metadata 指定的 E:/Developer/myhub/my-agent-toolkit/entrypoints/omp-auto/manager-chat.ts 与 node-chat.ts 均不存在（glob 返回 Path not found）。因此无法验证真实角色工具装配、Prompt 注入或通过真实管理者工具发起 retry。",
+              "真实 Herdr/omp 原生新旧 Chat、实际完整 trigger 输入及原生报告交错尚未验收；受控宿主证据不替代此项。长期说明已提供可重复隔离复验步骤。",
+              "未修改其他票据、工作流报告或外部 toolkit；未操作集成分支工作区、未合入、未调用 retro。票据未标 closed（仓库规则要求实现、测试并已合入）。"
+            ]
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 50,
+      "charCount": 3046
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "13-retry-execution-isolationmd-983814bd-72db-444",
+  "session_id": "01a18324-1be3-7213-a0b2-ed0e995ce788",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-10-28T11-24-03-726Z_01a18240-bf0e-77a4-b381-a74e22e85081\\13-retry-execution-isolationmd-983814bd-72db-444.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-1VMomO",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-map-runtime-design\\retro\\13-retry-execution-isolation.md\\a37df342-b590-4791-bddb-a13b19da5a33.md",
+  "retro_finished_at": "2026-10-28T15:53:31.657Z"
+}
