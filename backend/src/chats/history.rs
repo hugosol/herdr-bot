@@ -1,8 +1,8 @@
 //! Persistent metadata directory, independent of current registrations and shutdown intent.
 //! Accepted registration and confirmed zone creation write metadata only; native bodies are never imported.
 
-use std::fs;
-use std::io::{self, Write};
+use std::io;
+use crate::files::{FileAccess, FileStore};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::clock::Clock;
@@ -12,7 +12,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use crate::AppState;
 
@@ -100,17 +99,20 @@ pub(crate) struct HistorySelection {
 pub struct History {
     file: PathBuf,
     clock: Arc<dyn Clock>,
-    // One instance serializes the entire read/merge/replace transaction, not just writes.
-    lock: Mutex<()>,
+    files: FileStore,
 }
 
 impl History {
     pub fn new(file: PathBuf, clock: Arc<dyn Clock>) -> Self {
-        Self { file, clock, lock: Mutex::new(()) }
+        Self { file, clock, files: FileStore::default() }
     }
 
     fn read(&self) -> io::Result<Vec<HistoryRecord>> {
-        match fs::read(&self.file) {
+        self.files.with(std::slice::from_ref(&self.file), |access| self.read_scoped(access))?
+    }
+
+    fn read_scoped(&self, access: &FileAccess) -> io::Result<Vec<HistoryRecord>> {
+        match access.read(&self.file) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
@@ -119,7 +121,6 @@ impl History {
 
     /// Resolve only a persisted Chat selection, never current registration state.
     pub(crate) async fn selection(&self, session_id: &str) -> io::Result<Option<HistorySelection>> {
-        let _guard = self.lock.lock().await;
         Ok(self.read()?.into_iter().find(|record| record.session_id == session_id)
             .map(|record| HistorySelection { session_id: record.session_id, agent_type: record.agent_type,
                 cwd: record.cwd, session_file: record.session_file, startup_identity_path: record.startup_identity_path, session_name: record.session_name,
@@ -164,86 +165,88 @@ impl History {
         from_zone: bool,
         startup_identity_path: Option<&str>,
     ) -> io::Result<()> {
-        let _guard = self.lock.lock().await;
-        let mut records = self.read()?;
-        let session_name = valid_text(session_name);
-        let agent_type = valid_text(agent_type);
-        let cwd = valid_text(Some(cwd));
-        let original_workspace_id = valid_text(original_workspace_id);
-        let source_task_id = valid_text(source_task_id);
-        let session_file = valid_text(session_file)
-            .filter(|value| Path::new(value).is_absolute());
-        let startup_identity_path = valid_text(startup_identity_path)
-            .filter(|path| from_zone && matches!(agent_type, Some("omp" | "pi")) && Some(*path) == session_file);
+        self.files.with(std::slice::from_ref(&self.file), |access| {
+            access.update_json(
+                &self.file,
+                |access| self.read_scoped(access),
+                |records| {
+                    let session_name = valid_text(session_name);
+                    let agent_type = valid_text(agent_type);
+                    let cwd = valid_text(Some(cwd));
+                    let original_workspace_id = valid_text(original_workspace_id);
+                    let source_task_id = valid_text(source_task_id);
+                    let session_file = valid_text(session_file)
+                        .filter(|value| Path::new(value).is_absolute());
+                    let startup_identity_path = valid_text(startup_identity_path)
+                        .filter(|path| from_zone && matches!(agent_type, Some("omp" | "pi")) && Some(*path) == session_file);
 
-        if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
-            if from_zone || !record.name_from_zone {
-                update(&mut record.session_name, session_name);
-                if from_zone && session_name.is_some() { record.name_from_zone = true; }
-            }
-            update(&mut record.agent_type, agent_type);
-            update(&mut record.cwd, cwd);
-            update(&mut record.session_file, session_file);
-            if record.original_workspace_id.is_none() {
-                record.original_workspace_id = original_workspace_id.map(str::to_owned);
-            }
-            if record.source_task_id.is_none() {
-                record.source_task_id = source_task_id.map(str::to_owned);
-            }
-            if record.startup_identity_path.is_none() {
-                record.startup_identity_path = startup_identity_path.map(str::to_owned);
-            }
-        } else {
-            let first_recorded_at = self.clock.unix_millis();
-            records.push(HistoryRecord {
-                session_id: session_id.to_owned(),
-                session_name: session_name.map(str::to_owned),
-                name_from_zone: from_zone && session_name.is_some(),
-                agent_type: agent_type.map(str::to_owned),
-                cwd: cwd.map(str::to_owned),
-                first_recorded_at,
-                session_file: session_file.map(str::to_owned),
-                startup_identity_path: startup_identity_path.map(str::to_owned),
-                source_task_id: source_task_id.map(str::to_owned),
-                _legacy_source_association: (),
-                original_workspace_id: original_workspace_id.map(str::to_owned),
-                memo: None,
-            });
-        }
-        self.save(&records)
+                    if let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) {
+                        if from_zone || !record.name_from_zone {
+                            update(&mut record.session_name, session_name);
+                            if from_zone && session_name.is_some() { record.name_from_zone = true; }
+                        }
+                        update(&mut record.agent_type, agent_type);
+                        update(&mut record.cwd, cwd);
+                        update(&mut record.session_file, session_file);
+                        if record.original_workspace_id.is_none() {
+                            record.original_workspace_id = original_workspace_id.map(str::to_owned);
+                        }
+                        if record.source_task_id.is_none() {
+                            record.source_task_id = source_task_id.map(str::to_owned);
+                        }
+                        if record.startup_identity_path.is_none() {
+                            record.startup_identity_path = startup_identity_path.map(str::to_owned);
+                        }
+                    } else {
+                        let first_recorded_at = self.clock.unix_millis();
+                        records.push(HistoryRecord {
+                            session_id: session_id.to_owned(),
+                            session_name: session_name.map(str::to_owned),
+                            name_from_zone: from_zone && session_name.is_some(),
+                            agent_type: agent_type.map(str::to_owned),
+                            cwd: cwd.map(str::to_owned),
+                            first_recorded_at,
+                            session_file: session_file.map(str::to_owned),
+                            startup_identity_path: startup_identity_path.map(str::to_owned),
+                            source_task_id: source_task_id.map(str::to_owned),
+                            _legacy_source_association: (),
+                            original_workspace_id: original_workspace_id.map(str::to_owned),
+                            memo: None,
+                        });
+                    }
+                    Ok(())
+                },
+                |records| self.encode(access, records),
+                |error| error,
+            ).map(|(_, result)| result)
+        })?
     }
 
     async fn set_memo(&self, session_id: &str, memo: &str) -> io::Result<bool> {
-        let _guard = self.lock.lock().await;
-        let mut records = self.read()?;
-        let Some(record) = records.iter_mut().find(|record| record.session_id == session_id) else {
-            return Ok(false);
-        };
-        record.memo = Some(memo.to_owned());
-        self.save(&records)?;
-        Ok(true)
+        self.files.with(std::slice::from_ref(&self.file), |access| {
+            let records = self.read_scoped(access)?;
+            let Some(index) = records.iter().position(|record| record.session_id == session_id) else {
+                return Ok(false);
+            };
+            access.update_json(
+                &self.file,
+                |_| Ok(records),
+                |records| {
+                    records[index].memo = Some(memo.to_owned());
+                    Ok(true)
+                },
+                |records| self.encode(access, records),
+                |error| error,
+            ).map(|(_, result)| result)
+        })?
     }
 
-    // Read errors propagate before save is reached. The existing document is never
-    // truncated in place, and the lock keeps concurrent accepted events from losing rows.
-    fn save(&self, records: &[HistoryRecord]) -> io::Result<()> {
+    // Parent creation remains specific to history; publication belongs to FileAccess.
+    fn encode(&self, access: &FileAccess, records: &[HistoryRecord]) -> io::Result<Vec<u8>> {
         if let Some(parent) = self.file.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-            fs::create_dir_all(parent)?;
+            access.create_dir_all(parent)?;
         }
-        let mut temporary_name = self.file.as_os_str().to_os_string();
-        temporary_name.push(".tmp");
-        let temporary = PathBuf::from(temporary_name);
-        let result = (|| {
-            let mut file = fs::File::create(&temporary)?;
-            serde_json::to_writer(&mut file, records).map_err(io::Error::other)?;
-            file.flush()?;
-            file.sync_all()?;
-            fs::rename(&temporary, &self.file)
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        result
+        serde_json::to_vec(records).map_err(io::Error::other)
     }
 }
 
@@ -281,10 +284,7 @@ pub(crate) async fn get_history(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
 ) -> Response {
-    let snapshot = {
-        let _guard = state.history.lock.lock().await;
-        state.history.read()
-    };
+    let snapshot = state.history.read();
     match snapshot {
         Ok(mut records) => {
             records.sort_by(|a, b| {

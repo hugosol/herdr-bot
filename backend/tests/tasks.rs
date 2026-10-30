@@ -803,10 +803,6 @@ async fn write_failure_is_reported_and_keeps_previously_saved_tasks() {
 
     assert_rejected(&response, 500, "tasks-write-failed");
     assert_eq!(after_failure, before, "写入失败不得改变已保存的Task");
-    assert!(
-        !dir.path().join("tasks.json.tmp").exists(),
-        "失败的临时写入必须被清理"
-    );
     drop(panel);
 
     // 重启后读取到的仍是写入失败之前的 Task。

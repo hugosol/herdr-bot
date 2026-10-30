@@ -5,7 +5,7 @@
 //! 时长（`[shutdown] countdown_seconds`）同样是启动期配置：配置在进程启动时读取一次，运行中改写文件
 //! 不会被重新读取（没有热加载），非法值在启动时就被拒绝。
 
-use std::fs;
+use crate::files::FileStore;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -590,7 +590,7 @@ pub struct OperationBinding {
 impl Config {
     /// 从 TOML 配置文件读取配置。
     pub fn load(path: &Path) -> anyhow::Result<Config> {
-        let raw = fs::read_to_string(path)
+        let raw = FileStore::default().read_to_string(path)
             .with_context(|| format!("读取配置文件失败：{}", path.display()))?;
         Config::from_toml(&raw).with_context(|| format!("解析配置文件失败：{}", path.display()))
     }

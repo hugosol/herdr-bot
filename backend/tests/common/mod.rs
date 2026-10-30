@@ -50,6 +50,40 @@ impl Drop for TempDir {
     }
 }
 
+/// Blocks the durable destination, never an incidental staging filename.
+/// Existing history stays readable while Windows denies replacement; an absent
+/// destination is occupied by a directory until this guard is dropped.
+pub struct HistoryWriteBlock {
+    directory: Option<PathBuf>,
+    _read_handle: Option<fs::File>,
+}
+
+impl HistoryWriteBlock {
+    pub fn new(path: &Path) -> Self {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        if path.exists() {
+            let handle = fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x1 | 0x2) // FILE_SHARE_READ | FILE_SHARE_WRITE, not DELETE.
+                .open(path)
+                .expect("keep history readable while denying replacement");
+            Self { directory: None, _read_handle: Some(handle) }
+        } else {
+            fs::create_dir(path).expect("occupy the absent history destination");
+            Self { directory: Some(path.to_path_buf()), _read_handle: None }
+        }
+    }
+}
+
+impl Drop for HistoryWriteBlock {
+    fn drop(&mut self) {
+        if let Some(path) = &self.directory {
+            let _ = fs::remove_dir(path);
+        }
+    }
+}
+
 /// 一次测试独占的夹具副本：仓库夹具被完整复制到临时目录后才有记录写入。
 pub struct FixtureTree {
     root: TempDir,

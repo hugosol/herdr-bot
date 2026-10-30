@@ -9,20 +9,19 @@
 //! - 登记文件不存在表示「还没有任何登记」，不是读取错误。
 //! - 读取失败、权限不足或内容损坏都是**明确错误**，不会伪装成空列表；这时登记与取消登记都会失败，
 //!   绝不覆盖原文件。
-//! - 同一实例内的读取与写入共用一把锁，两个调用者不会看到半写状态。
+//! - 所有实例通过 FileStore 协调同一路径的读取与写入，两个调用者不会看到半写状态。
 
 pub mod browse;
 pub mod create;
 pub mod git;
 pub mod watch;
 
-use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
+use crate::files::{FileAccess, FileStore};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 /// 登记文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
 pub const DEFAULT_REGISTRY_FILE: &str = ".data/zones.json";
@@ -109,15 +108,14 @@ impl ZoneError {
 /// 持久保存在一个 JSON 文件里的 zone 登记列表。
 pub struct Zones {
     registry_file: PathBuf,
-    /// 读取与读改写写共用：同一实例内任意时刻只有一个调用者在操作登记文件。
-    lock: Mutex<()>,
+    files: FileStore,
 }
 
 impl Zones {
     pub fn new(registry_file: PathBuf) -> Self {
         Self {
             registry_file,
-            lock: Mutex::new(()),
+            files: FileStore::default(),
         }
     }
 
@@ -128,22 +126,21 @@ impl Zones {
 
     /// 读取当前登记列表；文件尚不存在时是空列表（首次启动）。
     pub async fn list(&self) -> Result<Vec<RegisteredZone>, ZoneError> {
-        let _guard = self.lock.lock().await;
-        self.read()
+        self.files.with(std::slice::from_ref(&self.registry_file), |access| self.read(access))
+            .map_err(ZoneError::Unreadable)?
     }
 
     /// 登记一个真实存在的服务器目录；成功返回登记后的完整列表。
     pub async fn register(&self, input: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
         let candidate = canonical_candidate(input)?;
 
-        let _guard = self.lock.lock().await;
-        let mut zones = self.read()?;
-        if zones.iter().any(|entry| same_path(&entry.path, &candidate)) {
-            return Err(ZoneError::AlreadyRegistered);
-        }
-        zones.push(RegisteredZone { path: candidate });
-        self.save(&zones)?;
-        Ok(zones)
+        self.change(|zones| {
+            if zones.iter().any(|entry| same_path(&entry.path, &candidate)) {
+                return Err(ZoneError::AlreadyRegistered);
+            }
+            zones.push(RegisteredZone { path: candidate });
+            Ok(())
+        })
     }
 
     /// 取消一个登记；不检查目录是否仍然存在，也不删除任何目录或文件。
@@ -153,20 +150,19 @@ impl Zones {
             return Err(ZoneError::Required);
         }
 
-        let _guard = self.lock.lock().await;
-        let mut zones = self.read()?;
-        let before = zones.len();
-        zones.retain(|entry| !same_path(&entry.path, trimmed));
-        if zones.len() == before {
-            return Err(ZoneError::NotRegistered);
-        }
-        self.save(&zones)?;
-        Ok(zones)
+        self.change(|zones| {
+            let before = zones.len();
+            zones.retain(|entry| !same_path(&entry.path, trimmed));
+            if zones.len() == before {
+                return Err(ZoneError::NotRegistered);
+            }
+            Ok(())
+        })
     }
 
     /// 读取并校验登记文件；文件不存在是空列表，其余失败都是明确错误。
-    fn read(&self) -> Result<Vec<RegisteredZone>, ZoneError> {
-        match fs::read_to_string(&self.registry_file) {
+    fn read(&self, access: &FileAccess) -> Result<Vec<RegisteredZone>, ZoneError> {
+        match access.read_to_string(&self.registry_file) {
             Ok(raw) => {
                 let document: RegistryDocument = serde_json::from_str(&raw)
                     .map_err(|error| ZoneError::Corrupt(error.to_string()))?;
@@ -178,43 +174,21 @@ impl Zones {
         }
     }
 
-    /// 先把新内容写进同目录的临时文件并落盘，再原子替换登记文件。
-    ///
-    /// 任一步失败都删除临时文件并返回错误；原登记文件在替换成功之前保持原样。
-    fn save(&self, zones: &[RegisteredZone]) -> Result<(), ZoneError> {
-        let document = RegistryDocument {
-            zones: zones.to_vec(),
-        };
-        let content = serde_json::to_string_pretty(&document).map_err(|error| {
-            ZoneError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
-        })?;
-
-        let temporary = self.temporary_path();
-        let written = (|| -> io::Result<()> {
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(content.as_bytes())?;
-            file.sync_all()?;
-            Ok(())
-        })();
-        if let Err(error) = written {
-            let _ = fs::remove_file(&temporary);
-            return Err(ZoneError::WriteFailed(error));
-        }
-        if let Err(error) = fs::rename(&temporary, &self.registry_file) {
-            let _ = fs::remove_file(&temporary);
-            return Err(ZoneError::WriteFailed(error));
-        }
-        Ok(())
-    }
-
-    fn temporary_path(&self) -> PathBuf {
-        let mut name = self
-            .registry_file
-            .file_name()
-            .map(|name| name.to_os_string())
-            .unwrap_or_else(|| OsString::from(DEFAULT_REGISTRY_FILE));
-        name.push(".tmp");
-        self.registry_file.with_file_name(name)
+    /// Read, validate, mutate and publish under one shared resource scope.
+    fn change(&self, change: impl FnOnce(&mut Vec<RegisteredZone>) -> Result<(), ZoneError>) -> Result<Vec<RegisteredZone>, ZoneError> {
+        self.files.with(std::slice::from_ref(&self.registry_file), |access| {
+            access.update_json(
+                &self.registry_file,
+                |access| self.read(access).map(|zones| RegistryDocument { zones }),
+                |document| {
+                    change(&mut document.zones)
+                },
+                |document| serde_json::to_vec_pretty(document).map_err(|error| {
+                    ZoneError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
+                }),
+                ZoneError::WriteFailed,
+            ).map(|(document, ())| document.zones)
+        }).map_err(ZoneError::Unreadable)?
     }
 }
 

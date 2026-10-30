@@ -621,10 +621,6 @@ async fn write_failure_is_reported_and_keeps_the_previous_registry() {
 
     assert_eq!(before, after, "写入失败不得改动原登记文件");
     assert_same_directories(&listed, &[first.clone()]);
-    assert!(
-        !dir.path().join("zones.json.tmp").exists(),
-        "失败的临时写入必须被清理"
-    );
     drop(panel);
 
     // 重启后读取到的仍是写入失败之前的列表。

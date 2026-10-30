@@ -126,26 +126,40 @@ for (const failure of ['missing-identity', 'unreadable-header', 'save-failed'] a
   test(`Pi ${failure} is correlated in server diagnostics only and ends without retry`, { tag: '@time-contract' }, async ({ page }, testInfo) => {
     const { zone } = await prepare({})
     const native = path.join(root!, 'unavailable-native.jsonl')
-    if (failure === 'save-failed') {
-      // This directory occupies the real atomic-write target, not a mock writer.
-      fs.mkdirSync(path.join(path.dirname(server!.storageFile), 'session-history.json.tmp'))
-      server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'id', value: 'pi-browser-save-failure' }, native_cwd: 'C:/failure' })
-    } else if (failure === 'unreadable-header') {
-      server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'path', value: native } })
-    }
-    const dialog = await createInPage(page, zone)
-    const agent = (server!.herdrCalls().find(c => c.kind === 'agent_start')!.name) as string
-    await expect.poll(() => server!.diagnostics(), { timeout: 35_000 }).toContain(failure === 'save-failed' ? 'save-failed' : 'identity-timeout')
-    const logs = server!.diagnostics()
-    expect(logs).toContain(`agent=${agent}`)
-    expect(logs).toMatch(/creation=bc-[0-9a-f]+/)
-    if (failure === 'unreadable-header') expect(logs).toContain('native header unavailable')
-    await expect(dialog.getByTestId('chat-create-success')).toBeVisible()
-    await expect(dialog).not.toContainText(/历史|收录|超时|保存失败/)
-    await testInfo.attach('delivered-server-diagnostics', { body: logs, contentType: 'text/plain' })
-    console.log(`PI-DIAGNOSTICS ${failure}: ${logs.split('\n').filter(l => l.includes('zone-history')).join('\n')}`)
-    const reads = server!.herdrCalls().filter(c => c.kind === 'agent_get').length
-    if (failure === 'save-failed') fs.rmdirSync(path.join(path.dirname(server!.storageFile), 'session-history.json.tmp'))
+    const historyFile = path.join(path.dirname(server!.storageFile), 'session-history.json')
+    let restoreHistory: (() => void) | undefined
+    let reads = 0
+    try {
+      if (failure === 'save-failed') {
+        // Start with readable empty history, then deny actual destination publication.
+        fs.writeFileSync(historyFile, '[]')
+        const protectedPath = process.platform === 'win32' ? historyFile : path.dirname(historyFile)
+        const originalMode = fs.statSync(protectedPath).mode
+        fs.chmodSync(protectedPath, process.platform === 'win32' ? 0o444 : 0o555)
+        restoreHistory = () => fs.chmodSync(protectedPath, originalMode)
+        server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'id', value: 'pi-browser-save-failure' }, native_cwd: 'C:/failure' })
+      } else if (failure === 'unreadable-header') {
+        server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'path', value: native } })
+      }
+      const dialog = await createInPage(page, zone)
+      const agent = (server!.herdrCalls().find(c => c.kind === 'agent_start')!.name) as string
+      await expect.poll(() => server!.diagnostics(), { timeout: 35_000 }).toContain(failure === 'save-failed' ? 'save-failed' : 'identity-timeout')
+      const logs = server!.diagnostics()
+      expect(logs).toContain(`agent=${agent}`)
+      expect(logs).toMatch(/creation=bc-[0-9a-f]+/)
+      if (failure === 'unreadable-header') expect(logs).toContain('native header unavailable')
+      await expect(dialog.getByTestId('chat-create-success')).toBeVisible()
+      await expect(dialog).not.toContainText(/历史|收录|超时|保存失败/)
+      await testInfo.attach('delivered-server-diagnostics', { body: logs, contentType: 'text/plain' })
+      console.log(`PI-DIAGNOSTICS ${failure}: ${logs.split('\n').filter(l => l.includes('zone-history')).join('\n')}`)
+      reads = server!.herdrCalls().filter(c => c.kind === 'agent_get').length
+      if (failure === 'save-failed') {
+        const response = await fetch(`${server!.baseURL}/api/sessions/history`)
+        expect(response.status).toBe(200)
+        expect((await response.json()).sessions).toEqual([])
+        expect(fs.readFileSync(historyFile, 'utf8')).toBe('[]')
+      }
+    } finally { restoreHistory?.() }
     fs.writeFileSync(native, '{"type":"session","id":"pi-after-failure","cwd":"C:/too-late"}\n')
     server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'path', value: native } })
     await page.waitForTimeout(600)

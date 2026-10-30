@@ -3,7 +3,7 @@
 //! 创建与 Git 初始化是两个已经产生外部效果的步骤，不能假装成一个可回滚事务：任何后续失败都保留
 //! 已经创建的目录，并在错误里说明失败阶段与完整路径。只有登记持久化成功后，调用方才返回成功。
 
-use std::fs;
+use crate::files::{FileAccess, FileStore};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -88,26 +88,29 @@ pub fn create_and_init(
     name: &str,
     git_timeout: Duration,
 ) -> Result<PathBuf, CreateZoneError> {
-    validate_parent(parent)?;
-    let name = validate_name(name)?;
-    let parent = fs::canonicalize(parent).map_err(|error| CreateZoneError::ParentInaccessible {
+    if parent.as_os_str().is_empty() || !parent.is_absolute() {
+        return Err(CreateZoneError::ParentNotAbsolute(parent.to_path_buf()));
+    }
+    let store = FileStore::default();
+    let target = store.with(&[parent.to_path_buf()], |files| {
+        validate_parent(files, parent)?;
+        let name = validate_name(name)?;
+        let parent = files.canonicalize(parent).map_err(|error| CreateZoneError::ParentInaccessible {
+            path: parent.to_path_buf(),
+            error,
+        })?;
+        let target = parent.join(&name);
+        match files.create_dir(&target) {
+            Ok(()) => Ok(target),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                Err(CreateZoneError::AlreadyExists { path: target })
+            }
+            Err(error) => Err(CreateZoneError::CreateFailed { path: target, error }),
+        }
+    }).map_err(|error| CreateZoneError::ParentInaccessible {
         path: parent.to_path_buf(),
         error,
-    })?;
-    let target = parent.join(&name);
-
-    match fs::create_dir(&target) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            return Err(CreateZoneError::AlreadyExists { path: target });
-        }
-        Err(error) => {
-            return Err(CreateZoneError::CreateFailed {
-                path: target,
-                error,
-            });
-        }
-    }
+    })??;
 
     let initialized = git::run_git(&target, &["init"], git_timeout).map_err(|error| {
         CreateZoneError::GitInitFailed {
@@ -123,17 +126,16 @@ pub fn create_and_init(
         });
     }
 
-    fs::canonicalize(&target).map_err(|error| CreateZoneError::FinalizeFailed {
-        path: target,
-        error,
-    })
+    store.with(std::slice::from_ref(&target), |files| files.canonicalize(&target))
+        .and_then(|result| result)
+        .map_err(|error| CreateZoneError::FinalizeFailed { path: target, error })
 }
 
-fn validate_parent(parent: &Path) -> Result<(), CreateZoneError> {
+fn validate_parent(files: &FileAccess, parent: &Path) -> Result<(), CreateZoneError> {
     if parent.as_os_str().is_empty() || !parent.is_absolute() {
         return Err(CreateZoneError::ParentNotAbsolute(parent.to_path_buf()));
     }
-    let metadata = fs::metadata(parent).map_err(|error| match error.kind() {
+    let metadata = files.metadata(parent).map_err(|error| match error.kind() {
         io::ErrorKind::NotFound => CreateZoneError::ParentNotFound(parent.to_path_buf()),
         _ => CreateZoneError::ParentInaccessible {
             path: parent.to_path_buf(),

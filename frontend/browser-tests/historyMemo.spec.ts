@@ -39,25 +39,32 @@ for (const width of [1280, 390]) {
 
     const memo = '  exact leading spaces\n第二行 <not HTML>\ntrailing spaces  '
     await editor.fill(memo)
-    const staging = path.join(root, 'session-history.json.tmp')
-    fs.mkdirSync(staging)
-    const { promise: gate, resolve: release } = Promise.withResolvers<void>()
-    await page.route('**/api/sessions/history/memo', async (route) => {
-      await gate
-      await route.continue()
-    }, { times: 1 })
-    const failure = page.waitForResponse(response => response.url().endsWith('/api/sessions/history/memo') && response.request().method() === 'PUT')
-    await row.getByRole('button', { name: '保存', exact: true }).click()
+    const historyFile = path.join(root, 'session-history.json')
+    const historyBytes = fs.readFileSync(historyFile)
+    // Windows rejects replacing a read-only destination; POSIX checks its parent.
+    // Neither denial prevents the backend from reading the previously saved row.
+    const protectedPath = process.platform === 'win32' ? historyFile : root
+    const originalMode = fs.statSync(protectedPath).mode
+    fs.chmodSync(protectedPath, process.platform === 'win32' ? 0o444 : 0o555)
     try {
-      await expect(row.getByRole('button', { name: '保存中…' })).toBeDisabled()
-      await expect(row.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
-      await expect(editor).toBeDisabled()
-    } finally { release() }
-    expect((await failure).ok()).toBe(false)
-    await expect(row.getByRole('alert')).toBeVisible()
-    await expect(editor).toHaveValue(memo)
-    expect(await readMemo()).toBeUndefined()
-    fs.rmdirSync(staging)
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>()
+      await page.route('**/api/sessions/history/memo', async (route) => {
+        await gate
+        await route.continue()
+      }, { times: 1 })
+      const failure = page.waitForResponse(response => response.url().endsWith('/api/sessions/history/memo') && response.request().method() === 'PUT')
+      try {
+        await row.getByRole('button', { name: '保存', exact: true }).click()
+        await expect(row.getByRole('button', { name: '保存中…' })).toBeDisabled()
+        await expect(row.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
+        await expect(editor).toBeDisabled()
+      } finally { release() }
+      expect((await failure).ok()).toBe(false)
+      await expect(row.getByRole('alert')).toBeVisible()
+      await expect(editor).toHaveValue(memo)
+      expect(await readMemo()).toBeUndefined()
+      expect(fs.readFileSync(historyFile)).toEqual(historyBytes)
+    } finally { fs.chmodSync(protectedPath, originalMode) }
 
     const saved = page.waitForResponse(response => response.url().endsWith('/api/sessions/history/memo') && response.request().method() === 'PUT')
     await row.getByRole('button', { name: '保存', exact: true }).click()

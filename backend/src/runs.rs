@@ -10,7 +10,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    fs,
     net::SocketAddr,
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -148,8 +147,9 @@ impl Runs {
         let mut ids: std::collections::BTreeSet<String> = self.registered_maps.lock().await.iter()
             .filter(|(_, name)| name.as_str() == map).map(|(id, _)| id.clone()).collect();
         let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
+        let candidates = self.files.with_async(&[root.clone()], move |access| Box::pin(async move {
         for ancestor in root.ancestors() {
-            match fs::symlink_metadata(ancestor) {
+            match access.symlink_metadata(ancestor) {
                 Ok(metadata) if crate::zones::browse::is_link_like(&metadata) || !metadata.is_dir() =>
                     return Err(format!("Run 目录不能经过链接或非目录：{}", ancestor.display())),
                 Ok(_) => {},
@@ -157,46 +157,57 @@ impl Runs {
                 Err(e) => return Err(e.to_string()),
             }
         }
-        match fs::read_dir(&root) {
+        let mut candidates = Vec::new();
+        match access.read_dir(&root) {
             Ok(entries) => for entry in entries {
-                let entry = entry.map_err(|e| e.to_string())?;
-                let metadata = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
+                let metadata = access.symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
                 if crate::zones::browse::is_link_like(&metadata) {
                     return Err(format!("无法安全检查 Run 关联：{} 是链接或重解析点。", entry.path().display()));
                 }
                 if !metadata.is_dir() { continue; }
                 let id = entry.file_name().into_string().map_err(|_| "Run 目录名无效。".to_owned())?;
                 if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { continue; }
-                let paths = Self::paths(state, &id);
-                let _guards = self.files.lock(&paths).await;
-                // Only the identifying record is needed: damaged/missing detail
-                // files must not prevent removing safely associated history.
-                validate_history_tree(paths[0].parent().unwrap())?;
-                let record: serde_json::Value = FileStore::read_json(&paths[0])?;
-                if record.get("map").and_then(|v| v.as_str()) == Some(map) { ids.insert(id); }
+                candidates.push(id);
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
             Err(e) => return Err(e.to_string()),
         }
+        Ok::<_, String>(candidates)
+        })).await.map_err(|e| e.to_string())??;
+        for id in candidates {
+            let paths = Self::paths(state, &id);
+            let directory = paths[0].parent().unwrap().to_path_buf();
+            let map = map.to_owned();
+            let associated = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
+                // Damaged/missing detail files must not prevent removing safely associated history.
+                validate_history_tree(access, &directory)?;
+                let record: serde_json::Value = access.read_json(&paths[0])?;
+                Ok::<_, String>(record.get("map").and_then(|v| v.as_str()) == Some(map.as_str()))
+            })).await.map_err(|e| e.to_string())??;
+            if associated { ids.insert(id); }
+        }
         for id in ids {
             let paths = Self::paths(state, &id);
-            let _guards = self.files.lock(&paths).await;
-            let directory = paths[0].parent().unwrap();
-            match fs::symlink_metadata(directory) {
-                Ok(_) => validate_history_tree(directory)?,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                Err(e) => return Err(e.to_string()),
-            }
-            // This boundary also excludes launch initialization and late saves.
-            self.deleted.lock().await.insert(id.clone());
-            match fs::remove_dir_all(directory) {
-                Ok(()) => {},
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                Err(e) => return Err(format!("Run {id} 历史删除失败：{e}")),
-            }
-            self.active.lock().await.remove(&id);
-            self.registered_maps.lock().await.remove(&id);
-            self.changed(&id, false).await;
+            let directory = paths[0].parent().unwrap().to_path_buf();
+            let owned = state.clone();
+            self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
+                match access.symlink_metadata(&directory) {
+                    Ok(_) => validate_history_tree(access, &directory)?,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(e) => return Err(e.to_string()),
+                }
+                // This scope also excludes launch initialization and late saves.
+                owned.runs.deleted.lock().await.insert(id.clone());
+                match access.remove_dir_all(&directory) {
+                    Ok(()) => {},
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(e) => return Err(format!("Run {id} 历史删除失败：{e}")),
+                }
+                owned.runs.active.lock().await.remove(&id);
+                owned.runs.registered_maps.lock().await.remove(&id);
+                owned.runs.changed(&id, false).await;
+                Ok::<_, String>(())
+            })).await.map_err(|e| e.to_string())??;
         }
         Ok(())
     }
@@ -211,14 +222,14 @@ impl Runs {
     }
     /// Recover role from persisted execution identity, including retired attempts.
     pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
-        let entries = match fs::read_dir(&state.run_directory) {
+        let root = state.run_directory.clone();
+        let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.to_string()),
         };
         let mut role = None;
         for entry in entries {
-            let entry = entry.map_err(|error| error.to_string())?;
             if !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
             let id = entry.file_name().to_string_lossy().into_owned();
             let run = self.read(state, &id).await?;
@@ -241,23 +252,26 @@ impl Runs {
 
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
         let paths = Self::paths(state, id);
-        let _guards = self.files.lock(&paths).await;
-        self.ensure_retained(id).await?;
-        // Required files are never silently recreated. JSONL is independently readable.
-        for path in &paths[1..] {
-            fs::File::open(path).map_err(|error| format!("{}：{error}", path.display()))?;
-        }
-        FileStore::read_json(&paths[0])
+        let owned = state.clone();
+        let id = id.to_owned();
+        self.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+            owned.runs.ensure_retained(&id).await?;
+            // Required files are never silently recreated. JSONL is independently readable.
+            for path in &paths[1..] {
+                access.check_readable(path).map_err(|error| format!("{}：{error}", path.display()))?;
+            }
+            access.read_json(&paths[0])
+        })).await.map_err(|e| e.to_string())?
     }
 }
-fn validate_history_tree(path: &std::path::Path) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}：{e}", path.display()))?;
+fn validate_history_tree(access: &crate::files::FileAccess, path: &std::path::Path) -> Result<(), String> {
+    let metadata = access.symlink_metadata(path).map_err(|e| format!("{}：{e}", path.display()))?;
     if crate::zones::browse::is_link_like(&metadata) {
         return Err(format!("Run 历史不能包含链接或重解析点：{}", path.display()));
     }
     if metadata.is_dir() {
-        for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
-            validate_history_tree(&entry.map_err(|e| e.to_string())?.path())?;
+        for entry in access.read_dir(path).map_err(|e| e.to_string())? {
+            validate_history_tree(access, &entry.path())?;
         }
     } else if !metadata.is_file() {
         return Err(format!("Run 历史文件类型无效：{}", path.display()));
@@ -285,10 +299,9 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
     let mut value = serde_json::json!({"id":id,"run":run,"managed":managed,"startupError":failure,"readError":read_error});
     if let Some(run) = &run {
         let paths = Runs::paths(state, id);
-        {
-            let _guards = state.runs.files.lock(&paths).await;
-            FileStore::read_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1])?;
-        }
+        state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+            access.read_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1])
+        })).await.map_err(|e| e.to_string())??;
         let reports = reports::summary(state, run, true).await?;
         value["reports"] = reports["reports"].clone();
         value["pendingReports"] = reports["pendingReports"].clone();
@@ -298,10 +311,11 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
 pub async fn list_runs(State(state): State<AppState>) -> Response {
     let active = state.runs.active.lock().await.clone();
     let mut ids: std::collections::BTreeSet<String> = active.keys().cloned().collect();
-    match fs::read_dir(&state.run_directory) {
+    let root = state.run_directory.clone();
+    let entries = state.runs.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.and_then(|entries| entries);
+    match entries {
         Ok(entries) => {
             for entry in entries {
-                let entry = match entry { Ok(entry) => entry, Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()) };
                 let kind = match entry.file_type() { Ok(kind) => kind, Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()) };
                 let Some(id) = entry.file_name().to_str().map(str::to_owned) else { continue };
                 if kind.is_dir() && !id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { ids.insert(id); }
@@ -458,16 +472,21 @@ pub async fn start_run(
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
         let paths = Runs::paths(&state, &id);
-        let _guards = state.runs.files.lock(&paths).await;
-        if state.runs.ensure_retained(&id).await.is_ok() {
-            state.runs.active.lock().await.insert(
-                id.clone(),
-                Some(StartupFailure {
-                    stage: "internal".into(),
-                    message: join.to_string(),
-                    effects: Some(Effects::default()),
-                }),
-            );
+        let owned = state.clone();
+        let retained_id = id.clone();
+        if let Err(message) = state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
+            if owned.runs.ensure_retained(&retained_id).await.is_ok() {
+                owned.runs.active.lock().await.insert(
+                    retained_id,
+                    Some(StartupFailure {
+                        stage: "internal".into(),
+                        message: join.to_string(),
+                        effects: Some(Effects::default()),
+                    }),
+                );
+            }
+        })).await {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message.to_string());
         }
     }
     match detail(&state, &id).await {
@@ -498,16 +517,17 @@ async fn launch(
     let result: Result<(), String> = async {
         let paths = Runs::paths(state, &run.id);
         {
-            let _guards = state.runs.files.lock(&paths).await;
-            state.runs.ensure_retained(&run.id).await?;
-            fs::create_dir_all(paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
-            FileStore::create(
-                &paths[0],
-                &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
-            FileStore::create(&paths[1], b"").map_err(|e| e.to_string())?;
-            FileStore::create(&paths[2], b"").map_err(|e| e.to_string())?;
+            let owned = state.clone();
+            let initial = run.clone();
+            let initial_paths = paths.clone();
+            state.runs.files.with_async(&[paths[0].parent().unwrap().to_path_buf()], move |access| Box::pin(async move {
+                owned.runs.ensure_retained(&initial.id).await?;
+                access.create_dir_all(initial_paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
+                access.create(&initial_paths[0], &serde_json::to_vec_pretty(&initial).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                access.create(&initial_paths[1], b"").map_err(|e| e.to_string())?;
+                access.create(&initial_paths[2], b"").map_err(|e| e.to_string())?;
+                Ok::<_, String>(())
+            })).await.map_err(|e| e.to_string())??;
         }
         effects.records_initialized = true;
         stage = "workspace";
@@ -568,14 +588,15 @@ async fn launch(
             // with renames and retain any name saved while identity was pending.
             let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
             let _operation = lock.lock().await;
-            let _guards = state.runs.files.lock(&paths).await;
-            state.runs.ensure_retained(&run.id).await?;
-            run.name = FileStore::read_json::<Run>(&paths[0])?.name;
-            FileStore::replace(
-                &paths[0],
-                &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let owned = state.clone();
+            let mut associated = run.clone();
+            let association_paths = paths.clone();
+            run = state.runs.files.with_async(&paths, move |access| Box::pin(async move {
+                owned.runs.ensure_retained(&associated.id).await?;
+                associated.name = access.read_json::<Run>(&association_paths[0])?.name;
+                access.replace(&association_paths[0], &serde_json::to_vec_pretty(&associated).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                Ok::<_, String>(associated)
+            })).await.map_err(|e| e.to_string())??;
         }
         effects.association_saved = true;
         state
@@ -630,17 +651,16 @@ async fn launch(
             message
         );
         let paths = Runs::paths(state, &run.id);
-        let _guards = state.runs.files.lock(&paths).await;
-        if state.runs.ensure_retained(&run.id).await.is_ok() {
-            state.runs.active.lock().await.insert(
-                run.id,
-                Some(StartupFailure {
-                    stage: stage.into(),
-                    message,
-                    effects: Some(effects),
-                }),
-            );
-        }
+        let owned = state.clone();
+        let stage = stage.to_owned();
+        state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
+            if owned.runs.ensure_retained(&run.id).await.is_ok() {
+                owned.runs.active.lock().await.insert(
+                    run.id,
+                    Some(StartupFailure { stage, message, effects: Some(effects) }),
+                );
+            }
+        })).await.map_err(|_| ())?;
         return Err(());
     }
     Ok(())
@@ -816,17 +836,18 @@ pub async fn manager_dispatch(
 
 async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     let paths = Runs::paths(state, &run.id);
-    let _guards = state.runs.files.lock(&paths).await;
-    state.runs.ensure_retained(&run.id).await?;
-    FileStore::replace(&paths[0], &serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    state.runs.changed(&run.id, false).await;
-    Ok(())
+    let owned = state.clone();
+    let run = run.clone();
+    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+        owned.runs.ensure_retained(&run.id).await?;
+        access.replace(&paths[0], &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        owned.runs.changed(&run.id, false).await;
+        Ok(())
+    })).await.map_err(|e| e.to_string())?
 }
 
 async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Option<&str>) -> Result<(), String> {
     let paths = Runs::paths(state, &run.id);
-    let _guards = state.runs.files.lock(&paths).await;
-    state.runs.ensure_retained(&run.id).await?;
     let node = &run.nodes[id];
     let mut entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
     if let Some(reason) = retry_reason {
@@ -838,7 +859,12 @@ async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Op
             entry["previousFailure"] = serde_json::json!(previous.failure);
         }
     }
-    FileStore::append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &entry)
+    let owned = state.clone();
+    let run_id = run.id.clone();
+    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+        owned.runs.ensure_retained(&run_id).await?;
+        access.append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &entry)
+    })).await.map_err(|e| e.to_string())?
 }
 
 async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>) -> serde_json::Value {

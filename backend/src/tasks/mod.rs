@@ -6,22 +6,20 @@
 //!
 //! 持久化语义与 zone 登记相同：只有存储文件成功写入后才返回成功；写入先写同目录的临时文件并
 //! `sync_all`，再原子替换存储文件。文件不存在表示还没有任何 Task，不是读取错误；读取失败或内容
-//! 损坏都是明确错误，不会伪装成空列表，也不会覆盖原文件。同一实例内的读取与写入共用一把锁。
+//! 损坏都是明确错误，不会伪装成空列表，也不会覆盖原文件。所有实例通过 FileStore 协调同一路径的读取与写入。
 //!
 //! agent / model / thinking / Skill 的可用选项由独立 TOML 目录维护；每次保存按当前元数据校验。
 //! 持久文件只保留稳定标识，不保存映射副本；读取不因单个选择失效而丢弃其他 Task。
 
 pub mod catalog;
 
-use std::ffi::OsString;
-use std::fs;
-use std::io::{self, Write};
+use std::io;
+use crate::files::{FileAccess, FileStore};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 /// Task 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
 pub const DEFAULT_STORAGE_FILE: &str = ".data/tasks.json";
@@ -309,8 +307,7 @@ impl TaskError {
 pub struct Tasks {
     storage_file: PathBuf,
     metadata_file: PathBuf,
-    /// 读取与读改写写共用：同一实例内任意时刻只有一个调用者在操作存储文件。
-    lock: Mutex<()>,
+    files: FileStore,
 }
 
 impl Tasks {
@@ -318,7 +315,7 @@ impl Tasks {
         Self {
             storage_file,
             metadata_file,
-            lock: Mutex::new(()),
+            files: FileStore::default(),
         }
     }
 
@@ -333,14 +330,13 @@ impl Tasks {
 
     /// 读取当前 Task 列表；文件尚不存在时是空列表。
     pub async fn list(&self) -> Result<Vec<Task>, TaskError> {
-        let _guard = self.lock.lock().await;
-        self.read()
+        self.files.with(std::slice::from_ref(&self.storage_file), |access| self.read(access))
+            .map_err(TaskError::Unreadable)?
     }
 
     /// 按标识读取一个 Task；不存在是明确错误。
     pub async fn get(&self, id: &str) -> Result<Task, TaskError> {
-        let _guard = self.lock.lock().await;
-        self.read()?
+        self.list().await?
             .into_iter()
             .find(|task| task.id == id)
             .ok_or(TaskError::NotFound)
@@ -350,25 +346,24 @@ impl Tasks {
     pub async fn create(&self, input: TaskInput) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        let _guard = self.lock.lock().await;
-        let mut tasks = self.read()?;
-        let id = next_id(&tasks);
-        tasks.push(Task {
-            id,
-            name: fields.name,
-            chat_name: fields.chat_name,
-            agent: fields.agent,
-            task_type: fields.task_type,
-            trigger: TriggerConfig {
-                model: fields.model,
-                thinking: fields.thinking,
-                skill: fields.skill,
-                prompt: fields.prompt,
-            },
-            env: EnvConfig { extensions: fields.extensions },
-        });
-        self.save(&tasks)?;
-        Ok(tasks)
+        self.change(|tasks| {
+            let id = next_id(tasks);
+            tasks.push(Task {
+                id,
+                name: fields.name,
+                chat_name: fields.chat_name,
+                agent: fields.agent,
+                task_type: fields.task_type,
+                trigger: TriggerConfig {
+                    model: fields.model,
+                    thinking: fields.thinking,
+                    skill: fields.skill,
+                    prompt: fields.prompt,
+                },
+                env: EnvConfig { extensions: fields.extensions },
+            });
+            Ok(())
+        })
     }
 
     /// 编辑一个 Task；标识保持不变，只有存储成功后才返回新列表。
@@ -379,43 +374,41 @@ impl Tasks {
     ) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        let _guard = self.lock.lock().await;
-        let mut tasks = self.read()?;
-        let target = tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or(TaskError::NotFound)?;
-        target.name = fields.name;
-        target.chat_name = fields.chat_name;
-        target.agent = fields.agent;
-        target.task_type = fields.task_type;
-        target.trigger = TriggerConfig {
-            model: fields.model,
-            thinking: fields.thinking,
-            skill: fields.skill,
-            prompt: fields.prompt,
-        };
-        target.env = EnvConfig { extensions: fields.extensions };
-        self.save(&tasks)?;
-        Ok(tasks)
+        self.change(|tasks| {
+            let target = tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or(TaskError::NotFound)?;
+            target.name = fields.name;
+            target.chat_name = fields.chat_name;
+            target.agent = fields.agent;
+            target.task_type = fields.task_type;
+            target.trigger = TriggerConfig {
+                model: fields.model,
+                thinking: fields.thinking,
+                skill: fields.skill,
+                prompt: fields.prompt,
+            };
+            target.env = EnvConfig { extensions: fields.extensions };
+            Ok(())
+        })
     }
 
     /// 删除一个 Task；不改变任何已经创建的 Chat。
     pub async fn delete(&self, id: &str) -> Result<Vec<Task>, TaskError> {
-        let _guard = self.lock.lock().await;
-        let mut tasks = self.read()?;
-        let before = tasks.len();
-        tasks.retain(|task| task.id != id);
-        if tasks.len() == before {
-            return Err(TaskError::NotFound);
-        }
-        self.save(&tasks)?;
-        Ok(tasks)
+        self.change(|tasks| {
+            let before = tasks.len();
+            tasks.retain(|task| task.id != id);
+            if tasks.len() == before {
+                return Err(TaskError::NotFound);
+            }
+            Ok(())
+        })
     }
 
     /// 读取并校验存储文件；文件不存在是空列表，其余失败都是明确错误。
-    fn read(&self) -> Result<Vec<Task>, TaskError> {
-        match fs::read_to_string(&self.storage_file) {
+    fn read(&self, access: &FileAccess) -> Result<Vec<Task>, TaskError> {
+        match access.read_to_string(&self.storage_file) {
             Ok(raw) => {
                 let document: TasksDocument = serde_json::from_str(&raw)
                     .map_err(|error| TaskError::Corrupt(error.to_string()))?;
@@ -427,43 +420,21 @@ impl Tasks {
         }
     }
 
-    /// 先把新内容写进同目录的临时文件并落盘，再原子替换存储文件。
-    ///
-    /// 任一步失败都删除临时文件并返回错误；原存储文件在替换成功之前保持原样。
-    fn save(&self, tasks: &[Task]) -> Result<(), TaskError> {
-        let document = TasksDocument {
-            tasks: tasks.to_vec(),
-        };
-        let content = serde_json::to_string_pretty(&document).map_err(|error| {
-            TaskError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
-        })?;
-
-        let temporary = self.temporary_path();
-        let written = (|| -> io::Result<()> {
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(content.as_bytes())?;
-            file.sync_all()?;
-            Ok(())
-        })();
-        if let Err(error) = written {
-            let _ = fs::remove_file(&temporary);
-            return Err(TaskError::WriteFailed(error));
-        }
-        if let Err(error) = fs::rename(&temporary, &self.storage_file) {
-            let _ = fs::remove_file(&temporary);
-            return Err(TaskError::WriteFailed(error));
-        }
-        Ok(())
-    }
-
-    fn temporary_path(&self) -> PathBuf {
-        let mut name = self
-            .storage_file
-            .file_name()
-            .map(|name| name.to_os_string())
-            .unwrap_or_else(|| OsString::from(DEFAULT_STORAGE_FILE));
-        name.push(".tmp");
-        self.storage_file.with_file_name(name)
+    /// Read, validate, mutate and publish under one shared resource scope.
+    fn change(&self, change: impl FnOnce(&mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
+        self.files.with(std::slice::from_ref(&self.storage_file), |access| {
+            access.update_json(
+                &self.storage_file,
+                |access| self.read(access).map(|tasks| TasksDocument { tasks }),
+                |document| {
+                    change(&mut document.tasks)
+                },
+                |document| serde_json::to_vec_pretty(document).map_err(|error| {
+                    TaskError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))
+                }),
+                TaskError::WriteFailed,
+            ).map(|(document, ())| document.tasks)
+        }).map_err(TaskError::Unreadable)?
     }
 }
 

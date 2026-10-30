@@ -251,8 +251,7 @@ async fn omp_save_failure_is_one_shot_and_does_not_persist_current_shutdown_inte
     post(&server,"/api/sessions/events",json!({"sessionId":"omp-current-save-control","kind":"state","data":{"value":"working"}})).await;
     post(&server,"/api/shutdown/monitor",json!({"sessionId":"omp-current-save-control","selected":true})).await;
     let before = current(&server).await;
-    let blocker = root.path().join("history.json.tmp");
-    fs::create_dir(&blocker).unwrap();
+    let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
     let accepted = create(&server,&zone,&task).await;
     let done = terminal(&server,accepted["id"].as_str().unwrap()).await;
     assert_eq!(done["stage"],"succeeded");
@@ -260,7 +259,7 @@ async fn omp_save_failure_is_one_shot_and_does_not_persist_current_shutdown_inte
     fs::write(release,b"release").unwrap();
     tokio::time::sleep(Duration::from_millis(350)).await;
     assert_eq!(read(&server,"/api/sessions/history").await["total"],1);
-    fs::remove_dir(blocker).unwrap();
+    drop(blocked);
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(3600)).await;
     tokio::task::yield_now().await;
@@ -309,11 +308,13 @@ async fn omp_history_outcomes_do_not_retime_or_persist_an_existing_countdown() {
             tokio::task::yield_now().await;
             tokio::time::resume();
         } else {
-            if outcome == "save-failure" { fs::create_dir(root.path().join("history.json.tmp")).unwrap(); }
+            let _blocked = (outcome == "save-failure")
+                .then(|| common::HistoryWriteBlock::new(&config.sessions.history_file));
             fs::write(&release,b"release").unwrap();
             if outcome == "success" { history_count(&server,1).await; }
             else { tokio::time::sleep(Duration::from_millis(350)).await; }
         }
+        assert_eq!(read(&server,"/api/sessions/history").await["total"], if outcome == "success" { 1 } else { 0 }, "{outcome}");
         let after = current(&server).await;
         assert_eq!(after["shutdown"]["phase"],"counting-down","{outcome}");
         assert_eq!(after["shutdown"]["arrangementId"],before["shutdown"]["arrangementId"]);

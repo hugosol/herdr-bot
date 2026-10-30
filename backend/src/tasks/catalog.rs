@@ -79,7 +79,8 @@ impl From<TaskType> for ExecutionRole {
 impl Catalog {
     pub fn load(path: &Path) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
-            let raw = fs::read_to_string(path).map_err(|e| format!("读取失败：{e}"))?;
+            let raw = crate::files::FileStore::default().read_to_string(path)
+                .map_err(|e| format!("读取失败：{e}"))?;
             let catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
             catalog.validate()?;
             Ok(catalog)

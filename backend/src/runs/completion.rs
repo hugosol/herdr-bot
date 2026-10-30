@@ -196,7 +196,11 @@ pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: 
 
 pub(super) async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
     let paths = Runs::paths(state, id);
-    let _guards = state.runs.files.lock(&paths).await;
-    state.runs.ensure_retained(id).await?;
-    FileStore::append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], event)
+    let owned = state.clone();
+    let id = id.to_owned();
+    let event = event.clone();
+    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+        owned.runs.ensure_retained(&id).await?;
+        access.append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &event)
+    })).await.map_err(|e| e.to_string())?
 }

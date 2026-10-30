@@ -61,8 +61,11 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
 | Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
 | Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
+| 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
 | 固定操作与关机 | `server/operationsApi.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
 
 跨模块引用指向实际所属文件，不通过旧路径兼容转发。前端全局样式暂集中在 `app/styles.css`；后端 `runs.rs` 与同名目录共同构成一个 Rust 模块。目录归类不改变 Task、Chat、Map、Run 的含义或执行时序。
+
+系统持久数据的读写、枚举、删除，以及产品代码直接执行的文件变更统一经过 `files.rs`。普通 JSON 读改存与条件发布使用常用操作；复合操作通过 `FileStore::with`／`with_async` 的受限访问对象完成，不能嵌套取得协调范围，也不能在范围内调用 Herdr／Git 等外部操作。目录与后代文件重叠协调，不相关的数据仍独立推进；调用者保留业务规则及 Run 操作锁，不持有原生文件锁。文件格式、路径及部分生效语义不变，不提供跨文件事务或自动修复；适用范围和取舍见 [ADR 0016](docs/adr/0016-unified-file-persistence.md)。
 
 测试继续位于 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/`，不随源码迁移；执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。

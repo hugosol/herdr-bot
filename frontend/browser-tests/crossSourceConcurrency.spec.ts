@@ -123,8 +123,8 @@ async function currentSnapshot() {
   } finally { await reader.cancel() }
 }
 
-// P26 combined zone-write/connect-write fault partition. A real staging-path
-// denial leaves the public register accepted. A failed zone rename must neither
+// P26 combined zone-write/connect-write fault partition. A real destination
+// publication denial leaves the public register accepted. A failed zone rename must neither
 // replace durable metadata nor mutate current registration. Captured production
 // diagnostics prove the independent zone attempt actually reached its failure.
 for (const agent of ['pi', 'omp'] as const) {
@@ -154,28 +154,36 @@ for (const agent of ['pi', 'omp'] as const) {
       server.setHerdrBehavior({ ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } })
       await create(zone, rejected)
       await expect.poll(() => server!.herdrCalls().filter(c => c.kind === 'agent_get').length).toBe(2)
-      const staging = path.join(path.dirname(server.configPath), 'session-history.json.tmp')
-      fs.mkdirSync(staging)
-      const failedConnect = async () => {
-        const receipt = await post('/api/sessions/events', { sessionId: id, kind: 'register', data: { cwd: 'C:/current-after-failure', agentType: agent, sessionName: 'Current accepted despite history failure' } })
-        expect(receipt.outcome).toBe('registered')
-        expect(receipt.historySaved).toBe(false)
-        expect(receipt.historyWarning.code).toBe('history-save-failed')
-      }
-      if (order === 'connect-zone') await failedConnect()
-      fs.writeFileSync(gate, 'ready')
-      await expect.poll(() => server!.diagnostics()).toContain(`session=${id}`)
-      const warning = server.diagnostics().split('\n').find(line => line.includes(`session=${id}`) && line.includes('save-failed'))!
-      expect(warning).toContain('creation=')
-      if (order === 'zone-connect') await failedConnect()
-      const current = await currentSnapshot()
-      expect(current.sessions).toHaveLength(1)
-      expect(current.sessions[0]).toMatchObject({ sessionId: id, sessionName: 'Current accepted despite history failure', cwd: 'C:/current-after-failure', online: true, state: 'working' })
-      for (const field of ['phase', 'monitoredSessionIds', 'arrangementId', 'deadline']) {
-        expect(current.shutdown[field]).toEqual(before.shutdown[field])
-      }
-      expect(await history()).toEqual(saved)
-      fs.rmdirSync(staging)
+      const historyFile = path.join(path.dirname(server.configPath), 'session-history.json')
+      const historyBytes = fs.readFileSync(historyFile)
+      // Keep prior history readable while denying publication at its destination.
+      const protectedPath = process.platform === 'win32' ? historyFile : path.dirname(historyFile)
+      const originalMode = fs.statSync(protectedPath).mode
+      let warning = ''
+      let current = before
+      fs.chmodSync(protectedPath, process.platform === 'win32' ? 0o444 : 0o555)
+      try {
+        const failedConnect = async () => {
+          const receipt = await post('/api/sessions/events', { sessionId: id, kind: 'register', data: { cwd: 'C:/current-after-failure', agentType: agent, sessionName: 'Current accepted despite history failure' } })
+          expect(receipt.outcome).toBe('registered')
+          expect(receipt.historySaved).toBe(false)
+          expect(receipt.historyWarning.code).toBe('history-save-failed')
+        }
+        if (order === 'connect-zone') await failedConnect()
+        fs.writeFileSync(gate, 'ready')
+        await expect.poll(() => server!.diagnostics()).toContain(`session=${id}`)
+        warning = server.diagnostics().split('\n').find(line => line.includes(`session=${id}`) && line.includes('save-failed'))!
+        expect(warning).toContain('creation=')
+        if (order === 'zone-connect') await failedConnect()
+        current = await currentSnapshot()
+        expect(current.sessions).toHaveLength(1)
+        expect(current.sessions[0]).toMatchObject({ sessionId: id, sessionName: 'Current accepted despite history failure', cwd: 'C:/current-after-failure', online: true, state: 'working' })
+        for (const field of ['phase', 'monitoredSessionIds', 'arrangementId', 'deadline']) {
+          expect(current.shutdown[field]).toEqual(before.shutdown[field])
+        }
+        expect(await history()).toEqual(saved)
+        expect(fs.readFileSync(historyFile)).toEqual(historyBytes)
+      } finally { fs.chmodSync(protectedPath, originalMode) }
       await register(id, { cwd: 'C:/recovered-current', agentType: agent, sessionName: 'Connect recovery must not replace saved zone' })
       const recovered = await history()
       expect(recovered.sessions).toEqual([{ sessionId: id, sessionName: 'Durable zone before failure', cwd: 'C:/recovered-current', agentType: agent, originalWorkspaceId: 'w-target', originalWorkspaceName: 'bot-playground', firstRecordedAt: saved.sessions[0].firstRecordedAt }])
