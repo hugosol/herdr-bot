@@ -231,6 +231,8 @@ Map node 的 `auto_close` 缺省为 `false`；dispatch/retry 读取派发时的�
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 通过真实 HTTP 和隔离 Herdr 命令副本核对 Map 双向修改、旧记录、权限及完成资格、当前执行精确目标、重复调用、工作中完成及非阻塞顺序。关闭 gate 在释放前保持命令未返回，测试先观察 complete 响应与同 Run 依赖节点真实派发，再释放并确认返回；10 秒有界等待仅防挂死，不是业务速度承诺。负向检查窗口为 150 ms；受控命令记录不证明真实 Herdr 的 Tab 移除或进程终止，真实外部效果需另行专属资源验收。
 
+P14/P17/P20/P21 的浏览器与诊断覆盖位于 `frontend/browser-tests/autoCloseIsolation.spec.ts`，通过 npm 浏览器入口运行。场景分别提供成功、命令拒绝、结构化 `confirmation_required`、派发后移走测试专属执行文件，以及缺少 Chat/空白 Tab 的有效历史执行。生产输出保留 Herdr 的机器错误码与说明，日志区分尝试、成功、失败和缺少目标跳过；不可用时有一次后端执行尝试，但没有外部 CLI 进程启动。测试读取外部 `invocations.jsonl`（含不支持命令），不只数 adapter 的已知关闭记录，以检查无强制确认或其他绕过。所有场景经合法 complete、同 Run 下游真实派发及重复 complete，比较公开结果、三份持久事实与真实 workflow DOM；750 ms 有界窗口只用于观察未重试/未显示关闭结果，不承诺无限未来。该替身覆盖不证明真实 Tab 已移除或终端已结束（P22）。
+
 ### 结束 Run
 
 全部节点 completed 后，管理者显式结束本次 Run：
