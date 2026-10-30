@@ -120,12 +120,6 @@ export default function App({
   function selectTab(next: TabKey, guarded = true) {
     if (next !== tab && guarded && schedulerTab && schedulerNavigationGuard.current?.() === false) return false
     const nextGroup = (TAB_GROUPS.work as readonly TabKey[]).includes(next) ? 'work' : 'config'
-    if (tab === 'workflow' && next !== 'workflow' && selectedRunId()) {
-      const url = new URL(window.location.href)
-      url.hash = 'workflow'
-      window.history.replaceState(window.history.state, '', url)
-      acceptedHash.current = window.location.hash
-    }
     lastTabs.current[nextGroup] = next
     setGroup(nextGroup)
     setTab(next)

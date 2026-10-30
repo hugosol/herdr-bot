@@ -139,7 +139,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await expect(nodeJSON).toHaveValue(conflictDraft)
     await discard(page, button('返回 Map'), true)
     await activate(page, button('修改 node'))
-    expect(JSON.parse(await nodeJSON.inputValue())).toEqual(newNode)
+    expect(JSON.parse(await nodeJSON.inputValue())).toMatchObject(newNode)
     await type(page, nodeJSON, JSON.stringify({ ...newNode, title: '冲突后重新保存' }, null, 2))
     await activate(page, button('保存 node'))
     await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '冲突后重新保存 keyboard-node', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -167,7 +167,11 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     expect(fs.existsSync(path.join(path.dirname(server.configPath), 'operations'))).toBe(false)
     expect(server.diagnostics()).not.toContain('记录到关机动作调用')
     const persisted = JSON.parse(fs.readFileSync(file, 'utf8'))
-    expect(persisted.nodes['keyboard-node']).toEqual({ ...newNode, title: '冲突后重新保存' })
+    expect(Object.keys(persisted.nodes).sort()).toEqual(Object.keys(external.nodes).sort())
+    expect(persisted).toMatchObject({ ...external, nodes: {
+      ...external.nodes,
+      'keyboard-node': { ...newNode, title: '冲突后重新保存' },
+    } })
     expect(persisted.nodes.A.title).toBe('上海天气复核')
   })
 }

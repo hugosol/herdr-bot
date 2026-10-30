@@ -21,7 +21,7 @@
 | 节点 Chat | 在定义 zone 做工作，按本次 `reportPolicy` 以 report 正文说明结果地址、用法与限制：auto 自行报告，manual 每次先展示摘要/地址/限制、询问并停轮等待本 node Chat 用户自然语言确认；修改后及补充更正同样重新确认。可在交接后继续不影响结果的收尾；不能自改流程状态。 |
 | 后端 | 检查同机来源、真实原生身份与 Run/执行归属、依赖和状态；串行同 Run 业务动作，保存当前事实与历史，提供报告和 collect。模型判断不能替代这些约束。 |
 | Herdr／agent／toolkit | Herdr 托管原生 Chat 与输入提交，各 Task 选择的 omp 或 pi 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
-| Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察、定位/恢复已关联 Chat；不暗中创建、接管或改状态。 |
+| Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察执行事实、定位/恢复已关联 Chat，并允许人类重命名 Run；不暗中创建、接管或改状态。 |
 
 新启动 omp / pi 的文件可能尚未落盘（pi 在首次用户或助手消息出现后创建文件）；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
 
@@ -39,7 +39,8 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 - report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
 - 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。
-- 后端重启后旧 Run 只读，保留原状态、报告和 Chat 关联，拒绝动作/report/collect；普通 Chat Resume 不接管。未接管是服务上下文事实，不是持久 Run 状态。
+- 后端重启后旧 Run 的执行事实只读，保留原状态、报告和 Chat 关联，拒绝动作/report/collect；人类仍可修改名称。普通 Chat Resume 不接管。未接管是服务上下文事实，不是持久 Run 状态。
+- Run 可选 `name` 仅供人类识别，不参与 Map、身份、依赖或执行逻辑；旧记录缺字段无需迁移。详情标题优先名称，否则沿用当前 Map 标题 / 保存 Map 标识；列表优先名称，否则沿用保存 Map 标识，名称、ID 与 Map 均可搜索。标题旁「重命名」展开以当前显示标题为初值的输入；保存去除首尾空白、拒绝空名称、允许重名，取消不写入，失败保留草稿。`PATCH /api/workflow/runs/{id}` 接收 `{ name: string }`，成功返回与 GET 相同的详情；保存后同步列表/详情并刷新，切换 Run 不应用迟到结果。历史/未接管 Run 同样可重命名，不恢复管理或修改执行事实。
 - 同机来源限制不是认证，session_id 不是秘密；接受同机进程冒用风险，不引入 token 或沙箱。未来提高认证、归属、事务或存储保证须同步接口、迁移及验证，不能静默改变调用者依赖。
 - 图来自当前定义而非历史快照，定义无法可靠对应时保留保存事实但不画假图。轮询默认 5 秒、collect 默认 90 分钟；有效配置、稳定路径和较长 HTTP 预算见[记录及配置](workflow-runtime.md#记录及配置)。
 
@@ -83,7 +84,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P25 | 报告保存失败不产生待办/通知。 | [报告阶段结果](workflow-runtime.md#节点报告与独立通知) |
 | P26 | 保存成功、投递失败仍可 collect，明确分阶段结果，不回滚/暂停/补投/仅为此重报。 | [报告](workflow-runtime.md#节点报告与独立通知) |
 | P27 | 重复报告独立追加；待办按 node 当前适用执行汇总最新报告，旧报告只作历史。 | [retry 报告归属](workflow-runtime.md#独立新执行retry) |
-| P28 | 读取、通知、collect 不消除未完成待办；completed 后不重开；重启只读优先。 | [报告](workflow-runtime.md#节点报告与独立通知)、[重启](workflow-runtime.md#后端重启历史现场只读) |
+| P28 | 读取、通知、collect 不消除未完成待办；completed 后不重开；重启后执行事实只读，名称可改。 | [报告](workflow-runtime.md#节点报告与独立通知)、[重启](workflow-runtime.md#后端重启历史现场只读) |
 | P29 | 管理者显式 complete 才交接/满足依赖，report/停轮/退出均不能替代，pending 拒绝。 | [交接](workflow-runtime.md#显式交接完成与结束-run) |
 | P30 | collect 返回原因、快照、报告标识而非正文；无 running/通知不无限等，不承诺 ready 即返回。 | [collect](workflow-runtime.md#收取报告等待与取消) |
 | P31 | 通知在无人等待时保留、可合并，检查后新通知留到下次，不当已读。 | [collect](workflow-runtime.md#收取报告等待与取消) |
@@ -109,13 +110,13 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P46 | 当前事实、追加历史、报告独立可读；不靠历史重放、不增加通知业务文件。 | [三份记录](workflow-runtime.md#独立读取与部分提交) |
 | P47 | 必要文件缺失/损坏/JSONL 残尾明确报错，保留字节、不重建/截断/继续追加。 | [损坏记录](workflow-runtime.md#损坏记录与-windows-文件协调) |
 | P48 | Windows 单文件更新不先删正式文件；文件锁不跨外部启动/投递/等待，不承诺跨文件事务。 | [文件协调](workflow-runtime.md#损坏记录与-windows-文件协调) |
-| P49 | 真实后端重启保留旧 Run 原事实，只读并拒绝动作/report/collect，Resume 不接管。 | [重启](workflow-runtime.md#后端重启历史现场只读) |
+| P49 | 真实后端重启保留旧 Run 原执行事实，执行只读并拒绝动作/report/collect，名称仍可修改，Resume 不接管。 | [重启](workflow-runtime.md#后端重启历史现场只读) |
 
 ### 观察、部署与交付
 
 | 编号 | 应满足的结果／不可弱化的边界 | 长期参考 |
 | --- | --- | --- |
-| P50 | workflow 默认跨 Map 倒序、按日期列全部 Run；时间在前，无表头/归属列，完成数仅 n/m；提供显式组合筛选，进详情隐藏列表，返回保留筛选/滚动，详情区分未接管事实；不增加运行控制。 | [观察](workflow-runtime.md#发起与观察) |
+| P50 | workflow 默认跨 Map 倒序、按日期列全部 Run；时间在前，无表头/归属列，完成数仅 n/m；提供显式组合筛选，进详情隐藏列表，切换其他 Tab 再返回保持已选 Run 与详情 hash 一致；「返回全部 Run」清空选择、使用 `#workflow` 并恢复列表筛选/滚动。详情区分未接管事实，允许人类重命名元数据，不增加运行控制。 | [观察](workflow-runtime.md#发起与观察) |
 | P51 | 只读图用文字与视觉标记，不以颜色/Chat 状态独自替代 node 状态；manager 不是 node。 | [观察](workflow-runtime.md#发起与观察) |
 | P52 | 详情区分当前定义/执行/适用报告/旧历史及各 Chat，无关联不补建。 | [观察](workflow-runtime.md#发起与观察) |
 | P53 | Resume 指定 Chat，如实成功/失败/未知，不改节点、不接管旧 Run。 | [观察](workflow-runtime.md#发起与观察)、[普通恢复](usage.md#历史-chat-resume) |

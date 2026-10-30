@@ -86,6 +86,8 @@ pub struct Finished {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Run {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub map: String,
     pub created_at: u64,
     pub manager_task_id: String,
@@ -127,8 +129,78 @@ pub struct Runs {
     active: Mutex<BTreeMap<String, Option<StartupFailure>>>,
     operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
+    map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
+    registered_maps: Mutex<BTreeMap<String, String>>,
+    deleted: Mutex<std::collections::BTreeSet<String>>,
 }
 impl Runs {
+    pub(crate) async fn map_lock(&self, map: &str) -> std::sync::Arc<Mutex<()>> {
+        self.map_operations.lock().await.entry(map.to_owned()).or_default().clone()
+    }
+
+    async fn ensure_retained(&self, id: &str) -> Result<(), String> {
+        if self.deleted.lock().await.contains(id) { return Err("Run 历史已删除。".into()); }
+        Ok(())
+    }
+
+    /// Caller holds this Map's registration gate, never a Chat/operation lock.
+    pub(crate) async fn delete_map_history(&self, state: &AppState, map: &str) -> Result<(), String> {
+        let mut ids: std::collections::BTreeSet<String> = self.registered_maps.lock().await.iter()
+            .filter(|(_, name)| name.as_str() == map).map(|(id, _)| id.clone()).collect();
+        let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
+        for ancestor in root.ancestors() {
+            match fs::symlink_metadata(ancestor) {
+                Ok(metadata) if crate::browse::is_link_like(&metadata) || !metadata.is_dir() =>
+                    return Err(format!("Run 目录不能经过链接或非目录：{}", ancestor.display())),
+                Ok(_) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        match fs::read_dir(&root) {
+            Ok(entries) => for entry in entries {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let metadata = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
+                if crate::browse::is_link_like(&metadata) {
+                    return Err(format!("无法安全检查 Run 关联：{} 是链接或重解析点。", entry.path().display()));
+                }
+                if !metadata.is_dir() { continue; }
+                let id = entry.file_name().into_string().map_err(|_| "Run 目录名无效。".to_owned())?;
+                if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { continue; }
+                let paths = Self::paths(state, &id);
+                let _guards = self.files.lock(&paths).await;
+                // Only the identifying record is needed: damaged/missing detail
+                // files must not prevent removing safely associated history.
+                validate_history_tree(paths[0].parent().unwrap())?;
+                let record: serde_json::Value = FileStore::read_json(&paths[0])?;
+                if record.get("map").and_then(|v| v.as_str()) == Some(map) { ids.insert(id); }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            Err(e) => return Err(e.to_string()),
+        }
+        for id in ids {
+            let paths = Self::paths(state, &id);
+            let _guards = self.files.lock(&paths).await;
+            let directory = paths[0].parent().unwrap();
+            match fs::symlink_metadata(directory) {
+                Ok(_) => validate_history_tree(directory)?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(e.to_string()),
+            }
+            // This boundary also excludes launch initialization and late saves.
+            self.deleted.lock().await.insert(id.clone());
+            match fs::remove_dir_all(directory) {
+                Ok(()) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(format!("Run {id} 历史删除失败：{e}")),
+            }
+            self.active.lock().await.remove(&id);
+            self.registered_maps.lock().await.remove(&id);
+            self.changed(&id, false).await;
+        }
+        Ok(())
+    }
+
     fn paths(state: &AppState, id: &str) -> [PathBuf; 3] {
         let root = state.run_directory.join(id);
         [
@@ -170,6 +242,7 @@ impl Runs {
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
         let paths = Self::paths(state, id);
         let _guards = self.files.lock(&paths).await;
+        self.ensure_retained(id).await?;
         // Required files are never silently recreated. JSONL is independently readable.
         for path in &paths[1..] {
             fs::File::open(path).map_err(|error| format!("{}：{error}", path.display()))?;
@@ -177,6 +250,21 @@ impl Runs {
         FileStore::read_json(&paths[0])
     }
 }
+fn validate_history_tree(path: &std::path::Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}：{e}", path.display()))?;
+    if crate::browse::is_link_like(&metadata) {
+        return Err(format!("Run 历史不能包含链接或重解析点：{}", path.display()));
+    }
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
+            validate_history_tree(&entry.map_err(|e| e.to_string())?.path())?;
+        }
+    } else if !metadata.is_file() {
+        return Err(format!("Run 历史文件类型无效：{}", path.display()));
+    }
+    Ok(())
+}
+
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
     (
         status,
@@ -248,6 +336,50 @@ pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> R
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenameRequest {
+    name: String,
+}
+
+pub async fn rename_run(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    request: Request,
+) -> Response {
+    if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
+        return error(StatusCode::BAD_REQUEST, "run-id-invalid", "Run 标识无效。");
+    }
+    let input: RenameRequest = match crate::chat_command_body(request, "重命名 Run").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let name = input.name.trim();
+    if name.is_empty() {
+        return error(StatusCode::BAD_REQUEST, "run-name-required", "Run 名称不能为空。");
+    }
+    let lock = state.runs.operations.lock().await.entry(id.clone()).or_default().clone();
+    let _operation = lock.lock().await;
+    // Read after taking the same operation lock used by workflow mutations.
+    // Never authorize from management status: saved historical Runs are editable.
+    let mut run = match state.runs.read(&state, &id).await {
+        Ok(run) => run,
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+    };
+    // Validate the same independent records as GET before changing readable history.
+    if let Err(message) = detail(&state, &id).await {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message);
+    }
+    run.name = Some(name.to_owned());
+    if let Err(message) = save_run(&state, &run).await {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-save-failed", &message);
+    }
+    match detail(&state, &id).await {
+        Ok(value) => Json(value).into_response(),
+        Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+    }
+}
+
 pub async fn start_run(
     State(state): State<AppState>,
     Path(map): Path<String>,
@@ -258,6 +390,8 @@ pub async fn start_run(
             Ok(v) => v,
             Err(e) => return e,
         };
+    let map_lock = state.runs.map_lock(&map).await;
+    let map_operation = map_lock.lock().await;
     let checked = match crate::scheduler::check_run_preflight(&state, &map, &input).await {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -284,6 +418,7 @@ pub async fn start_run(
     let id = crate::chats::new_creation_id();
     let run = Run {
         id: id.clone(),
+        name: None,
         map,
         created_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -313,21 +448,27 @@ pub async fn start_run(
             })
             .collect(),
     };
+    state.runs.registered_maps.lock().await.insert(id.clone(), run.map.clone());
     state.runs.active.lock().await.insert(id.clone(), None);
+    drop(map_operation);
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
     let owned = state.clone();
     let result = tokio::spawn(async move { launch(&owned, run, task, preset).await }).await;
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
-        state.runs.active.lock().await.insert(
-            id.clone(),
-            Some(StartupFailure {
-                stage: "internal".into(),
-                message: join.to_string(),
-                effects: Some(Effects::default()),
-            }),
-        );
+        let paths = Runs::paths(&state, &id);
+        let _guards = state.runs.files.lock(&paths).await;
+        if state.runs.ensure_retained(&id).await.is_ok() {
+            state.runs.active.lock().await.insert(
+                id.clone(),
+                Some(StartupFailure {
+                    stage: "internal".into(),
+                    message: join.to_string(),
+                    effects: Some(Effects::default()),
+                }),
+            );
+        }
     }
     match detail(&state, &id).await {
         Ok(value) => (
@@ -358,6 +499,7 @@ async fn launch(
         let paths = Runs::paths(state, &run.id);
         {
             let _guards = state.runs.files.lock(&paths).await;
+            state.runs.ensure_retained(&run.id).await?;
             fs::create_dir_all(paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
             FileStore::create(
                 &paths[0],
@@ -422,7 +564,13 @@ async fn launch(
         });
         stage = "association";
         {
+            // Startup holds its pre-host-call snapshot; serialize this late write
+            // with renames and retain any name saved while identity was pending.
+            let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
+            let _operation = lock.lock().await;
             let _guards = state.runs.files.lock(&paths).await;
+            state.runs.ensure_retained(&run.id).await?;
+            run.name = FileStore::read_json::<Run>(&paths[0])?.name;
             FileStore::replace(
                 &paths[0],
                 &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?,
@@ -481,14 +629,18 @@ async fn launch(
             serde_json::to_string(&effects).unwrap_or_default(),
             message
         );
-        state.runs.active.lock().await.insert(
-            run.id,
-            Some(StartupFailure {
-                stage: stage.into(),
-                message,
-                effects: Some(effects),
-            }),
-        );
+        let paths = Runs::paths(state, &run.id);
+        let _guards = state.runs.files.lock(&paths).await;
+        if state.runs.ensure_retained(&run.id).await.is_ok() {
+            state.runs.active.lock().await.insert(
+                run.id,
+                Some(StartupFailure {
+                    stage: stage.into(),
+                    message,
+                    effects: Some(effects),
+                }),
+            );
+        }
         return Err(());
     }
     Ok(())
@@ -665,6 +817,7 @@ pub async fn manager_dispatch(
 async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
+    state.runs.ensure_retained(&run.id).await?;
     FileStore::replace(&paths[0], &serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     state.runs.changed(&run.id, false).await;
     Ok(())
@@ -673,6 +826,7 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
 async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Option<&str>) -> Result<(), String> {
     let paths = Runs::paths(state, &run.id);
     let _guards = state.runs.files.lock(&paths).await;
+    state.runs.ensure_retained(&run.id).await?;
     let node = &run.nodes[id];
     let mut entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
     if let Some(reason) = retry_reason {

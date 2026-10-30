@@ -197,5 +197,6 @@ pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: 
 pub(super) async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
     let paths = Runs::paths(state, id);
     let _guards = state.runs.files.lock(&paths).await;
+    state.runs.ensure_retained(id).await?;
     FileStore::append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], event)
 }

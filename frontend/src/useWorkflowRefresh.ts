@@ -3,7 +3,7 @@ import { listBots, loadMap, type Bot, type WorkflowMap } from './schedulerApi'
 import { fetchTasks, type Task } from './taskApi'
 import type { RunDetail } from './workflowApi'
 
-export type RunEntry = { id: string; managed: boolean; readError: string | null; run: { map: string; createdAt: number; status: string; nodes: Record<string, { status: string }> } | null }
+export type RunEntry = { id: string; managed: boolean; readError: string | null; run: { name?: string; map: string; createdAt: number; status: string; nodes: Record<string, { status: string }> } | null }
 export type CurrentDefinition = { map: WorkflowMap | null; mapError: string | null; bots: Bot[]; tasks: Task[]; catalogErrors: string[] }
 type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number }
 
@@ -45,6 +45,7 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef<Promise<void> | null>(null)
   const interval = useRef(5000)
+  const revision = useRef(0)
   const refresh = useRef(() => {})
   useEffect(() => {
     let valid = true
@@ -64,6 +65,7 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
         }
         return
       }
+      const requestRevision = revision.current
       const request = async () => {
         try {
           const listing = await readJSON<{ runs: RunEntry[]; pollIntervalSeconds: number }>('/api/workflow/runs')
@@ -72,12 +74,12 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
           const detail = id ? await readJSON<RunDetail>(`/api/workflow/runs/${encodeURIComponent(id)}`) : null
           if (!visible()) return
           const current = detail ? await currentDefinition(detail, visible) : null
-          if (visible()) {
+          if (visible() && requestRevision === revision.current) {
             setSnapshot({ id, entries: listing.runs, detail, current, at: Date.now() })
             setError(null)
           }
         } catch (failure) {
-          if (valid) setError(failure instanceof Error ? failure.message : '查询未取得有效响应。')
+          if (valid && requestRevision === revision.current) setError(failure instanceof Error ? failure.message : '查询未取得有效响应。')
         }
       }
       inFlight.current = request().finally(() => {
@@ -93,7 +95,7 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
         }
       })
     }
-    refresh.current = () => query()
+    refresh.current = () => query(true)
     const visibility = () => { clear(); if (visible()) query(true) }
     document.addEventListener('visibilitychange', visibility)
     setError(null)
@@ -104,5 +106,12 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
       document.removeEventListener('visibilitychange', visibility)
     }
   }, [id, active])
-  return { snapshot, error, refresh: () => refresh.current() }
+  const updateRun = (detail: RunDetail) => {
+    revision.current += 1
+    setSnapshot(previous => previous?.id === detail.id ? {
+      ...previous, detail,
+      entries: previous.entries.map(entry => entry.id === detail.id ? { ...entry, run: detail.run, managed: detail.managed, readError: detail.readError } : entry),
+    } : previous)
+  }
+  return { snapshot, error, refresh: () => refresh.current(), updateRun }
 }

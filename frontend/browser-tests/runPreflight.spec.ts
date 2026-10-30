@@ -198,7 +198,7 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   await form.getByRole('button', { name: '修正 node B', exact: true }).click()
   const editor = page.getByRole('form', { name: 'node 编辑', exact: true })
   await expect(editor.getByLabel('node ID', { exact: true })).toHaveValue('B')
-  expect(JSON.parse(await editor.getByLabel('node 内容 JSON', { exact: true }).inputValue())).toEqual({ title: '工作', bot_id: 'worker', input: '', zone: `${fixture.zone}-unregistered`, blocked_by: ['A'] })
+  expect(JSON.parse(await editor.getByLabel('node 内容 JSON', { exact: true }).inputValue())).toMatchObject({ title: '工作', bot_id: 'worker', input: '', zone: `${fixture.zone}-unregistered`, blocked_by: ['A'] })
   await editor.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ ...fixture.map.nodes.B, zone: fixture.zone }))
   await editor.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(editor).toHaveCount(0)

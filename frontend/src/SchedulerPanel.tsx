@@ -18,6 +18,65 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const botView = view === 'bot'
   const setBotView = (showBot: boolean) => onViewChange(showBot ? 'bot' : 'map')
   const [launchOpen, setLaunchOpen] = useState(false)
+  const [deleteMapTarget, setDeleteMapTarget] = useState<string | null>(null)
+  const [deletingMap, setDeletingMap] = useState(false)
+  const [deleteMapError, setDeleteMapError] = useState<string | null>(null)
+  const deleteMapInFlight = useRef(false)
+  const deleteMapDialog = useRef<HTMLDialogElement>(null)
+  const cancelMapDeletion = useRef<HTMLButtonElement>(null)
+  const directoryHeading = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    const element = deleteMapDialog.current
+    if (deleteMapTarget === null || element === null) return
+    element.showModal()
+    cancelMapDeletion.current?.focus()
+    return () => element.close()
+  }, [deleteMapTarget])
+
+  function closeMapDeletion() {
+    if (deleteMapInFlight.current) return
+    deleteMapDialog.current?.close()
+    setDeleteMapTarget(null)
+    setDeleteMapError(null)
+  }
+
+  async function removeMap(deleteHistory: boolean) {
+    if (deleteMapTarget === null || deleteMapInFlight.current) return
+    deleteMapInFlight.current = true
+    setDeletingMap(true)
+    setDeleteMapError(null)
+    try {
+      const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(deleteMapTarget)}/delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleteHistory }),
+      })
+      const value: unknown = await response.json()
+      if (!response.ok) {
+        setDeleteMapError(typeof value === 'object' && value !== null && 'message' in value && typeof value.message === 'string'
+          ? value.message : `删除请求返回 HTTP ${response.status}；请刷新核实当前 Map 和 Run 状态。`)
+        return
+      }
+      if (typeof value !== 'object' || value === null || !('files' in value) || !Array.isArray(value.files) || !value.files.every((name): name is string => typeof name === 'string')) {
+        setDeleteMapError('删除请求已返回成功，但目录响应不可用；请取消后刷新核实当前 Map 和 Run 状态。')
+        return
+      }
+      setListing({ kind: 'ready', files: value.files })
+      setFile(null)
+      setPreview(null)
+      setSelectedId(null)
+      setLaunchOpen(false)
+      setReturnProblem(null)
+      setEditError(null)
+      deleteMapDialog.current?.close()
+      setDeleteMapTarget(null)
+      directoryHeading.current?.focus()
+    } catch {
+      setDeleteMapError('无法确认删除结果：未取得有效响应。请取消后刷新核实当前 Map 和 Run 状态，不要盲目重复提交。')
+    } finally {
+      deleteMapInFlight.current = false
+      setDeletingMap(false)
+    }
+  }
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingBusy, setEditingBusy] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -300,7 +359,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       </div>
     </div> : <div className="scheduler-layout">
       <aside className="scheduler-directory" aria-label="Map 文件目录">
-        <div className="scheduler-section-heading scheduler-directory-heading"><h3>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
+        <div className="scheduler-section-heading scheduler-directory-heading"><h3 ref={directoryHeading} tabIndex={-1}>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
         <label className="scheduler-filter">筛选 Map 文件<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="输入文件名…" /></label>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
         {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}
@@ -317,9 +376,12 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       <div className="scheduler-main">
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && editor}
-        {map && !draft && <div className="scheduler-actions">
-          <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
-          <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+        {file !== null && !draft && <div className="scheduler-actions">
+          {map && <>
+            <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
+            <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+          </>}
+          <button type="button" disabled={editingBusy || deletingMap} onClick={() => { setDeleteMapError(null); setDeleteMapTarget(file) }}>删除 Map</button>
         </div>}
         {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
           onClose={() => { setLaunchOpen(false); void returnToMap() }}
@@ -366,5 +428,23 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         </section>}
       </div>
     </div>}
+    {deleteMapTarget !== null && <dialog ref={deleteMapDialog} className="zone-dialog scheduler-map-delete-dialog" data-testid="scheduler-map-delete-dialog"
+      aria-modal="true" aria-labelledby="scheduler-map-delete-title" aria-describedby="scheduler-map-delete-description" aria-busy={deletingMap}
+      onCancel={(event) => { event.preventDefault(); closeMapDeletion() }}>
+      <h2 id="scheduler-map-delete-title" className="zone-dialog__title">删除 Map「{deleteMapTarget}」？</h2>
+      <div id="scheduler-map-delete-description" className="zone-dialog__hint">
+        <p>“删除历史”和“保留历史”都会不可撤销地删除此 Map 定义。</p>
+        <p>删除历史：同时删除此 Map 关联的所有 Run 记录及详情，不论 Run 状态或 Chat 是否在线。仍在运行的 Chat 不会停止，后续汇报可能因 Run 已删除而失败。</p>
+        <p>保留历史：保留关联 Run，仍可在工作流中查看已保存事实，但当前 Map 定义与依赖图将不可用。</p>
+        <p>两种选择都不会停止 Chat，也不会删除 Chat、原生会话历史、共享 Bot、Task 或 zone 文件。</p>
+      </div>
+      {deleteMapError && <p role="alert">{deleteMapError}</p>}
+      {deletingMap && <p role="status">正在删除，请勿重复提交……</p>}
+      <div className="zone-dialog__actions">
+        <button type="button" className="zone-dialog__cancel" disabled={deletingMap} onClick={() => void removeMap(true)}>删除历史</button>
+        <button type="button" className="zone-dialog__cancel" disabled={deletingMap} onClick={() => void removeMap(false)}>保留历史</button>
+        <button type="button" className="zone-dialog__cancel" ref={cancelMapDeletion} autoFocus disabled={deletingMap} onClick={closeMapDeletion}>取消</button>
+      </div>
+    </dialog>}
   </section>
 }

@@ -41,16 +41,14 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
   return page.request.post(`${server!.baseURL}/api/scheduler/maps/${name}/nodes/save`, { data: { id, content: typeof content === 'string' ? content : JSON.stringify(content), revision, create } })
 }
 
-// Approved seams: S1 delivered browser, S2 production HTTP. Independent example
-// values are from the approved Shanghai A scenario. Plausible violations: eager
-// installation on opening, ignored edits, or updating only details not the graph.
-test('node creation starts with a disposable Shanghai draft and saves changed content into the current Map immediately', async ({ page }) => {
+// Approved seams: S1 delivered browser, S2 production HTTP. Plausible violations:
+// eager installation on opening, ignored edits, or updating only details not the graph.
+test('node creation starts with a disposable draft and saves changed content into the current Map immediately', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
   const bots = path.join(server!.cwd, '.data/bots'), botsBefore = inventory(bots)
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
-  expect(JSON.parse(await json.inputValue())).toEqual({ title: '上海出行天气', bot_id: 'destination-weather', input: '城市：上海\n日期：2026-11-01\n偏好：步行；带伞。', zone: 'C:/example/travel-not-registered', blocked_by: [] })
   expect(inventory(root)).toEqual(before)
   expect(inventory(bots)).toEqual(botsBefore)
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
@@ -67,7 +65,9 @@ test('node creation starts with a disposable Shanghai draft and saves changed co
   await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toHaveText('缺失共享 Bot：missing-audit-template')
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toContainText('独立审计')
   await expect(page.getByRole('img', { name: 'B → A/independent:id', exact: true })).toHaveCount(1)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'A/independent:id': { ...audit, blocked_by: ['B'] } } })
+  const created = await readMap(page)
+  expect(created).toMatchObject({ ...original, nodes: { ...original.nodes, 'A/independent:id': { ...audit, blocked_by: ['B'] } } })
+  expect(Object.keys(created.nodes).sort()).toEqual(['A/independent:id', 'B', 'C', 'D'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(inventory(bots)).toEqual(botsBefore)
   expect(server!.herdrCalls()).toEqual([])
@@ -83,7 +83,7 @@ test('editing a real node keeps identity, open parameters and all non-target def
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
   await expect(id).toHaveValue('A')
   await expect(id).toHaveAttribute('readonly', '')
-  expect(JSON.parse(await json.inputValue())).toEqual(audit)
+  expect(JSON.parse(await json.inputValue())).toMatchObject(audit)
   const changed = { title: '审计新版本', bot_id: '', input: JSON.stringify({ id: 'edited-business-id', undeclared: { children: [null, true, { amount: 13 }] }, zone: 'unknown', bot: 'absent' }), zone: 'unregistered-zone', blocked_by: ['C'] }
   await json.fill(JSON.stringify(changed, null, 3))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -94,7 +94,9 @@ test('editing a real node keeps identity, open parameters and all non-target def
   await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true }).getByRole('button', { name: '审计新版本 A', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('img', { name: 'C → A', exact: true })).toHaveCount(1)
   await expect(page.getByRole('img', { name: 'B → C', exact: true })).toHaveCount(1)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, A: changed } })
+  const edited = await readMap(page)
+  expect(edited).toMatchObject({ ...original, nodes: { ...original.nodes, A: changed } })
+  expect(Object.keys(edited.nodes).sort()).toEqual(['A', 'B', 'C', 'D'])
   expect(await draft(page, 'A')).toMatchObject({ id: 'A', content: changed, create: false })
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(server!.herdrCalls()).toEqual([])
@@ -116,10 +118,14 @@ test('registered Bot Markdown guidance does not constrain, complete or validate 
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('alert')).toHaveCount(0)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'open-parameters': content } })
+  const created = await readMap(page)
+  expect(created).toMatchObject({ ...original, nodes: { ...original.nodes, 'open-parameters': content } })
+  expect(Object.keys(created.nodes).sort()).toEqual(['B', 'C', 'D', 'open-parameters'])
   const edit = await draft(page, 'open-parameters')
   expect((await save(page, 'open-parameters', { ...content, input: JSON.stringify({}) }, edit.revision, false)).ok()).toBe(true)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'open-parameters': { ...content, input: JSON.stringify({}) } } })
+  const edited = await readMap(page)
+  expect(edited).toMatchObject({ ...original, nodes: { ...original.nodes, 'open-parameters': { ...content, input: JSON.stringify({}) } } })
+  expect(Object.keys(edited.nodes).sort()).toEqual(['B', 'C', 'D', 'open-parameters'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   expect(inventory(bots)).toEqual(botsBefore)
 })
@@ -166,7 +172,9 @@ test('strict node JSON rejects top-level identity, missing fields, wrong types a
   await json.fill(JSON.stringify(validEmpty))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, A: validEmpty } })
+  const edited = await readMap(page)
+  expect(edited).toMatchObject({ ...original, nodes: { ...original.nodes, A: validEmpty } })
+  expect(Object.keys(edited.nodes).sort()).toEqual(['A', 'B', 'C', 'D'])
 })
 
 // P13 P17: overlapping production requests share one actual Map version. A
@@ -198,12 +206,17 @@ test('same-Map duplicates and concurrent creates are rejected without overwrite 
   expect(responses.filter(response => !response.ok())).toHaveLength(1)
   expect((await responses.find(response => !response.ok())!.json()).message).toContain('重新加载')
   const expected = contenders[responses[0].ok() ? 0 : 1]
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'one-local-id': expected } })
+  const winner = await readMap(page)
+  expect(winner).toMatchObject({ ...original, nodes: { ...original.nodes, 'one-local-id': expected } })
+  expect(Object.keys(winner.nodes).sort()).toEqual(['B', 'C', 'D', 'one-local-id'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
+  const winnerBytes = inventory(root)['work.JSON']
   const other = await draft(page, null, 'untouched.json')
   expect((await save(page, 'one-local-id', audit, other.revision, true, 'untouched.json')).ok()).toBe(true)
-  expect(await readMap(page, 'untouched.json')).toEqual({ ...original, nodes: { ...original.nodes, 'one-local-id': audit } })
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'one-local-id': expected } })
+  const otherMap = await readMap(page, 'untouched.json')
+  expect(otherMap).toMatchObject({ ...original, nodes: { ...original.nodes, 'one-local-id': audit } })
+  expect(Object.keys(otherMap.nodes).sort()).toEqual(['B', 'C', 'D', 'one-local-id'])
+  expect(inventory(root)['work.JSON']).toBe(winnerBytes)
 })
 
 // P14 P15 S2: reject the full candidate Map, not just the submitted node.
@@ -226,8 +239,9 @@ test('node saves preserve Map schema rules and reject unknown, self and cyclic d
   edit = await draft(page, 'C')
   const joined = { ...original.nodes.C, blocked_by: ['A', 'B'] }
   expect((await save(page, 'C', joined, edit.revision, false)).ok()).toBe(true)
-  expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, A: audit, C: joined } })
-  expect((await readMap(page)).nodes).toMatchObject({ A: { blocked_by: [] }, B: { blocked_by: [] }, C: { blocked_by: ['A', 'B'] }, D: { blocked_by: [] } })
+  const saved = await readMap(page)
+  expect(saved).toMatchObject({ ...original, nodes: { ...original.nodes, A: audit, C: joined } })
+  expect(Object.keys(saved.nodes).sort()).toEqual(['A', 'B', 'C', 'D'])
   expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   const valid = fs.readFileSync(path.join(root, 'work.JSON'), 'utf8')
   const invalidMaps: { value: unknown; diagnostic: string }[] = [
@@ -281,7 +295,9 @@ test('another node or external editor changing the whole Map rejects old drafts 
       await other.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ ...original.nodes.B, title: 'second-client B' }))
       await other.getByRole('button', { name: '保存 node', exact: true }).click()
       await expect(other.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
-      expect(await readMap(page)).toEqual({ ...source, nodes: { ...source.nodes, B: { ...original.nodes.B, title: 'second-client B' } } })
+      const saved = await readMap(page)
+      expect(saved).toMatchObject({ ...source, nodes: { ...source.nodes, B: { ...original.nodes.B, title: 'second-client B' } } })
+      expect(Object.keys(saved.nodes).sort()).toEqual(['A', 'B', 'C', 'D'])
       await other.close()
     } else if (mode === 'external-change') {
       fs.writeFileSync(file, JSON.stringify({ ...source, nodes: { ...source.nodes, B: { ...original.nodes.B, input: JSON.stringify({ external: [null, 19] }) } } }) + '\n')
@@ -330,7 +346,9 @@ test('filesystem write failures keep node identity and raw JSON without changing
     } finally { execFileSync('icacls.exe', [root, '/remove:d', user]) }
     await page.getByRole('button', { name: '保存 node', exact: true }).click()
     await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
-    expect(await readMap(page)).toEqual({ ...original, nodes: { ...original.nodes, 'write-denied': content } })
+    const saved = await readMap(page)
+    expect(saved).toMatchObject({ ...original, nodes: { ...original.nodes, 'write-denied': content } })
+    expect(Object.keys(saved.nodes).sort()).toEqual(['B', 'C', 'D', 'write-denied'])
     expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
   }
 })

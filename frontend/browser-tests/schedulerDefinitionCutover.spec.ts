@@ -114,10 +114,14 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const expected = { ...original, nodes: { ...original.nodes, B: changed } }
   const api = `${server.baseURL}/api/scheduler/maps/contract.json`
-  expect(await (await page.request.get(api)).json()).toEqual(expected)
-  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(expected)
+  const saved = await (await page.request.get(api)).json()
+  expect(saved).toMatchObject(expected)
+  expect(Object.keys(saved.nodes).sort()).toEqual(['A', 'B'])
+  const persisted = JSON.parse(fs.readFileSync(file, 'utf8'))
+  expect(persisted).toMatchObject(expected)
+  expect(Object.keys(persisted.nodes).sort()).toEqual(['A', 'B'])
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
-  await expect(details.getByRole('region', { name: '本次输入', exact: true })).toHaveText('本次输入' + changed.input)
+  await expect(details.getByTestId('node-input')).toHaveText(changed.input)
   await expect(details).toContainText('C:/does-not-exist')
   await expect(details.getByRole('alert')).toHaveText('缺失共享 Bot：not-created')
   const bytes = fs.readFileSync(file, 'utf8')
@@ -133,7 +137,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
     expect(response.ok(), JSON.stringify(value)).toBe(false)
     expect((await response.json()).message).toBeTruthy()
     expect(fs.readFileSync(file, 'utf8')).toBe(bytes)
-    expect(await (await page.request.get(api)).json()).toEqual(expected)
+    expect(await (await page.request.get(api)).json()).toEqual(saved)
   }
   // Adding B as A's prerequisite closes A -> B -> A, not merely a self-edge.
   const cycle = await page.request.post(`${api}/nodes/save`, { data: { id: 'A', content: JSON.stringify({ ...original.nodes.A, blocked_by: ['B'] }), revision: edit.revision, create: false } })

@@ -243,7 +243,71 @@ Task/Bot 保存成功不证明工具、权限和业务行为可用。根据具�
 
 若真实案例证明某项是必要条件，再单独决策；不要用扩展潜力替代首轮真实闭环。
 
-## 11. 当前依据
+## 11. 后续讨论确认：首轮人工衔接能力建设
+
+以下决定更新本文前述候选方案的首轮范围，不表示已完成配置或实现。
+
+- 创建 Task 与创建 Bot 合并在一个 Chat 中完成，交付真实的 Bot、对应 Task 及绑定结果；不要求分成两个执行会话。对象职责仍保持分离。
+- 概要规划 Chat 发现现有 Bot 无法覆盖需求时，首轮由用户手动在 zone 中使用能力创建 Task 发起 Chat，创建所需 Bot＋Task，再由用户将结果交回概要规划 Chat，继续讨论。
+- 首轮不要求概要规划节点调用能力创建 Bot，不增加 executor 的调度权限，不引入运行中动态新增 node、自动委派或自动返工循环。
+- 自举 Map 的主链保持“概要规划 → 将概要计划转换为 Map”；能力补齐通过上述人工衔接推进，不要求加入固定的能力建设节点。
+- 下一阶段再讨论：当现有 Bot 能力不足以覆盖概要规划 Chat 中发现的需求时，系统应通过什么机制解决，包括是否需要能力调用、委派或其他组织方式。本轮不预选技术方案。
+- 人工衔接不改变真实性边界：创建配置不能替代缺失的工具、数据、凭据或权限；创建结果应说明真实身份、绑定及尚未满足的条件。
+
+### 首个种子能力已配置
+
+已通过本机服务 `http://127.0.0.1:18787` 的真实配置接口创建：
+
+- 名称：`能力创建者 · Bot＋Task`
+- Bot ID：`create-bot-task`
+- Task ID：`task-18e315be1cf0ef10-0`
+- Task：normal，omp，gpt-6-astra，medium；不调用初始 Skill，可选扩展为 `omp-codebase-tools`。
+- 使用方式：在 zone 发起 Chat 时选择上述 Task，输入要创建的能力需求；由同一 Chat 创建 Task、Bot 并交付绑定结果。
+- 固定指示包含真实配置 API、合法选项来源、复用检查、部分保存失败处理、读回核对和交接要求；不自动运行生成的能力，不扩大调度权限。
+- 已验证：真实 HTTP 创建和读取 Task、保存和读取 Bot、全部字段及绑定一致，原有 Task/Bot 保持不变。未发起新的 agent Chat，未验证模型执行创建任务的业务效果或原生扩展加载。
+- 实际保存契约注意：`POST /api/scheduler/bots/save` 的 `id` 在外层请求单独传入；`content` 的 JSON 不含顶层 `id`，读取出的 Bot 定义则含 `id`。首次保存因包含顶层 `id` 被拒绝，修正后成功；Task 指示已使用经实际接口确认的格式。
+
+### 概要规划能力已配置
+
+已通过本机服务的 HTTP 配置接口创建并重新读取核对：
+
+- 名称：`概要规划`；Bot ID：`outline-planning`；Task ID：`task-18e318b13b71a8bc-0`。
+- Task：normal，omp，gpt-6-astra，medium；初始 Skill 为 `grill-with-docs`，可选扩展为 `omp-codebase-tools`。
+- 职责：在同一 Chat 中与用户讨论目标、查阅真实 Bot 与绑定 Task、反复组合方案、识别配置缺口与真实能力缺口；用户确认后交付当前方案。不创建或修改 Task/Bot/Map，不调度节点或启动业务 Run。
+- 能力建设仍人工衔接：用户手动使用能力创建者 Task 发起 Chat，将结果带回概要规划 Chat；规划者重新读取配置，核实绑定与限制后更新方案。
+- 下游契约为两份独立、自包含的 Markdown 文档，可用共同方案标识、修订标记和稳定缺口编号互相索引，但不混写，不要求下游拼接才能理解自身工作。
+  - 《能力建设需求》面向能力创建者：逐项提供目标、职责、输入输出、完成条件、复用不足、缺口分类、资源权限与缺项、授权边界，以及真实 Bot/Task 身份、绑定、使用条件、验证和阻塞的返回要求。零缺口时省略，不制造空建设任务。
+  - 《概要方案》面向 Map 生成者：提供确认状态、目标与约束、工作编号、各项输入和交付、完成条件、真实能力绑定、依赖与材料交接、zone 与启动条件、证据和未决项、Map 生成要求。能力补齐后纳入核实的绑定和限制，不夹带详细建设指令。
+- 有指定路径时保存为独立 Markdown 文件并读回；没有路径时在 Chat 分别输出完整 Markdown 正文，不擅自选持久目录。下游 input 必须显式包含对应正文或可读位置。
+- 已验证：HTTP 创建 Task、保存 Bot，重新 GET Task 详情及 Bot 清单；全部提交字段和绑定一致，原有 8 个 Task 与 3 个 Bot 保持不变。
+- Prompt 已精简为“澄清目标 → 调查并组合能力 → 人工补齐 → 确认与交付”四步，各附完成条件；权限边界集中维护，产品文档按分支读取，蓝图仅作决策背景。保留原双文档章节及初始 Skill。已通过 HTTP PUT 保存并 GET 逐字核对，除 prompt 外其他 Task 字段保持不变。
+- 未验证：未发起新 Chat 或 Run，未验证初始 Skill、原生扩展加载、subagent 可用性及实际规划和双文档交付效果。配置交付不代表业务能力验证通过。
+
+### 概要方案转 Map 能力已配置
+
+- 名称：`概要方案转 Map`；Bot ID：`plan-to-map`；Task ID：`task-18e319d73777fc6c-1`。
+- Task：normal，omp，gpt-6-astra，medium；无初始 Skill，可选扩展为 `omp-codebase-tools`。
+- 已确认的生成方式：参照产品 Map 模板，一次生成完整 JSON 文件，不通过节点接口逐项拼装。生成与验收分开，不以新增检查脚本或接口作为生成前提。
+- 保存到实际本机服务的 Map 目录。配置时核实监听服务进程 cwd 为 `E:/Developer/myhub/herdr-bot`，配置未覆盖默认目录，实际目标为 `E:/Developer/myhub/herdr-bot/.data/workflow-maps`；执行时重新核实服务 cwd 和实际配置，不按当前 zone 推断。默认只新增、不覆盖，禁止修改当前执行的 Map；此文件写入授权不扩展到 Task/Bot 或运行记录。
+- 接收已确认的自包含《概要方案》，信息充分时自动完成引用与资源核实、输入落实、文件生成及读回，不重复业务规划。缺项或冲突集中反馈，不虚构绑定、zone、材料位置或自行改变业务决策；未来上游产物可按明确交接约定填写，不要求提前存在。
+- 保存后通过服务 GET 读取 Map，区分文件读回、语法检查、产品结构校验与启动预检。明确提供管理者 Task、zone 和 userInput 时才做只读预检，不代选、不启动业务 Run；manual 节点报告仍须单独确认。
+- 已验证：通过 HTTP 创建 Task、保存 Bot，重新 GET Task 详情与 Bot 清单，全部提交字段及绑定一致；原有 9 个 Task、4 个 Bot 内容保持不变。
+- 未验证：未发起新 Chat 或 Run，未实际生成业务 Map，未验证原生扩展加载或模型执行上述流程的效果。配置交付不代表业务能力验证通过。
+
+### 自举 Map 已配置：plan_workflow
+
+- 文件：`E:/Developer/myhub/herdr-bot/.data/workflow-maps/plan_workflow.json`；scheduler 中标题为 `plan_workflow`。
+- 两节点：`outline`（Bot `outline-planning`，manual 报告）→ `generate_map`（Bot `plan-to-map`，auto 报告）。两个节点均使用已登记的 `E:\Developer\myhub\herdr-bot` zone，未修改已有 Bot/Task。
+- 需求入口：发起自举 Run 时填写“本次要求”；规划节点按显式 input 读取启动时提供的真实 run.json 的 `userInput`，为空时在规划 Chat 询问。不是模板插值或自动注入。
+- 交付目录：`.scratch/plan-workflow-artifacts/` 下按真实 Run ID 与 outline 当前 execution ID 分层，保存 `outline.md` 和有缺口时的 `capability-needs.md`。这些是规划文档，不写入运行记录目录。
+- 规划交接：方案须经用户确认、补齐影响翻译的能力与材料约定，并取得报告发送确认；报告包含精确路径、方案身份/修订及限制。管理者核实后才完成 outline 并派发下游。
+- 下游从本次 Run 的记录中读取 outline 当前执行的适用报告，再读取所指方案；不从目录挑最新文件，不依赖已被完成动作消费的 pendingReports，不使用历史执行报告。已交接方案不静默改写。
+- 能力缺口仍由用户另开能力创建 Chat 手动补齐；失败或业务重设计交回规划 Chat，不新增动态节点或自动返工循环。新业务启动配置不从自举 Run 隐式继承。
+- 使用：scheduler 刷新后选择 `plan_workflow.json`，选择现有 `manager` Task（`task-18e2c2827c484128-0`）与 `E:\Developer\myhub\herdr-bot` 管理者 zone，在“本次要求”填写要规划的业务目标、材料和约束，再显式发起 Run。进入 outline 对应 Chat 讨论和确认；生成的业务 Map 另行决定是否启动。
+- 已验证：完整 JSON 文件与真实服务 GET 返回逐字段一致，Map 列表可见、两节点及依赖被服务接受；使用上述 manager Task/zone 的只读 preflight 返回 HTTP 200、`workspaceName: herdr-bot`；已有 Bot/Task 清单未变。
+- 未验证：未发起自举 Run 或新的 Chat，未验证原生扩展加载、模型按交接约定执行或端到端生成业务 Map。预检通过不是业务闭环已运行成功。
+
+## 12. 当前依据
 
 - [scheduler 定义、Bot 指南、保存与启动预检、HTTP interface](../docs/scheduler.md)
 - [Task 类型、配置与使用入口](../docs/usage.md)

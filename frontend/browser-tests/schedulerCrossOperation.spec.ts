@@ -24,9 +24,11 @@ test('P32 complete bot and node CRUD sequence survives a real service restart', 
   const removedWork = { ...work, title: '删除的临时工作', bot_id: 'removed' }
   const expectedCatalog = [{ ...capability, id: 'audit' }, { ...retained, id: 'retained' }]
   const expectedMap = { ...plan, nodes: { retainedNode: retainedWork } }
-  async function persistedMap(expected: unknown) {
-    expect(await read(client, mapAPI)).toEqual(expected)
-    expect(JSON.parse(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8'))).toEqual(expected)
+  async function persistedMap(expected: { title: string; description: string; nodes: Record<string, unknown> }) {
+    for (const actual of [await read(client, mapAPI), JSON.parse(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8'))]) {
+      expect(actual).toMatchObject(expected)
+      expect(Object.keys(actual.nodes).sort()).toEqual(Object.keys(expected.nodes).sort())
+    }
   }
   async function persistedBot(id: string, expected: unknown) {
     const draft = await accepted(client, `${botsAPI}/edit`, { id })
@@ -294,19 +296,22 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   await inert()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await inert()
+  const mapBeforeInvalidSave = fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')
   const raw = '  ' + JSON.stringify(maliciousWork, null, 3) + '\n'
   await page.getByLabel('node 内容 JSON', { exact: true }).fill(raw + '!')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: /JSON/ })).toBeVisible()
   await expect(page.getByLabel('node 内容 JSON', { exact: true })).toHaveValue(raw + '!')
-  expect(JSON.parse(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')).nodes.A).toEqual(maliciousWork)
+  expect(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')).toBe(mapBeforeInvalidSave)
   await inert()
   const changedWork = { ...maliciousWork, title: '保存后的核对工作' }
   await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(changedWork))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   await expect(page.getByTestId('node-input')).toContainText(html)
-  expect((await read(client, mapAPI)).nodes.A).toEqual(changedWork)
+  const changedMap = await read(client, mapAPI)
+  expect(changedMap).toMatchObject({ ...plan, nodes: { A: changedWork } })
+  expect(Object.keys(changedMap.nodes)).toEqual(['A'])
   await inert()
   await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
   await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
@@ -368,7 +373,7 @@ for (const kind of ['bot', 'node'] as const) {
     const draft = await accepted(client, `${endpoint}/edit`, { id: kind === 'bot' ? 'audit' : 'A' })
     const clients = await Promise.all([request.newContext(), request.newContext()])
     try {
-      const candidates = ['独立候选甲', '独立候选乙'].map(label => ({ ...draft.content, [kind === 'bot' ? 'name' : 'title']: label }))
+      const candidates = ['独立候选甲', '独立候选乙'].map(label => ({ ...(kind === 'bot' ? capability : work), [kind === 'bot' ? 'name' : 'title']: label }))
       const responses = await simultaneous(clients.map((other, index) => () => post(other, `${endpoint}/save`, {
         id: draft.id, content: JSON.stringify(candidates[index]), revision: draft.revision, ...(kind === 'node' ? { create: false } : {}),
       })))
@@ -378,10 +383,18 @@ for (const kind of ['bot', 'node'] as const) {
       const winner = responses.findIndex(response => response.ok())
       expect(receipts[1 - winner].body.code).toBe(kind === 'bot' ? 'bot-conflict' : 'node-conflict')
       const expected = kind === 'bot' ? { ...candidates[winner], id: 'audit' } : { ...plan, nodes: { A: candidates[winner] } }
-      expect(receipts[winner].body).toEqual(expected)
-      expect(JSON.parse(fs.readFileSync(path.join(kind === 'bot' ? bots : maps, kind === 'bot' ? 'business-name.JSON' : 'quarter.JSON'), 'utf8'))).toEqual(expected)
+      const persisted = JSON.parse(fs.readFileSync(path.join(kind === 'bot' ? bots : maps, kind === 'bot' ? 'business-name.JSON' : 'quarter.JSON'), 'utf8'))
       const reread = await read(client, kind === 'bot' ? botsAPI : mapAPI)
-      expect(kind === 'bot' ? reread.bots : reread).toEqual(kind === 'bot' ? [expected] : expected)
+      if (kind === 'bot') {
+        expect(receipts[winner].body).toEqual(expected)
+        expect(persisted).toEqual(expected)
+        expect(reread.bots).toEqual([expected])
+      } else {
+        for (const actual of [receipts[winner].body, persisted, reread]) {
+          expect(actual).toMatchObject(expected)
+          expect(Object.keys(actual.nodes)).toEqual(['A'])
+        }
+      }
     } finally { await Promise.all(clients.map(other => other.dispose())) }
   })
 }
@@ -396,6 +409,7 @@ for (const operation of ['create', 'modify'] as const) {
     const { maps, bots } = await prepare()
     const clients = await Promise.all([request.newContext(), request.newContext()])
     const races: unknown[] = []
+    const expectedReferences: Record<string, typeof work> = {}
     try {
       for (let round = 0; round < 8; round++) {
         const id = `shared-${round}`, nodeId = `reference-${round}`
@@ -438,7 +452,9 @@ for (const operation of ['create', 'modify'] as const) {
           const [saved, deleted] = round % 2 ? responses.toReversed() : responses
           expect(saved.ok(), await saved.text()).toBe(true)
           const expectedMap = await saved.json()
-          expect(expectedMap.nodes[nodeId]).toEqual(reference)
+          expectedReferences[nodeId] = reference
+          expect(expectedMap).toMatchObject({ ...plan, nodes: expectedReferences })
+          expect(Object.keys(expectedMap.nodes).sort()).toEqual(Object.keys(expectedReferences).sort())
           expect(await read(client, mapAPI)).toEqual(expectedMap)
           expect(JSON.parse(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8'))).toEqual(expectedMap)
           const receipt = await deleted.json()

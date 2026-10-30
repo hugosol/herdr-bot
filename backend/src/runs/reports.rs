@@ -112,6 +112,7 @@ pub async fn node_report(
             };
             let paths = Runs::paths(&state, &run.id);
             let _guards = state.runs.files.lock(&paths).await;
+            state.runs.ensure_retained(&run.id).await?;
             FileStore::append_jsonl::<Report>(&paths[2], &report)?;
             state.runs.changed(&run.id, true).await;
             report

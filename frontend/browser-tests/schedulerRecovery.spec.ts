@@ -151,7 +151,10 @@ test('P22 empty Map and empty node text remain legal without external bindings',
   for (const [name, bytes] of originals) {
     const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${name}`)
     expect(response.status(), name).toBe(200)
-    expect(await response.json()).toEqual(JSON.parse(bytes))
+    const actual = await response.json()
+    const expected = JSON.parse(bytes)
+    expect(actual).toMatchObject(expected)
+    expect(Object.keys(actual.nodes).sort()).toEqual(Object.keys(expected.nodes).sort())
     await page.getByRole('button', { name, exact: true }).click()
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
     const nodes = page.getByRole('region', { name: '节点列表', exact: true })

@@ -89,7 +89,7 @@ fn map_error(message: impl Into<String>) -> DirectoryError {
     DirectoryError { code: "map-read-failed", message: message.into() }
 }
 
-fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryError> {
+fn map_file_path(directory: &Path, name: &str) -> Result<PathBuf, DirectoryError> {
     // A filename is not a path. Reject both platform separators, Windows streams
     // and links, using the same ancestor boundary as the directory listing.
     if name.is_empty() || name.contains(['/', '\\', ':']) ||
@@ -101,7 +101,12 @@ fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryErro
     if !metadata.is_file() || crate::browse::is_link_like(&metadata) {
         return Err(map_error("Map 文件不能是符号链接、重解析点或目录。"));
     }
-    fs::read_to_string(file).map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
+    Ok(file)
+}
+
+fn read_map_source(directory: &Path, name: &str) -> Result<String, DirectoryError> {
+    fs::read_to_string(map_file_path(directory, name)?)
+        .map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
 }
 
 fn read_map(directory: &Path, name: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -903,6 +908,50 @@ fn read_files(directory: &Path) -> Result<MapFiles, DirectoryError> {
         right_time.cmp(left_time).then_with(|| left_name.cmp(right_name))
     });
     Ok(MapFiles { files: files.into_iter().map(|(name, _)| name).collect() })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MapDelete {
+    delete_history: bool,
+}
+
+pub async fn delete_map(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    request: Request,
+) -> Response {
+    let input: MapDelete = match crate::chat_command_body(request, "删除 Map").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let lock = state.runs.map_lock(&name).await;
+    let _operation = lock.lock().await;
+    // Validate the file boundary without parsing its definition: broken JSON is
+    // still a safely identifiable Map file which the user must be able to remove.
+    if let Err(error) = map_file_path(&state.map_directory, &name) {
+        return error.into_response();
+    }
+    match read_files(&state.map_directory) {
+        Ok(files) if files.files.contains(&name) => {},
+        Ok(_) => return edit_error("map-delete-failed", "删除只接受列表中的确切 Map 文件名。").into_response(),
+        Err(error) => return error.into_response(),
+    }
+    if input.delete_history {
+        if let Err(message) = state.runs.delete_map_history(&state, &name).await {
+            return edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")).into_response();
+        }
+    }
+    match tokio::task::spawn_blocking(move || {
+        let _commit = DEFINITION_COMMIT.lock().map_err(|_| edit_error("map-delete-failed", "定义提交锁不可用。"))?;
+        let path = map_file_path(&state.map_directory, &name)?;
+        fs::remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
+        read_files(&state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
+    }).await {
+        Ok(Ok(files)) => Json(files).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" )).into_response(),
+    }
 }
 
 pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
