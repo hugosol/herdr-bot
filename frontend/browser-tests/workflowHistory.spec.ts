@@ -17,7 +17,7 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
   const directory = path.join(server.cwd, '.data/workflow-runs/history-run')
   fs.mkdirSync(directory, { recursive: true })
   if (condition !== 'missing') {
-    const maps = path.join(server.cwd, '.data/workflow-maps')
+    const maps = path.join(server.cwd, 'meta-data/workflow-maps')
     fs.mkdirSync(maps, { recursive: true })
     fs.writeFileSync(path.join(maps, 'missing.json'), condition === 'invalid' ? '{ invalid current definition' : JSON.stringify({ title: 'Unrelated definition', description: '', nodes: { Z: { title: 'Never map saved A here', bot_id: 'absent-bot', zone: '', input: '', blocked_by: [] } } }))
   }
@@ -132,7 +132,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const managerTask = (await post('/api/tasks', { ...base, name: 'Manager source', taskType: 'manager', prompt: 'MANAGER INITIAL' })).tasks[0]
   const nodeConfig = { ...base, name: 'Node source', taskType: 'normal', prompt: 'NODE INITIAL ONLY', extensions: ['omp-connect-bot'] }
   const nodeTask = (await post('/api/tasks', nodeConfig)).tasks.find((task: { name: string }) => task.name === 'Node source')
-  const maps = path.join(host.cwd, '.data/workflow-maps'), bots = path.join(host.cwd, '.data/bots')
+  const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'resume.json'), JSON.stringify({ title: 'Resume Map', description: '', nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [] } } }))
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: nodeTask.id }))

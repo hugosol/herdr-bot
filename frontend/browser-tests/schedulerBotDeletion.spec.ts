@@ -11,7 +11,7 @@ const node = { title: '审计任务', bot_id: 'shared', input: JSON.stringify({ 
 const map = (nodes: Record<string, unknown>) => ({ title: '审计计划', description: '不执行工作', nodes })
 async function prepare() {
   server = await startServer({ separateCwd: true, herdr: {} })
-  const bots = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   const file = path.join(bots, 'business-name.JSON')
   fs.writeFileSync(file, JSON.stringify(bot) + '\n')

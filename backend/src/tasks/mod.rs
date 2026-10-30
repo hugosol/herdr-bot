@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 /// Task 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
-pub const DEFAULT_STORAGE_FILE: &str = ".data/tasks.json";
+pub const DEFAULT_STORAGE_FILE: &str = "meta-data/tasks.json";
 
 /// Task 可选的 agent 类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

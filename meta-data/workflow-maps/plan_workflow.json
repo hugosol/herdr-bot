@@ -1,0 +1,22 @@
+{
+  "title": "plan_workflow",
+  "description": "自举规划：用户需求 → 用户确认的概要方案 → 新业务 Map。能力缺口由用户另开能力创建 Chat 手动补齐。本图只生成定义，不自动执行业务。管理者先派发 outline；核实当前执行报告中的已确认概要方案及交接条件后再 complete outline、派发 generate_map；核实新 Map 的保存与校验结果后完成运行。不要把草案、待补齐能力或阻塞报告当作交接完成，也不要修改本图或自动发起产出的业务 Map。",
+  "nodes": {
+    "outline": {
+      "title": "概要规划与用户确认",
+      "bot_id": "outline-planning",
+      "zone": "E:\\Developer\\myhub\\herdr-bot",
+      "blocked_by": [],
+      "report_policy": "manual",
+      "input": "本节点负责为本次用户需求形成可供独立 Map 生成会话使用的概要方案，不是在每次运行时重新设计 plan_workflow。\n\n1. 本次需求来源：读取节点初始输入提供的真实 run.json 绝对路径，取其 userInput 原文作为用户目标、背景材料位置、约束及授权的入口。此处是显式读取约定，不是自动继承或模板插值。userInput 为空时在当前 Chat 询问用户目标；不要猜测需求。只读运行记录，不修改它们。\n2. 从同一 run.json 取得真实 Run id 及 nodes.outline.execution.id。将两者分别作为安全的单一路径段，在 E:/Developer/myhub/herdr-bot/.scratch/plan-workflow-artifacts 下按 Run id / outline 执行 id 建立本次材料目录；拒绝分隔符或路径穿越，不从当前目录或最新文件猜身份。该目录只存规划产物，不是运行记录目录。\n3. 按固定 Task 指示与用户讨论，查阅真实 Bot/Task 和 zone，明确目标、验收标准、非目标、输入输出、依赖、材料交接及权限。存在能力缺口时，将独立《能力建设需求》保存为本次材料目录中的 capability-needs.md；由用户手动在 zone 发起能力创建者 Chat，再将结果带回本 Chat。重新查询并核实创建结果。不要自动调用能力创建 Bot、创建配置或调度其他节点。\n4. 将独立《概要方案》保存为本次材料目录中的 outline.md，使用 Task 约定的九个章节，包含方案标识、修订、确认范围、稳定工作编号、真实 Bot/Task 绑定、材料读写位置、业务节点 zone、约束和未决项。方案标识应包含本次 Run 身份，保持同一方案修订可追踪。这里的执行 zone 只是规划工作目录，不自动成为新业务所有节点的 zone。业务 Map 的管理者配置仅在用户明确提供时记入方案，不从本次自举 Run 偷渡为业务默认配置。\n5. 用户明确确认后保存当前确认版本并读回；所有影响 Map 翻译的能力绑定、业务输入、依赖和材料位置必须明确。仅缺新业务的管理者启动配置不阻止交付，可标记预检待配置。真实工具、权限或业务效果未验证须如实列出。草案、待补能力或存在阻止翻译的业务矛盾时留在本 Chat 处理，不宣称已可交接。\n6. 向用户展示概要方案摘要、绝对路径、方案标识/修订、确认范围、能力补齐结果、限制及预检缺项；遵守 manual 策略，取得本 Chat 的报告发送确认后再发送 report。报告应明确是否已可交给 generate_map，列出 outline.md 的精确绝对路径及当前 Run/执行身份，不能只写“见上文”。报告发出后不要静默更改已交接方案；修改须新修订并重新确认和报告。管理者核实交接后才会完成本节点并派发下游。"
+    },
+    "generate_map": {
+      "title": "概要方案转换为业务 Map",
+      "bot_id": "plan-to-map",
+      "zone": "E:\\Developer\\myhub\\herdr-bot",
+      "blocked_by": ["outline"],
+      "report_policy": "auto",
+      "input": "将本次 Run 中 outline 节点已确认交付的概要方案落实为新业务 Map，不重新设计自举 Map，不执行生成的业务。\n\n1. 显式读取节点初始输入提供的 run.json 和 messages.jsonl 绝对路径；以 run.json 中真实 Run id、nodes.outline.status、当前 execution.id 和 completion 为准，确认 outline 已 completed。从 messages.jsonl 只选择 runId 匹配本次 Run、nodeId 为 outline、executionId 匹配其当前执行的 report；排除历史执行和其他 Run。读取这一当前执行的最后一份适用报告，核对其已可交接声明、概要方案绝对路径、方案标识/修订与确认范围。多个报告相互矛盾或最新报告撤回交付时停止并明确请求澄清，不回退旧成功报告。不要依赖 pendingReports（已完成节点可能已不在其中），也不要从目录中寻找最新 outline.md。\n2. 读取报告指定的完整 outline.md，核对文档身份、修订、确认状态与报告一致；方案应位于 E:/Developer/myhub/herdr-bot/.scratch/plan-workflow-artifacts 下该 Run 及 outline 当前执行的材料目录。缺失、不可读、身份不符、草案或存在阻止翻译的缺口时，向用户及管理者报告具体阻塞，交回概要规划 Chat，不伪造业务决定或启动新会话。能力建设需求不是概要方案的替代输入，不需要完整规划聊天。\n3. 依固定 Task 指示读取真实 Bot 指南、绑定 Task、登记 zone，忠实落实各项工作、输入、输出、权限和依赖。允许在重新核实的服务 Map 目录新增完整 JSON；遵循方案指定安全文件名，否则从方案标识派生。同名不同内容停止请求处理，不覆盖任何现有 Map，尤其不得改动本次 plan_workflow.json。不新增 Task/Bot、不改运行记录、不调用 Run 启动接口。\n4. 保存后读回并通过 GET /api/scheduler/maps 与 GET /api/scheduler/maps/{filename} 检查服务可见及结构合法。只有概要方案中明确提供新业务 managerTaskId、管理者 zone 和 userInput（可明确为空）时才进行新业务只读 preflight；不能直接复用本次自举 Run 的管理者配置。缺启动配置时如实交付合法定义和缺项，不宣称可启动。\n5. report 交付概要方案身份/修订、实际业务 Map 文件名与绝对路径、工作编号到 node ID 的对应关系、读回与服务校验结果、预检已执行/未执行及原因、未验证条件。失败报告应明确已发生的落盘效果及阻塞，不宣称成功或整体回滚。生成业务 Map 不等于已执行，是否发起业务 Run 由用户另行决定。"
+    }
+  }
+}

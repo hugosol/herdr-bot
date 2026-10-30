@@ -39,7 +39,7 @@ pub struct Config {
     #[serde(default)]
     pub zones: ZonesConfig,
     /// Task 的存储位置；整个 `[tasks]` 段可缺省，缺省为进程工作目录下的
-    /// `.data/tasks.json`。
+    /// `meta-data/tasks.json`。
     #[serde(default)]
     pub tasks: TasksConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
@@ -89,8 +89,8 @@ impl TryFrom<u64> for CollectWaitSeconds {
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            map_directory: PathBuf::from(".data/workflow-maps"),
-            bot_directory: PathBuf::from(".data/bots"),
+            map_directory: PathBuf::from("meta-data/workflow-maps"),
+            bot_directory: PathBuf::from("meta-data/bots"),
             run_directory: PathBuf::from(".data/workflow-runs"),
             run_instructions: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/workflow-runtime.md"),
             collect_wait_seconds: CollectWaitSeconds(90 * 60),
@@ -267,7 +267,7 @@ impl Default for ZonesConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TasksConfig {
-    /// Task 存储文件路径；缺省 `.data/tasks.json`。
+    /// Task 存储文件路径；缺省 `meta-data/tasks.json`。
     #[serde(default = "storage_file_by_default")]
     pub storage_file: PathBuf,
     /// 手工维护的选项目录；相对进程工作目录，运行中每次操作重新读取。
@@ -288,7 +288,7 @@ fn metadata_file_by_default() -> PathBuf {
     PathBuf::from("meta-data/task-options.toml")
 }
 
-/// `[tasks] storage_file` 的缺省值：进程工作目录下的 `.data/tasks.json`。
+/// `[tasks] storage_file` 的缺省值：进程工作目录下的 `meta-data/tasks.json`。
 fn storage_file_by_default() -> PathBuf {
     PathBuf::from(crate::tasks::DEFAULT_STORAGE_FILE)
 }
@@ -1132,16 +1132,6 @@ workspace_name = 'bot-playground'
         assert!(
             error.to_string().contains("unknown field") && error.to_string().contains("`session`"),
             "解析错误应指出未知的段名，实际：{error}"
-        );
-    }
-
-    /// Task 存储文件缺省为当前工作目录下的 .data/tasks.json。
-    #[test]
-    fn legacy_config_without_tasks_section_uses_default_storage_file() {
-        let config = Config::from_toml(LEGACY_CONFIG).expect("旧配置必须仍可解析");
-        assert_eq!(
-            config.tasks.storage_file,
-            PathBuf::from(".data/tasks.json")
         );
     }
 

@@ -22,7 +22,7 @@ test('P1 bot tab opens an empty list in the same page', async ({ page, context }
   expect(context.pages()).toEqual([page])
   expect(openedPages).toEqual([])
   expect(page.url()).toBe(originalURL)
-  expect(fs.readdirSync(path.join(server.cwd, '.data', 'bots'))).toEqual([])
+  expect(fs.readdirSync(path.join(server.cwd, 'meta-data', 'bots'))).toEqual([])
   const response = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(response.status()).toBe(200)
   expect(await response.json()).toEqual({ bots: [] })
@@ -32,7 +32,7 @@ test('P1 bot tab opens an empty list in the same page', async ({ page, context }
 
 test('bot list sorts by descending mtime, breaks ties by filename, and reorders on refresh', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(bots, { recursive: true })
   const definitions = [
     { file: 'b.json', id: 'alpha', name: '第二个同时间文件' },
@@ -69,8 +69,8 @@ test('bot list sorts by descending mtime, breaks ties by filename, and reorders 
 // installer disagrees with the literal observations and complete byte inventory.
 test('P5 P35 selected preview diagnoses missing and damaged files then recovers without writing definitions', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   const capability = { id: 'catalog-life', name: '人工核对能力', when: '需要只读核对时', plan_guide: '保留原始文本，不执行工作', node_guide: JSON.stringify({ inputs: { source: '原始说明' }, outputs: { note: '核对说明' } }) }

@@ -99,21 +99,11 @@ workflow_poll_interval_seconds = 5
 - `history.jsonl`：追加执行/状态历史；新 Run 初始为空。
 - `messages.jsonl`：追加报告；新 Run 初始为空。
 
-### 执行宿主字段与旧 Run 升级
+### 执行宿主字段
 
 节点当前执行 `nodes.<id>.execution` 及 `previousExecutions[*].execution` 的非空记录必须包含 `agent`（`omp` 或 `pi`），记录该次实际启动所用的宿主。派发核实读取这份执行事实，不根据管理者宿主或后来修改的 Task 推测；retry 新建执行时使用当前绑定 Task 的宿主，保留旧执行原值。
 
-从只有 OMP workflow 的旧版本升级前，先停止服务并备份实际配置与运行目录，再在仓库根目录显式执行（Python 3.11+）：
-
-```powershell
-python scripts/migrate-execution-agents.py --root 'E:\path\to\server-cwd' --config 'E:\path\to\herdr-bot.toml'
-```
-
-工具按 `[scheduler].run_directory`（缺省 `.data/workflow-runs`）检查全部 `run.json`，仅为缺少 `agent` 的旧执行补 `omp`：这些执行来自旧版仅允许 OMP 的 workflow，而不是根据当前 Task 猜测。已有 `omp`/`pi` 与空执行保持不变。原始字节保留为各文件旁的 `run.json.pre-execution-agents`；重复执行已迁移记录不写入。追加历史、报告、Task、Chat 历史及原生会话不改写。
-
-非法记录、链接路径、冲突备份或残留 staging 会拒绝；全部候选预检通过后逐文件原子替换，不承诺多文件事务。中途 I/O 失败时保持停服、保留现场并核对备份，不直接重做业务动作。新版本不在运行时补缺省宿主；未迁移旧记录会作为不可读现场报告。恢复旧备份须停服并使用对应旧版本；迁移不恢复旧 Run 的管理权限。
-
-可独立复核：`python scripts/test-execution-agent-migration.py`，仅操作临时数据。
+不再提供旧格式手动迁移工具，请使用当前数据格式。运行时不补缺省宿主；缺少 `agent` 的旧执行记录会作为不可读现场报告。
 
 ### 独立读取与部分提交
 

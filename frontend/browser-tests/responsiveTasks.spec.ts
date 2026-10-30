@@ -113,13 +113,15 @@ for (const profile of [
       await action('task-next')
       await expect(page.getByTestId('summary-optional')).toHaveText('codebase-tools')
       const edited = { ...saved, name: 'P49 编辑后巡检', chatName: '编辑 {zone.name} / {task.name} / {agent} / {chat.id}', agent: 'pi', model: 'deepseek-flash', thinking: 'off', skill: 'teach', prompt: '编辑第一行\n编辑第二行', extensions: ['pi-codebase-tools'] }
-      fs.mkdirSync(`${server.storageFile}.tmp`)
-      await action('save-task')
-      await expect(page.getByTestId('task-form-error')).toHaveAttribute('data-kind', 'error')
-      expect((await server.getTasks()).tasks).toEqual([saved])
-      await page.getByTestId('task-form-error').scrollIntoViewIfNeeded()
-      await capture('persistence-error')
-      fs.rmdirSync(`${server.storageFile}.tmp`)
+      const originalMode = fs.statSync(server.storageFile).mode
+      fs.chmodSync(server.storageFile, 0o444)
+      try {
+        await action('save-task')
+        await expect(page.getByTestId('task-form-error')).toHaveAttribute('data-kind', 'error')
+        expect((await server.getTasks()).tasks).toEqual([saved])
+        await page.getByTestId('task-form-error').scrollIntoViewIfNeeded()
+        await capture('persistence-error')
+      } finally { fs.chmodSync(server.storageFile, originalMode) }
       await action('task-back')
       await expect(page.getByTestId('extension-pi-codebase-tools')).toBeChecked()
       await action('task-back')
@@ -130,7 +132,7 @@ for (const profile of [
       await action('save-task')
       await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
       expect((await server.getTasks()).tasks).toEqual([edited])
-      actions.push('real temporary-write obstruction rejected; prior task unchanged; draft retained; retry persisted edited values')
+      actions.push('real read-only storage rejected; prior task unchanged; draft retained; retry persisted edited values')
 
       // Remove an actually selected metadata definition on disk, then reopen.
       const withoutTools = metadata.replace(/\[\[extensions\]\]\r?\nid = 'pi-codebase-tools'[\s\S]*?(?=\[\[extensions\]\]|$)/, '')

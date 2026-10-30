@@ -12,7 +12,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // is insufficient when the user has many nodes to repair.
 test('P22 missing blocked_by identifies the Map file, node and required field', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const bytes = '{"title":"Missing dependency field","description":"","nodes":{"work":{"title":"Work","bot_id":"shared","input":"","zone":""}}}'
   fs.writeFileSync(path.join(maps, 'missing-blocked-by.json'), bytes)
@@ -35,7 +35,7 @@ test('P22 missing blocked_by identifies the Map file, node and required field', 
 // Serde's positional struct representation would accidentally accept this array.
 test('P22 node arrays are not accepted as named node definitions', async ({ request }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(maps, 'node-array.json'), '{"title":"Bad node","description":"","nodes":{"work":["Work","shared",{},[]]}}')
   const response = await request.get(`${server.baseURL}/api/scheduler/maps/node-array.json`)
@@ -48,7 +48,7 @@ test('P22 node arrays are not accepted as named node definitions', async ({ requ
 // This extends existing strict behavior rather than manufacturing a red state.
 test('P22 Map and node required fields, types, unknown keys and versions are strict', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const valid = { title: '', description: '', nodes: {
     work: { title: '', bot_id: '', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
@@ -106,7 +106,7 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
 // A reader dropping edges, or accepting the acyclic remainder, must fail.
 test('P23 unknown prerequisite, self-dependency and cycle reject the entire graph with locations', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const cases = [
     { name: 'unknown.json', nodes: { A: { title: 'Unknown', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['ghost'] } }, expected: ['node A', 'blocked_by', '未知', 'ghost'], absent: '自身' },
@@ -138,7 +138,7 @@ test('P23 unknown prerequisite, self-dependency and cycle reject the entire grap
 // opaque text, even when it looks like JSON or Markdown validation rules.
 test('P22 empty Map and empty node text remain legal without external bindings', async ({ page }) => {
   server = await startServer({ herdr: {} })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const originals = new Map([
     ['empty-map.json', '{"title":"","description":"","nodes":{}}'],
@@ -178,8 +178,8 @@ test('P22 empty Map and empty node text remain legal without external bindings',
 for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file-load'] as const) {
   test(`P24 P29 ${failure}: clears the previous graph and details and opens a healthy neighbor`, async ({ page }, testInfo) => {
     server = await startServer({ herdr: {} })
-    const maps = path.join(server.cwd, '.data', 'workflow-maps')
-    const bots = path.join(server.cwd, '.data', 'bots')
+    const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+    const bots = path.join(server.cwd, 'meta-data', 'bots')
     fs.mkdirSync(maps, { recursive: true })
     fs.mkdirSync(bots, { recursive: true })
     const botBytes = '{"id":"shared","name":"Shared recovery capability","when":"Inspect plans","plan_guide":"Read-only recovery evidence","node_guide":""}'

@@ -31,7 +31,7 @@ async function fixture() {
 async function currentFixture() {
   const context = await fixture()
   const { server, root } = context
-  const maps = path.join(server.cwd, '.data/workflow-maps'), bots = path.join(server.cwd, '.data/bots')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
   expect(taskResponse.status).toBe(200)
@@ -158,7 +158,7 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
     if (condition === 'missing') fs.unlinkSync(mapPath)
     else if (condition === 'invalid') fs.writeFileSync(mapPath, '{ broken current Map')
     else fs.writeFileSync(mapPath, JSON.stringify({ ...definition, nodes: { Z: { ...definition.nodes.A, title: '不应关联的改名工作' } } }))
-    fs.unlinkSync(path.join(server.cwd, '.data/bots/worker.json'))
+    fs.unlinkSync(path.join(server.cwd, 'meta-data/bots/worker.json'))
     await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
     await expect(page.getByRole('alert').filter({ hasText: '不补造历史图' })).toBeVisible()
     await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toHaveCount(0)

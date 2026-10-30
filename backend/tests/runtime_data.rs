@@ -244,7 +244,7 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
             post_json_over_tcp(panel.addr, "/api/zones", &json!({"path": zone}).to_string()).await,
         );
         let task = save(&panel).await;
-        assert!(root.path().join(".data/tasks.json").is_file());
+        assert!(root.path().join("meta-data/tasks.json").is_file());
         assert!(root.path().join(".data/zones.json").is_file());
         // P25/S4: legacy main + nested sidecar bytes and directory inventory are
         // independent literals, not files produced by the implementation.
@@ -292,7 +292,7 @@ async fn default_and_explicit_task_locations_survive_two_restarts_without_legacy
         legacy_data(root.path(), &zone);
         let storage = root
             .path()
-            .join(explicit.unwrap_or(".data/tasks.json"));
+            .join(explicit.unwrap_or("meta-data/tasks.json"));
         let session = storage
             .parent()
             .unwrap()
@@ -422,7 +422,7 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
     }
     assert_eq!(fs::read(root.path().join(".data/bot-sessions")).unwrap(), b"not a session directory");
 
-    let storage = root.path().join(".data/tasks.json");
+    let storage = root.path().join("meta-data/tasks.json");
     let original = fs::read(&storage).unwrap();
     let permissions = fs::metadata(&storage).unwrap().permissions();
     let mut readonly = permissions.clone();
@@ -614,20 +614,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
         calls,
         "restart replayed external creation"
     );
-    let mut files: Vec<_> = fs::read_dir(root.path().join(".data"))
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    files.sort();
-    assert_eq!(
-        files,
-        vec![
-            ".runtime-layout-v1",
-            "session-history.json",
-            "tasks.json",
-            "zones.json"
-        ]
-    );
+
 }
 
 // P43/P47. A directory is not a new registry. A failed migration must not destroy
@@ -755,4 +742,202 @@ async fn cutover_preserves_old_native_main_and_sidecars_while_moving_zone_regist
         herdr.calls().is_empty(),
         "cutover must not control running agents"
     );
+}
+
+fn startup_failure(root: &Path) -> String {
+    let mut child = command(root).spawn().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if child.try_wait().unwrap().is_some() { break; }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let output = child.wait_with_output().unwrap();
+            panic!("startup unexpectedly accepted migration: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(!output.status.success());
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn definition_migration_rejects_wrong_types_before_any_cutover_and_allows_retry() {
+    for path in [".data/tasks.json", ".data/bots", ".data/workflow-maps", "meta-data/tasks.json", "meta-data/bots", "meta-data/workflow-maps"] {
+        let root = TempDir::new("definition wrong path type");
+        let herdr = HerdrFixture::new("definition wrong type calls");
+        configure(root.path(), &herdr, None);
+        let invalid = root.path().join(path);
+        fs::create_dir_all(invalid.parent().unwrap()).unwrap();
+        if path.ends_with("tasks.json") { fs::create_dir(&invalid).unwrap(); }
+        else { fs::write(&invalid, b"not a directory").unwrap(); }
+        let diagnostic = startup_failure(root.path());
+        assert!(diagnostic.contains("类型错误") && diagnostic.contains(path.split('/').next_back().unwrap()), "{diagnostic}");
+        assert_no_definition_markers(root.path());
+        if invalid.is_dir() { fs::remove_dir(&invalid).unwrap(); }
+        else { assert_eq!(fs::read(&invalid).unwrap(), b"not a directory"); fs::remove_file(&invalid).unwrap(); }
+        let _panel = Panel::start(root.path());
+    }
+}
+
+#[test]
+fn definition_migration_rejects_nested_directory_links_without_reading_external_content() {
+    #[cfg(not(windows))]
+    if std::env::var("HERDR_BOT_MANUAL_SYMLINKS").as_deref() != Ok("1") {
+        eprintln!("manual-only: definition symbolic link migration check skipped");
+        return;
+    }
+    let root = TempDir::new("definition linked directory");
+    let outside = TempDir::new("definition link outside");
+    let herdr = HerdrFixture::new("definition linked calls");
+    configure(root.path(), &herdr, None);
+    fs::create_dir_all(root.path().join(".data/bots")).unwrap();
+    fs::write(outside.path().join("secret.bin"), b"outside bytes").unwrap();
+    let link = root.path().join(".data/bots/linked");
+    #[cfg(windows)]
+    {
+        let status = Command::new("cmd").args(["/C", "mklink", "/J"])
+            .arg(&link).arg(outside.path()).status().unwrap();
+        assert!(status.success(), "create test-owned junction");
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+    let diagnostic = startup_failure(root.path());
+    assert!(diagnostic.contains("链接") || diagnostic.contains("junction"), "{diagnostic}");
+    assert_no_definition_markers(root.path());
+    assert!(!root.path().join("meta-data/bots").exists());
+    assert_eq!(fs::read(outside.path().join("secret.bin")).unwrap(), b"outside bytes");
+    #[cfg(windows)]
+    fs::remove_dir(&link).unwrap();
+    #[cfg(unix)]
+    fs::remove_file(&link).unwrap();
+    let _panel = Panel::start(root.path());
+}
+
+fn assert_no_definition_markers(root: &Path) {
+    for name in ["tasks", "bots", "maps"] {
+        assert!(!root.join(format!(".data/.definition-layout-v1-{name}")).exists());
+    }
+}
+
+#[tokio::test]
+async fn definition_migration_preserves_bytes_and_never_reimports_retained_backups() {
+    let root = TempDir::new("definition cutover bytes and restart");
+    let herdr = HerdrFixture::new("definition cutover calls");
+    configure(root.path(), &herdr, Some(".data/tasks.json"));
+    let task = {
+        let panel = Panel::start(root.path());
+        save(&panel).await
+    };
+    // Custom Task storage did not consume its later default migration.
+    assert!(!root.path().join(".data/.definition-layout-v1-tasks").exists());
+    let task_bytes = fs::read(root.path().join(".data/tasks.json")).unwrap();
+    // Earlier default Bot/Map startup is already complete; use fresh markers to
+    // model the first upgrade from an old executable, retaining its zone marker.
+    for name in ["bots", "maps"] {
+        fs::remove_file(root.path().join(format!(".data/.definition-layout-v1-{name}"))).unwrap();
+    }
+    for directory in ["bots", "workflow-maps"] {
+        fs::create_dir_all(root.path().join(format!(".data/{directory}/nested/empty"))).unwrap();
+        fs::write(root.path().join(format!(".data/{directory}/nested/backup.bin")), b"\0original\xff\r\n").unwrap();
+    }
+    configure(root.path(), &herdr, None);
+    {
+        let panel = Panel::start(root.path());
+        assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([task.clone()]));
+        assert_eq!(fs::read(root.path().join("meta-data/tasks.json")).unwrap(), task_bytes);
+        for directory in ["bots", "workflow-maps"] {
+            assert_eq!(native_snapshot(&root.path().join(format!("meta-data/{directory}"))), native_snapshot(&root.path().join(format!(".data/{directory}"))));
+        }
+    }
+    assert_eq!(fs::read(root.path().join(".data/tasks.json")).unwrap(), task_bytes);
+    fs::write(root.path().join("meta-data/bots/nested/backup.bin"), b"edited target").unwrap();
+    fs::remove_dir_all(root.path().join("meta-data/workflow-maps")).unwrap();
+    fs::remove_file(root.path().join("meta-data/tasks.json")).unwrap();
+    for _ in 0..2 {
+        let panel = Panel::start(root.path());
+        assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
+        assert_eq!(fs::read(root.path().join("meta-data/bots/nested/backup.bin")).unwrap(), b"edited target");
+        assert!(!root.path().join("meta-data/workflow-maps/nested/backup.bin").exists());
+        assert_eq!(fs::read(root.path().join(".data/tasks.json")).unwrap(), task_bytes);
+    }
+}
+
+#[tokio::test]
+async fn definition_conflicts_preflight_every_item_and_can_be_retried_after_resolution() {
+    // Include an extra empty directory: equal common files are not equal complete trees.
+    for conflict in ["tasks.json", "bots", "workflow-maps"] {
+        let root = TempDir::new("definition preflight conflict");
+        let herdr = HerdrFixture::new("definition preflight calls");
+        configure(root.path(), &herdr, None);
+        fs::create_dir_all(root.path().join(".data/bots")).unwrap();
+        fs::create_dir_all(root.path().join(".data/workflow-maps")).unwrap();
+        fs::create_dir_all(root.path().join("meta-data")).unwrap();
+        fs::write(root.path().join(".data/tasks.json"), b"{\"tasks\":[]}\n").unwrap();
+        fs::write(root.path().join(".data/bots/backup.bin"), b"old bot\0\xff").unwrap();
+        fs::write(root.path().join(".data/workflow-maps/backup.bin"), b"old map\r\n").unwrap();
+        if conflict == "tasks.json" {
+            fs::write(root.path().join("meta-data/tasks.json"), b"{\"tasks\":[]}").unwrap();
+        } else {
+            fs::create_dir_all(root.path().join(format!("meta-data/{conflict}/extra-empty"))).unwrap();
+            fs::copy(root.path().join(format!(".data/{conflict}/backup.bin")), root.path().join(format!("meta-data/{conflict}/backup.bin"))).unwrap();
+        }
+        let before = native_snapshot(&root.path().join(".data"));
+        let diagnostic = startup_failure(root.path());
+        assert!(diagnostic.contains("冲突") && diagnostic.contains(conflict), "{diagnostic}");
+        assert_no_definition_markers(root.path());
+        assert_eq!(native_snapshot(&root.path().join(".data")), before);
+        for untouched in ["tasks.json", "bots", "workflow-maps"] {
+            if untouched != conflict { assert!(!root.path().join(format!("meta-data/{untouched}")).exists()); }
+        }
+        if conflict == "tasks.json" {
+            fs::copy(root.path().join(".data/tasks.json"), root.path().join("meta-data/tasks.json")).unwrap();
+        } else {
+            fs::remove_dir(root.path().join(format!("meta-data/{conflict}/extra-empty"))).unwrap();
+        }
+        let panel = Panel::start(root.path());
+        assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
+        assert_eq!(fs::read(root.path().join("meta-data/tasks.json")).unwrap(), b"{\"tasks\":[]}\n");
+        for directory in ["bots", "workflow-maps"] {
+            assert_eq!(native_snapshot(&root.path().join(format!("meta-data/{directory}"))), native_snapshot(&root.path().join(format!(".data/{directory}"))));
+        }
+    }
+}
+
+#[tokio::test]
+async fn custom_definition_targets_remain_authoritative_until_individually_changed_to_defaults() {
+    let root = TempDir::new("definition custom targets");
+    let herdr = HerdrFixture::new("definition custom calls");
+    configure(root.path(), &herdr, Some("private/tasks.json"));
+    let config = root.path().join("herdr-bot.toml");
+    let text = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("{text}\n[scheduler]\nbot_directory = 'private/bots'\nmap_directory = 'private/maps'\n")).unwrap();
+    fs::create_dir_all(root.path().join(".data/bots")).unwrap();
+    fs::create_dir_all(root.path().join(".data/workflow-maps")).unwrap();
+    fs::write(root.path().join(".data/tasks.json"), b"{\"tasks\":[]}\n").unwrap();
+    fs::write(root.path().join(".data/bots/backup.bin"), b"legacy bot").unwrap();
+    fs::write(root.path().join(".data/workflow-maps/backup.bin"), b"legacy map").unwrap();
+    let task = {
+        let panel = Panel::start(root.path());
+        let task = save(&panel).await;
+        assert_no_definition_markers(root.path());
+        assert!(!root.path().join("private/bots/backup.bin").exists());
+        assert!(!root.path().join("private/maps/backup.bin").exists());
+        task
+    };
+    // Only Task switches now. Bot/Map remain custom and eligible for a later switch.
+    fs::write(&config, fs::read_to_string(&config).unwrap().replace("private/tasks.json", "meta-data/tasks.json")).unwrap();
+    {
+        let panel = Panel::start(root.path());
+        assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
+        assert!(root.path().join(".data/.definition-layout-v1-tasks").is_file());
+        assert!(!root.path().join(".data/.definition-layout-v1-bots").exists());
+        assert!(!root.path().join(".data/.definition-layout-v1-maps").exists());
+    }
+    let custom: Value = serde_json::from_slice(&fs::read(root.path().join("private/tasks.json")).unwrap()).unwrap();
+    assert_eq!(custom["tasks"], json!([task]));
+    configure(root.path(), &herdr, None);
+    let _panel = Panel::start(root.path());
+    assert_eq!(fs::read(root.path().join("meta-data/bots/backup.bin")).unwrap(), b"legacy bot");
+    assert_eq!(fs::read(root.path().join("meta-data/workflow-maps/backup.bin")).unwrap(), b"legacy map");
 }

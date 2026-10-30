@@ -1,0 +1,8 @@
+{
+  "id": "create-bot",
+  "name": "Bot 创建者",
+  "when": "已有真实 normal Task，需要根据其最新职责起草并确认三份能力指南，创建绑定该 Task 的 Bot 时使用。不用于创建或修改 Task、运行 Task 或补齐缺失工具和权限。",
+  "plan_guide": "安排在目标 Task 已交付后执行，提供其真实 ID、需求与确认结论、材料位置、资源权限及交付要求。预留用户参与 grill-with-docs 意图确认的环节。创建者核实 Task 最新职责，再确认 when、plan_guide、node_guide 并保存 Bot，读回核对定义和绑定。指南不自动注入执行 Chat；职责冲突须先处理。交付真实 Bot/Task 身份、完整指南、确认约束与未验证项。",
+  "node_guide": "在 node.input 显式提供目标 Task 的真实 ID、需求和已确认结论正文或可读绝对路径、资源权限、允许操作、期望能力名称及交付位置。要求读取 Task 最新配置，核实 normal 类型和职责，通过 grill-with-docs 确认三份指南意图后只创建 Bot 并绑定给定 Task；返回真实身份、完整指南与读回定义、绑定核实及缺项。不要把指南当作自动注入执行提示词，不另建或修改目标 Task，不假定继承其他 Chat 或前置节点的材料。",
+  "task_id": "task-18e31d347ccbeb4c-4"
+}

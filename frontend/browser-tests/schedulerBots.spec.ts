@@ -14,8 +14,8 @@ const weather = { id: 'weather', name: '目的地天气摘要', when: '出行前
 // three nodes must open the same preview; the Map and old inline details are absent.
 test('P2 P3 list and nodes open the same readable preview for the exact shared identity', async ({ page }, testInfo) => {
   server = await startServer({ herdr: {} })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   const weatherBytes = `${JSON.stringify(weather)}\n`
@@ -183,7 +183,7 @@ test('P7 P8 bot parents are created while obstructing files report a distinct cr
 // would fail the explicit HTTP error and visible-error/absent-empty observations.
 test('P5 P35 actual unreadable shared bot directory reports read failure and recovers without rewriting definitions', async ({ page }) => {
   server = await startServer()
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(bots, { recursive: true })
   const bytes = `${JSON.stringify(weather, null, 2)}\n`
   fs.writeFileSync(path.join(bots, 'weather.json'), bytes)
@@ -218,11 +218,11 @@ test('P5 P35 actual unreadable shared bot directory reports read failure and rec
 })
 
 // Approved S1 + S2: actual page and the exact HTTP catalog it calls, real files.
-// P7 independent source: .data/bots is created without samples. A
+// P7 independent source: meta-data/bots is created without samples. A
 // hard-coded empty result or a destructive default installer fails after seeding.
 test('P7 shared bot default creates empty parents and preserves existing definitions', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const directory = path.join(server.cwd, '.data', 'bots')
+  const directory = path.join(server.cwd, 'meta-data', 'bots')
   expect(fs.existsSync(directory)).toBe(false)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()

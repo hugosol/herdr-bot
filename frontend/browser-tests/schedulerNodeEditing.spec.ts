@@ -15,7 +15,7 @@ const original = { title: '保留 Map 标题', description: '保留 Map 说明',
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
   server = await startServer({ herdr: {}, separateCwd: true })
-  const root = path.join(server.cwd, '.data/workflow-maps')
+  const root = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'work.JSON'), JSON.stringify(source))
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')
@@ -45,7 +45,7 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
 // eager installation on opening, ignored edits, or updating only details not the graph.
 test('node creation starts with a disposable draft and saves changed content into the current Map immediately', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  const bots = path.join(server!.cwd, '.data/bots'), botsBefore = inventory(bots)
+  const bots = path.join(server!.cwd, 'meta-data/bots'), botsBefore = inventory(bots)
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
   const id = page.getByLabel('node ID', { exact: true }), json = page.getByLabel('node 内容 JSON', { exact: true })
   await expect(id).toHaveValue('')
@@ -107,7 +107,7 @@ test('editing a real node keeps identity, open parameters and all non-target def
 // but must fail this literal expectation. No parameter defaults may appear.
 test('registered Bot Markdown guidance does not constrain, complete or validate node input', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
-  const bots = path.join(server!.cwd, '.data/bots')
+  const bots = path.join(server!.cwd, 'meta-data/bots')
   fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ id: 'declared-inputs', name: '已登记能力', when: '', plan_guide: '说明不是校验规则', node_guide: '# 必须填写城市\n这是工作指引，不是必填规则。' }))
   const botsBefore = inventory(bots)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()

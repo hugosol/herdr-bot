@@ -9,12 +9,12 @@ let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
 // Approved seams: S1 delivered page and S2 the exact HTTP interface it uses.
-// P7 source: the approved default is .data/workflow-maps, created without samples.
+// P7 source: the approved default is meta-data/workflow-maps, created without samples.
 // A plausible violation is a hard-coded empty UI or scanning a different directory:
 // observe the first empty read, then add a literal file and reload through both seams.
 test('P7 Map default directory is created empty and preserves user files', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(path.dirname(server.configPath), '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   expect(fs.existsSync(maps)).toBe(false)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
@@ -40,7 +40,7 @@ test('Maps list newest modifications first with filename ties and refresh after 
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   const older = new Date('2026-01-01T00:00:00Z')
   const newer = new Date('2026-01-02T00:00:00Z')
   const newest = new Date('2026-01-03T00:00:00Z')
@@ -72,7 +72,7 @@ test('Maps list newest modifications first with filename ties and refresh after 
 
 test('Map titles display and filter independently of filenames with duplicate selection fallback and refresh', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const modified = new Date('2026-01-01T00:00:00Z')
   const originals = new Map([
@@ -226,7 +226,7 @@ test('P7 P8 missing parents are created and an obstructing file produces a visib
 // or stale files; both are explicitly absent during the failed read.
 test('P8 actual unreadable directory reports a read error and can recover', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
@@ -256,7 +256,7 @@ test('P8 actual unreadable directory reports a read error and can recover', asyn
 // expose the independently seeded outside filename or content.
 test('Map listing rejects path injection and real directory junctions without writes or execution', async ({ page }) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   const outside = path.join(server.cwd, 'outside')
   fs.mkdirSync(outside)
   fs.writeFileSync(path.join(outside, 'outside-secret.json'), 'PRIVATE OUTSIDE BYTES')

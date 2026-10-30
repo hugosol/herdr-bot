@@ -1,0 +1,8 @@
+{
+  "id": "create-task",
+  "name": "Task 创建者",
+  "when": "需要将显式需求澄清为用户确认的 Task 固定指示，并创建独立 normal Task 时使用。只创建 Task，不创建 Bot，不运行所创建的 Task，不承担既有 Task 优化或缺失业务能力建设。",
+  "plan_guide": "安排用户可参与语义确认的创建 Chat，提供需求、输入输出、资源权限、执行配置约束与交付位置。通过 grill-with-docs 确认完整 prompt 和执行配置后，创建 Task 并 GET 读回。交付真实 Task ID、完整配置、已确认意图、硬约束及缺项，供后续独立工作显式读取。需创建 Bot 时另安排 Bot 创建者；配置成功不等于业务试运行通过。",
+  "node_guide": "在 node.input 显式提供需求正文或可读绝对路径、目标输入输出和验收条件、已知资源与权限、允许操作、agent/model/thinking/skill/extensions 等约束及材料交付位置。明确本次仅创建 Task，要求用户确认文本意图与全部执行配置后保存并读回；返回真实 ID、完整配置、确认结论和未验证项。不假定继承其他 Chat 或管理者输入，blocked_by 不传递材料。",
+  "task_id": "task-18e31d30fe69a51c-2"
+}

@@ -15,7 +15,7 @@ async function fixture(interval?: number) {
   }
   const root = path.join(server.cwd, '.data/workflow-runs/observed-run')
   fs.mkdirSync(root, { recursive: true })
-  const maps = path.join(server.cwd, '.data/workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(maps, 'observed-map.json'), JSON.stringify({ title: '轮询图', description: '', nodes: { A: { title: '保留节点', bot_id: 'saved-bot', zone: 'C:/saved-zone', input: '节点输入', blocked_by: [] } } }))
   const run = { id: 'observed-run', map: 'observed-map.json', createdAt: 1000, status: 'running', managerTaskId: 'manager', zone: 'C:/saved-zone', workspaceName: 'saved-workspace', userInput: '保留上次成功的现场', manager: null, finished: null, nodes: { A: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] } } }

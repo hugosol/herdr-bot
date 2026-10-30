@@ -24,8 +24,8 @@ function dataFiles(root: string): Record<string, string> {
 
 async function launchFixture() {
   server = await startServer({ separateCwd: true, herdr: {} })
-  const maps = path.join(server.cwd, '.data/workflow-maps')
-  const bots = path.join(server.cwd, '.data/bots')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   const directory = path.dirname(server.configPath)
   const zonePath = path.join(directory, 'registered-zone')
@@ -52,7 +52,7 @@ async function launchFixture() {
 // Violation: accepting it, or allocating a Run/Chat before checking the graph.
 test('P7.01 empty Map is rejected before any Run or Chat side effect', async ({ request }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
-  const maps = path.join(server.cwd, '.data/workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(maps, 'empty.json'), JSON.stringify({ title: '空图', description: '', nodes: {} }))
   const before = dataFiles(server.cwd)

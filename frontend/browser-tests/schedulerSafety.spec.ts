@@ -17,8 +17,8 @@ const map = { title: 'Inside plan', description: 'Preview only', nodes: {
 
 function directories() {
   return {
-    maps: path.join(server!.cwd, '.data', 'workflow-maps'),
-    bots: path.join(server!.cwd, '.data', 'bots'),
+    maps: path.join(server!.cwd, 'meta-data', 'workflow-maps'),
+    bots: path.join(server!.cwd, 'meta-data', 'bots'),
   }
 }
 
@@ -241,8 +241,8 @@ test('P28 preparing Map and bot parents only creates empty directories and prese
     'prepared/maps': 'directory', 'prepared/maps/definitions': 'directory',
     'prepared/bots': 'directory', 'prepared/bots/definitions': 'directory',
   })
-  expect(fs.existsSync(path.join(server.cwd, '.data', 'workflow-maps'))).toBe(false)
-  expect(fs.existsSync(path.join(server.cwd, '.data', 'bots'))).toBe(false)
+  expect(fs.existsSync(path.join(server.cwd, 'meta-data', 'workflow-maps'))).toBe(false)
+  expect(fs.existsSync(path.join(server.cwd, 'meta-data', 'bots'))).toBe(false)
   assertNoExecution()
 })
 
