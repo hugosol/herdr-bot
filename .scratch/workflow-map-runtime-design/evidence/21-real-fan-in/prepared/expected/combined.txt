@@ -1,4 +1,0 @@
-item=blue-widget
-units=7
-unit_price=6
-total=42

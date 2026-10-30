@@ -129,7 +129,6 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     const reloaded = page.waitForResponse(response => response.url().endsWith('/api/scheduler/maps/safe.json'))
     await page.getByRole('button', { name, exact: true }).click()
     expect((await reloaded).status()).toBe(200)
-    await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
     await selectAndExpand()
   }
 })

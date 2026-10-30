@@ -117,6 +117,8 @@ python scripts/migrate-execution-agents.py --root 'E:\path\to\server-cwd' --conf
 
 三类记录的读取入口就是初始指示给出的三个绝对路径：`run.json` 直接解析为完整当前事实，`history.jsonl` 和 `messages.jsonl` 逐行读取为追加历史和报告；不要通过重放历史或取最后一份报告来重建当前状态。`GET /api/workflow/runs/<Run ID>` 的 `run`/`reports` 提供当前事实与完整报告，管理者 `status` 另给派生准入及 `pendingReports`。历史从已有 `history.jsonl` 路径读取，不另建日志浏览 API。当前失败原因、首次完成说明与 `previousExecutions` 中的旧执行/失败仍保存在当前事实中；历史保留失败、recover、retry 和完成时的原因与说明。旧执行报告可晚到，但不能替代当前执行的交接依据。通知代次及待办索引是内存/查询派生值，不落成第四份业务记录，也不是已读或完成凭据。
 
+Run 的单阶段状态动作由 `backend/src/runs/operation.rs` 集中拥有后台任务生命周期、同 Run 操作锁、锁内重读、事实提交及结果解释。`completion.rs` 和 `recovery.rs` 保留动作资格与业务变化，返回拒绝／幂等不写入、仅追加历史、提交事实并追加历史的明确意图，不自行排列保存步骤。`reconcile_dispatch=uncertain` 只追加核实历史，不重写当前事实；需要查询 Herdr 的核实仍持有业务操作锁，但不持有文件协调资格。事实提交仍先通知观察者、再追加历史。管理者启动、node 派发及 retry 保留独立的多阶段流程，只共用适用的拒绝与历史失败反馈，不将关联保存和初始输入合并成单次提交。
+
 当前状态写入失败时，动作报错且不发布候选状态、不追加成功历史；应先查询已提交现场并排除文件问题。dispatch/retry 如果已经创建 Chat，其 `effects` 与 `persistenceError` 仍如实报告外部效果，不表示 Chat 已撤销。
 
 当前状态提交后，仅历史追加失败属于**部分生效**：非批次状态动作的响应、dispatch 的每项 `results[]`、retry 的 `result` 都保留 `historyError` 原因，并明确返回 `code=history-append-failed`、`stateCommitted=true` 和“当前状态已提交，但执行历史追加失败；状态未回滚”的说明。HTTP 200 在这里表示动作结果可解析，不表示所有记录都写入成功；调用者必须同时检查这些字段。批次仍处理其他合法目标。不得因为这一次错误自动封锁 Run、回滚事实或自动重试；当前磁盘状态及后续查询均保持已生效结果，排除文件问题后可显式执行下一次合法动作。重复已生效动作不会补写缺失的首次历史。若历史尾部残缺，仍拒绝向残缺记录追加，不能自动截断“修复”。

@@ -21,6 +21,7 @@ mod retry;
 pub use retry::manager_retry;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
+mod operation;
 mod collect;
 pub use collect::manager_collect;
 pub use reports::node_report;
@@ -945,7 +946,7 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         } else { None };
         eprintln!("[workflow] run={} node={} action={} execution={} stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, if retry_reason.is_some() { "retry-failed" } else { "dispatch-failed" }, execution, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
         let mut value = serde_json::json!({"nodeId":id,"status":"failed","execution":execution,"failure":failure,"effects":effects,"persistenceError":persistence_error});
-        completion::history_feedback(&mut value, history_error);
+        operation::history_feedback(&mut value, history_error);
         return value;
     }
     *run = candidate;
@@ -954,6 +955,6 @@ async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: O
         eprintln!("[workflow] run={} node={} dispatch-history error={}；状态已提交，未回滚。", run.id, id, message);
     }
     let mut value = serde_json::json!({"nodeId":id,"status":"running","effects":effects});
-    completion::history_feedback(&mut value, history_error);
+    operation::history_feedback(&mut value, history_error);
     value
 }

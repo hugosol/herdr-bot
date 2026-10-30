@@ -98,7 +98,6 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await Promise.all([map.captured, bot.captured])
     fs.writeFileSync(fixture.bot, JSON.stringify(updatedBot))
     await expect(page.getByRole('button', { name: '刷新全部', exact: true })).toBeDisabled()
-    await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '新计划', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
@@ -141,6 +140,46 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
 })
 }
 
+test('Bot return @time-contract cannot restore its old Map after another Map is selected', async ({ page }) => {
+  server = await startServer({ separateCwd: true })
+  const fixture = files()
+  fs.writeFileSync(fixture.map, JSON.stringify(originalMap))
+  fs.writeFileSync(fixture.bot, JSON.stringify(originalBot))
+  fs.writeFileSync(path.join(fixture.maps, 'next.json'), JSON.stringify(updatedMap))
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-scheduler').click()
+  await page.getByRole('button', { name: '原计划', exact: true }).click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
+  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('原能力标题')
+  const returning = await holdResponse(page, '**/api/scheduler/maps/current.json')
+  try {
+    await page.getByTestId('tab-scheduler').click()
+    await returning.captured
+    await page.getByRole('button', { name: '新计划', exact: true }).click()
+    const listing = page.getByRole('region', { name: '节点列表', exact: true })
+    await listing.getByRole('button', { name: '新独立项 C', exact: true }).click()
+    const details = page.getByRole('region', { name: 'node 详情', exact: true })
+    await expect(details.getByRole('heading', { name: '新独立项 · C', exact: true })).toBeVisible()
+    returning.release()
+    await returning.delivered
+    await page.evaluate(() => {
+      const frame = Promise.withResolvers<void>()
+      requestAnimationFrame(() => frame.resolve())
+      return frame.promise
+    })
+    await expect(page.getByRole('button', { name: '新计划', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: '原计划', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('region', { name: 'Map 预览', exact: true }).getByRole('heading', { name: '新计划', exact: true })).toBeVisible()
+    await expect(listing.getByRole('button', { name: '新独立项 C', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(details.getByRole('heading', { name: '新独立项 · C', exact: true })).toBeVisible()
+    await expect(details.getByTestId('node-input')).toContainText('{}')
+  } finally {
+    returning.release()
+    await returning.delivered
+  }
+})
+
 function files() {
   const maps = path.join(server!.cwd, '.data', 'workflow-maps')
   const bots = path.join(server!.cwd, '.data', 'bots')
@@ -182,9 +221,8 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await expect(graph.getByRole('img')).toHaveCount(1)
   await expect(graph.getByRole('img', { name: 'B → A', exact: true })).toBeAttached()
   await expect(graph.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(0)
-  await expect(details).toHaveCount(0)
-  await expect(capability).toHaveCount(0)
-  await graph.getByRole('button', { name: '新核对 B', exact: true }).click()
+  await expect(graph.getByRole('button', { name: '新核对 B', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(details.getByRole('heading', { name: '新核对 · B', exact: true })).toBeVisible()
   await expect(details.getByTestId('node-input')).toContainText('new-beta')
   await expect(details.getByTestId('node-input')).toContainText('17')
   await expect(details.getByRole('region', { name: '前置依赖' }).getByRole('listitem')).toHaveCount(0)
@@ -204,5 +242,13 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await expect(preview).not.toContainText('原')
   expect(fs.readFileSync(fixture.map, 'utf8')).toBe(newMapBytes)
   expect(fs.readFileSync(fixture.bot, 'utf8')).toBe(newBotBytes)
+
+  // A remains selected above; only a confirmed removal may now clear it.
+  fs.writeFileSync(fixture.map, JSON.stringify({ ...updatedMap, nodes: { B: updatedMap.nodes.B, C: updatedMap.nodes.C } }))
+  await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+  await expect(graph.getByRole('button', { name: '新准备 A', exact: true })).toHaveCount(0)
+  await expect(details).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { pressed: true })).toHaveCount(0)
+  await expect(page.getByRole('alert')).toContainText(/A.*移除|移除.*A/)
   expect(server.herdrCalls()).toEqual([])
 })

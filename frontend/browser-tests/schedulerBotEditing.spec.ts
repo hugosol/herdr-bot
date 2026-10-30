@@ -164,6 +164,61 @@ test('Bot save rejects legacy title fields and reads back only the name contract
   expect(JSON.parse(fs.readFileSync(path.join(root, saved.revision.file), 'utf8'))).toEqual(expected)
 })
 
+// Transport failures happen after the real backend has handled each request;
+// neither test invents a successful write or a replacement catalog.
+test('confirmed Bot save ends the draft even when catalog delivery fails, and explicit refresh recovers', async ({ page }) => {
+  server = await startServer({ separateCwd: true })
+  await open(page)
+  await page.getByRole('button', { name: 'new', exact: true }).click()
+  await page.getByLabel('Bot ID', { exact: true }).fill('saved-before-refresh-failure')
+  const saved = { ...content, name: '目录恢复后可见', plan_guide: '真实提交后的独立内容' }
+  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify(saved))
+  await page.route('**/api/scheduler/bots', async route => {
+    const response = await route.fetch()
+    expect(response.ok()).toBe(true)
+    await route.abort('failed')
+  }, { times: 1 })
+  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await expect(page.getByRole('form', { name: 'Bot 编辑', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('alert')).toContainText(/已保存/)
+  await expect(page.getByRole('alert')).toContainText(/刷新/)
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.plan_guide)
+  const catalog = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
+  expect((await catalog.json()).bots).toEqual([{ ...saved, id: 'saved-before-refresh-failure' }])
+  await page.getByRole('button', { name: 'refresh', exact: true }).click()
+  const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
+  await expect(listing.getByRole('button', { name: '目录恢复后可见 · saved-before-refresh-failure', exact: true })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await listing.getByRole('button', { name: '目录恢复后可见 · saved-before-refresh-failure', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.plan_guide)
+})
+
+test('a committed Bot save whose response is lost retains the exact draft and reports an unconfirmed result', async ({ page }) => {
+  server = await startServer({ separateCwd: true })
+  await open(page)
+  await page.getByRole('button', { name: 'new', exact: true }).click()
+  const id = 'committed-without-response'
+  const raw = '\n' + JSON.stringify({ ...content, plan_guide: '响应丢失但文件已提交' }, null, 3) + '\n'
+  await page.getByLabel('Bot ID', { exact: true }).fill(id)
+  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
+  await page.route('**/api/scheduler/bots/save', async route => {
+    const response = await route.fetch()
+    expect(response.ok()).toBe(true)
+    await route.abort('failed')
+  }, { times: 1 })
+  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText(/无法确认|结果.*未知/)
+  await expect(page.getByRole('alert')).toContainText(/核实/)
+  await expect(page.getByLabel('Bot ID', { exact: true })).toHaveValue(id)
+  await expect(page.getByLabel('Bot 内容 JSON', { exact: true })).toHaveValue(raw)
+  const persisted = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id } })
+  expect(persisted.ok()).toBe(true)
+  expect((await persisted.json()).content).toEqual(JSON.parse(raw))
+  const root = path.join(server.cwd, '.data/bots')
+  const stored = Object.values(inventory(root)).map(bytes => JSON.parse(bytes))
+  expect(stored).toEqual([{ ...JSON.parse(raw), id }])
+})
+
 // P13 P17 S1/S2: actual overlapping HTTP creates of the same global identity
 // must have one winner. Existing and ambiguous targets cannot be overwritten.
 test('global duplicate and concurrent same-ID creation reject without overwriting definitions or drafts', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
+import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
 import { orderedMapNodeIds } from './mapNodeOrder'
 import { MapNodeDetails } from './MapNodeDetails'
@@ -8,248 +8,37 @@ import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
 import './scheduler.css'
 
-type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
-type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
-type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
-
-type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string }
-
 export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones }: { active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
   const botView = view === 'bot'
-  const setBotView = (showBot: boolean) => onViewChange(showBot ? 'bot' : 'map')
+  const editorState = useSchedulerEditor({ active, view, onViewChange })
+  const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
+    abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
-  const [deleteMapTarget, setDeleteMapTarget] = useState<string | null>(null)
-  const [deletingMap, setDeletingMap] = useState(false)
-  const [deleteMapError, setDeleteMapError] = useState<string | null>(null)
-  const deleteMapInFlight = useRef(false)
+  const [filter, setFilter] = useState('')
+  const [botFilter, setBotFilter] = useState('')
   const deleteMapDialog = useRef<HTMLDialogElement>(null)
   const cancelMapDeletion = useRef<HTMLButtonElement>(null)
   const directoryHeading = useRef<HTMLHeadingElement>(null)
-
-  useEffect(() => {
-    const element = deleteMapDialog.current
-    if (deleteMapTarget === null || element === null) return
-    element.showModal()
-    cancelMapDeletion.current?.focus()
-    return () => element.close()
-  }, [deleteMapTarget])
-
-  function closeMapDeletion() {
-    if (deleteMapInFlight.current) return
-    deleteMapDialog.current?.close()
-    setDeleteMapTarget(null)
-    setDeleteMapError(null)
-  }
-
-  async function removeMap(deleteHistory: boolean) {
-    if (deleteMapTarget === null || deleteMapInFlight.current) return
-    deleteMapInFlight.current = true
-    setDeletingMap(true)
-    setDeleteMapError(null)
-    try {
-      const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(deleteMapTarget)}/delete`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleteHistory }),
-      })
-      const value: unknown = await response.json()
-      if (!response.ok) {
-        setDeleteMapError(typeof value === 'object' && value !== null && 'message' in value && typeof value.message === 'string'
-          ? value.message : `删除请求返回 HTTP ${response.status}；请刷新核实当前 Map 和 Run 状态。`)
-        return
-      }
-      if (typeof value !== 'object' || value === null || !('files' in value) || !Array.isArray(value.files) || !value.files.every((name): name is string => typeof name === 'string') ||
-          ('titles' in value && (typeof value.titles !== 'object' || value.titles === null || Array.isArray(value.titles) ||
-            !Object.values(value.titles).every((title) => typeof title === 'string')))) {
-        setDeleteMapError('删除请求已返回成功，但目录响应不可用；请取消后刷新核实当前 Map 和 Run 状态。')
-        return
-      }
-      setListing({ kind: 'ready', ...value as MapCatalog })
-      setFile(null)
-      setPreview(null)
-      setSelectedId(null)
-      setLaunchOpen(false)
-      setReturnProblem(null)
-      setEditError(null)
-      deleteMapDialog.current?.close()
-      setDeleteMapTarget(null)
-      directoryHeading.current?.focus()
-    } catch {
-      setDeleteMapError('无法确认删除结果：未取得有效响应。请取消后刷新核实当前 Map 和 Run 状态，不要盲目重复提交。')
-    } finally {
-      deleteMapInFlight.current = false
-      setDeletingMap(false)
-    }
-  }
-  const [draft, setDraft] = useState<Draft | null>(null)
-  const [editingBusy, setEditingBusy] = useState(false)
-  const [editError, setEditError] = useState<string | null>(null)
-  const [returnProblem, setReturnProblem] = useState<string | null>(null)
-  const dirty = draft !== null && (draft.id !== draft.initialId || draft.content !== draft.initialContent)
-
-  function abandonDraft() {
-    if (editingBusy || (dirty && !window.confirm(`放弃尚未保存的 ${draft?.kind ?? '定义'} 修改？`))) return false
-    setDraft(null)
-    setEditError(null)
-    return true
-  }
-
+  const schedulerRoot = useRef<HTMLElement>(null)
+  const botHeading = useRef<HTMLHeadingElement>(null)
+  const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
+  const previousDeleteTarget = useRef<string | null>(null)
   useEffect(() => {
     if (navigationGuard) navigationGuard.current = abandonDraft
     return () => { if (navigationGuard) navigationGuard.current = null }
   })
-
   useEffect(() => {
-    if (!dirty) return
-    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
-    window.addEventListener('beforeunload', beforeUnload)
-    return () => window.removeEventListener('beforeunload', beforeUnload)
-  }, [dirty])
-
-  async function removeSelectedNode() {
-    if (editingBusy || draft || file === null || selectedId === null) return
-    setEditingBusy(true)
-    setEditError(null)
-    try {
-      const target = await checkNodeDeletion(file, selectedId)
-      if (!window.confirm(`确认删除 node ${target.id}？仅删除当前 Map 中此 node，不可撤销。`)) return
-      const current = await deleteNode(file, target)
-      setPreview({ kind: 'ready', map: current })
-      setSelectedId(null)
-    } catch (error) { setEditError(error instanceof Error ? error.message : 'node 删除失败。') }
-    finally { setEditingBusy(false) }
-  }
-
-  async function beginEdit(id: string | null, kind: Draft['kind'] = 'Bot') {
-    if (!abandonDraft() || (kind === 'node' && file === null)) return
-    setEditingBusy(true)
-    try {
-      const loaded = kind === 'Bot' ? await loadBotDraft(id) : await loadNodeDraft(file!, id)
-      setDraft({ ...loaded, kind, create: id === null, initialId: loaded.id, initialContent: loaded.content })
-      setBotView(kind === 'Bot')
-    } catch (error) { setEditError(error instanceof Error ? error.message : `${kind} 读取失败。`) }
-    finally { setEditingBusy(false) }
-  }
-
-  async function removeBot() {
-    if (botId === null || editingBusy) return
-    setEditError(null)
-    setEditingBusy(true)
-    try {
-      const target = await checkBotDelete(botId)
-      if (!window.confirm(`确认删除共享 Bot ${target.id}？此操作无法撤销。`)) return
-      const catalog = await deleteBot(target)
-      setBots({ kind: 'ready', ...catalog })
-      setBotId(null)
-    } catch (error) { setEditError(error instanceof Error ? error.message : 'Bot 删除失败。') }
-    finally { setEditingBusy(false) }
-  }
-
-  async function submitDefinition() {
-    if (!draft || editingBusy) return
-    setEditError(null)
-    setEditingBusy(true)
-    try {
-      const value: unknown = JSON.parse(draft.content)
-      if (typeof value === 'object' && value !== null && Object.hasOwn(value, 'id')) throw new Error(`请移除 ${draft.kind} 内容中的顶层 id；使用独立 ${draft.kind} ID。`)
-      const payload = { id: draft.id, content: draft.content, revision: draft.revision }
-      if (draft.kind === 'Bot') {
-        const saved = await saveBot(payload)
-        setBots({ kind: 'ready', ...await listBots() })
-        setBotId(saved.id)
-      } else {
-        await saveNode(file!, { ...payload, create: draft.create })
-        setPreview({ kind: 'ready', map: await loadMap(file!) })
-        setSelectedId(draft.id)
-      }
-      setDraft(null)
-    } catch (error) { setEditError(error instanceof Error ? error.message : `${draft.kind} 保存失败。`) }
-    finally { setEditingBusy(false) }
-  }
-
-  async function returnToMap() {
-    if (!abandonDraft()) return
-    if (botView) setBotView(false)
-    else await refreshMapOnReturn()
-  }
-
-  async function refreshMapOnReturn() {
-    setReturnProblem(null)
-    if (file === null) return
-    setPreview({ kind: 'loading' })
-    try {
-      const current = await loadMap(file)
-      setPreview({ kind: 'ready', map: current })
-      if (selectedId !== null && !Object.hasOwn(current.nodes, selectedId)) {
-        setReturnProblem(`来源 node ${selectedId} 已移除，原选择已失效。`)
-        setSelectedId(null)
-      }
-    } catch (error) {
-      setSelectedId(null)
-      setPreview({ kind: 'error', message: `来源 Map 已失效：${error instanceof Error ? error.message : '读取失败'}` })
+    const element = deleteMapDialog.current
+    if (deleteMapTarget !== null && element !== null) {
+      element.showModal()
+      cancelMapDeletion.current?.focus()
+    } else if (previousDeleteTarget.current !== null && file === null) {
+      setLaunchOpen(false)
+      directoryHeading.current?.focus()
     }
-    try { setBots({ kind: 'ready', ...await listBots() }) }
-    catch (error) { setBots({ kind: 'error', message: error instanceof Error ? error.message : 'Bot 读取失败。' }) }
-  }
-  const [listing, setListing] = useState<Listing>({ kind: 'loading' })
-  const [bots, setBots] = useState<Bots>({ kind: 'loading' })
-  const [revision, setRevision] = useState(0)
-  const [file, setFile] = useState<string | null>(null)
-  const [preview, setPreview] = useState<Preview | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [filter, setFilter] = useState('')
-  const [botId, setBotId] = useState<string | null>(null)
-  const [botFilter, setBotFilter] = useState('')
-  const schedulerRoot = useRef<HTMLElement>(null)
-  const botHeading = useRef<HTMLHeadingElement>(null)
-  const nodeButtons = useRef(new Map<string, HTMLButtonElement>())
-  const previousBotView = useRef(botView)
-
-  useEffect(() => {
-    if (!active) return
-    const returningFromBot = previousBotView.current && !botView
-    previousBotView.current = botView
-    // Outer navigation already checks the draft guard and owns focus.
-    if (returningFromBot) void refreshMapOnReturn()
-  })
-
-  useEffect(() => {
-    if (!active || file === null) return
-    const controller = new AbortController()
-    setPreview({ kind: 'loading' })
-    setSelectedId(null)
-    loadMap(file, controller.signal).then(
-      (map) => { if (!controller.signal.aborted) setPreview({ kind: 'ready', map }) },
-      (error: unknown) => {
-        if (!controller.signal.aborted) setPreview({ kind: 'error', message: error instanceof Error ? error.message : 'Map 读取失败。' })
-      },
-    )
-    return () => controller.abort()
-  }, [active, file, revision])
-
-  useEffect(() => {
-    if (!active) return
-    const controller = new AbortController()
-    setListing({ kind: 'loading' })
-    listMaps(controller.signal).then(
-      (catalog) => { if (!controller.signal.aborted) setListing({ kind: 'ready', ...catalog }) },
-      (error: unknown) => {
-        if (!controller.signal.aborted) setListing({ kind: 'error', message: error instanceof Error ? error.message : 'Map 目录读取失败。' })
-      },
-    )
-    return () => controller.abort()
-  }, [active, revision])
-
-  useEffect(() => {
-    if (!active) return
-    const controller = new AbortController()
-    setBots({ kind: 'loading' })
-    listBots(controller.signal).then(
-      (catalog) => { if (!controller.signal.aborted) setBots({ kind: 'ready', ...catalog }) },
-      (error: unknown) => {
-        if (!controller.signal.aborted) setBots({ kind: 'error', message: error instanceof Error ? error.message : '共享 Bot 目录读取失败。' })
-      },
-    )
-    return () => controller.abort()
-  }, [active, file, revision])
+    previousDeleteTarget.current = deleteMapTarget
+    return () => element?.close()
+  }, [deleteMapTarget, file])
 
   useEffect(() => {
     // Internal Bot links move into their content; outer navigation keeps its own focus.
@@ -275,43 +64,25 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (name === file || !abandonDraft()) return
-    setLaunchOpen(false)
-    setFile(name)
-    setSelectedId(null)
-    setPreview({ kind: 'loading' })
-    setBots({ kind: 'loading' })
+    if (editorState.selectFile(name)) setLaunchOpen(false)
   }
 
   function selectRelatedNode(id: string) {
-    setSelectedId(id)
+    selectNode(id)
     nodeButtons.current.get(id)?.focus()
-  }
-
-  function openBot(id: string | null) {
-    if (!abandonDraft()) return
-    setBotId(id)
-    setBotView(true)
   }
 
   const editor = draft && <form className="scheduler-editor" aria-label={draft.kind === 'node' ? 'node 编辑' : 'Bot 编辑'} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
     <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3>
-    <label>{draft.kind} ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, id: event.target.value })} /></label>
+    <label>{draft.kind} ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>
     <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
     <p>{draft.kind === 'node' ? 'node 必须填写 title、bot_id、字符串 input、字符串 zone 路径和 blocked_by。允许暂未登记的 Bot 或 zone；同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
-    {draft.kind === 'Bot' && <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => setDraft({ ...draft, content })} />}
-    <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
+    {draft.kind === 'Bot' && <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />}
+    <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} />
     <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>{draft.kind === 'Bot' ? 'save' : '保存 node'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>{draft.kind === 'Bot' ? 'cancel' : '放弃编辑'}</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
   </form>
 
-  const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={() => {
-    if (!abandonDraft()) return
-    setSelectedId(null)
-    if (file !== null) setPreview({ kind: 'loading' })
-    setListing({ kind: 'loading' })
-    setBots({ kind: 'loading' })
-    setRevision((value) => value + 1)
-  }}>{botView ? 'refresh' : '刷新全部'}</button>
+  const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={refreshAll}>{botView ? 'refresh' : '刷新全部'}</button>
 
   return <section ref={schedulerRoot} className="scheduler" aria-label="Map 目录">
     {busy && <p role="status">正在读取工作定义……</p>}
@@ -383,11 +154,11 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
             <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
           </>}
-          <button type="button" disabled={editingBusy || deletingMap} onClick={() => { setDeleteMapError(null); setDeleteMapTarget(file) }}>删除 Map</button>
+          <button type="button" disabled={editingBusy || deletingMap} onClick={requestMapDeletion}>删除 Map</button>
         </div>}
         {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
           onClose={() => { setLaunchOpen(false); void returnToMap() }}
-          onNode={(id) => { setSelectedId(id); void beginEdit(id, 'node') }}
+          onNode={(id) => { selectNode(id); void beginEdit(id, 'node') }}
           onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
           onTask={onTask} onZones={onZones} /></div>}
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
@@ -395,7 +166,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览">
           <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
-          <MapGraph map={map} selectedId={selectedId} onSelect={setSelectedId} botProblems={botProblems} />
+          <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">
               <section aria-label="节点列表">
@@ -405,7 +176,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
                 const node = map.nodes[id]
                 return <li key={id}>
                 <button type="button" ref={(element) => { if (element) nodeButtons.current.set(id, element); else nodeButtons.current.delete(id) }}
-                  aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} onClick={() => setSelectedId(id)}>
+                  aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} onClick={() => selectNode(id)}>
                   <span className="scheduler-node-id">{id}</span><span className="scheduler-node-summary"><strong>{node.title}</strong>
                     <span>{node.blocked_by.length === 0 ? '无前置依赖' : `前置：${node.blocked_by.map((parent) => `${map.nodes[parent].title} · ${parent}`).join('、')}`}</span>
                     <span>Bot：{node.bot_id}</span>{botProblems[id] && <span className="scheduler-node-warning">{botProblems[id]}</span>}
@@ -418,7 +189,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
               {selectedId !== null && Object.hasOwn(map.nodes, selectedId) ? <>
                 <div className="scheduler-inspector-heading"><span>节点详情</span><button type="button" aria-label="关闭节点详情" onClick={() => {
                   nodeButtons.current.get(selectedId)?.focus()
-                  setSelectedId(null)
+                  selectNode(null)
                 }}>关闭</button></div>
                 {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}

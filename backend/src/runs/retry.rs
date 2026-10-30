@@ -1,6 +1,6 @@
 //! Retry is a new execution, never recovery or rollback of an earlier Chat.
 use super::*;
-use super::completion::rejection;
+use super::operation::rejection;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
