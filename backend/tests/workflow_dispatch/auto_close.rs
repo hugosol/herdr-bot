@@ -1,4 +1,6 @@
 //! Approved S2/S3: real workflow HTTP and production CLI transport to an owned host.
+#[path = "completion_commit.rs"]
+mod completion_commit;
 use super::*;
 
 async fn set_auto_close(s: &Scenario, node: &str, enabled: bool) {

@@ -53,6 +53,26 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
+## 真实 Herdr 自动关闭验收（P22）
+
+`python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端：
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+python scripts/test-real-herdr-close.py `
+  --herdr 'C:\path\to\herdr.exe' `
+  --backend 'backend/target/debug/herdr-bot.exe' `
+  --pi-package 'C:\path\to\node_modules\@earendil-works\pi-coding-agent' `
+  --pi-state-extension 'C:\path\to\herdr-agent-state.ts' `
+  --toolkit 'C:\path\to\my-agent-toolkit'
+```
+
+入口创建独占 Temp 根目录，清除继承的 Herdr 定位及模型凭证环境，显式隔离 HOME、APPDATA、XDG 配置/状态、Pi 原生存储、命名 Herdr server 和后端持久数据；不连接现有 Herdr，不读取用户 Chat。真实 toolkit 的角色入口及配置复制到临时目录，只修改副本的后端地址；官方 Pi Herdr 状态扩展使用显式只读路径。模型使用数值回环的确定响应服务，不访问真实模型或使用真实密钥。后端仅监听动态回环端口，关闭 mDNS。
+
+验收通过真实发起 Run、manager dispatch 和 complete HTTP 路径触发自动关闭，绝不以直接 `tab close` 替代。先记录同一 Workspace 的专属保留 Tab、目标执行 Tab、其分割 pane 中实际存活的受控 Python 进程及原生 Chat 内容。之后独立查询 Herdr Tab 列表、持有 Windows 进程句柄确认进程退出，并使用已安装 Pi 的 `SessionManager.open(...).getBranch()` 再次取得原生 user/assistant 历史；不以历史列表登记或 completed 状态冒充效果，不把历史读取当作重新派发。保留 Tab 避免关闭最后一个 Tab 清空 Workspace，不强制确认，不承诺清理已脱离会话的 daemon。
+
+stdout 返回 `evidence.json` 路径和真实结果；该文件包含命令原始输出、HTTP 响应、前后身份、存活及历史内容/哈希。Herdr/后端 stdout 与 stderr 持续消费并保存独立日志。成功或失败均停止且确认测试拥有的 server/子进程，原始错误与清理错误分别保留；Temp 数据保留供证据核对，不删除用户资源。缺失依赖、额外确认、目标仍在、进程仍活、原生历史不可读等均返回非零，不跳过且不算通过。文档仅说明入口，实际通过/失败以执行日志为准；本入口只验收 P22，不代表 P1–P21 已通过。
+
 ## softlink（符号链接）手动验收
 
 真实文件／目录符号链接检查默认关闭，只有显式设置 `HERDR_BOT_MANUAL_SYMLINKS=1` 才尝试创建。普通浏览器回归明确报告 manual-only 跳过；后端 zone 浏览／diff 的混合边界测试仍检查路径穿越和 junction，只跳过其中的符号链接部分，不调用 WSL 创建链接。即使当前终端已有管理员权限，未设置开关也不会自动运行符号链接检查。
