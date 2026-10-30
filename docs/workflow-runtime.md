@@ -231,6 +231,8 @@ Map node 的 `auto_close` 缺省为 `false`；dispatch/retry 读取派发时的�
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 通过真实 HTTP 和隔离 Herdr 命令副本核对 Map 双向修改、旧记录、权限及完成资格、当前执行精确目标、重复调用、工作中完成及非阻塞顺序。关闭 gate 在释放前保持命令未返回，测试先观察 complete 响应与同 Run 依赖节点真实派发，再释放并确认返回；10 秒有界等待仅防挂死，不是业务速度承诺。负向检查窗口为 150 ms；受控命令记录不证明真实 Herdr 的 Tab 移除或进程终止，真实外部效果需另行专属资源验收。
 
+P11/P12 的保存边界与去重检查位于 `auto_close::completion_commit`：使用独占临时数据和真实 Windows 文件访问限制，分别阻止当前事实替换与历史追加；从 complete 响应、独立详情读取、原始文件及实际 `tab close` 命令记录联合核对未提交不关闭、历史失败仍关闭并保留部分生效反馈。顺序重复应保留首次完成 ID、说明和历史；并发场景先用同 Run 真实派发的外部 gate 占住业务操作边界，再同时提交两个 complete 并确认两者均未返回，释放派发后核对只提交一份完成事实、只尝试一次关闭。关闭自身也可被 gate 挂起，不能阻止重复请求返回。负向命令观察窗口为 200 ms，不代表跨崩溃 exactly-once、持久投递或真实 Herdr 效果保证。
+
 ### 结束 Run
 
 全部节点 completed 后，管理者显式结束本次 Run：
