@@ -34,6 +34,8 @@
 | finished | `id`、`at`、真实管理者 `actor` Chat 引用；重复 finish 不覆盖。 |
 | report | `id`、`type=report`、`at`、`runId`、`nodeId`、`executionId`、真实 `source`/`target` Chat 引用、`body`；只在 messages.jsonl 追加，不包含已读或投递成功事实。 |
 
+管理者、node 与 retry 的共同启动阶段统一为 `workspace`、`tab`、`start`、`identity`、`association`、`history`、`submit`；管理者另有记录初始化阶段 `initialize`，node 另有定义解析阶段 `resolve` 与提交运行状态阶段 `state`。其中 `history` 指提交首次指示前写入 **Chat 历史会话列表**，不是追加 Run 的 `history.jsonl`。管理者在此失败也返回 `stage=history`（不再归入 `association`）；已保存的真实关联和 `associationSaved=true` 保留，`inputAttempted/inputSubmitted=false`，不会提交首次指示。node 与 retry 同样保留关联和失败事实；retry 不覆盖旧执行。Run 执行历史追加失败仍使用既有 `historyError`／部分生效反馈，不等同于这个启动阶段。
+
 `history.jsonl` 保存按动作追加的执行/状态事实，不是重放协议：公共说明为操作 `id/at/actor/action`、目标 `nodeId`（节点动作）、`before/after`、说明 `reason` 及相关执行/失败引用。不同动作按需带 `execution`、`failure`、`previousExecution/previousFailure`、核实 `finding` 等；不要求所有事件有全部字段，不用历史字段缺席反推当前状态。具体 complete/fail/recover/retry/reconcile_dispatch/pause/resume/finish 的内容见对应章节。通知代次、collect 检查位置、managed、readError 和 manager startupError 都不是第四份持久业务记录。
 
 当前事实读取以 `run.json` 为准，`reports` 为全部追加报告，`pendingReports` 为 node ID → 当前适用报告 ID。status/动作使用 `snapshot` 而非详情的 `run` 字段；collect 不带报告正文。HTTP 成功码不能掩盖 `historyError` 或逐项失败，错误码、已生效字段和已发生效果必须一起解释，见[部分提交](#独立读取与部分提交)。

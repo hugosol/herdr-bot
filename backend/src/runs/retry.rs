@@ -49,7 +49,7 @@ pub async fn manager_retry(
         if !input.confirmed || input.reason.trim().is_empty() {
             return rejection(&state, &run, "retry-confirmation-required", "请先由人工核实原 Chat 与副作用，确认需要独立新执行并说明依据；retry 不撤销旧副作用。").await;
         }
-        let result = dispatch_one(&state, &mut run, &input.node_id, Some(&input.reason)).await;
+        let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason)).await;
         let mut response = snapshot(&state, &run, true).await?;
         response["result"] = result;
         Ok(Json(response).into_response())

@@ -18,6 +18,7 @@ use tokio::sync::Mutex;
 mod reports;
 mod recovery;
 mod retry;
+mod startup;
 pub use retry::manager_retry;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
@@ -469,25 +470,11 @@ pub async fn start_run(
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
     let owned = state.clone();
-    let result = tokio::spawn(async move { launch(&owned, run, task, preset).await }).await;
+    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset).await }).await;
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
-        let paths = Runs::paths(&state, &id);
-        let owned = state.clone();
-        let retained_id = id.clone();
-        if let Err(message) = state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
-            if owned.runs.ensure_retained(&retained_id).await.is_ok() {
-                owned.runs.active.lock().await.insert(
-                    retained_id,
-                    Some(StartupFailure {
-                        stage: "internal".into(),
-                        message: join.to_string(),
-                        effects: Some(Effects::default()),
-                    }),
-                );
-            }
-        })).await {
-            return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message.to_string());
+        if let Err(message) = startup::manager_interrupted(&state, &id, join).await {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message);
         }
     }
     match detail(&state, &id).await {
@@ -506,165 +493,6 @@ pub async fn start_run(
             &message,
         ),
     }
-}
-async fn launch(
-    state: &AppState,
-    mut run: Run,
-    task: crate::tasks::Task,
-    preset: crate::tasks::catalog::ResolvedPreset,
-) -> Result<(), ()> {
-    let mut effects = Effects::default();
-    let mut stage = "initialize";
-    let result: Result<(), String> = async {
-        let paths = Runs::paths(state, &run.id);
-        {
-            let owned = state.clone();
-            let initial = run.clone();
-            let initial_paths = paths.clone();
-            state.runs.files.with_async(&[paths[0].parent().unwrap().to_path_buf()], move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&initial.id).await?;
-                access.create_dir_all(initial_paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
-                access.create(&initial_paths[0], &serde_json::to_vec_pretty(&initial).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-                access.create(&initial_paths[1], b"").map_err(|e| e.to_string())?;
-                access.create(&initial_paths[2], b"").map_err(|e| e.to_string())?;
-                Ok::<_, String>(())
-            })).await.map_err(|e| e.to_string())??;
-        }
-        effects.records_initialized = true;
-        stage = "workspace";
-        let workspace = state
-            .herdr
-            .workspace(&run.workspace_name)
-            .await
-            .map_err(|e| e.message())?;
-        effects.workspace_id = Some(workspace.id.clone());
-        let name = crate::chats::render_chat_name(
-            &task.chat_name,
-            &run.zone,
-            &task,
-            &crate::chats::new_chat_id(),
-        );
-        stage = "tab";
-        let tab = state
-            .herdr
-            .create_tab(&workspace.id, Some(&run.zone), &name)
-            .await
-            .map_err(|e| e.message())?;
-        effects.tab_id = Some(tab.tab_id.clone());
-        effects.pane_id = Some(tab.pane_id.clone());
-        let agent = crate::chats::new_agent_name();
-        effects.agent_name = Some(agent.clone());
-        stage = "start";
-        state
-            .herdr
-            .start_agent(
-                &agent,
-                task.agent.label(),
-                &tab.pane_id,
-                &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger)),
-            )
-            .await
-            .map_err(|e| e.message())?;
-        effects.agent_started = true;
-        stage = "identity";
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        let identity = tokio::time::timeout_at(
-            deadline,
-            state.herdr.started_session(&agent, task.agent.label(), deadline),
-        )
-        .await
-        .map_err(|_| "获取原生身份超时".to_owned())?
-        .map_err(|e| e.message())?;
-        effects.session_id = Some(identity.session_id.clone());
-        run.manager = Some(ChatReference {
-            session_id: identity.session_id.clone(),
-            workspace_id: workspace.id.clone(),
-            tab_id: tab.tab_id,
-            pane_id: tab.pane_id,
-            agent_name: agent.clone(),
-        });
-        stage = "association";
-        {
-            // Startup holds its pre-host-call snapshot; serialize this late write
-            // with renames and retain any name saved while identity was pending.
-            let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
-            let _operation = lock.lock().await;
-            let owned = state.clone();
-            let mut associated = run.clone();
-            let association_paths = paths.clone();
-            run = state.runs.files.with_async(&paths, move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&associated.id).await?;
-                associated.name = access.read_json::<Run>(&association_paths[0])?.name;
-                access.replace(&association_paths[0], &serde_json::to_vec_pretty(&associated).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-                Ok::<_, String>(associated)
-            })).await.map_err(|e| e.to_string())??;
-        }
-        effects.association_saved = true;
-        state
-            .history
-            .record_zone(
-                &identity.session_id,
-                &name,
-                task.agent.label(),
-                &identity.cwd,
-                identity.session_file.as_deref(),
-                Some(&workspace.id),
-                &task.id,
-                identity.startup_identity_path.as_deref(),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        stage = "submit";
-        let mut input = format!(
-            "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}",
-            run.id,
-            state.map_directory.join(&run.map).display(),
-            state.run_instructions.display(),
-            paths[0].display(),
-            paths[1].display(),
-            paths[2].display()
-        );
-        if !run.user_input.is_empty() {
-            input.push_str("\n\n");
-            input.push_str(&run.user_input);
-        }
-        let text = crate::chats::compose_initial_input(
-            &task,
-            preset.trigger.native_skill.as_deref(),
-            &input,
-        );
-        effects.input_attempted = true;
-        state
-            .herdr
-            .prompt(&agent, &text)
-            .await
-            .map_err(|e| e.message())?;
-        effects.input_submitted = true;
-        Ok(())
-    }
-    .await;
-    if let Err(message) = result {
-        eprintln!(
-            "[workflow] run={} manager-start stage={} effects={} error={}；已发生的外部效果未回滚，不自动重试。",
-            run.id,
-            stage,
-            serde_json::to_string(&effects).unwrap_or_default(),
-            message
-        );
-        let paths = Runs::paths(state, &run.id);
-        let owned = state.clone();
-        let stage = stage.to_owned();
-        state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
-            if owned.runs.ensure_retained(&run.id).await.is_ok() {
-                owned.runs.active.lock().await.insert(
-                    run.id,
-                    Some(StartupFailure { stage, message, effects: Some(effects) }),
-                );
-            }
-        })).await.map_err(|_| ())?;
-        return Err(());
-    }
-    Ok(())
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -822,7 +650,7 @@ pub async fn manager_dispatch(
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            results.push(dispatch_one(&state, &mut run, &id, None).await);
+            results.push(startup::node(&state, &mut run, &id, None).await);
         }
         let mut response = snapshot(&state, &run, true).await?;
         response["results"] = serde_json::Value::Array(results);
@@ -847,114 +675,3 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     })).await.map_err(|e| e.to_string())?
 }
 
-async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Option<&str>) -> Result<(), String> {
-    let paths = Runs::paths(state, &run.id);
-    let node = &run.nodes[id];
-    let mut entry = serde_json::json!({"at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"action":"dispatch","nodeId":id,"status":node.status,"execution":node.execution,"failure":node.failure});
-    if let Some(reason) = retry_reason {
-        entry["action"] = serde_json::json!("retry");
-        entry["reason"] = serde_json::json!(reason);
-        entry["actor"] = serde_json::json!(run.manager);
-        if let Some(previous) = node.previous_executions.last() {
-            entry["previousExecution"] = serde_json::json!(previous.execution);
-            entry["previousFailure"] = serde_json::json!(previous.failure);
-        }
-    }
-    let owned = state.clone();
-    let run_id = run.id.clone();
-    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-        owned.runs.ensure_retained(&run_id).await?;
-        access.append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &entry)
-    })).await.map_err(|e| e.to_string())?
-}
-
-async fn dispatch_one(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>) -> serde_json::Value {
-    let mut effects = Effects { records_initialized: true, ..Effects::default() };
-    let mut stage = "resolve";
-    let mut candidate = run.clone();
-    if retry_reason.is_some() {
-        let node = candidate.nodes.get_mut(id).unwrap();
-        node.previous_executions.push(ExecutionFact { execution: node.execution.take(), failure: node.failure.take() });
-        node.completion = None;
-    }
-    let result: Result<(), String> = async {
-        let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
-        let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, chat: None });
-        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
-        preset.env.check_entrypoints()?;
-        stage = "workspace";
-        let workspace_id = &run.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;
-        let workspace = state.herdr.workspace_by_id(workspace_id).await.map_err(|e| e.message())?.ok_or("管理者实际 Workspace 不可用；不回退默认 Workspace")?;
-        effects.workspace_id = Some(workspace.id.clone());
-        stage = "tab";
-        let name = crate::chats::render_chat_name(&target.task.chat_name, &target.zone, &target.task, &crate::chats::new_chat_id());
-        let tab = state.herdr.create_tab(&workspace.id, Some(&target.zone), &name).await.map_err(|e| e.message())?;
-        effects.tab_id = Some(tab.tab_id.clone());
-        effects.pane_id = Some(tab.pane_id.clone());
-        let agent = crate::chats::new_agent_name();
-        effects.agent_name = Some(agent.clone());
-        stage = "start";
-        state.herdr.start_agent(&agent, target.task.agent.label(), &tab.pane_id, &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger))).await.map_err(|e| e.message())?;
-        effects.agent_started = true;
-        stage = "identity";
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        let identity = tokio::time::timeout_at(deadline, state.herdr.started_session(&agent, target.task.agent.label(), deadline)).await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
-        effects.session_id = Some(identity.session_id.clone());
-        if run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id) || run.nodes.values().any(|node| node.executions().any(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
-            return Err("宿主未返回独立的新原生 Chat 身份".into());
-        }
-        if !crate::zones::same_path(&identity.cwd, &target.zone) {
-            return Err(format!("原生 Chat cwd 与定义 zone 不一致：{}", identity.cwd));
-        }
-        node.execution.as_mut().unwrap().chat = Some(ChatReference { session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(), tab_id: tab.tab_id, pane_id: tab.pane_id, agent_name: agent.clone() });
-        stage = "association";
-        save_run(state, &candidate).await?;
-        *run = candidate.clone();
-        effects.association_saved = true;
-        stage = "history";
-        state.history.record_zone(&identity.session_id, &name, target.task.agent.label(), &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &target.task.id, identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
-        stage = "submit";
-        let paths = Runs::paths(state, &run.id);
-        let input = format!("Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}", target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(), paths[2].display(), target.report_policy.control_section(), target.input);
-        let text = crate::chats::compose_initial_input(&target.task, preset.trigger.native_skill.as_deref(), &input);
-        effects.input_attempted = true;
-        state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
-        effects.input_submitted = true;
-        candidate.nodes.get_mut(id).unwrap().status = "running".into();
-        stage = "state";
-        save_run(state, &candidate).await?;
-        Ok(())
-    }.await;
-    if let Err(message) = result {
-        let failure = StartupFailure { stage: stage.into(), message, effects: Some(effects.clone()) };
-        let node = candidate.nodes.get_mut(id).unwrap();
-        if retry_reason.is_some() && node.execution.is_none() {
-            // Resolution failed before a target was usable. Retain a distinct
-            // attempt referencing the failed source, never the old Chat.
-            node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), chat: None,
-            });
-        }
-        node.status = "failed".into();
-        node.failure = Some(failure.clone());
-        let execution = serde_json::json!(node.execution);
-        let persistence_error = save_run(state, &candidate).await.err();
-        let history_error = if persistence_error.is_none() {
-            *run = candidate;
-            record_dispatch(state, run, id, retry_reason).await.err()
-        } else { None };
-        eprintln!("[workflow] run={} node={} action={} execution={} stage={} effects={} error={} persistence-error={:?} history-error={:?}；已发生外部效果未回滚，不自动重试。", run.id, id, if retry_reason.is_some() { "retry-failed" } else { "dispatch-failed" }, execution, stage, serde_json::to_string(&effects).unwrap_or_default(), failure.message, persistence_error, history_error);
-        let mut value = serde_json::json!({"nodeId":id,"status":"failed","execution":execution,"failure":failure,"effects":effects,"persistenceError":persistence_error});
-        operation::history_feedback(&mut value, history_error);
-        return value;
-    }
-    *run = candidate;
-    let history_error = record_dispatch(state, run, id, retry_reason).await.err();
-    if let Some(message) = &history_error {
-        eprintln!("[workflow] run={} node={} dispatch-history error={}；状态已提交，未回滚。", run.id, id, message);
-    }
-    let mut value = serde_json::json!({"nodeId":id,"status":"running","effects":effects});
-    operation::history_feedback(&mut value, history_error);
-    value
-}
