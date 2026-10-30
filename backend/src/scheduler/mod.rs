@@ -59,6 +59,8 @@ struct MapNode {
     input: String,
     #[serde(default)]
     report_policy: ReportPolicy,
+    #[serde(default)]
+    auto_close: bool,
     zone: String,
     blocked_by: Vec<String>,
 }
@@ -740,6 +742,7 @@ pub async fn new_node(
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
         let mut content = example["nodes"]["A"].take();
         content["report_policy"] = serde_json::json!(ReportPolicy::default());
+        content["auto_close"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
         Ok(Ok(value)) => Json(value).into_response(),
