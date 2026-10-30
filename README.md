@@ -31,6 +31,34 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 `http://herdr-bot.local:<端口>/`，无法解析时使用服务主机的局域网 IPv4。
 手机上的 `127.0.0.1` 指向手机自身。
 
+## 定义数据与运行数据
+
+Task、Bot、Map 是可复用的定义数据，可在页面中编辑，也可手工维护和纳入 Git；不是每次执行产生的运行事实。仓库配置显式使用以下相对路径，均以**服务进程工作目录**为基准，修改配置后须重启：
+
+```toml
+[tasks]
+storage_file = 'meta-data/tasks.json'
+metadata_file = 'meta-data/task-options.toml'
+
+[scheduler]
+map_directory = 'meta-data/workflow-maps'
+bot_directory = 'meta-data/bots'
+run_directory = '.data/workflow-runs'
+```
+
+省略字段时默认路径与上述相同。Run、Chat 历史、zone 登记仍属于 `.data`；Map 内每个 node 保存的具体 zone 路径、Task/Bot 引用及执行语义均不改变。定义可能包含本机路径、固定指示和业务内容，允许 Git 跟踪不代表适合公开提交，程序不会自动提交。
+
+### 从旧定义布局升级
+
+修改代码或配置本身不会搬动正在使用的数据。先停止旧服务并备份数据，再从原工作目录启动新版本；不要让旧、新服务同时写入这组定义。配置指向上述新默认位置时，启动会一次性将 `.data/tasks.json`、`.data/bots/`、`.data/workflow-maps/` 复制到对应新位置，保留所有原始字节、目录内容及旧源；不会迁移其他运行数据。显式配置的其他路径继续有效，不自动导入旧默认目录。
+
+- 所有待迁项目先检查冲突：新旧同时存在时，完整内容必须一致；缺少或多出文件也算目录冲突，不自动合并。冲突、链接／junction、异常文件类型或 I/O 错误都会明确终止启动，不当作空数据继续。
+- 成功切换分别记录在 `.data/.definition-layout-v1-tasks`、`-bots`、`-maps`。此后只读写配置的新位置；旧源只是备份，新数据修改或删除后不会从旧源回灌。不要删除这些标记来尝试刷新定义。
+- 若报冲突，保持停服，备份并人工确认唯一权威版本，使目标与旧源完全一致或将冲突目标移到其他备份位置，再重启；不要盲目覆盖任一份数据。
+- 不提供跨文件事务。中途 I/O 失败可能留下已完整复制的项目；保留现场并排除错误后重启，完整一致的项目可确认切换，不覆盖现有内容。
+
+升级后核对 task、bot、scheduler 列表。原生 agent 会话、Run 历史和 UI 入口不受这次布局调整影响。
+
 ## 安全边界
 
 **没有账号或身份验证，只应在可信局域网使用，不要暴露到公网。**
@@ -70,6 +98,6 @@ Run 专用 Chat 启动集中在 `backend/src/runs/startup.rs`：管理者启动�
 
 跨模块引用指向实际所属文件，不通过旧路径兼容转发。前端全局样式暂集中在 `app/styles.css`；后端 `runs.rs` 与同名目录共同构成一个 Rust 模块。目录归类不改变 Task、Chat、Map、Run 的含义或执行时序。
 
-系统持久数据的读写、枚举、删除，以及产品代码直接执行的文件变更统一经过 `files.rs`。普通 JSON 读改存与条件发布使用常用操作；复合操作通过 `FileStore::with`／`with_async` 的受限访问对象完成，不能嵌套取得协调范围，也不能在范围内调用 Herdr／Git 等外部操作。目录与后代文件重叠协调，不相关的数据仍独立推进；调用者保留业务规则及 Run 操作锁，不持有原生文件锁。文件格式、路径及部分生效语义不变，不提供跨文件事务或自动修复；适用范围和取舍见 [ADR 0016](docs/adr/0016-unified-file-persistence.md)。
+系统持久数据的读写、枚举、删除，以及产品代码直接执行的文件变更统一经过 `files.rs`。普通 JSON 读改存与条件发布使用常用操作；复合操作通过 `FileStore::with`／`with_async` 的受限访问对象完成，不能嵌套取得协调范围，也不能在范围内调用 Herdr／Git 等外部操作。目录与后代文件重叠协调，不相关的数据仍独立推进；调用者保留业务规则及 Run 操作锁，不持有原生文件锁。统一文件入口不改变文件格式及部分生效语义，定义路径按上文单独切换，不提供跨文件事务或自动修复；适用范围和取舍见 [ADR 0016](docs/adr/0016-unified-file-persistence.md)。
 
 测试继续位于 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/`，不随源码迁移；执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。

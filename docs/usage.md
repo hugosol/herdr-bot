@@ -57,31 +57,15 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但从持久 Run 中的原 Chat 执行关联恢复节点角色，包含 retry 前保留的旧执行；不新建执行、不重放 trigger config。独立普通 Chat 不因此获得节点角色。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
 
-### 节点 Task 合并的一次性迁移
+### 数据格式要求
 
-升级到仅有 `normal / manager` 的版本前，先停止 herdr-bot，并备份实际配置与数据。在仓库根目录执行（两个参数均须显式给出，替换为服务的真实进程工作目录与配置文件）：
+不再提供旧格式手动迁移工具，请使用当前数据格式。Task 必须显式包含 `taskType: "normal"` 或 `"manager"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
 
-```powershell
-python scripts/migrate-node-tasks-to-normal.py --root 'E:\实际服务工作目录' --config 'herdr-bot.toml'
-```
-
-工具只将已有 `taskType: "node"` 原地改为 `"normal"`，omp、pi 一致；保留 Task ID、全部其他配置及重复预设，不自动去重，不改 Bot、Map、Run、历史 Chat 或原生会话的引用。原始 Task 文件按字节备份为同路径 `.pre-node-tasks-to-normal`，再次执行已转换文件不写入。路径重叠、链接、残留 staging 或冲突备份会明确拒绝，不覆盖已有数据。
-
-新版不接受 `node` Task 类型，也不在运行时自动迁移。使用自定义 `tasks.metadata_file` 时，同步移除扩展条目中的 `taskType` 适用配置，保留上述稳定角色 ID、对应 agent、`kind = 'fixed'` 及真实入口路径；数据迁移工具不改写元数据文件。完成后再启动服务，核对 Task 列表及原 Bot 绑定；节点执行身份与既有 Chat 的恢复语义不因 Task 分类转换而改变。若数据还没有 `taskType` 字段，先执行下节的历史分类迁移，再执行本节合并迁移。
-
-### 旧 Task 显式迁移
-
-升级前停止 herdr-bot，备份实际配置与数据，再在仓库根目录执行（路径替换为服务的真实工作目录与配置文件）：
-
-```powershell
-python scripts/migrate-task-types.py --root 'E:\path\to\server-cwd' --config 'E:\path\to\herdr-bot.toml'
-```
-
-工具按配置解析 Task 与历史路径，为每个未分类旧 Task 显式写入 `taskType: "normal"`，不根据名称、prompt 或扩展猜测角色。ID、显示名、chat-name、agent、model、thinking、初始 Skill、prompt 和全部可选扩展保持原值；历史 Chat 的来源 Task、备忘、cwd、Workspace 及原生文件完全不改写。原 Task 文件保留为同路径 `.pre-task-types` 备份；重复执行已迁移文件不写入。备份冲突、残留 staging、路径重叠、非法结构或链接路径会拒绝迁移，不覆盖正式文件。更早的 Bot→Task 更名必须先完成。
-
-升级后未迁移的 Task 文件会明确报 `tasks-corrupt`，不会在运行时自动补类型。迁移成功后重启服务，从 task 列表核对完整预设，再在历史 Chat 使用 Resume；Resume 读取来源 Task 最新环境，不重放任何 trigger config。若要恢复备份，先停服并保留失败现场，再由操作者将备份还原；旧文件只能由旧版本读取，不能作为新版本的缺省兼容路径。
+使用自定义 `tasks.metadata_file` 时，扩展条目不应包含 `taskType` 适用配置；固定角色保留上述稳定角色 ID、对应 agent、`kind = 'fixed'` 及真实入口路径。节点执行身份与既有 Chat 的恢复语义不因 Task 分类而改变。
 
 ## Task 配置与原生存储
+
+Task 预设默认保存于 `meta-data/tasks.json`，选项目录仍为 `meta-data/task-options.toml`；均可通过配置指定其他路径。Task、Bot、Map 作为定义数据允许纳入 Git，页面编辑会修改这些文件；旧数据切换与冲突处理见 [定义布局升级](../README.md#从旧定义布局升级)。
 
 Task 配置分为两组：
 

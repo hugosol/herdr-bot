@@ -1,0 +1,8 @@
+{
+  "id": "tibo-monitor",
+  "name": "Tibo 额度重置观察",
+  "when": "需要根据 codex-reset.com 的公开信息估计额度重置时间时。",
+  "plan_guide": "安排公开信息查询，区分网站观察、估计与不确定性；不登录账户，不承诺实际重置时间。",
+  "node_guide": "访问 https://codex-reset.com/，总结可能距离额度重置还有多久，注明观察时间、依据与不确定性。无法访问或信息不足时如实报告，不编造查询结果。",
+  "task_id": "tpl-18e0ceac0a89f9bc-0"
+}

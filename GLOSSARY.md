@@ -112,6 +112,10 @@ _Avoid_: 主界面, 管理后台, 仪表盘
 
 ## scheduler 与工作定义
 
+**定义数据（meta-data）**:
+可重复用于发起对话或组织流程的定义，包括 Task 预设、Task 选项目录、Bot 能力定义和 Map 工作定义；可由用户手工维护或通过主界面编辑，不包含 Run 运行事实、Chat 历史或 zone 登记。
+_Avoid_: 运行数据, 仅手工维护的数据
+
 **bot 入口**:
 主界面管理跨 Map 共享的 Bot 能力定义的入口，与 scheduler 中的 Bot 关联访问指向同一组定义；不是 Task 预设或运行中的 agent 列表。
 _Avoid_: Task 列表, agent 列表, Bot 执行器

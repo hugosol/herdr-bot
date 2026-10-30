@@ -16,8 +16,8 @@ const plan = { title: 'Bot 问题隔离计划', description: '', nodes: {
 
 async function prepare() {
   server = await startServer({ herdr: {} })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'plan.json'), JSON.stringify(plan))

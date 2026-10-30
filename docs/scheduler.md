@@ -96,12 +96,12 @@ HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `m
 
 ## 目录与定义管理
 
-进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。配置可独立省略：
+进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。Map 与共享 Bot 属于定义数据，允许纳入 Git，UI 编辑会修改对应文件；node 内保存的 zone 路径仍是具体执行目录引用。旧 `.data` 定义在启动时一次性迁入，冲突拒绝且保留旧源，详见 [定义布局升级](../README.md#从旧定义布局升级)。配置可独立省略：
 
 ```toml
 [scheduler]
-map_directory = '.data/workflow-maps'
-bot_directory = '.data/bots'
+map_directory = 'meta-data/workflow-maps'
+bot_directory = 'meta-data/bots'
 ```
 
 默认值如上；相对路径按**服务进程 cwd** 而非配置文件目录解析，绝对路径也可用。首次读取创建缺失目录及父目录，保留已有文件，不安装示例。只扫描直接包含的 JSON 文件（后缀不分大小写），不递归。配置改变需重启，文件内容改变可“刷新全部”。目录创建／读取失败与正常空态分开报告。

@@ -181,8 +181,8 @@ test('Bot return @time-contract cannot restore its old Map after another Map is 
 })
 
 function files() {
-  const maps = path.join(server!.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server!.cwd, '.data', 'bots')
+  const maps = path.join(server!.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server!.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   return { map: path.join(maps, 'current.json'), bot: path.join(bots, 'capability.json'), maps }

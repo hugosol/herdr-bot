@@ -8,8 +8,8 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 
 async function prepare() {
   server = await startServer({ herdr: {} })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({ title: '并行、汇合与独立工作', description: 'A、B 汇合到 C；D 独立。', nodes: {
@@ -155,7 +155,7 @@ test('filtering to no matches preserves the current Map and selected node withou
 
 test('list graph and prerequisite navigation share selection and Map changes reset reading state', async ({ page }) => {
   const running = await prepare()
-  fs.writeFileSync(path.join(running.cwd, '.data', 'workflow-maps', 'other.json'), JSON.stringify({ title: '另一计划', description: '', nodes: {
+  fs.writeFileSync(path.join(running.cwd, 'meta-data', 'workflow-maps', 'other.json'), JSON.stringify({ title: '另一计划', description: '', nodes: {
     X: { title: '其他工作', bot_id: 'shared', input: JSON.stringify({ city: '广州' }), zone: 'unregistered-zone', blocked_by: [] },
   } }))
   await page.goto(`${running.baseURL}?layout=expanded`)

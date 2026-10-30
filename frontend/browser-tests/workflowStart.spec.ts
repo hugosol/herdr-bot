@@ -21,7 +21,7 @@ async function fixture() {
     expect(response.status).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }
-  const maps = path.join(server.cwd, '.data/workflow-maps'), bots = path.join(server.cwd, '.data/bots')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'launch.json'), JSON.stringify({ title: '启动图', description: '', nodes: { A: { title: 'A', bot_id: 'worker', input: 'NODE ONLY', zone, blocked_by: [] } } }))
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
@@ -35,7 +35,7 @@ async function fixture() {
 // Keep report/collect and every mutation real; only the external host is controlled.
 test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tools @time-contract', async ({ page }, info) => {
   const { server, zone, ids } = await fixture()
-  const mapPath = path.join(server.cwd, '.data/workflow-maps/launch.json')
+  const mapPath = path.join(server.cwd, 'meta-data/workflow-maps/launch.json')
   const map = JSON.parse(fs.readFileSync(mapPath, 'utf8'))
   map.nodes.B = { ...map.nodes.A, title: 'B' }
   map.nodes.C = { ...map.nodes.A, title: 'C' }

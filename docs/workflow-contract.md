@@ -31,7 +31,7 @@
 
 Run 仅有 running、paused、completed；node 仅有 pending、running、failed、completed。ready、blocked 和 canFinish 从当前事实与当前定义派生，不保存第二套生命周期。completed 表示结果可交接并满足依赖，不表示 Chat 退出。详细准入见[批准动作矩阵](workflow-runtime.md#角色责任与批准动作矩阵)。
 
-- 启动整图预检必须通过；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持唯一新格式；旧 Task 显式一次迁移为 normal 并保留全部配置与历史来源，不做运行时兼容或角色猜测。
+- 启动整图预检必须通过；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；不再提供旧格式手动迁移工具，不做运行时兼容或角色猜测。
 - 三份记录先初始化，真实 Chat 身份关联保存后才提交初始指示。每次派发/retry 是独立原生 Chat，不以新 Tab 证明隔离。用户确认 omp 未开 autoResume；不改原生存储目录。
 - Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 不自动获得它、Bot 文档或整张 Map。所有必要路径由环境保证可读，不新增服务端可读性门禁。
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
@@ -57,7 +57,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P3 | 内部合法、外部 Bot/Task/zone 未完善仍能保存，不补绑定。 | [保存边界](scheduler.md#保存与校验边界) |
 | P4 | 未知字段、错类型、漏字段、非法依赖或环拒绝且保留原定义。 | [保存边界](scheduler.md#保存与校验边界) |
 | P5 | Task 类型仅 normal/manager；普通 Task 可独立发起及节点派发，节点固定扩展由执行上下文强制选择，角色支持 omp/pi、不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
-| P6 | 显式 Task 迁移保留身份、完整配置与 Chat 来源，重启/Resume 可读，不猜角色。 | [一次迁移](usage.md#旧-task-显式迁移) |
+| P6（已退役） | 旧 Task 手动迁移工具及其升级承诺已移除；使用当前 Task 格式，不做运行时兼容或角色猜测。保留编号，不重新分配。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P8 | zone 按已登记路径重检；注销拒绝、重登记再检，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P9 | 选定 Map 只选 manager 配置与本次要求，不临时覆盖 node 或新增运行名。 | [发起入口](scheduler.md#从选中-map-校验启动配置) |

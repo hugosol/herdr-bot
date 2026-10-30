@@ -11,7 +11,7 @@ const plan = { title: '季度核对', description: '静态定义不是执行计�
 const botsAPI = '/api/scheduler/bots'
 const mapAPI = '/api/scheduler/maps/quarter.JSON'
 const nodesAPI = `${mapAPI}/nodes`
-const roots = () => ({ maps: path.join(server!.cwd, '.data/workflow-maps'), bots: path.join(server!.cwd, '.data/bots') })
+const roots = () => ({ maps: path.join(server!.cwd, 'meta-data/workflow-maps'), bots: path.join(server!.cwd, 'meta-data/bots') })
 
 // S1/S2/P32: specify retained and removed identities/content before mutation.
 // An in-memory success, losing an edit on restart, or resurrecting a deleted
@@ -427,8 +427,8 @@ for (const operation of ['create', 'modify'] as const) {
         const commitEvents: string[] = []
         const watcher = fs.watch(server!.cwd, { recursive: true }, (event, name) => {
           const relative = name?.toString().replaceAll('\\', '/')
-          if (event === 'rename' && relative === `.data/bots/${target.revision.file}`) commitEvents.push('bot removed')
-          if (relative !== '.data/workflow-maps/quarter.JSON') return
+          if (event === 'rename' && relative === `meta-data/bots/${target.revision.file}`) commitEvents.push('bot removed')
+          if (relative !== 'meta-data/workflow-maps/quarter.JSON') return
           if (event === 'rename') commitEvents.push('Map replaced')
           try {
             const saved = JSON.parse(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8'))

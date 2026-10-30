@@ -55,7 +55,7 @@ working_directory = '$repo/fixtures/operations'
 [herdr]
 workspace_name = 'scheduler-preview-unused'
 [tasks]
-storage_file = '.data/tasks.json'
+storage_file = 'meta-data/tasks.json'
 metadata_file = '$repo/meta-data/task-options.toml'
 [zones]
 registry_file = '.data/zones.json'
@@ -93,7 +93,7 @@ try {
 
 ### 默认目录及错误对照
 
-两个 scheduler 字段可各自省略；默认分别为 cwd 下的 `.data/workflow-maps/` 和 `.data/bots/`。无论配置文件在哪里，相对目录都按**进程 cwd** 解析。绝对路径也可用。配置修改需重启；目录文件变化只需显式刷新或重载。
+两个 scheduler 字段可各自省略；默认分别为 cwd 下的 `meta-data/workflow-maps/` 和 `meta-data/bots/`。无论配置文件在哪里，相对目录都按**进程 cwd** 解析。绝对路径也可用。配置修改需重启；目录文件变化只需显式刷新或重载。
 
 首次读取自动创建缺失的配置目录及父目录，保留已有文件，不覆盖定义，也不安装这份样例。要观察默认空态，在另一份新临时目录中按上述配置运行但删去整个 `[scheduler]` 段，不复制样例；进入 scheduler 应有明确的 Map／Bot 空态，而不是样例图。服务还会维护自己的既有持久数据；scheduler 的只读约束专指 Map／Bot 定义。
 

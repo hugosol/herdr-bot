@@ -11,7 +11,7 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 // the returned graph. A reversed arrow or edge-only node list must fail here.
 test('P10 P11 unordered Map keeps stable dependency layers in list and graph with only prerequisite-to-dependent arrows', async ({ page }, testInfo) => {
   server = await startServer()
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(maps, 'parallel.json'), JSON.stringify({ title: '并行与汇合', description: '独立预期：A → C，B → C；D 无连接。', nodes: {
     C: { title: '汇合', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['A', 'B'] },
@@ -86,8 +86,8 @@ test('P10 P11 unordered Map keeps stable dependency layers in list and graph wit
 // Real files and HTTP stay in path; only the external Herdr is record-only.
 test('P13 P17 same-bot nodes show only current direct JSON parameters and prerequisites safely', async ({ page }, testInfo) => {
   server = await startServer({ herdr: {} })
-  const maps = path.join(server.cwd, '.data', 'workflow-maps')
-  const bots = path.join(server.cwd, '.data', 'bots')
+  const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
+  const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
   const outsidePath = path.join(server.cwd, 'must-not-read.txt')

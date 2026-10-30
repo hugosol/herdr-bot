@@ -190,7 +190,7 @@ test('扩展元数据在同一进程重新编辑和保存时生效，只持久�
   expect(JSON.parse(fs.readFileSync(server.storageFile, 'utf8')).tasks).toEqual([saved])
 })
 
-// S1/S2/S3; P4/P19/P20. A real directory blocks the same-directory temporary write.
+// S1/S2/S3; P4/P19/P20. Read-only storage rejects the actual replacement.
 // Violation: optimistic success or destructive replacement would lose the old literal after restart.
 test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与扩展', async ({ page }) => {
   server = await startServer()
@@ -205,13 +205,15 @@ test('真实磁盘写入故障明确失败且重读和重启保留旧 Task 与�
   await page.getByTestId('extension-omp-connect-bot').uncheck()
   await page.getByTestId('task-next').click()
   expect((await server.getTasks()).tasks).toEqual([saved])
-  fs.mkdirSync(`${server.storageFile}.tmp`)
-  await page.getByTestId('save-task').click()
-  await expect(page.getByTestId('task-form-error')).toHaveAttribute('data-kind', 'error')
-  await expect(page.getByTestId('task-feedback')).toHaveCount(0)
-  await expect(page.getByTestId('task-dialog')).toBeVisible()
-  expect((await server.getTasks()).tasks).toEqual([saved])
-  fs.rmdirSync(`${server.storageFile}.tmp`)
+  const originalMode = fs.statSync(server.storageFile).mode
+  fs.chmodSync(server.storageFile, 0o444)
+  try {
+    await page.getByTestId('save-task').click()
+    await expect(page.getByTestId('task-form-error')).toHaveAttribute('data-kind', 'error')
+    await expect(page.getByTestId('task-feedback')).toHaveCount(0)
+    await expect(page.getByTestId('task-dialog')).toBeVisible()
+    expect((await server.getTasks()).tasks).toEqual([saved])
+  } finally { fs.chmodSync(server.storageFile, originalMode) }
   await page.getByTestId('task-back').click()
   await expect(page.getByTestId('extension-omp-connect-bot')).not.toBeChecked()
   await page.getByTestId('task-back').click()

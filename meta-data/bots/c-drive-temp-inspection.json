@@ -1,0 +1,8 @@
+{
+  "id": "c-drive-temp-inspection",
+  "name": "C盘临时文件与 worktree 排查",
+  "when": "需要检查 C 盘临时文件及 Git worktree 来源时。",
+  "plan_guide": "安排只读检查 C:\\Users\\hugos\\AppData\\Local\\Temp，区分普通临时文件与 worktree，并追踪对应项目和分支。仅提供清理建议，不授权删除。",
+  "node_guide": "只读检查 C:\\Users\\hugos\\AppData\\Local\\Temp 下程序生成的临时文件和 worktree，尽可能识别项目、分支及使用状态，列出可核实的依据和清理建议。不得删除文件、移除 worktree、删除分支或终止进程；需要这些操作时另行请求用户明确授权。",
+  "task_id": "tpl-18e104e3c5eaca34-0"
+}

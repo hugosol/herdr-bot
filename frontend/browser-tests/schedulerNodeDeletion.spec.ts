@@ -14,7 +14,7 @@ const original = { title: '保留 Map 标题', description: '保留 Map 说明',
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
   server = await startServer({ herdr: {}, separateCwd: true })
-  const root = path.join(server.cwd, '.data/workflow-maps')
+  const root = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'work.JSON'), JSON.stringify(source))
   fs.writeFileSync(path.join(root, 'untouched.json'), '  ' + JSON.stringify(original) + '\n')

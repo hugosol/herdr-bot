@@ -20,8 +20,8 @@ const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort
 test('empty bot list creates an independent-ID editable bundled draft and persists only on save', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
   await open(page)
-  const root = path.join(server.cwd, '.data/bots')
-  const maps = path.join(server.cwd, '.data/workflow-maps')
+  const root = path.join(server.cwd, 'meta-data/bots')
+  const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   const mapBefore = inventory(maps)
   expect(mapBefore).toEqual({})
   expect(inventory(root)).toEqual({})
@@ -59,7 +59,7 @@ test('empty bot list creates an independent-ID editable bundled draft and persis
 // editor and file-location observations.
 test('editing loads only real content, keeps immutable identity and original filename, and previews the saved result', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(root, { recursive: true })
   const file = path.join(root, 'personal-filename.JSON')
   fs.writeFileSync(file, JSON.stringify({ ...content, id: 'audit-only' }))
@@ -87,7 +87,7 @@ test('editing loads only real content, keeps immutable identity and original fil
 // A server that accepts positional implementation arrays violates object types.
 test('invalid bot content cannot bypass validation and keeps the original ID and raw draft', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'preserve-existing.json'), JSON.stringify({ ...content, id: 'invalid-candidate' }) + '\n')
   await open(page)
@@ -139,7 +139,7 @@ test('Bot save rejects legacy title fields and reads back only the name contract
   server = await startServer({ separateCwd: true })
   const initial = await request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(initial.status()).toBe(200)
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   const before = inventory(root)
   const { name, ...withoutName } = content
   const legacy = { ...withoutName, title: name }
@@ -214,7 +214,7 @@ test('a committed Bot save whose response is lost retains the exact draft and re
   const persisted = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id } })
   expect(persisted.ok()).toBe(true)
   expect((await persisted.json()).content).toEqual(JSON.parse(raw))
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   const stored = Object.values(inventory(root)).map(bytes => JSON.parse(bytes))
   expect(stored).toEqual([{ ...JSON.parse(raw), id }])
 })
@@ -224,7 +224,7 @@ test('a committed Bot save whose response is lost retains the exact draft and re
 test('global duplicate and concurrent same-ID creation reject without overwriting definitions or drafts', async ({ page }) => {
   server = await startServer({ separateCwd: true })
   await open(page)
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   const requests = await Promise.all(['first contender', 'second contender'].map(plan_guide => page.request.post(`${server!.baseURL}/api/scheduler/bots/save`, {
     data: { id: 'one-global-id', content: JSON.stringify({ ...content, plan_guide }), revision: null },
   })))
@@ -262,7 +262,7 @@ test('global duplicate and concurrent same-ID creation reject without overwritin
 // version. Re-reading only at save without comparing would overwrite newer data.
 test('two clients and external modification or removal reject stale bot drafts and require reload', async ({ page, context }) => {
   server = await startServer({ separateCwd: true })
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(root, { recursive: true })
   const file = path.join(root, 'original.json')
   const raw = '\n' + JSON.stringify({ ...content, plan_guide: '旧页面的未保存修改' }, null, 3) + '\n'
@@ -307,7 +307,7 @@ test('a controlled filesystem write failure preserves the ID and raw JSON until 
   server = await startServer({ separateCwd: true })
   await open(page)
   await page.getByRole('button', { name: 'new', exact: true }).click()
-  const root = path.join(server.cwd, '.data/bots'), before = inventory(root)
+  const root = path.join(server.cwd, 'meta-data/bots'), before = inventory(root)
   const raw = '  ' + JSON.stringify(content, null, 4) + '\n'
   await page.getByLabel('Bot ID', { exact: true }).fill('write-denied')
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
@@ -332,7 +332,7 @@ test('a controlled filesystem write failure preserves the ID and raw JSON until 
 // (original action runs). Native beforeunload is asserted by type, never text.
 test('modified bot drafts confirm bot selection, return, tab and server navigation, app refresh and browser refresh', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'navigation-target.json'), JSON.stringify({ ...content, id: 'navigation-target', name: '切换目标能力' }))
   await open(page)
@@ -425,7 +425,7 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
 // a removed node/Map, and no per-Map capability copies may appear in storage.
 test('saving a shared capability preserves live source selection and updates all references, while removed origins are invalidated', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
-  const root = path.join(server.cwd, '.data/bots'), maps = path.join(server.cwd, '.data/workflow-maps')
+  const root = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(root, 'shared-original.json'), JSON.stringify({ ...content, id: 'shared-audit' }))
   const node = { title: '核对账目', bot_id: 'shared-audit', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] }

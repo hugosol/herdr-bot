@@ -35,7 +35,7 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
   fs.writeFileSync(evidence, JSON.stringify(catalog, null, 2))
   await testInfo.attach('saved-unbound-bot.json', { path: evidence, contentType: 'application/json' })
   expect(catalog).toEqual({ bots: [{ id: 'shared-contract', ...content }] })
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   expect(fs.readdirSync(root)).toHaveLength(1)
   expect(JSON.parse(fs.readFileSync(path.join(root, fs.readdirSync(root)[0]), 'utf8'))).toEqual({ id: 'shared-contract', ...content })
   const edit = await (await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id: 'shared-contract' } })).json()
@@ -66,7 +66,7 @@ test('P1.01 P2.01 P3.01 P4.01 Bot rejects malformed or legacy definitions withou
     edit = await (await request.post(`${api}/edit`, { data: { id: edit.id } })).json()
     expect(edit.content).toEqual(value)
   }
-  const root = path.join(server.cwd, '.data/bots')
+  const root = path.join(server.cwd, 'meta-data/bots')
   const file = path.join(root, fs.readdirSync(root)[0])
   const bytes = fs.readFileSync(file, 'utf8')
   const invalid = [
@@ -95,7 +95,7 @@ test('P1.01 P2.01 P3.01 P4.01 Bot rejects malformed or legacy definitions withou
 // committing a malformed node before validating the entire dependency graph.
 test('P1.01 P3.01 P4.01 node input and zone save without external binding and invalid edits preserve the Map', async ({ page }, testInfo) => {
   server = await startServer({ separateCwd: true, herdr: {} })
-  const root = path.join(server.cwd, '.data/workflow-maps')
+  const root = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true })
   const original = { title: '独立合同图', description: '定义不复制 Task 或 Chat', nodes: {
     A: { title: '准备', bot_id: 'not-created', input: '原文\n**并非 JSON 参数**', zone: 'Z:/not-registered', blocked_by: [] },
