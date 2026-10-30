@@ -74,6 +74,8 @@ pub struct NodeExecution {
     pub zone: String,
     #[serde(default)]
     pub report_policy: crate::scheduler::ReportPolicy,
+    #[serde(default)]
+    pub auto_close: bool,
     pub chat: Option<ChatReference>,
 }
 #[derive(Clone, Serialize, Deserialize)]

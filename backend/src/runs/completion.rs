@@ -99,6 +99,28 @@ pub(super) fn complete(run: &mut Run, node_id: String, reason: String) -> Result
     Ok(Decision::Commit(event))
 }
 
+// Called only after a new completion fact was saved. The detached task owns no
+// Run operation guard or file coordination; host latency cannot hold up business.
+pub(super) fn close_completed_tab(state: &AppState, run: &Run, node_id: &str) {
+    let Some(execution) = run.nodes[node_id].execution.as_ref().filter(|execution| execution.auto_close) else { return; };
+    let Some(chat) = execution.chat.as_ref().filter(|chat| !chat.tab_id.trim().is_empty()) else {
+        eprintln!("[workflow] run={} node={} execution={} auto-close=skipped reason=missing-tab-association", run.id, node_id, execution.id);
+        return;
+    };
+    let herdr = state.herdr.clone();
+    let run_id = run.id.clone();
+    let node_id = node_id.to_owned();
+    let execution_id = execution.id.clone();
+    let tab_id = chat.tab_id.clone();
+    tokio::spawn(async move {
+        eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=attempt");
+        match herdr.close_tab(&tab_id).await {
+            Ok(()) => eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=succeeded"),
+            Err(error) => eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=failed code={} error={}", error.code(), error.message()),
+        }
+    });
+}
+
 pub(super) fn finish(run: &mut Run) -> Result<Decision, String> {
     if run.status == "completed" {
         return Ok(Decision::Unchanged);

@@ -129,6 +129,7 @@ pub(crate) struct DispatchTarget {
     pub title: String,
     pub input: String,
     pub report_policy: ReportPolicy,
+    pub auto_close: bool,
     pub zone: String,
     pub task: crate::tasks::Task,
 }
@@ -149,7 +150,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
-    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
