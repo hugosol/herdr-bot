@@ -8,7 +8,9 @@
 //! 支持的命令与行为：
 //! - `workspace list`
 //! - `tab create --workspace ID --cwd PATH --label TEXT --no-focus`
-//! - `tab close TAB`（记录精确目标；`tab_close_gate` 控制返回，成功追加 `closed.jsonl`）
+//! - `tab close TAB`（记录精确目标；`tab_close_gate` 控制返回，成功追加 `closed.jsonl`；
+//!   `fail_tab_close` 拒绝命令，`tab_close_confirmation_required` 返回结构化额外确认错误）
+//! - `invocations.jsonl` 记录每次进程启动的完整参数，包含未支持的命令，供核对无确认绕过。
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
 //! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
@@ -48,6 +50,9 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    // Include unsupported commands: a test must see attempted confirmation or
+    // other bypasses even when this controlled host does not implement them.
+    record("invocations.jsonl", json!({"argv":args}));
     match args.first().map(String::as_str) {
         Some("workspace") if args.get(1).map(String::as_str) == Some("list") => {
             workspace_list(&args)
@@ -189,6 +194,13 @@ fn tab_close(args: &[String]) {
     let Some(target) = args.get(2) else { usage(args) };
     record("calls.jsonl", json!({"at":now_ms(),"kind":"tab_close","argv":args,"target":target}));
     wait_at_gate(&behavior, "tab_close_gate", target);
+    if flag(&behavior, "fail_tab_close") {
+        fail("tab_close_failed", "controlled-close-failure");
+    }
+    if flag(&behavior, "tab_close_confirmation_required") {
+        output(json!({"error":{"code":"confirmation_required","message":"closing this tab would close a worktree group"}}));
+        return;
+    }
     record("closed.jsonl", json!({"target":target}));
     output(json!({"result":{"type":"ok"}}));
 }

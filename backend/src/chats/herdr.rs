@@ -717,10 +717,16 @@ fn response_error(command: &'static str, error: &Value) -> HerdrError {
     if error.get("code").and_then(Value::as_str) == Some("timeout") {
         return HerdrError::Timeout(command);
     }
+    let code = error.get("code").and_then(Value::as_str);
+    let message = error.get("message").and_then(Value::as_str);
     HerdrError::CommandFailed {
         command,
-        message: error.get("message").and_then(Value::as_str)
-            .or_else(|| error.get("code").and_then(Value::as_str))
-            .unwrap_or("Herdr returned an error response").to_owned(),
+        // The human message need not mention confirmation_required (or any
+        // other machine category). Keep both so backend diagnostics stay true.
+        message: match (code, message) {
+            (Some(code), Some(message)) => format!("{code}: {message}"),
+            (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
+            (None, None) => "Herdr returned an error response".to_owned(),
+        },
     }
 }
