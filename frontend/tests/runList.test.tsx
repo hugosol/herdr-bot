@@ -13,6 +13,23 @@ function visibleIds() {
 }
 
 describe('Run list browsing', () => {
+  it('prefers names while retaining name, ID and Map search and the unnamed fallback after refresh', () => {
+    const named = entry('named-run', 2000, 'source.json')
+    named.run!.name = 'Release Review'
+    const legacy = entry('legacy-run', 1000, 'legacy.json')
+    const { rerender } = render(<RunList entries={[named, legacy]} />)
+    expect(screen.getByRole('link', { name: /Release Review/ })).toBeVisible()
+    expect(screen.getByRole('link', { name: /legacy\.json/ })).toBeVisible()
+    for (const query of ['release review', 'NAMED-RUN', 'source.json']) {
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: query } })
+      expect(visibleIds()).toEqual(['#workflow/named-run'])
+    }
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'renamed' } })
+    expect(visibleIds()).toEqual([])
+    rerender(<RunList entries={[{ ...named, run: { ...named.run!, name: 'Renamed' } }, legacy]} />)
+    expect(screen.getByRole('link', { name: /Renamed/ })).toBeVisible()
+  })
+
   it('combines all four filters instead of applying only the most recent one', () => {
     render(<RunList entries={[
       entry('match', 2000), entry('other-map', 3000, 'beta.json'),

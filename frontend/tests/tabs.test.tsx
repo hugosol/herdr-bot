@@ -9,6 +9,19 @@ beforeEach(() => {
 })
 
 describe('App navigation', () => {
+  it('returns to the Run list after leaving a detail for another tab and coming back', async () => {
+    window.history.replaceState(null, '', '/#workflow/history-run')
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('link', { name: '返回全部 Run' })
+    await user.click(screen.getByRole('tab', { name: 'chat' }))
+    await user.click(screen.getByRole('tab', { name: 'workflow' }))
+    expect(screen.getByRole('link', { name: '返回全部 Run' })).toBeVisible()
+    await user.click(screen.getByRole('link', { name: '返回全部 Run' }))
+    expect(await screen.findByRole('searchbox')).toBeVisible()
+    expect(screen.queryByRole('link', { name: '返回全部 Run' })).not.toBeInTheDocument()
+  })
+
   it('defaults to Chat with only work entries visible and one active page', () => {
     render(<App />)
     expect(within(screen.getByRole('tablist')).getAllByRole('tab').map(tab => tab.textContent)).toEqual(['chat', 'zone', 'workflow'])

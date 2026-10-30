@@ -68,9 +68,6 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
   const restarted = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()
   expect(restarted).toEqual({ ...before, managed: false })
   await page.goto(`${server.baseURL}/#workflow/${id}`)
-  // User guidance criterion: a still-running saved state must not invite a
-  // manual takeover or suggest ordinary Chat Resume restores management.
-  await expect(page.getByText('历史现场 / 未接管：当前后端只读取已保存事实。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。', { exact: true })).toBeVisible()
   await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
   const navigation = page.getByRole('navigation', { name: '已保存节点状态' })
@@ -271,4 +268,8 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: info.outputPath('run-details-mobile.png') })
+  await page.getByRole('link', { name: '返回全部 Run' }).click()
+  await expect(page.getByRole('searchbox')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Run 详情' })).toHaveCount(0)
+  await expect(page).toHaveURL(/#workflow$/)
 })

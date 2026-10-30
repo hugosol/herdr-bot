@@ -86,6 +86,8 @@ pub struct Finished {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Run {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub map: String,
     pub created_at: u64,
     pub manager_task_id: String,
@@ -334,6 +336,50 @@ pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> R
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenameRequest {
+    name: String,
+}
+
+pub async fn rename_run(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    request: Request,
+) -> Response {
+    if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
+        return error(StatusCode::BAD_REQUEST, "run-id-invalid", "Run 标识无效。");
+    }
+    let input: RenameRequest = match crate::chat_command_body(request, "重命名 Run").await {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let name = input.name.trim();
+    if name.is_empty() {
+        return error(StatusCode::BAD_REQUEST, "run-name-required", "Run 名称不能为空。");
+    }
+    let lock = state.runs.operations.lock().await.entry(id.clone()).or_default().clone();
+    let _operation = lock.lock().await;
+    // Read after taking the same operation lock used by workflow mutations.
+    // Never authorize from management status: saved historical Runs are editable.
+    let mut run = match state.runs.read(&state, &id).await {
+        Ok(run) => run,
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+    };
+    // Validate the same independent records as GET before changing readable history.
+    if let Err(message) = detail(&state, &id).await {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message);
+    }
+    run.name = Some(name.to_owned());
+    if let Err(message) = save_run(&state, &run).await {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-save-failed", &message);
+    }
+    match detail(&state, &id).await {
+        Ok(value) => Json(value).into_response(),
+        Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+    }
+}
+
 pub async fn start_run(
     State(state): State<AppState>,
     Path(map): Path<String>,
@@ -372,6 +418,7 @@ pub async fn start_run(
     let id = crate::chats::new_creation_id();
     let run = Run {
         id: id.clone(),
+        name: None,
         map,
         created_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -517,8 +564,13 @@ async fn launch(
         });
         stage = "association";
         {
+            // Startup holds its pre-host-call snapshot; serialize this late write
+            // with renames and retain any name saved while identity was pending.
+            let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
+            let _operation = lock.lock().await;
             let _guards = state.runs.files.lock(&paths).await;
             state.runs.ensure_retained(&run.id).await?;
+            run.name = FileStore::read_json::<Run>(&paths[0])?.name;
             FileStore::replace(
                 &paths[0],
                 &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?,

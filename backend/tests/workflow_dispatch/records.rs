@@ -6,6 +6,139 @@
 //! committed completion and absent completion history after append fails.
 use super::*;
 
+async fn rename(s: &Scenario, id: &str, body: Value) -> common::HttpResponse {
+    common::request_json_over_tcp(s.server.addr(), "PATCH", &format!("/api/workflow/runs/{id}"), Some(&body.to_string())).await
+}
+
+#[tokio::test]
+async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
+    let s = Scenario::new().await;
+    let original = json!({"id":"rename-history","map":"removed-map.json","createdAt":100,"managerTaskId":"retired-task","zone":"C:/historical","workspaceName":"old-workspace","userInput":"original input","manager":null,"status":"completed","finished":null,"nodes":{}});
+    for id in ["rename-history", "rename-duplicate"] {
+        let root = s.config.scheduler.run_directory.join(id);
+        fs::create_dir_all(&root).unwrap();
+        let mut run = original.clone();
+        run["id"] = json!(id);
+        fs::write(root.join("run.json"), run.to_string()).unwrap();
+        fs::write(root.join("history.jsonl"), b"").unwrap();
+        fs::write(root.join("messages.jsonl"), b"").unwrap();
+    }
+    let root = s.config.scheduler.run_directory.join("rename-history");
+    let before = ["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap());
+    for body in [json!({"name":" \n\t "}), json!({"name":null}), json!({"name":3}), json!({}), json!({"name":"valid","status":"running"})] {
+        let response = rename(&s, "rename-history", body).await;
+        assert_eq!(response.status, 400, "{}", response.body);
+        assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
+    }
+    let calls = s.herdr.calls();
+    let response = rename(&s, "rename-history", json!({"name":"  历史 Run  \n"})).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let renamed: Value = serde_json::from_str(&response.body).unwrap();
+    let mut expected = original;
+    expected["name"] = json!("历史 Run");
+    assert_eq!(renamed["run"], expected);
+    assert_eq!(renamed["managed"], false);
+    assert_eq!(renamed["reports"], json!([]));
+    assert_eq!(renamed["pendingReports"], json!({}));
+    let get = get_over_tcp(s.server.addr(), "/api/workflow/runs/rename-history").await;
+    assert_eq!(serde_json::from_str::<Value>(&get.body).unwrap(), renamed);
+    assert_eq!(rename(&s, "rename-duplicate", json!({"name":"历史 Run"})).await.status, 200);
+    assert_eq!(s.herdr.calls(), calls, "human names never operate Chats");
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), before[1]);
+    assert_eq!(fs::read(root.join("messages.jsonl")).unwrap(), before[2]);
+    drop(s.server);
+    let restarted = TestServer::start_app(herdr_bot::app(&s.config)).await;
+    let get = get_over_tcp(restarted.addr(), "/api/workflow/runs/rename-history").await;
+    assert_eq!(get.status, 200, "{}", get.body);
+    assert_eq!(serde_json::from_str::<Value>(&get.body).unwrap(), renamed);
+    let list = get_over_tcp(restarted.addr(), "/api/workflow/runs").await;
+    let list: Value = serde_json::from_str(&list.body).unwrap();
+    assert_eq!(list["runs"].as_array().unwrap().len(), 2);
+    assert!(list["runs"].as_array().unwrap().iter().all(|run| run["run"]["name"] == "历史 Run"));
+    drop(restarted);
+}
+
+#[tokio::test]
+async fn rename_during_startup_survives_late_association_and_workflow_writes() {
+    let s = Scenario::new().await;
+    let release = s.data.path().join("rename-start-release");
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"rename-manager"},"native_cwd":s.data.path(),"native_session_gate":{"wait_for_file":release,"timeout_ms":30000}}));
+    let pending = common::OpenJsonRequest::submit(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"original input"}).to_string()).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
+    let list = get_over_tcp(s.server.addr(), "/api/workflow/runs").await;
+    let list: Value = serde_json::from_str(&list.body).unwrap();
+    let id = list["runs"][0]["id"].as_str().unwrap();
+    let before = list["runs"][0]["run"].clone();
+    let renamed = tokio::time::timeout(Duration::from_secs(2), rename(&s, id, json!({"name":"Startup name"}))).await.expect("rename must not wait for external identity");
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    let renamed: Value = serde_json::from_str(&renamed.body).unwrap();
+    let mut expected = before;
+    expected["name"] = json!("Startup name");
+    assert_eq!(renamed["run"], expected);
+    assert_eq!(renamed["managed"], true);
+    fs::write(&release, b"release").unwrap();
+    let started = tokio::time::timeout(Duration::from_secs(5), pending.response()).await.unwrap();
+    assert_eq!(started.status, 201, "{}", started.body);
+    let started: Value = serde_json::from_str(&started.body).unwrap();
+    assert_eq!(started["run"]["name"], "Startup name");
+    assert_eq!(started["run"]["manager"]["sessionId"], "rename-manager");
+    for action in ["pause", "resume"] {
+        let response = post_json_over_tcp(s.server.addr(), &format!("/api/workflow/manager/{action}"), r#"{"sessionId":"rename-manager"}"#).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["snapshot"]["name"], "Startup name");
+    }
+    let renamed = rename(&s, id, json!({"name":"Final name"})).await;
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    let renamed: Value = serde_json::from_str(&renamed.body).unwrap();
+    let mut expected = started["run"].clone();
+    expected["name"] = json!("Final name");
+    assert_eq!(renamed["run"], expected, "rename preserves workflow state and all identities");
+    drop(s.server);
+    let restarted = TestServer::start_app(herdr_bot::app(&s.config)).await;
+    let get = get_over_tcp(restarted.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(get.status, 200, "{}", get.body);
+    let get: Value = serde_json::from_str(&get.body).unwrap();
+    assert_eq!(get["run"], expected);
+    assert_eq!(get["managed"], false);
+    drop(restarted);
+}
+
+#[tokio::test]
+async fn rename_waits_for_in_flight_dispatch_and_retains_its_committed_facts() {
+    let s = Scenario::new().await;
+    let started = s.start("rename-dispatch-manager").await;
+    let id = started["id"].as_str().unwrap();
+    assert_eq!(rename(&s, id, json!({"name":"Before dispatch"})).await.status, 200);
+    let release = s.data.path().join("rename-dispatch-release");
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"rename-node-A"},"native_cwd":s.data.path().join("node-zone"),"prompt_gate":{"wait_for_file":release,"timeout_ms":30000}}));
+    let dispatch = common::OpenJsonRequest::submit(s.server.addr(), "/api/workflow/manager/dispatch", r#"{"sessionId":"rename-dispatch-manager","nodes":["A"]}"#).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count() == 2).await);
+    let addr = s.server.addr();
+    let path = format!("/api/workflow/runs/{id}");
+    let queued = tokio::spawn(async move {
+        common::request_json_over_tcp(addr, "PATCH", &path, Some(r#"{"name":"After dispatch"}"#)).await
+    });
+    tokio::pin!(queued);
+    assert!(tokio::time::timeout(Duration::from_millis(200), &mut queued).await.is_err(), "rename must serialize with an accepted workflow mutation");
+    fs::write(&release, b"release").unwrap();
+    let dispatched = tokio::time::timeout(Duration::from_secs(5), dispatch.response()).await.unwrap();
+    assert_eq!(dispatched.status, 200, "{}", dispatched.body);
+    let dispatched: Value = serde_json::from_str(&dispatched.body).unwrap();
+    assert_eq!(dispatched["snapshot"]["name"], "Before dispatch");
+    assert_eq!(dispatched["snapshot"]["nodes"]["A"]["status"], "running");
+    let renamed = tokio::time::timeout(Duration::from_secs(5), &mut queued).await.unwrap().unwrap();
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    let renamed: Value = serde_json::from_str(&renamed.body).unwrap();
+    let mut expected = dispatched["snapshot"].clone();
+    expected["name"] = json!("After dispatch");
+    assert_eq!(renamed["run"], expected);
+    let paused = post_json_over_tcp(addr, "/api/workflow/manager/pause", r#"{"sessionId":"rename-dispatch-manager"}"#).await;
+    assert_eq!(paused.status, 200, "{}", paused.body);
+    let paused: Value = serde_json::from_str(&paused.body).unwrap();
+    assert_eq!(paused["snapshot"]["name"], "After dispatch");
+    assert_eq!(paused["snapshot"]["nodes"], expected["nodes"]);
+}
+
 // P46.01: independent public-format literals deliberately disagree: history
 // says running, current facts say paused. Replaying history or deriving current
 // execution from the latest (old-execution) report would give a wrong result.

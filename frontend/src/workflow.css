@@ -26,9 +26,16 @@
 .workflow-run-heading > div:last-child { text-align:right; }
 .workflow-run-heading > div:first-child { text-align:left; }
 .workflow h2.workflow-run-detail-label { margin:0; }
+.workflow-run-title { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.workflow-run-title h1 { overflow-wrap:anywhere; min-width:0; }
+.workflow-run-title button { flex-shrink:0; }
+.workflow-run-rename { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin:8px 0 12px; }
+.workflow-run-rename label { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.workflow-run-rename input { max-width:100%; box-sizing:border-box; }
+.workflow-run-rename .workflow-alert { flex-basis:100%; margin:0; }
 .workflow-refresh-info { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:11px; border-block:1px solid var(--workflow-border); padding:10px 0; color:#9eb4a8; margin-bottom:24px; }
 .workflow-refresh-info p { margin:0; }
-.workflow-refresh-info button { background:transparent; border:1px solid var(--workflow-border); border-radius:5px; padding:5px 11px; }
+.workflow-refresh-info button,.workflow-run-title button,.workflow-run-rename button { background:transparent; border:1px solid var(--workflow-border); border-radius:5px; padding:5px 11px; }
 .workflow-alert { border:1px solid #805f45; background:#302820; padding:12px; color:#dfbf87; font-size:12px; overflow-wrap:anywhere; }
 .workflow-status { display:inline-flex; gap:7px; align-items:center; font-size:11px; white-space:nowrap; font-weight:500; color:#c3c6bf; }
 .workflow-status > span[aria-hidden] { display:inline-block; min-width:12px; text-align:center; }
