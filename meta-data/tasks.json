@@ -34,7 +34,7 @@
       "chatName": "[hyper] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
-      "model": "gpt-6-astra",
+      "model": "gpt-6.1-sol",
       "thinking": "medium",
       "skill": null,
       "prompt": "/hyper-auto-coding ",
