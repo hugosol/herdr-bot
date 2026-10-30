@@ -231,6 +231,10 @@ Map node 的 `auto_close` 缺省为 `false`；dispatch/retry 读取派发时的�
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 通过真实 HTTP 和隔离 Herdr 命令副本核对 Map 双向修改、旧记录、权限及完成资格、当前执行精确目标、重复调用、工作中完成及非阻塞顺序。关闭 gate 在释放前保持命令未返回，测试先观察 complete 响应与同 Run 依赖节点真实派发，再释放并确认返回；10 秒有界等待仅防挂死，不是业务速度承诺。负向检查窗口为 150 ms；受控命令记录不证明真实 Herdr 的 Tab 移除或进程终止，真实外部效果需另行专属资源验收。
 
+`frontend/browser-tests/nodeAutoCloseLifecycle.spec.ts` 通过交付页面、真实 HTTP、隔离服务进程及 Herdr 命令记录覆盖后续生命周期：Run 创建后双向修改 Map，再新派发；失败后显式独立 retry，保留旧执行关联但使用当前设置；未完成 Chat 经 `/api/chats/resume` 打开新 Tab，保留原执行设置、Run/node 身份和 node-chat 角色，不重放发起输入；已完成 Chat 主动恢复后，新 Tab 不因旧完成事实再次关闭。恢复不等于重新派发，完成后的恢复也不会重建执行或完成事实。
+
+该浏览器文件同时核对完成后的公开读取、真实 `page.reload()` 和服务进程重启不重放关闭；另在关闭 CLI 已记录尝试但被 gate 阻塞、尚未写出结果时终止测试独占进程树，再加载原 completed 事实，确认不补发。没有新增持久关闭结果字段，Run／历史／报告文件保持原字节。每个负向阶段检查命令记录的明确观察窗口为 300 ms，场景均标记 `@time-contract`；这是有界无重放证据，不是无限未来保证或跨崩溃 exactly-once 承诺。开发反馈入口为 `npm --prefix frontend run test:browser:build -- nodeAutoCloseLifecycle.spec.ts --workers=1`，时间分区校验沿用 `npm --prefix frontend run test:browser:partition`。这些受控命令场景不替代真实 Herdr 外部关闭效果验收。
+
 ### 结束 Run
 
 全部节点 completed 后，管理者显式结束本次 Run：
