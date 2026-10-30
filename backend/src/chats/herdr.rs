@@ -445,6 +445,15 @@ impl HerdrClient {
         Ok(())
     }
 
+    /// Close only the saved execution Tab; no discovery, confirmation override or retry.
+    pub(crate) async fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        let value = self.run("tab close", &["tab".into(), "close".into(), tab_id.into()], QUERY_TIMEOUT).await?;
+        if value.pointer("/result/type").and_then(Value::as_str) != Some("ok") {
+            return Err(HerdrError::UnexpectedResponse { command: "tab close", detail: "missing ok confirmation".into() });
+        }
+        Ok(())
+    }
+
     /// 执行一次 herdr CLI 调用；参数逐个传递，绝不经过 Shell。
     async fn run(
         &self,

@@ -20,6 +20,8 @@ mod roles;
 mod report_policy;
 #[path = "workflow_dispatch/map_deletion.rs"]
 mod map_deletion;
+#[path = "workflow_dispatch/auto_close.rs"]
+mod auto_close;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

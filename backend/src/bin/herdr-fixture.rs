@@ -8,6 +8,7 @@
 //! 支持的命令与行为：
 //! - `workspace list`
 //! - `tab create --workspace ID --cwd PATH --label TEXT --no-focus`
+//! - `tab close TAB`（记录精确目标；`tab_close_gate` 控制返回，成功追加 `closed.jsonl`）
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
 //! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
@@ -52,6 +53,7 @@ fn main() {
             workspace_list(&args)
         }
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
+        Some("tab") if args.get(1).map(String::as_str) == Some("close") => tab_close(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
@@ -180,6 +182,15 @@ fn workspace_list(args: &[String]) {
             "workspaces": workspaces,
         },
     }));
+}
+
+fn tab_close(args: &[String]) {
+    let behavior = behavior();
+    let Some(target) = args.get(2) else { usage(args) };
+    record("calls.jsonl", json!({"at":now_ms(),"kind":"tab_close","argv":args,"target":target}));
+    wait_at_gate(&behavior, "tab_close_gate", target);
+    record("closed.jsonl", json!({"target":target}));
+    output(json!({"result":{"type":"ok"}}));
 }
 
 fn tab_create(args: &[String]) {

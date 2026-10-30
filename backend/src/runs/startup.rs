@@ -86,7 +86,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
     let result: Result<(), String> = async {
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, chat: None });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, auto_close: target.auto_close, chat: None });
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         protocol(state, &mut candidate, &target.task, &preset,
@@ -99,7 +99,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), chat: None,
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, chat: None,
             });
         }
         node.status = "failed".into();

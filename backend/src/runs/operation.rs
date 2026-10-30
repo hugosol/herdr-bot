@@ -65,6 +65,10 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
+        let completed_node = match &action {
+            Action::Complete { node_id, .. } => Some(node_id.clone()),
+            _ => None,
+        };
         let decision = action.apply(&state, &mut run).await?;
         let (changed, event) = match decision {
             Decision::Rejected { code, message } => return rejection(&state, &run, code, &message).await,
@@ -74,6 +78,9 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
                 // save_run publishes the current fact and notifies observers
                 // before history, preserving the existing partial-effect contract.
                 save_run(&state, &run).await?;
+                if let Some(node_id) = completed_node {
+                    completion::close_completed_tab(&state, &run, &node_id);
+                }
                 (true, event)
             }
         };
