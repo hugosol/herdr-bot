@@ -140,6 +140,10 @@ _Avoid_: 数据流, 自动启动连线, 执行状态
 一张 Map 的一次独立运行，持有本次管理者配置、本次要求、真实 Chat 关联和运行事实；它不是静态 Map、单个 node 或 Chat 在线状态。
 _Avoid_: Map 实例, Bot 实例, node, Chat
 
+**Run 名称**:
+用户为某次 Run 维护的人类可读标识；它不是 Run 的唯一身份，也不是 Map、Workspace 或 Chat 的名称，不参与运行逻辑。
+_Avoid_: Run ID, Map 标题, Workspace 名称, Chat 名称
+
 **报告提交策略（report_policy）**:
 node 对交付报告发送时机的约定：auto 在结果可交接时发送，manual 在用户确认后发送；它不改变管理者的交接验收职责。
 _Avoid_: 自动完成策略, 审批状态, 流程放行开关
