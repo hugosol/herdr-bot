@@ -376,9 +376,12 @@ fn agent_get(args: &[String]) {
     // Re-read after the gate so the external identity may arrive while a page is closed.
     let behavior = behavior();
     let started = read_records("started.jsonl").into_iter().find(|agent| agent["name"] == target);
+    let pending = behavior.get("native_session_pending_reads").and_then(Value::as_u64)
+        .is_some_and(|limit| read_records("calls.jsonl").iter()
+            .filter(|call| call["kind"] == "agent_get" && call["target"] == target).count() as u64 <= limit);
     output(json!({"result":{"agent":{
         "name":target,
-        "agent_session":behavior.get("native_session").cloned().unwrap_or(Value::Null),
+        "agent_session":if pending { Value::Null } else { behavior.get("native_session").cloned().unwrap_or(Value::Null) },
         "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
         "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
     }}}));
