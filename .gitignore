@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# 本机根目录，仓库仅保存 paths.example.toml。
+/paths.local.toml
+
 # Python 字节码缓存
 __pycache__/
 *.py[cod]

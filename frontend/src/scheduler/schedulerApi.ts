@@ -122,6 +122,7 @@ export type MapNode = {
   zone: string
   blocked_by: string[]
   report_policy?: 'auto' | 'manual'
+  auto_close?: boolean
 }
 
 export async function loadNodeDraft(file: string, id: string | null): Promise<{ id: string; content: string; revision: BotRevision; create: boolean }> {

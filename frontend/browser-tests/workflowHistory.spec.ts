@@ -161,7 +161,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   fs.mkdirSync(latest)
   const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat', 'omp-codebase-tools']
   for (const entry of extensionIds) fs.writeFileSync(path.join(latest, `${entry}.ts`), "throw new Error('controlled fixture never loads extensions')\n")
-  const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll(path.join(root, 'extensions'), latest)
+  const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll('${roots.browser_extensions}', latest)
   fs.writeFileSync(host.metadataFile, metadata)
   const directory = path.join(host.cwd, '.data/workflow-runs', id)
   const files = ['run.json', 'history.jsonl', 'messages.jsonl']

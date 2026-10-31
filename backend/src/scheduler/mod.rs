@@ -59,6 +59,8 @@ struct MapNode {
     input: String,
     #[serde(default)]
     report_policy: ReportPolicy,
+    #[serde(default)]
+    auto_close: bool,
     zone: String,
     blocked_by: Vec<String>,
 }
@@ -127,6 +129,7 @@ pub(crate) struct DispatchTarget {
     pub title: String,
     pub input: String,
     pub report_policy: ReportPolicy,
+    pub auto_close: bool,
     pub zone: String,
     pub task: crate::tasks::Task,
 }
@@ -147,7 +150,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
-    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -740,6 +743,7 @@ pub async fn new_node(
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
         let mut content = example["nodes"]["A"].take();
         content["report_policy"] = serde_json::json!(ReportPolicy::default());
+        content["auto_close"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
         Ok(Ok(value)) => Json(value).into_response(),
@@ -855,7 +859,14 @@ fn prepare_directory(access: &FileAccess, directory: &Path) -> Result<PathBuf, D
         let metadata = match access.symlink_metadata(&checked) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                access.create_dir(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "创建", e))?;
+                // Map and Bot catalog reads can create a shared missing parent
+                // concurrently. Recheck the winner's entry below, including the
+                // link and directory checks; AlreadyExists alone is not success.
+                match access.create_dir(&checked) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "创建", error)),
+                }
                 access.symlink_metadata(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "检查", e))?
             }
             Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "检查", error)),

@@ -346,8 +346,9 @@ impl HerdrClient {
         self.read_native_session(target, kind, deadline, false, false).await
     }
 
-    /// Only a just-started agent may use OMP's allocated-but-unwritten path as
-    /// identity evidence. Recovery/reconciliation must not inherit this rule.
+    /// Only a just-started agent waits for an absent agent_session until the
+    /// caller's deadline, or uses OMP's allocated-but-unwritten path as identity
+    /// evidence. Recovery/reconciliation must not inherit either rule.
     pub async fn started_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
         self.read_native_session(target, kind, deadline, false, true).await
     }
@@ -358,9 +359,21 @@ impl HerdrClient {
     }
 
     async fn read_native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant, require_live_cwd: bool, newly_started: bool) -> Result<NativeSession, HerdrError> {
-        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
-        let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
-        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+        let value = loop {
+            if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+            let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
+            if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+            let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
+            // agent start can complete before Herdr publishes agent_session.
+            // Only a just-started agent may wait for this absent read-only fact;
+            // malformed identities and command failures are never retried here.
+            if newly_started && agent.is_object()
+                && agent.get("agent_session").is_none_or(Value::is_null) {
+                tokio::time::sleep_until(deadline.min(tokio::time::Instant::now() + Duration::from_millis(100))).await;
+                continue;
+            }
+            break value;
+        };
         let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
         let reference = agent.get("agent_session").filter(|value| !value.is_null())
             .ok_or_else(|| native_error("native identity is not available"))?;
@@ -441,6 +454,15 @@ impl HerdrClient {
         })?;
         if NavigationTarget::from_agent(agent)? != *target || agent.get("focused").and_then(Value::as_bool) != Some(true) {
             return Err(HerdrError::UnexpectedResponse { command: "agent focus", detail: "target navigation was not confirmed".into() });
+        }
+        Ok(())
+    }
+
+    /// Close only the saved execution Tab; no discovery, confirmation override or retry.
+    pub(crate) async fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        let value = self.run("tab close", &["tab".into(), "close".into(), tab_id.into()], QUERY_TIMEOUT).await?;
+        if value.pointer("/result/type").and_then(Value::as_str) != Some("ok") {
+            return Err(HerdrError::UnexpectedResponse { command: "tab close", detail: "missing ok confirmation".into() });
         }
         Ok(())
     }
@@ -708,10 +730,16 @@ fn response_error(command: &'static str, error: &Value) -> HerdrError {
     if error.get("code").and_then(Value::as_str) == Some("timeout") {
         return HerdrError::Timeout(command);
     }
+    let code = error.get("code").and_then(Value::as_str);
+    let message = error.get("message").and_then(Value::as_str);
     HerdrError::CommandFailed {
         command,
-        message: error.get("message").and_then(Value::as_str)
-            .or_else(|| error.get("code").and_then(Value::as_str))
-            .unwrap_or("Herdr returned an error response").to_owned(),
+        // The human message need not mention confirmation_required (or any
+        // other machine category). Keep both so backend diagnostics stay true.
+        message: match (code, message) {
+            (Some(code), Some(message)) => format!("{code}: {message}"),
+            (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
+            (None, None) => "Herdr returned an error response".to_owned(),
+        },
     }
 }

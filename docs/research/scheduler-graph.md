@@ -6,7 +6,7 @@
 
 - **推荐借鉴四个参考：React Flow（画布交互）、Airflow（结构与详情）、Dagre（简洁分层）、ELK/elkjs（复杂布局）。** 后两者是布局引擎，不是完整 UI 产品。
 - 当前是静态 Map 定义浏览器：箭头只表示 `blocked_by` 前置依赖，不是数据流，也不是正在运行的任务链。建议图例写成“前置节点 → 依赖它的节点”。节点颜色只能表达类型、选中、关系等已有语义，不能凭空表示成功、失败、运行中。
-- 据主代理本轮源码调查，`frontend/src/MapGraph.tsx` 当前是自绘 SVG + `foreignObject`、Kahn 分层列布局及单击选中，没有实际 zoom/pan/fit；依赖仅 React/React DOM。仓库 `desktop-graph.png` 上的画布按钮不能证明当前源码具有这些能力。
+- 据主代理本轮源码调查，`frontend/src/MapGraph.tsx` 当前是自绘 SVG + `foreignObject`、Kahn 分层列布局及单击选中，没有实际 zoom/pan/fit；依赖仅 React/React DOM。界面截图中的画布按钮不能证明当前源码具有这些能力。
 - **不要把“采用成熟交互”直接等同于“引入 React Flow”，也不要把“引入 React Flow”直接等同于“自动布局”。** React Flow 官方明确尚未实现自有布局方案，节点布局及边路由需要另选算法。[R4]
 
 ## 四个参考：事实、适配与代价

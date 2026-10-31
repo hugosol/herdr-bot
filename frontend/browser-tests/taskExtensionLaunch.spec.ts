@@ -114,7 +114,7 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   }
   const oldFixed = path.join(root, 'extensions', 'omp-model-cost.ts')
   const oldOptional = path.join(root, 'extensions', 'omp-codebase-tools.ts')
-  fs.writeFileSync(server!.metadataFile, original.replace(oldFixed, freshFixed).replace(oldOptional, freshOptional))
+  fs.writeFileSync(server!.metadataFile, original.replace('${roots.browser_extensions}/omp-model-cost.ts', freshFixed).replace('${roots.browser_extensions}/omp-codebase-tools.ts', freshOptional))
   fs.unlinkSync(oldFixed)
   fs.unlinkSync(oldOptional)
   await finish(await create(zone, saved.id))

@@ -413,7 +413,9 @@ async fn invalid_native_paths_and_existing_header_errors_never_submit_instructio
         let failure: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(failure["startupError"]["stage"], "identity", "{case}: {}", response.body);
         assert_eq!(failure["startupError"]["effects"]["inputAttempted"], false, "{case}");
-        assert!(herdr.calls().iter().all(|call| call["kind"] != "agent_prompt"), "{case}");
+        let calls = herdr.calls();
+        assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_get").count(), 1, "{case}: invalid identity is not a pending identity");
+        assert!(calls.iter().all(|call| call["kind"] != "agent_prompt"), "{case}");
         let root = config.scheduler.run_directory.join(failure["id"].as_str().unwrap());
         let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
         assert!(saved["manager"].is_null(), "{case}");
@@ -425,6 +427,48 @@ async fn invalid_native_paths_and_existing_header_errors_never_submit_instructio
             assert!(!file.exists(), "{case}: rejection must not manufacture a native file");
         }
     }
+}
+
+// Herdr can acknowledge agent start before publishing agent_session. Waiting
+// for that read-only fact must not duplicate the agent or submit input early.
+#[tokio::test]
+async fn manager_waits_for_late_native_identity_without_restarting_or_replaying_input() {
+    let (data, herdr, _config, server, zone, ids) = fixture().await;
+    herdr.set_behavior(json!({
+        "native_session_pending_reads":2,
+        "native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"late-manager-identity"},
+        "native_cwd":data.path()
+    }));
+    let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+        &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Initialize once after identity"}).to_string()).await;
+    assert_eq!(response.status, 201, "{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(body["run"]["manager"]["sessionId"], "late-manager-identity");
+    let calls = herdr.calls();
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 1);
+    let prompt = calls.iter().position(|call| call["kind"] == "agent_prompt").unwrap();
+    assert!(calls[..prompt].iter().filter(|call| call["kind"] == "agent_get").count() >= 3);
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_prompt").count(), 1);
+}
+
+#[tokio::test]
+async fn manager_identity_wait_expires_without_restarting_or_submitting_input() {
+    let (_data, herdr, _config, server, zone, ids) = fixture().await;
+    herdr.set_behavior(json!({"native_session":null}));
+    let started = std::time::Instant::now();
+    let response = tokio::time::timeout(std::time::Duration::from_secs(40),
+        post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+            &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Do not send without identity"}).to_string())
+    ).await.expect("identity acquisition must terminate within its bounded startup budget");
+    assert_eq!(response.status, 500, "{}", response.body);
+    assert!(started.elapsed() >= std::time::Duration::from_secs(30), "missing identity must get the full acquisition window");
+    let body: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(body["startupError"]["stage"], "identity");
+    assert_eq!(body["startupError"]["effects"]["agentStarted"], true);
+    assert_eq!(body["startupError"]["effects"]["inputAttempted"], false);
+    let calls = herdr.calls();
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 1);
+    assert!(calls.iter().all(|call| call["kind"] != "agent_prompt"));
 }
 
 // P13: an initialization error must precede every external call; an identity

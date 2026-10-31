@@ -1,0 +1,22 @@
+# 旧机器配置样例（不是新机器已验证位置）。复制为 paths.local.toml 后逐项调整。
+# paths.local.toml 不入 Git；程序不会自动回退到此样例。
+# 普通相对根以本文件所在目录为基准；根引用仅支持前缀 ${roots.name}/relative。
+# 每个项目/依赖的根独立声明一次；以下仅保留旧机器位置，不要求共享父目录或磁盘。
+# data 默认是本项目内部目录，也可独立改为其他位置。
+[roots]
+project = 'E:/Developer/myhub/herdr-bot'
+data = '${roots.project}/.data'
+streaming = 'E:/Developer/myhub/my-streaming'
+toolkit = 'E:/Developer/myhub/my-agent-toolkit'
+wayfinder = 'E:/Developer/myhub/oh-my-wayfinder'
+pi_extensions = 'E:/Developer/myhub/pi-extension'
+omp_agent = 'C:/Users/hugos/.omp/agent'
+pi_agent = 'C:/Users/hugos/.pi/agent'
+zone_parent = 'E:/Developer/bot-playground'
+
+# 以下来自旧机器真实依赖验收记录，仅在需要时启用并更新版本/位置。
+# herdr = 'C:/Users/hugos/.herdr/packages/standalone/releases/0.9.5-x86_64-pc-windows-msvc'
+# pi_package = 'D:/nvm4w/nodejs/node_modules/@earendil-works/pi-coding-agent'
+# 原生会话验收还需 omp_package：填写已安装 OMP 包目录，旧记录无可确认的默认值。
+# 旧 MCP 程序：D:/developer/path/codebase-memory-mcp/codebase-memory-mcp.exe。
+# 当前 MCP 配置按 PATH 查找 codebase-memory-mcp；此注释仅保留旧机器安装线索。

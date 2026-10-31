@@ -419,7 +419,9 @@ fn write_process_config(dir: &TempDir, registry: &Path) -> PathBuf {
              [operations.stop]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [mdns]\nenabled = false\n\n\
              [herdr]\nworkspace_name = 'bot-playground'\n\n\
+             [tasks]\nmetadata_file = '{metadata}'\n\n\
              [zones]\nregistry_file = '{registry}'\n",
+            metadata = common::test_metadata_file().display(),
             script = script.display(),
             operations = operations.display(),
             registry = registry.display(),

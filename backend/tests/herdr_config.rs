@@ -22,11 +22,15 @@ fn write_config(dir: &TempDir, herdr_section: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "listen_addr = \"127.0.0.1:0\"\n\n\
+            "listen_addr = \"127.0.0.1:0\"\n\
+             static_directory = '{}'\n\n\
+             [tasks]\nmetadata_file = '{}'\n\n\
              [operations.start]\nscript = 'unused.bat'\nworking_directory = '.'\n\n\
              [operations.stop]\nscript = 'unused.bat'\nworking_directory = '.'\n\n\
              [mdns]\nenabled = false\n\n\
-             {herdr_section}"
+             {herdr_section}",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("static").display(),
+            common::test_metadata_file().display(),
         ),
     )
     .expect("写临时配置");

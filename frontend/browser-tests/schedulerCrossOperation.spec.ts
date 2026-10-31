@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, request, test, type APIRequestContext, type APIResponse, type Page, type TestInfo } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -219,7 +219,7 @@ for (const kind of ['maps', 'bots'] as const) {
   for (const location of ['root', 'ancestor'] as const) {
     test(`P33 ${kind} ${location} junction blocks production reads saves and deletes`, async ({ request: client }) => {
       await prepare({ A: work })
-      const outside = path.join(server!.cwd, 'outside'), alias = path.join(server!.cwd, 'linked-root')
+      const outside = path.join(server!.cwd, 'outside'), alias = path.join(path.dirname(server!.configPath), 'linked-root')
       fs.mkdirSync(outside)
       const name = kind === 'maps' ? 'quarter.JSON' : 'business-name.JSON'
       const content = kind === 'maps' ? { ...plan, title: 'PRIVATE ROOT SENTINEL 5821', nodes: { A: work } } : { ...capability, id: 'audit', plan_guide: 'PRIVATE ROOT SENTINEL 5821' }
@@ -229,7 +229,7 @@ for (const kind of ['maps', 'bots'] as const) {
       expect(fs.readFileSync(path.join(alias, name), 'utf8')).toBe(bytes)
       const endpoint = kind === 'maps' ? nodesAPI : botsAPI, id = kind === 'maps' ? 'A' : 'audit'
       const draft = await accepted(client, `${endpoint}/edit`, { id })
-      fs.appendFileSync(server!.configPath, `\n[scheduler]\n${kind === 'maps' ? 'map_directory' : 'bot_directory'} = 'linked-root${location === 'ancestor' ? '/missing/definitions' : ''}'\n`)
+      configureScheduler(server!, { [kind === 'maps' ? 'map_directory' : 'bot_directory']: `linked-root${location === 'ancestor' ? '/missing/definitions' : ''}` })
       await server!.restart()
       const receipts: APIResponse[] = [await client.get(`${server!.baseURL}${kind === 'maps' ? mapAPI : botsAPI}`)]
       if (kind === 'maps') receipts.push(await client.get(`${server!.baseURL}${nodesAPI}/new`))

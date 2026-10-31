@@ -8,6 +8,9 @@
 //! 支持的命令与行为：
 //! - `workspace list`
 //! - `tab create --workspace ID --cwd PATH --label TEXT --no-focus`
+//! - `tab close TAB`（记录精确目标；`tab_close_gate` 控制返回，成功追加 `closed.jsonl`；
+//!   `fail_tab_close` 拒绝命令，`tab_close_confirmation_required` 返回结构化额外确认错误）
+//! - `invocations.jsonl` 记录每次进程启动的完整参数，包含未支持的命令，供核对无确认绕过。
 //! - `agent start NAME --kind KIND --pane ID --timeout MS [-- ARGS...]`
 //! - `agent prompt TARGET TEXT`
 //! - `agent get TARGET`（精确目标的官方原生引用；缺省尚不可得）
@@ -47,11 +50,15 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    // Include unsupported commands: a test must see attempted confirmation or
+    // other bypasses even when this controlled host does not implement them.
+    record("invocations.jsonl", json!({"argv":args}));
     match args.first().map(String::as_str) {
         Some("workspace") if args.get(1).map(String::as_str) == Some("list") => {
             workspace_list(&args)
         }
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
+        Some("tab") if args.get(1).map(String::as_str) == Some("close") => tab_close(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("prompt") => agent_prompt(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
@@ -180,6 +187,22 @@ fn workspace_list(args: &[String]) {
             "workspaces": workspaces,
         },
     }));
+}
+
+fn tab_close(args: &[String]) {
+    let behavior = behavior();
+    let Some(target) = args.get(2) else { usage(args) };
+    record("calls.jsonl", json!({"at":now_ms(),"kind":"tab_close","argv":args,"target":target}));
+    wait_at_gate(&behavior, "tab_close_gate", target);
+    if flag(&behavior, "fail_tab_close") {
+        fail("tab_close_failed", "controlled-close-failure");
+    }
+    if flag(&behavior, "tab_close_confirmation_required") {
+        output(json!({"error":{"code":"confirmation_required","message":"closing this tab would close a worktree group"}}));
+        return;
+    }
+    record("closed.jsonl", json!({"target":target}));
+    output(json!({"result":{"type":"ok"}}));
 }
 
 fn tab_create(args: &[String]) {
@@ -353,9 +376,12 @@ fn agent_get(args: &[String]) {
     // Re-read after the gate so the external identity may arrive while a page is closed.
     let behavior = behavior();
     let started = read_records("started.jsonl").into_iter().find(|agent| agent["name"] == target);
+    let pending = behavior.get("native_session_pending_reads").and_then(Value::as_u64)
+        .is_some_and(|limit| read_records("calls.jsonl").iter()
+            .filter(|call| call["kind"] == "agent_get" && call["target"] == target).count() as u64 <= limit);
     output(json!({"result":{"agent":{
         "name":target,
-        "agent_session":behavior.get("native_session").cloned().unwrap_or(Value::Null),
+        "agent_session":if pending { Value::Null } else { behavior.get("native_session").cloned().unwrap_or(Value::Null) },
         "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
         "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
     }}}));

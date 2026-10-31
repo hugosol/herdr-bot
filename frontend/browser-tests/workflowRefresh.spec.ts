@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { test, expect, type Page, type TestInfo } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 import { nativeVisibilityBrowser } from './workflowVisibility'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -10,7 +10,7 @@ async function fixture(interval?: number) {
   server = await startServer({ separateCwd: true, herdr: {} })
   if (interval !== undefined) {
     await server.stop()
-    fs.appendFileSync(server.configPath, `\n[scheduler]\nworkflow_poll_interval_seconds = ${interval}\n`)
+    configureScheduler(server, { workflow_poll_interval_seconds: interval })
     await server.restart()
   }
   const root = path.join(server.cwd, '.data/workflow-runs/observed-run')

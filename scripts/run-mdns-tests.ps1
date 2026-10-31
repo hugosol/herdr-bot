@@ -45,7 +45,12 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $repoRoot 'backend'
 $manifest = Join-Path $backendDir 'Cargo.toml'
-$debugDir = Join-Path $backendDir 'target\debug'
+$targetDir = if ($env:CARGO_TARGET_DIR) {
+    [System.IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)
+} else {
+    Join-Path $backendDir 'target'
+}
+$debugDir = Join-Path $targetDir 'debug'
 $testNames = @('mdns_failure', 'mdns_conflict', 'session_write_boundary', 'monitoring')
 $runners = @{}
 

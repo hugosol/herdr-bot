@@ -12,11 +12,11 @@ mod runtime_data;
 async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args()?;
     let config = herdr_bot::Config::load(&config_path)?;
-    herdr_bot::tasks::catalog::Catalog::load(&config.tasks.metadata_file)
+    herdr_bot::tasks::catalog::Catalog::load(&config.tasks.metadata_file, &config.roots)
         .map_err(|error| anyhow::anyhow!(error.message()))?;
     runtime_data::prepare(&config)?;
 
-    let static_dir = herdr_bot::static_dir();
+    let static_dir = &config.static_directory;
     if !static_dir.join("index.html").is_file() {
         eprintln!(
             "[herdr-bot] 警告：未找到打包页面 {}，请先在 frontend 目录执行 npm run build。",

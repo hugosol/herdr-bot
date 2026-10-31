@@ -1,6 +1,8 @@
 //! S2（HTTP 操作 interface）接缝上的验收测试：经 HTTP interface 请求“启动”操作，
 //! 观察服务端配置的启动批处理是否以配置工作目录被真实执行，以及调用结束事实是否回传。
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -64,6 +66,7 @@ fn config(start_script: &Path, working_directory: &Path) -> herdr_bot::Config {
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
+        ..common::config(start_script, working_directory)
     }
 }
 

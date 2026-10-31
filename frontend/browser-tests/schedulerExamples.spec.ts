@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 
 const examples = fileURLToPath(new URL('../../docs/example/', import.meta.url))
 let server: E2EServer | null = null
@@ -21,16 +21,17 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     expect(fs.readdirSync(path.join(server.cwd, 'meta-data/workflow-maps'))).toEqual([])
     expect(fs.readdirSync(path.join(server.cwd, 'meta-data/bots'))).toEqual([])
     await server.stop()
-    fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'plans'\nbot_directory = 'capabilities'\n")
-    fs.mkdirSync(path.join(server.cwd, 'plans'))
-    fs.mkdirSync(path.join(server.cwd, 'capabilities'))
+    const root = path.dirname(server.configPath)
+    configureScheduler(server, { map_directory: 'plans', bot_directory: 'capabilities' })
+    fs.mkdirSync(path.join(root, 'plans'))
+    fs.mkdirSync(path.join(root, 'capabilities'))
     const mapTime = new Date('2026-01-01T00:00:00Z')
     for (const name of ['trip-readiness.json', 'another-trip.json']) {
-      const target = path.join(server.cwd, 'plans', name)
+      const target = path.join(root, 'plans', name)
       fs.copyFileSync(path.join(examples, 'maps', name), target)
       fs.utimesSync(target, mapTime, mapTime)
     }
-    for (const name of ['weather-capability.json', 'quota-capability.json', 'summary-capability.json']) fs.copyFileSync(path.join(examples, 'bots', name), path.join(server.cwd, 'capabilities', name))
+    for (const name of ['weather-capability.json', 'quota-capability.json', 'summary-capability.json']) fs.copyFileSync(path.join(examples, 'bots', name), path.join(root, 'capabilities', name))
     await server.restart()
     await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
@@ -77,7 +78,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(details.getByTestId('node-input')).toHaveText('城市：广州\n日期：2026-11-03')
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(bot.getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
-    const file = path.join(server.cwd, 'capabilities/weather-capability.json')
+    const file = path.join(root, 'capabilities/weather-capability.json')
     const updatedWeatherGuide = '# 最新天气指引\n<不执行查询>\n  保留原始缩进与 **文本**。'
     const weather = JSON.parse(fs.readFileSync(file, 'utf8'))
     fs.writeFileSync(file, JSON.stringify({ ...weather, name: '更新后的目的地天气摘要', node_guide: updatedWeatherGuide }))
@@ -87,7 +88,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
     await expect(bot.getByRole('heading', { name: '更新后的目的地天气摘要', exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
-    fs.copyFileSync(path.join(examples, 'maps/another-trip.json'), path.join(server.cwd, 'plans/new-copy.json'))
+    fs.copyFileSync(path.join(examples, 'maps/another-trip.json'), path.join(root, 'plans/new-copy.json'))
     await page.getByRole('button', { name: '刷新全部', exact: true }).click()
     await expect(page.getByTestId('scheduler-map-list').locator('[data-map-file="new-copy.json"]')).toHaveText('另一张出行计划（人工示例）')
     await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()

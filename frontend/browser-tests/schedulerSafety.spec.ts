@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 
 declare global {
   interface Window { schedulerEffects?: number[] }
@@ -208,21 +208,24 @@ test('P27 actual Map and bot readers reject traversal requests and outside junct
 // and every pre-existing byte catches installers, cleanup or unrelated writes.
 test('P28 preparing Map and bot parents only creates empty directories and preserves existing files', async ({ page }) => {
   server = await startServer({ herdr: {}, safeShutdown: true, separateCwd: true })
-  fs.mkdirSync(path.join(server.cwd, 'prepared'))
-  fs.writeFileSync(path.join(server.cwd, 'prepared', 'keep.json'), '{ user-owned parent file: preserve exactly }\n')
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'prepared/maps/definitions'\nbot_directory = 'prepared/bots/definitions'\n")
+  const root = path.dirname(server.configPath)
+  fs.mkdirSync(path.join(root, 'prepared'))
+  fs.writeFileSync(path.join(root, 'prepared', 'keep.json'), '{ user-owned parent file: preserve exactly }\n')
+  configureScheduler(server, { map_directory: 'prepared/maps/definitions', bot_directory: 'prepared/bots/definitions' })
   await server.restart()
   const snapshot = () => {
     const tree: Record<string, string> = {}
-    const visit = (relative: string) => {
-      for (const name of fs.readdirSync(path.join(server!.cwd, relative))) {
+    const visit = (base: string, relative: string) => {
+      for (const name of fs.readdirSync(path.join(base, relative))) {
         const entry = path.posix.join(relative, name)
-        const absolute = path.join(server!.cwd, entry)
-        if (fs.statSync(absolute).isDirectory()) { tree[entry] = 'directory'; visit(entry) }
-        else tree[entry] = `file:${fs.readFileSync(absolute).toString('base64')}`
+        const absolute = path.join(base, entry)
+        const key = base === root ? entry : `process-cwd/${entry}`
+        if (fs.statSync(absolute).isDirectory()) { tree[key] = 'directory'; visit(base, entry) }
+        else tree[key] = `file:${fs.readFileSync(absolute).toString('base64')}`
       }
     }
-    visit('')
+    visit(root, 'prepared')
+    visit(server!.cwd, '')
     return tree
   }
   const before = snapshot()
@@ -271,11 +274,11 @@ for (const kind of ['maps', 'bots'] as const) {
       await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: 'Inside node A', exact: true }).click()
       await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Inside capability', exact: true })).toBeVisible()
-      const alias = path.join(server.cwd, 'outside-link')
+      const alias = path.join(path.dirname(server.configPath), 'outside-link')
       fs.symlinkSync(outside, alias, 'junction')
       expect(fs.readFileSync(path.join(alias, 'outside.json'), 'utf8')).toBe(bytes)
       const configured = location === 'root' ? 'outside-link' : 'outside-link/missing/definitions'
-      fs.appendFileSync(server.configPath, `\n[scheduler]\n${kind === 'maps' ? 'map_directory' : 'bot_directory'} = '${configured}'\n`)
+      configureScheduler(server, { [kind === 'maps' ? 'map_directory' : 'bot_directory']: configured })
       await server.restart()
       await openScheduler(page)
       await expect(page.getByTestId(kind === 'maps' ? 'scheduler-error' : 'scheduler-bot-error')).toContainText('不能经过')
