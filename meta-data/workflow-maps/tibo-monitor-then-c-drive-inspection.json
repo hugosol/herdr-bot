@@ -7,6 +7,7 @@
       "bot_id": "c-drive-temp-inspection",
       "input": "在前置节点完成后，只读检查 C:\\Users\\hugos\\AppData\\Local\\Temp 下的程序临时文件，追踪其中 worktree 对应的项目和 branch，说明使用状态及清理建议。本次不删除文件、不移除 worktree、不删除分支、不终止进程。",
       "report_policy": "manual",
+      "auto_close": false,
       "zone": "D:\\developer\\bot-playground",
       "blocked_by": [
         "tibo-monitor"
@@ -17,6 +18,7 @@
       "bot_id": "tibo-monitor",
       "input": "根据 https://codex-reset.com/ 的公开信息，总结可能还有多久会 reset 额度，注明观察时间、依据和不确定性。",
       "report_policy": "auto",
+      "auto_close": true,
       "zone": "D:\\developer\\bot-playground",
       "blocked_by": []
     }
