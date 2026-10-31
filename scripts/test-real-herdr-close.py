@@ -28,6 +28,8 @@ import urllib.error
 import urllib.request
 import uuid
 
+from developer_paths import REPO, backend_suffix, resolve_arguments
+
 
 def require(condition, detail):
     if not condition:
@@ -203,7 +205,9 @@ class Acceptance:
             catalog += f'[[extensions]]\nid = "{id}"\nlabel = "{id}"\nagent = "pi"\nkind = "fixed"\nentrypoint = {json.dumps(str(path))}\n'
         (self.root / 'options.toml').write_text(catalog)
         q = lambda value: json.dumps(str(value))
-        config = 'listen_addr = "127.0.0.1:0"\n[mdns]\nenabled = false\n'
+        config = 'listen_addr = "127.0.0.1:0"\n'
+        config += f'static_directory = {q(self.args.repo / "backend/static")}\ndata_directory = {q(self.root / "data")}\n'
+        config += '[mdns]\nenabled = false\n'
         for name in ['start', 'stop']:
             config += f'[operations.{name}]\nscript = {q(self.root / "unused.bat")}\nworking_directory = {q(self.root)}\n'
         config += f'[herdr]\nworkspace_name = "zone"\nexecutable = {q(self.args.herdr)}\n'
@@ -343,6 +347,7 @@ class Acceptance:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--controlled-process', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--paths-file', type=Path, help='Machine roots TOML (default: repository paths.local.toml)')
     parser.add_argument('--herdr', type=Path)
     parser.add_argument('--backend', type=Path)
     parser.add_argument('--pi-package', type=Path)
@@ -356,11 +361,14 @@ def main():
         pending.replace(args.controlled_process)
         while True:
             time.sleep(1)
-    for name in ['herdr', 'backend', 'pi_package', 'pi_state_extension', 'toolkit']:
-        if getattr(args, name) is None:
-            parser.error('--' + name.replace('_', '-') + ' is required')
-        setattr(args, name, getattr(args, name).resolve())
-    args.repo = Path(__file__).resolve().parent.parent
+    args.backend = (args.backend or REPO / backend_suffix()).resolve()
+    resolve_arguments(parser, args, {
+        'herdr': ('herdr', 'herdr.exe'),
+        'pi_package': ('pi_package', ''),
+        'pi_state_extension': ('pi_agent', 'extensions/herdr-agent-state.ts'),
+        'toolkit': ('toolkit', ''),
+    })
+    args.repo = REPO
     return Acceptance(args).run()
 
 

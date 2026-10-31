@@ -68,6 +68,8 @@ metadata_file = '{}'
     for (name, content, reason) in [
         ("missing", None, "读取失败"),
         ("syntax", Some("[[models".to_owned()), "TOML"),
+        ("unknown-root", Some(CATALOG.replace("C:/catalog/omp-cost.ts", "${roots.absent}/fixed.ts")), "absent"),
+        ("embedded-root", Some(CATALOG.replace("C:/catalog/omp-cost.ts", "prefix/${roots.absent}/fixed.ts")), "路径"),
         (
             "duplicate",
             Some(format!(
@@ -138,18 +140,18 @@ metadata_file = '{}'
     );
 }
 
-// P40 (metadata layout): use the actual delivered configuration, changing only network settings.
-// A private path helper or a catalog in the process root cannot satisfy this observation.
+// P40: configuration-relative metadata stays independent of the process cwd.
+// No machine-local roots or installed extensions are required.
 #[tokio::test]
-async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_real_process() {
+async fn configuration_reads_its_metadata_directory_from_an_unrelated_process_cwd() {
     use std::io::{BufRead, BufReader};
     let dir = TempDir::new("delivered metadata layout");
     fs::create_dir(dir.path().join("meta-data")).unwrap();
     fs::write(dir.path().join("meta-data/task-options.toml"), CATALOG).unwrap();
     // A decoy beside the config must not be used.
     fs::write(dir.path().join("chat-options.toml"), "not TOML").unwrap();
-    let root = common::repo_fixtures_dir().parent().unwrap().to_path_buf();
-    let delivered = fs::read_to_string(root.join("herdr-bot.toml")).unwrap();
+    let delivered = String::from("listen_addr = '127.0.0.1:0'\n[operations.start]\nscript = 'unused.bat'\nworking_directory = '.'\n[operations.stop]\nscript = 'unused.bat'\nworking_directory = '.'\n[herdr]\nworkspace_name = 'isolated metadata'\n[tasks]\nmetadata_file = 'meta-data/task-options.toml'\n");
+    let unrelated_cwd = TempDir::new("metadata unrelated cwd");
     let config_path = dir.path().join("herdr-bot.toml");
     let defaulted = delivered.replace("metadata_file = 'meta-data/task-options.toml'", "");
     for shape in [&delivered, &defaulted] {
@@ -164,7 +166,7 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
         let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .arg("--config")
             .arg(&config_path)
-            .current_dir(dir.path())
+            .current_dir(unrelated_cwd.path())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -202,6 +204,26 @@ async fn delivered_configuration_reads_the_independent_metadata_directory_in_a_r
         assert_eq!(body["options"]["models"], json!(["default", "lab-model"]));
         assert_eq!(body["options"]["labels"]["models"]["lab-model"], "实验模型");
     }
+}
+
+#[tokio::test]
+async fn metadata_paths_use_the_metadata_directory_and_startup_roots_snapshot() {
+    let root = TempDir::new("catalog rooted paths");
+    let root_file = root.path().join("paths.toml");
+    fs::write(&root_file, "[roots]\nextensions = 'original extensions'\n").unwrap();
+    let mut config = configuration(root.path());
+    config.roots = herdr_bot::paths::Roots::load(&root_file).unwrap();
+    fs::write(&root_file, "[roots]\nextensions = 'changed extensions'\n").unwrap();
+    fs::write(root.path().join("options.toml"), CATALOG.replace("C:/catalog/omp-cost.ts", "${roots.extensions}/fixed.ts")).unwrap();
+    let server = TestServer::start_app(herdr_bot::app(&config)).await;
+    let response = get_over_tcp(server.addr(), "/api/tasks").await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let value: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(Path::new(value["options"]["extensions"][0]["entrypoint"].as_str().unwrap()), root.path().join("original extensions/fixed.ts"));
+    fs::write(root.path().join("options.toml"), CATALOG.replace("C:/catalog/omp-cost.ts", "local/fixed.ts")).unwrap();
+    let response = get_over_tcp(server.addr(), "/api/tasks").await;
+    let value: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(Path::new(value["options"]["extensions"][0]["entrypoint"].as_str().unwrap()), root.path().join("local/fixed.ts"));
 }
 
 const CATALOG: &str = r#"

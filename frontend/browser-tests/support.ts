@@ -16,9 +16,12 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../..')
-const binary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-bot.exe')
+const targetDirectory = process.env.CARGO_TARGET_DIR
+  ? path.resolve(process.env.CARGO_TARGET_DIR)
+  : path.join(repoRoot, 'backend', 'target')
+const binary = path.join(targetDirectory, 'debug', 'herdr-bot.exe')
 const fixtures = path.join(repoRoot, 'fixtures', 'operations')
-const herdrFixtureBinary = path.join(repoRoot, 'backend', 'target', 'debug', 'herdr-fixture.exe')
+const herdrFixtureBinary = path.join(targetDirectory, 'debug', 'herdr-fixture.exe')
 
 export type TaskView = {
   id: string
@@ -71,6 +74,22 @@ export type E2EServer = {
   cleanup: () => Promise<void>
 }
 
+/** Update scheduler fixture settings without introducing a second TOML table. */
+export function configureScheduler(server: E2EServer, values: Record<string, string | number>): void {
+  const lines = fs.readFileSync(server.configPath, 'utf8').split('\n')
+  const start = lines.findIndex(line => line.trim() === '[scheduler]')
+  if (start < 0) throw new Error('Missing scheduler fixture configuration')
+  let end = start + 1
+  while (end < lines.length && !lines[end].trim().startsWith('[')) end++
+  for (const [key, value] of Object.entries(values)) {
+    const setting = `${key} = ${typeof value === 'number' ? value : `'${value}'`}`
+    const index = lines.findIndex((line, index) => index > start && index < end && line.split('=')[0].trim() === key)
+    if (index >= 0) lines[index] = setting
+    else lines.splice(end++, 0, setting)
+  }
+  fs.writeFileSync(server.configPath, lines.join('\n'))
+}
+
 /**
  * 本机可用于局域网访问的 IPv4；没有时返回 null（调用方跳过用例）。
  *
@@ -119,6 +138,7 @@ function writeConfig(
   storage: string,
   herdr: { workspaceName: string; executable?: string },
   listenAddr: string,
+  cwd: string,
 ): string {
   const configPath = path.join(directory, 'herdr-bot.toml')
   const herdrLines = ['[herdr]', `workspace_name = '${herdr.workspaceName}'`]
@@ -129,6 +149,15 @@ function writeConfig(
     configPath,
     [
       `listen_addr = "${listenAddr}"`,
+      `paths_file = '${path.join(directory, 'paths.toml')}'`,
+      `static_directory = '${path.join(repoRoot, 'backend', 'static')}'`,
+      `data_directory = '${path.join(cwd, '.data')}'`,
+      '',
+      '[scheduler]',
+      `map_directory = '${path.join(cwd, 'meta-data', 'workflow-maps')}'`,
+      `bot_directory = '${path.join(cwd, 'meta-data', 'bots')}'`,
+      `run_directory = '${path.join(cwd, '.data', 'workflow-runs')}'`,
+      `run_instructions = '${path.join(repoRoot, 'docs', 'workflow-runtime.md')}'`,
       '',
       '[operations.start]',
       `script = '${path.join(fixtures, 'success.bat')}'`,
@@ -267,7 +296,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
   const listenHost = listenAddr.slice(0, listenAddr.lastIndexOf(':'))
   const localHost = listenHost === '0.0.0.0' ? '127.0.0.1' : listenHost === '[::]' ? '[::1]' : listenHost
   const executable = options.safeShutdown
-    ? path.join(repoRoot, 'backend', 'target', 'debug', 'examples', 'safe_shutdown_shell.exe')
+    ? path.join(targetDirectory, 'debug', 'examples', 'safe_shutdown_shell.exe')
     : binary
   if (!fs.existsSync(executable)) {
     throw new Error(
@@ -291,13 +320,14 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
     // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
     const extensionDirectory = path.join(directory, 'extensions')
     fs.mkdirSync(extensionDirectory)
+    fs.writeFileSync(path.join(directory, 'paths.toml'), `[roots]\nbrowser_extensions = '${extensionDirectory}'\n`)
     const metadata = fs.readFileSync(path.join(repoRoot, 'meta-data', 'task-options.toml'), 'utf8')
     fs.writeFileSync(metadataFile, metadata.replace(/(\[\[extensions\]\][\s\S]*?entrypoint = )'[^']+'/g, (_line, prefix: string) => {
       const id = prefix.match(/^id = '([^']+)'/m)![1]
       const relative = `${id}.ts`
       const entrypoint = path.join(extensionDirectory, relative)
       fs.writeFileSync(entrypoint, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(directory, 'extension-executed'))}, ${JSON.stringify(relative)}); throw new Error('FILE CHECK MUST NOT EXECUTE')\n`)
-      return `${prefix}'${entrypoint}'`
+      return `${prefix}'\${roots.browser_extensions}/${relative}'`
     }))
     if (options.herdr !== undefined) {
       if (!fs.existsSync(herdrFixtureBinary)) {
@@ -334,6 +364,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
         executable: herdrExecutable,
       },
       await browserListenAddress(listenAddr),
+      cwd,
     )
 
     async function start() {

@@ -21,6 +21,19 @@ use crate::zones::DEFAULT_REGISTRY_FILE;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Machine-local roots file, relative to this configuration file.
+    #[serde(default)]
+    pub paths_file: Option<PathBuf>,
+    /// Immutable startup snapshot of machine roots.
+    #[serde(skip)]
+    pub roots: crate::paths::Roots,
+    /// Absolute directory of the configuration source.
+    #[serde(skip)]
+    pub base_directory: PathBuf,
+    #[serde(default = "static_directory_by_default")]
+    pub static_directory: PathBuf,
+    #[serde(default = "data_directory_by_default")]
+    pub data_directory: PathBuf,
     /// Axum 监听地址，例如 `0.0.0.0:8787`（非回环，局域网可达）。
     pub listen_addr: String,
     /// 固定脚本操作绑定。
@@ -34,11 +47,11 @@ pub struct Config {
     /// 会话登记的两个窗口；整个 `[sessions]` 段可缺省，缺省等于默认（在线 10 秒、离线保留 30 秒）。
     #[serde(default)]
     pub sessions: SessionsConfig,
-    /// zone 登记列表的存储位置；整个 `[zones]` 段可缺省，缺省为进程工作目录下的
+    /// zone 登记列表的存储位置；整个 `[zones]` 段可缺省，缺省为配置文件目录下的
     /// `.data/zones.json`。
     #[serde(default)]
     pub zones: ZonesConfig,
-    /// Task 的存储位置；整个 `[tasks]` 段可缺省，缺省为进程工作目录下的
+    /// Task 的存储位置；整个 `[tasks]` 段可缺省，缺省为配置文件目录下的
     /// `meta-data/tasks.json`。
     #[serde(default)]
     pub tasks: TasksConfig,
@@ -50,9 +63,17 @@ pub struct Config {
     /// Git 命令执行设置；整个 `[git]` 段可缺省，缺省每条命令最多执行 300 秒。
     #[serde(default)]
     pub git: GitConfig,
-    /// Service-level definition directories, relative to the process cwd.
+    /// Service-level definition directories, relative to the configuration file.
     #[serde(default)]
     pub scheduler: SchedulerConfig,
+}
+
+fn static_directory_by_default() -> PathBuf {
+    PathBuf::from("backend/static")
+}
+
+fn data_directory_by_default() -> PathBuf {
+    PathBuf::from(".data")
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,7 +113,7 @@ impl Default for SchedulerConfig {
             map_directory: PathBuf::from("meta-data/workflow-maps"),
             bot_directory: PathBuf::from("meta-data/bots"),
             run_directory: PathBuf::from(".data/workflow-runs"),
-            run_instructions: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/workflow-runtime.md"),
+            run_instructions: PathBuf::from("docs/workflow-runtime.md"),
             collect_wait_seconds: CollectWaitSeconds(90 * 60),
             workflow_poll_interval_seconds: std::num::NonZeroU32::new(5).unwrap(),
         }
@@ -230,8 +251,8 @@ impl TryFrom<u32> for CommandTimeoutSeconds {
 
 /// zone 登记设置（`[zones]` 段）。
 ///
-/// 登记列表由后端以文件持久保存，电脑与手机读取同一份列表；路径相对进程工作目录，与既有配置的
-/// 路径语义一致。登记文件不存在表示还没有任何登记，不是错误。
+/// 登记列表由后端以文件持久保存，电脑与手机读取同一份列表；普通相对路径以配置文件目录为基准。
+/// 登记文件不存在表示还没有任何登记，不是错误。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZonesConfig {
@@ -262,15 +283,15 @@ impl Default for ZonesConfig {
 
 /// Task 设置（`[tasks]` 段）。
 ///
-/// Task 由后端以文件持久保存，电脑与手机读取同一份；路径相对进程工作目录，与既有配置的
-/// 路径语义一致。存储文件不存在表示还没有任何 Task，不是错误。
+/// Task 由后端以文件持久保存，电脑与手机读取同一份；普通相对路径以配置文件目录为基准。
+/// 存储文件不存在表示还没有任何 Task，不是错误。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TasksConfig {
     /// Task 存储文件路径；缺省 `meta-data/tasks.json`。
     #[serde(default = "storage_file_by_default")]
     pub storage_file: PathBuf,
-    /// 手工维护的选项目录；相对进程工作目录，运行中每次操作重新读取。
+    /// 手工维护的选项目录；相对配置文件目录，运行中每次操作重新读取。
     #[serde(default = "metadata_file_by_default")]
     pub metadata_file: PathBuf,
 }
@@ -288,12 +309,12 @@ fn metadata_file_by_default() -> PathBuf {
     PathBuf::from("meta-data/task-options.toml")
 }
 
-/// `[tasks] storage_file` 的缺省值：进程工作目录下的 `meta-data/tasks.json`。
+/// `[tasks] storage_file` 的缺省值：配置文件目录下的 `meta-data/tasks.json`。
 fn storage_file_by_default() -> PathBuf {
     PathBuf::from(crate::tasks::DEFAULT_STORAGE_FILE)
 }
 
-/// `[zones] registry_file` 的缺省值：进程工作目录下的 `.data/zones.json`。
+/// `[zones] registry_file` 的缺省值：配置文件目录下的 `.data/zones.json`。
 fn registry_file_by_default() -> PathBuf {
     PathBuf::from(DEFAULT_REGISTRY_FILE)
 }
@@ -592,9 +613,50 @@ impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Config> {
         let raw = FileStore::default().read_to_string(path)
             .with_context(|| format!("读取配置文件失败：{}", path.display()))?;
-        Config::from_toml(&raw).with_context(|| format!("解析配置文件失败：{}", path.display()))
+        Self::from_toml_at(&raw, path)
+            .with_context(|| format!("解析配置文件失败：{}", path.display()))
     }
 
+    /// Parse a configuration with an explicit source file and resolve its startup paths.
+    pub fn from_toml_at(raw: &str, source: &Path) -> anyhow::Result<Config> {
+        let mut config = Self::from_toml(raw)?;
+        let source = crate::paths::Roots::default().resolve(source, &std::env::current_dir()?)?;
+        config.base_directory = source.parent().context("配置文件没有父目录")?.to_path_buf();
+        if let Some(path) = &config.paths_file {
+            let path = crate::paths::Roots::default().resolve(path, &config.base_directory)
+                .context("解析 paths_file 失败（路径根文件不能引用尚未加载的根）")?;
+            config.roots = crate::paths::Roots::load(&path)?;
+            config.paths_file = Some(path);
+        }
+        let roots = &config.roots;
+        let base = &config.base_directory;
+        for (name, path) in [
+            ("operations.start.script", &mut config.operations.start.script),
+            ("operations.start.working_directory", &mut config.operations.start.working_directory),
+            ("operations.stop.script", &mut config.operations.stop.script),
+            ("operations.stop.working_directory", &mut config.operations.stop.working_directory),
+            ("zones.registry_file", &mut config.zones.registry_file),
+            ("tasks.storage_file", &mut config.tasks.storage_file),
+            ("tasks.metadata_file", &mut config.tasks.metadata_file),
+            ("sessions.history_file", &mut config.sessions.history_file),
+            ("scheduler.map_directory", &mut config.scheduler.map_directory),
+            ("scheduler.bot_directory", &mut config.scheduler.bot_directory),
+            ("scheduler.run_directory", &mut config.scheduler.run_directory),
+            ("scheduler.run_instructions", &mut config.scheduler.run_instructions),
+            ("static_directory", &mut config.static_directory),
+            ("data_directory", &mut config.data_directory),
+        ] {
+            *path = roots.resolve(path, base).with_context(|| format!("解析配置路径 {name} 失败"))?;
+        }
+        if let Some(path) = &mut config.zones.create_parent_directory {
+            *path = roots.resolve(path, base).context("解析配置路径 zones.create_parent_directory 失败")?;
+        }
+        config.herdr.executable = roots.command(&config.herdr.executable, base)
+            .context("解析配置路径 herdr.executable 失败")?;
+        Ok(config)
+    }
+
+    /// Raw TOML parser: paths remain unresolved. Use `load` or `from_toml_at` for a deployment.
     /// 解析 TOML 配置文本，并拒绝没有明确目标 Workspace 的部署。
     ///
     /// `[herdr] workspace_name` 缺失由 TOML 反序列化直接拒绝；空串与纯空白在这里拒绝，避免把

@@ -698,7 +698,8 @@ fn write_process_config(dir: &TempDir, storage: &Path) -> std::path::PathBuf {
              [operations.stop]\nscript = '{script}'\nworking_directory = '{operations}'\n\n\
              [mdns]\nenabled = false\n\n\
              [herdr]\nworkspace_name = 'bot-playground'\n\n\
-             [tasks]\nstorage_file = '{storage}'\n",
+             [tasks]\nstorage_file = '{storage}'\nmetadata_file = '{metadata}'\n",
+            metadata = common::test_metadata_file().display(),
             script = script.display(),
             operations = operations.display(),
             storage = storage.display(),

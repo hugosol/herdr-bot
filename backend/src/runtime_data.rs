@@ -6,7 +6,7 @@ use herdr_bot::Config;
 use herdr_bot::files::{FileAccess, FileStore, PublishMode};
 
 pub fn prepare(config: &Config) -> anyhow::Result<()> {
-    let mut paths = vec![PathBuf::from(".data"), PathBuf::from("zones.json"), PathBuf::from("meta-data")];
+    let mut paths = vec![config.data_directory.clone(), config.base_directory.join(".data"), config.base_directory.join("zones.json"), config.base_directory.join("meta-data")];
     for file in [&config.zones.registry_file, &config.tasks.storage_file] {
         paths.push(file.clone());
         if let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -15,16 +15,16 @@ pub fn prepare(config: &Config) -> anyhow::Result<()> {
     }
     FileStore::default().with(&paths, |files| -> anyhow::Result<()> {
         migrate_definitions(files, config)?;
-        files.create_dir_all(".data").context("创建运行数据目录 .data 失败")?;
+        files.create_dir_all(&config.data_directory).with_context(|| format!("创建运行数据目录失败：{}", config.data_directory.display()))?;
         for file in [&config.zones.registry_file, &config.tasks.storage_file] {
             if let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) {
                 files.create_dir_all(parent)
                     .with_context(|| format!("创建持久文件目录失败：{}", parent.display()))?;
             }
         }
-        let marker = Path::new(".data/.runtime-layout-v1");
-        if !files.try_exists(marker).context("读取运行数据切换标记失败")? {
-            migrate_zones(files, &config.zones.registry_file)?;
+        let marker = config.data_directory.join(".runtime-layout-v1");
+        if !files.try_exists(&marker).context("读取运行数据切换标记失败")? {
+            migrate_zones(files, &config.base_directory.join("zones.json"), &config.zones.registry_file)?;
             // Terminology migration is explicit and offline. Retain old user data.
             files.write(marker, b"runtime layout v1\n").context("写入运行数据切换标记失败")?;
         }
@@ -43,17 +43,17 @@ fn migrate_definitions(files: &FileAccess, config: &Config) -> anyhow::Result<()
     let mut pending = Vec::new();
     // Inspect every eligible source and complete target before creating anything.
     for (configured, source, target, name, directory) in candidates {
-        if std::path::absolute(configured)? != std::path::absolute(target)? {
+        let target = config.base_directory.join(target);
+        if std::path::absolute(configured)? != std::path::absolute(&target)? {
             continue;
         }
-        let marker = PathBuf::from(format!(".data/.definition-layout-v1-{name}"));
+        let marker = config.data_directory.join(format!(".definition-layout-v1-{name}"));
         check_definition_path(files, &marker)?;
         if files.symlink_metadata(&marker).is_ok() {
             anyhow::ensure!(files.metadata(&marker)?.is_file(), "定义迁移标记不是文件：{}", marker.display());
             continue;
         }
-        let source = PathBuf::from(source);
-        let target = PathBuf::from(target);
+        let source = config.base_directory.join(source);
         let old = definition_inventory(files, &source, directory)?;
         let new = definition_inventory(files, &target, directory)?;
         if let (Some(old), Some(new)) = (&old, &new) {
@@ -98,7 +98,7 @@ fn migrate_definitions(files: &FileAccess, config: &Config) -> anyhow::Result<()
             return Err(error).with_context(|| format!("复制定义失败：{} -> {}", source.display(), target.display()));
         }
     }
-    if !pending.is_empty() { files.create_dir_all(".data")?; }
+    if !pending.is_empty() { files.create_dir_all(&config.data_directory)?; }
     for (_, _, marker, _, _, _) in pending {
         files.publish_checked(&marker, b"definition layout v1\n", PublishMode::Create,
             |_| Ok::<(), std::io::Error>(()), |error| error)
@@ -157,8 +157,7 @@ fn definition_inventory(files: &FileAccess, root: &Path, directory: bool)
     Ok(Some(inventory))
 }
 
-fn migrate_zones(files: &FileAccess, target: &Path) -> anyhow::Result<()> {
-    let source = Path::new("zones.json");
+fn migrate_zones(files: &FileAccess, source: &Path, target: &Path) -> anyhow::Result<()> {
     if std::path::absolute(source)? == std::path::absolute(target)? {
         return Ok(());
     }

@@ -82,16 +82,16 @@ Resume 复用 chat 历史入口的实际定位／恢复：按所选原生 sessio
 
 ```toml
 [scheduler]
-map_directory = 'D:\service-data\maps'
-bot_directory = 'D:\service-data\bots'
-run_directory = 'D:\service-data\runs'
-run_instructions = 'D:\herdr-bot\docs\workflow-runtime.md'
+map_directory = '${roots.project}/meta-data/workflow-maps'
+bot_directory = '${roots.project}/meta-data/bots'
+run_directory = '${roots.data}/workflow-runs'
+run_instructions = '${roots.project}/docs/workflow-runtime.md'
 workflow_poll_interval_seconds = 5
 ```
 
 `workflow_poll_interval_seconds` 是服务启动配置，默认 5 秒，允许 1..=4294967295 的整数秒；零、负数、小数或字符串会让启动失败。修改后重启服务，页面从 `GET /api/workflow/runs` 的 `pollIntervalSeconds` 读取有效值；没有页面设置、推送或独立配置平台。间隔从上一轮完整查询结束起算，慢响应不追赶漏掉的 tick。
 
-相对目录在服务启动时按服务工作目录解析一次；向 Chat 提供绝对路径，不按 Chat 的 zone/cwd 重新推导。默认 Run 根为 `.data/workflow-runs`。部署时应显式设置稳定的 `run_instructions`，不要依赖编译机器保留源码；默认指向随源码构建的本说明。
+普通相对目录在服务启动时按服务配置文件所在目录解析一次；上例的命名根来自顶层 `paths_file` 指定的本机配置，详见 [本机根目录](../README.md#本机根目录与解析规则)。向 Chat 提供绝对路径，不按 Chat 的 zone/cwd 重新推导。默认 Run 根为 `.data/workflow-runs`，默认 `run_instructions` 为 `docs/workflow-runtime.md`，均相对服务配置目录，不依赖编译机器目录。修改根后须重启。
 
 每个 Run 目录只有三份业务记录：
 

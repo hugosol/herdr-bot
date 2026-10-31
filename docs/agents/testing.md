@@ -46,7 +46,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 ## 修改测试或夹具
 
 - **所有权**：每个用例独占可变临时数据与动态回环端口；同一竞争／重启场景保留必要共享。浏览器夹具探测端口后到子进程绑定前仍存在竞争；仅动态端口的已确认地址占用错误可重新分配（最多 32 次），固定地址及其他启动失败直接报错，不重试业务操作。自动发现目标不等于自动消除资源冲突。
-- **路径**：真实子进程使用测试拥有的临时 cwd 和显式持久路径，只读元数据可指向仓库。配置文件放在 Temp 不会自动改变相对数据路径的解析基准；启动期 `.data` 与迁移标记也要归测试所有。
+- **路径**：真实子进程使用测试拥有的临时目录。普通相对路径按声明配置文件的父目录解析，扩展入口按元数据文件父目录解析；cwd 可以与配置目录不同。需要根引用时生成隔离根文件，不读取开发者的 `paths.local.toml`。启动期 `data_directory` 与迁移标记也要归测试所有。
 - **环境**：`HERDR_FIXTURE_DIR`、`HERDR_BOT_FIXTURE_RECORD_DIR` 会覆盖默认夹具位置；继承环境时保证它们不把不同用例导向同一可变目录。
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
 - **Windows 清理**：`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
@@ -56,7 +56,9 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ## 真实 Herdr 自动关闭验收（P22）
 
-`python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端：
+`python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端。路径参数可显式传入，或使用 `--paths-file`（默认仓库 `paths.local.toml`）：缺省参数从 `herdr/herdr.exe`、`pi_package`、`pi_agent/extensions/herdr-agent-state.ts`、`toolkit` 根派生；backend 默认取当前源码的 debug 产物并尊重 `CARGO_TARGET_DIR`。显式参数优先，全部依赖参数均提供时不读取根文件。原生会话验收 `scripts/test-native-session-storage.py` 同样支持 `--paths-file`，缺省包路径使用 `pi_package`、`omp_package`。这些入口经 Rust `herdr-paths` 解析 TOML，不自行实现根引用；根可指向不同磁盘。
+
+以下为显式参数方式：
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot

@@ -39,6 +39,7 @@
 pub mod chats;
 pub mod clock;
 pub mod config;
+pub mod paths;
 pub mod mdns;
 pub mod operations;
 pub mod sessions;
@@ -241,6 +242,7 @@ pub fn app_with_state(
         tasks: Arc::new(tasks::Tasks::new(
             config.tasks.storage_file.clone(),
             config.tasks.metadata_file.clone(),
+            config.roots.clone(),
         )),
         map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
         bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
@@ -265,7 +267,7 @@ pub fn app_with_state(
 
     // 打包页面与操作接口由同一个服务提供：静态目录挂在 fallback 上，
     // "/" 由目录索引提供 index.html；页面没有前端路由，未知路径即 404。
-    let page = ServeDir::new(static_dir());
+    let page = ServeDir::new(&config.static_directory);
 
     let router = Router::new()
         // 只有这两个操作名可用；执行目标与工作目录只来自服务端配置。
@@ -372,11 +374,6 @@ pub fn app_with_state(
         .with_state(state.clone());
 
     (router, state)
-}
-
-/// 打包页面所在目录：前端构建产物（`frontend` 的 `npm run build` 输出）。
-pub fn static_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("static")
 }
 
 /// 一次已结束的固定操作调用的结果：本次调用已结束的事实、脚本进程的原始观测结果，

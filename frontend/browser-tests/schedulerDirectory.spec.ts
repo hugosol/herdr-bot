@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 import { zoneRowFor } from './ui'
 
 let server: E2EServer | null = null
@@ -138,12 +138,12 @@ test('Map titles display and filter independently of filenames with duplicate se
 })
 
 // P5/P6/P9: literal whitelist, with distinct cwd/config, bots, zone and docs
-// decoys. Resolving relative to the config, recursing, or using zone-local files
+// decoys. Resolving relative to cwd, recursing, or using zone-local files
 // would each produce a different list from ['alpha.json', 'beta.JSON'].
 test('P5 P6 P9 two browsers share only configured top-level Maps regardless of zone', async ({ browser }) => {
   server = await startServer({ separateCwd: true })
   const root = path.dirname(server.configPath)
-  const maps = path.join(server.cwd, 'selected-maps')
+  const maps = path.join(root, 'selected-maps')
   fs.mkdirSync(path.join(maps, 'nested'), { recursive: true })
   const originals = new Map([
     ['alpha.json', '{"literal":"alpha"}\n'], ['beta.JSON', '{"literal":"beta"}\n'],
@@ -155,11 +155,11 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
     fs.writeFileSync(file, bytes)
     fs.utimesSync(file, mapTime, mapTime)
   }
-  for (const directory of [path.join(root, 'selected-maps'), path.join(server.cwd, 'shared-bots'), path.join(server.cwd, 'docs', 'example')]) {
+  for (const directory of [path.join(server.cwd, 'selected-maps'), path.join(root, 'shared-bots'), path.join(server.cwd, 'docs', 'example')]) {
     fs.mkdirSync(directory, { recursive: true })
     fs.writeFileSync(path.join(directory, 'excluded.json'), '{}')
   }
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'selected-maps'\nbot_directory = 'shared-bots'\n")
+  configureScheduler(server, { map_directory: 'selected-maps', bot_directory: 'shared-bots' })
   await server.restart()
   const first = await browser.newContext()
   const second = await browser.newContext()
@@ -195,8 +195,8 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
 // occupying the configured path is a real creation error, never an empty list.
 test('P7 P8 missing parents are created and an obstructing file produces a visible creation error', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const maps = path.join(server.cwd, 'missing', 'parents', 'maps')
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'missing/parents/maps'\nbot_directory = 'missing/parents/bots'\n")
+  const maps = path.join(path.dirname(server.configPath), 'missing', 'parents', 'maps')
+  configureScheduler(server, { map_directory: 'missing/parents/maps', bot_directory: 'missing/parents/bots' })
   await server.restart()
   // Independent catalog scopes may initialize their shared missing parents at
   // the same time. Neither request may turn the other's mkdir into a 500.
@@ -296,8 +296,8 @@ test('Map listing rejects path injection and real directory junctions without wr
     if (fs.existsSync(maps)) fs.unlinkSync(maps)
     fs.renameSync(`${maps}-saved`, maps)
   }
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'linked-parent/maps'\n")
-  fs.symlinkSync(outside, path.join(server.cwd, 'linked-parent'), 'junction')
+  configureScheduler(server, { map_directory: 'linked-parent/maps' })
+  fs.symlinkSync(outside, path.join(path.dirname(server.configPath), 'linked-parent'), 'junction')
   await server.restart()
   await page.reload()
   await page.getByTestId('tab-scheduler').click()

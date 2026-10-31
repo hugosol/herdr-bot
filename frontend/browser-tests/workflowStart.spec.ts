@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { test, expect } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 import { expectNoHorizontalOverflow } from './ui'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -219,7 +219,7 @@ test('P45 P54 startup failure and real partial effects survive browser refresh @
 test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-contract', async ({ page }, info) => {
   const { server, zone, ids } = await fixture()
   const runRoot = path.join(path.dirname(server.configPath), 'nondefault-run-records')
-  fs.appendFileSync(server.configPath, `\n[scheduler]\nrun_directory = '${runRoot}'\n`)
+  configureScheduler(server, { run_directory: runRoot })
   await server.restart()
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()

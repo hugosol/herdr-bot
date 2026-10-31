@@ -44,11 +44,14 @@ impl Panel {
         std::fs::write(
             &config_path,
             format!(
-                "listen_addr = \"0.0.0.0:0\"\n\n\
+                "listen_addr = \"0.0.0.0:0\"\nstatic_directory = '{static_directory}'\n\n\
                  [operations.start]\nscript = '{script}'\nworking_directory = '{fixtures}'\n\n\
                  [operations.stop]\nscript = '{script}'\nworking_directory = '{fixtures}'\n\n\
                  [mdns]\naddress = \"{address}\"\n\n\
+                 [tasks]\nmetadata_file = '{metadata}'\n\n\
                  [herdr]\nworkspace_name = 'bot-playground'\n",
+                metadata = common::test_metadata_file().display(),
+                static_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").display(),
                 script = script.display(),
                 fixtures = working_directory.display(),
             ),

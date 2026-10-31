@@ -21,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-/// Task 存储文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
+/// Task 存储文件在配置缺省时的相对路径（由配置加载按服务配置文件所在目录解析）。
 pub const DEFAULT_STORAGE_FILE: &str = "meta-data/tasks.json";
 
 /// Task 可选的 agent 类型。
@@ -307,20 +307,22 @@ impl TaskError {
 pub struct Tasks {
     storage_file: PathBuf,
     metadata_file: PathBuf,
+    roots: crate::paths::Roots,
     files: FileStore,
 }
 
 impl Tasks {
-    pub fn new(storage_file: PathBuf, metadata_file: PathBuf) -> Self {
+    pub fn new(storage_file: PathBuf, metadata_file: PathBuf, roots: crate::paths::Roots) -> Self {
         Self {
             storage_file,
             metadata_file,
+            roots,
             files: FileStore::default(),
         }
     }
 
     pub fn catalog(&self) -> Result<crate::tasks::catalog::Catalog, TaskError> {
-        crate::tasks::catalog::Catalog::load(&self.metadata_file)
+        crate::tasks::catalog::Catalog::load(&self.metadata_file, &self.roots)
     }
 
     /// 存储文件位置（启动日志与测试观察用）。

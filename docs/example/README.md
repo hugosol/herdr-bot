@@ -31,7 +31,7 @@ npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_shell
 ```
 
-准备与复制（`$demo` 每次均为新目录，配置文件故意不在 cwd 中）：
+准备与复制（`$demo` 每次均为新目录，配置文件故意不在 cwd 中；选项目录使用独立副本和仅供预览的扩展文件，不读取本机路径根）：
 
 ```powershell
 $repo = (Get-Location).Path
@@ -42,8 +42,12 @@ New-Item -ItemType Directory -Path (Join-Path $work 'plans'), (Join-Path $work '
 Copy-Item "$repo/docs/example/maps/*.json" (Join-Path $work 'plans')
 Copy-Item "$repo/docs/example/bots/*.json" (Join-Path $work 'capabilities')
 $config = Join-Path $demo 'preview.toml'
+"throw new Error('Preview only: do not launch agents');" | Set-Content -Encoding utf8 (Join-Path $demo 'preview-extension.ts')
+$metadata = (Get-Content -Raw "$repo/meta-data/task-options.toml") -replace '(?m)^entrypoint = .*$', "entrypoint = '$demo/preview-extension.ts'"
+$metadata | Set-Content -Encoding utf8 (Join-Path $demo 'task-options.toml')
 @"
 listen_addr = '127.0.0.1:0'
+static_directory = '$repo/backend/static'
 [mdns]
 enabled = false
 [operations.start]
@@ -56,14 +60,14 @@ working_directory = '$repo/fixtures/operations'
 workspace_name = 'scheduler-preview-unused'
 [tasks]
 storage_file = 'meta-data/tasks.json'
-metadata_file = '$repo/meta-data/task-options.toml'
+metadata_file = 'task-options.toml'
 [zones]
 registry_file = '.data/zones.json'
 [sessions]
 history_file = '.data/session-history.json'
 [scheduler]
-map_directory = 'plans'
-bot_directory = 'capabilities'
+map_directory = 'process-cwd/plans'
+bot_directory = 'process-cwd/capabilities'
 "@ | Set-Content -Encoding utf8 $config
 Write-Host "隔离目录：$demo"
 Push-Location $work
@@ -93,7 +97,7 @@ try {
 
 ### 默认目录及错误对照
 
-两个 scheduler 字段可各自省略；默认分别为 cwd 下的 `meta-data/workflow-maps/` 和 `meta-data/bots/`。无论配置文件在哪里，相对目录都按**进程 cwd** 解析。绝对路径也可用。配置修改需重启；目录文件变化只需显式刷新或重载。
+两个 scheduler 字段可各自省略；默认分别为配置文件目录下的 `meta-data/workflow-maps/` 和 `meta-data/bots/`。普通相对目录均按**配置文件所在目录**解析，与启动 cwd 无关。绝对路径和命名根引用也可用，规则见 [本机根目录](../../README.md#本机根目录与解析规则)。配置修改需重启；目录文件变化只需显式刷新或重载。
 
 首次读取自动创建缺失的配置目录及父目录，保留已有文件，不覆盖定义，也不安装这份样例。要观察默认空态，在另一份新临时目录中按上述配置运行但删去整个 `[scheduler]` 段，不复制样例；进入 scheduler 应有明确的 Map／Bot 空态，而不是样例图。服务还会维护自己的既有持久数据；scheduler 的只读约束专指 Map／Bot 定义。
 
