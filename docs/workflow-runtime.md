@@ -175,6 +175,12 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `report_policy: auto|manual` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后保留 node.input 原文；不附 Bot 文档、完整 Map、上游完整聊天或文件正文。管理者与节点均获知管理者 zone 下 `.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
+命名输入由已保存 Map 的 `inputs` 声明决定：`source: file` 原样传递绝对 `path`；`source: node` 只取本 Run 的来源 `node_id` 当前 execution，按报告追加顺序查找对应 `output` 名称最后一次登记的地址。同 execution 省略某个名字或整个 `outputs` 均保留该名字先前的登记；重试的新 execution 不继承旧地址，旧执行迟到报告不覆盖当前执行。解析直接读取唯一报告记录 `messages.jsonl`，不使用时间最新的报告替代身份、不解析报告正文、不扫描目录或聊天、不另存 registry。保存成功即能解析，不等待通知完成；通知失败不使地址失效。
+
+来源 node 存在但尚无执行或当前执行未登记该输出时，初始化明确显示逻辑输入名及来源，如 `brief: unresolved (node A, output summary)`，不伪造地址、不回退旧执行。输入缺失不增加 `blocked_by` 或新的派发门禁；满足既有依赖且显式派发时仍创建并初始化 Chat，也不撤销上游 completed。框架不自动派发消费者。多个消费者可得到同一原始地址；需要业务汇总时由 Map 安排业务 node 消费这些地址，而非 HTTP 层解释、合并正文。manager zone、node zone 和产物目录不必相同，地址不复制、移动、重定向到 `.workflow` 或 node zone。
+
+可重复检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch input_resolution:: -- --nocapture`。测试经公开 HTTP 保存 Map、创建两个隔离 Run、登记输出、重试来源并显式派发，以独立字面预期核对受控外部宿主收到的实际初始化和报告记录；包含 A=a1/B=b1 → A=a2 → 省略 outputs、同名输出跨 node/Run、迟到旧执行、缺失名字、通知等待后失败、共享与汇总定义及外部地址/正文隔离。该检查只证明初始化传参，不证明真实原生 Chat 已收到地址或业务文件真实消费/汇总；这两类验收需独立真实链路证据。
+
 同批拒绝或启动失败不取消其他合法目标，不关闭或回滚已创建的 Chat。成功派发后 node 为 running；启动失败为 failed，保留执行 ID、来源 Task、zone、可得 Chat 关联及失败阶段/原因，并追加执行历史。正常已记录的 running/failed 再次 dispatch 均拒绝，不增加外部启动、不覆盖首次事实。崩溃或关联保存失败窗口不承诺完整幂等，先核实已发生效果，勿盲目重发。同 Run 派发批次互斥；不同 Run 的身份与事实独立。
 
 manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供 status/dispatch 及下文 complete/finish 指引，并将工具接到对应协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
