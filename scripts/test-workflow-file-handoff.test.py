@@ -18,7 +18,17 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 class RoleAcceptancePrerequisites(unittest.TestCase):
+    def test_fan_in_missing_backend_preserves_error_without_claiming_business_evidence(self):
+        # Source: ticket P23/P24 must fail closed without actual dependencies.
+        # Violation: accepting fan-in CLI preparation as successful execution.
+        # The public command must select fan-in, write a failure evidence record,
+        # and never fabricate real runs, native reads or independent artifacts.
+        self.check_missing_backend('fan-in')
+
     def test_missing_worktree_backend_fails_with_original_error_and_no_role_claim(self):
+        self.check_missing_backend('roles')
+
+    def check_missing_backend(self, scenario):
         toolkit = Path(os.environ['WORKFLOW_HANDOFF_TOOLKIT']).resolve()
         self.assertTrue((toolkit / 'bun.lock').is_file(), 'Set WORKFLOW_HANDOFF_TOOLKIT to the participating actual toolkit source')
         with tempfile.TemporaryDirectory(prefix='workflow-roles-cli-prerequisite-') as directory:
@@ -28,7 +38,7 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
             paths = root / 'isolated-paths.toml'
             paths.write_text('[roots]\n', encoding='utf-8')
             result = subprocess.run([sys.executable, str(REPO / 'scripts/test-workflow-file-handoff.py'),
-                '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', 'roles',
+                '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', scenario,
                 '--paths-file', str(paths), '--herdr', str(root / 'unavailable-herdr.exe'),
                 '--pi-package', str(root / 'unavailable-pi'), '--pi-state-extension', str(root / 'unavailable-state.ts'),
                 '--model-config', str(root / 'unavailable-model.json')], cwd=REPO,

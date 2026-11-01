@@ -478,9 +478,249 @@ else:
         require(not errors, errors)
 
 
+class FanInAcceptance(RolesAcceptance):
+    """P23/P24 at S2/S3: existing production handoff, never a mock provider.
+
+    Independent source: literals fixed here before either Run. A plausible
+    violation is a consumer guessing/copying the answer without reading, or a
+    framework relocating a registered external file into a zone. Exact native
+    read calls AND successful results at the original addresses distinguish it;
+    the final bytes alone cannot. The driver never performs manager actions.
+    """
+    SPECIMENS = (
+        {'source.txt': b'item=amber-widget\nunits=7\nunit_price=6\nfee_per_unit=5\n',
+         'left.txt': b'item=amber-widget\nsubtotal=42\n',
+         'right.txt': b'item=amber-widget\nfee=35\n',
+         'summary.txt': b'item=amber-widget\nsubtotal=42\nfee=35\ntotal=77\n'},
+        {'source.txt': b'item=violet-gear\nunits=9\nunit_price=4\nfee_per_unit=3\n',
+         'left.txt': b'item=violet-gear\nsubtotal=36\n',
+         'right.txt': b'item=violet-gear\nfee=27\n',
+         'summary.txt': b'item=violet-gear\nsubtotal=36\nfee=27\ntotal=63\n'},
+    )
+    NODES = ('source', 'left', 'right', 'summary')
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.evidence.update(scenario='fan-in', promises=['P23', 'P24'], runs=[],
+            coordinationInputs=[], oracle='Literal UTF-8/LF bytes fixed before launch; never computed from actual outputs')
+
+    def write_business_program(self):
+        # Business-only fixtures, not prepared handoff outputs: the native
+        # source Chat must actually read its seed and write the registered file.
+        # Native read/write avoids assuming Pi's Bash is a Windows shell.
+        # No answers/expected bytes reach consumers or the manager.
+        for name in self.NODES:
+            (self.root / ('node-' + name)).mkdir()
+        (self.root / 'business').mkdir()
+        (self.root / 'oracle').mkdir()
+        for index, expected in enumerate(self.SPECIMENS):
+            business = self.root / 'business' / str(index)
+            business.mkdir()
+            seed = business / 'seed.txt'
+            seed.write_bytes(expected['source.txt'])
+            oracle = self.root / 'oracle' / str(index)
+            oracle.mkdir()
+            for name, content in expected.items():
+                (oracle / name).write_bytes(content)
+        self.evidence['coordinationInputs'].append({'kind': 'prelaunch business seeds and independent oracle',
+            'source': 'SPECIMENS literals in acceptance runner', 'modelAnswersInjected': False})
+
+    def exercise(self):
+        manager_zone = self.root / 'zone'
+        zones = {'manager': manager_zone, **{name: self.root / ('node-' + name) for name in self.NODES}}
+        for path in zones.values():
+            self.http('/api/zones', {'path': str(path)})
+        manager_prompt = (
+            'This isolated business Run uses a saved source -> left/right -> summary Map. '
+            'Use actual run/collect workflow tools only, never HTTP/bash/read substitutes. '
+            'Explicitly dispatch source, wait for its true report and explicitly complete source. '
+            'Then explicitly dispatch left and right. Wait for their true reports and explicitly complete both. '
+            'Only then explicitly dispatch summary, wait for its true report, explicitly complete summary and finish. '
+            'Use collect for new reports when needed. Reporting never completes or dispatches automatically. '
+            'Decide orchestration from concise reports; do not read business files to do default acceptance. '
+            'The summary node owns business merging/checks. No retries, fail/retry, Map edits or human approvals. '
+            'Do not inspect scripts, other Chats, runtime records, credentials or oracle files.')
+        node_prompt = (
+            'Perform ONLY this node input. Named file inputs carry original registered addresses. '
+            'For each required input use the native read tool at that exact address, then use native write '
+            'to create your own result at the specified business address (UTF-8 without BOM, LF, trailing LF). '
+            'Do not use bash to read/transform files: computations and merging are your assigned business work. '
+            'Only the source node may read its explicitly named seed input, then write the handoff file itself. '
+            'Never read other seeds, oracle files, runtime records or other Chats. '
+            'Report using the actual report tool with can_complete=true, outputs={"result":absolute output address}. '
+            'Keep the report a short orchestration conclusion without file bodies, numeric answers or identity metadata. '
+            'All business permissions are preapproved; do not request human confirmation.')
+        ids = {}
+        for role, prompt in [('manager', manager_prompt), ('node', node_prompt)]:
+            result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
+                'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
+                'skill': None, 'prompt': prompt, 'extensions': []})
+            ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
+        (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Fan-in worker',
+            'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')
+        definitions = []
+        for index in range(len(self.SPECIMENS)):
+            business = self.root / 'business' / str(index)
+            inputs = {
+                'source': f'Read your named seed input with native read. Write the exact same bytes to {business / "source.txt"} with native write, then register that new file as result. Do not include its body in a report.',
+                'left': f'Read named input shared. From its units and unit_price compute subtotal=units*unit_price. Write {business / "left.txt"} with exactly item=VALUE then subtotal=VALUE, one line each.',
+                'right': f'Read named input shared. From its units and fee_per_unit compute fee=units*fee_per_unit. Write {business / "right.txt"} with exactly item=VALUE then fee=VALUE, one line each.',
+                'summary': f'Read BOTH named inputs left_result and right_result. Check their item values agree. Write {business / "summary.txt"} with exactly item=VALUE, subtotal=VALUE, fee=VALUE, total=VALUE, one line each; total=subtotal+fee. This node owns the business merge and content checks.',
+            }
+            nodes = {}
+            for name in self.NODES:
+                node = {'title': name, 'bot_id': 'worker', 'input': inputs[name], 'zone': str(zones[name]),
+                    'blocked_by': [] if name == 'source' else ['left', 'right'] if name == 'summary' else ['source']}
+                if name == 'source':
+                    node['inputs'] = {'seed': {'source': 'file', 'path': str(business / 'seed.txt')}}
+                elif name in ['left', 'right']:
+                    node['inputs'] = {'shared': {'source': 'node', 'node_id': 'source', 'output': 'result'}}
+                elif name == 'summary':
+                    node['inputs'] = {name + '_result': {'source': 'node', 'node_id': name, 'output': 'result'} for name in ['left', 'right']}
+                nodes[name] = node
+            definition = {'title': 'Isolated shared-file fan-in ' + str(index), 'description': '', 'nodes': nodes}
+            path = self.root / 'maps' / f'fan-in-{index}.json'
+            path.write_text(json.dumps(definition, ensure_ascii=False, indent=2), encoding='utf-8')
+            definitions.append({'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'definition': definition})
+        self.evidence['savedMapsBeforeRuns'] = definitions
+        self.evidence['coordinationInputs'].append({'kind': 'prelaunch Task prompts', 'manager': manager_prompt, 'node': node_prompt})
+        for index, definition in enumerate(definitions):
+            started = self.http(f'/api/scheduler/maps/fan-in-{index}.json/runs',
+                {'managerTaskId': ids['manager'], 'zone': str(manager_zone),
+                 'userInput': f'Isolated business fan-in Run {index}; follow the saved Map and explicit orchestration sequence.'}, 201)
+            self.run_id = started['id']
+            run_evidence = {'started': started, 'map': definition, 'zones': {name: str(path) for name, path in zones.items()}}
+            self.evidence['runs'].append(run_evidence)
+            def completed():
+                detail = self.detail()
+                return detail if detail['run']['status'] == 'completed' else None
+            final = until('native manager explicitly finishes fan-in Run ' + str(index), completed, self.args.timeout)
+            def quiet():
+                records = self.backend_wire.records + self.model_wire.records
+                return records and all('ended' in record for record in records) and time.monotonic() - max(record['ended'] for record in records) >= 1.25
+            until('actual fan-in wire conversation quiet window', quiet, self.args.timeout)
+            run_evidence['final'] = final
+            self.verify_fan_in(index, final, run_evidence, zones)
+            require(hashlib.sha256(Path(definition['path']).read_bytes()).hexdigest() == definition['sha256'], 'Saved Map changed during Run')
+            shutil.copytree(self.root / 'data/runs' / self.run_id, self.root / ('read-only-record-copy-' + str(index)))
+        locations = [run['materials'] for run in self.evidence['runs']]
+        require(len(set(locations)) == 2, ('Different Runs share intermediate-material location', locations))
+        self.evidence['coverage'] = {
+            'P23': {'runs': [run['started']['id'] for run in self.evidence['runs']],
+                'evidence': 'runs[].nativeHistories, reads, files, orchestration; fixed prelaunch oracle bytes; both consumers read shared source and summary reads both outputs'},
+            'P24': {'materials': locations, 'evidence': 'runs[].zones, nativeHistories cwd, original external registrations, reads and files; no zone relocation'},
+        }
+        self.evidence['passed'] = True
+
+    def verify_fan_in(self, index, final, evidence, zones):
+        run = final['run']
+        require(all(run['nodes'][name]['status'] == 'completed' for name in self.NODES), final)
+        require(run['zone'] == str(zones['manager']), ('Actual manager zone differs', run))
+        chats = {'manager': run['manager'], **{name: run['nodes'][name]['execution']['chat'] for name in self.NODES}}
+        require(len({chat['sessionId'] for chat in chats.values()}) == 5, ('Real Chats are not independent', chats))
+        business = self.root / 'business' / str(index)
+        expected = self.SPECIMENS[index]
+        evidence['files'] = []
+        for name, content in expected.items():
+            path = business / name
+            require(path.is_file() and path.read_bytes() == content, ('Business bytes differ from fixed independent oracle', str(path)))
+            evidence['files'].append({'path': str(path), 'hex': path.read_bytes().hex(), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+        for name in self.NODES:
+            execution = run['nodes'][name]['execution']
+            require(not run['nodes'][name]['previousExecutions'], ('Unexpected node retry', name))
+            reports = [report for report in final['reports'] if report['executionId'] == execution['id']]
+            require(reports and reports[-1]['canComplete'] is True, ('Missing current execution true report', name))
+            calls = [record for record in self.report_calls() if (decode(record, 'request') or {}).get('sessionId') == chats[name]['sessionId']]
+            require(any((decode(call, 'request') or {}).get('outputs') == {'result': str(business / (name + '.txt'))} for call in calls),
+                ('Original zone-external address was not registered by native report', name, calls))
+            require(all(report['source']['sessionId'] == chats[name]['sessionId'] and report['runId'] == run['id'] for report in reports), reports)
+            require(all(0 < len(report['body']) < 1500 and not any(line in report['body'] for content in expected.values()
+                for line in content.decode().splitlines()) for report in reports), ('Report leaked business rows', reports))
+        histories = {}
+        module = (self.args.pi_package / 'dist/core/session-manager.js').as_uri()
+        for name, chat in chats.items():
+            code = f'import {{SessionManager}} from {json.dumps(module)}; console.log(JSON.stringify(await SessionManager.list({json.dumps(str(zones[name]))}, {json.dumps(str(self.root / "agent/sessions"))})));'
+            native_files = json.loads(self.command([self.args.node, '--input-type=module', '-e', code]))
+            native = next(item for item in native_files if item['id'] == chat['sessionId'])
+            path = Path(native['path'])
+            require(path.is_relative_to(self.root), ('Native history escaped isolated storage', native))
+            header = json.loads(path.read_text(encoding='utf-8').splitlines()[0])
+            require(Path(header['cwd']).resolve() == zones[name].resolve(), ('Actual native cwd does not match independent zone', header, zones[name]))
+            histories[name] = {'chat': chat, 'path': str(path), 'header': header, 'native': self.history(str(path)),
+                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+        evidence['nativeHistories'] = histories
+        materials = zones['manager'] / '.workflow' / run['id']
+        for name, history in histories.items():
+            require(any(str(materials) in self.message_text(entry.get('message', {}))
+                for entry in history['native']['branch'] if entry.get('type') == 'message'),
+                ('Run-specific intermediate guidance absent from actual Chat', name, str(materials)))
+        evidence['materials'] = str(materials)
+        require(len({path.resolve() for path in zones.values()} | {business.resolve()}) == 6, 'Manager/node/business directories are not separate')
+        for zone in zones.values():
+            require(not business.is_relative_to(zone) and not zone.is_relative_to(business), ('Business files overlap zone', business, zone))
+            require(not any(path.name in expected for path in zone.rglob('*') if path.is_file()), ('Business artifact copied into zone', zone))
+        evidence['reads'] = {}
+        for name, filenames in [('source', ['seed.txt']), ('left', ['source.txt']), ('right', ['source.txt']), ('summary', ['left.txt', 'right.txt'])]:
+            branch = histories[name]['native']['branch']
+            initial = next(entry['message'] for entry in branch if entry.get('type') == 'message' and entry.get('message', {}).get('role') == 'user')
+            initialization = self.message_text(initial)
+            require('[Named file inputs]' in initialization, ('Missing actual named-input initialization', name))
+            for filename in filenames:
+                require(str(business / filename) in initialization, ('Registered original path absent from initialization', name, filename))
+                content = expected['source.txt' if filename == 'seed.txt' else filename]
+                require(not any(line in initialization for line in content.decode().splitlines()), ('Input body leaked into initialization', name))
+                evidence['reads'].setdefault(name, []).append(self.native_read(branch, business / filename, content))
+            calls = self.native_calls(branch)
+            require(all(call['name'] in ['read', 'write', 'report'] for call in calls), ('Consumer bypassed native read/write/report boundary', name, calls))
+            allowed_reads = {(business / filename).resolve() for filename in filenames + [name + '.txt']}
+            require(all(Path(call.get('arguments', {}).get('path', '')).resolve() in allowed_reads
+                for call in calls if call['name'] == 'read'), ('Node read oracle/another seed/unassigned business material', name, calls))
+            require(any(call['name'] == 'write' and Path(call.get('arguments', {}).get('path', '')).resolve() == (business / (name + '.txt')).resolve() for call in calls),
+                ('Independent business output not written by native node', name))
+        manager_calls = self.native_calls(histories['manager']['native']['branch'])
+        require(all(call['name'] in ['run', 'collect'] for call in manager_calls), ('Manager read/merged business content or bypassed role tools', manager_calls))
+        for name, role in [('manager', 'manager'), ('left', 'node')]:
+            guide = (self.args.toolkit / f'extensions/workflow-chat/{role}-chat/shared-logic/prompts/init.md').read_text(encoding='utf-8').strip()
+            require(any(guide in '\n'.join(self.message_text(message).replace('\r\n', '\n')
+                for message in messages(record)) for record in self.model_wire.records),
+                ('Shipped role guide never reached actual model', role))
+        session = chats['manager']['sessionId']
+        actions = [record for record in self.backend_wire.records if record['path'].startswith('/api/workflow/manager/')
+            and (decode(record, 'request') or {}).get('sessionId') == session]
+        evidence['orchestration'] = actions
+        def complete(node):
+            return next(record for record in actions if record['path'].endswith('/complete')
+                and (decode(record, 'request') or {}).get('nodeId') == node and (decode(record, 'response') or {}).get('changed') is True)
+        def dispatch(node):
+            return next(record for record in actions if record['path'].endswith('/dispatch')
+                and node in (decode(record, 'request') or {}).get('nodes', []))
+        for downstream, upstream in [('left', 'source'), ('right', 'source'), ('summary', 'left'), ('summary', 'right')]:
+            before, after = complete(upstream), dispatch(downstream)
+            require(before['ended'] <= after['started'], ('No explicit completed-before-dispatch ordering', upstream, downstream))
+            require((decode(before, 'response') or {})['snapshot']['nodes'][downstream]['status'] == 'pending', 'Framework automatically dispatched downstream')
+        require(len([action for action in actions if action['path'].endswith('/complete')]) == 4, 'Unexpected completion attempts')
+        require(any(action['path'].endswith('/finish') for action in actions), 'Native manager never explicitly finished')
+
+    @staticmethod
+    def native_calls(branch):
+        return [part for entry in branch if entry.get('type') == 'message'
+            for part in entry.get('message', {}).get('content', []) if isinstance(part, dict) and part.get('type') == 'toolCall']
+
+    def native_read(self, branch, path, expected):
+        calls = [call for call in self.native_calls(branch) if call['name'] == 'read'
+            and Path(call.get('arguments', {}).get('path', '')).resolve() == path.resolve()]
+        for call in calls:
+            results = [entry['message'] for entry in branch if entry.get('type') == 'message'
+                and entry.get('message', {}).get('role') == 'toolResult' and entry['message'].get('toolCallId') == call['id']]
+            for result in results:
+                if not result.get('isError') and all(line in self.message_text(result) for line in expected.decode().splitlines()):
+                    return {'path': str(path), 'call': call, 'result': result}
+        raise AssertionError(('No successful native read of exact registered address and actual business bytes', str(path), calls))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'fan-in'], required=True)
     parser.add_argument('--paths-file', type=Path, required=True, help='Explicit isolated dependency roots, never user business/session configuration')
     parser.add_argument('--backend', type=Path, required=True)
     parser.add_argument('--toolkit', type=Path, required=True)
@@ -498,7 +738,7 @@ def main():
     args.backend = args.backend.resolve()
     args.toolkit = args.toolkit.resolve()
     args.repo = REPO
-    return RolesAcceptance(args).run()
+    return (FanInAcceptance if args.scenario == 'fan-in' else RolesAcceptance)(args).run()
 
 
 if __name__ == '__main__':
