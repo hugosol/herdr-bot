@@ -480,7 +480,7 @@ else:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'plan-workflow'], required=True)
     parser.add_argument('--paths-file', type=Path, required=True, help='Explicit isolated dependency roots, never user business/session configuration')
     parser.add_argument('--backend', type=Path, required=True)
     parser.add_argument('--toolkit', type=Path, required=True)
@@ -498,6 +498,13 @@ def main():
     args.backend = args.backend.resolve()
     args.toolkit = args.toolkit.resolve()
     args.repo = REPO
+    if args.scenario == 'plan-workflow':
+        from workflow_plan_acceptance import PlanWorkflowScenario
+
+        class PlanWorkflowAcceptance(PlanWorkflowScenario, RolesAcceptance):
+            """Use the same isolated real-host lifecycle and wire observers."""
+
+        return PlanWorkflowAcceptance(args).run()
     return RolesAcceptance(args).run()
 
 

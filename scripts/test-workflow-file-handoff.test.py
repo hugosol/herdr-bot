@@ -19,6 +19,15 @@ REPO = Path(__file__).resolve().parent.parent
 
 class RoleAcceptancePrerequisites(unittest.TestCase):
     def test_missing_worktree_backend_fails_with_original_error_and_no_role_claim(self):
+        self.assert_missing_backend('roles')
+
+    def test_plan_workflow_missing_backend_fails_without_claiming_business_acceptance(self):
+        # P27/P28: a prepared definition or absent host is never a passing run.
+        # The CLI must reach its real prerequisites, not reject this scenario as
+        # an unsupported option or invent native confirmation/completion facts.
+        self.assert_missing_backend('plan-workflow')
+
+    def assert_missing_backend(self, scenario):
         toolkit = Path(os.environ['WORKFLOW_HANDOFF_TOOLKIT']).resolve()
         self.assertTrue((toolkit / 'bun.lock').is_file(), 'Set WORKFLOW_HANDOFF_TOOLKIT to the participating actual toolkit source')
         with tempfile.TemporaryDirectory(prefix='workflow-roles-cli-prerequisite-') as directory:
@@ -28,7 +37,7 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
             paths = root / 'isolated-paths.toml'
             paths.write_text('[roots]\n', encoding='utf-8')
             result = subprocess.run([sys.executable, str(REPO / 'scripts/test-workflow-file-handoff.py'),
-                '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', 'roles',
+                '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', scenario,
                 '--paths-file', str(paths), '--herdr', str(root / 'unavailable-herdr.exe'),
                 '--pi-package', str(root / 'unavailable-pi'), '--pi-state-extension', str(root / 'unavailable-state.ts'),
                 '--model-config', str(root / 'unavailable-model.json')], cwd=REPO,
