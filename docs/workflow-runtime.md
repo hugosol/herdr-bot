@@ -185,6 +185,19 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `first-enabled-run` 提供 status/dispatch 及下文 complete/finish 指引，并将工具接到对应协议。node-chat 同样通过公共 Prompt 能力给出节点职责与稳定路径读取指引。后端协议和页面不是该外部扩展已交付或真实注入已验证的证据。部署缺少 metadata 指定的任一角色扩展入口时先补齐实际扩展，不能用空函数、手填 sessionId 或 Tab 代替真实角色工具验收。
 
+### plan_workflow 的业务文件交接
+
+仓库的 [plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 只交付新业务 Map，不启动该业务。此图复用通用初始化、命名输入解析和 report 协议，不在 `node.input` 中再次实现运行身份或报告筛选：
+
+- `outline` 使用初始化中的本次 `userInput`、业务 `input` 和已按 Run 区分的中间资料位置；不再为取得背景或材料目录解析运行记录。资料位置只是保存方向，不是输出地址白名单，也不要求复制外部材料。
+- 规划者继续使用概要规划 Task 的九章节约定，保存独立 Markdown 概要方案并完整读回；保留方案标识、修订及替代版本、确认范围与依据、稳定工作编号、真实 Bot/Task 绑定、业务输入输出、材料位置、zone、权限、证据与未决项。能力建设需求是另一份独立文档，不能替代概要方案；缺能力时仍由用户另开 Chat 手动补齐并带回结果，再查询核实，不自动创建 Task/Bot 或派发能力创建者。
+- 用户明确确认当前概要方案与 `manual` 报告发送确认是两次不同的业务意思表达。只有确认版本保存读回且没有阻止翻译的缺口时，规划者才报告 `can_complete=true`，以 `outputs: {"outline": "<概要方案绝对地址>"}` 登记文档。草案、待补能力、阻止翻译的矛盾或部分失败报告 false 并说明阻塞和已发生效果。修订交付须重新确认方案、确认发送并更新登记，不静默改写已交接文件。
+- `generate_map.inputs.outline` 为 `{"source":"node","node_id":"outline","output":"outline"}`，`blocked_by` 仍为 `["outline"]`。消费者直接读取初始化的命名地址，不读取日志筛报告、不查最新目录或回退旧文件。输入未解析、不可读、方案身份/修订/确认依据矛盾或关键内容不完整时，向用户及管理者报告并交回规划者；地址解析和 `can_complete` 不代替用户确认或业务内容核验。管理者核实实际确认和报告后仍须显式 complete/dispatch。
+- 转换者重读真实能力指南和绑定、核实 zone，忠实翻译全部工作、输入输出、权限与依赖。只在核实的服务 Map 目录新增完整定义，同名不同内容不覆盖，不修改自举 Map 或运行记录。保存后完整读回解析，逐项核对字段，再查询 Map 目录与完整定义确认服务可见、结构与依赖合法；失败须列明已落盘文件和部分效果，不声称回滚或完成。
+- 仅概要方案明确提供新业务 `managerTaskId`、管理者 zone 和 `userInput`（允许明确为空）时做只读 preflight，绝不借用自举 Run 配置。缺启动配置仍可交付合法定义，但须列出缺项和未执行预检原因；保存或预检均不证明业务能力已验证、可启动或已执行，不自动发起业务 Run。
+
+定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务的公开 Map edit/save/read 与目录 interface 保存、读回仓库定义，保护命名来源、两节点业务绑定、依赖、报告策略及保存前后完整定义，并查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的证据；指引内容审阅、字段存在或文本长度都不是 P27/P28 的真实验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认的凭据由票据 09 独占验证。
+
 ## 角色归属与来源集成检查
 
 运行工具的归属不能由 Run ID、Task 类型或工具调用者自报决定。后端只按保存的真实原生 session_id 查找关联：管理者必须在当前后端内有唯一 Run 归属，且不能同时关联任何 Run 的当前或保留节点执行。出现跨 Run 的 manager/node 身份冲突时，所有管理者动作统一返回 `403 manager-ambiguous`，不按先找到的角色授权；应核实实际 Chat 关联，不能用同机来源或重复请求绕过。无关联节点/管理者身份也不能因来源在回环地址而取得权限。旧节点执行仍可提交归属于原执行的历史报告，但不能冒充当前执行或管理者，迟到时间不改变报告适用性。
