@@ -77,7 +77,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3>
     <label>{draft.kind} ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>
     <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
-    <p>{draft.kind === 'node' ? 'node 必须填写 title、bot_id、字符串 input、字符串 zone 路径和 blocked_by。允许暂未登记的 Bot 或 zone；同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
+    <p>{draft.kind === 'node' ? 'node 必须填写 title、bot_id、字符串 input、字符串 zone 路径和 blocked_by。可选 inputs 按名称明确填写 {source:"file",path:"绝对地址"} 或 {source:"node",node_id:"来源 ID",output:"输出名"}；输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
     {draft.kind === 'Bot' ? <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />
       : <NodeSettings content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />}
     <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} />

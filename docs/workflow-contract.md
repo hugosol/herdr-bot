@@ -33,7 +33,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 
 - 启动整图预检必须通过；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；不再提供旧格式手动迁移工具，不做运行时兼容或角色猜测。
 - 三份记录先初始化，真实 Chat 身份关联保存后才提交初始指示。每次派发/retry 是独立原生 Chat，不以新 Tab 证明隔离。用户确认 omp 未开 autoResume；不改原生存储目录。
-- Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 不自动获得它、Bot 文档或整张 Map。所有必要路径由环境保证可读，不新增服务端可读性门禁。
+- Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 在独立背景段获得本次 userInput，另保留业务 input 与命名文件地址，不自动获得 Bot 文档、整张 Map、上游完整聊天或业务文件正文。所有必要路径由环境保证可读，不新增服务端可读性门禁。
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
 - Map node 的 `report_policy` 为可选 snake_case 字段，仅 auto/manual，默认 auto，非法值拒绝；dispatch/retry 读取当前 Map 并固定为执行的 camelCase `reportPolicy`。旧记录缺字段按 auto，无迁移；恢复原 Chat/执行沿用保存值，不热更新。初始输入在业务 input 外独立给出策略控制段。manual 只是提示词约束，不新增审批门禁、状态或按钮，不改变管理者 complete 职责。
 - Map node 的 `auto_close` 缺省 false，dispatch/retry 固定为执行的 `autoClose`；旧执行缺字段按 false，不因查询改写。只有 manager 首次合法 complete 且当前事实保存成功，才按本次选择尽力关闭当前执行保存的 Tab；历史追加失败不撤销资格或原反馈。外部命令不占用业务推进锁或文件协调，响应及同 Run 后续合法动作不等待关闭返回；不要求停轮/空闲，不扫描无关目标，不重试、补偿、绕过确认或持久化关闭结果。关闭会终止 Tab 内终端及相关进程，不删除 Chat 历史；日志之外不新增 workflow 结果展示。详见[完成后自动关闭](workflow-runtime.md#节点完成后自动关闭关联-tab)。
@@ -62,7 +62,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P8 | zone 按已登记路径重检；注销拒绝、重登记再检，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P9 | 选定 Map 只选 manager 配置与本次要求，不临时覆盖 node 或新增运行名。 | [发起入口](scheduler.md#从选中-map-校验启动配置) |
-| P10 | user_input 原文持久保留，只追加 manager 初始输入，启动后只读。 | [发起与观察](workflow-runtime.md#发起与观察) |
+| P10 | user_input 原文持久保留，manager 与 node 初始输入均获得本次背景，启动后只读。 | [发起与观察](workflow-runtime.md#发起与观察) |
 | P11 | 同 Map 多 Run 身份和事实独立。 | [记录契约](workflow-runtime.md#公开接口与持久字段参考) |
 | P12 | 取得 ID 进入详情，刷新/重进只读取；预检失败留发起页。 | [发起与观察](workflow-runtime.md#发起与观察) |
 | P13 | 三文件初始化与真实身份关联保存均成功后才提交初始指示；外部 Chat 不假报回滚。 | [记录与提交](workflow-runtime.md#独立读取与部分提交) |
@@ -145,7 +145,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 
 - 自动生成 Map/LLM Plan、规划编排、运行中改图、专门循环系统、定时调度、声明式自动重试、后台选路。合法既有动作组合不被额外禁止，但不据此新增返工机制。
 - omp/pi 之外的宿主、非 Chat adapter、通用宿主/策略插件平台，或内置 Git/worktree/TDD/自动集成业务阶段。
-- Bot 文档自动注入、插值、动态传参、user_input 下发、Delivery/产物绑定/复制/校验/快照或额外质量门禁。
+- Bot 文档自动注入、插值、动态传参、Delivery/产物复制/校验/快照或额外质量门禁；命名文件输入只传地址，不解释或发布业务文件。
 - 独立放行、stop/graceful shutdown、pausing/stopping/stopped 生命周期、除本次执行明确选择自动关闭外的强制结束或等待所有 Chat 退出；pause 只阻止新执行。
 - manager→node/同伴消息、广播、普通双向协作、extension 接收长连接、原生 IRC、强制续轮、联系人/归属查询工具。
 - 通用人工审批/通知/接管产品、恢复按钮、任意 setStatus/JSON patch、完整运维平台、checkpoint、已完成节点返工/下游失效传播。

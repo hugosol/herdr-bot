@@ -168,13 +168,14 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .find(|c| c["kind"] == "agent_prompt")
         .unwrap();
     let expected = format!(
-        "/skill:teach FIXED-ROLE-MARKER\n\nRun ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\nLAST-USER-MARKER",
+        "/skill:teach FIXED-ROLE-MARKER\n\nRun ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n\nLAST-USER-MARKER",
         original["id"].as_str().unwrap(),
         config.scheduler.map_directory.join("work.json").display(),
         config.scheduler.run_instructions.display(),
         root.join("run.json").display(),
         root.join("history.jsonl").display(),
-        root.join("messages.jsonl").display()
+        root.join("messages.jsonl").display(),
+        data.path().join(".workflow").join(original["id"].as_str().unwrap()).display()
     );
     assert_eq!(prompt["text"], expected);
     let status = post_json_over_tcp(

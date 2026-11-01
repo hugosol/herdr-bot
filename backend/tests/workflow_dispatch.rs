@@ -22,6 +22,8 @@ mod report_policy;
 mod map_deletion;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
+#[path = "workflow_dispatch/named_inputs.rs"]
+mod named_inputs;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

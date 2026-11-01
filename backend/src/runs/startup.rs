@@ -226,22 +226,39 @@ async fn protocol(
         identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
     *stage = "submit";
     let paths = Runs::paths(state, &run.id);
+    let materials = std::path::Path::new(&run.zone).join(".workflow").join(&run.id);
     let input = match &role {
         Role::Manager => {
             let mut input = format!(
                 "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}",
                 run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
                 paths[0].display(), paths[1].display(), paths[2].display());
+            use std::fmt::Write;
+            write!(input, "\n中间资料位置: {}", materials.display()).unwrap();
             if !run.user_input.is_empty() {
                 input.push_str("\n\n");
                 input.push_str(&run.user_input);
             }
             input
         }
-        Role::Node { id, target, .. } => format!(
-            "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
-            target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
-            paths[2].display(), target.report_policy.control_section(), target.input),
+        Role::Node { id, target, .. } => {
+            use std::fmt::Write;
+            let mut input = format!(
+                "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n中间资料位置: {}\n\n[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n",
+                target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
+                paths[2].display(), materials.display(), run.user_input);
+            for (name, source) in &target.inputs {
+                match source {
+                    crate::scheduler::NamedInput::File { path } => { writeln!(input, "{name}: {path}").unwrap(); }
+                    crate::scheduler::NamedInput::Node { node_id, output } => {
+                        writeln!(input, "{name}: unresolved (node {node_id}, output {output})").unwrap();
+                    }
+                }
+            }
+            write!(input, "[/Named file inputs]\n\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
+                target.report_policy.control_section(), target.input).unwrap();
+            input
+        }
     };
     let text = crate::chats::compose_initial_input(task, preset.trigger.native_skill.as_deref(), &input);
     effects.input_attempted = true;
