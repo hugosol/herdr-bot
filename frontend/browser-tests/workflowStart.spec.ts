@@ -50,7 +50,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
     expect(response.status()).toBe(200)
     expect((await response.json()).results[0].status).toBe('running')
   }
-  const reported = await post('/api/workflow/node/report', { sessionId: 'restart-node-A', body: '重启前报告：结果地址与限制仍需管理者核实' })
+  const reported = await post('/api/workflow/node/report', { sessionId: 'restart-node-A', body: '重启前报告：结果地址与限制仍需管理者核实', canComplete: false })
   expect(reported.status()).toBe(200)
   const failed = await post('/api/workflow/manager/fail', { sessionId: 'browser-manager-04', nodeId: 'B', reason: '已核实的节点执行故障' })
   expect(failed.status()).toBe(200)
@@ -89,7 +89,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
     expect(body.code, action).toBe('manager-unassociated')
   }
   for (const sessionId of ['restart-node-A', 'restart-node-B']) {
-    const response = await post('/api/workflow/node/report', { sessionId, body: '不能在重启后追加' })
+    const response = await post('/api/workflow/node/report', { sessionId, body: '不能在重启后追加', canComplete: false })
     const body = await response.json()
     outcomes.push({ action: 'report', sessionId, status: response.status(), body })
     expect(response.status()).toBe(403)

@@ -15,7 +15,7 @@ async fn failed_execution(s: &Scenario) -> (Value, Value) {
     (started, old)
 }
 async fn report(s: &Scenario, identity: &str, body: &str) -> Value {
-    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body}).to_string()).await;
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":body == "NEW-2: current final result"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone()
 }

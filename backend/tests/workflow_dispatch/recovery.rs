@@ -178,7 +178,7 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
     assert_eq!(events[4]["after"], "completed");
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(s.herdr.calls(), calls);
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"manual-A","body":"Result: results/A.md. Limitation: manual review only."}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"manual-A","body":"Result: results/A.md. Limitation: manual review only.","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let messages = common::read_json_lines(&root.join("messages.jsonl"));
     assert_eq!(messages.len(), 1);

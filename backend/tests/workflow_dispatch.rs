@@ -22,6 +22,10 @@ mod report_policy;
 mod map_deletion;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
+#[path = "workflow_dispatch/report_outputs.rs"]
+mod report_outputs;
+#[path = "workflow_dispatch/report_restart.rs"]
+mod report_restart;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
@@ -263,7 +267,7 @@ async fn collect_retains_merges_notifications_before_failed_delivery_and_keeps_p
     let mut requests = Vec::new();
     for body in ["SECRET-FIRST", "SECRET-SECOND"] {
         let addr = s.server.addr();
-        requests.push(tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-collect-reports","body":body}).to_string()).await }));
+        requests.push(tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-collect-reports","body":body,"canComplete":false}).to_string()).await }));
         let expected = requests.len() + 2;
         common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count() == expected).await;
     }
@@ -294,7 +298,7 @@ async fn collect_retains_merges_notifications_before_failed_delivery_and_keeps_p
     let waiting = collect();
     tokio::pin!(waiting);
     assert!(tokio::time::timeout(Duration::from_millis(100), &mut waiting).await.is_err(), "merged notifications must not remain unconsumed; ready B does not force return");
-    let third = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"node-collect-reports","body":"SECRET-THIRD"}"#).await;
+    let third = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"node-collect-reports","body":"SECRET-THIRD","canComplete":true}"#).await;
     let third: Value = serde_json::from_str(&third.body).unwrap();
     let response = tokio::time::timeout(Duration::from_secs(2), waiting).await.unwrap();
     let next: Value = serde_json::from_str(&response.body).unwrap();
@@ -354,7 +358,7 @@ async fn collect_configured_expiry_and_tcp_disconnect_leave_facts_and_next_notif
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
     assert_eq!(s.herdr.calls(), calls);
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"node-collect-expiry","body":"Result after three TCP disconnects"}"#).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"node-collect-expiry","body":"Result after three TCP disconnects","canComplete":true}"#).await;
     let report: Value = serde_json::from_str(&report.body).unwrap();
     let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/collect", r#"{"sessionId":"manager-collect-expiry"}"#).await;
     let next: Value = serde_json::from_str(&response.body).unwrap();
@@ -514,7 +518,7 @@ async fn pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_f
     assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(s.herdr.calls(), calls, "pause must not stop or launch Chats");
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-pause-A","body":"A ready; cleanup continues while paused"}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-pause-A","body":"A ready; cleanup continues while paused","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let report: Value = serde_json::from_str(&report.body).unwrap();
     assert_eq!(report["saved"], true);
@@ -820,7 +824,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-lifecycle-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-lifecycle", &["A"]).await;
     let first_run = fs::read(root.join("run.json")).unwrap();
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"A artifact ready; cleanup continues"}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"A artifact ready; cleanup continues","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let report: Value = serde_json::from_str(&report.body).unwrap();
     let calls = s.herdr.calls();
@@ -864,7 +868,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(s.herdr.calls(), calls_before_complete);
         if node == "A" {
-            let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-handoff cleanup note"}).to_string()).await;
+            let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-handoff cleanup note","canComplete":false}).to_string()).await;
             assert_eq!(late.status, 200, "{}", late.body);
             let query = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":"manager-lifecycle"}).to_string()).await;
             let query: Value = serde_json::from_str(&query.body).unwrap();
@@ -877,7 +881,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
     assert_eq!(response.status, 200, "{}", response.body);
     let finished = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
-    let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-finish cleanup finished"}).to_string()).await;
+    let late = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-lifecycle-A","body":"Post-finish cleanup finished","canComplete":true}).to_string()).await;
     assert_eq!(late.status, 200, "{}", late.body);
     let calls = s.herdr.calls();
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -909,7 +913,7 @@ async fn node_reports_are_system_attributed_append_only_and_do_not_complete_work
     let before = fs::read(root.join("run.json")).unwrap();
     let mut reports = Vec::new();
     for body in ["Result: C:\\results\\one.txt; draft only", "Result: C:\\results\\two.txt; reviewed"] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-report","body":body}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-report","body":body,"canComplete":body.ends_with("reviewed")}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(value["saved"], true);
@@ -964,7 +968,7 @@ async fn report_save_failure_has_no_message_pending_item_or_host_delivery() {
     readonly.set_readonly(true);
     fs::set_permissions(&path, readonly).unwrap();
     let calls = s.herdr.calls();
-    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-save-error","body":"must not persist or notify"}).to_string()).await;
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-save-error","body":"must not persist or notify","canComplete":false,"outputs":{"failed":"C:\\failed-candidate.txt"}}).to_string()).await;
     fs::set_permissions(&path, original).unwrap();
     assert_eq!(response.status, 500, "{}", response.body);
     let value: Value = serde_json::from_str(&response.body).unwrap();
@@ -1005,7 +1009,7 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     let release = s.data.path().join("notify-release");
     s.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
     let addr = s.server.addr();
-    let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-notify-error","body":"SENSITIVE-RESULT: saved before notification"}).to_string()).await });
+    let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-notify-error","body":"SENSITIVE-RESULT: saved before notification","canComplete":true,"outputs":{"result":"C:\\saved-despite-notification.txt"}}).to_string()).await });
     common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count() == 3).await;
     assert!(!request.is_finished());
     let reports = common::read_json_lines(&root.join("messages.jsonl"));
@@ -1023,6 +1027,11 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     assert_eq!(value["notification"]["status"], "failed");
     assert!(!value["notification"]["reason"].as_str().unwrap().is_empty());
     assert_eq!(value["report"]["id"], report_id);
+    assert_eq!(value["report"]["canComplete"], true);
+    assert_eq!(value["report"]["outputs"], json!({"result":"C:\\saved-despite-notification.txt"}));
+    assert_eq!(status["reports"], json!(reports));
+    let detail = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["reports"], json!(reports));
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), reports);
     assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
@@ -1032,8 +1041,8 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
 }
 
 // P24.01: neither a manager/unknown session nor forged ownership fields may
-// produce a report or manager input. The model-facing body is the only business
-// argument; sessionId belongs to the trusted public Session transport adapter.
+// produce a report or manager input. Business declarations are not ownership;
+// sessionId belongs to the trusted public Session transport adapter.
 #[tokio::test]
 async fn report_rejects_non_node_identity_and_caller_supplied_ownership() {
     let s = Scenario::new().await;
@@ -1042,11 +1051,11 @@ async fn report_rejects_non_node_identity_and_caller_supplied_ownership() {
     s.dispatch("manager-reject", &["A"]).await;
     let calls = s.herdr.calls();
     for (body, expected) in [
-        (json!({"sessionId":"manager-reject","body":"manager cannot report"}), 403),
-        (json!({"sessionId":"unassociated","body":"no binding"}), 403),
-        (json!({"sessionId":"node-reject","body":"forged","runId":"another-run"}), 400),
-        (json!({"sessionId":"node-reject","body":"forged","nodeId":"B"}), 400),
-        (json!({"sessionId":"node-reject","body":"forged","target":"another-chat"}), 400),
+        (json!({"sessionId":"manager-reject","body":"manager cannot report","canComplete":false}), 403),
+        (json!({"sessionId":"unassociated","body":"no binding","canComplete":false}), 403),
+        (json!({"sessionId":"node-reject","body":"forged","canComplete":false,"runId":"another-run"}), 400),
+        (json!({"sessionId":"node-reject","body":"forged","canComplete":false,"nodeId":"B"}), 400),
+        (json!({"sessionId":"node-reject","body":"forged","canComplete":false,"target":"another-chat"}), 400),
         (json!({"sessionId":"node-reject"}), 400),
     ] {
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &body.to_string()).await;
@@ -1072,7 +1081,7 @@ async fn report_delivery_diagnostics_are_body_free_and_sink_failure_never_retrie
         let before = fs::read(s.config.scheduler.run_directory.join(id).join("run.json")).unwrap();
         let failed = mode != "success";
         s.herdr.set_behavior(json!({"fail_prompt":failed}));
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-diagnostic","body":"SENSITIVE-DIAGNOSTIC-BODY"}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-diagnostic","body":"SENSITIVE-DIAGNOSTIC-BODY","canComplete":false}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(value["saved"], true);
