@@ -212,7 +212,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect(prompts.B).toContain('Supplements and corrections also require this confirmation')
   for (const text of Object.values(prompts)) expect(text).toContain('the manager still decides complete')
   for (const [node, body] of [['A', '自动结果 result-a.md'], ['B', '人工策略结果 result-b.md'], ['B', '补充 result-b-extra.md'], ['B', '更正 result-b-corrected.md']]) {
-    const report = await post('/api/workflow/node/report', { sessionId: `settings-node-${node}`, body })
+    const report = await post('/api/workflow/node/report', { sessionId: `settings-node-${node}`, body, canComplete: !body.includes('补充') })
     expect(report.status()).toBe(200)
   }
   const unauthorized = await post('/api/workflow/manager/complete', { sessionId: 'settings-node-B', nodeId: 'B', reason: '不能自行完成' })

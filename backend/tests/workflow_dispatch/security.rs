@@ -37,7 +37,7 @@ async fn source_matrix_enforces_local_transport_and_session_association_separate
             assert_eq!(status, 403, "{source} {name}: {value}");
             assert_eq!(value["code"], "manager-unassociated");
         }
-        let (status, value) = from_source(&s, source, "/api/workflow/node/report", json!({"sessionId":"source-unassociated","body":"not authorized"})).await;
+        let (status, value) = from_source(&s, source, "/api/workflow/node/report", json!({"sessionId":"source-unassociated","body":"not authorized","canComplete":false})).await;
         assert_eq!(status, 403, "{source}: {value}");
         assert_eq!(value["code"], "node-unassociated");
     }
@@ -47,7 +47,7 @@ async fn source_matrix_enforces_local_transport_and_session_association_separate
             assert_eq!(status, 403, "{source} {name}: {value}");
             assert_eq!(value["code"], "forbidden");
         }
-        let (status, value) = from_source(&s, source, "/api/workflow/node/report", json!({"sessionId":"source-node","body":"remote cannot report"})).await;
+        let (status, value) = from_source(&s, source, "/api/workflow/node/report", json!({"sessionId":"source-node","body":"remote cannot report","canComplete":false})).await;
         assert_eq!(status, 403, "{source}: {value}");
         assert_eq!(value["code"], "forbidden");
     }
@@ -142,7 +142,7 @@ async fn two_run_role_and_retained_execution_matrix_rejects_scope_forgery() {
         ("security-node-old", "OLD: late history only", &first, "security-manager-one"),
         ("security-node-other-run", "OTHER RUN: isolated", &second, "security-manager-two"),
     ] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":identity == "security-node-current","outputs":{"result":format!("C:\\{identity}\\result.txt")}}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(value["report"]["runId"], run["id"]);
@@ -150,8 +150,15 @@ async fn two_run_role_and_retained_execution_matrix_rejects_scope_forgery() {
         assert_eq!(value["report"]["source"]["sessionId"], identity);
         assert_eq!(value["report"]["target"]["sessionId"], target);
         assert_eq!(value["report"]["body"], body);
+        assert_eq!(value["report"]["canComplete"], identity == "security-node-current");
+        assert_eq!(value["report"]["outputs"], json!({"result":format!("C:\\{identity}\\result.txt")}));
         reports.push(value["report"].clone());
     }
+    for (run, expected) in [(&first, vec![reports[0].clone(), reports[1].clone()]), (&second, vec![reports[2].clone()])] {
+        let path = s.config.scheduler.run_directory.join(run["id"].as_str().unwrap()).join("messages.jsonl");
+        assert_eq!(common::read_json_lines(&path), expected);
+    }
+    assert_ne!(reports[0]["executionId"], reports[1]["executionId"]);
     for (identity, run, expected) in [
         ("security-manager-one", &first, &reports[0]),
         ("security-manager-two", &second, &reports[2]),
@@ -180,7 +187,7 @@ async fn two_run_role_and_retained_execution_matrix_rejects_scope_forgery() {
         }
     }
     for (identity, code) in [("security-manager-one", "node-role-invalid"), ("security-manager-two", "node-role-invalid"), ("security-unassociated", "node-unassociated")] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":"not authorized"}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":"not authorized","canComplete":false}).to_string()).await;
         assert_eq!(response.status, 403, "{}", response.body);
         assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], code);
         denied += 1;
@@ -199,7 +206,7 @@ async fn two_run_role_and_retained_execution_matrix_rejects_scope_forgery() {
     }
     for identity in ["security-node-old", "security-node-current", "security-node-other-run"] {
         for (key, value) in [("runId", second["id"].clone()), ("role", json!("node")), ("nodeId", json!("B")), ("executionId", json!("forged-current")), ("target", json!({"sessionId":"security-manager-two"}))] {
-            let mut body = json!({"sessionId":identity,"body":"forged report"});
+            let mut body = json!({"sessionId":identity,"body":"forged report","canComplete":false});
             body[key] = value;
             let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &body.to_string()).await;
             assert_eq!(response.status, 400, "{}", response.body);

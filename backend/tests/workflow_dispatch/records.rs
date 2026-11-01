@@ -198,7 +198,7 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     assert_ne!(retried["snapshot"]["nodes"]["A"]["execution"]["id"], old["id"]);
     let mut reports = Vec::new();
     for (session, text) in [("records-new-A", "NEW results/A.md; verified"), ("records-old-A", "OLD late cleanup; not new handoff")] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":session,"body":text}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":session,"body":text,"canComplete":session == "records-new-A"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["saved"], true);

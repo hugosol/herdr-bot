@@ -14,6 +14,11 @@ pub struct Report {
     pub source: ChatReference,
     pub target: ChatReference,
     pub body: String,
+    // Absence is retained for historical reports, never interpreted as true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub can_complete: Option<bool>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub outputs: BTreeMap<String, String>,
 }
 
 pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
@@ -40,6 +45,9 @@ pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) 
 struct ReportRequest {
     session_id: String,
     body: String,
+    can_complete: bool,
+    #[serde(default)]
+    outputs: BTreeMap<String, String>,
 }
 
 // Retained execution identities may append history, never control current work.
@@ -87,6 +95,11 @@ pub async fn node_report(
         Ok(input) => input,
         Err(response) => return response,
     };
+    for (name, path) in &input.outputs {
+        if path.contains('\0') || !std::path::Path::new(path).is_absolute() {
+            return error(StatusCode::BAD_REQUEST, "invalid-output-path", &format!("输出 {name} 必须使用本机绝对文件地址。"));
+        }
+    }
     let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
         Ok(binding) => binding,
         Err(response) => return response,
@@ -106,6 +119,7 @@ pub async fn node_report(
                 at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
                 run_id: run.id.clone(), node_id, execution_id: execution.id.clone(),
                 source: source.clone(), target: target.clone(), body: input.body,
+                can_complete: Some(input.can_complete), outputs: input.outputs,
             };
             let paths = Runs::paths(&state, &run.id);
             let owned = state.clone();

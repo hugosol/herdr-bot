@@ -145,13 +145,13 @@ async fn integrity_message_and_transition_appends_preserve_damaged_logs() {
     let calls = s.herdr.calls();
     let current = fs::read(root.join("run.json")).unwrap();
     fs::remove_file(root.join("messages.jsonl")).unwrap();
-    let missing = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"integrity-node","body":"must not be recreated"}"#).await;
+    let missing = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"integrity-node","body":"must not be recreated","canComplete":false}"#).await;
     assert_eq!(missing.status, 500, "{}", missing.body);
     assert!(missing.body.contains("messages.jsonl"), "{}", missing.body);
     assert!(!root.join("messages.jsonl").exists());
     for broken in ["{\"body\":\"unfinished\"}", "{bad-report}\n", "{}\n"] {
         fs::write(root.join("messages.jsonl"), broken).unwrap();
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"integrity-node","body":"must not be appended"}"#).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"integrity-node","body":"must not be appended","canComplete":false}"#).await;
         assert_eq!(response.status, 500, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(value["saved"], false);
