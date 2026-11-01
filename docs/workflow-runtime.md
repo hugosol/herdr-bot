@@ -217,11 +217,13 @@ Content-Type: application/json
 {"sessionId":"<当前管理者真实身份>","nodeId":"A","reason":"结果已可交接；清理工作仍在原 Chat 继续"}
 ```
 
-Run running 或 paused 时，running node 可以完成；人工已处理并确认可交接的执行阶段 failed 也可完成，但 pending 或派发阶段 failed 不能借 complete 跳过工作或核实。完成不产生报告、不补发材料、不自主派发下游；原 Chat 默认继续存在，只有本次执行明确启用下述自动关闭时才尝试关闭其 Tab。所需结果地址与限制仍应通过原 Chat 的 report 补齐，后端不额外判断结果质量。A/B → C 中只完成 A 不够：C 仍由 B 阻塞；两者均 completed 后，管理者须另行显式 dispatch C。
+Run running 或 paused 时，running node 可以完成；人工已处理并确认可交接的执行阶段 failed 也可完成，但 pending 或派发阶段 failed 不能借 complete 跳过工作或核实。首次完成还必须满足：按 `messages.jsonl` 追加顺序取得该 node **当前 execution 的最新报告**，其 `canComplete` 严格为 `true`。无报告、历史缺字段或最新 false 均拒绝，不回退较早 true，也不借旧 execution 的 true 放行；没有 outputs 或输出文件不影响此声明门禁。声明不是质量证明、用户批准凭据或新状态，不能替代原有身份和状态检查。完成不产生报告、不补发材料、不自主派发下游；原 Chat 默认继续存在，只有本次执行明确启用下述自动关闭时才尝试关闭其 Tab。所需结果地址与限制仍应通过原 Chat 的 report 补齐，后端不额外判断结果质量。A/B → C 中只完成 A 不够：C 仍由 B 阻塞；两者均 completed 后，管理者须另行显式 dispatch C。
 
 成功后返回 `changed=true`、`snapshot`、`ready`、`blocked`、`canFinish`、`reports` 和 `pendingReports`。说明与操作 ID、时间、真实管理者 `actor` 保存在 `snapshot.nodes.<nodeId>.completion`，状态与说明在同次当前事实写入中提交；对应 history 的 `action=complete` 含前后状态、说明与执行引用。同 Run 动作与整个派发批次串行，动作快照在该边界内生成，后续动作仍检查最新事实。completed node 不再列入可操作报告待办；补充 report 不重新打开节点或 Run。
 
-Run 尚未结束时重复 complete 返回 `changed=false`，不覆盖首次说明、时间、操作 ID 或成功历史。拒绝返回 HTTP 409，并附 `code`、原因、`changed=false` 和当前查询字段；例如 `node-not-completable`、`completion-reason-required`、`node-unknown` 或 `run-terminal`。无关联身份仍按管理者权限拒绝，不接受额外 Run/归属字段。
+报告保存与首次完成共用既有同 Run 操作边界：false 先保存则首次 complete 拒绝；完成先生效，后续 false 不追溯撤销。门禁判断在后端操作边界内进行，不由 toolkit 预检替代，也不新增跨文件事务。Run 尚未结束时重复 complete 返回 `changed=false`，不再重审完成声明，不覆盖首次说明、时间、操作 ID、身份或成功历史，不重复自动关闭；完成后补 false 仍保持此幂等结果。拒绝返回 HTTP 409，并附 `code`、原因、`changed=false` 和当前查询字段；例如 `node-not-completable`、`completion-reason-required`、`node-unknown` 或 `run-terminal`。声明门禁拒绝使用 `report-not-completable`，原因明确给出当前适用最新报告 ID 与 false／缺失声明；没有当前报告时明确说明不存在，不伪造引用。拒绝不写当前事实、历史或报告，不发新通知或宿主命令。无关联身份仍按管理者权限拒绝，不接受额外 Run/归属字段。
+
+`backend/tests/workflow_dispatch/completion_gate.rs` 沿既有真实 HTTP、持久记录与受控宿主 seam 覆盖最新 true／false、无报告、历史缺字段、旧执行 true 与新执行 false、true 后 false、拒绝不变及通知等待。受控并发分别在报告已提交而通知未返回、完成已提交而自动关闭未返回时继续请求，按提交记录与公开响应核对两种先后，不以私有锁或任意 sleep 证明顺序。`recovery::manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports` 同时覆盖人工完成无当前 true 时拒绝、无 force 绕过及原 Chat 的实际声明；既有 workflow 回归仍从同一 Run 读取完成与报告，没有新页面动作或状态来源。
 
 ### 节点完成后自动关闭关联 Tab
 
@@ -276,7 +278,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | --- | --- | --- |
 | **原执行可继续**：执行阶段 failed，已在原 node Chat 核实并修复。「A 缺少的源文件已补齐，原 Chat 可以继续；请恢复原执行的跟踪，不要另开执行。」 | 记录人工确认与修复依据，使用 recover。Run paused 也允许；必要的原 Chat 进程恢复另用普通 Resume。 | A 回 running，原执行 ID/Chat 不变，失败历史保留；没有新 Chat、输入重放或自动修复。paused 仍为 paused。需要继续对话时向原 Chat 明确补充指示，recover 不代发。 |
 | **确需另起执行**：执行阶段 failed，已检查旧 Chat、部分产物和重复副作用。「A 原执行不能继续，旧结果只作参考；我已核实副作用，同意另起独立执行，保留旧现场。」 | 人工确认后 retry；paused 时先取得恢复派发资格的明确意图并 resume，再 retry。不确定的派发失败必须先核实，不能直接 retry。 | 新执行 ID 与新原生 Chat，旧执行/失败/产物仍保留；新执行可能再次失败，应读其实际效果。旧 Chat 不被终止，副作用不被撤销，旧报告不成为新执行交接依据。 |
-| **人工结果已可交接**：执行阶段 failed，人工已实际完成并核对结果。「A 的结果已人工补齐在绝对地址……，限制是……，已确认可交接；请记录人工完成，不再执行。」 | 亲自核实结果与限制，用 complete 的说明记录人工依据。需要补充正文时由已有关联 node Chat report，不伪造报告。 | A completed、完成说明可读、依赖满足才出现下游资格；不产生假 report，不自动传材料或派发下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab。pending/派发阶段 failed 不可这样跳过工作。 |
+| **人工结果已可交接**：执行阶段 failed，人工已实际完成并核对结果。「A 的结果已人工补齐在绝对地址……，限制是……，已确认可交接；请记录人工完成，不再执行。」 | 确认当前 execution 最新报告严格声明 can_complete=true 后，用 complete 的说明记录人工依据；尚无可用声明时由已有关联 node Chat 如实 report，不伪造报告，也不能由管理者单方面或 force 绕过。 | A completed、完成说明可读、依赖满足才出现下游资格；不产生假 report，不自动传材料或派发下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab。pending/派发阶段 failed 不可这样跳过工作。 |
 | **仅通知失败**：node report 返回保存成功而通知失败。「报告已保存，报告标识是……；请读取该报告并核对交接，不要因为通知失败重报、重派或回滚。」 | 先 status/collect，再按报告标识读取正文与实际材料；确认后才 complete。node 保留原报告标识与投递错误，不仅因通知/诊断失败重发 report。 | 已保存报告与待办仍在，node 状态不被通知错误改变。collect 只给标识与快照，不含正文；读取/通知/collect 不清除未完成待办。输入已提交也不保证管理者已读或被打断。 |
 
 **派发阶段 failed 先核实，不套用上表的执行恢复。** 有 Tab 不等于已有正确原生 Chat。向管理者分别说明「已确认原 Chat 存在且可跟踪」「已确认没有创建原生 Chat」或「目前无法确认」，并给出证据，由其 reconcile_dispatch：已创建只读核实原目标身份并恢复原执行跟踪；未创建恢复 pending，之后仍需显式 dispatch；不确定保持 failed。不要为取得 pending 而谎报未创建，不把确认参数当成回滚授权。核实不会重发可能遗漏的初始指示或补发材料。
@@ -289,7 +291,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | --- | --- | --- |
 | status；无 | 唯一可信管理者；终态仍可查当前快照、ready、blocked、canFinish。 | 读取不是派发授权，后续动作重新检查现场；不修改状态。 |
 | dispatch；nodes | Run running，逐项 pending 且全部前置 completed；整批返回逐项结果。 | 创建独立原生 Chat，单项失败不取消其他项，不回滚已有效果。 |
-| complete；nodeId、reason | Run 未结束，running node 或人工已确认可交接的执行阶段 failed；说明非空。 | completed 是交接完成并满足依赖，不要求 Chat 退出；不制造报告、传材料或自动派发。 |
+| complete；nodeId、reason | Run 未结束，running node 或人工已确认可交接的执行阶段 failed；说明非空，当前 execution 最新报告必须严格声明 can_complete=true。 | completed 是交接完成并满足依赖，不要求 Chat 退出；不制造报告、传材料或自动派发。 |
 | fail；nodeId、reason | Run 未结束、node running；保存执行失败与首次原因。 | 保留原 Chat；不暂停、重试或终止实际执行。 |
 | reconcile_dispatch；nodeId、finding、reason | 仅派发阶段 failed；已创建／未创建／不确定按核实事实处理，不接受任意目标状态。 | 原派发目标与身份由系统核实，不由模型自报替换；不创建 Chat 或重放输入。 |
 | recover；nodeId、confirmed、reason | 执行阶段 failed、有关联原 Chat、人工确认可继续；paused 也可用。 | 只恢复原执行跟踪，不修复现场、恢复进程、补发指示或撤销失败历史。 |
@@ -299,7 +301,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | finish；无 | running/paused 且全部 node completed，显式结束；重复返回首次事实。 | 不等待或终止 Chat。终态拒绝后续状态变更，不重开 Run。 |
 | collect；无 | 当前管理者收取通知，返回 reason、快照与报告标识；不修改 node 状态。 | 按标识读取正文，核实交接后才 complete；不把收取当成已读/完成。 |
 
-管理者须逐项读批次结果、已发生效果及部分生效错误；保留原执行、材料地址与限制，显式选择后续动作。**后端**落实真实角色、当前执行、依赖、状态与持久化约束，不能以模型表现替代这些约束。node 的职责只有实际工作和 report（业务参数仅 body）：交接可用时写清地址/用法/限制，可以随后继续不影响结果的收尾；report、停轮、退出均不等于 completed。旧执行补充报告必须归原执行，不代表当前新执行完成。pause 不撤回 node 的已有工作。
+管理者须逐项读批次结果、已发生效果及部分生效错误；保留原执行、材料地址与限制，显式选择后续动作。**后端**落实真实角色、当前执行、依赖、状态与持久化约束，不能以模型表现替代这些约束。node 的职责只有实际工作和 report（业务参数为 body、必填 boolean can_complete 及可选 outputs）：交接可用时写清地址/用法/限制，可以随后继续不影响结果的收尾；report、停轮、退出均不等于 completed。旧执行补充报告必须归原执行，不代表当前新执行完成。pause 不撤回 node 的已有工作。
 
 collect 的正常原因分别是 notification、paused、completed、no-running、timeout；有 running 且无新通知时可等待，不保证有 ready 就即时返回。正常到期不改状态；取消、断线、预算耗尽或读取失败是错误，不是空快照或正常 timeout，不自主重试。管理者若要再检查须明确重新调用；工具中断/Chat 结束须经公共 HTTP 取消等待，整个请求预算大于后端期限（默认后端 90 分钟、调用方建议 91 分钟）。node 对 report 要区分保存失败、保存成功/通知失败和诊断失败，不能仅因通知/诊断失败重报。
 
@@ -396,7 +398,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -
 
 ### 人工已处理且确实可交接
 
-用户已人工补齐结果且确认可交接时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab；失败和原执行历史仍可读。需要向管理者补充正文时，在**已有关联的 node Chat** 使用现有 report 写明地址与限制；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
+用户已人工补齐结果且确认可交接，且当前 execution 最新报告严格声明 `canComplete=true` 时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab；失败和原执行历史仍可读。缺少当前 true 声明时必须先在**已有关联的 node Chat** 使用现有 report 如实声明完成情况、地址与限制，管理者单方面判断不能绕过门禁；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
 
 ### 错误、调用者与用户处理路径
 
@@ -406,7 +408,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -
 
 1. 派发失败：查看已发生效果与原 Chat → 必要时普通 Resume 进入已存在 Chat → 核实「已创建 / 未创建 / 不确定」→ 将结论和依据告诉管理者，由其 reconcile_dispatch。不确定继续 failed，不盲目重复 dispatch。
 2. 执行失败：确认原 Chat 和当前原因 → 人工修复现场 → 告诉管理者「已修复，继续跟踪原执行」，由其 recover；需要恢复原生 Chat 进程时另用普通 Resume，它不代替 recover 或接管 Run。
-3. 人工处理后已可交接：告诉管理者结果地址、限制与确认依据，由其 complete；原 Chat 可用现有 report 补充，不制造假报告。下游只获得资格，管理者必须再显式决定派发。
+3. 人工处理后已可交接：告诉管理者结果地址、限制与确认依据，原 Chat 先提交如实的当前 true 报告，再由管理者显式 complete；缺少当前 true 时拒绝，不制造假报告。下游只获得资格，管理者必须再显式决定派发。
 
 manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 必须包含上述动作矩阵、人工确认责任、禁止自动行为与错误/部分生效语义，node-chat 必须明确 report 不改变状态、失败后补充材料仍使用已有 Chat。**本仓库没有外部 toolkit 角色工具源码**，当前 HTTP 接线与说明不代表实际角色工具或 Prompt 已交付。metadata 指向的 `manager-chat.ts` 入口未部署时，真实工具/Herdr/omp 演练仍受阻；不能让用户手填 sessionId 或用受控原生身份宣称已验收。
 
@@ -628,7 +630,7 @@ node-chat 的实际工具与公共 Prompt 属于独立 my-agent-toolkit 交付�
 | `no-running` | 没有未检查通知，也没有 running node，避免无限空等；根据 ready/blocked 显式派发、处理失败或 finish。 |
 | `timeout` | 等待正常到期；返回当时快照，不把 Run/node 改成 failed/paused，不自主派发或重试。 |
 
-暂停/结束优先返回自身原因；这些成功快照也检查此前已有通知。通知 generation 与检查位置仅在内存，无人等待时仍保留；报告必须先保存才产生通知，不依赖 Herdr 正文投递完成。一次检查只覆盖同一操作入口内的已保存现场，检查后的新通知留给后续 collect。状态变更可以唤醒等待以重新检查，但不能冒充报告通知。不额外规定“有 ready node 就必须立即返回”：仍有 running node、无新通知时可以等待。
+暂停/结束优先返回自身原因；这些成功快照也检查此前已有通知。通知 generation 与检查位置仅在内存，无人等待时仍保留；报告必须先保存才产生通知，不依赖 Herdr 正文投递完成。一次检查只覆盖同一操作入口内的已保存现场，检查后的新通知留给后续 collect。状态变更可以唤醒等待以重新检查，但不能冒充报告通知。已检查通知后，即使 `pendingReports` 仍保留同一报告，只要仍有 running node 就继续等待新通知；门禁拒绝不增加 generation，不使等待立即返回。管理者遇到 false 或缺失声明时应等待后续真实报告，不反复对同一报告 complete。不额外规定“有 ready node 就必须立即返回”：仍有 running node、无新通知时可以等待。
 
 后端通过既有服务配置 `[scheduler].collect_wait_seconds` 设定等待上限，默认 **5400 秒（90 分钟）**，正整数、最大 4294967295。更改后重启生效。等待不占用文件锁或 Run 状态操作入口；pause、complete 与 report 不需等 collect 到期。不存在 collect 游标文件、持久等待者、后台补投或业务轮询循环。
 

@@ -95,6 +95,8 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
   expect(a.id).not.toBe(b.id)
   expect(a.chat.sessionId).toBe('lifecycle-new-A')
   expect(b.chat.sessionId).toBe('lifecycle-new-B')
+  await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-A', body: 'A handoff ready with current close choice', canComplete: true })
+  await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-B', body: 'B handoff ready with current close choice', canComplete: true })
   await complete(page, 'A')
   await expectClosed(a.chat.tabId, 1)
   await complete(page, 'B')
@@ -108,6 +110,7 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
 test('P18 completed execution is not closed again by reading refreshing or service restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-read-completed', zone)
+  await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-read-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const completed = await complete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
   const expected = [['tab', 'close', execution.chat.tabId]]
@@ -147,6 +150,7 @@ test('P18 completed execution is not closed again by reading refreshing or servi
 test('P18 loading completed facts without a close result never compensates after restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-interrupted-close', zone)
+  await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-interrupted-close', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const gate = path.join(path.dirname(server!.configPath), 'release-interrupted-close')
   server!.setHerdrBehavior({ tab_close_gate: { wait_for_file: gate, timeout_ms: 30000 } })
   const completed = await complete(page, 'A')
@@ -186,6 +190,7 @@ test('P18 loading completed facts without a close result never compensates after
 test('P19 completed Chat restoration opens a new Tab without recreating completion or closing it @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-resume-completed', zone)
+  await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const completed = await complete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
   const root = path.join(server!.cwd, '.data/workflow-runs', runId)
@@ -244,6 +249,7 @@ for (const enabled of [true, false]) {
     expect(calls.filter(call => ['agent_prompt', 'agent_input', 'tab_close'].includes(String(call.kind)))).toEqual([])
     expect(await readRun(page, runId)).toEqual(before)
     expect(files.map(file => fs.readFileSync(path.join(root, file), 'utf8'))).toEqual(saved)
+    await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-unfinished', body: 'Original execution ready after Chat resume', canComplete: true })
     const completed = await complete(page, 'A')
     expect(completed.nodes.A.execution).toEqual(execution)
     expect(completed.nodes.A.previousExecutions).toEqual([])
@@ -272,6 +278,7 @@ for (const enabled of [true, false]) {
     expect(current.chat.sessionId).toBe('lifecycle-retry-new')
     expect(current.chat.tabId).not.toBe(old.chat.tabId)
     expect(result.snapshot.nodes.A.previousExecutions[0].execution).toEqual(old)
+    await post(page, '/api/workflow/node/report', { sessionId: current.chat.sessionId, body: 'Replacement execution ready; old report is not applicable', canComplete: true })
     const completed = await complete(page, 'A')
     expect(completed.nodes.A.execution).toEqual(current)
     expect((await readRun(page, runId)).run.nodes.A.previousExecutions[0].execution).toEqual(old)

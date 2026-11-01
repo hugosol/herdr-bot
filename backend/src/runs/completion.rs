@@ -1,4 +1,4 @@
-//! Explicit handoff is independent of reports, Chat activity and downstream launch.
+//! Explicit handoff requires a current ready report, never Chat activity or downstream launch.
 use super::*;
 use super::operation::{Action, Decision};
 
@@ -69,7 +69,7 @@ async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Reques
     operation::execute(state, &input.session_id, action).await
 }
 
-pub(super) fn complete(run: &mut Run, node_id: String, reason: String) -> Result<Decision, String> {
+pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, reason: String) -> Result<Decision, String> {
     if !matches!(run.status.as_str(), "running" | "paused") {
         return Decision::reject("run-terminal", "Run 已结束，不接受状态变更。");
     }
@@ -84,6 +84,20 @@ pub(super) fn complete(run: &mut Run, node_id: String, reason: String) -> Result
     }
     if reason.trim().is_empty() {
         return Decision::reject("completion-reason-required", "请说明可交接结果及限制；完成说明不可为空。");
+    }
+    // The caller holds the same Run operation permit as report append. Read
+    // committed order, not timestamps, and never fall back to another execution.
+    let reports = reports::read(state, run).await?;
+    let latest = reports.iter().rev().find(|report| {
+        report.node_id == node_id && node.execution.as_ref().is_some_and(|execution| execution.id == report.execution_id)
+    });
+    match latest {
+        Some(report) if report.can_complete == Some(true) => {},
+        Some(report) => return Decision::reject("report-not-completable", format!(
+            "当前 execution 最新报告 {} 的 can_complete={}；仅严格 true 可首次完成。", report.id,
+            if report.can_complete == Some(false) { "false" } else { "缺失" }
+        )),
+        None => return Decision::reject("report-not-completable", "当前 execution 没有报告；须先提交 can_complete=true 的报告，再显式 complete。"),
     }
     let completion = Completion {
         id: crate::chats::new_creation_id(),

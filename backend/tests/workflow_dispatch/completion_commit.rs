@@ -13,6 +13,7 @@ async fn current_fact_save_failure_never_completes_or_closes() {
     let started = s.start("commit-failed-manager").await;
     node_host(&s, "commit-failed-A");
     s.dispatch("commit-failed-manager", &["A"]).await;
+    submit_report(&s, "commit-failed-A", "Verified handoff ready before commit or close contention", true).await;
     let id = started["id"].as_str().unwrap();
     let root = s.config.scheduler.run_directory.join(id);
     let path = root.join("run.json");
@@ -48,6 +49,7 @@ async fn history_failure_keeps_completion_and_close_without_duplicate_eligibilit
     let started = s.start("commit-history-manager").await;
     node_host(&s, "commit-history-A");
     let dispatched = s.dispatch("commit-history-manager", &["A"]).await;
+    submit_report(&s, "commit-history-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let id = started["id"].as_str().unwrap();
     let root = s.config.scheduler.run_directory.join(id);
@@ -97,6 +99,7 @@ async fn sequential_duplicates_preserve_first_fact_and_single_in_flight_close() 
     let started = s.start("commit-sequential-manager").await;
     node_host(&s, "commit-sequential-A");
     let dispatched = s.dispatch("commit-sequential-manager", &["A"]).await;
+    submit_report(&s, "commit-sequential-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let release = s.data.path().join("sequential-close-release");
@@ -110,6 +113,7 @@ async fn sequential_duplicates_preserve_first_fact_and_single_in_flight_close() 
     assert_eq!(fact["reason"], "First accepted handoff");
     let saved = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
+    submit_report(&s, "commit-sequential-A", "Post-completion limitation; must not revoke handoff", false).await;
     for reason in ["Second request", "Third request"] {
         let repeated = tokio::time::timeout(Duration::from_secs(10), manager_action(&s, "complete", json!({"sessionId":"commit-sequential-manager","nodeId":"A","reason":reason}), 200)).await.expect("duplicate must not await the in-flight close");
         assert_eq!(repeated["changed"], false);
@@ -142,6 +146,7 @@ async fn concurrent_duplicates_commit_one_fact_and_attempt_one_close() {
     let started = s.start("commit-concurrent-manager").await;
     node_host(&s, "commit-concurrent-A");
     let dispatched = s.dispatch("commit-concurrent-manager", &["A"]).await;
+    submit_report(&s, "commit-concurrent-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let id = started["id"].as_str().unwrap();
     let root = s.config.scheduler.run_directory.join(id);

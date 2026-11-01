@@ -82,13 +82,15 @@ async fn report_policy_is_fixed_per_execution_recovery_keeps_it_and_retry_reads_
     assert_eq!(node["execution"]["reportPolicy"], "auto");
     assert_ne!(node["execution"]["id"], old["id"]);
     assert_eq!(node["previousExecutions"][0]["execution"], old);
-    // complete remains the manager's existing responsibility, without a policy gate.
+    // Policy is not approval state; the replacement still needs its own ready report.
+    submit_report(&s, "policy-new", "Replacement execution ready", true).await;
     let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Verified handoff"})).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
     set_policy(&s, "B", json!("manual"));
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-manual-complete"},"native_cwd":s.data.path().join("node-zone")}));
     let manual = s.dispatch("policy-manager", &["B"]).await;
     assert_eq!(manual["snapshot"]["nodes"]["B"]["execution"]["reportPolicy"], "manual");
+    submit_report(&s, "policy-manual-complete", "User permitted report; work ready", true).await;
     let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"B","reason":"Manager verified handoff without approval state"})).await;
     assert_eq!(completed["snapshot"]["nodes"]["B"]["status"], "completed");
 }

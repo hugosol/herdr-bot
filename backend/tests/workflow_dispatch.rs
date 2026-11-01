@@ -28,9 +28,19 @@ mod named_inputs;
 mod report_outputs;
 #[path = "workflow_dispatch/report_restart.rs"]
 mod report_restart;
+#[path = "workflow_dispatch/completion_gate.rs"]
+mod completion_gate;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
+
+// Callers state their scenario's declaration explicitly; dispatch and complete
+// never manufacture a report on behalf of a node.
+async fn submit_report(s: &Scenario, identity: &str, body: &str, can_complete: bool) -> Value {
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":can_complete}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone()
+}
 
 struct Scenario {
     data: TempDir,
@@ -378,6 +388,9 @@ async fn collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immedi
     s.start("manager-collect-state").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-collect-state-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-collect-state", &["A"]).await;
+    submit_report(&s, "node-collect-state-A", "Handoff ready before waiting for state changes", true).await;
+    let checked = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/collect", r#"{"sessionId":"manager-collect-state"}"#).await;
+    assert_eq!(serde_json::from_str::<Value>(&checked.body).unwrap()["reason"], "notification");
     let collect = || post_json_over_tcp(s.server.addr(), "/api/workflow/manager/collect", r#"{"sessionId":"manager-collect-state"}"#);
     let waiting = collect();
     tokio::pin!(waiting);
@@ -402,6 +415,7 @@ async fn collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immedi
     for node in ["B", "C"] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-collect-state-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-collect-state", &[node]).await;
+        submit_report(&s, &format!("node-collect-state-{node}"), "Remaining handoff ready", true).await;
         assert_eq!(post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-collect-state","nodeId":node,"reason":"Accepted"}).to_string()).await.status, 200);
     }
     assert_eq!(post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", r#"{"sessionId":"manager-collect-state"}"#).await.status, 200);
@@ -614,6 +628,7 @@ async fn paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_a
             let paused = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/pause", &body).await;
             assert_eq!(paused.status, 200, "{}", paused.body);
         }
+        submit_report(&s, &identity, "Ready while Chat continues working", true).await;
         let complete = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-paused-finish","nodeId":node,"reason":"Ready for handoff; Chat keeps working"}).to_string()).await;
         assert_eq!(complete.status, 200, "{}", complete.body);
         if node == "C" {
@@ -712,6 +727,7 @@ async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_fir
     assert_eq!(s.herdr.calls(), initial_calls);
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-complete-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-complete", &["A"]).await;
+    submit_report(&s, "node-complete-A", "Artifact ready; cleanup continues", true).await;
     let calls = s.herdr.calls();
     let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"A artifact is ready; Chat still cleaning up"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
@@ -764,6 +780,7 @@ async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-finish-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         let dispatched = s.dispatch("manager-finish", &[node]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
+        submit_report(&s, &format!("node-finish-{node}"), "Final handoff ready", true).await;
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-finish","nodeId":node,"reason":format!("{node} handoff ready while Chat active")}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
@@ -861,6 +878,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
         if node != "A" {
             s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-lifecycle-{node}")},"native_cwd":s.data.path().join("node-zone")}));
             assert_eq!(s.dispatch("manager-lifecycle", &[node]).await["results"][0]["status"], "running");
+            submit_report(&s, &format!("node-lifecycle-{node}"), "Handoff ready without waiting for Chat exit", true).await;
         }
         let calls_before_complete = s.herdr.calls();
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-lifecycle","nodeId":node,"reason":"Handoff accepted; Chat may keep working"}).to_string()).await;
@@ -893,7 +911,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
     assert_eq!(query["run"]["status"], "completed");
     assert_eq!(query["run"]["nodes"]["A"]["status"], "completed");
     assert_eq!(query["pendingReports"], json!({}));
-    assert_eq!(query["reports"].as_array().unwrap().len(), 3);
+    assert_eq!(query["reports"].as_array().unwrap().len(), 5);
     assert_eq!(fs::read(root.join("run.json")).unwrap(), finished);
     assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
     assert_eq!(s.herdr.calls(), calls);

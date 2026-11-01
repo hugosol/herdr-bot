@@ -292,6 +292,11 @@ class Acceptance:
             'controlledPane': controlled_pane, 'controlledPid': pid, 'controlledAlive': True,
             'nativeHistory': before_history, 'marker': marker,
             'nativeSha256': hashlib.sha256(Path(file).read_bytes()).hexdigest()}
+        declaration = self.http('/api/workflow/node/report', {'sessionId': chat['sessionId'],
+            'body': 'P22 controlled acceptance: native history persisted; target terminal independently observed alive.',
+            'canComplete': True})
+        require(declaration['saved'] is True, declaration)
+        self.evidence['completionDeclaration'] = declaration
         completed = self.http('/api/workflow/manager/complete', {'sessionId': manager, 'nodeId': 'A',
             'reason': 'P22: independently observed native history and live controlled terminal.'})
         require(completed['snapshot']['nodes']['A']['status'] == 'completed', completed)
