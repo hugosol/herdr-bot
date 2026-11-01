@@ -43,6 +43,12 @@ export function MapNodeDetails({ map, nodeId, botProblem, bot, onSelect, onBot }
       <h4>node.input（本次输入）</h4>
       <pre className="scheduler-text" data-testid="node-input">{node.input}</pre>
     </section>
+    <section aria-label="命名文件输入">
+      <h4>命名文件输入</h4>
+      {Object.keys(node.inputs ?? {}).length === 0 ? <p>未声明文件输入。</p> : <dl>
+        {Object.entries(node.inputs ?? {}).map(([name, source]) => <div key={name}><dt>{name}</dt><dd>{source.source === 'file' ? source.path : `${source.node_id} → ${source.output}`}</dd></div>)}
+      </dl>}
+    </section>
     <section aria-label="前置依赖">
       <h4>前置依赖</h4>
       {node.blocked_by.length === 0 ? <p>无前置依赖。</p> : <ul>

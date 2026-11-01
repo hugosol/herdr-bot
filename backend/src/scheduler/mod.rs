@@ -52,11 +52,20 @@ impl ReportPolicy {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(tag = "source", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum NamedInput {
+    File { path: String },
+    Node { node_id: String, output: String },
+}
+
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MapNode {
     title: String,
     bot_id: String,
     input: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    inputs: BTreeMap<String, JsonObject<NamedInput>>,
     #[serde(default)]
     report_policy: ReportPolicy,
     #[serde(default)]
@@ -128,6 +137,7 @@ pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Resu
 pub(crate) struct DispatchTarget {
     pub title: String,
     pub input: String,
+    pub inputs: BTreeMap<String, NamedInput>,
     pub report_policy: ReportPolicy,
     pub auto_close: bool,
     pub zone: String,
@@ -150,7 +160,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
-    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, inputs: node.inputs.into_iter().map(|(name, input)| (name, input.0)).collect(), report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -169,6 +179,17 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (id, node) in &map.nodes {
         let node = &node.0;
+        for (name, input) in &node.inputs {
+            match &input.0 {
+                NamedInput::File { path } if !Path::new(path).is_absolute() || path.contains('\0') => {
+                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用绝对文件地址。")));
+                }
+                NamedInput::Node { node_id, .. } if !map.nodes.contains_key(node_id) => {
+                    return Err(map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")));
+                }
+                _ => {}
+            }
+        }
         remaining.insert(id.as_str(), node.blocked_by.len());
         for prerequisite in &node.blocked_by {
             if prerequisite == id {
@@ -659,10 +680,11 @@ fn deletable_node(map: &WorkflowMap, id: &str) -> Result<(), DirectoryError> {
         return Err(edit_error("node-conflict", "node 已移除或无法识别；请重新加载。"));
     }
     let dependents: Vec<_> = map.nodes.iter()
-        .filter(|(_, node)| node.0.blocked_by.iter().any(|parent| parent == id))
+        .filter(|(other_id, node)| other_id.as_str() != id && (node.0.blocked_by.iter().any(|parent| parent == id)
+            || node.0.inputs.values().any(|input| matches!(&input.0, NamedInput::Node { node_id, .. } if node_id == id))))
         .map(|(id, node)| format!("{}（{id}）", node.0.title)).collect();
     if !dependents.is_empty() {
-        return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 依赖此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));
+        return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 或命名输入引用此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));
     }
     Ok(())
 }

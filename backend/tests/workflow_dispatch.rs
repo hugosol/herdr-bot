@@ -22,6 +22,8 @@ mod report_policy;
 mod map_deletion;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
+#[path = "workflow_dispatch/named_inputs.rs"]
+mod named_inputs;
 #[path = "workflow_dispatch/report_outputs.rs"]
 mod report_outputs;
 #[path = "workflow_dispatch/report_restart.rs"]

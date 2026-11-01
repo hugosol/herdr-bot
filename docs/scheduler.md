@@ -9,7 +9,7 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 | 对象 | 字段与职责 |
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone 路径与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。 |
+| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `inputs` 为命名文件输入对象（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone 路径与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可省略 `task_id`。跨 Map 共享，只引用 Task，不复制 Task 配置。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
@@ -55,6 +55,25 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 ```
 
 `when` 用于决定是否选用能力，`plan_guide` 指引规划者安排工作，`node_guide` 指引规划者填写 node.input。三份都是独立文档，可按任意顺序读取，可各自为空字符串；不要求先读其他文档，也不会自动注入节点执行提示词。节点执行使用关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 只是文档内容，不是必填规则、类型检查或业务质量门禁。文档不会自动补全 node 输入、校验业务参数或读取文中路径。`input` 同样是原文字符串，不做插值或 JSON 解析。
+
+### 命名文件输入
+
+node 可省略 `inputs` 或填写空对象，无文件交接的 Map 仍可使用，不强制生成文件。声明时每个逻辑名只选择一种明确来源，例如：
+
+```json
+"inputs": {
+  "brief": { "source": "file", "path": "Z:/business/brief.md" },
+  "review": { "source": "node", "node_id": "A", "output": "summary" }
+}
+```
+
+`file` 只接受字符串 `path`；`node` 只接受字符串 `node_id` 与 `output`。来源标记必填、大小写严格，混合字段、未知来源、`null`、位置数组及错类型均拒绝，不猜测或转换来源。直接文件地址必须是服务所在电脑的绝对路径；同卷、不同卷及所有 zone 外地址均可声明，不探测文件存在、可读性、内容格式或业务授权，不按 node cwd／zone 解析相对地址。
+
+来源 node 必须存在于同图，否则保存失败且保留原定义。命名输入与 `blocked_by` 独立：输入引用不会补依赖、造成环检查或隐式派发；需要顺序约束时规划者另行声明 `blocked_by`。引用中的输出名不是猜测文件路径。删除被其他 node 的命名输入引用的来源节点会明确拒绝，不级联删除或清除输入。
+
+读回、编辑和保存保留这两类声明；scheduler 与 workflow 的节点定义显示输入名称及直接地址／来源 node 和输出名，仍使用现有 JSON 编辑与显式派发动作，不增加页面操作。
+
+定向自动验收：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch named_inputs:: -- --nocapture`。测试通过真实 HTTP 保存／读取／创建 Run／显式派发，使用隔离存储、动态数值回环端口和记录型 Herdr 进程，核对实际提交的初始化与无隐式启动；它不替代真实 Chat 的角色注入验收。
 
 `report_policy` 是独立于业务 `input` 的提示词约束：`auto` 在结果可交接时自行发送 report；`manual` 每次发送前先在本 node Chat 展示摘要、结果地址和限制，询问用户并停轮等待，用户在此 Chat 自然语言确认后才发送。要求修改时先修改、重新展示并确认；补充或更正报告也重新确认。它不新增审批状态、按钮或后端 report/complete 门禁，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
 
