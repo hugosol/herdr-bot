@@ -435,7 +435,13 @@ else:
         started = self.start_plan(user, 'missing-capability')
         chat = self.wait_for('gap outline dispatched by native manager', lambda: (
             execution['chat'] if (execution := self.detail()['run']['nodes']['outline'].get('execution')) and execution.get('chat') else None))
-        history = self.await_chat(chat, 'gap remains a real user-facing blocker', after=user)
+        self.await_chat(chat, 'gap remains a real user-facing blocker', after=user)
+        clarification = ('用户缺口范围澄清 P28-GAP-SCOPE：业务对象为本公司本期税务申报表，目标是尚未指定的真实税务生产系统。'
+            '系统名称、接口、数据格式、实现代码、凭据和生产授权全部尚未提供，明确记为待定及 G1 阻塞，不自行补全。'
+            '现阶段只交付独立能力建设需求，写清上述已知事实、未知项、禁止操作和补齐后需核实的返回契约；'
+            '现在保存并读回该需求文档即可，不必等待未知项答案才记录阻塞。此输入不补齐能力、不确认概要方案、不授权报告发送，'
+            '不创建 Task/Bot、不调度创建者、不生成或执行 Map。')
+        history = self.user_input(chat, clarification, 'record explicit gap scope without supplying missing capability')
         self.preserve_documents(history, 'missing-capability')
         self.check(self.digest(self.root / 'maps/p27-business-plan.json') == self.delivered_map_sha256,
             'Gap scenario modified the independently delivered business Map')

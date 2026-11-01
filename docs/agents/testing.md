@@ -118,6 +118,8 @@ python scripts/test-workflow-file-handoff.py `
   --toolkit $TOOLKIT_WT --scenario roles --paths-file 'D:/isolated-acceptance/isolated-paths.toml'
 ```
 
+`--scenario plan-workflow` 的独立能力缺口阶段会通过真实 Chat 提交 `P28-GAP-SCOPE` 用户澄清：只确定税务申报表这一业务对象，系统、接口、材料、凭据及生产授权仍为未知且阻塞；要求保存并读回能力建设需求，不补齐缺失能力、不批准概要方案或 manual 报告、不授权创建或执行。原始输入及回答保留在 interventions 和原生历史中。
+
 Windows 验收可显式追加 `--shell-path 'D:/Program Files/Git/bin/bash.exe'`，将实际安装的 Git Bash 写入本次隔离 Pi settings，不修改用户配置。不要让原生 Bash 工具落到 WSL：其 Linux 回环与 Windows 后端不同，`curl 127.0.0.1` 会报告连接失败，不能把该环境阻塞当业务能力缺口或强行推进。toolkit 全量跨仓检查还应显式设置 `HERDR_BOT_BINARY` 为本 worktree 的 `backend/target/debug/examples/safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 为本 worktree 的 `meta-data/task-options.toml`；`HERDR_BOT_REPO` 不替代这两个 interop 参数，禁止使用生产可执行文件冒充安全壳。
 
 入口沿用 `test-real-herdr-close.py` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 缺一个逻辑输出的 consumer 仍启动并完成。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
