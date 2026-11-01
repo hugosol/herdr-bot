@@ -163,7 +163,13 @@ class RolesAcceptance(Acceptance):
         # Remove even a nonstandard credential variable from the inherited child environment.
         self.env.pop(config['apiKeyEnv'], None)
         agent = self.root / 'agent'
-        (agent / 'settings.json').write_text(json.dumps({'sessionDir': str(agent / 'sessions')}), encoding='utf-8')
+        settings = {'sessionDir': str(agent / 'sessions')}
+        if self.args.shell_path:
+            shell = self.args.shell_path.resolve()
+            require(shell.is_file(), ('Missing explicit native shell', str(shell)))
+            settings['shellPath'] = str(shell)
+            self.evidence['nativeShell'] = str(shell)
+        (agent / 'settings.json').write_text(json.dumps(settings), encoding='utf-8')
         (agent / 'models.json').write_text(json.dumps({'providers': {config['provider']: {
             'baseUrl': self.model_wire.base, 'api': 'openai-completions', 'apiKey': credential,
             'models': [{'id': config['model'], 'name': 'Actual role acceptance model',
@@ -728,6 +734,7 @@ def main():
     parser.add_argument('--pi-package', type=Path)
     parser.add_argument('--pi-state-extension', type=Path)
     parser.add_argument('--model-config', type=Path, help='Acceptance-only compatible-model JSON; otherwise roots.workflow_model/model.json')
+    parser.add_argument('--shell-path', type=Path, help='Explicit native Pi shell (for example Git Bash on Windows), written only to isolated settings')
     parser.add_argument('--node', default='node')
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--timeout', type=int, default=300, help='Bounded per-phase observation window; no scenario retries')

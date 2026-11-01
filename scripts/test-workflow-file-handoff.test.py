@@ -47,7 +47,8 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
                 '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', scenario,
                 '--paths-file', str(paths), '--herdr', str(root / 'unavailable-herdr.exe'),
                 '--pi-package', str(root / 'unavailable-pi'), '--pi-state-extension', str(root / 'unavailable-state.ts'),
-                '--model-config', str(root / 'unavailable-model.json')], cwd=REPO,
+                '--model-config', str(root / 'unavailable-model.json'),
+                '--shell-path', str(root / 'unavailable-native-bash.exe')], cwd=REPO,
                 env=dict(os.environ, CARGO_TARGET_DIR=str(target)), capture_output=True,
                 text=True, encoding='utf-8', errors='replace', timeout=30)
             # The toolkit argument must identify a real source root for source attribution;
