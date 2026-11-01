@@ -100,9 +100,9 @@ class LiveProcess:
 
 
 class Acceptance:
-    def __init__(self, args):
+    def __init__(self, args, *, prefix='herdr-close-p22-'):
         self.args = args
-        self.root = Path(tempfile.mkdtemp(prefix='herdr-close-p22-'))
+        self.root = Path(tempfile.mkdtemp(prefix=prefix))
         self.evidence = {'promise': 'P22', 'passed': False, 'root': str(self.root),
                          'commands': [], 'cleanupErrors': []}
         self.processes = []
@@ -154,6 +154,20 @@ class Acceptance:
         self.processes.append(process)
         return process
 
+    def configure_model(self):
+        """P22's controlled model; role acceptance overrides this with a real provider."""
+        native = runpy.run_path(str(Path(__file__).with_name('test-native-session-storage.py')))
+        self.model = http.server.ThreadingHTTPServer(('127.0.0.1', 0), native['Model'])
+        threading.Thread(target=self.model.serve_forever, daemon=True).start()
+        agent = self.root / 'agent'
+        (agent / 'settings.json').write_text(json.dumps({'sessionDir': str(agent / 'sessions')}))
+        (agent / 'models.json').write_text(json.dumps({'providers': {'storage-local': {
+            'baseUrl': f'http://127.0.0.1:{self.model.server_port}/v1', 'api': 'openai-completions',
+            'apiKey': 'isolated-not-a-real-key', 'models': [{'id': 'storage-probe', 'name': 'P22 probe',
+            'reasoning': False, 'input': ['text'], 'contextWindow': 32768, 'maxTokens': 1000,
+            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}]}}}))
+        self.provider_model = 'storage-local/storage-probe'
+
     def prepare(self):
         require(sys.platform == 'win32', 'P22 runner currently requires Windows process handles')
         for path in [self.args.herdr, self.args.backend, self.args.pi_package / 'dist/bundle/cli.js',
@@ -169,16 +183,7 @@ class Acceptance:
         shutil.copytree(self.args.toolkit / 'node_modules/yaml', toolkit / 'node_modules/yaml')
         role_config = toolkit / 'extensions/workflow-chat/config.yaml'
         role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
-        native = runpy.run_path(str(Path(__file__).with_name('test-native-session-storage.py')))
-        self.model = http.server.ThreadingHTTPServer(('127.0.0.1', 0), native['Model'])
-        threading.Thread(target=self.model.serve_forever, daemon=True).start()
-        agent = self.root / 'agent'
-        (agent / 'settings.json').write_text(json.dumps({'sessionDir': str(agent / 'sessions')}))
-        (agent / 'models.json').write_text(json.dumps({'providers': {'storage-local': {
-            'baseUrl': f'http://127.0.0.1:{self.model.server_port}/v1', 'api': 'openai-completions',
-            'apiKey': 'isolated-not-a-real-key', 'models': [{'id': 'storage-probe', 'name': 'P22 probe',
-            'reasoning': False, 'input': ['text'], 'contextWindow': 32768, 'maxTokens': 1000,
-            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}]}}}))
+        self.configure_model()
         herdr_config = self.root / 'herdr.toml'
         herdr_config.write_text('onboarding = false\n[terminal]\ndefault_shell = "cmd.exe"\n'
                                 '[update]\nversion_check = false\nmanifest_check = false\n')
@@ -198,7 +203,7 @@ class Acceptance:
         self.evidence['ownedWorkspace'] = workspace
         catalog = 'skills = []\n[[agents]]\nid = "pi"\nlabel = "Pi"\n'
         catalog += '[[models]]\nid = "default"\nlabel = "Default"\n'
-        catalog += '[[models]]\nid = "probe"\nlabel = "Probe"\nprovider_model = "storage-local/storage-probe"\nthinking = { pi = ["off"] }\n'
+        catalog += '[[models]]\nid = "probe"\nlabel = "Probe"\nprovider_model = ' + json.dumps(self.provider_model) + '\nthinking = { pi = ["off"] }\n'
         for id, path in [('pi-herdr-agent-state', self.args.pi_state_extension),
                          ('pi-manager-chat', toolkit / 'entrypoints/pi-auto/manager-chat.ts'),
                          ('pi-node-chat', toolkit / 'entrypoints/pi-auto/node-chat.ts')]:
@@ -313,6 +318,9 @@ class Acceptance:
             'nativeHistory': after_history, 'nativeSha256': hashlib.sha256(Path(file).read_bytes()).hexdigest()}
         self.evidence['passed'] = True
 
+    def cleanup_extra(self):
+        """Additional resources owned by a specialized real-host scenario."""
+
     def run(self):
         error = None
         try:
@@ -340,8 +348,15 @@ class Acceptance:
                 finally:
                     self.controlled.close()
             if self.model:
-                self.model.shutdown()
-                self.model.server_close()
+                try:
+                    self.model.shutdown()
+                    self.model.server_close()
+                except BaseException:
+                    self.evidence['cleanupErrors'].append(traceback.format_exc())
+            try:
+                self.cleanup_extra()
+            except BaseException:
+                self.evidence['cleanupErrors'].append(traceback.format_exc())
             self.evidence['passed'] = self.evidence['passed'] and not self.evidence['cleanupErrors']
             (self.root / 'evidence.json').write_text(json.dumps(self.evidence, ensure_ascii=False, indent=2), encoding='utf-8')
             print(json.dumps({'passed': self.evidence['passed'], 'evidence': str(self.root / 'evidence.json'),
