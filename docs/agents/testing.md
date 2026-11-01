@@ -77,6 +77,83 @@ python scripts/test-real-herdr-close.py `
 
 stdout 返回 `evidence.json` 路径和真实结果；该文件包含命令原始输出、HTTP 响应、前后身份、存活及历史内容/哈希。Herdr/后端 stdout 与 stderr 持续消费并保存独立日志。成功或失败均停止且确认测试拥有的 server/子进程，原始错误与清理错误分别保留；Temp 数据保留供证据核对，不删除用户资源。缺失依赖、额外确认、目标仍在、进程仍活、原生历史不可读等均返回非零，不跳过且不算通过。文档仅说明入口，实际通过/失败以执行日志为准；本入口只验收 P22，不代表 P1–P21 已通过。
 
+## 文件交接真实角色自动验收
+
+`python scripts/test-workflow-file-handoff.py --scenario roles` 是独立的跨仓入口，加载指定 toolkit worktree 的实际角色源码及当前 herdr-bot worktree 构建的后端。它不使用确定响应服务替代真实业务模型，也不修改用户部署。当前真实模型链路仅支持 Windows / Herdr / **Pi** 和 OpenAI-compatible chat-completions 服务；结果不外推为 OMP 真实模型通过。参数保真、严格 report 校验和真实后端落盘另由入口内调用的 `tests/harness-dock/node-report-contract.test.ts` 同时覆盖 OMP/Pi；该 dock 使用受控 provider/Herdr，不能充当模型职责遵从证据。
+
+先在两个参与源码根安装/构建依赖：toolkit 使用 Bun 1.4.4 与 `bun install --frozen-lockfile`；herdr-bot 执行 `npm --prefix frontend ci`、`npm --prefix frontend run build` 生成本 worktree 的 `backend/static`（全后端进程检查必需）；后端使用独立的 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot`。临时 toolkit worktree 的 frozen baseline 依赖定位可显式设置 `OMP_BASELINE_RECORD_ROOT` 为原 toolkit 根，不能因此替换实际被测源码。按 toolkit 的测试规范协调重型运行窗口。
+
+提供**专用验收配置** `isolated-paths.toml`，不得指向用户业务、现有 Session 或用户 agent 配置。路径根仍经 `herdr-paths` 解析；例如：
+
+```toml
+[roots]
+herdr = 'C:/installed/herdr'
+pi_package = 'D:/node_modules/@earendil-works/pi-coding-agent'
+# 仅只读加载此根下 extensions/herdr-agent-state.ts，不复制用户状态。
+pi_agent = 'D:/isolated-dependencies/pi-state-extension'
+workflow_model = 'D:/isolated-acceptance/model'
+```
+
+`workflow_model/model.json` 是专用模型服务声明，不是用户 `models.json` 或 auth store：
+
+```json
+{
+  "provider": "acceptance-service",
+  "model": "your-real-model-id",
+  "baseUrl": "https://your-authorized-service.example/v1",
+  "apiKeyEnv": "WORKFLOW_ACCEPTANCE_API_KEY",
+  "contextWindow": 128000,
+  "maxTokens": 8192,
+  "reasoning": false
+}
+```
+
+密钥只从显式命名的环境变量读取，不写证据/参数/头日志，退出时移除临时 credential-bearing models.json。没有已授权真实服务/密钥时，入口非零失败，不能拿 bridge token、受控 provider、用户全局 auth 或现有会话代替。`--herdr`、`--pi-package`、`--pi-state-extension`、`--model-config` 可覆盖依赖根派生路径；`--backend`、`--toolkit`、`--paths-file` 必须显式传入。
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$env:OMP_BASELINE_RECORD_ROOT = 'D:/original-toolkit'
+python scripts/test-workflow-file-handoff.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --scenario roles --paths-file 'D:/isolated-acceptance/isolated-paths.toml'
+```
+
+入口沿用 `test-real-herdr-close.py` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 缺一个逻辑输出的 consumer 仍启动并完成。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
+
+证据保留在输出的独占 Temp 根：源码根/revision/diff、锁文件与后端哈希、依赖版本、模型服务身份（仅密钥指纹）、实际模型请求/响应、工具参数/结果、HTTP 起止、原生 Session 历史、实际文件、只读运行记录副本及每项覆盖关联。独立背景、业务 input、当前地址和正文/聊天敏感标记核对原生初始化；manager 工具轨迹限定为 run/collect，不默认读输出正文。报告只允许简短编排结论，不复制详细行。观察窗口默认每阶段 300 秒（`--timeout 1..900`），外部业务等待 240 秒，保留报告后 collect 至少观察 1.25 秒仍未返回，再释放新报告；runner 不重试业务/模型选择，不延时掩盖失败。
+
+若宿主只公开真实文本 `completion(prompt, model='default').wait()`，可用测试专属 `scripts/workflow_completion_transport.py` 的 `CompletionTransport` 将完整实际原生历史和可用工具定义送给该真实模型；模型自主返回下一条文本/工具参数，薄传输只序列化为 Pi provider 响应，由 Pi 真正执行工具并写原生历史。它不读取验收预期、不选择业务动作、不模拟工具结果、不重试模型决策，也不修改产品 adapter；这类结果只证明该模型传输下的真实角色行为，不证明原生 OpenAI provider 的 wire 合规性。传输保留每次实际请求、发给 completion 的完整 prompt、原始输出和映射结果；错误非零返回且不生成替代动作。
+
+以下代码在提供上述公开 `completion` 的 Python 宿主执行（不是普通 Python CLI）；`HERDR_BOT_WT`、`TOOLKIT_WT`、`PATHS_FILE`、`EVIDENCE_DIR` 均为显式绝对路径，backend 和依赖须先按上文准备。`copy_context` 将宿主授权调用上下文传入 HTTP 工作线程，不读取私有 token：
+
+```python
+import contextvars, json, os, pathlib, subprocess, sys, tempfile
+sys.path.insert(0, str(pathlib.Path(HERDR_BOT_WT) / 'scripts'))
+from workflow_completion_transport import CompletionTransport
+context = contextvars.copy_context()
+def actual_completion(prompt):
+    return context.copy().run(lambda: completion(prompt, model='default').wait())
+with CompletionTransport(actual_completion, pathlib.Path(EVIDENCE_DIR) / 'completion-wire') as transport:
+    with tempfile.TemporaryDirectory(prefix='isolated-completion-config-') as directory:
+        config = pathlib.Path(directory) / 'model.json'
+        config.write_text(json.dumps({'provider': 'public-completion-transport',
+            'model': 'public-default', 'baseUrl': transport.base,
+            'apiKeyEnv': 'WORKFLOW_COMPLETION_TRANSPORT_KEY'}), encoding='utf-8')
+        env = dict(os.environ, WORKFLOW_COMPLETION_TRANSPORT_KEY='isolated-local-transport')
+        result = subprocess.run([sys.executable, 'scripts/test-workflow-file-handoff.py',
+            '--backend', str(pathlib.Path(env['CARGO_TARGET_DIR']) / 'debug/herdr-bot.exe'),
+            '--toolkit', TOOLKIT_WT, '--scenario', 'roles', '--paths-file', PATHS_FILE,
+            '--model-config', str(config)], cwd=HERDR_BOT_WT, env=env)
+        if result.returncode:
+            raise RuntimeError(f'roles acceptance failed: {result.returncode}')
+```
+
+这里的 local-transport 值仅满足 Pi 自定义 provider 的配置要求，不是模型凭据；真实模型访问仍使用宿主公开授权能力。传输本身的 HTTP/证据保真回归为 `python scripts/workflow_completion_transport.test.py`，其中受控 completion 只验证传输，不作为角色验收结果。
+
+CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为参与 toolkit 根后运行 `python scripts/test-workflow-file-handoff.test.py`；它只核对非零、原始错误、无虚构 Run 与无服务启动日志，不宣称真实角色链路通过。
+
+通过必须同时具备两宿主 dock、真实模型链路与对应 worktree 常规检查证据。入口未取得模型、宿主缺失、行为不合预期、等待超时或清理失败均非零；缺依赖即明确未验证，不以准备完成、提示词存在或最终 completed 推断通过。正常/失败均停止所属服务与进程，分别保存原始与清理错误，不调用真实关机、不连接/关闭用户服务，不启用 LAN/mDNS。
+
 ## softlink（符号链接）手动验收
 
 真实文件／目录符号链接检查默认关闭，只有显式设置 `HERDR_BOT_MANUAL_SYMLINKS=1` 才尝试创建。普通浏览器回归明确报告 manual-only 跳过；后端 zone 浏览／diff 的混合边界测试仍检查路径穿越和 junction，只跳过其中的符号链接部分，不调用 WSL 创建链接。即使当前终端已有管理员权限，未设置开关也不会自动运行符号链接检查。
