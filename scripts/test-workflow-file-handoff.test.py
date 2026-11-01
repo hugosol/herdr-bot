@@ -18,16 +18,23 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 class RoleAcceptancePrerequisites(unittest.TestCase):
+    def test_fan_in_missing_backend_preserves_error_without_claiming_business_evidence(self):
+        # Source: ticket P23/P24 must fail closed without actual dependencies.
+        # Violation: accepting fan-in CLI preparation as successful execution.
+        # The public command must select fan-in, write a failure evidence record,
+        # and never fabricate real runs, native reads or independent artifacts.
+        self.check_missing_backend('fan-in')
+
     def test_missing_worktree_backend_fails_with_original_error_and_no_role_claim(self):
-        self.assert_missing_backend('roles')
+        self.check_missing_backend('roles')
 
     def test_plan_workflow_missing_backend_fails_without_claiming_business_acceptance(self):
         # P27/P28: a prepared definition or absent host is never a passing run.
         # The CLI must reach its real prerequisites, not reject this scenario as
         # an unsupported option or invent native confirmation/completion facts.
-        self.assert_missing_backend('plan-workflow')
+        self.check_missing_backend('plan-workflow')
 
-    def assert_missing_backend(self, scenario):
+    def check_missing_backend(self, scenario):
         toolkit = Path(os.environ['WORKFLOW_HANDOFF_TOOLKIT']).resolve()
         self.assertTrue((toolkit / 'bun.lock').is_file(), 'Set WORKFLOW_HANDOFF_TOOLKIT to the participating actual toolkit source')
         with tempfile.TemporaryDirectory(prefix='workflow-roles-cli-prerequisite-') as directory:
