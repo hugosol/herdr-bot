@@ -243,6 +243,13 @@ async fn protocol(
         }
         Role::Node { id, target, .. } => {
             use std::fmt::Write;
+            // Reports are the only output registry. Resolve from persisted
+            // deltas, never from body text, timestamps or an older execution.
+            let reports = if target.inputs.values().any(|source| matches!(source, crate::scheduler::NamedInput::Node { .. })) {
+                reports::read(state, run).await?
+            } else {
+                Vec::new()
+            };
             let mut input = format!(
                 "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n中间资料位置: {}\n\n[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n",
                 target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
@@ -251,7 +258,15 @@ async fn protocol(
                 match source {
                     crate::scheduler::NamedInput::File { path } => { writeln!(input, "{name}: {path}").unwrap(); }
                     crate::scheduler::NamedInput::Node { node_id, output } => {
-                        writeln!(input, "{name}: unresolved (node {node_id}, output {output})").unwrap();
+                        let path = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).and_then(|execution| {
+                            reports.iter().rev().filter(|report| report.run_id == run.id
+                                && report.node_id == *node_id && report.execution_id == execution.id)
+                                .find_map(|report| report.outputs.get(output))
+                        });
+                        match path {
+                            Some(path) => { writeln!(input, "{name}: {path}").unwrap(); }
+                            None => { writeln!(input, "{name}: unresolved (node {node_id}, output {output})").unwrap(); }
+                        }
                     }
                 }
             }
