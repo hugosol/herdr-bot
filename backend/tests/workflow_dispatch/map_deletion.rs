@@ -16,7 +16,7 @@ async fn retain_history_keeps_live_run_details_reports_and_resources_without_map
     let id = started["id"].as_str().unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retain-node"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("retain-manager", &["A"]).await;
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"retain-node","body":"Keep this result"}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"retain-node","body":"Keep this result","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let root = s.config.scheduler.run_directory.join(id);
     let before = records(&root);

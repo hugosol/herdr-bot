@@ -64,9 +64,9 @@ async fn role_hosts_launch_independently_and_history_preserves_each_actual_agent
         for (id, host) in [("mixed-manager", manager), ("mixed-node", node)] {
             assert_eq!(rows.iter().find(|row| row["sessionId"] == id).unwrap()["agentType"], host);
         }
-        let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"mixed-node","body":"results/A.md; checked"}"#).await;
+        let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"mixed-node","body":"results/A.md; checked","canComplete":true}"#).await;
         assert_eq!(report.status, 200, "{}", report.body);
-        let denied = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"mixed-manager","body":"cannot impersonate node"}"#).await;
+        let denied = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", r#"{"sessionId":"mixed-manager","body":"cannot impersonate node","canComplete":false}"#).await;
         assert_eq!(denied.status, 403);
         assert_eq!(action(&s, "status", json!({}), 200).await["snapshot"]["nodes"]["A"]["execution"], *execution);
     }

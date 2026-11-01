@@ -178,7 +178,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     assert_eq!(blank["code"], "completion-reason-required");
     let unknown = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"unknown","reason":"No target"}), 409).await;
     assert_eq!(unknown["code"], "node-unknown");
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"close-eligibility-A","body":"A report is not manager acceptance"}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"close-eligibility-A","body":"A report is not manager acceptance","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     for event in [
         json!({"sessionId":"close-eligibility-A","kind":"register","data":{"cwd":s.data.path().join("node-zone")}}),

@@ -71,7 +71,7 @@ async fn report_policy_is_fixed_per_execution_recovery_keeps_it_and_retry_reads_
     assert_eq!(recovered["snapshot"]["nodes"]["A"]["execution"], old);
     assert_eq!(s.herdr.calls(), calls);
     // Manual is not a backend approval gate: report requires no approval token/state.
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"policy-old","body":"result.md; usable with documented limitations"}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"policy-old","body":"result.md; usable with documented limitations","canComplete":true}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let status = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
     assert_eq!(status["snapshot"]["nodes"]["A"]["status"], "running");
