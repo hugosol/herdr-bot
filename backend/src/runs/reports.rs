@@ -21,11 +21,15 @@ pub struct Report {
     pub outputs: BTreeMap<String, String>,
 }
 
-pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
+pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, String> {
     let paths = Runs::paths(state, &run.id);
-    let reports = state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
         access.read_jsonl::<Report>(&paths[2])
-    })).await.map_err(|e| e.to_string())??;
+    })).await.map_err(|e| e.to_string())?
+}
+
+pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
+    let reports = read(state, run).await?;
     let mut pending = BTreeMap::new();
     for report in &reports {
         if run.nodes.get(&report.node_id).is_some_and(|node| {

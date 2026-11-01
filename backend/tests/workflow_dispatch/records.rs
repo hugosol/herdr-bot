@@ -251,6 +251,7 @@ async fn current_write_failure_preserves_queries_disk_and_success_history() {
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("run.json");
     let calls = s.herdr.calls();
@@ -290,6 +291,7 @@ async fn history_failure_reports_committed_completion_and_allows_next_action() {
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("history.jsonl");
     let before = fs::read(&path).unwrap();
