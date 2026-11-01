@@ -39,6 +39,7 @@ async function scenario(page: Page) {
   host.setHerdrBehavior(native('isolation-node-A'))
   const dispatched = await post('/api/workflow/manager/dispatch', { sessionId: 'isolation-manager', nodes: ['A'] })
   expect(dispatched.results[0].status).toBe('running')
+  const declaration = await post('/api/workflow/node/report', { sessionId: 'isolation-node-A', body: '隔离场景工作已可交接；关闭行为待验收', canComplete: true })
   const root = path.join(host.cwd, '.data/workflow-runs', started.id)
   const readRun = () => JSON.parse(fs.readFileSync(path.join(root, 'run.json'), 'utf8'))
   const complete = () => post('/api/workflow/manager/complete', { sessionId: 'isolation-manager', nodeId: 'A', reason: '已核实交接结果' })
@@ -49,6 +50,7 @@ async function scenario(page: Page) {
   const before = readRun()
   const historyBefore = fs.readFileSync(path.join(root, 'history.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
   const filesBefore = fs.readdirSync(root).sort()
+  const messagesBefore = fs.readFileSync(path.join(root, 'messages.jsonl'), 'utf8')
   const execution = before.nodes.A.execution
   const context = (line: string) => line.includes(started.id) && line.includes('node=A') && line.includes(execution.id)
   const dialogs: string[] = []
@@ -68,7 +70,7 @@ async function scenario(page: Page) {
     observer.observe(document.body, { childList: true, subtree: true, characterData: true })
     return output
   })
-  return { host, post, native, root, readRun, before, historyBefore, filesBefore, invocations, invocationsBefore, complete, closeCalls, logs, context, dialogs, workflowOutput, runId: started.id, tab: execution.chat.tabId }
+  return { host, post, native, root, readRun, before, historyBefore, filesBefore, messagesBefore, declaration: declaration.report, invocations, invocationsBefore, complete, closeCalls, logs, context, dialogs, workflowOutput, runId: started.id, tab: execution.chat.tabId }
 }
 
 type CompletionResult = {
@@ -82,6 +84,8 @@ type CleanupScenario = {
   root: string
   historyBefore: unknown[]
   filesBefore: string[]
+  messagesBefore: string
+  declaration: unknown
   invocations: () => string[][]
   invocationsBefore: string[][]
   dialogs: string[]
@@ -114,10 +118,10 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   expect(event).toEqual({ id: completion.id, at: completion.at, actor: completion.actor, action: 'complete', nodeId: 'A', before: 'running', after: 'completed', reason: completion.reason, execution: s.before.nodes.A.execution })
   expect(history).toEqual([...s.historyBefore, event])
   expect(fs.readdirSync(s.root).sort()).toEqual(s.filesBefore)
-  expect(fs.readFileSync(path.join(s.root, 'messages.jsonl'), 'utf8')).toBe('')
+  expect(fs.readFileSync(path.join(s.root, 'messages.jsonl'), 'utf8')).toBe(s.messagesBefore)
   const detail = await (await page.request.get(`${s.host.baseURL}/api/workflow/runs/${s.runId}`)).json()
   expect(detail.run).toEqual(result.snapshot)
-  expect(detail.reports).toEqual([])
+  expect(detail.reports).toEqual([s.declaration])
   expect(Object.keys(detail).sort()).toEqual(['id', 'run', 'managed', 'startupError', 'readError', 'reports', 'pendingReports'].sort())
   expect(Object.keys(result).sort()).toEqual(['blocked', 'canFinish', 'changed', 'historyError', 'pendingReports', 'ready', 'reports', 'snapshot'].sort())
   // One bounded negative-observation window, not a claim about infinite time.

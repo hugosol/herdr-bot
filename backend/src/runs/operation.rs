@@ -27,7 +27,7 @@ impl Action {
 
     async fn apply(self, state: &AppState, run: &mut Run) -> Result<Decision, String> {
         match self {
-            Self::Complete { node_id, reason } => completion::complete(run, node_id, reason),
+            Self::Complete { node_id, reason } => completion::complete(state, run, node_id, reason).await,
             Self::Finish => completion::finish(run),
             Self::Pause => completion::eligibility(run, "pause", "paused"),
             Self::Resume => completion::eligibility(run, "resume", "running"),

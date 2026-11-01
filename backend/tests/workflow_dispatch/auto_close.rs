@@ -55,6 +55,7 @@ async fn auto_close_old_execution_defaults_false_without_read_compensation_or_hi
     fs::write(root.join("history.jsonl"), format!("{}\n", history[0])).unwrap();
     let old_run = fs::read(root.join("run.json")).unwrap();
     let old_history = fs::read(root.join("history.jsonl")).unwrap();
+    submit_report(&s, "close-legacy-A", "Legacy execution handoff ready", true).await;
     let before_calls = s.herdr.calls();
     let read = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", started["id"].as_str().unwrap())).await;
     assert_eq!(read.status, 200, "{}", read.body);
@@ -93,6 +94,7 @@ async fn auto_close_targets_only_current_execution_once_among_other_tabs() {
         assert_ne!(decoy, &json!(tab));
     }
     assert_eq!(s.herdr.tabs().len(), 4, "all four distinct Tabs were really created");
+    submit_report(&s, "close-target-current", "Only current execution delivered", true).await;
     let before = s.herdr.calls().len();
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-target-manager","nodeId":"A","reason":"Current execution delivered"}), 200).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["previousExecutions"][0]["execution"], old["snapshot"]["nodes"]["A"]["execution"]);
@@ -114,6 +116,7 @@ async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream
     s.start("close-held-manager").await;
     node_host(&s, "close-held-B");
     s.dispatch("close-held-manager", &["B"]).await;
+    submit_report(&s, "close-held-B", "B ready for downstream", true).await;
     manager_action(&s, "complete", json!({"sessionId":"close-held-manager","nodeId":"B","reason":"B ready"}), 200).await;
     node_host(&s, "close-held-A");
     let dispatched = s.dispatch("close-held-manager", &["A"]).await;
@@ -122,6 +125,7 @@ async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream
         let response = post_json_over_tcp(s.server.addr(), "/api/sessions/events", &event.to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
     }
+    submit_report(&s, "close-held-A", "A ready while Chat works", true).await;
     let release = s.data.path().join("release-close");
     // Always unblock the owned child, even if an assertion fails.
     struct Release(std::path::PathBuf);
@@ -206,6 +210,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     for node in ["B", "C"] {
         node_host(&s, &format!("close-eligibility-{node}"));
         s.dispatch("close-eligibility-manager", &[node]).await;
+        submit_report(&s, &format!("close-eligibility-{node}"), "Handoff ready with auto-close disabled", true).await;
         manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":node,"reason":"False setting handoff"}), 200).await;
     }
     let finish = manager_action(&s, "finish", json!({"sessionId":"close-eligibility-manager"}), 200).await;
@@ -247,6 +252,7 @@ async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() 
     let a = s.dispatch("close-map-manager", &["A"]).await;
     assert_eq!(a["results"][0]["status"], "running");
     set_auto_close(&s, "A", true).await;
+    submit_report(&s, "close-map-A", "A delivered without auto-close", true).await;
     manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"A","reason":"A delivered"}), 200).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert!(closes(&s).is_empty(), "a false execution must not use the newly true Map");
@@ -255,6 +261,7 @@ async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() 
     assert_eq!(b["results"][0]["status"], "running");
     let target = b["snapshot"]["nodes"]["B"]["execution"]["chat"]["tabId"].as_str().unwrap();
     set_auto_close(&s, "B", false).await;
+    submit_report(&s, "close-map-B", "B delivered with snapshotted auto-close", true).await;
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"B","reason":"B delivered"}), 200).await;
     assert_eq!(completed["snapshot"]["nodes"]["B"]["status"], "completed");
     wait_closed(&s, 1).await;

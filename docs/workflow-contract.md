@@ -38,6 +38,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 - Map node 的 `report_policy` 为可选 snake_case 字段，仅 auto/manual，默认 auto，非法值拒绝；dispatch/retry 读取当前 Map 并固定为执行的 camelCase `reportPolicy`。旧记录缺字段按 auto，无迁移；恢复原 Chat/执行沿用保存值，不热更新。初始输入在业务 input 外独立给出策略控制段。manual 只是提示词约束，不新增审批门禁、状态或按钮，不改变管理者 complete 职责。
 - Map node 的 `auto_close` 缺省 false，dispatch/retry 固定为执行的 `autoClose`；旧执行缺字段按 false，不因查询改写。只有 manager 首次合法 complete 且当前事实保存成功，才按本次选择尽力关闭当前执行保存的 Tab；历史追加失败不撤销资格或原反馈。外部命令不占用业务推进锁或文件协调，响应及同 Run 后续合法动作不等待关闭返回；不要求停轮/空闲，不扫描无关目标，不重试、补偿、绕过确认或持久化关闭结果。关闭会终止 Tab 内终端及相关进程，不删除 Chat 历史；日志之外不新增 workflow 结果展示。详见[完成后自动关闭](workflow-runtime.md#节点完成后自动关闭关联-tab)。
 - report 的命名输出只在报告记录中登记；同 execution 按名更新、省略保留，新 execution 不继承。不检查或操作业务文件，合法绝对地址不受 zone 限制；历史缺字段可读但不补 true，新请求缺 canComplete 明确拒绝。report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
+- 首次 complete 还要求当前 execution 按追加顺序的最新报告严格声明 canComplete=true；无报告、历史缺字段、false 或旧执行 true 均不能放行，不回退旧 true，无 outputs 不影响门禁。声明不等于质量或用户批准；人工完成同样受限，无 force 绕过。报告保存与首次完成共用同 Run 协调：false 先提交则拒绝，完成先提交则后续 false 不撤销；重复 complete 保留首次事实且不重复关闭。拒绝说明适用报告 ID／不存在，不改状态、历史或通知。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
 - 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。
 - 后端重启后旧 Run 的执行事实只读，保留原状态、报告和 Chat 关联，拒绝动作/report/collect；人类仍可修改名称。普通 Chat Resume 不接管。未接管是服务上下文事实，不是持久 Run 状态。
@@ -86,7 +87,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P26 | 保存成功、投递失败仍可 collect，明确分阶段结果，不回滚/暂停/补投/仅为此重报。 | [报告](workflow-runtime.md#节点报告与独立通知) |
 | P27 | 重复报告独立追加；待办按 node 当前适用执行汇总最新报告，旧报告只作历史。 | [retry 报告归属](workflow-runtime.md#独立新执行retry) |
 | P28 | 读取、通知、collect 不消除未完成待办；completed 后不重开；重启后执行事实只读，名称可改。 | [报告](workflow-runtime.md#节点报告与独立通知)、[重启](workflow-runtime.md#后端重启历史现场只读) |
-| P29 | 管理者显式 complete 才交接/满足依赖，report/停轮/退出均不能替代，pending 拒绝。 | [交接](workflow-runtime.md#显式交接完成与结束-run) |
+| P29 | 当前 execution 最新报告严格 true 且管理者显式 complete 才交接/满足依赖；report/停轮/退出不能替代，pending 拒绝，声明拒绝不改变事实。 | [交接](workflow-runtime.md#显式交接完成与结束-run) |
 | P30 | collect 返回原因、快照、报告标识而非正文；无 running/通知不无限等，不承诺 ready 即返回。 | [collect](workflow-runtime.md#收取报告等待与取消) |
 | P31 | 通知在无人等待时保留、可合并，检查后新通知留到下次，不当已读。 | [collect](workflow-runtime.md#收取报告等待与取消) |
 | P32 | 配置期限正常到期不改状态；默认 90 分钟，整个请求预算更长。 | [collect 配置](workflow-runtime.md#收取报告等待与取消) |
@@ -104,7 +105,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P39 | 派发失败核实：确认创建→原执行 running，未创建→pending，不确定→failed；不新建 Chat。 | [核实](workflow-runtime.md#只核实派发失败reconcile_dispatch) |
 | P40 | 人工确认后 recover 只恢复原执行跟踪、身份不变/失败历史保留，paused 允许。 | [recover](workflow-runtime.md#恢复原执行跟踪recover) |
 | P41 | retry 是独立新执行，保留旧 Chat/事实/副作用；paused 拒绝，不确定派发先核实。 | [retry](workflow-runtime.md#独立新执行retry) |
-| P42 | 人工 complete 执行失败仅交接，不能伪造报告/传材料；已有 Chat 可补地址和限制。 | [人工交接](workflow-runtime.md#人工已处理且确实可交接) |
+| P42 | 人工 complete 执行失败同样需要当前最新 true 报告，仅交接，不能伪造报告或 force 绕过；已有 Chat 如实声明地址和限制。 | [人工交接](workflow-runtime.md#人工已处理且确实可交接) |
 | P43 | 当前状态写失败不发布内存候选或成功历史。 | [部分提交](workflow-runtime.md#独立读取与部分提交) |
 | P44 | 状态已提交、历史失败明确部分生效，不回滚、不因该次错误持续封锁。 | [部分提交](workflow-runtime.md#独立读取与部分提交) |
 | P45 | Chat 已启动后的身份/关联/输入失败暴露真实效果，不假称回滚或完整幂等。 | [启动失败](workflow-runtime.md#启动失败) |
