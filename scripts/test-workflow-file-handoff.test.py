@@ -28,6 +28,12 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
     def test_missing_worktree_backend_fails_with_original_error_and_no_role_claim(self):
         self.check_missing_backend('roles')
 
+    def test_plan_workflow_missing_backend_fails_without_claiming_business_acceptance(self):
+        # P27/P28: a prepared definition or absent host is never a passing run.
+        # The CLI must reach its real prerequisites, not reject this scenario as
+        # an unsupported option or invent native confirmation/completion facts.
+        self.check_missing_backend('plan-workflow')
+
     def check_missing_backend(self, scenario):
         toolkit = Path(os.environ['WORKFLOW_HANDOFF_TOOLKIT']).resolve()
         self.assertTrue((toolkit / 'bun.lock').is_file(), 'Set WORKFLOW_HANDOFF_TOOLKIT to the participating actual toolkit source')
@@ -41,7 +47,8 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
                 '--backend', str(backend), '--toolkit', str(toolkit), '--scenario', scenario,
                 '--paths-file', str(paths), '--herdr', str(root / 'unavailable-herdr.exe'),
                 '--pi-package', str(root / 'unavailable-pi'), '--pi-state-extension', str(root / 'unavailable-state.ts'),
-                '--model-config', str(root / 'unavailable-model.json')], cwd=REPO,
+                '--model-config', str(root / 'unavailable-model.json'),
+                '--shell-path', str(root / 'unavailable-native-bash.exe')], cwd=REPO,
                 env=dict(os.environ, CARGO_TARGET_DIR=str(target)), capture_output=True,
                 text=True, encoding='utf-8', errors='replace', timeout=30)
             # The toolkit argument must identify a real source root for source attribution;

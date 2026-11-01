@@ -196,7 +196,19 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 - 转换者重读真实能力指南和绑定、核实 zone，忠实翻译全部工作、输入输出、权限与依赖。只在核实的服务 Map 目录新增完整定义，同名不同内容不覆盖，不修改自举 Map 或运行记录。保存后完整读回解析，逐项核对字段，再查询 Map 目录与完整定义确认服务可见、结构与依赖合法；失败须列明已落盘文件和部分效果，不声称回滚或完成。
 - 仅概要方案明确提供新业务 `managerTaskId`、管理者 zone 和 `userInput`（允许明确为空）时做只读 preflight，绝不借用自举 Run 配置。缺启动配置仍可交付合法定义，但须列出缺项和未执行预检原因；保存或预检均不证明业务能力已验证、可启动或已执行，不自动发起业务 Run。
 
-定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务的公开 Map edit/save/read 与目录 interface 保存、读回仓库定义，保护命名来源、两节点业务绑定、依赖、报告策略及保存前后完整定义，并查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的证据；指引内容审阅、字段存在或文本长度都不是 P27/P28 的真实验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认的凭据由票据 09 独占验证。
+定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务的公开 Map edit/save/read 与目录 interface 保存、读回仓库定义，保护命名来源、两节点业务绑定、依赖、报告策略及保存前后完整定义，并查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的证据；指引内容审阅、字段存在或文本长度都不是 P27/P28 的真实验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认由独立真实业务入口验证：
+
+```powershell
+python scripts/test-workflow-file-handoff.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --scenario plan-workflow --paths-file $ISOLATED_PATHS
+```
+
+依赖准备、独占 HOME／原生存储、真实模型配置和公开 completion 传输方式见[测试指引](agents/testing.md#文件交接真实角色自动验收)；completion 调用示例将 `--scenario roles` 改为 `--scenario plan-workflow`。规划入口还从显式 `pi_agent` 依赖的 `skills/` 只读复制 `grill-with-docs`、`grilling`、`domain-modeling` 三个真实 Skill；缺任一项非零失败，不加载用户会话或凭据。被测源是参与 worktree 的实际 Map、概要规划／Map 转换 Task 和 Bot，环境地址、zone、Pi 宿主及模型映射逐项保留在 `deployment.json`，业务 prompt 不替换为受控 provider 脚本。这是 Pi 与公开真实模型传输的证据，不外推为 OMP 或其他 provider wire 合规性。
+
+入口预置可读订单和真实本地汇总／核对程序及合法 Bot/Task，但只规划、不运行业务。主场景先取得概要草案，向实际 outline Chat 输入币种修订，核对九章节、稳定工作编号、真实绑定、材料与权限，再分别输入当前修订的明确方案确认和 manual 发送确认。管理者须实际读报告、显式 complete／dispatch／finish；生成者须读命名地址、保存并经服务读回新 Map。缺新业务管理者配置时不预检，原始 HTTP、Run 目录和未生成业务输出共同核对没有自动启动。第二个独立 Run 要求当前不可用的真实税务发布能力，必须保存能力建设需求并保留真实阻塞，不创建／调度能力或把阻塞冒充主链成功。
+
+`business-requirements.json` 在启动前固定业务预期；`evidence.json` 映射 P27/P28，保留实际用户输入和所有干预、原生对话原始字节、初始化／工具／HTTP、报告及完成记录、方案和 Map 字节与服务读回。缺依赖、未确认、四标题草案、提前报告、能力越权、地址猜测、错误依赖或自动启动均非零，不跳过、不以页面 completed 代替。每轮输出独占证据根，成功与失败均清理所属进程且分别保留原始错误和清理错误；只有该轮完整实际成功和两仓规定检查通过，才能宣称业务验收通过。
 
 ## 角色归属与来源集成检查
 
