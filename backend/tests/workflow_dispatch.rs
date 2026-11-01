@@ -24,6 +24,8 @@ mod map_deletion;
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]
 mod named_inputs;
+#[path = "workflow_dispatch/plan_workflow.rs"]
+mod plan_workflow;
 #[path = "workflow_dispatch/input_resolution.rs"]
 mod input_resolution;
 #[path = "workflow_dispatch/report_outputs.rs"]
