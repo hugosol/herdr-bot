@@ -1,0 +1,501 @@
+{
+  "version": 1,
+  "branch": "dev",
+  "attempts": [
+    {
+      "id": "5e7e5aaa-1a3f-4ad1-a2b3-8eace550df80",
+      "at": "2026-11-01T13:52:07.000Z",
+      "phase": "integrated",
+      "ticket": "02-report-output-registration.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "02-report-output-registration.md",
+          "branch": "hyper/workflow-file-handoff/02-report-output-registration-0285b6-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-b6cgOF"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "e73c11a8-fa9f-4445-a07b-504b33680308",
+      "at": "2026-11-01T13:53:24.228Z",
+      "phase": "integrated",
+      "ticket": "04-completion-gate-and-waiting.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "04-completion-gate-and-waiting.md",
+          "branch": "hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc"
+        }
+      ],
+      "warnings": [
+        "票据 04-completion-gate-and-waiting.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-yMjvdc': Permission denied"
+      ]
+    },
+    {
+      "id": "4526e495-ef63-4eeb-9a10-a61c8b8f3229",
+      "at": "2026-11-01T15:10:48.621Z",
+      "phase": "integrated",
+      "ticket": "01-map-named-inputs.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "01-map-named-inputs.md",
+          "branch": "hyper/workflow-file-handoff/01-map-named-inputs-3496b7-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-xyfvcs"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "40df54b2-126f-4e44-8d7c-8747903496e8",
+      "at": "2026-11-01T15:10:52.226Z",
+      "phase": "integrated",
+      "ticket": "05-toolkit-report-and-role-cutover.md",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "05-toolkit-report-and-role-cutover.md",
+          "branch": "hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck"
+        }
+      ],
+      "warnings": [
+        "票据 05-toolkit-report-and-role-cutover.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-PvCUck': Filename too long"
+      ]
+    },
+    {
+      "id": "db975c40-6b33-45d9-bb8c-bb16889f5384",
+      "at": "2026-11-01T15:42:10.562Z",
+      "phase": "integrated",
+      "ticket": "03-current-execution-input-resolution.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "03-current-execution-input-resolution.md",
+          "branch": "hyper/workflow-file-handoff/03-current-execution-input-resol-906c47-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-j5ECuZ"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "e7a81687-9372-466c-8153-3ddb7b9d4ef2",
+      "at": "2026-11-01T16:17:22.413Z",
+      "phase": "integrated",
+      "ticket": "06-plan-workflow-migration.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "06-plan-workflow-migration.md",
+          "branch": "hyper/workflow-file-handoff/06-plan-workflow-migration-fe2c85-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ppMKuj"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "a977078d-4177-4b6a-bfb1-d4441e219745",
+      "at": "2026-11-01T17:29:05.175Z",
+      "phase": "integrated",
+      "ticket": "07-cross-repository-role-acceptance.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq"
+        }
+      ],
+      "warnings": [
+        "票据 07-cross-repository-role-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-oJZcqq': Permission denied"
+      ]
+    },
+    {
+      "id": "247444cd-0d18-4e1c-84f1-2e26f239db52",
+      "at": "2026-11-01T17:29:09.436Z",
+      "phase": "integrated",
+      "ticket": "07-cross-repository-role-acceptance.md",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e"
+        }
+      ],
+      "warnings": [
+        "票据 07-cross-repository-role-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-mcjI7e': Filename too long"
+      ]
+    },
+    {
+      "id": "3e4637d2-5729-4e65-bb7b-35a5f7beb248",
+      "at": "2026-11-01T18:43:42.772Z",
+      "phase": "integrated",
+      "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR"
+        }
+      ],
+      "warnings": [
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RM7jVR': Permission denied"
+      ]
+    },
+    {
+      "id": "59b9a639-e2d6-41a6-8fc8-b84f4b77ad91",
+      "at": "2026-11-01T18:43:47.378Z",
+      "phase": "integrated",
+      "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg"
+        }
+      ],
+      "warnings": [
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-r6CaJg': Filename too long"
+      ]
+    },
+    {
+      "id": "96415632-013f-4b32-b67e-24f8c0c05945",
+      "at": "2026-11-01T19:36:51.420Z",
+      "phase": "integrated",
+      "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+        }
+      ],
+      "warnings": [
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-fQkoAw': Filename too long"
+      ]
+    },
+    {
+      "id": "aa9da45c-393c-4f63-8199-f6823d520ad5",
+      "at": "2026-11-01T19:36:51.674Z",
+      "phase": "integrated",
+      "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+        }
+      ],
+      "warnings": [
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-eSpPxg': Filename too long"
+      ]
+    },
+    {
+      "id": "6d3c9d18-afa2-4996-997a-711b49453ff8",
+      "at": "2026-11-01T19:37:05.117Z",
+      "phase": "finish-worktrees",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "01-map-named-inputs.md",
+          "branch": "hyper/workflow-file-handoff/01-map-named-inputs-3496b7-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-xyfvcs"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "02-report-output-registration.md",
+          "branch": "hyper/workflow-file-handoff/02-report-output-registration-0285b6-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-b6cgOF"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "04-completion-gate-and-waiting.md",
+          "branch": "hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "03-current-execution-input-resolution.md",
+          "branch": "hyper/workflow-file-handoff/03-current-execution-input-resol-906c47-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-j5ECuZ"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "06-plan-workflow-migration.md",
+          "branch": "hyper/workflow-file-handoff/06-plan-workflow-migration-fe2c85-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ppMKuj"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+        }
+      ],
+      "warnings": [
+        "票据 04-completion-gate-and-waiting.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc",
+        "票据 07-cross-repository-role-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq",
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR",
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+      ]
+    },
+    {
+      "id": "929e11ab-416a-4935-870b-f8be9f455004",
+      "at": "2026-11-01T19:37:05.294Z",
+      "phase": "finish-worktrees",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "05-toolkit-report-and-role-cutover.md",
+          "branch": "hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+        }
+      ],
+      "warnings": [
+        "票据 05-toolkit-report-and-role-cutover.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck",
+        "票据 07-cross-repository-role-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e",
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg",
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+      ]
+    },
+    {
+      "id": "490a0b4b-7257-4df6-9dd7-f0ea151cb88b",
+      "at": "2026-11-01T19:37:05.377Z",
+      "phase": "finish-branches",
+      "resources": [
+        {
+          "repository": "herdr-bot",
+          "ticket": "01-map-named-inputs.md",
+          "branch": "hyper/workflow-file-handoff/01-map-named-inputs-3496b7-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-xyfvcs"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "02-report-output-registration.md",
+          "branch": "hyper/workflow-file-handoff/02-report-output-registration-0285b6-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-b6cgOF"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "04-completion-gate-and-waiting.md",
+          "branch": "hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "03-current-execution-input-resolution.md",
+          "branch": "hyper/workflow-file-handoff/03-current-execution-input-resol-906c47-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-j5ECuZ"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "06-plan-workflow-migration.md",
+          "branch": "hyper/workflow-file-handoff/06-plan-workflow-migration-fe2c85-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ppMKuj"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR"
+        },
+        {
+          "repository": "herdr-bot",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+        }
+      ],
+      "warnings": [
+        "票据 04-completion-gate-and-waiting.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc",
+        "票据 07-cross-repository-role-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq",
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR",
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+      ]
+    },
+    {
+      "id": "d54e28c4-f090-4c64-9cef-46e81e57c324",
+      "at": "2026-11-01T19:37:05.934Z",
+      "phase": "finish-branches",
+      "resources": [
+        {
+          "repository": "toolkit",
+          "ticket": "05-toolkit-report-and-role-cutover.md",
+          "branch": "hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "07-cross-repository-role-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "08-cross-repository-file-fan-in-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg"
+        },
+        {
+          "repository": "toolkit",
+          "ticket": "09-cross-repository-plan-workflow-acceptance.md",
+          "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+        }
+      ],
+      "warnings": [
+        "票据 05-toolkit-report-and-role-cutover.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck",
+        "票据 07-cross-repository-role-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e",
+        "票据 08-cross-repository-file-fan-in-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg",
+        "票据 09-cross-repository-plan-workflow-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+      ]
+    }
+  ],
+  "warnings": [
+    "票据 04-completion-gate-and-waiting.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-yMjvdc': Permission denied",
+    "票据 05-toolkit-report-and-role-cutover.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-PvCUck': Filename too long",
+    "票据 07-cross-repository-role-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-oJZcqq': Permission denied",
+    "票据 07-cross-repository-role-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-mcjI7e': Filename too long",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RM7jVR': Permission denied",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-r6CaJg': Filename too long",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-fQkoAw': Filename too long",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的工作树删除失败，已保留：error: failed to delete 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-eSpPxg': Filename too long",
+    "票据 04-completion-gate-and-waiting.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc",
+    "票据 07-cross-repository-role-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw",
+    "票据 05-toolkit-report-and-role-cutover.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck",
+    "票据 07-cross-repository-role-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的目录不再是已注册工作树，保留：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg",
+    "票据 04-completion-gate-and-waiting.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc",
+    "票据 07-cross-repository-role-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw",
+    "票据 05-toolkit-report-and-role-cutover.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck",
+    "票据 07-cross-repository-role-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e",
+    "票据 08-cross-repository-file-fan-in-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg",
+    "票据 09-cross-repository-plan-workflow-acceptance.md 的原工作树目录仍有残留，保留分支 hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+  ],
+  "retainedBranches": [
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57"
+    }
+  ],
+  "retainedWorktrees": [
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/04-completion-gate-and-waiting-f2ede0-9497b79afe0a",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-yMjvdc"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-9497b79afe0a",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oJZcqq"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-9497b79afe0a",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RM7jVR"
+    },
+    {
+      "repository": "herdr-bot",
+      "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-9497b79afe0a",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-fQkoAw"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/05-toolkit-report-and-role-cutov-8107b6-24e075a29d57",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-PvCUck"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/07-cross-repository-role-accepta-1f47cd-24e075a29d57",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-mcjI7e"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/08-cross-repository-file-fan-in--2b0f1d-24e075a29d57",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-r6CaJg"
+    },
+    {
+      "repository": "toolkit",
+      "branch": "hyper/workflow-file-handoff/09-cross-repository-plan-workflo-ace365-24e075a29d57",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-eSpPxg"
+    }
+  ],
+  "residualsConfirmed": true
+}
