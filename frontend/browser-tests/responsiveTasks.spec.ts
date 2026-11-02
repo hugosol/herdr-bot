@@ -165,7 +165,7 @@ for (const profile of [
       fs.writeFileSync(server.metadataFile, broken)
       const zonePath = path.join(path.dirname(server.metadataFile), 'p49-zone')
       fs.mkdirSync(zonePath)
-      const zone = (await jsonPost(server.baseURL, '/api/zones', { path: zonePath })).zones[0].path
+      const zone = (await jsonPost(server.baseURL, '/api/zones', { id: 'test/zone', path: zonePath })).zones[0].id
       await action('tab-files')
       await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
       await expect(page.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')

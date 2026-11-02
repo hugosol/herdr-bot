@@ -19,7 +19,7 @@ async function scenario(page: Page) {
   }
   const zone = path.join(host.cwd, 'bot-playground')
   fs.mkdirSync(zone)
-  await post('/api/zones', { path: zone })
+  await post('/api/zones', { id: 'test/zone', path: zone })
   const tasks: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
     const result = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
@@ -30,12 +30,12 @@ async function scenario(page: Page) {
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
   fs.writeFileSync(path.join(maps, 'isolation.json'), JSON.stringify({ title: '关闭隔离验收', description: '', nodes: {
-    A: { title: '交接工作', bot_id: 'worker', zone, input: '', blocked_by: [], auto_close: true },
-    B: { title: '后续工作', bot_id: 'worker', zone, input: '', blocked_by: ['A'] },
+    A: { title: '交接工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: [], auto_close: true },
+    B: { title: '后续工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: ['A'] },
   } }))
   const native = (id: string) => ({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: id }, native_cwd: zone })
   host.setHerdrBehavior(native('isolation-manager'))
-  const started = await post('/api/scheduler/maps/isolation.json/runs', { managerTaskId: tasks.manager, zone, userInput: '验收关闭隔离' }, 201)
+  const started = await post('/api/scheduler/maps/isolation.json/runs', { managerTaskId: tasks.manager, zone: 'test/zone', userInput: '验收关闭隔离' }, 201)
   host.setHerdrBehavior(native('isolation-node-A'))
   const dispatched = await post('/api/workflow/manager/dispatch', { sessionId: 'isolation-manager', nodes: ['A'] })
   expect(dispatched.results[0].status).toBe('running')
@@ -105,7 +105,7 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   const completion = result.snapshot.nodes.A.completion
   expect(completion.reason).toBe('已核实交接结果')
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
-  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'nodes', 'status', 'userInput', 'workspaceName', 'zone'].sort())
+  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
   // Independent expected delta: completion is the only new durable fact. Exact
   // equality rejects result fields even if they have innocuous or unknown names.

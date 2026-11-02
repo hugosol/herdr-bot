@@ -30,9 +30,9 @@ async function post(endpoint: string, body: unknown) {
 async function history() { return fetch(`${server!.baseURL}/api/sessions/history`).then(r => r.json()) }
 async function prepare() {
   const zone = path.join(root, 'zone'); fs.mkdirSync(zone)
-  const zones = await post('/api/zones', { path: zone })
+  const zones = await post('/api/zones', { id: 'test/zone', path: zone })
   await post('/api/tasks', { name: 'OMP history browser', chatName: 'OMP browser {chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
-  return zones.zones[0].path as string
+  return zones.zones[0].id as string
 }
 async function createInPage(page: Page, zone: string) {
   await page.goto(server!.baseURL)

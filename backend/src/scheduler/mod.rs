@@ -54,7 +54,7 @@ impl ReportPolicy {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InputRule {
-    File { id: String, path: String },
+    File { id: String, path: String, #[serde(default, skip_serializing_if = "Option::is_none")] zone_id: Option<String> },
     Node { id: String, node_id: String, output_id: String },
 }
 impl InputRule {
@@ -180,8 +180,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     if task.task_type != crate::tasks::TaskType::Normal {
         return Err("node 必须绑定 normal 类型的 Task".into());
     }
-    let zones = state.zones.list().await.map_err(|e| e.message())?;
-    let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
+    let zone = node.zone;
     Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
 }
 
@@ -192,6 +191,12 @@ fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
     deserializer.end().map_err(|e| map_error(format!("Map JSON 无效：{e}")))?;
     validate_map(&map)?;
     Ok(map)
+}
+
+pub(crate) fn valid_relative_file(path: &str) -> bool {
+    !path.is_empty() && !path.contains(['\\', ':', '\0'])
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
+        && !Path::new(path).is_absolute()
 }
 
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
@@ -210,8 +215,8 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
             let name = input.id();
             if name.trim().is_empty() || !input_ids.insert(name) { return Err(map_error(format!("node {id} 的 input_rule ID 重复：{name}"))); }
             match input {
-                InputRule::File { path, .. } if !Path::new(path).is_absolute() || path.contains('\0') => {
-                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用绝对文件地址。")));
+                InputRule::File { path, zone_id, .. } if !valid_relative_file(path) || zone_id.as_ref().is_some_and(|id| id.trim().is_empty()) => {
+                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧数据请运行 migrate-zone-portability 并提供显式映射。")));
                 }
                 InputRule::Node { node_id, output_id, .. } => {
                     let upstream = map.nodes.get(node_id).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")))?;
@@ -287,6 +292,8 @@ pub(crate) struct RunPreflight {
     pub workspace_name: String,
     #[serde(skip)]
     pub node_ids: Vec<String>,
+    #[serde(skip)]
+    pub zone_bindings: BTreeMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -333,9 +340,10 @@ fn check_role(tasks: &[crate::tasks::Task], id: &str, role: crate::tasks::TaskTy
 
 fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, target: &'static str) -> Result<&'a str, PreflightIssue> {
     if requested.trim().is_empty() {
-        return Err(PreflightIssue::new("zone-required", target, "请选择或填写已登记 zone 的路径；请回到 zone 登记或 node 定义修正。"));
+        return Err(PreflightIssue::new("zone-required", target, "请选择或填写已登记的 zone ID；请回到 zone 登记或 node 定义修正。"));
     }
-    let root = crate::zones::browse::registered_root(zones, requested).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
+    let root = zones.iter().find(|zone| zone.id == requested).map(|zone| zone.path.as_str())
+        .ok_or_else(|| PreflightIssue::new("zone-not-registered", target, format!("zone ID {requested} 未在本机绑定；请在 zone 登记中绑定目录。旧 Map 路径请先显式迁移。")))?;
     crate::zones::browse::checked_root(root).map_err(|error| PreflightIssue::new(error.code(), target, error.message()))?;
     Ok(root)
 }
@@ -377,6 +385,13 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
         if let Some(issue) = &mut binding_issue { issue.node_id = Some(id.clone()); issue.bot_id = Some(node.bot_id.clone()); }
         issues.extend(binding_issue);
         if let Err(mut issue) = check_zone(&zones, &node.zone, "node") { issue.node_id = Some(id.clone()); issues.push(issue); }
+        for rule in &node.input_rule {
+            if let InputRule::File { zone_id, .. } = rule {
+                if let Err(mut issue) = check_zone(&zones, zone_id.as_deref().unwrap_or(&input.zone), "file") {
+                    issue.node_id = Some(id.clone()); issues.push(issue);
+                }
+            }
+        }
     }
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }
     let zone = manager_zone.expect("valid manager zone when no issues");
@@ -387,7 +402,17 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     // Reading the field is intentional: it is accepted verbatim, with no input
     // quality gate or rewriting into node.input / Task.prompt.
     let _ = &input.user_input;
-    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect() })
+    let mut zone_bindings = BTreeMap::new();
+    zone_bindings.insert(input.zone.clone(), zone.to_owned());
+    for node in map.nodes.values() {
+        for id in std::iter::once(node.0.zone.as_str()).chain(node.0.input_rule.iter().filter_map(|rule| match rule {
+            InputRule::File { zone_id: Some(id), .. } => Some(id.as_str()), _ => None,
+        })) {
+            let path = zones.iter().find(|zone| zone.id == id).expect("preflight checked binding").path.clone();
+            zone_bindings.insert(id.to_owned(), path);
+        }
+    }
+    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect(), zone_bindings })
 }
 
 pub async fn preflight_run(

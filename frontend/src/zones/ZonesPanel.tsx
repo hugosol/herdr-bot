@@ -53,6 +53,7 @@ export function ZonesPanel({
   const [zones, setZones] = useState<ZoneRegistration[] | null>(null)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [zoneId, setZoneId] = useState('')
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
@@ -129,6 +130,7 @@ export function ZonesPanel({
     setDialog(kind)
     setPath('')
     setName('')
+    setZoneId('')
     setFormError(null)
     setFeedback(null)
   }
@@ -138,19 +140,20 @@ export function ZonesPanel({
     setFormError(null)
     setPath('')
     setName('')
+    setZoneId('')
   }
 
   async function submitRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const candidate = path.trim()
-    if (candidate === '') {
-      setFormError('请填写服务器上的目录路径。')
+    if (zoneId.trim() === '' || candidate === '') {
+      setFormError('请填写稳定 zone ID 和服务器上的目录路径。')
       return
     }
 
     setPending('register')
     setFormError(null)
-    const result = await registerZone(candidate)
+    const result = await registerZone(zoneId.trim(), candidate)
     setPending(null)
     if (result.kind === 'ok') {
       setZones(result.zones)
@@ -158,7 +161,7 @@ export function ZonesPanel({
       setListFailure(null)
       setDialog(null)
       setPath('')
-      setFeedback({ kind: 'success', text: `已登记：${candidate}` })
+      setFeedback({ kind: 'success', text: `已登记：${zoneId.trim()} → ${candidate}` })
       void loadOverview()
     } else {
       setFormError(describeFailure(result, '登记'))
@@ -168,25 +171,25 @@ export function ZonesPanel({
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const candidate = name.trim()
-    if (candidate === '') {
-      setFormError('请填写新 zone 的名称。')
+    if (zoneId.trim() === '' || candidate === '') {
+      setFormError('请填写稳定 zone ID 和新 zone 的名称。')
       return
     }
 
-    const previousPaths = new Set((zones ?? []).map((entry) => entry.path))
     setPending('create')
     setFormError(null)
-    const result = await createZone(candidate)
+    const result = await createZone(zoneId.trim(), candidate)
     setPending(null)
     if (result.kind === 'ok') {
       const createdPath = result.zones.find(
-        (entry) => !previousPaths.has(entry.path),
+        (entry) => entry.id === zoneId.trim(),
       )?.path
       setZones(result.zones)
       setCreation(result.creation)
       setListFailure(null)
       setDialog(null)
       setName('')
+      setZoneId('')
       setFeedback({
         kind: 'success',
         text: createdPath === undefined ? '已创建 zone。' : `已创建：${createdPath}`,
@@ -198,9 +201,9 @@ export function ZonesPanel({
   }
 
   async function remove(registration: ZoneRegistration) {
-    setPending(`remove:${registration.path}`)
+    setPending(`remove:${registration.id}`)
     setFeedback(null)
-    const result = await unregisterZone(registration.path)
+    const result = await unregisterZone(registration.id)
     setPending(null)
     if (result.kind === 'ok') {
       setZones(result.zones)
@@ -366,10 +369,11 @@ export function ZonesPanel({
           <ul className="zone-list" data-testid="zone-list">
             {zones.map((registration) => (
               <li
-                key={registration.path}
+                key={registration.id}
                 className="zone-item"
                 data-testid="zone-item"
                 data-zone-path={registration.path}
+                data-zone-id={registration.id}
               >
                 {/* 浏览入口只显示末级目录名；完整路径留在无障碍名称、悬停标题与进入后的工具栏中。 */}
                 <button
@@ -381,7 +385,7 @@ export function ZonesPanel({
                   disabled={pending !== null}
                   onClick={() => setOpenZone(registration.path)}
                 >
-                  <span className="zone-item__name">{zoneDisplayName(registration.path)}</span>
+                  <span className="zone-item__identity"><span className="zone-item__name">{zoneDisplayName(registration.path)}</span><code>{registration.id}</code></span>
                   {summaries?.get(registration.path)?.repository &&
                     summaries.get(registration.path)?.error === undefined && (
                       <GitAheadIndicator sync={summaries.get(registration.path)?.sync} />
@@ -395,7 +399,7 @@ export function ZonesPanel({
                   aria-label={`从 ${registration.path} 发起 Chat`}
                   title={`从 ${registration.path} 发起 Chat`}
                   disabled={pending !== null}
-                  onClick={() => setChatZone(registration.path)}
+                  onClick={() => setChatZone(registration.id)}
                 >
                   +
                 </button>
@@ -426,8 +430,11 @@ export function ZonesPanel({
           >
             <h2 className="zone-dialog__title">登记已有目录</h2>
             <p className="zone-dialog__hint">
-              输入 herdr-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
+              输入当前 server 上的绝对目录路径，并填写 Map 使用的稳定 ID。每台 server 独立登记；取消登记不会删除目录或文件。
             </p>
+            <label className="zone-form__label" htmlFor="zone-id">zone ID</label>
+            <input id="zone-id" data-testid="zone-id" className="zone-form__input" value={zoneId} onChange={event => setZoneId(event.target.value)} disabled={pending !== null} placeholder="namespace/name" aria-describedby="zone-id-help" />
+            <p id="zone-id-help">填写唯一稳定 ID，建议 namespace/name；Map 与 Chat/Run 引用 ID，不引用本机路径。</p>
             <label className="zone-form__label" htmlFor="zone-path">
               服务器目录路径
             </label>
@@ -492,6 +499,9 @@ export function ZonesPanel({
               <code>{creation.parentDirectory ?? '配置的父目录'}</code>{' '}
               下创建直接子目录，执行 git init 后加入登记列表。
             </p>
+            <label className="zone-form__label" htmlFor="create-zone-id">zone ID</label>
+            <input id="create-zone-id" data-testid="zone-id" className="zone-form__input" value={zoneId} onChange={event => setZoneId(event.target.value)} disabled={pending !== null} placeholder="namespace/name" />
+            <p>填写唯一稳定 ID，建议 namespace/name；此 ID 创建后不可修改。</p>
             <label className="zone-form__label" htmlFor="zone-name">
               新 zone 名称
             </label>

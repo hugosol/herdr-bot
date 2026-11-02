@@ -2,6 +2,8 @@
 //! P8/P10/P13/P14/P15/P16: a prompt-first launch or a copied manager input
 //! would violate independent literal expectations at the host boundary.
 mod common;
+#[path = "workflow_dispatch/portability.rs"]
+mod portability;
 #[path = "workflow_dispatch/recovery.rs"]
 mod recovery;
 #[path = "workflow_dispatch/retry.rs"]
@@ -65,6 +67,7 @@ impl Scenario {
         let fixtures = common::repo_fixtures_dir();
         let mut config = common::config(&fixtures.join("operations/success.bat"), &fixtures.join("operations"));
         config.tasks.storage_file = data.path().join("tasks.json");
+        config.prompts_file = data.path().join("prompts.local.toml");
         let mut catalog: toml::Value = toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
         for entry in catalog["extensions"].as_array_mut().unwrap() {
             let path = data.path().join(format!("{}.ts", entry["id"].as_str().unwrap()));
@@ -88,10 +91,10 @@ impl Scenario {
         let server = TestServer::start_app(app.clone()).await;
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();
-        for path in [data.path(), node_zone.as_path()] {
-            assert_eq!(post_json_over_tcp(server.addr(), "/api/zones", &json!({"path":path}).to_string()).await.status, 200);
+        for (id, path) in [("manager", data.path()), ("node", node_zone.as_path())] {
+            assert_eq!(post_json_over_tcp(server.addr(), "/api/zones", &json!({"id":id,"path":path}).to_string()).await.status, 200);
         }
-        let zone = data.path().to_string_lossy().into_owned();
+        let zone = "manager".to_owned();
         let mut ids = Vec::new();
         for role in ["manager", "node"] {
             let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":if role == "node" {"normal"} else {"manager"},"agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":if role == "node" {"NODE-FIXED"} else {"MANAGER-FIXED"},"extensions":[]}).to_string()).await;
@@ -101,9 +104,9 @@ impl Scenario {
         }
         fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","plan_guide":"BOT-PLAN-SECRET","node_guide":"BOT-NODE-SECRET","task_id":ids[1]}).to_string()).unwrap();
         fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-SECRET","nodes":{
-            "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":node_zone,"blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"otherVolume"},{"id":"result"},{"id":"brief"},{"id":"shared"}]},
-            "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":node_zone,"blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
-            "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":node_zone,"blocked_by":["A","B"],"output_rule":[{"id":"summary"}]}
+            "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"otherVolume"},{"id":"result"},{"id":"brief"},{"id":"shared"}]},
+            "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
+            "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":"node","blocked_by":["A","B"],"output_rule":[{"id":"summary"}]}
         }}).to_string()).unwrap();
         Self { data, herdr, config, server, app, zone, manager_task:ids.remove(0) }
     }
@@ -1161,7 +1164,7 @@ async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_
     assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "node-native-05");
     let calls = s.herdr.calls();
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(1).unwrap();
-    let text = prompt["text"].as_str().unwrap();
+    let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
     assert_eq!(saved["nodes"]["A"]["execution"]["reportPolicy"], "auto");

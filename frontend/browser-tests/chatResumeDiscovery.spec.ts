@@ -41,7 +41,7 @@ for (const agent of ['pi', 'omp']) {
       } else if (scenario === 'external') {
         await post('/api/sessions/events', { sessionId: id, kind: 'register', data: { sessionName: name, agentType: agent, cwd: root, sessionFile: file, originalWorkspaceId: 'w-target', sourceTaskId: source } })
       } else {
-        const zone = (await post('/api/zones', { path: root })).zones[0].path
+        const zone = (await post('/api/zones', { id: 'test/zone', path: root })).zones[0].id
         const preview = await post('/api/chats/preview', { zone, taskId: source })
         const created = await post('/api/chats', { zone, taskId: source, chatId: preview.chatId, input: 'INITIAL ONLY' })
         await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${created.id}`)).json()).stage).toBe('succeeded')

@@ -47,7 +47,7 @@ async function setup(page: Page, a = false, b = true) {
   server = await startServer({ separateCwd: true, herdr: {} })
   const zone = path.join(server.cwd, 'bot-playground')
   fs.mkdirSync(zone)
-  await post(page, '/api/zones', { path: zone })
+  await post(page, '/api/zones', { id: 'test/zone', path: zone })
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
     const result = await post(page, '/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'LAUNCH-ONLY-LIFECYCLE', extensions: [] })
@@ -58,10 +58,10 @@ async function setup(page: Page, a = false, b = true) {
   fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   const mapRoot = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(mapRoot, { recursive: true })
-  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', zone, blocked_by: [] }
+  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', zone: 'test/zone', blocked_by: [] }
   fs.writeFileSync(path.join(mapRoot, 'lifecycle.json'), JSON.stringify({ title: 'Lifecycle', description: 'Isolated auto-close lifecycle', nodes: { A: { ...node, auto_close: a }, B: { ...node, auto_close: b } } }))
   host(manager, zone)
-  const started = await post(page, '/api/scheduler/maps/lifecycle.json/runs', { managerTaskId: ids.manager, zone, userInput: 'LIFECYCLE-MANAGER-INPUT' }, 201)
+  const started = await post(page, '/api/scheduler/maps/lifecycle.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: 'LIFECYCLE-MANAGER-INPUT' }, 201)
   return { zone, runId: started.id as string }
 }
 async function dispatch(page: Page, nodeId: string, sessionId: string, zone: string) {

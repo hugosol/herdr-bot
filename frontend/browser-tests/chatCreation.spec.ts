@@ -54,14 +54,12 @@ async function prepareZones(baseURL: string) {
   fs.mkdirSync(git)
   execFileSync('git', ['init', git], { stdio: 'ignore' })
 
-  const first = await jsonPost(baseURL, '/api/zones', { path: normal })
-  const second = await jsonPost(baseURL, '/api/zones', { path: git })
-  const paths: string[] = [...first.zones, ...second.zones].map(
-    (zone: { path: string }) => zone.path,
-  )
+  await jsonPost(baseURL, '/api/zones', { id: 'test/normal', path: normal })
+  const second = await jsonPost(baseURL, '/api/zones', { id: 'test/git', path: git })
   return {
-    normal: paths.find((candidate) => candidate.includes('alpha')) ?? normal,
-    git: paths.find((candidate) => candidate.includes('beta')) ?? git,
+    normal: 'test/normal',
+    git: 'test/git',
+    normalPath: second.zones.find((zone: { id: string }) => zone.id === 'test/normal').path as string,
   }
 }
 
@@ -151,20 +149,20 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
     { timeout: 10_000 },
   )
   await expect(dialog.getByTestId('chat-result-name')).toHaveText(previewName)
-  await expect(dialog.getByTestId('chat-result-zone')).toHaveText(zones.normal)
+  await expect(dialog.getByTestId('chat-result-zone')).toHaveText(zones.normalPath)
 
   // 外部记录：Tab 名与预览一致；结果里的 Tab / Pane 标识来自受控 Herdr 的响应。
   const tabs = server.herdrTabs()
   expect(tabs).toHaveLength(1)
   expect(tabs[0].label).toBe(previewName)
-  expect(tabs[0].cwd).toBe(zones.normal)
+  expect(tabs[0].cwd).toBe(zones.normalPath)
   expect(tabs[0].workspace).toBe('w-target')
   await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(tabs[0].tab_id))
   await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
 
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('普通任务：检查登录逻辑')
+  expect(prompts[0].text).toMatch(/^普通任务：检查登录逻辑(?:\n\n|$)/)
 
   // 结果留在弹窗；没有自动切换到会话列表。
   await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
@@ -199,7 +197,7 @@ test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的�
   await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('会被拒绝的指示')
+  expect(prompts[0].text).toMatch(/^会被拒绝的指示(?:\n\n|$)/)
   expect(server.herdrCalls().filter((call) => call.kind === 'unsupported')).toHaveLength(0)
   await page.waitForTimeout(300)
   expect(callsOfKind('agent_prompt')).toHaveLength(1)
@@ -248,12 +246,12 @@ test('Skill、固定 prompt 与本次 input 经真实页面合成一次原生 Sk
   server = await startServer({ herdr: { behavior: {} } })
   const zones = await prepareZones(server.baseURL)
 
-  // 预写的完整样例：prompt 含 slash 文本，仍应作为正文的一部分原样提交。
+  // 预写完整业务正文：原生 Skill 必须在消息开头，slash 文本与多行 input 保真；不锁定后附系统指引措辞。
   const prompt =
     '固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面'
   const input = '本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
   const expected =
-    '/skill:code-review 固定指示第一行\n固定指示第二行：保留 /skill:teach 与 /code-review 字面\n\n本次任务第一行\n第二行带引号 "quoted" 与 & 符号'
+    /^\/skill:code-review 固定指示第一行\n固定指示第二行：保留 \/skill:teach 与 \/code-review 字面\n\n本次任务第一行\n第二行带引号 "quoted" 与 & 符号(?:\n\n|$)/
   await prepareTask(server.baseURL, {
     ...TASK,
     skill: 'code-review',
@@ -272,35 +270,5 @@ test('Skill、固定 prompt 与本次 input 经真实页面合成一次原生 Sk
   )
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe(expected)
-})
-
-test('Skill、prompt、input 全空仍从页面提交，并由受控 Herdr 拒绝为普通失败', async ({
-  page,
-}) => {
-  server = await startServer({ herdr: { behavior: {} } })
-  const zones = await prepareZones(server.baseURL)
-  await prepareTask(server.baseURL)
-  await page.goto(server.baseURL)
-
-  const dialog = await openChatDialog(page, zones.normal)
-  await expect(dialog.getByTestId('chat-name-preview')).toHaveText(/^alpha · 审查 · [0-9a-f]{6}$/)
-  // 不填写初始 input；Task 既没有 Skill，固定 prompt 也为空。
-  await expect(dialog.getByTestId('chat-input')).toHaveValue('')
-  await dialog.getByTestId('chat-create-submit').click()
-
-  const failure = dialog.getByTestId('chat-create-failure')
-  await expect(failure).toBeVisible({ timeout: 10_000 })
-  await expect(failure).toContainText('提交初始指示')
-  await expect(failure).toContainText('agent prompt must not be empty')
-  await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
-
-  // 现场保留并可定位；受控 Herdr 确实收到过这次空正文提交，而不是被提前跳过。
-  const tabs = server.herdrTabs()
-  expect(tabs).toHaveLength(1)
-  await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(tabs[0].tab_id))
-  await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
-  const prompts = callsOfKind('agent_prompt')
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('')
+  expect(prompts[0].text).toMatch(expected)
 })

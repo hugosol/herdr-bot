@@ -10,7 +10,7 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 
 | 方法及路径 | 请求与结果 |
 | --- | --- |
-| `POST /api/scheduler/maps/{filename}/preflight` | 仅 `managerTaskId`、`zone`、`userInput` 三个字符串；空要求传 `""`。整图检查成功返回 `workspaceName`，不创建 Run/Chat。 |
+| `POST /api/scheduler/maps/{filename}/preflight` | 仅 `managerTaskId`、`zone`、`userInput` 三个字符串；请求的 `zone` 是稳定 ID，空要求传 `""`。整图检查成功返回 `workspaceName`，不创建 Run/Chat。 |
 | `POST /api/scheduler/maps/{filename}/runs` | 与 preflight 相同的严格请求，重新预检。完成启动返回 HTTP 201 详情包；启动失败可返回 HTTP 500 详情包，含已分配 `id`、可得事实及 `startupError`，不是“没创建过”的保证。预检/角色入口失败在分配前拒绝；不能忽略非 2xx 响应正文或盲目再次发起。 |
 | `GET /api/workflow/runs` | 返回 `runs` 数组及有效 `pollIntervalSeconds`；每项 `id`、可空 `run`、`managed`、`readError`。按创建时间倒序，同时间以 ID 排序；不可读项明确错误，不假造空 Run。 |
 | `GET /api/workflow/runs/{id}` | 详情包 `id`、可空 `run`、`managed`、`startupError`、`readError`；可读 Run 另含完整 `reports` 与 `pendingReports`。必要记录不可读明确失败；仅有启动错误但当前记录不可读时仍可返回错误现场。 |
@@ -26,10 +26,10 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 
 | 对象 | 序列化字段及意义 |
 | --- | --- |
-| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者 `zone`、`workspaceName`；原文 `userInput`；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是定义快照。 |
+| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
 | Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
-| execution | `id`、来源 `taskId`、实际宿主 `agent`、定义 `zone`、`reportPolicy`（`auto` 或 `manual`）、`autoClose`（布尔）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。两项选择在 dispatch/retry 解析当前 Map 时固定；旧记录缺少 `reportPolicy` 时按 `auto`、缺少 `autoClose` 时按 `false` 读取，无迁移、不因查询改写文件。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
+| execution | `id`、来源 `taskId`、实际宿主 `agent`、实际执行目录 `zone`、`reportPolicy`（`auto` 或 `manual`）、`autoClose`（布尔）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。两项选择在 dispatch/retry 解析当前 Map 时固定；旧记录缺少 `reportPolicy` 时按 `auto`、缺少 `autoClose` 时按 `false` 读取，无迁移、不因查询改写文件。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
 | failure | `stage`、`message`；启动失败可含 `effects`，执行阶段失败不制造启动效果。详细阶段以实际响应为准，不能只看 failed。 |
 | effects | `recordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；只表示已观察阶段，不证明未确认阶段绝无效果。 |
 | completion | `id`、`at`、真实管理者 `actor` Chat 引用、原文 `reason`；保留首次交接事实。 |
@@ -177,13 +177,13 @@ status 除 `snapshot` 外返回派生的 `ready`（可派发 node ID）、`block
 
 模型业务参数只有目标 node ID 数组；不得让模型填写 sessionId、Run ID、角色或归属。后端按真实管理者关联解析本次 Run，逐项重新检查状态与依赖，返回 `results` 和与 status 相同的查询字段。每项包含 `nodeId`、`status`（`rejected`、`failed` 或 `running`）。拒绝项有 `reasons`，启动失败项有 `failure.stage/message/effects`；已发生的 Workspace、Tab、pane、agent、原生身份及指示尝试/确认均如实保留。`persistenceError` 表示失败事实未能落盘，`historyError` 表示当前事实已提交但追加历史失败；调用者不能把它们当作全量成功或自动重试理由。
 
-每个合法目标沿 node → Bot → 普通（normal）Task（omp/pi） 解析完整 trigger config 和 env config，在定义中仍登记且有效的 zone 创建独立原生 Chat。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与定义 zone 一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
+每个合法目标沿 node → Bot → 普通（normal）Task（omp/pi） 解析完整 trigger config 和 env config，在本次 Run 启动时已确定且当前仍安全有效的 zone 路径创建独立原生 Chat，后续登记改绑或取消不改变本次路径。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与本次保存的 zone 实际路径一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
 
-节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `report_policy: auto|manual` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后保留 node.input 原文；不附 Bot 文档、完整 Map、上游完整聊天或文件正文。管理者与节点均获知管理者 zone 下 `.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
+节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `report_policy: auto|manual` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后提供经本机词典单次替换的 node.input；Task 固定 prompt 同样独立替换，不解释 userInput、规则 JSON、文件地址或报告；不附 Bot 文档、完整 Map、上游完整聊天或文件正文。管理者与节点均获知管理者 zone 下 `.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
-派发读取 Map 的 `input_rule`／`output_rule` 数组，并固定为本次执行的 `inputRule`／`outputRule`；`type: file` 原样传递绝对 `path`，`type: node` 按同 Run 的 `node_id` 当前 execution 查找 `output_id`。输出 ID 是逻辑交接标识，不是文件名。解析只取 `messages.jsonl` 中适用执行的报告 `outputs: [{id,path}]`，按追加顺序累积覆盖；省略保留，新 execution 不继承，旧执行迟到报告不污染当前执行。不解析报告正文、扫描目录或聊天，也不另存输出 registry。保存报告成功即可解析，不等待通知，通知失败不使地址失效。
+派发读取 Map 的 `input_rule`／`output_rule` 数组，并固定为本次执行的 `inputRule`／`outputRule`；`type: file` 使用本次 Run 已确定的 zone 绑定解析相对 `path`，可选 `zone_id` 缺省时使用 manager zone，并检查文件存在及 zone 安全边界；`type: node` 按同 Run 的 `node_id` 当前 execution 查找 `output_id`。输出 ID 是逻辑交接标识，不是文件名。解析只取 `messages.jsonl` 中适用执行的报告 `outputs: [{id,path}]`，按追加顺序累积覆盖；省略保留，新 execution 不继承，旧执行迟到报告不污染当前执行。不解析报告正文、扫描目录或聊天，也不另存输出 registry。保存报告成功即可解析，不等待通知，通知失败不使地址失效。
 
-来源节点尚无执行或当前执行未登记所需输出时明确拒绝派发，不创建消费者 Chat、不回退旧执行、不猜路径。规则引用仍不隐式添加 `blocked_by`，也不自动派发。成功解析的实际输入保存为执行的 `inputs: [{id,path}]`，初始化提供这些地址而非正文；后续上游更新登记或 Map 编辑不热更新已派发输入。多个消费者可得到同一地址，业务汇总由明确安排的业务 node 完成，不由框架读取或合并。地址可以位于所有 zone 外，不复制、移动或重定向业务文件。
+来源节点尚无执行或当前执行未登记所需输出时明确拒绝派发，不创建消费者 Chat、不回退旧执行、不猜路径。规则引用仍不隐式添加 `blocked_by`，也不自动派发。成功解析的实际输入保存为执行的 `inputs: [{id,path}]`，初始化提供这些地址而非正文；后续上游更新登记或 Map 编辑不热更新已派发输入。多个消费者可得到同一地址，业务汇总由明确安排的业务 node 完成，不由框架读取或合并。上游报告产物的地址可以位于所有 zone 外；直接文件规则必须位于其声明或缺省的 zone 内。不复制、移动或重定向业务文件。
 
 可重复检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch input_resolution:: -- --nocapture`。测试经公开 HTTP 保存 Map、创建两个隔离 Run、登记输出、重试来源并显式派发，以独立字面预期核对受控外部宿主收到的实际初始化和报告记录；包含 A=a1/B=b1 → A=a2 → 省略 outputs、同名输出跨 node/Run、迟到旧执行、缺失名字、通知等待后失败、共享与汇总定义及外部地址/正文隔离。该检查只证明初始化传参，不证明真实原生 Chat 已收到地址或业务文件真实消费/汇总；这两类验收需独立真实链路证据。
 

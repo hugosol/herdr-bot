@@ -161,7 +161,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   const zone = path.join(server!.cwd, 'bot-playground')
   fs.mkdirSync(zone)
   const post = (route: string, data: object) => page.request.post(`${server!.baseURL}${route}`, { data })
-  expect((await post('/api/zones', { path: zone })).status()).toBe(200)
+  expect((await post('/api/zones', { id: 'test/zone', path: zone })).status()).toBe(200)
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
     const response = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE', extensions: [] })
@@ -173,13 +173,13 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   for (const [id, title, policy] of [['A', '旧节点', 'auto'], ['B', '另一个节点', 'manual'], ['C', '无关节点', 'auto']] as const) {
     await edit(page, id, title)
     await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: legacyNode.blocked_by }))
-    await page.getByRole('textbox', { name: 'zone', exact: true }).fill(zone)
+    await page.getByRole('textbox', { name: 'zone', exact: true }).fill('test/zone')
     await page.getByRole('checkbox', { name: 'auto_close', exact: true }).uncheck()
     await page.getByRole('radio', { name: policy, exact: true }).check()
     await save(page)
   }
   server!.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'settings-manager' } })
-  const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone, userInput: '验证节点策略派发' })
+  const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: '验证节点策略派发' })
   expect(started.status(), await started.text()).toBe(201)
   const { id: runId } = await started.json()
   const prompts: Record<string, string> = {}

@@ -1,6 +1,6 @@
 # herdr-bot
 
-Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际对话，zone 是服务所在电脑上登记的目录。
+Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际对话，zone 是由各 server 绑定本地目录的稳定工作位置。
 
 ## Task 与 Chat
 
@@ -129,7 +129,7 @@ _Avoid_: 执行器, 运行监控, zone 计划
 _Avoid_: 运行实例, Chat, 执行路由
 
 **node**:
-某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次输入、zone 路径引用与前置依赖；同一 Bot 可用于多项不同工作。
+某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次输入、zone ID 与前置依赖；同一 Bot 可用于多项不同工作。
 _Avoid_: 执行实例, Task, 运行中的任务
 
 **Bot**:
@@ -191,8 +191,20 @@ _Avoid_: scheduler, 启动进度页
 ## zone 与文件
 
 **zone**:
-用户登记的、位于服务所在电脑上的目录，也是文件浏览的根边界；可以是普通目录或 Git 工作树。
-_Avoid_: workspace, 工作区, 会话工作目录, 仓库
+以稳定身份引用的逻辑工作位置，由各 server 分别绑定到本地目录；本地目录也是文件浏览的根边界，可以是普通目录或 Git 工作树。
+_Avoid_: workspace, 工作区, 仓库
+
+**zone ID（zone_id）**:
+可跨 server 共用的 zone 身份，不随本机目录或仓库来源改变；它不是目录地址，也不保证不同 server 上的文件内容相同。
+_Avoid_: 本机路径, GitHub 仓库地址
+
+**zone 本机绑定**:
+某个 server 上 zone ID 与一个本地目录的对应关系；不同 ID 可以指向同一目录，不因此获得文件隔离。
+_Avoid_: 文件同步, 仓库克隆
+
+**提示词词典**:
+由各 server 独立维护的提示词标签与本地参考值的对应集合，供可复用指示适应该 server 的环境；它不决定 zone 的实际执行目录。
+_Avoid_: zone 本机绑定, 用户输入替换, 系统环境变量
 
 **zone 登记列表**:
 同一 herdr-bot 实例保存并由电脑与手机共享的 zone 集合；取消登记不删除目录或文件。

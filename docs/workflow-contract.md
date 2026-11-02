@@ -13,7 +13,7 @@
 
 | 参与者／对象 | 责任与边界 |
 | --- | --- |
-| 规划者、Map、node | Map 是服务级静态定义；node 给出 Bot 引用、input 原文、zone 路径与同图依赖。边不传材料、不自动启动。运行期间保持定义与 Task 不变。 |
+| 规划者、Map、node | Map 是服务级静态定义；node 给出 Bot 引用、input 原文、zone ID 与同图依赖。边不传材料、不自动启动。运行期间保持定义与 Task 不变。 |
 | Bot | 跨 Map 共享的业务能力文档；when、plan_guide、node_guide 分别供选用、规划与工作理解，可独立为空；不是执行实例、运行门禁或自动注入。 |
 | Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。Task 用途仅 normal/manager，均可选择 omp 或 pi；node 是本次 Chat 的执行角色，普通 Task 可同时用于独立发起与节点派发，不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
@@ -31,14 +31,14 @@
 
 Run 仅有 running、paused、completed；node 仅有 pending、running、failed、completed。ready、blocked 和 canFinish 从当前事实与当前定义派生，不保存第二套生命周期。completed 表示结果可交接并满足依赖，不表示 Chat 退出。详细准入见[批准动作矩阵](workflow-runtime.md#角色责任与批准动作矩阵)。
 
-- 启动整图预检必须通过；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；不再提供旧格式手动迁移工具，不做运行时兼容或角色猜测。
+- 启动整图预检必须通过；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；zone 与文件引用升级使用显式离线迁移，不做运行时旧格式兼容或角色猜测。
 - 三份记录先初始化，真实 Chat 身份关联保存后才提交初始指示。每次派发/retry 是独立原生 Chat，不以新 Tab 证明隔离。用户确认 omp 未开 autoResume；不改原生存储目录。
-- Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 在独立背景段获得本次 userInput，另保留业务 input 与命名文件地址，不自动获得 Bot 文档、整张 Map、上游完整聊天或业务文件正文。所有必要路径由环境保证可读，不新增服务端可读性门禁。
+- Task 固定职能、公共 Prompt 工具指引、本次工作 input 各司其职。manager 末尾追加 user_input 原文；node 在独立背景段获得本次 userInput，另保留业务 input 与命名文件地址，不自动获得 Bot 文档、整张 Map、上游完整聊天或业务文件正文。系统发送配置提示词前通过独立本机词典单次替换，并追加词典路径说明供 agent 直接读取原始定义；用户输入与产物不替换。直接文件输入在派发时检查 zone 边界和文件存在，其他业务内容仍由环境与使用者保证。
 - node.input 只承载目标、材料用途、权限、交付内容及业务验收；文件来源与交付标识交给 input_rule/output_rule，背景和报告策略使用系统注入。交接说明与纯正文分别声明，消费者以派发时固定地址为准，不持续追踪上游 execution。统一约定要求已登记文件不原地覆盖，修订写新文件再更新输出 ID 地址；旧消费者继续使用旧地址。此为生产者工作约定，不是正文快照、文件锁或服务端强制不可变保证。内部材料使用初始化的中间资料位置，但当前仅按 Run 区分，不提供自动执行级隔离。目标身份、共同基线、业务确认和保存冲突检查仍保留；详见[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。旧定义须先补齐材料规则和统一协议承接，再删除重复流转说明；本契约更新不表示已迁移存量定义或提示词。
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
 - Map node 的 `report_policy` 为可选 snake_case 字段，仅 auto/manual，默认 auto，非法值拒绝；dispatch/retry 读取当前 Map 并固定为执行的 camelCase `reportPolicy`。旧记录缺字段按 auto，无迁移；恢复原 Chat/执行沿用保存值，不热更新。初始输入在业务 input 外独立给出策略控制段。manual 只是提示词约束，不新增审批门禁、状态或按钮，不改变管理者 complete 职责。
 - Map node 的 `auto_close` 缺省 false，dispatch/retry 固定为执行的 `autoClose`；旧执行缺字段按 false，不因查询改写。只有 manager 首次合法 complete 且当前事实保存成功，才按本次选择尽力关闭当前执行保存的 Tab；历史追加失败不撤销资格或原反馈。外部命令不占用业务推进锁或文件协调，响应及同 Run 后续合法动作不等待关闭返回；不要求停轮/空闲，不扫描无关目标，不重试、补偿、绕过确认或持久化关闭结果。关闭会终止 Tab 内终端及相关进程，不删除 Chat 历史；日志之外不新增 workflow 结果展示。详见[完成后自动关闭](workflow-runtime.md#节点完成后自动关闭关联-tab)。
-- Map 用 input_rule/output_rule 数组约定文件交接，以非空且节点内唯一 ID 引用；引用的输出 ID 须预先声明。dispatch/retry 冻结规则并保存解析的 inputs 数组，缺所需上游输出时拒绝派发，不猜地址。report 的 outputs 数组只在报告记录中登记，每项 {id,path}，ID 必须属于本次冻结的 outputRule，单份报告不允许重复 ID；同 execution 按 ID 更新、省略保留，新 execution 不继承。from/to 由后端确定 Chat 归属，不接受调用方自填。不检查或操作业务文件，合法绝对地址不受 zone 限制；历史缺字段可读但不补 true，新请求缺 canComplete 明确拒绝。report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
+- Map 用 input_rule/output_rule 数组约定文件交接，以非空且节点内唯一 ID 引用；引用的输出 ID 须预先声明。dispatch/retry 冻结规则并保存解析的 inputs 数组，缺所需上游输出时拒绝派发，不猜地址。report 的 outputs 数组只在报告记录中登记，每项 {id,path}，ID 必须属于本次冻结的 outputRule，单份报告不允许重复 ID；同 execution 按 ID 更新、省略保留，新 execution 不继承。from/to 由后端确定 Chat 归属，不接受调用方自填。报告产物地址不受 zone 限制，不检查或操作产物正文；直接文件输入则由可选 zone ID 与相对路径解析，缺省使用 manager zone；历史缺字段可读但不补 true，新请求缺 canComplete 明确拒绝。report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
 - 首次 complete 还要求当前 execution 按追加顺序的最新报告严格声明 canComplete=true；无报告、历史缺字段、false 或旧执行 true 均不能放行，不回退旧 true，无 outputs 不影响门禁。声明不等于质量或用户批准；人工完成同样受限，无 force 绕过。报告保存与首次完成共用同 Run 协调：false 先提交则拒绝，完成先提交则后续 false 不撤销；重复 complete 保留首次事实且不重复关闭。拒绝说明适用报告 ID／不存在，不改状态、历史或通知。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
 - 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。
@@ -62,7 +62,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P5 | Task 类型仅 normal/manager；普通 Task 可独立发起及节点派发，节点固定扩展由执行上下文强制选择，角色支持 omp/pi、不可取消/混装，HTTP 同样拒绝非法组合。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P6（已退役） | 旧 Task 手动迁移工具及其升级承诺已移除；使用当前 Task 格式，不做运行时兼容或角色猜测。保留编号，不重新分配。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
-| P8 | zone 按已登记路径重检；注销拒绝、重登记再检，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
+| P8 | zone 按 ID 解析本机绑定；启动时冻结本次路径，改绑只影响新 Run，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P9 | 选定 Map 只选 manager 配置与本次要求，不临时覆盖 node 或新增运行名。 | [发起入口](scheduler.md#从选中-map-校验启动配置) |
 | P10 | user_input 原文持久保留，manager 与 node 初始输入均获得本次背景，启动后只读。 | [发起与观察](workflow-runtime.md#发起与观察) |
 | P11 | 同 Map 多 Run 身份和事实独立。 | [记录契约](workflow-runtime.md#公开接口与持久字段参考) |
@@ -147,12 +147,12 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 
 - 自动生成 Map/LLM Plan、规划编排、运行中改图、专门循环系统、定时调度、声明式自动重试、后台选路。合法既有动作组合不被额外禁止，但不据此新增返工机制。
 - omp/pi 之外的宿主、非 Chat adapter、通用宿主/策略插件平台，或内置 Git/worktree/TDD/自动集成业务阶段。
-- Bot 文档自动注入、插值、动态传参、Delivery/产物复制/校验/快照或额外质量门禁；命名文件输入只传地址，不解释或发布业务文件。
+- Bot 文档自动注入、通用表达式或递归插值、动态传参、Delivery/产物复制/校验/快照或额外质量门禁；命名文件输入只传地址，不解释或发布业务文件。
 - 独立放行、stop/graceful shutdown、pausing/stopping/stopped 生命周期、除本次执行明确选择自动关闭外的强制结束或等待所有 Chat 退出；pause 只阻止新执行。
 - manager→node/同伴消息、广播、普通双向协作、extension 接收长连接、原生 IRC、强制续轮、联系人/归属查询工具。
 - 通用人工审批/通知/接管产品、恢复按钮、任意 setStatus/JSON patch、完整运维平台、checkpoint、已完成节点返工/下游失效传播。
 - 强认证/独立凭据、会话切换自动重绑定、原生 session-dir 迁移、完整崩溃窗口幂等。
-- 配置快照/版本锁/变更检测/编辑锁/动态加载保证、多格式运行时兼容、稳定 zone ID、目录搬迁跟随、历史定义还原。
+- 整张定义快照/版本锁/变更检测/编辑锁、多格式运行时兼容、目录搬迁自动跟随、历史定义还原。Run 的 zone 绑定快照与每次提示词组装读取最新词典不属于这些排除项。
 - 跨文件事务、自动回滚/修复/补投/接管、断电恢复、多进程平台、数据库引擎、全仓库文件层迁移或 transcript 汇总。
 - 重启后自动或手动接管旧 Run，或用普通 Resume 隐式恢复管理权。
 - 启动进度页、manager 启动错误业务持久化、日志浏览入口、额外运行名、Run 列表搜索/筛选/分组。

@@ -57,9 +57,8 @@ async function prepareZone(baseURL: string) {
   zoneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot detach zones '))
   const zone = path.join(zoneRoot, 'alpha')
   fs.mkdirSync(zone)
-  const registered = await jsonPost(baseURL, '/api/zones', { path: zone })
-  const paths: string[] = registered.zones.map((entry: { path: string }) => entry.path)
-  return paths.find((candidate) => candidate.includes('alpha')) ?? zone
+  const registered = await jsonPost(baseURL, '/api/zones', { id: 'test/zone', path: zone })
+  return registered.zones.find((entry: { id: string }) => entry.id === 'test/zone').id as string
 }
 
 async function prepareTask(baseURL: string) {
@@ -153,7 +152,7 @@ test('浏览器断线后，已接受的创建继续完成且页面不假报成�
 
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('断线后继续的任务')
+  expect(prompts[0].text).toMatch(/^断线后继续的任务(?:\n\n|$)/)
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   expect(
@@ -189,7 +188,7 @@ test('刷新页面只失去观察，不取消创建，也不承诺找回结果',
   expect(finished.inputSubmitted).toBe(true)
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('刷新后继续的任务')
+  expect(prompts[0].text).toMatch(/^刷新后继续的任务(?:\n\n|$)/)
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   await page.waitForTimeout(300)
@@ -219,7 +218,7 @@ test('关闭页面只失去观察，已接受的创建仍在后端完成', async
   expect(finished.inputSubmitted).toBe(true)
   const prompts = callsOfKind('agent_prompt')
   expect(prompts).toHaveLength(1)
-  expect(prompts[0].text).toBe('关闭页面后继续的任务')
+  expect(prompts[0].text).toMatch(/^关闭页面后继续的任务(?:\n\n|$)/)
   expect(tabs()).toHaveLength(1)
   expect(tabs()[0].label).toBe(accepted.name)
   expect(

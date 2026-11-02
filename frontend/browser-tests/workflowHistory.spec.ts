@@ -127,7 +127,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
     expect(response.status, await response.clone().text()).toBe(status)
     return response.json()
   }
-  const zone = (await post('/api/zones', { path: host.cwd })).zones[0].path
+  const zone = (await post('/api/zones', { id: 'test/zone', path: host.cwd })).zones[0].id
   const base = { agent: 'omp', chatName: '{chat.id}', model: 'gpt-6.1-sol', thinking: 'high', skill: 'teach', extensions: [] }
   const managerTask = (await post('/api/tasks', { ...base, name: 'Manager source', taskType: 'manager', prompt: 'MANAGER INITIAL' })).tasks[0]
   const nodeConfig = { ...base, name: 'Node source', taskType: 'normal', prompt: 'NODE INITIAL ONLY', extensions: ['omp-connect-bot'] }

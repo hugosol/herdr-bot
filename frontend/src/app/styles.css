@@ -380,6 +380,21 @@ h1 {
   cursor: progress;
 }
 
+.zone-item__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.zone-item__identity code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9ba7b8;
+  font-size: 0.75rem;
+}
+
 .zone-item__name {
   flex: 1;
   min-width: 0;

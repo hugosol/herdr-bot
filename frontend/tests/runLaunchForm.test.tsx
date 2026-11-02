@@ -24,7 +24,7 @@ it('lists both hosts’ manager Tasks only and sends the selected Pi manager unc
     const url = String(input)
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (url === '/api/tasks') return response({ tasks, options })
-    if (url === '/api/zones') return response({ zones: [{ path: 'C:/zones/pi-work' }] })
+    if (url === '/api/zones') return response({ zones: [{ id: 'test/pi-work', path: 'C:/zones/pi-work' }] })
     if (url === '/api/scheduler/maps/mixed.json/preflight') return response({ workspaceName: 'pi-work' })
     if (url === '/api/scheduler/maps/mixed.json/runs') return response({ id: 'pi-run' })
     throw new Error(`Unexpected request ${url}`)
@@ -34,14 +34,14 @@ it('lists both hosts’ manager Tasks only and sends the selected Pi manager unc
   await waitFor(() => expect(manager).not.toBeDisabled())
   expect(within(manager).getAllByRole('option').map(option => option.textContent)).toEqual(['请选择管理者 Task', 'omp manager', 'pi manager'])
   await user.selectOptions(manager, 'pi-manager')
-  await user.selectOptions(screen.getByRole('combobox', { name: '管理者 zone' }), 'C:/zones/pi-work')
+  await user.selectOptions(screen.getByRole('combobox', { name: '管理者 zone' }), 'test/pi-work')
   await user.type(screen.getByRole('textbox', { name: '本次要求' }), 'Pi 原始要求')
   await user.click(screen.getByRole('button', { name: '校验启动配置' }))
   expect(await screen.findByRole('status')).toHaveTextContent('配置校验通过')
   await user.click(screen.getByRole('button', { name: '启动 Run' }))
   await waitFor(() => expect(window.location.hash).toBe('#workflow/pi-run'))
   expect(calls.filter(call => call.body !== null)).toEqual([
-    { url: '/api/scheduler/maps/mixed.json/preflight', body: { managerTaskId: 'pi-manager', zone: 'C:/zones/pi-work', userInput: 'Pi 原始要求' } },
-    { url: '/api/scheduler/maps/mixed.json/runs', body: { managerTaskId: 'pi-manager', zone: 'C:/zones/pi-work', userInput: 'Pi 原始要求' } },
+    { url: '/api/scheduler/maps/mixed.json/preflight', body: { managerTaskId: 'pi-manager', zone: 'test/pi-work', userInput: 'Pi 原始要求' } },
+    { url: '/api/scheduler/maps/mixed.json/runs', body: { managerTaskId: 'pi-manager', zone: 'test/pi-work', userInput: 'Pi 原始要求' } },
   ])
 })

@@ -9,6 +9,8 @@ listen_addr = "0.0.0.0:18787"
 
 # 本机根目录集中在 paths_file 指定的文件；该位置相对本配置文件，修改后需重启。
 paths_file = "paths.local.toml"
+# 独立平铺提示词词典：每条初始消息读取最新内容，无需重启；不使用 roots 语法。
+prompts_file = "prompts.local.toml"
 static_directory = "${roots.project}/backend/static"
 data_directory = "${roots.data}"
 

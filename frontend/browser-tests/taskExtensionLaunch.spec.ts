@@ -17,9 +17,9 @@ async function setup() {
   const root = path.dirname(server.metadataFile)
   const zonePath = path.join(root, 'launch-zone')
   fs.mkdirSync(zonePath)
-  const response = await post('/api/zones', { path: zonePath })
-  const zone = (await response.json()).zones[0].path as string
-  return { root, zone, original: fs.readFileSync(server.metadataFile, 'utf8') }
+  const response = await post('/api/zones', { id: 'test/zone', path: zonePath })
+  const zone = (await response.json()).zones[0].id as string
+  return { root, zone, zonePath, original: fs.readFileSync(server.metadataFile, 'utf8') }
 }
 async function save(value: Record<string, unknown>) {
   const response = await post('/api/tasks', value)
@@ -48,7 +48,7 @@ async function dialog(page: Page, zone: string) {
 // S1/S2/S3 P16/P21/P22/P24: literal six-combination expectations, not generated from launch code.
 // Violation: ambient discovery remains on, fixed item is omitted, or unselected entries leak into args.
 test('六种 Task 集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
-  const { root, zone } = await setup()
+  const { root, zone, zonePath } = await setup()
   const ext = path.join(root, 'extensions')
   const cases = [
     { agent: 'omp', extensions: [], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
@@ -59,7 +59,7 @@ test('六种 Task 集合准确显式启动，固定项不可取消，创建页�
     { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-codebase-tools.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
-  const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zone, relative))
+  const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zonePath, relative))
   for (const file of settings) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '{"extensions":["ambient.ts"]}\n') }
   const userSettings = ['.omp/agent/config.yml', '.omp/agent/config.yaml', '.pi/agent/settings.json'].map(relative => path.join(os.homedir(), relative))
   const userBefore = userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)
@@ -88,7 +88,7 @@ test('六种 Task 集合准确显式启动，固定项不可取消，创建页�
     const args = start.args as string[]
     expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
-    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toBe('固定指示\n\n本次输入')
+    expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toMatch(/^固定指示\n\n本次输入(?:\n\n|$)/)
   }
   for (const file of settings) expect(fs.readFileSync(file, 'utf8')).toBe('{"extensions":["ambient.ts"]}\n')
   expect(userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)).toEqual(userBefore)

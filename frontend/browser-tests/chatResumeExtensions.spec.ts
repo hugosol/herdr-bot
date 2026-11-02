@@ -27,12 +27,12 @@ for (const agent of ['pi', 'omp']) {
     const identity = { native_session: { source: `herdr:${agent}`, agent, kind: 'path', value: native } }
     server.setHerdrBehavior(identity)
     const post = (endpoint: string, body: unknown) => fetch(`${server!.baseURL}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-    expect((await post('/api/zones', { path: cwd })).status).toBe(200)
+    expect((await post('/api/zones', { id: 'test/zone', path: cwd })).status).toBe(200)
     const saved = await post('/api/tasks', { name: `Filter ${agent}`, chatName: `Filter ${agent} {chat.id}`, agent, model: 'default', thinking: 'default', skill: null, prompt: 'ONLY INITIAL', extensions: ['selected-optional'] })
     expect(saved.status).toBe(200)
     const taskId = (await saved.json()).tasks[0].id
-    const preview = await (await post('/api/chats/preview', { zone: cwd, taskId: taskId })).json()
-    const launch = await post('/api/chats', { zone: cwd, taskId: taskId, chatId: preview.chatId, input: 'seed' })
+    const preview = await (await post('/api/chats/preview', { zone: 'test/zone', taskId: taskId })).json()
+    const launch = await post('/api/chats', { zone: 'test/zone', taskId: taskId, chatId: preview.chatId, input: 'seed' })
     expect(launch.status).toBe(202)
     const job = await launch.json()
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')

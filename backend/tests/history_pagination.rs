@@ -158,8 +158,8 @@ async fn unregister_zone_removal_expiry_age_and_growth_never_evict_history() {
     assert_eq!(before[122]["sessionId"], "native-001");
     assert_eq!(post(json!({"sessionId":"native-123","kind":"unregister","data":{}})).await.status, 200);
     assert_eq!(all_history(&server).await, before);
-    for route in ["/api/zones", "/api/zones/remove"] {
-        let result = common::post_json_over_tcp(server.addr(), route, &json!({"path":root.path()}).to_string()).await;
+    for (method, payload) in [("POST", json!({"id":"history-zone","path":root.path()})), ("DELETE", json!({"id":"history-zone"}))] {
+        let result = common::request_json_over_tcp(server.addr(), method, "/api/zones", Some(&payload.to_string())).await;
         assert_eq!(result.status, 200, "{}", result.body);
         assert_eq!(all_history(&server).await, before);
     }

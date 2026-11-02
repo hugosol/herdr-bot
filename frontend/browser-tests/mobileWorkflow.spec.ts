@@ -95,8 +95,8 @@ async function prepareZone(baseURL: string) {
   zoneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot mobile workflow '))
   const directory = path.join(zoneRoot, 'alpha')
   fs.mkdirSync(directory)
-  const listed = await jsonPost(baseURL, '/api/zones', { path: directory })
-  return listed.zones[0].path as string
+  const listed = await jsonPost(baseURL, '/api/zones', { id: 'test/zone', path: directory })
+  return { zone: listed.zones[0].id as string, cwd: directory }
 }
 
 function taskFields(view: TaskView) {
@@ -224,7 +224,7 @@ for (const profile of PROFILES) {
           behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
         },
       })
-      const zone = await prepareZone(server.baseURL)
+      const { zone, cwd } = await prepareZone(server.baseURL)
       await page.goto(`${server.baseURL}?layout=expanded`)
       await expectNoHorizontalOverflow(page)
 
@@ -338,18 +338,19 @@ for (const profile of PROFILES) {
         { timeout: 10_000 },
       )
       await expect(dialog.getByTestId('chat-result-name')).toHaveText(previewName)
-      await expect(dialog.getByTestId('chat-result-zone')).toHaveText(zone)
+      await expect(dialog.getByTestId('chat-result-zone')).toHaveText(cwd)
 
       // 外部记录独立证明名称、目录与一次多行投递。
       const tabs = server.herdrTabs()
       expect(tabs).toHaveLength(1)
       expect(tabs[0].label).toBe(previewName)
-      expect(tabs[0].cwd).toBe(zone)
+      expect(tabs[0].cwd).toBe(cwd)
       await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(tabs[0].tab_id))
       await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
       const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
       expect(prompts).toHaveLength(1)
-      expect(prompts[0].text).toBe(MULTILINE_INPUT)
+      // 业务正文完整保留在开头；后端可在其后附加独立的 agent 指引。
+      expect(String(prompts[0].text).startsWith(`${MULTILINE_INPUT}\n\n`)).toBe(true)
 
       // 结果变长后弹窗仍在视口内；用户自己滚到操作区并关闭，页面停留在文件列表。
       await expectDialogInsideViewport(dialog)
@@ -374,7 +375,7 @@ test.describe('移动尺寸失败结果', () => {
     server = await startServer({
       herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, fail_prompt: true } },
     })
-    const zone = await prepareZone(server.baseURL)
+    const { zone, cwd } = await prepareZone(server.baseURL)
     await jsonPost(server.baseURL, '/api/tasks', CREATION_TASK)
 
     await page.goto(`${server.baseURL}?layout=expanded`)
@@ -402,7 +403,7 @@ test.describe('移动尺寸失败结果', () => {
     await expect(failure).toContainText('提交初始指示')
     await expect(failure).toContainText('现场已存在：agent 已就绪，但初始指示的提交被明确拒绝')
     await expect(dialog.getByTestId('chat-result-name')).toBeVisible()
-    await expect(dialog.getByTestId('chat-result-zone')).toHaveText(zone)
+    await expect(dialog.getByTestId('chat-result-zone')).toHaveText(cwd)
 
     // 长失败结果与定位信息之后，弹窗仍可滚动、关闭按钮可达。
     await expectDialogInsideViewport(dialog)
@@ -416,6 +417,7 @@ test.describe('移动尺寸失败结果', () => {
     // 失败不触发自动重建或重发，已创建的现场保留。
     await page.waitForTimeout(300)
     expect(server.herdrTabs()).toHaveLength(1)
+    expect(server.herdrTabs()[0].cwd).toBe(cwd)
     expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(1)
   })
 })

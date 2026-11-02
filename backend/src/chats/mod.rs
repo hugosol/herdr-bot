@@ -210,21 +210,24 @@ pub fn render_chat_name(rule: &str, zone: &str, task: &Task, chat_id: &str) -> S
     rendered
 }
 
-/// 把 Skill、固定 prompt 与本次 input 合成一次提交的正文。
-///
-/// 有 Skill 时使用 `/skill:<name>`；命令名后用普通空格接正文。固定 prompt 与本次 input 以空行
-/// 分段，并保留各自的多行内容。三者都为空时仍是空字符串：不补造内容，也不跳过提交。
-pub fn compose_initial_input(
-    task: &Task,
+/// Join an already-rendered fixed prompt, literal input and common dictionary
+/// guidance. Render known fields before this join; never interpolate the result.
+/// A native Skill remains the single leading `/skill:<name>` invocation.
+pub fn compose_prompt(
+    fixed_prompt: &str,
     native_skill: Option<&str>,
     input: &str,
+    instructions: &str,
 ) -> String {
     let mut sections: Vec<&str> = Vec::new();
-    if !task.trigger.prompt.is_empty() {
-        sections.push(task.trigger.prompt.as_str());
+    if !fixed_prompt.is_empty() {
+        sections.push(fixed_prompt);
     }
     if !input.is_empty() {
         sections.push(input);
+    }
+    if !instructions.is_empty() {
+        sections.push(instructions);
     }
     let body = sections.join("\n\n");
 
@@ -270,6 +273,7 @@ pub fn agent_launch_args(
 pub async fn run_creation(
     herdr: Arc<HerdrClient>,
     history: Arc<crate::chats::history::History>,
+    prompts: crate::prompts::PromptDictionary,
     job: Arc<Mutex<ChatCreationView>>,
     task: Task,
     preset: crate::tasks::catalog::ResolvedPreset,
@@ -316,7 +320,22 @@ pub async fn run_creation(
         let mut view = job.lock().await;
         view.stage = Stage::Submitting;
     }
-    let text = compose_initial_input(&task, preset.trigger.native_skill.as_deref(), &input);
+    let text = match prompts.snapshot().and_then(|snapshot| {
+        let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)?;
+        Ok(compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &input, &snapshot.instructions()))
+    }) {
+        Ok(text) => text,
+        Err(error) => {
+            let mut view = job.lock().await;
+            view.stage = Stage::Failed;
+            view.failure = Some(Failure {
+                stage: FailureStage::Submit,
+                code: "prompt-dictionary-invalid".into(),
+                message: format!("{error:#} 未提交初始指示；已创建的 Tab、Pane 与 agent 保留。"),
+            });
+            return;
+        }
+    };
     if let Err(error) = herdr.prompt(&agent_name, &text).await {
         fail(&job, FailureStage::Submit, &error).await;
         return;
@@ -504,7 +523,7 @@ mod tests {
     fn plain_input_is_submitted_once_without_extra_prefix() {
         let task = task("{chat.id}");
         assert_eq!(
-            compose_initial_input(&task, task.trigger.skill.as_deref(), "检查登录\n第二行"),
+            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "检查登录\n第二行", ""),
             "检查登录\n第二行"
         );
     }
@@ -516,7 +535,7 @@ mod tests {
         task.trigger.skill = Some("code-review".into());
         task.trigger.prompt = "固定指示".to_string();
         assert_eq!(
-            compose_initial_input(&task, task.trigger.skill.as_deref(), "本次任务"),
+            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "本次任务", ""),
             "/skill:code-review 固定指示\n\n本次任务"
         );
     }

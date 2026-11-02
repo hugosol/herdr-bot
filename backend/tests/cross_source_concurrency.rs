@@ -77,8 +77,8 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         let power = Arc::new(RecordingPowerOff::default());
         let server = TestServer::start_app(herdr_bot::app_with_sessions(&config, power.clone(), sessions)).await;
         let zone = root.path().join("zone"); fs::create_dir(&zone).unwrap();
-        let zones = post(&server, "/api/zones", json!({"path":zone})).await;
-        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let zones = post(&server, "/api/zones", json!({"id": zone, "path":zone})).await;
+        let zone = zones["zones"][0]["id"].as_str().unwrap();
         let tasks = post(&server, "/api/tasks", json!({"name":"Cross source", "chatName":"Zone first literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;
         let first = tasks["tasks"][0]["id"].as_str().unwrap();
         let renamed = post(&server, "/api/tasks", json!({"name":"Cross source renamed", "chatName":"Zone final literal", "agent":agent,"model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]})).await;

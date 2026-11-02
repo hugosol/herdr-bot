@@ -9,12 +9,12 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 | 对象 | 字段与职责 |
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone 路径与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。 |
+| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可省略 `task_id`。跨 Map 共享，只引用 Task，不复制 Task 配置。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
-只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` 路径；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。历史更名工具只处理其原来的命名迁移，不完成这次格式切换。
+只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。历史更名工具只处理其原来的命名迁移，不完成这次格式切换。
 
 完整 Map 示例：
 
@@ -27,14 +27,14 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
       "title": "准备",
       "bot_id": "review-work",
       "input": "准备 alpha 材料；在工作中说明材料位置。",
-      "zone": "C:/work/review",
+      "zone": "default/review",
       "blocked_by": []
     },
     "B": {
       "title": "核对",
       "bot_id": "review-work",
       "input": "对照要求核对 beta 材料。",
-      "zone": "C:/work/review",
+      "zone": "default/review",
       "blocked_by": ["A"]
     }
   }
@@ -54,7 +54,7 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 }
 ```
 
-`when` 用于决定是否选用能力，`plan_guide` 指引规划者安排工作，`node_guide` 指引规划者填写 node.input。三份都是独立文档，可按任意顺序读取，可各自为空字符串；不要求先读其他文档，也不会自动注入节点执行提示词。节点执行使用关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 只是文档内容，不是必填规则、类型检查或业务质量门禁。文档不会自动补全 node 输入、校验业务参数或读取文中路径。`input` 同样是原文字符串，不做插值或 JSON 解析。
+`when` 用于决定是否选用能力，`plan_guide` 指引规划者安排工作，`node_guide` 指引规划者填写 node.input。三份都是独立文档，可按任意顺序读取，可各自为空字符串；不要求先读其他文档，也不会自动注入节点执行提示词。节点执行使用关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 只是文档内容，不是必填规则、类型检查或业务质量门禁。文档不会自动补全 node 输入、校验业务参数或读取文中路径。定义原文保留 `${key}` 占位符。Task 固定 prompt、Bot 三份指南、Map description 与 node.input 适用本机提示词词典；系统发送配置字段前单次替换，agent 直接读文件时按统一追加的词典路径说明自行解析，不做 JSON 解释。用户输入与 agent 产物不替换。
 
 ### node.input 的业务职责
 
@@ -80,7 +80,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 ```json
 "input_rule": [
-  { "id": "brief", "type": "file", "path": "Z:/business/brief.md" },
+  { "id": "brief", "type": "file", "zone_id": "default/business", "path": "brief.md" },
   { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" }
 ],
 "output_rule": [
@@ -90,7 +90,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 `id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。
 
-`type: file` 只接受 `id`、`type`、字符串 `path`；`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。字段必填、大小写严格，混合字段、旧 `inputs`/`source`/`output`、未知类型、null、位置数组和错类型拒绝。直接地址必须是服务所在电脑的绝对路径，可在 zone 外；不检查业务文件存在、可读性、内容或授权，不按 cwd 解析相对地址。
+`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
 
 引用节点须存在于同图，`output_id` 须由提供方 `output_rule` 预先声明，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
 
@@ -108,7 +108,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 - `auto_close` 默认关闭；关闭 Tab 会终止 Tab 内终端及相关进程，请按节点分别选择。`auto_close` 只接受 JSON 布尔值，不能填字符串或 `null`。
 - `report_policy` 用 `auto`／`manual` 互斥单选圆点选择，省略按 `auto`。
-- `node_id` 继续使用独立身份输入（已有节点只读）；`zone` 路径、`report_policy`、`auto_close` 分别由独立控件读取和编辑。“node 内容 JSON”排除顶层 `node_id`、`zone`、`report_policy`、`auto_close`，其余字段全部保持原始 JSON 形状，包括 `title`、`bot_id`、字符串 `input`、数组 `input_rule`／`output_rule`（保留 `node_id`／`output_id` 引用）与数组 `blocked_by`；不转换为表单或文本拼接。
+- `node_id` 继续使用独立身份输入（已有节点只读）；`zone` ID、`report_policy`、`auto_close` 分别由独立控件读取和编辑。“node 内容 JSON”排除顶层 `node_id`、`zone`、`report_policy`、`auto_close`，其余字段全部保持原始 JSON 形状，包括 `title`、`bot_id`、字符串 `input`、数组 `input_rule`／`output_rule`（保留 `node_id`／`output_id` 引用）与数组 `blocked_by`；不转换为表单或文本拼接。
 - 保存时合并最新内容对象与独立设置，再提交既有 node 保存接口，不丢弃内容字段；JSON 中手动加入独立字段会明确拒绝，避免双重来源。无效 JSON／非对象草稿保存失败且原文保留；独立控件仍可编辑，不会格式化或覆盖 JSON。内容或独立设置的未保存修改均受既有离开确认保护；取消／放弃不会写入定义。Task 的 `prompt` 编辑与展示职责不变。
 - 保存后可重新打开核对；Map 读取、编辑及保存按既有默认值约定显式返回 `auto_close: false` 与 `report_policy: "auto"`。不改变报告接口、审批权限或 manager 的完成权限。策略指示是发给 agent 的约束，不保证模型必然遵从。
 
@@ -126,7 +126,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 ## 保存与校验边界
 
-内部结构合法即可保存：Bot 可没有 `task_id`，可引用不存在的 Task；node 可引用不存在的 Bot 或尚未登记／失效的 zone 路径。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是登记目录的路径引用，不是稳定 zone ID，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
+内部结构合法即可保存：Bot 可没有 `task_id`，可引用不存在的 Task；node 可引用不存在的 Bot 或尚未绑定／失效的 zone ID。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是跨 server 的稳定 zone ID，不是目录路径，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
 
 必需字段不可漏填，不用 `null`、对象、数组代替字符串；Map/node/Bot 都必须是 JSON 命名对象，不能用位置数组代替。未知字段明确拒绝，不静默丢弃。显式 `nodes: {}`、`blocked_by: []`、文本 `""` 合法。`task_id` 可缺省或为 null（读取／保存结果省略无绑定字段）；有值必须是字符串。不额外限制文档长度。
 
@@ -140,9 +140,9 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
-拒绝保留发起页并逐项指出错误及来源 node／Bot／Task。用“修正 node”回到原 node 编辑器，用“修正 Bot”回到共享 Bot 配置，用“修正 Task”直接打开原 Task 编辑器；Task 已删除时明确显示不存在，不转成新增或默认 Task。zone 错误可回到 zone 登记入口，或回到原 node 修改路径。原 Map 文件损坏时按错误修复配置目录中的文件。修正后返回 scheduler，显式重新校验；刷新启动选项可重读 Task 和 zone，不自动重试启动。
+拒绝保留发起页并逐项指出错误及来源 node／Bot／Task。用“修正 node”回到原 node 编辑器，用“修正 Bot”回到共享 Bot 配置，用“修正 Task”直接打开原 Task 编辑器；Task 已删除时明确显示不存在，不转成新增或默认 Task。zone 错误可回到 zone 登记入口，或回到原 node 修改 zone ID。原 Map 文件损坏时按错误修复配置目录中的文件。修正后返回 scheduler，显式重新校验；刷新启动选项可重读 Task 和 zone，不自动重试启动。
 
-zone 引用按已登记路径解析，不是稳定 ID。注销只删除登记、不删除目录，但此前引用它的 Map 不能通过启动预检。同一路径重新登记后仍需重新检查整张 Map，不沿用先前结果；目录搬走、变成文件或被重定向后拒绝，不自动寻找搬迁位置、跟随目录联接或切换到新登记的替代路径。若主动改用新位置，应修改原 node 定义，而不是在发起页临时覆盖。目录内容没有版本身份保证，同一路径重新登记不表示旧内容被恢复。普通检查不创建真实符号链接。
+zone 引用按稳定 ID 解析本机绑定。同一 ID 绑定一个目录，不同 ID 可绑定同一目录；推荐 `namespace/name`，界面提示规范而不强制该格式。启动 Run 时冻结本次所需 ID 与路径，后续改绑或取消登记只影响新 Run，不改变已有执行或后续派发的位置。旧目录消失、变成文件或被重定向时拒绝执行，不跟随新绑定或目录联接。注销不删除目录，目录内容没有版本或跨 server 一致性保证。
 
 HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `managerTaskId`、`zone`、`userInput` 三个字符串；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
 
@@ -150,7 +150,7 @@ HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `m
 
 ## 目录与定义管理
 
-进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。Map 与共享 Bot 属于定义数据，允许纳入 Git，UI 编辑会修改对应文件；node 内保存的 zone 路径仍是具体执行目录引用。旧 `.data` 定义在启动时一次性迁入，冲突拒绝且保留旧源，详见 [定义布局升级](../README.md#从旧定义布局升级)。配置可独立省略：
+进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。Map 与共享 Bot 属于定义数据，允许纳入 Git，UI 编辑会修改对应文件；node 内保存稳定 zone ID，由运行所在 server 解析成本机目录。旧 `.data` 定义在启动时一次性迁入，冲突拒绝且保留旧源，详见 [定义布局升级](../README.md#从旧定义布局升级)。配置可独立省略：
 
 ```toml
 [scheduler]
@@ -160,7 +160,7 @@ bot_directory = 'meta-data/bots'
 
 默认值如上；普通相对路径按**服务配置文件所在目录**解析，绝对路径也可用；支持 `${roots.name}/relative` 前缀引用本机根，详见 [本机根目录](../README.md#本机根目录与解析规则)。首次读取创建缺失目录及父目录，保留已有文件，不安装示例。只扫描直接包含的 JSON 文件（后缀不分大小写），不递归。配置改变需重启，文件内容改变可“刷新全部”。目录创建／读取失败与正常空态分开报告。
 
-Map 列表显示定义中的 `title`，不以 JSON 文件名作为正常名称；标题为空、全为空白或文件无法读取／校验时回退显示文件名，仍可选中查看问题或删除。可按名称或文件名筛选。Map 仍以原文件名标识，同名标题不会合并，选择、加载和删除不重命名文件。列表按文件最后修改时间倒序排列，时间相同按文件名升序；刷新全部重新读取名称和顺序。列表选择 Map 后，依赖图在节点清单上方常驻展示，无折叠入口、图外说明或缩放工具栏。节点清单与 workflow 共用依赖层级排序：前置层在前，同层沿服务返回的当前定义顺序稳定排列；图中对应为从左到右的层级、同列从上到下的稳定顺序，不改写 Map 文件，也不改变实际执行顺序。选择 node 以 `Task.prompt` 显示关联 Bot 绑定 Task 的固定提示词，以 `input` 显示本次输入原文，并显示 `zone`、`bot_id`、`report_policy`、`auto_close`、`input_rule`、`output_rule` 和 `blocked_by`，不展示 `node_guide`。`report_policy`、`auto_close`、`zone` 集中在详情顶部的独立配置卡片；策略及布尔值使用醒目标记，`manual` 与 `auto_close=true` 另用暖色强调，zone 路径独占一行并可换行。窄屏卡片纵向排列，字段名保留 JSON 原名。`input_rule` 按显式 `id` 列出 `type` 及 `path`，或 `node_id`、`output_id` 字段，`output_rule` 列出输出 `id`，避免仅用箭头表示来源。Bot 缺失或无效、未绑定 Task、Task 不存在或读取失败时显示对应提示，不沿用旧 prompt；Task 的 `prompt` 为空时明确标识为空。前置／后继可点击定位，关闭详情后焦点回节点清单。依赖图自动布局全部 node，包括独立项；自动适应视口，保留平移与键盘选择。箭头来自 `blocked_by`，如 B 依赖 A 就显示 A → B，不表示执行、材料传递或 Chat 在线状态。无节点的 Map 可阅读，不等于可以启动。
+Map 列表显示定义中的 `title`，不以 JSON 文件名作为正常名称；标题为空、全为空白或文件无法读取／校验时回退显示文件名，仍可选中查看问题或删除。可按名称或文件名筛选。Map 仍以原文件名标识，同名标题不会合并，选择、加载和删除不重命名文件。列表按文件最后修改时间倒序排列，时间相同按文件名升序；刷新全部重新读取名称和顺序。列表选择 Map 后，依赖图在节点清单上方常驻展示，无折叠入口、图外说明或缩放工具栏。节点清单与 workflow 共用依赖层级排序：前置层在前，同层沿服务返回的当前定义顺序稳定排列；图中对应为从左到右的层级、同列从上到下的稳定顺序，不改写 Map 文件，也不改变实际执行顺序。选择 node 以 `Task.prompt` 显示关联 Bot 绑定 Task 的固定提示词，以 `input` 显示本次输入原文，并显示 `zone`、`bot_id`、`report_policy`、`auto_close`、`input_rule`、`output_rule` 和 `blocked_by`，不展示 `node_guide`。`report_policy`、`auto_close`、`zone` 集中在详情顶部的独立配置卡片；策略及布尔值使用醒目标记，`manual` 与 `auto_close=true` 另用暖色强调，zone ID 独占一行并可换行。窄屏卡片纵向排列，字段名保留 JSON 原名。`input_rule` 按显式 `id` 列出 `type` 及 `path`，或 `node_id`、`output_id` 字段，`output_rule` 列出输出 `id`，避免仅用箭头表示来源。Bot 缺失或无效、未绑定 Task、Task 不存在或读取失败时显示对应提示，不沿用旧 prompt；Task 的 `prompt` 为空时明确标识为空。前置／后继可点击定位，关闭详情后焦点回节点清单。依赖图自动布局全部 node，包括独立项；自动适应视口，保留平移与键盘选择。箭头来自 `blocked_by`，如 B 依赖 A 就显示 A → B，不表示执行、材料传递或 Chat 在线状态。无节点的 Map 可阅读，不等于可以启动。
 
 外侧 `bot` 入口打开左右分栏列表与详情，标题为 `bot`；列表按文件最后修改时间倒序排列，同时间按文件名升序，可按名称／ID 筛选。操作按钮为 `new`、`refresh`、`edit`、`delete`；node 的“Bot 明细”进入同一预览。分别切换 `when`、`plan_guide`、`node_guide`，或通过 `json` 看只读原始定义。只读预览以独立 Task 栏显示绑定 Task 的当前名称，替代直接显示 `task_id` 的引用行；未绑定、引用不存在或名称读取失败时显示对应提示，不嵌入 Task 配置。原始 JSON 仍保留 `task_id`；刷新 Bot 后重新读取 Task 名称。原始 JSON 不是编辑器。通过外侧 `scheduler` 返回 Map 时重查来源并保留仍存在的 node 选择；来源已移除时显示原因。窄屏按目录、依赖图、节点、详情纵向阅读。
 

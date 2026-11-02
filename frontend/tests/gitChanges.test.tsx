@@ -102,7 +102,7 @@ function listing(path: string) {
 
 function standardHandler(url: URL, status: () => GitStatus): Response | undefined {
   if (url.pathname === '/api/zones') {
-    return jsonResponse(200, { zones: [{ path: ZONE }] })
+    return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
   }
   if (url.pathname === '/api/zones/overview') {
     const current = status()
@@ -335,7 +335,7 @@ describe('zone 待提交角标', () => {
     const user = userEvent.setup()
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(
@@ -366,7 +366,7 @@ describe('zone 待提交角标', () => {
     const user = userEvent.setup()
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(
@@ -400,7 +400,7 @@ describe('zone 待提交角标', () => {
     const user = userEvent.setup()
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(500, {

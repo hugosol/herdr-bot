@@ -70,7 +70,7 @@ async function setup() {
   fs.writeFileSync(server.metadataFile, catalog())
   const zonePath = path.join(path.dirname(server.metadataFile), 'recovery-zone')
   fs.mkdirSync(zonePath)
-  const zone = (await request('/api/zones', { path: zonePath })).body.zones[0].path as string
+  const zone = (await request('/api/zones', { id: 'test/zone', path: zonePath })).body.zones[0].id as string
   const saved = await request('/api/tasks', PRESET)
   expect(saved.status).toBe(200)
   return { zone, saved: saved.body.tasks[0] as TaskView }
@@ -283,7 +283,9 @@ test('同一真实持久文件的未知模型不阻止有效 Task 读取编辑�
   expect((await request('/api/tasks/valid-neighbor')).body.task).toEqual({ ...valid, name: '有效邻居已编辑', prompt: '邻居新指示\n第二行' })
   expect((await request('/api/tasks/unknown-model')).body.task).toEqual(invalid)
   await succeeded(await create(zone, valid.id))
-  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)?.text).toBe('邻居新指示\n第二行\n\n恢复检查')
+  const prompts = server.herdrCalls().filter(call => call.kind === 'agent_prompt')
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0].text).toMatch(/^邻居新指示\n第二行\n\n恢复检查(?:\n\n|$)/)
   await screenshot(page, info, 'valid-neighbor-preserves-invalid-task')
 })
 

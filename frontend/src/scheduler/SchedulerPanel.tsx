@@ -77,7 +77,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3>
     <label>{draft.kind === 'node' ? 'node_id' : 'Bot ID'}<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>
     <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
-    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"绝对地址"} 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
+    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"relative/file.txt",zone_id:"namespace/name"}（zone_id 可省略，默认使用本次 Run 的管理者 zone，不使用 node zone；path 必须为 / 分隔的相对路径，不可越界） 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
     {draft.kind === 'Bot' ? <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />
       : draft.settings && <NodeSettings value={draft.settings} disabled={editingBusy} onChange={settings => editDraft({ settings })} />}
     <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} />
@@ -197,7 +197,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
                   botProblem={botProblems[selectedId]} onBot={openBot}
                   bot={bots.kind === 'ready' && !botProblems[selectedId] ? bots.bots.find((bot) => bot.id === map.nodes[selectedId].bot_id) : undefined} />
-              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone 路径引用、前置依赖与共享 Bot。</p></div>}
+              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone ID 引用、前置依赖与共享 Bot。</p></div>}
             </aside>
           </div>
         </section>}

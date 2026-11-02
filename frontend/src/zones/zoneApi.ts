@@ -4,8 +4,9 @@
  * 登记列表由后端持久保存，电脑与手机读取同一份；页面不缓存列表，也不使用客户端文件选择器。
  */
 
-/** 一个已登记的 zone：服务器上的绝对目录路径。 */
+/** 一个已登记的 zone：稳定 ID 与服务器上的绝对目录绑定。 */
 export type ZoneRegistration = {
+  id: string
   path: string
 }
 
@@ -36,6 +37,8 @@ function isZoneRegistration(value: unknown): value is ZoneRegistration {
   return (
     typeof value === 'object' &&
     value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
     'path' in value &&
     typeof value.path === 'string'
   )
@@ -123,28 +126,28 @@ export function fetchZones(): Promise<ZoneResult> {
 }
 
 /** 登记一个服务器目录；成功只意味着后端已经持久化。 */
-export function registerZone(path: string): Promise<ZoneResult> {
+export function registerZone(id: string, path: string): Promise<ZoneResult> {
   return zoneRequest('/api/zones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ id, path }),
   })
 }
 
-/** 新建 zone：只提交名称，父目录必须由后端配置决定。 */
-export function createZone(name: string): Promise<ZoneResult> {
+/** 新建 zone：提交稳定 ID 与目录名称，父目录由后端配置决定。 */
+export function createZone(id: string, name: string): Promise<ZoneResult> {
   return zoneRequest('/api/zones/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ id, name }),
   })
 }
 
 /** 取消登记；只移除登记项，不删除目录或文件。 */
-export function unregisterZone(path: string): Promise<ZoneResult> {
-  return zoneRequest('/api/zones/remove', {
-    method: 'POST',
+export function unregisterZone(id: string): Promise<ZoneResult> {
+  return zoneRequest('/api/zones', {
+    method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ id }),
   })
 }

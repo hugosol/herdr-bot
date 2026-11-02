@@ -4,7 +4,8 @@ type Props = { value: NodeSettingsValue; disabled: boolean; onChange: (patch: Pa
 /** Settings remain editable without rewriting the node content JSON draft. */
 export function NodeSettings({ value, disabled, onChange }: Props) {
   return <div className="scheduler-node-settings">
-    <label>zone<input value={value.zone} disabled={disabled} onChange={event => onChange({ zone: event.target.value })} /></label>
+    <label>zone<input value={value.zone} placeholder="namespace/name" aria-describedby="node-zone-help" disabled={disabled} onChange={event => onChange({ zone: event.target.value })} /></label>
+    <p id="node-zone-help">填写稳定 zone ID，不是本机目录；保存 Map 无需先登记，启动 Run 时校验绑定。</p>
     <label className="scheduler-setting-choice"><input type="checkbox" checked={value.auto_close} disabled={disabled} aria-describedby="node-auto-close-help" onChange={event => onChange({ auto_close: event.target.checked })} />auto_close</label>
     <p id="node-auto-close-help">关闭 Tab 会终止 Tab 内终端及相关进程。</p>
     <fieldset disabled={disabled}>

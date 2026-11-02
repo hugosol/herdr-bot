@@ -27,6 +27,7 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
         &fixtures.join("operations"),
     );
     config.tasks.storage_file = data.path().join("tasks.json");
+    config.prompts_file = data.path().join("prompts.local.toml");
     let mut catalog: toml::Value =
         toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
     for entry in catalog["extensions"].as_array_mut().unwrap() {
@@ -61,11 +62,11 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({"path":data.path()}).to_string(),
+        &json!({"id":"manager","path":data.path()}).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "{}", response.body);
-    let zone = serde_json::from_str::<Value>(&response.body).unwrap()["zones"][0]["path"]
+    let zone = serde_json::from_str::<Value>(&response.body).unwrap()["zones"][0]["id"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -177,7 +178,7 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         root.join("messages.jsonl").display(),
         data.path().join(".workflow").join(original["id"].as_str().unwrap()).display()
     );
-    assert_eq!(prompt["text"], expected);
+    assert_eq!(common::prompt_body(&prompt), expected);
     let status = post_json_over_tcp(
         server.addr(),
         "/api/workflow/manager/status",
@@ -253,7 +254,7 @@ async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_ins
         .find(|row| row["sessionId"] == "01a18564-c4a1-700b-81b2-4ffb35f043ed").unwrap();
     assert_eq!(manager["sourceTaskId"], ids[0]);
     assert_eq!(manager["agentType"], "omp");
-    assert_eq!(manager["cwd"], zone);
+    assert_eq!(manager["cwd"], json!(data.path()));
     assert_eq!(manager["sessionFile"], json!(manager_file));
     assert_eq!(manager["startupIdentityPath"], json!(manager_file));
     assert!(!manager_file.exists(), "startup must not manufacture the native file");
@@ -285,19 +286,19 @@ async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_ins
     let saved: Value =
         serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
     assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "01a18564-c889-700c-92c3-5aa0460154fe");
-    assert_eq!(saved["nodes"]["A"]["execution"]["zone"], zone);
+    assert_eq!(saved["nodes"]["A"]["execution"]["zone"], json!(data.path()));
     let history: Value =
         serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
     let node = history.as_array().unwrap().iter()
         .find(|row| row["sessionId"] == "01a18564-c889-700c-92c3-5aa0460154fe").unwrap();
     assert_eq!(node["sourceTaskId"], ids[1]);
     assert_eq!(node["agentType"], "omp");
-    assert_eq!(node["cwd"], zone);
+    assert_eq!(node["cwd"], json!(data.path()));
     assert_eq!(node["sessionFile"], json!(node_file));
     assert_eq!(node["startupIdentityPath"], json!(node_file));
     let native = common::read_json_lines(&herdr.path().join("started.jsonl")).pop().unwrap();
-    assert_eq!(native["actual_cwd"], zone);
-    assert_eq!(herdr.tabs().last().unwrap()["cwd"], zone);
+    assert_eq!(native["actual_cwd"], json!(data.path()));
+    assert_eq!(herdr.tabs().last().unwrap()["cwd"], json!(data.path()));
     assert!(!manager_file.exists());
     assert!(!node_file.exists());
     fs::write(node_release, b"release").unwrap();
@@ -671,13 +672,11 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
         assert_eq!(persisted["nodes"]["A"]["status"], "pending");
         assert!(persisted["nodes"]["A"].get("ready").is_none());
         let calls = herdr.calls();
-        let prompt = calls
+        let prompt = common::prompt_body(calls
             .iter()
             .rev()
             .find(|c| c["kind"] == "agent_prompt")
-            .unwrap()["text"]
-            .as_str()
-            .unwrap();
+            .unwrap());
         assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\nRun ID: "));
         assert!(prompt.contains("work.json"));
         assert!(!prompt.contains("MAP-BODY-NOT-INJECTED"));

@@ -267,7 +267,7 @@ async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
@@ -481,7 +481,7 @@ async fn lan_caller_can_browse_and_commit_but_cannot_write_sessions_or_run_comma
         lan.clone(),
         "POST",
         "/api/zones",
-        json!({ "path": &root }).to_string(),
+        json!({ "id": &root, "path": &root }).to_string(),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "局域网来源登记应成功：{registered}");

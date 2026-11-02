@@ -162,7 +162,7 @@ function standardHandler(
 ): Handler {
   return (url, init) => {
     if (url.pathname === '/api/zones') {
-      return jsonResponse(200, { zones: [{ path: ZONE }] })
+      return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
     }
     if (url.pathname === '/api/zones/overview') {
       return jsonResponse(200, overview(status()))

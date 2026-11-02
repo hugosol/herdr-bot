@@ -57,6 +57,10 @@ native_name = 'writing-for-agents'
 id = 'improve-codebase-architecture'
 label = '/improve-codebase-architecture'
 native_name = 'improve-codebase-architecture'
+[[skills]]
+id = 'expert-translate'
+label = '/expert-translate'
+native_name = 'expert-translate'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
 # --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。

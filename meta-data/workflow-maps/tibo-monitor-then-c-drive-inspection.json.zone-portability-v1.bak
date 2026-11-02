@@ -1,0 +1,30 @@
+{
+  "description": "先查询 Tibo 额度重置情况，待该节点完成后再只读排查 C 盘临时文件及 worktree 来源。不自动执行删除或清理。",
+  "nodes": {
+    "c-drive-inspection": {
+      "auto_close": false,
+      "blocked_by": [
+        "tibo-monitor"
+      ],
+      "bot_id": "c-drive-temp-inspection",
+      "input": "在前置节点完成后，只读检查 ${local-temp-path} 下的程序临时文件，追踪其中 worktree 对应的项目和 branch，说明使用状态及清理建议。本次不删除文件、不移除 worktree、不删除分支、不终止进程。",
+      "input_rule": [],
+      "output_rule": [],
+      "report_policy": "manual",
+      "title": "C盘清理排查",
+      "zone": "D:\\developer\\bot-playground"
+    },
+    "tibo-monitor": {
+      "auto_close": true,
+      "blocked_by": [],
+      "bot_id": "tibo-monitor",
+      "input": "根据 ${codex-reset-url} 的公开信息，总结可能还有多久会 reset 额度，注明观察时间、依据和不确定性。",
+      "input_rule": [],
+      "output_rule": [],
+      "report_policy": "auto",
+      "title": "Tibo-monitor",
+      "zone": "D:\\developer\\bot-playground"
+    }
+  },
+  "title": "Tibo监测后排查C盘"
+}

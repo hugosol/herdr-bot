@@ -24,6 +24,9 @@ pub struct Config {
     /// Machine-local roots file, relative to this configuration file.
     #[serde(default)]
     pub paths_file: Option<PathBuf>,
+    /// Independent machine-local prompt dictionary, re-read for each message.
+    #[serde(default = "prompts_file_by_default")]
+    pub prompts_file: PathBuf,
     /// Immutable startup snapshot of machine roots.
     #[serde(skip)]
     pub roots: crate::paths::Roots,
@@ -66,6 +69,10 @@ pub struct Config {
     /// Service-level definition directories, relative to the configuration file.
     #[serde(default)]
     pub scheduler: SchedulerConfig,
+}
+
+fn prompts_file_by_default() -> PathBuf {
+    PathBuf::from("prompts.local.toml")
 }
 
 fn static_directory_by_default() -> PathBuf {
@@ -628,6 +635,8 @@ impl Config {
             config.roots = crate::paths::Roots::load(&path)?;
             config.paths_file = Some(path);
         }
+        config.prompts_file = crate::paths::Roots::default().resolve(&config.prompts_file, &config.base_directory)
+            .context("解析 prompts_file 失败（提示词词典路径不依赖路径根）")?;
         let roots = &config.roots;
         let base = &config.base_directory;
         for (name, path) in [

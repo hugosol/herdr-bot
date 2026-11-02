@@ -344,7 +344,7 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     let calls = s.herdr.calls();
     assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"]);
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(2).unwrap();
-    let text = prompt["text"].as_str().unwrap();
+    let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
     assert_eq!(new["reportPolicy"], "auto");

@@ -139,15 +139,15 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         catalog(root.path(),agent,"old",true);
         let file = native(root.path(),&herdr,agent,"native-full-identity-001");
         let panel = Panel::start(root.path());
-        let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
-        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
+        let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task(agent,"a","Source A")).await;
         let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel,zone,id).await;
         history(&panel,1).await;
         let initial = herdr.calls();
         assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-a-old.ts"))]));
-        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()["text"],"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
+        assert_eq!(common::prompt_body(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()),"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
         let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent,"b","Source A renamed").to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
@@ -175,8 +175,8 @@ async fn missing_optional_mapping_is_filtered_only_on_resume() {
         catalog(root.path(), agent, "valid", true);
         let file = native(root.path(), &herdr, agent, "native-filter-mapping");
         let panel = Panel::start(root.path());
-        let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
-        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
+        let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel, "/api/tasks", task(agent, "b", "Filter source")).await;
         let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel, zone, id).await;
@@ -243,8 +243,8 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     catalog(root.path(), agent, "valid", true);
     let file = native(root.path(), &herdr, agent, "native-filter-entry");
     let panel = Panel::start(root.path());
-    let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
-    let zone = zones["zones"][0]["path"].as_str().unwrap();
+    let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
+    let zone = zones["zones"][0]["id"].as_str().unwrap();
     let saved = post(&panel, "/api/tasks", task(agent, "b", "Entry source")).await;
     let id = saved["tasks"][0]["id"].as_str().unwrap();
     create(&panel, zone, id).await;
@@ -299,8 +299,8 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         catalog(root.path(), agent, "valid", true);
         let file = native(root.path(), &herdr, agent, "native-empty-explicit");
         let panel = Panel::start(root.path());
-        let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
-        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
+        let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel, "/api/tasks", task(agent, "b", "Empty source")).await;
         create(&panel, zone, saved["tasks"][0]["id"].as_str().unwrap()).await;
         history(&panel, 1).await;
@@ -342,8 +342,8 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             catalog(root.path(), agent, "valid", true);
             let file = native(root.path(), &herdr, agent, "native-trigger-independent");
             let panel = Panel::start(root.path());
-            let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
-            let zone = zones["zones"][0]["path"].as_str().unwrap().to_owned();
+            let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
+            let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
             let saved = post(&panel,"/api/tasks",task(agent,"b","Source")).await;
             let id = saved["tasks"][0]["id"].as_str().unwrap();
             create(&panel,&zone,id).await;
@@ -392,8 +392,8 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let original_native = fs::read(&file).unwrap();
         fs::write(root.path().join("history.json"),json!([{"sessionId":other,"sessionName":"Same name","agentType":"omp","cwd":root.path(),"firstRecordedAt":123,"memo":"independent memo"}]).to_string()).unwrap();
         let panel = Panel::start(root.path());
-        let zones = post(&panel,"/api/zones",json!({"path":root.path()})).await;
-        let zone = zones["zones"][0]["path"].as_str().unwrap();
+        let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
+        let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task("omp","a","Same display name")).await;
         let source_a = saved["tasks"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task("omp","b","Same display name")).await;
@@ -496,7 +496,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             catalog(root.path(), agent, "discovery", true);
             let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
             let panel = Panel::start(root.path());
-            let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+            let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let saved = post(&panel, "/api/tasks", task(agent, "a", "Same name")).await;
             let source = saved["tasks"][0]["id"].as_str().unwrap();
             match scenario {
@@ -509,7 +509,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
                     "originalWorkspaceId":"w-target", "sourceTaskId":source
                 })).await,
                 "deleted" => {
-                    create(&panel, zones["zones"][0]["path"].as_str().unwrap(), source).await;
+                    create(&panel, zones["zones"][0]["id"].as_str().unwrap(), source).await;
                     history(&panel, 1).await;
                     let reply = request_json_over_tcp(panel.addr, "DELETE", &format!("/api/tasks/{source}"), None).await;
                     assert_eq!(reply.status, 200, "{}", reply.body);
@@ -600,9 +600,9 @@ async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
             catalog(root.path(), agent, "failures", true);
             native(root.path(), &herdr, agent, "native-error-full-001");
             let panel = Panel::start(root.path());
-            let zones = post(&panel, "/api/zones", json!({"path":root.path()})).await;
+            let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let saved = post(&panel, "/api/tasks", task(agent, "a", "Source")).await;
-            create(&panel, zones["zones"][0]["path"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
+            create(&panel, zones["zones"][0]["id"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
             history(&panel, 1).await;
             let history_bytes = fs::read(root.path().join("history.json")).unwrap();
             let affected = root.path().join(if mechanism.starts_with("tasks") { "tasks.json" } else { "options.toml" });

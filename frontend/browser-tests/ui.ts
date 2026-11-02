@@ -20,11 +20,9 @@ export async function serializedChatRule(locator: Locator): Promise<string> {
   )
 }
 
-/** 按完整路径定位 zone 行；列表只显示末级名称，行本身仍保留完整路径身份。 */
-export function zoneRowFor(page: Page, zonePath: string): Locator {
-  return page.getByTestId('zone-item').filter({
-    has: page.getByRole('button', { name: `从 ${zonePath} 发起 Chat` }),
-  })
+/** 按稳定 ID 定位 zone 行，目录路径可重绑。 */
+export function zoneRowFor(page: Page, zoneId: string): Locator {
+  return page.locator(`[data-testid="zone-item"][data-zone-id=${JSON.stringify(zoneId)}]`)
 }
 
 /** 触摸档用 tap，桌面档用 click；两种尺寸的操作路径保持一致。 */

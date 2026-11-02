@@ -22,7 +22,7 @@
       ],
       "report_policy": "auto",
       "title": "概要方案转换为业务 Map",
-      "zone": "E:\\Developer\\myhub\\herdr-bot"
+      "zone": "hugosol/herdr-bot"
     },
     "outline": {
       "blocked_by": [],
@@ -36,7 +36,7 @@
       ],
       "report_policy": "manual",
       "title": "概要规划与用户确认",
-      "zone": "E:\\Developer\\myhub\\herdr-bot"
+      "zone": "hugosol/herdr-bot"
     }
   },
   "title": "plan_workflow"

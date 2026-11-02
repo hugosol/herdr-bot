@@ -12,9 +12,9 @@ async function fixture() {
   server = await startServer({ separateCwd: true, herdr: { behavior: { native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'browser-manager-04' } } } })
   const zonePath = path.join(path.dirname(server.configPath), 'bot-playground')
   fs.mkdirSync(zonePath)
-  let response = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: zonePath }) })
+  let response = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'test/zone', path: zonePath }) })
   expect(response.status).toBe(200)
-  const zone = (await response.json()).zones[0].path
+  const zone = (await response.json()).zones[0].id
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
     response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE', extensions: [] }) })

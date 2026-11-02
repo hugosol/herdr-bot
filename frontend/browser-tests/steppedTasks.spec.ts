@@ -81,8 +81,8 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   // The externally hosted Chat already exists; deleting its Task must leave that conversation untouched.
   const zoneDir = `${server.storageFile}.zone`
   fs.mkdirSync(zoneDir)
-  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: zoneDir }) })
-  const zone = (await zoneResponse.json()).zones[0].path
+  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'test/zone', path: zoneDir }) })
+  const zone = (await zoneResponse.json()).zones[0].id
   const previewResponse = await fetch(`${server.baseURL}/api/chats/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone, taskId: saved.id }) })
   const preview = await previewResponse.json()
   const chatResponse = await fetch(`${server.baseURL}/api/chats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone, taskId: saved.id, chatId: preview.chatId, input: '检查' }) })

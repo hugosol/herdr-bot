@@ -20,7 +20,18 @@ describe('node save response handoff schema boundary', () => {
     expect(map.nodes.B).toEqual({ ...node, input_rule, output_rule: [{ id: 'result' }] })
   })
 
+  it('accepts portable relative files with explicit or manager-default zones', async () => {
+    const input_rule = [
+      { id: 'default', type: 'file', path: 'docs/input.txt' },
+      { id: 'explicit', type: 'file', path: 'other/input.txt', zone_id: 'team/materials' },
+    ]
+    responseWith({ input_rule })
+    const map = await saveNode('map.json', draft)
+    expect(map.nodes.B.input_rule).toEqual(input_rule)
+  })
+
   it.each([
+    { input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 3 }] },
     { inputs: { source: { source: 'file', path: 'C:/input.txt' } } },
     { input_rule: { source: { type: 'file', path: 'C:/input.txt' } } },
     { input_rule: [{ id: 'source', source: 'node', node_id: 'A', output: 'material' }] },

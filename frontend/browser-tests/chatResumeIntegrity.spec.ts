@@ -41,11 +41,11 @@ async function prepare(agent: string, policy: Policy) {
   const name = `Integrity ${agent}`
   if (policy === 'filtered') {
     server.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: native } })
-    await accepted('/api/zones', { path: cwd })
+    await accepted('/api/zones', { id: 'test/zone', path: cwd })
     const saved = await accepted('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', prompt: 'INITIAL ONLY', extensions: ['optional'] })
     const taskId = saved.tasks[0].id
-    const preview = await accepted('/api/chats/preview', { zone: cwd, taskId: taskId })
-    const job = await accepted('/api/chats', { zone: cwd, taskId: taskId, chatId: preview.chatId, input: 'SEED ONLY' })
+    const preview = await accepted('/api/chats/preview', { zone: 'test/zone', taskId: taskId })
+    const job = await accepted('/api/chats', { zone: 'test/zone', taskId: taskId, chatId: preview.chatId, input: 'SEED ONLY' })
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/sessions/history`)).json()).total).toBe(1)
     fs.unlinkSync(optional)

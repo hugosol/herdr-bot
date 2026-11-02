@@ -1,0 +1,6 @@
+# Copy to prompts.local.toml and edit for this computer.
+# Flat string values only. Values are literal; no roots or recursive expansion.
+herdr-bot-path = 'D:/projects/herdr-bot'
+herdr-bot-api-url = 'http://127.0.0.1:18787'
+codex-reset-url = 'https://codex-reset.com/'
+local-temp-path = 'C:/Users/your-user/AppData/Local/Temp'

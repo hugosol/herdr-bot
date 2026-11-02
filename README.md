@@ -39,11 +39,26 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 
 可只读查看根解析结果：`cargo run --quiet --manifest-path backend/Cargo.toml --bin herdr-paths -- --paths paths.local.toml`。输出为 JSON，不启动服务、不创建业务目录。开发工具中真实依赖路径的覆盖方式见[测试指引](docs/agents/testing.md)。
 
-本次路径集中管理不迁移旧 zone／Chat／Run，不改写 Task、Bot、Map 的业务文本与材料引用；保留这些定义不代表其中旧机器业务路径自动可用。
+程序路径根、zone 本机绑定与提示词词典是三套不同职责：前者解析程序配置路径，zone ID 决定执行和直接文件输入的位置，词典替换指定配置提示词中的本机参考信息。Run／Chat 历史仍为本机事实，不保证跨 server 使用。
 
 本机访问 `http://127.0.0.1:<端口>/`；局域网使用启动日志中的
 `http://herdr-bot.local:<端口>/`，无法解析时使用服务主机的局域网 IPv4。
 手机上的 `127.0.0.1` 指向手机自身。
+
+## 本机提示词词典
+
+服务 TOML 顶层 `prompts_file = 'prompts.local.toml'` 指定独立词典，缺省为同名文件，位置相对服务配置目录。与 `paths_file` 不同，它用于提示词正文，不解析程序变量或决定执行目录。复制 `prompts.example.toml` 为本机文件并按当前 server 调整值，不覆盖已有本机配置：
+
+```toml
+herdr-bot-path = 'E:/Developer/myhub/herdr-bot'
+herdr-bot-api-url = 'http://127.0.0.1:18787'
+```
+
+- Task 固定 prompt、Bot 的 `when`／`plan_guide`／`node_guide`、Map `description` 与 node `input` 保存 `${herdr-bot-path}` 等原始标签。用户临时输入、Run 本次要求、报告及 agent 产物不参与替换。
+- 系统在发送配置字段前通过统一词典 module 替换一次，再与其他消息拼接；每条初始消息读取一份最新词典，不要求重启，不递归解释值。`$${key}` 输出字面量 `${key}`。
+- agent 直接读取 Map/Bot 原始文件时仍会看到标签。系统发起的 Chat 会获得词典绝对路径和读取说明，由 agent 自行映射；不强制覆盖所有读取入口，不修改原始定义，不自动注入 Bot 指南全文。
+- 保存定义允许本机词典尚不完整；实际发送时发现未知标签则报出字段与标签并停止该次发送。缺失词典文件视为空词典，使用标签仍会失败；非法 TOML 或不可读文件明确报错。不要猜测缺失值。
+- 词典仅提供提示词参考信息，修改其中的 API URL 不会自动修改 toolkit 扩展的实际网络连接配置。不要在词典中放入不应向 agent 暴露的密钥。
 
 ## 定义数据与运行数据
 
@@ -60,7 +75,7 @@ bot_directory = 'meta-data/bots'
 run_directory = '.data/workflow-runs'
 ```
 
-省略字段时默认路径与上述相同。Run、Chat 历史、zone 登记仍属于 `.data`；Map 内每个 node 保存的具体 zone 路径、Task/Bot 引用及执行语义均不改变。定义可能包含本机路径、固定指示和业务内容，允许 Git 跟踪不代表适合公开提交，程序不会自动提交。
+省略字段时默认路径与上述相同。Run、Chat 历史、zone 登记仍属于 `.data`；Map 内每个 node 保存稳定 zone ID，直接文件输入保存相对路径与可选 zone ID，由执行 server 的本机绑定解析。定义可能包含本机路径、固定指示和业务内容，允许 Git 跟踪不代表适合公开提交，程序不会自动提交。
 
 ### 从旧定义布局升级
 
@@ -72,6 +87,27 @@ run_directory = '.data/workflow-runs'
 - 不提供跨文件事务。中途 I/O 失败可能留下已完整复制的项目；保留现场并排除错误后重启，完整一致的项目可确认切换，不覆盖现有内容。
 
 升级后核对 task、bot、scheduler 列表。原生 agent 会话、Run 历史和 UI 入口不受这次布局调整影响。
+
+### 从路径 zone 升级为稳定 ID
+
+先停止使用同一数据的旧服务并备份，明确每个旧目录对应的 ID 和当前 server 的目录，再运行一次离线迁移。映射是 JSON 数组，例如：
+
+```json
+[
+  { "path": "E:/Developer/myhub/herdr-bot", "id": "hugosol/herdr-bot" },
+  { "path": "D:/developer/bot-playground", "id": "default/bot-playground", "local_path": "E:/Developer/bot-playground" }
+]
+```
+
+`path` 是旧定义中的目录，`local_path` 可省略（沿用旧目录）；不同旧路径可映射到同一 ID，但其本机绑定必须一致。使用实际配置中的登记文件和 Map 目录：
+
+```powershell
+cargo run --manifest-path backend/Cargo.toml --bin migrate-zone-portability -- .data/zones.json meta-data/workflow-maps zone-portability.local.json
+```
+
+迁移将登记改为 `{id,path}`、node 的 `zone` 改为 ID，并将直接文件绝对地址改为明确的 `zone_id` 与相对 `path`；缺失或有歧义的映射必须明确解决，不根据目录名猜测。原文件保留 `.zone-portability-v1.bak` 备份，Run/Chat 历史不改写。发布不是跨文件事务；失败时保持停服并检查已发布项与备份，不让旧、新服务混写。新接口只接受 ID 引用，不在普通请求中兼容旧路径格式。
+
+新 server 的 zone 登记入口要求 ID 与本地目录；登记 JSON 使用 `{ "id": "hugosol/herdr-bot", "path": "E:/Developer/myhub/herdr-bot" }`。取消登记按 ID，改绑只影响新 Run，不删除目录。Map 可在绑定未完成时保存，启动前必须补齐。
 
 ### 文件交接规则格式升级
 

@@ -88,7 +88,7 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
     return <button type="button" onClick={onClose}>返回 Map 修正</button>
   }
 
-  const workspaceName = input.zone.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? ''
+  const workspaceName = zones.find(zone => zone.id === input.zone)?.path.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? ''
   return <form className="scheduler-run-form" aria-label="发起 Run" onSubmit={event => { event.preventDefault(); void check() }}>
     <h3>发起 Run · {file}</h3>
     <p>选择管理者配置并检查整张 Map。校验不创建 Run 或 Chat；启动 Run 会再次预检，保存本次要求并启动真实管理者，取得标识后进入只读详情。</p>
@@ -99,7 +99,7 @@ export function RunLaunchForm({ file, active, onClose, onNode, onBot, onTask, on
     {!loading && tasks.length === 0 && <p>没有可选的 manager 类型 Task。<button type="button" onClick={() => onTask()}>管理 Task</button></p>}
     <label>管理者 zone<select aria-label="管理者 zone" value={input.zone} disabled={loading || busy} onChange={event => change({ zone: event.target.value })}>
       <option value="">请选择已登记 zone</option>
-      {zones.map(zone => <option key={zone.path} value={zone.path}>{zone.path}</option>)}
+      {zones.map(zone => <option key={zone.id} value={zone.id}>{zone.id} · {zone.path}</option>)}
     </select></label>
     {!loading && zones.length === 0 && <p>尚未登记 zone。<button type="button" onClick={onZones}>管理 zone 登记</button></p>}
     <label>Workspace<input value={workspaceName} readOnly /></label>

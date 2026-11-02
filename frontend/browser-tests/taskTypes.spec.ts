@@ -58,8 +58,8 @@ test('P5.01 role changes select exactly one fixed role environment', async ({}, 
   const root = path.dirname(server.configPath)
   const zonePath = path.join(root, 'role-zone')
   fs.mkdirSync(zonePath)
-  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: zonePath }) })
-  const zone = (await zoneResponse.json()).zones[0].path
+  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'test/zone', path: zonePath }) })
+  const zone = (await zoneResponse.json()).zones[0].id
   let id: string | undefined
   for (const role of ['manager', 'normal']) {
     const response = await fetch(`${server.baseURL}/api/tasks${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '角色', chatName: '{chat.id}', taskType: role, agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
@@ -88,7 +88,7 @@ for (const agent of ['omp', 'pi'] as const) {
       expect(response.status, await response.clone().text()).toBe(status)
       return response.json()
     }
-    const zone = (await post('/api/zones', { path: host.cwd })).zones[0].path
+    const zone = (await post('/api/zones', { id: 'test/zone', path: host.cwd })).zones[0].id
     const base = { agent, chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'SHARED TASK PROMPT', extensions: [] }
     const task = (await post('/api/tasks', { ...base, name: 'Shared normal', taskType: 'normal' })).tasks[0]
     const manager = (await post('/api/tasks', { ...base, name: 'Manager', taskType: 'manager' })).tasks.find((item: { name: string }) => item.name === 'Manager')

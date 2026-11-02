@@ -1,7 +1,7 @@
 //! zone 登记列表：由后端以文件持久保存，电脑与手机共享同一份列表。
 //!
 //! 登记列表是**服务器**状态，不是浏览器的收藏夹：读取、登记与取消登记都经后端完成，取消登记只移除
-//! 登记项，不删除目录或文件。登记项只是一个服务器上的绝对目录路径；它可以是普通目录，也可以是一个
+//! 登记项，不删除目录或文件。登记项将稳定的用户 ID 绑定到服务器上的绝对目录路径；它可以是普通目录，也可以是一个
 //! Git 工作树的根目录——本模块不初始化 Git，也不扫描、聚合任何嵌套仓库。
 //!
 //! 持久化语义（P50）：
@@ -26,10 +26,11 @@ use serde::{Deserialize, Serialize};
 /// 登记文件在配置缺省时的相对路径（由配置加载按服务配置文件所在目录解析）。
 pub const DEFAULT_REGISTRY_FILE: &str = ".data/zones.json";
 
-/// 登记文件里的一个 zone：服务器上的一个绝对目录路径。
+/// 稳定 zone ID 与该 ID 在本服务器上的唯一目录绑定；不同 ID 可以绑定同一目录。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisteredZone {
+    pub id: String,
     pub path: String,
 }
 
@@ -43,6 +44,7 @@ struct RegistryDocument {
 /// 一次 zone 登记请求的明确失败类别。
 #[derive(Debug)]
 pub enum ZoneError {
+    IdRequired,
     /// 没有填写路径。
     Required,
     /// 路径不是绝对路径：zone 指服务器上的目录，不能相对进程工作目录猜测。
@@ -69,6 +71,7 @@ impl ZoneError {
     /// 机器可读的失败类别码。
     pub fn code(&self) -> &'static str {
         match self {
+            Self::IdRequired => "zone-id-required",
             Self::Required => "path-required",
             Self::NotAbsolute => "path-not-absolute",
             Self::NotFound => "path-not-found",
@@ -85,13 +88,14 @@ impl ZoneError {
     /// 面向使用者的说明；存储类错误明确说明原登记文件未被修改。
     pub fn message(&self) -> String {
         match self {
+            Self::IdRequired => "请填写稳定的 zone ID（建议 namespace/name）；ID 不能重复。".to_string(),
             Self::Required => "请填写服务器上的目录路径。".to_string(),
             Self::NotAbsolute => "zone 路径必须是服务器上的绝对路径。".to_string(),
             Self::NotFound => "该路径在服务器上不存在。".to_string(),
             Self::NotADirectory => "该路径不是目录。".to_string(),
             Self::Inaccessible(error) => format!("无法访问该路径：{error}"),
-            Self::AlreadyRegistered => "该目录已经登记。".to_string(),
-            Self::NotRegistered => "该目录没有登记。".to_string(),
+            Self::AlreadyRegistered => "该 zone ID 已登记；如需更换本机目录请使用重新绑定。".to_string(),
+            Self::NotRegistered => "该 zone ID 未在本机登记绑定。".to_string(),
             Self::Unreadable(error) => {
                 format!("读取 zone 登记列表失败：{error}。原登记文件未被修改。")
             }
@@ -131,16 +135,32 @@ impl Zones {
     }
 
     /// 登记一个真实存在的服务器目录；成功返回登记后的完整列表。
-    pub async fn register(&self, input: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+    pub async fn register(&self, id: &str, input: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+        let id = checked_id(id)?;
         let candidate = canonical_candidate(input)?;
-
         self.change(|zones| {
-            if zones.iter().any(|entry| same_path(&entry.path, &candidate)) {
+            if zones.iter().any(|entry| entry.id == id) {
                 return Err(ZoneError::AlreadyRegistered);
             }
-            zones.push(RegisteredZone { path: candidate });
+            zones.push(RegisteredZone { id, path: candidate });
             Ok(())
         })
+    }
+
+    /// Rebind an existing immutable ID without creating a directory.
+    pub async fn rebind(&self, id: &str, input: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+        let id = checked_id(id)?;
+        let candidate = canonical_candidate(input)?;
+        self.change(|zones| {
+            let entry = zones.iter_mut().find(|entry| entry.id == id).ok_or(ZoneError::NotRegistered)?;
+            entry.path = candidate;
+            Ok(())
+        })
+    }
+
+    pub async fn resolve(&self, id: &str) -> Result<String, ZoneError> {
+        let zones = self.list().await?;
+        zones.into_iter().find(|entry| entry.id == id).map(|entry| entry.path).ok_or(ZoneError::NotRegistered)
     }
 
     /// 取消一个登记；不检查目录是否仍然存在，也不删除任何目录或文件。
@@ -152,7 +172,7 @@ impl Zones {
 
         self.change(|zones| {
             let before = zones.len();
-            zones.retain(|entry| !same_path(&entry.path, trimmed));
+            zones.retain(|entry| entry.id != trimmed);
             if zones.len() == before {
                 return Err(ZoneError::NotRegistered);
             }
@@ -165,7 +185,7 @@ impl Zones {
         match access.read_to_string(&self.registry_file) {
             Ok(raw) => {
                 let document: RegistryDocument = serde_json::from_str(&raw)
-                    .map_err(|error| ZoneError::Corrupt(error.to_string()))?;
+                    .map_err(|error| ZoneError::Corrupt(format!("{error}；旧登记请运行 migrate-zone-portability 并提供显式路径到 ID 映射，禁止推测 ID")))?;
                 validate(&document.zones)?;
                 Ok(document.zones)
             }
@@ -192,20 +212,28 @@ impl Zones {
     }
 }
 
-/// 登记文件里的每一项都必须有非空路径，且不能重复。
+/// 登记项必须有非空 ID 和路径；唯一性只约束 ID，不约束目录。
 fn validate(zones: &[RegisteredZone]) -> Result<(), ZoneError> {
     let mut seen = Vec::with_capacity(zones.len());
     for entry in zones {
         if entry.path.trim().is_empty() {
             return Err(ZoneError::Corrupt("登记项缺少路径".to_string()));
         }
-        let key = path_key(&entry.path);
-        if seen.contains(&key) {
-            return Err(ZoneError::Corrupt("登记项包含重复路径".to_string()));
+        if entry.id.trim().is_empty() || entry.id != entry.id.trim() {
+            return Err(ZoneError::Corrupt("登记项需要非空 zone ID；旧数据请先运行 migrate-zone-portability 并提供显式路径到 ID 映射".to_string()));
         }
-        seen.push(key);
+        if seen.contains(&entry.id) {
+            return Err(ZoneError::Corrupt("登记项包含重复 zone ID".to_string()));
+        }
+        seen.push(entry.id.clone());
     }
     Ok(())
+}
+
+fn checked_id(input: &str) -> Result<String, ZoneError> {
+    let id = input.trim();
+    if id.is_empty() { return Err(ZoneError::IdRequired); }
+    Ok(id.to_owned())
 }
 
 /// 校验并规范化一个待登记路径：必须是服务器上的绝对、真实存在的目录。

@@ -78,7 +78,7 @@ async fn same_normal_task_uses_standalone_node_and_persisted_resume_roles_for_bo
         task["agent"] = json!(host);
         let response = common::request_json_over_tcp(s.server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&task.to_string())).await;
         assert_eq!(response.status, 200, "{}", response.body);
-        let zone = s.data.path().join("node-zone");
+        let zone = "node";
         identity(&s, host, "role-standalone");
         let offset = s.herdr.calls().len();
         let preview = post_json_over_tcp(s.server.addr(), "/api/chats/preview", &json!({"zone":zone,"taskId":id}).to_string()).await;

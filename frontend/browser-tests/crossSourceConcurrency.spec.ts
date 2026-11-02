@@ -136,8 +136,8 @@ for (const agent of ['pi', 'omp'] as const) {
       server = await startServer({ safeShutdown: true, herdr: { behavior } })
       fs.appendFileSync(server.configPath, '\n[shutdown]\ncountdown_seconds = 3600\n')
       await server.restart()
-      const zones = await post('/api/zones', { path: root })
-      const zone = zones.zones[0].path as string
+      const zones = await post('/api/zones', { id: 'test/zone', path: root })
+      const zone = zones.zones[0].id as string
       const original = await task(agent, 'Durable zone before failure')
       const rejected = await task(agent, 'Zone name that never saved')
       await create(zone, original)
@@ -230,8 +230,8 @@ for (const agent of ['pi', 'omp'] as const) {
       const gate = path.join(root, 'identity-ready')
       const behavior = { native_session: { source: `herdr:${agent}`, agent, kind: 'id', value: id }, native_cwd: 'C:/same-project' }
       server = await startServer({ herdr: { behavior: { ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } } } })
-      const zones = await post('/api/zones', { path: root })
-      const zone = zones.zones[0].path as string
+      const zones = await post('/api/zones', { id: 'test/zone', path: root })
+      const zone = zones.zones[0].id as string
       const first = await task(agent, 'Zone original literal')
       const renamed = await task(agent, 'Zone renamed literal')
       const connect = () => register(id, { cwd: 'C:/same-project', sessionName: 'Connect original literal', agentType: agent })

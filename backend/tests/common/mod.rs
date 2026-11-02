@@ -318,6 +318,19 @@ pub fn read_json_lines(path: &Path) -> Vec<serde_json::Value> {
     }
 }
 
+/// Assert the common guidance is present once, then expose only the original
+/// business payload for independent literal launch assertions.
+pub fn prompt_body(prompt: &serde_json::Value) -> &str {
+    let text = prompt["text"].as_str().expect("prompt text");
+    let marker = "[Prompt dictionary instructions]";
+    assert_eq!(text.matches(marker).count(), 1, "one common dictionary guide");
+    assert!(text.ends_with("[/Prompt dictionary instructions]"));
+    let prefix = &text[..text.find(marker).unwrap()];
+    if let Some(body) = prefix.strip_suffix("\n\n") { body }
+    else if prefix.starts_with("/skill:") { prefix.strip_suffix(' ').expect("skill separator") }
+    else { assert!(prefix.is_empty()); prefix }
+}
+
 /// 服务端配置：把某个夹具批处理绑定为“启动”操作，并使用配置的工作目录。
 ///
 /// 只驱动“启动”的测试不需要区分两个操作，因此“停止”先绑定同一个目标；
@@ -355,6 +368,7 @@ pub fn config_with_countdown(
     };
     herdr_bot::Config {
         paths_file: None,
+        prompts_file: working_directory.join("prompts.local.toml"),
         roots: herdr_bot::paths::Roots::default(),
         base_directory: repo_fixtures_dir().parent().unwrap().to_path_buf(),
         static_directory: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static"),

@@ -28,6 +28,7 @@ fn config_with(herdr: &HerdrFixture, storage_dir: &TempDir) -> herdr_bot::Config
     let mut config = common::config(&script, &operations);
     config.zones.registry_file = storage_dir.path().join("zones.json");
     config.tasks.storage_file = storage_dir.path().join("tasks.json");
+    config.prompts_file = storage_dir.path().join("prompts.local.toml");
     config.herdr = herdr_bot::HerdrConfig {
         workspace_name: "bot-playground".to_string(),
         executable: herdr.executable().to_path_buf(),
@@ -35,12 +36,12 @@ fn config_with(herdr: &HerdrFixture, storage_dir: &TempDir) -> herdr_bot::Config
     config
 }
 
-/// 一个已登记的真实目录；返回登记列表里的路径。
+/// 一个已登记的真实目录；返回登记列表里的 ID。
 async fn register(server: &TestServer, path: &Path) -> String {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": path }).to_string(),
+        &json!({ "id": path, "path": path }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
@@ -51,7 +52,7 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .iter()
         .find_map(|zone| {
             let registered = zone["path"].as_str()?;
-            same_path(Path::new(registered), path).then(|| registered.to_string())
+            same_path(Path::new(registered), path).then(|| zone["id"].as_str().unwrap().to_string())
         })
         .expect("登记响应必须包含刚登记的目录")
 }
@@ -302,6 +303,38 @@ async fn create_with(
     wait_stage(&inputs.server, id, expected_stage).await
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn dictionary_renders_only_fixed_fields_and_reloads_between_messages() {
+    let inputs = input_fixture("prompt dictionary latest snapshot").await;
+    let path = inputs._storage.path().join("prompts.local.toml");
+    fs::write(&path, "herdr-bot-path = 'D:/first/${literal}'\n").unwrap();
+    let raw = "repo=${herdr-bot-path}; escaped=$${missing}";
+    let user = "user ${missing} $${herdr-bot-path}";
+    let saved = save_task(&inputs.server, input_task(None, raw)).await;
+    assert_eq!(saved["prompt"], raw, "definitions stay raw");
+    create_with(&inputs, input_task(None, raw), user, "succeeded").await;
+    fs::write(&path, "herdr-bot-path = 'E:/second'\n").unwrap();
+    create_with(&inputs, input_task(None, raw), user, "succeeded").await;
+    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    assert_eq!(prompts.len(), 2);
+    assert_eq!(common::prompt_body(&prompts[0]), format!("repo=D:/first/${{literal}}; escaped=${{missing}}\n\n{user}"));
+    assert_eq!(common::prompt_body(&prompts[1]), format!("repo=E:/second; escaped=${{missing}}\n\n{user}"));
+    for prompt in prompts {
+        assert!(prompt["text"].as_str().unwrap().contains(path.to_str().unwrap()));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_dictionary_key_is_savable_but_fails_before_prompt_send() {
+    let inputs = input_fixture("prompt dictionary missing key").await;
+    let finished = create_with(&inputs, input_task(None, "${missing-resource}"), "literal ${user}", "failed").await;
+    assert_eq!(finished["failure"]["code"], "prompt-dictionary-invalid");
+    assert_eq!(finished["inputSubmitted"], false);
+    let message = finished["failure"]["message"].as_str().unwrap();
+    assert!(message.contains("Task.prompt") && message.contains("missing-resource"));
+    assert!(calls_of_kind(&inputs.herdr, "agent_prompt").is_empty());
+}
+
 fn initialize_git(directory: &Path) {
     let status = Command::new("git")
         .arg("init")
@@ -411,7 +444,7 @@ async fn creates_from_normal_and_git_zones_in_the_configured_workspace_with_zone
             .last()
             .expect("必须提交初始指示");
         assert_eq!(prompt["target"], start["name"]);
-        assert_eq!(prompt["text"], input, "本次 input 必须按字面提交");
+        assert_eq!(common::prompt_body(&prompt), input, "本次 input 必须按字面提交");
     }
 
     // 当前焦点指向另一个 Workspace；两次创建都只使用配置目标。
@@ -694,7 +727,7 @@ async fn assert_launch_from_public_entry(
         prompt["target"], start["name"],
         "初始指示必须提交给本次启动的 agent"
     );
-    assert_eq!(prompt["text"], input, "初始指示按字面提交一次");
+    assert_eq!(common::prompt_body(&prompt), input, "初始指示按字面提交一次");
     finished
 }
 
@@ -842,7 +875,7 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
     let prompt = calls_of_kind(&herdr, "agent_prompt")
         .pop()
         .expect("必须有提交记录");
-    assert_eq!(prompt["text"], "等待就绪后提交");
+    assert_eq!(common::prompt_body(&prompt), "等待就绪后提交");
 
     // 时序：启动记录必须先于提交记录。
     let calls = herdr.calls();
@@ -1168,7 +1201,7 @@ async fn workspace_retry_reuses_preview_but_preserves_independent_creation_recor
     assert_eq!(fixture.herdr.tabs()[0]["workspace"], "w-default");
     let prompts = calls_of_kind(&fixture.herdr, "agent_prompt");
     assert_eq!(prompts.len(), 1);
-    assert_eq!(prompts[0]["text"], "保留重试输入");
+    assert_eq!(common::prompt_body(&prompts[0]), "保留重试输入");
     let start = calls_of_kind(&fixture.herdr, "agent_start");
     assert_eq!(start.len(), 1);
     assert_eq!(start[0]["args"][0], "--no-extensions");
@@ -1552,13 +1585,13 @@ async fn an_unregistered_zone_is_rejected_before_any_herdr_call() {
     let task = save_task(&server, default_task()).await;
     let task_id = task["id"].as_str().expect("Task标识");
     let rejected = preview(&server, &zone.display().to_string(), task_id).await;
-    assert_eq!(rejected.status, 400);
+    assert_eq!(rejected.status, 404);
     let body: Value = serde_json::from_str(&rejected.body).expect("拒绝是 JSON");
-    assert_eq!(body["code"], "zone-not-registered");
+    assert_eq!(body["code"], "not-registered");
     assert!(herdr.calls().is_empty());
 
-    let missing = preview(&server, "C:\\definitely\\missing", task_id).await;
-    assert_eq!(missing.status, 400);
+    let missing = preview(&server, "missing/zone", task_id).await;
+    assert_eq!(missing.status, 404);
     assert!(herdr.calls().is_empty());
 }
 
@@ -1662,7 +1695,7 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
         let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
         let prompt = prompts.last().expect("受控 Herdr 必须收到初始指示");
         assert_eq!(
-            prompt["text"], expected,
+            common::prompt_body(&prompt), expected,
             "{skill} 的完整正文必须与预写字面样例逐字一致"
         );
 
@@ -1672,13 +1705,13 @@ async fn both_skills_submit_one_native_skill_invocation_with_the_full_body() {
         assert_eq!(argv[0], "agent");
         assert_eq!(argv[1], "prompt");
         assert_eq!(argv[2], prompt["target"]);
-        assert_eq!(argv[3], expected);
+        assert_eq!(argv[3], prompt["text"]);
         assert!(
             prompt.get("role").is_none(),
             "初始指示不是 system-role 消息：{prompt}"
         );
 
-        let text = prompt["text"].as_str().expect("正文是字符串");
+        let text = common::prompt_body(&prompt);
         assert!(
             text.starts_with(prefix),
             "{skill} 必须以独立字面的原生 Skill 前缀开头：{text}"
@@ -1732,7 +1765,7 @@ async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
         let prompt_call = calls_of_kind(&inputs.herdr, "agent_prompt")
             .pop()
             .expect("受控 Herdr 必须收到初始指示");
-        let text = prompt_call["text"].as_str().expect("正文是字符串");
+        let text = common::prompt_body(&prompt_call);
         assert_eq!(
             text, expected,
             "无 Skill 时正文必须与预写字面样例一致（prompt={prompt:?}, input={input:?}）"
@@ -1753,7 +1786,7 @@ async fn a_skill_only_task_submits_the_bare_skill_call() {
 
     let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
     assert_eq!(prompts.len(), 1, "Skill-only 也只提交一次");
-    assert_eq!(prompts[0]["text"], "/skill:teach");
+    assert_eq!(common::prompt_body(&prompts[0]), "/skill:teach");
 }
 
 /// P22 / P29：有 Skill 时，空的 prompt 或 input 只是缺少该分段；命令与剩余正文仍按约定合成。
@@ -1791,22 +1824,19 @@ async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
             .pop()
             .expect("受控 Herdr 必须收到初始指示");
         assert_eq!(
-            prompt_call["text"], expected,
+            common::prompt_body(&prompt_call), expected,
             "{skill} 缺少一个分段时仍必须与预写字面样例一致"
         );
     }
 }
 
-/// P31：Skill、prompt、input 全空仍被公开入口接受并实际提交；受控 Herdr 像真实 Herdr 一样
-/// 拒绝空文本，创建按普通失败流程保留现场。不能前置组合校验、补造内容、跳过提交或假报成功。
+/// Empty business content still sends the common dictionary guide once.
 #[tokio::test(flavor = "multi_thread")]
-async fn an_all_empty_task_attempts_submission_and_reports_the_herdr_rejection() {
+async fn an_all_empty_task_submits_only_the_common_dictionary_guide() {
     let inputs = input_fixture("task initial all empty").await;
-    let finished = create_with(&inputs, input_task(None, ""), "", "failed").await;
+    let finished = create_with(&inputs, input_task(None, ""), "", "succeeded").await;
 
-    assert_eq!(finished["failure"]["stage"], "submit");
-    assert_eq!(finished["failure"]["code"], "herdr-command-failed");
-    assert_eq!(finished["inputSubmitted"], false);
+    assert_eq!(finished["inputSubmitted"], true);
     assert!(
         finished["tabId"].as_str().is_some(),
         "已创建的 Tab 标识必须保留：{finished}"
@@ -1815,22 +1845,10 @@ async fn an_all_empty_task_attempts_submission_and_reports_the_herdr_rejection()
         finished["paneId"].as_str().is_some(),
         "已创建的 Pane 标识必须保留：{finished}"
     );
-    let message = finished["failure"]["message"]
-        .as_str()
-        .expect("失败说明是字符串");
-    assert!(
-        message.contains("agent prompt must not be empty"),
-        "必须呈现 Herdr 的拒绝：{message}"
-    );
-    assert!(
-        message.contains("初始指示的提交被明确拒绝")
-            && message.contains("Tab、Pane 与 agent 已保留"),
-        "必须区分现场已存在而提交失败：{message}"
-    );
 
     let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
     assert_eq!(prompts.len(), 1, "全空也必须实际提交一次，不能跳过或重发");
-    assert_eq!(prompts[0]["text"], "", "不得补造内容");
+    assert_eq!(common::prompt_body(&prompts[0]), "", "不得补造内容");
     assert_eq!(
         prompts[0]["argv"]
             .as_array()
@@ -1879,14 +1897,14 @@ async fn a_body_with_shell_special_characters_reaches_herdr_verbatim() {
 
     let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
     assert_eq!(prompts.len(), 1);
-    let recorded = prompts[0]["text"].as_str().expect("正文是字符串");
+    let recorded = common::prompt_body(&prompts[0]);
     assert_eq!(
         recorded, expected,
         "正文必须以单个参数原样到达 Herdr，引号、换行与 Shell 元字符都不被解释"
     );
     let argv = prompts[0]["argv"].as_array().expect("调用记录包含 argv");
     assert_eq!(argv.len(), 4, "不得把正文拆成多条参数");
-    assert_eq!(argv[3], expected);
+    assert_eq!(argv[3], prompts[0]["text"]);
     let executed = marker.exists();
     let _ = fs::remove_file(&marker);
     assert!(

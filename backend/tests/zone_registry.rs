@@ -80,7 +80,7 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记应成功：{}", response.body);
@@ -104,12 +104,12 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
         &[zone.clone()],
     );
 
-    // 同一个目录再次登记是明确拒绝，不产生第二项。
+    // 同一个 ID 即使换一个目录也明确拒绝，不产生第二项。
     assert_rejected(
         &post_json_over_tcp(
             server.addr(),
             "/api/zones",
-            &json!({ "path": zone }).to_string(),
+            &json!({ "id": zone, "path": dir.path() }).to_string(),
         )
         .await,
         409,
@@ -118,10 +118,15 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
 
     // 非法输入逐类明确失败。
     assert_rejected(
+        &post_json_over_tcp(server.addr(), "/api/zones", &json!({"id":"", "path":zone}).to_string()).await,
+        400,
+        "zone-id-required",
+    );
+    assert_rejected(
         &post_json_over_tcp(
             server.addr(),
             "/api/zones",
-            &json!({ "path": dir.path().join("missing") }).to_string(),
+            &json!({ "id": dir.path().join("missing"), "path": dir.path().join("missing") }).to_string(),
         )
         .await,
         400,
@@ -134,7 +139,7 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
         &post_json_over_tcp(
             server.addr(),
             "/api/zones",
-            &json!({ "path": file }).to_string(),
+            &json!({ "id": file, "path": file }).to_string(),
         )
         .await,
         400,
@@ -145,7 +150,7 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
         &post_json_over_tcp(
             server.addr(),
             "/api/zones",
-            &json!({ "path": "relative/project" }).to_string(),
+            &json!({ "id": "relative/project", "path": "relative/project" }).to_string(),
         )
         .await,
         400,
@@ -156,7 +161,7 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
         &post_json_over_tcp(
             server.addr(),
             "/api/zones",
-            &json!({ "path": "   " }).to_string(),
+            &json!({ "id": "blank-path", "path": "   " }).to_string(),
         )
         .await,
         400,
@@ -166,8 +171,13 @@ async fn registers_an_existing_directory_and_rejects_ineligible_paths() {
     // 所有拒绝都没有改变已持久化的列表。
     assert_same_directories(
         &zones_of(&get_over_tcp(server.addr(), "/api/zones").await),
-        &[zone],
+        &[zone.clone()],
     );
+    let alias = post_json_over_tcp(server.addr(), "/api/zones", &json!({"id":"second-id","path":zone}).to_string()).await;
+    assert_eq!(alias.status, 200, "distinct IDs may share a directory: {}", alias.body);
+    assert_same_directories(&zones_of(&alias), &[zone.clone(), zone]);
+    let document: Value = serde_json::from_str(&alias.body).unwrap();
+    assert_eq!(document["zones"][1]["id"], "second-id");
 }
 
 /// 一个真实初始化的 Git 工作树根目录可以登记；普通目录登记不初始化 Git，也不扫描、聚合嵌套仓库。
@@ -206,7 +216,7 @@ async fn registers_a_real_git_worktree_root_without_initializing_or_aggregating_
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": plain }).to_string(),
+        &json!({ "id": plain, "path": plain }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "普通目录应可登记：{}", response.body);
@@ -215,7 +225,7 @@ async fn registers_a_real_git_worktree_root_without_initializing_or_aggregating_
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": repository }).to_string(),
+        &json!({ "id": repository, "path": repository }).to_string(),
     )
     .await;
     assert_eq!(
@@ -227,7 +237,7 @@ async fn registers_a_real_git_worktree_root_without_initializing_or_aggregating_
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": parent }).to_string(),
+        &json!({ "id": parent, "path": parent }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "父目录应可登记：{}", response.body);
@@ -263,16 +273,12 @@ async fn unregistering_keeps_every_directory_and_file_intact() {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记应成功：{}", response.body);
 
-    let response = post_json_over_tcp(
-        server.addr(),
-        "/api/zones/remove",
-        &json!({ "path": zone }).to_string(),
-    )
+    let response = common::request_json_over_tcp(server.addr(), "DELETE", "/api/zones", Some(&json!({ "id": zone }).to_string()))
     .await;
     assert_eq!(response.status, 200, "取消登记应成功：{}", response.body);
     assert_eq!(zones_of(&response), Vec::<PathBuf>::new());
@@ -292,11 +298,7 @@ async fn unregistering_keeps_every_directory_and_file_intact() {
 
     // 重复取消登记是明确拒绝，不是静默成功。
     assert_rejected(
-        &post_json_over_tcp(
-            server.addr(),
-            "/api/zones/remove",
-            &json!({ "path": zone }).to_string(),
-        )
+        &common::request_json_over_tcp(server.addr(), "DELETE", "/api/zones", Some(&json!({ "id": zone }).to_string()))
         .await,
         404,
         "not-registered",
@@ -308,7 +310,7 @@ async fn unregistering_keeps_every_directory_and_file_intact() {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": vanished }).to_string(),
+        &json!({ "id": vanished, "path": vanished }).to_string(),
     )
     .await;
     assert_eq!(
@@ -317,11 +319,7 @@ async fn unregistering_keeps_every_directory_and_file_intact() {
         response.body
     );
     fs::remove_dir(&vanished).expect("外部删除目录");
-    let response = post_json_over_tcp(
-        server.addr(),
-        "/api/zones/remove",
-        &json!({ "path": vanished }).to_string(),
-    )
+    let response = common::request_json_over_tcp(server.addr(), "DELETE", "/api/zones", Some(&json!({ "id": vanished }).to_string()))
     .await;
     assert_eq!(
         response.status, 200,
@@ -446,7 +444,7 @@ async fn two_callers_share_the_registry_and_it_survives_a_real_process_restart()
     let response = post_json_over_tcp(
         first.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记应成功：{}", response.body);
@@ -464,11 +462,7 @@ async fn two_callers_share_the_registry_and_it_survives_a_real_process_restart()
     );
 
     // 重启后的进程仍可取消登记，且取消后原目录与文件未受影响。
-    let response = post_json_over_tcp(
-        restarted.addr(),
-        "/api/zones/remove",
-        &json!({ "path": zone }).to_string(),
-    )
+    let response = common::request_json_over_tcp(restarted.addr(), "DELETE", "/api/zones", Some(&json!({ "id": zone }).to_string()))
     .await;
     assert_eq!(response.status, 200, "取消登记应成功：{}", response.body);
     assert_eq!(
@@ -509,7 +503,7 @@ async fn corrupt_registry_is_reported_and_never_overwritten() {
     let response = post_json_over_tcp(
         panel.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_rejected(&response, 500, "registry-corrupt");
@@ -561,7 +555,7 @@ async fn unreadable_registry_is_reported_and_never_overwritten() {
     let response = post_json_over_tcp(
         panel.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_rejected(&response, 500, "registry-unreadable");
@@ -602,7 +596,7 @@ async fn write_failure_is_reported_and_keeps_the_previous_registry() {
     let response = post_json_over_tcp(
         panel.addr(),
         "/api/zones",
-        &json!({ "path": first }).to_string(),
+        &json!({ "id": first, "path": first }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "第一次登记应成功：{}", response.body);
@@ -613,7 +607,7 @@ async fn write_failure_is_reported_and_keeps_the_previous_registry() {
     let response = post_json_over_tcp(
         panel.addr(),
         "/api/zones",
-        &json!({ "path": second }).to_string(),
+        &json!({ "id": second, "path": second }).to_string(),
     )
     .await;
     assert_rejected(&response, 500, "registry-write-failed");
