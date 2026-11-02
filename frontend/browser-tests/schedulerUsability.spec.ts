@@ -102,7 +102,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     // New independent ID, raw invalid JSON and server-side conflict must remain
     // usable on the actual narrow page, not merely present in a screenshot.
     await activate(page, button('新增 node'))
-    const nodeID = page.getByLabel('node ID', { exact: true })
+    const nodeID = page.getByLabel('node_id', { exact: true })
     await type(page, nodeID, 'keyboard-node')
     await type(page, nodeJSON, '{ "title": ')
     await activate(page, button('保存 node'))
@@ -113,7 +113,8 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await fitted(page)
     await error.scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath(`${size}-validation-draft.png`), fullPage: true })
-    const newNode = { title: '键盘新增工作', bot_id: 'destination-weather', input: JSON.stringify({ city: '杭州', id: '保留业务参数' }), zone: 'unregistered-zone', blocked_by: [] }
+    await type(page, page.getByRole('textbox', { name: 'zone', exact: true }), 'unregistered-zone')
+    const newNode = { title: '键盘新增工作', bot_id: 'destination-weather', input: JSON.stringify({ city: '杭州', id: '保留业务参数' }), blocked_by: [] }
     const raw = JSON.stringify(newNode, null, 2)
     await type(page, nodeJSON, raw)
     await discard(page, button('放弃编辑'), false)

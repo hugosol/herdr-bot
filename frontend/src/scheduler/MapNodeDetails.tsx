@@ -29,22 +29,42 @@ export function MapNodeDetails({ map, nodeId, botProblem, bot, onSelect, onBot }
   return <section aria-label="node 详情" className="scheduler-details">
     <h3>{node.title} · {nodeId}</h3>
     <p className="scheduler-text">bot_id：{node.bot_id}</p>
-    <p className="scheduler-text">report_policy: {node.report_policy ?? 'auto'}</p>
+    <section aria-label="node 配置概览" className="scheduler-node-facts">
+      <p className="scheduler-node-fact" data-policy={node.report_policy ?? 'auto'}>
+        <span className="scheduler-node-fact-label">report_policy: </span>
+        <strong className="scheduler-node-fact-value">{node.report_policy ?? 'auto'}</strong>
+      </p>
+      <p className="scheduler-node-fact" data-auto-close={String(node.auto_close ?? false)}>
+        <span className="scheduler-node-fact-label">auto_close: </span>
+        <strong className="scheduler-node-fact-value">{String(node.auto_close ?? false)}</strong>
+      </p>
+      <p className="scheduler-node-fact scheduler-node-fact-zone">
+        <span className="scheduler-node-fact-label">zone：</span>
+        <code>{node.zone || '尚未绑定 zone'}</code>
+      </p>
+    </section>
     {botProblem && <p role="alert">{botProblem}</p>}
-    <p className="scheduler-text">zone 路径引用：{node.zone || '尚未绑定 zone'}</p>
-    <section aria-label="Task prompt">
-      <h4>Task prompt（固定提示词）</h4>
+    <section aria-label="Task.prompt">
+      <h4>Task.prompt</h4>
       {taskProblem ? <p>{taskProblem}</p> : <>
         <p className="scheduler-text">Task：{task!.name || '（Task 未命名）'}</p>
         {task!.prompt === '' ? <p>固定 prompt 为空。</p> : <pre className="scheduler-text">{task!.prompt}</pre>}
       </>}
     </section>
-    <section aria-label="本次输入">
-      <h4>node.input（本次输入）</h4>
+    <section aria-label="input">
+      <h4>input</h4>
       <pre className="scheduler-text" data-testid="node-input">{node.input}</pre>
     </section>
-    <section aria-label="前置依赖">
-      <h4>前置依赖</h4>
+    <section aria-label="input_rule">
+      <h4>input_rule</h4>
+      <pre className="scheduler-text">{JSON.stringify(node.input_rule ?? [], null, 2)}</pre>
+    </section>
+    <section aria-label="output_rule">
+      <h4>output_rule</h4>
+      <pre className="scheduler-text">{JSON.stringify(node.output_rule ?? [], null, 2)}</pre>
+    </section>
+    <section aria-label="blocked_by">
+      <h4>blocked_by</h4>
       {node.blocked_by.length === 0 ? <p>无前置依赖。</p> : <ul>
         {node.blocked_by.map((id) => <li key={id}><button type="button" aria-label={`查看前置节点 ${map.nodes[id].title} ${id}`} onClick={() => onSelect(id)}>{map.nodes[id].title} · {id}</button></li>)}
       </ul>}

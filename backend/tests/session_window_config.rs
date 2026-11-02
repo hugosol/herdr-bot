@@ -497,11 +497,8 @@ async fn the_configured_online_window_blocks_and_then_allows_the_automatic_arran
 /// 本票的进程用例**从不**提交任何关机意图（不手动开始、不设置监听），因此关机动作用永不可达；
 /// 长倒计时只是把「万一」也压到一个小时之后。
 fn process_config_text(sessions: &str, history_file: &Path) -> String {
-    // 只有只读元数据来自仓库；相对路径的运行数据由进程 cwd 所属的临时目录承接。
-    let metadata_file = common::repo_fixtures_dir()
-        .parent()
-        .expect("仓库根目录")
-        .join("meta-data/task-options.toml");
+    // 元数据与扩展均为测试所有；相对运行数据归配置文件所在临时目录。
+    let metadata_file = common::test_metadata_file();
     let metadata_file = toml::Value::String(metadata_file.to_string_lossy().into_owned());
     let history_file = toml::Value::String(history_file.to_string_lossy().into_owned());
     format!(

@@ -6,6 +6,7 @@
       "title": "上海出行天气",
       "bot_id": "destination-weather",
       "input": "城市：上海\n日期：2026-11-01\n偏好：步行；带伞。",
+      "report_policy": "auto",
       "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     },
@@ -13,6 +14,7 @@
       "title": "北京出行天气",
       "bot_id": "destination-weather",
       "input": "城市：北京\n日期：2026-11-02",
+      "report_policy": "auto",
       "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     },
@@ -20,6 +22,7 @@
       "title": "汇总出行准备",
       "bot_id": "trip-summary",
       "input": "范围：上海与北京的出行准备\n核对主题：天气、随身物品。材料位置由管理者明确提供。",
+      "report_policy": "manual",
       "zone": "C:/example/travel-not-registered",
       "blocked_by": ["A", "B"]
     },
@@ -27,6 +30,7 @@
       "title": "独立额度估算",
       "bot_id": "quota-estimate",
       "input": "账户：人工示例账户\n人工观察的剩余额度：25%\n观察时间：未知。",
+      "report_policy": "auto",
       "zone": "C:/example/travel-not-registered",
       "blocked_by": []
     }

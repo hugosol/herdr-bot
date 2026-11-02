@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# 本机根目录，仓库仅保存 paths.example.toml。
+/paths.local.toml
+
+# 本地保留的工作流验收原始证据，不作为产品源码提交。
+/.scratch/workflow-file-handoff/evidence/
+
 # Python 字节码缓存
 __pycache__/
 *.py[cod]

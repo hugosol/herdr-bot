@@ -21,14 +21,16 @@ fn command(root: &Path) -> Command {
     fs::create_dir_all(&metadata_dir).unwrap();
     fs::write(
         metadata_dir.join("task-options.toml"),
-        include_str!("../../meta-data/task-options.toml"),
+        fs::read_to_string(common::test_metadata_file()).unwrap(),
     )
     .unwrap();
+    let process_directory = root.join("unrelated process cwd");
+    fs::create_dir_all(&process_directory).unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
     command
-        .current_dir(root)
+        .current_dir(process_directory)
         .arg("--config")
-        .arg("herdr-bot.toml")
+        .arg(root.join("herdr-bot.toml"))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -110,7 +112,14 @@ fn configure(root: &Path, herdr: &HerdrFixture, storage: Option<&str>) {
 }
 
 fn configure_delivery(root: &Path, herdr: &HerdrFixture) {
+    let roots = toml::Table::from_iter([
+        ("project".into(), toml::Value::String(root.to_string_lossy().into_owned())),
+        ("data".into(), toml::Value::String(root.join(".data").to_string_lossy().into_owned())),
+        ("zone_parent".into(), toml::Value::String(root.to_string_lossy().into_owned())),
+    ]);
+    fs::write(root.join("paths.test.toml"), toml::to_string(&toml::Table::from_iter([("roots".into(), toml::Value::Table(roots))])).unwrap()).unwrap();
     let mut config: toml::Value = toml::from_str(include_str!("../../herdr-bot.toml")).unwrap();
+    config["paths_file"] = toml::Value::String("paths.test.toml".into());
     config["listen_addr"] = toml::Value::String("127.0.0.1:0".into());
     let mut mdns = toml::Table::new();
     mdns.insert("enabled".into(), toml::Value::Boolean(false));
@@ -204,6 +213,27 @@ async fn create(panel: &Panel, zone: &Path, task: &Value) -> Value {
         assert!(Instant::now() < deadline, "{view}");
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
+}
+
+#[tokio::test]
+async fn relocated_runtime_data_keeps_legacy_sources_beside_the_configuration() {
+    let root = TempDir::new("relocated runtime markers");
+    let herdr = HerdrFixture::new("relocated runtime calls");
+    configure(root.path(), &herdr, None);
+    let config = root.path().join("herdr-bot.toml");
+    let raw = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("data_directory = 'separate runtime'\n{raw}")).unwrap();
+    fs::create_dir_all(root.path().join(".data")).unwrap();
+    fs::write(root.path().join(".data/tasks.json"), b"{\"tasks\":[]}\n").unwrap();
+    fs::write(root.path().join("zones.json"), b"{\"zones\":[]}\n").unwrap();
+    let panel = Panel::start(root.path());
+    assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
+    assert!(root.path().join("separate runtime/.runtime-layout-v1").is_file());
+    assert!(root.path().join("separate runtime/.definition-layout-v1-tasks").is_file());
+    assert!(!root.path().join(".data/.runtime-layout-v1").exists());
+    assert_eq!(fs::read(root.path().join("meta-data/tasks.json")).unwrap(), b"{\"tasks\":[]}\n");
+    assert!(root.path().join("zones.json").is_file());
+    assert!(root.path().join(".data/tasks.json").is_file());
 }
 
 fn native_snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, Option<Vec<u8>>> {

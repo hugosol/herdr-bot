@@ -170,7 +170,7 @@ test('扩展元数据在同一进程重新编辑和保存时生效，只持久�
   await page.getByTestId('task-next').click()
   await expect(page.getByRole('checkbox', { name: 'codebase-tools', exact: true })).toBeChecked()
   await page.getByTestId('task-cancel').click()
-  const updated = original.replace("label = 'codebase-tools'", "label = '当前代码工具'").replace('omp-auto\\codebase-tools.ts', 'omp-auto\\changed-tools.ts')
+  const updated = original.replace("label = 'codebase-tools'", "label = '当前代码工具'")
   fs.writeFileSync(server.metadataFile, updated)
   await page.getByTestId('task-edit').click()
   await page.getByTestId('task-next').click()

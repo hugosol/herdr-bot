@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -87,12 +87,13 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
 })
 
 // P6/P16 and direct-only scanning: existing production behavior is exercised,
-// not replaced. Config-relative lookup, filename identity, recursion, or looking
+// not replaced. Cwd-relative lookup, filename identity, recursion, or looking
 // in the Map directory would each disagree with these fixed expected texts/IDs.
-test('P6 P16 configured cwd bots are independent and reusable across nodes Maps and filename changes', async ({ page }) => {
+test('P6 P16 configured config-relative bots are independent and reusable across nodes Maps and filename changes', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const maps = path.join(server.cwd, 'plans')
-  const bots = path.join(server.cwd, 'capabilities')
+  const root = path.dirname(server.configPath)
+  const maps = path.join(root, 'plans')
+  const bots = path.join(root, 'capabilities')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(path.join(bots, 'nested'), { recursive: true })
   const bytes = `${JSON.stringify(weather)}\n`
@@ -100,9 +101,9 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   fs.writeFileSync(path.join(bots, 'notes.txt'), 'not JSON')
   fs.writeFileSync(path.join(bots, 'nested', 'excluded.json'), JSON.stringify({ ...weather, id: 'nested', name: '嵌套错误能力' }))
   fs.writeFileSync(path.join(maps, 'template-decoy.json'), JSON.stringify({ ...weather, id: 'map-decoy', name: 'Map 目录错误能力' }))
-  const wrongCwd = path.join(path.dirname(server.configPath), 'capabilities')
+  const wrongCwd = path.join(server.cwd, 'capabilities')
   fs.mkdirSync(wrongCwd)
-  fs.writeFileSync(path.join(wrongCwd, 'not-weather.JSON'), JSON.stringify({ ...weather, name: '配置目录错误能力' }))
+  fs.writeFileSync(path.join(wrongCwd, 'not-weather.JSON'), JSON.stringify({ ...weather, name: '工作目录错误能力' }))
   fs.writeFileSync(path.join(bots, 'plan-decoy.txt'), 'not a Map')
   fs.writeFileSync(path.join(maps, 'first.json'), JSON.stringify({ title: '第一张计划', description: '', nodes: {
     A: { title: '上海天气', bot_id: 'weather', input: JSON.stringify({ city: '上海' }), zone: 'unregistered-zone', blocked_by: [] },
@@ -111,7 +112,7 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ title: '第二张计划', description: '', nodes: {
     C: { title: '广州天气', bot_id: 'weather', input: JSON.stringify({ city: '广州' }), zone: 'unregistered-zone', blocked_by: [] },
   } }))
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nmap_directory = 'plans'\nbot_directory = 'capabilities'\n")
+  configureScheduler(server, { map_directory: 'plans', bot_directory: 'capabilities' })
   await server.restart()
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
@@ -150,9 +151,9 @@ test('P6 P16 configured cwd bots are independent and reusable across nodes Maps 
 // Swallowing the filesystem error would incorrectly render the normal empty state.
 test('P7 P8 bot parents are created while obstructing files report a distinct creation failure', async ({ page }) => {
   server = await startServer({ separateCwd: true })
-  const parent = path.join(server.cwd, 'missing', 'parents')
+  const parent = path.join(path.dirname(server.configPath), 'missing', 'parents')
   const bots = path.join(parent, 'bots')
-  fs.appendFileSync(server.configPath, "\n[scheduler]\nbot_directory = 'missing/parents/bots'\n")
+  configureScheduler(server, { bot_directory: 'missing/parents/bots' })
   await server.restart()
   expect(fs.existsSync(parent)).toBe(false)
   await page.goto(`${server.baseURL}?layout=expanded`)

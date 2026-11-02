@@ -327,7 +327,23 @@ pub fn config(script: &Path, working_directory: &Path) -> herdr_bot::Config {
     config_with_countdown(script, working_directory, 10)
 }
 
-/// 与 [`config`] 同形，但显式指定关机倒计时秒数（驱动到期用例用它把等待压到最短的合法值）。
+/// Isolated extension files retain the delivered catalog IDs without machine paths.
+pub fn test_metadata_file() -> PathBuf {
+    static METADATA: std::sync::LazyLock<TempDir> = std::sync::LazyLock::new(|| {
+        let root = TempDir::new("isolated metadata extensions");
+        let mut metadata: toml::Value = toml::from_str(include_str!("../../../meta-data/task-options.toml")).unwrap();
+        for extension in metadata["extensions"].as_array_mut().unwrap() {
+            let file = root.path().join(format!("{}.ts", extension["id"].as_str().unwrap()));
+            std::fs::write(&file, "// isolated extension fixture\n").unwrap();
+            extension["entrypoint"] = toml::Value::String(file.to_string_lossy().into_owned());
+        }
+        std::fs::write(root.path().join("options.toml"), toml::to_string(&metadata).unwrap()).unwrap();
+        root
+    });
+    METADATA.path().join("options.toml")
+}
+
+/// 与 [`config`] 同形，但显式指定关机倒计时秒数。
 pub fn config_with_countdown(
     script: &Path,
     working_directory: &Path,
@@ -338,6 +354,11 @@ pub fn config_with_countdown(
         working_directory: working_directory.to_path_buf(),
     };
     herdr_bot::Config {
+        paths_file: None,
+        roots: herdr_bot::paths::Roots::default(),
+        base_directory: repo_fixtures_dir().parent().unwrap().to_path_buf(),
+        static_directory: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static"),
+        data_directory: working_directory.join(".data"),
         listen_addr: "0.0.0.0:0".to_string(),
         operations: herdr_bot::Operations {
             start: binding(),
@@ -364,10 +385,7 @@ pub fn config_with_countdown(
         zones: herdr_bot::ZonesConfig::default(),
         // Task 存储文件同理；需要隔离存储的用例自己改写这个路径。
         tasks: herdr_bot::TasksConfig {
-            metadata_file: repo_fixtures_dir()
-                .parent()
-                .unwrap()
-                .join("meta-data/task-options.toml"),
+            metadata_file: test_metadata_file(),
             ..herdr_bot::TasksConfig::default()
         },
         // 目标 Herdr Workspace 必须显式；不需要创建 Chat 的用例取一个固定的合法名称。

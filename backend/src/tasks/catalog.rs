@@ -77,12 +77,19 @@ impl From<TaskType> for ExecutionRole {
 }
 
 impl Catalog {
-    pub fn load(path: &Path) -> Result<Self, TaskError> {
+    pub fn load(path: &Path, roots: &crate::paths::Roots) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
             let raw = crate::files::FileStore::default().read_to_string(path)
                 .map_err(|e| format!("读取失败：{e}"))?;
-            let catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
+            let mut catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
             catalog.validate()?;
+            let base = path.parent().unwrap_or_else(|| Path::new("."));
+            for extension in &mut catalog.extensions {
+                if !extension.entrypoint.as_os_str().is_empty() {
+                    extension.entrypoint = roots.resolve(&extension.entrypoint, base)
+                        .map_err(|error| format!("扩展 {} 路径：{error:#}", extension.id))?;
+                }
+            }
             Ok(catalog)
         })();
         result.map_err(|reason| {

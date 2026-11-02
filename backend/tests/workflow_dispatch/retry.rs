@@ -15,7 +15,7 @@ async fn failed_execution(s: &Scenario) -> (Value, Value) {
     (started, old)
 }
 async fn report(s: &Scenario, identity: &str, body: &str) -> Value {
-    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body}).to_string()).await;
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":body == "NEW-2: current final result"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone()
 }
@@ -48,7 +48,7 @@ async fn late_old_reports_remain_history_without_controlling_new_execution() {
     assert_eq!(query["reports"], json!([first, late, current, later, latest]));
     for index in [0, 1, 3] {
         assert_eq!(query["reports"][index]["executionId"], old["id"]);
-        assert_eq!(query["reports"][index]["source"], old["chat"]);
+        assert_eq!(query["reports"][index]["from"], old["chat"]);
     }
     for index in [2, 4] { assert_eq!(query["reports"][index]["executionId"], new["id"]); }
     assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), query["reports"].as_array().unwrap().to_owned());
@@ -233,10 +233,12 @@ async fn paused_retry_requires_explicit_resume_and_human_confirmation() {
 async fn terminal_run_rejects_retry_without_new_chat_or_record_changes() {
     let s = Scenario::new().await;
     let (started, _) = failed_execution(&s).await;
+    submit_report(&s, "retry-old", "Repaired result ready for manual handoff", true).await;
     action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"User supplied final result"}), 200).await;
     for (node, native) in [("B", "terminal-B"), ("C", "terminal-C")] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":native},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("retry-manager", &[node]).await;
+        submit_report(&s, native, "Final output verified", true).await;
         action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":node,"reason":"Verified final output"}), 200).await;
     }
     let finished = action(&s, "finish", json!({"sessionId":"retry-manager"}), 200).await;

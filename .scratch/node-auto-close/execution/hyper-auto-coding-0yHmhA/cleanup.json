@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "branch": "dev",
+  "attempts": [
+    {
+      "id": "1a8afbea-52f8-4094-97ba-5cd9e20b3686",
+      "at": "2026-10-30T20:23:39.650Z",
+      "phase": "integrated",
+      "ticket": "01-node-settings-editor.md",
+      "resources": [
+        {
+          "ticket": "01-node-settings-editor.md",
+          "branch": "hyper/node-auto-close/01-node-settings-editor-1a9cf6-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-lEOZOx"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "3efbc8ec-cfdd-4af1-9b7a-c58373f9bbc0",
+      "at": "2026-10-30T20:32:56.250Z",
+      "phase": "integrated",
+      "ticket": "02-close-current-execution-tab.md",
+      "resources": [
+        {
+          "ticket": "02-close-current-execution-tab.md",
+          "branch": "hyper/node-auto-close/02-close-current-execution-tab-0534d3-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ga9jSz"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "4e06e91c-3cdd-4431-a9f4-941d01b74539",
+      "at": "2026-10-30T20:43:10.928Z",
+      "phase": "integrated",
+      "ticket": "05-dispatch-retry-resume-and-restart.md",
+      "resources": [
+        {
+          "ticket": "05-dispatch-retry-resume-and-restart.md",
+          "branch": "hyper/node-auto-close/05-dispatch-retry-resume-and-res-0cf2bd-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-kAB6KS"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "62615322-25c3-4305-aac1-bcefbdf8991b",
+      "at": "2026-10-30T20:46:17.374Z",
+      "phase": "integrated",
+      "ticket": "03-completion-commit-and-deduplication.md",
+      "resources": [
+        {
+          "ticket": "03-completion-commit-and-deduplication.md",
+          "branch": "hyper/node-auto-close/03-completion-commit-and-dedupli-78ae5e-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-B6Wax5"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "e8c2f47a-9205-4be5-b9f0-d1ad7252d0f8",
+      "at": "2026-10-30T20:55:47.146Z",
+      "phase": "integrated",
+      "ticket": "04-close-failure-isolation-and-logs.md",
+      "resources": [
+        {
+          "ticket": "04-close-failure-isolation-and-logs.md",
+          "branch": "hyper/node-auto-close/04-close-failure-isolation-and-l-46d737-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-N7fQU9"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "c29dddfd-b7ef-4ac0-b7bc-24ae99f98c82",
+      "at": "2026-10-30T21:07:33.277Z",
+      "phase": "integrated",
+      "ticket": "06-real-herdr-close-effects.md",
+      "resources": [
+        {
+          "ticket": "06-real-herdr-close-effects.md",
+          "branch": "hyper/node-auto-close/06-real-herdr-close-effects-89e29c-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-jeXLtE"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "1c467ffa-5735-4a1c-96eb-004d621c75b4",
+      "at": "2026-10-30T21:07:46.776Z",
+      "phase": "finish-worktrees",
+      "resources": [
+        {
+          "ticket": "01-node-settings-editor.md",
+          "branch": "hyper/node-auto-close/01-node-settings-editor-1a9cf6-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-lEOZOx"
+        },
+        {
+          "ticket": "02-close-current-execution-tab.md",
+          "branch": "hyper/node-auto-close/02-close-current-execution-tab-0534d3-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ga9jSz"
+        },
+        {
+          "ticket": "03-completion-commit-and-deduplication.md",
+          "branch": "hyper/node-auto-close/03-completion-commit-and-dedupli-78ae5e-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-B6Wax5"
+        },
+        {
+          "ticket": "04-close-failure-isolation-and-logs.md",
+          "branch": "hyper/node-auto-close/04-close-failure-isolation-and-l-46d737-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-N7fQU9"
+        },
+        {
+          "ticket": "05-dispatch-retry-resume-and-restart.md",
+          "branch": "hyper/node-auto-close/05-dispatch-retry-resume-and-res-0cf2bd-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-kAB6KS"
+        },
+        {
+          "ticket": "06-real-herdr-close-effects.md",
+          "branch": "hyper/node-auto-close/06-real-herdr-close-effects-89e29c-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-jeXLtE"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "ee1bfd5a-76ea-4c46-a068-87ce5796db90",
+      "at": "2026-10-30T21:07:46.916Z",
+      "phase": "finish-branches",
+      "resources": [
+        {
+          "ticket": "01-node-settings-editor.md",
+          "branch": "hyper/node-auto-close/01-node-settings-editor-1a9cf6-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-lEOZOx"
+        },
+        {
+          "ticket": "02-close-current-execution-tab.md",
+          "branch": "hyper/node-auto-close/02-close-current-execution-tab-0534d3-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-ga9jSz"
+        },
+        {
+          "ticket": "03-completion-commit-and-deduplication.md",
+          "branch": "hyper/node-auto-close/03-completion-commit-and-dedupli-78ae5e-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-B6Wax5"
+        },
+        {
+          "ticket": "04-close-failure-isolation-and-logs.md",
+          "branch": "hyper/node-auto-close/04-close-failure-isolation-and-l-46d737-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-N7fQU9"
+        },
+        {
+          "ticket": "05-dispatch-retry-resume-and-restart.md",
+          "branch": "hyper/node-auto-close/05-dispatch-retry-resume-and-res-0cf2bd-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-kAB6KS"
+        },
+        {
+          "ticket": "06-real-herdr-close-effects.md",
+          "branch": "hyper/node-auto-close/06-real-herdr-close-effects-89e29c-6987a96c7921",
+          "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-jeXLtE"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "warnings": [],
+  "retainedBranches": [],
+  "retainedWorktrees": [],
+  "residualsConfirmed": true
+}

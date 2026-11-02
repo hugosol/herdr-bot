@@ -1,0 +1,158 @@
+{
+  "feature": "workflow-file-handoff",
+  "ticket": "01-map-named-inputs.md",
+  "run_id": "d00722b8-ed07-4c1e-bc01-b05a1848eab4",
+  "parent_session_id": "01a19738-15f6-70bd-a5da-af14a18e03a1",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-01T13-06-37-686Z_01a19738-15f6-70bd-a5da-af14a18e03a1.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "059c7bf6-48b5-415b-b9d6-e4c00e6229f5",
+  "started_at": "2026-11-01T13:12:33.634Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-01T13:32:15.491Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "01-map-named-inputsmd-059c7bf6-48b5-415b-b9d6-e4",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\implementation\\01-map-named-inputs.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/workflow-file-handoff/01-map-named-inputs-3496b7-9497b79afe0a\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-xyfvcs\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\implementation\\01-map-named-inputs.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/workflow-file-handoff/01-map-named-inputs-3496b7-9497b79afe0a\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-xyfvcs\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement named inputs mapping ticket",
+    "lastIntent": "Committing named input implementation",
+    "exitCode": 0,
+    "output": "{\n  \"ticket\": \"01-map-named-inputs\",\n  \"result\": \"implemented-and-verified\",\n  \"commit\": \"e78e686\",\n  \"handoff\": \"本票实现已提交；worktree 可交由独立集成代理接管，未操作 dev 或其他票据／工作流报告。\",\n  \"delivered\": [\n    \"Map node 可选 inputs：按逻辑名声明 {source:\\\"file\\\",path} 或 {source:\\\"node\\\",node_id,output}；严格拒绝来源混用、缺字段和错类型。\",\n    \"直接输入仅校验绝对路径表达，不检查文件存在、内容、授权或 zone 范围；未知来源 node 拒绝保存，失败保留原定义。\",\n    \"输入引用不改变 blocked_by、不隐式启动；来源 node 被其他输入引用时拒绝删除，避免制造悬空定义。\",\n    \"实际 dispatch 初始化保留原业务 input，并分别提供本次 userInput、直接文件地址及 manager-zone/.workflow/<Run ID> 中间资料位置；不复制背景、正文或上游聊天，不创建输出或每 node 目录。\",\n    \"同步更新 scheduler/workflow 消费方、manager 初始化预期和三份长期协议文档；沿用现有 JSON 编辑与显式派发动作。\"\n  ],\n  \"criteria_evidence\": [\n    {\n      \"criteria\": \"P1/P2/P3：两类来源往返、跨卷／zone 外地址、独立依赖、保存读取不启动\",\n      \"tests\": [\n        \"named_inputs::named_inputs_round_trip_without_dependencies_or_implicit_launch\"\n      ]\n    },\n    {\n      \"criteria\": \"P1/P2/P3：非法来源、字段错类型、相对地址、未知 node 拒绝且原定义不变\",\n      \"tests\": [\n        \"named_inputs::invalid_named_inputs_preserve_original_map\"\n      ]\n    },\n    {\n      \"criteria\": \"P1：独立存储故障不替换原定义\",\n      \"tests\": [\n        \"named_inputs::named_input_storage_failure_keeps_original_definition\"\n      ],\n      \"evidence\": \"Windows 只读目标阻止真实发布，接口返回 node-write-failed；解除故障后 HTTP 读取仍是原定义。\"\n    },\n    {\n      \"criteria\": \"P1：无文件输入 Map 可保存并显式派发，无强制文件生成\",\n      \"tests\": [\n        \"named_inputs::legacy_node_without_file_inputs_saves_and_dispatches\"\n      ]\n    },\n    {\n      \"criteria\": \"P3：编辑消费者维持来源引用有效\",\n      \"tests\": [\n        \"named_inputs::deleting_a_named_input_source_is_rejected_without_cascading\"\n      ]\n    },\n    {\n      \"criteria\": \"P4/P24：实际宿主初始化包含独立背景／业务 input／地址；排除敏感正文和聊天；不同 Run 的 manager-zone 资料位置可区分且不依赖 node zone\",\n      \"tests\": [\n        \"named_inputs::dispatch_receives_background_direct_addresses_and_run_scoped_material_location\",\n        \"manager_trigger_and_status_follow_committed_identity\"\n      ],\n      \"evidence\": \"隔离真实 HTTP 保存、创建两个 Run、显式派发；外部 Herdr 记录型进程捕获实际 agent_prompt，并记录请求、结果及初始化文本。\"\n    }\n  ],\n  \"verification\": [\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start -- --test-threads 2\",\n      \"result\": \"105 passed，2 suites。\"\n    },\n    {\n      \"command\": \"node scripts/test-backend.mjs --binary-jobs 2 --test-threads 2\",\n      \"result\": \"完整后端通过：构建、全部发现的测试二进制及 doctest 成功；0 未派发。\",\n      \"evidence\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\herdr-backend-tests-nSSwT3\\\\summary.json\"\n    },\n    {\n      \"command\": \"npm --prefix frontend run build\",\n      \"result\": \"通过 TypeScript 与 Vite 构建；首次因未安装依赖失败，npm ci 后通过。\"\n    },\n    {\n      \"command\": \"npm --prefix frontend test -- tests/mapGraph.test.tsx tests/runDetails.test.tsx tests/runLaunchForm.test.tsx\",\n      \"result\": \"3 files，6 tests passed；网络护栏通过。\"\n    },\n    {\n      \"command\": \"node scripts/check-workflow-docs.mjs\",\n      \"result\": \"17 documents，158 local links，0 errors。\"\n    }\n  ],\n  \"tdd_evidence\": \"先观察 inputs 未知字段、未知来源 node 被错误接受、缺少 Run 背景、来源节点可错误删除等行为性红灯，再实现并转绿。已有存储故障保护与无输入行为直接验证，没有制造失败。\",\n  \"earlier_failures\": \"早期默认线程定向运行有两个既有 5 秒夹具等待失败；限制测试线程后的定向与完整回归均通过。首次完整回归还发现 manager 初始化字面预期缺少新资料位置，已同步修正并完整复验通过。\",\n  \"scope_boundaries\": [\n    \"具名上游输出的运行解析属于 03；本票不猜测输出地址。\",\n    \"真实 Chat 中的初始化与角色注入由 07 验收；本票证据是生产后端提交给受控外部宿主的实际输入，不冒充真实模型运行。\",\n    \"票据状态按项目规则须实现、测试且合并后才可 closed；本票未改动票据状态。\"\n  ],\n  \"unresolved_ticket_items\": []\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1181741,
+    "tokens": 169327,
+    "requests": 81,
+    "contextTokens": 138654,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 152128,
+      "output": 17199,
+      "cacheRead": 6396032,
+      "cacheWrite": 0,
+      "totalTokens": 6565359,
+      "reasoningTokens": 3031,
+      "cost": {
+        "input": 0.304256,
+        "output": 0.17199,
+        "cacheRead": 0.6396031999999998,
+        "cacheWrite": 0,
+        "total": 1.1158492
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-01T13-06-37-686Z_01a19738-15f6-70bd-a5da-af14a18e03a1\\01-map-named-inputsmd-059c7bf6-48b5-415b-b9d6-e4.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "ticket": "01-map-named-inputs",
+            "result": "implemented-and-verified",
+            "commit": "e78e686",
+            "handoff": "本票实现已提交；worktree 可交由独立集成代理接管，未操作 dev 或其他票据／工作流报告。",
+            "delivered": [
+              "Map node 可选 inputs：按逻辑名声明 {source:\"file\",path} 或 {source:\"node\",node_id,output}；严格拒绝来源混用、缺字段和错类型。",
+              "直接输入仅校验绝对路径表达，不检查文件存在、内容、授权或 zone 范围；未知来源 node 拒绝保存，失败保留原定义。",
+              "输入引用不改变 blocked_by、不隐式启动；来源 node 被其他输入引用时拒绝删除，避免制造悬空定义。",
+              "实际 dispatch 初始化保留原业务 input，并分别提供本次 userInput、直接文件地址及 manager-zone/.workflow/<Run ID> 中间资料位置；不复制背景、正文或上游聊天，不创建输出或每 node 目录。",
+              "同步更新 scheduler/workflow 消费方、manager 初始化预期和三份长期协议文档；沿用现有 JSON 编辑与显式派发动作。"
+            ],
+            "criteria_evidence": [
+              {
+                "criteria": "P1/P2/P3：两类来源往返、跨卷／zone 外地址、独立依赖、保存读取不启动",
+                "tests": [
+                  "named_inputs::named_inputs_round_trip_without_dependencies_or_implicit_launch"
+                ]
+              },
+              {
+                "criteria": "P1/P2/P3：非法来源、字段错类型、相对地址、未知 node 拒绝且原定义不变",
+                "tests": [
+                  "named_inputs::invalid_named_inputs_preserve_original_map"
+                ]
+              },
+              {
+                "criteria": "P1：独立存储故障不替换原定义",
+                "tests": [
+                  "named_inputs::named_input_storage_failure_keeps_original_definition"
+                ],
+                "evidence": "Windows 只读目标阻止真实发布，接口返回 node-write-failed；解除故障后 HTTP 读取仍是原定义。"
+              },
+              {
+                "criteria": "P1：无文件输入 Map 可保存并显式派发，无强制文件生成",
+                "tests": [
+                  "named_inputs::legacy_node_without_file_inputs_saves_and_dispatches"
+                ]
+              },
+              {
+                "criteria": "P3：编辑消费者维持来源引用有效",
+                "tests": [
+                  "named_inputs::deleting_a_named_input_source_is_rejected_without_cascading"
+                ]
+              },
+              {
+                "criteria": "P4/P24：实际宿主初始化包含独立背景／业务 input／地址；排除敏感正文和聊天；不同 Run 的 manager-zone 资料位置可区分且不依赖 node zone",
+                "tests": [
+                  "named_inputs::dispatch_receives_background_direct_addresses_and_run_scoped_material_location",
+                  "manager_trigger_and_status_follow_committed_identity"
+                ],
+                "evidence": "隔离真实 HTTP 保存、创建两个 Run、显式派发；外部 Herdr 记录型进程捕获实际 agent_prompt，并记录请求、结果及初始化文本。"
+              }
+            ],
+            "verification": [
+              {
+                "command": "cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start -- --test-threads 2",
+                "result": "105 passed，2 suites。"
+              },
+              {
+                "command": "node scripts/test-backend.mjs --binary-jobs 2 --test-threads 2",
+                "result": "完整后端通过：构建、全部发现的测试二进制及 doctest 成功；0 未派发。",
+                "evidence": "C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-backend-tests-nSSwT3\\summary.json"
+              },
+              {
+                "command": "npm --prefix frontend run build",
+                "result": "通过 TypeScript 与 Vite 构建；首次因未安装依赖失败，npm ci 后通过。"
+              },
+              {
+                "command": "npm --prefix frontend test -- tests/mapGraph.test.tsx tests/runDetails.test.tsx tests/runLaunchForm.test.tsx",
+                "result": "3 files，6 tests passed；网络护栏通过。"
+              },
+              {
+                "command": "node scripts/check-workflow-docs.mjs",
+                "result": "17 documents，158 local links，0 errors。"
+              }
+            ],
+            "tdd_evidence": "先观察 inputs 未知字段、未知来源 node 被错误接受、缺少 Run 背景、来源节点可错误删除等行为性红灯，再实现并转绿。已有存储故障保护与无输入行为直接验证，没有制造失败。",
+            "earlier_failures": "早期默认线程定向运行有两个既有 5 秒夹具等待失败；限制测试线程后的定向与完整回归均通过。首次完整回归还发现 manager 初始化字面预期缺少新资料位置，已同步修正并完整复验通过。",
+            "scope_boundaries": [
+              "具名上游输出的运行解析属于 03；本票不猜测输出地址。",
+              "真实 Chat 中的初始化与角色注入由 07 验收；本票证据是生产后端提交给受控外部宿主的实际输入，不冒充真实模型运行。",
+              "票据状态按项目规则须实现、测试且合并后才可 closed；本票未改动票据状态。"
+            ],
+            "unresolved_ticket_items": []
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 85,
+      "charCount": 3346
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "01-map-named-inputsmd-059c7bf6-48b5-415b-b9d6-e4",
+  "session_id": "01a1973d-8484-7153-869f-31e2df6264e0",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-01T13-06-37-686Z_01a19738-15f6-70bd-a5da-af14a18e03a1\\01-map-named-inputsmd-059c7bf6-48b5-415b-b9d6-e4.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-xyfvcs",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\workflow-file-handoff\\retro\\01-map-named-inputs.md\\d00722b8-ed07-4c1e-bc01-b05a1848eab4.md",
+  "retro_finished_at": "2026-11-01T13:33:34.799Z"
+}

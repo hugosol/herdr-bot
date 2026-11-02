@@ -27,8 +27,8 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }
   const reports = [
-    { id: 'report-new', type: 'report', at: 5000, runId: run.id, nodeId: 'A', executionId: 'exec-new', source: current, target: manager, body: 'CURRENT APPLICABLE BODY' },
-    { id: 'report-old', type: 'report', at: 2000, runId: run.id, nodeId: 'A', executionId: 'exec-old', source: old, target: manager, body: 'OLD BODY NOT APPLICABLE' },
+    { id: 'report-new', type: 'report', at: 5000, runId: run.id, nodeId: 'A', executionId: 'exec-new', from: current, to: manager, body: 'CURRENT APPLICABLE BODY' },
+    { id: 'report-old', type: 'report', at: 2000, runId: run.id, nodeId: 'A', executionId: 'exec-old', from: old, to: manager, body: 'OLD BODY NOT APPLICABLE' },
   ]
   fs.writeFileSync(path.join(directory, 'run.json'), JSON.stringify(run))
   fs.writeFileSync(path.join(directory, 'messages.jsonl'), reports.map(report => JSON.stringify(report)).join('\n') + '\n')
@@ -161,7 +161,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   fs.mkdirSync(latest)
   const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat', 'omp-codebase-tools']
   for (const entry of extensionIds) fs.writeFileSync(path.join(latest, `${entry}.ts`), "throw new Error('controlled fixture never loads extensions')\n")
-  const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll(path.join(root, 'extensions'), latest)
+  const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll('${roots.browser_extensions}', latest)
   fs.writeFileSync(host.metadataFile, metadata)
   const directory = path.join(host.cwd, '.data/workflow-runs', id)
   const files = ['run.json', 'history.jsonl', 'messages.jsonl']

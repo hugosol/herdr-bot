@@ -11,16 +11,25 @@ pub struct Report {
     pub run_id: String,
     pub node_id: String,
     pub execution_id: String,
-    pub source: ChatReference,
-    pub target: ChatReference,
+    pub from: ChatReference,
+    pub to: ChatReference,
     pub body: String,
+    // Absence is retained for historical reports, never interpreted as true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub can_complete: Option<bool>,
+    #[serde(default, deserialize_with = "crate::scheduler::object_array")]
+    pub outputs: Vec<crate::scheduler::ResolvedFile>,
+}
+
+pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, String> {
+    let paths = Runs::paths(state, &run.id);
+    state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
+        access.read_jsonl::<Report>(&paths[2])
+    })).await.map_err(|e| e.to_string())?
 }
 
 pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
-    let paths = Runs::paths(state, &run.id);
-    let reports = state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-        access.read_jsonl::<Report>(&paths[2])
-    })).await.map_err(|e| e.to_string())??;
+    let reports = read(state, run).await?;
     let mut pending = BTreeMap::new();
     for report in &reports {
         if run.nodes.get(&report.node_id).is_some_and(|node| {
@@ -40,6 +49,9 @@ pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) 
 struct ReportRequest {
     session_id: String,
     body: String,
+    can_complete: bool,
+    #[serde(default, deserialize_with = "crate::scheduler::object_array")]
+    outputs: Vec<crate::scheduler::ResolvedFile>,
 }
 
 // Retained execution identities may append history, never control current work.
@@ -87,10 +99,26 @@ pub async fn node_report(
         Ok(input) => input,
         Err(response) => return response,
     };
+    let mut ids = std::collections::BTreeSet::new();
+    for file in &input.outputs {
+        if file.id.trim().is_empty() || !ids.insert(&file.id) {
+            return error(StatusCode::BAD_REQUEST, "invalid-output-id", "输出 ID 必须非空且不得重复。");
+        }
+        if file.path.contains('\0') || !std::path::Path::new(&file.path).is_absolute() {
+            return error(StatusCode::BAD_REQUEST, "invalid-output-path", &format!("输出 {} 必须使用本机绝对文件地址。", file.id));
+        }
+    }
     let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
         Ok(binding) => binding,
         Err(response) => return response,
     };
+    let execution = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id).unwrap();
+    let Some(output_rule) = execution.output_rule.as_ref() else {
+        return error(StatusCode::BAD_REQUEST, "output-rule-unknown", "历史执行没有已知的冻结 outputRule，不能提交新报告。");
+    };
+    if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
+        return error(StatusCode::BAD_REQUEST, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。");
+    }
     // Once accepted, persist and attempt notification exactly once even if the
     // HTTP caller disconnects. No file/business lock spans host delivery.
     let work = tokio::spawn(async move {
@@ -105,7 +133,8 @@ pub async fn node_report(
                 id: crate::chats::new_creation_id(), r#type: "report".into(),
                 at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
                 run_id: run.id.clone(), node_id, execution_id: execution.id.clone(),
-                source: source.clone(), target: target.clone(), body: input.body,
+                from: source.clone(), to: target.clone(), body: input.body,
+                can_complete: Some(input.can_complete), outputs: input.outputs,
             };
             let paths = Runs::paths(&state, &run.id);
             let owned = state.clone();
@@ -117,7 +146,7 @@ pub async fn node_report(
             })).await.map_err(|e| e.to_string())??
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
-        let delivery = state.herdr.prompt(&report.target.agent_name, &text).await;
+        let delivery = state.herdr.prompt(&report.to.agent_name, &text).await;
         let (status, reason, diagnostic_reason) = match delivery {
             Ok(()) => ("submitted", "Herdr 已确认输入提交；不代表已阅读。".to_owned(), "input-submission-confirmed"),
             // Host error details may echo input; only the typed failure category
@@ -126,7 +155,7 @@ pub async fn node_report(
         };
         // Fallible stderr writes, not eprintln!: a broken diagnostic sink must
         // not panic, roll back the report or trigger another delivery attempt.
-        let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.target,"result":status,"reason":diagnostic_reason});
+        let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to,"result":status,"reason":diagnostic_reason});
         let diagnostic_status = if writeln!(std::io::stderr().lock(), "{diagnostic}").is_ok() { "written" } else { "failed" };
         Ok::<_, String>(serde_json::json!({"saved":true,"report":report,"notification":{"status":status,"reason":reason},"diagnostic":{"status":diagnostic_status},"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"}))
     }).await;

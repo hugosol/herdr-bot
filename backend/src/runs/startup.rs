@@ -1,6 +1,23 @@
 //! Run-only Chat preparation, startup protocol and failure finalization.
 use super::*;
 
+async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::InputRule]) -> Result<Vec<crate::scheduler::ResolvedFile>, String> {
+    let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
+    rules.iter().map(|rule| {
+        let (id, path) = match rule {
+            crate::scheduler::InputRule::File { id, path } => (id, path.clone()),
+            crate::scheduler::InputRule::Node { id, node_id, output_id } => {
+                let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
+                let path = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
+                    .find_map(|report| report.outputs.iter().find(|file| file.id == *output_id)).map(|file| file.path.clone())
+                    .ok_or_else(|| format!("输入 {id} 缺少上游输出：{node_id}/{output_id}"))?;
+                (id, path)
+            }
+        };
+        Ok(crate::scheduler::ResolvedFile { id: id.clone(), path })
+    }).collect()
+}
+
 pub(super) async fn manager_interrupted(
     state: &AppState,
     id: &str,
@@ -86,7 +103,9 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
     let result: Result<(), String> = async {
         let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), report_policy: target.report_policy, chat: None });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None });
+        let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
+        candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         protocol(state, &mut candidate, &target.task, &preset,
@@ -99,7 +118,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), chat: None,
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, chat: None,
             });
         }
         node.status = "failed".into();
@@ -226,22 +245,34 @@ async fn protocol(
         identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
     *stage = "submit";
     let paths = Runs::paths(state, &run.id);
+    let materials = std::path::Path::new(&run.zone).join(".workflow").join(&run.id);
     let input = match &role {
         Role::Manager => {
             let mut input = format!(
                 "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}",
                 run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
                 paths[0].display(), paths[1].display(), paths[2].display());
+            use std::fmt::Write;
+            write!(input, "\n中间资料位置: {}", materials.display()).unwrap();
             if !run.user_input.is_empty() {
                 input.push_str("\n\n");
                 input.push_str(&run.user_input);
             }
             input
         }
-        Role::Node { id, target, .. } => format!(
-            "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
-            target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
-            paths[2].display(), target.report_policy.control_section(), target.input),
+        Role::Node { id, target, .. } => {
+            use std::fmt::Write;
+            let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
+            let mut input = format!(
+                "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n中间资料位置: {}\n\n[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n",
+                target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
+                paths[2].display(), materials.display(), run.user_input);
+            for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
+            writeln!(input, "[/Named file inputs]\n\n[Output rules]\n{}\n[/Output rules]", serde_json::to_string(&execution.output_rule).map_err(|e| e.to_string())?).unwrap();
+            write!(input, "\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
+                target.report_policy.control_section(), target.input).unwrap();
+            input
+        }
     };
     let text = crate::chats::compose_initial_input(task, preset.trigger.native_skill.as_deref(), &input);
     effects.input_attempted = true;

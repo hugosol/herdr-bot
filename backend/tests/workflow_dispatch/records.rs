@@ -156,7 +156,7 @@ async fn independent_records_read_current_facts_without_replaying_history() {
         "B":{"status":"completed","execution":null,"failure":null,"completion":{"id":"completion-fixture","at":120,"actor":manager,"reason":"User supplied verified results/B.md; manual limitation retained"},"previousExecutions":[]}
     }});
     let history = json!({"id":"history-independent","at":110,"actor":manager,"action":"resume","before":"paused","after":"running"});
-    let report = json!({"id":"report-independent","type":"report","at":130,"runId":"independent-records","nodeId":"A","executionId":"execution-old","source":old_chat,"target":manager,"body":"OLD-REPORT: partial results/old.md"});
+    let report = json!({"id":"report-independent","type":"report","at":130,"runId":"independent-records","nodeId":"A","executionId":"execution-old","from":old_chat,"to":manager,"body":"OLD-REPORT: partial results/old.md","outputs":[]});
     fs::write(root.join("run.json"), current.to_string()).unwrap();
     fs::write(root.join("history.jsonl"), format!("{history}\n")).unwrap();
     fs::write(root.join("messages.jsonl"), format!("{report}\n")).unwrap();
@@ -167,6 +167,10 @@ async fn independent_records_read_current_facts_without_replaying_history() {
     assert_eq!(detail["managed"], false);
     assert_eq!(detail["run"]["status"], "paused");
     assert_eq!(detail["run"]["nodes"]["A"]["execution"]["id"], "execution-current");
+    for field in ["inputRule", "outputRule", "inputs"] {
+        assert_eq!(detail["run"]["nodes"]["A"]["execution"][field], Value::Null);
+        assert_eq!(detail["run"]["nodes"]["A"]["previousExecutions"][0]["execution"][field], Value::Null);
+    }
     assert_eq!(detail["run"]["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "OLD artifact invalid");
     assert_eq!(detail["reports"], json!([report]));
     assert_eq!(detail["pendingReports"], json!({}));
@@ -198,7 +202,7 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     assert_ne!(retried["snapshot"]["nodes"]["A"]["execution"]["id"], old["id"]);
     let mut reports = Vec::new();
     for (session, text) in [("records-new-A", "NEW results/A.md; verified"), ("records-old-A", "OLD late cleanup; not new handoff")] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":session,"body":text}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":session,"body":text,"canComplete":session == "records-new-A"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["saved"], true);
@@ -251,6 +255,7 @@ async fn current_write_failure_preserves_queries_disk_and_success_history() {
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("run.json");
     let calls = s.herdr.calls();
@@ -290,6 +295,7 @@ async fn history_failure_reports_committed_completion_and_allows_next_action() {
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("history.jsonl");
     let before = fs::read(&path).unwrap();

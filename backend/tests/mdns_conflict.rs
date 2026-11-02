@@ -91,7 +91,9 @@ impl Panel {
                  [operations.start]\nscript = 'C:\\missing\\start.bat'\nworking_directory = 'C:\\missing'\n\n\
                  [operations.stop]\nscript = 'C:\\missing\\stop.bat'\nworking_directory = 'C:\\missing'\n\n\
                  [mdns]\naddress = \"{address}\"\n\n\
-                 [herdr]\nworkspace_name = 'bot-playground'\n"
+                 [tasks]\nmetadata_file = '{metadata}'\n\n\
+                 [herdr]\nworkspace_name = 'bot-playground'\n",
+                metadata = common::test_metadata_file().display(),
             ),
         )
         .expect("写临时配置");

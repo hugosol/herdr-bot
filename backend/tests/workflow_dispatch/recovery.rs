@@ -137,9 +137,9 @@ async fn created_dispatch_reconciliation_observes_original_host_identity_without
 }
 
 // P39.01/P42.01/P68.06: execution failure cannot be rewritten through dispatch
-// reconciliation. Explicit manual handoff alone releases dependencies; no fake
-// report or downstream material delivery may appear. Existing Chat can report
-// a result address afterwards. Contract literals below distinguish those acts.
+// reconciliation. P19 additionally requires a current ready declaration before
+// manual handoff; the manager cannot fabricate one or use force to bypass it.
+// A later supplemental false report must not reopen the accepted work.
 #[tokio::test]
 async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports() {
     let s = Scenario::new().await;
@@ -149,6 +149,7 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":identity},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-manual", &[node]).await;
     }
+    submit_report(&s, "manual-B", "B artifact ready", true).await;
     action(&s, "complete", json!({"sessionId":"manager-manual","nodeId":"B","reason":"B artifact ready"}), 200).await;
     let failed = action(&s, "fail", json!({"sessionId":"manager-manual","nodeId":"A","reason":"A execution interrupted"}), 200).await;
     assert_eq!(failed["ready"], json!([]));
@@ -161,15 +162,24 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
     }
     assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
     assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
+    let denied = action(&s, "complete", json!({"sessionId":"manager-manual","nodeId":"A","reason":"Manager alone claims repaired results"}), 409).await;
+    assert_eq!(denied["code"], "report-not-completable");
+    let forced = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-manual","nodeId":"A","reason":"Bypass","force":true}).to_string()).await;
+    assert_eq!(forced.status, 400);
+    assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
+    assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), history);
+    assert_eq!(s.herdr.calls(), calls);
+    let declaration = submit_report(&s, "manual-A", "Repaired result at results/A.md; manual review limitation", true).await;
+    let calls = s.herdr.calls();
     let complete = action(&s, "complete", json!({"sessionId":"manager-manual","nodeId":"A","reason":"User supplied repaired artifact at results/A.md; limitation: manual review only"}), 200).await;
     assert_eq!(complete["snapshot"]["nodes"]["A"]["status"], "completed");
     assert_eq!(complete["snapshot"]["nodes"]["A"]["execution"], failed["snapshot"]["nodes"]["A"]["execution"]);
     assert_eq!(complete["snapshot"]["nodes"]["A"]["completion"]["reason"], "User supplied repaired artifact at results/A.md; limitation: manual review only");
     assert_eq!(complete["ready"], json!(["C"]));
     assert_eq!(complete["snapshot"]["nodes"]["C"]["status"], "pending");
-    assert_eq!(complete["reports"], json!([]));
+    assert_eq!(complete["reports"].as_array().unwrap().last(), Some(&declaration));
     assert_eq!(complete["pendingReports"], json!({}));
-    assert!(fs::read(root.join("messages.jsonl")).unwrap().is_empty());
+    assert_eq!(common::read_json_lines(&root.join("messages.jsonl")).len(), 2);
     let events = common::read_json_lines(&root.join("history.jsonl"));
     assert_eq!(events.len(), 5);
     assert_eq!(events[3]["action"], "fail");
@@ -178,13 +188,14 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
     assert_eq!(events[4]["after"], "completed");
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(s.herdr.calls(), calls);
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"manual-A","body":"Result: results/A.md. Limitation: manual review only."}).to_string()).await;
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"manual-A","body":"Result: results/A.md. Limitation: manual review only.","canComplete":false}).to_string()).await;
     assert_eq!(report.status, 200, "{}", report.body);
     let messages = common::read_json_lines(&root.join("messages.jsonl"));
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["body"], "Result: results/A.md. Limitation: manual review only.");
-    assert_eq!(messages[0]["source"]["sessionId"], "manual-A");
-    assert_eq!(messages[0]["target"]["sessionId"], "manager-manual");
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[2]["body"], "Result: results/A.md. Limitation: manual review only.");
+    assert_eq!(messages[2]["canComplete"], false);
+    assert_eq!(messages[2]["from"]["sessionId"], "manual-A");
+    assert_eq!(messages[2]["to"]["sessionId"], "manager-manual");
     let after = s.herdr.calls();
     assert_eq!(after.len(), calls.len() + 1);
     assert_eq!(after.last().unwrap()["kind"], "agent_prompt");
@@ -203,6 +214,7 @@ async fn terminal_run_rejects_failure_reconciliation_recovery_and_manual_handoff
     for node in ["A", "B", "C"] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("terminal-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-terminal-repair", &[node]).await;
+        submit_report(&s, &format!("terminal-{node}"), "Verified handoff ready for terminal regression", true).await;
         action(&s, "complete", json!({"sessionId":"manager-terminal-repair","nodeId":node,"reason":"Verified handoff"}), 200).await;
     }
     let finished = action(&s, "finish", json!({"sessionId":"manager-terminal-repair"}), 200).await;

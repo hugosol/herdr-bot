@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { test, expect } from '@playwright/test'
-import { startServer, type E2EServer } from './support'
+import { configureScheduler, startServer, type E2EServer } from './support'
 import { expectNoHorizontalOverflow } from './ui'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -50,7 +50,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
     expect(response.status()).toBe(200)
     expect((await response.json()).results[0].status).toBe('running')
   }
-  const reported = await post('/api/workflow/node/report', { sessionId: 'restart-node-A', body: '重启前报告：结果地址与限制仍需管理者核实' })
+  const reported = await post('/api/workflow/node/report', { sessionId: 'restart-node-A', body: '重启前报告：结果地址与限制仍需管理者核实', canComplete: false })
   expect(reported.status()).toBe(200)
   const failed = await post('/api/workflow/manager/fail', { sessionId: 'browser-manager-04', nodeId: 'B', reason: '已核实的节点执行故障' })
   expect(failed.status()).toBe(200)
@@ -69,7 +69,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
   expect(restarted).toEqual({ ...before, managed: false })
   await page.goto(`${server.baseURL}/#workflow/${id}`)
   await page.locator('.workflow-run-background > summary').click()
-  await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '管理者 Chat', exact: true }).getByText('browser-manager-04', { exact: true })).toBeVisible()
   const navigation = page.getByRole('navigation', { name: '已保存节点状态' })
   await expect(navigation.locator('[data-node-id="A"]')).toHaveAttribute('data-node-state', 'running')
   await expect(navigation.locator('[data-node-id="B"]')).toHaveAttribute('data-node-state', 'failed')
@@ -89,7 +89,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
     expect(body.code, action).toBe('manager-unassociated')
   }
   for (const sessionId of ['restart-node-A', 'restart-node-B']) {
-    const response = await post('/api/workflow/node/report', { sessionId, body: '不能在重启后追加' })
+    const response = await post('/api/workflow/node/report', { sessionId, body: '不能在重启后追加', canComplete: false })
     const body = await response.json()
     outcomes.push({ action: 'report', sessionId, status: response.status(), body })
     expect(response.status()).toBe(403)
@@ -207,7 +207,7 @@ test('P45 P54 startup failure and real partial effects survive browser refresh @
   await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
 
   await page.goto(runURLBeforeReload4)
-  await expect(page.getByRole('heading', { name: '管理者启动失败 · submit' })).toBeVisible()
+  await expect(page.getByRole('alert', { name: '管理者启动错误' })).toContainText('submit')
   await page.waitForTimeout(750)
   expect(server.herdrCalls()).toEqual(calls)
   expect(server.diagnostics()).toContain(`run=${detail.id}`)
@@ -219,7 +219,7 @@ test('P45 P54 startup failure and real partial effects survive browser refresh @
 test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-contract', async ({ page }, info) => {
   const { server, zone, ids } = await fixture()
   const runRoot = path.join(path.dirname(server.configPath), 'nondefault-run-records')
-  fs.appendFileSync(server.configPath, `\n[scheduler]\nrun_directory = '${runRoot}'\n`)
+  configureScheduler(server, { run_directory: runRoot })
   await server.restart()
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
@@ -240,7 +240,7 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   await expect(page.getByTestId('run-user-input')).toHaveText(requirements)
   await expect(page.getByRole('textbox', { name: '本次要求' })).toHaveCount(0)
   await page.locator('.workflow-run-background > summary').click()
-  await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '管理者 Chat', exact: true }).getByText('browser-manager-04', { exact: true })).toBeVisible()
   const count = server.herdrCalls().filter(call => call.kind === 'agent_start').length
   expect(count).toBe(1)
   const runURLBeforeReload5 = page.url()

@@ -23,9 +23,23 @@ cargo build --release --manifest-path backend\Cargo.toml
 backend\target\release\herdr-bot.exe --config herdr-bot.toml
 ```
 
-运行前检查 [`herdr-bot.toml`](herdr-bot.toml) 中的本机路径、监听地址及 Herdr Workspace，
-以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 中的模型和扩展入口。
-配置相对路径以进程工作目录为基准。请从控制台启动，以便脚本继承可用的控制台。
+首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。样例保留旧机器已知路径，不代表新机器上存在这些目录。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、Herdr Workspace，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
+
+### 本机根目录与解析规则
+
+`herdr-bot.toml` 顶层 `paths_file = "paths.local.toml"` 指定本机根文件；该位置相对服务配置所在目录。根文件的 `[roots]` 可以使用独立绝对目录，也可以引用其他根，例如 `data = '${roots.project}/.data'`。外部项目不必在同一磁盘或父目录，改动一个根即可改变所有引用位置。
+
+- `${roots.name}` 只允许出现在路径开头，后接可选的 `/相对位置`，不是通用字符串模板。不展开环境变量、Task 提示词、Bot 指南或 Map 内容。
+- 普通相对路径以**声明它的配置文件所在目录**为基准：根相对根文件，服务路径相对服务 TOML，扩展 `entrypoint` 相对选项 TOML。切换启动 cwd 不改变这些位置。
+- 根文件在启动时解析为快照。修改根或服务路径后重启；选项 TOML 仍按原规则动态读取，但使用本次启动的根快照。交给 agent 的扩展路径已经绝对化，不随 zone cwd 改变。
+- 未定义根、循环引用、空路径、非法表达式或指定的根文件缺失会明确失败。只使用普通路径、不声明 `paths_file` 的隔离配置无需本机根文件。
+- `herdr` 等裸程序名继续通过 `PATH` 查找；显式程序路径相对配置文件解析。Git、Windows 系统工具和开发语言服务的安装与 `PATH` 设置仍由机器环境负责。当前 `.omp` 中的 MCP 命令也使用 `PATH` 中的 `codebase-memory-mcp`，不内嵌旧机器路径。
+- 顶层 `static_directory` 指定页面产物，默认 `backend/static`；`scheduler.run_instructions` 默认 `docs/workflow-runtime.md`，均相对服务配置目录，不再使用编译时源码目录。交付配置通过 `roots.project` 显式定位两者。
+- 顶层 `data_directory` 指定内部迁移标记目录，默认 `.data`。它不隐式覆盖其他持久化字段；交付配置将历史、zone 登记、Run 根及标记目录共同引用 `roots.data`。
+
+可只读查看根解析结果：`cargo run --quiet --manifest-path backend/Cargo.toml --bin herdr-paths -- --paths paths.local.toml`。输出为 JSON，不启动服务、不创建业务目录。开发工具中真实依赖路径的覆盖方式见[测试指引](docs/agents/testing.md)。
+
+本次路径集中管理不迁移旧 zone／Chat／Run，不改写 Task、Bot、Map 的业务文本与材料引用；保留这些定义不代表其中旧机器业务路径自动可用。
 
 本机访问 `http://127.0.0.1:<端口>/`；局域网使用启动日志中的
 `http://herdr-bot.local:<端口>/`，无法解析时使用服务主机的局域网 IPv4。
@@ -33,7 +47,7 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 
 ## 定义数据与运行数据
 
-Task、Bot、Map 是可复用的定义数据，可在页面中编辑，也可手工维护和纳入 Git；不是每次执行产生的运行事实。仓库配置显式使用以下相对路径，均以**服务进程工作目录**为基准，修改配置后须重启：
+Task、Bot、Map 是可复用的定义数据，可在页面中编辑，也可手工维护和纳入 Git；不是每次执行产生的运行事实。默认路径如下，均以**服务配置文件所在目录**为基准；交付配置通过命名根表达相同布局，可将各根放在独立位置。修改配置后须重启：
 
 ```toml
 [tasks]
@@ -50,14 +64,28 @@ run_directory = '.data/workflow-runs'
 
 ### 从旧定义布局升级
 
-修改代码或配置本身不会搬动正在使用的数据。先停止旧服务并备份数据，再从原工作目录启动新版本；不要让旧、新服务同时写入这组定义。配置指向上述新默认位置时，启动会一次性将 `.data/tasks.json`、`.data/bots/`、`.data/workflow-maps/` 复制到对应新位置，保留所有原始字节、目录内容及旧源；不会迁移其他运行数据。显式配置的其他路径继续有效，不自动导入旧默认目录。
+修改代码或配置本身不会搬动正在使用的数据。先停止旧服务并备份数据，将服务配置放在原数据布局的根目录，再启动新版本；不要让旧、新服务同时写入这组定义。旧源位置固定相对服务配置目录，不随 `roots.data` 移动。配置指向该目录下上述新默认位置时，启动会一次性将 `.data/tasks.json`、`.data/bots/`、`.data/workflow-maps/` 复制到对应新位置，保留所有原始字节、目录内容及旧源；不会迁移其他运行数据。显式配置的其他路径继续有效，不自动导入旧默认目录。
 
 - 所有待迁项目先检查冲突：新旧同时存在时，完整内容必须一致；缺少或多出文件也算目录冲突，不自动合并。冲突、链接／junction、异常文件类型或 I/O 错误都会明确终止启动，不当作空数据继续。
-- 成功切换分别记录在 `.data/.definition-layout-v1-tasks`、`-bots`、`-maps`。此后只读写配置的新位置；旧源只是备份，新数据修改或删除后不会从旧源回灌。不要删除这些标记来尝试刷新定义。
+- 成功切换分别记录在 `data_directory` 下的 `.definition-layout-v1-tasks`、`-bots`、`-maps`（默认目录为 `.data`）。此后只读写配置的新位置；旧源只是备份，新数据修改或删除后不会从旧源回灌。不要删除这些标记来尝试刷新定义。
 - 若报冲突，保持停服，备份并人工确认唯一权威版本，使目标与旧源完全一致或将冲突目标移到其他备份位置，再重启；不要盲目覆盖任一份数据。
 - 不提供跨文件事务。中途 I/O 失败可能留下已完整复制的项目；保留现场并排除错误后重启，完整一致的项目可确认切换，不覆盖现有内容。
 
 升级后核对 task、bot、scheduler 列表。原生 agent 会话、Run 历史和 UI 入口不受这次布局调整影响。
+
+### 文件交接规则格式升级
+
+静态 node 现在使用 `input_rule`／`output_rule` 数组；执行固定规则并记录实际 `inputs: [{id,path}]`；报告保存 `from`／`to` Chat 关联及 `outputs: [{id,path}]`。规则 ID 是逻辑引用，不是文件名。完整字段与校验见 [scheduler](docs/scheduler.md#文件输入与输出规则) 和 [运行说明](docs/workflow-runtime.md)。本次同时更新 toolkit 角色工具与指引，不能混用新后端和旧 report 参数。
+
+已有数据须先停服，核实配置中实际使用的 Map／Run 目录并备份，再执行一次离线迁移。例如默认布局：
+
+```powershell
+cargo run --manifest-path backend/Cargo.toml --bin migrate-file-handoff -- meta-data/workflow-maps .data/workflow-runs
+```
+
+普通启动与请求不兼容旧字段，不在读取时自动转换。迁移工具预检查待转换内容，将旧输入对象转换为规则数组，并从已有引用及报告登记推导旧 Map 的输出 ID；报告输出转换为数组，Chat 来源／接收者改为 `from`／`to`。无法确定的历史执行规则与实际输入保持未知，不从当前 Map 伪造派发时快照。更早历史事件中缺失的非交接元数据（如 `agent`）保持原样，不因本次迁移猜测补填；当前 Run 记录仍按当前结构完整校验。原始文件保留为 `*.file-handoff-v1.bak`，不改变工作状态、报告归属或业务文件名称／地址；不恢复旧 Run 的管理资格。
+
+文件发布是逐文件原子替换，不是跨目录事务；I/O 错误时可能部分生效，保持停服并保留现场及备份。排除错误后，先核实并从本轮备份恢复一致的原始集合，再重新迁移，不混合新旧数据继续启动。迁移后核对 Map 可读、规则引用、历史报告与执行事实，再启动新后端并部署同版本 toolkit。
 
 ## 安全边界
 

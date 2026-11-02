@@ -42,6 +42,7 @@ fn config_with_operations(
         herdr: herdr_bot::HerdrConfig::new("bot-playground"),
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
+        ..common::config(start_script, start_working_directory)
     }
 }
 
@@ -161,70 +162,6 @@ async fn two_operations_invoke_their_own_bound_scripts_with_their_configured_wor
     );
 }
 
-/// 交付默认配置把“启动”“停止”绑定到规格 Further Notes 的现有批处理，工作目录为它们所在目录。
-#[tokio::test]
-async fn default_config_binds_the_specified_start_and_shutdown_batches_in_their_directory() {
-    let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("herdr-bot.toml");
-    let config = herdr_bot::Config::load(&config_path).expect("读取交付默认配置");
-
-    let streaming = Path::new(r"E:\Developer\myhub\my-streaming");
-    let start_script = streaming.join("start-all.bat");
-    let stop_script = streaming.join("shutdown-all.bat");
-
-    assert!(
-        same_path(&config.operations.start.script, &start_script),
-        "默认配置的启动操作必须是规格指定的启动批处理：{}",
-        config.operations.start.script.display()
-    );
-    assert!(
-        same_path(&config.operations.stop.script, &stop_script),
-        "默认配置的停止操作必须是规格指定的关闭批处理：{}",
-        config.operations.stop.script.display()
-    );
-    assert!(
-        !same_path(
-            &config.operations.start.script,
-            &config.operations.stop.script
-        ),
-        "两个按钮必须对应两个不同的固定脚本"
-    );
-    assert!(
-        same_path(&config.operations.start.working_directory, streaming),
-        "启动操作的执行工作目录必须是脚本所在目录：{}",
-        config.operations.start.working_directory.display()
-    );
-    assert!(
-        same_path(&config.operations.stop.working_directory, streaming),
-        "停止操作的执行工作目录必须是脚本所在目录：{}",
-        config.operations.stop.working_directory.display()
-    );
-    assert!(
-        same_path(
-            &config.operations.start.working_directory,
-            config
-                .operations
-                .start
-                .script
-                .parent()
-                .expect("启动脚本有父目录")
-        ),
-        "工作目录应等于启动脚本所在目录"
-    );
-    assert!(
-        same_path(
-            &config.operations.stop.working_directory,
-            config
-                .operations
-                .stop
-                .script
-                .parent()
-                .expect("关闭脚本有父目录")
-        ),
-        "工作目录应等于关闭脚本所在目录"
-    );
-}
 
 /// 未知操作名与怪路径被拒绝，返回可理解的类别，且不执行任何脚本。
 #[tokio::test]

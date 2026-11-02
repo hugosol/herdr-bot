@@ -16,10 +16,9 @@ for (const profile of [
   test(`P49 ${profile.name}: edit, navigate, persist and correct real failures`, async ({ page, browser }, info) => {
     await page.setViewportSize({ width: profile.width, height: profile.height })
     const server = await startServer()
-    const metadata = fs.readFileSync(new URL('../../meta-data/task-options.toml', import.meta.url), 'utf8')
-    // Use the shipped metadata and actual installed toolkit entrypoints, not the
-    // harness's portable file-check entries. Creation is rejected before Herdr.
-    fs.writeFileSync(server.metadataFile, metadata)
+    // Shipped options with isolated real entry files and a test-owned roots snapshot.
+    // Creation is rejected before Herdr; no local toolkit installation is required.
+    const metadata = fs.readFileSync(server.metadataFile, 'utf8')
     const actions: string[] = []
     const responses: unknown[] = []
     page.on('response', async response => {
@@ -191,7 +190,7 @@ for (const profile of [
       expect((await server.getTasks()).tasks).toEqual([{ ...edited, extensions: [] }])
       actions.push('real process restart retains corrected edited task')
     } finally {
-      const record = { profile, browser: browser.version(), service: 'built Axum executable + Vite production assets', metadata: 'shipped meta-data/task-options.toml, installed toolkit paths; isolated copy modified for faults', baseURL: server.baseURL, actions, responses, limitation: 'P49 viewport only; not real phone touch, keyboard, input or P50/H2; no successful Herdr/agent launch tested' }
+      const record = { profile, browser: browser.version(), service: 'built Axum executable + Vite production assets', metadata: 'shipped meta-data/task-options.toml options, isolated roots and real sentinel entry files; isolated copy modified for faults', baseURL: server.baseURL, actions, responses, limitation: 'P49 viewport only; not real phone touch, keyboard, input or P50/H2; no successful Herdr/agent launch tested' }
       fs.writeFileSync(info.outputPath(`${profile.name}-operations.json`), JSON.stringify(record, null, 2))
       await server.cleanup()
     }

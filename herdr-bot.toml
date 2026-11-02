@@ -7,15 +7,20 @@
 # 请勿与后台程序使用的端口冲突（关闭脚本会强制终止 8899、8888 端口上的进程）。
 listen_addr = "0.0.0.0:18787"
 
+# 本机根目录集中在 paths_file 指定的文件；该位置相对本配置文件，修改后需重启。
+paths_file = "paths.local.toml"
+static_directory = "${roots.project}/backend/static"
+data_directory = "${roots.data}"
+
 [operations.start]
 # 启动批处理；执行工作目录为它所在的目录，脚本内的相对路径按原方式解析。
-script = 'E:\Developer\myhub\my-streaming\start-all.bat'
-working_directory = 'E:\Developer\myhub\my-streaming'
+script = '${roots.streaming}/start-all.bat'
+working_directory = '${roots.streaming}'
 
 [operations.stop]
 # 关闭批处理；同样以它所在的目录为执行工作目录。
-script = 'E:\Developer\myhub\my-streaming\shutdown-all.bat'
-working_directory = 'E:\Developer\myhub\my-streaming'
+script = '${roots.streaming}/shutdown-all.bat'
+working_directory = '${roots.streaming}'
 
 # 关机倒计时（可选，缺省 10 秒）：手动关机与完成后关机监听共用同一个时长。
 # 合法整数范围 1..=4294967295；零、负数、小数、超过上界或拼错的字段名会让启动明确失败。
@@ -30,8 +35,9 @@ countdown_seconds = 10
 # [sessions]
 # online_timeout_seconds = 10
 # offline_retention_seconds = 30
-# 历史只保存会话元数据，与当前登记及关机意图独立；相对进程工作目录。
-# history_file = ".data/session-history.json"
+# 历史只保存会话元数据，与当前登记及关机意图独立。
+[sessions]
+history_file = "${roots.data}/session-history.json"
 
 # Herdr 控制设置（必须显式配置，没有代码缺省值）。
 # 弹窗初始选“当前”，按 zone 根目录名匹配；改选“默认”时按 workspace_name 精确查找唯一 Herdr Workspace。
@@ -39,18 +45,18 @@ countdown_seconds = 10
 # executable 可选，缺省按 PATH 查找 herdr；通常不需要修改。
 [herdr]
 workspace_name = 'bot-playground'
-# executable = 'C:\Users\<you>\.herdr\packages\standalone\releases\<version>\herdr.exe'
+# executable = '${roots.herdr}/herdr.exe' # 如需显式定位，在 roots 中定义 herdr。
 
 # zone 设置。
 # 新增 zone 的创建父目录必须显式配置；缺省未配置时只禁用“新增”，不影响登记与浏览。
 # 目录必须已存在；服务端只在其下创建一个直接子目录，不自动创建父目录。
 [zones]
-create_parent_directory = 'E:\Developer\bot-playground'
+create_parent_directory = '${roots.zone_parent}'
 
-# 登记列表的持久文件（可选，缺省为当前工作目录下的 .data/zones.json）。
+# 登记列表的持久文件（可选，缺省为本配置文件目录下的 .data/zones.json）。
 # 登记列表由后端保存，本机与局域网设备共享；取消登记不删除目录或文件。
-# 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
-registry_file = '.data/zones.json'
+# 普通相对路径按本配置文件目录解析；拼错的字段／段名会让启动明确失败。
+registry_file = '${roots.data}/zones.json'
 # 单文件文本预览上限（可选，缺省 1048576 字节 = 1 MiB）。
 # 超限文件只显示大小与上限，不加载完整内容；HTML 阅读也沿用这个上限。
 # 零、负数、小数或字符串会让启动明确失败。
@@ -67,14 +73,14 @@ registry_file = '.data/zones.json'
 # 普通 UI 读取不续期；到期不自行轮询；手动刷新、文件事件与 Git 操作可提前更新。
 # status_cache_ttl_seconds = 10
 
-# 服务级 Map / 共享 Bot 目录，可独立指定，均相对进程 cwd 而非配置文件位置。
+# 服务级 Map / 共享 Bot 目录，可独立指定，普通相对路径均相对本配置文件目录。
 # 修改配置需重启；Map 内容变化在 scheduler 点击“刷新 Map 列表”。
 # 首次读取自动创建两个目录及父目录，保留已有内容，不安装样例；链接/目录联接不被跟随。
 # 共享 Bot 按 JSON id 关联；发起 Run 需完整角色 Task 及 toolkit 扩展。样例见 docs/example/README.md。
 [scheduler]
-map_directory = 'meta-data/workflow-maps'
-bot_directory = 'meta-data/bots'
-run_directory = '.data/workflow-runs'
+map_directory = '${roots.project}/meta-data/workflow-maps'
+bot_directory = '${roots.project}/meta-data/bots'
+run_directory = '${roots.data}/workflow-runs'
 # collect 后端等待上限，默认 90 分钟，正整数秒；与 connect-bot 的短上报预算独立。
 # 角色调用方的公共 HTTP timeoutMs 必须大于此值 × 1000（默认建议 5460000ms）。
 # collect_wait_seconds = 5400
@@ -82,13 +88,13 @@ run_directory = '.data/workflow-runs'
 # 隐藏/离开暂停、返回立即查询；慢请求与手动刷新不重叠。修改后重启服务，无页面设置。
 # workflow_poll_interval_seconds = 5
 # 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
-# run_instructions = 'E:\Developer\myhub\herdr-bot\docs\workflow-runtime.md'
+run_instructions = '${roots.project}/docs/workflow-runtime.md'
 
-# Task 设置（可选，缺省为当前工作目录下的 meta-data/tasks.json）。
+# Task 设置（可选，缺省为本配置文件目录下的 meta-data/tasks.json）。
 # Task 由后端保存，本机与局域网设备共享；电脑与手机在“Task”tab 中管理。
-# 相对路径按进程工作目录解析；拼错的字段／段名会让启动明确失败。
+# 普通相对路径按本配置文件目录解析；拼错的字段／段名会让启动明确失败。
 [tasks]
-storage_file = 'meta-data/tasks.json'
+storage_file = '${roots.project}/meta-data/tasks.json'
 # 手工维护的选项目录，与运行数据独立；缺失、不可读或无效时启动失败。
 # 修改后下次打开 Task 编辑、保存和创建立即读取，无需重启。
-metadata_file = 'meta-data/task-options.toml'
+metadata_file = '${roots.project}/meta-data/task-options.toml'

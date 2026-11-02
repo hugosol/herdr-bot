@@ -51,6 +51,22 @@ impl ReportPolicy {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InputRule {
+    File { id: String, path: String },
+    Node { id: String, node_id: String, output_id: String },
+}
+impl InputRule {
+    pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } => id } }
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputRule { pub id: String }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedFile { pub id: String, pub path: String }
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MapNode {
@@ -58,7 +74,13 @@ struct MapNode {
     bot_id: String,
     input: String,
     #[serde(default)]
+    input_rule: Vec<InputRule>,
+    #[serde(default, deserialize_with = "object_array")]
+    output_rule: Vec<OutputRule>,
+    #[serde(default)]
     report_policy: ReportPolicy,
+    #[serde(default)]
+    auto_close: bool,
     zone: String,
     blocked_by: Vec<String>,
 }
@@ -84,6 +106,16 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for JsonObject<T> {
         deserializer.deserialize_map(ObjectVisitor(std::marker::PhantomData))
     }
 }
+
+pub(crate) fn object_array<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Vec<T>, D::Error> {
+    Vec::<JsonObject<T>>::deserialize(deserializer).map(|values| values.into_iter().map(|value| value.0).collect())
+}
+
+pub(crate) fn optional_object_array<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Option<Vec<T>>, D::Error> {
+    Option::<Vec<JsonObject<T>>>::deserialize(deserializer).map(|values| values.map(|values| values.into_iter().map(|value| value.0).collect()))
+}
+
+pub(crate) fn validate_map_source(source: &str) -> Result<(), String> { parse_map(source).map(|_| ()).map_err(|error| error.message) }
 
 fn map_error(message: impl Into<String>) -> DirectoryError {
     DirectoryError { code: "map-read-failed", message: message.into() }
@@ -126,7 +158,10 @@ pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Resu
 pub(crate) struct DispatchTarget {
     pub title: String,
     pub input: String,
+    pub input_rule: Vec<InputRule>,
+    pub output_rule: Vec<OutputRule>,
     pub report_policy: ReportPolicy,
+    pub auto_close: bool,
     pub zone: String,
     pub task: crate::tasks::Task,
 }
@@ -147,7 +182,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     }
     let zones = state.zones.list().await.map_err(|e| e.message())?;
     let zone = check_zone(&zones, &node.zone, "node").map_err(|e| e.message)?.to_owned();
-    Ok(DispatchTarget { title: node.title, input: node.input, report_policy: node.report_policy, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -166,6 +201,27 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (id, node) in &map.nodes {
         let node = &node.0;
+        let mut input_ids = std::collections::BTreeSet::new();
+        let mut output_ids = std::collections::BTreeSet::new();
+        for output in &node.output_rule {
+            if output.id.trim().is_empty() || !output_ids.insert(&output.id) { return Err(map_error(format!("node {id} 的 output_rule ID 重复：{}", output.id))); }
+        }
+        for input in &node.input_rule {
+            let name = input.id();
+            if name.trim().is_empty() || !input_ids.insert(name) { return Err(map_error(format!("node {id} 的 input_rule ID 重复：{name}"))); }
+            match input {
+                InputRule::File { path, .. } if !Path::new(path).is_absolute() || path.contains('\0') => {
+                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用绝对文件地址。")));
+                }
+                InputRule::Node { node_id, output_id, .. } => {
+                    let upstream = map.nodes.get(node_id).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")))?;
+                    if !upstream.0.output_rule.iter().any(|output| output.id == *output_id) {
+                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明输出：{node_id}/{output_id}")));
+                    }
+                }
+                _ => {}
+            }
+        }
         remaining.insert(id.as_str(), node.blocked_by.len());
         for prerequisite in &node.blocked_by {
             if prerequisite == id {
@@ -656,10 +712,11 @@ fn deletable_node(map: &WorkflowMap, id: &str) -> Result<(), DirectoryError> {
         return Err(edit_error("node-conflict", "node 已移除或无法识别；请重新加载。"));
     }
     let dependents: Vec<_> = map.nodes.iter()
-        .filter(|(_, node)| node.0.blocked_by.iter().any(|parent| parent == id))
+        .filter(|(other_id, node)| other_id.as_str() != id && (node.0.blocked_by.iter().any(|parent| parent == id)
+            || node.0.input_rule.iter().any(|input| matches!(input, InputRule::Node { node_id, .. } if node_id == id))))
         .map(|(id, node)| format!("{}（{id}）", node.0.title)).collect();
     if !dependents.is_empty() {
-        return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 依赖此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));
+        return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 或命名输入引用此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));
     }
     Ok(())
 }
@@ -740,6 +797,7 @@ pub async fn new_node(
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
         let mut content = example["nodes"]["A"].take();
         content["report_policy"] = serde_json::json!(ReportPolicy::default());
+        content["auto_close"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
         Ok(Ok(value)) => Json(value).into_response(),
@@ -855,7 +913,14 @@ fn prepare_directory(access: &FileAccess, directory: &Path) -> Result<PathBuf, D
         let metadata = match access.symlink_metadata(&checked) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                access.create_dir(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "创建", e))?;
+                // Map and Bot catalog reads can create a shared missing parent
+                // concurrently. Recheck the winner's entry below, including the
+                // link and directory checks; AlreadyExists alone is not success.
+                match access.create_dir(&checked) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "创建", error)),
+                }
                 access.symlink_metadata(&checked).map_err(|e| DirectoryError::io("map-directory-create-failed", "检查", e))?
             }
             Err(error) => return Err(DirectoryError::io("map-directory-create-failed", "检查", error)),

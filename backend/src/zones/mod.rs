@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// 登记文件在配置缺省时的相对路径（相对进程工作目录，与既有配置路径语义一致）。
+/// 登记文件在配置缺省时的相对路径（由配置加载按服务配置文件所在目录解析）。
 pub const DEFAULT_REGISTRY_FILE: &str = ".data/zones.json";
 
 /// 登记文件里的一个 zone：服务器上的一个绝对目录路径。

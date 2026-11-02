@@ -80,10 +80,22 @@ async function writeDefinition(url: string, payload: unknown, valid: (value: unk
   return value
 }
 
+function isInputRule(value: unknown): value is InputRule[] {
+  return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
+    typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' &&
+    (rule.type === 'file' ? typeof rule.path === 'string' && Object.keys(rule).every(key => ['id', 'type', 'path'].includes(key))
+      : rule.type === 'node' && typeof rule.node_id === 'string' && typeof rule.output_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'node_id', 'output_id'].includes(key))))
+}
+
+function isOutputRule(value: unknown): value is OutputRule[] {
+  return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
+    typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' && Object.keys(rule).every(key => key === 'id'))
+}
+
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && 'title' in value && typeof value.title === 'string' &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
-    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && typeof node.zone === 'string' && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
+    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && typeof node.zone === 'string' && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
 
 function isCatalog(value: unknown): value is MapCatalog {
@@ -115,13 +127,19 @@ export async function deleteBot(target: { id: string; revision: BotRevision }): 
   return await writeDefinition('/api/scheduler/bots/delete', target, isBotCatalog, 'Bot 删除') as BotCatalog
 }
 
+export type InputRule = { id: string; type: 'file'; path: string } | { id: string; type: 'node'; node_id: string; output_id: string }
+export type OutputRule = { id: string }
+
 export type MapNode = {
   title: string
   bot_id: string
   input: string
+  input_rule?: InputRule[]
+  output_rule?: OutputRule[]
   zone: string
   blocked_by: string[]
   report_policy?: 'auto' | 'manual'
+  auto_close?: boolean
 }
 
 export async function loadNodeDraft(file: string, id: string | null): Promise<{ id: string; content: string; revision: BotRevision; create: boolean }> {

@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 import threading
 
+from developer_paths import resolve_arguments
+
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -48,11 +50,16 @@ def run(command, cwd, env):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--pi-package', required=True, type=Path)
-    parser.add_argument('--omp-package', required=True, type=Path)
+    parser.add_argument('--paths-file', type=Path, help='Machine roots TOML (default: repository paths.local.toml)')
+    parser.add_argument('--pi-package', type=Path)
+    parser.add_argument('--omp-package', type=Path)
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--node', default='node')
     args = parser.parse_args()
+    resolve_arguments(parser, args, {
+        'pi_package': ('pi_package', ''),
+        'omp_package': ('omp_package', ''),
+    })
     root = Path(tempfile.mkdtemp(prefix='herdr-native-storage-'))
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Model)
     threading.Thread(target=server.serve_forever, daemon=True).start()

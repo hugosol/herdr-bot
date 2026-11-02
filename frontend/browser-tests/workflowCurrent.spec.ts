@@ -38,7 +38,7 @@ async function currentFixture() {
   const taskId = (await taskResponse.json()).tasks[0].id
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', plan_guide: '', node_guide: '', task_id: taskId }))
   const definition = { title: '当前 Beta Map', description: '', nodes: {
-    A: { title: '交接工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 A', blocked_by: [] },
+    A: { title: '交接工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
     B: { title: '失败工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },
     C: { title: '依赖工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 C', blocked_by: ['B'] },
     D: { title: '就绪工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 D', blocked_by: [] },
@@ -56,7 +56,7 @@ async function currentFixture() {
     E: { ...node('running'), execution: { agent: 'omp', id: 'exec-E', taskId, zone: 'C:/report-zone', chat: { ...chat, sessionId: 'report-chat-offline' } } },
   }
   fs.writeFileSync(runPath, JSON.stringify(run))
-  const report = { id: 'report-current', type: 'report', at: 5000, runId: 'new-run', nodeId: 'E', executionId: 'exec-E', source: run.nodes.E.execution.chat, target: run.manager, body: '报告正文：结果在 result.txt，限制为只读' }
+  const report = { id: 'report-current', type: 'report', at: 5000, runId: 'new-run', nodeId: 'E', executionId: 'exec-E', from: run.nodes.E.execution.chat, to: run.manager, body: '报告正文：结果在 result.txt，限制为只读' }
   fs.writeFileSync(path.join(root, 'new-run/messages.jsonl'), JSON.stringify(report) + '\n')
   // A is actually online/working while the saved node is completed. E has no
   // live registration while its saved state is running: never derive graph from Chat.
@@ -150,7 +150,7 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
     const { server, root, mapPath, definition, run, runPath, report } = await currentFixture()
     run.nodes.E.previousExecutions = [{ execution: { agent: 'omp', id: 'old-exec-E', taskId: 'old-saved-task', zone: 'C:/old-zone', chat: { ...chat, sessionId: 'saved-old-chat' } }, failure: { stage: 'execution', message: '旧执行已保留的失败' } }]
     fs.writeFileSync(runPath, JSON.stringify(run))
-    fs.writeFileSync(path.join(root, 'new-run/messages.jsonl'), JSON.stringify({ ...report, id: 'report-old', executionId: 'old-exec-E', body: '旧执行报告正文仍可读取', source: run.nodes.E.previousExecutions[0].execution.chat, at: 4500 }) + '\n' + JSON.stringify(report) + '\n')
+    fs.writeFileSync(path.join(root, 'new-run/messages.jsonl'), JSON.stringify({ ...report, id: 'report-old', executionId: 'old-exec-E', body: '旧执行报告正文仍可读取', from: run.nodes.E.previousExecutions[0].execution.chat, at: 4500 }) + '\n' + JSON.stringify(report) + '\n')
     const records = ['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8'))
     const calls = server.herdrCalls()
     await page.goto(`${server.baseURL}/#workflow/new-run`)
@@ -187,6 +187,71 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
 }
 
 // Approved seams S1 delivered browser page, S2 real HTTP, S4 isolated record files.
+test('handoff facts preserve frozen rules and resolved inputs while accumulating current execution outputs in append order', async ({ page }) => {
+  const { server, root, report, run, runPath, mapPath, definition } = await currentFixture()
+  const map = JSON.parse(JSON.stringify(definition))
+  map.nodes.E.report_policy = 'manual'
+  map.nodes.E.auto_close = true
+  map.nodes.E.input_rule = [{ id: 'changed-input', type: 'file', path: 'C:/changed-map/input.txt' }]
+  map.nodes.E.output_rule = [{ id: 'changed-output' }]
+  fs.writeFileSync(mapPath, JSON.stringify(map))
+  run.nodes.E.execution.inputRule = [{ id: 'source', type: 'node', node_id: 'A', output_id: 'material' }]
+  run.nodes.E.execution.outputRule = [{ id: 'result' }, { id: 'notes' }]
+  run.nodes.E.execution.inputs = [{ id: 'source', path: 'C:/frozen/source.txt' }]
+  run.nodes.A.execution.outputRule = [{ id: 'foreign' }]
+  run.nodes.E.previousExecutions = [{ execution: { ...run.nodes.E.execution, id: 'old-E', inputRule: null, outputRule: null, inputs: null, reportPolicy: 'manual', autoClose: true }, failure: null }]
+  fs.writeFileSync(runPath, JSON.stringify(run))
+  const reports = [
+    { ...report, id: 'first', at: 9000, canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/v1.txt' }, { id: 'notes', path: 'C:/outputs/notes.txt' }] },
+    { ...report, id: 'old-late', executionId: 'old-E', canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/old.txt' }, { id: 'leak', path: 'C:/outputs/leak.txt' }] },
+    { ...report, id: 'other-node', nodeId: 'A', canComplete: true, outputs: [{ id: 'foreign', path: 'C:/outputs/foreign.txt' }] },
+    { ...report, id: 'second', at: 1000, canComplete: false, outputs: [{ id: 'result', path: 'C:/outputs/v2.txt' }] },
+    { ...report, id: 'latest-missing', at: 500 },
+  ]
+  const reportsPath = path.join(root, 'new-run/messages.jsonl')
+  const saveReports = () => fs.writeFileSync(reportsPath, reports.map(value => JSON.stringify(value)).join('\n') + '\n')
+  saveReports()
+  await page.goto(`${server.baseURL}/#workflow/new-run`)
+  await page.getByRole('group', { name: 'Map 依赖图', exact: true }).getByRole('button', { name: '报告工作 E', exact: true }).click()
+  const handoff = page.getByRole('region', { name: '当前执行交接事实', exact: true })
+  await expect(handoff).toContainText('最新 canComplete: 缺失')
+  await expect(handoff).toContainText('C:/outputs/v2.txt')
+  await expect(handoff).toContainText('C:/outputs/notes.txt')
+  for (const excluded of ['C:/outputs/v1.txt', 'C:/outputs/old.txt', 'C:/outputs/leak.txt', 'C:/outputs/foreign.txt']) await expect(handoff).not.toContainText(excluded)
+  const execution = page.getByRole('region', { name: '当前执行事实', exact: true })
+  await expect(execution.locator('dt').filter({ hasText: /^reportPolicy$/ }).locator('+ dd')).toHaveText('auto')
+  await expect(execution.locator('dt').filter({ hasText: /^autoClose$/ }).locator('+ dd')).toHaveText('false')
+  await expect(execution).toContainText('C:/report-zone')
+  await expect(execution).not.toContainText('C:/definition-zone')
+  await expect(execution).toContainText('C:/frozen/source.txt')
+  await expect(execution).toContainText('"node_id": "A"')
+  await expect(execution).toContainText('"output_id": "material"')
+  await expect(execution).toContainText('"id": "result"')
+  await expect(execution).not.toContainText('C:/changed-map/input.txt')
+  await expect(execution).not.toContainText('changed-output')
+  await expect(handoff.locator('dt')).toHaveText(['id: result', 'id: notes'])
+  const currentReports = page.getByRole('region', { name: '当前执行适用报告', exact: true })
+  await expect(currentReports.locator('article')).toHaveCount(3)
+  await expect(currentReports.locator('article').nth(0)).toContainText('canComplete: true')
+  await expect(currentReports.locator('article').nth(0)).toContainText('C:/outputs/v1.txt')
+  await expect(currentReports.locator('article').nth(1)).toContainText('canComplete: false')
+  await expect(currentReports.locator('article').nth(1)).not.toContainText('C:/outputs/notes.txt')
+  await page.getByRole('group', { name: '已保存旧执行事实' }).getByText(/旧执行历史/).click()
+  const history = page.getByRole('group', { name: '已保存旧执行事实' })
+  await expect(history).toContainText('C:/outputs/old.txt')
+  await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).toContainText('未知')
+  await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/frozen/source.txt')
+  await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/outputs/old.txt')
+  reports.pop(); saveReports()
+  await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
+  await expect(handoff).toContainText('最新 canComplete: false')
+  reports.pop(); saveReports()
+  await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
+  await expect(handoff).toContainText('最新 canComplete: true')
+  await page.getByRole('group', { name: 'Map 依赖图', exact: true }).getByRole('button', { name: '就绪工作 D', exact: true }).click()
+  await expect(handoff).toContainText('最新 canComplete: 无报告')
+})
+
 // P50.01 source: ticket's literal multi-Map/time/state example above. Violation:
 // showing only selected/current Map, sorting by ID or omitting old Runs. Reading
 // the visible table (not a helper) must return all three independently ordered rows.

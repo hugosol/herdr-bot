@@ -1,5 +1,8 @@
+import type { InputRule, OutputRule } from '../scheduler/schedulerApi'
+
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
-export type Execution = { id: string; taskId: string; agent: 'omp' | 'pi'; zone: string; chat: ChatReference | null; reportPolicy?: 'auto' | 'manual' }
+export type FileAddress = { id: string; path: string }
+export type Execution = { id: string; taskId: string; agent: 'omp' | 'pi'; zone: string; chat: ChatReference | null; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
 export type Failure = { stage: string; message: string; effects?: Record<string, unknown> }
 export type NodeState = {
   status: string
@@ -9,7 +12,7 @@ export type NodeState = {
   previousExecutions: { execution: Execution | null; failure: Failure | null }[]
 }
 export type Run = { id: string; name?: string; map: string; createdAt: number; managerTaskId: string; zone: string; workspaceName: string; userInput: string; status: string; manager: ChatReference | null; nodes: Record<string, NodeState> }
-export type Report = { id: string; at: number; nodeId: string; executionId: string; body: string; source: ChatReference; target: ChatReference }
+export type Report = { id: string; at: number; nodeId: string; executionId: string; body: string; from: ChatReference; to: ChatReference; canComplete?: boolean; outputs: FileAddress[] }
 export type RunDetail = { id: string; run: Run | null; managed: boolean; readError: string | null; startupError: Failure | null; reports: Report[]; pendingReports: Record<string, string> }
 
 export async function renameRun(id: string, name: string): Promise<RunDetail> {

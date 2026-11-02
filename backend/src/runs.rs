@@ -26,6 +26,9 @@ mod operation;
 mod collect;
 pub use collect::manager_collect;
 pub use reports::node_report;
+pub(crate) fn validate_report_source(source: &str) -> Result<(), String> {
+    serde_json::from_str::<reports::Report>(source).map(|_| ()).map_err(|error| error.to_string())
+}
 pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -73,7 +76,15 @@ pub struct NodeExecution {
     pub agent: crate::tasks::Agent,
     pub zone: String,
     #[serde(default)]
+    pub input_rule: Option<Vec<crate::scheduler::InputRule>>,
+    #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
+    pub output_rule: Option<Vec<crate::scheduler::OutputRule>>,
+    #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
+    pub inputs: Option<Vec<crate::scheduler::ResolvedFile>>,
+    #[serde(default)]
     pub report_policy: crate::scheduler::ReportPolicy,
+    #[serde(default)]
+    pub auto_close: bool,
     pub chat: Option<ChatReference>,
 }
 #[derive(Clone, Serialize, Deserialize)]
