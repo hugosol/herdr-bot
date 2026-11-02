@@ -206,6 +206,19 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 本节记录已确认的职责与交接约定，不代表旧 Map、Task 提示词或外部角色扩展已同步迁移。精简旧业务 input 前须核对结构化规则与统一协议的实际承接，不能将文档约定当作运行强制能力。
 
+### create-bot-task-workflow 的业务文件交接
+
+[创建并优化 Task＋Bot](../meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json) 的十个节点使用命名文件交接，节点 ID、依赖、Bot 绑定、zone 和报告策略保持原安排：w1 与三个编写节点 manual，其余 auto。
+
+- w1 使用初始化的本次 userInput，交付包含已确认需求与完整 Task 配置的 handoff；w2 以 task_created 引用它，优化并保存 prompt 后交付 handoff；w3 以 task_optimized 引用该结果，创建委托即为授权；名称和 ID 未指定时按绑定 Task 的规则自动生成，连续完成创建、完整读回、保存基线 handoff 并 auto 报告，不设置命名、保存或报告审批。必要输入缺失或冲突时报告阻塞；节点 complete 仍由管理者执行。
+- 三个 write_* 节点分别以 bot_baseline 引用 w3.handoff，独立确认对应指南；每个编写节点分别交付 text（纯正文）和 handoff（确认、语义约束、完整 Bot／Task 基线及来源）。三个优化节点分别消费所属编写节点的 text/handoff，保持语义并交付新的 text/handoff，不写入目标 Bot。
+- save_bot 的七项输入为 when_text、when_handoff、plan_guide_text、plan_guide_handoff、node_guide_text、node_guide_handoff 和直接引用 w3.handoff 的 bot_baseline。它核对同一业务对象、创建基线来源、完整配置及确认范围，一次保存三个字段并完整读回，交付最终 handoff。
+- node.input 只说明本次对象、命名材料用途、修改授权、交付内容和额外验收；完整配置基线、三个字段的映射及关联 Task 不变要求仍属于本图委托。绑定 Task 负责固定的技能调用、业务确认、操作流程、失败处理及标准验收，Bot 的 plan_guide／node_guide 只指导工作安排和本次信息提供，不要求复制固定执行指示。
+- 产品专用 Task 的 workflow 分支指向本文件的统一文件交接约定；通用优化者和替换者保持产品中立，由本图委托提供服务位置、产品契约和交接协议指针。声明命名输出或要求文件时须落盘，物理路径未指定不意味着仅在 Chat 输出；独立 Chat 无文件要求时仍可直接交付正文。
+- node_guide 编写者采用结构化材料规则与注入背景，不再要求规划者推导未来路径、筛选运行记录或追踪上游当前 execution。w1 保留需求和完整执行配置确认，三个编写节点保留全文业务确认；报告发送步骤以系统注入策略为准，不在 Task 中重复实现。空白 Bot 的命名、创建与交付保持自动，无额外审批。
+
+上述定义可由隔离服务读取、逐节点编辑保存并完整读回；定义验收不代表真实模型已遵守业务确认、完成 Task／Bot 写入或跑通整个业务 Run，不应为验证定义而启动用户业务。
+
 ### plan_workflow 的业务文件交接
 
 仓库的 [plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 只交付新业务 Map，不启动该业务。提示词分层如下：
