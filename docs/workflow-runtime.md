@@ -208,15 +208,15 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 ### plan_workflow 的业务文件交接
 
-仓库的 [plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 只交付新业务 Map，不启动该业务。此图复用通用初始化、命名输入解析和 report 协议，不在 `node.input` 中再次实现运行身份或报告筛选：
+仓库的 [plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 只交付新业务 Map，不启动该业务。提示词分层如下：
 
-- `outline` 使用初始化中的本次 `userInput`、业务 `input` 和已按 Run 区分的中间资料位置；不再为取得背景或材料目录解析运行记录。资料位置只是保存方向，不是输出地址白名单，也不要求复制外部材料。
-- 规划者继续使用概要规划 Task 的九章节约定，保存独立 Markdown 概要方案并完整读回；保留方案标识、修订及替代版本、确认范围与依据、稳定工作编号、真实 Bot/Task 绑定、业务输入输出、材料位置、zone、权限、证据与未决项。能力建设需求是另一份独立文档，不能替代概要方案；缺能力时仍由用户另开 Chat 手动补齐并带回结果，再查询核实，不自动创建 Task/Bot 或派发能力创建者。
-- 用户明确确认当前概要方案与 `manual` 报告发送确认是两次不同的业务意思表达。只有确认版本保存读回且没有阻止翻译的缺口时，规划者才报告 `can_complete=true`，以 `outputs: [{"id":"outline","path":"<概要方案绝对地址>"}]` 登记文档。草案、待补能力、阻止翻译的矛盾或部分失败报告 false 并说明阻塞和已发生效果。修订交付须重新确认方案、确认发送并更新登记，不静默改写已交接文件。
-- `outline.output_rule` 声明 `id=outline`，`generate_map.input_rule` 包含 `{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}`，`blocked_by` 仍为 `["outline"]`。消费者直接读取初始化的命名地址，不读取日志筛报告、不查最新目录或回退旧文件。输入未解析、不可读、方案身份/修订/确认依据矛盾或关键内容不完整时，向用户及管理者报告并交回规划者；地址解析和 `can_complete` 不代替用户确认或业务内容核验。管理者核实实际确认和报告后仍须显式 complete/dispatch。
-- 转换者重读真实能力指南和绑定、核实 zone，忠实翻译全部工作、输入输出、权限与依赖。只在核实的服务 Map 目录新增完整定义，同名不同内容不覆盖，不修改自举 Map 或运行记录。保存后完整读回解析，逐项核对字段，再查询 Map 目录与完整定义确认服务可见、结构与依赖合法；失败须列明已落盘文件和部分效果，不声称回滚或完成。
-- 仅概要方案明确提供新业务 `managerTaskId`、管理者 zone 和 `userInput`（允许明确为空）时做只读 preflight，绝不借用自举 Run 配置。缺启动配置仍可交付合法定义，但须列出缺项和未执行预检原因；保存或预检均不证明业务能力已验证、可启动或已执行，不自动发起业务 Run。
+- 两个绑定 Task.prompt 承担稳定能力流程，按分支引导读取本文件的[统一文件交接约定](#统一文件交接约定)和[规划交付契约](planning-deliverables.md)。两份交付文档的章节与可翻译条件只在交付契约维护，不在 node.input 或 Bot 指南重复。
+- 两个 Bot 的 plan_guide 指导能力安排，node_guide 指导填写本次委托差异和结构化材料规则，不再要求复制 Task 流程、方案正文或推导路径。
+- outline 的 input 指定使用本次 userInput、以文件交付概要方案，以及无阻止翻译缺口的最终交付门槛；允许讨论中的中间状态不等于允许向下游交接。report_policy 保持 manual，报告发送确认与方案业务确认独立。
+- outline 声明输出 outline，generate_map 通过同名输入引用它并保留前置依赖。概要方案本身是完整业务文档，无需另造没有独立用途的交接文件；其他业务图中的交接说明与纯正文有独立用途时分别声明。
+- generate_map 的 input 指定方案用途、map JSON 交付和本次只新增、不覆盖、保护当前 plan_workflow 的限制。稳定保存与验收步骤由 Task 承担，启动配置仅取自方案明确提供的值，缺失时不借用自举 Run 配置。
 
+此轮同时更新两个 Task、两个 Bot 指南和本 Map；其他 Map、已有执行及运行实现不变。定义和文档检查不证明真实 agent 已遵从新指示，文件不覆盖仍是工作约定而非服务端不可变存储保证。
 定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务的公开 Map edit/save/read 与目录 interface 保存、读回仓库定义，保护命名来源、两节点业务绑定、依赖、报告策略及保存前后完整定义，并查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的证据；指引内容审阅、字段存在或文本长度都不是 P27/P28 的真实验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认由独立真实业务入口验证：
 
 ```powershell
