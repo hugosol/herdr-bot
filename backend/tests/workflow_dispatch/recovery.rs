@@ -194,8 +194,8 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
     assert_eq!(messages.len(), 3);
     assert_eq!(messages[2]["body"], "Result: results/A.md. Limitation: manual review only.");
     assert_eq!(messages[2]["canComplete"], false);
-    assert_eq!(messages[2]["source"]["sessionId"], "manual-A");
-    assert_eq!(messages[2]["target"]["sessionId"], "manager-manual");
+    assert_eq!(messages[2]["from"]["sessionId"], "manual-A");
+    assert_eq!(messages[2]["to"]["sessionId"], "manager-manual");
     let after = s.herdr.calls();
     assert_eq!(after.len(), calls.len() + 1);
     assert_eq!(after.last().unwrap()["kind"], "agent_prompt");

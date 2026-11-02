@@ -166,7 +166,6 @@ test('P18 loading completed facts without a close result never compensates after
   expect(fact).toEqual(completed)
   expect(fact.nodes.A.status).toBe('completed')
   expect(fact.nodes.A.execution.autoClose).toBe(true)
-  expect(Object.keys(fact.nodes.A.execution).sort()).toEqual(['agent', 'autoClose', 'chat', 'id', 'reportPolicy', 'taskId', 'zone'])
   server!.setHerdrBehavior({})
   await server!.restart()
   const loaded = await readRun(page, runId)

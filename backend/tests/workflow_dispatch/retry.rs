@@ -48,7 +48,7 @@ async fn late_old_reports_remain_history_without_controlling_new_execution() {
     assert_eq!(query["reports"], json!([first, late, current, later, latest]));
     for index in [0, 1, 3] {
         assert_eq!(query["reports"][index]["executionId"], old["id"]);
-        assert_eq!(query["reports"][index]["source"], old["chat"]);
+        assert_eq!(query["reports"][index]["from"], old["chat"]);
     }
     for index in [2, 4] { assert_eq!(query["reports"][index]["executionId"], new["id"]); }
     assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), query["reports"].as_array().unwrap().to_owned());

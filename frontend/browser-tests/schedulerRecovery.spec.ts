@@ -162,7 +162,7 @@ test('P22 empty Map and empty node text remain legal without external bindings',
     if (name !== 'empty-map.json') {
       await nodes.getByRole('button').click()
       await expect(page.getByTestId('node-input')).toHaveText(name === 'empty-node.json' ? '' : '# required: city; {not JSON}')
-      await expect(page.getByRole('region', { name: '前置依赖', exact: true }).getByRole('listitem')).toHaveCount(0)
+      await expect(page.getByRole('region', { name: 'blocked_by', exact: true }).getByRole('listitem')).toHaveCount(0)
     }
   }
   for (const [name, bytes] of originals) expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)

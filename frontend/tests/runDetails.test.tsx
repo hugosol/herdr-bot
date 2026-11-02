@@ -45,7 +45,7 @@ describe('Run rename', () => {
     const { rerender } = render(<RunDetails id="first" active />)
     await screen.findByRole('heading', { level: 1, name: 'Map title' })
     fireEvent.click(screen.getByRole('button', { name: '重命名' }))
-    expect(screen.getByRole('textbox', { name: 'Run 名称' })).toHaveValue('Map title')
+    expect(screen.getByRole('textbox', { name: 'name' })).toHaveValue('Map title')
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Discard me' } })
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(patch).not.toHaveBeenCalled()

@@ -361,10 +361,10 @@ else:
         self.check(all(any(value in self.message_text(message) for message in users) for value in [approval, send]),
             'Explicit confirmation inputs are absent from actual native user history')
         report = next(report for report in reversed(final['reports']) if report['nodeId'] == 'outline')
-        self.check(report.get('canComplete') is True and Path(report.get('outputs', {}).get('outline', '')) == confirmed_path, ('Wrong named outline output', report))
+        self.check(report.get('canComplete') is True and Path(next((item['path'] for item in report.get('outputs', []) if item['id'] == 'outline'), '')) == confirmed_path, ('Wrong named outline output', report))
         for saved in final['reports']:
             chat = outline_chat if saved['nodeId'] == 'outline' else identities[2]
-            self.check(saved['source']['sessionId'] == chat['sessionId'] and saved['executionId'] == final['run']['nodes'][saved['nodeId']]['execution']['id'], ('Report identity/execution mismatch', saved))
+            self.check(saved['from']['sessionId'] == chat['sessionId'] and saved['executionId'] == final['run']['nodes'][saved['nodeId']]['execution']['id'], ('Report identity/execution mismatch', saved))
         gen_calls = self.calls(histories[2])
         reads = [call for call in gen_calls if call.get('name') == 'read']
         self.check(any(Path(call.get('arguments', {}).get('path', '')) == confirmed_path for call in reads),
@@ -387,7 +387,7 @@ else:
                 return {}
         complete = next(record for record in records if record['path'].endswith('/manager/complete') and request(record).get('nodeId') == 'outline')
         dispatch = next(record for record in records if record['path'].endswith('/manager/dispatch') and 'generate_map' in request(record).get('nodes', []))
-        report_wire = next(record for record in records if record['path'].endswith('/node/report') and Path(request(record).get('outputs', {}).get('outline', '')) == confirmed_path)
+        report_wire = next(record for record in records if record['path'].endswith('/node/report') and Path(next((item['path'] for item in request(record).get('outputs', []) if item['id'] == 'outline'), '')) == confirmed_path)
         self.check(report_wire['ended'] < complete['started'] < dispatch['started'], 'Report/explicit complete/explicit dispatch order is wrong')
         complete_response = json.loads(complete['response'])
         self.check(complete_response['snapshot']['nodes']['generate_map']['status'] == 'pending', 'complete auto-dispatched downstream')

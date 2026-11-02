@@ -29,8 +29,8 @@ python scripts/test-workflow-file-handoff.py `
 
 两份 Map 均在任一 Run 启动之前保存：
 
-- `source` 无依赖；其命名文件输入 seed 指向验收方固定的外部业务种子。真实 source Chat 用原生 read 读取种子、write 创建此前不存在的业务文件，然后用实际 `report` 登记 `outputs.result`。种子是已记录的验收方业务输入，不是伪造的运行记录或预先准备的最终产物；不依赖宿主 Bash 能否执行 Windows Python。
-- `left`、`right` 都 `blocked_by: [source]`；两者的 `inputs.shared` 都引用 `{source: node, node_id: source, output: result}`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs.result`。
+- `source` 无依赖；其命名文件输入 seed 指向验收方固定的外部业务种子。真实 source Chat 用原生 read 读取种子、write 创建此前不存在的业务文件，然后用实际 `report` 登记 `outputs` 数组中 `id=result` 的地址。种子是已记录的验收方业务输入，不是伪造的运行记录或预先准备的最终产物；不依赖宿主 Bash 能否执行 Windows Python。
+- `left`、`right` 都 `blocked_by: [source]`；两者的 `input_rule` 都包含 `{id: shared, type: node, node_id: source, output_id: result}`；各提供方的 `output_rule` 均预先声明 `id=result`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs` 数组中 `id=result` 的地址。
 - `summary` 依赖 left/right，命名输入分别引用两者当前 execution 的 `result`。真实 summary Chat 必须实际读取两份文件，核对 item，再合并、相加并写最终文件。业务合并和内容检查属于这个明确安排的 node，不是框架动作。
 - manager 只用真实 `run`/`collect` 编排：显式 dispatch source → true report 后 complete source → 显式 dispatch left/right → 两者各自 true 后 complete → 显式 dispatch summary → true 后 complete、finish。manager 不读业务正文做默认验收；验收器只观察，不替 manager 发动作或中途改运行记录。
 

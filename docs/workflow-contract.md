@@ -18,10 +18,10 @@
 | Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。Task 用途仅 normal/manager，均可选择 omp 或 pi；node 是本次 Chat 的执行角色，普通 Task 可同时用于独立发起与节点派发，不是运行归属。trigger config 仅在首次发起/retry 生效，普通 Resume 使用来源 Task 最新 env config。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
 | 管理者 Chat | 独占状态操作，读取记录与材料并判断交接，显式派发、完成、恢复或结束；不把报告、停轮、退出当完成，不强制持续续轮。不是业务 node。 |
-| 节点 Chat | 在定义 zone 做工作，按本次 `reportPolicy` 以 report 提交简短 body、必填 boolean can_complete 及可选命名 outputs（本机绝对地址），说明完成情况、阻塞与限制：auto 自行报告，manual 每次先展示摘要/地址/限制、询问并停轮等待本 node Chat 用户自然语言确认；修改后及补充更正同样重新确认。可在交接后继续不影响结果的收尾；不能自改流程状态。 |
+| 节点 Chat | 在定义 zone 做工作，按本次 `reportPolicy` 以 report 提交简短 body、必填 boolean can_complete 及可选 outputs 数组（id 与本机绝对地址 path），说明完成情况、阻塞与限制：auto 自行报告，manual 每次先展示摘要/地址/限制、询问并停轮等待本 node Chat 用户自然语言确认；修改后及补充更正同样重新确认。可在交接后继续不影响结果的收尾；不能自改流程状态。 |
 | 后端 | 检查同机来源、真实原生身份与 Run/执行归属、依赖和状态；串行同 Run 业务动作，保存当前事实与历史，提供报告和 collect。模型判断不能替代这些约束。 |
 | Herdr／agent／toolkit | Herdr 托管原生 Chat 与输入提交，各 Task 选择的 omp 或 pi 执行；toolkit 经公共 Prompt/Session/HTTP 能力自动取得身份、注入指引、调用并取消请求，不依赖 connect-bot 开关。 |
-| Run、workflow | Run 保存本次事实而非定义快照；同一 Map 可有多个独立 Run。workflow 只读观察执行事实、定位/恢复已关联 Chat，并允许人类重命名 Run；不暗中创建、接管或改状态。 |
+| Run、workflow | Run 保存本次事实及派发时冻结的文件交接规则，而非整张 Map 快照；同一 Map 可有多个独立 Run。workflow 只读观察执行事实、定位/恢复已关联 Chat，并允许人类重命名 Run；不暗中创建、接管或改状态。 |
 
 新启动 omp / pi 的文件可能尚未落盘（pi 在首次用户或助手消息出现后创建文件）；仅对官方引用、绝对标准原生路径、实际 NotFound 与已报告 cwd 的组合接受路径内身份，文件存在时仍以文件头为准。这是显式命名约定信任而非文件头验证；照常先关联再提交指示。仅凭可信历史保存的同一路径与 ID 可以定位未落盘当前 Chat，新进程恢复仍须确认原身份；身份冲突拒绝，不自动改绑、轮询或补关联旧 Run。见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。
 
@@ -37,7 +37,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
 - Map node 的 `report_policy` 为可选 snake_case 字段，仅 auto/manual，默认 auto，非法值拒绝；dispatch/retry 读取当前 Map 并固定为执行的 camelCase `reportPolicy`。旧记录缺字段按 auto，无迁移；恢复原 Chat/执行沿用保存值，不热更新。初始输入在业务 input 外独立给出策略控制段。manual 只是提示词约束，不新增审批门禁、状态或按钮，不改变管理者 complete 职责。
 - Map node 的 `auto_close` 缺省 false，dispatch/retry 固定为执行的 `autoClose`；旧执行缺字段按 false，不因查询改写。只有 manager 首次合法 complete 且当前事实保存成功，才按本次选择尽力关闭当前执行保存的 Tab；历史追加失败不撤销资格或原反馈。外部命令不占用业务推进锁或文件协调，响应及同 Run 后续合法动作不等待关闭返回；不要求停轮/空闲，不扫描无关目标，不重试、补偿、绕过确认或持久化关闭结果。关闭会终止 Tab 内终端及相关进程，不删除 Chat 历史；日志之外不新增 workflow 结果展示。详见[完成后自动关闭](workflow-runtime.md#节点完成后自动关闭关联-tab)。
-- report 的命名输出只在报告记录中登记；同 execution 按名更新、省略保留，新 execution 不继承。不检查或操作业务文件，合法绝对地址不受 zone 限制；历史缺字段可读但不补 true，新请求缺 canComplete 明确拒绝。report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
+- Map 用 input_rule/output_rule 数组约定文件交接，以非空且节点内唯一 ID 引用；引用的输出 ID 须预先声明。dispatch/retry 冻结规则并保存解析的 inputs 数组，缺所需上游输出时拒绝派发，不猜地址。report 的 outputs 数组只在报告记录中登记，每项 {id,path}，ID 必须属于本次冻结的 outputRule，单份报告不允许重复 ID；同 execution 按 ID 更新、省略保留，新 execution 不继承。from/to 由后端确定 Chat 归属，不接受调用方自填。不检查或操作业务文件，合法绝对地址不受 zone 限制；历史缺字段可读但不补 true，新请求缺 canComplete 明确拒绝。report 先保存后独立通知。输入提交成功不等于阅读、严格顺序、原生 IRC 或打断保证；保存成功/投递失败不撤回报告、不重投、不仅为此重报。collect 的通知检查不清交接待办。
 - 首次 complete 还要求当前 execution 按追加顺序的最新报告严格声明 canComplete=true；无报告、历史缺字段、false 或旧执行 true 均不能放行，不回退旧 true，无 outputs 不影响门禁。声明不等于质量或用户批准；人工完成同样受限，无 force 绕过。报告保存与首次完成共用同 Run 协调：false 先提交则拒绝，完成先提交则后续 false 不撤销；重复 complete 保留首次事实且不重复关闭。拒绝说明适用报告 ID／不存在，不改状态、历史或通知。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
 - 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。

@@ -27,8 +27,8 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }
   const reports = [
-    { id: 'report-new', type: 'report', at: 5000, runId: run.id, nodeId: 'A', executionId: 'exec-new', source: current, target: manager, body: 'CURRENT APPLICABLE BODY' },
-    { id: 'report-old', type: 'report', at: 2000, runId: run.id, nodeId: 'A', executionId: 'exec-old', source: old, target: manager, body: 'OLD BODY NOT APPLICABLE' },
+    { id: 'report-new', type: 'report', at: 5000, runId: run.id, nodeId: 'A', executionId: 'exec-new', from: current, to: manager, body: 'CURRENT APPLICABLE BODY' },
+    { id: 'report-old', type: 'report', at: 2000, runId: run.id, nodeId: 'A', executionId: 'exec-old', from: old, to: manager, body: 'OLD BODY NOT APPLICABLE' },
   ]
   fs.writeFileSync(path.join(directory, 'run.json'), JSON.stringify(run))
   fs.writeFileSync(path.join(directory, 'messages.jsonl'), reports.map(report => JSON.stringify(report)).join('\n') + '\n')

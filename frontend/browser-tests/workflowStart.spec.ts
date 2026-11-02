@@ -69,7 +69,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
   expect(restarted).toEqual({ ...before, managed: false })
   await page.goto(`${server.baseURL}/#workflow/${id}`)
   await page.locator('.workflow-run-background > summary').click()
-  await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '管理者 Chat', exact: true }).getByText('browser-manager-04', { exact: true })).toBeVisible()
   const navigation = page.getByRole('navigation', { name: '已保存节点状态' })
   await expect(navigation.locator('[data-node-id="A"]')).toHaveAttribute('data-node-state', 'running')
   await expect(navigation.locator('[data-node-id="B"]')).toHaveAttribute('data-node-state', 'failed')
@@ -207,7 +207,7 @@ test('P45 P54 startup failure and real partial effects survive browser refresh @
   await expect(page.getByRole('tab', { name: 'chat', exact: true })).toHaveAttribute('aria-selected', 'true')
 
   await page.goto(runURLBeforeReload4)
-  await expect(page.getByRole('heading', { name: '管理者启动失败 · submit' })).toBeVisible()
+  await expect(page.getByRole('alert', { name: '管理者启动错误' })).toContainText('submit')
   await page.waitForTimeout(750)
   expect(server.herdrCalls()).toEqual(calls)
   expect(server.diagnostics()).toContain(`run=${detail.id}`)
@@ -240,7 +240,7 @@ test('P9 P10 P12 P67 P68 manager Run opens refreshable read-only details @time-c
   await expect(page.getByTestId('run-user-input')).toHaveText(requirements)
   await expect(page.getByRole('textbox', { name: '本次要求' })).toHaveCount(0)
   await page.locator('.workflow-run-background > summary').click()
-  await expect(page.getByText('browser-manager-04', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '管理者 Chat', exact: true }).getByText('browser-manager-04', { exact: true })).toBeVisible()
   const count = server.herdrCalls().filter(call => call.kind === 'agent_start').length
   expect(count).toBe(1)
   const runURLBeforeReload5 = page.url()

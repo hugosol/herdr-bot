@@ -286,20 +286,19 @@ else:
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')
         producer = (
             f'Before work, write one brief assistant note containing {self.marker}-CHAT-PRIVATE-NOT-INPUT. '
-            f'Run external command {script} produce. If phase=obsolete, report true with outputs={{"handoff":output}} and stop. '
-            f'If phase=partial, report false with that same output name, explain actual blocker and partial effects; '
+            f'Run external command {script} produce. If phase=obsolete, report true with outputs=[{{"id":"handoff","path":output}}] and stop. '
+            f'If phase=partial, report false with that same output ID, explain actual blocker and partial effects; '
             f'then run {script} wait (timeout at least 250 seconds) to await already-approved external business release. '
             f'After it returns phase=ready, report true, omitting outputs (retain the current registration). '
             f'In each A report include the orchestration diagnostic {report_secret} and the decoy address {zone}/decoy-not-an-output.csv. '
             'Do not include the detailed business material.')
         consumer = (f'{business}. Produce a separate receipt using {script} consume. '
-                    'Do not read upstream file bodies to perform default acceptance. Report true, omitting outputs. '
-                    'The optional logical input missing_logical is intentionally absent: mention that limitation, do not invent its address.')
+                    'Do not read upstream file bodies to perform default acceptance. Report true, omitting outputs.')
         (self.root / 'maps/roles.json').write_text(json.dumps({'title': 'Isolated real role acceptance', 'description': '', 'nodes': {
-            'A': {'title': 'External producer', 'bot_id': 'worker', 'input': producer, 'zone': zone, 'blocked_by': []},
+            'A': {'title': 'External producer', 'bot_id': 'worker', 'input': producer, 'zone': zone, 'blocked_by': [],
+                  'output_rule': [{'id': 'handoff'}]},
             'B': {'title': 'Address consumer', 'bot_id': 'worker', 'input': consumer, 'zone': zone, 'blocked_by': ['A'],
-                  'inputs': {'primary': {'source': 'node', 'node_id': 'A', 'output': 'handoff'},
-                             'missing_logical': {'source': 'node', 'node_id': 'A', 'output': 'never_registered'}}}}}), encoding='utf-8')
+                  'input_rule': [{'id': 'primary', 'type': 'node', 'node_id': 'A', 'output_id': 'handoff'}]}}}), encoding='utf-8')
         started = self.http('/api/scheduler/maps/roles.json/runs',
             {'managerTaskId': ids['manager'], 'zone': zone, 'userInput': background}, 201)
         self.run_id = started['id']
@@ -367,14 +366,14 @@ else:
         self.evidence['identities'] = identities
         for report in final['reports']:
             execution = next(execution for execution in [old, current, node_b['execution']] if execution['id'] == report['executionId'])
-            require(report['runId'] == self.run_id and report['source']['sessionId'] == execution['chat']['sessionId'], report)
+            require(report['runId'] == self.run_id and report['from']['sessionId'] == execution['chat']['sessionId'], report)
             require('DETAIL-SENSITIVE-MARKER' not in report['body'] and 'row-199,business-value-3383' not in report['body'], report)
             require(0 < len(report['body']) < 2000, ('Report is not a concise orchestration conclusion', report))
         for record in self.report_calls():
             request = decode(record, 'request') or {}
             response = decode(record, 'response') or {}
             report = response.get('report')
-            require(report and request.get('sessionId') == report['source']['sessionId'],
+            require(report and request.get('sessionId') == report['from']['sessionId'],
                     ('Public Session/actual HTTP/saved report identity disagree', record))
         report_requests = [decode(record, 'request') for record in self.report_calls()]
         require(any(request.get('canComplete') is False for request in report_requests), report_requests)
@@ -393,9 +392,9 @@ else:
         require(current_address in serialized, ('Actual Chat lacks current registered output address', initial))
         for forbidden in [old_address, report_secret, self.marker + '-CHAT-PRIVATE-NOT-INPUT', 'DETAIL-SENSITIVE-MARKER', 'decoy-not-an-output.csv']:
             require(forbidden not in serialized, ('Upstream body/chat/old execution/detail leaked into native initialization', forbidden))
-        require('missing_logical: unresolved (node A, output never_registered)' in serialized,
-                'Missing logical input must be injected as unresolved, without a fabricated address')
-        require(node_b['execution']['chat']['sessionId'], 'Missing-input node was not actually started')
+        require(node_b['execution']['inputs'] == [{'id': 'primary', 'path': current_address}],
+                ('Actual resolved input differs from the current execution address', node_b['execution']))
+        require(node_b['execution']['chat']['sessionId'], 'Consumer node was not actually started')
         # Prove real public guides reached the model, not merely that prompt files exist.
         for role in ['manager', 'node']:
             guide = (self.args.toolkit / f'extensions/workflow-chat/{role}-chat/shared-logic/prompts/init.md').read_text(encoding='utf-8').strip()
@@ -553,7 +552,7 @@ class FanInAcceptance(RolesAcceptance):
             'Do not use bash to read/transform files: computations and merging are your assigned business work. '
             'Only the source node may read its explicitly named seed input, then write the handoff file itself. '
             'Never read other seeds, oracle files, runtime records or other Chats. '
-            'Report using the actual report tool with can_complete=true, outputs={"result":absolute output address}. '
+            'Report using the actual report tool with can_complete=true, outputs=[{"id":"result","path":absolute output address}]. '
             'Keep the report a short orchestration conclusion without file bodies, numeric answers or identity metadata. '
             'All business permissions are preapproved; do not request human confirmation.')
         ids = {}
@@ -576,13 +575,14 @@ class FanInAcceptance(RolesAcceptance):
             nodes = {}
             for name in self.NODES:
                 node = {'title': name, 'bot_id': 'worker', 'input': inputs[name], 'zone': str(zones[name]),
-                    'blocked_by': [] if name == 'source' else ['left', 'right'] if name == 'summary' else ['source']}
+                    'blocked_by': [] if name == 'source' else ['left', 'right'] if name == 'summary' else ['source'],
+                    'output_rule': [{'id': 'result'}]}
                 if name == 'source':
-                    node['inputs'] = {'seed': {'source': 'file', 'path': str(business / 'seed.txt')}}
+                    node['input_rule'] = [{'id': 'seed', 'type': 'file', 'path': str(business / 'seed.txt')}]
                 elif name in ['left', 'right']:
-                    node['inputs'] = {'shared': {'source': 'node', 'node_id': 'source', 'output': 'result'}}
+                    node['input_rule'] = [{'id': 'shared', 'type': 'node', 'node_id': 'source', 'output_id': 'result'}]
                 elif name == 'summary':
-                    node['inputs'] = {name + '_result': {'source': 'node', 'node_id': name, 'output': 'result'} for name in ['left', 'right']}
+                    node['input_rule'] = [{'id': upstream + '_result', 'type': 'node', 'node_id': upstream, 'output_id': 'result'} for upstream in ['left', 'right']]
                 nodes[name] = node
             definition = {'title': 'Isolated shared-file fan-in ' + str(index), 'description': '', 'nodes': nodes}
             path = self.root / 'maps' / f'fan-in-{index}.json'
@@ -637,9 +637,9 @@ class FanInAcceptance(RolesAcceptance):
             reports = [report for report in final['reports'] if report['executionId'] == execution['id']]
             require(reports and reports[-1]['canComplete'] is True, ('Missing current execution true report', name))
             calls = [record for record in self.report_calls() if (decode(record, 'request') or {}).get('sessionId') == chats[name]['sessionId']]
-            require(any((decode(call, 'request') or {}).get('outputs') == {'result': str(business / (name + '.txt'))} for call in calls),
+            require(any((decode(call, 'request') or {}).get('outputs') == [{'id': 'result', 'path': str(business / (name + '.txt'))}] for call in calls),
                 ('Original zone-external address was not registered by native report', name, calls))
-            require(all(report['source']['sessionId'] == chats[name]['sessionId'] and report['runId'] == run['id'] for report in reports), reports)
+            require(all(report['from']['sessionId'] == chats[name]['sessionId'] and report['runId'] == run['id'] for report in reports), reports)
             require(all(0 < len(report['body']) < 1500 and not any(line in report['body'] for content in expected.values()
                 for line in content.decode().splitlines()) for report in reports), ('Report leaked business rows', reports))
         histories = {}

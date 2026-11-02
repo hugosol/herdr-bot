@@ -50,13 +50,13 @@ async fn historical_and_new_reports_survive_actual_restart_without_reclaiming_ru
     let started = s.start("restart-report-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"restart-report-node"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("restart-report-manager", &["A"]).await;
-    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"restart-report-node","body":"Saved before actual restart","canComplete":false,"outputs":{"result":"C:\\restart\\result.txt"}}).to_string()).await;
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"restart-report-node","body":"Saved before actual restart","canComplete":false,"outputs":[{"id":"result","path":"C:\\restart\\result.txt"}]}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let new_report = serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone();
     let legacy_manager = json!({"sessionId":"legacy-manager","workspaceId":"old-workspace","tabId":"old-manager-tab","paneId":"old-manager-pane","agentName":"old-manager-agent"});
     let legacy_node = json!({"sessionId":"legacy-node","workspaceId":"old-workspace","tabId":"old-node-tab","paneId":"old-node-pane","agentName":"old-node-agent"});
     let legacy_run = json!({"id":"legacy-reports","map":"retired.json","createdAt":100,"managerTaskId":"old-manager-task","zone":"C:/legacy/manager","workspaceName":"old-workspace","userInput":"Historical input","manager":legacy_manager,"status":"running","finished":null,"nodes":{"A":{"status":"running","execution":{"id":"old-execution","taskId":"old-node-task","agent":"omp","zone":"C:/legacy/node","chat":legacy_node},"failure":null,"completion":null,"previousExecutions":[]}}});
-    let legacy_report = json!({"id":"old-report","type":"report","at":120,"runId":"legacy-reports","nodeId":"A","executionId":"old-execution","source":legacy_node,"target":legacy_manager,"body":"Legacy report without completion declaration"});
+    let legacy_report = json!({"id":"old-report","type":"report","at":120,"runId":"legacy-reports","nodeId":"A","executionId":"old-execution","from":legacy_node,"to":legacy_manager,"body":"Historical report without completion declaration","outputs":[]});
     let legacy_root = s.config.scheduler.run_directory.join("legacy-reports");
     fs::create_dir(&legacy_root).unwrap();
     fs::write(legacy_root.join("run.json"), legacy_run.to_string()).unwrap();
@@ -107,7 +107,7 @@ run_instructions = '{}'
             reads.push(detail);
         }
         assert!(reads[0]["reports"][0].get("canComplete").is_none());
-        assert!(reads[0]["reports"][0].get("outputs").is_none());
+        assert_eq!(reads[0]["reports"][0]["outputs"], json!([]));
         for identity in ["legacy-manager", "restart-report-manager"] {
             for action in ["status", "collect", "resume", "dispatch"] {
                 let mut body = json!({"sessionId":identity});
@@ -117,7 +117,7 @@ run_instructions = '{}'
             }
         }
         for identity in ["legacy-node", "restart-report-node"] {
-            let denied = post_json_over_tcp(panel.addr, "/api/workflow/node/report", &json!({"sessionId":identity,"body":"No restart write qualification","canComplete":true,"outputs":{"result":"C:\\must-not-register.txt"}}).to_string()).await;
+            let denied = post_json_over_tcp(panel.addr, "/api/workflow/node/report", &json!({"sessionId":identity,"body":"No restart write qualification","canComplete":true,"outputs":[{"id":"result","path":"C:\\must-not-register.txt"}]}).to_string()).await;
             assert_eq!(denied.status, 403, "{}", denied.body);
         }
         observations.push(reads);

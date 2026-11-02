@@ -3,12 +3,24 @@ import { WorkflowRunGraph } from './WorkflowRunGraph'
 import { orderedMapNodeIds } from '../scheduler/mapNodeOrder'
 import { WorkflowStatus } from './WorkflowStatus'
 import type { CurrentDefinition } from './useWorkflowRefresh'
-import type { Report, Run } from './workflowApi'
+import type { Execution, FileAddress, Report, Run } from './workflowApi'
 import { RunChatReference } from './RunChatReference'
 import './workflow.css'
 
 function FactTime({ at }: { at: number }) {
   return <time dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleString()}</time>
+}
+
+function OutputAddresses({ outputs, empty }: { outputs: FileAddress[]; empty: string }) {
+  return outputs.length ? <dl>{outputs.map(({ id, path }) => <div key={id}><dt>id: {id}</dt><dd>path: <code>{path}</code></dd></div>)}</dl> : <p className="workflow-muted">{empty}</p>
+}
+
+function ExecutionHandoff({ execution }: { execution: Execution }) {
+  return <section aria-label="执行交接快照"><h4>inputRule</h4>{execution.inputRule === null ? <p>未知：历史执行未记录输入规则。</p> : <pre>{JSON.stringify(execution.inputRule, null, 2)}</pre>}<h4>outputRule</h4>{execution.outputRule === null ? <p>未知：历史执行未记录输出规则。</p> : <pre>{JSON.stringify(execution.outputRule, null, 2)}</pre>}<h4>inputs</h4>{execution.inputs === null ? <p>未知：历史执行未记录实际文件输入；不从当前 Map 或报告反推。</p> : <OutputAddresses outputs={execution.inputs} empty="本次执行无实际文件输入。" />}</section>
+}
+
+function ReportHandoff({ report }: { report: Report }) {
+  return <section aria-label="报告交接声明"><p>canComplete: {report.canComplete === undefined ? '缺失（历史报告未声明）' : String(report.canComplete)}</p><h4>本次报告提交 outputs</h4><OutputAddresses outputs={report.outputs ?? []} empty="本次报告未提交输出地址；不会清除此前登记。" /><RunChatReference label="from" chat={report.from} /><RunChatReference label="to" chat={report.to} /></section>
 }
 
 export function RunCurrentView({ run, reports, current, managed }: { run: Run; reports: Report[]; current: CurrentDefinition; managed: boolean }) {
@@ -45,7 +57,12 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
     const labels: Record<string, string> = { pending: '待执行', ready: '可派发', blocked: '等待依赖', running: '运行中', completed: '已完成', failed: '失败' }
     return [id, { status, label: labels[status] ?? status }]
   }))
-  const applicable = reports.filter(report => report.nodeId === nodeId && report.executionId === node?.execution?.id)
+  const applicable = node?.execution ? reports.filter(report => report.nodeId === nodeId && report.executionId === node.execution!.id) : []
+  // The API preserves messages.jsonl append order, not timestamp order.
+  const outputById = new Map<string, FileAddress>()
+  for (const report of applicable) for (const output of report.outputs ?? []) outputById.set(output.id, output)
+  const outputs = [...outputById.values()]
+  const latestReport = applicable[applicable.length - 1]
   return <section className="workflow-current" aria-label="Run 节点事实">
     <div className="workflow-node-workspace">
       <aside className="workflow-node-sidebar" aria-label="节点导航">
@@ -71,28 +88,29 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
         {catalogErrors.map((message, index) => <p role="alert" key={index}>{message}</p>)}
         {node && <section aria-label="当前节点详情" className="workflow-node-details">
           <header className="workflow-node-detail-heading"><div><p className="workflow-eyebrow">NODE / {nodeId}</p><h2>{map?.nodes[nodeId]?.title ?? nodeId}</h2><p className="workflow-detail-task">Task · {nodeTasks[nodeId]} {nodeTaskIds[nodeId] && <code>{nodeTaskIds[nodeId]}</code>}<small>{node.execution ? '已保存执行' : '当前配置'}</small></p></div><WorkflowStatus status={node.status} saved={!managed} animate={animateRunning} /></header>
-          <p className="workflow-muted">report_policy: {nodeReportPolicies[nodeId] ?? 'auto'}</p>
-          <section aria-label="当前执行适用报告" className="workflow-current-reports"><h3 className="workflow-eyebrow">当前执行适用报告</h3>{applicable.length ? applicable.map(report => <article key={report.id}><p className="workflow-report-meta">{report.id} · <FactTime at={report.at} /></p><pre>{report.body}</pre></article>) : <p className="workflow-muted">尚无当前执行适用报告。</p>}</section>
+          <p className="workflow-muted">{node.execution ? 'reportPolicy（已保存执行）' : 'report_policy（当前配置）'}: {nodeReportPolicies[nodeId] ?? 'auto'}</p>
+          <section aria-label="当前执行交接事实"><h3>当前执行交接事实</h3><p>最新 canComplete: {!latestReport ? '无报告' : latestReport.canComplete === undefined ? '缺失（最新报告未声明）' : String(latestReport.canComplete)}</p><p className="workflow-muted">仅最新适用报告的严格 true 表示可交接声明；报告不等于管理者已完成节点。</p><h4>当前执行累计 outputs</h4><OutputAddresses outputs={outputs} empty="当前执行尚无已登记输出地址。" /><p className="workflow-muted">按报告追加顺序累计；同名后报覆盖，省略保留，不继承其他执行。这里只显示地址，不读取或验证文件。</p></section>
+          <section aria-label="当前执行适用报告" className="workflow-current-reports"><h3 className="workflow-eyebrow">当前执行适用报告</h3>{applicable.length ? applicable.map(report => <article key={report.id}><p className="workflow-report-meta">id: {report.id} · at: <FactTime at={report.at} /></p><h4>body</h4><pre>{report.body}</pre><ReportHandoff report={report} /></article>) : <p className="workflow-muted">尚无当前执行适用报告。</p>}</section>
           <div className="workflow-node-journal">
-            <section className="workflow-journal-entry" aria-label="当前工作要求"><span className="workflow-journal-dot" aria-hidden="true" /><h3>工作要求</h3>{definition ? <><p>{definition.input || '当前定义未填写工作要求。'}</p><p className="workflow-muted">来自当前 Map 定义，非历史执行快照。</p></> : <p>当前定义不可用，不补造历史工作要求。</p>}</section>
+            <section className="workflow-journal-entry" aria-label="当前工作要求"><span className="workflow-journal-dot" aria-hidden="true" /><h3>input</h3>{definition ? <><p>{definition.input || '当前定义未填写工作要求。'}</p><p className="workflow-muted">来自当前 Map 定义，非历史执行快照。</p></> : <p>当前定义不可用，不补造历史工作要求。</p>}</section>
             <section className="workflow-journal-entry workflow-current-execution" aria-label="当前执行事实"><span className="workflow-journal-dot" aria-hidden="true" /><h3>执行关联</h3>
-              {node.execution ? <><dl><dt>执行 ID</dt><dd>{node.execution.id}</dd><dt>执行 Task</dt><dd>{taskName(node.execution.taskId)}</dd><dt>执行 zone</dt><dd>{node.execution.zone}</dd></dl><RunChatReference label="当前执行 Chat" chat={node.execution.chat} /></> : <p>尚无当前执行或 Chat 关联；读取不会创建执行。</p>}
+              {node.execution ? <><dl><dt>id</dt><dd>{node.execution.id}</dd><dt>taskId</dt><dd>{taskName(node.execution.taskId)}</dd><dt>zone</dt><dd>{node.execution.zone || '未记录（不使用当前 Map 补造）'}</dd><dt>reportPolicy</dt><dd>{node.execution.reportPolicy ?? 'auto（缺省按 auto）'}</dd><dt>autoClose</dt><dd>{node.execution.autoClose === undefined ? 'false（缺省按 false）' : String(node.execution.autoClose)}</dd></dl><p>实际 cwd 未单独记录。</p><ExecutionHandoff execution={node.execution} /><RunChatReference label="当前执行 Chat" chat={node.execution.chat} /></> : <p>尚无当前执行或 Chat 关联；读取不会创建执行。</p>}
             </section>
-            {node.completion && <section aria-label="交接完成说明" className="workflow-journal-entry workflow-completion"><span className="workflow-journal-dot" aria-hidden="true" /><h3>完成说明</h3><p>{node.completion.reason}</p><FactTime at={node.completion.at} /></section>}
+            {node.completion && <section aria-label="交接完成说明" className="workflow-journal-entry workflow-completion"><span className="workflow-journal-dot" aria-hidden="true" /><h3>完成说明</h3><dl><dt>id</dt><dd>{node.completion.id}</dd><dt>reason</dt><dd>{node.completion.reason}</dd><dt>at</dt><dd><FactTime at={node.completion.at} /></dd></dl></section>}
           </div>
-          {node.failure && <section aria-label="节点失败" className="workflow-failure"><h3>失败原因 · {node.failure.stage}</h3><p>{node.failure.message}</p>{node.failure.effects && <dl>{Object.entries(node.failure.effects).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '未知')}</dd></div>)}</dl>}</section>}
+          {node.failure && <section aria-label="节点失败" className="workflow-failure"><h3>失败原因 · stage: {node.failure.stage}</h3><p>message: {node.failure.message}</p>{node.failure.effects && <dl>{Object.entries(node.failure.effects).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '未知')}</dd></div>)}</dl>}</section>}
           <details className="workflow-node-definition" key={`definition-${nodeId}`} aria-label="当前节点定义"><summary>当前定义（非执行快照）</summary>
             {definition ? <>
-              <dl><dt>Bot</dt><dd>{bot?.name ? `${bot.name} · ${bot.id}` : definition.bot_id}</dd><dt>Task</dt><dd>{bot?.task_id ? taskName(bot.task_id) : '当前 Bot 无可读 Task 绑定。'}</dd><dt>zone</dt><dd>{definition.zone || '未绑定 zone'}</dd><dt>input</dt><dd><pre>{definition.input}</pre></dd><dt>命名文件输入</dt><dd>{Object.entries(definition.inputs ?? {}).length ? <ul>{Object.entries(definition.inputs ?? {}).map(([name, source]) => <li key={name}>{name}: {source.source === 'file' ? source.path : `${source.node_id} → ${source.output}`}</li>)}</ul> : '未声明文件输入。'}</dd><dt>前置依赖</dt><dd>{definition.blocked_by.length ? definition.blocked_by.map(id => nodeNames[id] ?? id).join('、') : '无前置依赖。'}</dd></dl>
+              <dl><dt>bot_id</dt><dd>{bot?.name ? `${bot.name} · ${bot.id}` : definition.bot_id}</dd><dt>task_id</dt><dd>{bot?.task_id ? taskName(bot.task_id) : '当前 Bot 无可读 Task 绑定。'}</dd><dt>zone</dt><dd>{definition.zone || '未绑定 zone'}</dd><dt>report_policy</dt><dd>{definition.report_policy ?? 'auto'}</dd><dt>auto_close</dt><dd>{String(definition.auto_close ?? false)}</dd><dt>input</dt><dd><pre>{definition.input}</pre></dd><dt>input_rule</dt><dd><pre>{JSON.stringify(definition.input_rule ?? [], null, 2)}</pre></dd><dt>output_rule</dt><dd><pre>{JSON.stringify(definition.output_rule ?? [], null, 2)}</pre></dd><dt>blocked_by</dt><dd>{definition.blocked_by.length ? definition.blocked_by.map(id => nodeNames[id] ?? id).join('、') : '无前置依赖。'}</dd></dl>
               {node.status === 'pending' && <p>{blockers.length ? `前置未完成：${blockers.join('、')}` : '前置依赖已满足。'}{run.status !== 'running' && ` Run 状态为 ${run.status}，不可派发。`}</p>}
             </> : <p>当前定义不可用；仅显示保存事实。</p>}
           </details>
           <details key={`history-${nodeId}`} aria-label="已保存旧执行事实"><summary>旧执行历史（{node.previousExecutions.length} 次已保存执行）</summary>
             {node.previousExecutions.length ? node.previousExecutions.map((fact, index) => <article key={fact.execution?.id ?? index}>
-              {fact.execution ? <><dl><dt>旧执行 ID</dt><dd>{fact.execution.id}</dd><dt>旧执行 Task</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>旧执行 zone</dt><dd>{fact.execution.zone}</dd><dt>report_policy</dt><dd>{fact.execution.reportPolicy ?? 'auto'}</dd></dl><RunChatReference label="旧执行 Chat" chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
-              {fact.failure && <p>旧失败 · {fact.failure.stage}：{fact.failure.message}</p>}
+              {fact.execution ? <><dl><dt>id</dt><dd>{fact.execution.id}</dd><dt>taskId</dt><dd>{taskName(fact.execution.taskId)}</dd><dt>zone</dt><dd>{fact.execution.zone || '未记录（不使用当前 Map 补造）'}</dd><dt>reportPolicy</dt><dd>{fact.execution.reportPolicy ?? 'auto（缺省按 auto）'}</dd><dt>autoClose</dt><dd>{fact.execution.autoClose === undefined ? 'false（缺省按 false）' : String(fact.execution.autoClose)}</dd></dl><p>实际 cwd 未单独记录。</p><ExecutionHandoff execution={fact.execution} /><RunChatReference label="旧执行 Chat" chat={fact.execution.chat} /></> : <p>此旧执行未保存完整执行关联。</p>}
+              {fact.failure && <p>旧失败 · stage: {fact.failure.stage} · message: {fact.failure.message}</p>}
             </article>) : <p>尚无已保存旧执行。</p>}
-            {reports.filter(report => report.nodeId === nodeId && report.executionId !== node.execution?.id).map(report => <article key={report.id}><p>旧报告 · {report.id} · 执行 {report.executionId} · <FactTime at={report.at} /></p><pre>{report.body}</pre><RunChatReference label="旧报告来源 Chat" chat={report.source} /></article>)}
+            {reports.filter(report => report.nodeId === nodeId && report.executionId !== node.execution?.id).map(report => <article key={report.id}><p>旧报告 · id: {report.id} · executionId: {report.executionId} · at: <FactTime at={report.at} /></p><h4>body</h4><pre>{report.body}</pre><ReportHandoff report={report} /></article>)}
           </details>
         </section>}
       </div>

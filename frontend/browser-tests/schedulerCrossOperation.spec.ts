@@ -297,7 +297,8 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await inert()
   const mapBeforeInvalidSave = fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')
-  const raw = '  ' + JSON.stringify(maliciousWork, null, 3) + '\n'
+  const maliciousContent = Object.fromEntries(Object.entries(maliciousWork).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
+  const raw = '  ' + JSON.stringify(maliciousContent, null, 3) + '\n'
   await page.getByLabel('node 内容 JSON', { exact: true }).fill(raw + '!')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: /JSON/ })).toBeVisible()
@@ -305,7 +306,7 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   expect(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')).toBe(mapBeforeInvalidSave)
   await inert()
   const changedWork = { ...maliciousWork, title: '保存后的核对工作' }
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(changedWork))
+  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ ...maliciousContent, title: changedWork.title }))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   await expect(page.getByTestId('node-input')).toContainText(html)

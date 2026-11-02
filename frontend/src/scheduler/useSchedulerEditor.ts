@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import type { NodeSettingsValue } from './NodeSettings'
 import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
 
 type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
-type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string; file: string | null }
+type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string; file: string | null; settings: NodeSettingsValue | null; initialSettings: NodeSettingsValue | null }
+const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || draft.settings?.zone !== draft.initialSettings?.zone || draft.settings?.report_policy !== draft.initialSettings?.report_policy || draft.settings?.auto_close !== draft.initialSettings?.auto_close
 type State = { listing: Listing; bots: Bots; file: string | null; preview: Preview | null; selectedId: string | null; botId: string | null; draft: Draft | null; editingBusy: boolean; editError: string | null; returnProblem: string | null; deleteMapTarget: string | null; deletingMap: boolean; deleteMapError: string | null }
 const message = (error: unknown) => error instanceof Error ? error.message : '读取或修改失败。'
 
@@ -73,7 +75,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
   function abandonDraft() {
     const draft = current.current.draft
     if (inFlight.current || current.current.deleteMapTarget !== null) return false
-    if (draft && (draft.id !== draft.initialId || draft.content !== draft.initialContent) && !confirm(`放弃尚未保存的 ${draft.kind} 修改？`)) return false
+    if (draft && draftChanged(draft) && !confirm(`放弃尚未保存的 ${draft.kind} 修改？`)) return false
     update({ draft: null, editError: null })
     return true
   }
@@ -111,13 +113,20 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     await operation(async valid => {
       const loaded = kind === 'Bot' ? await loadBotDraft(id) : await loadNodeDraft(file!, id)
       if (!valid()) return
-      update({ draft: { ...loaded, kind, create: id === null, initialId: loaded.id, initialContent: loaded.content, file } })
+      let content = loaded.content
+      let settings: NodeSettingsValue | null = null
+      if (kind === 'node') {
+        const { zone, report_policy = 'auto', auto_close = false, node_id: _nodeId, ...definition } = JSON.parse(content)
+        settings = { zone, report_policy, auto_close }
+        content = JSON.stringify(definition, null, 2)
+      }
+      update({ draft: { ...loaded, content, kind, create: id === null, initialId: loaded.id, initialContent: content, file, settings, initialSettings: settings } })
       onViewChange(kind === 'Bot' ? 'bot' : 'map')
     })
   }
-  function editDraft(patch: { id?: string; content?: string }) {
+  function editDraft(patch: { id?: string; content?: string; settings?: Partial<NodeSettingsValue> }) {
     const draft = current.current.draft
-    if (!inFlight.current && draft) update({ draft: { ...draft, ...patch } })
+    if (!inFlight.current && draft) update({ draft: { ...draft, ...patch, settings: draft.settings && patch.settings ? { ...draft.settings, ...patch.settings } : draft.settings } })
   }
   async function submitDefinition() {
     const draft = current.current.draft
@@ -125,7 +134,15 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     await operation(async valid => {
       const value: unknown = JSON.parse(draft.content)
       if (typeof value === 'object' && value !== null && Object.hasOwn(value, 'id')) throw new Error(`请移除 ${draft.kind} 内容中的顶层 id；使用独立 ${draft.kind} ID。`)
-      const payload = { id: draft.id, content: draft.content, revision: draft.revision }
+      let content = draft.content
+      if (draft.kind === 'node') {
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('node 内容 JSON 必须是对象。')
+        for (const field of ['node_id', 'zone', 'report_policy', 'auto_close']) {
+          if (Object.hasOwn(value, field)) throw new Error(`请移除 node 内容 JSON 中的顶层 ${field}；使用独立控件。`)
+        }
+        content = JSON.stringify({ ...value, ...draft.settings })
+      }
+      const payload = { id: draft.id, content, revision: draft.revision }
       if (draft.kind === 'Bot') {
         const saved = await saveBot(payload)
         if (!valid()) return
@@ -205,7 +222,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     if (active && returning && !inFlight.current) void refresh(false)
   }, [active, view])
   const draft = state.draft
-  const dirty = draft !== null && (draft.id !== draft.initialId || draft.content !== draft.initialContent)
+  const dirty = draft !== null && draftChanged(draft)
   useEffect(() => {
     if (!dirty && !state.editingBusy) return
     const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }

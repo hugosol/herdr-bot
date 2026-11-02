@@ -107,9 +107,6 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
   expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'nodes', 'status', 'userInput', 'workspaceName', 'zone'].sort())
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
-  const execution = s.before.nodes.A.execution
-  if (execution === null || typeof execution !== 'object') throw new Error('Expected a dispatched execution')
-  expect(Object.keys(execution).sort()).toEqual(['agent', 'autoClose', 'chat', 'id', 'reportPolicy', 'taskId', 'zone'])
   // Independent expected delta: completion is the only new durable fact. Exact
   // equality rejects result fields even if they have innocuous or unknown names.
   expect(s.readRun()).toEqual({ ...s.before, nodes: { ...s.before.nodes, A: { ...s.before.nodes.A, status: 'completed', completion } } })

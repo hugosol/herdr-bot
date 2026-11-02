@@ -9,7 +9,7 @@ async fn draft(s: &Scenario) -> Value {
 
 async fn save(s: &Scenario, draft: &Value, inputs: Value) -> common::HttpResponse {
     let mut content = draft["content"].clone();
-    content["inputs"] = inputs;
+    content["input_rule"] = inputs;
     post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"A","content":content.to_string(),"revision":draft["revision"],"create":false}).to_string()).await
 }
 
@@ -18,18 +18,13 @@ async fn save(s: &Scenario, draft: &Value, inputs: Value) -> common::HttpRespons
 #[tokio::test]
 async fn named_inputs_round_trip_without_dependencies_or_implicit_launch() {
     let s = Scenario::new().await;
-    let inputs = json!({
-        "same_volume":{"source":"file","path":"C:\\handoff\\not-created.csv"},
-        "other_volume":{"source":"file","path":"Z:\\external\\result.txt"},
-        "outside_zone":{"source":"file","path":"C:\\outside-any-zone\\brief.md"},
-        "summary":{"source":"node","node_id":"B","output":"review"}
-    });
+    let inputs = json!([{"id":"same_volume","type":"file","path":"C:\\handoff\\not-created.csv"}, {"id":"other_volume","type":"file","path":"Z:\\external\\result.txt"}, {"id":"outside_zone","type":"file","path":"C:\\outside-any-zone\\brief.md"}, {"id":"summary","type":"node","node_id":"B","output_id":"review"}]);
     let response = save(&s, &draft(&s).await, inputs.clone()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
     assert_eq!(read.status, 200, "{}", read.body);
     let map: Value = serde_json::from_str(&read.body).unwrap();
-    assert_eq!(map["nodes"]["A"]["inputs"], inputs);
+    assert_eq!(map["nodes"]["A"]["input_rule"], inputs);
     assert_eq!(map["nodes"]["A"]["blocked_by"], json!([]));
     assert_eq!(map["nodes"]["C"]["blocked_by"], json!(["A","B"]));
     assert!(s.herdr.calls().is_empty(), "saving and reading cannot start Chats");
@@ -44,21 +39,24 @@ async fn invalid_named_inputs_preserve_original_map() {
     let original = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
     let draft = draft(&s).await;
     for inputs in [
-        json!({"brief":{"source":"node","node_id":"typo","output":"review"}}),
-        json!({"brief":{"source":"file","path":"relative/brief.md"}}),
-        json!({"brief":{"source":"file","path":"C:brief.md"}}),
-        json!({"brief":{"source":"file","path":"\\brief.md"}}),
+        json!([{"id":"brief","type":"node","node_id":"typo","output_id":"review"}]),
+        json!([{"id":"brief","type":"file","path":"relative/brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"C:brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"\\brief.md"}]),
         json!({"brief":{"source":"file","path":"C:\\brief\u{0}.md"}}),
-        json!({"brief":{"source":"file","path":12}}),
-        json!({"brief":{"source":"node","node_id":false,"output":"review"}}),
-        json!({"brief":{"source":"node","node_id":"B","output":[]}}),
-        json!({"brief":{"source":"file","path":"C:\\brief.md","node_id":"B","output":"review"}}),
+        json!([{"id":"brief","type":"file","path":12}]),
+        json!([{"id":"brief","type":"node","node_id":false,"output_id":"review"}]),
+        json!([{"id":"brief","type":"node","node_id":"B","output_id":[]}]),
+        json!([{"id":"brief","type":"file","path":"C:\\brief.md","node_id":"B","output_id":"review"}]),
         json!({"brief":{"path":"C:\\brief.md"}}),
-        json!({"brief":{"source":"FILE","path":"C:\\brief.md"}}),
-        json!({"brief":{"source":false,"path":"C:\\brief.md"}}),
-        json!({"brief":{"source":"node","node_id":"B"}}),
+        json!([{"id":"brief","type":"FILE","path":"C:\\brief.md"}]),
+        json!([{"id":"brief","type":false,"path":"C:\\brief.md"}]),
+        json!([{"id":"brief","type":"node","node_id":"B"}]),
         json!({"brief":["file","C:\\brief.md"]}),
-        json!({"brief":null}), json!([]), Value::Null,
+        json!({"brief":null}), Value::Null,
+        json!([{"id":"","type":"file","path":"C:/brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"C:/one"},{"id":"brief","type":"file","path":"C:/two"}]),
+        json!([{"id":"brief","type":"node","node_id":"B","output_id":"undeclared"}]),
     ] {
         let response = save(&s, &draft, inputs.clone()).await;
         assert_eq!(response.status, 500, "candidate={inputs} response={}", response.body);
@@ -69,13 +67,17 @@ async fn invalid_named_inputs_preserve_original_map() {
     assert!(s.herdr.calls().is_empty());
 }
 
-// P1: unchanged legacy source form is still saved and explicitly dispatched;
-// there is no requirement to invent a file input or preallocate a result.
+// P1: omitted rules default to empty arrays without inventing file inputs.
 #[tokio::test]
-async fn legacy_node_without_file_inputs_saves_and_dispatches() {
+async fn omitted_rules_default_to_empty_arrays_and_dispatch() {
     let s = Scenario::new().await;
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    map["nodes"]["A"].as_object_mut().unwrap().remove("output_rule");
+    fs::write(path, map.to_string()).unwrap();
     let draft = draft(&s).await;
-    assert!(draft["content"].get("inputs").is_none());
+    assert_eq!(draft["content"]["input_rule"], json!([]));
+    assert_eq!(draft["content"]["output_rule"], json!([]));
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"A","content":draft["content"].to_string(),"revision":draft["revision"],"create":false}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     assert!(s.herdr.calls().is_empty());
@@ -84,15 +86,46 @@ async fn legacy_node_without_file_inputs_saves_and_dispatches() {
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"legacy-named-node"},"native_cwd":s.data.path().join("node-zone")}));
     let result = s.dispatch("legacy-named-manager", &["A"]).await;
     assert_eq!(result["results"][0]["status"], "running");
+    let execution = &result["snapshot"]["nodes"]["A"]["execution"];
+    for field in ["inputRule", "outputRule", "inputs"] {
+        assert_eq!(execution[field], json!([]), "{field}");
+    }
     assert!(!s.data.path().join(".workflow").exists());
     assert_eq!(fs::read_dir(s.data.path().join("node-zone")).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn output_rule_ids_and_referenced_declarations_are_validated_atomically() {
+    let s = Scenario::new().await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"B","output_id":"review"}])).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"B"}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let draft: Value = serde_json::from_str(&response.body).unwrap();
+    let before = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
+    for outputs in [
+        json!([]),
+        json!([{"id":""}]),
+        json!([{"id":" "}]),
+        json!([{"id":"review"},{"id":"review"}]),
+        json!([["review"]]),
+        json!({"review":{}}),
+        Value::Null,
+    ] {
+        let mut content = draft["content"].clone();
+        content["output_rule"] = outputs;
+        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"B","content":content.to_string(),"revision":draft["revision"],"create":false}).to_string()).await;
+        assert_eq!(response.status, 500, "{}", response.body);
+        assert_eq!(get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body, before);
+    }
+    assert!(s.herdr.calls().is_empty());
 }
 
 // P3: existing editing consumers must not leave a dangling named source.
 #[tokio::test]
 async fn deleting_a_named_input_source_is_rejected_without_cascading() {
     let s = Scenario::new().await;
-    let saved = save(&s, &draft(&s).await, json!({"brief":{"source":"node","node_id":"C","output":"summary"}})).await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"C","output_id":"summary"}])).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let current = draft(&s).await;
     let checked = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/check-delete", &json!({"id":"C"}).to_string()).await;
@@ -112,7 +145,7 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
     let s = Scenario::new().await;
     let file = s.data.path().join("private-source.txt");
     fs::write(&file, "FILE-BODY-SENSITIVE-9204").unwrap();
-    let inputs = json!({"brief":{"source":"file","path":file},"remote":{"source":"file","path":"Z:\\business\\not-created.txt"}});
+    let inputs = json!([{"id":"brief","type":"file","path":file}, {"id":"remote","type":"file","path":"Z:\\business\\not-created.txt"}]);
     let response = save(&s, &draft(&s).await, inputs).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let first = s.start("named-manager-first").await;
@@ -157,7 +190,7 @@ async fn named_input_storage_failure_keeps_original_definition() {
     let mut readonly = permissions.clone();
     readonly.set_readonly(true);
     fs::set_permissions(&path, readonly).unwrap();
-    let response = save(&s, &draft, json!({"brief":{"source":"file","path":"Z:\\external\\brief.md"}})).await;
+    let response = save(&s, &draft, json!([{"id":"brief","type":"file","path":"Z:\\external\\brief.md"}])).await;
     fs::set_permissions(&path, permissions).unwrap();
     assert_eq!(response.status, 500, "{}", response.body);
     assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], "node-write-failed");

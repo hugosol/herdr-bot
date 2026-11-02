@@ -156,7 +156,7 @@ async fn independent_records_read_current_facts_without_replaying_history() {
         "B":{"status":"completed","execution":null,"failure":null,"completion":{"id":"completion-fixture","at":120,"actor":manager,"reason":"User supplied verified results/B.md; manual limitation retained"},"previousExecutions":[]}
     }});
     let history = json!({"id":"history-independent","at":110,"actor":manager,"action":"resume","before":"paused","after":"running"});
-    let report = json!({"id":"report-independent","type":"report","at":130,"runId":"independent-records","nodeId":"A","executionId":"execution-old","source":old_chat,"target":manager,"body":"OLD-REPORT: partial results/old.md"});
+    let report = json!({"id":"report-independent","type":"report","at":130,"runId":"independent-records","nodeId":"A","executionId":"execution-old","from":old_chat,"to":manager,"body":"OLD-REPORT: partial results/old.md","outputs":[]});
     fs::write(root.join("run.json"), current.to_string()).unwrap();
     fs::write(root.join("history.jsonl"), format!("{history}\n")).unwrap();
     fs::write(root.join("messages.jsonl"), format!("{report}\n")).unwrap();
@@ -167,6 +167,10 @@ async fn independent_records_read_current_facts_without_replaying_history() {
     assert_eq!(detail["managed"], false);
     assert_eq!(detail["run"]["status"], "paused");
     assert_eq!(detail["run"]["nodes"]["A"]["execution"]["id"], "execution-current");
+    for field in ["inputRule", "outputRule", "inputs"] {
+        assert_eq!(detail["run"]["nodes"]["A"]["execution"][field], Value::Null);
+        assert_eq!(detail["run"]["nodes"]["A"]["previousExecutions"][0]["execution"][field], Value::Null);
+    }
     assert_eq!(detail["run"]["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "OLD artifact invalid");
     assert_eq!(detail["reports"], json!([report]));
     assert_eq!(detail["pendingReports"], json!({}));

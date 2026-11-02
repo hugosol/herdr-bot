@@ -101,9 +101,9 @@ impl Scenario {
         }
         fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","plan_guide":"BOT-PLAN-SECRET","node_guide":"BOT-NODE-SECRET","task_id":ids[1]}).to_string()).unwrap();
         fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-SECRET","nodes":{
-            "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":node_zone,"blocked_by":[]},
-            "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":node_zone,"blocked_by":[]},
-            "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":node_zone,"blocked_by":["A","B"]}
+            "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":node_zone,"blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"otherVolume"},{"id":"result"},{"id":"brief"},{"id":"shared"}]},
+            "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":node_zone,"blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
+            "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":node_zone,"blocked_by":["A","B"],"output_rule":[{"id":"summary"}]}
         }}).to_string()).unwrap();
         Self { data, herdr, config, server, app, zone, manager_task:ids.remove(0) }
     }
@@ -954,8 +954,8 @@ async fn node_reports_are_system_attributed_append_only_and_do_not_complete_work
         assert_eq!(report["nodeId"], "A");
         let run: Value = serde_json::from_slice(&before).unwrap();
         assert_eq!(report["executionId"], run["nodes"]["A"]["execution"]["id"]);
-        assert_eq!(report["source"]["sessionId"], "node-report");
-        assert_eq!(report["target"]["sessionId"], "manager-report");
+        assert_eq!(report["from"]["sessionId"], "node-report");
+        assert_eq!(report["to"]["sessionId"], "manager-report");
     }
     assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), reports);
     assert_eq!(fs::read(root.join("run.json")).unwrap(), before);
@@ -992,7 +992,7 @@ async fn report_save_failure_has_no_message_pending_item_or_host_delivery() {
     readonly.set_readonly(true);
     fs::set_permissions(&path, readonly).unwrap();
     let calls = s.herdr.calls();
-    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-save-error","body":"must not persist or notify","canComplete":false,"outputs":{"failed":"C:\\failed-candidate.txt"}}).to_string()).await;
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"node-save-error","body":"must not persist or notify","canComplete":false,"outputs":[{"id":"result","path":"C:\\failed-candidate.txt"}]}).to_string()).await;
     fs::set_permissions(&path, original).unwrap();
     assert_eq!(response.status, 500, "{}", response.body);
     let value: Value = serde_json::from_str(&response.body).unwrap();
@@ -1033,7 +1033,7 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     let release = s.data.path().join("notify-release");
     s.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
     let addr = s.server.addr();
-    let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-notify-error","body":"SENSITIVE-RESULT: saved before notification","canComplete":true,"outputs":{"result":"C:\\saved-despite-notification.txt"}}).to_string()).await });
+    let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/node/report", &json!({"sessionId":"node-notify-error","body":"SENSITIVE-RESULT: saved before notification","canComplete":true,"outputs":[{"id":"result","path":"C:\\saved-despite-notification.txt"}]}).to_string()).await });
     common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count() == 3).await;
     assert!(!request.is_finished());
     let reports = common::read_json_lines(&root.join("messages.jsonl"));
@@ -1052,7 +1052,7 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     assert!(!value["notification"]["reason"].as_str().unwrap().is_empty());
     assert_eq!(value["report"]["id"], report_id);
     assert_eq!(value["report"]["canComplete"], true);
-    assert_eq!(value["report"]["outputs"], json!({"result":"C:\\saved-despite-notification.txt"}));
+    assert_eq!(value["report"]["outputs"], json!([{"id":"result","path":"C:\\saved-despite-notification.txt"}]));
     assert_eq!(status["reports"], json!(reports));
     let detail = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
     assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["reports"], json!(reports));

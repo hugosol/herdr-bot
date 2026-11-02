@@ -73,6 +73,20 @@ run_directory = '.data/workflow-runs'
 
 升级后核对 task、bot、scheduler 列表。原生 agent 会话、Run 历史和 UI 入口不受这次布局调整影响。
 
+### 文件交接规则格式升级
+
+静态 node 现在使用 `input_rule`／`output_rule` 数组；执行固定规则并记录实际 `inputs: [{id,path}]`；报告保存 `from`／`to` Chat 关联及 `outputs: [{id,path}]`。规则 ID 是逻辑引用，不是文件名。完整字段与校验见 [scheduler](docs/scheduler.md#文件输入与输出规则) 和 [运行说明](docs/workflow-runtime.md)。本次同时更新 toolkit 角色工具与指引，不能混用新后端和旧 report 参数。
+
+已有数据须先停服，核实配置中实际使用的 Map／Run 目录并备份，再执行一次离线迁移。例如默认布局：
+
+```powershell
+cargo run --manifest-path backend/Cargo.toml --bin migrate-file-handoff -- meta-data/workflow-maps .data/workflow-runs
+```
+
+普通启动与请求不兼容旧字段，不在读取时自动转换。迁移工具预检查待转换内容，将旧输入对象转换为规则数组，并从已有引用及报告登记推导旧 Map 的输出 ID；报告输出转换为数组，Chat 来源／接收者改为 `from`／`to`。无法确定的历史执行规则与实际输入保持未知，不从当前 Map 伪造派发时快照。更早历史事件中缺失的非交接元数据（如 `agent`）保持原样，不因本次迁移猜测补填；当前 Run 记录仍按当前结构完整校验。原始文件保留为 `*.file-handoff-v1.bak`，不改变工作状态、报告归属或业务文件名称／地址；不恢复旧 Run 的管理资格。
+
+文件发布是逐文件原子替换，不是跨目录事务；I/O 错误时可能部分生效，保持停服并保留现场及备份。排除错误后，先核实并从本轮备份恢复一致的原始集合，再重新迁移，不混合新旧数据继续启动。迁移后核对 Map 可读、规则引用、历史报告与执行事实，再启动新后端并部署同版本 toolkit。
+
 ## 安全边界
 
 **没有账号或身份验证，只应在可信局域网使用，不要暴露到公网。**

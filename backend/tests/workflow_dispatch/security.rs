@@ -142,16 +142,16 @@ async fn two_run_role_and_retained_execution_matrix_rejects_scope_forgery() {
         ("security-node-old", "OLD: late history only", &first, "security-manager-one"),
         ("security-node-other-run", "OTHER RUN: isolated", &second, "security-manager-two"),
     ] {
-        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":identity == "security-node-current","outputs":{"result":format!("C:\\{identity}\\result.txt")}}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":identity,"body":body,"canComplete":identity == "security-node-current","outputs":[{"id":"result","path":format!("C:\\{identity}\\result.txt")}]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(value["report"]["runId"], run["id"]);
         assert_eq!(value["report"]["nodeId"], "A");
-        assert_eq!(value["report"]["source"]["sessionId"], identity);
-        assert_eq!(value["report"]["target"]["sessionId"], target);
+        assert_eq!(value["report"]["from"]["sessionId"], identity);
+        assert_eq!(value["report"]["to"]["sessionId"], target);
         assert_eq!(value["report"]["body"], body);
         assert_eq!(value["report"]["canComplete"], identity == "security-node-current");
-        assert_eq!(value["report"]["outputs"], json!({"result":format!("C:\\{identity}\\result.txt")}));
+        assert_eq!(value["report"]["outputs"], json!([{"id":"result","path":format!("C:\\{identity}\\result.txt")} ]));
         reports.push(value["report"].clone());
     }
     for (run, expected) in [(&first, vec![reports[0].clone(), reports[1].clone()]), (&second, vec![reports[2].clone()])] {

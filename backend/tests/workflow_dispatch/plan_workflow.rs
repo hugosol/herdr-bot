@@ -23,9 +23,9 @@ async fn planning_definition_round_trips_named_handoff_without_starting_work() {
     assert_eq!(original["nodes"]["generate_map"]["blocked_by"], json!(["outline"]));
     assert_eq!(original["nodes"]["outline"]["report_policy"], "manual");
     assert_eq!(original["nodes"]["generate_map"]["report_policy"], "auto");
-    assert_eq!(original["nodes"]["generate_map"]["inputs"], json!({
-        "outline": {"source":"node", "node_id":"outline", "output":"outline"}
-    }));
+    assert_eq!(original["nodes"]["generate_map"]["input_rule"], json!([
+        {"id":"outline", "type":"node", "node_id":"outline", "output_id":"outline"}
+    ]));
 
     for id in ["outline", "generate_map"] {
         let draft = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/nodes/edit"), &json!({"id":id}).to_string()).await;

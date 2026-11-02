@@ -57,6 +57,14 @@
 .scheduler-details { min-width: 0; }
 .scheduler-details h3 { margin: 0; font-size: 1.05rem; line-height: 1.7; }
 .scheduler-details > p { color: var(--scheduler-muted); font-size: .75rem; }
+.scheduler-node-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin: 1rem 0 1.5rem; }
+.scheduler-node-fact { min-width: 0; margin: 0; padding: .85rem; border: 1px solid #57718a; border-radius: .5rem; background: #172b3d; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+.scheduler-node-fact-label { color: #d0e0ee; font: .8rem/1.5 Consolas, monospace; }
+.scheduler-node-fact-value { color: #e3f2ff; font: 700 1rem/1.4 Consolas, monospace; background: #294b66; border: 1px solid #628eae; border-radius: .35rem; padding: .25rem .55rem; }
+.scheduler-node-fact[data-policy="manual"], .scheduler-node-fact[data-auto-close="true"] { border-color: #b38b48; background: #30291d; }
+.scheduler-node-fact[data-policy="manual"] .scheduler-node-fact-value, .scheduler-node-fact[data-auto-close="true"] .scheduler-node-fact-value { color: #ffe2aa; background: #514020; border-color: #b38b48; }
+.scheduler-node-fact-zone { grid-column: 1 / -1; display: grid; justify-content: stretch; border-left: 3px solid #85bde8; }
+.scheduler-node-fact-zone code { min-width: 0; color: #f0f6fc; font: 600 .9rem/1.65 Consolas, monospace; overflow-wrap: anywhere; white-space: pre-wrap; }
 .scheduler-details h4 { font-size: .85rem; margin: 1.5rem 0 .75rem; color: #bdd6eb; }
 .scheduler-details h5 { font-size: .8rem; }
 .scheduler-details dt { color: var(--scheduler-muted); font-size: .78rem; overflow-wrap: anywhere; }
@@ -116,4 +124,5 @@
   .scheduler-map-heading { gap: .5rem; }
   .scheduler-map-heading h3 { font-size: 1.05rem; }
   .scheduler-node-list button { padding-inline: .4rem; }
+  .scheduler-node-facts { grid-template-columns: minmax(0, 1fr); }
 }

@@ -109,7 +109,9 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对 B', exact: true }).click()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   const changed = { title: '核对新定义', bot_id: 'not-created', input: '# 独立工作输入\n不注入 Bot 文档', zone: 'C:/does-not-exist', blocked_by: ['A'] }
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(changed))
+  const changedContent = Object.fromEntries(Object.entries(changed).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
+  await page.getByRole('textbox', { name: 'zone', exact: true }).fill(changed.zone)
+  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(changedContent))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const expected = { ...original, nodes: { ...original.nodes, B: changed } }
@@ -145,7 +147,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   expect((await cycle.json()).message).toContain('依赖环')
   expect(fs.readFileSync(file, 'utf8')).toBe(bytes)
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
-  const badDraft = JSON.stringify({ ...changed, blocked_by: ['ghost'] })
+  const badDraft = JSON.stringify({ ...changedContent, blocked_by: ['ghost'] })
   await page.getByLabel('node 内容 JSON', { exact: true }).fill(badDraft)
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert').first()).toContainText('ghost')

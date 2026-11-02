@@ -110,8 +110,8 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(details).toBeVisible()
   await expect(details.getByRole('heading', { name: '第一项 · A', exact: true })).toBeVisible()
-  const parameters = details.getByRole('region', { name: '本次输入', exact: true })
-  const prerequisites = details.getByRole('region', { name: '前置依赖', exact: true })
+  const parameters = details.getByRole('region', { name: 'input', exact: true })
+  const prerequisites = details.getByRole('region', { name: 'blocked_by', exact: true })
   for (const text of ['alpha-only', 'zone-does-not-exist', 'bot-does-not-exist', 'extra_undeclared', outsidePath, 'false', '7', 'null']) {
     await expect(parameters).toContainText(text)
   }

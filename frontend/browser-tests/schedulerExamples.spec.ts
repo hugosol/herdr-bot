@@ -53,7 +53,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await nodes.getByRole('button', { name, exact: true }).click()
       await expect(details.getByTestId('node-input')).toHaveText(input)
       await expect(details).toContainText('C:/example/travel-not-registered')
-      const prerequisites = details.getByRole('region', { name: '前置依赖', exact: true })
+      const prerequisites = details.getByRole('region', { name: 'blocked_by', exact: true })
       if (name === '汇总出行准备 C') await expect(prerequisites.getByRole('listitem')).toHaveText(['上海出行天气 · A', '北京出行天气 · B'])
       else await expect(prerequisites).toContainText('无前置依赖')
       await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()

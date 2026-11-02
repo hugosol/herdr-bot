@@ -6,7 +6,7 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 const legacyNode = { title: '旧节点', bot_id: 'shared', input: '保留原文 {"nested":[1,null]}', zone: 'unregistered-zone', blocked_by: [] as string[] }
-const original = { title: '策略编辑', description: '保留说明', nodes: { A: legacyNode, B: { ...legacyNode, title: '另一个节点' }, C: { ...legacyNode, title: '无关节点', blocked_by: ['B'] } } }
+const original = { title: '策略编辑', description: '保留说明', nodes: { A: legacyNode, B: { ...legacyNode, title: '另一个节点', output_rule: [{ id: 'result' }] }, C: { ...legacyNode, title: '无关节点', blocked_by: ['B'] } } }
 async function setup(page: Page) {
   server = await startServer({ separateCwd: true, herdr: {} })
   const root = path.join(server.cwd, 'meta-data/workflow-maps')
@@ -43,7 +43,7 @@ test('P1 P3 P5 node settings are independent, radio-selected and explain Tab ter
   const before = await readMap(page)
   expect(before).toMatchObject(original)
   await edit(page, 'A', '旧节点')
-  const autoClose = page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })
+  const autoClose = page.getByRole('checkbox', { name: 'auto_close', exact: true })
   const auto = page.getByRole('radio', { name: 'auto', exact: true })
   const manual = page.getByRole('radio', { name: 'manual', exact: true })
   await expect(auto).toBeChecked()
@@ -80,61 +80,49 @@ test('P1 P3 P5 node settings are independent, radio-selected and explain Tab ter
   fs.writeFileSync(info.outputPath('independent-node-settings.json'), JSON.stringify({ before, after }, null, 2))
 })
 
-// P4 source: ticket's latest-edit-wins rule, not a parallel form model.
-// A plausible violation merges stale controls on submit or overwrites malformed
-// JSON when a control changes. Alternate both directions, observe full readback,
-// and keep invalid raw drafts in the real save/validation path.
-test('P4 controls and JSON share the latest draft and retain invalid raw content', async ({ page }) => {
+// Independent settings never rewrite raw content; saving merges every content field.
+test('P4 independent settings merge content and retain invalid raw drafts', async ({ page }) => {
   await setup(page)
   const before = await readMap(page)
-  expect(before).toMatchObject(original)
   const json = page.getByLabel('node 内容 JSON', { exact: true })
-  const closes = page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })
-  const auto = page.getByRole('radio', { name: 'auto', exact: true })
+  const zone = page.getByRole('textbox', { name: 'zone', exact: true })
+  const closes = page.getByRole('checkbox', { name: 'auto_close', exact: true })
   const manual = page.getByRole('radio', { name: 'manual', exact: true })
   await edit(page, 'A', '旧节点')
+  const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', node_id: 'B', output_id: 'result' }], output_rule: [] }
+  expect(JSON.parse(await json.inputValue())).toEqual({ title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [], output_rule: [] })
+  const raw = '  ' + JSON.stringify(content, null, 3) + '\n'
+  await json.fill(raw)
+  await zone.fill('another-unregistered-zone')
   await closes.check()
   await manual.check()
-  expect(JSON.parse(await json.inputValue())).toEqual({ ...before.nodes.A, auto_close: true, report_policy: 'manual' })
-  await json.fill(JSON.stringify({ ...legacyNode, auto_close: false, report_policy: 'auto' }))
-  await expect(closes).not.toBeChecked()
-  await expect(auto).toBeChecked()
+  await expect(json).toHaveValue(raw)
   await save(page)
-  expect((await readMap(page)).nodes.A).toEqual({ ...legacyNode, auto_close: false, report_policy: 'auto' })
-  await edit(page, 'A', '旧节点')
-  await json.fill(JSON.stringify({ ...legacyNode, auto_close: true, report_policy: 'manual' }))
-  await expect(closes).toBeChecked()
-  await expect(manual).toBeChecked()
-  await closes.uncheck()
-  await auto.check()
-  expect(JSON.parse(await json.inputValue())).toEqual({ ...legacyNode, auto_close: false, report_policy: 'auto' })
-  await json.fill(JSON.stringify({ ...legacyNode, auto_close: false, report_policy: 'auto' }))
-  await auto.check()
-  await closes.uncheck()
-  await manual.check()
-  await closes.check()
-  await save(page)
-  const expected = { ...before, nodes: { ...before.nodes, A: { ...legacyNode, auto_close: true, report_policy: 'manual' } } }
+  const expected = { ...before, nodes: { ...before.nodes, A: { ...content, zone: 'another-unregistered-zone', auto_close: true, report_policy: 'manual' } } }
   expect(await readMap(page)).toEqual(expected)
   await edit(page, 'A', '旧节点')
+  await expect(zone).toHaveValue('another-unregistered-zone')
   await expect(closes).toBeChecked()
   await expect(manual).toBeChecked()
-  for (const raw of ['{ "auto_close": true,', '[true]', JSON.stringify({ ...legacyNode, auto_close: 'true', report_policy: 'auto' }), JSON.stringify({ ...legacyNode, auto_close: false, report_policy: null })]) {
-    await json.fill(raw)
-    await expect(closes).toBeDisabled()
-    await expect(auto).toBeDisabled()
-    await expect(manual).toBeDisabled()
+  for (const invalid of ['{ "input": ', '[true]', JSON.stringify({ ...content, zone: 'conflicting' }), JSON.stringify({ ...content, auto_close: false }), JSON.stringify({ ...content, report_policy: 'auto' }), JSON.stringify({ ...content, node_id: 'B' })]) {
+    await json.fill(invalid)
+    await expect(closes).toBeEnabled()
+    await closes.uncheck()
+    await expect(json).toHaveValue(invalid)
     await page.getByRole('button', { name: '保存 node', exact: true }).click()
     await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toBeVisible()
-    await expect(page.getByRole('alert').filter({ hasText: /JSON|对象|结构/ })).toBeVisible()
-    await expect(json).toHaveValue(raw)
+    await expect(page.getByRole('alert').filter({ hasText: /JSON|对象|移除/ })).toBeVisible()
+    await expect(json).toHaveValue(invalid)
     expect(await readMap(page)).toEqual(expected)
   }
-  await json.fill(JSON.stringify({ ...legacyNode, auto_close: false, report_policy: 'auto' }))
-  await expect(closes).toBeEnabled()
+  await json.fill(raw)
   await closes.check()
-  await manual.check()
   await save(page)
+  expect(await readMap(page)).toEqual(expected)
+  await edit(page, 'A', '旧节点')
+  await zone.fill('discard-this-zone')
+  page.once('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
   expect(await readMap(page)).toEqual(expected)
 })
 
@@ -184,7 +172,9 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   for (const [id, title, policy] of [['A', '旧节点', 'auto'], ['B', '另一个节点', 'manual'], ['C', '无关节点', 'auto']] as const) {
     await edit(page, id, title)
-    await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ ...legacyNode, title, zone, auto_close: false }))
+    await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: legacyNode.blocked_by }))
+    await page.getByRole('textbox', { name: 'zone', exact: true }).fill(zone)
+    await page.getByRole('checkbox', { name: 'auto_close', exact: true }).uncheck()
     await page.getByRole('radio', { name: policy, exact: true }).check()
     await save(page)
   }
@@ -246,17 +236,17 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
 test('P2 new drafts and legacy nodes keep auto-close off when configuration is omitted', async ({ page }) => {
   await setup(page)
   await edit(page, 'A', '旧节点')
-  await expect(page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })).not.toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
   await save(page)
   expect((await readMap(page)).nodes.A.auto_close).toBe(false)
   await edit(page, 'A', '旧节点')
-  await expect(page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })).not.toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()
-  await expect(page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })).not.toBeChecked()
-  await page.getByLabel('node ID', { exact: true }).fill('NEW')
+  await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
+  await page.getByLabel('node_id', { exact: true }).fill('NEW')
   await save(page)
   expect((await readMap(page)).nodes.NEW.auto_close).toBe(false)
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
-  await expect(page.getByRole('checkbox', { name: '完成后自动关闭', exact: true })).not.toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
 })

@@ -39,7 +39,7 @@ function RunTitle({ id, title, onSaved }: { id: string; title: string; onSaved: 
   return <>
     <div className="workflow-run-title"><h1>{title}</h1>{!editing && <button type="button" onClick={() => { setDraft(title); setError(null); setEditing(true) }}>重命名</button>}</div>
     {editing && <form className="workflow-run-rename" onSubmit={event => { event.preventDefault(); if (!saving) void save() }}>
-      <label>Run 名称<input autoFocus value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} /></label>
+      <label>name<input autoFocus value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} /></label>
       <button type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</button>
       <button type="button" disabled={saving} onClick={() => { setEditing(false); setError(null) }}>取消</button>
       {error && <p className="workflow-alert" role="alert">{error}</p>}
@@ -77,7 +77,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
       {!detail && !error && <p>正在加载 Run 详情…</p>}
       {detail && !detail.managed && <p className="workflow-alert">历史现场 / 未接管：执行现场只读取已保存事实，Run 名称仍可重命名。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。</p>}
       {detail?.startupError && <section className="workflow-alert" role="alert" aria-label="管理者启动错误">
-        <h3>管理者启动失败 · {detail.startupError.stage}</h3><p>{detail.startupError.message}</p>
+        <h3>管理者启动失败 · stage: {detail.startupError.stage}</h3><p>message: {detail.startupError.message}</p>
         <p>已发生的外部效果未回滚；不会自动重试。请先核实下列真实引用，再决定如何处理。</p>
         <dl>{Object.entries(detail.startupError.effects ?? {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '未知')}</dd></div>)}</dl>
       </section>}
@@ -86,9 +86,9 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
         {snapshot?.current && <RunCurrentView key={run.id} run={run} managed={detail.managed} reports={detail.reports} current={snapshot.current} />}
         <details className="workflow-run-background">
           <summary>运行背景 · 本次要求与管理者</summary>
-          <dl><dt>管理者 Task</dt><dd>{run.managerTaskId}</dd><dt>管理者 zone</dt><dd>{run.zone}</dd><dt>Workspace</dt><dd>{run.workspaceName}</dd></dl>
-          <h3>本次要求（只读）</h3><pre data-testid="run-user-input">{run.userInput}</pre>
-          <h3>管理者 Chat</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
+          <dl><dt>managerTaskId</dt><dd>{run.managerTaskId}</dd><dt>zone</dt><dd>{run.zone}</dd><dt>workspaceName</dt><dd>{run.workspaceName}</dd></dl>
+          <h3>userInput</h3><pre data-testid="run-user-input">{run.userInput}</pre>
+          <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>
       </>}
     </>}
