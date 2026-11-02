@@ -206,6 +206,15 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 本节记录已确认的职责与交接约定，不代表旧 Map、Task 提示词或外部角色扩展已同步迁移。精简旧业务 input 前须核对结构化规则与统一协议的实际承接，不能将文档约定当作运行强制能力。
 
+### enhance-existing-bot 的业务文件交接
+
+[既有 Bot 与绑定 Task 的交互优化](../meta-data/workflow-maps/enhance-existing-bot--bc-301b25d9f8d6.json) 使用五节点命名交接，保留原节点 ID、Bot 绑定、zone、依赖及报告策略（w1–w4 manual，w5 auto）。
+
+- w1 的 input 只选择本次 userInput 中的目标、限定 normal Task 并要求文件输出 handoff。固定 Task 负责优化方法、全文／共享影响／保存授权确认、标准交付及 workflow 文件落盘分支；该分支直接使用注入背景、命名输入与材料位置，文件交付不因缺少指定物理文件名退化为仅在 Chat 输出。w1 不承担 Bot 基线准备。
+- w2／w3／w4 分别用 task_updated 引用 w1.handoff，自行读取目标 Bot 原基线，独立修订并确认 when／plan_guide／node_guide。每个分支交付 text 与 handoff，后者包含完整原 Bot 基线、完整 Task 定稿、task_updated 来源和业务确认；不读取兄弟定稿、不写 Bot、不新增表达优化节点。
+- w5 的七项输入为 task_updated 及三个字段各自的 *_text／*_handoff。核对同一 Task 定稿来源、目标身份、共同 Bot 基线和确认范围后，一次保存三字段并完整读回，输出最终 handoff。当前服务配置冲突、运行禁写和业务授权检查保留，不以命名地址解析代替业务验收。
+- 旧的规划 Run 路径、材料目录算法、报告筛选与上游 current execution 追踪不再作为业务 input 的材料协议。文件保存遵循统一约定，不自动启动业务。固定 Task 保留通用方法与标准验收，input 只补本次修订选择、跨节点基线、输出文件形态和额外验收；三个指南 Task 的后续表达优化为可选安排，通用替换 Task 保持产品中立，由 w5 提供平台契约指针及运行使用约束。此次职责去重同步修正四个绑定 Task 的 prompt，未修改其余配置、Bot、其他 Map 或历史 Run；既有 Chat 不重放初始提示词。
+
 ### create-bot-task-workflow 的业务文件交接
 
 [创建并优化 Task＋Bot](../meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json) 的十个节点使用命名文件交接，节点 ID、依赖、Bot 绑定、zone 和报告策略保持原安排：w1 与三个编写节点 manual，其余 auto。
