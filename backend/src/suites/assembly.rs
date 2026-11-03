@@ -1,0 +1,42 @@
+//! One private, exclusively created tree per launch. The publication boundary
+//! is returning native launch arguments, not creating the directory. No live
+//! tree is rewritten or reclaimed while an agent may still consume it.
+use crate::{paths::Roots, tasks::{Agent, TaskError}};
+use super::{Suite, Suites, extensions, skills};
+
+impl Suites {
+    pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
+        let Some(suite) = suite.filter(|_| agent == Agent::Omp) else { return Ok(Vec::new()) };
+        // Resolve and validate every resource before creating any output.
+        let skills = self.select_skills(suite, roots)?;
+        let extensions = self.select_extensions(suite, roots)?;
+        let directory = self.generated_directory.join(&suite.id);
+        let assembly = directory.join(crate::chats::new_creation_id());
+        let fail = |error: String| TaskError::InvalidSuite(format!(
+            "Suite「{}」资源装配失败：{error}；没有回退为空环境、复制替代或自动提权。", suite.id));
+        let mut scopes = vec![directory];
+        scopes.extend(skills.iter().map(|skill| skill.directory.clone()));
+        scopes.extend(extensions.iter().map(|(_, package)| package.clone()));
+        self.files.with(&scopes, |access| {
+            access.create_dir_all(assembly.parent().unwrap())
+                .map_err(|error| fail(format!("{}：{error}", assembly.parent().unwrap().display())))?;
+            // A collision is an error, never permission to clean an existing
+            // tree. Ownership begins only after this create succeeds.
+            access.create_dir(&assembly).map_err(|error| fail(error.to_string()))?;
+            let result = (|| {
+                let mut args = skills::assemble(access, &assembly, suite, &skills)
+                    .map_err(|error| format!("技能装配失败：{error}"))?;
+                args.extend(extensions::assemble(access, &assembly, &extensions)
+                    .map_err(|error| format!("扩展装配失败：{error}"))?);
+                Ok(args)
+            })();
+            result.map_err(|error| match access.remove_dir_all(&assembly) {
+                // This root is an ordinary directory created above; recursive
+                // removal unlinks child symlinks, never their resource targets.
+                Ok(()) => fail(error),
+                Err(cleanup) => fail(format!("{error}；清理本次产物另失败：{cleanup}")),
+            })
+        }).map_err(|error| fail(error.to_string()))?
+        // The FileStore lease is gone before the caller starts Herdr.
+    }
+}

@@ -3,6 +3,7 @@
 //! adapters prepare native launch resources separately from definition storage.
 mod skills;
 mod extensions;
+mod assembly;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
