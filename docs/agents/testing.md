@@ -128,6 +128,29 @@ try {
 
 P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_extensions`：真实 Windows 独占共享锁分别阻止入口文件及包内资产读取；另用普通文件只阻塞扩展输出子目录，保持技能装配可写。全部经公开预览／启动 HTTP 检查明确拒绝且 Herdr 无调用，不需要链接权限，不代替上述真实成功场景。
 
+## Pi Suite 启动开发烟测
+
+`07` 的开发烟测为公开 Task／Chat HTTP → 真实 Herdr → PATH 上安装版 Pi；完整 Pi 契约矩阵仍由资源／MCP和模式／模板验收拥有。先构建当前 worktree 后端，预先安装依赖，toolkit 必须提供公开工厂期 `--pi-suite-config`。不安装、不提权、不修改 PATH，不用 SDK 或替代 launcher：
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
+$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
+try {
+  python scripts/test-real-herdr-suite-pi.py `
+    --herdr 'C:/installed/herdr/herdr.exe' `
+    --pi-package 'D:/node_modules/@earendil-works/pi-coding-agent' `
+    --toolkit 'D:/installed/my-agent-toolkit' `
+    --backend 'backend/target/debug/herdr-bot.exe'
+} finally {
+  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
+}
+```
+
+独占临时目录隔离 HOME／APPDATA／XDG、Pi 状态、后端配置、命名 Herdr server 和动态回环端口；不读取用户凭据或会话。共享声明相对路径含空格，扩展包 manifest 指定非 index 入口。受控回环模型请求 Pi 真实 read 消费技能正文，并调用真实包工具读取相对 JSON 资产，独立字面结果分别为 `PI-SKILL-BODY-731`、`PI-PACKAGE-ASSET-482:64`（19×3+7）。这只证明启动接线与消费机制，不证明真实模型自主遵循。
+
+持续消费进程输出，正常及失败均停止所属 Herdr/server/子进程，原始错误与清理错误分别写独占 Temp 的 `evidence.json`；记录源码 revision／diff／哈希、二进制和安装入口哈希、实际 HTTP／模型请求及 terminal。缺真符号链接权限（如 `os error 1314`）、依赖／flag 未交付、实际资源未消费或清理失败均非零，不 skip、不退化为直读源码加载，不把产物／参数检查算作 S4 通过。
+
 ## 真实 Herdr 自动关闭验收（P22）
 
 `python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端。路径参数可显式传入，或使用 `--paths-file`（默认仓库 `paths.local.toml`）：缺省参数从 `herdr/herdr.exe`、`pi_package`、`pi_agent/extensions/herdr-agent-state.ts`、`toolkit` 根派生；backend 默认取当前源码的 debug 产物并尊重 `CARGO_TARGET_DIR`。显式参数优先，全部依赖参数均提供时不读取根文件。原生会话验收 `scripts/test-native-session-storage.py` 同样支持 `--paths-file`，缺省包路径使用 `pi_package`、`omp_package`。这些入口经 Rust `herdr-paths` 解析 TOML，不自行实现根引用；根可指向不同磁盘。
