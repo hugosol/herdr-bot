@@ -44,7 +44,7 @@ async function dialog(page: Page, zone: string) {
   return page.getByTestId('chat-creation-dialog')
 }
 
-// S1/S2/S3 P16/P21/P22/P24: literal six-combination expectations, not generated from launch code.
+// S1/S2/S3 P16/P21/P22/P24: literal fixed-host expectations, not generated from launch code.
 // Violation: ambient discovery remains on, fixed item is omitted, or unselected entries leak into args.
 test('两宿主固定集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
   const { root, zone, zonePath } = await setup()

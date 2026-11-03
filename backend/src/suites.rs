@@ -2,7 +2,9 @@
 //! operation. Catalog operations never read generated output; private resource
 //! adapters prepare native launch resources separately from definition storage.
 mod skills;
+mod mcp;
 mod extensions;
+mod assembly;
 mod pi;
 mod mcp_paths;
 

@@ -138,9 +138,9 @@ fn native(root: &Path, herdr: &HerdrFixture, agent: &str, id: &str) -> PathBuf {
     herdr.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"path","value":file}}));
     file
 }
-// P1/P2/P3/P4/P9/P10/P18. Independent expected set: newest fixed + selected B,
-// not historical A or ambient; only creation submits trigger actions. A plausible
-// violation is restoring fixed-only or resolving stale trigger settings. Normal
+// P1/P2/P3/P4/P9/P10/P18. Independent expected set: both newest fixed entries,
+// not optional A or ambient; only creation submits trigger actions. A plausible
+// violation is restoring stale fixed entries or trigger settings. Normal
 // creation, public edit, a real process restart and external argv distinguish it.
 #[tokio::test]
 async fn source_survives_restart_and_resume_uses_latest_environment_without_trigger_replay() {
