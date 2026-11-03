@@ -47,6 +47,19 @@ function skillLabel(task: Pick<Task, 'skill'>): string {
   return task.skill === null ? '无' : `/${task.skill}`
 }
 
+function suiteIssue(task: Pick<Task, 'suite' | 'agent'>, options: TaskOptions): string | null {
+  if (task.suite == null) return null
+  const suite = options.suites?.find(suite => suite.id === task.suite)
+  if (!suite) return `Suite「${task.suite}」不存在；请显式修正引用。`
+  if (!suite.agents.includes(task.agent)) return `Suite「${task.suite}」不适用于 ${task.agent}。`
+  const missing = suite.mcp.filter(id => !options.mcp?.includes(id))
+  if (missing.length) return `Suite「${task.suite}」的集中 MCP 引用失效：${missing.join('、')}；请显式修正引用。`
+  return null
+}
+function suiteLabel(task: Pick<Task, 'suite'>, options: TaskOptions): string {
+  return task.suite == null ? '不选 Suite' : `${options.suites?.find(suite => suite.id === task.suite)?.name ?? task.suite} · ${task.suite}`
+}
+
 /** 新增 Task 的初始表单：agent 必须有固定选择，其余使用默认值。 */
 function emptyDraft(): TaskInput {
   return {
@@ -59,6 +72,7 @@ function emptyDraft(): TaskInput {
     skill: null,
     prompt: '',
     extensions: [],
+    suite: null,
   }
 }
 
@@ -74,6 +88,7 @@ function draftFrom(task: Task): TaskInput {
     skill: task.skill,
     prompt: task.prompt,
     extensions: [...task.extensions],
+    suite: task.suite ?? null,
   }
 }
 
@@ -272,7 +287,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   const fixedExtensions = extensions.filter((entry) => isVisibleFixedExtension(entry, draft))
   const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
   const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
+  const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
+  const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
+    ...(selectedSuiteIssue ? [selectedSuiteIssue] : []),
     ...(modelUnavailable ? [`model「${draft.model}」不可用`] : []),
     ...(thinkingUnavailable ? [`thinking「${draft.thinking}」不可用`] : []),
     ...unavailableExtensions.map((id) => `扩展「${id}」不可用`),
@@ -332,6 +350,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 <h2 className="task-item__name">{task.name}</h2>
                 <dl className="task-item__fields">
                   <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
+                  <div><dt>Suite</dt><dd>{suiteLabel(task, data.options)}{suiteIssue(task, data.options) && <p className="zone-error">{suiteIssue(task, data.options)}</p>}</dd></div>
                   <div>
                     <dt>chat-name 示例</dt>
                     <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
@@ -621,6 +640,15 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             </>}
 
             {step === 2 && <section className="task-extensions" aria-label="扩展配置">
+              <label htmlFor="task-suite">Suite（至多一个）</label>
+              <select id="task-suite" data-testid="task-suite" className="zone-form__input" disabled={saving}
+                value={draft.suite ?? ''} onChange={event => setDraft(current => ({ ...current, suite: event.target.value || null }))}>
+                <option value="">不选 Suite</option>
+                {draft.suite != null && !compatibleSuites.some(suite => suite.id === draft.suite) && <option value={draft.suite} disabled>{draft.suite}（不可用，保留引用）</option>}
+                {compatibleSuites.map(suite => <option key={suite.id} value={suite.id}>{suite.name} · {suite.id}</option>)}
+              </select>
+              {selectedSuiteIssue && <p className="zone-error" data-testid="task-suite-issue" role="alert">{selectedSuiteIssue}</p>}
+              <p>Suite 不替代初始 Skill、固定 prompt、模型或命名规则。切换 Agent 不会自动更换 Suite。</p>
               <section data-testid="task-fixed-extensions">
                 <h3>固定扩展（始终加载，不可取消）</h3>
                 <p>{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</p>
@@ -663,6 +691,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 <div><dt>chat-name 命名规则</dt><dd data-testid="summary-chatName">{draft.chatName}</dd></div>
                 <div><dt>Chat 名称示例</dt><dd>{renderChatNameExample(draft.chatName, draft.name, draft.agent)}</dd></div>
                 <div><dt>Task 类型</dt><dd data-testid="summary-taskType">{draft.taskType}</dd></div>
+                <div><dt>Suite</dt><dd data-testid="summary-suite">{suiteLabel(draft, data.options)}</dd></div>
                 <div><dt>agent</dt><dd data-testid="summary-agent">{data.options.labels?.agents?.[draft.agent] ?? draft.agent}</dd></div>
                 <div><dt>model</dt><dd data-testid="summary-model">{data.options.labels?.models?.[draft.model] ?? modelLabel(draft)}</dd></div>
                 <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>

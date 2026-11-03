@@ -231,6 +231,7 @@ pub fn app_with_state(
     let sync_state = Arc::new(sync::SyncState::with_ttl(
         config.git.status_cache_ttl_seconds.duration(),
     ));
+    let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone()));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -249,8 +250,9 @@ pub fn app_with_state(
             config.tasks.storage_file.clone(),
             config.tasks.metadata_file.clone(),
             config.roots.clone(),
+            Arc::clone(&suites),
         )),
-        suites: Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone())),
+        suites,
         map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
         bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
         run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
@@ -655,7 +657,15 @@ struct CreateZoneRequest {
 #[derive(Debug, Serialize)]
 struct TaskListResponse {
     tasks: Vec<tasks::Task>,
-    options: catalog::TaskOptions,
+    options: TaskOptionsResponse,
+}
+
+#[derive(Debug, Serialize)]
+struct TaskOptionsResponse {
+    #[serde(flatten)]
+    catalog: catalog::TaskOptions,
+    suites: Vec<suites::Suite>,
+    mcp: Vec<String>,
 }
 
 /// 单个 Task 的响应。
@@ -944,12 +954,20 @@ fn task_list_response(
         Ok(catalog) => catalog,
         Err(error) => return task_error_response(error),
     };
+    let suites = match state.suites.list() {
+        Ok(suites) => suites,
+        Err(error) => return error.into_response(),
+    };
+    let mcp = match state.suites.mcp_catalog() {
+        Ok(mcp) => mcp.into_keys().collect(),
+        Err(error) => return error.into_response(),
+    };
     match result {
         Ok(tasks) => (
             StatusCode::OK,
             Json(TaskListResponse {
                 tasks,
-                options: catalog.options(),
+                options: TaskOptionsResponse { catalog: catalog.options(), suites, mcp },
             }),
         )
             .into_response(),
@@ -980,7 +998,8 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::ThinkingRequiresDefaultModel
         | TaskError::ThinkingUnsupported { .. }
         | TaskError::UnknownSkill(_)
-        | TaskError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
+        | TaskError::InvalidExtension(_)
+        | TaskError::InvalidSuite(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(
         status,
@@ -1151,6 +1170,9 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
+    if let Err(error) = state.tasks.validate_environment(&task) {
+        return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。");
+    }
     let preset = match state
         .tasks
         .catalog()

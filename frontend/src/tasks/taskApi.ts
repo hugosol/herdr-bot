@@ -5,6 +5,8 @@
  * 能力事实（agent / model / thinking / skill）由后端公开，保存失败时页面不能表示已保存。
  */
 
+import type { Suite } from '../suites/suiteApi'
+
 export type TaskType = 'normal' | 'manager'
 export type TaskAgent = 'omp' | 'pi'
 export type TaskModel = string
@@ -23,6 +25,7 @@ export type Task = {
   skill: TaskSkill | null
   prompt: string
   extensions: string[]
+  suite?: string | null
 }
 
 /** 新增或编辑时提交的字段（标识由后端维护）。 */
@@ -34,6 +37,8 @@ export type TaskOptions = {
   models: TaskModel[]
   thinking: Record<string, Record<string, TaskThinking[]>>
   skills: TaskSkill[]
+  suites?: Suite[]
+  mcp?: string[]
   labels?: Record<string, Record<string, string>>
   extensions?: { id: string; label: string; agent: TaskAgent; kind: 'fixed' | 'optional'; entrypoint: string }[]
 }
@@ -72,7 +77,8 @@ function isTask(value: unknown): value is Task {
     typeof task.thinking === 'string' &&
     (task.skill === null || typeof task.skill === 'string') &&
     typeof task.prompt === 'string' &&
-    isStringArray(task.extensions)
+    isStringArray(task.extensions) &&
+    (task.suite === undefined || task.suite === null || typeof task.suite === 'string')
   )
 }
 

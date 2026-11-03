@@ -174,6 +174,7 @@ mod degradation {
             if task.agent != agent {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
+            state.tasks.validate_environment(&task).map_err(|error| (error.code(), error.message()))?;
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
             let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
                 .map_err(|message| ("execution-association-invalid", message))?

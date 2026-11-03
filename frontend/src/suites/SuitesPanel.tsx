@@ -111,6 +111,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <p className="scope-note">仅引用集中目录；空清单表示不追加，不关闭宿主原生 MCP。</p>
             {data?.mcp.length === 0 && <p>集中目录没有 MCP 定义。</p>}
             {data?.mcp.map(id => <label key={id} className="suites-choice"><input type="checkbox" checked={draft.mcp.includes(id)} onChange={event => setDraft({ ...draft, mcp: event.target.checked ? [...draft.mcp, id] : draft.mcp.filter(value => value !== id) })} />{id}</label>)}
+            {data && draft.mcp.filter(id => !data.mcp.includes(id)).map(id => <label key={id} className="suites-choice zone-error">
+              <input type="checkbox" checked onChange={() => setDraft({ ...draft, mcp: draft.mcp.filter(value => value !== id) })} />{id}（失效：集中 MCP 定义不存在）
+            </label>)}
           </fieldset>
           <div className="suites-toolbar">
             <button type="submit">保存 Suite</button>
