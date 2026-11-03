@@ -1,9 +1,9 @@
 //! Selected existing SKILL.md directories, not a second resource catalog.
-//! Native OMP settings filter the final skill names, never whole capability
-//! providers: native MCP and native project instructions remain discoverable.
+//! OMP filters final names via native settings; Pi uses --no-skills plus
+//! explicit --skill paths. Neither disables native MCP or project instructions.
 use std::{collections::HashSet, fs, path::{Path, PathBuf}};
 use serde::Deserialize;
-use crate::{files::FileAccess, paths::Roots, tasks::TaskError};
+use crate::{files::FileAccess, paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 #[derive(Deserialize)]
@@ -37,12 +37,19 @@ impl Suites {
     }
 }
 
-pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, skills: &[Skill]) -> Result<Vec<String>, String> {
+pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, agent: Agent, skills: &[Skill]) -> Result<Vec<String>, String> {
     let links = assembly.join("skills");
     access.create_dir(&links).map_err(|error| error.to_string())?;
     for skill in skills {
         access.link_resource_directory(&skill.directory, &links.join(&skill.name))
             .map_err(|error| format!("链接 {} → {} 失败：{error}", links.join(&skill.name).display(), skill.directory.display()))?;
+    }
+    if agent == Agent::Pi {
+        let mut args = vec!["--no-skills".into()];
+        for skill in skills {
+            args.extend(["--skill".into(), links.join(&skill.name).to_string_lossy().into_owned()]);
+        }
+        return Ok(args);
     }
     let manifest = assembly.join("omp-skills.json");
     let config = serde_json::json!({"skills": {

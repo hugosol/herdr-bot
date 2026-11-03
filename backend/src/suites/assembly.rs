@@ -6,10 +6,14 @@ use super::{Suite, Suites, extensions, skills};
 
 impl Suites {
     pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
-        let Some(suite) = suite.filter(|_| agent == Agent::Omp) else { return Ok(Vec::new()) };
+        let (pi_args, pi_config) = if agent == Agent::Pi {
+            self.select_pi(suite, roots)?
+        } else { (Vec::new(), None) };
+        let Some(suite) = suite else { return Ok(pi_args) };
         // Resolve and validate every resource before creating any output.
         let skills = self.select_skills(suite, roots)?;
-        let extensions = self.select_extensions(suite, roots)?;
+        let extensions = self.select_extensions(suite, agent, roots)?;
+        let mcp = self.select_mcp(suite, agent, roots)?;
         let directory = self.generated_directory.join(&suite.id);
         let assembly = directory.join(crate::chats::new_creation_id());
         let fail = |error: String| TaskError::InvalidSuite(format!(
@@ -24,10 +28,22 @@ impl Suites {
             // tree. Ownership begins only after this create succeeds.
             access.create_dir(&assembly).map_err(|error| fail(error.to_string()))?;
             let result = (|| {
-                let mut args = skills::assemble(access, &assembly, suite, &skills)
+                let mut args = skills::assemble(access, &assembly, suite, agent, &skills)
                     .map_err(|error| format!("技能装配失败：{error}"))?;
-                args.extend(extensions::assemble(access, &assembly, &extensions)
+                args.extend(extensions::assemble(access, &assembly, agent, &extensions)
                     .map_err(|error| format!("扩展装配失败：{error}"))?);
+                if let Some(bytes) = &mcp {
+                    let native = assembly.join("mcp");
+                    access.create_dir(&native).map_err(|error| error.to_string())?;
+                    access.create(native.join(".mcp.json"), bytes).map_err(|error| error.to_string())?;
+                    args.extend(["--extension".into(), native.to_string_lossy().into_owned()]);
+                }
+                args.extend(pi_args);
+                if let Some(bytes) = &pi_config {
+                    let config = assembly.join("pi-suite.json");
+                    access.create(&config, bytes).map_err(|error| error.to_string())?;
+                    args.extend(["--pi-suite-config".into(), config.to_string_lossy().into_owned()]);
+                }
                 Ok(args)
             })();
             result.map_err(|error| match access.remove_dir_all(&assembly) {

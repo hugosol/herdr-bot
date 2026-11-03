@@ -122,6 +122,12 @@ agent = 'pi'
 kind = 'fixed'
 entrypoint = '${roots.toolkit}/entrypoints/pi/model-cost.ts'
 [[extensions]]
+id = 'pi-suite'
+label = 'pi-suite'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = '${roots.toolkit}/entrypoints/pi/pi-suite.ts'
+[[extensions]]
 id = 'pi-manager-chat'
 label = 'manager-chat'
 agent = 'pi'

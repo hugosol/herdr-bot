@@ -82,7 +82,7 @@ async fn resource_check_failure(locked: bool) {
 }
 
 fn declaration(id: &str, sentinel: &str) -> Value {
-    json!({"id":id, "name":id, "agents":["omp"], "lsp":{
+    json!({"id":id, "name":id, "agents":["omp"], "mcp":[sentinel], "lsp":{
         "publication-probe":{"command":sentinel, "fileTypes":[".probe"]}
     }})
 }
@@ -241,6 +241,14 @@ fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf 
     let manifest = native_argument(call, "--config");
     let directory = native_argument(call, "--plugin-dir");
     assert_eq!(manifest.parent().unwrap(), directory);
+    let native_mcp = directory.join("mcp");
+    assert!(call["argv"].as_array().unwrap().windows(2).any(|pair|
+        pair[0] == "--extension" && pair[1] == json!(native_mcp)));
+    let mcp: Value = serde_json::from_slice(&fs::read(native_mcp.join(".mcp.json")).unwrap()).unwrap();
+    let expected_mcp = if sentinel == "PUBLICATION-A-193" {
+        json!({"mcpServers":{"PUBLICATION-A-193":{"command":"MCP-A-461"}}})
+    } else { json!({"mcpServers":{"PUBLICATION-B-827":{"command":"MCP-B-902"}}}) };
+    assert_eq!(mcp, expected_mcp);
     let skills: Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
     assert_eq!(skills["skills"]["enabled"], resources);
     assert_eq!(skills["skills"]["includeSkills"], if resources { json!(["selected"]) } else { json!([]) });
@@ -299,6 +307,10 @@ async fn publication_scenarios(resources: bool) {
         config.suites.mcp_file = root.path().join("mcp.json");
         config.suites.generated_directory = root.path().join("generated");
         config.herdr.executable = herdr.executable().to_owned();
+        fs::write(&config.suites.mcp_file, json!({"mcpServers":{
+            "PUBLICATION-A-193":{"command":"MCP-A-461"},
+            "PUBLICATION-B-827":{"command":"MCP-B-902"}
+        }}).to_string()).unwrap();
         let second_suite = if same_suite { "first" } else { "second" };
         let mut first = declaration("first", "PUBLICATION-A-193");
         let mut second = declaration(second_suite, "PUBLICATION-B-827");

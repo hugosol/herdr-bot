@@ -1,11 +1,11 @@
 //! Suite entries remain existing native OMP extensions, never copied factories
 //! or a replacement module loader. Declaration paths belong to suites.json.
 use std::{collections::HashSet, fs, path::{Path, PathBuf}};
-use crate::{files::FileAccess, paths::Roots, tasks::TaskError};
+use crate::{files::FileAccess, paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 impl Suites {
-    pub(super) fn select_extensions(&self, suite: &Suite, roots: &Roots) -> Result<Vec<(PathBuf, PathBuf)>, TaskError> {
+    pub(super) fn select_extensions(&self, suite: &Suite, agent: Agent, roots: &Roots) -> Result<Vec<(PathBuf, PathBuf)>, TaskError> {
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」扩展装配失败：{error}；没有跳过失败资源或回退为空环境。", suite.id));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
         if suite.extensions.is_empty() { return Ok(Vec::new()); }
@@ -17,13 +17,36 @@ impl Suites {
             if !seen.insert(canonical) { continue; }
             let package = package_root(&entry).map_err(|error| fail(format!("{declaration}：{error}")))?;
             check_available(&package).map_err(|error| fail(format!("{declaration}：{error}")))?;
-            entries.push((entry, package));
+            if agent == Agent::Pi && entry.is_dir() {
+                // Pi's explicit -e accepts a file, not a collection directory.
+                // Require the package author's precise native entry list.
+                let manifest_path = entry.join("package.json");
+                let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)
+                    .map_err(|error| fail(format!("{}：{error}", manifest_path.display())))?)
+                    .map_err(|error| fail(format!("{}：{error}", manifest_path.display())))?;
+                let declared = manifest.pointer("/pi/extensions").and_then(serde_json::Value::as_array)
+                    .filter(|entries| !entries.is_empty())
+                    .ok_or_else(|| fail(format!("{} 必须声明非空 pi.extensions 入口清单；裸目录不表示已加载扩展", manifest_path.display())))?;
+                for relative in declared {
+                    let relative = relative.as_str().filter(|value| !value.is_empty())
+                        .ok_or_else(|| fail("pi.extensions 必须是具体相对文件入口清单".into()))?;
+                    let relative = Path::new(relative);
+                    if relative.is_absolute() || relative.components().any(|part| !matches!(part, std::path::Component::Normal(_) | std::path::Component::CurDir)) {
+                        return Err(fail(format!("Pi 包入口必须位于包内：{}", relative.display())));
+                    }
+                    let file = entry.join(relative);
+                    if !file.is_file() { return Err(fail(format!("Pi 包入口不是可读取文件：{}", file.display()))); }
+                    entries.push((file, package.clone()));
+                }
+            } else {
+                entries.push((entry, package));
+            }
         }
         Ok(entries)
     }
 }
 
-pub(super) fn assemble(access: &FileAccess, assembly: &Path, entries: &[(PathBuf, PathBuf)]) -> Result<Vec<String>, String> {
+pub(super) fn assemble(access: &FileAccess, assembly: &Path, agent: Agent, entries: &[(PathBuf, PathBuf)]) -> Result<Vec<String>, String> {
     if entries.is_empty() { return Ok(Vec::new()); }
     let directory = assembly.join("extensions");
     access.create_dir(&directory).map_err(|error| error.to_string())?;
@@ -38,7 +61,7 @@ pub(super) fn assemble(access: &FileAccess, assembly: &Path, entries: &[(PathBuf
         args.extend(["--extension".into(), assembled.to_string_lossy().into_owned()]);
         manifest.push(serde_json::json!({"source":entry, "package":package, "entrypoint":assembled}));
     }
-    access.create(directory.join("omp-extensions.json"),
+    access.create(directory.join(format!("{}-extensions.json", agent.label())),
         &serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())?;
     Ok(args)
@@ -64,7 +87,7 @@ fn package_root(entry: &Path) -> Result<std::path::PathBuf, String> {
 
 // External resources are read-only, outside the system's persistence boundary.
 // Check bundled modules/assets too; no source import, execution or copying.
-fn check_available(entry: &Path) -> Result<(), String> {
+pub(super) fn check_available(entry: &Path) -> Result<(), String> {
     let mut pending = vec![entry.to_path_buf()];
     let mut visited = HashSet::new();
     while let Some(path) = pending.pop() {
