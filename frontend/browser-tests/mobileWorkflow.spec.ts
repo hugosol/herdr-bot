@@ -349,8 +349,8 @@ for (const profile of PROFILES) {
       await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
       const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
       expect(prompts).toHaveLength(1)
-      // 业务正文完整保留在开头；后端可在其后附加独立的 agent 指引。
-      expect(String(prompts[0].text).startsWith(`${MULTILINE_INPUT}\n\n`)).toBe(true)
+      // 空固定 prompt、无 Skill 或词典引用时，逐字提交临时输入，不追加空段或指引。
+      expect(prompts[0].text).toBe(MULTILINE_INPUT)
 
       // 结果变长后弹窗仍在视口内；用户自己滚到操作区并关闭，页面停留在文件列表。
       await expectDialogInsideViewport(dialog)
