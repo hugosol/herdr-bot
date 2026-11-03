@@ -245,7 +245,7 @@ class Acceptance:
         for role in ['manager', 'node']:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': 'Acknowledge only. Do not call tools.', 'extensions': []})
+                'skill': None, 'prompt': 'Acknowledge only. Do not call tools.'})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         marker = 'P22-HISTORY-' + uuid.uuid4().hex
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Worker',

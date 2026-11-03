@@ -200,7 +200,7 @@ class Acceptance(skills['Acceptance']):
     def exercise(self):
         saved = self.http('/api/tasks', {'name':'Native MCP','chatName':'{task.name}-{chat.id}',
             'agent':'omp','taskType':'normal','model':'probe','thinking':'off','skill':None,
-            'prompt':'','extensions':[],'suite':'selected'})
+            'prompt':'','suite':'selected'})
         task = saved['tasks'][0]['id']
         self.http('/api/zones', {'id':'owned','path':str(self.zones[0])})
         preview = self.http('/api/chats/preview', {'zone':'owned','taskId':task})

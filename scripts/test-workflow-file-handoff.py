@@ -280,7 +280,7 @@ else:
         for role, prompt in [('manager', manager_prompt), ('node', node_prompt)]:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': prompt, 'extensions': []})
+                'skill': None, 'prompt': prompt})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Worker',
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')
@@ -560,7 +560,7 @@ class FanInAcceptance(RolesAcceptance):
         for role, prompt in [('manager', manager_prompt), ('node', node_prompt)]:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': prompt, 'extensions': []})
+                'skill': None, 'prompt': prompt})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Fan-in worker',
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')

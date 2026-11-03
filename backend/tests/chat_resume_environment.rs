@@ -61,7 +61,7 @@ fn catalog(root: &Path, agent: &str, revision: &str, trigger: bool) {
     if trigger {
         text.push_str(&format!("[[models]]\nid = 'launch-model'\nlabel = 'Launch model'\nprovider_model = 'provider/launch-model'\nthinking = {{ {agent} = ['high'] }}\n[[skills]]\nid = 'launch-skill'\nlabel = 'Launch skill'\nnative_name = 'start-only'\n"));
     }
-    for (id, kind) in [("fixed", "fixed"), ("a", "optional"), ("b", "optional"), ("ambient", "optional")] {
+    for (id, kind) in [("fixed", "fixed"), ("a", "optional"), ("b", "fixed"), ("ambient", "optional")] {
         let entry = root.join(format!("{agent}-{id}-{revision}.ts"));
         fs::write(&entry, "// Independent valid extension fixture; never execute at validation.\nexport default function () {}\n").unwrap();
         text.push_str(&format!("[[extensions]]\nid = '{id}'\nlabel = '{id}'\nagent = '{agent}'\nkind = '{kind}'\nentrypoint = '{}'\n",entry.display()));
@@ -80,8 +80,8 @@ fn expected_args(agent: &str, mut expected: Value) -> Value {
     }
     expected
 }
-fn task(agent: &str, selection: &str, name: &str) -> Value {
-    json!({"name":name,"chatName":"Same name {chat.id}","agent":agent,"model":"launch-model","thinking":"high","skill":"launch-skill","prompt":"INITIAL ONLY","extensions":[selection]})
+fn task(agent: &str, name: &str) -> Value {
+    json!({"name":name,"chatName":"Same name {chat.id}","agent":agent,"model":"launch-model","thinking":"high","skill":"launch-skill","prompt":"INITIAL ONLY"})
 }
 async fn post(panel: &Panel, path: &str, body: Value) -> Value {
     let response = post_json_over_tcp(panel.addr, path, &body.to_string()).await;
@@ -138,9 +138,9 @@ fn native(root: &Path, herdr: &HerdrFixture, agent: &str, id: &str) -> PathBuf {
     herdr.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"path","value":file}}));
     file
 }
-// P1/P2/P3/P4/P9/P10/P18. Independent expected set: newest fixed + selected B,
-// not historical A or ambient; only creation submits trigger actions. A plausible
-// violation is restoring fixed-only or resolving stale trigger settings. Normal
+// P1/P2/P3/P4/P9/P10/P18. Independent expected set: both newest fixed entries,
+// not optional A or ambient; only creation submits trigger actions. A plausible
+// violation is restoring stale fixed entries or trigger settings. Normal
 // creation, public edit, a real process restart and external argv distinguish it.
 #[tokio::test]
 async fn source_survives_restart_and_resume_uses_latest_environment_without_trigger_replay() {
@@ -153,14 +153,14 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let panel = Panel::start(root.path());
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
-        let saved = post(&panel,"/api/tasks",task(agent,"a","Source A")).await;
+        let saved = post(&panel,"/api/tasks",task(agent, "Source A")).await;
         let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel,zone,id).await;
         history(&panel,1).await;
         let initial = herdr.calls();
-        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-a-old.ts"))])));
+        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-b-old.ts"))])));
         assert_eq!(common::prompt_body(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()),"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
-        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent,"b","Source A renamed").to_string())).await;
+        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent, "Source A renamed").to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
         catalog(root.path(),agent,"current",true);
@@ -175,45 +175,11 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
     }
 }
 
-// P5/P18, approved S2/S3: an independent stale optional ID must not discard
-// the valid fixed entry. Ordinary creation with the identical Task must reject
-// before any external action; Resume must submit only the known-good literal set.
-#[tokio::test]
-async fn missing_optional_mapping_is_filtered_only_on_resume() {
-    for agent in ["pi", "omp"] {
-        let root = TempDir::new("missing selected mapping");
-        let herdr = HerdrFixture::new("missing selected mapping herdr");
-        configure(root.path(), &herdr);
-        catalog(root.path(), agent, "valid", true);
-        let file = native(root.path(), &herdr, agent, "native-filter-mapping");
-        let panel = Panel::start(root.path());
-        let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
-        let zone = zones["zones"][0]["id"].as_str().unwrap();
-        let saved = post(&panel, "/api/tasks", task(agent, "b", "Filter source")).await;
-        let id = saved["tasks"][0]["id"].as_str().unwrap();
-        create(&panel, zone, id).await;
-        history(&panel, 1).await;
-        let options = root.path().join("options.toml");
-        fs::write(&options, fs::read_to_string(&options).unwrap().replace("id = 'b'", "id = 'not-selected'")).unwrap();
-        let before = herdr.calls().len();
-        let preview = post(&panel, "/api/chats/preview", json!({"zone":zone,"taskId":id})).await;
-        let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"taskId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
-        assert_eq!(rejected.status, 400, "{}", rejected.body);
-        assert_eq!(serde_json::from_str::<Value>(&rejected.body).unwrap()["code"], "task-extension-invalid");
-        assert_eq!(herdr.calls().len(), before);
-        let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-filter-mapping"})).await;
-        assert_eq!(result["outcome"], "restored");
-        assert_eq!(result["degradations"].as_array().unwrap().len(), 1);
-        assert!(result["degradations"][0]["reason"].as_str().unwrap().contains("b"));
-        assert!(result["degradations"][0]["reason"].as_str().unwrap().contains("映射缺失"));
-        assert!(result["degradations"][0]["strategy"].as_str().unwrap().contains("跳过"));
-        let calls = herdr.calls();
-        assert_eq!(calls[before..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], expected_args(agent, json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file])));
-    }
-}
+// Task optional selection was removed at the Suite cutover; invalid legacy
+// request fields are covered by initial_suite_migration.rs.
 
 // P5/P18: the missing file is real, not a replacement mapping or adapter error.
-// Both fixed and selected optional entries must be independently removable while
+// Both fixed and second fixed entries must be independently removable while
 // the other literal entry remains; strict creation must not submit an agent.
 #[tokio::test]
 async fn missing_entrypoints_preserve_other_extensions_on_resume_only() {
@@ -228,7 +194,7 @@ async fn missing_entrypoints_preserve_other_extensions_on_resume_only() {
 // mapping is absent. Deleting a whole fixed declaration instead means it is no
 // longer part of the latest fixed set, not a recoverable historical snapshot.
 #[tokio::test]
-async fn missing_fixed_and_optional_entry_mappings_are_item_local() {
+async fn missing_fixed_entry_mappings_are_item_local() {
     for agent in ["pi", "omp"] {
         for broken in ["fixed", "b"] {
             entrypoint_case(agent, broken, "mapping").await;
@@ -240,7 +206,7 @@ async fn missing_fixed_and_optional_entry_mappings_are_item_local() {
 // failure at File::open, not NotFound. The production file check stays real.
 #[cfg(windows)]
 #[tokio::test]
-async fn unreadable_fixed_and_optional_entries_keep_the_other_valid_item() {
+async fn unreadable_fixed_entries_keep_the_other_valid_item() {
     for agent in ["pi", "omp"] {
         for broken in ["fixed", "b"] {
             entrypoint_case(agent, broken, "unreadable").await;
@@ -257,7 +223,7 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     let panel = Panel::start(root.path());
     let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap();
-    let saved = post(&panel, "/api/tasks", task(agent, "b", "Entry source")).await;
+    let saved = post(&panel, "/api/tasks", task(agent, "Entry source")).await;
     let id = saved["tasks"][0]["id"].as_str().unwrap();
     create(&panel, zone, id).await;
     history(&panel, 1).await;
@@ -313,7 +279,7 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         let panel = Panel::start(root.path());
         let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
-        let saved = post(&panel, "/api/tasks", task(agent, "b", "Empty source")).await;
+        let saved = post(&panel, "/api/tasks", task(agent, "Empty source")).await;
         create(&panel, zone, saved["tasks"][0]["id"].as_str().unwrap()).await;
         history(&panel, 1).await;
         for id in ["fixed", "b"] { fs::remove_file(root.path().join(format!("{agent}-{id}-valid.ts"))).unwrap(); }
@@ -356,7 +322,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             let panel = Panel::start(root.path());
             let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
             let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
-            let saved = post(&panel,"/api/tasks",task(agent,"b","Source")).await;
+            let saved = post(&panel,"/api/tasks",task(agent, "Source")).await;
             let id = saved["tasks"][0]["id"].as_str().unwrap();
             create(&panel,&zone,id).await;
             history(&panel,1).await;
@@ -406,9 +372,9 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let panel = Panel::start(root.path());
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
-        let saved = post(&panel,"/api/tasks",task("omp","a","Same display name")).await;
+        let saved = post(&panel,"/api/tasks",task("omp", "Same display name")).await;
         let source_a = saved["tasks"][0]["id"].as_str().unwrap();
-        let saved = post(&panel,"/api/tasks",task("omp","b","Same display name")).await;
+        let saved = post(&panel,"/api/tasks",task("omp", "Same display name")).await;
         let source_b = saved["tasks"][1]["id"].as_str().unwrap();
         let sparse = json!({"cwd":" ","sessionName":" ","agentType":"","sessionFile":"relative.jsonl","sourceTaskId":source_b});
         let first_time;
@@ -472,9 +438,9 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":target})).await["outcome"],"restored");
         let calls = herdr.calls();
-        assert_eq!(calls[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-a-merge.ts"),"--resume",file]));
+        assert_eq!(calls[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-b-merge.ts"),"--resume",file]));
         assert!(!calls[offset..].iter().any(|call| call["kind"] == "agent_prompt"));
-        // Same display name/cwd and even a forged source cannot grant optional B.
+        // Same display name/cwd and even a forged source cannot select another environment.
         let other_file = native(root.path(),&herdr,"omp",other);
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":other})).await["outcome"],"restored");
@@ -485,7 +451,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let panel = Panel::start(root.path());
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":other})).await["outcome"],"restored");
-        assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-a-merge.ts"),"--resume",other_file]));
+        assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-b-merge.ts"),"--resume",other_file]));
         let after = read(&panel,"/api/sessions/history").await;
         let row = after["sessions"].as_array().unwrap().iter().find(|row| row["sessionId"] == other).unwrap();
         assert_eq!(row["firstRecordedAt"],123);
@@ -509,7 +475,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
             let panel = Panel::start(root.path());
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
-            let saved = post(&panel, "/api/tasks", task(agent, "a", "Same name")).await;
+            let saved = post(&panel, "/api/tasks", task(agent, "Same name")).await;
             let source = saved["tasks"][0]["id"].as_str().unwrap();
             match scenario {
                 "legacy" => fs::write(root.path().join("history.json"), serde_json::to_vec(&json!([{
@@ -525,7 +491,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
                     history(&panel, 1).await;
                     let reply = request_json_over_tcp(panel.addr, "DELETE", &format!("/api/tasks/{source}"), None).await;
                     assert_eq!(reply.status, 200, "{}", reply.body);
-                    post(&panel, "/api/tasks", task(agent, "b", "Same name")).await;
+                    post(&panel, "/api/tasks", task(agent, "Same name")).await;
                 }
                 _ => unreachable!(),
             }
@@ -613,7 +579,7 @@ async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
             native(root.path(), &herdr, agent, "native-error-full-001");
             let panel = Panel::start(root.path());
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
-            let saved = post(&panel, "/api/tasks", task(agent, "a", "Source")).await;
+            let saved = post(&panel, "/api/tasks", task(agent, "Source")).await;
             create(&panel, zones["zones"][0]["id"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
             history(&panel, 1).await;
             let history_bytes = fs::read(root.path().join("history.json")).unwrap();

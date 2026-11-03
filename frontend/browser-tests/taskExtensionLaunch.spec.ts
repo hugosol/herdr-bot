@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { spawn } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
@@ -47,22 +46,16 @@ async function dialog(page: Page, zone: string) {
 
 // S1/S2/S3 P16/P21/P22/P24: literal six-combination expectations, not generated from launch code.
 // Violation: ambient discovery remains on, fixed item is omitted, or unselected entries leak into args.
-test('六种 Task 集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
+test('两宿主固定集合准确显式启动，固定项不可取消，创建页面没有临时扩展选择', async ({ page }, testInfo) => {
   const { root, zone, zonePath } = await setup()
   const ext = path.join(root, 'extensions')
   const cases = [
-    { agent: 'omp', extensions: [], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
-    { agent: 'omp', extensions: ['omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts'] },
-    { agent: 'omp', extensions: ['omp-connect-bot'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-connect-bot.ts'] },
-    { agent: 'omp', extensions: ['omp-connect-bot', 'omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts', 'omp-connect-bot.ts'] },
-    { agent: 'pi', extensions: [], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts'] },
-    { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-codebase-tools.ts'] },
+    { agent: 'omp', entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
+    { agent: 'pi', entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
   const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zonePath, relative))
   for (const file of settings) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '{"extensions":["ambient.ts"]}\n') }
-  const userSettings = ['.omp/agent/config.yml', '.omp/agent/config.yaml', '.pi/agent/settings.json'].map(relative => path.join(os.homedir(), relative))
-  const userBefore = userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)
   for (const [index, scenario] of cases.entries()) {
     const saved = await save({ ...task, ...scenario, entries: undefined })
     if (index === 0) {
@@ -86,23 +79,22 @@ test('六种 Task 集合准确显式启动，固定项不可取消，创建页�
     const start = server!.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!
     expect(start.agent_kind).toBe(scenario.agent)
     const args = start.args as string[]
-    expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
+    expect(args).toEqual(['--no-extensions', ...(scenario.agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toMatch(/^固定指示\n\n本次输入(?:\n\n|$)/)
   }
   for (const file of settings) expect(fs.readFileSync(file, 'utf8')).toBe('{"extensions":["ambient.ts"]}\n')
-  expect(userSettings.map(file => fs.existsSync(file) ? fs.readFileSync(file) : null)).toEqual(userBefore)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
-  const evidence = testInfo.outputPath('controlled-herdr-six-combinations-NOT-real-loading.json')
+  const evidence = testInfo.outputPath('controlled-herdr-fixed-hosts-NOT-real-loading.json')
   fs.writeFileSync(evidence, JSON.stringify({ calls: server!.herdrCalls(), tabs: server!.herdrTabs(), expected: cases }, null, 2))
-  await testInfo.attach('controlled-herdr-six-combinations-NOT-real-loading', { path: evidence, contentType: 'application/json' })
+  await testInfo.attach('controlled-herdr-fixed-hosts-NOT-real-loading', { path: evidence, contentType: 'application/json' })
 })
 
 // P25/P26/P34/P39: same stable IDs resolve a fresh mapping, while unselected missing entries stay irrelevant.
 // Violation: stale task path copies, or checking all files in the catalog instead of this creation's set.
 test('同进程相同已保存标识使用新入口且忽略未选缺失入口，不执行扩展', async ({}, testInfo) => {
   const { root, zone, original } = await setup()
-  const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
+  const saved = await save({ ...task })
   const persistedBefore = fs.readFileSync(server!.storageFile, 'utf8')
   fs.unlinkSync(path.join(root, 'extensions', 'omp-connect-bot.ts'))
   fs.unlinkSync(path.join(root, 'extensions', 'pi-model-cost.ts'))
@@ -120,8 +112,8 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   await finish(await create(zone, saved.id))
   const starts = server!.herdrCalls().filter(call => call.kind === 'agent_start')
   const official = path.join(root, 'extensions', 'omp-herdr-agent-state.ts')
-  expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed, '--extension', oldOptional])
-  expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed, '--extension', freshOptional])
+  expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed])
+  expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed])
   expect(fs.readFileSync(server!.storageFile, 'utf8')).toBe(persistedBefore)
   expect((await server!.getTasks()).tasks[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
@@ -149,10 +141,10 @@ async function denyRead(file: string) {
 }
 
 // Readable extension directories are supported; discovery within them belongs to the agent.
-for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
+for (const entry of ['omp-model-cost']) {
   test(`目录入口 ${entry} 按原路径交给 agent 且不执行入口内容`, async ({ page }) => {
     const { root, zone } = await setup()
-    await save({ ...task, extensions: ['omp-codebase-tools'] })
+    await save({ ...task })
     const directory = path.join(root, 'extensions', `${entry}.ts`)
     fs.unlinkSync(directory)
     fs.mkdirSync(directory)
@@ -170,11 +162,11 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
 
 // P33/P35: genuine missing/sharing-denied files, for fixed AND selected optional items.
 // Violation: check only fixed items, only existence, or start a tab before validating. Real files and adapter stay in path.
-for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
+for (const entry of ['omp-model-cost']) {
   for (const fault of ['missing', 'unreadable']) {
     test(`自动入口检查 ${entry}/${fault} 在页面及HTTP拒绝且无三个副作用`, async ({ page }) => {
       const { root, zone } = await setup()
-      const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
+      const saved = await save({ ...task })
       const form = await dialog(page, zone)
       const file = path.join(root, 'extensions', `${entry}.ts`)
       let unlock: (() => Promise<void>) | undefined
@@ -203,10 +195,10 @@ for (const entry of ['omp-model-cost', 'omp-codebase-tools']) {
 }
 
 // P35 metadata and persisted selection categories must be rejected by create itself, even with a dialog already open.
-for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax', 'metadata-duplicate', 'metadata-relation', 'selection-removed', 'selection-agent', 'selection-fixed', 'selection-duplicate', 'task-model', 'task-thinking', 'task-skill', 'task-agent']) {
+for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax', 'metadata-duplicate', 'metadata-relation', 'task-model', 'task-thinking', 'task-skill', 'task-agent']) {
   test(`前置配置检查 ${fault} 的公开创建和实际页面无外部副作用`, async ({ page }) => {
     const { root, zone, original } = await setup()
-    const saved = await save({ ...task, extensions: ['omp-codebase-tools'] })
+    const saved = await save({ ...task })
     const form = await dialog(page, zone)
     let unlock: (() => Promise<void>) | undefined
     if (fault === 'metadata-missing') fs.unlinkSync(server!.metadataFile)
@@ -214,14 +206,6 @@ for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax
     if (fault === 'metadata-syntax') fs.writeFileSync(server!.metadataFile, '[[extensions')
     if (fault === 'metadata-duplicate') fs.writeFileSync(server!.metadataFile, original + "\n[[agents]]\nid='omp'\nlabel='duplicate'\n")
     if (fault === 'metadata-relation') fs.writeFileSync(server!.metadataFile, original.replace('omp = [', 'unknown = ['))
-    if (fault.startsWith('selection-')) {
-      const persisted = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
-      persisted.tasks[0].extensions = {
-        'selection-removed': ['removed-extension'], 'selection-agent': ['pi-codebase-tools'],
-        'selection-fixed': ['omp-model-cost'], 'selection-duplicate': ['omp-codebase-tools', 'omp-codebase-tools'],
-      }[fault]
-      fs.writeFileSync(server!.storageFile, JSON.stringify(persisted))
-    }
     if (fault.startsWith('task-')) {
       const persisted = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
       const field = fault.slice('task-'.length)
@@ -233,7 +217,7 @@ for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax
       const response = await post('/api/chats', { zone, taskId: saved.id, chatId: 'abcdef', input: '本次输入' })
       expect(response.status).toBe(fault.startsWith('metadata-') || fault === 'task-agent' ? 500 : 400)
       const error = await response.json()
-      expect(error.code).toBe(fault.startsWith('metadata-') ? 'metadata-invalid' : fault === 'task-agent' ? 'tasks-corrupt' : fault.startsWith('task-') ? `${fault}-invalid` : 'task-extension-invalid')
+      expect(error.code).toBe(fault.startsWith('metadata-') ? 'metadata-invalid' : fault === 'task-agent' ? 'tasks-corrupt' : `${fault}-invalid`)
       expect(error.message).toContain('未创建 Herdr Tab、未启动 agent、未提交输入')
       await form.getByTestId('chat-create-submit').click()
       await expect(page.getByTestId('chat-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')

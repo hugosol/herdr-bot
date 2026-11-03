@@ -21,7 +21,7 @@ label = '归档模型'
 provider_model = 'archive/original'
 thinking = { omp = ['low', 'high'], pi = ['low'] }
 `
-const PRESET = { taskType: 'normal', name: '待修正 Bot', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'archive-model', thinking: 'high', skill: null, prompt: '保留第一行\n保留第二行', extensions: ['archive-tools'] }
+const PRESET = { taskType: 'normal', name: '待修正 Bot', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'archive-model', thinking: 'high', skill: null, prompt: '保留第一行\n保留第二行' }
 function catalog(model = MODEL, optional = true, recovered = false) {
   const root = path.dirname(server.metadataFile)
   const fixed = path.join(root, recovered ? 'repaired-cost.ts' : 'cost.ts')
@@ -160,59 +160,7 @@ test('适用 thinking 被移除时保留原级别，用户明确改选后才能�
 
 // P28/P29: metadata removal cannot hide a selected extension or silently drop it on save.
 // A checked unavailable item must remain user-removable; all three external side effects stay absent.
-test('失效扩展在手机视口可显式移除，修正前页面与公开创建都拒绝且无副作用', async ({ page }, info) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  const { zone, saved } = await setup()
-  fs.writeFileSync(server.metadataFile, catalog(MODEL, false))
-  await page.goto(`${server.baseURL}?layout=expanded`)
-  await page.getByTestId('tab-files').click()
-  await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
-  await expect(page.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')
-  await page.locator('#chat-workspace-target').selectOption('default')
-  await page.getByTestId('chat-create-submit').click()
-  await expect(page.getByTestId('chat-request-error')).toContainText('archive-tools')
-  await expect(page.getByTestId('chat-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')
-  await expect(page.getByTestId('chat-create-success')).toHaveCount(0)
-  expect((await create(zone, saved.id)).status).toBe(400)
-  expect(server.herdrCalls()).toEqual([])
-  expect(server.herdrTabs()).toEqual([])
-  await page.getByTestId('chat-create-close').click()
-  await edit(page, saved.id)
-  await expect(page.getByTestId('task-selection-error')).toContainText('archive-tools')
-  await page.getByTestId('task-next').click()
-  const unavailable = page.getByTestId('extension-archive-tools')
-  await expect(unavailable).toBeChecked()
-  await expect(page.getByText('archive-tools（不可用）', { exact: true })).toBeVisible()
-  await page.getByTestId('task-next').click()
-  await expect(page.getByTestId('summary-optional')).toHaveText('archive-tools')
-  await page.getByTestId('save-task').click()
-  await expect(page.getByTestId('task-form-error')).toContainText('archive-tools')
-  expect((await request(`/api/tasks/${saved.id}`)).body.task).toEqual(saved)
-  expect((await request(`/api/tasks/${saved.id}`, PRESET, 'PUT')).status).toBe(400)
-  await page.getByTestId('task-back').click()
-  await screenshot(page, info, 'unavailable-extension-mobile')
-  // This choice disappears on removal; click observes the user action without requiring a detached checkbox state.
-  await unavailable.click()
-  await page.getByTestId('task-back').click()
-  await page.getByTestId('task-next').click()
-  await expect(unavailable).toHaveCount(0)
-  expect((await request(`/api/tasks/${saved.id}`)).body.task).toEqual(saved)
-  await page.getByTestId('task-next').click()
-  await expect(page.getByTestId('summary-optional')).toHaveText('无')
-  await page.getByTestId('save-task').click()
-  await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
-  expect((await request(`/api/tasks/${saved.id}`)).body.task).toEqual({ ...saved, extensions: [] })
-  await page.getByTestId('tab-files').click()
-  await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
-  await expect(page.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')
-  await page.locator('#chat-workspace-target').selectOption('default')
-  await page.getByTestId('chat-create-submit').click()
-  await expect(page.getByTestId('chat-create-success')).toBeVisible()
-  expect(server.herdrTabs()).toHaveLength(1)
-  expect(server.herdrCalls().filter(call => call.kind === 'agent_start')).toHaveLength(1)
-  expect(server.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(1)
-  await screenshot(page, info, 'corrected-extension-mobile-creation')
-})
+
 
 // S1/S2/S3, P27: both pages have genuinely loaded the old valid choices before the file changes.
 // Violation: trusting a browser snapshot or cached catalogue permits a stale save/create.
@@ -220,7 +168,7 @@ for (const scenario of [
   { name: '移除模型', model: '', optional: true, reason: 'archive-model' },
   { name: '改变模型 Agent 适用关系', model: MODEL.replace("omp = ['low', 'high'], ", ''), optional: true, reason: 'archive-model' },
   { name: '移除适用 thinking', model: MODEL.replace("omp = ['low', 'high']", "omp = ['low']"), optional: true, reason: 'high' },
-  { name: '移除扩展', model: MODEL, optional: false, reason: 'archive-tools' },
+
 ]) {
   test(`旧页面${scenario.name}后保存及创建按当前目录拒绝`, async ({ page, context }, info) => {
     const { zone, saved } = await setup()
@@ -259,7 +207,7 @@ for (const scenario of [
 test('同一真实持久文件的未知模型不阻止有效 Task 读取编辑和创建', async ({ page }, info) => {
   const { zone } = await setup()
   const invalid = { id: 'unknown-model', ...PRESET, model: 'never-known-model' }
-  const valid = { id: 'valid-neighbor', ...PRESET, name: '有效邻居', model: 'default', thinking: 'default', extensions: [] }
+  const valid = { id: 'valid-neighbor', ...PRESET, name: '有效邻居', model: 'default', thinking: 'default' }
   fs.writeFileSync(server.storageFile, JSON.stringify({ tasks: [invalid, valid] }))
   const listed = await request('/api/tasks')
   expect(listed.status).toBe(200)
@@ -363,11 +311,10 @@ for (const fault of ['损坏', '移走']) {
     await page.getByTestId('task-model').selectOption('fresh-model')
     await page.getByTestId('task-thinking').selectOption('medium')
     await page.getByTestId('task-next').click()
-    await page.getByTestId('extension-archive-tools').click()
     await page.getByTestId('task-next').click()
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
-    const fixed = { ...PRESET, model: 'fresh-model', thinking: 'medium', extensions: [] }
+    const fixed = { ...PRESET, model: 'fresh-model', thinking: 'medium' }
     expect((await request(`/api/tasks/${saved.id}`)).body.task).toEqual({ id: saved.id, ...fixed })
     expect((await request(`/api/tasks/${saved.id}`, fixed, 'PUT')).status).toBe(200)
     await zoneRowFor(creator, zone).getByTestId('zone-create-chat').click()

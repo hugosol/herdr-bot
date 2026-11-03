@@ -128,9 +128,9 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
     return response.json()
   }
   const zone = (await post('/api/zones', { id: 'test/zone', path: host.cwd })).zones[0].id
-  const base = { agent: 'omp', chatName: '{chat.id}', model: 'gpt-6.1-sol', thinking: 'high', skill: 'teach', extensions: [] }
+  const base = { agent: 'omp', chatName: '{chat.id}', model: 'gpt-6.1-sol', thinking: 'high', skill: 'teach' }
   const managerTask = (await post('/api/tasks', { ...base, name: 'Manager source', taskType: 'manager', prompt: 'MANAGER INITIAL' })).tasks[0]
-  const nodeConfig = { ...base, name: 'Node source', taskType: 'normal', prompt: 'NODE INITIAL ONLY', extensions: ['omp-connect-bot'] }
+  const nodeConfig = { ...base, name: 'Node source', taskType: 'normal', prompt: 'NODE INITIAL ONLY' }
   const nodeTask = (await post('/api/tasks', nodeConfig)).tasks.find((task: { name: string }) => task.name === 'Node source')
   const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
@@ -155,11 +155,11 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   expect((initialStart.args as string[]).slice(0, 4)).toEqual(['--model', 'openai-codex/gpt-6.1-sol', '--thinking', 'high'])
   const sourceHistory = JSON.parse(fs.readFileSync(path.join(root, 'session-history.json'), 'utf8'))
   expect(sourceHistory.find((chat: { sessionId: string }) => chat.sessionId === 'real-dispatch-node').sourceTaskId).toBe(nodeTask.id)
-  const edited = await fetch(`${host.baseURL}/api/tasks/${nodeTask.id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...nodeConfig, name: 'Renamed source', extensions: ['omp-codebase-tools'] }) })
+  const edited = await fetch(`${host.baseURL}/api/tasks/${nodeTask.id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...nodeConfig, name: 'Renamed source' }) })
   expect(edited.status).toBe(200)
   const latest = path.join(root, 'latest-extensions')
   fs.mkdirSync(latest)
-  const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat', 'omp-codebase-tools']
+  const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat']
   for (const entry of extensionIds) fs.writeFileSync(path.join(latest, `${entry}.ts`), "throw new Error('controlled fixture never loads extensions')\n")
   const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll('${roots.browser_extensions}', latest)
   fs.writeFileSync(host.metadataFile, metadata)
@@ -179,7 +179,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const managedObservationMs = Date.now() - observationStart
   const calls = host.herdrCalls().slice(before)
   expect(calls.filter(call => call.kind === 'agent_start')).toHaveLength(1)
-  expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual(['--no-extensions', '--extension', path.join(latest, 'omp-herdr-agent-state.ts'), '--extension', path.join(latest, 'omp-model-cost.ts'), '--extension', path.join(latest, 'omp-node-chat.ts'), '--extension', path.join(latest, 'omp-codebase-tools.ts'), '--resume', sessionFile])
+  expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual(['--no-extensions', '--extension', path.join(latest, 'omp-herdr-agent-state.ts'), '--extension', path.join(latest, 'omp-model-cost.ts'), '--extension', path.join(latest, 'omp-node-chat.ts'), '--resume', sessionFile])
   expect(calls.some(call => ['agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)
   expect(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))).toEqual(saved)
   const current = await (await fetch(`${host.baseURL}/api/workflow/runs/${id}`)).json()

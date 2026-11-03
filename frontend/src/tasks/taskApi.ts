@@ -24,7 +24,6 @@ export type Task = {
   thinking: TaskThinking
   skill: TaskSkill | null
   prompt: string
-  extensions: string[]
   suite?: string | null
 }
 
@@ -77,7 +76,6 @@ function isTask(value: unknown): value is Task {
     typeof task.thinking === 'string' &&
     (task.skill === null || typeof task.skill === 'string') &&
     typeof task.prompt === 'string' &&
-    isStringArray(task.extensions) &&
     (task.suite === undefined || task.suite === null || typeof task.suite === 'string')
   )
 }

@@ -42,7 +42,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
     taskType: 'normal',
   model: 'deepseek-flash',
   thinking: 'max',
-  skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
+  skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\' }
 
   await page.goto(`${server.baseURL}?layout=expanded`)
   await expect(page.getByTestId('tab-tasks')).toHaveText('task')
@@ -142,7 +142,7 @@ test('真实浏览器新增、共享读取、编辑、删除完整 Task', async 
     taskType: 'normal',
   model: 'gpt-6.1-sol',
   thinking: 'xhigh',
-  skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] })
+  skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行' })
 
   // 打开、取消及 Escape 均不删除；只有明确确认才提交删除。
   let deletes = 0
@@ -290,7 +290,7 @@ test('保存失败不表示已保存；预先写定的 Task 经真实进程重�
     taskType: 'normal',
   model: 'gpt-6.1-sol',
   thinking: 'high',
-  skill: 'teach', prompt: '重启前的第一行\n重启前的第二行', extensions: [] }
+  skill: 'teach', prompt: '重启前的第一行\n重启前的第二行' }
   const created = await fetch(`${server.baseURL}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

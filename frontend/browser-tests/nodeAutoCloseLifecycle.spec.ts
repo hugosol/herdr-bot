@@ -50,7 +50,7 @@ async function setup(page: Page, a = false, b = true) {
   await post(page, '/api/zones', { id: 'test/zone', path: zone })
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const result = await post(page, '/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'LAUNCH-ONLY-LIFECYCLE', extensions: [] })
+    const result = await post(page, '/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'LAUNCH-ONLY-LIFECYCLE' })
     ids[role] = result.tasks.find((task: { name: string }) => task.name === role).id
   }
   const botRoot = path.join(server.cwd, 'meta-data/bots')

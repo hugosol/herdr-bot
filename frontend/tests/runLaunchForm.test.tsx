@@ -8,7 +8,7 @@ const options = { agents: ['omp', 'pi'], models: ['default'], thinking: {}, skil
 const tasks: Task[] = (['omp', 'pi'] as const).flatMap(agent =>
   (['normal', 'manager'] as const).map(taskType => ({
     id: `${agent}-${taskType}`, name: `${agent} ${taskType}`, agent, taskType,
-    chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [],
+    chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '',
   })))
 
 function response(body: unknown): Response {

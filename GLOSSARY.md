@@ -5,7 +5,7 @@ Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际�
 ## Task 与 Chat
 
 **Task**:
-用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
+用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、Suite 选择、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
 _Avoid_: Bot, bot-template, 模板, 对话实例
 
 **Suite（场景工具集）**:
@@ -45,12 +45,8 @@ _Avoid_: 当前选中 Task, Task 快照, 推测来源
 _Avoid_: Task, Task 实例
 
 **Task 固定扩展**:
-Task 会话环境中不由 Task 勾选决定的 agent 扩展，与可选扩展共同构成有来源 Task 时的环境选择；它不等于无来源 Task 时的原生默认发现集合。
+Task 会话环境中不由 Suite 选择决定的 agent 扩展，与所选 Suite 声明共同构成有来源 Task 时的环境；它不等于无来源 Task 时的原生默认发现集合。
 _Avoid_: 默认勾选扩展, 可选扩展, 默认发现扩展
-
-**Task 可选扩展**:
-由 Task 保存选择、属于 env config 的 agent 扩展；可多选，也可以不选，不是发起时执行的初始 Skill 调用。
-_Avoid_: 固定扩展, 启动时临时选择, 初始 Skill 调用
 
 **agent session（会话）**:
 agent 原生的对话单元，是 Chat 在该 agent 中的身份；是否上报到主界面不决定它是否存在。

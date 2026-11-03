@@ -56,7 +56,7 @@ agent: 'pi',
 taskType: 'normal',
 model: 'gpt-6.1-sol',
 thinking: 'high',
-skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
+skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\' }
 
 const EDITED = { name: '发布检查（改）',
 chatName: '{task.name} · {agent} · {chat.id}',
@@ -64,7 +64,7 @@ agent: 'omp',
 taskType: 'normal',
 model: 'deepseek-flash',
 thinking: 'high',
-skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行', extensions: [] }
+skill: 'teach', prompt: '编辑后的第一行\n编辑后的第二行' }
 
 const CREATION_TASK = { name: '创建用',
 chatName: '{zone.name} · {task.name} · {chat.id}',
@@ -72,7 +72,7 @@ agent: 'omp',
 taskType: 'normal',
 model: 'default',
 thinking: 'default',
-skill: null, prompt: '', extensions: [] }
+skill: null, prompt: '' }
 
 const MULTILINE_INPUT = '第一行任务：检查登录\n第二行任务：保留缩进\n第三行任务：完成'
 

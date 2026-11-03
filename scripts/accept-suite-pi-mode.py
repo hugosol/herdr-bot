@@ -303,7 +303,7 @@ class Acceptance(support['Acceptance']):
         case['settingsBefore'] = json.loads(settings.read_text(encoding='utf-8'))
         wire_mark = len(self.mcp.wire)
         body = {'name': name, 'chatName': '{chat.id}', 'agent': 'pi', 'taskType': 'normal', 'model': 'probe',
-                'thinking': 'off', 'skill': None, 'prompt': '', 'extensions': [],
+                'thinking': 'off', 'skill': None, 'prompt': '',
                 'suite': None if suite_mode is None else 'mode-' + suite_mode}
         response = self.http('/api/tasks', body)
         task = next(task for task in response['tasks'] if task['name'] == name)
