@@ -66,6 +66,7 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 [suites]
 definition_file = 'meta-data/suites.json'
 mcp_file = 'meta-data/mcp.json'
+generated_directory = '.data/suites'
 ```
 
 `definition_file` 是唯一权威文件，界面直接读写它，不读取生成目录中的同名文件，不建立数据库副本。缺少文件表示没有 Suite，首次保存会创建父目录；文件损坏或不可读明确报错，不覆盖成空清单。外部编辑后点击“重新读取 Suite”（有未保存编辑时先确认丢弃），或重启程序；两种方式都从该文件取得定义。保存不会主动重配已有 Chat。
@@ -89,6 +90,18 @@ mcp_file = 'meta-data/mcp.json'
 ```
 
 资源字符串保留根引用与声明相对路径，其基准是 **Suite 声明文件** 所在目录，不是 Chat 或后端的 cwd。资源实体继续在原位置维护，本编辑器不复制源码、认证、模型或历史配置。
+
+### OMP 精确技能环境
+
+`skills` 中每项是一个现有技能**目录**（包含 `SKILL.md`），不是技能集合根、初始 `/skill:` 调用或新的资源注册 ID。`SKILL.md` 使用原生 YAML frontmatter；`description` 必须非空，省略 `name` 时使用来源目录名。同一选择中重名会明确拒绝，不静默丢弃其中一个技能。
+
+发起前，后端检查所选技能及配套资源可读，在 `generated_directory` 下准备整目录符号链接与 `omp-skills.json`。该文件只通过 OMP 原生 `--config` 覆盖技能自定义目录及最终名称白名单，不关闭任何 capability provider，不替换 agent 配置目录、不复制认证或改变模型／会话位置。脚本、references 和资产继续来自原目录；往来源集合增加兄弟技能不会自动选入。明确选择空技能 Suite 会禁用技能发现；**不选 Suite** 则不传技能覆盖，保留原生技能行为。原生 MCP 来源和原生项目指令继续由 OMP 自己处理。
+
+生成位置默认 `.data/suites`，相对服务 TOML，可使用 `${roots.name}`；交付配置使用 `${roots.suite_resources}`。每次入口只有在链接和清单完整后才交给 Herdr，不原地改写已经交出的清单，不持有文件协调锁执行 Herdr。生成目录不是 Suite 权威副本、资源源码或认证目录，不要把它作为手工维护入口。源技能、资源或生成位置不可读／不可写，或 Windows 真目录符号链接缺少权限时，公开启动返回 `400 task-suite-invalid` 及具体 Suite／路径原因；不创建 Tab，不以空环境启动，不自动提权、启用开发者模式或复制／junction 替代。清理失败另行保留在错误说明中。
+
+真实消费专项入口见[测试指引](agents/testing.md#omp-suite-技能真实消费验收)。它使用真实 Herdr 与已安装 OMP 的交付启动入口；常规后端替身检查不能代替真实技能消费证据。
+
+### 宿主适用配置与集中 MCP
 
 Pi 适用的 Suite 必须明确保存 `pi.codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。仅 OMP 的编辑不显示 Pi 控件，也不保存 `pi` 字段；重新勾选 Pi 从 `on` 开始。Pi 跳过 LSP，OMP 跳过 Suite 本地 prompt templates，不将它们变为初始消息或系统指令。
 

@@ -357,10 +357,11 @@ impl Tasks {
 
     /// Re-read authority immediately before launch; do not hold coordination
     /// across Herdr or any other external effect.
-    pub fn validate_environment(&self, task: &Task) -> Result<(), TaskError> {
-        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
-            self.suites.validate_selection(access, task.env.suite.as_deref(), task.agent)
-        }).map_err(TaskError::Unreadable)?
+    pub fn prepare_environment(&self, task: &Task) -> Result<Vec<String>, TaskError> {
+        let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+            self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
+        }).map_err(TaskError::Unreadable)??;
+        self.suites.prepare_skills(suite.as_ref(), task.agent, &self.roots)
     }
 
     /// 新增一个 Task；成功返回保存后的完整列表。
@@ -368,7 +369,7 @@ impl Tasks {
         let fields = input.validate(&self.catalog()?)?;
 
         self.change(|access, tasks| {
-            self.suites.validate_selection(access, fields.suite.as_deref(), fields.agent)?;
+            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
             let id = next_id(tasks);
             tasks.push(Task {
                 id,
@@ -397,7 +398,7 @@ impl Tasks {
         let fields = input.validate(&self.catalog()?)?;
 
         self.change(|access, tasks| {
-            self.suites.validate_selection(access, fields.suite.as_deref(), fields.agent)?;
+            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
             let target = tasks
                 .iter_mut()
                 .find(|task| task.id == id)

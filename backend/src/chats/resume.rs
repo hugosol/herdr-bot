@@ -174,12 +174,13 @@ mod degradation {
             if task.agent != agent {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
-            state.tasks.validate_environment(&task).map_err(|error| (error.code(), error.message()))?;
+            let suite_args = state.tasks.prepare_environment(&task).map_err(|error| (error.code(), error.message()))?;
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
             let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
                 .map_err(|message| ("execution-association-invalid", message))?
                 .unwrap_or_else(|| task.task_type.into());
-            let env = self.environment(&catalog, agent, role, &task.env.extensions);
+            let mut env = self.environment(&catalog, agent, role, &task.env.extensions);
+            env.suite_args = suite_args;
             Ok(crate::chats::agent_launch_args(&env, None))
         }
 
@@ -202,6 +203,7 @@ mod degradation {
                 }
             }
             ResolvedEnvConfig {
+                suite_args: Vec::new(),
                 extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
                     match extension.check_entrypoint() {
                         Ok(()) => Some(extension.clone()),
