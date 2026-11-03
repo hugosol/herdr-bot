@@ -4,6 +4,7 @@
 mod skills;
 mod mcp;
 mod extensions;
+mod assembly;
 mod pi;
 mod mcp_paths;
 

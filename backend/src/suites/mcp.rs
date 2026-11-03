@@ -6,13 +6,10 @@ use crate::{paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 impl Suites {
-    pub(crate) fn prepare_mcp(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
-        let Some(suite) = suite.filter(|suite| agent == Agent::Omp && !suite.mcp.is_empty()) else {
-            return Ok(Vec::new());
-        };
+    pub(super) fn select_mcp(&self, suite: &Suite, agent: Agent, roots: &Roots) -> Result<Option<Vec<u8>>, TaskError> {
+        if agent != Agent::Omp || suite.mcp.is_empty() { return Ok(None); }
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」MCP 装配失败：{error}；没有回退为空环境。", suite.id));
-        let assembly = self.generated_directory.join(&suite.id).join(crate::chats::new_creation_id());
-        let scopes = [self.mcp_file.clone(), self.generated_directory.clone()];
+        let scopes = [self.mcp_file.clone()];
         self.files.with(&scopes, |access| {
             let catalog = self.read_mcp(access).map_err(|error| fail(error.message))?;
             let mut selected = BTreeMap::new();
@@ -34,19 +31,7 @@ impl Suites {
                 selected.insert(id, config);
             }
             let bytes = serde_json::to_vec_pretty(&json!({"mcpServers":selected})).map_err(|error| fail(error.to_string()))?;
-            access.create_dir_all(assembly.parent().unwrap()).map_err(|error| fail(error.to_string()))?;
-            access.create_dir(&assembly).map_err(|error| fail(error.to_string()))?;
-            if let Err(error) = access.create(&assembly.join(".mcp.json"), &bytes) {
-                let cleanup = access.remove_dir_all(&assembly);
-                return Err(fail(match cleanup {
-                    Ok(()) => error.to_string(),
-                    Err(cleanup) => format!("{error}；清理本次产物另失败：{cleanup}"),
-                }));
-            }
-            // OMP accepts a resource-only directory: no factory/manager shim.
-            // Its omp-plugins provider retains unqualified server names and
-            // gives native user/project definitions their normal priority.
-            Ok(vec!["--extension".into(), assembly.to_string_lossy().into_owned()])
+            Ok(Some(bytes))
         }).map_err(|error| fail(error.to_string()))?
     }
 }

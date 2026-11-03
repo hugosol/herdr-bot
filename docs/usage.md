@@ -104,7 +104,7 @@ generated_directory = '.data/suites'
 
 资源字符串保留根引用与声明相对路径，其基准是 **Suite 声明文件** 所在目录，不是 Chat 或后端的 cwd。资源实体继续在原位置维护，本编辑器不复制源码、认证、模型或历史配置。
 
-Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":["entry.ts"],"pi":["pi-entry.ts"]}`），不接受旧数组，也不按目录项 ID 猜测路径。仅加载当前宿主对应的清单；OMP 的 `extensions.omp` 可以指向既有入口文件或原生可加载的包目录（目录入口按 OMP 自己的 `package.json`／index 规则处理）。装配保留最近 `package.json` 所在的包目录；没有包清单时，保留入口所在目录。整个目录以真实目录符号链接放入 `generated_directory/<suite-id>/extensions/<本次装配>/package-N`，相对模块、同包资产和 `node_modules` 不被拆成孤立源码副本。`omp-extensions.json` 记录来源、包目录和装配入口，启动经原生 `--extension` 消费对应装配路径；不会生成替代工厂或重写宿主加载器。固定扩展仍由既有执行角色规则单独加载。
+Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":["entry.ts"],"pi":["pi-entry.ts"]}`），不接受旧数组，也不按目录项 ID 猜测路径。仅加载当前宿主对应的清单；OMP 的 `extensions.omp` 可以指向既有入口文件或原生可加载的包目录（目录入口按 OMP 自己的 `package.json`／index 规则处理）。装配保留最近 `package.json` 所在的包目录；没有包清单时，保留入口所在目录。整个目录以真实目录符号链接放入 `generated_directory/<suite-id>/<本次装配>/extensions/package-N`，相对模块、同包资产和 `node_modules` 不被拆成孤立源码副本。`omp-extensions.json` 记录来源、包目录和装配入口，启动经原生 `--extension` 消费对应装配路径；不会生成替代工厂或重写宿主加载器。固定扩展仍由既有执行角色规则单独加载。
 
 每次启动重新检查扩展包内资源可读性，所有链接及入口清单准备完成后才向 Herdr 提交启动。入口、配套资源、生成目录或链接权限失败会明确拒绝本次 Suite 启动，不沿用恢复流程中跳过单个旧扩展的降级行为。Windows 必须已经具备创建目录符号链接的权限；程序不提权、不改开发者模式，也不以 junction 或复制代替失败的链接。生成目录内只保存可重建装配信息，源码仍在原包维护。
 
@@ -116,13 +116,17 @@ Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":
 
 生成位置默认 `.data/suites`，相对服务 TOML，可使用 `${roots.name}`；交付配置使用 `${roots.suite_resources}`。每次入口只有在链接和清单完整后才交给 Herdr，不原地改写已经交出的清单，不持有文件协调锁执行 Herdr。生成目录不是 Suite 权威副本、资源源码或认证目录，不要把它作为手工维护入口。源技能、资源或生成位置不可读／不可写，或 Windows 真目录符号链接缺少权限时，公开启动返回 `400 task-suite-invalid` 及具体 Suite／路径原因；不创建 Tab，不以空环境启动，不自动提权、启用开发者模式或复制／junction 替代。清理失败另行保留在错误说明中。
 
+同一次启动的技能、扩展入口清单及适用宿主的 LSP／MCP／Pi 配置共用独占新建的 `<suite-id>/<本次装配>` 目录，全部写好才发布启动参数。同 Suite 或不同 Suite 的并发启动各用自己的完整目录，不会改写或清理已经交付给另一启动的产物；协调范围在进入 Herdr 前结束。资源检查失败不创建半套输出；创建后失败仅删除本次确实新建的目录及其链接实体，不遍历删除链接目标，也不扫描删除生成根中的未拥有文件。清理失败会与原始失败一起反馈，不新增跨文件事务或跨进程写入协议。
+
+成功交付的装配目录可能仍被已有进程消费，因此不会在下次装配时自动回收。需要手工重建生成目录时，先停止所有使用它的 Chat 进程，且只移除确认属于程序的装配子目录，不删除 Suite 权威定义或资源源目录。受控装配不会放宽 zone 浏览与普通持久化对任意重解析点的拒绝。真实文件／目录／跨盘链接和失败清理的独立入口见[装配安全验收](agents/testing.md#suite-装配发布与链接安全验收)。
+
 真实消费专项入口见[测试指引](agents/testing.md#omp-suite-技能真实消费验收)。它使用真实 Herdr 与已安装 OMP 的交付启动入口；常规后端替身检查不能代替真实技能消费证据。
 
 ### Pi 原生启动资源
 
 Pi 的共享 Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP。技能仍是完整目录的真符号链接；明确空 Suite 与不选 Suite 不同，后者不添加技能／模板覆盖。Pi 扩展包目录必须有 `package.json` 的非空 `pi.extensions` **具体相对文件入口清单**；后端逐个传 `--extension`，不能将含若干扩展的裸目录误认为已加载。入口文件、同包依赖和资产保留在同一包链接下。Pi 本地模板通过原生 `--prompt-template` 逐项选择，初始化不展开；LSP 不传给 Pi。
 
-交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/pi/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以集中 MCP 文件目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
+交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以集中 MCP 文件目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
 
 开发真实烟测见[测试指引](agents/testing.md#pi-suite-启动开发烟测)。它不替代 Pi 完整资源／MCP／模式／模板契约矩阵；缺真链接权限或尚未交付的 toolkit flag 时应明确记为未验证，不能以参数或产物存在宣称原生消费通过。
 

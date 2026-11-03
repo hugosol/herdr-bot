@@ -3,7 +3,7 @@
 //! explicit --skill paths. Neither disables native MCP or project instructions.
 use std::{collections::HashSet, fs, path::{Path, PathBuf}};
 use serde::Deserialize;
-use crate::{paths::Roots, tasks::{Agent, TaskError}};
+use crate::{files::FileAccess, paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 #[derive(Deserialize)]
@@ -12,14 +12,13 @@ struct Frontmatter {
     description: String,
 }
 
-struct Skill {
+pub(super) struct Skill {
     name: String,
-    directory: PathBuf,
+    pub(super) directory: PathBuf,
 }
 
 impl Suites {
-    pub(crate) fn prepare_skills(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
-        let Some(suite) = suite else { return Ok(Vec::new()) };
+    pub(super) fn select_skills(&self, suite: &Suite, roots: &Roots) -> Result<Vec<Skill>, TaskError> {
         let id = &suite.id;
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{id}」技能装配失败：{error}；没有回退为空环境。"));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
@@ -34,59 +33,42 @@ impl Suites {
                 return Err(fail(format!("所选技能名称重复：{}；请明确选择唯一实体。", skill.name)));
             }
         }
-        // A fresh private directory is not observable by an agent until every
-        // link and its manifest have been written. Never edit a live manifest.
-        let assembly = self.generated_directory.join(id).join(crate::chats::new_creation_id());
-        let mut scopes = vec![self.generated_directory.clone()];
-        scopes.extend(skills.iter().map(|skill| skill.directory.clone()));
-        self.files.with(&scopes, |access| -> Result<Vec<String>, TaskError> {
-            access.create_dir_all(assembly.parent().unwrap()).map_err(|error| fail(error.to_string()))?;
-            access.create_dir(&assembly).map_err(|error| fail(error.to_string()))?;
-            let result = (|| -> Result<Vec<String>, String> {
-                let links = assembly.join("skills");
-                access.create_dir(&links).map_err(|error| error.to_string())?;
-                for skill in &skills {
-                    access.link_resource_directory(&skill.directory, &links.join(&skill.name))
-                        .map_err(|error| format!("链接 {} → {} 失败：{error}", links.join(&skill.name).display(), skill.directory.display()))?;
-                }
-                if agent == Agent::Pi {
-                    let mut args = vec!["--no-skills".into()];
-                    for skill in &skills {
-                        args.extend(["--skill".into(), links.join(&skill.name).to_string_lossy().into_owned()]);
-                    }
-                    return Ok(args);
-                }
-                let manifest = assembly.join("omp-skills.json");
-                let config = serde_json::json!({"skills": {
-                    "enabled": !skills.is_empty(),
-                    "customDirectories": [links],
-                    "includeSkills": skills.iter().map(|skill| literal_glob(&skill.name)).collect::<Vec<_>>(),
-                    "ignoredSkills": []
-                }});
-                access.create(&manifest, &serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?)
-                    .map_err(|error| error.to_string())?;
-                let mut args = vec!["--config".into(), manifest.to_string_lossy().into_owned()];
-                if !suite.lsp.is_empty() {
-                    // Native plugin discovery merges below user/project LSP
-                    // files and keeps bundled defaults. A settings override
-                    // would not participate in that native config stack.
-                    let lsp = serde_json::json!({"servers": &suite.lsp});
-                    access.create(&assembly.join("lsp.json"), &serde_json::to_vec_pretty(&lsp).map_err(|error| error.to_string())?)
-                        .map_err(|error| error.to_string())?;
-                    args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
-                }
-                Ok(args)
-            })();
-            result.map_err(|error| {
-                // remove_dir_all removes directory links themselves, not their
-                // targets. Only this invocation's newly created tree is owned.
-                match access.remove_dir_all(&assembly) {
-                    Ok(()) => fail(error),
-                    Err(cleanup) => fail(format!("{error}；清理本次产物另失败：{cleanup}")),
-                }
-            })
-        }).map_err(|error| fail(error.to_string()))?
+        Ok(skills)
     }
+}
+
+pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, agent: Agent, skills: &[Skill]) -> Result<Vec<String>, String> {
+    let links = assembly.join("skills");
+    access.create_dir(&links).map_err(|error| error.to_string())?;
+    for skill in skills {
+        access.link_resource_directory(&skill.directory, &links.join(&skill.name))
+            .map_err(|error| format!("链接 {} → {} 失败：{error}", links.join(&skill.name).display(), skill.directory.display()))?;
+    }
+    if agent == Agent::Pi {
+        let mut args = vec!["--no-skills".into()];
+        for skill in skills {
+            args.extend(["--skill".into(), links.join(&skill.name).to_string_lossy().into_owned()]);
+        }
+        return Ok(args);
+    }
+    let manifest = assembly.join("omp-skills.json");
+    let config = serde_json::json!({"skills": {
+        "enabled": !skills.is_empty(), "customDirectories": [links],
+        "includeSkills": skills.iter().map(|skill| literal_glob(&skill.name)).collect::<Vec<_>>(),
+        "ignoredSkills": []
+    }});
+    access.create(&manifest, &serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?)
+        .map_err(|error| error.to_string())?;
+    let mut args = vec!["--config".into(), manifest.to_string_lossy().into_owned()];
+    if !suite.lsp.is_empty() {
+        // Native plugin discovery merges below user/project LSP files and
+        // keeps bundled defaults, unlike a native settings override.
+        let lsp = serde_json::json!({"servers": &suite.lsp});
+        access.create(assembly.join("lsp.json"), &serde_json::to_vec_pretty(&lsp).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+        args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
+    }
+    Ok(args)
 }
 
 fn read_skill(directory: PathBuf) -> Result<Skill, String> {

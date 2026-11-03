@@ -35,5 +35,8 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+# Catch assertion failures while always releasing external test gates and
+# awaiting owned CLI commands. Production futures keep their minimal features.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
