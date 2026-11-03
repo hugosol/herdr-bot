@@ -431,6 +431,9 @@ pub async fn start_run(
         Ok(v) => v,
         Err(e) => return crate::task_error_response(e),
     };
+    if let Err(error) = state.tasks.validate_environment(&task) {
+        return crate::task_error_response(error);
+    }
     let preset = match state
         .tasks
         .catalog()

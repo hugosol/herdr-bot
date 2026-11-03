@@ -82,6 +82,9 @@ pub struct EnvConfig {
     /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
     #[serde(default)]
     pub extensions: Vec<String>,
+    /// One stable Suite ID, never a copied definition or inferred selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
 }
 
 /// 一次新增或编辑请求的原始字段；字符串先按字段逐个校验，失败时给出明确类别。
@@ -98,6 +101,7 @@ pub struct TaskInput {
     prompt: Option<String>,
     #[serde(default)]
     extensions: Vec<String>,
+    suite: Option<String>,
 }
 
 /// 校验后的 Task 字段（不含标识）。
@@ -111,6 +115,7 @@ struct TaskFields {
     skill: Option<String>,
     prompt: String,
     extensions: Vec<String>,
+    suite: Option<String>,
 }
 
 impl TaskInput {
@@ -178,6 +183,7 @@ impl TaskInput {
             skill,
             prompt: self.prompt.unwrap_or_default(),
             extensions: self.extensions,
+            suite: self.suite,
         })
     }
 }
@@ -202,6 +208,7 @@ pub enum TaskError {
     },
     UnknownSkill(String),
     InvalidExtension(String),
+    InvalidSuite(String),
     Metadata(String),
     NotFound,
     Unreadable(io::Error),
@@ -225,6 +232,7 @@ impl TaskError {
             Self::ThinkingUnsupported { .. } => "task-thinking-unsupported",
             Self::UnknownSkill(_) => "task-skill-invalid",
             Self::InvalidExtension(_) => "task-extension-invalid",
+            Self::InvalidSuite(_) => "task-suite-invalid",
             Self::Metadata(_) => "metadata-invalid",
             Self::NotFound => "task-not-found",
             Self::Unreadable(_) => "tasks-unreadable",
@@ -288,6 +296,7 @@ impl TaskError {
                     "扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。"
                 )
             }
+            Self::InvalidSuite(detail) => detail.clone(),
             Self::Metadata(detail) => detail.clone(),
             Self::NotFound => "目标Task不存在：可能已被删除。".to_string(),
             Self::Unreadable(error) => {
@@ -308,15 +317,17 @@ pub struct Tasks {
     storage_file: PathBuf,
     metadata_file: PathBuf,
     roots: crate::paths::Roots,
+    suites: std::sync::Arc<crate::suites::Suites>,
     files: FileStore,
 }
 
 impl Tasks {
-    pub fn new(storage_file: PathBuf, metadata_file: PathBuf, roots: crate::paths::Roots) -> Self {
+    pub fn new(storage_file: PathBuf, metadata_file: PathBuf, roots: crate::paths::Roots, suites: std::sync::Arc<crate::suites::Suites>) -> Self {
         Self {
             storage_file,
             metadata_file,
             roots,
+            suites,
             files: FileStore::default(),
         }
     }
@@ -344,11 +355,20 @@ impl Tasks {
             .ok_or(TaskError::NotFound)
     }
 
+    /// Re-read authority immediately before launch; do not hold coordination
+    /// across Herdr or any other external effect.
+    pub fn validate_environment(&self, task: &Task) -> Result<(), TaskError> {
+        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+            self.suites.validate_selection(access, task.env.suite.as_deref(), task.agent)
+        }).map_err(TaskError::Unreadable)?
+    }
+
     /// 新增一个 Task；成功返回保存后的完整列表。
     pub async fn create(&self, input: TaskInput) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        self.change(|tasks| {
+        self.change(|access, tasks| {
+            self.suites.validate_selection(access, fields.suite.as_deref(), fields.agent)?;
             let id = next_id(tasks);
             tasks.push(Task {
                 id,
@@ -362,7 +382,7 @@ impl Tasks {
                     skill: fields.skill,
                     prompt: fields.prompt,
                 },
-                env: EnvConfig { extensions: fields.extensions },
+                env: EnvConfig { extensions: fields.extensions, suite: fields.suite },
             });
             Ok(())
         })
@@ -376,7 +396,8 @@ impl Tasks {
     ) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        self.change(|tasks| {
+        self.change(|access, tasks| {
+            self.suites.validate_selection(access, fields.suite.as_deref(), fields.agent)?;
             let target = tasks
                 .iter_mut()
                 .find(|task| task.id == id)
@@ -391,14 +412,14 @@ impl Tasks {
                 skill: fields.skill,
                 prompt: fields.prompt,
             };
-            target.env = EnvConfig { extensions: fields.extensions };
+            target.env = EnvConfig { extensions: fields.extensions, suite: fields.suite };
             Ok(())
         })
     }
 
     /// 删除一个 Task；不改变任何已经创建的 Chat。
     pub async fn delete(&self, id: &str) -> Result<Vec<Task>, TaskError> {
-        self.change(|tasks| {
+        self.change(|_, tasks| {
             let before = tasks.len();
             tasks.retain(|task| task.id != id);
             if tasks.len() == before {
@@ -409,7 +430,7 @@ impl Tasks {
     }
 
     /// 读取并校验存储文件；文件不存在是空列表，其余失败都是明确错误。
-    fn read(&self, access: &FileAccess) -> Result<Vec<Task>, TaskError> {
+    pub(crate) fn read(&self, access: &FileAccess) -> Result<Vec<Task>, TaskError> {
         match access.read_to_string(&self.storage_file) {
             Ok(raw) => {
                 let document: TasksDocument = serde_json::from_str(&raw)
@@ -423,13 +444,13 @@ impl Tasks {
     }
 
     /// Read, validate, mutate and publish under one shared resource scope.
-    fn change(&self, change: impl FnOnce(&mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(std::slice::from_ref(&self.storage_file), |access| {
+    fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
+        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),
                 |document| {
-                    change(&mut document.tasks)
+                    change(access, &mut document.tasks)
                 },
                 |document| serde_json::to_vec_pretty(document).map_err(|error| {
                     TaskError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))

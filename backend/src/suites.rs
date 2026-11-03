@@ -127,7 +127,10 @@ impl Suites {
     }
     /// Read-only central native MCP definitions; never copy connection settings into Suites.
     pub fn mcp_catalog(&self) -> Result<BTreeMap<String, Value>, SuiteError> {
-        let raw = match self.files.read_to_string(&self.mcp_file) {
+        self.files.with(std::slice::from_ref(&self.mcp_file), |access| self.read_mcp(access)).map_err(SuiteError::storage)?
+    }
+    fn read_mcp(&self, access: &FileAccess) -> Result<BTreeMap<String, Value>, SuiteError> {
+        let raw = match access.read_to_string(&self.mcp_file) {
             Ok(raw) => raw,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
             Err(error) => return Err(SuiteError::storage(error)),
@@ -138,10 +141,26 @@ impl Suites {
         }
         Ok(document.servers)
     }
-    fn change(&self, action: impl FnOnce(&mut Vec<Suite>) -> Result<(), SuiteError>) -> Result<Vec<Suite>, SuiteError> {
-        self.files.with(std::slice::from_ref(&self.definition_file), |access| {
+    pub(crate) fn validate_selection(&self, access: &FileAccess, id: Option<&str>, agent: Agent) -> Result<(), crate::tasks::TaskError> {
+        use crate::tasks::TaskError;
+        let Some(id) = id else { return Ok(()) };
+        let document = self.read(access).map_err(|error| TaskError::InvalidSuite(error.message))?;
+        let suite = document.suites.iter().find(|suite| suite.id == id)
+            .ok_or_else(|| TaskError::InvalidSuite(format!("Suite「{id}」不存在；请明确修正引用，没有改选或回退为空环境。")))?;
+        if !suite.agents.contains(&agent) {
+            return Err(TaskError::InvalidSuite(format!("Suite「{id}」不适用于 {}；没有改选或回退为空环境。", agent.label())));
+        }
+        let catalog = self.read_mcp(access).map_err(|error| TaskError::InvalidSuite(error.message))?;
+        let missing: Vec<_> = suite.mcp.iter().filter(|id| !catalog.contains_key(*id)).map(String::as_str).collect();
+        if !missing.is_empty() {
+            return Err(TaskError::InvalidSuite(format!("Suite「{id}」的集中 MCP 引用失效：{}；没有删除引用或回退为空环境。", missing.join("、"))));
+        }
+        Ok(())
+    }
+    fn change(&self, scopes: &[PathBuf], action: impl FnOnce(&FileAccess, &mut Vec<Suite>) -> Result<(), SuiteError>) -> Result<Vec<Suite>, SuiteError> {
+        self.files.with(scopes, |access| {
             access.update_json(&self.definition_file, |access| self.read(access),
-                |document| action(&mut document.suites),
+                |document| action(access, &mut document.suites),
                 |document| {
                     let bytes = serde_json::to_vec_pretty(document).map_err(SuiteError::storage)?;
                     if let Some(parent) = self.definition_file.parent().filter(|path| !path.as_os_str().is_empty()) {
@@ -155,7 +174,13 @@ impl Suites {
     pub fn save(&self, id: Option<&str>, suite: Suite) -> Result<Vec<Suite>, SuiteError> {
         suite.validate()?;
         if id.is_some_and(|id| id != suite.id) { return Err(SuiteError::invalid("编辑不能更改 Suite ID。")); }
-        self.change(|suites| {
+        self.change(&[self.definition_file.clone(), self.mcp_file.clone()], |access, suites| {
+            let catalog = self.read_mcp(access)?;
+            for reference in &suite.mcp {
+                if !catalog.contains_key(reference) {
+                    return Err(SuiteError::invalid(format!("Suite「{}」的集中 MCP 引用失效：{reference}；请显式修正引用。", suite.id)));
+                }
+            }
             if let Some(id) = id {
                 *suites.iter_mut().find(|suite| suite.id == id).ok_or_else(SuiteError::not_found)? = suite;
             } else {
@@ -167,9 +192,15 @@ impl Suites {
             Ok(())
         })
     }
-    pub fn delete(&self, id: &str) -> Result<Vec<Suite>, SuiteError> {
-        self.change(|suites| {
+    pub fn delete(&self, id: &str, tasks: &crate::tasks::Tasks) -> Result<Vec<Suite>, SuiteError> {
+        self.change(&[self.definition_file.clone(), tasks.storage_file().to_path_buf()], |access, suites| {
             let index = suites.iter().position(|suite| suite.id == id).ok_or_else(SuiteError::not_found)?;
+            let tasks = tasks.read(access).map_err(|error| SuiteError::storage(error.message()))?;
+            let references: Vec<_> = tasks.iter().filter(|task| task.env.suite.as_deref() == Some(id))
+                .map(|task| format!("{}（{}）", task.name, task.id)).collect();
+            if !references.is_empty() {
+                return Err(SuiteError { status: StatusCode::CONFLICT, code: "suite-in-use", message: format!("Suite「{id}」仍被 Task 引用，不能删除：{}。请先显式修改这些 Task 的 Suite 选择。", references.join("、")) });
+            }
             suites.remove(index);
             Ok(())
         })
@@ -209,6 +240,6 @@ pub async fn delete(State(state): State<AppState>, Path(id): Path<String>, reque
     let bytes = axum::body::to_bytes(request.into_body(), 1024 * 1024).await.map_err(|error| SuiteError::invalid(error.to_string()))?;
     if !bytes.is_empty() { return Err(SuiteError::invalid("删除 Suite 不接受请求体。")); }
     let mcp = state.suites.mcp_catalog()?.into_keys().collect();
-    let suites = state.suites.delete(&id)?;
+    let suites = state.suites.delete(&id, &state.tasks)?;
     Ok(Json(SuiteList { suites, mcp }))
 }

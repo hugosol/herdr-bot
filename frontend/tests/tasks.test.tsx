@@ -276,7 +276,7 @@ describe('Task tab：读取与展示', () => {
       await user.click(within(dialog).getByTestId('task-back'))
     }
     await saveTask(user, dialog)
-    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager' })
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager', suite: null })
     expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   })
 
@@ -354,7 +354,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
-    skill: 'code-review', prompt, extensions: [] })
+    skill: 'code-review', prompt, extensions: [], suite: null })
     const row = screen.getByTestId('task-item')
     expect(row).toHaveTextContent('审查')
     expect(row).toHaveTextContent('alpha · 审查 · pi · a7f3c2')
@@ -483,7 +483,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
-    skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
+    skill: 'code-review', prompt: '第一行\n第二行', extensions: [], suite: null })
     expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent('新名字')
     expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent(
       '新名字 · pi · a7f3c2',

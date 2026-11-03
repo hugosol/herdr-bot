@@ -114,6 +114,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
+        state.tasks.validate_environment(&target.task).map_err(|error| error.message())?;
         let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
         preset.env.check_entrypoints()?;
         protocol(state, &mut candidate, &target.task, &preset,
