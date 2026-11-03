@@ -144,7 +144,7 @@ else:
             ('acceptance-review', 'review', '独立核对 totals.csv 的分类、金额及 CNY 币种，输出 review.json。')]:
             name = 'P27-' + mode
             task = {'name': name, 'taskType': 'normal', 'agent': 'pi', 'chatName': '{chat.id}',
-                'model': 'probe', 'thinking': 'default', 'skill': None, 'extensions': [],
+                'model': 'probe', 'thinking': 'default', 'skill': None,
                 'prompt': f'仅在用户后续单独授权的业务 Run 执行：{description} 使用 {command} {mode}。只读/写本 zone 的指定业务文件，不联网、不发布、不启动其他 Chat。'}
             result = self.http('/api/tasks', task)
             task_id = next(item['id'] for item in result['tasks'] if item['name'] == name)

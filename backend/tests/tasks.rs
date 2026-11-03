@@ -54,9 +54,9 @@ async fn task_types_are_enforced_through_direct_http() {
                 input["extensions"] = extensions;
                 let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
                 assert_eq!(rejected.status, 400, "{}", rejected.body);
-                assert!(rejected.body.contains("task-extension-invalid"));
+                assert!(rejected.body.contains("invalid-request"));
             }
-            input["extensions"] = json!([]);
+            input.as_object_mut().unwrap().remove("extensions");
             let mut cancellation = input.clone();
             cancellation["fixedExtensions"] = json!([]);
             let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&cancellation.to_string())).await;

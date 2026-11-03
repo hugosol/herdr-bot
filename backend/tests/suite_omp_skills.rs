@@ -33,7 +33,7 @@ async fn unreadable_selected_skill_rejects_public_launch_before_herdr() {
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected skill", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -72,7 +72,7 @@ async fn blocked_assembly_directory_rejects_public_launch_before_herdr() {
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected skill", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];

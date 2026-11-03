@@ -998,7 +998,6 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::ThinkingRequiresDefaultModel
         | TaskError::ThinkingUnsupported { .. }
         | TaskError::UnknownSkill(_)
-        | TaskError::InvalidExtension(_)
         | TaskError::InvalidSuite(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(

@@ -28,12 +28,12 @@ async fn unreadable_extension_rejects_public_launch_before_herdr() {
     fs::write(&entry, "export default function(pi) {}\n").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
         "id":"selected", "name":"Selected", "agents":["omp"],
-        "extensions":["existing extension package/entry.ts"]
+        "extensions":{"omp":["existing extension package/entry.ts"]}
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -70,12 +70,12 @@ async fn unreadable_bundled_asset_rejects_public_launch_before_herdr() {
     let asset = package.join("assets").join("prices.json");
     fs::write(&asset, "{\"unit\":19}").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":["existing package"]
+        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["existing package"]}
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -112,12 +112,12 @@ async fn blocked_extension_assembly_rejects_public_launch_before_herdr() {
     fs::create_dir_all(blocked.parent().unwrap()).unwrap();
     fs::write(&blocked, "OWNED-OUTPUT-BLOCKER-492").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":["existing package/entry.ts"]
+        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["existing package/entry.ts"]}
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];

@@ -124,7 +124,7 @@ export default function(pi) {
 }
 ''')
         (authority / 'suites.json').write_text(json.dumps({'suites': [{'id': 'selected', 'name': 'Selected',
-            'agents': ['pi'], 'skills': ['selected skill'], 'extensions': ['selected package'],
+            'agents': ['pi'], 'skills': ['selected skill'], 'extensions': {'pi': ['selected package']},
             'pi': {'codemode': 'on'}}]}))
         (self.root / 'paths.toml').write_text('[roots]\n')
         self.source_bytes = {p: p.read_bytes() for directory in [skill, package] for p in directory.rglob('*') if p.is_file()}
@@ -166,7 +166,7 @@ export default function(pi) {
     def exercise(self):
         task = self.http('/api/tasks', {'name': 'Pi Suite smoke', 'chatName': '{task.name}-{chat.id}',
             'agent': 'pi', 'taskType': 'normal', 'model': 'probe', 'thinking': 'off', 'skill': None,
-            'prompt': 'Run the owned smoke probes.', 'extensions': [], 'suite': 'selected'})['tasks'][0]
+            'prompt': 'Run the owned smoke probes.', 'suite': 'selected'})['tasks'][0]
         self.http('/api/zones', {'id': 'owned', 'path': str(self.root / 'zone')})
         preview = self.http('/api/chats/preview', {'zone': 'owned', 'taskId': task['id']})
         case = {'requests': [], 'passed': False}

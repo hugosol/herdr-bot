@@ -32,7 +32,7 @@ async function prepare(agent: string, policy: Policy) {
   const optional = path.join(cwd, 'optional.ts')
   fs.writeFileSync(fixed, "throw new Error('do not import fixture')\n")
   fs.writeFileSync(optional, "throw new Error('do not import fixture')\n")
-  fs.writeFileSync(server.metadataFile, `skills = []\n[[agents]]\nid = '${agent}'\nlabel = '${agent}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'identity-fixed'\nlabel = 'Identity fixed'\nagent = '${agent}'\nkind = 'fixed'\nentrypoint = '${fixed}'\n[[extensions]]\nid = 'optional'\nlabel = 'Optional marker'\nagent = '${agent}'\nkind = 'optional'\nentrypoint = '${optional}'\n`)
+  fs.writeFileSync(server.metadataFile, `skills = []\n[[agents]]\nid = '${agent}'\nlabel = '${agent}'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'identity-fixed'\nlabel = 'Identity fixed'\nagent = '${agent}'\nkind = 'fixed'\nentrypoint = '${fixed}'\n[[extensions]]\nid = 'optional'\nlabel = 'Secondary fixed marker'\nagent = '${agent}'\nkind = 'fixed'\nentrypoint = '${optional}'\n`)
   const id = `${agent}-integrity-history`
   const native = path.join(cwd, 'original.jsonl')
   fs.writeFileSync(native, `${JSON.stringify({ type: 'session', version: 3, id, cwd })}\n`)
@@ -42,7 +42,7 @@ async function prepare(agent: string, policy: Policy) {
   if (policy === 'filtered') {
     server.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: native } })
     await accepted('/api/zones', { id: 'test/zone', path: cwd })
-    const saved = await accepted('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', prompt: 'INITIAL ONLY', extensions: ['optional'] })
+    const saved = await accepted('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', prompt: 'INITIAL ONLY' })
     const taskId = saved.tasks[0].id
     const preview = await accepted('/api/chats/preview', { zone: 'test/zone', taskId: taskId })
     const job = await accepted('/api/chats', { zone: 'test/zone', taskId: taskId, chatId: preview.chatId, input: 'SEED ONLY' })
@@ -98,7 +98,7 @@ for (const agent of ['pi', 'omp']) {
         await expect(status).toContainText(item.strategy)
       }
       if (policy === 'filtered') {
-        for (const text of ['Optional marker', 'optional', '入口不存在', '跳过', '仍关闭扩展自动发现']) await expect(status).toContainText(text)
+        for (const text of ['Secondary fixed marker', 'optional', '入口不存在', '跳过', '仍关闭扩展自动发现']) await expect(status).toContainText(text)
         await expect(status).not.toContainText('原生默认扩展发现')
       } else {
         for (const text of ['缺少来源 Task', '原生默认扩展发现', '不显式追加 Task']) await expect(status).toContainText(text)
@@ -143,7 +143,7 @@ for (const agent of ['pi', 'omp']) {
       expect(result.degradations).toHaveLength(1)
       expect(result.degradations[0].element).toBe('extension')
       const alert = row.getByRole('alert')
-      for (const text of ['恢复存在降级', 'Optional marker', '入口不存在', '跳过', '仍关闭扩展自动发现', fault === 'confirm' ? '启动结果未确认' : '尚未确认恢复成功']) await expect(alert).toContainText(text)
+      for (const text of ['恢复存在降级', 'Secondary fixed marker', '入口不存在', '跳过', '仍关闭扩展自动发现', fault === 'confirm' ? '启动结果未确认' : '尚未确认恢复成功']) await expect(alert).toContainText(text)
       await expect(row.getByRole('status')).toHaveCount(0)
       await expect(alert).not.toContainText('已确认恢复同一')
       const calls = server!.herdrCalls().slice(offset)
@@ -194,7 +194,7 @@ for (const agent of ['pi', 'omp']) {
         await expect(alert).not.toContainText('跳过此扩展')
         await expect(alert).not.toContainText('精确原生 ID')
       } else {
-        for (const text of ['精确原生 ID', 'Optional marker', '入口不存在', '跳过']) await expect(alert).toContainText(text)
+        for (const text of ['精确原生 ID', 'Secondary fixed marker', '入口不存在', '跳过']) await expect(alert).toContainText(text)
       }
       const calls = server!.herdrCalls().slice(offset)
       expect(calls.filter(c => c.kind === 'agent_list')).toHaveLength(1)
@@ -239,7 +239,7 @@ for (const agent of ['pi', 'omp']) {
       expect(result.progress).toEqual({ tabCreated: true, startSubmitted: true, conversationConfirmed: false, focused: false })
       expect(result.degradations.map((d: { element: string }) => d.element)).toEqual([policy === 'filtered' ? 'extension' : 'extensions'])
       const alert = row.getByRole('alert')
-      for (const text of ['恢复存在降级', '启动结果未确认', '不能据此判断未启动', '不自动关闭', policy === 'filtered' ? 'Optional marker' : '原生默认扩展发现']) await expect(alert).toContainText(text)
+      for (const text of ['恢复存在降级', '启动结果未确认', '不能据此判断未启动', '不自动关闭', policy === 'filtered' ? 'Secondary fixed marker' : '原生默认扩展发现']) await expect(alert).toContainText(text)
       await expect(alert).not.toContainText('已确认恢复同一')
       const startedFile = path.join(s.root, 'herdr', 'started.jsonl')
       const started = JSON.parse(fs.readFileSync(startedFile, 'utf8').trim().split('\n').at(-1)!)
@@ -269,7 +269,7 @@ for (const agent of ['pi', 'omp']) {
       // environment, nor require a currently readable launch catalog.
       if (policy === 'filtered') {
         const { id: taskId, ...task } = (await server!.getTasks()).tasks[0]
-        const edited = await fetch(`${server!.baseURL}/api/tasks/${taskId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...task, extensions: [], prompt: 'EDITED INITIAL NEVER REPLAY' }) })
+        const edited = await fetch(`${server!.baseURL}/api/tasks/${taskId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...task, prompt: 'EDITED INITIAL NEVER REPLAY' }) })
         expect(edited.status).toBe(200)
       }
       fs.writeFileSync(server!.metadataFile, 'independently broken catalog !!!')

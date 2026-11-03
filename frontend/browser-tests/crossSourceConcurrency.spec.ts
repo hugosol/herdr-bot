@@ -40,7 +40,7 @@ async function register(sessionId: string, data: Record<string, unknown>) {
   expect(receipt.historySaved).toBe(true)
 }
 async function task(agent: string, name: string) {
-  const saved = await post('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+  const saved = await post('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '' })
   return saved.tasks.find((item: { name: string }) => item.name === name).id as string
 }
 async function create(zone: string, taskId: string) {

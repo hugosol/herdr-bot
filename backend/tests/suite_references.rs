@@ -18,7 +18,7 @@ fn config(root: &TempDir) -> herdr_bot::Config {
     config
 }
 fn task(name: &str, suite: Value) -> Value {
-    json!({"name":name,"chatName":"{task.name}","agent":"omp","taskType":"normal","model":"default","thinking":"default","skill":null,"prompt":"Keep my trigger","extensions":[],"suite":suite})
+    json!({"name":name,"chatName":"{task.name}","agent":"omp","taskType":"normal","model":"default","thinking":"default","skill":null,"prompt":"Keep my trigger","suite":suite})
 }
 async fn send(server: &TestServer, method: &str, path: &str, body: &Value) -> common::HttpResponse {
     request_json_over_tcp(server.addr(), method, path, Some(&body.to_string())).await

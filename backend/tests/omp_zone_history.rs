@@ -36,7 +36,7 @@ async fn setup(server: &TestServer, root: &TempDir) -> (String, String) {
     fs::create_dir_all(&zone).unwrap();
     let zones = post(server, "/api/zones", json!({"id": zone, "path":zone})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
-    let tasks = post(server, "/api/tasks", json!({"name":"OMP history", "chatName":"OMP exact {chat.id}", "agent":"omp", "model":"default", "thinking":"default", "skill":null, "prompt":"", "extensions":[]})).await;
+    let tasks = post(server, "/api/tasks", json!({"name":"OMP history", "chatName":"OMP exact {chat.id}", "agent":"omp", "model":"default", "thinking":"default", "skill":null, "prompt":""})).await;
     (zone, tasks["tasks"][0]["id"].as_str().unwrap().to_owned())
 }
 async fn create(server: &TestServer, zone: &str, task: &str) -> Value {

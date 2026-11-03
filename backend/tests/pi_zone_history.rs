@@ -39,7 +39,7 @@ async fn setup(herdr: &HerdrFixture, root: &TempDir) -> (TestServer, String, Str
     let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
     let tasks = post(&server, "/api/tasks", json!({
         "name":"Pi native history", "chatName":"Pi Zone Name", "agent":"pi",
-        "model":"default","thinking":"default","skill":null,"prompt":"","extensions":[]
+        "model":"default","thinking":"default","skill":null,"prompt":""
     })).await;
     let id = tasks["tasks"].as_array().unwrap().iter().find(|t| t["name"] == "Pi native history").unwrap()["id"].as_str().unwrap().to_owned();
     (server, zone, id)
