@@ -65,6 +65,10 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 Task API 的旧 `extensions` 字段（包括空数组）必须拒绝，固定扩展仍显示但不可勾选。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Pi Suite 扩展使用 `extensions: {pi: [...]}`，避免原生验收在启动前因旧请求或定义形状被拒绝。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
 
+## 首批 Suite 原生发现与实现命令
+
+`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 18／探索 Pi 18／实现 OMP 11、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 仅检查 S3 外来后端拒绝，不等于 S4 通过。缺链接权限、宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
+
 ## OMP Suite 四语言 LSP 真实验收
 
 `python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
