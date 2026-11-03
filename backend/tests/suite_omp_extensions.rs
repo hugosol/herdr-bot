@@ -92,8 +92,8 @@ async fn unreadable_bundled_asset_rejects_public_launch_before_herdr() {
     assert!(herdr.calls().is_empty());
 }
 
-// P46: block extension output only. Empty-skill assembly is still writable,
-// so a skills failure cannot accidentally satisfy this extension criterion.
+// P46: all Suite resources now share one private publication tree. A file
+// blocking its parent must prevent the entire environment reaching Herdr.
 #[tokio::test]
 async fn blocked_extension_assembly_rejects_public_launch_before_herdr() {
     let root = TempDir::new("blocked Suite extension assembly");
@@ -108,7 +108,7 @@ async fn blocked_extension_assembly_rejects_public_launch_before_herdr() {
     let package = root.path().join("existing package");
     fs::create_dir(&package).unwrap();
     fs::write(package.join("entry.ts"), "export default function(pi) {}\n").unwrap();
-    let blocked = config.suites.generated_directory.join("selected").join("extensions");
+    let blocked = config.suites.generated_directory.join("selected");
     fs::create_dir_all(blocked.parent().unwrap()).unwrap();
     fs::write(&blocked, "OWNED-OUTPUT-BLOCKER-492").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
@@ -130,7 +130,7 @@ async fn blocked_extension_assembly_rejects_public_launch_before_herdr() {
     assert_eq!(launch.status, 400, "{}", launch.body);
     let error: Value = serde_json::from_str(&launch.body).unwrap();
     let message = error["message"].as_str().unwrap();
-    assert!(message.contains("扩展装配失败"), "{message}");
+    assert!(message.contains("资源装配失败"), "{message}");
     assert!(message.contains(&blocked.to_string_lossy().to_string()), "{message}");
     assert!(herdr.calls().is_empty(), "Failed extension publication must not reach Herdr");
     assert_eq!(fs::read_to_string(&blocked).unwrap(), "OWNED-OUTPUT-BLOCKER-492");

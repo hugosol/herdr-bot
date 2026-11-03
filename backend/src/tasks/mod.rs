@@ -361,13 +361,7 @@ impl Tasks {
         let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
         }).map_err(TaskError::Unreadable)??;
-        let mut args = self.suites.prepare_skills(suite.as_ref(), task.agent, &self.roots)?;
-        args.extend(self.suites.prepare_mcp(suite.as_ref(), task.agent, &self.roots)?);
-        args.extend(self.suites.prepare_extensions(suite.as_ref(), task.agent, &self.roots)?);
-        if task.agent == Agent::Pi {
-            args.extend(self.suites.prepare_pi(suite.as_ref(), &self.roots)?);
-        }
-        Ok(args)
+        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots)
     }
 
     /// 新增一个 Task；成功返回保存后的完整列表。
