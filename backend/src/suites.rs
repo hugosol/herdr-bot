@@ -31,7 +31,7 @@ pub struct Suite {
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
-    pub extensions: Vec<String>,
+    pub extensions: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub prompts: Vec<String>,
     #[serde(default)]
@@ -95,7 +95,16 @@ impl Suite {
         if self.agents.contains(&Agent::Pi) != self.pi.is_some() {
             return Err(SuiteError::invalid("Pi 适用 Suite 必须明确设置 codemode 为 on 或 only；OMP-only Suite 不接受 Pi 配置。"));
         }
-        for (name, values) in [("skills", &self.skills), ("extensions", &self.extensions), ("prompts", &self.prompts), ("mcp", &self.mcp)] {
+        for (host, paths) in &self.extensions {
+            if !self.agents.iter().any(|agent| agent.label() == host) {
+                return Err(SuiteError::invalid(format!("扩展宿主 {host} 必须是 Suite 支持的宿主。")));
+            }
+            let mut seen = HashSet::new();
+            if paths.iter().any(|path| path.trim().is_empty() || !seen.insert(path)) {
+                return Err(SuiteError::invalid(format!("{host} 扩展路径不能包含空值或重复项。")));
+            }
+        }
+        for (name, values) in [("skills", &self.skills), ("prompts", &self.prompts), ("mcp", &self.mcp)] {
             let mut seen = HashSet::new();
             if values.iter().any(|value| value.trim().is_empty() || !seen.insert(value)) {
                 return Err(SuiteError::invalid(format!("{name} 声明不能包含空值或重复项。")));

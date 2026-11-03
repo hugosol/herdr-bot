@@ -8,7 +8,7 @@ async fn set_role(s: &Scenario, role: &str, host: &str, task_type: &str) -> Stri
     let id = tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == role).unwrap()["id"].as_str().unwrap().to_owned();
     let response = common::request_json_over_tcp(s.server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&json!({
         "name":role,"taskType":task_type,"agent":host,"chatName":"{chat.id}",
-        "model":"default","thinking":"default","skill":null,"prompt":"FIXED ROLE","extensions":[]
+        "model":"default","thinking":"default","skill":null,"prompt":"FIXED ROLE"
     }).to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
     id

@@ -35,7 +35,7 @@ async function launchFixture() {
   const zone: string = (await registered.json()).zones[0].id
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+    const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
     expect(response.status).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }

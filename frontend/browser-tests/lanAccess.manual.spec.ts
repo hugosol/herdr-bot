@@ -34,14 +34,14 @@ chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'pi',
 model: 'deepseek-flash',
 thinking: 'high',
-skill: 'code-review', prompt: '局域网第一行\n局域网第二行', extensions: [] }
+skill: 'code-review', prompt: '局域网第一行\n局域网第二行' }
 
 const EDITED = { name: '局域网 Bot（改）',
 chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'omp',
 model: 'gpt-6.1-sol',
 thinking: 'max',
-skill: 'teach', prompt: '局域网编辑后的第一行\n局域网编辑后的第二行', extensions: [] }
+skill: 'teach', prompt: '局域网编辑后的第一行\n局域网编辑后的第二行' }
 
 const INPUT = '局域网任务第一行\n局域网任务第二行'
 

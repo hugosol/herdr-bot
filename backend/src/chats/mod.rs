@@ -471,7 +471,7 @@ mod tests {
                 skill: None,
                 prompt: String::new(),
             },
-            env: crate::tasks::EnvConfig { extensions: Vec::new(), suite: None },
+            env: crate::tasks::EnvConfig { suite: None },
         }
     }
 

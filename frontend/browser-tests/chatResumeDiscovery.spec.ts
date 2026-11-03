@@ -19,7 +19,7 @@ async function resumeOnPage(page: Page, name: string) {
   await row.getByRole('button', { name: 'Resume', exact: true }).click()
   return { row, response: await response }
 }
-const preset = (agent: string) => ({ name: 'Same name', chatName: 'Same name', agent, model: 'default', thinking: 'default', prompt: '', extensions: [] })
+const preset = (agent: string) => ({ name: 'Same name', chatName: 'Same name', agent, model: 'default', thinking: 'default', prompt: '' })
 
 // Approved public HTTP, delivered page, real disk/process and CLI adapter seams.
 // P7/P15: a fixed-only fallback or a guessed source would expose explicit flags.
@@ -61,7 +61,7 @@ for (const agent of ['pi', 'omp']) {
       expect(result.degradations[0]).toEqual({ element: 'extensions', reason: expect.stringContaining(scenario === 'deleted' ? '已删除' : '缺少来源 Task'), strategy: expect.stringContaining('原生默认扩展发现') })
       await expect(row.getByRole('status')).toContainText(result.degradations[0].reason)
       await expect(row.getByRole('status')).toContainText('原生默认扩展发现')
-      await expect(row.getByRole('status')).toContainText('不显式追加 Task 固定／可选扩展')
+      await expect(row.getByRole('status')).toContainText('不显式追加 Task 固定扩展或 Suite 资源')
       const calls = server.herdrCalls().slice(offset)
       expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual([agent === 'pi' ? '--session' : '--resume', file])
       expect(calls.some(call => ['agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)

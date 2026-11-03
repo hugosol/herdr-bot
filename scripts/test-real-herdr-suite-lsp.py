@@ -239,7 +239,7 @@ class Acceptance(support['Acceptance']):
         self.model.case = case
         saved = self.http('/api/tasks', {'name': 'Native LSP ' + zone.name, 'chatName': '{task.name}',
             'agent': 'omp', 'taskType': 'normal', 'model': 'probe', 'thinking': 'off', 'skill': None,
-            'prompt': 'Inspect native LSP initialization and status.', 'extensions': [], 'suite': 'four-languages'})
+            'prompt': 'Inspect native LSP initialization and status.', 'suite': 'four-languages'})
         task = next(task for task in saved['tasks'] if task['name'] == 'Native LSP ' + zone.name)
         self.http('/api/zones', {'id': zone.name, 'path': str(zone)})
         preview = self.http('/api/chats/preview', {'zone': zone.name, 'taskId': task['id']})

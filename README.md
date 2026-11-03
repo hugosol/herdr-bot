@@ -5,7 +5,8 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 ## 主要功能
 
 - **chat**：查看当前与历史会话，恢复原生对话，以及监听会话完成后关机。
-- **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。
+- **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。场景资源只选择一个 Suite 或不选，不再编辑 Task 可选扩展。
+- **suite**：维护场景工具集与按宿主声明的资源。首批探索／实现定义及旧部署的显式离线迁移见[使用说明](docs/usage.md#首批定义与显式离线迁移)；发布不自动操作用户生产 Task。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **bot**：独立访问共享 Bot 能力定义，复用 scheduler 的原有管理功能。
 - **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。node 可配置 `report_policy: auto/manual`；Map 与 Run 图用圆角／切角节点区分策略，详情显示具体值。

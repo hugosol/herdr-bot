@@ -58,7 +58,7 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 
 ## Suite 管理与权威定义
 
-在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。适用宿主至少选一个。Skills、Extensions 和 Prompt templates 按行声明具体资源位置，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
+在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。适用宿主至少选一个。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 分别按行声明具体入口位置，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
 
 OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声明写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi 跳过 LSP，不使用这一结果证明 OMP 已通过。
 
@@ -93,7 +93,7 @@ generated_directory = '.data/suites'
     "name": "评审工具",
     "agents": ["omp", "pi"],
     "skills": ["${roots.skills}/code-review"],
-    "extensions": ["${roots.toolkit}/extensions/review"],
+    "extensions": {"omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"], "pi": ["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts"]},
     "prompts": ["../prompts/review.md"],
     "lsp": {},
     "mcp": ["catalog-search"],
@@ -104,7 +104,7 @@ generated_directory = '.data/suites'
 
 资源字符串保留根引用与声明相对路径，其基准是 **Suite 声明文件** 所在目录，不是 Chat 或后端的 cwd。资源实体继续在原位置维护，本编辑器不复制源码、认证、模型或历史配置。
 
-OMP 的 `extensions` 可以指向既有入口文件或原生可加载的包目录（目录入口按 OMP 自己的 `package.json`／index 规则处理）。装配保留最近 `package.json` 所在的包目录；没有包清单时，保留入口所在目录。整个目录以真实目录符号链接放入 `generated_directory/<suite-id>/extensions/<本次装配>/package-N`，相对模块、同包资产和 `node_modules` 不被拆成孤立源码副本。`omp-extensions.json` 记录来源、包目录和装配入口，启动经原生 `--extension` 消费对应装配路径；不会生成替代工厂或重写宿主加载器。固定扩展仍由既有执行角色规则单独加载。
+Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":["entry.ts"],"pi":["pi-entry.ts"]}`），不接受旧数组，也不按目录项 ID 猜测路径。仅加载当前宿主对应的清单；OMP 的 `extensions.omp` 可以指向既有入口文件或原生可加载的包目录（目录入口按 OMP 自己的 `package.json`／index 规则处理）。装配保留最近 `package.json` 所在的包目录；没有包清单时，保留入口所在目录。整个目录以真实目录符号链接放入 `generated_directory/<suite-id>/extensions/<本次装配>/package-N`，相对模块、同包资产和 `node_modules` 不被拆成孤立源码副本。`omp-extensions.json` 记录来源、包目录和装配入口，启动经原生 `--extension` 消费对应装配路径；不会生成替代工厂或重写宿主加载器。固定扩展仍由既有执行角色规则单独加载。
 
 每次启动重新检查扩展包内资源可读性，所有链接及入口清单准备完成后才向 Herdr 提交启动。入口、配套资源、生成目录或链接权限失败会明确拒绝本次 Suite 启动，不沿用恢复流程中跳过单个旧扩展的降级行为。Windows 必须已经具备创建目录符号链接的权限；程序不提权、不改开发者模式，也不以 junction 或复制代替失败的链接。生成目录内只保存可重建装配信息，源码仍在原包维护。
 
@@ -154,6 +154,27 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 
 定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 
+### 首批定义与显式离线迁移
+
+交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，`meta-data/tasks.json` 是按批准稳定 ID 更新的源码预设。探索 Suite 固定选择 18 个技能，支持 OMP/Pi、Pi 明确 `on`；实现 Suite 固定选择 11 个技能，仅 OMP，保留 `oh-my-wayfinder`。两者引用集中 `codebase-memory-mcp` 和批准的四语言声明，不扫描或自动补进新技能。Tibo-monitor 不选 Suite，不导入 web-access，也不创建第三个 Suite。实际资源发现与命令消费仍需对应宿主验收，不能从声明或迁移成功推断。
+
+已有部署的数据**不会在启动时自动套用**。维护者先停掉该部署的全部后端，核对 `migrations/initial-suite-v1/mapping.json` 的 22 个稳定 ID，并取得对目标数据的明确操作授权，再运行专项命令；以下路径仅为占位示例，不是已批准操作用户数据：
+
+```powershell
+cargo run --manifest-path backend/Cargo.toml --bin migrate-initial-suites -- `
+  'D:/authorized-deployment/meta-data/tasks.json' `
+  'D:/authorized-deployment/meta-data/suites.json' `
+  'D:/authorized-deployment/meta-data/mcp.json' `
+  'D:/authorized-deployment/.data/initial-suite-v1' `
+  'C:/release/herdr-bot/migrations/initial-suite-v1'
+```
+
+五个参数分别为 Task 权威文件、Suite 权威文件、集中 MCP 文件、本次迁移独占状态目录、批准的只读发布输入目录。后者包含 `mapping.json`、`suites.json`、`mcp.json`；它们只是显式迁移输入，不是运行时回退副本。不要让不同部署共享状态目录，也不要从源码默认定义覆盖已有部署的权威文件。
+
+命令按稳定 ID 核对每条当前 Task 的 agent 和旧扩展选择，不按显示名匹配。当前已有 Suite 字段、环境已改、缺少／重复 ID、未映射的旧格式 Task，或同 ID 的现有 Suite/MCP 与发布输入不同，都明确报冲突，不猜测覆盖。Task 的名称、trigger、类型和身份原样保留；Bot、Chat 历史、Run/node 文件不会被打开。首次操作前保留精确 `plan.json`（含原始字节），逐文件原子发布并独立读回，只有全部读回成功才生成 `complete.json`。中断或后项失败保留前项已生效文件；重新执行同命令按原计划继续，遇新编辑即停，不新增事务、自动重试或回滚。完成后的重复执行不读写用户新编辑，不重复生成定义。状态文件含 Task 原文，应按部署数据保护；冲突需要维护者明确协调，不要直接删状态文件来强制重跑。
+
+自动验收只操作测试创建的临时数据：`cargo test --manifest-path backend/Cargo.toml --test initial_suite_migration` 覆盖 17/1/4 独立映射、保留 trigger/引用身份、真实进程中断、Windows 写入失败、冲突、重启及完成标记。测试或发布工单本身不授权操作任何用户生产 Task。
+
 ## Task 模型与删除
 
 Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`；
@@ -163,9 +184,9 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 ## Task 类型与固定角色扩展
 
-在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）或流程管理者（`manager`）。两种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及可选扩展。普通 Task 既可从 zone 独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行。
+在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）或流程管理者（`manager`）。两种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及 Suite 选择。普通 Task 既可从 zone 独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行。
 
-角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项与可选项仍沿用 Task 选项目录，保存的 `extensions` 仅是可选项稳定 ID。
+角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
 
 扩展入口位置仍位于 `meta-data/task-options.toml`；代码按稳定 ID `omp-manager-chat`、`pi-manager-chat`、`omp-node-chat`、`pi-node-chat` 识别固定角色，元数据不再支持 `taskType` 适用规则。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 及宿主环境提供；配置保存或页面展示成功不代表原生加载已验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
 
@@ -173,7 +194,7 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 ### 数据格式要求
 
-不再提供旧格式手动迁移工具，请使用当前数据格式。Task 必须显式包含 `taskType: "normal"` 或 `"manager"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
+Suite 专项离线迁移不会补齐更早的数据类型升级；请先使用当前 Task 类型格式。Task 必须显式包含 `taskType: "normal"` 或 `"manager"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
 
 使用自定义 `tasks.metadata_file` 时，扩展条目不应包含 `taskType` 适用配置；固定角色保留上述稳定角色 ID、对应 agent、`kind = 'fixed'` 及真实入口路径。节点执行身份与既有 Chat 的恢复语义不因 Task 分类而改变。
 
@@ -184,9 +205,9 @@ Task 预设默认保存于 `meta-data/tasks.json`，选项目录仍为 `meta-dat
 Task 配置分为两组：
 
 - **trigger config（发起配置）**：初始消息、初始 Skill 调用、model 与 thinking，仅在发起 Chat 时应用。
-- **env config（会话环境配置）**：扩展配置；发起 Chat 时加载，Resume 需要新进程时也加载。
+- **env config（会话环境配置）**：Suite 引用及固定扩展；发起 Chat 时加载，Resume 需要新进程时也加载。
 
-初始 Skill 调用是随初始消息提交的动作，不是加载型 Skill；Task 固定 prompt 与本次 input 都属于用户输入，不是系统提示词注入。Task 不提供加载型 Skill 或系统提示词注入。
+初始 Skill 调用是随初始消息提交的动作，不是加载型 Skill；Task 固定 prompt 与本次 input 都属于用户输入，不是系统提示词注入。Task 自身不单独选择加载型 Skill 或系统提示词；加载型资源由所选 Suite 声明提供。
 
 原生会话文件和附属记录由 agent 管理，herdr-bot 不搬动文件或修改 agent 原生配置。发起 Chat 不保证新建原生对话；agent 自身的自动续接设置不属于 herdr-bot 的功能。
 

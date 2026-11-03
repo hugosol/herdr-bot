@@ -3,7 +3,7 @@ export type Suite = {
   name: string
   agents: ('omp' | 'pi')[]
   skills: string[]
-  extensions: string[]
+  extensions: Partial<Record<'omp' | 'pi', string[]>>
   prompts: string[]
   lsp: Record<string, unknown>
   mcp: string[]

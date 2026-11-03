@@ -164,7 +164,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect((await post('/api/zones', { id: 'test/zone', path: zone })).status()).toBe(200)
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const response = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE', extensions: [] })
+    const response = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE' })
     expect(response.status()).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }

@@ -269,25 +269,6 @@ impl Catalog {
         Ok(())
     }
 
-    pub fn validate_extensions(
-        &self,
-        agent: Agent,
-        selections: &[String],
-    ) -> Result<(), TaskError> {
-        for (index, id) in selections.iter().enumerate() {
-            if selections[..index].contains(id)
-                || !self.extensions.iter().any(|extension| {
-                    extension.id == *id
-                        && extension.agent == agent
-                        && extension.kind == ExtensionKind::Optional
-                })
-            {
-                return Err(TaskError::InvalidExtension(id.clone()));
-            }
-        }
-        Ok(())
-    }
-
     pub fn options(&self) -> TaskOptions {
         let mut thinking = BTreeMap::new();
         for agent in &self.agents {
@@ -331,7 +312,7 @@ impl Catalog {
             skills: self.skills.iter().map(|v| v.id.clone()).collect(),
             thinking,
             labels,
-            extensions: self.extensions.clone(),
+            extensions: self.extensions.iter().filter(|extension| extension.kind == ExtensionKind::Fixed).cloned().collect(),
         }
     }
 
@@ -343,7 +324,7 @@ impl Catalog {
     pub fn resolve_for_role(&self, task: &Task, role: ExecutionRole) -> Result<ResolvedPreset, TaskError> {
         self.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref())?;
         Ok(ResolvedPreset {
-            env: self.resolve_env(task.agent, role, &task.env.extensions)?,
+            env: self.resolve_env(task.agent, role)?,
             trigger: ResolvedTriggerConfig {
                 provider_model: self.models.iter()
                     .find(|v| v.id == task.trigger.model)
@@ -358,16 +339,14 @@ impl Catalog {
 
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
-    pub fn resolve_env(&self, agent: Agent, role: ExecutionRole, selections: &[String]) -> Result<ResolvedEnvConfig, TaskError> {
-        self.validate_extensions(agent, selections)?;
+    pub fn resolve_env(&self, agent: Agent, role: ExecutionRole) -> Result<ResolvedEnvConfig, TaskError> {
         if role != ExecutionRole::Standalone && !self.extensions.iter().any(|extension| extension.role() == Some((agent, role))) {
             return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
         }
         Ok(ResolvedEnvConfig {
             suite_args: Vec::new(),
             extensions: self.extensions.iter().filter(|extension| {
-                extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed
-                    || selections.contains(&extension.id))
+                extension.applies_to(agent, role) && extension.kind == ExtensionKind::Fixed
             }).cloned().collect(),
         })
     }
