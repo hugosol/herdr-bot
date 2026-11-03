@@ -38,7 +38,7 @@ async fn resource_check_failure(locked: bool) {
     let entry = root.path().join("entry.ts");
     fs::write(&entry, "export default function(pi) {}\n").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":["entry.ts"]
+        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["entry.ts"]}
     }]}).to_string()).unwrap();
     let unowned = config.suites.generated_directory.join("selected").join("user-note.txt");
     fs::create_dir_all(unowned.parent().unwrap()).unwrap();
@@ -46,7 +46,7 @@ async fn resource_check_failure(locked: bool) {
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Assembly", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -90,7 +90,7 @@ fn declaration(id: &str, sentinel: &str) -> Value {
 async fn save_task(server: &TestServer, suite: &str, name: &str) -> Value {
     let reply = post(server, "/api/tasks", json!({"name":name, "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "extensions":[], "suite":suite})).await;
+        "prompt":"unchanged", "suite":suite})).await;
     assert_eq!(reply.status, 200, "{}", reply.body);
     let reply: Value = serde_json::from_str(&reply.body).unwrap();
     reply["tasks"].as_array().unwrap().iter().find(|task| task["name"] == name).unwrap()["id"].clone()
@@ -326,7 +326,7 @@ async fn publication_scenarios(resources: bool) {
                 fs::write(source.join("extension").join("entry.ts"), "export default function(pi) {}\n").unwrap();
                 fs::write(source.join("extension").join("asset.txt"), asset).unwrap();
                 suite["skills"] = json!([source.join("skill")]);
-                suite["extensions"] = json!([source.join("extension").join("entry.ts")]);
+                suite["extensions"] = json!({"omp":[source.join("extension").join("entry.ts")]});
             }
         }
         #[cfg(windows)]

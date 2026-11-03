@@ -63,7 +63,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 失败覆盖 Windows 真实目标替换拒绝、计划发布后的真实子进程终止、重启、部分生效后的新编辑冲突和完成后新编辑。只有所有输出独立读回成功才能有 `complete.json`；已生效文件保留，重跑不重复生成，不自动回滚。中断进程写测试拥有的日志文件并在所有分支终止／等待退出；普通命令通过 `Command::output` 并行消费输出并等待退出。测试不运行任何用户部署迁移，不读取用户凭据、连接原生 Chat、启动用户 daemon 或操作集成工作区。源码预设的格式升级与用户部署的明确授权操作不同，发布工单本身不是生产操作授权。
 
-Task API 的旧 `extensions` 字段（包括空数组）必须拒绝，固定扩展仍显示但不可勾选。真实 Pi／MCP runner 的 Task 请求同样不发送该旧字段；Pi Suite 扩展使用 `extensions: {pi: [...]}`，避免原生验收在启动前因旧请求或定义形状被拒绝。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
+Task API 的旧 `extensions` 字段（包括空数组）必须拒绝，固定扩展仍显示但不可勾选。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Pi Suite 扩展使用 `extensions: {pi: [...]}`，避免原生验收在启动前因旧请求或定义形状被拒绝。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
 
 ## OMP Suite 四语言 LSP 真实验收
 
