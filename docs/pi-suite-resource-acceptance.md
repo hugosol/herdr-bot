@@ -73,7 +73,7 @@ user Chat/daemon processes.
 | `selected` | P6/P7/P9/P10: one logical declaration, both native hosts; Pi runs in two distinct cwd directories. Central root and declaration-relative sources contain spaces. Exactly `selected-relative` and `selected-root` are advertised, despite user/project/wrong-cwd/unselected/new-source sentinels. Native read consumes body, script and asset literals. A real extension factory imports sibling TS and a local dependency and reads an `import.meta.url` asset; expected `PACKAGE-ASSET-482:64` is the worked example 19×3+7. True generated links and unchanged source bytes are checked. The same Pi launch calls builtin native and added Suite MCP endpoints. |
 | `append` | P17/P19: an initially empty project calls native `NATIVE-FILE-113` and centralized `SUITE-FILE-997`; no project MCP file is written. |
 | `same-name` | P20: a native file entry beats the same-named registered Suite entry; the losing endpoint has zero initializes/calls. |
-| `equivalent` | P20: equivalent differently named declarations make one native connection and call; the native tool name is usable. |
+| `equivalent` | P20: equivalent URLs under different names retain both Pi servers; each native tool name is called, producing two connections and two reads of the same independent file. Pi's public MCP guide states that the same URL under different names retains separate sign-ins; OMP's URL-based deduplication is not imposed on Pi. |
 | `disabled` | P20: a disabled file entry beats an enabled Suite entry; zero connections/calls to that endpoint, plus native disabled status. |
 | `empty` | P21: explicit empty Suite MCP list still calls the native file server. |
 | `unreadable-skill`, `unreadable-extension` | P46: after successful preview, a Windows exclusive file handle makes a selected resource truly unreadable; public launch rejects with the resource identity, no model request and unchanged Herdr tab list. |
@@ -117,9 +117,16 @@ npm --prefix frontend test
 npm --prefix frontend run test:browser:build
 ```
 
-From the toolkit worktree, use the prescribed Bun and frozen dependencies:
+From the toolkit worktree, use the prescribed Bun and frozen dependencies. Set
+all interop inputs explicitly; `HERDR_BOT_BINARY`/`HERDR_BOT_METADATA` do not set
+the separate workflow fixture's source root:
 
 ```powershell
+$env:HERDR_BOT_REPO = $HERDR_BOT_WT
+$env:HERDR_BOT_BINARY = "$HERDR_BOT_WT/backend/target/debug/examples/safe_shutdown_shell.exe"
+$env:HERDR_BOT_METADATA = "$HERDR_BOT_WT/meta-data/task-options.toml"
+# If temporary worktrees do not share the recorded sibling baseline checkouts:
+$env:OMP_BASELINE_RECORD_ROOT = $ORIGINAL_TOOLKIT_ROOT
 bun install --frozen-lockfile
 bun run typecheck
 bun run check:integrations

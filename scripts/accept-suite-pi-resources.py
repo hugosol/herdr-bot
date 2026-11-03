@@ -212,13 +212,13 @@ class Acceptance(support['Acceptance']):
         (self.extension / 'node_modules/owned-factor/index.js').write_text('export const factor=3;')
         (self.extension / 'extension/sibling.ts').write_text('export const offset=7;')
         (self.extension / 'assets/payload.json').write_text('{"unit":19}')
-        (self.extension / 'package.json').write_text(json.dumps({'type': 'module', 'pi': {'extensions': ['extension/probe.ts']}}))
+        (self.extension / 'package.json').write_text(json.dumps({'type': 'module', 'omp': {'extensions': ['extension/probe.ts']}, 'pi': {'extensions': ['extension/probe.ts']}}))
         (self.extension / 'extension/probe.ts').write_text('''import {readFileSync} from "node:fs";
 import {factor} from "owned-factor";
 import {offset} from "./sibling.ts";
 export default function(pi) {
  pi.registerTool({name:"suite_asset_probe",label:"Suite asset",description:"Consume relative package dependencies",
- parameters:{type:"object",properties:{}},async execute(){
+ parameters:pi.zod ? pi.zod.object({}) : {type:"object",properties:{}},async execute(){
  const value=JSON.parse(readFileSync(new URL("../assets/payload.json",import.meta.url),"utf8"));
  return {content:[{type:"text",text:"PACKAGE-ASSET-482:"+(value.unit*factor+offset)}],details:{}};
  }});
@@ -228,8 +228,9 @@ export default function(pi) {
         negative = self.scenario in ['unreadable-skill', 'unreadable-extension', 'generation-failure', 'incompatible']
         self.suite = {'id': 'shared', 'name': 'Shared declaration', 'agents': ['omp', 'pi'],
                       'skills': ['${roots.resources}/root skill', 'relative skill'] if selected or self.scenario == 'unreadable-skill' else [],
-                      'extensions': {'omp': ['relative package'], 'pi': ['relative package']} if selected or self.scenario == 'unreadable-extension' else {},
                       'pi': {'codemode': 'on'}, 'mcp': []}
+        if selected or self.scenario == 'unreadable-extension':
+            self.suite['extensions'] = {'omp': ['relative package'], 'pi': ['relative package']}
         native = {'native_file': self.server_config('native')}
         central = {}
         if selected or self.scenario == 'append':
@@ -261,6 +262,10 @@ export default function(pi) {
             options += f'[[agents]]\nid = "{name}"\nlabel = "{name}"\n'
         options += '[[models]]\nid = "default"\nlabel = "Default"\n[[models]]\nid = "probe"\nlabel = "Probe"\nprovider_model = "suite-local/suite-probe"\nthinking = { pi = ["off"], omp = ["off"] }\n'
         options += '[[extensions]]\nid = "pi-suite"\nlabel = "pi-suite"\nagent = "pi"\nkind = "fixed"\nentrypoint = ' + q(self.args.toolkit / 'entrypoints/pi/pi-suite.ts') + '\n'
+        observer = self.root / 'omp-fixed-observer.ts'
+        observer.write_text('import {writeFileSync} from "node:fs"; export default function(pi) { pi.on("session_start", () => writeFileSync('
+            + q(self.root / 'omp-fixed-loaded.txt') + ', "FIXED-LOADED-628")); }')
+        options += '[[extensions]]\nid = "omp-fixed-observer"\nlabel = "Owned fixed observer"\nagent = "omp"\nkind = "fixed"\nentrypoint = ' + q(observer) + '\n'
         (self.root / 'options.toml').write_text(options)
         herdr_config = self.root / 'herdr.toml'
         herdr_config.write_text('onboarding = false\n[terminal]\ndefault_shell = "cmd.exe"\n[update]\nversion_check = false\nmanifest_check = false\n')
@@ -334,13 +339,20 @@ export default function(pi) {
                 (self.root / 'generated resources').write_text('OWNED-OUTPUT-BLOCKER')
             elif self.scenario == 'incompatible':
                 self.suite['agents'] = ['omp']
+                self.suite.pop('pi')
                 self.publish()
+                self.http('/api/suites')  # Still a valid declaration; only Task compatibility changed.
             case = {'agent': agent, 'scenario': self.scenario, 'selected': selected, 'requests': [],
                     'expected': [], 'mcpTools': [], 'consumed': False, 'cwd': str(zone)}
             if selected:
                 case['expected'] = ['ROOT-SKILL-BODY-119', 'SCRIPT-READ-947', 'ASSET-BYTES-276', 'RELATIVE-SKILL-BODY-508', 'PACKAGE-ASSET-482:64']
             if agent == 'pi':
-                case['mcpTools'] = ['native_file', 'suite_file'] if selected or self.scenario == 'append' else ['native_file']
+                case['mcpTools'] = ['native_file']
+                if selected or self.scenario == 'append':
+                    case['mcpTools'].append('suite_file')
+                if self.scenario == 'equivalent':
+                    case['mcpTools'].append('alias_file')
+                    case['equivalenceOracle'] = 'Pi 1.5 docs/mcp.md: same URL under different names retains separately named servers/sign-ins; unlike OMP, URL equality is not name identity.'
                 case['expected'] += ['NATIVE-FILE-113'] + (['SUITE-FILE-997'] if selected or self.scenario == 'append' else [])
             self.evidence['cases'].append(case)
             self.model.case = case
@@ -372,7 +384,9 @@ export default function(pi) {
                     if pane:
                         case['terminal'] = self.command([self.args.herdr, 'pane', 'read', pane, '--lines', '250', '--format', 'text'])
                 pane = case['creation']['paneId']
-                info = self.herdr('pane', 'process-info', pane)
+                if agent == 'omp':
+                    require((self.root / 'omp-fixed-loaded.txt').read_text() == 'FIXED-LOADED-628', 'Native fixed extension was lost')
+                info = self.herdr('pane', 'process-info', '--pane', pane)
                 case['nativeProcess'] = info
                 self.capture_handles()
                 if agent == 'pi':
@@ -409,7 +423,14 @@ export default function(pi) {
             pi_wire = [item for case in self.evidence['cases'] if case['agent'] == 'pi' for item in case['mcpWire']]
             init = Counter(item['route'] for item in pi_wire if item['request']['method'] == 'initialize')
             calls = Counter(item['route'] for item in pi_wire if item['request']['method'] == 'tools/call')
-            expected = {'native': 2, 'suite': 2} if selected else {'native': 1, 'suite': 1} if self.scenario == 'append' else {'native': 1}
+            # Approved P20 preserves each host's native rules, not OMP's URL dedup policy in Pi.
+            expected = {'native': 1}
+            if selected:
+                expected = {'native': 2, 'suite': 2}
+            elif self.scenario == 'append':
+                expected = {'native': 1, 'suite': 1}
+            elif self.scenario == 'equivalent':
+                expected = {'native': 2}
             require(dict(init) == expected, ('Independent MCP connection counts', expected, dict(init)))
             require(dict(calls) == expected, ('Independent MCP call counts', expected, dict(calls)))
             self.evidence.update(expectedConnections=expected, actualConnections=dict(init), actualCalls=dict(calls))
