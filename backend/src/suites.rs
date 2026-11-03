@@ -3,6 +3,8 @@
 //! adapters prepare native launch resources separately from definition storage.
 mod skills;
 mod extensions;
+mod pi;
+mod mcp_paths;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
