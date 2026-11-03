@@ -285,7 +285,7 @@ async fn protocol(
             input
         }
     };
-    let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions());
+    let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     effects.input_attempted = true;
     state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
     effects.input_submitted = true;

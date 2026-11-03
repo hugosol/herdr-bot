@@ -91,7 +91,23 @@ impl Snapshot {
         Ok(rendered)
     }
 
-    pub fn instructions(&self) -> String {
+    pub fn instructions(&self, task_prompt: &str) -> String {
+        // Match render's single-pass syntax, before interpolation: escaped and
+        // unclosed placeholders are literal text, not dictionary references.
+        let mut rest = task_prompt;
+        let referenced = loop {
+            let Some(start) = rest.find('$') else { break false; };
+            rest = &rest[start..];
+            let escaped = rest.starts_with("$${");
+            let prefix = if escaped { 3 } else if rest.starts_with("${") { 2 } else {
+                rest = &rest[1..];
+                continue;
+            };
+            let Some(end) = rest[prefix..].find('}').map(|end| prefix + end) else { break false; };
+            if !escaped { break true; }
+            rest = &rest[end + 1..];
+        };
+        if !referenced { return String::new(); }
         format!("[Prompt dictionary instructions]\n本机提示词词典：{}\n词典是平铺字符串 TOML。直接读取 Task.prompt、Bot.when/plan_guide/node_guide、Map.description 或 node.input 原始定义时，对实际使用的字段按同一次最新词典快照解析 ${{key}}；$${{key}} 表示字面 ${{key}}。只扫描原文一次，替换值不递归，不执行表达式或命令。后端已合成的正文已完成替换，不再插值。用户 Chat 输入、Run userInput、报告、输出与任意文件内容都不插值。保存定义保留原始占位符，允许暂缺键；词典文件缺失视为空词典，无模板字段仍可使用；实际使用字段缺少键时停止并报告字段和键，不猜测路径或地址。Bot/Map 文件直接读取保持原文，不代表所有指南都应自动执行。\n[/Prompt dictionary instructions]", self.path.display())
     }
 }

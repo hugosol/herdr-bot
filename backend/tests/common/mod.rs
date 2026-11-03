@@ -318,14 +318,13 @@ pub fn read_json_lines(path: &Path) -> Vec<serde_json::Value> {
     }
 }
 
-/// Assert the common guidance is present once, then expose only the original
-/// business payload for independent literal launch assertions.
+/// Expose the business payload, excluding optional dictionary guidance, for
+/// independent literal launch assertions.
 pub fn prompt_body(prompt: &serde_json::Value) -> &str {
     let text = prompt["text"].as_str().expect("prompt text");
     let marker = "[Prompt dictionary instructions]";
-    assert_eq!(text.matches(marker).count(), 1, "one common dictionary guide");
-    assert!(text.ends_with("[/Prompt dictionary instructions]"));
-    let prefix = &text[..text.find(marker).unwrap()];
+    let Some(start) = text.find(marker) else { return text; };
+    let prefix = &text[..start];
     if let Some(body) = prefix.strip_suffix("\n\n") { body }
     else if prefix.starts_with("/skill:") { prefix.strip_suffix(' ').expect("skill separator") }
     else { assert!(prefix.is_empty()); prefix }

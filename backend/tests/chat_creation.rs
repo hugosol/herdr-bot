@@ -325,6 +325,28 @@ async fn dictionary_renders_only_fixed_fields_and_reloads_between_messages() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn dictionary_guidance_requires_a_reference_in_the_raw_task_prompt() {
+    let inputs = input_fixture("conditional prompt dictionary guidance").await;
+    fs::write(inputs._storage.path().join("prompts.local.toml"), "repo = 'resolved'\n").unwrap();
+    for (raw, input, expected) in [
+        ("/hyper-auto-coding ", "suite-cli-research", "/hyper-auto-coding \n\nsuite-cli-research"),
+        ("plain", "${repo} $${repo}", "plain\n\n${repo} $${repo}"),
+        ("$${repo}", "", "${repo}"),
+        ("${repo", "", "${repo"),
+        ("$${repo} ${open", "", "${repo} ${open"),
+    ] {
+        create_with(&inputs, input_task(None, raw), input, "succeeded").await;
+        let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+        assert_eq!(prompts.last().unwrap()["text"], expected, "raw Task prompt: {raw:?}");
+    }
+    create_with(&inputs, input_task(None, "$${missing} ${repo}"), "", "succeeded").await;
+    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
+    let text = prompts.last().unwrap()["text"].as_str().unwrap();
+    assert!(text.starts_with("${missing} resolved\n\n[Prompt dictionary instructions]"));
+    assert!(text.contains(inputs._storage.path().join("prompts.local.toml").to_str().unwrap()));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn missing_dictionary_key_is_savable_but_fails_before_prompt_send() {
     let inputs = input_fixture("prompt dictionary missing key").await;
     let finished = create_with(&inputs, input_task(None, "${missing-resource}"), "literal ${user}", "failed").await;
@@ -1828,52 +1850,6 @@ async fn a_skill_with_an_empty_section_composes_the_remaining_body() {
             "{skill} 缺少一个分段时仍必须与预写字面样例一致"
         );
     }
-}
-
-/// Empty business content still sends the common dictionary guide once.
-#[tokio::test(flavor = "multi_thread")]
-async fn an_all_empty_task_submits_only_the_common_dictionary_guide() {
-    let inputs = input_fixture("task initial all empty").await;
-    let finished = create_with(&inputs, input_task(None, ""), "", "succeeded").await;
-
-    assert_eq!(finished["inputSubmitted"], true);
-    assert!(
-        finished["tabId"].as_str().is_some(),
-        "已创建的 Tab 标识必须保留：{finished}"
-    );
-    assert!(
-        finished["paneId"].as_str().is_some(),
-        "已创建的 Pane 标识必须保留：{finished}"
-    );
-
-    let prompts = calls_of_kind(&inputs.herdr, "agent_prompt");
-    assert_eq!(prompts.len(), 1, "全空也必须实际提交一次，不能跳过或重发");
-    assert_eq!(common::prompt_body(&prompts[0]), "", "不得补造内容");
-    assert_eq!(
-        prompts[0]["argv"]
-            .as_array()
-            .expect("调用记录包含 argv")
-            .len(),
-        4,
-        "空正文仍作为单个文本参数提交"
-    );
-
-    let calls = inputs.herdr.calls();
-    let kinds: Vec<&str> = calls
-        .iter()
-        .filter_map(|call| call["kind"].as_str())
-        .filter(|kind| *kind != "agent_get")
-        .collect();
-    assert_eq!(
-        kinds,
-        vec![
-            "workspace_list",
-            "tab_create",
-            "agent_start",
-            "agent_prompt"
-        ],
-        "被拒绝后不得自动重发或继续其他步骤"
-    );
 }
 
 /// P49（正文侧）：引号、换行与 Shell 特殊字符经生产调用包装层原样到达外部。

@@ -322,7 +322,7 @@ pub async fn run_creation(
     }
     let text = match prompts.snapshot().and_then(|snapshot| {
         let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)?;
-        Ok(compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &input, &snapshot.instructions()))
+        Ok(compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &input, &snapshot.instructions(&task.trigger.prompt)))
     }) {
         Ok(text) => text,
         Err(error) => {
