@@ -231,7 +231,7 @@ pub fn app_with_state(
     let sync_state = Arc::new(sync::SyncState::with_ttl(
         config.git.status_cache_ttl_seconds.duration(),
     ));
-    let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone()));
+    let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -1170,10 +1170,11 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
-    if let Err(error) = state.tasks.validate_environment(&task) {
-        return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。");
-    }
-    let preset = match state
+    let suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
+    let mut preset = match state
         .tasks
         .catalog()
         .and_then(|catalog| catalog.resolve(&task))
@@ -1186,6 +1187,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
+    preset.env.suite_args = suite_args;
     if let Err(message) = preset.env.check_entrypoints() {
         return rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,

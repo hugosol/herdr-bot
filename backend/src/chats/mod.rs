@@ -258,6 +258,7 @@ pub fn agent_launch_args(
             args.push(thinking.clone());
         }
     }
+    args.extend(env.suite_args.iter().cloned());
     args.push("--no-extensions".to_string());
     for extension in &env.extensions {
         args.push("--extension".to_string());

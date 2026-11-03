@@ -1,5 +1,8 @@
 //! Suite definitions are re-read from one user-maintained JSON authority on every
-//! operation. Generated host resources are not read or written by this catalog.
+//! operation. Catalog operations never read generated output; the private skills
+//! adapter prepares native launch resources separately from definition storage.
+mod skills;
+
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
 use axum::{Json, extract::{Path, Request, State}, http::StatusCode, response::{IntoResponse, Response}};
@@ -50,6 +53,7 @@ struct McpDocument {
 pub struct Suites {
     pub definition_file: PathBuf,
     pub mcp_file: PathBuf,
+    pub generated_directory: PathBuf,
     files: FileStore,
 }
 
@@ -102,8 +106,8 @@ impl Suite {
 }
 
 impl Suites {
-    pub fn new(definition_file: PathBuf, mcp_file: PathBuf) -> Self {
-        Self { definition_file, mcp_file, files: FileStore::default() }
+    pub fn new(definition_file: PathBuf, mcp_file: PathBuf, generated_directory: PathBuf) -> Self {
+        Self { definition_file, mcp_file, generated_directory, files: FileStore::default() }
     }
     fn read(&self, access: &FileAccess) -> Result<Document, SuiteError> {
         let document: Document = match access.read_to_string(&self.definition_file) {
@@ -141,11 +145,11 @@ impl Suites {
         }
         Ok(document.servers)
     }
-    pub(crate) fn validate_selection(&self, access: &FileAccess, id: Option<&str>, agent: Agent) -> Result<(), crate::tasks::TaskError> {
+    pub(crate) fn resolve_selection(&self, access: &FileAccess, id: Option<&str>, agent: Agent) -> Result<Option<Suite>, crate::tasks::TaskError> {
         use crate::tasks::TaskError;
-        let Some(id) = id else { return Ok(()) };
+        let Some(id) = id else { return Ok(None) };
         let document = self.read(access).map_err(|error| TaskError::InvalidSuite(error.message))?;
-        let suite = document.suites.iter().find(|suite| suite.id == id)
+        let suite = document.suites.into_iter().find(|suite| suite.id == id)
             .ok_or_else(|| TaskError::InvalidSuite(format!("Suite「{id}」不存在；请明确修正引用，没有改选或回退为空环境。")))?;
         if !suite.agents.contains(&agent) {
             return Err(TaskError::InvalidSuite(format!("Suite「{id}」不适用于 {}；没有改选或回退为空环境。", agent.label())));
@@ -155,7 +159,7 @@ impl Suites {
         if !missing.is_empty() {
             return Err(TaskError::InvalidSuite(format!("Suite「{id}」的集中 MCP 引用失效：{}；没有删除引用或回退为空环境。", missing.join("、"))));
         }
-        Ok(())
+        Ok(Some(suite))
     }
     fn change(&self, scopes: &[PathBuf], action: impl FnOnce(&FileAccess, &mut Vec<Suite>) -> Result<(), SuiteError>) -> Result<Vec<Suite>, SuiteError> {
         self.files.with(scopes, |access| {

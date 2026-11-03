@@ -364,6 +364,7 @@ impl Catalog {
             return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
         }
         Ok(ResolvedEnvConfig {
+            suite_args: Vec::new(),
             extensions: self.extensions.iter().filter(|extension| {
                 extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed
                     || selections.contains(&extension.id))
@@ -387,6 +388,7 @@ pub struct ResolvedTriggerConfig {
 
 pub struct ResolvedEnvConfig {
     pub extensions: Vec<ExtensionOption>,
+    pub suite_args: Vec<String>,
 }
 
 impl ResolvedEnvConfig {

@@ -258,6 +258,20 @@ impl FileAccess {
             self.authorize(path, true)
         } else { self.authorize(path, false) }
     }
+    /// Create a new link for a declared external resource. Both source and
+    /// destination must be explicitly coordinated; ordinary file operations
+    /// retain their existing resolved-path boundary. Never copy or elevate.
+    pub(crate) fn link_resource_directory(&self, source: &Path, link: &Path) -> io::Result<()> {
+        self.authorize(source, false)?;
+        self.authorize_creation(link)?;
+        if !fs::metadata(source)?.is_dir() {
+            return Err(io::Error::new(io::ErrorKind::NotADirectory, "skill source is not a directory"));
+        }
+        #[cfg(windows)]
+        { std::os::windows::fs::symlink_dir(source, link) }
+        #[cfg(unix)]
+        { std::os::unix::fs::symlink(source, link) }
+    }
     pub fn remove_file(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.authorize(path.as_ref(), false)?; fs::remove_file(path)
     }

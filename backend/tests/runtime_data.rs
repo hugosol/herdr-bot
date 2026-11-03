@@ -115,6 +115,7 @@ fn configure_delivery(root: &Path, herdr: &HerdrFixture) {
     let roots = toml::Table::from_iter([
         ("project".into(), toml::Value::String(root.to_string_lossy().into_owned())),
         ("data".into(), toml::Value::String(root.join(".data").to_string_lossy().into_owned())),
+        ("suite_resources".into(), toml::Value::String(root.join(".data/suites").to_string_lossy().into_owned())),
         ("zone_parent".into(), toml::Value::String(root.to_string_lossy().into_owned())),
     ]);
     fs::write(root.join("paths.test.toml"), toml::to_string(&toml::Table::from_iter([("roots".into(), toml::Value::Table(roots))])).unwrap()).unwrap();

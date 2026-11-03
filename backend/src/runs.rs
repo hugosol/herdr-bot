@@ -431,10 +431,11 @@ pub async fn start_run(
         Ok(v) => v,
         Err(e) => return crate::task_error_response(e),
     };
-    if let Err(error) = state.tasks.validate_environment(&task) {
-        return crate::task_error_response(error);
-    }
-    let preset = match state
+    let suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return crate::task_error_response(error),
+    };
+    let mut preset = match state
         .tasks
         .catalog()
         .and_then(|catalog| catalog.resolve(&task))
@@ -442,6 +443,7 @@ pub async fn start_run(
         Ok(v) => v,
         Err(e) => return crate::task_error_response(e),
     };
+    preset.env.suite_args = suite_args;
     if let Err(message) = preset.env.check_entrypoints() {
         return error(
             StatusCode::INTERNAL_SERVER_ERROR,
