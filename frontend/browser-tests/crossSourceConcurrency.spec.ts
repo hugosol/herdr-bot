@@ -62,7 +62,8 @@ test('independent clients preserve exact concurrent IDs and commuting fields acr
     const send = async (client: number, sessionId: string, data: Record<string, unknown>) => {
       const response = await clients[client].post(`${server!.baseURL}/api/sessions/events`, { data: { sessionId, kind: 'register', data } })
       expect(response.status()).toBe(200)
-      expect((await response.json()).historySaved).toBe(true)
+      const receipt = await response.json()
+      expect(receipt.historySaved, `${JSON.stringify(receipt)}\n${server!.diagnostics()}`).toBe(true)
     }
     await send(0, 'shared-16b2b3f0-17a8-4ffd-8000-000000000001', { cwd: 'C:/wave-one' })
     const firstTime = (await history()).sessions[0].firstRecordedAt
