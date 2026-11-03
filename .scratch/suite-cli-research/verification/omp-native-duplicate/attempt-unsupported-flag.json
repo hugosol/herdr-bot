@@ -1,0 +1,307 @@
+{
+  "root": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz",
+  "installedPackage": "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent",
+  "packageVersion": "18.16.0",
+  "cases": [
+    {
+      "label": "same-id-same-config",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\project",
+      "command": [
+        "bun",
+        "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent\\dist\\cli.js",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--model",
+        "owned-local/smoke",
+        "-e",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\suite package"
+      ],
+      "projectConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "suiteConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\fixture-A.bin": {
+          "sha256": "8f2d6e7dc58e22b537941b7ae5054776b4f58325813f1a4a3e9513455464465e",
+          "bytes": 309
+        },
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-same-config\\fixture-B.bin": {
+          "sha256": "6f54a4fe70158757a657cf61ade4501f3272a151a7cf734e62d95d2976e996a3",
+          "bytes": 343
+        }
+      },
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "Error: unknown flag: --no-prompt-templates\nRun `omp --help` for available flags.\n",
+      "result": null,
+      "A": [],
+      "B": [],
+      "hashChecks": []
+    },
+    {
+      "label": "same-id-different-args",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\project",
+      "command": [
+        "bun",
+        "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent\\dist\\cli.js",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--model",
+        "owned-local/smoke",
+        "-e",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\suite package"
+      ],
+      "projectConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "suiteConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\fixture-B.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\B-events.jsonl"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\fixture-A.bin": {
+          "sha256": "590c451c3db0db027fe7061ac5dc8227e6aacff949cb5b471e74d89f65e665be",
+          "bytes": 309
+        },
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\same-id-different-args\\fixture-B.bin": {
+          "sha256": "2cc5f5f1739e466fffaa9a22f0deca1cf591967a4cc77f00d084b59da3411d3b",
+          "bytes": 343
+        }
+      },
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "Error: unknown flag: --no-prompt-templates\nRun `omp --help` for available flags.\n",
+      "result": null,
+      "A": [],
+      "B": [],
+      "hashChecks": []
+    },
+    {
+      "label": "different-id-same-config",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\project",
+      "command": [
+        "bun",
+        "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent\\dist\\cli.js",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--model",
+        "owned-local/smoke",
+        "-e",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\suite package"
+      ],
+      "projectConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "suiteConfig": {
+        "mcpServers": {
+          "suite-other": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\fixture-A.bin": {
+          "sha256": "1cfe318b617e57901620d625f3323b0a0199dadd759d311f181d36b905e8be0f",
+          "bytes": 309
+        },
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\different-id-same-config\\fixture-B.bin": {
+          "sha256": "5becb3493a7314ed9945adeaf61092b90307a225449fdfff7bab5340ae90380b",
+          "bytes": 343
+        }
+      },
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "Error: unknown flag: --no-prompt-templates\nRun `omp --help` for available flags.\n",
+      "result": null,
+      "A": [],
+      "B": [],
+      "hashChecks": []
+    },
+    {
+      "label": "project-enabled-false",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\project",
+      "command": [
+        "bun",
+        "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent\\dist\\cli.js",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--model",
+        "owned-local/smoke",
+        "-e",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\suite package"
+      ],
+      "projectConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\A-events.jsonl"
+            ],
+            "enabled": false
+          }
+        }
+      },
+      "suiteConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\fixture-A.bin": {
+          "sha256": "385b178533803355fc172f4ad83cfdc718fc69d736cda4b4ff1f92c0cb9953c5",
+          "bytes": 309
+        },
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\project-enabled-false\\fixture-B.bin": {
+          "sha256": "55cb4d4e293a882060f4bad6a29d37fe31458df1bb920502c45dbb4fc07e1cde",
+          "bytes": 343
+        }
+      },
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "Error: unknown flag: --no-prompt-templates\nRun `omp --help` for available flags.\n",
+      "result": null,
+      "A": [],
+      "B": [],
+      "hashChecks": []
+    },
+    {
+      "label": "suite-distinct-id-different-args",
+      "cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\project",
+      "command": [
+        "bun",
+        "D:\\nvm4w\\nodejs\\node_modules\\@oh-my-pi\\pi-coding-agent\\dist\\cli.js",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--model",
+        "owned-local/smoke",
+        "-e",
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\suite package"
+      ],
+      "projectConfig": {
+        "mcpServers": {
+          "duplicate": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\fixture-A.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\A-events.jsonl"
+            ]
+          }
+        }
+      },
+      "suiteConfig": {
+        "mcpServers": {
+          "suite-other": {
+            "command": "bun",
+            "args": [
+              "E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp-native-duplicate\\controlled-mcp.mjs",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\fixture-B.bin",
+              "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\B-events.jsonl"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\fixture-A.bin": {
+          "sha256": "a5c828664d8a83617bded944f4ba452f4b4861ec7e6195bd993bab1aaade3876",
+          "bytes": 309
+        },
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\omp-native-duplicate-07rq17jz\\suite-distinct-id-different-args\\fixture-B.bin": {
+          "sha256": "b15f649536fe121242d2842742e80b6c68f975f583e5a94c17bb9aa67f6534c4",
+          "bytes": 343
+        }
+      },
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "Error: unknown flag: --no-prompt-templates\nRun `omp --help` for available flags.\n",
+      "result": null,
+      "A": [],
+      "B": [],
+      "hashChecks": []
+    }
+  ],
+  "cleanup": {
+    "ownedServerPids": [],
+    "tempRemoved": true
+  }
+}

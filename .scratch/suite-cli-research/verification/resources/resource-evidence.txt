@@ -1,0 +1,73 @@
+{
+  "runtime": "1.4.4",
+  "root": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ",
+  "manualSymlinks": null,
+  "results": [
+    {
+      "kind": "junction",
+      "suite": "suite a",
+      "checkoutErrors": [
+        {
+          "path": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite a\\extensions\\fixture-extension\\index.ts",
+          "error": "Failed to load extension: Cannot find module './data/.manifest.json' imported from E:\\Developer\\myhub\\pi\\packages\\ai\\src\\providers\\all.ts"
+        }
+      ],
+      "piLoader": "installed",
+      "piSkills": [
+        {
+          "name": "fixture-resource",
+          "path": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite a\\skills\\fixture-resource\\SKILL.md"
+        }
+      ],
+      "entries": [
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite a\\extensions\\fixture-extension\\index.ts"
+      ],
+      "toolResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "relative-import-ok:relative-asset-ok"
+          }
+        ]
+      },
+      "realSkill": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\shared entity\\skill",
+      "realExtension": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\shared entity\\extension",
+      "ompSkillsError": "Error: Failed to load pi_natives native addon for win32-x64 (modern).\n\nTried:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n\nIf installed via npm/bun, try reinstalling: bun install @oh-my-pi/pi-natives\nIf developing locally, build with: bun --cwd=packages/natives run build\nExplicit targets: bun scripts/bazel-natives.ts <target> --dest packages/natives/native",
+      "ompExtensionsError": "Error: Failed to load pi_natives native addon for win32-x64 (modern).\n\nTried:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n\nIf installed via npm/bun, try reinstalling: bun install @oh-my-pi/pi-natives\nIf developing locally, build with: bun --cwd=packages/natives run build\nExplicit targets: bun scripts/bazel-natives.ts <target> --dest packages/natives/native"
+    },
+    {
+      "kind": "junction",
+      "suite": "suite b",
+      "checkoutErrors": [
+        {
+          "path": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite b\\extensions\\fixture-extension\\index.ts",
+          "error": "Failed to load extension: Cannot find module './data/.manifest.json' imported from E:\\Developer\\myhub\\pi\\packages\\ai\\src\\providers\\all.ts"
+        }
+      ],
+      "piLoader": "installed",
+      "piSkills": [
+        {
+          "name": "fixture-resource",
+          "path": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite b\\skills\\fixture-resource\\SKILL.md"
+        }
+      ],
+      "entries": [
+        "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\junction\\suite b\\extensions\\fixture-extension\\index.ts"
+      ],
+      "toolResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "relative-import-ok:relative-asset-ok"
+          }
+        ]
+      },
+      "realSkill": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\shared entity\\skill",
+      "realExtension": "C:\\Users\\hugos\\AppData\\Local\\Temp\\suite resources fjAJfJ\\shared entity\\extension",
+      "ompSkillsError": "Error: Failed to load pi_natives native addon for win32-x64 (modern).\n\nTried:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n\nIf installed via npm/bun, try reinstalling: bun install @oh-my-pi/pi-natives\nIf developing locally, build with: bun --cwd=packages/natives run build\nExplicit targets: bun scripts/bazel-natives.ts <target> --dest packages/natives/native",
+      "ompExtensionsError": "Error: Failed to load pi_natives native addon for win32-x64 (modern).\n\nTried:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-modern.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64-baseline.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node: Cannot find module 'E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n- D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node: Cannot find module 'D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\bun\\bin\\pi_natives.win32-x64.node'\nRequire stack:\n- E:\\Developer\\myhub\\oh-my-pi\\packages\\natives\\native\\loader-state.js\n\nIf installed via npm/bun, try reinstalling: bun install @oh-my-pi/pi-natives\nIf developing locally, build with: bun --cwd=packages/natives run build\nExplicit targets: bun scripts/bazel-natives.ts <target> --dest packages/natives/native"
+    }
+  ],
+  "symlinks": "NOT ATTEMPTED: explicit manual environment switch absent",
+  "cleaned": true
+}

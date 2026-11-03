@@ -1,0 +1,185 @@
+{
+  "status": "approved-not-applied",
+  "task_count": 22,
+  "mapping": [
+    {
+      "task_id": "tpl-18e0c8126d1ad150-0",
+      "task_name": "grill-with-docs",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "tpl-18e0ceac0a89f9bc-0",
+      "task_name": "Tibo-monitor",
+      "agent": "pi",
+      "suite_id": null,
+      "previous_optional_extensions": [
+        "pi-web-access"
+      ],
+      "note": "用户批准不选 suite；web-access 整合留到下一阶段，不创建网页研究 suite。"
+    },
+    {
+      "task_id": "tpl-18e0e21b49001550-0",
+      "task_name": "hyper-auto-coding",
+      "agent": "omp",
+      "suite_id": "code-implementation",
+      "previous_optional_extensions": [
+        "omp-codebase-tools",
+        "omp-connect-bot",
+        "omp-oh-my-wayfinder"
+      ]
+    },
+    {
+      "task_id": "tpl-18e104e3c5eaca34-0",
+      "task_name": "C盘清理大师",
+      "agent": "pi",
+      "suite_id": null,
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "tpl-18e11ab9f1807a04-0",
+      "task_name": "teacher-bot",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e25fe9c214b9d0-0",
+      "task_name": "wayfinder",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e2c2827c484128-0",
+      "task_name": "manager",
+      "agent": "omp",
+      "suite_id": null,
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e315be1cf0ef10-0",
+      "task_name": "能力创建者 · Bot＋Task",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e318b13b71a8bc-0",
+      "task_name": "概要规划",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e319d73777fc6c-1",
+      "task_name": "概要方案转 Map",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e31d30fe69a51c-2",
+      "task_name": "Task 创建者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e31d34797f1464-3",
+      "task_name": "通用提示词优化者",
+      "agent": "pi",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e31d347ccbeb4c-4",
+      "task_name": "Bot 创建者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e33b438fa74338-0",
+      "task_name": "Scheduler Map 修改者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e33fdc55177d1c-1",
+      "task_name": "空白 Bot 创建者",
+      "agent": "pi",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e3404478db1ef8-2",
+      "task_name": "Bot.when 编写者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e340545eb481bc-3",
+      "task_name": "Bot.plan_guide 编写者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e340f5287462ec-4",
+      "task_name": "Bot.node_guide 编写者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e3415003d8cd00-5",
+      "task_name": "通用文本替换者",
+      "agent": "omp",
+      "suite_id": null,
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e3454a33cecffc-6",
+      "task_name": "既有 Task.prompt 交互优化者",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    },
+    {
+      "task_id": "task-18e34ad4c8802738-7",
+      "task_name": "对话式架构重构",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": [
+        "omp-codebase-tools"
+      ]
+    },
+    {
+      "task_id": "task-18e44b3c39532a38-0",
+      "task_name": "翻译科技类文章",
+      "agent": "omp",
+      "suite_id": "codebase-exploration",
+      "previous_optional_extensions": []
+    }
+  ]
+}
