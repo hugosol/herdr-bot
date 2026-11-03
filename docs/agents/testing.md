@@ -104,6 +104,30 @@ runner 隔离 HOME／APPDATA／XDG、agent 配置与会话、命名 Herdr server
 
 公开启动的受控失败回归为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_skills`，使用真实 Windows 独占共享锁制造预览后不可读资源，以及普通文件阻塞生成目录；检查 HTTP 明确拒绝且 Herdr 无调用。这些负例不需要 symlink 权限，不替代 S4 成功证据。
 
+## OMP Suite 扩展包真实消费验收
+
+`python scripts/test-real-herdr-suite-extensions.py` 专项负责 P7（OMP 扩展）与 P9（OMP）的 S2/S3/S4 行为证据。先构建当前 worktree 后端，再使用已安装 Herdr 和 PATH 上正常交付的 OMP；依赖不由 runner 安装，不改系统 PATH，不读取用户凭据或启动用户 Chat：
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
+$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
+try {
+  python scripts/test-real-herdr-suite-extensions.py `
+    --herdr 'C:/installed/herdr/herdr.exe' `
+    --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+    --backend 'backend/target/debug/herdr-bot.exe'
+} finally {
+  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
+}
+```
+
+入口复用技能专项的独占配置、动态回环模型／HTTP 端口、持续消费日志和所属进程清理。一个 Suite 声明相对入口文件与集中根引用包目录，均包含空格；包目录的原生 manifest 选择非 index 入口。两个不同 Chat cwd 均放置错误相对入口哨兵。真实工厂 import 同包 sibling TS 和 `node_modules` 模块，真实工具读取 `import.meta.url` 相对 JSON 资产并计算，独立字面预期为 `RELATIVE-ASSET-412:64` 与 `ROOT-ASSET-905:80`。受控模型通过 OMP 原生 `write xd://...` 调用工具，不伪造工厂或工具执行；此证据只证明机制，不证明真实模型自主遵循。
+
+验收同时核对生成位置中的包目录真符号链接、入口清单、来源文件字节不变及固定扩展仍加载。输出的独占 Temp `evidence.json` 保留公开 HTTP 结果、原生模型请求／工具结果、源码与可执行文件哈希、原始日志和分开的清理错误。链接权限不足（如 Windows `os error 1314`）或任何真实依赖缺失时非零退出，明确记为未验证；源码直接加载成功、生成列表存在、junction 或普通套件通过均不能替代最终链接装配的 S4 成功证据。
+
+P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_extensions`：真实 Windows 独占共享锁分别阻止入口文件及包内资产读取；另用普通文件只阻塞扩展输出子目录，保持技能装配可写。全部经公开预览／启动 HTTP 检查明确拒绝且 Herdr 无调用，不需要链接权限，不代替上述真实成功场景。
+
 ## 真实 Herdr 自动关闭验收（P22）
 
 `python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端。路径参数可显式传入，或使用 `--paths-file`（默认仓库 `paths.local.toml`）：缺省参数从 `herdr/herdr.exe`、`pi_package`、`pi_agent/extensions/herdr-agent-state.ts`、`toolkit` 根派生；backend 默认取当前源码的 debug 产物并尊重 `CARGO_TARGET_DIR`。显式参数优先，全部依赖参数均提供时不读取根文件。原生会话验收 `scripts/test-native-session-storage.py` 同样支持 `--paths-file`，缺省包路径使用 `pi_package`、`omp_package`。这些入口经 Rust `herdr-paths` 解析 TOML，不自行实现根引用；根可指向不同磁盘。
