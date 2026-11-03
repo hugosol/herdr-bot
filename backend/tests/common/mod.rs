@@ -31,12 +31,18 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl TempDir {
     pub fn new(label: &str) -> Self {
-        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir()
-            .join("herdr-bot fixture checks")
-            .join(format!("{label} {}-{unique}", std::process::id()));
-        fs::create_dir_all(&path).expect("创建临时目录");
-        TempDir(path)
+        let root = std::env::temp_dir().join("herdr-bot fixture checks");
+        fs::create_dir_all(&root).expect("创建临时目录根");
+        loop {
+            let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = root.join(format!("{label} {}-{unique}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => return TempDir(path),
+                // Windows can recycle a PID while an earlier run's files remain.
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("创建临时目录 {}: {error}", path.display()),
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {
