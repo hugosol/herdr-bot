@@ -29,7 +29,7 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-dialog')).toBeHidden()
   let saved = (await server.getTasks()).tasks[0]
-  expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi', extensions: [] })
+  expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi' })
   await expect(page.getByTestId('task-item')).toContainText('manager-chat')
   await expect(page.getByTestId('task-item')).not.toContainText('node-chat')
   for (const role of ['normal']) {
@@ -45,7 +45,7 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-dialog')).toBeHidden()
     saved = (await server.getTasks()).tasks[0]
-    expect(saved).toMatchObject({ taskType: role, agent: 'pi', extensions: [] })
+    expect(saved).toMatchObject({ taskType: role, agent: 'pi' })
   }
   await page.screenshot({ path: info.outputPath('task-types.png'), fullPage: true })
   fs.writeFileSync(info.outputPath('task-types.json'), JSON.stringify(await server.getTasks(), null, 2))
@@ -62,7 +62,7 @@ test('P5.01 role changes select exactly one fixed role environment', async ({}, 
   const zone = (await zoneResponse.json()).zones[0].id
   let id: string | undefined
   for (const role of ['manager', 'normal']) {
-    const response = await fetch(`${server.baseURL}/api/tasks${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '角色', chatName: '{chat.id}', taskType: role, agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+    const response = await fetch(`${server.baseURL}/api/tasks${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '角色', chatName: '{chat.id}', taskType: role, agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
     expect(response.status).toBe(200)
     id = (await response.json()).tasks[0].id
     const preview = await (await fetch(`${server.baseURL}/api/chats/preview`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ taskId: id, zone }) })).json()
@@ -89,7 +89,7 @@ for (const agent of ['omp', 'pi'] as const) {
       return response.json()
     }
     const zone = (await post('/api/zones', { id: 'test/zone', path: host.cwd })).zones[0].id
-    const base = { agent, chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'SHARED TASK PROMPT', extensions: [] }
+    const base = { agent, chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'SHARED TASK PROMPT' }
     const task = (await post('/api/tasks', { ...base, name: 'Shared normal', taskType: 'normal' })).tasks[0]
     const manager = (await post('/api/tasks', { ...base, name: 'Manager', taskType: 'manager' })).tasks.find((item: { name: string }) => item.name === 'Manager')
     const identity = (id: string) => host.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'id', value: id } })

@@ -72,7 +72,7 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
         .to_owned();
     let mut ids = Vec::new();
     for role in ["manager", "node"] {
-        let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":if role == "node" {"normal"} else {"manager"},"agent":agent,"chatName":"{chat.id}","model":"default","thinking":"default","skill":null,"prompt":"FIXED-MANAGER-ROLE","extensions":[]}).to_string()).await;
+        let response = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":role,"taskType":if role == "node" {"normal"} else {"manager"},"agent":agent,"chatName":"{chat.id}","model":"default","thinking":"default","skill":null,"prompt":"FIXED-MANAGER-ROLE"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         ids.push(
@@ -103,7 +103,7 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         "id":"worker", "name":"worker", "when":"BOT-WHEN-NOT-INJECTED",
         "plan_guide":"BOT-PLAN-NOT-INJECTED", "node_guide":"BOT-NODE-NOT-INJECTED", "task_id":ids[1]
     }).to_string()).unwrap();
-    let task = json!({"name":"manager","taskType":"manager","agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":"FIXED-ROLE-MARKER","extensions":[]});
+    let task = json!({"name":"manager","taskType":"manager","agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":"FIXED-ROLE-MARKER"});
     let update = common::request_json_over_tcp(
         server.addr(),
         "PUT",

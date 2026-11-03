@@ -900,12 +900,12 @@ fn snapshot_task(revision: &str) -> Value {
         "old" => json!({
             "name": "旧快照", "chatName": "old-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "high", "skill": "mapped-skill",
-            "prompt": "旧固定指示\n第二行", "extensions": ["tools"],
+            "prompt": "旧固定指示\n第二行",
         }),
         "new" => json!({
             "name": "新快照", "chatName": "new-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "low", "skill": "mapped-skill",
-            "prompt": "新固定指示\n第二行", "extensions": ["connect"],
+            "prompt": "新固定指示\n第二行",
         }),
         _ => panic!("未知Task版本"),
     }
@@ -931,7 +931,7 @@ fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], e
     assert_eq!(
         &args[4..],
         expected_tail.as_slice(),
-        "只能使用接受时的固定及所选扩展"
+        "只能使用接受时的固定扩展（Suite 资源由专项覆盖）"
     );
 }
 
@@ -995,7 +995,7 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &new_start,
         &storage,
         &["--model", "new-provider/new-model", "--thinking", "low"],
-        &["new-fixed.ts", "new-connect.ts"],
+        &["new-fixed.ts"],
     );
     assert_eq!(
         common::prompt_body(&new_prompt),
@@ -1063,7 +1063,7 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &old_start,
         &storage,
         &["--model", "old-provider/old-model", "--thinking", "high"],
-        &["old-fixed.ts", "old-tools.ts"],
+        &["old-fixed.ts"],
     );
     assert_ne!(old_start["name"], new_start["name"], "并发创建的 Herdr 控制对象必须独立");
     assert_eq!(
@@ -1103,7 +1103,7 @@ async fn p37_task_and_metadata_changes_leave_existing_chats_untouched() {
         &original_start,
         &storage,
         &["--model", "old-provider/old-model", "--thinking", "high"],
-        &["old-fixed.ts", "old-tools.ts"],
+        &["old-fixed.ts"],
     );
     assert_eq!(
         common::prompt_body(&original_prompt),
@@ -1129,7 +1129,7 @@ async fn p37_task_and_metadata_changes_leave_existing_chats_untouched() {
         &new_start,
         &storage,
         &["--model", "new-provider/new-model", "--thinking", "low"],
-        &["new-fixed.ts", "new-connect.ts"],
+        &["new-fixed.ts"],
     );
     assert_eq!(
         common::prompt_body(&new_prompt),

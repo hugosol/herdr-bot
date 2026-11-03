@@ -20,7 +20,7 @@ fn setup(root: &TempDir, herdr: &HerdrFixture, file: Option<&Path>) -> herdr_bot
 }
 async fn resume(config: &herdr_bot::Config) -> common::HttpResponse {
     let server = TestServer::start_app(herdr_bot::app_with_power_off(config, Arc::new(NeverPowerOff))).await;
-    let task = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"Distinct Task", "chatName":"Task Chat", "agent":"pi", "model":"task-model", "thinking":"high", "prompt":"TASK INITIAL MUST NEVER BE SUBMITTED", "extensions":[]}).to_string()).await;
+    let task = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"Distinct Task", "chatName":"Task Chat", "agent":"pi", "model":"task-model", "thinking":"high", "prompt":"TASK INITIAL MUST NEVER BE SUBMITTED"}).to_string()).await;
     assert_eq!(task.status,200,"{}",task.body);
     post_json_over_tcp(server.addr(), "/api/chats/resume", r#"{"sessionId":"pi-old-exact"}"#).await
 }

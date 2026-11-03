@@ -22,7 +22,7 @@ async function scenario(page: Page) {
   await post('/api/zones', { id: 'test/zone', path: zone })
   const tasks: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const result = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+    const result = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' })
     tasks[role] = result.tasks.find((task: { name: string }) => task.name === role).id
   }
   const bots = path.join(host.cwd, 'meta-data/bots')

@@ -88,7 +88,7 @@ class Acceptance(skills['Acceptance']):
         backend = self.processes[-1]
         backend.stop()
         (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':[], 'extensions':['relative existing package/extension/entry.ts', '${roots.owned_extensions}']}]}))
+            'skills':[], 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}']}}]}))
         for zone in self.zones:
             # Wrong-cwd resource must not be selected; literal wrong result is distinguishable.
             wrong = zone / 'relative existing package/extension'
@@ -132,7 +132,7 @@ export default function(pi) {
     def exercise(self):
         saved = self.http('/api/tasks', {'name':'Suite extension packages', 'chatName':'{task.name}-{chat.id}',
             'agent':'omp', 'taskType':'normal', 'model':'probe', 'thinking':'off', 'skill':None,
-            'prompt':'Use the selected extension tools.', 'extensions':[], 'suite':'selected'})
+            'prompt':'Use the selected extension tools.', 'suite':'selected'})
         task_id = saved['tasks'][0]['id']
         for index, zone in enumerate(self.zones):
             case = {'cwd':str(zone), 'requests':[], 'passed':False}

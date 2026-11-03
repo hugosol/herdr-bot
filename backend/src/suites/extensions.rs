@@ -9,10 +9,11 @@ impl Suites {
         let Some(suite) = suite.filter(|_| agent == Agent::Omp) else { return Ok(Vec::new()) };
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」扩展装配失败：{error}；没有跳过失败资源或回退为空环境。", suite.id));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
-        if suite.extensions.is_empty() { return Ok(Vec::new()); }
-        let mut entries = Vec::with_capacity(suite.extensions.len());
-        let mut seen = HashSet::with_capacity(suite.extensions.len());
-        for declaration in &suite.extensions {
+        let declarations = suite.extensions.get(agent.label()).map(Vec::as_slice).unwrap_or_default();
+        if declarations.is_empty() { return Ok(Vec::new()); }
+        let mut entries = Vec::with_capacity(declarations.len());
+        let mut seen = HashSet::with_capacity(declarations.len());
+        for declaration in declarations {
             let entry = roots.resolve(Path::new(declaration), base).map_err(|error| fail(error.to_string()))?;
             let canonical = fs::canonicalize(&entry).map_err(|error| fail(format!("{declaration}：{error}")))?;
             if !seen.insert(canonical) { continue; }

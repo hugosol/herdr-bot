@@ -71,7 +71,6 @@ function emptyDraft(): TaskInput {
     thinking: 'default',
     skill: null,
     prompt: '',
-    extensions: [],
     suite: null,
   }
 }
@@ -87,7 +86,6 @@ function draftFrom(task: Task): TaskInput {
     thinking: task.thinking,
     skill: task.skill,
     prompt: task.prompt,
-    extensions: [...task.extensions],
     suite: task.suite ?? null,
   }
 }
@@ -186,8 +184,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
       agent,
       model: 'default',
       thinking: 'default',
-      extensions: [],
-    }))
+      }))
     setNotice(null)
   }
 
@@ -285,15 +282,12 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
   const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
   const fixedExtensions = extensions.filter((entry) => isVisibleFixedExtension(entry, draft))
-  const optionalExtensions = extensions.filter((entry) => entry.kind === 'optional')
-  const unavailableExtensions = draft.extensions.filter((id) => !optionalExtensions.some((entry) => entry.id === id))
   const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
   const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
     ...(selectedSuiteIssue ? [selectedSuiteIssue] : []),
     ...(modelUnavailable ? [`model「${draft.model}」不可用`] : []),
     ...(thinkingUnavailable ? [`thinking「${draft.thinking}」不可用`] : []),
-    ...unavailableExtensions.map((id) => `扩展「${id}」不可用`),
   ]
 
   return (
@@ -374,10 +368,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <div>
                     <dt>固定扩展</dt>
                     <dd>{data.options.extensions?.filter((entry) => isVisibleFixedExtension(entry, task)).map((entry) => entry.label).join('、') || '无'}</dd>
-                  </div>
-                  <div>
-                    <dt>可选扩展</dt>
-                    <dd>{task.extensions.map((id) => data.options.extensions?.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd>
                   </div>
                 </dl>
                 <pre className="task-item__prompt" data-testid="task-prompt-view">
@@ -653,35 +643,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 <h3>固定扩展（始终加载，不可取消）</h3>
                 <p>{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</p>
               </section>
-              <fieldset disabled={saving}>
-                <legend>可选扩展（可不选或多选）</legend>
-                {optionalExtensions.map((entry) => (
-                  <label key={entry.id} className="task-extension">
-                    <input type="checkbox" data-testid={`extension-${entry.id}`}
-                      checked={draft.extensions.includes(entry.id)}
-                      onChange={(event) => setDraft((current) => ({
-                        ...current,
-                        extensions: event.target.checked
-                          ? [...current.extensions, entry.id]
-                          : current.extensions.filter((id) => id !== entry.id),
-                      }))}
-                    />
-                    {entry.label}
-                  </label>
-                ))}
-                {unavailableExtensions.map((id) => (
-                  <label key={id} className="task-extension">
-                    <input type="checkbox" data-testid={`extension-${id}`} checked
-                      onChange={() => setDraft((current) => ({
-                        ...current,
-                        extensions: current.extensions.filter((selected) => selected !== id),
-                      }))}
-                    />
-                    {id}（不可用）
-                  </label>
-                ))}
-              </fieldset>
-              <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与本 Task 所选项。</p>
+              <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与所选 Suite 声明。</p>
             </section>}
 
             {step === 3 && <section data-testid="task-summary" aria-label="确认保存摘要">
@@ -697,7 +659,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>
                 <div><dt>Skill</dt><dd data-testid="summary-skill">{draft.skill === null ? '无' : (data.options.labels?.skills?.[draft.skill] ?? skillLabel(draft))}</dd></div>
                 <div><dt>固定扩展（始终加载，不可取消）</dt><dd data-testid="summary-fixed">{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</dd></div>
-                <div><dt>可选扩展</dt><dd data-testid="summary-optional">{draft.extensions.map((id) => extensions.find((entry) => entry.id === id)?.label ?? id).join('、') || '无'}</dd></div>
                 <div><dt>扩展自动发现</dt><dd data-testid="summary-discovery">关闭</dd></div>
               </dl>
               <h4>固定 prompt</h4>

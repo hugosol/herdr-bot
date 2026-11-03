@@ -3,12 +3,12 @@ import { suiteRequest, type Suite, type SuiteList } from './suiteApi'
 import './suites.css'
 
 type Draft = Omit<Suite, 'skills' | 'extensions' | 'prompts' | 'lsp'> & {
-  skills: string; extensions: string; prompts: string; lsp: string
+  skills: string; extensions: Record<'omp' | 'pi', string>; prompts: string; lsp: string
 }
 function draftFrom(suite: Suite): Draft {
-  return { ...suite, skills: suite.skills.join('\n'), extensions: suite.extensions.join('\n'), prompts: suite.prompts.join('\n'), lsp: JSON.stringify(suite.lsp, null, 2) }
+  return { ...suite, skills: suite.skills.join('\n'), extensions: { omp: (suite.extensions.omp ?? []).join('\n'), pi: (suite.extensions.pi ?? []).join('\n') }, prompts: suite.prompts.join('\n'), lsp: JSON.stringify(suite.lsp, null, 2) }
 }
-const emptySuite: Suite = { id: '', name: '', agents: ['omp'], skills: [], extensions: [], prompts: [], lsp: {}, mcp: [] }
+const emptySuite: Suite = { id: '', name: '', agents: ['omp'], skills: [], extensions: {}, prompts: [], lsp: {}, mcp: [] }
 const lines = (text: string) => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
@@ -56,7 +56,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
     try {
       const lsp: unknown = JSON.parse(draft.lsp)
       if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
-      suite = { ...draft, skills: lines(draft.skills), extensions: lines(draft.extensions), prompts: lines(draft.prompts), lsp: lsp as Record<string, unknown> }
+      suite = { ...draft, skills: lines(draft.skills), extensions: Object.fromEntries(draft.agents.map(agent => [agent, lines(draft.extensions[agent])]).filter(([, paths]) => paths.length > 0)), prompts: lines(draft.prompts), lsp: lsp as Record<string, unknown> }
     } catch (error) { setError(message(error)); return }
     setBusy(true)
     try {
@@ -100,9 +100,13 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <label className="suites-choice"><input type="checkbox" checked={draft.pi?.codemode === 'only'} onChange={event => setDraft({ ...draft, pi: { codemode: event.target.checked ? 'only' : 'on' } })} />Codemode only</label>
             <p className="scope-note">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p>
           </fieldset>}
-          {(['skills', 'extensions', 'prompts'] as const).map((key, index) => <div key={key}>
-            <label htmlFor={`suite-${key}`}>{['Skills（每行一个路径）', 'Extensions（每行一个路径）', 'Prompt templates（每行一个路径）'][index]}</label>
+          {(['skills', 'prompts'] as const).map((key, index) => <div key={key}>
+            <label htmlFor={`suite-${key}`}>{['Skills（每行一个路径）', 'Prompt templates（每行一个路径）'][index]}</label>
             <textarea id={`suite-${key}`} className="zone-form__input" rows={3} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
+          </div>)}
+          {draft.agents.map(agent => <div key={agent}>
+            <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
+            <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
           </div>)}
           <p className="scope-note">Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>
           <label htmlFor="suite-lsp">LSP 声明（JSON）</label>

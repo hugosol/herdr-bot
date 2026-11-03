@@ -20,7 +20,7 @@ test('OMP history Resume confirms identity and focus without input, and exposes 
     { type: 'model_change', provider: 'native-provider', modelId: 'native-model' },
     { type: 'thinking_level_change', thinkingLevel: 'low' },
   ].map((line) => JSON.stringify(line)).join('\n') + '\n')
-  const task = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'Bot Chat', agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED', extensions: [] }) })
+  const task = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Different Bot', chatName: 'Bot Chat', agent: 'omp', model: 'gpt-6.1-sol', thinking: 'high', prompt: 'BOT INITIAL MUST NEVER BE SUBMITTED' }) })
   expect(task.status).toBe(200)
   const register = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'omp-browser-9ed4-exact', kind: 'register', data: { cwd, agentType: 'omp', sessionName: 'Historical OMP', sessionFile: native } }) })
   expect(register.status).toBe(200)

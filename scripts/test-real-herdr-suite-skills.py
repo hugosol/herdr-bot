@@ -215,7 +215,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     def exercise(self):
         saved = self.http('/api/tasks', {'name':'Suite exact skills', 'chatName':'{task.name}-{chat.id}',
             'agent':'omp', 'taskType':'normal', 'model':'probe', 'thinking':'off', 'skill':None,
-            'prompt':'Keep native instructions.', 'extensions':[], 'suite':'selected'})
+            'prompt':'Keep native instructions.', 'suite':'selected'})
         task_id = saved['tasks'][0]['id']
         for index, zone in enumerate(self.zones):
             if index:

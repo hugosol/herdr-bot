@@ -79,9 +79,6 @@ pub struct TriggerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvConfig {
-    /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
-    #[serde(default)]
-    pub extensions: Vec<String>,
     /// One stable Suite ID, never a copied definition or inferred selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suite: Option<String>,
@@ -99,8 +96,6 @@ pub struct TaskInput {
     thinking: Option<String>,
     skill: Option<String>,
     prompt: Option<String>,
-    #[serde(default)]
-    extensions: Vec<String>,
     suite: Option<String>,
 }
 
@@ -114,7 +109,6 @@ struct TaskFields {
     thinking: String,
     skill: Option<String>,
     prompt: String,
-    extensions: Vec<String>,
     suite: Option<String>,
 }
 
@@ -171,7 +165,6 @@ impl TaskInput {
             .filter(|v| !v.is_empty())
             .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
-        catalog.validate_extensions(agent, &self.extensions)?;
 
         Ok(TaskFields {
             name,
@@ -182,7 +175,6 @@ impl TaskInput {
             thinking,
             skill,
             prompt: self.prompt.unwrap_or_default(),
-            extensions: self.extensions,
             suite: self.suite,
         })
     }
@@ -207,7 +199,6 @@ pub enum TaskError {
         supported: Vec<String>,
     },
     UnknownSkill(String),
-    InvalidExtension(String),
     InvalidSuite(String),
     Metadata(String),
     NotFound,
@@ -231,7 +222,6 @@ impl TaskError {
             Self::ThinkingRequiresDefaultModel => "task-thinking-requires-default-model",
             Self::ThinkingUnsupported { .. } => "task-thinking-unsupported",
             Self::UnknownSkill(_) => "task-skill-invalid",
-            Self::InvalidExtension(_) => "task-extension-invalid",
             Self::InvalidSuite(_) => "task-suite-invalid",
             Self::Metadata(_) => "metadata-invalid",
             Self::NotFound => "task-not-found",
@@ -290,11 +280,6 @@ impl TaskError {
             }
             Self::UnknownSkill(value) => {
                 format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
-            }
-            Self::InvalidExtension(value) => {
-                format!(
-                    "扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。"
-                )
             }
             Self::InvalidSuite(detail) => detail.clone(),
             Self::Metadata(detail) => detail.clone(),
@@ -385,7 +370,7 @@ impl Tasks {
                     skill: fields.skill,
                     prompt: fields.prompt,
                 },
-                env: EnvConfig { extensions: fields.extensions, suite: fields.suite },
+                env: EnvConfig { suite: fields.suite },
             });
             Ok(())
         })
@@ -415,7 +400,7 @@ impl Tasks {
                 skill: fields.skill,
                 prompt: fields.prompt,
             };
-            target.env = EnvConfig { extensions: fields.extensions, suite: fields.suite };
+            target.env = EnvConfig { suite: fields.suite };
             Ok(())
         })
     }

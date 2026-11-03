@@ -38,7 +38,7 @@ agent: 'omp',
 taskType: 'normal',
 model: 'default',
 thinking: 'default',
-skill: null, prompt: '', extensions: [] }
+skill: null, prompt: '' }
 
 const PREVIEW = {
   chatId: 'a7f3c2',

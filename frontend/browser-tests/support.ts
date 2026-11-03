@@ -33,7 +33,7 @@ export type TaskView = {
   thinking: string
   skill: string | null
   prompt: string
-  extensions: string[]
+  suite?: string | null
 }
 
 /** 受控 Herdr 副本的初始数据；它只在自动浏览器验收中使用。 */

@@ -33,7 +33,7 @@ async fn omp_chat_delivers_lsp_declarations_as_incremental_native_plugin() {
     let server = TestServer::start(&config).await;
     let task = post(&server, "/api/tasks", json!({"name":"Native LSP", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"Inspect language service status.", "extensions":[], "suite":"native-lsp"})).await;
+        "prompt":"Inspect language service status.", "suite":"native-lsp"})).await;
     post(&server, "/api/zones", json!({"id":"owned", "path":root.path()})).await;
     let preview = post(&server, "/api/chats/preview", json!({"zone":"owned", "taskId":task["tasks"][0]["id"]})).await;
     post(&server, "/api/chats", json!({"zone":"owned", "taskId":task["tasks"][0]["id"],

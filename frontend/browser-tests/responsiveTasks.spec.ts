@@ -45,7 +45,6 @@ for (const profile of [
       name: 'P49 发布巡检', chatName: '巡检 {zone.name}{task.name}{agent}{chat.id}',
       agent: 'omp', taskType: 'normal', model: 'gpt-6.1-sol', thinking: 'high', skill: 'code-review',
       prompt: '第一行：检查发布\n第二行：保留中文、"引号" 与 C:\\alpha',
-      extensions: ['omp-codebase-tools', 'omp-connect-bot'],
     }
     try {
       await page.goto(`${server.baseURL}?layout=expanded`)
@@ -65,8 +64,6 @@ for (const profile of [
       await rule.scrollIntoViewIfNeeded()
       await capture('preset')
       await action('task-next')
-      await page.getByTestId('extension-omp-codebase-tools').check()
-      await page.getByTestId('extension-omp-connect-bot').check()
       await expect(page.getByTestId('task-fixed-extensions')).toContainText('model-cost')
       await capture('extensions')
       await action('task-back')
@@ -75,10 +72,8 @@ for (const profile of [
       }
       await expect(dialog.getByTestId('chat-name-preview')).toHaveText('巡检 alphaP49 发布巡检ompa7f3c2')
       await action('task-next')
-      await expect(page.getByTestId('extension-omp-codebase-tools')).toBeChecked()
-      await expect(page.getByTestId('extension-omp-connect-bot')).toBeChecked()
       await action('task-next')
-      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, fixed: 'herdr-agent-state、model-cost', optional: 'codebase-tools、connect-bot', discovery: '关闭' })) {
+      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, fixed: 'herdr-agent-state、model-cost', discovery: '关闭' })) {
         await expect(page.getByTestId(`summary-${id}`)).toHaveText(expected)
       }
       expect((await server.getTasks()).tasks).toEqual([])
@@ -102,16 +97,12 @@ for (const profile of [
       await page.getByTestId('task-skill').selectOption('teach')
       await page.getByTestId('task-prompt').fill('编辑第一行\n编辑第二行')
       await action('task-next')
-      await expect(page.getByTestId('extension-pi-codebase-tools')).not.toBeChecked()
-      await page.getByTestId('extension-pi-codebase-tools').check()
       await action('task-back')
       await expect(page.getByTestId('task-prompt')).toHaveValue('编辑第一行\n编辑第二行')
       await expect(page.getByTestId('task-thinking')).toHaveValue('off')
       await action('task-next')
-      await expect(page.getByTestId('extension-pi-codebase-tools')).toBeChecked()
       await action('task-next')
-      await expect(page.getByTestId('summary-optional')).toHaveText('codebase-tools')
-      const edited = { ...saved, name: 'P49 编辑后巡检', chatName: '编辑 {zone.name} / {task.name} / {agent} / {chat.id}', agent: 'pi', model: 'deepseek-flash', thinking: 'off', skill: 'teach', prompt: '编辑第一行\n编辑第二行', extensions: ['pi-codebase-tools'] }
+      const edited = { ...saved, name: 'P49 编辑后巡检', chatName: '编辑 {zone.name} / {task.name} / {agent} / {chat.id}', agent: 'pi', model: 'deepseek-flash', thinking: 'off', skill: 'teach', prompt: '编辑第一行\n编辑第二行' }
       const originalMode = fs.statSync(server.storageFile).mode
       fs.chmodSync(server.storageFile, 0o444)
       try {
@@ -122,7 +113,6 @@ for (const profile of [
         await capture('persistence-error')
       } finally { fs.chmodSync(server.storageFile, originalMode) }
       await action('task-back')
-      await expect(page.getByTestId('extension-pi-codebase-tools')).toBeChecked()
       await action('task-back')
       await expect(page.getByTestId('task-name')).toHaveValue(edited.name)
       await expect(page.getByTestId('task-prompt')).toHaveValue(edited.prompt)
@@ -133,29 +123,32 @@ for (const profile of [
       expect((await server.getTasks()).tasks).toEqual([edited])
       actions.push('real read-only storage rejected; prior task unchanged; draft retained; retry persisted edited values')
 
-      // Remove an actually selected metadata definition on disk, then reopen.
-      const withoutTools = metadata.replace(/\[\[extensions\]\]\r?\nid = 'pi-codebase-tools'[\s\S]*?(?=\[\[extensions\]\]|$)/, '')
-      expect(withoutTools).not.toBe(metadata)
-      fs.writeFileSync(server.metadataFile, withoutTools)
+      // Suite replaces the retired optional-extension picker. A missing Suite
+      // remains an explicit invalid reference until the user chooses none.
+      const authority = path.join(path.dirname(server.configPath), 'meta-data', 'suites.json')
+      fs.mkdirSync(path.dirname(authority), { recursive: true })
+      fs.writeFileSync(authority, JSON.stringify({ suites: [{ id: 'responsive-tools', name: '视口工具集', agents: ['pi'], pi: { codemode: 'on' } }] }))
       await action('task-edit')
-      await expect(page.getByTestId('task-selection-error')).toContainText('pi-codebase-tools')
       await action('task-next')
-      await expect(page.getByTestId('extension-pi-codebase-tools')).toBeChecked()
-      await expect(page.getByText('pi-codebase-tools（不可用）', { exact: true })).toBeVisible()
-      await capture('unavailable-selection')
+      await page.getByTestId('task-suite').selectOption('responsive-tools')
       await action('task-next')
-      await action('save-task')
-      await expect(page.getByTestId('task-form-error')).toContainText('pi-codebase-tools')
-      expect((await server.getTasks()).tasks).toEqual([edited])
-      await action('task-back')
-      await page.getByTestId('extension-pi-codebase-tools').click()
-      await action('task-next')
-      await expect(page.getByTestId('summary-optional')).toHaveText('无')
       await action('save-task')
       await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
-      expect((await server.getTasks()).tasks).toEqual([{ ...edited, extensions: [] }])
-      actions.push('unavailable selected ID visible and rejected; explicitly unchecked; public read confirms correction')
-      fs.writeFileSync(server.metadataFile, metadata)
+      const selected = { ...edited, suite: 'responsive-tools' }
+      expect((await server.getTasks()).tasks).toEqual([selected])
+      fs.writeFileSync(authority, '{"suites":[]}')
+      await action('task-edit')
+      await expect(page.getByTestId('task-selection-error')).toContainText('responsive-tools')
+      await action('task-next')
+      await expect(page.getByTestId('task-suite-issue')).toContainText('responsive-tools')
+      await capture('unavailable-selection')
+      await page.getByTestId('task-suite').selectOption('')
+      await action('task-next')
+      await expect(page.getByTestId('summary-suite')).toHaveText('不选 Suite')
+      await action('save-task')
+      await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
+      expect((await server.getTasks()).tasks).toEqual([edited])
+      actions.push('missing Suite reference shown; explicit correction persists; no old extension selector')
 
       // Real missing-file dependency, not a mocked error response. No real agent
       // or fixture is launched: the service must reject during dependency checks.
@@ -187,7 +180,7 @@ for (const profile of [
       await action('chat-create-close')
       actions.push('missing real dependency rejected before side effects; input retained; restored metadata; reopened creation; no successful real agent launch claimed')
       await server.restart()
-      expect((await server.getTasks()).tasks).toEqual([{ ...edited, extensions: [] }])
+      expect((await server.getTasks()).tasks).toEqual([{ ...edited }])
       actions.push('real process restart retains corrected edited task')
     } finally {
       const record = { profile, browser: browser.version(), service: 'built Axum executable + Vite production assets', metadata: 'shipped meta-data/task-options.toml options, isolated roots and real sentinel entry files; isolated copy modified for faults', baseURL: server.baseURL, actions, responses, limitation: 'P49 viewport only; not real phone touch, keyboard, input or P50/H2; no successful Herdr/agent launch tested' }

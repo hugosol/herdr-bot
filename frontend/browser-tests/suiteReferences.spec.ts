@@ -59,7 +59,7 @@ test('P33 browser refuses deletion and lists all referencing Tasks without chang
   server = await startServer()
   definitions(server)
   for (const name of ['First browser reference', 'Second browser reference']) {
-    const response = await page.request.post(`${server.baseURL}/api/tasks`, { data: { name, chatName: '{task.name}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [], suite: 'shared' } })
+    const response = await page.request.post(`${server.baseURL}/api/tasks`, { data: { name, chatName: '{task.name}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', suite: 'shared' } })
     expect(response.status()).toBe(200)
   }
   const { tasks: before } = await server.getTasks()
@@ -88,7 +88,7 @@ test('P33 browser refuses deletion and lists all referencing Tasks without chang
 test('P18 browser retains and marks missing central MCP references and refuses saving them', async ({ page }) => {
   server = await startServer()
   const directory = definitions(server)
-  const input = { name: '失效 MCP 来源', chatName: '{task.name}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: 'Keep trigger', extensions: [], suite: 'shared' }
+  const input = { name: '失效 MCP 来源', chatName: '{task.name}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: 'Keep trigger', suite: 'shared' }
   const created = await page.request.post(`${server.baseURL}/api/tasks`, { data: input })
   expect(created.status()).toBe(200)
   const saved = (await created.json()).tasks[0]

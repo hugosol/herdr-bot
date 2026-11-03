@@ -20,7 +20,7 @@ async fn pi_mode_is_explicit_and_applicable_through_public_http() {
     let root = TempDir::new("suite explicit pi mode");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let literal = json!({"id":"pi-tools","name":"Pi tools","agents":["pi"],"skills":[],"extensions":[],"prompts":[],"lsp":{},"mcp":[],"pi":{"codemode":"only"}});
+    let literal = json!({"id":"pi-tools","name":"Pi tools","agents":["pi"],"skills":[],"extensions":{},"prompts":[],"lsp":{},"mcp":[],"pi":{"codemode":"only"}});
     let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&literal.to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let persisted = fs::read(&config.suites.definition_file).unwrap();
@@ -63,7 +63,7 @@ async fn external_authority_damage_is_not_hidden_or_overwritten() {
     let root = TempDir::new("suite external authority damage");
     let config = config(&root);
     fs::create_dir_all(config.suites.definition_file.parent().unwrap()).unwrap();
-    let literal = "{\"suites\":[{\"id\":\"external\",\"name\":\"Independent definition\",\"agents\":[\"omp\"],\"skills\":[],\"extensions\":[],\"prompts\":[],\"lsp\":{},\"mcp\":[]}]}";
+    let literal = "{\"suites\":[{\"id\":\"external\",\"name\":\"Independent definition\",\"agents\":[\"omp\"],\"skills\":[],\"extensions\":{},\"prompts\":[],\"lsp\":{},\"mcp\":[]}]}";
     fs::write(&config.suites.definition_file, literal).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(get_over_tcp(server.addr(), "/api/suites/external").await.status, 200);
