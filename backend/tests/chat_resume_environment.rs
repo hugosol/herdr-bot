@@ -68,6 +68,18 @@ fn catalog(root: &Path, agent: &str, revision: &str, trigger: bool) {
     }
     fs::write(root.join("options.toml"), text).unwrap();
 }
+// Independent native Pi builtin selection required when extension discovery is
+// disabled. Keep exact argv assertions for the rest of each launch snapshot.
+fn expected_args(agent: &str, mut expected: Value) -> Value {
+    if agent == "pi" {
+        let args = expected.as_array_mut().unwrap();
+        let position = args.iter().position(|value| value == "--no-extensions").unwrap() + 1;
+        args.splice(position..position, [json!("--extension"), json!("builtin:mcp"),
+            json!("--extension"), json!("builtin:tool-search"),
+            json!("--extension"), json!("builtin:codemode")]);
+    }
+    expected
+}
 fn task(agent: &str, name: &str) -> Value {
     json!({"name":name,"chatName":"Same name {chat.id}","agent":agent,"model":"launch-model","thinking":"high","skill":"launch-skill","prompt":"INITIAL ONLY"})
 }
@@ -146,7 +158,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         create(&panel,zone,id).await;
         history(&panel,1).await;
         let initial = herdr.calls();
-        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-b-old.ts"))]));
+        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-b-old.ts"))])));
         assert_eq!(common::prompt_body(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()),"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
         let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent, "Source A renamed").to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
@@ -159,7 +171,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let calls = herdr.calls();
         let resumed = &calls[offset..];
         assert!(!resumed.iter().any(|c| c["kind"] == "agent_prompt" || c["kind"] == "agent_input"));
-        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-current.ts")),"--extension",root.path().join(format!("{agent}-b-current.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
+        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-current.ts")),"--extension",root.path().join(format!("{agent}-b-current.ts")),if agent == "omp" {"--resume"} else {"--session"},file])));
     }
 }
 
@@ -249,7 +261,7 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     let valid = if broken == "fixed" { "b" } else { "fixed" };
     let calls = herdr.calls();
     let resumed = &calls[before..];
-    assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], json!(["--no-extensions","--extension",root.path().join(format!("{agent}-{valid}-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
+    assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], expected_args(agent, json!(["--no-extensions","--extension",root.path().join(format!("{agent}-{valid}-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file])));
     assert!(!resumed.iter().any(|c| c["kind"] == "agent_prompt" || c["kind"] == "agent_input"));
 }
 
@@ -289,7 +301,7 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         }
         let calls = herdr.calls();
         let resumed = &calls[before..];
-        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], json!(["--no-extensions",if agent == "omp" {"--resume"} else {"--session"},file]));
+        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"], expected_args(agent, json!(["--no-extensions",if agent == "omp" {"--resume"} else {"--session"},file])));
         assert!(!resumed.iter().any(|c| ["agent_prompt","agent_input","agent_focus"].contains(&c["kind"].as_str().unwrap())));
     }
 }
@@ -328,7 +340,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             let calls = herdr.calls();
             let calls = &calls[offset..];
             assert!(!calls.iter().any(|c| c["kind"] == "agent_prompt"));
-            assert_eq!(calls.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-valid.ts")),"--extension",root.path().join(format!("{agent}-b-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file]));
+            assert_eq!(calls.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-valid.ts")),"--extension",root.path().join(format!("{agent}-b-valid.ts")),if agent == "omp" {"--resume"} else {"--session"},file])));
             let preview = post(&panel,"/api/chats/preview",json!({"zone":zone,"taskId":id})).await;
             let before = herdr.calls().len();
             let rejected = post_json_over_tcp(panel.addr,"/api/chats",&json!({"zone":zone,"taskId":id,"chatId":preview["chatId"],"input":"must not start"}).to_string()).await;
