@@ -3,6 +3,7 @@ import './navigation.css'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from '../server/operationsApi'
 import { TasksPanel } from '../tasks/TasksPanel'
+import { SuitesPanel } from '../suites/SuitesPanel'
 import { ZonesPanel } from '../zones/ZonesPanel'
 import { ChatPanel } from '../chats/ChatPanel'
 import { SchedulerPanel } from '../scheduler/SchedulerPanel'
@@ -33,20 +34,21 @@ type FeedbackKind = 'idle' | 'completed' | 'failed' | 'busy' | 'unreachable'
 
 const TAB_GROUPS = {
   work: ['sessions', 'files', 'workflow'],
-  config: ['tasks', 'bot', 'scheduler'],
+  config: ['tasks', 'suite', 'bot', 'scheduler'],
 } as const
 const TAB_ORDER = [...TAB_GROUPS.work, ...TAB_GROUPS.config]
 type TabKey = (typeof TAB_ORDER)[number]
 type NavigationGroup = keyof typeof TAB_GROUPS
 const TAB_LABELS: Record<TabKey, string> = {
   sessions: 'chat', files: 'zone', workflow: 'workflow',
-  tasks: 'task', bot: 'bot', scheduler: 'scheduler',
+  tasks: 'task', suite: 'suite', bot: 'bot', scheduler: 'scheduler',
 }
 const TAB_ICONS: Record<TabKey, string> = {
   sessions: 'M4 4h16v12H9l-5 4V4Z',
   files: 'M3 6h7l2 2h9v12H3V6Z',
   workflow: 'm12 3 9 9-9 9-9-9 9-9Z',
   tasks: 'M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1',
+  suite: 'M3 5h7l2 2h9v14H3V5ZM7 11h10M7 15h10',
   bot: 'M5 7h14v13H5V7ZM12 3v4M8 12h1M15 12h1M9 16h6',
   scheduler: 'M4 4h16v16H4V4ZM4 9h16M9 9v11M15 9v11',
 }
@@ -287,6 +289,10 @@ export default function App({
         hidden={serverOpen || tab !== 'tasks'}
       >
         <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)} />
+      </div>
+
+      <div id="panel-suite" role="tabpanel" aria-labelledby="tab-suite" className="tabpanel" hidden={serverOpen || tab !== 'suite'}>
+        <SuitesPanel active={!serverOpen && tab === 'suite'} />
       </div>
 
       <div

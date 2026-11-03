@@ -6,8 +6,8 @@
 
 外侧导航提供两种布局，内部页面与编辑方式相同：
 
-- **紧凑布局**（默认）：顶部只显示一组三个入口。`chat / zone / workflow` 用于日常工作，`task / bot / scheduler` 用于配置；不额外显示分类标题。两组在横向轨道上按日常工作在左、配置在右排列。仅在导航条内左滑进入配置组，右滑回到日常工作组；整条导航跟随手指移动，松手时拖动距离达到一个 Tab 的宽度（导航可见宽度的三分之一）即可切换，否则回弹，不按速度判定，也不循环切换。内容区滑动仍交给当前页面。
-- **展开布局**：点击左上角布局按钮，以窄侧栏同时显示两组六个入口。电脑也可直接展开后点击目标，无需拖动。
+- **紧凑布局**（默认）：顶部只显示一组入口。`chat / zone / workflow` 用于日常工作，`task / suite / bot / scheduler` 用于配置；不额外显示分类标题。两组在横向轨道上按日常工作在左、配置在右排列。仅在导航条内左滑进入配置组，右滑回到日常工作组；整条导航跟随手指移动，松手时拖动距离达到导航可见宽度的三分之一即可切换，否则回弹，不按速度判定，也不循环切换。内容区滑动仍交给当前页面。
+- **展开布局**：点击左上角布局按钮，以窄侧栏同时显示两组七个入口。电脑也可直接展开后点击目标，无需拖动。
 
 布局按钮只改变外侧导航，不重新加载页面，不清空当前编辑或筛选状态。地址中的 `?layout=expanded` 指定展开布局，`?layout=compact` 或无参数指定紧凑布局；切换会原地更新地址，不增加浏览器历史记录。返回紧凑布局时显示当前页面所属组；同一页面期间切换分组会记住每组上次访问的入口。
 
@@ -55,6 +55,54 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 切回 tab 再进入 server 仍可查看本页最近一次调用的反馈。
 手动关机入口也位于 server 内容页，保留确认流程；返回 tab 不是取消关机，
 全局关机提醒在各 tab 和 server 页仍可见，取消必须显式操作并等待服务端确认。
+
+## Suite 管理与权威定义
+
+在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。适用宿主至少选一个。Skills、Extensions 和 Prompt templates 按行声明具体资源位置，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
+
+部署可在 `herdr-bot.toml` 指定以下位置；普通相对路径相对该配置文件，支持既有 `${roots.name}` 路径根，改路径后重启后端：
+
+```toml
+[suites]
+definition_file = 'meta-data/suites.json'
+mcp_file = 'meta-data/mcp.json'
+```
+
+`definition_file` 是唯一权威文件，界面直接读写它，不读取生成目录中的同名文件，不建立数据库副本。缺少文件表示没有 Suite，首次保存会创建父目录；文件损坏或不可读明确报错，不覆盖成空清单。外部编辑后点击“重新读取 Suite”（有未保存编辑时先确认丢弃），或重启程序；两种方式都从该文件取得定义。保存不会主动重配已有 Chat。
+
+一个支持两个宿主的独立声明示例：
+
+```json
+{
+  "suites": [{
+    "id": "review-tools",
+    "name": "评审工具",
+    "agents": ["omp", "pi"],
+    "skills": ["${roots.skills}/code-review"],
+    "extensions": ["${roots.toolkit}/extensions/review"],
+    "prompts": ["../prompts/review.md"],
+    "lsp": {},
+    "mcp": ["catalog-search"],
+    "pi": {"codemode": "on"}
+  }]
+}
+```
+
+资源字符串保留根引用与声明相对路径，其基准是 **Suite 声明文件** 所在目录，不是 Chat 或后端的 cwd。资源实体继续在原位置维护，本编辑器不复制源码、认证、模型或历史配置。
+
+Pi 适用的 Suite 必须明确保存 `pi.codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。仅 OMP 的编辑不显示 Pi 控件，也不保存 `pi` 字段；重新勾选 Pi 从 `on` 开始。Pi 跳过 LSP，OMP 跳过 Suite 本地 prompt templates，不将它们变为初始消息或系统指令。
+
+MCP 连接仍由维护者在集中文件编辑，界面只选择 ID，不新增 MCP 编辑平台或进程 manager。例如 `mcp_file` 内容：
+
+```json
+{"mcpServers":{"catalog-search":{"command":"search-server","args":["--stdio"]}}}
+```
+
+Suite 的 `mcp` 只保存引用，不保存连接配置副本；空数组表示不追加，不禁用宿主原生 MCP。定义页只读此集中目录，不执行其中的命令。
+
+公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp}`（`mcp` 为集中 ID 清单）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
+
+本功能的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 
 ## Task 模型与删除
 

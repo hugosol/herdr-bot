@@ -1,0 +1,13 @@
+.suites-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.suites-toolbar h2 { margin: 0 auto 0 0; }
+.suites-layout { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr); gap: 20px; }
+.suites-list { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.suites-list button { overflow-wrap: anywhere; text-align: left; }
+.suites-list button[aria-pressed="true"] { outline: 2px solid #7ba9ed; }
+.suites-editor { min-width: 0; }
+.suites-editor fieldset { min-width: 0; border: 1px solid #52657e; padding: 12px; margin: 0 0 14px; }
+.suites-editor label { display: block; margin-bottom: 12px; }
+.suites-editor .suites-choice { display: inline-flex; gap: 8px; align-items: center; margin-right: 16px; }
+.suites-editor textarea { resize: vertical; font-family: ui-monospace, monospace; }
+.suites-panel button { min-height: 40px; cursor: pointer; }
+@media (max-width: 650px) { .suites-layout { grid-template-columns: minmax(0, 1fr); } }

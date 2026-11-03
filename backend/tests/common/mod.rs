@@ -406,6 +406,7 @@ pub fn config_with_countdown(
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
+        suites: herdr_bot::config::SuitesConfig::default(),
     }
 }
 
