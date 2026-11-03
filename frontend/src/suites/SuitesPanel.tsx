@@ -106,6 +106,8 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </div>)}
           <p className="scope-note">Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>
           <label htmlFor="suite-lsp">LSP 声明（JSON）</label>
+          <p className="scope-note">LSP 声明不表示已启用或正在运行。OMP 按项目标记和可执行程序原生发现；缺少程序时不会启动，不会自动安装或修改 PATH。</p>
+          <p className="scope-note">保留 OMP 默认、用户及项目配置的原生优先级；Suite 不是语言服务白名单。</p>
           <textarea id="suite-lsp" className="zone-form__input" rows={6} value={draft.lsp} onChange={event => setDraft({ ...draft, lsp: event.target.value })} />
           <fieldset><legend>集中 MCP 选择</legend>
             <p className="scope-note">仅引用集中目录；空清单表示不追加，不关闭宿主原生 MCP。</p>

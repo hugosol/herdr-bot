@@ -58,7 +58,17 @@ impl Suites {
                 }});
                 access.create(&manifest, &serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?)
                     .map_err(|error| error.to_string())?;
-                Ok(vec!["--config".into(), manifest.to_string_lossy().into_owned()])
+                let mut args = vec!["--config".into(), manifest.to_string_lossy().into_owned()];
+                if !suite.lsp.is_empty() {
+                    // Native plugin discovery merges below user/project LSP
+                    // files and keeps bundled defaults. A settings override
+                    // would not participate in that native config stack.
+                    let lsp = serde_json::json!({"servers": &suite.lsp});
+                    access.create(&assembly.join("lsp.json"), &serde_json::to_vec_pretty(&lsp).map_err(|error| error.to_string())?)
+                        .map_err(|error| error.to_string())?;
+                    args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
+                }
+                Ok(args)
             })();
             result.map_err(|error| {
                 // remove_dir_all removes directory links themselves, not their
