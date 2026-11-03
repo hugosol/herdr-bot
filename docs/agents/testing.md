@@ -57,6 +57,27 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
+## OMP Suite 四语言 LSP 真实验收
+
+`python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+python scripts/test-real-herdr-suite-lsp.py `
+  --herdr 'C:/installed/herdr/herdr.exe' `
+  --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+  --backend 'backend/target/debug/herdr-bot.exe' `
+  --rust-toolchain 'C:/installed/rustup/toolchains/stable-x86_64-pc-windows-msvc'
+```
+
+`--rust-toolchain` 只设置子进程 `RUSTUP_TOOLCHAIN` 为既有工具链目录，同时使用独占 `CARGO_HOME`，避免 HOME 隔离后 Rustup 代理找不到原先安装的组件；不安装组件、不读取用户 Cargo 凭据、不改 PATH。不使用 Rustup 代理的部署可省略。四种原生命令为 `rust-analyzer`、`typescript-language-server --stdio`、`jdtls`、`pyright-langserver --stdio`；TS 还需兼容 TypeScript，Java 需 JDK／JDT LS，不能仅凭 launcher 或版本号判断可工作。
+
+入口在独占 Temp 配置中声明批准的四服务，通过公开 Task／Chat HTTP → 真 Herdr → PATH 上安装版 OMP，为 Rust／TypeScript／Java／Python 分别创建项目标记和源文件。受控数值回环模型只调用真实 `write xd://lsp`，检查 `capabilities` 中实际 initialize 响应及随后 `status` 的 `ready`，并通过 Windows OS 查询独立观察所属新增语言服务进程。它证明原生启动和发现机制，不证明模型自主开发质量。缺可执行程序负例保留 Rust 项目标记，由测试拥有的用户 LSP 配置将命令指向确实不存在的程序：原生能力查询拒绝、status 不包含服务、OS 没有所属 rust-analyzer 进程。正例用项目配置覆盖该用户命令，核对项目 > 用户 > Suite 的原生优先级；不关闭其他默认语言服务。
+
+每次输出独占目录内 `evidence.json`，记录源码 revision／diff／哈希、交付二进制与安装 CLI 哈希、版本、隔离来源、实际请求／响应、Herdr terminal、所属进程及每场景 `verified`。HOME／APPDATA／XDG、agent 数据、后端持久化、命名 Herdr server 和动态回环端口均隔离；固定扩展只记录原生进程身份，不替换 LSP 或内部 monkey patch。持续消费服务日志，正常及失败均停止所属服务、以持有的 Windows 进程句柄确认退出；原始错误与清理错误分别保留。不连接用户 Chat／daemon，不复制认证或操作真实关机。
+
+默认 `--language all` 才是四语言 P37 验收；缺任何程序会记录 `blockers`、保持未验证并非零退出，已有声明、非空日志、零退出的其他场景均不能冲抵。`--language rust-analyzer` 等参数只用于较窄反馈，成功也不是完整 P37 通过。P38 UI 只说明声明／运行的区别，不伪造服务健康状态；运行事实以原生反馈和 OS 观察为准。
+
 ## OMP Suite 技能真实消费验收
 
 `python scripts/test-real-herdr-suite-skills.py` 专项覆盖 P5/P6/P7/P8/P10/P15 的 OMP 技能场景，必须先构建当前 worktree 后端。它经公开 Task／Chat HTTP → 真实 Herdr → PATH 上已安装 OMP 的正常交付入口运行，不直接调用源码 CLI、SDK 或替代 MCP manager。依赖均须预先具备，runner 不安装程序、不改 PATH、不提权、不修改开发者模式。只声明依赖包路径不会替换真正启动的 `omp`，runner 会记录 PATH launcher、包入口和后端哈希。
