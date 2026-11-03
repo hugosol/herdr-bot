@@ -92,6 +92,12 @@ run_directory = '${roots.data}/workflow-runs'
 # 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
 run_instructions = '${roots.project}/docs/workflow-runtime.md'
 
+# Suite 权威定义与只读集中 MCP 目录。界面与手工编辑使用同一文件；
+# 非生成产物。普通相对路径以本配置文件目录为基准；详情见 docs/usage.md。
+[suites]
+definition_file = '${roots.project}/meta-data/suites.json'
+mcp_file = '${roots.project}/meta-data/mcp.json'
+
 # Task 设置（可选，缺省为本配置文件目录下的 meta-data/tasks.json）。
 # Task 由后端保存，本机与局域网设备共享；电脑与手机在“Task”tab 中管理。
 # 普通相对路径按本配置文件目录解析；拼错的字段／段名会让启动明确失败。

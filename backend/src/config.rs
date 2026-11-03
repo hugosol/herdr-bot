@@ -58,6 +58,9 @@ pub struct Config {
     /// `meta-data/tasks.json`。
     #[serde(default)]
     pub tasks: TasksConfig,
+    /// Authoritative Suite definitions and read-only central MCP catalog.
+    #[serde(default)]
+    pub suites: SuitesConfig,
     /// Herdr 控制设置；整个 `[herdr]` 段必须显式配置目标 Workspace 名称。
     ///
     /// 这一段不是后备缺省：默认 Workspace 由部署者明确指定，缺失、空串或纯空白都会让
@@ -284,6 +287,22 @@ impl Default for ZonesConfig {
             create_parent_directory: None,
             preview_limit_bytes: preview_limit_bytes_by_default(),
             refresh_interval_seconds: refresh_interval_seconds_by_default(),
+        }
+    }
+}
+
+/// Suite paths belong to deployment configuration, not generated output.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SuitesConfig {
+    pub definition_file: PathBuf,
+    pub mcp_file: PathBuf,
+}
+impl Default for SuitesConfig {
+    fn default() -> Self {
+        Self {
+            definition_file: PathBuf::from("meta-data/suites.json"),
+            mcp_file: PathBuf::from("meta-data/mcp.json"),
         }
     }
 }
@@ -647,6 +666,8 @@ impl Config {
             ("zones.registry_file", &mut config.zones.registry_file),
             ("tasks.storage_file", &mut config.tasks.storage_file),
             ("tasks.metadata_file", &mut config.tasks.metadata_file),
+            ("suites.definition_file", &mut config.suites.definition_file),
+            ("suites.mcp_file", &mut config.suites.mcp_file),
             ("sessions.history_file", &mut config.sessions.history_file),
             ("scheduler.map_directory", &mut config.scheduler.map_directory),
             ("scheduler.bot_directory", &mut config.scheduler.bot_directory),

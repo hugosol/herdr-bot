@@ -51,6 +51,7 @@ pub mod portability_migration;
 pub mod prompts;
 pub mod shutdown;
 pub mod tasks;
+pub mod suites;
 pub mod zones;
 
 use std::convert::Infallible;
@@ -136,6 +137,7 @@ pub struct AppState {
     /// 与固定操作、关机路径完全解耦：Task 管理只读取与写入 Task 存储文件，不执行任何脚本、
     /// 不创建也不关闭 Chat。
     pub tasks: Arc<tasks::Tasks>,
+    pub suites: Arc<suites::Suites>,
     /// Service-owned Map root, never derived from zone or request data.
     pub map_directory: PathBuf,
     /// Service-owned shared capability definitions, independent of Map storage.
@@ -248,6 +250,7 @@ pub fn app_with_state(
             config.tasks.metadata_file.clone(),
             config.roots.clone(),
         )),
+        suites: Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone())),
         map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
         bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
         run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
@@ -295,6 +298,8 @@ pub fn app_with_state(
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(list_zones).post(register_zone).put(rebind_zone).delete(unregister_zone))
+        .route("/api/suites", get(suites::list).post(suites::create))
+        .route("/api/suites/{id}", get(suites::get).put(suites::update).delete(suites::delete))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
