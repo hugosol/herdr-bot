@@ -47,7 +47,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ## 修改测试或夹具
 
-- **所有权**：每个用例独占可变临时数据与动态回环端口；同一竞争／重启场景保留必要共享。浏览器夹具探测端口后到子进程绑定前仍存在竞争；仅动态端口的已确认地址占用错误可重新分配（最多 32 次），固定地址及其他启动失败直接报错，不重试业务操作。自动发现目标不等于自动消除资源冲突。
+- **所有权**：每个用例独占可变临时数据与动态回环端口；同一竞争／重启场景保留必要共享。临时夹具目录须原子创建并跳过已有目录，不能因 Windows 重用 PID 而接管旧运行残留的数据。浏览器夹具探测端口后到子进程绑定前仍存在竞争；仅动态端口的已确认地址占用错误可重新分配（最多 32 次），固定地址及其他启动失败直接报错，不重试业务操作。自动发现目标不等于自动消除资源冲突。
 - **路径**：真实子进程使用测试拥有的临时目录。普通相对路径按声明配置文件的父目录解析，扩展入口按元数据文件父目录解析；cwd 可以与配置目录不同。需要根引用时生成隔离根文件，不读取开发者的 `paths.local.toml`。启动期 `data_directory` 与迁移标记也要归测试所有。
 - **环境**：`HERDR_FIXTURE_DIR`、`HERDR_BOT_FIXTURE_RECORD_DIR` 会覆盖默认夹具位置；继承环境时保证它们不把不同用例导向同一可变目录。
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
@@ -56,6 +56,27 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
 - **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
+
+## OMP Suite 四语言 LSP 真实验收
+
+`python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+python scripts/test-real-herdr-suite-lsp.py `
+  --herdr 'C:/installed/herdr/herdr.exe' `
+  --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+  --backend 'backend/target/debug/herdr-bot.exe' `
+  --rust-toolchain 'C:/installed/rustup/toolchains/stable-x86_64-pc-windows-msvc'
+```
+
+`--rust-toolchain` 只设置子进程 `RUSTUP_TOOLCHAIN` 为既有工具链目录，同时使用独占 `CARGO_HOME`，避免 HOME 隔离后 Rustup 代理找不到原先安装的组件；不安装组件、不读取用户 Cargo 凭据、不改 PATH。不使用 Rustup 代理的部署可省略。四种原生命令为 `rust-analyzer`、`typescript-language-server --stdio`、`jdtls`、`pyright-langserver --stdio`；TS 还需兼容 TypeScript，Java 需 JDK／JDT LS，不能仅凭 launcher 或版本号判断可工作。
+
+入口在独占 Temp 配置中声明批准的四服务，通过公开 Task／Chat HTTP → 真 Herdr → PATH 上安装版 OMP，为 Rust／TypeScript／Java／Python 分别创建项目标记和源文件。受控数值回环模型只调用真实 `write xd://lsp`，检查 `capabilities` 中实际 initialize 响应及随后 `status` 的 `ready`，并通过 Windows OS 查询独立观察所属新增语言服务进程。它证明原生启动和发现机制，不证明模型自主开发质量。缺可执行程序负例保留 Rust 项目标记，由测试拥有的用户 LSP 配置将命令指向确实不存在的程序：原生能力查询拒绝、status 不包含服务、OS 没有所属 rust-analyzer 进程。正例用项目配置覆盖该用户命令，核对项目 > 用户 > Suite 的原生优先级；不关闭其他默认语言服务。
+
+每次输出独占目录内 `evidence.json`，记录源码 revision／diff／哈希、交付二进制与安装 CLI 哈希、版本、隔离来源、实际请求／响应、Herdr terminal、所属进程及每场景 `verified`。HOME／APPDATA／XDG、agent 数据、后端持久化、命名 Herdr server 和动态回环端口均隔离；固定扩展只记录原生进程身份，不替换 LSP 或内部 monkey patch。持续消费服务日志，正常及失败均停止所属服务、以持有的 Windows 进程句柄确认退出；原始错误与清理错误分别保留。不连接用户 Chat／daemon，不复制认证或操作真实关机。
+
+默认 `--language all` 才是四语言 P37 验收；缺任何程序会记录 `blockers`、保持未验证并非零退出，已有声明、非空日志、零退出的其他场景均不能冲抵。`--language rust-analyzer` 等参数只用于较窄反馈，成功也不是完整 P37 通过。P38 UI 只说明声明／运行的区别，不伪造服务健康状态；运行事实以原生反馈和 OS 观察为准。
 
 ## OMP Suite 技能真实消费验收
 
@@ -105,6 +126,29 @@ foreach ($scenario in @('central', 'precedence', 'empty', 'full', 'unreachable')
 - `unreachable`：测试独占动态回环端口绑定但不监听，产生真实连接拒绝；Chat 发起仍被接受，其他服务器实际完成初始化，原生终端明确显示该服务器 `Failed: unreachable`／`ECONNREFUSED`。此场景不要求模型 turn 已开始或可用工具已调用，不将发起成功称为 MCP 就绪；可用服务器实际调用分别由其他场景承担。
 
 每次输出独占 Temp 的 `evidence.json`，保留实际模型请求／结果、HTTP、MCP wire／连接次数、原生终端管理报告、源码 revision／diff／文件及产物哈希。MCP 夹具在初始化前等待 runner 持有真实 Windows 进程句柄，独立 watcher 持续观察，包括宿主退出时可能出现的晚到 reconnect；停止所属服务后清理并确认每个所属进程退出；来不及观察就已被宿主终止的晚到 PID，单独记录 Windows `OpenProcess` 的 `ERROR_INVALID_PARAMETER`（87）作为该 PID 已不存在的独立证据，访问拒绝等其他错误仍失败。原始验证失败与清理失败分别记录；缺实际依赖或任一能力不满足均非零，不 skip。回环确定模型只证明宿主协议与执行机制，不证明真实模型的自主业务遵循。此专项不要求技能目录链接权限，不替代非空技能专项、页面验收或 Pi MCP 场景。
+## OMP Suite 扩展包真实消费验收
+
+`python scripts/test-real-herdr-suite-extensions.py` 专项负责 P7（OMP 扩展）与 P9（OMP）的 S2/S3/S4 行为证据。先构建当前 worktree 后端，再使用已安装 Herdr 和 PATH 上正常交付的 OMP；依赖不由 runner 安装，不改系统 PATH，不读取用户凭据或启动用户 Chat：
+
+```powershell
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
+$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
+try {
+  python scripts/test-real-herdr-suite-extensions.py `
+    --herdr 'C:/installed/herdr/herdr.exe' `
+    --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+    --backend 'backend/target/debug/herdr-bot.exe'
+} finally {
+  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
+}
+```
+
+入口复用技能专项的独占配置、动态回环模型／HTTP 端口、持续消费日志和所属进程清理。一个 Suite 声明相对入口文件与集中根引用包目录，均包含空格；包目录的原生 manifest 选择非 index 入口。两个不同 Chat cwd 均放置错误相对入口哨兵。真实工厂 import 同包 sibling TS 和 `node_modules` 模块，真实工具读取 `import.meta.url` 相对 JSON 资产并计算，独立字面预期为 `RELATIVE-ASSET-412:64` 与 `ROOT-ASSET-905:80`。受控模型通过 OMP 原生 `write xd://...` 调用工具，不伪造工厂或工具执行；此证据只证明机制，不证明真实模型自主遵循。
+
+验收同时核对生成位置中的包目录真符号链接、入口清单、来源文件字节不变及固定扩展仍加载。输出的独占 Temp `evidence.json` 保留公开 HTTP 结果、原生模型请求／工具结果、源码与可执行文件哈希、原始日志和分开的清理错误。链接权限不足（如 Windows `os error 1314`）或任何真实依赖缺失时非零退出，明确记为未验证；源码直接加载成功、生成列表存在、junction 或普通套件通过均不能替代最终链接装配的 S4 成功证据。
+
+P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_extensions`：真实 Windows 独占共享锁分别阻止入口文件及包内资产读取；另用普通文件只阻塞扩展输出子目录，保持技能装配可写。全部经公开预览／启动 HTTP 检查明确拒绝且 Herdr 无调用，不需要链接权限，不代替上述真实成功场景。
 
 ## 真实 Herdr 自动关闭验收（P22）
 

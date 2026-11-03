@@ -363,6 +363,7 @@ impl Tasks {
         }).map_err(TaskError::Unreadable)??;
         let mut args = self.suites.prepare_skills(suite.as_ref(), task.agent, &self.roots)?;
         args.extend(self.suites.prepare_mcp(suite.as_ref(), task.agent, &self.roots)?);
+        args.extend(self.suites.prepare_extensions(suite.as_ref(), task.agent, &self.roots)?);
         Ok(args)
     }
 
