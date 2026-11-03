@@ -51,7 +51,7 @@ test('两宿主固定集合准确显式启动，固定项不可取消，创建�
   const ext = path.join(root, 'extensions')
   const cases = [
     { agent: 'omp', entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
-    { agent: 'pi', entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts'] },
+    { agent: 'pi', entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
   const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zonePath, relative))
@@ -79,7 +79,7 @@ test('两宿主固定集合准确显式启动，固定项不可取消，创建�
     const start = server!.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!
     expect(start.agent_kind).toBe(scenario.agent)
     const args = start.args as string[]
-    expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
+    expect(args).toEqual(['--no-extensions', ...(scenario.agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toMatch(/^固定指示\n\n本次输入(?:\n\n|$)/)
   }

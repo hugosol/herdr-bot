@@ -322,7 +322,7 @@ export default function(pi) {
             self.http('/api/zones', {'id': f'owned-{index}', 'path': str(zone)})
             saved = self.http('/api/tasks', {'name': f'{self.scenario}-{index}', 'chatName': '{task.name}-{chat.id}',
                 'agent': agent, 'taskType': 'normal', 'model': 'probe', 'thinking': 'off', 'skill': None,
-                'prompt': 'Consume the owned acceptance resources.', 'extensions': [], 'suite': 'shared'})['tasks']
+                'prompt': 'Consume the owned acceptance resources.', 'suite': 'shared'})['tasks']
             task = next(task for task in saved if task['name'] == f'{self.scenario}-{index}')
             preview = self.http('/api/chats/preview', {'zone': f'owned-{index}', 'taskId': task['id']})
             before_tabs = self.herdr('tab', 'list')
@@ -354,6 +354,7 @@ export default function(pi) {
                     case['mcpTools'].append('alias_file')
                     case['equivalenceOracle'] = 'Pi 1.5 docs/mcp.md: same URL under different names retains separately named servers/sign-ins; unlike OMP, URL equality is not name identity.'
                 case['expected'] += ['NATIVE-FILE-113'] + (['SUITE-FILE-997'] if selected or self.scenario == 'append' else [])
+                case['expectedNativeServerNames'] = list(case['mcpTools'])
             self.evidence['cases'].append(case)
             self.model.case = case
             wire_start = len(self.mcp.wire)
@@ -399,6 +400,8 @@ export default function(pi) {
                             return text if 'unreachable' in text and any(x in text.lower() for x in ['failed', 'error', 'disconnected']) else None
                         return text if 'native_file' in text and 'connected' in text else None
                     until('native /mcp status', status, seconds=self.args.timeout)
+                    require(all(name in case['nativeMcpStatus'] for name in case['expectedNativeServerNames']),
+                            ('Native MCP status lost a configured server', case['expectedNativeServerNames'], case['nativeMcpStatus']))
                     if self.scenario == 'disabled':
                         require('suite_file' in case['nativeMcpStatus'] and 'disabled' in case['nativeMcpStatus'].lower(),
                                 ('Native disabled status missing', case['nativeMcpStatus']))

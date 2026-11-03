@@ -97,8 +97,9 @@ for (const agent of ['omp', 'pi'] as const) {
     const preview = await post('/api/chats/preview', { taskId: task.id, zone })
     const chat = await post('/api/chats', { taskId: task.id, zone, chatId: preview.chatId, input: 'STANDALONE INPUT' }, 202)
     await expect.poll(async () => (await (await fetch(`${host.baseURL}/api/chats/${chat.id}`)).json()).stage).toBe('succeeded')
-    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`]
-    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...entries.flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
+    const nativeBuiltins = agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []
+    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`, ...(agent === 'pi' ? ['pi-suite'] : [])]
+    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...entries.flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
     fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
     fs.writeFileSync(path.join(maps, 'shared.json'), JSON.stringify({ title: 'Shared Task', description: '', nodes: { A: { title: 'Shared node', bot_id: 'worker', input: 'WORKFLOW INPUT', zone, blocked_by: [] } } }))
@@ -107,7 +108,7 @@ for (const agent of ['omp', 'pi'] as const) {
     const run = await post('/api/scheduler/maps/shared.json/runs', { managerTaskId: manager.id, zone, userInput: 'MANAGER INPUT' }, 201)
     identity('shared-node')
     expect((await post('/api/workflow/manager/dispatch', { sessionId: 'shared-manager', nodes: ['A'] })).results[0].status).toBe('running')
-    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...[...entries, `${agent}-node-chat`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
+    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...[...entries, `${agent}-node-chat`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     expect((await host.getTasks()).tasks.find(item => item.id === task.id)).toEqual(task)
     const history = JSON.parse(fs.readFileSync(path.join(root, 'session-history.json'), 'utf8'))
     expect(history.filter((item: { sourceTaskId: string }) => item.sourceTaskId === task.id)).toHaveLength(2)
