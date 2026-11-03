@@ -2,6 +2,7 @@
 //! operation. Catalog operations never read generated output; the private skills
 //! adapter prepares native launch resources separately from definition storage.
 mod skills;
+mod mcp;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
