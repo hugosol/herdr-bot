@@ -51,7 +51,7 @@ for (const agent of ['pi', 'omp']) {
     const status = row.getByRole('status')
     for (const text of ['恢复存在降级', 'Selected optional', 'selected-optional', '入口不存在', '跳过', '仍关闭扩展自动发现', '已确认恢复同一']) await expect(status).toContainText(text)
     const resumed = server.herdrCalls().slice(before)
-    expect(resumed.find(c => c.kind === 'agent_start')!.args).toEqual(['--no-extensions', '--extension', fixed, agent === 'omp' ? '--resume' : '--session', native])
+    expect(resumed.find(c => c.kind === 'agent_start')!.args).toEqual(['--no-extensions', ...(agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), '--extension', fixed, agent === 'omp' ? '--resume' : '--session', native])
     expect(resumed.some(c => ['agent_prompt', 'agent_input'].includes(String(c.kind)))).toBe(false)
     await page.screenshot({ path: info.outputPath(`${agent}-partial-filter.png`), fullPage: true })
 
@@ -71,7 +71,7 @@ for (const agent of ['pi', 'omp']) {
     await expect(alert).not.toContainText('已确认恢复同一')
     const emptyCalls = server.herdrCalls().slice(emptyBefore)
     expect(emptyCalls.filter(c => c.kind === 'agent_start')).toHaveLength(1)
-    expect(emptyCalls.find(c => c.kind === 'agent_start')!.args).toEqual(['--no-extensions', agent === 'omp' ? '--resume' : '--session', native])
+    expect(emptyCalls.find(c => c.kind === 'agent_start')!.args).toEqual(['--no-extensions', ...(agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), agent === 'omp' ? '--resume' : '--session', native])
     expect(emptyCalls.some(c => ['agent_prompt', 'agent_input', 'agent_focus'].includes(String(c.kind)))).toBe(false)
     await page.screenshot({ path: info.outputPath(`${agent}-empty-unconfirmed.png`), fullPage: true })
     const evidence = info.outputPath(`${agent}-extension-filter-NOT-real-loading.json`)

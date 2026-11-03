@@ -55,8 +55,8 @@ test('六种 Task 集合准确显式启动，固定项不可取消，创建页�
     { agent: 'omp', extensions: ['omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts'] },
     { agent: 'omp', extensions: ['omp-connect-bot'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-connect-bot.ts'] },
     { agent: 'omp', extensions: ['omp-connect-bot', 'omp-codebase-tools'], entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-codebase-tools.ts', 'omp-connect-bot.ts'] },
-    { agent: 'pi', extensions: [], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts'] },
-    { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-codebase-tools.ts'] },
+    { agent: 'pi', extensions: [], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts'] },
+    { agent: 'pi', extensions: ['pi-codebase-tools'], entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts', 'pi-codebase-tools.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
   const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zonePath, relative))
@@ -86,7 +86,7 @@ test('六种 Task 集合准确显式启动，固定项不可取消，创建页�
     const start = server!.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!
     expect(start.agent_kind).toBe(scenario.agent)
     const args = start.args as string[]
-    expect(args).toEqual(['--no-extensions', ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
+    expect(args).toEqual(['--no-extensions', ...(scenario.agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), ...scenario.entries.flatMap(entry => ['--extension', path.join(ext, entry)])])
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toHaveLength(index + 1)
     expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt').at(-1)!.text).toMatch(/^固定指示\n\n本次输入(?:\n\n|$)/)
   }

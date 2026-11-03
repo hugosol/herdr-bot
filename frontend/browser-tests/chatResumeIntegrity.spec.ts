@@ -107,7 +107,7 @@ for (const agent of ['pi', 'omp']) {
       expect(result.target.workspaceId).toBe('w-fallback')
       const calls = server!.herdrCalls().slice(offset)
       expect(calls.filter(c => c.kind === 'agent_start')).toHaveLength(1)
-      expect(calls.find(c => c.kind === 'agent_start')!.args).toEqual([...(policy === 'filtered' ? ['--no-extensions', '--extension', s.fixed] : []), agent === 'pi' ? '--session' : '--resume', s.id])
+      expect(calls.find(c => c.kind === 'agent_start')!.args).toEqual([...(policy === 'filtered' ? ['--no-extensions', ...(agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), '--extension', s.fixed] : []), agent === 'pi' ? '--session' : '--resume', s.id])
       // History rendering may independently resolve Workspace labels.
       expect(calls.filter(c => c.kind !== 'workspace_list').map(c => c.kind)).toEqual(['agent_list', 'tab_create', 'agent_start', 'agent_get', 'agent_focus'])
       expect(fs.readFileSync(s.historyFile)).toEqual(historyBefore)
@@ -285,7 +285,7 @@ for (const agent of ['pi', 'omp']) {
       expect(calls.filter(c => c.kind === 'tab_create')).toHaveLength(1)
       expect(calls.filter(c => c.kind === 'agent_start')).toHaveLength(1)
       expect(calls.filter(c => c.kind === 'agent_focus')).toHaveLength(1)
-      expect(calls.find(c => c.kind === 'agent_start')!.args).toEqual([...(policy === 'filtered' ? ['--no-extensions', '--extension', s.fixed] : []), agent === 'pi' ? '--session' : '--resume', s.native])
+      expect(calls.find(c => c.kind === 'agent_start')!.args).toEqual([...(policy === 'filtered' ? ['--no-extensions', ...(agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []), '--extension', s.fixed] : []), agent === 'pi' ? '--session' : '--resume', s.native])
       expect(calls.every(c => ['workspace_list', 'agent_list', 'tab_create', 'agent_start', 'agent_focus'].includes(String(c.kind)))).toBe(true)
       expect(server!.herdrTabs().at(-1)!.pane_id).toBe(started.pane_id)
       await saveEvidence(page, info, `${agent}-${policy}-retry-located`, { located, retryFailures, calls, retainedTarget: started })

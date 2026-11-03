@@ -94,6 +94,12 @@ bun run check:integrations
 bun run test
 ```
 
+浏览器启动与恢复回归对过滤后的 Pi 参数保留独立、完整的字面预期：
+`builtin:mcp`、`builtin:tool-search`、`builtin:codemode` 仍显式加载，普通 Task
+还须包含固定 `pi-suite`；恢复时缺失的文件扩展可以降级跳过，但不能连带关闭原生
+MCP 或 codemode。无来源 Task 的恢复仍保持原生发现，不套用过滤参数。
+这些 argv 检查只证明启动接线，不替代上述真实 S4 矩阵。
+
 toolkit 跨仓 regression 使用当前 herdr-bot 的安全壳而非生产关机二进制：将
 `HERDR_BOT_REPO` 指向参与根，`HERDR_BOT_BINARY` 指向该根构建的
 `backend/target/debug/examples/safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 指向
