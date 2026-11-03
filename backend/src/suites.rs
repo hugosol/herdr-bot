@@ -1,7 +1,8 @@
 //! Suite definitions are re-read from one user-maintained JSON authority on every
-//! operation. Catalog operations never read generated output; the private skills
-//! adapter prepares native launch resources separately from definition storage.
+//! operation. Catalog operations never read generated output; private resource
+//! adapters prepare native launch resources separately from definition storage.
 mod skills;
+mod extensions;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
