@@ -80,16 +80,7 @@
 .tasks .task-dialog .zone-register { background: var(--task-ink); color: var(--task-ground); border-color: var(--task-ink); }
 .tasks .task-delete-dialog { background: var(--task-ground); color: var(--task-ink); }
 .tasks .task-delete-dialog h2 { font-size: 18px; }
-/* Only the Task surface changes the shell; other workspaces retain their layout. */
-.app-layout:has(#panel-tasks:not([hidden])) .layout-nav-icon { border: 0; border-radius: 0; }
-.app-layout:has(#panel-tasks:not([hidden])) .layout-nav-item { font-size: 12px; box-shadow: none; }
 @media (max-width: 1100px) {
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-nav { position: static; width: 100%; padding: 4px 16px; border-right: 0; }
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-nav-track { display: flex; overflow-x: auto; gap: 16px; }
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-nav-group { display: flex; gap: 4px; margin: 0; padding: 0; border: 0; }
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-nav-item { flex-direction: row; min-height: 44px; padding: 8px 10px; font-size: 12px; white-space: nowrap; }
-  .app-layout[data-layout="expanded"]:has(#panel-tasks:not([hidden])) .layout-nav-icon { display: none; }
   .task-item__overview { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, .8fr) auto; gap: 16px; }
 }
 @media (max-width: 640px) {

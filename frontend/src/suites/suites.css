@@ -2,7 +2,6 @@
 .panel:has(.suites-panel) { width: min(100%, 1256px); padding: 28px; }
 .suites-panel { --suite-ground: #14161a; --suite-surface: #1d2026; --suite-raised: #272b32; --suite-ink: #f2f4f8; --suite-muted: #b3bdcc; --suite-accent: #a8c6ff; --suite-line: #353b44; --suite-negative: #ffb4ad; color: var(--suite-ink); font-size: 14px; line-height: 1.5; }
 .suites-panel * { box-sizing: border-box; }
-.app-layout:has(#panel-suite:not([hidden])) .layout-nav-item { font-size: 12px; box-shadow: none; }
 .suites-panel h2 { font-size: 24px; line-height: 1.3; margin: 0; }
 .suites-panel h3 { font-size: 16px; line-height: 1.5; margin: 0 0 16px; font-weight: 600; }
 .suites-panel .scope-note, .suites-subtitle { color: var(--suite-muted); font-size: 13px; line-height: 1.6; margin: 12px 0; }
