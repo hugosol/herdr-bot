@@ -5,9 +5,9 @@ import { orderedMapNodeIds } from './mapNodeOrder'
 import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
-import { NodeSettings } from './NodeSettings'
 import { RunLaunchForm } from './RunLaunchForm'
 import './scheduler.css'
+import './scheduler-workspace.css'
 
 export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones }: { active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
   const botView = view === 'bot'
@@ -15,6 +15,9 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
     abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
+  const [directoryOpen, setDirectoryOpen] = useState(false)
+  const inspectorHeading = useRef<HTMLHeadingElement>(null)
+  const editorHeading = useRef<HTMLHeadingElement>(null)
   const [filter, setFilter] = useState('')
   const [botFilter, setBotFilter] = useState('')
   const deleteMapDialog = useRef<HTMLDialogElement>(null)
@@ -46,6 +49,12 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     if (botView && schedulerRoot.current?.contains(document.activeElement)) botHeading.current?.focus()
   }, [botView, botId])
 
+  useEffect(() => {
+    if (!active || botView) return
+    if (draft?.kind === 'node') editorHeading.current?.focus()
+    else if (selectedId !== null && window.matchMedia('(max-width: 1100px)').matches) inspectorHeading.current?.focus()
+  }, [draft?.kind, selectedId, active, botView])
+
   const bot = bots.kind === 'ready' ? bots.bots.find((item) => item.id === botId) : undefined
   const botProblem = bots.kind === 'ready' ? bots.problems?.find((item) => item.bot_id === botId) : undefined
   const map = preview?.kind === 'ready' ? preview.map : null
@@ -65,28 +74,38 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (editorState.selectFile(name)) setLaunchOpen(false)
+    if (editorState.selectFile(name)) { setLaunchOpen(false); setDirectoryOpen(false) }
   }
 
   function selectRelatedNode(id: string) {
     selectNode(id)
-    nodeButtons.current.get(id)?.focus()
+    if (!window.matchMedia('(max-width: 1100px)').matches) nodeButtons.current.get(id)?.focus()
   }
 
-  const editor = draft && <form className="scheduler-editor" aria-label={draft.kind === 'node' ? 'node 编辑' : 'Bot 编辑'} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
-    <h3>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3>
-    <label>{draft.kind === 'node' ? 'node_id' : 'Bot ID'}<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>
-    <p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
-    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"relative/file.txt",zone_id:"namespace/name"}（zone_id 可省略，默认使用本次 Run 的管理者 zone，不使用 node zone；path 必须为 / 分隔的相对路径，不可越界） 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p>
-    {draft.kind === 'Bot' ? <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />
-      : draft.settings && <NodeSettings value={draft.settings} disabled={editingBusy} onChange={settings => editDraft({ settings })} />}
-    <label htmlFor="definition-content-json">{draft.kind} 内容 JSON</label><textarea id="definition-content-json" aria-label={draft.kind === 'node' ? 'node 内容 JSON' : 'Bot 内容 JSON'} spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} />
-    <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>{draft.kind === 'Bot' ? 'save' : '保存 node'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>{draft.kind === 'Bot' ? 'cancel' : '放弃编辑'}</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={abandonDraft}>返回 Map</button>}</div>
+  function closeNode() {
+    if (!abandonDraft()) return
+    const id = selectedId
+    selectNode(null)
+    requestAnimationFrame(() => { if (id) nodeButtons.current.get(id)?.focus() })
+  }
+
+  const editor = draft && <form className="scheduler-editor" aria-label={draft.kind === 'node' ? 'node 编辑' : 'Bot 编辑'} onFocusCapture={event => {
+    if (draft.kind === 'node' && event.target.matches('input:focus-visible, textarea:focus-visible, select:focus-visible, .scheduler-node-content button:focus-visible, .scheduler-node-content summary:focus-visible')) event.target.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
+    <div className="scheduler-section-heading"><h3 ref={editorHeading} tabIndex={-1}>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3><span>保存后生效</span></div>
+    {draft.kind === 'Bot' && <label>Bot ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>}
+    {draft.kind === 'node' && map && draft.settings && <MapNodeDetails key={`${draft.file}:${draft.initialId}`} map={map} nodeId={draft.id} catalog={bots.kind === 'ready' ? bots : undefined} onSelect={selectRelatedNode} edit={{ content: draft.content, settings: draft.settings, create: draft.create, disabled: editingBusy, onContentChange: content => editDraft({ content }), onSettingsChange: settings => editDraft({ settings }), onIdChange: id => editDraft({ id }) }} />}
+    <details className="scheduler-format-help"><summary>字段格式与保存约束</summary><p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
+    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"relative/file.txt",zone_id:"namespace/name"}（zone_id 可省略，默认使用本次 Run 的管理者 zone，不使用 node zone；path 必须为 / 分隔的相对路径，不可越界） 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p></details>
+    {draft.kind === 'Bot' && <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />}
+    {draft.kind === 'Bot' && <><label htmlFor="definition-content-json">Bot 内容 JSON</label><textarea id="definition-content-json" aria-label="Bot 内容 JSON" spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} /></>}
+    <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>{draft.kind === 'Bot' ? 'save' : '保存 node'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>{draft.kind === 'Bot' ? 'cancel' : '放弃编辑'}</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={closeNode}>返回 Map</button>}</div>
   </form>
 
   const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={refreshAll}>{botView ? 'refresh' : '刷新全部'}</button>
 
-  return <section ref={schedulerRoot} className="scheduler" aria-label="Map 目录">
+  return <section ref={schedulerRoot} className={`scheduler${!botView ? ' scheduler-workspace' : ''}`} aria-label="Map 目录" data-node-open={selectedId !== null || draft?.kind === 'node' ? 'true' : undefined} data-directory-open={directoryOpen || file === null ? 'true' : undefined}>
+    {!botView && <header className="scheduler-workspace-heading"><div><h1>Scheduler</h1><p>Map 定义与节点编排</p></div><button type="button" className="scheduler-directory-toggle" aria-expanded={directoryOpen || file === null} aria-controls="scheduler-map-directory" onClick={() => setDirectoryOpen(value => !value)}>Map 目录</button></header>}
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
       {returnProblem && <p role="alert">{returnProblem}</p>}
@@ -133,7 +152,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         </div>
       </div>
     </div> : <div className="scheduler-layout">
-      <aside className="scheduler-directory" aria-label="Map 文件目录">
+      <aside id="scheduler-map-directory" className="scheduler-directory" aria-label="Map 文件目录">
         <div className="scheduler-section-heading scheduler-directory-heading"><h3 ref={directoryHeading} tabIndex={-1}>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
         <label className="scheduler-filter">筛选 Map<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="名称或文件名…" /></label>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
@@ -150,8 +169,8 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       </aside>
       <div className="scheduler-main">
         {editError && <p role="alert">{editError}</p>}
-        {draft?.kind === 'node' && editor}
-        {file !== null && !draft && <div className="scheduler-actions">
+        {draft?.kind === 'node' && !map && editor}
+        {file !== null && !draft && <div className="scheduler-actions scheduler-map-actions">
           {map && <>
             <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
             <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
@@ -166,7 +185,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
-        {map && <section aria-label="Map 预览">
+        {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
           <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
@@ -188,15 +207,10 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
               </section>
             </div>
             <aside className="scheduler-inspector" aria-label="节点检查器">
-              {selectedId !== null && Object.hasOwn(map.nodes, selectedId) ? <>
-                <div className="scheduler-inspector-heading"><span>节点详情</span><button type="button" aria-label="关闭节点详情" onClick={() => {
-                  nodeButtons.current.get(selectedId)?.focus()
-                  selectNode(null)
-                }}>关闭</button></div>
+              {(selectedId !== null || draft?.kind === 'node') && <div className="scheduler-inspector-heading"><h2 ref={inspectorHeading} tabIndex={-1}>{draft?.kind === 'node' ? '节点编辑' : '节点详情'}</h2><button type="button" disabled={editingBusy} aria-label="关闭节点详情" onClick={closeNode}>返回 Map</button></div>}
+              {draft?.kind === 'node' ? editor : selectedId !== null && Object.hasOwn(map.nodes, selectedId) ? <>
                 {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
-                <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode}
-                  botProblem={botProblems[selectedId]} onBot={openBot}
-                  bot={bots.kind === 'ready' && !botProblems[selectedId] ? bots.bots.find((bot) => bot.id === map.nodes[selectedId].bot_id) : undefined} />
+                <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode} catalog={bots.kind === 'ready' ? bots : undefined} />
               </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone ID 引用、前置依赖与共享 Bot。</p></div>}
             </aside>
           </div>

@@ -138,7 +138,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(calls.some((call) => call.url === '/api/chats')).toBe(false)
   })
 
-  it('每个 zone 行都有“+”，弹窗绑定所选 zone，名称规则仅本地编辑并实时预览', async () => {
+  it('从 zone 行发起 Chat，弹窗绑定所选 zone，名称规则仅本地编辑并实时预览', async () => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
@@ -165,8 +165,6 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     await user.click(screen.getByTestId('tab-files'))
     const list = await screen.findByTestId('zone-list')
     const rows = within(list).getAllByTestId('zone-item')
-    expect(within(rows[0]).getByTestId('zone-create-chat')).toHaveTextContent('+')
-    expect(within(rows[1]).getByTestId('zone-create-chat')).toHaveTextContent('+')
 
     await user.click(within(rows[1]).getByTestId('zone-create-chat'))
     const dialog = screen.getByTestId('chat-creation-dialog')

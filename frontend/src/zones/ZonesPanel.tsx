@@ -276,7 +276,7 @@ export function ZonesPanel({
         aria-label={`${summary.pendingCount} 项待提交${summary.conflict ? '，存在冲突' : ''}`}
         title={`${summary.pendingCount} 项待提交${summary.conflict ? '，存在冲突' : ''}`}
       >
-        {summary.pendingCount} 项待提交{summary.conflict ? ' · 冲突' : ''}
+        {summary.pendingCount}
       </span>
     )
   }
@@ -441,7 +441,6 @@ export function ZonesPanel({
                     )}
                   {badgeFor(registration.path)}
                   </span>
-                  <span className="zone-item__browse" aria-hidden="true">浏览 →</span>
                 </button>
                 <div className="zone-item__actions">
                 <button

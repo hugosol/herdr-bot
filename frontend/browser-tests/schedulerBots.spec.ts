@@ -11,8 +11,8 @@ const weather = { id: 'weather', name: '目的地天气摘要', when: '出行前
 
 // Approved S1 P2/P3: literal capability fields distinguish a readable preview
 // from an editor, a stale/wrong identity, or node parameters. Both the list and
-// three nodes must open the same preview; the Map and old inline details are absent.
-test('P2 P3 list and nodes open the same readable preview for the exact shared identity', async ({ page }, testInfo) => {
+// three node references resolve to the same catalog identity; previews hide the Map.
+test('P2 P3 catalog previews match exact shared identities referenced by nodes', async ({ page }, testInfo) => {
   server = await startServer({ herdr: {} })
   const maps = path.join(server.cwd, 'meta-data', 'workflow-maps')
   const bots = path.join(server.cwd, 'meta-data', 'bots')
@@ -56,16 +56,17 @@ test('P2 P3 list and nodes open the same readable preview for the exact shared i
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(capability).toHaveCount(0)
-    const entry = details.getByRole('button', { name: 'Bot 明细', exact: true })
-    await expect(entry).not.toHaveAttribute('aria-expanded')
-    await entry.focus()
+    await expect(details.getByRole('button', { name: 'Bot 明细', exact: true })).toHaveCount(0)
+    await page.getByTestId('tab-bot').click()
+    await listing.getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).focus()
     await page.keyboard.press('Enter')
     await expectWeather()
     await expect(details).toHaveCount(0)
     await page.getByTestId('tab-scheduler').click()
   }
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对额度 B', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await listing.getByRole('button', { name: '额度恢复时间 · quota', exact: true }).click()
   await expect(capability.getByText('quota', { exact: true })).toBeVisible()
   for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
@@ -130,8 +131,8 @@ test('P6 P16 configured config-relative bots are independent and reusable across
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: node, exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
     await expect(details.getByTestId('node-input')).toContainText(city)
-    await expect(details.getByRole('button', { name: 'Bot 明细', exact: true })).not.toHaveAttribute('aria-expanded')
-    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await page.getByTestId('tab-bot').click()
+    await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
   }
@@ -141,7 +142,8 @@ test('P6 P16 configured config-relative bots are independent and reusable across
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '第二张计划', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '广州天气 C', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '目的地天气摘要 · weather', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('目的地天气摘要')
   expect(await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).toEqual({ bots: [weather] })
   expect(fs.readFileSync(path.join(bots, 'renamed-again.json'), 'utf8')).toBe(bytes)

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { openNodeJson } from './ui'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
@@ -235,7 +236,7 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   await form.getByRole('button', { name: '修正 node B', exact: true }).click()
   const editor = page.getByRole('form', { name: 'node 编辑', exact: true })
   await expect(editor.getByLabel('node_id', { exact: true })).toHaveValue('B')
-  expect(JSON.parse(await editor.getByLabel('node 内容 JSON', { exact: true }).inputValue())).toEqual({ title: '工作', bot_id: 'worker', input: '', blocked_by: ['A'], input_rule: [], output_rule: [] })
+  expect(JSON.parse(await (await openNodeJson(editor)).inputValue())).toEqual({ title: '工作', bot_id: 'worker', input: '', blocked_by: ['A'], input_rule: [], output_rule: [] })
   await expect(editor.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue(`${fixture.zone}-unregistered`)
   await editor.getByRole('textbox', { name: 'zone', exact: true }).fill(fixture.zone)
   await editor.getByRole('button', { name: '保存 node', exact: true }).click()

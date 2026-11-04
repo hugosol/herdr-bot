@@ -7,6 +7,27 @@
 import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
+/** Narrow workspaces show one region at a time; use the same back/directory controls as users. */
+export async function showMapNodes(page: Page) {
+  const nodes = page.getByRole('region', { name: '节点列表', exact: true, includeHidden: true })
+  await expect(nodes).toBeAttached()
+  if (!(await nodes.isVisible())) {
+    await page.getByRole('button', { name: '关闭节点详情', exact: true }).click()
+  }
+}
+export async function showMapDirectory(page: Page) {
+  if (!(await page.getByLabel('筛选 Map', { exact: true }).isVisible())) {
+    await page.getByRole('button', { name: 'Map 目录', exact: true }).click()
+  }
+}
+
+/** Enter the advanced editor through its visible control; never bypass the form UI. */
+export async function openNodeJson(scope: Page | Locator): Promise<Locator> {
+  const json = scope.getByLabel('node 内容 JSON', { exact: true })
+  if (!(await json.isVisible())) await scope.getByRole('button', { name: 'JSON 编辑', exact: true }).click()
+  return json
+}
+
 /** 从变量编辑器 DOM 读取保存格式；变量块按占位符计算，不把删除按钮的 × 计入。 */
 export async function serializedChatRule(locator: Locator): Promise<string> {
   return locator.evaluate((element) =>

@@ -41,9 +41,6 @@
 .zones--register .zone-item__identity code { font-family: inherit; color: var(--zone-muted); font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
 .zones--register .zone-item__path { font-size: 12px; line-height: 1.5; color: var(--zone-muted); overflow-wrap: anywhere; }
 .zone-item__status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 180px; font-variant-numeric: tabular-nums; }
-.zones--register .zone-badge { border: 0; border-radius: 4px; background: var(--zone-raised); color: var(--zone-ink); font-size: 12px; min-width: 0; white-space: nowrap; }
-.zones--register .zone-badge--error, .zones--register .zone-badge[data-conflict='true'] { color: var(--zone-danger); }
-.zone-item__browse { color: var(--zone-muted); font-size: 14px; white-space: nowrap; }
 .zone-item__actions { display: flex; gap: 8px; }
 .zones--register .zone-item__chat, .zones--register .zone-item__remove { width: auto; height: auto; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 6px; font-size: 14px; line-height: 1.5; white-space: nowrap; }
 .zones--register .zone-item__chat { background: var(--zone-raised); color: var(--zone-ink); }
@@ -69,7 +66,6 @@
   .zones__header { align-items: flex-start; }
   .zones--register .zone-item__open { flex-wrap: wrap; gap: 8px 12px; }
   .zone-item__status { max-width: none; }
-  .zone-item__browse { margin-left: auto; }
   .zones--register .zone-item__identity { flex-basis: 100%; }
 }
 @media (max-width: 600px) {
@@ -83,10 +79,9 @@
   .zones__search input { width: 100%; min-width: 0; }
   .zones--register .zone-item { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 16px; }
   .zones--register .zone-item__name { white-space: normal; overflow-wrap: anywhere; }
-  .zones--register .zone-item__open { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .zones--register .zone-item__open { display: grid; grid-template-columns: minmax(0, 1fr); }
   .zones--register .zone-item__status { grid-column: 1 / -1; justify-content: flex-start; }
   .zones--register .zone-item__status:empty { display: none; }
-  .zones--register .zone-item__browse { grid-column: 2; grid-row: 1; }
   .zone-item__actions { justify-content: flex-end; }
   .zones--register .zone-item__chat, .zones--register .zone-item__remove { padding-inline: 12px; }
   .zones--register .zone-item__path { font-size: 12px; }

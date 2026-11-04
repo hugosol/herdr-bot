@@ -64,6 +64,11 @@ async function holdResponse(page: Page, url: string) {
   return { captured: captured.promise, release: release.resolve, delivered: delivered.promise }
 }
 
+async function openBot(page: Page, name: string) {
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: `${name} · shared`, exact: true }).click()
+}
+
 // S1 P26. Old A responses contain the original plan/capability, while B has
 // independently specified new values. Holding both real responses catches
 // selection-scoped Map guards that forget to guard the bot request.
@@ -79,14 +84,14 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '原计划', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await openBot(page, '原能力标题')
   await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
   await page.getByTestId('tab-scheduler').click()
   if (scenario === 'selection') {
     await page.getByRole('button', { name: '新计划', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
-    await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await openBot(page, '原能力标题')
     await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(page.getByText('原能力说明', { exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
@@ -101,7 +106,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '新计划', exact: true }).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '新核对 B', exact: true }).click()
-    await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await openBot(page, '新能力标题')
     await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText('新能力说明', { exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
@@ -123,11 +128,12 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await expect(graph.getByRole('img')).toHaveCount(1)
     await expect(preview.getByRole('img', { name: 'B → A', exact: true })).toBeAttached()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
-    await expect(details.getByRole('heading', { name: '新核对 · B', exact: true })).toBeVisible()
+    await expect(details.getByRole('heading', { name: '新核对', exact: true })).toBeVisible()
+    await expect(details.getByText('B', { exact: true })).toBeVisible()
     await expect(details.getByTestId('node-input')).toContainText('new-beta')
     await expect(details.getByTestId('node-input')).toContainText('17')
     const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
-    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await openBot(page, '新能力标题')
     await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
     await expect(capability.getByText('新能力说明', { exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
@@ -140,7 +146,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
 })
 }
 
-test('Bot return @time-contract cannot restore its old Map after another Map is selected', async ({ page }) => {
+test('Scheduler tab refresh @time-contract cannot replace a subsequently selected Map', async ({ page }) => {
   server = await startServer({ separateCwd: true })
   const fixture = files()
   fs.writeFileSync(fixture.map, JSON.stringify(originalMap))
@@ -150,7 +156,7 @@ test('Bot return @time-contract cannot restore its old Map after another Map is 
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '原计划', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '原核对 B', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await openBot(page, '原能力标题')
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('原能力标题')
   const returning = await holdResponse(page, '**/api/scheduler/maps/current.json')
   try {
@@ -160,7 +166,8 @@ test('Bot return @time-contract cannot restore its old Map after another Map is 
     const listing = page.getByRole('region', { name: '节点列表', exact: true })
     await listing.getByRole('button', { name: '新独立项 C', exact: true }).click()
     const details = page.getByRole('region', { name: 'node 详情', exact: true })
-    await expect(details.getByRole('heading', { name: '新独立项 · C', exact: true })).toBeVisible()
+    await expect(details.getByRole('heading', { name: '新独立项', exact: true })).toBeVisible()
+    await expect(details.getByText('C', { exact: true })).toBeVisible()
     returning.release()
     await returning.delivered
     await page.evaluate(() => {
@@ -172,7 +179,8 @@ test('Bot return @time-contract cannot restore its old Map after another Map is 
     await expect(page.getByRole('button', { name: '原计划', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await expect(page.getByRole('region', { name: 'Map 预览', exact: true }).getByRole('heading', { name: '新计划', exact: true })).toBeVisible()
     await expect(listing.getByRole('button', { name: '新独立项 C', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(details.getByRole('heading', { name: '新独立项 · C', exact: true })).toBeVisible()
+    await expect(details.getByRole('heading', { name: '新独立项', exact: true })).toBeVisible()
+    await expect(details.getByText('C', { exact: true })).toBeVisible()
     await expect(details.getByTestId('node-input')).toContainText('{}')
   } finally {
     returning.release()
@@ -203,7 +211,7 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   const capability = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(details.getByTestId('node-input')).toContainText('old-beta')
-  await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await openBot(page, '原能力标题')
   await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(capability.getByText('原能力说明', { exact: true })).toBeVisible()
   await page.getByTestId('tab-scheduler').click()
@@ -222,11 +230,12 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await expect(graph.getByRole('img', { name: 'B → A', exact: true })).toBeAttached()
   await expect(graph.getByRole('img', { name: 'A → B', exact: true })).toHaveCount(0)
   await expect(graph.getByRole('button', { name: '新核对 B', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(details.getByRole('heading', { name: '新核对 · B', exact: true })).toBeVisible()
+  await expect(details.getByRole('heading', { name: '新核对', exact: true })).toBeVisible()
+  await expect(details.getByText('B', { exact: true })).toBeVisible()
   await expect(details.getByTestId('node-input')).toContainText('new-beta')
   await expect(details.getByTestId('node-input')).toContainText('17')
   await expect(details.getByRole('region', { name: 'blocked_by' }).getByRole('listitem')).toHaveCount(0)
-  await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await openBot(page, '新能力标题')
   await expect(capability.getByRole('heading', { name: '新能力标题', exact: true })).toBeVisible()
   await expect(capability.getByRole('region', { name: 'when', exact: true })).toHaveText('新适用说明')
   await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()

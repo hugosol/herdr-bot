@@ -109,7 +109,6 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   await graph.getByRole('button', { name: '第一项 A', exact: true }).click()
   await expect(details).toBeVisible()
-  await expect(details.getByRole('heading', { name: '第一项 · A', exact: true })).toBeVisible()
   const parameters = details.getByRole('region', { name: 'input', exact: true })
   const prerequisites = details.getByRole('region', { name: 'blocked_by', exact: true })
   for (const text of ['alpha-only', 'zone-does-not-exist', 'bot-does-not-exist', 'extra_undeclared', outsidePath, 'false', '7', 'null']) {
@@ -120,7 +119,6 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   await expect(parameters).not.toContainText('template_only')
   await expect(parameters).not.toContainText('TEMPLATE_DEFAULT_MUST_NOT_APPEAR')
   await graph.getByRole('button', { name: '第二项 B', exact: true }).click()
-  await expect(details.getByRole('heading', { name: '第二项 · B', exact: true })).toBeVisible()
   await expect(parameters).toContainText('beta-only')
   await expect(parameters.getByTestId('node-input')).toHaveText('{"target":"beta-only","list":["two",2]}')
   await expect(parameters).not.toContainText('alpha-only')

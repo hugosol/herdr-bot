@@ -41,6 +41,7 @@ async function createInPage(page: Page, zone: string) {
   const dialog = page.getByTestId('chat-creation-dialog')
   await dialog.locator('#chat-workspace-target').selectOption('default')
   await dialog.getByTestId('chat-input').fill('/settings')
+  await expect(dialog.getByTestId('chat-create-submit')).toBeEnabled()
   const name = await dialog.getByTestId('chat-name-preview').textContent()
   const accepted = page.waitForResponse(r => r.url().endsWith('/api/chats') && r.request().method() === 'POST')
   await dialog.getByTestId('chat-create-submit').click()
