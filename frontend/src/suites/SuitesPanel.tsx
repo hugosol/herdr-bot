@@ -74,9 +74,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
     finally { setBusy(false) }
   }
 
-  return <section className="suites-panel" aria-label="Suite 管理">
-    <header className="suites-toolbar">
-      <h2>Suite · 场景工具集</h2>
+  return <section className="suites-panel" aria-label="Suite 管理" data-editing={draft !== null}>
+    <header className="suites-toolbar suites-page-header">
+      <div><h2>Suite · 场景工具集</h2><p className="suites-subtitle">为 OMP 与 Pi 配置可复用的场景资源。</p></div>
       <button type="button" disabled={busy} onClick={() => open(emptySuite, true)}>创建 Suite</button>
       <button type="button" disabled={busy} onClick={() => void reload()}>重新读取 Suite</button>
     </header>
@@ -85,14 +85,27 @@ export function SuitesPanel({ active }: { active: boolean }) {
     {notice && <p role="status">{notice}</p>}
     <div className="suites-layout">
       <section aria-label="Suite 列表" className="suites-list">
-        {data === null ? <p>正在读取 Suite…</p> : data.suites.length === 0 ? <p>尚未定义 Suite</p> : data.suites.map(suite =>
-          <button key={suite.id} type="button" disabled={busy} aria-pressed={editing === suite.id} onClick={() => open(suite)}>{suite.name} · {suite.id}</button>)}
+        <div className="suites-list-heading"><h3>工具集</h3><span>{data ? `${data.suites.length} 个 Suite` : '读取中'}</span></div>
+        {data === null ? <p>{error ? '未能读取 Suite，请重新读取。' : '正在读取 Suite…'}</p> : data.suites.length === 0 ? <p>尚未定义 Suite</p> : data.suites.map(suite =>
+          <button key={suite.id} type="button" disabled={busy} aria-label={`${suite.name} · ${suite.id}`} aria-pressed={editing === suite.id} onClick={() => open(suite)}>
+            <span className="suites-list-name">{suite.name}</span><span className="suites-list-id">{suite.id}</span>
+            <span className="suites-list-meta">{suite.agents.map(agent => agent.toUpperCase()).join(' / ')}<span>{suite.skills.length} Skills · {suite.mcp.length} MCP</span></span>
+          </button>)}
       </section>
+      {!draft && <section className="suites-empty" aria-label="编辑指引"><h3>选择一个场景工具集</h3><p>查看和编辑技能、宿主扩展、提示词模板及语言服务声明。</p><dl><div><dt>OMP</dt><dd>技能、扩展、LSP 与集中 MCP</dd></div><div><dt>Pi</dt><dd>技能、扩展、提示词模板与集中 MCP</dd></div></dl><p className="scope-note">选择左侧工具集，或创建 Suite。保存的是资源声明，不代表资源已经运行。</p></section>}
       {draft && <form className="suites-editor" onSubmit={event => void save(event)} aria-label="Suite 编辑">
         <fieldset disabled={busy}>
           <legend>{editing ? '查看 / 编辑 Suite' : '创建 Suite'}</legend>
+          <div className="suites-toolbar suites-editor-actions">
+            <span>{editing ? draft.name : '新工具集'}</span>
+            <button type="submit" className="suites-primary">保存 Suite</button>
+            <button type="button" onClick={() => { setDraft(null); setEditing(null) }}>关闭编辑</button>
+          </div>
+          <section className="suites-section" aria-label="基本信息"><h3>基本信息</h3>
+          <div className="suites-field-grid">
           <label>Suite ID<input className="zone-form__input" value={draft.id} disabled={editing !== null} required onChange={event => setDraft({ ...draft, id: event.target.value })} /></label>
           <label>Suite 名称<input className="zone-form__input" value={draft.name} required onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+          </div>
           <fieldset><legend>适用宿主</legend>{(['omp', 'pi'] as const).map(agent => <label className="suites-choice" key={agent}>
             <input type="checkbox" checked={draft.agents.includes(agent)} onChange={event => setDraft({ ...draft, agents: event.target.checked ? [...draft.agents, agent] : draft.agents.filter(value => value !== agent), pi: agent === 'pi' ? (event.target.checked ? { codemode: 'on' } : undefined) : draft.pi })} />{agent.toUpperCase()}
           </label>)}</fieldset>
@@ -100,6 +113,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <label className="suites-choice"><input type="checkbox" checked={draft.pi?.codemode === 'only'} onChange={event => setDraft({ ...draft, pi: { codemode: event.target.checked ? 'only' : 'on' } })} />Codemode only</label>
             <p className="scope-note">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p>
           </fieldset>}
+          </section>
+          <section className="suites-section" aria-label="资源路径"><h3>资源路径</h3>
+          <div className="suites-field-grid">
           {(['skills', 'prompts'] as const).map((key, index) => <div key={key}>
             <label htmlFor={`suite-${key}`}>{['Skills（每行一个路径）', 'Prompt templates（每行一个路径）'][index]}</label>
             <textarea id={`suite-${key}`} className="zone-form__input" rows={3} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
@@ -108,12 +124,16 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
             <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
           </div>)}
+          </div>
           <p className="scope-note">Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>
+          </section>
+          <section className="suites-section" aria-label="语言服务"><h3>语言服务</h3>
           <label htmlFor="suite-lsp">LSP 声明（JSON）</label>
           <p className="scope-note">LSP 声明不表示已启用或正在运行。OMP 按项目标记和可执行程序原生发现；缺少程序时不会启动，不会自动安装或修改 PATH。</p>
           <p className="scope-note">保留 OMP 默认、用户及项目配置的原生优先级；Suite 不是语言服务白名单。</p>
           <textarea id="suite-lsp" className="zone-form__input" rows={6} value={draft.lsp} onChange={event => setDraft({ ...draft, lsp: event.target.value })} />
-          <fieldset><legend>集中 MCP 选择</legend>
+          </section>
+          <fieldset className="suites-section"><legend>集中 MCP 选择</legend>
             <p className="scope-note">仅引用集中目录；空清单表示不追加，不关闭宿主原生 MCP。</p>
             {data?.mcp.length === 0 && <p>集中目录没有 MCP 定义。</p>}
             {data?.mcp.map(id => <label key={id} className="suites-choice"><input type="checkbox" checked={draft.mcp.includes(id)} onChange={event => setDraft({ ...draft, mcp: event.target.checked ? [...draft.mcp, id] : draft.mcp.filter(value => value !== id) })} />{id}</label>)}
@@ -121,11 +141,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
               <input type="checkbox" checked onChange={() => setDraft({ ...draft, mcp: draft.mcp.filter(value => value !== id) })} />{id}（失效：集中 MCP 定义不存在）
             </label>)}
           </fieldset>
-          <div className="suites-toolbar">
-            <button type="submit">保存 Suite</button>
-            {editing && <button type="button" onClick={() => void remove()}>删除 Suite</button>}
-            <button type="button" onClick={() => { setDraft(null); setEditing(null) }}>关闭编辑</button>
-          </div>
+          {editing && <div className="suites-danger"><p>删除此工具集前需要确认；被引用的 Suite 仍受服务端保护。</p><button type="button" onClick={() => void remove()}>删除 Suite</button></div>}
         </fieldset>
       </form>}
     </div>
