@@ -5,6 +5,7 @@ import App from './app/App'
 import { createSseSessionFeed } from './chats/sseSessionFeed'
 import { createZoneWatchFeed } from './zones/zoneWatch'
 import './app/styles.css'
+import './tasks/tasks.css'
 
 const root = document.getElementById('root')
 if (!root) {

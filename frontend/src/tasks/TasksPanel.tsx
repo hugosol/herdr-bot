@@ -110,6 +110,21 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null)
   const deleteDialog = useRef<HTMLDialogElement>(null)
+  const editorDialog = useRef<HTMLDialogElement>(null)
+  const editorTrigger = useRef<HTMLElement | null>(null)
+  const [query, setQuery] = useState('')
+  const [agentFilter, setAgentFilter] = useState('all')
+
+  useEffect(() => {
+    const element = editorDialog.current
+    if (dialog === null || element === null) return
+    element.showModal()
+    element.querySelector<HTMLInputElement>('#task-name')?.focus({ preventScroll: true })
+    return () => {
+      element.close()
+      editorTrigger.current?.focus({ preventScroll: true })
+    }
+  }, [dialog])
 
   useEffect(() => {
     const element = deleteDialog.current
@@ -148,6 +163,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   }, [active, editRequest])
 
   async function openEditor(taskId?: string) {
+    editorTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setLoading(true)
     const result = await fetchTasks()
     setLoading(false)
@@ -290,19 +306,48 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
     ...(thinkingUnavailable ? [`thinking「${draft.thinking}」不可用`] : []),
   ]
 
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const visibleTasks = (data?.tasks ?? []).filter(task =>
+    (agentFilter === 'all' || task.agent === agentFilter) &&
+    (!normalizedQuery || [task.name, task.agent, task.taskType, task.model, task.skill ?? '', task.suite ?? '',
+      data?.options.suites?.find(suite => suite.id === task.suite)?.name ?? '']
+      .some(value => value.toLocaleLowerCase().includes(normalizedQuery))))
+
   return (
-    <section className="tasks" data-testid="tasks">
-      <div className="tasks__actions">
+    <section className="tasks" data-testid="tasks" aria-labelledby="tasks-title">
+      <header className="tasks__header">
+        <div>
+          <h1 id="tasks-title">Task</h1>
+          <p>可复用的对话预设，连接 Agent 与场景工具集。</p>
+        </div>
         <button
           type="button"
-          className="zone-action zone-action--create"
+          className="tasks__create"
           data-testid="task-create-open"
           disabled={data === null}
           onClick={openCreate}
         >
           新增 Task
         </button>
-      </div>
+      </header>
+
+      {data !== null && <div className="tasks__toolbar">
+        <label className="tasks__search">
+          <span>搜索 Task</span>
+          <input type="search" value={query} onChange={event => setQuery(event.target.value)}
+            placeholder="名称、模型或 Suite" />
+        </label>
+        <label className="tasks__filter">
+          <span>Agent</span>
+          <select value={agentFilter} onChange={event => setAgentFilter(event.target.value)}>
+            <option value="all">全部 Agent</option>
+            {data.options.agents.map(agent => <option key={agent} value={agent}>{data.options.labels?.agents?.[agent] ?? agent}</option>)}
+          </select>
+        </label>
+        <p className="tasks__count" role="status">{visibleTasks.length} / {data.tasks.length} 个 Task</p>
+        {(query || agentFilter !== 'all') && <button className="tasks__reset" type="button"
+          onClick={() => { setQuery(''); setAgentFilter('all') }}>清除筛选</button>}
+      </div>}
 
       {feedback !== null && (
         <p
@@ -334,17 +379,34 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
           </p>
         ) : (
           <ul className="task-list" data-testid="task-list">
-            {data.tasks.map((task) => (
+            {visibleTasks.length === 0 && <li className="tasks__empty">没有匹配的 Task。试试其他关键词，或清除筛选。</li>}
+            {visibleTasks.map((task) => (
               <li
                 key={task.id}
                 className="task-item"
                 data-testid="task-item"
                 data-task-id={task.id}
               >
-                <h2 className="task-item__name">{task.name}</h2>
+                <div className="task-item__overview">
+                  <div className="task-item__identity">
+                    <h2 className="task-item__name">{task.name}</h2>
+                    <p className="task-item__meta"><span className="task-item__agent">{task.agent}</span><span>{task.taskType === 'manager' ? '流程管理者' : '普通 Task'}</span></p>
+                  </div>
+                  <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>
+                  <div className="task-item__suite"><span className="task-item__label">Suite</span><p>{suiteLabel(task, data.options)}</p></div>
+                  <div className="task-item__actions">
+                    <button type="button" className="zone-dialog__cancel" data-testid="task-edit"
+                      disabled={saving || deleting !== null} onClick={() => openEdit(task)}>编辑</button>
+                    <button type="button" className="zone-dialog__cancel task-item__delete" data-testid="task-delete"
+                      disabled={saving || deleting !== null} onClick={() => setDeleteTarget(task)}>{deleting === task.id ? '删除中…' : '删除'}</button>
+                  </div>
+                </div>
+                {suiteIssue(task, data.options) && <p className="zone-error" role="alert">{suiteIssue(task, data.options)}</p>}
+                <details className="task-item__details">
+                  <summary>查看配置与提示词</summary>
                 <dl className="task-item__fields">
                   <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
-                  <div><dt>Suite</dt><dd>{suiteLabel(task, data.options)}{suiteIssue(task, data.options) && <p className="zone-error">{suiteIssue(task, data.options)}</p>}</dd></div>
+                  <div><dt>Suite</dt><dd>{suiteLabel(task, data.options)}</dd></div>
                   <div>
                     <dt>chat-name 示例</dt>
                     <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
@@ -371,28 +433,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   </div>
                 </dl>
                 <pre className="task-item__prompt" data-testid="task-prompt-view">
-                  {task.prompt}
+                  {task.prompt || '未设置固定 prompt。'}
                 </pre>
-                <div className="task-item__actions">
-                  <button
-                    type="button"
-                    className="zone-dialog__cancel"
-                    data-testid="task-edit"
-                    disabled={saving || deleting !== null}
-                    onClick={() => openEdit(task)}
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    className="zone-dialog__cancel"
-                    data-testid="task-delete"
-                    disabled={saving || deleting !== null}
-                    onClick={() => setDeleteTarget(task)}
-                  >
-                    删除
-                  </button>
-                </div>
+                </details>
               </li>
             ))}
           </ul>
@@ -434,13 +477,12 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
       )}
 
       {dialog !== null && data !== null && (
-        <div className="zone-modal">
+        <dialog ref={editorDialog} className="task-editor-shell"
+          aria-label={dialog.kind === 'create' ? '新增 Task' : '编辑 Task'}
+          onCancel={event => { event.preventDefault(); if (!saving) closeDialog() }}>
           <form
             className="zone-dialog task-dialog"
             data-testid="task-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={dialog.kind === 'create' ? '新增 Task' : '编辑 Task'}
             onSubmit={(event) => void submit(event)}
           >
             <h2 className="zone-dialog__title">
@@ -478,14 +520,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             </section>
 
             <div className="task-compose">
-              <div className="task-compose__primary">
-                <ChatNameRuleEditor
-                  value={draft.chatName}
-                  onChange={(chatName) => setDraft((current) => ({ ...current, chatName }))}
-                  disabled={saving}
-                />
-              </div>
-
               <fieldset className="task-settings">
                 <legend>Agent 与 Task 设置</legend>
 
@@ -626,6 +660,13 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   disabled={saving}
                 />
               </fieldset>
+              <div className="task-compose__primary">
+                <ChatNameRuleEditor
+                  value={draft.chatName}
+                  onChange={(chatName) => setDraft((current) => ({ ...current, chatName }))}
+                  disabled={saving}
+                />
+              </div>
             </div>
             </>}
 
@@ -701,7 +742,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 data-testid="task-next" disabled={saving}>下一步</button>}
             </div>
           </form>
-        </div>
+        </dialog>
       )}
     </section>
   )

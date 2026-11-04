@@ -2065,12 +2065,6 @@ h1 {
   text-align: left;
 }
 
-.tasks__actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .task-list {
   margin: 0;
   padding: 0;
@@ -2191,7 +2185,7 @@ h1 {
   border: 1px solid #3f6d69;
   border-left: 0.3rem solid #69b3a7;
   border-radius: 0.65rem;
-  background: linear-gradient(120deg, #1d313f, #182b28);
+  background: #1d242c;
 }
 
 .task-preview-card__label {

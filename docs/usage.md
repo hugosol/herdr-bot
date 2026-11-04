@@ -193,6 +193,10 @@ cargo run --manifest-path backend/Cargo.toml --bin migrate-initial-suites -- `
 
 ## Task 模型与删除
 
+Task 页以紧凑清单展示名称、用途、Agent、模型／思考级别与 Suite。搜索支持名称、Agent、类型、模型、Skill 和 Suite 名称／ID，可与 Agent 筛选组合；计数显示当前匹配数与总数，清除筛选不会修改任何 Task。展开“查看配置与提示词”可读取命名示例、全部设置、固定扩展与完整 prompt，失效 Suite 的错误不必展开即可看到。
+
+新增与编辑仍经过“Task 预设 → 扩展配置 → 确认保存”三步，只有明确保存并收到后端成功响应才更新共享定义。编辑器自动聚焦显示名、限制键盘焦点在弹窗内，未保存时按 Escape 等同取消，关闭后焦点回到原入口；保存期间不能取消。底部操作保持可达。手机和平板的 Task 展开导航改为顶部横向导航，页面本身不横向滚动；其他入口保留原布局。
+
 Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`；
 思考级别按所选 agent 与模型的能力提供，Pi 的 Luna 支持 `off`，Astra 不支持。
 模型目录修改后下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
