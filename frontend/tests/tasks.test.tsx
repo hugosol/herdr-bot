@@ -103,7 +103,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
-    skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\', extensions: [] }
+    skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\' }
     const { calls } = mockTaskFetch((url, method) => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, { tasks: [literal], options: OPTIONS })
@@ -239,10 +239,10 @@ describe('Task tab：读取与展示', () => {
     )
   })
 
-  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和可选扩展，角色固定扩展按类型筛选并保存', async (agent) => {
+  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和 Suite，角色固定扩展按类型筛选并保存', async (agent) => {
     const user = userEvent.setup()
     const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
-      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', extensions: [`${agent}-tools`] }
+      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '' }
     const options = { ...OPTIONS, extensions: (['omp', 'pi'] as const).flatMap(host => [
       { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', entrypoint: '/state.ts' },
       { id: `${host}-manager-chat`, label: `${host} manager-chat`, agent: host, kind: 'fixed', entrypoint: '/manager.ts' },
@@ -271,12 +271,12 @@ describe('Task tab：读取与展示', () => {
       if (role === 'manager') expect(fixed).toHaveTextContent(`${agent} manager-chat`)
       else expect(fixed).not.toHaveTextContent('manager-chat')
       expect(fixed).not.toHaveTextContent('node-chat')
-      expect(within(dialog).getByTestId(`extension-${agent}-tools`)).toBeChecked()
+      expect(within(dialog).queryByTestId(`extension-${agent}-tools`)).toBeNull()
       expect(within(fixed).queryByRole('checkbox')).toBeNull()
       await user.click(within(dialog).getByTestId('task-back'))
     }
     await saveTask(user, dialog)
-    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager' })
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager', suite: null })
     expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   })
 
@@ -290,7 +290,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
-    skill: 'code-review', prompt, extensions: [] }
+    skill: 'code-review', prompt }
     const { calls } = mockTaskFetch((url, method) => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, { tasks: [], options: OPTIONS })
@@ -354,7 +354,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'deepseek-flash',
     thinking: 'max',
-    skill: 'code-review', prompt, extensions: [] })
+    skill: 'code-review', prompt, suite: null })
     const row = screen.getByTestId('task-item')
     expect(row).toHaveTextContent('审查')
     expect(row).toHaveTextContent('alpha · 审查 · pi · a7f3c2')
@@ -420,7 +420,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'default',
     thinking: 'default',
-    skill: null, prompt: '旧 prompt', extensions: [] }
+    skill: null, prompt: '旧 prompt' }
     const second = { id: 'tpl-b',
     name: '待删除',
     chatName: '{task.name}',
@@ -428,7 +428,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'off',
-    skill: 'teach', prompt: '', extensions: [] }
+    skill: 'teach', prompt: '' }
     const edited = { ...first,
     name: '新名字',
     chatName: '{task.name} · {agent} · {chat.id}',
@@ -436,7 +436,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
-    skill: 'code-review', prompt: '第一行\n第二行', extensions: [] }
+    skill: 'code-review', prompt: '第一行\n第二行' }
     const { calls } = mockTaskFetch((url, method) => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, { tasks: [first, second], options: OPTIONS })
@@ -483,7 +483,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'gpt-6.1-sol',
     thinking: 'medium',
-    skill: 'code-review', prompt: '第一行\n第二行', extensions: [] })
+    skill: 'code-review', prompt: '第一行\n第二行', suite: null })
     expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent('新名字')
     expect(screen.getAllByTestId('task-item')[0]).toHaveTextContent(
       '新名字 · pi · a7f3c2',
@@ -500,7 +500,7 @@ describe('Task tab：读取与展示', () => {
     taskType: 'normal',
     model: 'default',
     thinking: 'default',
-    skill: null, prompt: '', extensions: [] }
+    skill: null, prompt: '' }
     mockTaskFetch((url, method) => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, { tasks: [existing], options: OPTIONS })

@@ -50,6 +50,18 @@ class PlanWorkflowScenario:
         options = self.root / 'options.toml'
         options.write_text(options.read_text(encoding='utf-8').replace('skills = []\n', '') +
             '\n[[skills]]\nid = "grill-with-docs"\nlabel = "/grill-with-docs"\nnative_name = "grill-with-docs"\n', encoding='utf-8')
+        # The backend resolves its default prompts.local.toml beside backend.toml.
+        # Keep shipped definition placeholders raw and bind only this deployment's
+        # values; never read the developer's dictionary or interpolate user input.
+        dictionary = self.root / 'prompts.local.toml'
+        dictionary_values = {
+            'herdr-bot-path': REPO.as_posix(),
+            'herdr-bot-api-url': self.backend_wire.base,
+        }
+        dictionary.write_text(''.join(f'{key} = {json.dumps(value, ensure_ascii=False)}\n'
+            for key, value in dictionary_values.items()), encoding='utf-8')
+        self.evidence['promptDictionary'] = {'path': str(dictionary),
+            'values': dictionary_values, 'sha256': self.digest(dictionary)}
         self.ids = {}
         sources = self.root / 'source-evidence'
         sources.mkdir()
@@ -68,14 +80,13 @@ class PlanWorkflowScenario:
             original = next(task for task in tasks if task['name'] == name)
             deployed = {key: value for key, value in original.items() if key != 'id'}
             deployed.update(agent='pi', model='probe', thinking='default', extensions=[])
-            deployed['prompt'] = self.relocate(deployed['prompt'])
             result = self.http('/api/tasks', deployed)
             saved = next(task for task in result['tasks'] if task['name'] == name)
             self.ids[name] = saved['id']
             self.deployment['tasks'].append({'original': original, 'deployed': saved})
         for filename in ['bot-1793304246857557100-58200-0.json', 'bot-1793305512701853300-58200-1.json']:
             original = json.loads((REPO / 'meta-data/bots' / filename).read_text(encoding='utf-8'))
-            deployed = json.loads(self.relocate(json.dumps(original, ensure_ascii=False)))
+            deployed = json.loads(json.dumps(original, ensure_ascii=False))
             deployed['task_id'] = self.ids[deployed['name']]
             path = self.root / 'bots' / filename
             path.write_text(json.dumps(deployed, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -83,26 +94,22 @@ class PlanWorkflowScenario:
         original = json.loads((REPO / 'meta-data/workflow-maps/plan_workflow.json').read_text(encoding='utf-8'))
         deployed = json.loads(json.dumps(original))
         for node in deployed['nodes'].values():
-            node['zone'] = str(self.root / 'zone')
+            node['zone'] = 'acceptance/planning'
         path = self.root / 'maps/plan_workflow.json'
         path.write_text(json.dumps(deployed, ensure_ascii=False, indent=2), encoding='utf-8')
         self.deployment['map'] = {'original': original, 'deployed': deployed, 'sha256': self.digest(path)}
         (self.root / 'deployment.json').write_text(json.dumps(self.deployment, ensure_ascii=False, indent=2), encoding='utf-8')
-        self.http('/api/zones', {'path': str(self.root / 'zone')})
+        self.http('/api/zones', {'id': 'acceptance/planning', 'path': str(self.root / 'zone')})
         self.provision_business()
         # Immutable baselines exclude only the new business Map and native data.
         self.baseline = self.configuration_bytes()
-
-    def relocate(self, value):
-        return value.replace('E:/Developer/myhub/herdr-bot/.data/workflow-maps', (self.root / 'maps').as_posix()).replace(
-            'E:/Developer/myhub/herdr-bot', REPO.as_posix()).replace('http://127.0.0.1:18787', self.backend_wire.base)
 
     @staticmethod
     def digest(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
     def configuration_bytes(self):
-        return {str(path): self.digest(path) for path in [self.root / 'data/tasks.json', self.root / 'maps/plan_workflow.json',
+        return {str(path): self.digest(path) for path in [self.root / 'prompts.local.toml', self.root / 'data/tasks.json', self.root / 'maps/plan_workflow.json',
             *sorted((self.root / 'bots').glob('*.json'))]}
 
     def provision_business(self):
@@ -137,7 +144,7 @@ else:
             ('acceptance-review', 'review', '独立核对 totals.csv 的分类、金额及 CNY 币种，输出 review.json。')]:
             name = 'P27-' + mode
             task = {'name': name, 'taskType': 'normal', 'agent': 'pi', 'chatName': '{chat.id}',
-                'model': 'probe', 'thinking': 'default', 'skill': None, 'extensions': [],
+                'model': 'probe', 'thinking': 'default', 'skill': None,
                 'prompt': f'仅在用户后续单独授权的业务 Run 执行：{description} 使用 {command} {mode}。只读/写本 zone 的指定业务文件，不联网、不发布、不启动其他 Chat。'}
             result = self.http('/api/tasks', task)
             task_id = next(item['id'] for item in result['tasks'] if item['name'] == name)
@@ -148,7 +155,7 @@ else:
             (self.root / 'bots' / (bot_id + '.json')).write_text(json.dumps(bot, ensure_ascii=False, indent=2), encoding='utf-8')
             self.ids[bot_id] = task_id
         self.requirements = {
-            'planId': 'p27-business-plan', 'mapFile': 'p27-business-plan.json', 'zone': str(zone),
+            'planId': 'p27-business-plan', 'mapFile': 'p27-business-plan.json', 'zone': 'acceptance/planning',
             'W1': {'node': 'w1', 'bot': 'acceptance-aggregate', 'task': self.ids['acceptance-aggregate'],
                 'input': str(zone / 'orders.csv'), 'output': str(zone / 'totals.csv'), 'blocked_by': []},
             'W2': {'node': 'w2', 'bot': 'acceptance-review', 'task': self.ids['acceptance-review'],
@@ -263,7 +270,7 @@ else:
         # Explicit control of the manager's user conversation is recorded. The
         # manager—not this driver—chooses all workflow tool actions.
         started = self.http('/api/scheduler/maps/plan_workflow.json/runs', {
-            'managerTaskId': self.ids['manager'], 'zone': str(self.root / 'zone'), 'userInput': user}, 201)
+            'managerTaskId': self.ids['manager'], 'zone': 'acceptance/planning', 'userInput': user}, 201)
         self.run_id = started['id']
         self.run_ids.append(self.run_id)
         self.evidence['runs'].append({'label': label, 'started': started})
@@ -272,7 +279,7 @@ else:
     def exercise(self):
         zone = str(self.root / 'zone')
         context = (f'本次为隔离的真实业务规划，方案 ID=p27-business-plan，生成文件 p27-business-plan.json。'
-            f'业务在已登记 zone {zone}，现有 orders.csv 为只读输入。只安排 W1→W2，node ID w1→w2；'
+            f'业务在已登记 zone ID acceptance/planning（本机目录 {zone}），现有 orders.csv 为只读输入。只安排 W1→W2，node ID w1→w2；'
             f'W1 用 acceptance-aggregate（绑定 {self.ids["acceptance-aggregate"]}）汇总分类金额为 totals.csv；'
             f'W2 用 acceptance-review（绑定 {self.ids["acceptance-review"]}）独立验证后写 review.json。'
             '首次草案先列 category,total_cents，之后我会在 outline Chat 提交修订；不要预先猜测确认或发报告。'

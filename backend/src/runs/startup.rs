@@ -5,7 +5,13 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
     let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
     rules.iter().map(|rule| {
         let (id, path) = match rule {
-            crate::scheduler::InputRule::File { id, path } => (id, path.clone()),
+            crate::scheduler::InputRule::File { id, path, zone_id } => {
+                if !crate::scheduler::valid_relative_file(path) { return Err(format!("输入 {id} 必须是 zone 内相对路径；请迁移 Map 后启动新 Run。")); }
+                let zone_id = zone_id.as_deref().or(run.manager_zone_id.as_deref()).ok_or("旧 Run 缺少 zone 绑定快照；请迁移 Map 后启动新 Run")?;
+                let root = run.zone_bindings.get(zone_id).ok_or_else(|| format!("zone {zone_id} 不在本次 Run 启动快照中；请启动新 Run"))?;
+                let absolute = crate::zones::browse::checked_file(root, path).map_err(|e| e.message())?;
+                (id, absolute)
+            },
             crate::scheduler::InputRule::Node { id, node_id, output_id } => {
                 let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
                 let path = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
@@ -101,12 +107,16 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         node.completion = None;
     }
     let result: Result<(), String> = async {
-        let target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
+        let mut target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
+        target.zone = run.zone_bindings.get(&target.zone).cloned().ok_or_else(|| format!("zone {} 不在本次 Run 启动快照中；请启动新 Run（旧历史仍可查看）", target.zone))?;
+        crate::zones::browse::checked_root(&target.zone).map_err(|e| e.message())?;
         let node = candidate.nodes.get_mut(id).unwrap();
         node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
-        let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
+        let suite_args = state.tasks.prepare_environment(&target.task).map_err(|error| error.message())?;
+        let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
+        preset.env.suite_args = suite_args;
         preset.env.check_entrypoints()?;
         protocol(state, &mut candidate, &target.task, &preset,
             Role::Node { id, target: &target, committed: run }, &mut effects, &mut stage).await
@@ -178,6 +188,7 @@ async fn protocol(
         Role::Manager => &run.zone,
         Role::Node { target, .. } => &target.zone,
     };
+    crate::zones::browse::checked_root(zone).map_err(|e| e.message())?;
     let name = crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id());
     *stage = "tab";
     let tab = state.herdr.create_tab(&workspace.id, Some(zone), &name).await.map_err(|e| e.message())?;
@@ -246,6 +257,8 @@ async fn protocol(
     *stage = "submit";
     let paths = Runs::paths(state, &run.id);
     let materials = std::path::Path::new(&run.zone).join(".workflow").join(&run.id);
+    let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
+    let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
     let input = match &role {
         Role::Manager => {
             let mut input = format!(
@@ -270,11 +283,11 @@ async fn protocol(
             for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
             writeln!(input, "[/Named file inputs]\n\n[Output rules]\n{}\n[/Output rules]", serde_json::to_string(&execution.output_rule).map_err(|e| e.to_string())?).unwrap();
             write!(input, "\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
-                target.report_policy.control_section(), target.input).unwrap();
+                target.report_policy.control_section(), prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
             input
         }
     };
-    let text = crate::chats::compose_initial_input(task, preset.trigger.native_skill.as_deref(), &input);
+    let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     effects.input_attempted = true;
     state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
     effects.input_submitted = true;

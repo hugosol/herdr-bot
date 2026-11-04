@@ -18,6 +18,7 @@ import {
   type ZoneResult,
 } from './zoneApi'
 import { zoneDisplayName } from './zoneDisplay'
+import './zones.css'
 import {
   describeWatchProblem,
   type ZoneWatchFeed,
@@ -53,9 +54,30 @@ export function ZonesPanel({
   const [zones, setZones] = useState<ZoneRegistration[] | null>(null)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [zoneId, setZoneId] = useState('')
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [dialog, setDialog] = useState<'register' | 'create' | null>(null)
+  const [query, setQuery] = useState('')
+  const [removeTarget, setRemoveTarget] = useState<ZoneRegistration | null>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const removeDialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const element = dialogRef.current
+    if (dialog === null || element === null) return
+    const trigger = document.activeElement as HTMLElement | null
+    element.showModal()
+    return () => { element.close(); trigger?.focus({ preventScroll: true }) }
+  }, [dialog])
+
+  useEffect(() => {
+    const element = removeDialogRef.current
+    if (removeTarget === null || element === null) return
+    const trigger = document.activeElement as HTMLElement | null
+    element.showModal()
+    return () => { element.close(); if (trigger?.isConnected) trigger.focus({ preventScroll: true }) }
+  }, [removeTarget])
   // 从这一行的 zone 打开发起 Chat 弹窗；弹窗自身负责 Task、名称预览与创建阶段。
   const [chatZone, setChatZone] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -66,6 +88,10 @@ export function ZonesPanel({
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   // 当前进入的 zone；顶层 tab 往返期间保持，返回列表时才清除。
   const [openZone, setOpenZone] = useState<string | null>(null)
+  const listScroll = useRef(0)
+  useEffect(() => {
+    window.scrollTo({ top: openZone === null ? listScroll.current : 0 })
+  }, [openZone])
   // 每个 zone 的待提交项数；只有后端确认过的事实才进入这里。
   const [summaries, setSummaries] = useState<Map<string, ZoneSummary> | null>(null)
   const [overviewFailure, setOverviewFailure] = useState<string | null>(null)
@@ -129,6 +155,7 @@ export function ZonesPanel({
     setDialog(kind)
     setPath('')
     setName('')
+    setZoneId('')
     setFormError(null)
     setFeedback(null)
   }
@@ -138,19 +165,20 @@ export function ZonesPanel({
     setFormError(null)
     setPath('')
     setName('')
+    setZoneId('')
   }
 
   async function submitRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const candidate = path.trim()
-    if (candidate === '') {
-      setFormError('请填写服务器上的目录路径。')
+    if (zoneId.trim() === '' || candidate === '') {
+      setFormError('请填写稳定 zone ID 和服务器上的目录路径。')
       return
     }
 
     setPending('register')
     setFormError(null)
-    const result = await registerZone(candidate)
+    const result = await registerZone(zoneId.trim(), candidate)
     setPending(null)
     if (result.kind === 'ok') {
       setZones(result.zones)
@@ -158,7 +186,7 @@ export function ZonesPanel({
       setListFailure(null)
       setDialog(null)
       setPath('')
-      setFeedback({ kind: 'success', text: `已登记：${candidate}` })
+      setFeedback({ kind: 'success', text: `已登记：${zoneId.trim()} → ${candidate}` })
       void loadOverview()
     } else {
       setFormError(describeFailure(result, '登记'))
@@ -168,25 +196,25 @@ export function ZonesPanel({
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const candidate = name.trim()
-    if (candidate === '') {
-      setFormError('请填写新 zone 的名称。')
+    if (zoneId.trim() === '' || candidate === '') {
+      setFormError('请填写稳定 zone ID 和新 zone 的名称。')
       return
     }
 
-    const previousPaths = new Set((zones ?? []).map((entry) => entry.path))
     setPending('create')
     setFormError(null)
-    const result = await createZone(candidate)
+    const result = await createZone(zoneId.trim(), candidate)
     setPending(null)
     if (result.kind === 'ok') {
       const createdPath = result.zones.find(
-        (entry) => !previousPaths.has(entry.path),
+        (entry) => entry.id === zoneId.trim(),
       )?.path
       setZones(result.zones)
       setCreation(result.creation)
       setListFailure(null)
       setDialog(null)
       setName('')
+      setZoneId('')
       setFeedback({
         kind: 'success',
         text: createdPath === undefined ? '已创建 zone。' : `已创建：${createdPath}`,
@@ -198,9 +226,9 @@ export function ZonesPanel({
   }
 
   async function remove(registration: ZoneRegistration) {
-    setPending(`remove:${registration.path}`)
+    setPending(`remove:${registration.id}`)
     setFeedback(null)
-    const result = await unregisterZone(registration.path)
+    const result = await unregisterZone(registration.id)
     setPending(null)
     if (result.kind === 'ok') {
       setZones(result.zones)
@@ -210,6 +238,7 @@ export function ZonesPanel({
         kind: 'success',
         text: `已取消登记：${registration.path}（目录与文件未删除）。`,
       })
+      setRemoveTarget(null)
       void loadOverview()
     } else {
       setFeedback({ kind: 'error', text: describeFailure(result, '取消登记') })
@@ -228,7 +257,7 @@ export function ZonesPanel({
           aria-label={`待提交状态不可用：${summary.error}`}
           title={summary.error}
         >
-          ⚠
+          状态不可用
         </span>
       )
     }
@@ -285,8 +314,18 @@ export function ZonesPanel({
     )
   }
 
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const visibleZones = (zones ?? []).filter((registration) =>
+    `${registration.id} ${registration.path}`.toLocaleLowerCase().includes(normalizedQuery),
+  )
+
   return (
-    <section className="zones" data-testid="file-list">
+    <section className="zones zones--register" data-testid="file-list" aria-labelledby="zone-title">
+      <header className="zones__header">
+        <div>
+          <h1 id="zone-title">Zone</h1>
+          <p className="zones__intro">服务器上的工作目录，连接文件、Git 与 Chat。</p>
+        </div>
       <div className="zone-actions">
         <button
           type="button"
@@ -295,7 +334,7 @@ export function ZonesPanel({
           disabled={pending !== null}
           onClick={() => openDialog('register')}
         >
-          登记
+          登记已有目录
         </button>
         <button
           type="button"
@@ -306,9 +345,10 @@ export function ZonesPanel({
           }
           onClick={() => openDialog('create')}
         >
-          新增
+          新建 Zone
         </button>
       </div>
+      </header>
 
       {zones !== null && !creation.available && (
         <p className="zone-note" data-testid="create-unavailable" role="note">
@@ -337,7 +377,13 @@ export function ZonesPanel({
         </p>
       )}
 
-      <h2 className="zones__heading">已登记的 zone</h2>
+      <div className="zones__toolbar">
+        <h2 className="zones__heading">已登记的目录 <span className="zones__count">{zones === null ? '—' : `${visibleZones.length} / ${zones.length}`}</span></h2>
+        <label className="zones__search">
+          <span>查找 Zone</span>
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称、ID 或路径" />
+        </label>
+      </div>
 
       {loading && zones === null && (
         <p className="zones__loading" data-testid="zone-loading" role="status">
@@ -360,18 +406,20 @@ export function ZonesPanel({
       {zones !== null &&
         (zones.length === 0 ? (
           <p className="zones__empty" data-testid="zone-empty">
-            尚未登记 zone。
+            尚未登记 Zone。登记服务器上的已有目录，或新建一个工作目录。
           </p>
         ) : (
           <ul className="zone-list" data-testid="zone-list">
-            {zones.map((registration) => (
+            {visibleZones.length === 0 && <li className="zones__empty">没有匹配的目录。<button type="button" onClick={() => setQuery('')}>清除搜索</button></li>}
+            {visibleZones.map((registration) => (
               <li
-                key={registration.path}
+                key={registration.id}
                 className="zone-item"
                 data-testid="zone-item"
                 data-zone-path={registration.path}
+                data-zone-id={registration.id}
               >
-                {/* 浏览入口只显示末级目录名；完整路径留在无障碍名称、悬停标题与进入后的工具栏中。 */}
+                {/* 稳定 ID 与服务器路径同时显示，手机无需依赖悬停辨认目录。 */}
                 <button
                   type="button"
                   className="zone-item__open"
@@ -379,15 +427,22 @@ export function ZonesPanel({
                   title={registration.path}
                   data-testid="open-zone"
                   disabled={pending !== null}
-                  onClick={() => setOpenZone(registration.path)}
+                  onClick={() => { listScroll.current = window.scrollY; setOpenZone(registration.path) }}
                 >
-                  <span className="zone-item__name">{zoneDisplayName(registration.path)}</span>
+                  <span className="zone-item__identity">
+                    <span className="zone-item__name">{zoneDisplayName(registration.path)}</span>
+                    <code>{registration.id}</code>
+                    <span className="zone-item__path">{registration.path}</span>
+                  </span>
+                  <span className="zone-item__status">
                   {summaries?.get(registration.path)?.repository &&
                     summaries.get(registration.path)?.error === undefined && (
                       <GitAheadIndicator sync={summaries.get(registration.path)?.sync} />
                     )}
                   {badgeFor(registration.path)}
+                  </span>
                 </button>
+                <div className="zone-item__actions">
                 <button
                   type="button"
                   className="zone-item__chat"
@@ -395,9 +450,9 @@ export function ZonesPanel({
                   aria-label={`从 ${registration.path} 发起 Chat`}
                   title={`从 ${registration.path} 发起 Chat`}
                   disabled={pending !== null}
-                  onClick={() => setChatZone(registration.path)}
+                  onClick={() => setChatZone(registration.id)}
                 >
-                  +
+                  发起 Chat
                 </button>
                 <button
                   type="button"
@@ -405,29 +460,31 @@ export function ZonesPanel({
                   aria-label={`取消登记 ${registration.path}`}
                   title={`取消登记 ${registration.path}`}
                   disabled={pending !== null}
-                  onClick={() => void remove(registration)}
+                  onClick={() => { setFeedback(null); setRemoveTarget(registration) }}
                 >
-                  ×
+                  取消登记
                 </button>
+                </div>
               </li>
             ))}
           </ul>
         ))}
 
       {dialog === 'register' && (
-        <div className="zone-modal">
+        <dialog className="zone-modal zone-modal--native" ref={dialogRef} aria-label={dialog === 'register' ? '登记 zone' : '新增 zone'} onCancel={(event) => { event.preventDefault(); if (pending === null) closeDialog() }}>
           <form
             className="zone-dialog"
             data-testid="register-dialog"
-            role="dialog"
-            aria-modal="true"
             aria-label="登记 zone"
             onSubmit={(event) => void submitRegister(event)}
           >
             <h2 className="zone-dialog__title">登记已有目录</h2>
             <p className="zone-dialog__hint">
-              输入 herdr-bot 服务所在电脑上的绝对目录路径。取消登记不会删除目录或文件。
+              输入当前 server 上的绝对目录路径，并填写 Map 使用的稳定 ID。每台 server 独立登记；取消登记不会删除目录或文件。
             </p>
+            <label className="zone-form__label" htmlFor="zone-id">zone ID</label>
+            <input id="zone-id" data-testid="zone-id" className="zone-form__input" value={zoneId} onChange={event => setZoneId(event.target.value)} disabled={pending !== null} placeholder="namespace/name" aria-describedby="zone-id-help" />
+            <p id="zone-id-help">填写唯一稳定 ID，建议 namespace/name；Map 与 Chat/Run 引用 ID，不引用本机路径。</p>
             <label className="zone-form__label" htmlFor="zone-path">
               服务器目录路径
             </label>
@@ -473,16 +530,14 @@ export function ZonesPanel({
               </button>
             </div>
           </form>
-        </div>
+        </dialog>
       )}
 
       {dialog === 'create' && (
-        <div className="zone-modal">
+        <dialog className="zone-modal zone-modal--native" ref={dialogRef} aria-label="新增 zone" onCancel={(event) => { event.preventDefault(); if (pending === null) closeDialog() }}>
           <form
             className="zone-dialog"
             data-testid="create-dialog"
-            role="dialog"
-            aria-modal="true"
             aria-label="新增 zone"
             onSubmit={(event) => void submitCreate(event)}
           >
@@ -492,6 +547,9 @@ export function ZonesPanel({
               <code>{creation.parentDirectory ?? '配置的父目录'}</code>{' '}
               下创建直接子目录，执行 git init 后加入登记列表。
             </p>
+            <label className="zone-form__label" htmlFor="create-zone-id">zone ID</label>
+            <input id="create-zone-id" data-testid="zone-id" className="zone-form__input" value={zoneId} onChange={event => setZoneId(event.target.value)} disabled={pending !== null} placeholder="namespace/name" />
+            <p>填写唯一稳定 ID，建议 namespace/name；此 ID 创建后不可修改。</p>
             <label className="zone-form__label" htmlFor="zone-name">
               新 zone 名称
             </label>
@@ -537,7 +595,22 @@ export function ZonesPanel({
               </button>
             </div>
           </form>
-        </div>
+        </dialog>
+      )}
+
+      {removeTarget !== null && (
+        <dialog className="zone-modal zone-modal--native" ref={removeDialogRef} aria-labelledby="zone-remove-title" onCancel={(event) => { event.preventDefault(); if (pending === null) setRemoveTarget(null) }}>
+          <div className="zone-dialog">
+            <h2 id="zone-remove-title" className="zone-dialog__title">取消登记？</h2>
+            <p className="zone-dialog__hint">仅移除 {removeTarget.id} 的登记，不删除目录或文件。依赖此 ID 的操作需要重新登记后才能使用。</p>
+            <p className="zone-item__path">{removeTarget.path}</p>
+            {feedback?.kind === 'error' && <p role="alert" className="zone-error">{feedback.text}</p>}
+            <div className="zone-dialog__actions">
+              <button type="button" className="zone-dialog__cancel" disabled={pending !== null} onClick={() => setRemoveTarget(null)}>保留登记</button>
+              <button type="button" className="zone-remove-confirm" disabled={pending !== null} onClick={() => void remove(removeTarget)}>{pending !== null ? '正在取消…' : '确认取消登记'}</button>
+            </div>
+          </div>
+        </dialog>
       )}
 
       {chatZone !== null && (

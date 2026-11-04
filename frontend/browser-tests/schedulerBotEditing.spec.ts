@@ -421,9 +421,9 @@ test('modified bot drafts confirm bot selection, return, tab and server navigati
 })
 
 // P4 P30 S1/S2: one shared definition serves two nodes in one Map and a node
-// in another. Return revalidates the original selection rather than retaining
-// a removed node/Map, and no per-Map capability copies may appear in storage.
-test('saving a shared capability preserves live source selection and updates all references, while removed origins are invalidated', async ({ page }) => {
+// in another. Tab refresh preserves live selection and invalidates removed
+// nodes/Maps without creating per-Map Bot copies.
+test('saving a shared capability updates all references and tab refresh invalidates removed sources', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
   const root = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
@@ -438,18 +438,21 @@ test('saving a shared capability preserves live source selection and updates all
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '原 Map', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对账目 A', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '人工审计 · shared-audit', exact: true }).click()
   await page.getByRole('button', { name: 'edit', exact: true }).click()
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }))
   await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对账目 A', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('核对账目 · A')
+  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByRole('heading', { name: '核对账目', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'node 详情', exact: true }).getByText('A', { exact: true })).toBeVisible()
   for (const [filename, button] of [['first.json', '核对账目 A'], ['first.json', '复核账目 B'], ['second.json', '跨 Map 核对 C']]) {
     await page.locator(`[data-map-file="${filename}"]`).click()
     await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: button, exact: true }).click()
-    await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await page.getByTestId('tab-bot').click()
+    await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '共享能力新版 · shared-audit', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('共享能力新版')
     await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
     await page.getByTestId('tab-scheduler').click()
@@ -463,14 +466,16 @@ test('saving a shared capability preserves live source selection and updates all
   expect(inventory(maps)).toEqual(mapBytes)
   expect(Object.keys(inventory(root))).toEqual(['shared-original.json'])
   expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }])
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '共享能力新版 · shared-audit', exact: true }).click()
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ ...second, nodes: {} }))
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('alert')).toContainText('来源 node C 已移除')
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '原 Map', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对账目 A', exact: true }).click()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '共享能力新版 · shared-audit', exact: true }).click()
   fs.unlinkSync(path.join(maps, 'first.json'))
   await page.getByTestId('tab-scheduler').click()
   await expect(page.getByRole('alert')).toContainText('来源 Map 已失效')

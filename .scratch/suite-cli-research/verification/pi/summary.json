@@ -1,0 +1,95 @@
+{
+  "node": "v24.18.0",
+  "executable": "D:/nvm4w/nodejs/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+  "expectedDigest": "87f1234910d391b2a466b9aa37b916ebf0f26f0561a4a6b91a6c281f5d7a89f1",
+  "results": [
+    {
+      "scenario": "no-suite",
+      "code": 0,
+      "modelRequests": 2,
+      "declaredTools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "mcp__global__inspect",
+        "mcp__project__inspect"
+      ],
+      "serverStarts": [
+        "global",
+        "project"
+      ],
+      "cleanup": [
+        {
+          "identity": "global",
+          "pid": 11292,
+          "exited": true
+        },
+        {
+          "identity": "project",
+          "pid": 22524,
+          "exited": true
+        }
+      ],
+      "digestVerified": true
+    },
+    {
+      "scenario": "on",
+      "code": 0,
+      "modelRequests": 2,
+      "declaredTools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "codemode",
+        "mcp__selected__inspect"
+      ],
+      "serverStarts": [
+        "selected"
+      ],
+      "cleanup": [
+        {
+          "identity": "selected",
+          "pid": 22896,
+          "exited": true
+        }
+      ],
+      "digestVerified": true
+    },
+    {
+      "scenario": "only",
+      "code": 0,
+      "modelRequests": 2,
+      "declaredTools": [
+        "codemode"
+      ],
+      "serverStarts": [
+        "selected"
+      ],
+      "cleanup": [
+        {
+          "identity": "selected",
+          "pid": 6692,
+          "exited": true
+        }
+      ],
+      "digestVerified": true
+    },
+    {
+      "scenario": "empty",
+      "code": 0,
+      "modelRequests": 1,
+      "declaredTools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "codemode"
+      ],
+      "serverStarts": [],
+      "cleanup": [],
+      "digestVerified": false
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { openNodeJson } from './ui'
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
@@ -23,6 +24,7 @@ async function edit(page: Page, id: string, title: string) {
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: `${title} ${id}`, exact: true }).click()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toBeVisible()
+  await openNodeJson(page)
 }
 async function save(page: Page) {
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -48,11 +50,8 @@ test('P1 P3 P5 node settings are independent, radio-selected and explain Tab ter
   const manual = page.getByRole('radio', { name: 'manual', exact: true })
   await expect(auto).toBeChecked()
   await expect(manual).not.toBeChecked()
-  const help = page.locator('#node-auto-close-help')
-  await expect(help).toBeVisible()
-  await expect(help).toContainText(/Tab/)
-  await expect(help).toContainText(/终止.*终端.*进程/)
-  await expect(autoClose).toHaveAttribute('aria-describedby', 'node-auto-close-help')
+  await expect(autoClose).toHaveAccessibleDescription(/关闭 Tab.*终止.*终端.*进程/)
+  await expect(page.getByText('关闭 Tab 会终止 Tab 内终端及相关进程。', { exact: true })).toBeVisible()
   await autoClose.check()
   await manual.check()
   await expect(auto).not.toBeChecked()
@@ -161,10 +160,10 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   const zone = path.join(server!.cwd, 'bot-playground')
   fs.mkdirSync(zone)
   const post = (route: string, data: object) => page.request.post(`${server!.baseURL}${route}`, { data })
-  expect((await post('/api/zones', { path: zone })).status()).toBe(200)
+  expect((await post('/api/zones', { id: 'test/zone', path: zone })).status()).toBe(200)
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const response = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE', extensions: [] })
+    const response = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'FIXED ROLE' })
     expect(response.status()).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }
@@ -172,14 +171,14 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   for (const [id, title, policy] of [['A', '旧节点', 'auto'], ['B', '另一个节点', 'manual'], ['C', '无关节点', 'auto']] as const) {
     await edit(page, id, title)
-    await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: legacyNode.blocked_by }))
-    await page.getByRole('textbox', { name: 'zone', exact: true }).fill(zone)
+    await (await openNodeJson(page)).fill(JSON.stringify({ title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: legacyNode.blocked_by }))
+    await page.getByRole('textbox', { name: 'zone', exact: true }).fill('test/zone')
     await page.getByRole('checkbox', { name: 'auto_close', exact: true }).uncheck()
     await page.getByRole('radio', { name: policy, exact: true }).check()
     await save(page)
   }
   server!.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'settings-manager' } })
-  const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone, userInput: '验证节点策略派发' })
+  const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: '验证节点策略派发' })
   expect(started.status(), await started.text()).toBe(201)
   const { id: runId } = await started.json()
   const prompts: Record<string, string> = {}

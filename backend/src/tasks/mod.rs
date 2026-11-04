@@ -79,9 +79,9 @@ pub struct TriggerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvConfig {
-    /// Stable IDs of optional extensions; fixed extensions belong to the catalog.
-    #[serde(default)]
-    pub extensions: Vec<String>,
+    /// One stable Suite ID, never a copied definition or inferred selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
 }
 
 /// 一次新增或编辑请求的原始字段；字符串先按字段逐个校验，失败时给出明确类别。
@@ -96,8 +96,7 @@ pub struct TaskInput {
     thinking: Option<String>,
     skill: Option<String>,
     prompt: Option<String>,
-    #[serde(default)]
-    extensions: Vec<String>,
+    suite: Option<String>,
 }
 
 /// 校验后的 Task 字段（不含标识）。
@@ -110,7 +109,7 @@ struct TaskFields {
     thinking: String,
     skill: Option<String>,
     prompt: String,
-    extensions: Vec<String>,
+    suite: Option<String>,
 }
 
 impl TaskInput {
@@ -166,7 +165,6 @@ impl TaskInput {
             .filter(|v| !v.is_empty())
             .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
-        catalog.validate_extensions(agent, &self.extensions)?;
 
         Ok(TaskFields {
             name,
@@ -177,7 +175,7 @@ impl TaskInput {
             thinking,
             skill,
             prompt: self.prompt.unwrap_or_default(),
-            extensions: self.extensions,
+            suite: self.suite,
         })
     }
 }
@@ -201,7 +199,7 @@ pub enum TaskError {
         supported: Vec<String>,
     },
     UnknownSkill(String),
-    InvalidExtension(String),
+    InvalidSuite(String),
     Metadata(String),
     NotFound,
     Unreadable(io::Error),
@@ -224,7 +222,7 @@ impl TaskError {
             Self::ThinkingRequiresDefaultModel => "task-thinking-requires-default-model",
             Self::ThinkingUnsupported { .. } => "task-thinking-unsupported",
             Self::UnknownSkill(_) => "task-skill-invalid",
-            Self::InvalidExtension(_) => "task-extension-invalid",
+            Self::InvalidSuite(_) => "task-suite-invalid",
             Self::Metadata(_) => "metadata-invalid",
             Self::NotFound => "task-not-found",
             Self::Unreadable(_) => "tasks-unreadable",
@@ -283,11 +281,7 @@ impl TaskError {
             Self::UnknownSkill(value) => {
                 format!("Skill 不在当前选项目录中，收到：{value}；可不选 Skill。")
             }
-            Self::InvalidExtension(value) => {
-                format!(
-                    "扩展「{value}」不是当前 Agent 的可选扩展，或已重复选择；请按当前选项目录修正。"
-                )
-            }
+            Self::InvalidSuite(detail) => detail.clone(),
             Self::Metadata(detail) => detail.clone(),
             Self::NotFound => "目标Task不存在：可能已被删除。".to_string(),
             Self::Unreadable(error) => {
@@ -308,15 +302,17 @@ pub struct Tasks {
     storage_file: PathBuf,
     metadata_file: PathBuf,
     roots: crate::paths::Roots,
+    suites: std::sync::Arc<crate::suites::Suites>,
     files: FileStore,
 }
 
 impl Tasks {
-    pub fn new(storage_file: PathBuf, metadata_file: PathBuf, roots: crate::paths::Roots) -> Self {
+    pub fn new(storage_file: PathBuf, metadata_file: PathBuf, roots: crate::paths::Roots, suites: std::sync::Arc<crate::suites::Suites>) -> Self {
         Self {
             storage_file,
             metadata_file,
             roots,
+            suites,
             files: FileStore::default(),
         }
     }
@@ -344,11 +340,21 @@ impl Tasks {
             .ok_or(TaskError::NotFound)
     }
 
+    /// Re-read authority immediately before launch; do not hold coordination
+    /// across Herdr or any other external effect.
+    pub fn prepare_environment(&self, task: &Task) -> Result<Vec<String>, TaskError> {
+        let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+            self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
+        }).map_err(TaskError::Unreadable)??;
+        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots)
+    }
+
     /// 新增一个 Task；成功返回保存后的完整列表。
     pub async fn create(&self, input: TaskInput) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        self.change(|tasks| {
+        self.change(|access, tasks| {
+            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
             let id = next_id(tasks);
             tasks.push(Task {
                 id,
@@ -362,7 +368,7 @@ impl Tasks {
                     skill: fields.skill,
                     prompt: fields.prompt,
                 },
-                env: EnvConfig { extensions: fields.extensions },
+                env: EnvConfig { suite: fields.suite },
             });
             Ok(())
         })
@@ -376,7 +382,8 @@ impl Tasks {
     ) -> Result<Vec<Task>, TaskError> {
         let fields = input.validate(&self.catalog()?)?;
 
-        self.change(|tasks| {
+        self.change(|access, tasks| {
+            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
             let target = tasks
                 .iter_mut()
                 .find(|task| task.id == id)
@@ -391,14 +398,14 @@ impl Tasks {
                 skill: fields.skill,
                 prompt: fields.prompt,
             };
-            target.env = EnvConfig { extensions: fields.extensions };
+            target.env = EnvConfig { suite: fields.suite };
             Ok(())
         })
     }
 
     /// 删除一个 Task；不改变任何已经创建的 Chat。
     pub async fn delete(&self, id: &str) -> Result<Vec<Task>, TaskError> {
-        self.change(|tasks| {
+        self.change(|_, tasks| {
             let before = tasks.len();
             tasks.retain(|task| task.id != id);
             if tasks.len() == before {
@@ -409,7 +416,7 @@ impl Tasks {
     }
 
     /// 读取并校验存储文件；文件不存在是空列表，其余失败都是明确错误。
-    fn read(&self, access: &FileAccess) -> Result<Vec<Task>, TaskError> {
+    pub(crate) fn read(&self, access: &FileAccess) -> Result<Vec<Task>, TaskError> {
         match access.read_to_string(&self.storage_file) {
             Ok(raw) => {
                 let document: TasksDocument = serde_json::from_str(&raw)
@@ -423,13 +430,13 @@ impl Tasks {
     }
 
     /// Read, validate, mutate and publish under one shared resource scope.
-    fn change(&self, change: impl FnOnce(&mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(std::slice::from_ref(&self.storage_file), |access| {
+    fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
+        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),
                 |document| {
-                    change(&mut document.tasks)
+                    change(access, &mut document.tasks)
                 },
                 |document| serde_json::to_vec_pretty(document).map_err(|error| {
                     TaskError::WriteFailed(io::Error::new(io::ErrorKind::InvalidData, error))

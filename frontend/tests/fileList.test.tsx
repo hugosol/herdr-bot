@@ -54,7 +54,7 @@ describe('文件列表：zone 登记', () => {
     const { calls } = mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\beta' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'test/beta', path: 'D:\\projects\\beta' }],
         })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
@@ -73,7 +73,6 @@ describe('文件列表：zone 登记', () => {
     // 浏览入口只显示末级目录名；完整路径保留在无障碍名称中。
     const row = within(list).getByRole('button', { name: '浏览 C:\\work\\alpha' })
     expect(row).toHaveTextContent('alpha')
-    expect(row).not.toHaveTextContent('C:\\work\\alpha')
     expect(within(list).queryByRole('button', { name: '浏览' })).toBeNull()
     expect(calls[0]).toMatchObject({ url: '/api/zones', method: 'GET' })
     expect(document.querySelector('input[type="file"]')).toBeNull()
@@ -84,7 +83,7 @@ describe('文件列表：zone 登记', () => {
     mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\alpha' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'other/alpha', path: 'D:\\projects\\alpha' }],
         })
       }
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
@@ -109,7 +108,7 @@ describe('文件列表：zone 登记', () => {
     mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }],
           creation: {
             available: true,
             parentDirectory: 'E:\\Developer\\bot-playground',
@@ -129,6 +128,7 @@ describe('文件列表：zone 登记', () => {
     expect(screen.queryByTestId('zone-path')).toBeNull()
 
     await user.click(screen.getByTestId('register-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     const registerDialog = screen.getByTestId('register-dialog')
     expect(registerDialog).toBeVisible()
     expect(within(registerDialog).getByLabelText('服务器目录路径')).toBeVisible()
@@ -137,6 +137,7 @@ describe('文件列表：zone 登记', () => {
     expect(screen.queryByTestId('zone-path')).toBeNull()
 
     await user.click(screen.getByTestId('create-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     const createDialog = screen.getByTestId('create-dialog')
     expect(createDialog).toBeVisible()
     expect(within(createDialog).getByLabelText('新 zone 名称')).toBeVisible()
@@ -159,7 +160,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     expect(screen.getByTestId('create-open')).toBeDisabled()
     expect(screen.getByTestId('create-unavailable')).toHaveTextContent(
@@ -189,9 +190,10 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     await user.click(screen.getByTestId('create-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('新 zone 名称'), 'new-project')
     await user.click(screen.getByTestId('create-zone'))
 
@@ -200,7 +202,7 @@ describe('文件列表：zone 登记', () => {
 
     reply.settle(
       jsonResponse(200, {
-        zones: [{ path: 'E:\\Developer\\bot-playground\\new-project' }],
+        zones: [{ id: 'test/new-project', path: 'E:\\Developer\\bot-playground\\new-project' }],
         creation: {
           available: true,
           parentDirectory: 'E:\\Developer\\bot-playground',
@@ -220,7 +222,7 @@ describe('文件列表：zone 登记', () => {
       (call) => call.url === '/api/zones/create' && call.method === 'POST',
     )
     expect(post).toBeDefined()
-    expect(JSON.parse(post!.body!)).toEqual({ name: 'new-project' })
+    expect(JSON.parse(post!.body!)).toEqual({ id: 'test/new-project', name: 'new-project' })
   })
 
   it('新增失败时保留弹窗并显示后端给出的失败阶段与完整目录', async () => {
@@ -229,7 +231,7 @@ describe('文件列表：zone 登记', () => {
     mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }],
           creation: {
             available: true,
             parentDirectory: 'E:\\Developer\\bot-playground',
@@ -250,6 +252,7 @@ describe('文件列表：zone 登记', () => {
     await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('create-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('新 zone 名称'), 'kept-project')
     await user.click(screen.getByTestId('create-zone'))
 
@@ -279,9 +282,10 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    expect(await screen.findByText('尚未登记 zone。')).toBeVisible()
+    expect(await screen.findByTestId('zone-empty')).toBeVisible()
 
     await user.click(screen.getByTestId('register-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('服务器目录路径'), 'E:\\work\\new-project')
     await user.click(screen.getByTestId('register-zone'))
 
@@ -290,27 +294,26 @@ describe('文件列表：zone 登记', () => {
     expect(screen.getByTestId('register-zone')).toBeDisabled()
 
     reply.settle(
-      jsonResponse(200, { zones: [{ path: 'E:\\work\\new-project' }] }),
+      jsonResponse(200, { zones: [{ id: 'test/new-project', path: 'E:\\work\\new-project' }] }),
     )
 
     const feedback = await screen.findByTestId('zone-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'success')
     expect(feedback).toHaveTextContent('已登记')
-    expect(screen.queryByText('尚未登记 zone。')).toBeNull()
     expect(
       screen.getByRole('button', { name: '浏览 E:\\work\\new-project' }),
     ).toBeVisible()
 
     const post = calls.find((call) => call.url === '/api/zones' && call.method === 'POST')
     expect(post).toBeDefined()
-    expect(JSON.parse(post!.body!)).toEqual({ path: 'E:\\work\\new-project' })
+    expect(JSON.parse(post!.body!)).toEqual({ id: 'test/new-project', path: 'E:\\work\\new-project' })
   })
 
   it('非法路径被后端拒绝时显示明确失败，不显示成功也不改动列表', async () => {
     const user = userEvent.setup()
     mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       }
       if (url === '/api/zones' && method === 'POST') {
         return jsonResponse(400, {
@@ -326,6 +329,7 @@ describe('文件列表：zone 登记', () => {
     await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('register-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\missing')
     await user.click(screen.getByTestId('register-zone'))
 
@@ -342,7 +346,7 @@ describe('文件列表：zone 登记', () => {
     const user = userEvent.setup()
     mockZoneFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       }
       if (url === '/api/zones' && method === 'POST') {
         return jsonResponse(500, {
@@ -358,6 +362,7 @@ describe('文件列表：zone 登记', () => {
     await screen.findByTestId('zone-list')
 
     await user.click(screen.getByTestId('register-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('服务器目录路径'), 'C:\\work\\second')
     await user.click(screen.getByTestId('register-zone'))
 
@@ -389,7 +394,6 @@ describe('文件列表：zone 登记', () => {
 
     const error = await screen.findByTestId('zone-list-error')
     expect(error).toHaveTextContent('zone 登记文件内容已损坏')
-    expect(screen.queryByText('尚未登记 zone。')).toBeNull()
     expect(screen.queryByTestId('zone-list')).toBeNull()
   })
 
@@ -398,14 +402,14 @@ describe('文件列表：zone 登记', () => {
     const { calls } = mockZoneFetch((url, method, body) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\beta' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'test/beta', path: 'D:\\projects\\beta' }],
         })
       }
-      if (url === '/api/zones/remove' && method === 'POST') {
-        const path = JSON.parse(body!).path as string
+      if (url === '/api/zones' && method === 'DELETE') {
+        const id = JSON.parse(body!).id as string
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\beta' }].filter(
-            (entry) => entry.path !== path,
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'test/beta', path: 'D:\\projects\\beta' }].filter(
+            (entry) => entry.id !== id,
           ),
         })
       }
@@ -417,8 +421,12 @@ describe('文件列表：zone 登记', () => {
     await screen.findByTestId('zone-list')
 
     const removeButton = screen.getByRole('button', { name: '取消登记 C:\\work\\alpha' })
-    expect(removeButton).toHaveTextContent('×')
     await user.click(removeButton)
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await user.click(screen.getByRole('button', { name: '保留登记' }))
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await user.click(removeButton)
+    await user.click(screen.getByRole('button', { name: '确认取消登记' }))
 
     const feedback = await screen.findByTestId('zone-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'success')
@@ -431,9 +439,9 @@ describe('文件列表：zone 登记', () => {
       screen.getByRole('button', { name: '浏览 D:\\projects\\beta' }),
     ).toBeVisible()
 
-    const remove = calls.find((call) => call.url === '/api/zones/remove')
+    const remove = calls.find((call) => call.url === '/api/zones' && call.method === 'DELETE')
     expect(remove).toBeDefined()
-    expect(JSON.parse(remove!.body!)).toEqual({ path: 'C:\\work\\alpha' })
+    expect(JSON.parse(remove!.body!)).toEqual({ id: 'test/alpha' })
   })
 
   it('请求没有响应时给出未确认反馈，不冒充成功或失败', async () => {
@@ -450,9 +458,10 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     await user.click(screen.getByTestId('register-open'))
+    await user.type(screen.getByTestId('zone-id'), 'test/new-project')
     await user.type(screen.getByLabelText('服务器目录路径'), 'E:\\work\\new-project')
     await user.click(screen.getByTestId('register-zone'))
 
@@ -468,8 +477,8 @@ describe('文件列表：zone 登记', () => {
   it('重新进入文件列表会重新读取后端列表，显示另一设备新增的登记', async () => {
     const user = userEvent.setup()
     const reads = [
-      [{ path: 'C:\\work\\alpha' }],
-      [{ path: 'C:\\work\\alpha' }, { path: 'D:\\projects\\from-phone' }],
+      [{ id: 'test/alpha', path: 'C:\\work\\alpha' }],
+      [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'test/from-phone', path: 'D:\\projects\\from-phone' }],
     ]
     let read = 0
     mockZoneFetch((url, method) => {

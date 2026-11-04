@@ -38,7 +38,7 @@ agent: 'omp',
 taskType: 'normal',
 model: 'default',
 thinking: 'default',
-skill: null, prompt: '', extensions: [] }
+skill: null, prompt: '' }
 
 const PREVIEW = {
   chatId: 'a7f3c2',
@@ -79,7 +79,7 @@ async function openDialog(user: UserEvent, rowIndex = 1) {
 function mockCreationFailure(failed: Record<string, unknown>) {
   return mockFetch((url, method) => {
     if (url === '/api/zones' && method === 'GET') {
-      return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+      return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
     }
     if (url === '/api/zones/overview' && method === 'GET') {
       return jsonResponse(200, { zones: [] })
@@ -131,19 +131,19 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/chats/preview') return jsonResponse(200, { ...PREVIEW, chatNameRule, taskName })
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
-    render(<ChatCreationDialog zone={PREVIEW.zone} onClose={() => {}} />)
+    render(<ChatCreationDialog zone="test/alpha" onClose={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('名称必须是非空单行文字。')
     expect(screen.getByTestId('chat-create-submit')).toBeDisabled()
     await user.click(screen.getByTestId('chat-create-submit'))
     expect(calls.some((call) => call.url === '/api/chats')).toBe(false)
   })
 
-  it('每个 zone 行都有“+”，弹窗绑定所选 zone，名称规则仅本地编辑并实时预览', async () => {
+  it('从 zone 行发起 Chat，弹窗绑定所选 zone，名称规则仅本地编辑并实时预览', async () => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
         return jsonResponse(200, {
-          zones: [{ path: 'C:\\work\\alpha' }, { path: 'D:\\work\\beta' }],
+          zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }, { id: 'test/beta', path: 'D:\\work\\beta' }],
         })
       }
       if (url === '/api/zones/overview' && method === 'GET') {
@@ -165,12 +165,10 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     await user.click(screen.getByTestId('tab-files'))
     const list = await screen.findByTestId('zone-list')
     const rows = within(list).getAllByTestId('zone-item')
-    expect(within(rows[0]).getByTestId('zone-create-chat')).toHaveTextContent('+')
-    expect(within(rows[1]).getByTestId('zone-create-chat')).toHaveTextContent('+')
 
     await user.click(within(rows[1]).getByTestId('zone-create-chat'))
     const dialog = screen.getByTestId('chat-creation-dialog')
-    expect(within(dialog).getByTestId('chat-zone')).toHaveTextContent('D:\\work\\beta')
+    expect(within(dialog).getByTestId('chat-zone')).toHaveTextContent('test/beta')
 
     const preview = await within(dialog).findByTestId('chat-name-preview')
     await vi.waitFor(() => expect(preview).toHaveTextContent(PREVIEW.name))
@@ -189,7 +187,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const previewCall = calls.find((call) => call.url === '/api/chats/preview')
     expect(previewCall?.method).toBe('POST')
     expect(JSON.parse(previewCall?.body ?? '{}')).toEqual({
-      zone: 'D:\\work\\beta',
+      zone: 'test/beta',
       taskId: 'tpl-1',
     })
   })
@@ -200,7 +198,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const secondPreview = { ...PREVIEW, taskId: second.id, taskName: second.name, agent: second.agent, chatNameRule: second.chatName, zoneName: '实际目录', chatId: 'b8c9d0', name: '发布/实际目录/b8c9d0' }
     let attempts = 0
     const { calls } = mockFetch((url, method, body) => {
-      if (url === '/api/zones') return jsonResponse(200, { zones: [{ path: PREVIEW.zone }] })
+      if (url === '/api/zones') return jsonResponse(200, { zones: [{ id: 'test/alpha', path: PREVIEW.zone }] })
       if (url === '/api/zones/overview') return jsonResponse(200, { zones: [] })
       if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK, second], options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] } })
       if (url === '/api/chats/preview') return jsonResponse(200, JSON.parse(body ?? '{}').taskId === second.id ? secondPreview : PREVIEW)
@@ -228,7 +226,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const submit = within(dialog).getByTestId('chat-create-submit')
     await user.click(submit)
     expect(JSON.parse(calls.find((call) => call.url === '/api/chats')?.body ?? '{}')).toEqual({
-      zone: PREVIEW.zone, taskId: second.id, chatId: secondPreview.chatId,
+      zone: 'test/alpha', taskId: second.id, chatId: secondPreview.chatId,
       chatNameRule: '  {zone.name} / {agent} / {chat.id} / {unknown}  ',
       expectedName: '  实际目录 / pi / b8c9d0 / {unknown}  ', input: '', workspaceTarget: 'current',
     })
@@ -247,7 +245,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     let polls = 0
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       }
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
@@ -305,7 +303,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const createCall = calls.find((call) => call.url === '/api/chats')
     const body = JSON.parse(createCall?.body ?? '{}')
     expect(body).toEqual({
-      zone: 'C:\\work\\alpha',
+      zone: 'test/alpha',
       taskId: 'tpl-1',
       chatId: PREVIEW.chatId,
       expectedName: PREVIEW.name,
@@ -324,7 +322,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     })
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: PREVIEW.zone }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: PREVIEW.zone }] })
       }
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
@@ -367,7 +365,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(within(dialog).getByTestId('chat-input')).toBeDisabled()
     expect(workspace).toHaveValue('current')
     expect(JSON.parse(calls.find((call) => call.url === '/api/chats')?.body ?? '{}')).toEqual({
-      zone: PREVIEW.zone,
+      zone: 'test/alpha',
       taskId: PREVIEW.taskId,
       chatId: PREVIEW.chatId,
       expectedName: PREVIEW.name,
@@ -419,7 +417,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       }
       return jsonResponse(404, {})
     })
-    render(<ChatCreationDialog zone={PREVIEW.zone} onClose={() => {}} />)
+    render(<ChatCreationDialog zone="test/alpha" onClose={() => {}} />)
     const dialog = screen.getByTestId('chat-creation-dialog')
     const rule = within(dialog).getByRole('textbox', { name: /本次 Chat 名称/ })
     const input = within(dialog).getByTestId('chat-input')
@@ -455,9 +453,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(await within(dialog).findByTestId('chat-create-success')).toBeVisible()
     const bodies = calls.filter((call) => call.url === '/api/chats').map((call) => JSON.parse(call.body ?? '{}'))
     expect(bodies).toEqual([
-      { zone: PREVIEW.zone, taskId: TASK.id, chatId: PREVIEW.chatId,
+      { zone: 'test/alpha', taskId: TASK.id, chatId: PREVIEW.chatId,
         expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: 'current' },
-      { zone: PREVIEW.zone, taskId: TASK.id, chatId: PREVIEW.chatId,
+      { zone: 'test/alpha', taskId: TASK.id, chatId: PREVIEW.chatId,
         expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: target },
     ])
     expect(calls.filter((call) => call.url === '/api/chats/preview')).toHaveLength(1)
@@ -486,7 +484,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const user = userEvent.setup()
     mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       }
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })
@@ -541,7 +539,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url, method) => {
       if (url === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: 'C:\\work\\alpha' }] })
+        return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       }
       if (url === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, { zones: [] })

@@ -9,6 +9,7 @@ import { startServer, type E2EServer } from './support'
 test('P2/P4: keyboard opens a same-page server view and returns to each originating tab', async ({ page, context }) => {
   server = await startServer({ safeShutdown: true })
   await page.goto(`${server.baseURL}?layout=expanded`)
+  await expect(page.getByRole('button', { name: '收起导航' })).toBeVisible()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: '收起导航' })).toBeFocused()
   await page.keyboard.press('Tab')
@@ -22,7 +23,7 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
   await expect(page.getByRole('tab', { selected: true })).toHaveText('scheduler')
   await page.keyboard.press('Home')
   const originalURL = page.url()
-  for (const [index, label] of ['chat', 'zone', 'workflow', 'task', 'bot', 'scheduler'].entries()) {
+  for (const [index, label] of ['chat', 'zone', 'workflow', 'task', 'suite', 'bot', 'scheduler'].entries()) {
     if (index > 0) await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('tab', { selected: true })).toHaveText(label)
     for (let i = 0; i <= index; i++) await page.keyboard.press('Shift+Tab')

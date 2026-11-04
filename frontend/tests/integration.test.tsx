@@ -84,7 +84,7 @@ type BackendState = {
 function zoneHandler(state: BackendState) {
   return (url: URL): Response | undefined => {
     if (url.pathname === '/api/zones') {
-      return jsonResponse(200, { zones: [{ path: ZONE }] })
+      return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
     }
     if (url.pathname === '/api/zones/overview') {
       return jsonResponse(200, {
@@ -207,7 +207,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
     })
     const calls = mockFetch((url, method) => {
       if (url.pathname === '/api/zones' && method === 'GET') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview' && method === 'GET') {
         return jsonResponse(200, {
@@ -279,7 +279,7 @@ describe('跨流程回归：文件功能不改变既有行为', () => {
   it('文件列表与浏览期间读取失败不会被伪装成空目录或干净仓库', async () => {
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {

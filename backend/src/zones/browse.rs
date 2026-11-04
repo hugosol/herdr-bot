@@ -460,6 +460,16 @@ pub fn read_resource(registered_root: &str, relative: &str) -> Result<Vec<u8>, B
     fs::read(path).map_err(BrowseError::ReadFailed)
 }
 
+/// Resolve a file address without reading its contents, preserving all browse boundaries.
+pub(crate) fn checked_file(registered_root: &str, relative: &str) -> Result<String, BrowseError> {
+    let root = checked_root(registered_root)?;
+    let components = relative_components(relative)?;
+    if components.is_empty() { return Err(BrowseError::NotAFile); }
+    let path = resolve_existing(&root, &components)?;
+    if !fs::metadata(&path).map_err(map_metadata_error)?.is_file() { return Err(BrowseError::NotAFile); }
+    Ok(zones::display_path(&path))
+}
+
 /// 核对登记根当前仍是原来的真实目录，并且没有被替换成链接或目录联接。
 ///
 /// Git 状态查询复用同一份边界核对：状态读取同样以登记根为边界，不跟随被替换的根。

@@ -30,9 +30,9 @@ async function post(endpoint: string, body: unknown) {
 async function history() { return fetch(`${server!.baseURL}/api/sessions/history`).then(r => r.json()) }
 async function prepare() {
   const zone = path.join(root, 'zone'); fs.mkdirSync(zone)
-  const zones = await post('/api/zones', { path: zone })
-  await post('/api/tasks', { name: 'OMP history browser', chatName: 'OMP browser {chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
-  return zones.zones[0].path as string
+  const zones = await post('/api/zones', { id: 'test/zone', path: zone })
+  await post('/api/tasks', { name: 'OMP history browser', chatName: 'OMP browser {chat.id}', agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '' })
+  return zones.zones[0].id as string
 }
 async function createInPage(page: Page, zone: string) {
   await page.goto(server!.baseURL)
@@ -41,6 +41,7 @@ async function createInPage(page: Page, zone: string) {
   const dialog = page.getByTestId('chat-creation-dialog')
   await dialog.locator('#chat-workspace-target').selectOption('default')
   await dialog.getByTestId('chat-input').fill('/settings')
+  await expect(dialog.getByTestId('chat-create-submit')).toBeEnabled()
   const name = await dialog.getByTestId('chat-name-preview').textContent()
   const accepted = page.waitForResponse(r => r.url().endsWith('/api/chats') && r.request().method() === 'POST')
   await dialog.getByTestId('chat-create-submit').click()

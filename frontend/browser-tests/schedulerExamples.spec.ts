@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { showMapNodes, showMapDirectory } from './ui'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
@@ -44,27 +45,29 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(graph.getByRole('img')).toHaveCount(2)
     await expect(graph.getByRole('img', { name: 'A → C', exact: true })).toBeAttached()
     await expect(graph.getByRole('img', { name: 'B → C', exact: true })).toBeAttached()
-    for (const [name, input, botName] of [
-      ['上海出行天气 A', '城市：上海\n日期：2026-11-01\n偏好：步行；带伞。', '目的地天气摘要'],
-      ['北京出行天气 B', '城市：北京\n日期：2026-11-02', '目的地天气摘要'],
-      ['汇总出行准备 C', '范围：上海与北京的出行准备\n核对主题：天气、随身物品。材料位置由管理者明确提供。', '出行准备清单汇总'],
-      ['独立额度估算 D', '账户：人工示例账户\n人工观察的剩余额度：25%\n观察时间：未知。', '额度恢复时间估算'],
+    for (const [name, input, botName, botId] of [
+      ['上海出行天气 A', '城市：上海\n日期：2026-11-01\n偏好：步行；带伞。', '目的地天气摘要', 'destination-weather'],
+      ['北京出行天气 B', '城市：北京\n日期：2026-11-02', '目的地天气摘要', 'destination-weather'],
+      ['汇总出行准备 C', '范围：上海与北京的出行准备\n核对主题：天气、随身物品。材料位置由管理者明确提供。', '出行准备清单汇总', 'trip-summary'],
+      ['独立额度估算 D', '账户：人工示例账户\n人工观察的剩余额度：25%\n观察时间：未知。', '额度恢复时间估算', 'quota-estimate'],
     ]) {
-      await nodes.getByRole('button', { name, exact: true }).click()
+      await showMapNodes(page).then(() => nodes.getByRole('button', { name, exact: true }).click())
       await expect(details.getByTestId('node-input')).toHaveText(input)
-      await expect(details).toContainText('C:/example/travel-not-registered')
+      await expect(details).toContainText('example/travel')
       const prerequisites = details.getByRole('region', { name: 'blocked_by', exact: true })
       if (name === '汇总出行准备 C') await expect(prerequisites.getByRole('listitem')).toHaveText(['上海出行天气 · A', '北京出行天气 · B'])
       else await expect(prerequisites).toContainText('无前置依赖')
-      await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+      await page.getByTestId('tab-bot').click()
+      await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: `${botName} · ${botId}`, exact: true }).click()
       const bot = page.getByRole('region', { name: 'Bot 预览', exact: true })
       await expect(bot.getByRole('heading', { name: botName, exact: true })).toBeVisible()
       await expect(bot).toContainText('尚未绑定 Task')
       await page.getByTestId('tab-scheduler').click()
     }
     await page.screenshot({ path: testInfo.outputPath('graph.png'), fullPage: true })
-    await nodes.getByRole('button', { name: '上海出行天气 A', exact: true }).click()
-    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '上海出行天气 A', exact: true }).click())
+    await page.getByTestId('tab-bot').click()
+    await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: / · destination-weather$/, exact: true }).click()
     const bot = page.getByRole('region', { name: 'Bot 预览', exact: true })
     await expect(bot.getByRole('region', { name: 'when', exact: true })).toHaveText('出行前需要了解目的地天气与随身物品建议时。')
     await bot.getByRole('button', { name: 'plan_guide', exact: true }).click()
@@ -73,35 +76,37 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(bot.getByRole('region', { name: 'node_guide', exact: true })).toHaveText('请在 input 中说明城市、计划出行日期与偏好。输出温度、降水与随身物品建议的文本摘要，标明信息来源和不确定性。这是工作指引，不是字段校验规则。')
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true })
     await page.getByTestId('tab-scheduler').click()
-    await page.getByRole('button', { name: '另一张出行计划（人工示例）', exact: true }).click()
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '另一张出行计划（人工示例）', exact: true }).click())
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
     await expect(details.getByTestId('node-input')).toHaveText('城市：广州\n日期：2026-11-03')
-    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await page.getByTestId('tab-bot').click()
+    await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: / · destination-weather$/, exact: true }).click()
     await expect(bot.getByRole('heading', { name: '目的地天气摘要', exact: true })).toBeVisible()
     const file = path.join(root, 'capabilities/weather-capability.json')
     const updatedWeatherGuide = '# 最新天气指引\n<不执行查询>\n  保留原始缩进与 **文本**。'
     const weather = JSON.parse(fs.readFileSync(file, 'utf8'))
     fs.writeFileSync(file, JSON.stringify({ ...weather, name: '更新后的目的地天气摘要', node_guide: updatedWeatherGuide }))
     await page.getByTestId('tab-scheduler').click()
-    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
-    await details.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '刷新全部', exact: true }).click())
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
+    await page.getByTestId('tab-bot').click()
+    await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: / · destination-weather$/, exact: true }).click()
     await expect(bot.getByRole('heading', { name: '更新后的目的地天气摘要', exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
     fs.copyFileSync(path.join(examples, 'maps/another-trip.json'), path.join(root, 'plans/new-copy.json'))
-    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '刷新全部', exact: true }).click())
     await expect(page.getByTestId('scheduler-map-list').locator('[data-map-file="new-copy.json"]')).toHaveText('另一张出行计划（人工示例）')
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
     fs.writeFileSync(file, '{invalid Bot JSON')
-    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '刷新全部', exact: true }).click())
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
     await expect(details.getByRole('alert')).toContainText('destination-weather')
     fs.writeFileSync(file, JSON.stringify(weather))
-    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '刷新全部', exact: true }).click())
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
     fs.unlinkSync(file)
-    await page.getByRole('button', { name: '刷新全部', exact: true }).click()
-    await nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click()
+    await showMapDirectory(page).then(() => page.getByRole('button', { name: '刷新全部', exact: true }).click())
+    await showMapNodes(page).then(() => nodes.getByRole('button', { name: '广州出行天气 E', exact: true }).click())
     await expect(details.getByRole('alert')).toContainText('destination-weather')
     await page.getByTestId('server-button').click()
     await page.getByTestId('server-back').click()

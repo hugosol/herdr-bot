@@ -59,6 +59,22 @@ fn config_load_resolves_each_source_and_keeps_a_root_snapshot() {
 }
 
 #[test]
+fn prompt_dictionary_is_independent_and_relative_to_config_source() {
+    let fixture = Fixture::new();
+    let plain = config("prompts_file = '../machine/prompts.toml'")
+        .replace("${roots.toolkit}/start.cmd", "start.cmd")
+        .replace("${roots.checkout}", "work");
+    let file = fixture.write("deployment/config.toml", &plain);
+    let loaded = Config::load(&file).unwrap();
+    let expected = fixture.0.join("machine/prompts.toml");
+    assert_eq!(loaded.prompts_file, expected);
+    let dictionary = herdr_bot::prompts::PromptDictionary::new(loaded.prompts_file);
+    assert_eq!(dictionary.snapshot().unwrap().render(herdr_bot::prompts::Field::TaskPrompt, "literal").unwrap(), "literal");
+    fixture.write("machine/prompts.toml", "herdr-bot-path = 'D:/independent'\n");
+    assert_eq!(dictionary.snapshot().unwrap().render(herdr_bot::prompts::Field::TaskPrompt, "${herdr-bot-path}").unwrap(), "D:/independent");
+}
+
+#[test]
 fn config_load_reports_invalid_roots_instead_of_falling_back() {
     for (roots, diagnostic) in [
         ("[roots]\ntoolkit = '${roots.checkout}'\ncheckout = '${roots.toolkit}'\n", "循环"),

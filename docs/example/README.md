@@ -18,7 +18,19 @@
 |D|账户：人工示例账户；人工观察的剩余额度：25%；观察时间：未知。|无|
 |E|城市：广州；日期：2026-11-03|无|
 
-每项 zone 都是 `C:/example/travel-not-registered`，三份 Bot 均暂未绑定 Task。这些内部合法但外部未完成的定义可保存，不制造默认绑定，不能据此启动。A、B 的不同 input 不会被 Bot 文档或彼此内容覆盖。C 的边不会自动传入 A、B 材料。
+每项 zone 都是 `example/travel`，三份 Bot 均暂未绑定 Task。这些内部合法但外部未完成的定义可保存，不制造默认绑定，不能据此启动。A、B 的不同 input 不会被 Bot 文档或彼此内容覆盖。C 的边不会自动传入 A、B 材料。
+
+## zone 与文件引用
+
+示例使用未登记的稳定 ID `example/travel`，不是目录。仅浏览无需登记；实际启动前显式将该 ID 登记到本机已有目录，另一台机器可为同一 ID 登记不同目录。Map 不保存本机绑定；Run 启动时冻结所需绑定。直接 File 输入使用 `{"id":"source","type":"file","zone_id":"example/travel","path":"inputs/source.txt"}`，其中 path 是以 `/` 分隔的相对路径，省略 zone_id 时使用管理者 zone，不使用 node zone。
+
+旧定义须离线显式迁移，不能把旧路径当成新 ID。先停止全部后端进程，准备例如 `[ {"path":"C:/old/travel","id":"example/travel","local_path":"D:/current/travel"} ]` 的 mapping.json，然后执行：
+
+```powershell
+cargo run --manifest-path backend/Cargo.toml --bin migrate-zone-portability -- C:/isolated/zones.json C:/isolated/maps C:/isolated/mapping.json
+```
+
+替换参数为自己的隔离副本位置，不要对示例凭空登记或创建目录。local_path 可省略（保留旧目录绑定）；同一 ID 的多个旧路径别名必须显式声明相同 local_path。迁移只修改登记和顶层 Map JSON，历史 Run／Chat 不变；绝对 File 输入转换为明确 zone_id 加相对路径，多个包含根存在歧义时须指定 zone_id，不猜最近父目录。全部输入验证通过后才写入，原文件保留为 `*.zone-portability-v1.bak`；每个文件独立发布，故障后根据报错核对已生效文件再重试。缺失映射会列出需要补充的路径并拒绝修改。
 
 ## 在隔离目录运行
 
@@ -119,11 +131,11 @@ try {
 
 示例显式填写全部 node 的 `report_policy`：A、B、D、E 为 `auto`，C 为 `manual`。`auto` 表示交付结果就绪后不等待用户确认即可上报；`manual` 表示每次交接上报前，先在该 node Chat 展示摘要、结果位置和限制，等待用户明确确认后再上报。两者都不自动完成 node，完成仍由管理者决定；静态预览不会因此执行工作。
 
-三份 Bot 显式填写 `task_id: null`，保留可浏览但不可执行的未绑定状态；读取或保存后的服务响应会省略无绑定字段。需要执行时，应改为本机真实存在的 `normal` Task ID，并配置有效 zone，而不是直接沿用示例路径。
+三份 Bot 显式填写 `task_id: null`，保留可浏览但不可执行的未绑定状态；读取或保存后的服务响应会省略无绑定字段。需要执行时，应改为本机真实存在的 `normal` Task ID，并配置有效 zone，而不是假设示例 ID 已登记。
 
-node ID 是 `nodes` 的 key，共享 Bot 按 `id` 而非文件名关联。Bot 只引用 Task，不复制 Task 配置或 Chat；静态定义不保存执行状态、报告和运行历史。`zone` 是登记目录的路径引用，不是稳定 ID。
+node ID 是 `nodes` 的 key，共享 Bot 按 `id` 而非文件名关联。Bot 只引用 Task，不复制 Task 配置或 Chat；静态定义不保存执行状态、报告和运行历史。`zone` 是用户输入的稳定 ID；本机登记将该 ID 绑定到绝对目录。相同 Map 可在不同主机绑定到不同目录。
 
-Bot 的 `when`、`plan_guide`、`node_guide` 分别指引能力选用、规划安排与填写 `node.input`，可任意顺序独立读取、独立保存空文本；三份指南保留在 Bot 预览中，不自动注入节点执行提示词。节点详情展示关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 不是结构校验或业务门禁。`input` 是原文字符串，不做 JSON 解析或变量替换，指南也不会自动补全输入。文中路径和指令只作文本展示，不读取或执行。
+Bot 的 `when`、`plan_guide`、`node_guide` 分别指引能力选用、规划安排与填写 `node.input`，可任意顺序独立读取、独立保存空文本；三份指南保留在 Bot 预览中，不自动注入节点执行提示词。节点详情展示关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 不是结构校验或业务门禁。`input` 是原文字符串，不做 JSON 解析，指南也不会自动补全输入。预览与保存保留 `${key}` 原文；实际发给 agent 时，仅指定模板字段从最新本机提示词字典展开，`$${key}` 表示字面量，缺键会在发送前报错。用户输入、报告及文件内容不展开。预览中的路径和指令只作文本展示，不读取或执行。
 
 结构检查拒绝未知字段、错误类型、缺必需字段及非法依赖，拒绝前保留原定义。`nodes: {}`、`blocked_by: []`、字符串 `""` 合法，必需字段不能缺省或为 null。Bot 可以暂缺 task_id，也可保存尚不存在的 Task；node 可引用缺失 Bot、未登记或失效的 zone，不补默认绑定。完整职责与接口见 [scheduler 参考](../scheduler.md#定义职责与唯一格式)。
 
@@ -165,10 +177,10 @@ npm --prefix frontend run test:browser:build -- --workers=1
 桌面与窄屏各执行一次；窄屏使用 390 × 844。可用浏览器设备工具设置 viewport，不要求真实 LAN。只用 Tab／Shift+Tab 走到目标，Enter／Space 激活按钮；JSON 用键盘全选、输入与上下移动，观察输入、错误和保存／返回按钮能否通过纵向滚动访问。
 
 1. 从外侧 `scheduler` 入口进入 `trip-readiness.json`，选择「上海出行天气 A」。点「Bot 明细」，核对 Bot ID 为 `destination-weather`，分别阅读 `when`、`plan_guide` 和 `node_guide`，点 `edit`，ID 应只读，JSON 无顶层 id。仅修改 plan_guide 后保存，应立即预览新说明；通过外侧 `scheduler` 返回后仍选中 A，再次进入可看到新说明。
-2. 返回并「修改 node」，确认 JSON 来自真实上海工作而非新增示例，改变 title 后保存，应立即选中新的标题。点「新增 node」，ID 初始为空，填 `manual-node`，把 JSON 改成下面的内容后保存；检查选中 `manual-node`、input 原文包含杭州和业务说明，zone 路径原样保存，且不发起 Chat。
+2. 返回并「修改 node」，确认 JSON 来自真实上海工作而非新增示例，改变 title 后保存，应立即选中新的标题。点「新增 node」，ID 初始为空，填 `manual-node`，把 JSON 改成下面的内容后保存；检查选中 `manual-node`、input 原文包含杭州和业务说明，zone ID 原样保存，且不发起 Chat。
 
    ```json
-   {"title":"人工新增核对","bot_id":"destination-weather","input":"城市：杭州；业务说明：人工核对。","zone":"C:/example/travel-not-registered","blocked_by":[]}
+   {"title":"人工新增核对","bot_id":"destination-weather","input":"城市：杭州；业务说明：人工核对。","zone":"example/travel","blocked_by":[]}
    ```
 
 3. 修改该 node，在 JSON 中输入 `{ "title": ` 后保存，检查错误可读、ID 仍为 `manual-node` 且原始输入未丢。改回合法内容，改变 title 后点「放弃编辑」：先取消，草稿必须保留；再操作并确认放弃，回到原持久内容。不要把“放弃”理解成撤销已保存的内容。

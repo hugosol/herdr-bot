@@ -15,6 +15,8 @@ import {
   type FileView,
 } from './browseApi'
 import { HtmlReaderView } from '../reader/HtmlReaderView'
+import { zoneDisplayName } from '../zoneDisplay'
+import './zoneBrowser.css'
 import { GitAheadIndicator } from '../git/GitAheadIndicator'
 import { isHtmlPath } from '../reader/htmlReader'
 import { DiffContent } from '../git/DiffContent'
@@ -1307,35 +1309,40 @@ export function ZoneBrowser({
 
   return (
     <section className="browser" data-testid="zone-browser">
-      <header className="browser-toolbar">
-        <button
-          type="button"
-          className="browser-toolbar__button"
-          data-testid="back-to-zones"
-          onClick={onBack}
-        >
-          返回 zone 列表
-        </button>
-        <code className="browser-toolbar__zone" data-testid="browser-zone">
-          {zone}
-        </code>
-        {gitStatus?.repository && (
-          <span className="browser-toolbar__branch" data-testid="browser-branch">
-            分支：
-            {gitStatus.branch ?? (gitStatus.detached ? 'HEAD（已分离）' : '未知')}
-            {' '}
-            <GitAheadIndicator sync={gitStatus.sync} />
-          </span>
-        )}
-        <button
-          type="button"
-          className="browser-toolbar__button"
-          data-testid="browser-refresh"
-          onClick={() => void refresh()}
-          disabled={refreshing}
-        >
-          {refreshing ? '刷新中……' : '刷新'}
-        </button>
+      <header className="browser-header">
+        <div className="browser-toolbar">
+          <button
+            type="button"
+            className="browser-toolbar__button"
+            data-testid="back-to-zones"
+            onClick={onBack}
+          >
+            <span aria-hidden="true">←</span> 返回 zone 列表
+          </button>
+          <button
+            type="button"
+            className="browser-toolbar__button"
+            data-testid="browser-refresh"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+          >
+            {refreshing ? '刷新中……' : '刷新'}
+          </button>
+        </div>
+        <div className="browser-heading">
+          <h1 className="browser-heading__title">{zoneDisplayName(zone)}</h1>
+          <p className="browser-toolbar__zone" data-testid="browser-zone">
+            {zone}
+          </p>
+          {gitStatus?.repository && (
+            <p className="browser-toolbar__branch" data-testid="browser-branch">
+              分支：
+              {gitStatus.branch ?? (gitStatus.detached ? 'HEAD（已分离）' : '未知')}
+              {' '}
+              <GitAheadIndicator sync={gitStatus.sync} />
+            </p>
+          )}
+        </div>
       </header>
 
       {remoteChecking && (
@@ -1429,7 +1436,7 @@ export function ZoneBrowser({
                   data-testid="back-to-file-list"
                   onClick={() => setMobileShowingContent(false)}
                 >
-                  返回 zone 列表
+                  ← 返回文件列表
                 </button>
                 {filePane()}
               </>
@@ -1462,9 +1469,11 @@ export function ZoneBrowser({
         ) : (
           <div className="browser-layout" data-testid="browser-layout">
             <div className="browser-tree" data-testid="browser-tree" ref={desktopTreeRef}>
+              <h2 className="browser-region-title">目录</h2>
               {desktopTree('', 0)}
             </div>
             <div className="browser-content" data-testid="browser-content" ref={contentRef}>
+              <h2 className="browser-region-title">文件预览</h2>
               {filePane()}
             </div>
           </div>

@@ -18,7 +18,7 @@ async fn save(s: &Scenario, draft: &Value, inputs: Value) -> common::HttpRespons
 #[tokio::test]
 async fn named_inputs_round_trip_without_dependencies_or_implicit_launch() {
     let s = Scenario::new().await;
-    let inputs = json!([{"id":"same_volume","type":"file","path":"C:\\handoff\\not-created.csv"}, {"id":"other_volume","type":"file","path":"Z:\\external\\result.txt"}, {"id":"outside_zone","type":"file","path":"C:\\outside-any-zone\\brief.md"}, {"id":"summary","type":"node","node_id":"B","output_id":"review"}]);
+    let inputs = json!([{"id":"manager_file","type":"file","path":"handoff/not-created.csv"}, {"id":"node_file","type":"file","path":"external/result.txt","zone_id":"node"}, {"id":"unregistered_file","type":"file","path":"brief.md","zone_id":"unregistered"}, {"id":"summary","type":"node","node_id":"B","output_id":"review"}]);
     let response = save(&s, &draft(&s).await, inputs.clone()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
@@ -40,7 +40,11 @@ async fn invalid_named_inputs_preserve_original_map() {
     let draft = draft(&s).await;
     for inputs in [
         json!([{"id":"brief","type":"node","node_id":"typo","output_id":"review"}]),
-        json!([{"id":"brief","type":"file","path":"relative/brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"../brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"C:/absolute/brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"/absolute/brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"relative\\brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"brief.md","zone_id":12}]),
         json!([{"id":"brief","type":"file","path":"C:brief.md"}]),
         json!([{"id":"brief","type":"file","path":"\\brief.md"}]),
         json!({"brief":{"source":"file","path":"C:\\brief\u{0}.md"}}),
@@ -54,8 +58,8 @@ async fn invalid_named_inputs_preserve_original_map() {
         json!([{"id":"brief","type":"node","node_id":"B"}]),
         json!({"brief":["file","C:\\brief.md"]}),
         json!({"brief":null}), Value::Null,
-        json!([{"id":"","type":"file","path":"C:/brief.md"}]),
-        json!([{"id":"brief","type":"file","path":"C:/one"},{"id":"brief","type":"file","path":"C:/two"}]),
+        json!([{"id":"","type":"file","path":"brief.md"}]),
+        json!([{"id":"brief","type":"file","path":"one"},{"id":"brief","type":"file","path":"two"}]),
         json!([{"id":"brief","type":"node","node_id":"B","output_id":"undeclared"}]),
     ] {
         let response = save(&s, &draft, inputs.clone()).await;
@@ -145,7 +149,9 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
     let s = Scenario::new().await;
     let file = s.data.path().join("private-source.txt");
     fs::write(&file, "FILE-BODY-SENSITIVE-9204").unwrap();
-    let inputs = json!([{"id":"brief","type":"file","path":file}, {"id":"remote","type":"file","path":"Z:\\business\\not-created.txt"}]);
+    let remote = s.data.path().join("node-zone").join("remote.txt");
+    fs::write(&remote, "REMOTE-FILE-SENSITIVE").unwrap();
+    let inputs = json!([{"id":"brief","type":"file","path":"private-source.txt"}, {"id":"remote","type":"file","path":"remote.txt","zone_id":"node"}]);
     let response = save(&s, &draft(&s).await, inputs).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let first = s.start("named-manager-first").await;
@@ -166,7 +172,7 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
         assert!(text.contains("MANAGER-USER-SECRET"), "Run background missing: {text}");
         assert!(text.contains("NODE-INPUT\n第二行"), "business input missing: {text}");
         assert!(text.contains(file.to_str().unwrap()), "direct file address missing: {text}");
-        assert!(text.contains("Z:\\business\\not-created.txt"));
+        assert!(text.contains(remote.to_str().unwrap()));
         assert!(text.contains(materials.to_str().unwrap()), "manager-zone Run materials location missing: {text}");
         assert!(!materials.starts_with(s.data.path().join("node-zone")));
         for secret in ["FILE-BODY-SENSITIVE-9204", "UPSTREAM-CHAT-SENSITIVE-7358", "BOT-NODE-SECRET", "MAP-SECRET"] {
@@ -190,7 +196,7 @@ async fn named_input_storage_failure_keeps_original_definition() {
     let mut readonly = permissions.clone();
     readonly.set_readonly(true);
     fs::set_permissions(&path, readonly).unwrap();
-    let response = save(&s, &draft, json!([{"id":"brief","type":"file","path":"Z:\\external\\brief.md"}])).await;
+    let response = save(&s, &draft, json!([{"id":"brief","type":"file","path":"external/brief.md"}])).await;
     fs::set_permissions(&path, permissions).unwrap();
     assert_eq!(response.status, 500, "{}", response.body);
     assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], "node-write-failed");

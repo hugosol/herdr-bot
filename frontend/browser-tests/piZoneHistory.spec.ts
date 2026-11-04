@@ -27,9 +27,9 @@ async function history() { return fetch(`${server!.baseURL}/api/sessions/history
 async function prepare(behavior: Record<string, unknown>) {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-zone-history-'))
   server = await startServer({ herdr: { behavior } })
-  const zones = await post('/api/zones', { path: root })
-  const saved = await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
-  return { zone: zones.zones[0].path as string, task: saved.tasks.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
+  const zones = await post('/api/zones', { id: 'test/zone', path: root })
+  const saved = await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '' })
+  return { zone: zones.zones[0].id as string, task: saved.tasks.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
 }
 async function createInPage(page: Page, zone: string) {
   await page.goto(server!.baseURL)

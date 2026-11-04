@@ -1,12 +1,16 @@
 # herdr-bot
 
-Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际对话，zone 是服务所在电脑上登记的目录。
+Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际对话，zone 是由各 server 绑定本地目录的稳定工作位置。
 
 ## Task 与 Chat
 
 **Task**:
-用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、可选扩展、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
+用于发起 Chat 的可复用预设，包含目标 agent、模型与思考级别、Suite 选择、Chat 命名规则及固定初始指示；同一个 Task 可以用于多次发起 Chat。
 _Avoid_: Bot, bot-template, 模板, 对话实例
+
+**Suite（场景工具集）**:
+为某一类场景预设的可复用工具集合，一个 Task 至多选择一个 Suite 提供所需的场景资源，同一个 Suite 可被多个 Task 复用；它不替代 Task 的初始消息、初始 Skill 调用或模型设置。
+_Avoid_: Task, 初始指示, 运行时 profile
 
 **Task 类型**:
 Task 的用途分类，区分普通用途和流程管理者；普通 Task 既可独立发起 Chat，也可用于 node 执行，节点执行者不是独立 Task 类型。它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
@@ -41,12 +45,8 @@ _Avoid_: 当前选中 Task, Task 快照, 推测来源
 _Avoid_: Task, Task 实例
 
 **Task 固定扩展**:
-Task 会话环境中不由 Task 勾选决定的 agent 扩展，与可选扩展共同构成有来源 Task 时的环境选择；它不等于无来源 Task 时的原生默认发现集合。
+Task 会话环境中不由 Suite 选择决定的 agent 扩展，与所选 Suite 声明共同构成有来源 Task 时的环境；它不等于无来源 Task 时的原生默认发现集合。
 _Avoid_: 默认勾选扩展, 可选扩展, 默认发现扩展
-
-**Task 可选扩展**:
-由 Task 保存选择、属于 env config 的 agent 扩展；可多选，也可以不选，不是发起时执行的初始 Skill 调用。
-_Avoid_: 固定扩展, 启动时临时选择, 初始 Skill 调用
 
 **agent session（会话）**:
 agent 原生的对话单元，是 Chat 在该 agent 中的身份；是否上报到主界面不决定它是否存在。
@@ -129,12 +129,16 @@ _Avoid_: 执行器, 运行监控, zone 计划
 _Avoid_: 运行实例, Chat, 执行路由
 
 **node**:
-某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次输入、zone 路径引用与前置依赖；同一 Bot 可用于多项不同工作。
+某张 Map 内的一项具体工作定义，引用共享 Bot 并给出本次输入、zone ID 与前置依赖；同一 Bot 可用于多项不同工作。
 _Avoid_: 执行实例, Task, 运行中的任务
 
 **Bot**:
 面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，分别提供选用说明、规划指引与节点指引，并可引用用于执行的 Task；node 是具体流程中对该能力的工作安排。它不是 Task、运行中的 agent 或 Chat，能力文档不是运行校验规则，也不是已实现执行能力的证明。
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
+
+**业务输入（node.input）**:
+某个 node 本次工作的业务指示，说明目标、材料用途、权限边界、交付内容与验收条件；不是文件来源规则、运行背景或通用流转协议。
+_Avoid_: 文件输入, 输入规则, 运行上下文, 流转规则
 
 **输入规则（input_rule）**:
 node 对所需文件材料来源的静态约定，可引用直接文件或上游 node 的输出 ID；不是本次执行已解析的实际输入，也不是业务指示或前置依赖。
@@ -187,8 +191,20 @@ _Avoid_: scheduler, 启动进度页
 ## zone 与文件
 
 **zone**:
-用户登记的、位于服务所在电脑上的目录，也是文件浏览的根边界；可以是普通目录或 Git 工作树。
-_Avoid_: workspace, 工作区, 会话工作目录, 仓库
+以稳定身份引用的逻辑工作位置，由各 server 分别绑定到本地目录；本地目录也是文件浏览的根边界，可以是普通目录或 Git 工作树。
+_Avoid_: workspace, 工作区, 仓库
+
+**zone ID（zone_id）**:
+可跨 server 共用的 zone 身份，不随本机目录或仓库来源改变；它不是目录地址，也不保证不同 server 上的文件内容相同。
+_Avoid_: 本机路径, GitHub 仓库地址
+
+**zone 本机绑定**:
+某个 server 上 zone ID 与一个本地目录的对应关系；不同 ID 可以指向同一目录，不因此获得文件隔离。
+_Avoid_: 文件同步, 仓库克隆
+
+**提示词词典**:
+由各 server 独立维护的提示词标签与本地参考值的对应集合，供可复用指示适应该 server 的环境；它不决定 zone 的实际执行目录。
+_Avoid_: zone 本机绑定, 用户输入替换, 系统环境变量
 
 **zone 登记列表**:
 同一 herdr-bot 实例保存并由电脑与手机共享的 zone 集合；取消登记不删除目录或文件。

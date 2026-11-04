@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { openNodeJson } from './ui'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
@@ -98,7 +99,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   const root = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(root, { recursive: true })
   const original = { title: '独立合同图', description: '定义不复制 Task 或 Chat', nodes: {
-    A: { title: '准备', bot_id: 'not-created', input: '原文\n**并非 JSON 参数**', zone: 'Z:/not-registered', blocked_by: [] },
+    A: { title: '准备', bot_id: 'not-created', input: '原文\n**并非 JSON 参数**', zone: 'test/not-registered', blocked_by: [] },
     B: { title: '核对', bot_id: 'not-created', input: '', zone: '', blocked_by: ['A'] },
   } }
   const file = path.join(root, 'contract.json')
@@ -108,10 +109,10 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   await page.getByRole('button', { name: original.title, exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '核对 B', exact: true }).click()
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
-  const changed = { title: '核对新定义', bot_id: 'not-created', input: '# 独立工作输入\n不注入 Bot 文档', zone: 'C:/does-not-exist', blocked_by: ['A'] }
+  const changed = { title: '核对新定义', bot_id: 'not-created', input: '# 独立工作输入\n不注入 Bot 文档', zone: 'test/does-not-exist', blocked_by: ['A'] }
   const changedContent = Object.fromEntries(Object.entries(changed).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
   await page.getByRole('textbox', { name: 'zone', exact: true }).fill(changed.zone)
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify(changedContent))
+  await (await openNodeJson(page)).fill(JSON.stringify(changedContent))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const expected = { ...original, nodes: { ...original.nodes, B: changed } }
@@ -124,7 +125,7 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   expect(Object.keys(persisted.nodes).sort()).toEqual(['A', 'B'])
   const details = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(details.getByTestId('node-input')).toHaveText(changed.input)
-  await expect(details).toContainText('C:/does-not-exist')
+  await expect(details).toContainText('test/does-not-exist')
   await expect(details.getByRole('alert')).toHaveText('缺失共享 Bot：not-created')
   const bytes = fs.readFileSync(file, 'utf8')
   const edit = await (await page.request.post(`${api}/nodes/edit`, { data: { id: 'B' } })).json()
@@ -148,10 +149,10 @@ test('P1.01 P3.01 P4.01 node input and zone save without external binding and in
   expect(fs.readFileSync(file, 'utf8')).toBe(bytes)
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   const badDraft = JSON.stringify({ ...changedContent, blocked_by: ['ghost'] })
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(badDraft)
+  await (await openNodeJson(page)).fill(badDraft)
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert').first()).toContainText('ghost')
-  await expect(page.getByLabel('node 内容 JSON', { exact: true })).toHaveValue(badDraft)
+  await expect((await openNodeJson(page))).toHaveValue(badDraft)
   expect(fs.readFileSync(file, 'utf8')).toBe(bytes)
   await page.screenshot({ path: testInfo.outputPath('invalid-dependency-preserves-map.png'), fullPage: true })
   const mapEvidence = testInfo.outputPath('preserved-map.json')

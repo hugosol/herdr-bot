@@ -115,6 +115,7 @@ fn configure_delivery(root: &Path, herdr: &HerdrFixture) {
     let roots = toml::Table::from_iter([
         ("project".into(), toml::Value::String(root.to_string_lossy().into_owned())),
         ("data".into(), toml::Value::String(root.join(".data").to_string_lossy().into_owned())),
+        ("suite_resources".into(), toml::Value::String(root.join(".data/suites").to_string_lossy().into_owned())),
         ("zone_parent".into(), toml::Value::String(root.to_string_lossy().into_owned())),
     ]);
     fs::write(root.join("paths.test.toml"), toml::to_string(&toml::Table::from_iter([("roots".into(), toml::Value::Table(roots))])).unwrap()).unwrap();
@@ -155,7 +156,7 @@ fn body(response: HttpResponse) -> Value {
 }
 
 fn legacy_data(root: &Path, zone: &Path) -> Vec<u8> {
-    let registry = serde_json::to_vec_pretty(&json!({"zones": [{"path": zone}]})).unwrap();
+    let registry = serde_json::to_vec_pretty(&json!({"zones": [{"id":zone,"path": zone}]})).unwrap();
     fs::write(root.join("zones.json"), &registry).unwrap();
     fs::write(root.join("zones.json.tmp"), "old zone temporary").unwrap();
     fs::write(
@@ -271,7 +272,7 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         assert!(!root.path().join(".data").exists());
         let panel = Panel::start(root.path());
         body(
-            post_json_over_tcp(panel.addr, "/api/zones", &json!({"path": zone}).to_string()).await,
+            post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await,
         );
         let task = save(&panel).await;
         assert!(root.path().join("meta-data/tasks.json").is_file());
@@ -365,7 +366,7 @@ async fn default_and_explicit_task_locations_survive_two_restarts_without_legacy
             );
             assert_eq!(
                 body(get_over_tcp(restarted.addr, "/api/zones").await)["zones"],
-                json!([{"path": zone}])
+                json!([{"id":zone,"path": zone}])
             );
             assert_eq!(fs::read(&session).unwrap(), b"NEW SESSION\0\n");
         }
@@ -416,7 +417,7 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
     let panel = Panel::start(root.path());
     let zone = root.path().join("zone");
     fs::create_dir(&zone).unwrap();
-    body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"path": zone}).to_string()).await);
+    body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await);
     let saved = save(&panel).await;
     fs::write(
         root.path().join(".data/bot-sessions"),
@@ -547,7 +548,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
     herdr
         .set_behavior(json!({"agent_start_gate": {"wait_for_file": release, "timeout_ms": 30000}}));
     let panel = Panel::start(root.path());
-    body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"path": zone}).to_string()).await);
+    body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await);
     let saved = save(&panel).await;
     body(
         post_json_over_tcp(
@@ -697,14 +698,14 @@ async fn existing_zone_target_wins_without_merging_or_stopping_startup() {
     legacy_data(root.path(), &old_zone);
     fs::create_dir(root.path().join(".data")).unwrap();
     let target = format!(
-        "{{\n  \"zones\": [{{\"path\": {}}}]\n}}\n",
+        "{{\n  \"zones\": [{{\"id\": \"target-zone\", \"path\": {}}}]\n}}\n",
         serde_json::to_string(&new_zone).unwrap()
     );
     fs::write(root.path().join(".data/zones.json"), &target).unwrap();
     let panel = Panel::start(root.path());
     assert_eq!(
         body(get_over_tcp(panel.addr, "/api/zones").await)["zones"],
-        json!([{"path": new_zone}])
+        json!([{"id":"target-zone","path": new_zone}])
     );
     assert!(root.path().join("zones.json").is_file(), "the old registration is user data, even when the target differs");
     assert_eq!(
@@ -743,7 +744,7 @@ async fn cutover_preserves_old_native_main_and_sidecars_while_moving_zone_regist
     assert!(old_native.is_dir(), "P25: first startup must preserve old native files");
     assert_eq!(native_snapshot(&old_native), old_before);
     let zones = body(get_over_tcp(panel.addr, "/api/zones").await);
-    assert_eq!(zones["zones"], json!([{"path": zone}]));
+    assert_eq!(zones["zones"], json!([{"id":zone,"path": zone}]));
     assert_eq!(
         fs::read(root.path().join(".data/zones.json")).unwrap(),
         registry

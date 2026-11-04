@@ -44,8 +44,8 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   fs.writeFileSync(current.metadataFile, original.replace('openai-codex/gpt-6.1-sol', 'catalog-provider/updated-gpt').replace("native_name = 'teach'", "native_name = 'updated-teach'"))
   const zonePath = path.join(path.dirname(current.metadataFile), 'catalog-zone')
   fs.mkdirSync(zonePath)
-  const zonesResponse = await post('/api/zones', { path: zonePath })
-  const zone = (await zonesResponse.json()).zones[0].path
+  const zonesResponse = await post('/api/zones', { id: 'test/zone', path: zonePath })
+  const zone = (await zonesResponse.json()).zones[0].id
   const previewResponse = await post('/api/chats/preview', { zone, taskId: saved.id })
   const preview = await previewResponse.json()
   const createdResponse = await post('/api/chats', { zone, taskId: saved.id, chatId: preview.chatId, input: '本次第一行\n本次第二行' })
@@ -54,11 +54,13 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   await expect.poll(async () => (await (await fetch(`${current.baseURL}/api/chats/${created.id}`)).json()).stage).toBe('succeeded')
   const start = current.herdrCalls().find((call) => call.kind === 'agent_start')
   expect((start?.args as string[]).slice(0, 4)).toEqual(['--model', 'catalog-provider/updated-gpt', '--thinking', 'high'])
-  const prompt = current.herdrCalls().find((call) => call.kind === 'agent_prompt')
-  expect(prompt?.text).toBe('/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行')
+  const prompts = current.herdrCalls().filter((call) => call.kind === 'agent_prompt')
+  expect(prompts).toHaveLength(1)
+  // Assert the complete native Skill and user payload, not appended system guidance wording.
+  expect(prompts[0].text).toMatch(/^\/skill:updated-teach 固定第一行\n固定第二行\n\n本次第一行\n本次第二行(?:\n\n|$)/)
   expect((await current.getTasks()).tasks[0]).toEqual(saved)
   const persisted = JSON.parse(fs.readFileSync(current.storageFile, 'utf8')).tasks[0]
-  expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'extensions', 'id', 'model', 'name', 'prompt', 'skill', 'taskType', 'thinking'])
+  expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'id', 'model', 'name', 'prompt', 'skill', 'taskType', 'thinking'])
 
   // Saving rechecks current capabilities independently from the options previously displayed.
   fs.writeFileSync(current.metadataFile, original.replace("omp = ['low', 'medium', 'high', 'xhigh', 'max']", "omp = ['low']"))

@@ -103,6 +103,10 @@ pub struct Run {
     pub map: String,
     pub created_at: u64,
     pub manager_task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manager_zone_id: Option<String>,
+    #[serde(default)]
+    pub zone_bindings: BTreeMap<String, String>,
     pub zone: String,
     pub workspace_name: String,
     pub user_input: String,
@@ -427,7 +431,11 @@ pub async fn start_run(
         Ok(v) => v,
         Err(e) => return crate::task_error_response(e),
     };
-    let preset = match state
+    let suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return crate::task_error_response(error),
+    };
+    let mut preset = match state
         .tasks
         .catalog()
         .and_then(|catalog| catalog.resolve(&task))
@@ -435,6 +443,7 @@ pub async fn start_run(
         Ok(v) => v,
         Err(e) => return crate::task_error_response(e),
     };
+    preset.env.suite_args = suite_args;
     if let Err(message) = preset.env.check_entrypoints() {
         return error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -452,7 +461,9 @@ pub async fn start_run(
             .unwrap_or_default()
             .as_millis() as u64,
         manager_task_id: task.id.clone(),
-        zone: input.zone,
+        zone: checked.zone_bindings[&input.zone].clone(),
+        manager_zone_id: Some(input.zone),
+        zone_bindings: checked.zone_bindings,
         workspace_name: checked.workspace_name,
         user_input: input.user_input,
         manager: None,

@@ -83,7 +83,7 @@ async function writeDefinition(url: string, payload: unknown, valid: (value: unk
 function isInputRule(value: unknown): value is InputRule[] {
   return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' &&
-    (rule.type === 'file' ? typeof rule.path === 'string' && Object.keys(rule).every(key => ['id', 'type', 'path'].includes(key))
+    (rule.type === 'file' ? typeof rule.path === 'string' && (!('zone_id' in rule) || typeof rule.zone_id === 'string') && Object.keys(rule).every(key => ['id', 'type', 'path', 'zone_id'].includes(key))
       : rule.type === 'node' && typeof rule.node_id === 'string' && typeof rule.output_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'node_id', 'output_id'].includes(key))))
 }
 
@@ -127,7 +127,7 @@ export async function deleteBot(target: { id: string; revision: BotRevision }): 
   return await writeDefinition('/api/scheduler/bots/delete', target, isBotCatalog, 'Bot 删除') as BotCatalog
 }
 
-export type InputRule = { id: string; type: 'file'; path: string } | { id: string; type: 'node'; node_id: string; output_id: string }
+export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string }
 export type OutputRule = { id: string }
 
 export type MapNode = {

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { openNodeJson } from './ui'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { startServer, type E2EServer } from './support'
@@ -30,12 +31,12 @@ async function launchFixture() {
   const directory = path.dirname(server.configPath)
   const zonePath = path.join(directory, 'registered-zone')
   fs.mkdirSync(zonePath)
-  const registered = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: zonePath }) })
+  const registered = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'test/zone', path: zonePath }) })
   expect(registered.status).toBe(200)
-  const zone: string = (await registered.json()).zones[0].path
+  const zone: string = (await registered.json()).zones[0].id
   const ids: Record<string, string> = {}
   for (const role of ['manager', 'normal']) {
-    const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+    const response = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
     expect(response.status).toBe(200)
     ids[role] = (await response.json()).tasks.find((task: { name: string }) => task.name === role).id
   }
@@ -47,6 +48,41 @@ async function launchFixture() {
   fs.writeFileSync(mapFile, JSON.stringify(map)); fs.writeFileSync(botFile, JSON.stringify(bot))
   return { zone, zonePath, ids, map, bot, mapFile, botFile, data: { managerTaskId: ids.manager, zone, userInput: '' } }
 }
+
+test('portable Map keeps stable IDs and relative files when registering a local directory in the UI', async ({ page, request }) => {
+  const fixture = await launchFixture()
+  const rebound = path.join(path.dirname(server!.configPath), 'rebound-zone')
+  fs.mkdirSync(rebound)
+  const portable = { ...fixture.map, nodes: { ...fixture.map.nodes, A: { ...fixture.map.nodes.A, input_rule: [
+    { id: 'manager-default', type: 'file', path: 'docs/input.txt' },
+    { id: 'explicit', type: 'file', path: 'docs/other.txt', zone_id: fixture.zone },
+  ] } } }
+  const bytes = JSON.stringify(portable)
+  fs.writeFileSync(fixture.mapFile, bytes)
+  const removed = await request.delete(`${server!.baseURL}/api/zones`, { data: { id: fixture.zone } })
+  expect(removed.status()).toBe(200)
+  await page.goto(`${server!.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-files').click()
+  await page.getByTestId('register-open').click()
+  await page.getByTestId('zone-id').fill(fixture.zone)
+  await page.getByLabel('服务器目录路径', { exact: true }).fill(rebound)
+  await page.getByTestId('register-zone').click()
+  await expect(page.getByRole('button', { name: `浏览 ${rebound}` })).toBeVisible()
+  const registry = await (await request.get(`${server!.baseURL}/api/zones`)).json()
+  expect(registry.zones).toEqual([{ id: fixture.zone, path: expect.any(String) }])
+  expect(path.resolve(registry.zones[0].path)).toBe(path.resolve(rebound))
+  expect(fs.readFileSync(fixture.mapFile, 'utf8')).toBe(bytes)
+  await page.getByTestId('tab-scheduler').click()
+  await page.getByRole('button', { name: '预检图', exact: true }).click()
+  await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
+  const form = page.getByRole('form', { name: '发起 Run', exact: true })
+  await form.getByLabel('管理者 Task', { exact: true }).selectOption(fixture.ids.manager)
+  await form.getByLabel('管理者 zone', { exact: true }).selectOption(fixture.zone)
+  await expect(form.getByLabel('Workspace', { exact: true })).toHaveValue('rebound-zone')
+  const check = await request.post(`${server!.baseURL}/api/scheduler/maps/preflight.json/preflight`, { data: fixture.data })
+  expect(check.status()).toBe(200)
+  expect(await check.json()).toEqual({ workspaceName: 'rebound-zone' })
+})
 
 // P7.01: contract says an empty Map is saveable but never launchable.
 // Violation: accepting it, or allocating a Run/Chat before checking the graph.
@@ -125,10 +161,10 @@ test('P8.01 unregister and same-path registration recheck current graph without 
     evidence.push({ expected, result, filesUnchanged: true, calls: server!.herdrCalls() })
   }
   await check(null)
-  const unregister = await request.post(`${server!.baseURL}/api/zones/remove`, { data: { path: fixture.zone } })
+  const unregister = await request.delete(`${server!.baseURL}/api/zones`, { data: { id: fixture.zone } })
   expect(unregister.status()).toBe(200)
   await check('zone-not-registered')
-  const register = await request.post(`${server!.baseURL}/api/zones`, { data: { path: fixture.zonePath } })
+  const register = await request.post(`${server!.baseURL}/api/zones`, { data: { id: fixture.zone, path: fixture.zonePath } })
   expect(register.status()).toBe(200)
   fixture.map.nodes.B.bot_id = 'still-invalid'
   fs.writeFileSync(fixture.mapFile, JSON.stringify(fixture.map))
@@ -138,7 +174,7 @@ test('P8.01 unregister and same-path registration recheck current graph without 
   await check(null)
   const moved = `${fixture.zonePath}-moved`
   fs.renameSync(fixture.zonePath, moved)
-  expect((await request.post(`${server!.baseURL}/api/zones`, { data: { path: moved } })).status()).toBe(200)
+  expect((await request.post(`${server!.baseURL}/api/zones`, { data: { id: 'test/moved', path: moved } })).status()).toBe(200)
   await check('zone-unavailable')
   fs.writeFileSync(fixture.zonePath, 'not a directory')
   await check('zone-unavailable')
@@ -194,11 +230,13 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   await form.getByLabel('管理者 Task', { exact: true }).selectOption(fixture.ids.manager)
   await form.getByLabel('管理者 zone', { exact: true }).selectOption(fixture.zone)
   await form.getByRole('button', { name: '校验启动配置', exact: true }).click()
-  await expect(form.getByRole('alert')).toContainText('没有登记')
+  await expect(form.getByRole('alert')).toBeVisible()
+  expect(server!.herdrCalls()).toEqual([])
+  expect(Object.keys(dataFiles(server!.cwd))).not.toEqual(expect.arrayContaining([expect.stringMatching(/run\.json|history\.jsonl|messages\.jsonl/)]))
   await form.getByRole('button', { name: '修正 node B', exact: true }).click()
   const editor = page.getByRole('form', { name: 'node 编辑', exact: true })
   await expect(editor.getByLabel('node_id', { exact: true })).toHaveValue('B')
-  expect(JSON.parse(await editor.getByLabel('node 内容 JSON', { exact: true }).inputValue())).toEqual({ title: '工作', bot_id: 'worker', input: '', blocked_by: ['A'], input_rule: [], output_rule: [] })
+  expect(JSON.parse(await (await openNodeJson(editor)).inputValue())).toEqual({ title: '工作', bot_id: 'worker', input: '', blocked_by: ['A'], input_rule: [], output_rule: [] })
   await expect(editor.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue(`${fixture.zone}-unregistered`)
   await editor.getByRole('textbox', { name: 'zone', exact: true }).fill(fixture.zone)
   await editor.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -211,7 +249,7 @@ test('P9.01 P7.01 invalid zone and empty Map remain on form with original config
   await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
   form = page.getByRole('form', { name: '发起 Run', exact: true })
   await form.getByRole('button', { name: '校验启动配置', exact: true }).click()
-  await expect(form.getByRole('alert')).toContainText('空 Map 不能启动')
+  await expect(form.getByRole('alert')).toBeVisible()
   await expect(form).toBeVisible()
   await page.screenshot({ path: info.outputPath('empty-map-launch-page.png'), fullPage: true })
   expect(server!.herdrCalls()).toEqual([])

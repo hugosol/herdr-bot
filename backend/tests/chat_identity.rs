@@ -33,12 +33,12 @@ fn config_with(herdr: &HerdrFixture, storage_dir: &TempDir) -> herdr_bot::Config
     config
 }
 
-/// 一个已登记的真实目录；返回登记列表里的路径。
+/// 一个已登记的真实目录；返回登记列表里的 ID。
 async fn register(server: &TestServer, path: &Path) -> String {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": path }).to_string(),
+        &json!({ "id": path, "path": path }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
@@ -49,7 +49,7 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .iter()
         .find_map(|zone| {
             let registered = zone["path"].as_str()?;
-            same_path(Path::new(registered), path).then(|| registered.to_string())
+            same_path(Path::new(registered), path).then(|| zone["id"].as_str().unwrap().to_string())
         })
         .expect("登记响应必须包含刚登记的目录")
 }
@@ -321,9 +321,9 @@ async fn two_creations_in_one_zone_are_distinct_objects_under_the_same_display_n
     let prompts = calls_of_kind(&herdr, "agent_prompt");
     assert_eq!(prompts.len(), 2);
     assert_eq!(prompts[0]["target"], starts[0]["name"]);
-    assert_eq!(prompts[0]["text"], "第一任务");
+    assert_eq!(common::prompt_body(&prompts[0]), "第一任务");
     assert_eq!(prompts[1]["target"], starts[1]["name"]);
-    assert_eq!(prompts[1]["text"], "第二任务");
+    assert_eq!(common::prompt_body(&prompts[1]), "第二任务");
     assert_ne!(
         prompts[0]["target"], prompts[1]["target"],
         "两次投递必须按各自的控制别名定位，不能靠显示名"
@@ -428,8 +428,8 @@ async fn same_name_creations_receive_their_own_configuration_and_input() {
         .iter()
         .find(|prompt| prompt["target"] == pi_start["name"])
         .expect("Pi 必须收到自己的初始指示");
-    assert_eq!(omp_prompt["text"], "OMP 固定指示\n\nOMP 本次任务");
-    assert_eq!(pi_prompt["text"], "Pi 固定指示\n\nPi 本次任务");
+    assert_eq!(common::prompt_body(&omp_prompt), "OMP 固定指示\n\nOMP 本次任务");
+    assert_eq!(common::prompt_body(&pi_prompt), "Pi 固定指示\n\nPi 本次任务");
 }
 
 /// P3 / P40：一次已接受的创建被挂起时，另一独立客户端编辑 Task；本次仍按旧字面快照执行，
@@ -522,7 +522,7 @@ async fn an_accepted_creation_keeps_its_task_snapshot_while_another_client_edits
         .expect("必须提交旧快照的初始指示");
     assert_eq!(prompt["target"], start["name"]);
     assert_eq!(
-        prompt["text"],
+        common::prompt_body(&prompt),
         "/skill:teach 旧固定指示 第一行\n旧固定指示 第二行\n\n旧本次任务 第一行\n旧本次任务 第二行",
         "必须按旧快照的 Skill、prompt 与本次 input 提交"
     );
@@ -554,7 +554,7 @@ async fn an_accepted_creation_keeps_its_task_snapshot_while_another_client_edits
     let prompts = calls_of_kind(&herdr, "agent_prompt");
     assert_eq!(prompts.len(), 2);
     assert_eq!(
-        prompts[1]["text"], "/skill:code-review 新固定指示\n\n新任务",
+        common::prompt_body(&prompts[1]), "/skill:code-review 新固定指示\n\n新任务",
         "下一次必须使用新配置的 Skill 与 prompt"
     );
     assert_eq!(herdr.tabs()[1]["label"], "alpha · 新Task");

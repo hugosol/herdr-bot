@@ -260,7 +260,7 @@ else:
         business = self.marker + '-BUSINESS-INPUT'
         report_secret = self.marker + '-REPORT-BODY-NOT-INPUT'
         script = subprocess.list2cmdline([sys.executable, str(self.root / 'zone/business.py')])
-        self.http('/api/zones', {'path': zone})
+        self.http('/api/zones', {'id': 'acceptance/roles', 'path': zone})
         manager_prompt = (
             'This is an isolated, approved automated business rehearsal. Use your actual workflow tools, not HTTP or shell substitutes. '
             'Dispatch A. The FIRST execution produces an obsolete specimen and reports true: explicitly fail A, '
@@ -280,7 +280,7 @@ else:
         for role, prompt in [('manager', manager_prompt), ('node', node_prompt)]:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': prompt, 'extensions': []})
+                'skill': None, 'prompt': prompt})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Worker',
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')
@@ -295,12 +295,12 @@ else:
         consumer = (f'{business}. Produce a separate receipt using {script} consume. '
                     'Do not read upstream file bodies to perform default acceptance. Report true, omitting outputs.')
         (self.root / 'maps/roles.json').write_text(json.dumps({'title': 'Isolated real role acceptance', 'description': '', 'nodes': {
-            'A': {'title': 'External producer', 'bot_id': 'worker', 'input': producer, 'zone': zone, 'blocked_by': [],
+            'A': {'title': 'External producer', 'bot_id': 'worker', 'input': producer, 'zone': 'acceptance/roles', 'blocked_by': [],
                   'output_rule': [{'id': 'handoff'}]},
-            'B': {'title': 'Address consumer', 'bot_id': 'worker', 'input': consumer, 'zone': zone, 'blocked_by': ['A'],
+            'B': {'title': 'Address consumer', 'bot_id': 'worker', 'input': consumer, 'zone': 'acceptance/roles', 'blocked_by': ['A'],
                   'input_rule': [{'id': 'primary', 'type': 'node', 'node_id': 'A', 'output_id': 'handoff'}]}}}), encoding='utf-8')
         started = self.http('/api/scheduler/maps/roles.json/runs',
-            {'managerTaskId': ids['manager'], 'zone': zone, 'userInput': background}, 201)
+            {'managerTaskId': ids['manager'], 'zone': 'acceptance/roles', 'userInput': background}, 201)
         self.run_id = started['id']
         self.evidence['started'] = started
         # All subsequent workflow actions are chosen by the actual model in native Chats.
@@ -533,8 +533,9 @@ class FanInAcceptance(RolesAcceptance):
     def exercise(self):
         manager_zone = self.root / 'zone'
         zones = {'manager': manager_zone, **{name: self.root / ('node-' + name) for name in self.NODES}}
-        for path in zones.values():
-            self.http('/api/zones', {'path': str(path)})
+        for name, path in zones.items():
+            self.http('/api/zones', {'id': 'acceptance/' + name, 'path': str(path)})
+        self.http('/api/zones', {'id': 'acceptance/business', 'path': str(self.root / 'business')})
         manager_prompt = (
             'This isolated business Run uses a saved source -> left/right -> summary Map. '
             'Use actual run/collect workflow tools only, never HTTP/bash/read substitutes. '
@@ -559,7 +560,7 @@ class FanInAcceptance(RolesAcceptance):
         for role, prompt in [('manager', manager_prompt), ('node', node_prompt)]:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': prompt, 'extensions': []})
+                'skill': None, 'prompt': prompt})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Fan-in worker',
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}), encoding='utf-8')
@@ -574,11 +575,11 @@ class FanInAcceptance(RolesAcceptance):
             }
             nodes = {}
             for name in self.NODES:
-                node = {'title': name, 'bot_id': 'worker', 'input': inputs[name], 'zone': str(zones[name]),
+                node = {'title': name, 'bot_id': 'worker', 'input': inputs[name], 'zone': 'acceptance/' + name,
                     'blocked_by': [] if name == 'source' else ['left', 'right'] if name == 'summary' else ['source'],
                     'output_rule': [{'id': 'result'}]}
                 if name == 'source':
-                    node['input_rule'] = [{'id': 'seed', 'type': 'file', 'path': str(business / 'seed.txt')}]
+                    node['input_rule'] = [{'id': 'seed', 'type': 'file', 'zone_id': 'acceptance/business', 'path': f'{index}/seed.txt'}]
                 elif name in ['left', 'right']:
                     node['input_rule'] = [{'id': 'shared', 'type': 'node', 'node_id': 'source', 'output_id': 'result'}]
                 elif name == 'summary':
@@ -592,7 +593,7 @@ class FanInAcceptance(RolesAcceptance):
         self.evidence['coordinationInputs'].append({'kind': 'prelaunch Task prompts', 'manager': manager_prompt, 'node': node_prompt})
         for index, definition in enumerate(definitions):
             started = self.http(f'/api/scheduler/maps/fan-in-{index}.json/runs',
-                {'managerTaskId': ids['manager'], 'zone': str(manager_zone),
+                {'managerTaskId': ids['manager'], 'zone': 'acceptance/manager',
                  'userInput': f'Isolated business fan-in Run {index}; follow the saved Map and explicit orchestration sequence.'}, 201)
             self.run_id = started['id']
             run_evidence = {'started': started, 'map': definition, 'zones': {name: str(path) for name, path in zones.items()}}

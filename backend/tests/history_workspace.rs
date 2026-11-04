@@ -72,9 +72,9 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     let mut config = config(&root, &herdr);
     config.herdr.workspace_name = "other".into();
     let server = start(&config).await;
-    let zones = post(&server, "/api/zones", json!({"path":root.path()})).await;
-    let zone = zones["zones"][0]["path"].as_str().unwrap();
-    let tasks = post(&server, "/api/tasks", json!({"name":"Same name","chatName":"Same name","agent":"pi","model":"default","thinking":"default","prompt":"","extensions":[]})).await;
+    let zones = post(&server, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
+    let zone = zones["zones"][0]["id"].as_str().unwrap();
+    let tasks = post(&server, "/api/tasks", json!({"name":"Same name","chatName":"Same name","agent":"pi","model":"default","thinking":"default","prompt":""})).await;
     let task = tasks["tasks"][0]["id"].as_str().unwrap();
     native(&herdr, &root, "native-full-001");
     create_chat(&server, zone, task).await;

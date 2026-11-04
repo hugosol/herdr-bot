@@ -33,16 +33,16 @@ async function currentFixture() {
   const { server, root } = context
   const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
-  const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+  const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
   expect(taskResponse.status).toBe(200)
   const taskId = (await taskResponse.json()).tasks[0].id
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', plan_guide: '', node_guide: '', task_id: taskId }))
   const definition = { title: '当前 Beta Map', description: '', nodes: {
-    A: { title: '交接工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
-    B: { title: '失败工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },
-    C: { title: '依赖工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 C', blocked_by: ['B'] },
-    D: { title: '就绪工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 D', blocked_by: [] },
-    E: { title: '报告工作', bot_id: 'worker', zone: 'C:/definition-zone', input: '当前定义输入 E', blocked_by: [] },
+    A: { title: '交接工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
+    B: { title: '失败工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },
+    C: { title: '依赖工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 C', blocked_by: ['B'] },
+    D: { title: '就绪工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 D', blocked_by: [] },
+    E: { title: '报告工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 E', blocked_by: [] },
   } }
   const mapPath = path.join(maps, 'beta.json')
   fs.writeFileSync(mapPath, JSON.stringify(definition))
@@ -111,7 +111,7 @@ test('P51.01 P52.01 current Map graph and node details distinguish execution fac
   let details = page.getByRole('region', { name: '当前节点详情' })
   await expect(details).toContainText('当前共享 Bot · worker')
   await expect(details).toContainText('当前执行 Task')
-  await expect(details).toContainText('C:/definition-zone')
+  await expect(details).toContainText('test/definition-zone')
   await expect(details).toContainText('C:/saved-execution-zone')
   await expect(details).toContainText('当前定义输入 A')
   await expect(details).toContainText('交接材料已核实')
@@ -192,7 +192,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   const map = JSON.parse(JSON.stringify(definition))
   map.nodes.E.report_policy = 'manual'
   map.nodes.E.auto_close = true
-  map.nodes.E.input_rule = [{ id: 'changed-input', type: 'file', path: 'C:/changed-map/input.txt' }]
+  map.nodes.E.input_rule = [{ id: 'changed-input', type: 'file', path: 'input.txt', zone_id: 'changed/map' }]
   map.nodes.E.output_rule = [{ id: 'changed-output' }]
   fs.writeFileSync(mapPath, JSON.stringify(map))
   run.nodes.E.execution.inputRule = [{ id: 'source', type: 'node', node_id: 'A', output_id: 'material' }]
@@ -222,7 +222,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await expect(execution.locator('dt').filter({ hasText: /^reportPolicy$/ }).locator('+ dd')).toHaveText('auto')
   await expect(execution.locator('dt').filter({ hasText: /^autoClose$/ }).locator('+ dd')).toHaveText('false')
   await expect(execution).toContainText('C:/report-zone')
-  await expect(execution).not.toContainText('C:/definition-zone')
+  await expect(execution).not.toContainText('test/definition-zone')
   await expect(execution).toContainText('C:/frozen/source.txt')
   await expect(execution).toContainText('"node_id": "A"')
   await expect(execution).toContainText('"output_id": "material"')

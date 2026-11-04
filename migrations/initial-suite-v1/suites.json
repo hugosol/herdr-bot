@@ -1,0 +1,208 @@
+{
+  "suites": [
+    {
+      "id": "codebase-exploration",
+      "name": "代码库探索",
+      "agents": [
+        "omp",
+        "pi"
+      ],
+      "skills": [
+        "${roots.matt_pocock_skills}/engineering/grill-with-docs",
+        "${roots.matt_pocock_skills}/productivity/teach",
+        "${roots.wayfinder_skills}/code-review",
+        "${roots.wayfinder_skills}/wayfinder",
+        "${roots.matt_pocock_skills}/productivity/writing-for-agents",
+        "${roots.matt_pocock_skills}/engineering/improve-codebase-architecture",
+        "${roots.expert_translate}",
+        "${roots.matt_pocock_skills}/productivity/grilling",
+        "${roots.matt_pocock_skills}/engineering/domain-modeling",
+        "${roots.matt_pocock_skills}/engineering/codebase-design",
+        "${roots.matt_pocock_skills}/engineering/research",
+        "${roots.wayfinder_skills}/prototype",
+        "${roots.wayfinder_skills}/lighthouse",
+        "${roots.wayfinder_skills}/backtracer",
+        "${roots.wayfinder_skills}/setup-matt-pocock-skills",
+        "${roots.wayfinder_skills}/to-contract",
+        "${roots.wayfinder_skills}/to-spec",
+        "${roots.wayfinder_skills}/to-tickets"
+      ],
+      "extensions": {
+        "omp": [
+          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
+          "${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts"
+        ],
+        "pi": [
+          "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
+          "${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts"
+        ]
+      },
+      "prompts": [],
+      "lsp": {
+        "rust-analyzer": {
+          "command": "rust-analyzer",
+          "args": [],
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "command": "typescript-language-server",
+          "args": [
+            "--stdio"
+          ],
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ]
+        },
+        "jdtls": {
+          "command": "jdtls",
+          "args": [],
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "command": "pyright-langserver",
+          "args": [
+            "--stdio"
+          ],
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        }
+      },
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
+      "pi": {
+        "codemode": "on"
+      }
+    },
+    {
+      "id": "code-implementation",
+      "name": "代码实现",
+      "agents": [
+        "omp"
+      ],
+      "skills": [
+        "${roots.wayfinder_skills}/tdd",
+        "${roots.wayfinder_skills}/to-tickets",
+        "${roots.matt_pocock_skills}/engineering/retro",
+        "${roots.wayfinder_skills}/resolving-merge-conflicts",
+        "${roots.matt_pocock_skills}/productivity/writing-for-agents",
+        "${roots.matt_pocock_skills}/engineering/codebase-design",
+        "${roots.wayfinder_skills}/code-review",
+        "${roots.wayfinder_skills}/setup-matt-pocock-skills",
+        "${roots.wayfinder_skills}/to-contract",
+        "${roots.wayfinder_skills}/to-spec",
+        "${roots.matt_pocock_skills}/engineering/domain-modeling"
+      ],
+      "extensions": {
+        "omp": [
+          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
+          "${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts",
+          "${roots.wayfinder}/extensions"
+        ]
+      },
+      "prompts": [],
+      "lsp": {
+        "rust-analyzer": {
+          "command": "rust-analyzer",
+          "args": [],
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "command": "typescript-language-server",
+          "args": [
+            "--stdio"
+          ],
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ]
+        },
+        "jdtls": {
+          "command": "jdtls",
+          "args": [],
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "command": "pyright-langserver",
+          "args": [
+            "--stdio"
+          ],
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        }
+      },
+      "mcp": [
+        "codebase-memory-mcp"
+      ]
+    }
+  ]
+}

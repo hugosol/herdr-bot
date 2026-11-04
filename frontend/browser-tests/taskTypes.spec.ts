@@ -29,7 +29,7 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-dialog')).toBeHidden()
   let saved = (await server.getTasks()).tasks[0]
-  expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi', extensions: [] })
+  expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi' })
   await expect(page.getByTestId('task-item')).toContainText('manager-chat')
   await expect(page.getByTestId('task-item')).not.toContainText('node-chat')
   for (const role of ['normal']) {
@@ -45,7 +45,7 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-dialog')).toBeHidden()
     saved = (await server.getTasks()).tasks[0]
-    expect(saved).toMatchObject({ taskType: role, agent: 'pi', extensions: [] })
+    expect(saved).toMatchObject({ taskType: role, agent: 'pi' })
   }
   await page.screenshot({ path: info.outputPath('task-types.png'), fullPage: true })
   fs.writeFileSync(info.outputPath('task-types.json'), JSON.stringify(await server.getTasks(), null, 2))
@@ -58,11 +58,11 @@ test('P5.01 role changes select exactly one fixed role environment', async ({}, 
   const root = path.dirname(server.configPath)
   const zonePath = path.join(root, 'role-zone')
   fs.mkdirSync(zonePath)
-  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: zonePath }) })
-  const zone = (await zoneResponse.json()).zones[0].path
+  const zoneResponse = await fetch(`${server.baseURL}/api/zones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'test/zone', path: zonePath }) })
+  const zone = (await zoneResponse.json()).zones[0].id
   let id: string | undefined
   for (const role of ['manager', 'normal']) {
-    const response = await fetch(`${server.baseURL}/api/tasks${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '角色', chatName: '{chat.id}', taskType: role, agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] }) })
+    const response = await fetch(`${server.baseURL}/api/tasks${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '角色', chatName: '{chat.id}', taskType: role, agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
     expect(response.status).toBe(200)
     id = (await response.json()).tasks[0].id
     const preview = await (await fetch(`${server.baseURL}/api/chats/preview`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ taskId: id, zone }) })).json()
@@ -88,8 +88,8 @@ for (const agent of ['omp', 'pi'] as const) {
       expect(response.status, await response.clone().text()).toBe(status)
       return response.json()
     }
-    const zone = (await post('/api/zones', { path: host.cwd })).zones[0].path
-    const base = { agent, chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'SHARED TASK PROMPT', extensions: [] }
+    const zone = (await post('/api/zones', { id: 'test/zone', path: host.cwd })).zones[0].id
+    const base = { agent, chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'SHARED TASK PROMPT' }
     const task = (await post('/api/tasks', { ...base, name: 'Shared normal', taskType: 'normal' })).tasks[0]
     const manager = (await post('/api/tasks', { ...base, name: 'Manager', taskType: 'manager' })).tasks.find((item: { name: string }) => item.name === 'Manager')
     const identity = (id: string) => host.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'id', value: id } })
@@ -97,8 +97,9 @@ for (const agent of ['omp', 'pi'] as const) {
     const preview = await post('/api/chats/preview', { taskId: task.id, zone })
     const chat = await post('/api/chats', { taskId: task.id, zone, chatId: preview.chatId, input: 'STANDALONE INPUT' }, 202)
     await expect.poll(async () => (await (await fetch(`${host.baseURL}/api/chats/${chat.id}`)).json()).stage).toBe('succeeded')
-    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`]
-    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...entries.flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
+    const nativeBuiltins = agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []
+    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`, ...(agent === 'pi' ? ['pi-suite'] : [])]
+    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...entries.flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
     fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
     fs.writeFileSync(path.join(maps, 'shared.json'), JSON.stringify({ title: 'Shared Task', description: '', nodes: { A: { title: 'Shared node', bot_id: 'worker', input: 'WORKFLOW INPUT', zone, blocked_by: [] } } }))
@@ -107,7 +108,7 @@ for (const agent of ['omp', 'pi'] as const) {
     const run = await post('/api/scheduler/maps/shared.json/runs', { managerTaskId: manager.id, zone, userInput: 'MANAGER INPUT' }, 201)
     identity('shared-node')
     expect((await post('/api/workflow/manager/dispatch', { sessionId: 'shared-manager', nodes: ['A'] })).results[0].status).toBe('running')
-    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...[...entries, `${agent}-node-chat`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
+    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...[...entries, `${agent}-node-chat`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     expect((await host.getTasks()).tasks.find(item => item.id === task.id)).toEqual(task)
     const history = JSON.parse(fs.readFileSync(path.join(root, 'session-history.json'), 'utf8'))
     expect(history.filter((item: { sourceTaskId: string }) => item.sourceTaskId === task.id)).toHaveLength(2)

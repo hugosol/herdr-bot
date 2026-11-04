@@ -101,7 +101,7 @@ async fn lan_source_manages_tasks_and_creates_chats_but_cannot_write_session_eve
         "局域网来源应能读取Task与固定选项：{status} {body}"
     );
 
-    let zone_body = json!({ "path": workspace }).to_string();
+    let zone_body = json!({ "id": workspace, "path": workspace }).to_string();
     let (status, body) = send(lan.clone(), "POST", "/api/zones", Some(&zone_body)).await;
     assert_eq!(
         status,
@@ -112,7 +112,7 @@ async fn lan_source_manages_tasks_and_creates_chats_but_cannot_write_session_eve
     let zone = registered["zones"]
         .as_array()
         .and_then(|zones| zones.first())
-        .and_then(|zone| zone["path"].as_str())
+        .and_then(|zone| zone["id"].as_str())
         .expect("登记响应必须包含刚登记的目录")
         .to_string();
 

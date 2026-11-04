@@ -159,14 +159,14 @@ mod degradation {
                     Ok(task) => Some(task),
                     Err(TaskError::NotFound) => {
                         self.record("extensions", format!("来源 Task 已删除（ID {id}，成功读取存储确认不存在）。"),
-                            "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定／可选扩展。".into());
+                            "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定扩展或 Suite 资源。".into());
                         None
                     }
                     Err(error) => return Err((error.code(), error.message())),
                 },
                 None => {
                     self.record("extensions", "历史记录缺少来源 Task 关联；不按名称、cwd 或当前 Task 推测来源。".into(),
-                        "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定／可选扩展。".into());
+                        "采用 agent 原生默认扩展发现；不关闭自动发现，也不显式追加 Task 固定扩展或 Suite 资源。".into());
                     None
                 }
             };
@@ -174,15 +174,17 @@ mod degradation {
             if task.agent != agent {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
+            let suite_args = state.tasks.prepare_environment(&task).map_err(|error| (error.code(), error.message()))?;
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
             let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
                 .map_err(|message| ("execution-association-invalid", message))?
                 .unwrap_or_else(|| task.task_type.into());
-            let env = self.environment(&catalog, agent, role, &task.env.extensions);
+            let mut env = self.environment(&catalog, agent, role);
+            env.suite_args = suite_args;
             Ok(crate::chats::agent_launch_args(&env, None))
         }
 
-        pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole, selections: &[String]) -> crate::tasks::catalog::ResolvedEnvConfig {
+        pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole) -> crate::tasks::catalog::ResolvedEnvConfig {
             use crate::tasks::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
             let role_name = match role {
                 ExecutionRole::Standalone => None,
@@ -195,13 +197,9 @@ mod degradation {
                     self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
                 }
             }
-            for id in selections {
-                if !catalog.extensions.iter().any(|extension| extension.id == *id && extension.agent == agent && extension.kind == ExtensionKind::Optional) {
-                    self.record("extension", format!("扩展「{id}」的当前可选映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
-                }
-            }
             ResolvedEnvConfig {
-                extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, role) && (extension.kind == ExtensionKind::Fixed || selections.contains(&extension.id))).filter_map(|extension| {
+                suite_args: Vec::new(),
+                extensions: catalog.extensions.iter().filter(|extension| extension.applies_to(agent, role) && extension.kind == ExtensionKind::Fixed).filter_map(|extension| {
                     match extension.check_entrypoint() {
                         Ok(()) => Some(extension.clone()),
                         Err(reason) => {

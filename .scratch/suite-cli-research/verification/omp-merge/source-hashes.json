@@ -1,0 +1,38 @@
+[
+  {
+    "path": "mcp/config.ts",
+    "installedSha256": "ed3941ae5d02ec78084db23135e36f6c7bb43432ca01069dc9a71796d15ef211",
+    "checkoutSha256": "ed3941ae5d02ec78084db23135e36f6c7bb43432ca01069dc9a71796d15ef211",
+    "identicalBytes": true
+  },
+  {
+    "path": "capability/index.ts",
+    "installedSha256": "5d754c7e8e82ccffdd83b278a0a59e3b597800f62e256b63e6c894102c8cd4c1",
+    "checkoutSha256": "5d754c7e8e82ccffdd83b278a0a59e3b597800f62e256b63e6c894102c8cd4c1",
+    "identicalBytes": true
+  },
+  {
+    "path": "capability/mcp.ts",
+    "installedSha256": "78011a6939607199ad242b7ada26f9ce8be0cc56cf838b530d7d76341a67f055",
+    "checkoutSha256": "78011a6939607199ad242b7ada26f9ce8be0cc56cf838b530d7d76341a67f055",
+    "identicalBytes": true
+  },
+  {
+    "path": "discovery/builtin.ts",
+    "installedSha256": "124eac92a1898b350f1db3c421e033a40da93dc411d02023e855163179eab04b",
+    "checkoutSha256": "124eac92a1898b350f1db3c421e033a40da93dc411d02023e855163179eab04b",
+    "identicalBytes": true
+  },
+  {
+    "path": "discovery/omp-plugins.ts",
+    "installedSha256": "4e66819cf706b81c6f31bd71e6de8892083a284525ab151948642faea00cb1b4",
+    "checkoutSha256": "4e66819cf706b81c6f31bd71e6de8892083a284525ab151948642faea00cb1b4",
+    "identicalBytes": true
+  },
+  {
+    "path": "discovery/mcp-json.ts",
+    "installedSha256": "83dc21376d024fa69d9c118a426d0fde8503afca5e4a8b4fbd8c7bf79aeddb5f",
+    "checkoutSha256": "83dc21376d024fa69d9c118a426d0fde8503afca5e4a8b4fbd8c7bf79aeddb5f",
+    "identicalBytes": true
+  }
+]

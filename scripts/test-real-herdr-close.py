@@ -240,21 +240,21 @@ class Acceptance:
 
     def exercise(self):
         zone = str(self.root / 'zone')
-        self.http('/api/zones', {'path': zone})
+        self.http('/api/zones', {'id': 'acceptance/close', 'path': zone})
         ids = {}
         for role in ['manager', 'node']:
             result = self.http('/api/tasks', {'name': role, 'taskType': 'manager' if role == 'manager' else 'normal',
                 'agent': 'pi', 'chatName': '{chat.id}', 'model': 'probe', 'thinking': 'default',
-                'skill': None, 'prompt': 'Acknowledge only. Do not call tools.', 'extensions': []})
+                'skill': None, 'prompt': 'Acknowledge only. Do not call tools.'})
             ids[role] = next(task['id'] for task in result['tasks'] if task['name'] == role)
         marker = 'P22-HISTORY-' + uuid.uuid4().hex
         (self.root / 'bots/worker.json').write_text(json.dumps({'id': 'worker', 'name': 'Worker',
             'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': ids['node']}))
         (self.root / 'maps/close.json').write_text(json.dumps({'title': 'P22', 'description': '', 'nodes': {
-            'A': {'title': 'Owned target', 'bot_id': 'worker', 'input': marker, 'zone': zone,
+            'A': {'title': 'Owned target', 'bot_id': 'worker', 'input': marker, 'zone': 'acceptance/close',
                   'blocked_by': [], 'auto_close': True}}}))
         started = self.http('/api/scheduler/maps/close.json/runs',
-                            {'managerTaskId': ids['manager'], 'zone': zone, 'userInput': 'Acknowledge only.'}, 201)
+                            {'managerTaskId': ids['manager'], 'zone': 'acceptance/close', 'userInput': 'Acknowledge only.'}, 201)
         manager = started['run']['manager']['sessionId']
         dispatched = self.http('/api/workflow/manager/dispatch', {'sessionId': manager, 'nodes': ['A']})
         node = dispatched['snapshot']['nodes']['A']

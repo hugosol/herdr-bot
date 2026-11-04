@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { openNodeJson } from './ui'
 import path from 'node:path'
 import { expect, request, test, type APIRequestContext, type APIResponse, type Page, type TestInfo } from '@playwright/test'
 import { configureScheduler, startServer, type E2EServer } from './support'
@@ -75,7 +76,8 @@ test('P32 complete bot and node CRUD sequence survives a real service restart', 
   await page.getByRole('button', { name: plan.title, exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '保留核对工作 retainedNode', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 详情', exact: true })).toContainText('73')
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '保留核对能力 · retained', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('重启后仍保留修订二')
   await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '共享 Bot 列表', exact: true })).not.toContainText('删除的临时能力')
@@ -299,14 +301,14 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   const mapBeforeInvalidSave = fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')
   const maliciousContent = Object.fromEntries(Object.entries(maliciousWork).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
   const raw = '  ' + JSON.stringify(maliciousContent, null, 3) + '\n'
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(raw + '!')
+  await (await openNodeJson(page)).fill(raw + '!')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: /JSON/ })).toBeVisible()
-  await expect(page.getByLabel('node 内容 JSON', { exact: true })).toHaveValue(raw + '!')
+  await expect((await openNodeJson(page))).toHaveValue(raw + '!')
   expect(fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')).toBe(mapBeforeInvalidSave)
   await inert()
   const changedWork = { ...maliciousWork, title: '保存后的核对工作' }
-  await page.getByLabel('node 内容 JSON', { exact: true }).fill(JSON.stringify({ ...maliciousContent, title: changedWork.title }))
+  await (await openNodeJson(page)).fill(JSON.stringify({ ...maliciousContent, title: changedWork.title }))
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   await expect(page.getByTestId('node-input')).toContainText(html)
@@ -314,7 +316,8 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   expect(changedMap).toMatchObject({ ...plan, nodes: { A: changedWork } })
   expect(Object.keys(changedMap.nodes)).toEqual(['A'])
   await inert()
-  await page.getByRole('button', { name: 'Bot 明细', exact: true }).click()
+  await page.getByTestId('tab-bot').click()
+  await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '账目核对能力 · audit', exact: true }).click()
   await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText(html, { exact: true }).first()).toBeVisible()
   await inert()

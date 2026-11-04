@@ -140,7 +140,7 @@ function listing(path: string): DirectoryListing {
 /** 标准 zone 响应：列表、目录与文件都来自固定夹具，便于断言页面行为。 */
 function standardHandler(url: URL): Response | undefined {
   if (url.pathname === '/api/zones') {
-    return jsonResponse(200, { zones: [{ path: ZONE }] })
+    return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
   }
   if (url.pathname === '/api/zones/overview') {
     return jsonResponse(200, {
@@ -261,7 +261,7 @@ describe('zone 只读文件浏览', () => {
     )
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {
@@ -312,7 +312,7 @@ describe('zone 只读文件浏览', () => {
     let rootEntries: BrowseEntry[] = [{ name: 'README', path: 'README', kind: 'file', size: 16 }]
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/overview') {
         return jsonResponse(200, {
@@ -442,7 +442,7 @@ describe('zone 只读文件浏览', () => {
     let failDirectories = false
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/tree') {
         return failDirectories
@@ -543,7 +543,7 @@ describe('zone 只读文件浏览', () => {
     ])
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/tree') {
         return jsonResponse(
@@ -751,7 +751,7 @@ describe('zone 只读文件浏览', () => {
     const user = userEvent.setup()
     mockFetch((url) => {
       if (url.pathname === '/api/zones') {
-        return jsonResponse(200, { zones: [{ path: ZONE }] })
+        return jsonResponse(200, { zones: [{ id: 'test/zone', path: ZONE }] })
       }
       if (url.pathname === '/api/zones/tree') {
         return Promise.reject(new Error('connection reset'))

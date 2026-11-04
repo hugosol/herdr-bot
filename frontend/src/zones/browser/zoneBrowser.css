@@ -1,0 +1,332 @@
+.browser {
+  --browser-surface: #151515;
+  --browser-raised: #222222;
+  --browser-border: #303030;
+  --browser-ink: #f2f2f2;
+  --browser-muted: #b4b4b4;
+  --browser-faint: #a0a0a0;
+  gap: 1rem;
+  color: var(--browser-ink);
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.browser .browser-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.browser .browser-toolbar {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.browser .browser-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.browser .browser-heading__title {
+  margin: 0;
+  color: var(--browser-ink);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.browser .browser-toolbar__zone,
+.browser .browser-toolbar__branch {
+  flex: initial;
+  order: initial;
+  margin: 0;
+  max-width: 100%;
+  color: var(--browser-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.browser .browser-toolbar__branch {
+  color: var(--browser-faint);
+}
+
+.browser button {
+  min-height: 44px;
+}
+
+.browser .browser-toolbar__button,
+.browser .browser-mobile__back,
+.browser .sync-bar__button,
+.browser .file-view__read-html,
+.browser .commit-confirm__cancel {
+  box-sizing: border-box;
+  border: 1px solid #484848;
+  border-radius: 4px;
+  background: var(--browser-raised);
+  color: var(--browser-ink);
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.browser .browser-toolbar__button:not(:disabled):hover,
+.browser .browser-mobile__back:hover,
+.browser .sync-bar__button:not(:disabled):not(.sync-bar__button--primary):hover,
+.browser .file-view__read-html:hover,
+.browser .commit-confirm__cancel:hover {
+  background: #303030;
+}
+
+.browser button:focus-visible,
+.browser input:focus-visible {
+  outline: 2px solid #f2f2f2;
+  outline-offset: -3px;
+}
+
+.browser .browser-toolbar__button:disabled {
+  color: var(--browser-faint);
+}
+
+.browser .browser-views {
+  gap: 0.5rem;
+  min-width: 0;
+  border-bottom-color: var(--browser-border);
+  overflow-x: auto;
+}
+
+.browser .browser-view {
+  padding: 0.65rem 1rem;
+  color: var(--browser-muted);
+  border-radius: 4px 4px 0 0;
+  border-bottom: 3px solid transparent;
+  font-size: 0.9375rem;
+}
+
+.browser .browser-view:hover {
+  background: var(--browser-surface);
+  color: var(--browser-ink);
+}
+
+.browser .browser-view.is-active {
+  border-bottom-color: var(--browser-ink);
+  background: var(--browser-raised);
+  color: var(--browser-ink);
+  font-weight: 600;
+}
+
+/* The two tracks and one gutter fill the canvas; neither track has a fixed minimum
+   that can push the page wider than a tablet. Keep the existing scroll containers. */
+.browser .browser-layout,
+.browser .changes-layout {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+.browser .browser-pane,
+.browser .browser-tree,
+.browser .browser-content,
+.browser .browser-mobile__list,
+.browser .changes-list,
+.browser .changes-detail {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.browser .browser-tree,
+.browser .browser-content,
+.browser .browser-mobile__list,
+.browser .changes-list,
+.browser .changes-detail {
+  padding: 0.75rem;
+  border-color: var(--browser-border);
+  border-radius: 4px;
+  background: var(--browser-surface);
+}
+
+.browser .browser-region-title {
+  margin: 0 0 0.75rem;
+  color: var(--browser-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.browser .tree-row,
+.browser .mobile-row,
+.browser .change-row {
+  box-sizing: border-box;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.browser .tree-row:hover,
+.browser .mobile-row:hover,
+.browser .change-row:hover {
+  background: var(--browser-raised);
+}
+
+/* Only the selection surface changes: Git's semantic text colours stay intact. */
+.browser .tree-row--file.is-selected,
+.browser .change-row.is-selected {
+  background: #333333;
+}
+
+.browser .tree-row--file.is-selected:not([data-change]) {
+  color: var(--browser-ink);
+}
+
+.browser .tree-row--link,
+.browser .mobile-row--link {
+  background: #202020;
+}
+
+.browser .browser-placeholder {
+  padding: 1.5rem 0.75rem;
+  line-height: 1.6;
+}
+
+.browser .browser-loading,
+.browser .browser-empty,
+.browser .browser-placeholder,
+.browser .browser-current-path,
+.browser .commit-bar__label,
+.browser .sync-bar__upstream,
+.browser .sync-bar__checked,
+.browser .sync-bar__state {
+  color: var(--browser-muted);
+}
+
+.browser .browser-note {
+  border-left-color: #606060;
+  background: var(--browser-surface);
+  color: var(--browser-muted);
+}
+
+.browser .commit-bar {
+  gap: 0.625rem;
+  padding: 1rem;
+  border-color: var(--browser-border);
+  border-radius: 4px;
+  background: var(--browser-surface);
+}
+
+.browser .commit-bar__input {
+  box-sizing: border-box;
+  min-height: 44px;
+  border-color: #505050;
+  border-radius: 4px;
+  background: #0b0b0b;
+  color: var(--browser-ink);
+  font-family: inherit;
+}
+
+.browser .commit-bar__hint,
+.browser .file-view__size {
+  color: var(--browser-faint);
+}
+
+.browser .sync-bar {
+  padding-top: 0.75rem;
+  border-top-color: var(--browser-border);
+}
+
+.browser .commit-bar__button,
+.browser .sync-bar__button--primary,
+.browser .commit-confirm__go {
+  border-radius: 4px;
+  border-color: #2f7d32;
+  background: #2f7d32;
+  color: #ffffff;
+}
+
+.browser .commit-bar__button:not(:disabled):hover,
+.browser .sync-bar__button--primary:not(:disabled):hover,
+.browser .commit-confirm__go:not(:disabled):hover {
+  border-color: #388c3c;
+  background: #388c3c;
+}
+
+.browser .commit-bar__button:disabled,
+.browser .sync-bar__button:disabled,
+.browser .commit-confirm__go:disabled {
+  border-color: #383838;
+  background: #303030;
+  color: var(--browser-faint);
+}
+
+.browser .file-view__header {
+  align-items: center;
+  padding-bottom: 0.75rem;
+  border-bottom-color: var(--browser-border);
+}
+
+.browser .file-view__path {
+  color: var(--browser-ink);
+}
+
+/* Do not restyle pre/code, diff cells or Git change colours: they carry content. */
+@media (min-width: 721px) and (max-width: 1000px) {
+  .browser .browser-layout,
+  .browser .changes-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .browser .browser-header {
+    gap: 1rem;
+  }
+
+  .browser .browser-heading__title {
+    font-size: 1.375rem;
+  }
+
+  .browser .browser-current-path {
+    line-height: 1.5;
+  }
+
+  .browser .browser-mobile__list {
+    min-height: 16rem;
+    max-height: 60vh;
+  }
+
+  .browser .browser-mobile > .file-view,
+  .browser .browser-mobile > .diff {
+    box-sizing: border-box;
+    padding: 0.75rem;
+    border-radius: 4px;
+    background: var(--browser-surface);
+  }
+
+  .browser .commit-bar__row {
+    flex-wrap: wrap;
+  }
+
+  .browser .commit-bar__input {
+    flex-basis: 12rem;
+  }
+
+  .browser .commit-bar__button {
+    flex-grow: 1;
+  }
+
+  .browser .change-row {
+    flex-wrap: wrap;
+  }
+
+  .browser .change-row__path {
+    flex-basis: 100%;
+  }
+
+  .browser .commit-confirm__actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+  }
+}

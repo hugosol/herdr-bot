@@ -36,6 +36,7 @@ async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
     let renamed: Value = serde_json::from_str(&response.body).unwrap();
     let mut expected = original;
     expected["name"] = json!("历史 Run");
+    expected["zoneBindings"] = json!({});
     assert_eq!(renamed["run"], expected);
     assert_eq!(renamed["managed"], false);
     assert_eq!(renamed["reports"], json!([]));

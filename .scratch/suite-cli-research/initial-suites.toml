@@ -1,0 +1,121 @@
+# 首批 Suite 的声明式设计输入；当前 herdr-bot 尚无 Suite 加载器，不是已生效的部署配置。
+# 所有本机绝对路径集中在 paths.local.toml；此文件仅引用根或既有目录项 ID。
+# skill_names 是明确选择，不因源目录新增其他技能而自动扩大。
+# skill_sources 可指技能集合目录或含 SKILL.md 的单个技能目录，装配器需统一物化为链接。
+paths_file = '../../paths.local.toml'
+materialization_root = '${roots.suite_resources}'
+skill_sources = [
+  '${roots.wayfinder_skills}',
+  '${roots.expert_translate}',
+  '${roots.matt_pocock_skills}/engineering/grill-with-docs',
+  '${roots.matt_pocock_skills}/productivity/teach',
+  '${roots.matt_pocock_skills}/productivity/writing-for-agents',
+  '${roots.matt_pocock_skills}/engineering/improve-codebase-architecture',
+  '${roots.matt_pocock_skills}/engineering/retro',
+  '${roots.matt_pocock_skills}/productivity/grilling',
+  '${roots.matt_pocock_skills}/engineering/domain-modeling',
+  '${roots.matt_pocock_skills}/engineering/codebase-design',
+  '${roots.matt_pocock_skills}/engineering/research',
+]
+
+# 复用现有 task-options.toml 的实际扩展入口，不让用户维护两份 suite。
+[extension_bindings.codebase-tools]
+omp = 'omp-codebase-tools'
+pi = 'pi-codebase-tools'
+
+[extension_bindings.connect-bot]
+omp = 'omp-connect-bot'
+pi = 'pi-connect-bot'
+
+[extension_bindings.oh-my-wayfinder]
+omp = 'omp-oh-my-wayfinder'
+
+# 复用当前项目的 codebase-memory-mcp stdio 定义，程序仍按 PATH 查找。
+# --ui/--port 来自当前 .omp/mcp.json；并发加载的实际行为仍需运行验收。
+[mcp.codebase-memory-mcp]
+command = 'codebase-memory-mcp'
+args = ['--ui=true', '--port=9749']
+
+# LSP 定义沿用 OMP 原生服务器名称与基础参数；程序安装由机器环境负责。
+# OMP 仍按项目 rootMarkers、可执行程序可用性及原生优先级增量加载；Pi 跳过整段 LSP。
+[lsp.rust-analyzer]
+command = 'rust-analyzer'
+args = []
+fileTypes = ['.rs']
+rootMarkers = ['Cargo.toml', 'rust-analyzer.toml']
+
+[lsp.typescript-language-server]
+command = 'typescript-language-server'
+args = ['--stdio']
+fileTypes = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
+rootMarkers = ['package.json', 'tsconfig.json', 'jsconfig.json']
+
+[lsp.jdtls]
+command = 'jdtls'
+args = []
+fileTypes = ['.java']
+rootMarkers = ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', '.project']
+
+[lsp.pyright]
+command = 'pyright-langserver'
+args = ['--stdio']
+fileTypes = ['.py', '.pyi']
+rootMarkers = ['pyproject.toml', 'pyrightconfig.json', 'setup.py', 'setup.cfg', 'requirements.txt', 'Pipfile']
+
+[[suites]]
+id = 'codebase-exploration'
+label = '代码库探索'
+supported_agents = ['omp', 'pi']
+# Suite 编辑页的 Pi 配置区提供 on/only 切换；默认普通模式，显式覆盖原设置。
+pi = { codemode_mode = 'on' }
+resource_directory = '${roots.suite_resources}/codebase-exploration'
+extensions = ['codebase-tools', 'connect-bot']
+mcp = ['codebase-memory-mcp']
+# 原有 7 个技能加用户批准的显式调用与条件前置依赖；不自动注册源目录所有技能。
+skill_names = [
+  'grill-with-docs',
+  'teach',
+  'code-review',
+  'wayfinder',
+  'writing-for-agents',
+  'improve-codebase-architecture',
+  'expert-translate',
+  'grilling',
+  'domain-modeling',
+  'codebase-design',
+  'research',
+  'prototype',
+  'lighthouse',
+  'backtracer',
+  'setup-matt-pocock-skills',
+  'to-contract',
+  'to-spec',
+  'to-tickets',
+]
+prompts = []
+lsp = ['rust-analyzer', 'typescript-language-server', 'jdtls', 'pyright']
+
+[[suites]]
+id = 'code-implementation'
+label = '代码实现'
+supported_agents = ['omp']
+resource_directory = '${roots.suite_resources}/code-implementation'
+extensions = ['codebase-tools', 'connect-bot', 'oh-my-wayfinder']
+mcp = ['codebase-memory-mcp']
+# 用户称 to-ticket，当前实际技能目录与名称为 to-tickets。
+# Q38：加入明确调用与条件前置依赖，来源仍优先 wayfinder，其次 matt-pocock。
+skill_names = [
+  'tdd',
+  'to-tickets',
+  'retro',
+  'resolving-merge-conflicts',
+  'writing-for-agents',
+  'codebase-design',
+  'code-review',
+  'setup-matt-pocock-skills',
+  'to-contract',
+  'to-spec',
+  'domain-modeling',
+]
+prompts = []
+lsp = ['rust-analyzer', 'typescript-language-server', 'jdtls', 'pyright']

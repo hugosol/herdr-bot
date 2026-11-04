@@ -98,7 +98,7 @@ async fn register(server: &TestServer, zone: &Path) {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": zone }).to_string(),
+        &json!({ "id": zone, "path": zone }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
@@ -995,7 +995,7 @@ async fn path_aliases_of_the_same_repository_share_one_write_qualification() {
     fs::write(
         &registry,
         serde_json::to_string(&json!({
-            "zones": [{ "path": root.to_string_lossy() }],
+            "zones": [{ "id": "repository", "path": root.to_string_lossy() }],
         }))
         .expect("序列化登记文件"),
     )

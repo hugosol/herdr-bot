@@ -1,0 +1,14 @@
+[
+  {
+    "script": "resources.ts",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "105 | \tcontentCache.clear();\n106 | \tdirCache.clear();\n107 | }\n108 | \n109 | export function invalidate(filePath: string): void {\n110 | \tconst abs = resolvePath(filePath);\n                   ^\nTypeError: The \"paths[0]\" property must be of type string, got undefined\n code: \"ERR_INVALID_ARG_TYPE\"\n\n      at invalidate (D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\@oh-my-pi\\pi-coding-agent\\src\\capability\\fs.ts:110:14)\n      at invalidate (D:\\Users\\hugos\\AppData\\Local\\nvm\\v24.18.0\\node_modules\\@oh-my-pi\\pi-coding-agent\\src\\capability\\index.ts:579:2)\n      at E:\\Developer\\myhub\\herdr-bot\\.scratch\\suite-cli-research\\verification\\omp\\resources.ts:28:2\n\nBun v1.4.4 (Windows x64)\n"
+  },
+  {
+    "script": "bridge.ts",
+    "returncode": 0,
+    "stdout": "{\n  \"nativeConfigs\": [],\n  \"registered\": [\n    \"mcp__suite_selected_echo\"\n  ],\n  \"result\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"suite-through-native-bridge\"\n      }\n    ],\n    \"details\": {\n      \"serverName\": \"suite-selected\",\n      \"mcpToolName\": \"echo\",\n      \"rawContent\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"suite-through-native-bridge\"\n        }\n      ]\n    }\n  },\n  \"mcpRecords\": [\n    {\n      \"jsonrpc\": \"2.0\",\n      \"id\": 1,\n      \"method\": \"initialize\",\n      \"params\": {\n        \"protocolVersion\": \"2025-11-25\",\n        \"capabilities\": {\n          \"roots\": {\n            \"listChanged\": false\n          }\n        },\n        \"clientInfo\": {\n          \"name\": \"omp-coding-agent\",\n          \"version\": \"1.0.0\"\n        }\n      }\n    },\n    {\n      \"jsonrpc\": \"2.0\",\n      \"method\": \"notifications/initialized\",\n      \"params\": {}\n    },\n    {\n      \"jsonrpc\": \"2.0\",\n      \"id\": 2,\n      \"method\": \"tools/list\",\n      \"params\": {}\n    },\n    {\n      \"jsonrpc\": \"2.0\",\n      \"id\": 3,\n      \"method\": \"tools/call\",\n      \"params\": {\n        \"name\": \"echo\",\n        \"arguments\": {\n          \"text\": \"suite-through-native-bridge\"\n        }\n      }\n    }\n  ]\n}\n",
+    "stderr": ""
+  }
+]

@@ -161,7 +161,9 @@ async fn execution_rules_are_frozen_until_an_explicit_retry() {
     let s = Scenario::new().await;
     let path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    let original_inputs = json!([{"id":"brief","type":"file","path":"C:/frozen/original.md"}]);
+    fs::write(s.data.path().join("original.md"), "original material").unwrap();
+    fs::write(s.data.path().join("replacement.md"), "replacement material").unwrap();
+    let original_inputs = json!([{"id":"brief","type":"file","path":"original.md"}]);
     let original_outputs = json!([{"id":"old"}]);
     map["nodes"]["A"]["input_rule"] = original_inputs.clone();
     map["nodes"]["A"]["output_rule"] = original_outputs.clone();
@@ -172,12 +174,12 @@ async fn execution_rules_are_frozen_until_an_explicit_retry() {
     let old = dispatched["snapshot"]["nodes"]["A"]["execution"].clone();
     assert_eq!(old["inputRule"], original_inputs);
     assert_eq!(old["outputRule"], original_outputs);
-    assert_eq!(old["inputs"], json!([{"id":"brief","path":"C:/frozen/original.md"}]));
+    assert_eq!(old["inputs"], json!([{"id":"brief","path":s.data.path().join("original.md")}]));
     let draft = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"A"}).to_string()).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
     let mut content = draft["content"].clone();
-    content["input_rule"] = json!([{"id":"replacement","type":"file","path":"Z:/new/input.md"}]);
+    content["input_rule"] = json!([{"id":"replacement","type":"file","path":"replacement.md"}]);
     content["output_rule"] = json!([{"id":"new"}]);
     let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"A","content":content.to_string(),"revision":draft["revision"],"create":false}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
@@ -192,7 +194,7 @@ async fn execution_rules_are_frozen_until_an_explicit_retry() {
     assert_ne!(current["id"], old["id"]);
     assert_eq!(current["inputRule"], content["input_rule"]);
     assert_eq!(current["outputRule"], content["output_rule"]);
-    assert_eq!(current["inputs"], json!([{"id":"replacement","path":"Z:/new/input.md"}]));
+    assert_eq!(current["inputs"], json!([{"id":"replacement","path":s.data.path().join("replacement.md")}]));
     submit(&s, json!({"sessionId":"frozen-new","body":"No inherited declaration","canComplete":true,"outputs":[{"id":"old","path":"C:/old.md"}]}), 400).await;
     submit(&s, json!({"sessionId":"frozen-new","body":"Replacement output","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 200).await;
 }

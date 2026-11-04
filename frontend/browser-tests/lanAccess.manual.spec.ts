@@ -34,14 +34,14 @@ chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'pi',
 model: 'deepseek-flash',
 thinking: 'high',
-skill: 'code-review', prompt: '局域网第一行\n局域网第二行', extensions: [] }
+skill: 'code-review', prompt: '局域网第一行\n局域网第二行' }
 
 const EDITED = { name: '局域网 Bot（改）',
 chatName: '{zone.name} · {task.name} · {chat.id}',
 agent: 'omp',
 model: 'gpt-6.1-sol',
 thinking: 'max',
-skill: 'teach', prompt: '局域网编辑后的第一行\n局域网编辑后的第二行', extensions: [] }
+skill: 'teach', prompt: '局域网编辑后的第一行\n局域网编辑后的第二行' }
 
 const INPUT = '局域网任务第一行\n局域网任务第二行'
 
@@ -97,8 +97,8 @@ test('局域网地址可管理共享 Task 并从 zone 发起 Chat，不额外要
   zoneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot lan workflow '))
   const directory = path.join(zoneRoot, 'alpha')
   fs.mkdirSync(directory)
-  const listed = await jsonPost(lanURL, '/api/zones', { path: directory })
-  const zone = listed.zones[0].path as string
+  const listed = await jsonPost(lanURL, '/api/zones', { id: 'test/zone', path: directory })
+  const zone = listed.zones[0].id as string
 
   // Task 新增：经局域网浏览器完成，独立客户端经同一地址读到相同字面值。
   await activate(page.getByTestId('tab-tasks'), true)
@@ -182,7 +182,7 @@ test('局域网地址可管理共享 Task 并从 zone 发起 Chat，不额外要
   const tabs = server.herdrTabs()
   expect(tabs).toHaveLength(1)
   expect(tabs[0].label).toBe(previewName)
-  expect(tabs[0].cwd).toBe(zone)
+  expect(tabs[0].cwd).toBe(listed.zones[0].path)
   const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
   expect(prompts).toHaveLength(1)
   expect(prompts[0].text).toBe(INPUT)

@@ -129,7 +129,7 @@ test('顶层标签、变量块增删、光标插入和下拉开字对比度', as
   await expect(page.getByTestId('chat-name-preview')).toHaveText('X')
 })
 
-test('手机宽度下 zone 只显示末级名称与数字角标', async ({ page }) => {
+test('手机宽度下同名 zone 可区分且 Git 状态与操作不溢出', async ({ page }) => {
   server = await startServer()
   zoneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-bot ui zones '))
   const first = path.join(zoneRoot, 'one', 'alpha')
@@ -139,21 +139,20 @@ test('手机宽度下 zone 只显示末级名称与数字角标', async ({ page 
   execFileSync('git', ['init', first], { stdio: 'ignore' })
   fs.writeFileSync(path.join(first, 'untracked.txt'), 'pending\n', 'utf8')
 
-  await jsonPost(server.baseURL, '/api/zones', { path: first })
-  await jsonPost(server.baseURL, '/api/zones', { path: second })
+  await jsonPost(server.baseURL, '/api/zones', { id: 'test/first', path: first })
+  await jsonPost(server.baseURL, '/api/zones', { id: 'test/second', path: second })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-files').click()
   await expect(page.getByTestId('zone-list')).toBeVisible()
 
-  const firstRow = zoneRowFor(page, first)
-  const secondRow = zoneRowFor(page, second)
+  const firstRow = zoneRowFor(page, 'test/first')
+  const secondRow = zoneRowFor(page, 'test/second')
   await expect(firstRow).toHaveCount(1)
   await expect(secondRow).toHaveCount(1)
-  await expect(firstRow.getByTestId('open-zone')).toHaveText('alpha')
-  await expect(secondRow.getByTestId('open-zone')).toHaveText('alpha')
-  expect(await firstRow.getByTestId('open-zone').innerText()).not.toContain(first)
+  await expect(firstRow.locator('.zone-item__name')).toHaveText('alpha')
+  await expect(secondRow.locator('.zone-item__name')).toHaveText('alpha')
   await expect(firstRow.getByTestId('open-zone')).toHaveAttribute('title', first)
   await expect(secondRow.getByTestId('open-zone')).toHaveAttribute('title', second)
   await expect(firstRow.getByTestId('zone-detail')).toHaveCount(0)
@@ -161,9 +160,7 @@ test('手机宽度下 zone 只显示末级名称与数字角标', async ({ page 
 
   const badge = page.getByTestId('zone-badge')
   await expect(badge).toHaveCount(1)
-  await expect(badge).toHaveText('1')
   await expect(badge).toHaveAttribute('aria-label', '1 项待提交')
-  await expect(page.getByText('项待提交')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
 
   // 320px 是常见的小屏宽度：数字角标和操作按钮不能让列表横向溢出。

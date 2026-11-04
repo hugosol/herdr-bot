@@ -48,12 +48,12 @@ fn config_with_operations(
     config
 }
 
-/// 一个已登记的真实目录；返回登记列表里的路径。
+/// 一个已登记的真实目录；返回登记列表里的 ID。
 async fn register(server: &TestServer, path: &Path) -> String {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({ "path": path }).to_string(),
+        &json!({ "id": path, "path": path }).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "登记 zone 应成功：{}", response.body);
@@ -64,7 +64,7 @@ async fn register(server: &TestServer, path: &Path) -> String {
         .iter()
         .find_map(|zone| {
             let registered = zone["path"].as_str()?;
-            same_path(Path::new(registered), path).then(|| registered.to_string())
+            same_path(Path::new(registered), path).then(|| zone["id"].as_str().unwrap().to_string())
         })
         .expect("登记响应必须包含刚登记的目录")
 }
@@ -374,7 +374,7 @@ async fn accepted_creation_continues_after_observation_connections_drop() {
     assert_eq!(tab["cwd"], zone_path);
     assert_eq!(tab["label"], accepted["name"]);
     assert_eq!(start["pane"], tab["pane_id"]);
-    assert_eq!(prompt["text"], "断线后的任务");
+    assert_eq!(common::prompt_body(&prompt), "断线后的任务");
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(call_kinds(&herdr), kinds, "连接断开不能伪装成重试或重建");
     assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
@@ -422,7 +422,7 @@ async fn accepted_creation_continues_when_the_submitting_client_disconnects() {
     let prompt = calls_of_kind(&herdr, "agent_prompt")
         .pop()
         .expect("必须有提交记录");
-    assert_eq!(prompt["text"], "提交连接断开的任务");
+    assert_eq!(common::prompt_body(&prompt), "提交连接断开的任务");
     assert_eq!(
         call_kinds(&herdr),
         vec![
@@ -488,8 +488,8 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
     }
     let first_prompt = external_objects(&herdr, &first).2;
     let second_prompt = external_objects(&herdr, &second).2;
-    assert_eq!(first_prompt["text"], "同 zone 任务甲");
-    assert_eq!(second_prompt["text"], "同 zone 任务乙");
+    assert_eq!(common::prompt_body(&first_prompt), "同 zone 任务甲");
+    assert_eq!(common::prompt_body(&second_prompt), "同 zone 任务乙");
     assert_eq!(herdr.tabs().len(), 2, "同一 zone 的两次创建各有独立 Tab");
 
     // 不同 zone：同时提交后，每次创建使用自己 zone 的目录与字面任务。
@@ -516,8 +516,8 @@ async fn concurrent_clients_get_independent_objects_and_inputs() {
         "输入与目标必须对应同一个 zone"
     );
     assert_eq!(beta_tab["cwd"], beta_path, "输入与目标必须对应同一个 zone");
-    assert_eq!(alpha_prompt["text"], "跨 zone 任务甲");
-    assert_eq!(beta_prompt["text"], "跨 zone 任务乙");
+    assert_eq!(common::prompt_body(&alpha_prompt), "跨 zone 任务甲");
+    assert_eq!(common::prompt_body(&beta_prompt), "跨 zone 任务乙");
     assert_ne!(alpha_tab["tab_id"], beta_tab["tab_id"]);
     assert_eq!(herdr.tabs().len(), 4, "两次阶段共创建四个独立 Tab");
     assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 4);
@@ -574,7 +574,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
 
     // 外部记录：第二个创建的完整链已经在第一个提交仍未确认时发生。
     let free_prompt = external_objects(&herdr, &free).2;
-    assert_eq!(free_prompt["text"], "率先完成的创建");
+    assert_eq!(common::prompt_body(&free_prompt), "率先完成的创建");
     assert_eq!(
         calls_of_kind(&herdr, "agent_prompt").len(),
         2,
@@ -584,7 +584,7 @@ async fn a_creation_blocked_at_submission_does_not_queue_another() {
     release(&blocked_release);
     let blocked = wait_stage(&server, &blocked_id, "succeeded").await;
     let blocked_prompt = external_objects(&herdr, &blocked).2;
-    assert_eq!(blocked_prompt["text"], "被阻塞的创建");
+    assert_eq!(common::prompt_body(&blocked_prompt), "被阻塞的创建");
     assert_eq!(herdr.tabs().len(), 2);
     assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
     assert_eq!(calls_of_kind(&herdr, "unsupported").len(), 0);
@@ -646,11 +646,11 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
         "第一个创建在启动屏障释放前不能进入后续阶段"
     );
     let free_prompt = external_objects(&herdr, &free).2;
-    assert_eq!(free_prompt["text"], "先完成的任务");
+    assert_eq!(common::prompt_body(&free_prompt), "先完成的任务");
     assert!(
         calls_of_kind(&herdr, "agent_prompt")
             .iter()
-            .all(|prompt| prompt["text"] != "启动被阻塞的任务"),
+            .all(|prompt| common::prompt_body(&prompt) != "启动被阻塞的任务"),
         "受阻的创建不得提前提交"
     );
 
@@ -662,7 +662,7 @@ async fn a_creation_blocked_before_readiness_does_not_queue_another() {
         &["--model", "deepseek/deepseek-flash", "--thinking", "high"],
         "启动受阻的创建",
     );
-    assert_eq!(blocked_prompt["text"], "启动被阻塞的任务");
+    assert_eq!(common::prompt_body(&blocked_prompt), "启动被阻塞的任务");
     assert_eq!(herdr.tabs().len(), 2);
     assert_eq!(calls_of_kind(&herdr, "agent_prompt").len(), 2);
 }
@@ -809,11 +809,11 @@ async fn concurrent_creations_keep_their_own_accepted_task_snapshots() {
         "创建 B 必须使用接受时的旧Task启动参数",
     );
     assert_eq!(
-        prompt_a["text"],
+        common::prompt_body(&prompt_a),
         "/skill:teach 快照 A 的固定指示\n\n快照 A 的输入"
     );
     assert_eq!(
-        prompt_b["text"],
+        common::prompt_body(&prompt_b),
         "/skill:code-review 快照 B 的固定指示\n\n快照 B 的输入"
     );
     assert_eq!(herdr.tabs().len(), 2);
@@ -900,12 +900,12 @@ fn snapshot_task(revision: &str) -> Value {
         "old" => json!({
             "name": "旧快照", "chatName": "old-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "high", "skill": "mapped-skill",
-            "prompt": "旧固定指示\n第二行", "extensions": ["tools"],
+            "prompt": "旧固定指示\n第二行",
         }),
         "new" => json!({
             "name": "新快照", "chatName": "new-{task.name}-{chat.id}", "agent": "omp",
             "model": "mapped-model", "thinking": "low", "skill": "mapped-skill",
-            "prompt": "新固定指示\n第二行", "extensions": ["connect"],
+            "prompt": "新固定指示\n第二行",
         }),
         _ => panic!("未知Task版本"),
     }
@@ -931,7 +931,7 @@ fn assert_snapshot_launch(start: &Value, storage: &TempDir, expected: &[&str], e
     assert_eq!(
         &args[4..],
         expected_tail.as_slice(),
-        "只能使用接受时的固定及所选扩展"
+        "只能使用接受时的固定扩展（Suite 资源由专项覆盖）"
     );
 }
 
@@ -995,10 +995,10 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &new_start,
         &storage,
         &["--model", "new-provider/new-model", "--thinking", "low"],
-        &["new-fixed.ts", "new-connect.ts"],
+        &["new-fixed.ts"],
     );
     assert_eq!(
-        new_prompt["text"],
+        common::prompt_body(&new_prompt),
         "/skill:new-native 新固定指示\n第二行\n\n新本次输入\n保留换行"
     );
 
@@ -1063,11 +1063,11 @@ async fn p36_accepted_creation_keeps_full_mapping_while_new_creation_finishes_in
         &old_start,
         &storage,
         &["--model", "old-provider/old-model", "--thinking", "high"],
-        &["old-fixed.ts", "old-tools.ts"],
+        &["old-fixed.ts"],
     );
     assert_ne!(old_start["name"], new_start["name"], "并发创建的 Herdr 控制对象必须独立");
     assert_eq!(
-        old_prompt["text"],
+        common::prompt_body(&old_prompt),
         "/skill:old-native 旧固定指示\n第二行\n\n旧本次输入\n保留换行"
     );
     assert_eq!(herdr.tabs().len(), 2);
@@ -1103,10 +1103,10 @@ async fn p37_task_and_metadata_changes_leave_existing_chats_untouched() {
         &original_start,
         &storage,
         &["--model", "old-provider/old-model", "--thinking", "high"],
-        &["old-fixed.ts", "old-tools.ts"],
+        &["old-fixed.ts"],
     );
     assert_eq!(
-        original_prompt["text"],
+        common::prompt_body(&original_prompt),
         "/skill:old-native 旧固定指示\n第二行\n\n已有 Chat 的输入"
     );
 
@@ -1129,10 +1129,10 @@ async fn p37_task_and_metadata_changes_leave_existing_chats_untouched() {
         &new_start,
         &storage,
         &["--model", "new-provider/new-model", "--thinking", "low"],
-        &["new-fixed.ts", "new-connect.ts"],
+        &["new-fixed.ts"],
     );
     assert_eq!(
-        new_prompt["text"],
+        common::prompt_body(&new_prompt),
         "/skill:new-native 新固定指示\n第二行\n\n后续 Chat 的输入"
     );
     assert_eq!(
@@ -1240,7 +1240,7 @@ async fn chat_creation_does_not_take_the_fixed_operation_execution_slot() {
     let finished = wait_stage(&server, &creation_id, "succeeded").await;
     assert_eq!(finished["inputSubmitted"], true);
     assert_eq!(
-        external_objects(&herdr, &finished).2["text"],
+        common::prompt_body(&external_objects(&herdr, &finished).2),
         "与固定操作并行"
     );
     assert_eq!(herdr.tabs().len(), 1);
@@ -1294,7 +1294,7 @@ async fn concurrent_zone_creations_render_their_own_zone_names() {
         assert_eq!(tab["label"], view["name"]);
         assert_eq!(&tab["cwd"], expected_cwd);
         assert_eq!(
-            prompt["text"],
+            common::prompt_body(&prompt),
             if expected_cwd == &one_path {
                 "命名任务一"
             } else {

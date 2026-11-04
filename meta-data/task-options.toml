@@ -1,5 +1,7 @@
 # Task 选项目录。修改后无需重启；下次打开编辑、保存或创建重新读取。
-# id 为 Task 保存的稳定标识；label 只影响显示。不要把映射副本写入 Task。
+# 模型与初始 Skill 的 id 是 Task 保存的稳定标识；label 只影响显示。
+# 固定扩展按执行角色加载；其余既有入口仅作资源位置参考，不再作为 Task 勾选项或运行时选择。
+# 场景扩展只在 Suite 中按宿主声明具体路径。不要把映射副本写入 Task。
 [[agents]]
 id = 'omp'
 label = 'oh-my-pi'
@@ -57,6 +59,10 @@ native_name = 'writing-for-agents'
 id = 'improve-codebase-architecture'
 label = '/improve-codebase-architecture'
 native_name = 'improve-codebase-architecture'
+[[skills]]
+id = 'expert-translate'
+label = '/expert-translate'
+native_name = 'expert-translate'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
 # --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
@@ -117,6 +123,12 @@ label = 'model-cost'
 agent = 'pi'
 kind = 'fixed'
 entrypoint = '${roots.toolkit}/entrypoints/pi/model-cost.ts'
+[[extensions]]
+id = 'pi-suite'
+label = 'pi-suite'
+agent = 'pi'
+kind = 'fixed'
+entrypoint = '${roots.toolkit}/entrypoints/pi/pi-suite.ts'
 [[extensions]]
 id = 'pi-manager-chat'
 label = 'manager-chat'

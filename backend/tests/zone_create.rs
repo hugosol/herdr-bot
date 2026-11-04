@@ -91,7 +91,7 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
         &post_json_over_tcp(
             server.addr(),
             "/api/zones/create",
-            &json!({ "name": "anything" }).to_string(),
+            &json!({ "id": "created-zone", "name": "anything" }).to_string(),
         )
         .await,
         400,
@@ -113,7 +113,7 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
         let response = post_json_over_tcp(
             server.addr(),
             "/api/zones/create",
-            &json!({ "name": name }).to_string(),
+            &json!({ "id": "created-zone", "name": name }).to_string(),
         )
         .await;
         let expected_code = if name.is_empty() {
@@ -127,7 +127,7 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
         &post_json_over_tcp(
             server.addr(),
             "/api/zones/create",
-            &json!({ "name": "sneaky", "path": "C:\\outside" }).to_string(),
+            &json!({ "id": "created-zone", "name": "sneaky", "path": "C:\\outside" }).to_string(),
         )
         .await,
         400,
@@ -137,7 +137,7 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
         &post_json_over_tcp(
             server.addr(),
             "/api/zones/create?path=C%3A%5Coutside",
-            &json!({ "name": "sneaky" }).to_string(),
+            &json!({ "id": "created-zone", "name": "sneaky" }).to_string(),
         )
         .await,
         400,
@@ -151,14 +151,14 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
     let first = post_json_over_tcp(
         server.addr(),
         "/api/zones/create",
-        &json!({ "name": "taken" }).to_string(),
+        &json!({ "id": "created-zone", "name": "taken" }).to_string(),
     )
     .await;
     assert_eq!(first.status, 200, "首次创建应成功：{}", first.body);
     let duplicate = post_json_over_tcp(
         server.addr(),
         "/api/zones/create",
-        &json!({ "name": "taken" }).to_string(),
+        &json!({ "id": "another-zone", "name": "taken" }).to_string(),
     )
     .await;
     assert_rejected(&duplicate, 409, "name-already-exists");
@@ -181,7 +181,7 @@ async fn creation_refuses_missing_configuration_invalid_names_existing_target_an
         &post_json_over_tcp(
             server.addr(),
             "/api/zones/create",
-            &json!({ "name": "project" }).to_string(),
+            &json!({ "id": "created-zone", "name": "project" }).to_string(),
         )
         .await,
         400,
@@ -195,14 +195,15 @@ async fn registration_failure_keeps_created_directory_and_git_initialization() {
     let dir = TempDir::new("zone create registration failure");
     let parent = dir.path().join("bot-playground");
     fs::create_dir_all(&parent).expect("创建配置的父目录");
-    let registry = dir.path().join("registry-is-a-directory");
-    fs::create_dir_all(&registry).expect("创建无法作为登记文件的目录");
+    let registry = dir.path().join("zones.json");
+    fs::write(&registry, r#"{"zones":[]}"#).expect("提供可读登记供 ID 预检");
     let server = TestServer::start(&config_with_creation(&registry, Some(&parent))).await;
+    let _blocked = common::HistoryWriteBlock::new(&registry);
 
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones/create",
-        &json!({ "name": "kept-project" }).to_string(),
+        &json!({ "id": "created-zone", "name": "kept-project" }).to_string(),
     )
     .await;
 
@@ -232,7 +233,7 @@ async fn creates_zone_directory_initializes_git_and_registers_it() {
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones/create",
-        &json!({ "name": "new-project" }).to_string(),
+        &json!({ "id": "created-zone", "name": "new-project" }).to_string(),
     )
     .await;
 

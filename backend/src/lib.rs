@@ -47,8 +47,11 @@ pub mod scheduler;
 pub mod runs;
 pub mod files;
 pub mod handoff_migration;
+pub mod portability_migration;
+pub mod prompts;
 pub mod shutdown;
 pub mod tasks;
+pub mod suites;
 pub mod zones;
 
 use std::convert::Infallible;
@@ -134,12 +137,14 @@ pub struct AppState {
     /// 与固定操作、关机路径完全解耦：Task 管理只读取与写入 Task 存储文件，不执行任何脚本、
     /// 不创建也不关闭 Chat。
     pub tasks: Arc<tasks::Tasks>,
+    pub suites: Arc<suites::Suites>,
     /// Service-owned Map root, never derived from zone or request data.
     pub map_directory: PathBuf,
     /// Service-owned shared capability definitions, independent of Map storage.
     pub bot_directory: PathBuf,
     pub run_directory: PathBuf,
     pub run_instructions: PathBuf,
+    pub prompts: prompts::PromptDictionary,
     pub collect_wait: Duration,
     pub workflow_poll_interval_seconds: u32,
     pub runs: Arc<runs::Runs>,
@@ -226,6 +231,7 @@ pub fn app_with_state(
     let sync_state = Arc::new(sync::SyncState::with_ttl(
         config.git.status_cache_ttl_seconds.duration(),
     ));
+    let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -244,11 +250,14 @@ pub fn app_with_state(
             config.tasks.storage_file.clone(),
             config.tasks.metadata_file.clone(),
             config.roots.clone(),
+            Arc::clone(&suites),
         )),
+        suites,
         map_directory: std::path::absolute(&config.scheduler.map_directory).expect("resolve Map root"),
         bot_directory: std::path::absolute(&config.scheduler.bot_directory).expect("resolve Bot root"),
         run_directory: std::path::absolute(&config.scheduler.run_directory).expect("resolve Run root"),
         run_instructions: std::path::absolute(&config.scheduler.run_instructions).expect("resolve Run instructions"),
+        prompts: prompts::PromptDictionary::new(config.prompts_file.clone()),
         collect_wait: config.scheduler.collect_wait_seconds.duration(),
         workflow_poll_interval_seconds: config.scheduler.workflow_poll_interval_seconds.get(),
         runs: Arc::new(runs::Runs::default()),
@@ -290,7 +299,9 @@ pub fn app_with_state(
         .route("/api/sessions/history/memo", axum::routing::put(history::put_memo))
         // zone 登记列表：同一条路径读取与登记，取消登记是另一条明确命令。
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
-        .route("/api/zones", get(list_zones).post(register_zone))
+        .route("/api/zones", get(list_zones).post(register_zone).put(rebind_zone).delete(unregister_zone))
+        .route("/api/suites", get(suites::list).post(suites::create))
+        .route("/api/suites/{id}", get(suites::get).put(suites::update).delete(suites::delete))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
@@ -367,7 +378,6 @@ pub fn app_with_state(
         // 自动更新的只读长连接：真实文件系统事件按 zone 合并后通知页面重新读取；
         // 同一 zone 的所有观察者共享一条监听，监听失效会明确下发错误而不是保持静默。
         .route("/api/zones/watch", get(watch_zones))
-        .route("/api/zones/remove", post(unregister_zone))
         // 其余 /api/ 请求（其他操作名、怪路径）一律以可理解的 JSON 类别拒绝，
         // 既不交给静态页面，也不执行任何脚本。
         .route("/api/{*path}", any(unknown_api_request))
@@ -627,13 +637,19 @@ struct ZoneErrorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ZonePathRequest {
+    id: String,
     path: String,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ZoneIdRequest { id: String }
 
 /// 新建 zone 的请求体：只接受一个目录名称，父目录只来自服务端配置。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateZoneRequest {
+    id: String,
     name: String,
 }
 
@@ -641,7 +657,15 @@ struct CreateZoneRequest {
 #[derive(Debug, Serialize)]
 struct TaskListResponse {
     tasks: Vec<tasks::Task>,
-    options: catalog::TaskOptions,
+    options: TaskOptionsResponse,
+}
+
+#[derive(Debug, Serialize)]
+struct TaskOptionsResponse {
+    #[serde(flatten)]
+    catalog: catalog::TaskOptions,
+    suites: Vec<suites::Suite>,
+    mcp: Vec<String>,
 }
 
 /// 单个 Task 的响应。
@@ -658,7 +682,7 @@ async fn list_zones(State(state): State<AppState>) -> Response {
 /// “登记 zone”：路径必须真实存在且是服务器上的绝对目录；只有持久化成功后返回成功。
 async fn register_zone(State(state): State<AppState>, request: Request) -> Response {
     match zone_path(request).await {
-        Ok(path) => match state.zones.register(&path).await {
+        Ok(binding) => match state.zones.register(&binding.id, &binding.path).await {
             Ok(zones) => {
                 // 新登记的 zone 立即开始监听；监听失败会作为健康错误交给观察连接。
                 state.zone_watch.reconcile(&zones).await;
@@ -675,10 +699,17 @@ async fn register_zone(State(state): State<AppState>, request: Request) -> Respo
 /// 客户端只提交名称，父目录固定来自服务端配置。目录创建或 Git 初始化失败会保留已产生的目录；
 /// 登记失败也保留目录，并明确告诉调用者目录与 Git 初始化已经完成、可是登记没有成功。
 async fn create_zone(State(state): State<AppState>, request: Request) -> Response {
-    let name = match zone_create_name(request).await {
-        Ok(name) => name,
+    let input = match zone_create_name(request).await {
+        Ok(input) => input,
         Err(rejection) => return rejection,
     };
+    if input.id.trim().is_empty() { return zone_error_response(ZoneError::IdRequired); }
+    match state.zones.list().await {
+        Ok(zones) if zones.iter().any(|zone| zone.id == input.id.trim()) => return zone_error_response(ZoneError::AlreadyRegistered),
+        Err(error) => return zone_error_response(error),
+        _ => {}
+    }
+    let name = input.name;
     let Some(parent) = state.create_parent_directory.clone() else {
         return rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -703,7 +734,7 @@ async fn create_zone(State(state): State<AppState>, request: Request) -> Respons
         }
     };
     let path = zones::display_path(&created);
-    match state.zones.register(&path).await {
+    match state.zones.register(&input.id, &path).await {
         Ok(zones) => {
             state.zone_watch.reconcile(&zones).await;
             zone_list_response(&state, Ok(zones))
@@ -721,20 +752,23 @@ async fn create_zone(State(state): State<AppState>, request: Request) -> Respons
 
 /// “取消登记”：只移除登记项，不删除目录或文件。
 async fn unregister_zone(State(state): State<AppState>, request: Request) -> Response {
-    match zone_path(request).await {
-        Ok(path) => match state.zones.unregister(&path).await {
-            Ok(zones) => {
-                state.zone_watch.reconcile(&zones).await;
-                zone_list_response(&state, Ok(zones))
-            }
-            Err(error) => zone_error_response(error),
-        },
-        Err(rejection) => rejection,
+    let input: ZoneIdRequest = match chat_command_body(request, "取消 zone 登记").await { Ok(input) => input, Err(error) => return error };
+    match state.zones.unregister(&input.id).await {
+        Ok(zones) => { state.zone_watch.reconcile(&zones).await; zone_list_response(&state, Ok(zones)) }
+        Err(error) => zone_error_response(error),
+    }
+}
+
+async fn rebind_zone(State(state): State<AppState>, request: Request) -> Response {
+    let binding = match zone_path(request).await { Ok(input) => input, Err(error) => return error };
+    match state.zones.rebind(&binding.id, &binding.path).await {
+        Ok(zones) => { state.zone_watch.reconcile(&zones).await; zone_list_response(&state, Ok(zones)) }
+        Err(error) => zone_error_response(error),
     }
 }
 
 /// 读取 zone 命令的请求体；请求面封闭（不接受查询串或未知字段）。
-async fn zone_path(request: Request) -> Result<String, Response> {
+async fn zone_path(request: Request) -> Result<ZonePathRequest, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -755,14 +789,14 @@ async fn zone_path(request: Request) -> Result<String, Response> {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析 zone 命令：请发送 {\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
+            "无法解析 zone 命令：请发送 {\"id\":\"稳定 zone ID\",\"path\":\"服务器目录\"} 形式的 JSON。".to_string(),
         )
     })?;
-    Ok(body.path)
+    Ok(body)
 }
 
 /// 读取新建 zone 的请求体；请求面同样封闭，父目录不会从请求中接受。
-async fn zone_create_name(request: Request) -> Result<String, Response> {
+async fn zone_create_name(request: Request) -> Result<CreateZoneRequest, Response> {
     if request.uri().query().is_some_and(|query| !query.is_empty()) {
         return Err(rejected_owned(
             StatusCode::BAD_REQUEST,
@@ -783,10 +817,10 @@ async fn zone_create_name(request: Request) -> Result<String, Response> {
         rejected_owned(
             StatusCode::BAD_REQUEST,
             "invalid-request",
-            "无法解析新建 zone 请求：请发送 {\"name\":\"目录名称\"} 形式的 JSON。".to_string(),
+            "无法解析新建 zone 请求：请发送 {\"id\":\"稳定 zone ID\",\"name\":\"目录名称\"} 形式的 JSON。".to_string(),
         )
     })?;
-    Ok(body.name)
+    Ok(body)
 }
 
 /// 把创建 zone 的失败翻译成稳定 HTTP 类别；失败消息保留目录路径与失败阶段。
@@ -920,12 +954,20 @@ fn task_list_response(
         Ok(catalog) => catalog,
         Err(error) => return task_error_response(error),
     };
+    let suites = match state.suites.list() {
+        Ok(suites) => suites,
+        Err(error) => return error.into_response(),
+    };
+    let mcp = match state.suites.mcp_catalog() {
+        Ok(mcp) => mcp.into_keys().collect(),
+        Err(error) => return error.into_response(),
+    };
     match result {
         Ok(tasks) => (
             StatusCode::OK,
             Json(TaskListResponse {
                 tasks,
-                options: catalog.options(),
+                options: TaskOptionsResponse { catalog: catalog.options(), suites, mcp },
             }),
         )
             .into_response(),
@@ -956,7 +998,7 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::ThinkingRequiresDefaultModel
         | TaskError::ThinkingUnsupported { .. }
         | TaskError::UnknownSkill(_)
-        | TaskError::InvalidExtension(_) => StatusCode::BAD_REQUEST,
+        | TaskError::InvalidSuite(_) => StatusCode::BAD_REQUEST,
     };
     rejected_owned(
         status,
@@ -1127,7 +1169,11 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
-    let preset = match state
+    let suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
+    let mut preset = match state
         .tasks
         .catalog()
         .and_then(|catalog| catalog.resolve(&task))
@@ -1140,6 +1186,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
+    preset.env.suite_args = suite_args;
     if let Err(message) = preset.env.check_entrypoints() {
         return rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1152,10 +1199,12 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
     let job = state.chat_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
     let history = Arc::clone(&state.history);
+    let prompts = state.prompts.clone();
     tokio::spawn(async move {
         chats::run_creation(
             herdr,
             history,
+            prompts,
             job,
             task,
             preset,
@@ -1235,24 +1284,9 @@ async fn chat_zone(state: &AppState, requested: &str) -> Result<String, Response
             "请选择已登记的 zone。".to_string(),
         ));
     }
-    let zones = state.zones.list().await.map_err(|error| {
-        rejected_owned(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "zones-unreadable",
-            format!("读取 zone 登记列表失败：{}", error.message()),
-        )
-    })?;
-    zones
-        .into_iter()
-        .find(|entry| zones::same_path(&entry.path, trimmed))
-        .map(|entry| entry.path)
-        .ok_or_else(|| {
-            rejected_owned(
-                StatusCode::BAD_REQUEST,
-                "zone-not-registered",
-                "该目录没有登记；只能从已登记的 zone 创建 Chat。".to_string(),
-            )
-        })
+    let path = state.zones.resolve(trimmed).await.map_err(zone_error_response)?;
+    browse::checked_root(&path).map_err(browse_error_response)?;
+    Ok(path)
 }
 
 /// 一次只读浏览请求的查询参数：登记路径 + 可选相对路径（空字符串表示根目录）。
@@ -2150,7 +2184,8 @@ fn zone_error_response(error: ZoneError) -> Response {
         ZoneError::Unreadable(_) | ZoneError::Corrupt(_) | ZoneError::WriteFailed(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
-        ZoneError::Required
+        ZoneError::IdRequired
+        | ZoneError::Required
         | ZoneError::NotAbsolute
         | ZoneError::NotFound
         | ZoneError::NotADirectory

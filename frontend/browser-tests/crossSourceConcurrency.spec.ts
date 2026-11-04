@@ -40,7 +40,7 @@ async function register(sessionId: string, data: Record<string, unknown>) {
   expect(receipt.historySaved).toBe(true)
 }
 async function task(agent: string, name: string) {
-  const saved = await post('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '', extensions: [] })
+  const saved = await post('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '' })
   return saved.tasks.find((item: { name: string }) => item.name === name).id as string
 }
 async function create(zone: string, taskId: string) {
@@ -62,7 +62,8 @@ test('independent clients preserve exact concurrent IDs and commuting fields acr
     const send = async (client: number, sessionId: string, data: Record<string, unknown>) => {
       const response = await clients[client].post(`${server!.baseURL}/api/sessions/events`, { data: { sessionId, kind: 'register', data } })
       expect(response.status()).toBe(200)
-      expect((await response.json()).historySaved).toBe(true)
+      const receipt = await response.json()
+      expect(receipt.historySaved, `${JSON.stringify(receipt)}\n${server!.diagnostics()}`).toBe(true)
     }
     await send(0, 'shared-16b2b3f0-17a8-4ffd-8000-000000000001', { cwd: 'C:/wave-one' })
     const firstTime = (await history()).sessions[0].firstRecordedAt
@@ -136,8 +137,8 @@ for (const agent of ['pi', 'omp'] as const) {
       server = await startServer({ safeShutdown: true, herdr: { behavior } })
       fs.appendFileSync(server.configPath, '\n[shutdown]\ncountdown_seconds = 3600\n')
       await server.restart()
-      const zones = await post('/api/zones', { path: root })
-      const zone = zones.zones[0].path as string
+      const zones = await post('/api/zones', { id: 'test/zone', path: root })
+      const zone = zones.zones[0].id as string
       const original = await task(agent, 'Durable zone before failure')
       const rejected = await task(agent, 'Zone name that never saved')
       await create(zone, original)
@@ -230,8 +231,8 @@ for (const agent of ['pi', 'omp'] as const) {
       const gate = path.join(root, 'identity-ready')
       const behavior = { native_session: { source: `herdr:${agent}`, agent, kind: 'id', value: id }, native_cwd: 'C:/same-project' }
       server = await startServer({ herdr: { behavior: { ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } } } })
-      const zones = await post('/api/zones', { path: root })
-      const zone = zones.zones[0].path as string
+      const zones = await post('/api/zones', { id: 'test/zone', path: root })
+      const zone = zones.zones[0].id as string
       const first = await task(agent, 'Zone original literal')
       const renamed = await task(agent, 'Zone renamed literal')
       const connect = () => register(id, { cwd: 'C:/same-project', sessionName: 'Connect original literal', agentType: agent })

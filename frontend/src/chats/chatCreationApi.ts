@@ -145,7 +145,7 @@ function jsonInit(method: string, body: unknown): RequestInit {
   }
 }
 
-/** 读取本次创建实际会使用的名称与短实例标识；不创建 Tab，也不启动 agent。 */
+/** zone 为稳定 ID；预览与创建结果中的 zone 仍为启动时解析的实际目录。读取预览不创建 Tab 或启动 agent。 */
 export function previewChat(zone: string, taskId: string): Promise<ChatResult<ChatPreview>> {
   return request('/api/chats/preview', jsonInit('POST', { zone, taskId }), isPreview)
 }

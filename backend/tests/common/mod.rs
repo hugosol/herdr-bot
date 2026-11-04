@@ -31,12 +31,18 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl TempDir {
     pub fn new(label: &str) -> Self {
-        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir()
-            .join("herdr-bot fixture checks")
-            .join(format!("{label} {}-{unique}", std::process::id()));
-        fs::create_dir_all(&path).expect("创建临时目录");
-        TempDir(path)
+        let root = std::env::temp_dir().join("herdr-bot fixture checks");
+        fs::create_dir_all(&root).expect("创建临时目录根");
+        loop {
+            let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = root.join(format!("{label} {}-{unique}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => return TempDir(path),
+                // Windows can recycle a PID while an earlier run's files remain.
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("创建临时目录 {}: {error}", path.display()),
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -318,6 +324,18 @@ pub fn read_json_lines(path: &Path) -> Vec<serde_json::Value> {
     }
 }
 
+/// Expose the business payload, excluding optional dictionary guidance, for
+/// independent literal launch assertions.
+pub fn prompt_body(prompt: &serde_json::Value) -> &str {
+    let text = prompt["text"].as_str().expect("prompt text");
+    let marker = "[Prompt dictionary instructions]";
+    let Some(start) = text.find(marker) else { return text; };
+    let prefix = &text[..start];
+    if let Some(body) = prefix.strip_suffix("\n\n") { body }
+    else if prefix.starts_with("/skill:") { prefix.strip_suffix(' ').expect("skill separator") }
+    else { assert!(prefix.is_empty()); prefix }
+}
+
 /// 服务端配置：把某个夹具批处理绑定为“启动”操作，并使用配置的工作目录。
 ///
 /// 只驱动“启动”的测试不需要区分两个操作，因此“停止”先绑定同一个目标；
@@ -355,6 +373,7 @@ pub fn config_with_countdown(
     };
     herdr_bot::Config {
         paths_file: None,
+        prompts_file: working_directory.join("prompts.local.toml"),
         roots: herdr_bot::paths::Roots::default(),
         base_directory: repo_fixtures_dir().parent().unwrap().to_path_buf(),
         static_directory: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static"),
@@ -393,6 +412,10 @@ pub fn config_with_countdown(
         // Git 命令时限在这些用例里取缺省 300 秒；需要更短时限的用例自己改写。
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
+        suites: herdr_bot::config::SuitesConfig {
+            generated_directory: working_directory.join("generated-suites"),
+            ..herdr_bot::config::SuitesConfig::default()
+        },
     }
 }
 
