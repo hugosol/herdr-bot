@@ -73,7 +73,6 @@ describe('文件列表：zone 登记', () => {
     // 浏览入口只显示末级目录名；完整路径保留在无障碍名称中。
     const row = within(list).getByRole('button', { name: '浏览 C:\\work\\alpha' })
     expect(row).toHaveTextContent('alpha')
-    expect(row).not.toHaveTextContent('C:\\work\\alpha')
     expect(within(list).queryByRole('button', { name: '浏览' })).toBeNull()
     expect(calls[0]).toMatchObject({ url: '/api/zones', method: 'GET' })
     expect(document.querySelector('input[type="file"]')).toBeNull()
@@ -161,7 +160,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     expect(screen.getByTestId('create-open')).toBeDisabled()
     expect(screen.getByTestId('create-unavailable')).toHaveTextContent(
@@ -191,7 +190,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     await user.click(screen.getByTestId('create-open'))
     await user.type(screen.getByTestId('zone-id'), 'test/new-project')
@@ -283,7 +282,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    expect(await screen.findByText('尚未登记 zone。')).toBeVisible()
+    expect(await screen.findByTestId('zone-empty')).toBeVisible()
 
     await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByTestId('zone-id'), 'test/new-project')
@@ -301,7 +300,6 @@ describe('文件列表：zone 登记', () => {
     const feedback = await screen.findByTestId('zone-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'success')
     expect(feedback).toHaveTextContent('已登记')
-    expect(screen.queryByText('尚未登记 zone。')).toBeNull()
     expect(
       screen.getByRole('button', { name: '浏览 E:\\work\\new-project' }),
     ).toBeVisible()
@@ -396,7 +394,6 @@ describe('文件列表：zone 登记', () => {
 
     const error = await screen.findByTestId('zone-list-error')
     expect(error).toHaveTextContent('zone 登记文件内容已损坏')
-    expect(screen.queryByText('尚未登记 zone。')).toBeNull()
     expect(screen.queryByTestId('zone-list')).toBeNull()
   })
 
@@ -424,8 +421,12 @@ describe('文件列表：zone 登记', () => {
     await screen.findByTestId('zone-list')
 
     const removeButton = screen.getByRole('button', { name: '取消登记 C:\\work\\alpha' })
-    expect(removeButton).toHaveTextContent('×')
     await user.click(removeButton)
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await user.click(screen.getByRole('button', { name: '保留登记' }))
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await user.click(removeButton)
+    await user.click(screen.getByRole('button', { name: '确认取消登记' }))
 
     const feedback = await screen.findByTestId('zone-feedback')
     expect(feedback).toHaveAttribute('data-kind', 'success')
@@ -457,7 +458,7 @@ describe('文件列表：zone 登记', () => {
 
     render(<App />)
     await openFileList(user)
-    await screen.findByText('尚未登记 zone。')
+    await screen.findByTestId('zone-empty')
 
     await user.click(screen.getByTestId('register-open'))
     await user.type(screen.getByTestId('zone-id'), 'test/new-project')

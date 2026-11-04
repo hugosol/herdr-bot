@@ -246,7 +246,7 @@ export default function App({
           <button type="button" data-action="layout" aria-label={layout === 'compact' ? '展开导航' : '收起导航'} aria-expanded={layout === 'expanded'} onClick={() => { setNavigationFade(true); setLayout(layout === 'compact' ? 'expanded' : 'compact') }}>
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 6h16M4 12h16M4 18h16" /></svg><span className="layout-toggle-label">{layout === 'compact' ? '展开' : '收起'}</span>
           </button>
-          {!serverOpen && tab === 'tasks' ? <p className="layout-brand">herdr-bot</p> : <h1 className="layout-brand">herdr-bot</h1>}
+          {!serverOpen && (tab === 'tasks' || tab === 'files') ? <p className="layout-brand">herdr-bot</p> : <h1 className="layout-brand">herdr-bot</h1>}
         </div>
         <button type="button" data-action="server" data-testid={serverOpen ? 'server-back' : 'server-button'} ref={serverBackRef} onClick={() => { if (serverOpen) setServerOpen(false); else if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>{serverOpen ? '返回' : 'server'}</button>
       </header>

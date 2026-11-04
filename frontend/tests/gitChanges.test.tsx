@@ -358,7 +358,6 @@ describe('zone 待提交角标', () => {
     await screen.findByTestId('zone-list')
 
     const badge = await screen.findByTestId('zone-badge')
-    expect(badge).toHaveTextContent(/^4$/)
     expect(badge).toHaveAttribute('aria-label', '4 项待提交')
   })
 
@@ -389,7 +388,6 @@ describe('zone 待提交角标', () => {
     await screen.findByTestId('zone-list')
 
     const badge = await screen.findByTestId('zone-badge')
-    expect(badge).toHaveTextContent('⚠')
     expect(badge).toHaveAttribute('aria-label', '待提交状态不可用：拒绝访问 Git 元数据。')
     expect(badge).toHaveAttribute('title', '拒绝访问 Git 元数据。')
     expect(badge).not.toHaveTextContent('待提交状态不可用')

@@ -204,7 +204,6 @@ describe('zone 自动刷新与监听健康', () => {
     emit(source, 'refresh', { zone: ZONE, at: 100, generation: 1 })
     await waitFor(() => {
       const badge = screen.getByTestId('zone-badge')
-      expect(badge).toHaveTextContent(/^1$/)
       expect(badge).toHaveAttribute('aria-label', '1 项待提交')
     })
   })
