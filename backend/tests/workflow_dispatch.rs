@@ -28,6 +28,8 @@ mod history_integrity;
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]
 mod nesting;
+#[path = "workflow_dispatch/nested_completion.rs"]
+mod nested_completion;
 #[path = "workflow_dispatch/partial_startup.rs"]
 mod partial_startup;
 #[path = "workflow_dispatch/auto_close.rs"]
