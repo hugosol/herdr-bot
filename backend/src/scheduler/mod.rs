@@ -77,6 +77,8 @@ pub struct ResolvedFile { pub id: String, pub path: String }
 struct MapNode {
     title: String,
     bot_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manager_task_id: Option<String>,
     input: String,
     #[serde(default)]
     input_rule: Vec<InputRule>,
@@ -375,11 +377,13 @@ struct PreflightIssue {
     task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     input_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    call_chain: Vec<String>,
 }
 
 impl PreflightIssue {
     fn new(code: &'static str, target: &'static str, message: impl Into<String>) -> Self {
-        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None, input_id: None }
+        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None, input_id: None, call_chain: Vec::new() }
     }
 }
 
@@ -415,6 +419,67 @@ fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, ta
     Ok(root)
 }
 
+fn check_map_calls(
+    access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
+    tasks: &[crate::tasks::Task], zones: &[crate::zones::RegisteredZone],
+    manager_zone: &str, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
+) {
+    for (id, node) in &map.nodes {
+        let node = &node.0;
+        let first_issue = issues.len();
+        match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
+            None => issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请修正引用或文件。", node.bot_id))),
+            Some(bot) => match (&bot.task_id, &bot.map_file) {
+                (Some(task), None) => {
+                    if task.trim().is_empty() {
+                        issues.push(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定 Task 或 Map 执行目标。", bot.id)));
+                    } else {
+                        issues.extend(check_role(tasks, task, crate::tasks::TaskType::Normal, "task"));
+                    }
+                    if node.manager_task_id.is_some() {
+                        issues.push(PreflightIssue::new("node-manager-unexpected", "node", "普通 Task 型 node 不能指定 manager_task_id。"));
+                    }
+                }
+                (None, Some(target)) => {
+                    match node.manager_task_id.as_deref().filter(|id| !id.trim().is_empty()) {
+                        Some(manager) => issues.extend(check_role(tasks, manager, crate::tasks::TaskType::Manager, "manager")),
+                        None => issues.push(PreflightIssue::new("node-manager-required", "node", "Map 型 node 必须指定 manager_task_id。")),
+                    }
+                    if path.contains(target) {
+                        let mut issue = PreflightIssue::new("map-call-cycle", "map", format!("Map 调用循环：{} → {target}", path.join(" → ")));
+                        issue.call_chain = path.iter().cloned().chain(std::iter::once(target.clone())).collect();
+                        issues.push(issue);
+                    } else {
+                        match read_map(access, directory, target) {
+                            Ok(child) if child.nodes.is_empty() => issues.push(PreflightIssue::new("map-empty", "map", format!("目标 Map {target} 为空，不能启动。"))),
+                            Ok(child) => {
+                                path.push(target.clone());
+                                check_map_calls(access, directory, &child, bots, tasks, zones, &node.zone, path, issues);
+                                path.pop();
+                            }
+                            Err(error) => issues.push(PreflightIssue::new(error.code, "map", format!("目标 Map {target} 无法读取：{}", error.message))),
+                        }
+                    }
+                }
+                _ => issues.push(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定唯一的 Task 或 Map 执行目标。", bot.id))),
+            },
+        }
+        if let Err(issue) = check_zone(zones, &node.zone, "node") { issues.push(issue); }
+        for rule in &node.input_rule {
+            if let InputRule::File { zone_id, .. } = rule {
+                if let Err(issue) = check_zone(zones, zone_id.as_deref().unwrap_or(manager_zone), "file") { issues.push(issue); }
+            }
+        }
+        for issue in &mut issues[first_issue..] {
+            if issue.node_id.is_none() {
+                issue.node_id = Some(id.clone());
+                issue.bot_id = Some(node.bot_id.clone());
+                if issue.call_chain.is_empty() { issue.call_chain = path.clone(); }
+            }
+        }
+    }
+}
+
 /// Shared by the read-only form and the real launch operation. Every call reads
 /// current definitions, Task roles and registered roots; it never allocates a
 /// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
@@ -423,6 +488,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let bot_directory = state.bot_directory.clone();
     let map_name = name;
     let name = name.to_owned();
+    let root_name = name.clone();
     let (map, bots) = tokio::task::spawn_blocking(move || with_definitions(
         &[map_directory.clone(), bot_directory.clone()], "map-read-failed", |access| {
         let map = read_map(access, &map_directory, &name)?;
@@ -461,26 +527,10 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
         Ok(zone) => Some(zone),
         Err(issue) => { issues.push(issue); None },
     };
-    for (id, node) in &map.nodes {
-        let node = &node.0;
-        let mut binding_issue = match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
-            None => Some(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请回到 Bot 管理修正引用或文件。", node.bot_id))),
-            Some(bot) => match bot.task_id.as_deref().filter(|id| !id.trim().is_empty()) {
-                None => Some(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定 Task；请回到此 Bot 配置 task_id。", bot.id))),
-                Some(task_id) => check_role(&tasks, task_id, crate::tasks::TaskType::Normal, "task"),
-            },
-        };
-        if let Some(issue) = &mut binding_issue { issue.node_id = Some(id.clone()); issue.bot_id = Some(node.bot_id.clone()); }
-        issues.extend(binding_issue);
-        if let Err(mut issue) = check_zone(&zones, &node.zone, "node") { issue.node_id = Some(id.clone()); issues.push(issue); }
-        for rule in &node.input_rule {
-            if let InputRule::File { zone_id, .. } = rule {
-                if let Err(mut issue) = check_zone(&zones, zone_id.as_deref().unwrap_or(&input.zone), "file") {
-                    issue.node_id = Some(id.clone()); issues.push(issue);
-                }
-            }
-        }
-    }
+    with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
+        check_map_calls(access, &state.map_directory, &map, &bots, &tasks, &zones, &input.zone, &mut vec![root_name], &mut issues);
+        Ok(())
+    }).map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }
     let zone = manager_zone.expect("valid manager zone when no issues");
     let workspace_name = Path::new(&zone).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
@@ -528,6 +578,17 @@ struct Bot {
     node_guide: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    map_file: Option<String>,
+}
+
+impl Bot {
+    fn validate_target(&self) -> Result<(), DirectoryError> {
+        if self.task_id.is_some() && self.map_file.is_some() {
+            return Err(edit_error("bot-invalid", "Bot 的 task_id 与 map_file 互斥；请只选择一个执行目标。"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
@@ -581,6 +642,10 @@ fn read_bots(access: &FileAccess, directory: &Path) -> Result<BotCatalog, Direct
                 continue;
             }
         };
+        if let Err(error) = bot.validate_target() {
+            problems.push(BotProblem { code: error.code, message: format!("共享 Bot {name}：{}", error.message), files: vec![name], bot_id: Some(bot.id) });
+            continue;
+        }
         identities.entry(bot.id.clone()).or_default().push(name);
         bots.push(bot);
     }
@@ -791,6 +856,7 @@ pub async fn save_bot(
         object.insert("id".into(), serde_json::Value::String(draft.id.clone()));
         let JsonObject(bot): JsonObject<Bot> = serde_path_to_error::deserialize(content)
             .map_err(|e| edit_error("bot-invalid", format!("Bot 结构无效：{e}")))?;
+        bot.validate_target()?;
         let bytes = serde_json::to_vec_pretty(&bot).map_err(|e| edit_error("bot-write-failed", e.to_string()))?;
         let root = prepare_directory(access, &state.bot_directory).map_err(bot_directory_error)?;
         let check = || -> Result<(), DirectoryError> {
@@ -1074,6 +1140,34 @@ fn read_files(access: &FileAccess, directory: &Path) -> Result<MapFiles, Directo
     Ok(MapFiles { files: files.into_iter().map(|(name, _)| name).collect() })
 }
 
+fn check_map_references(access: &FileAccess, directory: &Path, target: &str) -> Result<(), DirectoryError> {
+    let root = prepare_directory(access, directory).map_err(|error| edit_error("map-reference-check-failed", error.message))?;
+    let entries = access.read_dir(&root).map_err(|error| edit_error("map-reference-check-failed", format!("无法检查 Bot 目录 {}：{error}", root.display())))?;
+    let mut references = Vec::new();
+    for entry in entries {
+        let path = entry.path();
+        if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("json")) { continue; }
+        let check = || -> Result<Bot, String> {
+            let metadata = access.symlink_metadata(&path).map_err(|error| error.to_string())?;
+            if !metadata.is_file() || crate::zones::browse::is_link_like(&metadata) {
+                return Err("定义不能是链接、重解析点或目录".into());
+            }
+            let bytes = access.read(&path).map_err(|error| error.to_string())?;
+            let JsonObject(bot): JsonObject<Bot> = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+            bot.validate_target().map_err(|error| error.message)?;
+            Ok(bot)
+        };
+        let bot = check().map_err(|error| edit_error("map-reference-check-failed", format!("无法可靠检查 Bot {}，禁止删除 Map {target}：{error}", path.display())))?;
+        if bot.map_file.as_deref() == Some(target) {
+            references.push(format!("Bot {} / {}", bot.id, path.display()));
+        }
+    }
+    if !references.is_empty() {
+        return Err(edit_error("map-referenced", format!("Map {target} 仍被引用，不能删除：{}", references.join("；"))));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct MapDelete {
@@ -1093,8 +1187,9 @@ pub async fn delete_map(
     let _operation = lock.lock().await;
     // Validate the file boundary without parsing its definition: broken JSON is
     // still a safely identifiable Map file which the user must be able to remove.
-    let validation = with_definitions(&[state.map_directory.clone()], "map-delete-failed", |access| {
+    let validation = with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-delete-failed", |access| {
         map_file_path(access, &state.map_directory, &name)?;
+        check_map_references(access, &state.bot_directory, &name)?;
         let files = read_files(access, &state.map_directory)?;
         if !files.files.contains(&name) {
             return Err(edit_error("map-delete-failed", "删除只接受列表中的确切 Map 文件名。"));
@@ -1107,8 +1202,9 @@ pub async fn delete_map(
             return edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")).into_response();
         }
     }
-    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-delete-failed", |access| {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-delete-failed", |access| {
         let path = map_file_path(access, &state.map_directory, &name)?;
+        check_map_references(access, &state.bot_directory, &name)?;
         access.remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
         read_map_catalog(access, &state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
     })).await {

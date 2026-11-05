@@ -31,7 +31,8 @@ export function BotPreview({ bot }: { bot: Bot }) {
   return <>
     <p className="scheduler-filename">{bot.id}</p>
     <h3 className="scheduler-text">{bot.name}</h3>
-    <dl aria-label="绑定 Task"><dt>Task</dt><dd className="scheduler-text">{taskName}</dd></dl>
+    {bot.map_file != null ? <dl aria-label="绑定 Map"><dt>Map</dt><dd className="scheduler-text">{bot.map_file}</dd></dl>
+      : <dl aria-label="绑定 Task"><dt>Task</dt><dd className="scheduler-text">{taskName}</dd></dl>}
     <nav className="scheduler-bot-sections" aria-label="Bot 内容分区">
       {documents.map(({ key, title }) => <button type="button" key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{title}</button>)}
       <button type="button" aria-pressed={section === 'raw'} onClick={() => setSection('raw')}>json</button>

@@ -22,6 +22,8 @@ mod roles;
 mod report_policy;
 #[path = "workflow_dispatch/map_deletion.rs"]
 mod map_deletion;
+#[path = "workflow_dispatch/bot_targets.rs"]
+mod bot_targets;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]
