@@ -31,7 +31,7 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
 | execution | `id`、来源 `taskId`、实际宿主 `agent`、实际执行目录 `zone`、`reportPolicy`（`auto` 或 `manual`）、`autoClose`（布尔）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。两项选择在 dispatch/retry 解析当前 Map 时固定；旧记录缺少 `reportPolicy` 时按 `auto`、缺少 `autoClose` 时按 `false` 读取，无迁移、不因查询改写文件。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
 | failure | `stage`、`message`；启动失败可含 `effects`，执行阶段失败不制造启动效果。详细阶段以实际响应为准，不能只看 failed。 |
-| effects | `recordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；只表示已观察阶段，不证明未确认阶段绝无效果。 |
+| effects | `recordsInitialized`、可选 `childRunId`、`childRecordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；尝试提交时另有 `inputOutcome`：`submitted` 为收到成功确认，`rejected` 为宿主明确拒绝，`unknown` 为超时、通信或响应不可理解，不能断言未发送。未尝试或旧记录缺此字段，不补造结果。只表示已观察阶段，不证明未确认阶段绝无效果。 |
 | completion | `id`、`at`、真实管理者 `actor` Chat 引用、原文 `reason`；保留首次交接事实。 |
 | finished | `id`、`at`、真实管理者 `actor` Chat 引用；重复 finish 不覆盖。 |
 | report | `id`、`type=report`、`at`、`runId`、`nodeId`、`executionId`、真实 `from`/`to` Chat 引用、`body`、`canComplete` boolean 及可选 `outputs: [{id,path}]` 实际地址数组；历史缺新增字段可读但不补 true。只在 messages.jsonl 追加，不包含已读或投递成功事实。 |
@@ -51,6 +51,25 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；父可选项缺席而子接口要求必需项时，派发明确指出缺项，不启动该子工作。
 
 子启动在既有阶段外公开 `child-preflight`、`child-register`、`child-initialize`、`child-association`。`effects.childRunId` 表示已经保存的父执行指向，`childRecordsInitialized` 表示三份子记录完成初始化；随后仍逐项报告真实 workspace／Tab／agent／身份／关联／提交效果。已登记的子 Run、已启动的 Chat 和已保存的另一侧关联可能在后续阶段失败后保留；这不是跨文件事务，不会自动回滚、重发或重派。应读取逐项结果、父 execution、子 Run 详情与 `startupError` 核实现场，不能把 failed 解释为未创建。子 Run 的结束、对外报告与父 manager 的交接仍是不同动作。
+
+### 子启动失败的核实与验证
+
+先读取 dispatch 的逐项 `failure.stage/effects`，再读取父 `execution.childRunId`、子 Run HTTP 详情／列表与独立磁盘记录，最后核对实际宿主 Tab、agent 和提交效果。`child-initialize` 失败可能只有持久父执行指向，子三份记录尚不可读；当前进程列表仍保留这个 child 的 `id` 和 `readError`，详情保留 `startupError`。没有 Chat 不授权删除该指向、自动重建、重派或回滚；核实只读宿主身份，必要时保存原两侧关联。`inputAttempted=true/inputSubmitted=false` 不等于未发送：按 `inputOutcome` 区分明确拒绝与结果未知，不能凭已有 Chat 抹掉该区别。失败的宿主动作和初始输入不因核实重放。
+
+P31 定向回归：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch partial_startup::`。使用独占临时持久数据、数值回环 HTTP 和受控 Herdr 子进程，覆盖 preflight 未创建、真实 Windows ACL 拒绝 child 目录创建（已登记但未初始化）、明确启动拒绝、真实 Windows 文件替换拒绝（Chat 已启动但 child 关联失败）、输入明确拒绝和宿主实际接受后响应损坏。每个场景联合核对返回、公开事实、独立磁盘读回／真实缺席和宿主启动／提交日志；核实不得重放动作或获得盲目 retry 资格。
+
+独立进程烟测使用当前 worktree 的页面、安全后端与夹具，不执行真实关机：
+
+```powershell
+$env:CARGO_TARGET_DIR = '<本 worktree 独占 target 目录>'
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot
+python scripts/test-workflow-partial-startup.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
+```
+
+烟测通过公开 Task／Bot 定义及 Run HTTP，检查成功、明确提交拒绝、已接受输入但确认未知三条路径，并独立读回父子持久记录和宿主 `started.jsonl/submitted.jsonl/calls.jsonl`。stdout 给出测试独占 Temp 的 `evidence.json`，保留原始 HTTP、运行记录、进程日志、各场景结果及独立清理错误；成功失败均终止并等待所属后端进程。完整后端检查仍须 `node scripts/test-backend.mjs`。受控宿主与确定阶段故障只证明接线、状态和副作用语义，不证明真实 OMP／Pi 扩展加载或真实模型业务质量；本入口不接触用户凭据、Chat、daemon、LAN、mDNS 或业务定义，不把普通测试通过外推为原生验收。
 
 定向机制入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nesting::`，覆盖两套独立 OMP／Pi 配置、真实目录与文件、重复调用／多层绑定、可选缺席／必需拒绝、双角色授权及旧 execution 的服务端归属。页面烟测：`npm --prefix frontend run test:browser:build -- workflowNestingDispatch.spec.ts --workers=1`，经实际表单启动根 Run、公开 HTTP 派发、读取父子持久事实与页面成功／拒绝反馈，并核对受控宿主记录。使用独立 `CARGO_TARGET_DIR` 和测试拥有的临时数据；完整回归入口见[测试指引](agents/testing.md)。这些检查证明服务端接线与公开效果，不证明原生扩展实际执行或真实模型业务质量；原生双角色和材料消费须使用相应独立专项证据，不能从 argv 或记录存在外推。
 
@@ -369,7 +388,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | **人工结果已可交接**：执行阶段 failed，人工已实际完成并核对结果。「A 的结果已人工补齐在绝对地址……，限制是……，已确认可交接；请记录人工完成，不再执行。」 | 确认当前 execution 最新报告严格声明 can_complete=true 后，用 complete 的说明记录人工依据；尚无可用声明时由已有关联 node Chat 如实 report，不伪造报告，也不能由管理者单方面或 force 绕过。 | A completed、完成说明可读、依赖满足才出现下游资格；不产生假 report，不自动传材料或派发下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab。pending/派发阶段 failed 不可这样跳过工作。 |
 | **仅通知失败**：node report 返回保存成功而通知失败。「报告已保存，报告标识是……；请读取该报告并核对交接，不要因为通知失败重报、重派或回滚。」 | 先 status/collect，再按报告标识读取正文与实际材料；确认后才 complete。node 保留原报告标识与投递错误，不仅因通知/诊断失败重发 report。 | 已保存报告与待办仍在，node 状态不被通知错误改变。collect 只给标识与快照，不含正文；读取/通知/collect 不清除未完成待办。输入已提交也不保证管理者已读或被打断。 |
 
-**派发阶段 failed 先核实，不套用上表的执行恢复。** 有 Tab 不等于已有正确原生 Chat。向管理者分别说明「已确认原 Chat 存在且可跟踪」「已确认没有创建原生 Chat」或「目前无法确认」，并给出证据，由其 reconcile_dispatch：已创建只读核实原目标身份并恢复原执行跟踪；未创建恢复 pending，之后仍需显式 dispatch；不确定保持 failed。不要为取得 pending 而谎报未创建，不把确认参数当成回滚授权。核实不会重发可能遗漏的初始指示或补发材料。
+**派发阶段 failed 先核实，不套用上表的执行恢复。** 有 Tab 不等于已有正确原生 Chat。向管理者分别说明「已确认原 Chat 存在且可跟踪」「已确认没有创建原生 Chat」或「目前无法确认」，并给出证据，由其 reconcile_dispatch：已创建只读核实原目标身份与已有 child；仅 Chat 已知但输入未确认仍保持 failed，不能靠核实放行 retry；未创建且没有已登记 child 才恢复 pending，之后仍需显式 dispatch；不确定保持 failed。不要为取得 pending 而谎报未创建，不把确认参数当成回滚授权。核实不会重发可能遗漏的初始指示或补发材料。
 
 ### 角色责任与批准动作矩阵
 
@@ -428,10 +447,10 @@ Prompt 证据须捕获两种角色**实际收到**的公共 `first-enabled-run` 
 模型业务参数仅 `nodeId`、`finding`、`reason`；没有任意目标状态或调用者自报 Chat 归属。只有派发阶段 failed 可核实；执行阶段 failed 必须 recover 或确认可交接后 complete，返回 `node-not-dispatch-failed` 防止绕过。非空原因必须说明人工核实依据。
 
 - `finding=uncertain`：当前事实完全保持 failed，保留原失败原因与执行。`changed=false`，history 追加这次不确定核实及依据，但不触发宿主调用或派发。
-- `finding=not_created`：人工确认未创建原生 Chat，恢复 pending，清除当前失败/候选执行；旧执行、原失败与依据仍在 history。已记录真实 session_id 或 Chat 关联时拒绝 `dispatch-chat-already-known`，不能用此动作抹除已发生事实。pending 只表示再次有资格，不自动 dispatch；已有 Tab 也不会被关闭。
-- `finding=created`：用户确认原 Chat 存在并可跟踪，后端只对**原派发效果中记录的 agent** 调用只读原生身份查询。身份必须为真实 omp 会话、cwd 与原 zone 一致，不得替换已知原身份或复用管理者/其他节点身份；关联原执行的 Chat 后恢复 running。原执行 ID、Task、zone、Workspace/Tab/pane/agent 引用不变，不创建 Chat、不提交初始指示、不补发遗漏材料。缺少原派发现实目标或宿主身份不可确认时返回 `dispatch-chat-unverified`，身份/zone 冲突返回 `dispatch-chat-mismatch`，保持 failed。无已知原派发目标时不能通过猜测或直接编辑记录强行关联。
+- `finding=not_created`：人工确认未创建原生 Chat，且没有已登记子 Run，才恢复 pending 并清除当前失败/候选执行；旧执行、原失败与依据仍在 history。已有 `childRunId` 时拒绝 `dispatch-child-already-known`，包括记录初始化失败或 Chat 未启动的子 Run，不能把 Chat 缺席当作 child 不存在。已记录真实 session_id 或 Chat 关联时拒绝 `dispatch-chat-already-known`。pending 只表示再次有资格，不自动 dispatch；已有 Tab 不会被关闭。
+- `finding=created`：后端只对**原派发效果中记录的 agent** 调用只读原生身份查询，按原 execution 的宿主类型核实真实会话与原 zone，不替换已知身份或复用管理者/其他节点身份。嵌套执行核对 child 的父 execution、Task、zone 与已有关联，冲突返回 `dispatch-child-mismatch`；只在原 child 上补存缺失 manager 关联，再保存原父执行的同一 Chat，不新建 child。跨文件写入不是事务，失败不回滚已保存的另一侧，应重读两侧事实。原执行 ID、Task、zone、Workspace/Tab/pane/agent 引用不变，不创建 Chat、不提交初始指示、不补发遗漏材料。缺少原派发现实目标或宿主身份不可确认时返回 `dispatch-chat-unverified`，身份/zone 冲突返回 `dispatch-chat-mismatch`。没有尝试提交或已经收到成功提交确认时可恢复 running；**已尝试但没有成功确认时，单独看到 Chat 不证明提交效果，继续保留 failed、原 failure 和 retry 拒绝**，`inputOutcome=rejected/unknown` 也不因核实而改变。无已知原目标不能猜测或编辑记录强行关联。
 
-每次成功核实的 history `action=reconcile_dispatch` 保留 `finding`、依据、原 failure/执行和当前执行引用；确认后当前 failure 清空，但失败历史不删除。created 查询失败不伪造成功，也不自动再查或启动。
+每次成功核实的 history `action=reconcile_dispatch` 保留 `finding`、依据、原 failure/执行和当前执行引用；仅确实恢复 running 时清空当前 failure，失败历史不删除。created 查询失败不伪造成功，也不自动再查或启动。
 
 ### 恢复原执行跟踪：recover
 
@@ -456,7 +475,7 @@ Content-Type: application/json
 
 模型业务参数只有 `nodeId`、`confirmed` 和非空 `reason`；身份仍由 Session 自动取得。仅 **running Run 中的执行阶段 failed** 可以 retry。`confirmed=true` 是人工核实/同意的记录，不是自动安全判断或回滚授权。缺确认或空依据返回 HTTP 409、`retry-confirmation-required`；pending/running/completed node 返回 `node-not-retryable`。paused 明确返回 `run-paused`，必须先显式 resume；resume 本身不创建 Chat。终态优先返回 `run-terminal`。旧 node Chat、无关联身份和额外 Run/执行/角色字段不能调用管理者动作。
 
-派发阶段 failed 返回 `dispatch-reconciliation-required`，包括未知原生身份的异常窗口：先 reconcile_dispatch，不以 retry 的 confirmed 代替核实。确认未创建则恢复 pending，之后另行 dispatch；确认原 Chat 已创建则恢复原执行 running，若核实该执行无法继续，再 fail 记录执行失败后选择 retry。不确定保持 failed，不盲目启动另一 Chat。若原执行可继续，使用 recover，不是 retry。
+派发阶段 failed 返回 `dispatch-reconciliation-required`，包括未知原生身份的异常窗口：先 reconcile_dispatch，不以 retry 的 confirmed 代替核实。确认未创建且无已登记 child 才恢复 pending，之后另行 dispatch；确认原 Chat 已创建并满足提交效果条件才恢复原执行 running，若核实该执行无法继续，再 fail 记录执行失败后选择 retry。只有 Chat 已知但输入结果未确认时仍保持派发 failed，不获得 blind retry 资格。不确定保持 failed，不盲目启动另一 Chat。若原执行可继续，使用 recover，不是 retry。
 
 retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → 普通 Task 的 trigger config/env config，并按节点执行上下文固定加载对应宿主的 node-chat、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
 

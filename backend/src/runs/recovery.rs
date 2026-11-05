@@ -119,13 +119,37 @@ pub(super) async fn reconcile(state: &AppState, run: &mut Run, node_id: String, 
                 return Decision::reject("dispatch-chat-mismatch", "原 Chat 的身份或 zone 不一致，或已属于其他执行；保持 failed，不替换执行。");
             }
             let chat = ChatReference { session_id: identity.session_id, workspace_id: workspace.clone(), tab_id: tab.clone(), pane_id: pane.clone(), agent_name: agent.clone() };
+            if let Some(child_id) = &execution.child_run_id {
+                let lock = state.runs.operations.lock().await.entry(child_id.clone()).or_default().clone();
+                let _child_operation = lock.lock().await;
+                let mut child = state.runs.read(state, child_id).await?;
+                if !child.parent.as_ref().is_some_and(|parent| parent.run_id == run.id && parent.node_id == node_id && parent.execution_id == execution.id)
+                    || child.manager_task_id != execution.task_id
+                    || !crate::zones::same_path(&child.zone, &execution.zone)
+                    || child.manager.as_ref().is_some_and(|known| known != &chat) {
+                    return Decision::reject("dispatch-child-mismatch", "子 Run 与原父执行或 Chat 不一致；保留失败现场，不替换关联。");
+                }
+                if child.manager.is_none() {
+                    child.manager = Some(chat.clone());
+                    save_run(state, &child).await?;
+                }
+            }
             let node = run.nodes.get_mut(&node_id).unwrap();
             node.execution.as_mut().unwrap().chat = Some(chat);
-            node.status = "running".into();
-            node.failure = None;
+            // Seeing a Chat proves neither delivery nor rejection of its
+            // trigger. Preserve the original failure and retry barrier until
+            // the input effect itself is known; never replay it here.
+            if !effects.input_attempted || effects.input_submitted {
+                node.status = "running".into();
+                node.failure = None;
+            }
             true
         }
         DispatchFinding::NotCreated => {
+            if execution.as_ref().and_then(|execution| execution.child_run_id.as_ref()).is_some()
+                || failure.as_ref().and_then(|failure| failure.effects.as_ref()).is_some_and(|effects| effects.child_run_id.is_some()) {
+                return Decision::reject("dispatch-child-already-known", "子 Run 已登记；Chat 缺席不代表子 Run 未创建。保留父执行和已有子 Run，不自动重建或重派。");
+            }
             if execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_some() || failure.as_ref().and_then(|failure| failure.effects.as_ref()).is_some_and(|effects| effects.session_id.is_some()) {
                 return Decision::reject("dispatch-chat-already-known", "已取得真实 Chat 身份，不能核实为未创建；不要抹除已发生事实。");
             }
