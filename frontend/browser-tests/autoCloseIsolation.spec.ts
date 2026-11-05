@@ -105,7 +105,7 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   const completion = result.snapshot.nodes.A.completion
   expect(completion.reason).toBe('已核实交接结果')
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
-  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
+  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'fileInputs', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
   // Independent expected delta: completion is the only new durable fact. Exact
   // equality rejects result fields even if they have innocuous or unknown names.

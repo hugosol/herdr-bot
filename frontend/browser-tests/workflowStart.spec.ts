@@ -28,6 +28,78 @@ async function fixture() {
   return { server, zone, ids }
 }
 
+// S1/S2, nesting P08/P09/P11: edit the actual declaration form, then change
+// business text independently of two real material paths. A Map rewrite on
+// rebinding, swallowed required-input error, or text-based discovery is visible
+// in persisted HTTP readback and the external recorder, without internal mocks.
+test('nesting P08 P09 P11 root named inputs are edited, rejected and rebound through the delivered page', async ({ page }, info) => {
+  const { server, zone, ids } = await fixture()
+  const first = path.join(path.dirname(server.configPath), 'first brief.txt')
+  const second = path.join(path.dirname(server.configPath), 'second brief.txt')
+  fs.writeFileSync(first, 'FIRST-MATERIAL-713'); fs.writeFileSync(second, 'SECOND-MATERIAL-284')
+  const openMap = async () => {
+    await page.goto(`${server.baseURL}?layout=expanded`)
+    await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
+    await page.getByRole('button', { name: '启动图', exact: true }).click()
+  }
+  await openMap()
+  await page.getByRole('button', { name: '编辑文件输入声明', exact: true }).click()
+  const declarations = [{ id: 'brief', required: true }, { id: 'appendix', required: false }]
+  await page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true }).fill(JSON.stringify(declarations))
+  await page.getByRole('button', { name: '保存输入声明', exact: true }).click()
+  await expect(page.getByRole('form', { name: 'Map 文件输入声明', exact: true })).toHaveCount(0)
+  await page.reload()
+  await openMap()
+  await page.getByRole('button', { name: '编辑文件输入声明', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true })).toHaveValue(JSON.stringify(declarations, null, 2))
+  await page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true }).fill(JSON.stringify([{ id: 'brief', required: true }, { id: 'brief', required: false }]))
+  await page.getByRole('button', { name: '保存输入声明', exact: true }).click()
+  await expect(page.getByRole('form', { name: 'Map 文件输入声明', exact: true }).getByRole('alert')).toContainText('brief')
+  const readMap = async () => (await (await page.request.get(`${server.baseURL}/api/scheduler/maps/launch.json`)).json())
+  expect((await readMap()).input_files).toEqual(declarations)
+  await page.getByRole('button', { name: '放弃输入声明编辑', exact: true }).click()
+  const definition = await readMap()
+  const runIds: string[] = []
+  for (const [index, material] of [first, second].entries()) {
+    await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
+    await page.getByRole('combobox', { name: '管理者 Task' }).selectOption(ids.manager)
+    await page.getByRole('combobox', { name: '管理者 zone' }).selectOption(zone)
+    const business = `BUSINESS-${index}: brief ${first} must not discover any file`
+    await page.getByRole('textbox', { name: '本次要求', exact: true }).fill(business)
+    if (index === 0) {
+      await page.getByRole('button', { name: '启动 Run', exact: true }).click()
+      await expect(page.getByRole('form', { name: '发起 Run', exact: true }).getByRole('alert')).toContainText('brief')
+      expect(server.herdrCalls()).toEqual([])
+      expect(fs.existsSync(path.join(server.cwd, '.data/workflow-runs'))).toBe(false)
+    }
+    await page.getByRole('textbox', { name: '文件输入 brief（必需）', exact: true }).fill(material)
+    await page.getByRole('button', { name: '校验启动配置', exact: true }).click()
+    await expect(page.getByRole('form', { name: '发起 Run', exact: true }).getByRole('status')).toContainText('配置校验通过')
+    server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: `browser-named-${index}` } })
+    await page.getByRole('button', { name: '启动 Run', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Run 详情', exact: true })).toBeVisible()
+    const id = page.url().split('#workflow/')[1]; runIds.push(id)
+    const detail = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()
+    expect(detail.run.userInput).toBe(business)
+    expect(detail.run.fileInputs).toEqual([{ id: 'brief', path: material }])
+    await page.locator('.workflow-run-background > summary').click()
+    await expect(page.getByRole('region', { name: 'Run 文件输入', exact: true })).toContainText(material)
+    expect(await readMap()).toEqual(definition)
+    if (index === 0) await openMap()
+  }
+  expect(runIds[0]).not.toBe(runIds[1])
+  const beforeRestart = await Promise.all(runIds.map(async id => (await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()).run))
+  await server.restart()
+  const afterRestart = await Promise.all(runIds.map(async id => (await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()).run))
+  expect(afterRestart).toEqual(beforeRestart)
+  await page.goto(`${server.baseURL}/#workflow/${runIds[0]}`)
+  await page.locator('.workflow-run-background > summary').click()
+  await expect(page.getByRole('region', { name: 'Run 文件输入', exact: true })).toContainText(first)
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_start')).toHaveLength(2)
+  await page.getByRole('region', { name: 'Run 文件输入', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: info.outputPath('named-root-inputs.png') })
+})
+
 // Approved seams: delivered page + HTTP, process restart, external Herdr recorder
 // and the three real record files. P28.04/P49.01/P68.08 source: ticket 16.
 // Plausible violation: startup scans saved identities and re-enables management

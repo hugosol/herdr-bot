@@ -8,7 +8,7 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 | 对象 | 字段与职责 |
 | --- | --- |
-| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。不含运行状态、管理者配置或重试策略。 |
+| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_files: [{id,required}]` 声明调用方文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）或 `map_file`（目录内确切 Map JSON 文件名），二者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
@@ -74,6 +74,22 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
 
+### Map 命名文件输入与根 Run 绑定
+
+在 Map 页面点击“编辑文件输入声明”，编辑声明数组并保存，例如：
+
+```json
+[{"id":"brief","required":true},{"id":"appendix","required":false}]
+```
+
+`input_files` 只声明材料 ID 与布尔 `required`，不保存每次实际文件地址。ID 必须非空且在本接口内唯一；其他 Map 与其他 Run 可重复使用同名 ID，各自解析。缺省或 `[]` 表示无文件接口。重复 ID 保存被拒绝且不改变原 Map；编辑带原文 revision，文件已被其他操作修改时拒绝覆盖。
+
+“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。可选项留空表示本次未提供，持久 `fileInputs` 不生成该项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。更换文件只改变新 Run 的绑定，不需要重写 Map，也不改变已启动 Run 的地址。地址绑定不是文件内容快照，不复制或锁定源文件。
+
+公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。必需缺失、未声明 ID 或同次绑定 ID 重复均在 Run 分配与宿主启动前拒绝，反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+
+这里的根输入验收只证明声明、合法绑定与接口拒绝；实际不可读文件及普通节点消费另由文件解析专项负责，原生 Chat 真正消费材料另由原生专项负责，不能从页面成功或记录存在推断这些能力已经通过。
+
 ### 文件输入与输出规则
 
 node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态交接约定，均为数组，可省略或为空数组。规则不是本次执行的真实输入输出，不预设文件名，也不强制生成文件。
@@ -136,7 +152,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 ## 从选中 Map 校验启动配置
 
-在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单只提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace 和可空的 Markdown“本次要求”。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
+在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace、可空的 Markdown“本次要求”及按当前 Map 声明填写的独立文件绑定。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
 
 “校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录、启动真实管理者并在原生身份关联保存成功后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
 
@@ -148,7 +164,7 @@ Map 型 Bot 通过 `map_file` 继续检查被调用 Map，节点自己的 `manag
 
 zone 引用按稳定 ID 解析本机绑定。同一 ID 绑定一个目录，不同 ID 可绑定同一目录；推荐 `namespace/name`，界面提示规范而不强制该格式。启动 Run 时冻结本次所需 ID 与路径，后续改绑或取消登记只影响新 Run，不改变已有执行或后续派发的位置。旧目录消失、变成文件或被重定向时拒绝执行，不跟随新绑定或目录联接。注销不删除目录，目录内容没有版本或跨 server 一致性保证。
 
-HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `managerTaskId`、`zone`、`userInput` 三个字符串；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
+HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求接受 `managerTaskId`、`zone`、`userInput` 三个字符串及可选 `fileInputs: [{id,path}]`；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
 
 两类目标、节点 manager 配置、循环和引用保护的可重复入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch bot_targets`、`npm --prefix frontend run test:browser:build -- workflowBotTargets.spec.ts --workers=1`。后端用真实临时定义、Windows 独占读锁与目录 junction 核对无启动／无删除；页面检查真实表单、HTTP 持久读回、重载、取消和引用拒绝。多层正例只证明公开预检接受，不替代真实嵌套执行与原生角色消费验收。运行前使用本 worktree 独立 `CARGO_TARGET_DIR` 并先构建静态页面；完整回归入口见[测试指引](agents/testing.md)。
 

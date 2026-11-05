@@ -63,7 +63,7 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | P6（已退役） | 旧 Task 手动迁移工具及其升级承诺已移除；使用当前 Task 格式，不做运行时兼容或角色猜测。保留编号，不重新分配。 | [Task 类型](usage.md#task-类型与固定角色扩展) |
 | P7 | 空图或无效整图启动前拒绝，不创建 Run/Chat。 | [预检](scheduler.md#从选中-map-校验启动配置) |
 | P8 | zone 按 ID 解析本机绑定；启动时冻结本次路径，改绑只影响新 Run，不自动跟随搬迁。 | [预检](scheduler.md#从选中-map-校验启动配置) |
-| P9 | 选定 Map 只选 manager 配置与本次要求，不临时覆盖 node 或新增运行名。 | [发起入口](scheduler.md#从选中-map-校验启动配置) |
+| P9 | 选定 Map 后选择 manager 配置、本次要求与按 Map 声明提供的独立文件绑定，不临时覆盖 node 或新增运行名。 | [发起入口](scheduler.md#从选中-map-校验启动配置) |
 | P10 | user_input 原文持久保留，manager 与 node 初始输入均获得本次背景，启动后只读。 | [发起与观察](workflow-runtime.md#发起与观察) |
 | P11 | 同 Map 多 Run 身份和事实独立。 | [记录契约](workflow-runtime.md#公开接口与持久字段参考) |
 | P12 | 取得 ID 进入详情，刷新/重进只读取；预检失败留发起页。 | [发起与观察](workflow-runtime.md#发起与观察) |

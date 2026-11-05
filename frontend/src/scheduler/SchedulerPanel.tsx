@@ -6,6 +6,7 @@ import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
+import { MapInputsEditor } from './MapInputsEditor'
 import './scheduler.css'
 import './scheduler-workspace.css'
 
@@ -15,6 +16,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
     abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
+  const [inputsOpen, setInputsOpen] = useState(false)
   const [directoryOpen, setDirectoryOpen] = useState(false)
   const inspectorHeading = useRef<HTMLHeadingElement>(null)
   const editorHeading = useRef<HTMLHeadingElement>(null)
@@ -74,7 +76,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (editorState.selectFile(name)) { setLaunchOpen(false); setDirectoryOpen(false) }
+    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setDirectoryOpen(false) }
   }
 
   function selectRelatedNode(id: string) {
@@ -173,11 +175,13 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {file !== null && !draft && <div className="scheduler-actions scheduler-map-actions">
           {map && <>
             <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
-            <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+            <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setLaunchOpen(true); setInputsOpen(false) }}>+ 发起 Run</button>
+            <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setInputsOpen(true); setLaunchOpen(false) }}>编辑文件输入声明</button>
           </>}
           <button type="button" disabled={editingBusy || deletingMap} onClick={requestMapDeletion}>删除 Map</button>
         </div>}
-        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
+        {inputsOpen && file && !botView && !draft && <MapInputsEditor key={file} file={file} onClose={() => setInputsOpen(false)} onSaved={() => { setInputsOpen(false); refreshAll() }} />}
+        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} declarations={map?.input_files} active={active && !botView && !draft}
           onClose={() => { setLaunchOpen(false); void returnToMap() }}
           onNode={(id) => { selectNode(id); void beginEdit(id, 'node') }}
           onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
