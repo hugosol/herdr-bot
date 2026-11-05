@@ -92,6 +92,120 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     (data, herdr, config, server, zone, ids)
 }
 
+// S2, nesting P08: the interface owns IDs, not a global registry. A duplicate
+// save must reject before publication; independent literal declarations and a
+// second Map distinguish local uniqueness from accidental global uniqueness.
+#[tokio::test]
+async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
+    let (_data, herdr, config, server, _zone, _ids) = fixture().await;
+    let route = "/api/scheduler/maps/work.json/inputs";
+    let draft = get_over_tcp(server.addr(), route).await;
+    assert_eq!(draft.status, 200, "{}", draft.body);
+    let draft: Value = serde_json::from_str(&draft.body).unwrap();
+    let declarations = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":declarations,"revision":draft["revision"]}).to_string()).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
+    let map: Value = serde_json::from_str(&read.body).unwrap();
+    assert_eq!(map["input_files"], declarations);
+    let draft: Value = serde_json::from_str(&get_over_tcp(server.addr(), route).await.body).unwrap();
+    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"revision":draft["revision"]}).to_string()).await;
+    assert_eq!(rejected.status, 400, "{}", rejected.body);
+    assert!(rejected.body.contains("brief"));
+    assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
+    fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
+    let other = get_over_tcp(server.addr(), "/api/scheduler/maps/other.json").await;
+    assert_eq!(other.status, 200, "{}", other.body);
+    assert_eq!(serde_json::from_str::<Value>(&other.body).unwrap()["input_files"], declarations);
+    assert!(herdr.calls().is_empty());
+}
+
+// S2, nesting P08/P09/P10: independent business markers are deliberately not
+// file discovery hints. Dropping bindings or sharing a same-ID binding across
+// Runs disagrees with the public, restarted readback of two real input files.
+#[tokio::test]
+async fn root_runs_preserve_named_bindings_separately_from_business_text() {
+    let (data, herdr, config, server, zone, ids) = fixture().await;
+    let map_path = config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    map["input_files"] = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
+    fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
+    fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
+    let mut expected_runs = Vec::new();
+    for (index, name) in ["work.json", "work.json", "other.json"].iter().enumerate() {
+        let file = data.path().join(format!("actual brief {index}.txt"));
+        fs::write(&file, format!("independent material {index}")).unwrap();
+        let bindings = json!([{"id":"brief","path":file}]);
+        let business = format!("BUSINESS-{index}: brief is a word, not a file protocol");
+        let input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":business,"fileInputs":bindings});
+        let preflight = post_json_over_tcp(server.addr(), &format!("/api/scheduler/maps/{name}/preflight"), &input.to_string()).await;
+        assert_eq!(preflight.status, 200, "{}", preflight.body);
+        herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("named-manager-{index}")},"native_cwd":data.path()}));
+        let started = post_json_over_tcp(server.addr(), &format!("/api/scheduler/maps/{name}/runs"), &input.to_string()).await;
+        assert_eq!(started.status, 201, "{}", started.body);
+        let id = serde_json::from_str::<Value>(&started.body).unwrap()["id"].as_str().unwrap().to_owned();
+        expected_runs.push((id, bindings, business));
+    }
+    drop(server);
+    let server = TestServer::start(&config).await;
+    for (id, bindings, business) in expected_runs {
+        let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
+        assert_eq!(detail.status, 200, "{}", detail.body);
+        let detail: Value = serde_json::from_str(&detail.body).unwrap();
+        assert_eq!(detail["run"]["fileInputs"], bindings);
+        assert_eq!(detail["run"]["userInput"], business);
+    }
+}
+
+// S2, nesting P11: missing required and undeclared IDs must be rejected by
+// both public entries before any external effect or Run allocation. Business
+// text containing an ID/path must not fill a missing binding.
+#[tokio::test]
+async fn invalid_root_input_ids_reject_preflight_and_start_without_host_effects() {
+    let (data, herdr, config, server, zone, ids) = fixture().await;
+    let map_path = config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    map["input_files"] = json!([{"id":"brief","required":true}]);
+    fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
+    let file = data.path().join("brief.txt");
+    fs::write(&file, "material").unwrap();
+    for (bindings, code, input_id) in [
+        (json!([]), "run-input-required", "brief"),
+        (json!([{"id":"brief","path":file},{"id":"alien","path":file}]), "run-input-undeclared", "alien"),
+        (json!([{"id":"brief","path":file},{"id":"brief","path":file}]), "run-input-duplicate", "brief"),
+    ] {
+        for action in ["preflight", "runs"] {
+            let rejected = post_json_over_tcp(server.addr(), &format!("/api/scheduler/maps/work.json/{action}"), &json!({"managerTaskId":ids[0],"zone":zone,"userInput":format!("brief {}",file.display()),"fileInputs":bindings}).to_string()).await;
+            assert_eq!(rejected.status, 400, "{}", rejected.body);
+            let body: Value = serde_json::from_str(&rejected.body).unwrap();
+            assert!(body["issues"].as_array().unwrap().iter().any(|issue| issue["code"] == code && issue["inputId"] == input_id && issue["target"] == "run-input"), "{body}");
+            assert!(herdr.calls().is_empty());
+            assert!(!config.scheduler.run_directory.exists());
+        }
+    }
+}
+
+// S2, nesting P10: omission and explicit empty bindings both mean absence,
+// including undeclared interfaces. A manufactured default address fails this
+// public persisted readback even when starting the manager succeeds.
+#[tokio::test]
+async fn roots_without_files_and_omitted_optional_inputs_start_with_empty_bindings() {
+    for (declarations, bindings) in [(json!(null), None), (json!([]), Some(json!([]))), (json!([{"id":"optional","required":false}]), None)] {
+        let (_data, _herdr, config, server, zone, ids) = fixture().await;
+        let map_path = config.scheduler.map_directory.join("work.json");
+        let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+        if !declarations.is_null() { map["input_files"] = declarations; }
+        fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
+        let mut input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":"optional: no file was supplied"});
+        if let Some(bindings) = bindings { input["fileInputs"] = bindings; }
+        let started = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs", &input.to_string()).await;
+        assert_eq!(started.status, 201, "{}", started.body);
+        let body: Value = serde_json::from_str(&started.body).unwrap();
+        let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}",body["id"].as_str().unwrap())).await;
+        assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["fileInputs"], json!([]));
+    }
+}
+
 // P13/P15/P17: external start/prompt gates expose the actual temporal facts.
 // Independent trigger literal comes from the catalog's declared mapping, not
 // agent_launch_args. Status is called over HTTP with native transport identity.

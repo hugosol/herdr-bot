@@ -88,6 +88,9 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
           <summary>运行背景 · 本次要求与管理者</summary>
           <dl><dt>managerTaskId</dt><dd>{run.managerTaskId}</dd><dt>zone</dt><dd>{run.zone}</dd><dt>workspaceName</dt><dd>{run.workspaceName}</dd></dl>
           <h3>userInput</h3><pre data-testid="run-user-input">{run.userInput}</pre>
+          <section aria-label="Run 文件输入"><h3>fileInputs</h3>
+            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt>{file.id}</dt><dd>{file.path}</dd></div>)}</dl> : <p>未提供文件输入（可选缺席）；没有默认地址或自动发现。</p>}
+          </section>
           <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>
       </>}

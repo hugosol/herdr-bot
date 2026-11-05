@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, VecDeque};
 struct WorkflowMap {
     title: String,
     description: String,
+    #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
+    input_files: Vec<MapFileInput>,
     nodes: BTreeMap<String, JsonObject<MapNode>>,
 }
 
@@ -56,16 +58,32 @@ impl ReportPolicy {
 pub enum InputRule {
     File { id: String, path: String, #[serde(default, skip_serializing_if = "Option::is_none")] zone_id: Option<String> },
     Node { id: String, node_id: String, output_id: String },
+    Run { id: String, input_id: String },
 }
 impl InputRule {
-    pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } => id } }
+    pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } | Self::Run { id, .. } => id } }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputRule { pub id: String }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct MapFileInput { pub id: String, pub required: bool }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResolvedFile { pub id: String, pub path: String }
+
+/// Check external business material without reading, copying or retaining a
+/// handle. Like public file reads, reject links/reparse points and streams;
+/// the file need not belong to any registered zone.
+pub(crate) fn check_input_file(path: &str) -> Result<(), String> {
+    let file = Path::new(path);
+    if !file.is_absolute() { return Err("文件输入必须是绝对地址".into()); }
+    let parent = file.parent().and_then(Path::to_str).ok_or("文件输入缺少有效父目录")?;
+    let name = file.file_name().and_then(|name| name.to_str()).ok_or("文件输入缺少有效文件名")?;
+    crate::zones::browse::checked_file(parent, name).map_err(|error| error.message())?;
+    std::fs::File::open(file).map(drop).map_err(|error| format!("文件 {path} 不可读：{error}"))
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -202,6 +220,12 @@ pub(crate) fn valid_relative_file(path: &str) -> bool {
 }
 
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
+    let mut input_ids = std::collections::BTreeSet::new();
+    for input in &map.input_files {
+        if input.id.trim().is_empty() || !input_ids.insert(&input.id) {
+            return Err(map_error(format!("Map input_files ID 为空或重复：{}", input.id)));
+        }
+    }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
     // a successful graph. Kahn's traversal also bounds layout work on bad input.
     let mut remaining = BTreeMap::new();
@@ -219,6 +243,11 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
             match input {
                 InputRule::File { path, zone_id, .. } if !valid_relative_file(path) || zone_id.as_ref().is_some_and(|id| id.trim().is_empty()) => {
                     return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧数据请运行 migrate-zone-portability 并提供显式映射。")));
+                }
+                InputRule::Run { input_id, .. } => {
+                    if !map.input_files.iter().any(|input| input.id == *input_id) {
+                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明 Run 输入：{input_id}")));
+                    }
                 }
                 InputRule::Node { node_id, output_id, .. } => {
                     let upstream = map.nodes.get(node_id).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")))?;
@@ -279,6 +308,58 @@ pub async fn get_map(
     }
 }
 
+pub async fn edit_map_inputs(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
+        let original = read_map_source(access, &state.map_directory, &name)?;
+        let map = parse_map(&original)?;
+        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "revision": {"file": name, "original": original}}))
+    })).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => map_error(error.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapInputsSave {
+    #[serde(deserialize_with = "object_array")]
+    input_files: Vec<MapFileInput>,
+    revision: BotRevision,
+}
+
+pub async fn save_map_inputs(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(draft): Json<MapInputsSave>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
+        let check = || -> Result<(), DirectoryError> {
+            let current = read_map_source(access, &state.map_directory, &name)?;
+            if draft.revision.file != name || draft.revision.original != current {
+                return Err(edit_error("map-conflict", "Map 文件已变化；请重新加载后再编辑输入声明。"));
+            }
+            Ok(())
+        };
+        check()?;
+        let mut map = parse_map(&draft.revision.original)?;
+        map.input_files = draft.input_files;
+        validate_map(&map).map_err(|error| edit_error("map-input-invalid", error.message))?;
+        let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
+        let root = prepare_directory(access, &state.map_directory)?;
+        access.publish_checked(&root.join(&name), &bytes, PublishMode::Replace,
+            |_| check(), |error| edit_error("map-write-failed", format!("Map 输入声明写入失败：{error}")))?;
+        Ok(map)
+    })).await {
+        Ok(Ok(map)) => Json(map).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+    }
+}
+
 /// Launch configuration is not a definition override or a Run allocation.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -286,6 +367,8 @@ pub(crate) struct RunPreflightRequest {
     pub manager_task_id: String,
     pub zone: String,
     pub user_input: String,
+    #[serde(default, deserialize_with = "object_array")]
+    pub file_inputs: Vec<ResolvedFile>,
 }
 
 #[derive(Serialize)]
@@ -310,13 +393,15 @@ struct PreflightIssue {
     bot_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_id: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     call_chain: Vec<String>,
 }
 
 impl PreflightIssue {
     fn new(code: &'static str, target: &'static str, message: impl Into<String>) -> Self {
-        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None, call_chain: Vec::new() }
+        Self { code, target, message: message.into(), node_id: None, bot_id: None, task_id: None, input_id: None, call_chain: Vec::new() }
     }
 }
 
@@ -419,6 +504,7 @@ fn check_map_calls(
 pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, input: &RunPreflightRequest) -> Result<RunPreflight, PreflightFailure> {
     let map_directory = state.map_directory.clone();
     let bot_directory = state.bot_directory.clone();
+    let map_name = name;
     let name = name.to_owned();
     let root_name = name.clone();
     let (map, bots) = tokio::task::spawn_blocking(move || with_definitions(
@@ -434,6 +520,28 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
     let mut issues = Vec::new();
+    let mut provided = std::collections::BTreeSet::new();
+    for binding in &input.file_inputs {
+        let failure = if !provided.insert(&binding.id) {
+            Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
+        } else if !map.input_files.iter().any(|declaration| declaration.id == binding.id) {
+            Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
+        } else if let Err(error) = check_input_file(&binding.path) {
+            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
+        } else { None };
+        if let Some((code, message)) = failure {
+            let mut issue = PreflightIssue::new(code, "run-input", message);
+            issue.input_id = Some(binding.id.clone());
+            issues.push(issue);
+        }
+    }
+    for declaration in &map.input_files {
+        if declaration.required && !provided.contains(&declaration.id) {
+            let mut issue = PreflightIssue::new("run-input-required", "run-input", format!("Map {map_name} 缺少必需文件输入：{}", declaration.id));
+            issue.input_id = Some(declaration.id.clone());
+            issues.push(issue);
+        }
+    }
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),
@@ -986,7 +1094,12 @@ impl DirectoryError {
 }
 impl IntoResponse for DirectoryError {
     fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+        let status = match self.code {
+            "map-input-invalid" => StatusCode::BAD_REQUEST,
+            "map-conflict" => StatusCode::CONFLICT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(serde_json::json!({
             "code": self.code, "message": self.message,
         }))).into_response()
     }

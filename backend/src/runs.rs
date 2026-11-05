@@ -110,6 +110,8 @@ pub struct Run {
     pub zone: String,
     pub workspace_name: String,
     pub user_input: String,
+    #[serde(default)]
+    pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
     pub manager: Option<ChatReference>,
     pub status: String,
     pub finished: Option<Finished>,
@@ -466,6 +468,7 @@ pub async fn start_run(
         zone_bindings: checked.zone_bindings,
         workspace_name: checked.workspace_name,
         user_input: input.user_input,
+        file_inputs: input.file_inputs,
         manager: None,
         status: "running".into(),
         finished: None,
