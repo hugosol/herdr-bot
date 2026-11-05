@@ -285,6 +285,16 @@ CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为�
 
 通过必须同时具备两宿主 dock、真实模型链路与对应 worktree 常规检查证据。入口未取得模型、宿主缺失、行为不合预期、等待超时或清理失败均非零；缺依赖即明确未验证，不以准备完成、提示词存在或最终 completed 推断通过。正常/失败均停止所属服务与进程，分别保存原始与清理错误，不调用真实关机、不连接/关闭用户服务，不启用 LAN/mDNS。
 
+## 共享 Bot 指南材料的启用检查
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
+
+最小原生烟测可针对 Pi 的 `task-18e31d34797f1464-3`：将当前 Task.prompt 与明确的独立 Chat 委托组合为测试拥有的 `request.md`，提供字面 `source.txt`，只授权当前隔离目录的新 `text.txt`、`handoff.md`。安装版入口为 `node <pi-package>/dist/bundle/cli.js --offline --no-extensions --no-mcp --no-skills --skill <writing-for-agents/SKILL.md> --no-context-files --no-prompt-templates --no-themes --model <专用provider/model> --thinking off --mode json --print @request.md`。使用本节上文的专用模型配置或公开 CompletionTransport，隔离 HOME／APPDATA／XDG／PI_CODING_AGENT_DIR 与原生 sessions；传输的公开 completion 上下文必须覆盖整个子进程等待期，不能先退出宿主调用再留后台线程访问已失效桥接。HTTP handler 线程不继承宿主 completion 调用上下文；将请求排队交给拥有该上下文的主线程执行，再把结果返回 handler，避免 `Missing session/run/name`。测试不读取用户凭据，不复用用户 Chat，也不启动 daemon。
+
+该烟测观察原生真实 read／write、两份材料完整落盘读回、原文与未授权文件保持，以及 handoff 不含重复正文；保留完整模型请求、native JSONL、错误及真实材料。进程退出零不是充分条件，原生 `stopReason: error`、缺文件或未完整读回均失败。工具必须真实执行，不可由模型或传输伪造结果；传输用完关闭并等待，移除隔离凭据配置。它只证明一个独立原生调用能处理其实际材料，不是六 Task 配对覆盖、公开 Chat 发起或两案例完整 P40–P45 证据。
+
+Map 目标的最小创建烟测使用同一安装版 Pi `--print --mode json` 入口（空白创建 Task 没有初始 Skill，因此不传 `--skill`），加载 `task-18e33fdc55177d1c-1` 的实际 prompt 和显式 Map 创建委托。当前 worktree 的 `debug/examples/safe_shutdown_shell.exe --config <隔离backend.toml>` 提供同一生产 HTTP interface；只配置数值回环动态端口、独占定义／运行／zone 文件并关闭 mDNS。先经公开接口准备 normal Task 和已有工作 Bot、放置测试拥有的真实 Map，再授权只新建指定 Map 型 Bot 和 baseline／handoff 文件。原生模型自行读取公开完整定义与真实 edit.revision、新建空白 Bot、写材料并完整读回；独立 HTTP 读回比较 Map 绑定、三空字段、真实 revision、完整共同基线、原有 Task／Map／Bot 不变及无 Run。保留原始 HTTP、native JSONL 和文件，失败及清理错误分开记录；受控的未加载 catalogue 资源只满足后端夹具结构，不作为目标工具或角色原生加载证据。完成后终止并等待所属安全后端与原生进程、关闭模型传输、移除隔离凭据。该调用是轻量启用证据，不认领 21／22 的完整真实案例或六 Task 配对覆盖。
+
 ## softlink（符号链接）手动验收
 
 真实文件／目录符号链接检查默认关闭，只有显式设置 `HERDR_BOT_MANUAL_SYMLINKS=1` 才尝试创建。普通浏览器回归明确报告 manual-only 跳过；后端 zone 浏览／diff 的混合边界测试仍检查路径穿越和 junction，只跳过其中的符号链接部分，不调用 WSL 创建链接。即使当前终端已有管理员权限，未设置开关也不会自动运行符号链接检查。
