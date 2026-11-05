@@ -52,6 +52,8 @@ mod file_consumption;
 mod report_outputs;
 #[path = "workflow_dispatch/report_restart.rs"]
 mod report_restart;
+#[path = "workflow_dispatch/resume_restart.rs"]
+mod resume_restart;
 #[path = "workflow_dispatch/completion_gate.rs"]
 mod completion_gate;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};

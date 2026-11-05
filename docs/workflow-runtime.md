@@ -262,6 +262,22 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 ### 后端重启：历史现场只读
 
+嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。
+
+后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
+
+```text
+npm --prefix frontend run build
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch resume_restart:: -- --nocapture
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-resume-restart.py --backend <target>/debug/examples/safe_shutdown_shell.exe --fixture <target>/debug/herdr-fixture.exe
+node scripts/test-backend.mjs
+```
+
+`dual_role_current_and_retired_chat_resume_preserves_all_facts_and_uses_current_environment` 检查当前／旧执行的双角色、最新来源环境、精确原生 ID 和无初始输入重放；`dual_role_resume_rejects_broken_parent_duplicate_identity_and_wrong_source_without_starting` 保留真实持久文件冲突，检查错误父执行、重复身份及来源 Task 不符均在创建 Tab／启动 agent 前明确拒绝。独立 HTTP 入口 `test-workflow-resume-restart.py` 通过公开定义／Run HTTP 发起真实受控执行、fail/retry，读回所有父子事实，再终止并等待原后端后启动新进程；读取独立字面旧非嵌套样例，逐项拒绝所有 manager 动作和 report，并在旧／当前 Chat 恢复后再次验证拒绝与三记录逐字不变。入口持续消费进程输出，成功失败均清理所属后端，独占 Temp 的 `evidence.json` 分开保留请求响应、实际进程、验证项、原始错误及清理错误；非零退出不是通过。受控 argv 只证明后端传递角色／环境和无重放，不能证明 OMP／Pi 原生新进程实际加载工具、模型行为或无限期无副作用；两宿主原生恢复／工具接线由原生生命周期专项另验。
+
+2026-11-06 本仓执行记录：当前 worktree 静态构建、上述 `resume_restart::` 两项定向用例、独立 safe shell／Herdr fixture 构建及 HTTP 重启入口均成功；独立入口记录两个真实后端进程、当前／旧 child 与父执行、字面旧记录，原始错误与清理错误均为空。随后以 `--binary-jobs 2 --test-threads 4` 完整执行一次 `node scripts/test-backend.mjs`，build、全部 binary 与 doctest 均通过、未派发为零。这些结果仅认领本仓后端恢复／重启语义，不外推为两宿主原生加载或业务模型验收。
+
 历史 Run 仅允许通过上述 PATCH 修改人用名称；名称写入 `run.json`，重启后保留，不向执行历史或报告追加事件。名称不参与调度、身份解析、Chat 名称、Map 引用或管理权限；同 Run 的名称更新与工作流写入互斥，外部身份等待期间保存的名称也不会被迟到的启动关联覆盖。
 
 管理归属仅存在于创建 Run 的当前后端进程；`managed=false` 是服务上下文事实，不是持久 Run 状态。真正重启服务后，旧 Run 仍可通过详情链接及 `GET /api/workflow/runs/<Run ID>` 读取，原 running/paused/completed 等状态、节点失败、执行与已知管理者/节点 Chat 关联、报告和三份记录保持原样。服务不扫描记录恢复控制权，不把 running 改写为 failed/completed，不发起执行，也不提供自动或手动接管入口。
