@@ -27,7 +27,7 @@
     "outline": {
       "blocked_by": [],
       "bot_id": "outline-planning",
-      "input": "根据本次 userInput 形成用户确认的概要方案，供下游 Map 生成者使用。以独立 Markdown 文件交付 outline，按概要规划 Task 的交付契约组织，不以聊天正文代替文件。\n本次最终交付须取得用户对当前版本的明确确认，并消除所有阻止 Map 翻译的能力缺口和业务矛盾；仅缺新业务管理者启动配置时列为待配置，不阻止方案交付。\n本次只交付规划文档，保持当前 plan_workflow 定义不变。",
+      "input": "根据本次 userInput 形成用户确认的概要方案，供下游 Map 生成者使用。以独立 Markdown 文件交付 outline，按概要规划 Task 的交付契约组织，不以聊天正文代替文件。\n本次最终交付须取得用户对当前版本的明确确认，并消除所有阻止 Map 翻译的能力缺口和业务矛盾；仅缺外层新业务根 Run 启动配置时列为待配置，不阻止方案交付；Map 型调用节点自身的 manager、业务输入、zone 和材料映射必须明确。\n本次只交付规划文档，保持当前 plan_workflow 定义不变。",
       "input_rule": [],
       "output_rule": [
         {
