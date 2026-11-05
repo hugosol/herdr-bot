@@ -5,10 +5,11 @@ export type Bot = {
   plan_guide: string
   node_guide: string
   task_id?: string
+  map_file?: string
 }
 
 export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string }
-export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone'; message: string; nodeId?: string; botId?: string; taskId?: string }
+export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone'; message: string; nodeId?: string; botId?: string; taskId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
 
 export async function preflightRun(file: string, input: RunPreflightInput): Promise<RunPreflightResult> {
@@ -133,6 +134,7 @@ export type OutputRule = { id: string }
 export type MapNode = {
   title: string
   bot_id: string
+  manager_task_id?: string
   input: string
   input_rule?: InputRule[]
   output_rule?: OutputRule[]
