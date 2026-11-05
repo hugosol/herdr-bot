@@ -86,9 +86,9 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 “+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。可选项留空表示本次未提供，持久 `fileInputs` 不生成该项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。更换文件只改变新 Run 的绑定，不需要重写 Map，也不改变已启动 Run 的地址。地址绑定不是文件内容快照，不复制或锁定源文件。
 
-公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。必需缺失、未声明 ID 或同次绑定 ID 重复均在 Run 分配与宿主启动前拒绝，反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。必需缺失、未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读均在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
 
-这里的根输入验收只证明声明、合法绑定与接口拒绝；实际不可读文件及普通节点消费另由文件解析专项负责，原生 Chat 真正消费材料另由原生专项负责，不能从页面成功或记录存在推断这些能力已经通过。
+根输入可读性与普通节点解析使用 `workflow_dispatch file_consumption::` 专项核对真实文件和 Windows 实际访问拒绝；原生 Chat 真正消费材料仍由原生专项负责，不能从页面成功或记录存在推断原生消费已经通过。
 
 ### 文件输入与输出规则
 
@@ -97,7 +97,8 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 ```json
 "input_rule": [
   { "id": "brief", "type": "file", "zone_id": "default/business", "path": "brief.md" },
-  { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" }
+  { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" },
+  { "id": "local_brief", "type": "run", "input_id": "brief" }
 ],
 "output_rule": [
   { "id": "decision" }
@@ -106,7 +107,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 `id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。
 
-`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
+`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。`type: run` 只接受 `id`、`type`、字符串 `input_id`，引用本 Map 的 `input_files` 声明，并按节点本地 `id` 重命名；不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
 
 引用节点须存在于同图，`output_id` 须由提供方 `output_rule` 预先声明，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
 

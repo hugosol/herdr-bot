@@ -32,6 +32,8 @@ mod named_inputs;
 mod plan_workflow;
 #[path = "workflow_dispatch/input_resolution.rs"]
 mod input_resolution;
+#[path = "workflow_dispatch/file_consumption.rs"]
+mod file_consumption;
 #[path = "workflow_dispatch/report_outputs.rs"]
 mod report_outputs;
 #[path = "workflow_dispatch/report_restart.rs"]

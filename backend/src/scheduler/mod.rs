@@ -58,9 +58,10 @@ impl ReportPolicy {
 pub enum InputRule {
     File { id: String, path: String, #[serde(default, skip_serializing_if = "Option::is_none")] zone_id: Option<String> },
     Node { id: String, node_id: String, output_id: String },
+    Run { id: String, input_id: String },
 }
 impl InputRule {
-    pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } => id } }
+    pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } | Self::Run { id, .. } => id } }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -71,6 +72,18 @@ pub struct MapFileInput { pub id: String, pub required: bool }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedFile { pub id: String, pub path: String }
+
+/// Check external business material without reading, copying or retaining a
+/// handle. Like public file reads, reject links/reparse points and streams;
+/// the file need not belong to any registered zone.
+pub(crate) fn check_input_file(path: &str) -> Result<(), String> {
+    let file = Path::new(path);
+    if !file.is_absolute() { return Err("文件输入必须是绝对地址".into()); }
+    let parent = file.parent().and_then(Path::to_str).ok_or("文件输入缺少有效父目录")?;
+    let name = file.file_name().and_then(|name| name.to_str()).ok_or("文件输入缺少有效文件名")?;
+    crate::zones::browse::checked_file(parent, name).map_err(|error| error.message())?;
+    std::fs::File::open(file).map(drop).map_err(|error| format!("文件 {path} 不可读：{error}"))
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -230,6 +243,11 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
             match input {
                 InputRule::File { path, zone_id, .. } if !valid_relative_file(path) || zone_id.as_ref().is_some_and(|id| id.trim().is_empty()) => {
                     return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧数据请运行 migrate-zone-portability 并提供显式映射。")));
+                }
+                InputRule::Run { input_id, .. } => {
+                    if !map.input_files.iter().any(|input| input.id == *input_id) {
+                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明 Run 输入：{input_id}")));
+                    }
                 }
                 InputRule::Node { node_id, output_id, .. } => {
                     let upstream = map.nodes.get(node_id).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")))?;
@@ -508,6 +526,8 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
             Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
         } else if !map.input_files.iter().any(|declaration| declaration.id == binding.id) {
             Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
+        } else if let Err(error) = check_input_file(&binding.path) {
+            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
         } else { None };
         if let Some((code, message)) = failure {
             let mut issue = PreflightIssue::new(code, "run-input", message);
