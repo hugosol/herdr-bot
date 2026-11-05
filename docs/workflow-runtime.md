@@ -50,6 +50,27 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；父可选项缺席而子接口要求必需项时，派发明确指出缺项，不启动该子工作。
 
+### 局部暂停、失败与并发推进
+
+父子 Run 是独立控制边界。父层 `pause` 仅拒绝本层新 dispatch／retry；已启动的子 manager 和子内部工作仍可显式派发、报告、验收及 finish。`resume` 只恢复本层资格，不自动重派失败工作或派发 pending node。子内部派发／执行失败保留在所属 Run，不自动失败、暂停或终止祖先、兄弟分支或独立 Run；现场处理仍须由所属 manager 显式决定。
+
+慢宿主输入与报告通知不应阻止其他 Run 推进，也不应使父子交接互等。报告先保存，再尝试通知；通知尚未返回时，管理者仍可依据已保存的有效报告显式 complete／finish。父 dispatch 尚在启动子 manager 时，子内部工作可推进；向父层的 report 可能等待该父层动作提交，但不能因此堵住子层 finish 或独立 Run。这里不承诺自动恢复、全局吞吐或固定锁结构。
+
+长期回归入口 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch local_lifecycle::` 拥有 P27／P28／P47：真实宿主提交拒绝、两层祖先与三条独立会话、暂停后的子工作与父层显式交接，以及受控输入／双通知门闩期间的有界推进。门闩观察失败也释放全部门闩并等待已接受请求；原始断言与清理错误同时保留。现有同层 dispatch／retry／pause 检查继续保留。
+
+独立进程烟测（先构建当前 worktree 的静态页与安全壳，使用独立 `CARGO_TARGET_DIR`）：
+
+```powershell
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-local-lifecycle.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
+node scripts/test-backend.mjs
+```
+
+入口通过公开定义／运行 HTTP 启动隔离数值回环后端，独立读回真实 `run.json` 并观察 CLI 接受的输入；在独占 Temp 中保留 HTTP、原始服务日志、`evidence.json` 及分开的原始／清理错误。成功和失败均释放门闩、等待所属请求并终止／等待安全后端。它证明受控宿主下的局部控制与并发机制，不证明原生模型职责、真实 Tab／进程寿命或规模性能；不读取用户凭据、不连接用户 Chat／daemon、不执行真实关机、LAN 或 mDNS。文档命令不是当前部署已通过的声明，实际结果以该次日志为准。
+
 ### 子流程交付与父层验收
 
 子 manager 的 `report` 登记的是**父 execution 冻结的 `outputRule`** 中的输出 ID 与实际绝对文件地址，不从内部 node 的同名输出自动取值，也不新增 Map 输出声明。未知／同次重复 ID 拒绝整次报告；增量报告按同 execution 的追加顺序合并，同名更新，省略保留既有登记，未登记不补造路径。普通及 Map 型下游都通过父 node 的 `type=node` 输入规则解析这些地址；只用当前 execution，旧尝试即使曾交付也不能补齐新尝试的缺项。上游 completed 只满足依赖，所需输出未登记或文件不可读时派发仍在 `resolve` 阶段失败，不创建下游 Chat 或子 Run。
