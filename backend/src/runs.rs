@@ -145,7 +145,13 @@ pub struct Effects {
     pub association_saved: bool,
     pub input_attempted: bool,
     pub input_submitted: bool,
+    /// Missing on historical records; never infer a rejected delivery from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_outcome: Option<InputOutcome>,
 }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputOutcome { Submitted, Rejected, Unknown }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupFailure {

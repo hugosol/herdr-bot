@@ -360,8 +360,15 @@ async fn protocol(
     }
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     effects.input_attempted = true;
-    state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;
+    effects.input_outcome = Some(InputOutcome::Unknown);
+    if let Err(error) = state.herdr.prompt(&agent, &text).await {
+        if matches!(error, crate::chats::herdr::HerdrError::CommandFailed { .. }) {
+            effects.input_outcome = Some(InputOutcome::Rejected);
+        }
+        return Err(error.message());
+    }
     effects.input_submitted = true;
+    effects.input_outcome = Some(InputOutcome::Submitted);
     if let Role::Node { id, .. } = role {
         run.nodes.get_mut(id).unwrap().status = "running".into();
         *stage = "state";

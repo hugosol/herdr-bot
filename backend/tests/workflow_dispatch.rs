@@ -28,6 +28,8 @@ mod bot_targets;
 mod nesting;
 #[path = "workflow_dispatch/nested_completion.rs"]
 mod nested_completion;
+#[path = "workflow_dispatch/partial_startup.rs"]
+mod partial_startup;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]

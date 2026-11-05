@@ -25,6 +25,8 @@
 //! `behavior.json` 可延迟或拒绝某一步，用来观察“启动中”“提交中”与失败边界：
 //! `workspace_list_delay_ms`、`tab_create_delay_ms`、`agent_start_delay_ms`、`prompt_delay_ms`，
 //! 以及布尔值 `fail_workspace_list`、`fail_tab_create`、`fail_agent_start`、`fail_prompt`。
+//! `submitted.jsonl` 只记录宿主已接受的输入；`invalid_prompt_response` 在接受后返回非 JSON，
+//! 用于区分真实副作用与不可确认的响应，不把调用尝试当成提交效果。
 //!
 //! 空文本提交与真实 Herdr 一样以 `empty_agent_prompt` 拒绝；拒绝前仍写下调用记录，因为
 //! “herdr-bot 尝试提交什么”与“Herdr 是否接受”是两件需要分别观察的事实。
@@ -414,6 +416,13 @@ fn agent_prompt(args: &[String]) {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
     }
 
+    record("submitted.jsonl", json!({"target":target,"text":text}));
+    // The host consumed the input, but its acknowledgement is unusable. This
+    // exercises the real adapter's unknown-result path, not a mocked error.
+    if flag(&behavior, "invalid_prompt_response") {
+        println!("not JSON");
+        return;
+    }
     output(json!({
         "id": "cli:agent:prompt",
         "result": {
