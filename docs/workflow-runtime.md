@@ -147,6 +147,16 @@ Run 的单阶段状态动作由 `backend/src/runs/operation.rs` 集中拥有后�
 
 正常顺序为整图预检 → 三份记录全部初始化 → Workspace/Tab/agent 启动 → 获取原生 session_id → 持久保存 Run 的真实关联 → 提交初始指示。单文件更新使用同目录临时文件后替换，不先删除正式文件。不承诺三文件事务、断电恢复、多进程写入协议或外部 Chat 回滚。
 
+### 删除历史与父子引用完整性
+
+Map 的“删除历史”在移除任何记录前扫描完整 Run 关联，保护 `parent` 与当前／旧 execution 的 `childRunId` 两个方向；仅一侧存在也足以拒绝，即使两侧都属于同一张 Map。错误定位父 Run／node／execution／child Run，不按标题、Task 名或目录名猜测关系。不能通过修改当前定义、清空运行引用、级联删除或回滚外部 Chat 绕过保护。无法可靠读取的关联拒绝清理；无关联旧路径仍可清理损坏的 JSONL 详情，保留既有路径与链接边界。
+
+child 的父关联发布／初始化与删除扫描在同一进程内协调；协调不跨外部 Herdr 调用。删除先完成时，后续 child 创建和迟到启动保存必须拒绝，不重建已删除记录；关联先存在时，删除须拒绝。该规则不新增多进程协议、跨文件事务或自动修复。
+
+回归入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch history_integrity:: -- --nocapture`，并保留 `map_deletion::` 的无关联、损坏记录、安全边界与迟到保存回归。新用例使用真实临时文件、Windows 独占共享拒绝及 oplock 文件打开门闩，交错扫描与已接受的 child 创建；另外在外部原生身份／初始指示门闩中拒绝父、child 两端删除，释放后独立读回关联。200ms 是受控扫描停顿后的负向观察窗口，不是业务性能或无限期保证；失败也释放门闩并等待所属请求，保留原错误及清理错误。
+
+独立进程烟测：先设置此 worktree 独占 `CARGO_TARGET_DIR`，执行 `npm --prefix frontend run build` 和 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell`，再执行 `python scripts/check-workflow-history-integrity.py --target-dir <独占 CARGO_TARGET_DIR>`。入口经公开定义 revision／保存和运行 HTTP 发起隔离安全后端，验证无关联删除、child 身份等待期间双向拒绝、真实不可读关联与迟到关联保存；独立读回三份持久记录，核对宿主无停止／回滚／重试调用，正常失败均等待所属请求并停止后端、消费日志。每次在独占 Temp 留存 `http.json`、`evidence.json` 与进程输出。该证据证明 HTTP、持久化及受控宿主边界，不证明真实原生 agent 或模型质量；完整后端检查仍用 `node scripts/test-backend.mjs`。
+
 ### 损坏记录与 Windows 文件协调
 
 三份记录都是必要文件。缺失不会被当作空文件重新创建；当前记录不可解析、报告结构损坏、历史不是 JSON 对象或 JSONL 最后一条没有换行时，相关读取/追加明确报错，错误包含文件路径。详情读取同时检查历史记录是否可读，但不重放历史；管理者 status 的当前事实仍以 `run.json` 为准，不依赖历史推导。运行身份扫描无法读取记录时返回 `run-read-failed`，而不是把文件故障伪装成身份未关联；另一个可正常识别的独立 Run 仍可工作。旧 Run 未接管规则不变。

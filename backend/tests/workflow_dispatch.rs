@@ -22,6 +22,8 @@ mod roles;
 mod report_policy;
 #[path = "workflow_dispatch/map_deletion.rs"]
 mod map_deletion;
+#[path = "workflow_dispatch/history_integrity.rs"]
+mod history_integrity;
 #[path = "workflow_dispatch/bot_targets.rs"]
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]
