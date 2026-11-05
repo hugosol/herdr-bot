@@ -59,3 +59,49 @@ Map 型 Bot 只复用 Map 引用，不保存 manager 或每次业务要求。调
 转换者只新增本次授权的 Map，完整读回并通过公开定义查询独立校验生成形状、引用和依赖；不修改被调用 Map、Bot 或当前规划 Map。仅在明确获得外层根 Run 的 `managerTaskId`、zone、userInput 和必需文件绑定时执行只读 preflight，缺项就报告未执行，不借用规划 Run 配置。Map 型调用自身缺 manager 等条件不属于这项根启动豁免。生成与校验后仍由用户决定业务启动。
 
 启用回归为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`：公开读取实际交付的规划 Task／Bot，保存并读回 Task 型＋Map 型混合节点，核对同名子输入、父输出与下游映射，预检真实目标存在／移除后的接受／拒绝，并观察没有 Run／宿主调用。共享材料的实际受控派发由 `shared_business::` 检查；两类能力的真实模型选择与完整规划场景由独立 P03 验收拥有，不以提示词存在或上述确定形状检查替代。运行准备与最小原生共享 Task 材料烟测见[测试指引](agents/testing.md#共享-bot-指南材料的启用检查)。
+
+## 两类能力的真实原生规划验收
+
+`python scripts/accept-workflow-nesting-planning.py` 独立拥有 P03，不能用上述确定形状回归、提示词检查或旧外层包装案例代替。公开边界为真实规划／转换 Task 的 Chat HTTP、原生工具和 SessionManager 历史、实际授权模型传输、Map 完整严格查询与只读 preflight、Run 目录及所属 OS 进程。入口不增加产品测试 API、不替模型选择 Bot、不提供生成的 JSON。
+
+先在当前 herdr-bot worktree 配置独立绝对 `CARGO_TARGET_DIR`，构建当前静态页面和二进制；toolkit 使用指定 worktree 的源码、锁文件和 Bun 1.4.4。缺依赖时才安装：
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target/planning-acceptance'
+npm --prefix frontend ci
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths --bin herdr-fixture --example safe_shutdown_shell
+bun install --frozen-lockfile --cwd $TOOLKIT_WT
+python scripts/accept-workflow-nesting-planning.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --hosts declared `
+  --paths-file 'D:/acceptance/dependencies.toml' `
+  --model-config 'D:/acceptance/model.json' `
+  --evidence-dir 'D:/acceptance/new-exclusive-planning-run'
+```
+
+`--hosts declared` 保留实际交付的概要规划、概要方案转 Map 和 manager Task 的宿主映射，不把它们统一改成 Pi。业务夹具本身的普通 Task 仍分别声明 Pi／OMP；这里只核实和预检业务目标，不启动它们。`--hosts omp,pi` 另行执行完整 OMP 和完整 Pi 两组原生规划入口，分别保留结果，两组都通过才成功；显式宿主覆盖会记录，不能作为原始混合声明的通过证据。每阶段观察窗口 `--timeout` 为 1..900 秒，默认 300 秒；失败不重试业务或模型决定。
+
+依赖文件只声明已安装程序、只读集成入口和规划技能来源，不指向用户认证或业务配置。入口通过同目录本 worktree 的 `herdr-paths.exe` 解析根引用；不会安装宿主、提权或改全局 PATH。所需根：
+
+```toml
+[roots]
+herdr = 'D:/installed/herdr'
+pi_package = 'D:/node_modules/@earendil-works/pi-coding-agent'
+omp_package = 'D:/node_modules/@oh-my-pi/pi-coding-agent'
+pi_state_extension = 'D:/readonly-integrations/herdr-agent-state.ts'
+omp_state_extension = 'D:/readonly-integrations/herdr-omp-agent-state.ts'
+wayfinder_skills = 'D:/sources/oh-my-wayfinder/skills'
+# Windows 原生 bash 工具需使用已有 Windows shell，不落到 WSL。
+native_shell = 'D:/Program Files/Git/bin/bash.exe'
+```
+
+模型声明显式提供 `provider`、`model`、无内联凭据的 `baseUrl` 和 `apiKeyEnv`；只读取这个明确命名的专用环境变量，不读用户 auth store。支持实际 OpenAI-compatible chat-completions 服务；需要宿主公开 text completion 时，可使用[测试指引中的透明 completion 传输](agents/testing.md#文件交接真实角色自动验收)，其证据仅证明此实际模型传输下的业务行为，不证明原生 provider wire 合规。模型配置仅写入隔离原生目录，退出时移除 credential-bearing `models.json`／`models.yml`；证据不保存密钥。
+
+独立业务预期在任何模型请求前固定：本地准备 CSV 的场景只选择 Task 型能力；本地核对的场景安排准备工作和一个 Map 型调用，校验子 manager、业务 input、独立 zone、`source` 同名输入、上游 `orders_csv` 到子输入的映射和 `review_result` 对外交付，禁止展开子图。相似名称的远程发布能力是干扰项，不以目录包含名称算选择正确。三份指南加入只有真实完整读取才可取得的标记，原生 tool result 必须分别证明规划者和转换者读到所选指南及实际 Task／子 Map；初始化 system/developer 消息不得自动注入这些指南。
+
+每个正例先保存草案，证明尚未生成 Map，再通过真实 Herdr 原生输入提交当前版本的明确确认。转换者独立读取已确认方案、生成 Map、通过公开严格查询及恰好一次只读预检。缺口场景缺生产目标决定、实现、凭据和授权，只能交付明确 G1 阻塞，不能补建 Task/Bot、生成 Map 或自主启动。全过程观察真实 HTTP、空 Run 列表、显式 Chat 请求、全部原生 Session 轨迹（包括允许的只读子代理）、既有定义哈希和所属进程；子代理 Session 不等于额外 Herdr Chat，模型自述“不启动”不算证据。读取概要方案中引用的指南文字不算重读实际能力：分别要求当前原生 Chat 的真实 Bot／目标 HTTP 响应及原生 JSON 读取结果。
+
+证据目录必须不存在，由入口排他创建。Windows 安装版 Herdr 的 socket／原生存储目录仍受其实际路径支持限制；使用有足够空间的短绝对目录（例如 `E:/Temp/p03-<唯一标识>`），不要将深层源码路径再叠加长运行标识。路径或磁盘错误必须保留失败，不能改连用户 daemon。原生 worker broker 可能在 Herdr 退出后短暂保留；入口对已持有句柄的所属进程逐项停止并确认退出，不只检查主进程。根 `evidence.json` 包含两仓根／revision／修改身份、锁文件、Cargo depfile／产物及静态页面身份、安装宿主身份、声明／实际宿主映射和每组证据位置；组内包含原始用户输入及确认、原生历史和实际文件字节、完整模型及工具／HTTP 请求结果、OS 观察、逐场景结论、原始错误与单独清理错误。HOME／APPDATA／XDG／原生存储、命名 Herdr、业务定义／运行目录和动态数值回环端口均独占，不启用 mDNS/LAN、不连接用户 Chat、不执行关机。成功和失败均停止并等待所属进程，清理失败保持非零。
+
+`PLANNING_ACCEPTANCE_TOOLKIT=<绝对 toolkit worktree>` 下运行 `python scripts/accept-workflow-nesting-planning.test.py` 只核对公开 CLI 缺构建时不启动、不伪报 P03 的安全边界；不是上述真实模型专项通过。缺安装宿主、专用模型授权、能力或隔离／清理失败，专项必须非零且 P03 保持未验证。两仓完整检查仍按[测试指引](agents/testing.md)及各仓规范分别执行；专项成功也不替代它们。
