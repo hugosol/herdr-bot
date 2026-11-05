@@ -48,8 +48,18 @@ class PlanWorkflowScenario:
         # RolesAcceptance.prepare invokes this after provisioning the real host.
         # Deploy the shipped definitions; record every environment relocation.
         options = self.root / 'options.toml'
+        suite_entry = self.root / 'toolkit/entrypoints/pi-auto/pi-suite.ts'
+        self.check(suite_entry.is_file(), ('Missing actual Pi Suite factory', str(suite_entry)))
         options.write_text(options.read_text(encoding='utf-8').replace('skills = []\n', '') +
-            '\n[[skills]]\nid = "grill-with-docs"\nlabel = "/grill-with-docs"\nnative_name = "grill-with-docs"\n', encoding='utf-8')
+            '\n[[skills]]\nid = "grill-with-docs"\nlabel = "/grill-with-docs"\nnative_name = "grill-with-docs"\n' +
+            '\n[[extensions]]\nid = "pi-suite"\nlabel = "Pi Suite"\nagent = "pi"\nkind = "fixed"\nentrypoint = ' + json.dumps(str(suite_entry)) + '\n', encoding='utf-8')
+        # The isolated backend owns this Suite; no machine/user deployment is read.
+        planning_suite = {'id': 'acceptance-planning', 'name': 'Isolated planning',
+            'agents': ['pi'], 'skills': {'pi': [str(self.root / 'agent/skills' / name)
+                for name in ['grill-with-docs', 'grilling', 'domain-modeling']]},
+            'extensions': {}, 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
+        self.http('/api/suites', planning_suite)
+        self.evidence['planningSuite'] = planning_suite
         # The backend resolves its default prompts.local.toml beside backend.toml.
         # Keep shipped definition placeholders raw and bind only this deployment's
         # values; never read the developer's dictionary or interpolate user input.
@@ -75,11 +85,11 @@ class PlanWorkflowScenario:
         self.deployment = {'tasks': [], 'bots': [], 'map': {}, 'relocations': {
             'repository': str(REPO), 'service': self.backend_wire.base, 'zone': str(self.root / 'zone'),
             'host': 'Pi', 'model': self.provider_model,
-            'note': 'Task business prompts and skill preserved; host/model/extensions and physical locations relocated to explicit isolated deployment.'}}
+            'note': 'Task business prompts and initial skill preserved; host/model, selected Suite resources, fixed Pi Suite factory and physical locations relocated to explicit isolated deployment.'}}
         for name in ['manager', '概要规划', '概要方案转 Map']:
             original = next(task for task in tasks if task['name'] == name)
             deployed = {key: value for key, value in original.items() if key != 'id'}
-            deployed.update(agent='pi', model='probe', thinking='default', extensions=[])
+            deployed.update(agent='pi', model='probe', thinking='default', suite=planning_suite['id'] if original.get('suite') else None)
             result = self.http('/api/tasks', deployed)
             saved = next(task for task in result['tasks'] if task['name'] == name)
             self.ids[name] = saved['id']
@@ -109,7 +119,7 @@ class PlanWorkflowScenario:
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
     def configuration_bytes(self):
-        return {str(path): self.digest(path) for path in [self.root / 'prompts.local.toml', self.root / 'data/tasks.json', self.root / 'maps/plan_workflow.json',
+        return {str(path): self.digest(path) for path in [self.root / 'prompts.local.toml', self.root / 'data/tasks.json', self.root / 'meta-data/suites.json', self.root / 'maps/plan_workflow.json',
             *sorted((self.root / 'bots').glob('*.json'))]}
 
     def provision_business(self):

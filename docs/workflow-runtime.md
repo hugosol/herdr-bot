@@ -247,13 +247,13 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 仓库的 [plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 只交付新业务 Map，不启动该业务。提示词分层如下：
 
 - 两个绑定 Task.prompt 承担稳定能力流程，按分支引导读取本文件的[统一文件交接约定](#统一文件交接约定)和[规划交付契约](planning-deliverables.md)。两份交付文档的章节与可翻译条件只在交付契约维护，不在 node.input 或 Bot 指南重复。
-- 两个 Bot 的 plan_guide 指导能力安排，node_guide 指导填写本次委托差异和结构化材料规则，不再要求复制 Task 流程、方案正文或推导路径。
+- 概要规划和转换 Task 均通过真实服务发现 Task 型／Map 型 Bot、读取三份指南并核实实际目标。两个 Bot 的 plan_guide 指导能力安排，node_guide 指导填写本次委托差异和结构化材料规则，不再要求复制稳定流程、方案正文或推导路径。Map 型能力保持一个调用节点，本次 manager、业务 input、zone 与材料映射遵循[两类 Bot 的能力选用与调用](planning-deliverables.md#两类-bot-的能力选用与调用)，不展开子图或固化 manager 到 Bot；指南仍不自动注入执行 Chat。
 - outline 的 input 指定使用本次 userInput、以文件交付概要方案，以及无阻止翻译缺口的最终交付门槛；允许讨论中的中间状态不等于允许向下游交接。report_policy 保持 manual，报告发送确认与方案业务确认独立。
 - outline 声明输出 outline，generate_map 通过同名输入引用它并保留前置依赖。概要方案本身是完整业务文档，无需另造没有独立用途的交接文件；其他业务图中的交接说明与纯正文有独立用途时分别声明。
 - generate_map 的 input 指定方案用途、map JSON 交付和本次只新增、不覆盖、保护当前 plan_workflow 的限制。稳定保存与验收步骤由 Task 承担，启动配置仅取自方案明确提供的值，缺失时不借用自举 Run 配置。
 
-此轮同时更新两个 Task、两个 Bot 指南和本 Map；其他 Map、已有执行及运行实现不变。定义和文档检查不证明真实 agent 已遵从新指示，文件不覆盖仍是工作约定而非服务端不可变存储保证。
-定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务的公开 Map edit/save/read 与目录 interface 保存、读回仓库定义，保护命名来源、两节点业务绑定、依赖、报告策略及保存前后完整定义，并查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的证据；指引内容审阅、字段存在或文本长度都不是 P27/P28 的真实验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认由独立真实业务入口验证：
+规划入口仅更新两个共享 Task、两个 Bot 指南与本 Map 的交付门槛；其他 Map、旧独立能力入口、已有执行及运行实现不因此改造。根业务启动配置可待用户提供，但方案内 Map 调用节点的 manager、zone、业务输入和材料映射缺失仍阻止翻译。定义和文档检查不证明真实 agent 已遵从新指示，文件不覆盖仍是工作约定而非服务端不可变存储保证。
+定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务公开读取交付的规划 Task／Bot，保存、读回原规划 Map 和混合 Task 型＋Map 型节点，保护命名来源、两节点业务绑定、依赖、报告策略与完整定义，并预检真实目标移除前后的接受／拒绝，查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的启用证据；指引内容审阅、字段存在或文本长度都不是 nesting P03 或原 P27/P28 的真实模型验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认由独立真实业务入口验证：
 
 ```powershell
 python scripts/test-workflow-file-handoff.py `
@@ -261,7 +261,7 @@ python scripts/test-workflow-file-handoff.py `
   --toolkit $TOOLKIT_WT --scenario plan-workflow --paths-file $ISOLATED_PATHS
 ```
 
-依赖准备、独占 HOME／原生存储、真实模型配置和公开 completion 传输方式见[测试指引](agents/testing.md#文件交接真实角色自动验收)；completion 调用示例将 `--scenario roles` 改为 `--scenario plan-workflow`。规划入口还从显式 `pi_agent` 依赖的 `skills/` 只读复制 `grill-with-docs`、`grilling`、`domain-modeling` 三个真实 Skill；缺任一项非零失败，不加载用户会话或凭据。被测源是参与 worktree 的实际 Map、概要规划／Map 转换 Task 和 Bot，环境地址、zone、Pi 宿主及模型映射逐项保留在 `deployment.json`，业务 prompt 不替换为受控 provider 脚本。这是 Pi 与公开真实模型传输的证据，不外推为 OMP 或其他 provider wire 合规性。
+依赖准备、独占 HOME／原生存储、真实模型配置和公开 completion 传输方式见[测试指引](agents/testing.md#文件交接真实角色自动验收)；completion 调用示例将 `--scenario roles` 改为 `--scenario plan-workflow`。规划入口还从显式 `pi_agent` 依赖的 `skills/` 只读复制 `grill-with-docs`、`grilling`、`domain-modeling` 三个真实 Skill，通过公开 Suite 接口登记隔离的 `acceptance-planning`，在 Task 的 `suite` 中选择，并以固定 Pi Suite 工厂加载；不再发送已取消的 Task `extensions` 字段。缺任一 Skill 或实际 Pi Suite 工厂非零失败，不加载用户会话或凭据。被测源是参与 worktree 的实际 Map、概要规划／Map 转换 Task 和 Bot，环境地址、zone、Pi 宿主及模型映射逐项保留在 `deployment.json`，业务 prompt 不替换为受控 provider 脚本。这是 Pi 与公开真实模型传输的证据，不外推为 OMP 或其他 provider wire 合规性。
 
 入口预置可读订单和真实本地汇总／核对程序及合法 Bot/Task，但只规划、不运行业务。主场景先取得概要草案，向实际 outline Chat 输入币种修订，核对九章节、稳定工作编号、真实绑定、材料与权限，再分别输入当前修订的明确方案确认和 manual 发送确认。管理者须实际读报告、显式 complete／dispatch／finish；生成者须读命名地址、保存并经服务读回新 Map。缺新业务管理者配置时不预检，原始 HTTP、Run 目录和未生成业务输出共同核对没有自动启动。第二个独立 Run 要求当前不可用的真实税务发布能力，必须保存能力建设需求并保留真实阻塞，不创建／调度能力或把阻塞冒充主链成功。
 
