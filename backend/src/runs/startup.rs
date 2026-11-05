@@ -3,7 +3,8 @@ use super::*;
 
 async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::InputRule]) -> Result<Vec<crate::scheduler::ResolvedFile>, String> {
     let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
-    rules.iter().map(|rule| {
+    let mut inputs = Vec::with_capacity(rules.len());
+    for rule in rules {
         let (id, path) = match rule {
             crate::scheduler::InputRule::File { id, path, zone_id } => {
                 if !crate::scheduler::valid_relative_file(path) { return Err(format!("输入 {id} 必须是 zone 内相对路径；请迁移 Map 后启动新 Run。")); }
@@ -12,6 +13,10 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
                 let absolute = crate::zones::browse::checked_file(root, path).map_err(|e| e.message())?;
                 (id, absolute)
             },
+            crate::scheduler::InputRule::Run { id, input_id } => {
+                let Some(file) = run.file_inputs.iter().find(|file| file.id == *input_id) else { continue; };
+                (id, file.path.clone())
+            }
             crate::scheduler::InputRule::Node { id, node_id, output_id } => {
                 let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
                 let path = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
@@ -20,8 +25,10 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
                 (id, path)
             }
         };
-        Ok(crate::scheduler::ResolvedFile { id: id.clone(), path })
-    }).collect()
+        crate::scheduler::check_input_file(&path).map_err(|error| format!("输入 {id}：{error}"))?;
+        inputs.push(crate::scheduler::ResolvedFile { id: id.clone(), path });
+    }
+    Ok(inputs)
 }
 
 pub(super) async fn manager_interrupted(
