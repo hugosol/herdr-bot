@@ -30,6 +30,8 @@ mod auto_close;
 mod named_inputs;
 #[path = "workflow_dispatch/plan_workflow.rs"]
 mod plan_workflow;
+#[path = "workflow_dispatch/shared_business.rs"]
+mod shared_business;
 #[path = "workflow_dispatch/input_resolution.rs"]
 mod input_resolution;
 #[path = "workflow_dispatch/report_outputs.rs"]

@@ -70,7 +70,7 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 交接说明与可直接使用的纯正文分别声明输出，下游逐项引用；不只登记交接说明，再通过同目录、固定文件名或报告正文发现其他文件。内部交接使用初始化提供的中间资料位置，不在每个 input 中规定材料根／Run ID／工作编号／execution ID 的路径算法。用户明确指定的正式交付位置、格式或业务命名仍保留。输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。
 
-例如汇总 Bot 三份指南时，命名输入可为 `when_text`、`when_handoff`、`plan_guide_text`、`plan_guide_handoff`、`node_guide_text`、`node_guide_handoff` 和 `bot_baseline`。input 说明将三份纯正文原样替换对应字段，使用交接说明及基线核对同一 Bot／Task、确认范围和配置一致性，仅保存授权字段并完整读回；不再描述如何查询上游 execution、筛选报告或拼接目录。材料身份、共同基线、用户确认及保存冲突的业务检查不能随寻址协议一起删除。
+例如汇总 Bot 三份指南时，命名输入可为 `when_text`、`when_handoff`、`plan_guide_text`、`plan_guide_handoff`、`node_guide_text`、`node_guide_handoff` 和 `baseline`。各编写者、表达优化者与保存者直接取得同一份共同基线；text 是所属字段唯一完整正文，handoff 仅记确认依据、来源、语义限制和未验证项，不复制完整正文／配置或承担隐式寻址。input 说明原样汇总三个字段、核对同一 Bot 及其 normal Task／Map 目标、确认范围和真实 revision，一次合法保存并完整读回，保持全部非目标和执行目标配置不变。完整最终对象另交付 saved。详细职责与独立 Chat 分支统一见[共同业务材料契约](business-materials.md)，不复制协议或查询运行记录。材料身份、共同基线、用户确认及保存冲突检查不能随寻址去重删除。
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
 
