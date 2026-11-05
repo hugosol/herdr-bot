@@ -56,7 +56,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
     try {
       const lsp: unknown = JSON.parse(draft.lsp)
       if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
-      suite = { ...draft, skills: lines(draft.skills), extensions: Object.fromEntries(draft.agents.map(agent => [agent, lines(draft.extensions[agent])]).filter(([, paths]) => paths.length > 0)), prompts: lines(draft.prompts), lsp: lsp as Record<string, unknown> }
+      suite = { ...draft, skills: lines(draft.skills), extensions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.extensions[agent]))]]).filter(([, paths]) => paths.length > 0)), prompts: lines(draft.prompts), lsp: lsp as Record<string, unknown> }
     } catch (error) { setError(message(error)); return }
     setBusy(true)
     try {
@@ -120,7 +120,21 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <label htmlFor={`suite-${key}`}>{['Skills（每行一个路径）', 'Prompt templates（每行一个路径）'][index]}</label>
             <textarea id={`suite-${key}`} className="zone-form__input" rows={3} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
           </div>)}
-          {draft.agents.map(agent => <div key={agent}>
+          {draft.agents.map(agent => <div key={agent} className="suites-extensions">
+            <fieldset aria-describedby={`suite-extensions-note-${agent}`}>
+              <legend>{agent.toUpperCase()} 共享可选扩展</legend>
+              {data?.extensions.filter(extension => extension.agent === agent).map(extension => <label className="suites-choice suites-extension-choice" key={extension.id}>
+                <input type="checkbox" checked={lines(draft.extensions[agent]).includes(extension.entrypoint)} onChange={event => {
+                  const paths = lines(draft.extensions[agent])
+                  setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: (event.target.checked
+                    ? [...new Set([...paths, extension.entrypoint])]
+                    : paths.filter(path => path !== extension.entrypoint)).join('\n') } })
+                }} />
+                <span>{extension.label}<span className="suites-extension-path">{extension.entrypoint}</span></span>
+              </label>)}
+              {data?.extensions.every(extension => extension.agent !== agent) && <p className="scope-note">此宿主暂无共享可选扩展，可在下方填写自定义路径。</p>}
+              <p className="scope-note" id={`suite-extensions-note-${agent}`}>勾选只保存资源声明，不表示扩展已经加载或运行。下方路径包含共享选择，也可添加自定义路径；目录移除的旧路径仍会保留。</p>
+            </fieldset>
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
             <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
           </div>)}

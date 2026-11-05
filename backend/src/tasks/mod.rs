@@ -321,6 +321,10 @@ impl Tasks {
         crate::tasks::catalog::Catalog::load(&self.metadata_file, &self.roots)
     }
 
+    pub(crate) fn suite_extensions(&self) -> Result<Vec<catalog::ExtensionOption>, TaskError> {
+        catalog::Catalog::suite_extensions(&self.metadata_file, &self.roots)
+    }
+
     /// 存储文件位置（启动日志与测试观察用）。
     pub fn storage_file(&self) -> &Path {
         &self.storage_file

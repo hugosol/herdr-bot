@@ -44,6 +44,10 @@ _Avoid_: 当前选中 Task, Task 快照, 推测来源
 定义 Task 可选项及其适用关系的共享清单，不是某个具体 Task。
 _Avoid_: Task, Task 实例
 
+**Suite 扩展选项**:
+可由多个兼容宿主的 Suite 分别选择的共享 agent 能力；同一能力既可单独组成 Suite，也可与其他场景资源组合。它不是某个 Suite 的专属能力，也不是所有 Task 都必须加载的固定扩展。
+_Avoid_: Task 可选扩展, Suite 固定扩展, 专属扩展
+
 **Task 固定扩展**:
 Task 会话环境中不由 Suite 选择决定的 agent 扩展，与所选 Suite 声明共同构成有来源 Task 时的环境；它不等于无来源 Task 时的原生默认发现集合。
 _Avoid_: 默认勾选扩展, 可选扩展, 默认发现扩展

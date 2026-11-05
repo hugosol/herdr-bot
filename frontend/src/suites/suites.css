@@ -51,6 +51,11 @@
 .suites-editor #suite-lsp { font-family: ui-monospace, monospace; min-height: 200px; }
 .suites-editor .suites-choice { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; margin: 0 20px 0 0; overflow-wrap: anywhere; }
 .suites-choice input { width: 18px; height: 18px; flex: none; accent-color: var(--suite-accent); }
+.suites-extensions { min-width: 0; }
+.suites-extensions fieldset { margin-top: 0; }
+.suites-editor .suites-extension-choice { display: flex; margin-right: 0; padding: 8px 0; }
+.suites-extension-choice > span { min-width: 0; }
+.suites-extension-path { display: block; color: var(--suite-muted); font-size: 12px; overflow-wrap: anywhere; }
 .suites-section fieldset { margin-top: 16px; }
 .suites-section fieldset > legend { color: var(--suite-muted); font-size: 13px; }
 .suites-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }

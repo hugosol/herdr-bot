@@ -22,7 +22,7 @@
       "thinking": "high",
       "skill": null,
       "prompt": "请根据${codex-reset-url}的情况，帮我总结一下可能还有多久就会reset额度",
-      "suite": null
+      "suite": "web-access"
     },
     {
       "id": "tpl-18e0e21b49001550-0",

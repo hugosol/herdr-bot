@@ -226,12 +226,34 @@ impl Suites {
 }
 
 #[derive(Serialize)]
-struct SuiteList { suites: Vec<Suite>, mcp: Vec<String> }
-fn listing(suites: &Suites, definitions: Vec<Suite>) -> Result<Json<SuiteList>, SuiteError> {
-    Ok(Json(SuiteList { suites: definitions, mcp: suites.mcp_catalog()?.into_keys().collect() }))
+struct SuiteList {
+    suites: Vec<Suite>,
+    mcp: Vec<String>,
+    extensions: Vec<crate::tasks::catalog::ExtensionOption>,
+}
+
+/// Obtain all fallible response catalogs before a mutation can publish bytes.
+struct SuiteCatalogs {
+    mcp: Vec<String>,
+    extensions: Vec<crate::tasks::catalog::ExtensionOption>,
+}
+impl SuiteCatalogs {
+    fn load(state: &AppState) -> Result<Self, SuiteError> {
+        let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+        let extensions = state.tasks.suite_extensions().map_err(|error| SuiteError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: error.code(),
+            message: error.message(),
+        })?;
+        Ok(Self { mcp, extensions })
+    }
+    fn listing(self, suites: Vec<Suite>) -> Json<SuiteList> {
+        Json(SuiteList { suites, mcp: self.mcp, extensions: self.extensions })
+    }
 }
 pub async fn list(State(state): State<AppState>) -> Result<impl IntoResponse, SuiteError> {
-    listing(&state.suites, state.suites.list()?)
+    let catalogs = SuiteCatalogs::load(&state)?;
+    Ok(catalogs.listing(state.suites.list()?))
 }
 pub async fn get(State(state): State<AppState>, Path(id): Path<String>) -> Result<impl IntoResponse, SuiteError> {
     Ok(Json(serde_json::json!({ "suite": state.suites.get(&id)? })))
@@ -243,21 +265,21 @@ async fn input(request: Request) -> Result<Suite, SuiteError> {
 }
 pub async fn create(State(state): State<AppState>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.save(None, suite)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }
 pub async fn update(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.save(Some(&id), suite)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }
 pub async fn delete(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     if request.uri().query().is_some() { return Err(SuiteError::invalid("删除 Suite 不接受查询参数。")); }
     let bytes = axum::body::to_bytes(request.into_body(), 1024 * 1024).await.map_err(|error| SuiteError::invalid(error.to_string()))?;
     if !bytes.is_empty() { return Err(SuiteError::invalid("删除 Suite 不接受请求体。")); }
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.delete(&id, &state.tasks)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }

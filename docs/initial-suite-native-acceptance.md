@@ -46,7 +46,15 @@ wayfinder_skills = '${roots.wayfinder}/skills'
 matt_pocock_skills = 'D:/sources/matt-pocock/skills/skills'
 # The actual directory spelling can differ from the native skill name.
 expert_translate = 'D:/sources/expert-tranlate'
+# Current exploration Pi also loads this local source package, with dependencies prepared.
+pi_extensions = 'D:/sources/pi-extension'
 ```
+
+The current exploration Pi declaration includes `${roots.pi_extensions}/pi-web-access`;
+prepare that source package and its runtime dependencies before running this acceptance.
+The independent `web-access` Suite is not a scenario in this historical initial-Suite
+matrix. Its existence and the shared extension declaration do not make this runner
+proof of web tool registration or search-provider availability.
 
 Choose explicit Git baselines immediately before this feature's delivery changes
 in each participating repository. The manifest records every delivered changed

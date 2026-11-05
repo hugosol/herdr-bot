@@ -98,6 +98,56 @@ test('P4 re-reads and restarts from the same externally maintained Suite authori
   expect(fs.readdirSync(authority)).toEqual(['user-suites.json'])
 })
 
+test('shared extension choices preserve independent host paths, deduplicate manual entries and retain removed catalog paths', async ({ page }) => {
+  server = await startServer({ separateCwd: true })
+  const directory = path.dirname(server.configPath)
+  const definitions = path.join(directory, 'meta-data', 'suites.json')
+  const shared = '${roots.browser_extensions}/shared-package'
+  const relative = 'optional packages/relative-package'
+  const absolute = path.join(directory, relative)
+  const originalMetadata = fs.readFileSync(server.metadataFile, 'utf8')
+  fs.appendFileSync(server.metadataFile, `\n[[extensions]]\nid = 'shared-pi-fixture'\nlabel = '共享浏览能力'\nagent = 'pi'\nkind = 'optional'\nentrypoint = '${shared}'\n\n[[extensions]]\nid = 'relative-pi-fixture'\nlabel = '相对路径能力'\nagent = 'pi'\nkind = 'optional'\nentrypoint = '${relative}'\n`)
+  const suites = ['first', 'second'].map(id => ({ id, name: id, agents: ['pi'], skills: [], extensions: { pi: [shared, '../custom/pi-extra'] }, prompts: [], lsp: {}, mcp: [], pi: { codemode: 'on' } }))
+  fs.mkdirSync(path.dirname(definitions), { recursive: true })
+  fs.writeFileSync(definitions, JSON.stringify({ suites }))
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-suite').click()
+  const choice = page.getByRole('group', { name: 'PI 共享可选扩展', exact: true }).getByRole('checkbox', { name: /^共享浏览能力/ })
+  const relativeChoice = page.getByRole('group', { name: 'PI 共享可选扩展', exact: true }).getByRole('checkbox', { name: /^相对路径能力/ })
+  const paths = page.getByLabel('PI Extensions（每行一个具体路径）', { exact: true })
+  const save = async () => {
+    await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
+    await expect(page.getByRole('status')).toHaveText('Suite 已保存到权威文件。')
+  }
+  await page.getByRole('button', { name: 'first · first', exact: true }).click()
+  await expect(choice).toBeChecked()
+  await paths.fill(`${shared}\n../custom/pi-extra\n${shared}`)
+  await relativeChoice.check()
+  await save()
+  expect(JSON.parse(fs.readFileSync(definitions, 'utf8')).suites[0].extensions).toEqual({ pi: [shared, '../custom/pi-extra', absolute] })
+  await choice.uncheck()
+  await save()
+  await page.getByRole('button', { name: 'second · second', exact: true }).click()
+  await expect(choice).toBeChecked()
+  await page.getByRole('button', { name: 'first · first', exact: true }).click()
+  await expect(choice).not.toBeChecked()
+  await expect(paths).toHaveValue(`../custom/pi-extra\n${absolute}`)
+  await page.getByLabel('OMP', { exact: true }).check()
+  await page.getByLabel('PI', { exact: true }).uncheck()
+  await expect(choice).toHaveCount(0)
+  await page.getByLabel('OMP Extensions（每行一个具体路径）', { exact: true }).fill('../custom/omp-extra')
+  await page.getByLabel('PI', { exact: true }).check()
+  await expect(relativeChoice).toBeChecked()
+  await save()
+  expect(JSON.parse(fs.readFileSync(definitions, 'utf8')).suites[0].extensions).toEqual({ pi: ['../custom/pi-extra', absolute], omp: ['../custom/omp-extra'] })
+  fs.writeFileSync(server.metadataFile, originalMetadata)
+  await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
+  await expect(relativeChoice).toHaveCount(0)
+  await expect(paths).toHaveValue(`../custom/pi-extra\n${absolute}`)
+  await save()
+  expect(JSON.parse(fs.readFileSync(definitions, 'utf8')).suites[0].extensions.pi).toEqual(['../custom/pi-extra', absolute])
+})
+
 // P25: closing only is explicitly on, never inheritance/off. Save and re-read
 // the true authority after each transition; a UI-only toggle cannot satisfy it.
 test('P25 saves explicit Pi on and only modes and hides Pi controls for OMP-only Suites', async ({ page }) => {

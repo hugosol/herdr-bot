@@ -78,6 +78,23 @@ impl From<TaskType> for ExecutionRole {
 
 impl Catalog {
     pub fn load(path: &Path, roots: &crate::paths::Roots) -> Result<Self, TaskError> {
+        Self::load_paths(path, roots, false)
+    }
+
+    /// Suite storage uses declarations, not machine-expanded root paths.
+    pub(crate) fn suite_extensions(path: &Path, roots: &crate::paths::Roots) -> Result<Vec<ExtensionOption>, TaskError> {
+        let catalog = Self::load_paths(path, roots, true)?;
+        let mut options = Vec::new();
+        for extension in catalog.extensions.into_iter().filter(|extension| extension.kind == ExtensionKind::Optional) {
+            if extension.entrypoint.as_os_str().is_empty() {
+                return Err(TaskError::Metadata(format!("选项元数据 {}：可选扩展 {} 缺少入口路径", path.display(), extension.id)));
+            }
+            options.push(extension);
+        }
+        Ok(options)
+    }
+
+    fn load_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
             let raw = crate::files::FileStore::default().read_to_string(path)
                 .map_err(|e| format!("读取失败：{e}"))?;
@@ -86,8 +103,11 @@ impl Catalog {
             let base = path.parent().unwrap_or_else(|| Path::new("."));
             for extension in &mut catalog.extensions {
                 if !extension.entrypoint.as_os_str().is_empty() {
-                    extension.entrypoint = roots.resolve(&extension.entrypoint, base)
+                    let resolved = roots.resolve(&extension.entrypoint, base)
                         .map_err(|error| format!("扩展 {} 路径：{error:#}", extension.id))?;
+                    if !preserve_roots || !extension.entrypoint.to_string_lossy().starts_with("${roots.") {
+                        extension.entrypoint = resolved;
+                    }
                 }
             }
             Ok(catalog)

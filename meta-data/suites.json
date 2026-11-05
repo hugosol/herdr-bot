@@ -1,6 +1,21 @@
 {
   "suites": [
     {
+      "id": "web-access",
+      "name": "网页访问",
+      "agents": ["pi"],
+      "skills": [],
+      "extensions": {
+        "pi": ["${roots.pi_extensions}/pi-web-access"]
+      },
+      "prompts": [],
+      "lsp": {},
+      "mcp": [],
+      "pi": {
+        "codemode": "on"
+      }
+    },
+    {
       "id": "codebase-exploration",
       "name": "代码库探索",
       "agents": [
@@ -34,7 +49,8 @@
         ],
         "pi": [
           "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
-          "${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts"
+          "${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts",
+          "${roots.pi_extensions}/pi-web-access"
         ]
       },
       "prompts": [],
