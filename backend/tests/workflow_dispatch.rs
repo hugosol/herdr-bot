@@ -26,6 +26,8 @@ mod map_deletion;
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]
 mod nesting;
+#[path = "workflow_dispatch/nested_completion.rs"]
+mod nested_completion;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]

@@ -50,6 +50,27 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；父可选项缺席而子接口要求必需项时，派发明确指出缺项，不启动该子工作。
 
+### 子流程交付与父层验收
+
+子 manager 的 `report` 登记的是**父 execution 冻结的 `outputRule`** 中的输出 ID 与实际绝对文件地址，不从内部 node 的同名输出自动取值，也不新增 Map 输出声明。未知／同次重复 ID 拒绝整次报告；增量报告按同 execution 的追加顺序合并，同名更新，省略保留既有登记，未登记不补造路径。普通及 Map 型下游都通过父 node 的 `type=node` 输入规则解析这些地址；只用当前 execution，旧尝试即使曾交付也不能补齐新尝试的缺项。上游 completed 只满足依赖，所需输出未登记或文件不可读时派发仍在 `resolve` 阶段失败，不创建下游 Chat 或子 Run。
+
+内部 node 未全部 completed，或虽全部 completed 但子 manager 尚未显式 `finish`，均不能外报 `canComplete=true`（HTTP 400，`child-run-not-finished`）；`false` 进展报告仍可保存。读取关联子 Run 失败不当作已结束。`finish` 只要求内部节点交接完成，不要求父输出全部登记。完成资格、已登记材料及父层业务验收是三件不同的事：子 `finish` 和任何报告都不完成父节点，也不自动放行或派发下游；父 manager 须按当前 execution **最新有效报告严格 true** 显式 `complete`，后来的 false 不能回退较早 true。
+
+报告保存与宿主通知分阶段反馈。即使真实通知失败，`saved=true` 的报告、完成的子 Run 与已有文件仍可由公开详情读回；不要为通知失败重报、重派、回滚或重新 finish。父节点首次合法 complete 后，才按该 execution 冻结的 `autoClose` 尝试一次精确关闭其关联子 manager Tab。子 finish 不关闭父执行的 Tab；重复 complete 不重复关闭，也不扫描或级联关闭内部 Tab。关闭失败不撤销已保存的父交接。
+
+受控机制回归：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion::`，覆盖冻结输出与增量、两类下游、缺交付及旧执行隔离、两种未 finish 门禁、最新报告验收、实际 CLI 通知拒绝及精确关闭幂等。独立安全后端运行烟测：
+
+```powershell
+# CARGO_TARGET_DIR 须指向当前 worktree 的独立目录。
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-nested-completion.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --herdr-fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
+```
+
+烟测在独占 Temp、动态数值回环端口启动记录型安全壳，通过公开 Bot／node 定义与运行 HTTP 执行成功、拒绝和真实受控通知失败，独立读回报告持久文件及公开父子事实，观察精确宿主关闭记录；持续消费日志，退出时终止并等待所属后端，证据保留在输出的 `evidence.json`。不读取用户凭据、启动真实 agent／daemon、联网业务服务或调用真实关机。它和回归只证明确定性服务端语义，不证明原生工具归属、真实 finish 后外报或真实 Tab／内部进程生存；这些由原生双角色专项唯一验收，不能用夹具 argv 或关闭记录代替。
+
 子启动在既有阶段外公开 `child-preflight`、`child-register`、`child-initialize`、`child-association`。`effects.childRunId` 表示已经保存的父执行指向，`childRecordsInitialized` 表示三份子记录完成初始化；随后仍逐项报告真实 workspace／Tab／agent／身份／关联／提交效果。已登记的子 Run、已启动的 Chat 和已保存的另一侧关联可能在后续阶段失败后保留；这不是跨文件事务，不会自动回滚、重发或重派。应读取逐项结果、父 execution、子 Run 详情与 `startupError` 核实现场，不能把 failed 解释为未创建。子 Run 的结束、对外报告与父 manager 的交接仍是不同动作。
 
 定向机制入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nesting::`，覆盖两套独立 OMP／Pi 配置、真实目录与文件、重复调用／多层绑定、可选缺席／必需拒绝、双角色授权及旧 execution 的服务端归属。页面烟测：`npm --prefix frontend run test:browser:build -- workflowNestingDispatch.spec.ts --workers=1`，经实际表单启动根 Run、公开 HTTP 派发、读取父子持久事实与页面成功／拒绝反馈，并核对受控宿主记录。使用独立 `CARGO_TARGET_DIR` 和测试拥有的临时数据；完整回归入口见[测试指引](agents/testing.md)。这些检查证明服务端接线与公开效果，不证明原生扩展实际执行或真实模型业务质量；原生双角色和材料消费须使用相应独立专项证据，不能从 argv 或记录存在外推。
@@ -674,7 +695,7 @@ Content-Type: application/json
 
 新请求必须提供字符串 `body` 和严格 boolean `canComplete`；缺字段、null、字符串布尔值等错误类型明确拒绝，不保存报告，不为旧请求默认放行。`outputs` 若提供必须是 `{id,path}` 对象数组；`id` 必须非空、不重复且属于本次执行冻结的 `outputRule`，所有 `path` 必须为本机绝对地址且不含 NUL。旧对象格式、未知字段、未声明／重复 ID、相对地址或错误类型拒绝整次报告，不部分保存。省略或空数组不删除已有 ID，不增加删除协议；可发送无输出的进度／失败报告，输出规则不增加 report／complete 自动门禁。沿用无查询参数、1 MiB 请求上限及同机来源限制。
 
-后端按当前后端已管理 Run 的真实 node 执行关联归属，拒绝无关联、管理者身份、重复关联及调用方填写的 `runId`、`nodeId`、`from`、`to`、旧 `source`／`target` 等额外字段。系统生成报告 `id`、`at`、`type=report`，保存 `runId`、`nodeId`、`executionId`、真实发送方 `from` 和同 Run 管理者接收方 `to`。sessionId 不是模型参数，也不是秘密凭据；同机信任限制与 manager 工具相同。重启后的旧 Run 不接受 report。
+后端按当前后端已管理 Run 的真实 node 执行关联归属，拒绝无关联、没有合法父 execution 节点角色的管理者身份、重复关联及调用方填写的 `runId`、`nodeId`、`from`、`to`、旧 `source`／`target` 等额外字段。系统生成报告 `id`、`at`、`type=report`，保存 `runId`、`nodeId`、`executionId`、真实发送方 `from` 和同 Run 管理者接收方 `to`。sessionId 不是模型参数，也不是秘密凭据；同机信任限制与 manager 工具相同。重启后的旧 Run 不接受 report。
 
 输出登记唯一权威来源是 `messages.jsonl` 中报告的 `outputs` 数组；同一 Run/node/execution 按追加顺序按 ID 累积覆盖，例如 A=a1/B=b1 → 仅 A=a2 → 省略 outputs，足以推导 A=a2/B=b1。新 execution 不继承旧集合，保留的旧执行报告仍归旧 execution。Run 当前事实、背景、目录或状态索引不另存登记副本；派生查询不成为独立权威存储。登记仅校验地址表达，不读取或检查存在、可读性、格式、数量、完整性，也不生成、复制、移动、发布业务文件；同卷、异卷及 zone 外地址均可登记，不存在文件也合法。历史报告缺 `canComplete`／`outputs` 保持可读，不补出 true 或输出集合，也不因此恢复旧 Run 的写入／管理资格。
 

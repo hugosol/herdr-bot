@@ -137,6 +137,17 @@ pub async fn node_report(
     if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
         return error(StatusCode::BAD_REQUEST, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。");
     }
+    if input.can_complete {
+        if let Some(child_id) = &execution.child_run_id {
+            let child = match state.runs.read(&state, child_id).await {
+                Ok(child) => child,
+                Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "child-run-read-failed", &message),
+            };
+            if child.status != "completed" || child.finished.is_none() {
+                return error(StatusCode::BAD_REQUEST, "child-run-not-finished", "子 Run 必须显式 finish 后才能提交 canComplete=true；进展报告请使用 false。");
+            }
+        }
+    }
     // Once accepted, persist and attempt notification exactly once even if the
     // HTTP caller disconnects. No file/business lock spans host delivery.
     let work = tokio::spawn(async move {
