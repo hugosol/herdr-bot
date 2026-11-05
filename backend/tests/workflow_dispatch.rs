@@ -24,6 +24,8 @@ mod report_policy;
 mod map_deletion;
 #[path = "workflow_dispatch/bot_targets.rs"]
 mod bot_targets;
+#[path = "workflow_dispatch/nesting.rs"]
+mod nesting;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]
