@@ -6,7 +6,7 @@
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
 
-workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`report_policy`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`reportPolicy`、`autoClose`；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `reportPolicy` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
+workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`report_policy`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`reportPolicy`、`autoClose`、`childRunId`（保存关联时可导航）；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `reportPolicy` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
 
 | 方法及路径 | 请求与结果 |
 | --- | --- |
@@ -49,6 +49,14 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`report` 只定位关联的父 execution，包括保留的旧 execution。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；父可选项缺席而子接口要求必需项时，派发明确指出缺项，不启动该子工作。
+
+### 从 workflow 查看子 Run
+
+workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、Map 标题和 node 标题都不是导航身份。打开父 Run 后，当前节点的“当前执行事实”内以该 execution 保存的 `childRunId` 提供“查看子 Run”；展开“旧执行历史”后，每条旧 execution 使用自身保存的 `childRunId`，retry 后不会改指最新 child。目标仍是独立的 `#workflow/{id}` Run 详情，可手动“刷新 Run”并返回全部 Run。整页刷新沿用主界面默认进入 chat 的规则，再进入 workflow 并从列表选择相同 ID 即可重读原现场，不创建新 Run；这里不提供嵌套树或额外双向导航。
+
+执行未保存 `childRunId` 时明确显示未保存关联，不从当前 Bot 的 `map_file`、名称或 Chat 猜测子 Run。目标记录缺失或不可读时，详情查询显示公开读取错误，不跳转到同名 Run、不修复记录，也不重新发起 Run／dispatch。查看、刷新和浏览器导航只读取保存事实，不恢复 Run 管理资格。
+
+长期真实页面回归由 `frontend/browser-tests/workflowChildNavigation.spec.ts` 拥有 P36，入口 `npm --prefix frontend run test:browser:build`；开发定向入口可追加 `-- workflowChildNavigation.spec.ts --workers=1`。场景从实际 scheduler 表单启动，通过公开 HTTP 派发、失败并明确 retry，核对当前／旧链接各自打开的实际详情与 `parent` 持久关联、同名干扰下的并列列表，以及刷新前后的三份 Run 文件和受控宿主调用不变。拒绝路径使用测试独占目录内真正缺失／不可读记录，不以组件 mock 或静态 href 文本代替导航结果。页面连接真实公开 SSE；宿主只使用记录型安全 Herdr 夹具，证据只证明页面／HTTP／持久化导航和无重派副作用，不证明原生 agent 工作质量或真实外部宿主生命周期。命令本身不是当前部署已通过的证据。
 
 ### 局部暂停、失败与并发推进
 
