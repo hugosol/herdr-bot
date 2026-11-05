@@ -73,6 +73,30 @@ python scripts/test-workflow-nested-completion.py `
 
 子启动在既有阶段外公开 `child-preflight`、`child-register`、`child-initialize`、`child-association`。`effects.childRunId` 表示已经保存的父执行指向，`childRecordsInitialized` 表示三份子记录完成初始化；随后仍逐项报告真实 workspace／Tab／agent／身份／关联／提交效果。已登记的子 Run、已启动的 Chat 和已保存的另一侧关联可能在后续阶段失败后保留；这不是跨文件事务，不会自动回滚、重发或重派。应读取逐项结果、父 execution、子 Run 详情与 `startupError` 核实现场，不能把 failed 解释为未创建。子 Run 的结束、对外报告与父 manager 的交接仍是不同动作。
 
+### 独立 retry 与迟到旧报告
+
+执行阶段 failed 后，管理者必须先核对旧 Chat、子 Run、部分材料与外部副作用，再以 `confirmed=true` 和非空 `reason` 明确授权 retry。未确认／无说明返回 `retry-confirmation-required`，不创建新身份或调用宿主。合法 retry 新建 execution、child Run 和原生 Chat，旧 execution／failure 留在 `previousExecutions`，旧子 Run 的三份记录及外部文件不覆盖、不撤销。`recover` 只恢复原 execution 的跟踪；普通 Chat Resume 只定位／恢复原生对话，两者都不创建替代 child，也不重放初始输入。
+
+派发阶段失败不能套用执行 retry：已有 child 登记即使没有 Chat 也不是未创建；`reconcile_dispatch=not_created` 拒绝清掉已知 child（`dispatch-child-already-known`）。输入实际接受但响应损坏属于 `inputOutcome=unknown`；核实和确认参数均不赋予盲目重试资格，retry 仍返回 `dispatch-reconciliation-required`。先按下一节核实真实部分效果。
+
+旧子 manager 继续管理自己的旧 child，仍可向原父 execution 保存报告并通知原父 manager；这保留通知语义，不使报告适用于新 execution。`pendingReports`、`collect`、首次 complete 的严格 true 门禁以及下游文件解析均按当前 execution 隔离。新 execution 尚无报告或最新为 false 时，晚到的旧 true 不放行；新 execution 缺少输出时，不从旧报告、内部同名 node 或其他 Run 补齐，即使旧文件仍真实存在。
+
+P29/P30 服务端契约回归：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_retry::`。核对确认拒绝无副作用、recover／原 Chat Resume 与 retry 的身份差异、父子双向关联与旧事实字节保留、旧新 true／false 报告交错、真实消费者初始化的新地址与文件内容，以及缺输出不得从旧 execution／子 node／其他 Run 兜底。部分启动的故障矩阵由 `partial_startup::` 唯一维护，不在本组复制。
+
+独立进程烟测（先构建当前 worktree 静态页面，使用独占 target）：
+
+```powershell
+$env:CARGO_TARGET_DIR = '<本 worktree 独占 target 目录>'
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-nested-retry.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
+node scripts/test-backend.mjs
+```
+
+烟测通过公开 Task／Bot／node 定义与 Run HTTP 启动隔离安全后端，独立读取磁盘父子事实、报告与实际文件，观察宿主启动、通知及消费者初始输入；另实际制造无 Chat 的已登记 child 和已接受输入但确认未知两条路径，核实拒绝与无重放效果。输出独占 Temp 的 `evidence.json`、原始 HTTP、持久记录及持续消费的进程日志，成功失败均终止并等待所属进程，保留原始与清理错误。它证明确定性后端身份／材料绑定和拒绝语义，不证明真实角色自主核实、副作用业务安全、原生模型读取材料或真实 OMP／Pi retry／恢复；真实角色证据仍归相应专项。不读取用户凭据、不连接用户 Chat／daemon、不执行关机、LAN 或 mDNS。
+
 ### 子启动失败的核实与验证
 
 先读取 dispatch 的逐项 `failure.stage/effects`，再读取父 `execution.childRunId`、子 Run HTTP 详情／列表与独立磁盘记录，最后核对实际宿主 Tab、agent 和提交效果。`child-initialize` 失败可能只有持久父执行指向，子三份记录尚不可读；当前进程列表仍保留这个 child 的 `id` 和 `readError`，详情保留 `startupError`。没有 Chat 不授权删除该指向、自动重建、重派或回滚；核实只读宿主身份，必要时保存原两侧关联。`inputAttempted=true/inputSubmitted=false` 不等于未发送：按 `inputOutcome` 区分明确拒绝与结果未知，不能凭已有 Chat 抹掉该区别。失败的宿主动作和初始输入不因核实重放。

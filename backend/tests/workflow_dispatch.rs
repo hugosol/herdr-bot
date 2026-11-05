@@ -8,6 +8,8 @@ mod portability;
 mod recovery;
 #[path = "workflow_dispatch/retry.rs"]
 mod retry;
+#[path = "workflow_dispatch/nested_retry.rs"]
+mod nested_retry;
 #[path = "workflow_dispatch/records.rs"]
 mod records;
 #[path = "workflow_dispatch/integrity.rs"]
