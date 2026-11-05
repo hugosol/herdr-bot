@@ -18,6 +18,7 @@ dist-ssr
 
 # 本地保留的工作流验收原始证据，不作为产品源码提交。
 /.scratch/workflow-file-handoff/evidence/
+/.scratch/workflow-nesting/evidence/
 /.scratch/suite-cli-research/evidence/09-pi-resources/
 /.scratch/suite-cli-research/evidence/14-initial/
 
