@@ -7,7 +7,14 @@
         "omp",
         "pi"
       ],
-      "skills": [
+      "skills": {
+        "omp": [
+          "${roots.matt_pocock_skills}/engineering",
+          "${roots.matt_pocock_skills}/productivity",
+          "${roots.wayfinder_skills}",
+          "${roots.expert_translate}/.."
+        ],
+        "pi": [
         "${roots.matt_pocock_skills}/engineering/grill-with-docs",
         "${roots.matt_pocock_skills}/productivity/teach",
         "${roots.wayfinder_skills}/code-review",
@@ -26,7 +33,8 @@
         "${roots.wayfinder_skills}/to-contract",
         "${roots.wayfinder_skills}/to-spec",
         "${roots.wayfinder_skills}/to-tickets"
-      ],
+        ]
+      },
       "extensions": {
         "omp": [
           "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
@@ -113,19 +121,14 @@
       "agents": [
         "omp"
       ],
-      "skills": [
-        "${roots.wayfinder_skills}/tdd",
-        "${roots.wayfinder_skills}/to-tickets",
-        "${roots.matt_pocock_skills}/engineering/retro",
-        "${roots.wayfinder_skills}/resolving-merge-conflicts",
-        "${roots.matt_pocock_skills}/productivity/writing-for-agents",
-        "${roots.matt_pocock_skills}/engineering/codebase-design",
-        "${roots.wayfinder_skills}/code-review",
-        "${roots.wayfinder_skills}/setup-matt-pocock-skills",
-        "${roots.wayfinder_skills}/to-contract",
-        "${roots.wayfinder_skills}/to-spec",
-        "${roots.matt_pocock_skills}/engineering/domain-modeling"
-      ],
+      "skills": {
+        "omp": [
+          "${roots.wayfinder_skills}",
+          "${roots.matt_pocock_skills}/engineering",
+          "${roots.matt_pocock_skills}/productivity"
+        ],
+        "pi": []
+      },
       "extensions": {
         "omp": [
           "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",

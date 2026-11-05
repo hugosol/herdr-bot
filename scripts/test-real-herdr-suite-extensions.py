@@ -85,7 +85,7 @@ class Acceptance(skills['Acceptance']):
         backend = self.processes[-1]
         backend.stop()
         (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':[], 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}/extension/entry.ts']}}]}))
+            'skills':{'omp': [], 'pi': []}, 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}/extension/entry.ts']}}]}))
         for zone in self.zones:
             # Wrong-cwd resource must not be selected; literal wrong result is distinguishable.
             wrong = zone / 'relative existing package/extension'

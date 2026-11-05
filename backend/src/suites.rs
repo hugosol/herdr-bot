@@ -30,8 +30,8 @@ pub struct Suite {
     pub id: String,
     pub name: String,
     pub agents: Vec<Agent>,
-    #[serde(default)]
-    pub skills: Vec<String>,
+    #[serde(default = "empty_skills", deserialize_with = "deserialize_skills")]
+    pub skills: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub extensions: BTreeMap<String, Vec<String>>,
     #[serde(default)]
@@ -42,6 +42,17 @@ pub struct Suite {
     pub mcp: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pi: Option<PiConfig>,
+}
+
+fn empty_skills() -> BTreeMap<String, Vec<String>> {
+    BTreeMap::from([("omp".into(), Vec::new()), ("pi".into(), Vec::new())])
+}
+
+fn deserialize_skills<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
+    let mut skills = BTreeMap::<String, Vec<String>>::deserialize(deserializer)?;
+    skills.entry("omp".into()).or_default();
+    skills.entry("pi".into()).or_default();
+    Ok(skills)
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -106,7 +117,15 @@ impl Suite {
                 return Err(SuiteError::invalid(format!("{host} 扩展路径不能包含空值或重复项。")));
             }
         }
-        for (name, values) in [("skills", &self.skills), ("prompts", &self.prompts), ("mcp", &self.mcp)] {
+        for (host, paths) in &self.skills {
+            if !matches!(host.as_str(), "omp" | "pi") {
+                return Err(SuiteError::invalid(format!("未知技能宿主 {host}；只接受 omp 或 pi。")));
+            }
+            if paths.iter().any(|path| path.trim().is_empty()) {
+                return Err(SuiteError::invalid(format!("{host} 技能路径不能包含空值。")));
+            }
+        }
+        for (name, values) in [("prompts", &self.prompts), ("mcp", &self.mcp)] {
             let mut seen = HashSet::new();
             if values.iter().any(|value| value.trim().is_empty() || !seen.insert(value)) {
                 return Err(SuiteError::invalid(format!("{name} 声明不能包含空值或重复项。")));

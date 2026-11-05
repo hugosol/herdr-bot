@@ -232,7 +232,7 @@ class Acceptance(support['Acceptance']):
         suites = []
         for mode in ['on', 'only']:
             suites.append({'id': 'mode-' + mode, 'name': 'Mode ' + mode, 'agents': ['pi', 'omp'],
-                'skills': [], 'prompts': ['suite-mode.md'], 'mcp': [],
+                'skills': {'omp': [], 'pi': []}, 'prompts': ['suite-mode.md'], 'mcp': [],
                 'lsp': {'owned-lsp': {'command': sys.executable, 'args': [str(lsp)], 'fileTypes': ['.py']}},
                 'pi': {'codemode': mode}})
         # Current authority schema is recorded; no array/ID compatibility is accepted.

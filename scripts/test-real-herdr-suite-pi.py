@@ -45,15 +45,18 @@ class Model(http.server.BaseHTTPRequestHandler):
                 skill = re.search(r'<name>smoke-selected</name>\s*<description>.*?</description>\s*<location>(.*?)</location>', system, re.S)
                 require(skill is not None, ('Selected skill was not advertised by native Pi', system))
                 selected_path = html.unescape(skill[1])
-                require('generated resources' in selected_path, ('Pi must consume the published resource path', selected_path))
+                require(Path(selected_path).samefile(case['skillFile']), ('Pi must consume the selected source entity', selected_path))
                 case['advertisedSkill'] = selected_path
-                calls = [('read', {'path': selected_path}), ('suite_asset_probe', {})]
+                calls = [('read', {'path': selected_path}),
+                    ('read', {'path': str(Path(selected_path).parent / 'references' / 'probe.txt')}),
+                    ('suite_asset_probe', {})]
                 delta = {'role': 'assistant', 'tool_calls': [dict(index=i, id=f'probe-{i}', type='function',
                     function=dict(name=name, arguments=json.dumps(args))) for i, (name, args) in enumerate(calls)]}
                 finish = 'tool_calls'
             else:
                 outputs = '\n'.join(str(m.get('content', '')) for m in messages if m['role'] == 'tool')
                 require('PI-SKILL-BODY-731' in outputs, ('Selected skill was not consumed', outputs))
+                require('PI-SKILL-REFERENCE-648' in outputs, ('Relative skill resource was not consumed', outputs))
                 require('PI-PACKAGE-ASSET-482:64' in outputs, ('Selected package asset was not consumed', outputs))
                 case['passed'] = True
                 delta, finish = {'role': 'assistant', 'content': 'PI-SUITE-SMOKE-VERIFIED-951'}, 'stop'
@@ -77,8 +80,6 @@ class Acceptance(support['Acceptance']):
 
     def prepare(self):
         require(sys.platform == 'win32', 'Real Herdr smoke requires Windows')
-        require(os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1',
-                'Set HERDR_BOT_MANUAL_SYMLINKS=1 explicitly; no privilege escalation or fallback')
         cli = self.args.pi_package / 'dist/bundle/cli.js'
         fixed = self.args.toolkit / 'entrypoints/pi/pi-suite.ts'
         for path in [self.args.herdr, self.args.backend, cli, fixed]:
@@ -109,6 +110,8 @@ class Acceptance(support['Acceptance']):
         skill = authority / 'selected skill'
         skill.mkdir()
         (skill / 'SKILL.md').write_text('---\nname: smoke-selected\ndescription: Owned smoke resource\n---\nPI-SKILL-BODY-731\n')
+        (skill / 'references').mkdir()
+        (skill / 'references' / 'probe.txt').write_text('PI-SKILL-REFERENCE-648\n')
         package = authority / 'selected package'
         (package / 'extension').mkdir(parents=True)
         (package / 'assets').mkdir()
@@ -124,7 +127,7 @@ export default function(pi) {
 }
 ''')
         (authority / 'suites.json').write_text(json.dumps({'suites': [{'id': 'selected', 'name': 'Selected',
-            'agents': ['pi'], 'skills': ['selected skill'], 'extensions': {'pi': ['selected package/extension/probe.ts']},
+            'agents': ['pi'], 'skills': {'omp': [], 'pi': ['selected skill']}, 'extensions': {'pi': ['selected package/extension/probe.ts']},
             'pi': {'codemode': 'on'}}]}))
         (self.root / 'paths.toml').write_text('[roots]\n')
         self.source_bytes = {p: p.read_bytes() for directory in [skill, package] for p in directory.rglob('*') if p.is_file()}
@@ -169,7 +172,8 @@ export default function(pi) {
             'prompt': 'Run the owned smoke probes.', 'suite': 'selected'})['tasks'][0]
         self.http('/api/zones', {'id': 'owned', 'path': str(self.root / 'zone')})
         preview = self.http('/api/chats/preview', {'zone': 'owned', 'taskId': task['id']})
-        case = {'requests': [], 'passed': False}
+        case = {'requests': [], 'passed': False,
+            'skillFile': str(self.root / 'declarations with spaces' / 'selected skill' / 'SKILL.md')}
         self.evidence['cases'].append(case)
         self.model.case = case
         launch = self.http('/api/chats', {'zone': 'owned', 'taskId': task['id'], 'chatId': preview['chatId'],

@@ -3,12 +3,12 @@ import { suiteRequest, type Suite, type SuiteList } from './suiteApi'
 import './suites.css'
 
 type Draft = Omit<Suite, 'skills' | 'extensions' | 'prompts' | 'lsp'> & {
-  skills: string; extensions: Record<'omp' | 'pi', string>; prompts: string; lsp: string
+  skills: Record<'omp' | 'pi', string>; extensions: Record<'omp' | 'pi', string>; prompts: string; lsp: string
 }
 function draftFrom(suite: Suite): Draft {
-  return { ...suite, skills: suite.skills.join('\n'), extensions: { omp: (suite.extensions.omp ?? []).join('\n'), pi: (suite.extensions.pi ?? []).join('\n') }, prompts: suite.prompts.join('\n'), lsp: JSON.stringify(suite.lsp, null, 2) }
+  return { ...suite, skills: { omp: (suite.skills.omp ?? []).join('\n'), pi: (suite.skills.pi ?? []).join('\n') }, extensions: { omp: (suite.extensions.omp ?? []).join('\n'), pi: (suite.extensions.pi ?? []).join('\n') }, prompts: suite.prompts.join('\n'), lsp: JSON.stringify(suite.lsp, null, 2) }
 }
-const emptySuite: Suite = { id: '', name: '', agents: ['omp'], skills: [], extensions: {}, prompts: [], lsp: {}, mcp: [] }
+const emptySuite: Suite = { id: '', name: '', agents: ['omp'], skills: {}, extensions: {}, prompts: [], lsp: {}, mcp: [] }
 const lines = (text: string) => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
@@ -58,7 +58,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
       if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
       suite = {
         ...draft,
-        skills: lines(draft.skills),
+        skills: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.skills[agent]))]]).filter(([, paths]) => paths.length > 0)),
         extensions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.extensions[agent]))]]).filter(([, paths]) => paths.length > 0)),
         prompts: lines(draft.prompts),
         lsp: lsp as Record<string, unknown>,
@@ -111,7 +111,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
         {data === null ? <p>{error ? '未能读取 Suite，请重新读取。' : '正在读取 Suite…'}</p> : data.suites.length === 0 ? <p>尚未定义 Suite</p> : data.suites.map(suite =>
           <button key={suite.id} type="button" disabled={busy} aria-label={`${suite.name} · ${suite.id}`} aria-pressed={editing === suite.id} onClick={() => open(suite)}>
             <span className="suites-list-name">{suite.name}</span><span className="suites-list-id">{suite.id}</span>
-            <span className="suites-list-meta">{suite.agents.map(agent => agent.toUpperCase()).join(' / ')}<span>{suite.skills.length} Skills · {suite.mcp.length} MCP</span></span>
+            <span className="suites-list-meta">{suite.agents.map(agent => agent.toUpperCase()).join(' / ')}<span>{(suite.skills.omp?.length ?? 0) + (suite.skills.pi?.length ?? 0)} 技能来源 · {suite.mcp.length} MCP</span></span>
           </button>)}
       </section>
       {!draft && <section className="suites-empty" aria-label="编辑指引"><h3>选择一个场景工具集</h3><p>查看和编辑技能、宿主扩展、提示词模板及语言服务声明。</p><dl><div><dt>OMP</dt><dd>技能、扩展、LSP 与集中 MCP</dd></div><div><dt>Pi</dt><dd>技能、扩展、提示词模板与集中 MCP</dd></div></dl><p className="scope-note">选择左侧工具集，或创建 Suite。保存的是资源声明，不代表资源已经运行。</p></section>}
@@ -138,17 +138,22 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </section>
           <section className="suites-section" aria-label="资源路径"><h3>资源路径</h3>
           <div className="suites-field-grid">
-          {(['skills', 'prompts'] as const).map((key, index) => <div key={key}>
-            <label htmlFor={`suite-${key}`}>{['Skills（每行一个路径）', 'Prompt templates（每行一个路径）'][index]}</label>
-            <textarea id={`suite-${key}`} className="zone-form__input" rows={3} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
+          {draft.agents.map(agent => <div key={`skills-${agent}`}>
+            <label htmlFor={`suite-skills-${agent}`}>{agent === 'omp' ? 'OMP 技能集合目录（每行一个路径）' : 'Pi 单技能目录（每行一个路径）'}</label>
+            <textarea id={`suite-skills-${agent}`} className="zone-form__input" rows={3} aria-describedby={`suite-skills-note-${agent}`} value={draft.skills[agent]} onChange={event => setDraft({ ...draft, skills: { ...draft.skills, [agent]: event.target.value } })} />
+            <p className="scope-note" id={`suite-skills-note-${agent}`}>{agent === 'omp' ? '填写技能集合的父目录：全选直接子目录中含 SKILL.md 的技能，不递归，也不加载父目录自身。每次启动按所选集合生成技能白名单，排除未选中的默认、托管或插件技能；原生发现仍可能扫描默认目录。留空表示禁用技能。' : '每行填写一个直接含 SKILL.md 的单技能根目录，不填写技能集合父目录。仅加载指定技能；留空表示不加载技能。'}路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的技能同名会列出路径并报错。</p>
           </div>)}
+          <div>
+            <label htmlFor="suite-prompts">Prompt templates（每行一个路径）</label>
+            <textarea id="suite-prompts" className="zone-form__input" rows={3} value={draft.prompts} onChange={event => setDraft({ ...draft, prompts: event.target.value })} />
+          </div>
           {draft.agents.map(agent => <div key={agent} className="suites-extensions">
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
             <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} aria-describedby={`suite-extensions-note-${agent}`} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
             <p className="scope-note" id={`suite-extensions-note-${agent}`}>{agent === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生扩展目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p>
           </div>)}
           </div>
-          <p className="scope-note">Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>
+          <p className="scope-note">未选择 Suite 时保留宿主原生技能行为。Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>
           </section>
           <section className="suites-section" aria-label="语言服务"><h3>语言服务</h3>
           <label htmlFor="suite-lsp">LSP 声明（JSON）</label>

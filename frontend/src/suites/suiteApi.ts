@@ -2,7 +2,7 @@ export type Suite = {
   id: string
   name: string
   agents: ('omp' | 'pi')[]
-  skills: string[]
+  skills: Partial<Record<'omp' | 'pi', string[]>>
   extensions: Partial<Record<'omp' | 'pi', string[]>>
   prompts: string[]
   lsp: Record<string, unknown>
@@ -27,7 +27,13 @@ export async function suiteRequest(method = 'GET', id?: string, suite?: Suite): 
   const result = await response.json()
   if (!response.ok) throw new Error(typeof result.message === 'string' ? result.message : 'Suite 请求失败。')
   if (result === null || typeof result !== 'object'
-    || !Array.isArray(result.suites) || !Array.isArray(result.mcp)
+    || !Array.isArray(result.suites) || !result.suites.every((suite: unknown) => {
+      if (suite === null || typeof suite !== 'object') return false
+      const skills = (suite as Record<string, unknown>).skills
+      return skills !== null && typeof skills === 'object' && !Array.isArray(skills)
+        && Object.entries(skills).every(([host, paths]) => (host === 'omp' || host === 'pi')
+          && Array.isArray(paths) && paths.every(path => typeof path === 'string'))
+    }) || !Array.isArray(result.mcp)
     || Object.keys(result).some(key => !['suites', 'mcp', 'fixedExtensions'].includes(key))
     || !Array.isArray(result.fixedExtensions) || !result.fixedExtensions.every((extension: unknown) => {
       if (extension === null || typeof extension !== 'object') return false

@@ -146,7 +146,7 @@ async fn pi_mode_is_explicit_and_applicable_through_public_http() {
     let root = TempDir::new("suite explicit pi mode");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let literal = json!({"id":"pi-tools","name":"Pi tools","agents":["pi"],"skills":[],"extensions":{},"prompts":[],"lsp":{},"mcp":[],"pi":{"codemode":"only"}});
+    let literal = json!({"id":"pi-tools","name":"Pi tools","agents":["pi"],"skills":{"omp":[],"pi":[]},"extensions":{},"prompts":[],"lsp":{},"mcp":[],"pi":{"codemode":"only"}});
     let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&literal.to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let persisted = fs::read(&config.suites.definition_file).unwrap();
@@ -182,6 +182,38 @@ async fn pi_mode_is_explicit_and_applicable_through_public_http() {
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(&config.suites.definition_file).unwrap()).unwrap(), json!({"suites":[on]}));
 }
 
+#[tokio::test]
+async fn skills_accept_only_host_paths_and_reject_invalid_writes_without_persistence() {
+    let root = TempDir::new("host keyed skill paths");
+    let config = config(&root);
+    let server = TestServer::start(&config).await;
+    let valid = json!({"id":"selected","name":"Selected","agents":["omp"],
+        "skills":{"omp":["parents with spaces"],"pi":["individual skill"]}});
+    let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&valid.to_string())).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let persisted = fs::read(&config.suites.definition_file).unwrap();
+    for skills in [json!([]), json!(["legacy root"]), json!({"other":[]}),
+        json!({"omp":[""]}), json!({"pi":[" \t "]})] {
+        let mut invalid = valid.clone();
+        invalid["skills"] = skills;
+        for (method, path) in [("POST", "/api/suites"), ("PUT", "/api/suites/selected")] {
+            let reply = request_json_over_tcp(server.addr(), method, path, Some(&invalid.to_string())).await;
+            assert_eq!(reply.status, 400, "{}", reply.body);
+            assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
+        }
+    }
+    for skills in [json!({}), json!({"omp":["parent"]}), json!({"pi":["root"]})] {
+        let mut input = valid.clone();
+        input["skills"] = skills.clone();
+        let reply = request_json_over_tcp(server.addr(), "PUT", "/api/suites/selected", Some(&input.to_string())).await;
+        assert_eq!(reply.status, 200, "{}", reply.body);
+        let reply = get_over_tcp(server.addr(), "/api/suites/selected").await;
+        let actual: Value = serde_json::from_str(&reply.body).unwrap();
+        assert_eq!(actual["suite"]["skills"]["omp"], skills.get("omp").cloned().unwrap_or(json!([])));
+        assert_eq!(actual["suite"]["skills"]["pi"], skills.get("pi").cloned().unwrap_or(json!([])));
+    }
+}
+
 // P4: an external invalid authority is a visible error, not a reason to return
 // cached definitions or overwrite the user's bytes from an independent copy.
 #[tokio::test]
@@ -189,7 +221,7 @@ async fn external_authority_damage_is_not_hidden_or_overwritten() {
     let root = TempDir::new("suite external authority damage");
     let config = config(&root);
     fs::create_dir_all(config.suites.definition_file.parent().unwrap()).unwrap();
-    let literal = "{\"suites\":[{\"id\":\"external\",\"name\":\"Independent definition\",\"agents\":[\"omp\"],\"skills\":[],\"extensions\":{},\"prompts\":[],\"lsp\":{},\"mcp\":[]}]}";
+    let literal = "{\"suites\":[{\"id\":\"external\",\"name\":\"Independent definition\",\"agents\":[\"omp\"],\"skills\":{\"omp\":[],\"pi\":[]},\"extensions\":{},\"prompts\":[],\"lsp\":{},\"mcp\":[]}]}";
     fs::write(&config.suites.definition_file, literal).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(get_over_tcp(server.addr(), "/api/suites/external").await.status, 200);

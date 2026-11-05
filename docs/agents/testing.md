@@ -67,7 +67,7 @@ Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩
 
 ## 首批 Suite 原生发现与实现命令
 
-`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 18／探索 Pi 18／实现 OMP 11、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 仅检查 S3 外来后端拒绝，不等于 S4 通过。缺链接权限、宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
+`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 仅检查 S3 外来后端拒绝，不等于 S4 通过。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
 
 ## OMP Suite 四语言 LSP 真实验收
 
@@ -92,50 +92,31 @@ python scripts/test-real-herdr-suite-lsp.py `
 
 ## Suite 装配发布与链接安全验收
 
-`backend/tests/suite_assembly.rs` 拥有 P34/P36 和 P35 的装配发布部分，入口仅为既有公开 Task／Chat HTTP 与独占部署目录（S2/S3），不增加测试专用产品 API。常规 `cargo test --manifest-path backend/Cargo.toml --test suite_assembly` 检查资源消失、Windows 独占读锁造成的真实不可读失败、未拥有文件保留，以及同 Suite／不同 Suite 的两套独立 LSP 与 MCP 配置哨兵；核对 MCP 原生资源包与技能、LSP 共属本次装配树，返回的 `--extension` 指向该包。外部 Herdr 夹具在启动效果处受控阻塞；第二个启动必须仍能取得完整产物，随后重读两套最终清单、释放门闩并等待公开完成状态，确保文件协调不跨外部效果。观察失败也先释放门闩并等待已接受的所属命令，原始错误与清理错误分开保留。这些夹具不是原生 agent 消费证据；P35 并发真实启动消费由独立专项负责。
+`backend/tests/suite_assembly.rs` 拥有 P34/P36 和 P35 的装配发布部分，入口仅为既有公开 Task／Chat HTTP 与独占部署目录（S2/S3），不增加测试专用产品 API。常规 `cargo test --manifest-path backend/Cargo.toml --test suite_assembly` 检查资源消失、Windows 独占读锁造成的真实不可读失败、未拥有文件保留，以及同 Suite／不同 Suite 的两套独立 LSP 与 MCP 配置哨兵；核对 MCP 原生资源包与技能配置、LSP 共属本次装配树，技能源路径保持在原位置，返回的 `--extension` 指向该包。外部 Herdr 夹具在启动效果处受控阻塞；第二个启动必须仍能取得完整产物，随后重读两套最终清单、释放门闩并等待公开完成状态，确保文件协调不跨外部效果。观察失败也先释放门闩并等待已接受的所属命令，原始错误与清理错误分开保留。这些夹具不是原生 agent 消费证据；P35 并发真实启动消费由独立专项负责。
 
-以下两例是**真正的、默认 ignored 的专项**，常规套件的 ignored 不等于通过。显式开关只能授权尝试测试，不修改操作系统权限。第二盘必须已经可写且与系统临时目录盘符不同；测试只在其根目录独占新建自己的临时子目录，清理只删除自己创建的目录。不得指向用户资源目录来代替测试数据。
+非空技能的原路径成功发布属于默认回归，不依赖 `HERDR_BOT_MANUAL_SYMLINKS`、第二盘或 Windows 链接权限，也不能标为 ignored 后宣称完整通过。验证同 Suite／不同 Suite 并发启动中的独立源技能正文、相对资产和配置，失败只清理本次拥有的配置产物，保留源资源、旧产物及未拥有文件。
 
-```powershell
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$previousDrive = $env:HERDR_BOT_SYMLINK_SECOND_DRIVE
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-$env:HERDR_BOT_SYMLINK_SECOND_DRIVE = 'E:/' # 换成已有的第二盘根目录
-try {
-  cargo test --manifest-path backend/Cargo.toml --test suite_assembly -- --ignored --nocapture
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-  $env:HERDR_BOT_SYMLINK_SECOND_DRIVE = $previousDrive
-}
-```
-
-`windows_true_file_directory_and_cross_volume_links_preserve_targets_on_failed_rebuild` 独立尝试跨盘文件真符号链接及目录真符号链接，再通过产品启动生成目录链接，使用 Windows 文件类型核对（junction 不算）。成功发布后增加非法 Windows 链接名触发后续装配失败；核对旧完整产物链接、真实源文件的独立哈希与未拥有文件均不变，本次失败树已经移除，无新增 Herdr 调用。`windows_same_and_different_suites_publish_complete_linked_resource_sets` 在同 Suite 和不同 Suite 的外部门闩竞争中，观察两套独立技能正文、直接扩展源入口／资产和 LSP 哨兵，防止只验证参数或空技能配置冒充全资源发布一致性。
-
-缺 Windows 权限（如 `os error 1314`）、第二盘或任一证据时专项非零失败并保留未验证结论；不自动提权、不改开发者模式、不创建 junction、不复制替代，也不以常规成功抵消。输出原始断言／OS 错误，成功时打印真实链接路径、跨盘事实及独立内容哈希；输出应保留在运行日志中。真实 Herdr／安装版 OMP／Pi 消费不由这些受控启动夹具宣称通过。完整后端交付仍运行 `node scripts/test-backend.mjs`；只有后端与文档修改，不要求前端构建或浏览器作为本票的替代证据。
+受控启动夹具不证明原生 agent 消费；完整交付仍需下述真实 OMP／Pi 场景，并记录实际已安装宿主及 OS 进程身份。OMP 使用现有全局安装，不部署新宿主构建；原生最终技能列表与真实消费不可由配置文件存在推断。完整后端回归使用 `node scripts/test-backend.mjs`。
 
 ## OMP Suite 技能真实消费验收
 
-`python scripts/test-real-herdr-suite-skills.py` 专项覆盖 P5/P6/P7/P8/P10/P15 的 OMP 技能场景，必须先构建当前 worktree 后端。它经公开 Task／Chat HTTP → 真实 Herdr → PATH 上已安装 OMP 的正常交付入口运行，不直接调用源码 CLI、SDK 或替代 MCP manager。依赖均须预先具备，runner 不安装程序、不改 PATH、不提权、不修改开发者模式。只声明依赖包路径不会替换真正启动的 `omp`，runner 会记录 PATH launcher、包入口和后端哈希。
+`python scripts/test-real-herdr-suite-skills.py` 专项覆盖 P5/P6/P7/P8/P10/P15 的 OMP 技能场景，必须先构建当前 worktree 的 herdr-bot 后端。它经公开 Task／Chat HTTP → 真实 Herdr → **现有全局安装的 OMP** 正常交付入口运行，不直接调用源码 CLI、SDK 或替代 MCP manager。依赖均须预先具备，runner 不改全局安装或 PATH、不提权、不修改开发者模式；不修改 OMP 源码、不构建或部署新的宿主。`--omp-package` 只声明已有安装包，不替换实际入口。Windows PTY 会从注册表重建 PATH，单独给父进程添加 PATH 前缀或放置另一份构建产物不能可靠指定宿主。runner 保留 OS 实际进程的 ExecutablePath 与 CommandLine，结合原有安装入口／包身份及实际技能消费核对运行身份；版本或文件哈希本身不能证明 Herdr 实际运行了所声明的安装。
+
+验收检查现有 `--config` 对 `skills` 的高优先级局部覆盖：每次启动从所选集合重新取得有效直接子技能，生成最终名称 `includeSkills` 白名单，七个已有 `enable*` 来源开关均为 `false`、`ignoredSkills` 为 `[]`，有效名称为空时 `enabled: false`。核对原生最终可用列表及真实源路径，而不是要求默认目录完全未被扫描；不得把扫描行为与最终技能列表隔离混为一谈。原生 MCP、LSP、agent、扩展和项目指令不因技能覆盖而关闭。
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/test-real-herdr-suite-skills.py `
-    --herdr 'C:/installed/herdr/herdr.exe' `
-    --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
-    --backend 'backend/target/debug/herdr-bot.exe'
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/test-real-herdr-suite-skills.py `
+  --herdr 'C:/installed/herdr/herdr.exe' `
+  --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+  --backend 'backend/target/debug/herdr-bot.exe'
 ```
 
-默认 `--scenario selected` 创建独立根引用／声明相对路径／含空格的两个既有技能目录，在两个不同 Chat cwd 中实际 `read skill://...` 读取技能正文、scripts、references 与资产；第二次发起前向来源集合新增未选技能。用户／项目默认技能及同名错误正文是独立哨兵。受控回环模型检查原生最终技能列表，只要求真实 read／write 工具执行预定动作；通过实际原生 `xd://mcp__native_probe` 调用取得字面结果，并核对 MCP 服务器记录的 `tools/call`。同次还观察 Suite 本地模板未注入、原生 `AGENTS.md` 指令仍在。这里只证明协议与资源消费机制，不证明真实模型自主遵循业务职责。
+默认 `--scenario selected` 创建独立根引用／声明相对路径／含空格的技能集合及名称含 `*` 的技能，在两个不同 Chat cwd 中实际 `read skill://...` 读取技能正文、scripts、references 与资产；第二次发起前向显式来源集合新增技能，验证后续发现将其纳入；未声明目录中的技能不参与。用户／项目／managed 默认技能、已加载插件的同名错误正文及可被错误通配符匹配的技能均为独立哨兵；原生最终列表必须排除它们。第二次启动还核对第一次的配置未被改写。受控回环模型检查原生最终技能列表，只要求真实 read／write 工具执行预定动作；通过实际原生 `xd://mcp__native_probe` 调用取得字面结果，并核对 MCP 服务器记录的 `tools/call`。同次还观察 Suite 本地模板未注入、原生 `AGENTS.md` 指令仍在。这里只证明协议与资源消费机制，不证明真实模型自主遵循业务职责。
 
-runner 隔离 HOME／APPDATA／XDG、agent 配置与会话、命名 Herdr server、动态回环模型／后端和源／生成目录，不读取用户凭据或已有 Chat；静态页面使用测试拥有的占位文件，因为本入口不承担 S1 页面验收。正常及失败路径持续消费服务日志、停止所属进程，持有真实 MCP 进程句柄确认退出；证据 JSON 分开保留原始错误和清理错误。输出指向独占 Temp 的 `evidence.json`，保留实际请求／响应、公开入口结果、MCP wire、来源 revision／diff／哈希、产物链接及原始日志，不在仓库生成验收报告。
+runner 隔离 HOME／APPDATA／XDG、agent 配置与会话、命名 Herdr server、动态回环模型／后端和源／生成目录，不读取用户凭据或已有 Chat；静态页面使用测试拥有的占位文件，因为本入口不承担 S1 页面验收。正常及失败路径持续消费服务日志、停止所属进程，持有真实 MCP 进程句柄确认退出；证据 JSON 分开保留原始错误和清理错误。输出指向独占 Temp 的 `evidence.json`，保留实际请求／响应、公开入口结果、MCP wire、来源 revision／diff／哈希、源路径、配置产物及原始日志，不在仓库生成验收报告。
 
-真实目录符号链接需要明确开关及 Windows 已有权限。缺权限时必须非零并明确记录（例如 `os error 1314`），不以 junction、复制、skip 或参数检查冒充通过。`--scenario empty` 是独立的较窄场景：无需建链接，验证明确空技能 Suite 的技能过滤、原生 MCP 实际调用、模板省略及原生指令保留，**不能**替代 selected 场景或证明非空技能／资产消费。缺任何真实依赖或 selected 权限，完整专项仍是阻塞／未验证。
+技能直接引用源路径，不需要链接权限或手动 opt-in。必须在不能创建符号链接的普通 Windows 环境实际消费非空技能及相对资源，参数检查不能代替成功证据。`--scenario empty` 是独立的较窄场景：无需建链接，验证明确空技能 Suite 的技能过滤、原生 MCP 实际调用、模板省略及原生指令保留，**不能**替代 selected 场景或证明非空技能／资产消费。缺任何真实依赖或必要宿主能力，完整专项仍是阻塞／未验证。
 
 公开启动的受控失败回归为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_skills`，使用真实 Windows 独占共享锁制造预览后不可读资源，以及普通文件阻塞生成目录；检查 HTTP 明确拒绝且 Herdr 无调用。这些负例不需要 symlink 权限，不替代 S4 成功证据。
 
@@ -185,26 +166,20 @@ P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --te
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/test-real-herdr-suite-pi.py `
-    --herdr 'C:/installed/herdr/herdr.exe' `
-    --pi-package 'D:/node_modules/@earendil-works/pi-coding-agent' `
-    --toolkit 'D:/installed/my-agent-toolkit' `
-    --backend 'backend/target/debug/herdr-bot.exe'
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/test-real-herdr-suite-pi.py `
+  --herdr 'C:/installed/herdr/herdr.exe' `
+  --pi-package 'D:/node_modules/@earendil-works/pi-coding-agent' `
+  --toolkit 'D:/installed/my-agent-toolkit' `
+  --backend 'backend/target/debug/herdr-bot.exe'
 ```
 
 独占临时目录隔离 HOME／APPDATA／XDG、Pi 状态、后端配置、命名 Herdr server 和动态回环端口；不读取用户凭据或会话。共享声明相对路径含空格，扩展包 manifest 指定非 index 入口。受控回环模型请求 Pi 真实 read 消费技能正文，并调用真实包工具读取相对 JSON 资产，独立字面结果分别为 `PI-SKILL-BODY-731`、`PI-PACKAGE-ASSET-482:64`（19×3+7）。这只证明启动接线与消费机制，不证明真实模型自主遵循。
 
-持续消费进程输出，正常及失败均停止所属 Herdr/server/子进程，原始错误与清理错误分别写独占 Temp 的 `evidence.json`；记录源码 revision／diff／哈希、二进制和安装入口哈希、实际 HTTP／模型请求及 terminal。缺真符号链接权限（如 `os error 1314`）、依赖／flag 未交付、实际资源未消费或清理失败均非零，不 skip、不退化为直读源码加载，不把产物／参数检查算作 S4 通过。
+持续消费进程输出，正常及失败均停止所属 Herdr/server/子进程，原始错误与清理错误分别写独占 Temp 的 `evidence.json`；记录源码 revision／diff／哈希、二进制和安装入口哈希、实际 HTTP／模型请求及 terminal。依赖／flag 未交付、实际资源未消费或清理失败均非零，不 skip、不退化为直读源码加载，不把产物／参数检查算作 S4 通过。
 
 ## Pi Suite 资源与原生 MCP 跨仓验收
 
-完整 S2/S3/S4 矩阵入口为 `python scripts/accept-suite-pi-resources.py`，显式接收两个 worktree、当前后端、隔离 paths 文件、场景和独占证据目录。覆盖集中根／相对路径／空格／不同 cwd、真实技能与扩展依赖、builtin 与 Suite MCP 同次调用、文件优先／等价／禁用／空清单，以及配置／装配拒绝和原生不可达状态。参见 [Pi 资源验收](../pi-suite-resource-acceptance.md) 的依赖、独立预期和完整复跑命令。缺真实依赖、真链接权限或清理失败非零；受控模型只验证消费机制，不证明模型自主质量，全局套件不能替代逐场景证据。
+完整 S2/S3/S4 矩阵入口为 `python scripts/accept-suite-pi-resources.py`，显式接收两个 worktree、当前后端、隔离 paths 文件、场景和独占证据目录。覆盖集中根／相对路径／空格／不同 cwd、真实技能与扩展依赖、builtin 与 Suite MCP 同次调用、文件优先／等价／禁用／空清单，以及配置／装配拒绝和原生不可达状态。参见 [Pi 资源验收](../pi-suite-resource-acceptance.md) 的依赖、独立预期和完整复跑命令。缺真实依赖、宿主能力或清理失败非零；受控模型只验证消费机制，不证明模型自主质量，全局套件不能替代逐场景证据。
 
 ## 真实 Herdr 自动关闭验收（P22）
 

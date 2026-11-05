@@ -109,8 +109,8 @@ fn approved_ids_migrate_without_rebuilding_tasks_or_changing_references() {
     assert_eq!(fs::read_to_string(root.path().join("tasks.json")).unwrap(),edited);
 }
 
-// P39/P43: the release is independently compared with the approved 18/11
-// declaration, not whatever skills happen to be found in source directories.
+// P39/P43: compare explicit OMP parent declarations and Pi individual roots
+// with independent release expectations, not runtime-discovered skill counts.
 #[tokio::test]
 async fn released_suites_expose_only_the_approved_resources() {
     let root = fixture();
@@ -125,16 +125,37 @@ async fn released_suites_expose_only_the_approved_resources() {
     let result: Value = serde_json::from_str(&response.body).unwrap();
     let suites = result["options"]["suites"].as_array().unwrap();
     assert_eq!(suites.len(),2);
-    for (id, expected_names, expected_agents) in [
-        ("codebase-exploration",vec!["grill-with-docs","teach","code-review","wayfinder","writing-for-agents","improve-codebase-architecture","expert-translate","grilling","domain-modeling","codebase-design","research","prototype","lighthouse","backtracer","setup-matt-pocock-skills","to-contract","to-spec","to-tickets"],json!(["omp","pi"])),
-        ("code-implementation",vec!["tdd","to-tickets","retro","resolving-merge-conflicts","writing-for-agents","codebase-design","code-review","setup-matt-pocock-skills","to-contract","to-spec","domain-modeling"],json!(["omp"])),
+    for (id, expected_agents) in [
+        ("codebase-exploration",json!(["omp","pi"])),
+        ("code-implementation",json!(["omp"])),
     ] {
         let suite = suites.iter().find(|suite| suite["id"] == id).unwrap();
-        let names: Vec<_> = suite["skills"].as_array().unwrap().iter().map(|path| {
-            let path = path.as_str().unwrap();
-            if path == "${roots.expert_translate}" { "expert-translate" } else { path.rsplit('/').next().unwrap() }
-        }).collect();
-        assert_eq!(names,expected_names);
+        let expected_omp = if id == "codebase-exploration" {
+            json!(["${roots.matt_pocock_skills}/engineering", "${roots.matt_pocock_skills}/productivity", "${roots.wayfinder_skills}", "${roots.expert_translate}/.."])
+        } else {
+            json!(["${roots.wayfinder_skills}", "${roots.matt_pocock_skills}/engineering", "${roots.matt_pocock_skills}/productivity"])
+        };
+        assert_eq!(suite["skills"]["omp"], expected_omp);
+        let expected_pi = if id == "codebase-exploration" {
+            json!([
+                "${roots.matt_pocock_skills}/engineering/grill-with-docs",
+                "${roots.matt_pocock_skills}/productivity/teach",
+                "${roots.wayfinder_skills}/code-review",
+                "${roots.wayfinder_skills}/wayfinder",
+                "${roots.matt_pocock_skills}/productivity/writing-for-agents",
+                "${roots.matt_pocock_skills}/engineering/improve-codebase-architecture",
+                "${roots.expert_translate}",
+                "${roots.matt_pocock_skills}/productivity/grilling",
+                "${roots.matt_pocock_skills}/engineering/domain-modeling",
+                "${roots.matt_pocock_skills}/engineering/codebase-design",
+                "${roots.matt_pocock_skills}/engineering/research",
+                "${roots.wayfinder_skills}/prototype", "${roots.wayfinder_skills}/lighthouse",
+                "${roots.wayfinder_skills}/backtracer", "${roots.wayfinder_skills}/setup-matt-pocock-skills",
+                "${roots.wayfinder_skills}/to-contract", "${roots.wayfinder_skills}/to-spec",
+                "${roots.wayfinder_skills}/to-tickets"
+            ])
+        } else { json!([]) };
+        assert_eq!(suite["skills"]["pi"], expected_pi);
         assert_eq!(suite["agents"],expected_agents);
         assert_eq!(suite["mcp"],json!(["codebase-memory-mcp"]));
         assert_eq!(suite["prompts"],json!([]));

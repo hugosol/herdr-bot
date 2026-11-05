@@ -45,24 +45,17 @@ arguments must match what the installed PATH launchers actually load. There is
 no fallback to another worktree, installed toolkit or user deployment.
 
 ```powershell
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/accept-suite-pi-resources.py `
-    --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
-    --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
-    --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/accept-suite-pi-resources.py `
+  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+  --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
+  --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
 ```
 
 `--evidence-dir` must not already exist. `--scenario` selects one named scenario
 for narrower feedback; only `all` attempts the complete owned matrix. No scenario
 is silently skipped, and failures do not prevent independent scenarios from
-being attempted. True symlink permission is needed for selected skills only;
-extensions load directly and require no link permission. Missing dependencies,
-Windows skill-symlink permission (including OS error 1314), startup failure,
+being attempted. Selected skills and extensions load directly from their source
+paths without creating symlinks. Missing dependencies, startup failure,
 mismatched results and cleanup failure return
 nonzero. The runner does not install programs, elevate privileges, modify PATH,
 read real authentication, enable LAN/mDNS, run real shutdown or operate existing

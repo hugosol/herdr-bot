@@ -43,7 +43,7 @@ class Model(http.server.BaseHTTPRequestHandler):
                 system = '\n'.join(str(m.get('content', '')) for m in messages if m['role'] in ['system', 'developer'])
                 tables = re.findall(r'<skills>\s*(.*?)</skills>', system, re.S)
                 names = re.findall(r'^- ([^:]+):', '\n'.join(tables), re.M)
-                expected = [] if case['scenario'] == 'empty' else ['selected-relative', 'selected-root']
+                expected = case['expectedNames']
                 require(sorted(names) == expected, ('Exact native skill set', names, system))
                 require('NATIVE-INSTRUCTIONS-KEEP-732' in system, 'Native project instructions disappeared')
                 require('SUITE-TEMPLATE-MUST-NOT-INJECT-684' not in json.dumps(messages), 'Suite template was injected')
@@ -52,7 +52,13 @@ class Model(http.server.BaseHTTPRequestHandler):
                         ('Native mounted MCP tool must coexist with skill filtering', tools, system))
                 require('read' in tools, ('Native read tool missing', tools))
                 paths = [] if case['scenario'] == 'empty' else ['skill://selected-root', 'skill://selected-root/scripts/probe.py',
-                            'skill://selected-root/assets/payload.txt', 'skill://selected-relative/references/note.md']
+                            'skill://selected-root/assets/payload.txt', 'skill://selected-relative/references/note.md',
+                            'skill://literal*name']
+                if case['scenario'] == 'selected':
+                    paths += [str(Path(root) / 'SKILL.md') for root in case['originalSkillRoots']]
+                    if 'new-source-skill' in expected:
+                        paths.append('skill://new-source-skill')
+                case['consumedResourcePaths'] = paths
                 calls = [dict(id=f'read{i}', type='function', function=dict(name='read', arguments=json.dumps({'i':'Reading selected resource', 'path': path})))
                          for i, path in enumerate(paths)]
                 calls.append(dict(id='native-call', type='function', function=dict(name='write', arguments=json.dumps({
@@ -63,7 +69,9 @@ class Model(http.server.BaseHTTPRequestHandler):
                 outputs = '\n'.join(str(m.get('content', '')) for m in messages if m['role'] == 'tool')
                 expected_outputs = ['NATIVE-MCP-CALLED-361']
                 if case['scenario'] == 'selected':
-                    expected_outputs += ['ROOT-SKILL-BODY-119', 'print("SCRIPT-READ-947")', 'ASSET-BYTES-276', 'REFERENCE-BYTES-508']
+                    expected_outputs += ['ROOT-SKILL-BODY-119', 'print("SCRIPT-READ-947")', 'ASSET-BYTES-276', 'REFERENCE-BYTES-508', 'LITERAL-GLOB-SKILL-913']
+                    if 'new-source-skill' in case['expectedNames']:
+                        expected_outputs.append('new-source-skill')
                 for literal in expected_outputs:
                     require(literal in outputs, ('Real resource/tool result missing', literal, outputs))
                 case['passed'] = True
@@ -94,11 +102,11 @@ class Acceptance(support['Acceptance']):
 
     def prepare(self):
         require(sys.platform == 'win32', 'This runner requires Windows real Herdr and process handles')
-        require(self.args.scenario == 'empty' or os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1',
-                'Set HERDR_BOT_MANUAL_SYMLINKS=1 explicitly to exercise real Windows directory symlinks; no elevation or fallback occurs')
-        for path in [self.args.herdr, self.args.backend, self.args.omp_package / 'dist/cli.js']:
+        native_entry = self.args.omp_package / 'dist/cli.js'
+        for path in [self.args.herdr, self.args.backend, native_entry]:
             require(path.is_file(), ('Missing real dependency', str(path)))
-        require(shutil.which('omp') is not None, 'Installed omp must already be on PATH; runner never changes PATH')
+        require(shutil.which('omp') is not None, 'Installed omp must already be on PATH; runner never changes global PATH')
+        launcher = Path(shutil.which('omp'))
         self.evidence['source'] = {'repo': str(REPO), 'revision': self.command(['git', '-C', REPO, 'rev-parse', 'HEAD']),
                                    'diff': self.command(['git', '-C', REPO, 'diff', '--', 'backend', 'scripts', 'docs', 'herdr-bot.toml'])}
         sources = ['backend/src/suites/skills.rs', 'backend/src/suites.rs', 'backend/src/files.rs',
@@ -107,13 +115,13 @@ class Acceptance(support['Acceptance']):
             'backend/src/runs.rs', 'backend/src/runs/startup.rs', 'backend/Cargo.lock',
             'scripts/test-real-herdr-suite-skills.py']
         self.evidence['source']['sha256'] = {name:hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in sources}
-        launcher = Path(shutil.which('omp'))
         launcher_text = launcher.read_text(encoding='utf-8').replace('\\', '/')
         require('@oh-my-pi/pi-coding-agent/dist/cli.js' in launcher_text,
                 ('PATH omp must launch the packaged dist CLI, not a source CLI or replacement', str(launcher)))
         self.evidence['executables'] = {str(path):hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in [self.args.backend, self.args.herdr, launcher, self.args.omp_package / 'dist/cli.js']}
-        self.evidence['ompPackage'] = json.loads((self.args.omp_package / 'package.json').read_text())['version']
+            for path in [self.args.backend, self.args.herdr, launcher, native_entry]}
+        if self.args.omp_package:
+            self.evidence['ompPackage'] = json.loads((self.args.omp_package / 'package.json').read_text())['version']
         self.model = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Model)
         threading.Thread(target=self.model.serve_forever, daemon=True).start()
         agent = self.root / 'agent'
@@ -136,15 +144,40 @@ class Acceptance(support['Acceptance']):
         (root_skill / 'assets/payload.txt').write_text('ASSET-BYTES-276\n')
         (relative_skill / 'SKILL.md').write_text('---\nname: selected-relative\ndescription: Relative-selected test skill\n---\nRelative body\n')
         (relative_skill / 'references/note.md').write_text('REFERENCE-BYTES-508\n')
-        self.expected_targets = {root_skill.resolve(), relative_skill.resolve()}
+        literal_skill = self.collection / 'literal glob skill'
+        literal_skill.mkdir()
+        (literal_skill / 'SKILL.md').write_text('---\nname: literal*name\ndescription: Literal glob name\n---\nLITERAL-GLOB-SKILL-913\n')
+        self.expected_targets = {root_skill.resolve(), relative_skill.resolve(), literal_skill.resolve()}
         self.source_bytes = {path: path.read_bytes() for source in self.expected_targets for path in source.rglob('*') if path.is_file()}
         (self.authority / 'template.md').write_text('SUITE-TEMPLATE-MUST-NOT-INJECT-684\n')
         (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':[] if self.args.scenario == 'empty' else ['${roots.owned_skills}/existing directory', 'relative skill directory'], 'prompts':['template.md']}]}))
+            'skills':{'omp': [] if self.args.scenario == 'empty' else ['${roots.owned_skills}', '.'], 'pi': []},
+            'extensions': {'omp': [str(self.root / 'native plugin with spaces' / 'extension.ts')]},
+            'prompts':['template.md']}]}))
         (self.root / 'paths.toml').write_text('[roots]\nowned_skills = ' + json.dumps(str(self.collection)) + '\n')
         # A native global default must NOT leak into the Suite skill set.
         self.sentinel(agent / 'skills/global-default', 'global-default')
         self.sentinel(agent / 'skills/shadow-default', 'selected-root')
+        self.sentinel(agent / 'managed-skills/managed-default', 'managed-default')
+        self.sentinel(agent / 'managed-skills/wildcard-leak', 'literalXname')
+        plugin = self.root / 'native plugin with spaces'
+        plugin.mkdir()
+        (plugin / 'package.json').write_text(json.dumps({'name': 'owned-sentinel-plugin',
+            'omp': {'extensions': ['./extension.ts']}}))
+        (plugin / 'extension.ts').write_text('export default function extension(pi) { pi.on("session_start", async () => { '
+            'await Bun.write(' + json.dumps(str(self.root / 'plugin-loaded.txt')) + ', "PLUGIN-LOADED-851"); }); }\n')
+        self.sentinel(plugin / 'skills/plugin-default', 'plugin-default')
+        self.sentinel(plugin / 'skills/shadow-selected', 'selected-root')
+        configured_skills = self.root / 'unselected custom skills'
+        self.sentinel(configured_skills / 'configured-default', 'configured-default')
+        self.sentinel(configured_skills / 'shadow-selected', 'selected-root')
+        with (agent / 'config.yml').open('a', encoding='utf-8') as config:
+            config.write('extensions: ' + json.dumps([str(plugin)]) + '\n')
+            config.write('skills: ' + json.dumps({'customDirectories': [str(configured_skills)],
+                'includeSkills': ['configured-default'], 'ignoredSkills': ['selected-root']}) + '\n')
+        self.evidence['excludedNativeSources'] = {
+            'user': str(agent / 'skills'), 'managed': str(agent / 'managed-skills'),
+            'plugin': str(plugin / 'skills'), 'pluginConfiguration': str(agent / 'config.yml')}
         mcp = self.root / 'native-mcp.cjs'
         mcp.write_text("""const fs = require('node:fs');
 const readline = require('node:readline');
@@ -220,10 +253,16 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         for index, zone in enumerate(self.zones):
             if index:
                 self.sentinel(self.collection / 'new source skill', 'new-source-skill')
-            case = {'scenario':self.args.scenario, 'cwd':str(zone), 'requests':[], 'passed':False}
+            names = [] if self.args.scenario == 'empty' else sorted(
+                ['literal*name', 'selected-relative', 'selected-root'] + (['new-source-skill'] if index else []))
+            case = {'scenario':self.args.scenario, 'cwd':str(zone), 'requests':[], 'passed':False,
+                    'expectedNames': names, 'sourceParents': [str(self.collection.resolve()), str(self.authority.resolve())],
+                    'originalSkillRoots': sorted(str(path) for path in self.expected_targets)}
             self.evidence['cases'].append(case)
             self.model.case = case
             self.http('/api/zones', {'id':f'owned-{index}', 'path':str(zone)})
+            generated = self.root / 'generated resources with spaces'
+            prior_configs = {path: path.read_bytes() for path in generated.rglob('omp-skills.json')}
             preview = self.http('/api/chats/preview', {'zone':f'owned-{index}', 'taskId':task_id})
             launch = self.http('/api/chats', {'zone':f'owned-{index}', 'taskId':task_id,
                 'chatId':preview['chatId'], 'input':'Read the selected resources and call the native MCP probe.'}, status=202)
@@ -231,6 +270,13 @@ readline.createInterface({input:process.stdin}).on('line', line => {
                 self.observe_mcp()
                 current = self.http('/api/chats/' + launch['id'])
                 case['latestCreation'] = current
+                if (current['stage'] == 'succeeded' or case.get('error')) and 'nativeProcesses' not in case:
+                    owned = str(self.root).replace("'", "''")
+                    script = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*" + owned +
+                        "*' } | Select-Object ProcessId,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress")
+                    observed = self.command(['powershell.exe', '-NoProfile', '-Command', script])
+                    processes = json.loads(observed or '[]')
+                    case['nativeProcesses'] = processes if isinstance(processes, list) else [processes]
                 require(current['stage'] != 'failed', current)
                 require(not case.get('error'), case.get('error'))
                 return current if case['passed'] and current['stage'] == 'succeeded' else None
@@ -248,11 +294,25 @@ readline.createInterface({input:process.stdin}).on('line', line => {
             require(any(x.get('method') == 'tools/call' for x in wire), 'No real MCP tools/call')
             case['mcpWire'] = wire
             require((self.root / 'fixed-loaded.txt').read_text() == 'FIXED-LOADED-628', 'Fixed extension not loaded')
-            if self.args.scenario == 'selected':
-                links = [path for path in (self.root / 'generated resources with spaces').rglob('*') if path.is_symlink()]
-                require({path.resolve() for path in links} == self.expected_targets,
-                        ('Generated location must contain real directory links to the two declared entities', [str(x) for x in links]))
-                case['links'] = [{'link':str(path), 'target':str(path.resolve())} for path in links]
+            require((self.root / 'plugin-loaded.txt').read_text() == 'PLUGIN-LOADED-851',
+                    'Configured native plugin extension did not load; its excluded skill source was not exercised')
+            case['pluginExtensionLoaded'] = True
+            generated = self.root / 'generated resources with spaces'
+            links = [path for path in generated.rglob('*') if path.is_symlink()]
+            require(not links, ('Skills must load from original sources without generated links', [str(x) for x in links]))
+            for path, original in prior_configs.items():
+                require(path.read_bytes() == original, ('Earlier Chat config was rewritten', str(path)))
+            configs = [json.loads(path.read_text(encoding='utf-8')) for path in generated.rglob('omp-skills.json')
+                       if path not in prior_configs]
+            skill_configs = [config['skills'] for config in configs if isinstance(config, dict) and isinstance(config.get('skills'), dict)]
+            require(skill_configs, ('Missing generated native OMP skills config', configs))
+            expected_parents = set(case['sourceParents']) if names else set()
+            for config in skill_configs:
+                require(config.get('enabled') is bool(names), config)
+                parents = [Path(path) for path in config.get('customDirectories', [])]
+                require(all(any(path.samefile(expected) for expected in expected_parents) for path in parents)
+                        and all(any(path.samefile(expected) for path in parents) for expected in expected_parents), config)
+            case['nativeSkillConfigs'] = skill_configs
             for path, expected_bytes in self.source_bytes.items():
                 require(path.read_bytes() == expected_bytes, ('Source resource changed', str(path)))
         self.evidence['passed'] = True

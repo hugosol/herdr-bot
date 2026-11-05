@@ -150,7 +150,8 @@ impl Drop for OwnedVolumeDirectory {
 // P34/P36 real evidence. Intentionally ignored in the ordinary suite, never
 // treated as a pass: the explicit command must run it with both prerequisites.
 // No privilege probes, junction, shell elevation, developer-mode edits or copy
-// fallbacks. Sources live on a separately supplied existing volume.
+// fallbacks. Sources live on a separately supplied existing volume; Suite
+// consumption uses their canonical parent directly, never generated links.
 #[cfg(windows)]
 #[tokio::test]
 #[ignore = "requires HERDR_BOT_MANUAL_SYMLINKS=1 and HERDR_BOT_SYMLINK_SECOND_DRIVE (e.g. E:/)"]
@@ -195,7 +196,7 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     config.suites.mcp_file = root.path().join("mcp.json");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_owned();
-    let suite = json!({"id":"selected","name":"Selected","agents":["omp"],"skills":[source]});
+    let suite = json!({"id":"selected","name":"Selected","agents":["omp"],"skills":{"omp":[volume.0.clone()]}});
     fs::write(&config.suites.definition_file, json!({"suites":[suite]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(post(&server, "/api/zones", json!({"id":"owned","path":root.path()})).await.status, 200);
@@ -208,33 +209,34 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     let calls = starts(&herdr, 1).await;
     let manifest = native_argument(&calls[0], "--config");
     let assembly = manifest.parent().unwrap();
-    let link = assembly.join("skills").join("selected");
-    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink_dir(), "a junction is not a true directory symlink");
-    assert_eq!(fs::canonicalize(&link).unwrap(), fs::canonicalize(&source).unwrap());
-    assert_eq!(fs::read_to_string(link.join("asset.txt")).unwrap(), "REAL-FILE-SENTINEL-902");
+    let manifest: Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(manifest["skills"]["includeSkills"], json!(["selected"]));
+    assert_eq!(manifest["skills"]["customDirectories"], json!([fs::canonicalize(&volume.0).unwrap()]));
+    assert!(!assembly.join("skills").exists());
+    assert_eq!(fs::read_to_string(source.join("asset.txt")).unwrap(), "REAL-FILE-SENTINEL-902");
     let unowned = config.suites.generated_directory.join("selected").join("keep.txt");
     fs::write(&unowned, "UNOWNED-KEEP-417").unwrap();
     let bad = volume.0.join("bad skill");
     fs::create_dir(&bad).unwrap();
-    fs::write(bad.join("SKILL.md"), "---\nname: 'invalid<name>'\ndescription: Invalid Windows destination\n---\nDO-NOT-DELETE-579\n").unwrap();
+    fs::write(bad.join("SKILL.md"), "---\nname: selected\ndescription: Duplicate selected name\n---\nDO-NOT-DELETE-579\n").unwrap();
     let bad_before = file_hash(&bad.join("SKILL.md"));
-    let definition = json!({"suites":[{"id":"selected","name":"Selected","agents":["omp"],"skills":[source,bad]}]});
+    let definition = json!({"suites":[{"id":"selected","name":"Selected","agents":["omp"],"skills":{"omp":[volume.0.clone()]}}]});
     fs::write(&config.suites.definition_file, definition.to_string()).unwrap();
     let body = launch_body(&server, &id).await;
     let failed = post(&server, "/api/chats", body).await;
     assert_eq!(failed.status, 400, "{}", failed.body);
-    assert!(failed.body.contains("invalid<name>"), "{}", failed.body);
+    assert!(failed.body.contains("selected"), "{}", failed.body);
     assert_eq!(starts(&herdr, 1).await.len(), 1, "failed rebuild must not start another agent");
     let remaining: Vec<_> = fs::read_dir(unowned.parent().unwrap()).unwrap().map(|entry| entry.unwrap().path()).collect();
     assert_eq!(remaining.len(), 2, "only previous complete assembly and unowned file may remain: {remaining:?}");
     assert!(remaining.contains(&assembly.to_path_buf()) && remaining.contains(&unowned));
-    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink_dir());
+    assert!(fs::symlink_metadata(&directory_probe).unwrap().file_type().is_symlink_dir());
     assert!(fs::symlink_metadata(&alias).unwrap().file_type().is_symlink_file());
     assert_eq!(file_hash(&real_file), file_before);
     assert_eq!(file_hash(&source.join("SKILL.md")), skill_before);
     assert_eq!(file_hash(&bad.join("SKILL.md")), bad_before);
     assert_eq!(fs::read_to_string(&unowned).unwrap(), "UNOWNED-KEEP-417");
-    println!("P34/P36 VERIFIED: file symlink={} -> {}; directory symlink={} -> {}; cross-volume=true; independent file hashes={file_before:x}/{skill_before:x}/{bad_before:x}; failed rebuild cleaned only its private tree", alias.display(), real_file.display(), link.display(), source.display());
+    println!("P34/P36 VERIFIED: file symlink={} -> {}; directory symlink={} -> {}; cross-volume=true; independent file hashes={file_before:x}/{skill_before:x}/{bad_before:x}; failed rebuild cleaned only its private tree", alias.display(), real_file.display(), directory_probe.display(), source.display());
 }
 
 fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf {
@@ -252,9 +254,14 @@ fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf 
     let skills: Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
     assert_eq!(skills["skills"]["enabled"], resources);
     assert_eq!(skills["skills"]["includeSkills"], if resources { json!(["selected"]) } else { json!([]) });
+    assert_eq!(skills["skills"]["ignoredSkills"], json!([]));
     if resources {
-        let skill = directory.join("skills").join("selected");
-        assert!(fs::symlink_metadata(&skill).unwrap().file_type().is_symlink());
+        let parents = skills["skills"]["customDirectories"].as_array().unwrap();
+        assert_eq!(parents.len(), 1);
+        let parent = Path::new(parents[0].as_str().unwrap());
+        assert_eq!(fs::canonicalize(parent).unwrap(), parent);
+        let skill = parent.join("selected");
+        assert!(!fs::symlink_metadata(&skill).unwrap().file_type().is_symlink());
         let extension = native_argument(call, "--extension");
         assert!(!extension.starts_with(&directory), "native extension must remain at its source");
         let (body, asset) = if sentinel == "PUBLICATION-A-193" {
@@ -265,8 +272,8 @@ fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf 
         assert_eq!(fs::read_to_string(&extension).unwrap(), "export default function(pi) {}\n");
         assert!(!directory.join("extensions").exists(), "extensions need no generated package tree");
     }
-    assert_eq!(skills["skills"]["customDirectories"], json!([directory.join("skills")]));
-    assert!(directory.join("skills").is_dir());
+    if !resources { assert_eq!(skills["skills"]["customDirectories"], json!([])); }
+    assert!(!directory.join("skills").exists(), "skills are consumed directly from their sources");
     let lsp: Value = serde_json::from_slice(&fs::read(directory.join("lsp.json")).unwrap()).unwrap();
     assert_eq!(lsp, json!({"servers":{"publication-probe":{"command":sentinel,"fileTypes":[".probe"]}}}));
     directory
@@ -281,11 +288,8 @@ async fn same_and_different_suites_publish_complete_independent_environments_wit
     publication_scenarios(false).await;
 }
 
-#[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires HERDR_BOT_MANUAL_SYMLINKS=1 and existing Windows true symlink permission"]
-async fn windows_same_and_different_suites_publish_complete_linked_resource_sets() {
-    assert_eq!(std::env::var("HERDR_BOT_MANUAL_SYMLINKS").as_deref(), Ok("1"));
+async fn same_and_different_suites_publish_complete_source_resource_sets() {
     publication_scenarios(true).await;
 }
 
@@ -318,19 +322,19 @@ async fn publication_scenarios(resources: bool) {
                 (&mut second, "source B", "SKILL-B-928", "EXTENSION-B-705"),
             ] {
                 let source = root.path().join(name);
-                fs::create_dir_all(source.join("skill")).unwrap();
+                fs::create_dir_all(source.join("skill parents/selected")).unwrap();
                 fs::create_dir(source.join("extension")).unwrap();
-                fs::write(source.join("skill").join("SKILL.md"), format!("---\nname: selected\ndescription: Selected resource\n---\n{body}\n")).unwrap();
+                fs::write(source.join("skill parents/selected").join("SKILL.md"), format!("---\nname: selected\ndescription: Selected resource\n---\n{body}\n")).unwrap();
                 fs::write(source.join("extension").join("entry.ts"), "export default function(pi) {}\n").unwrap();
                 fs::write(source.join("extension").join("asset.txt"), asset).unwrap();
-                suite["skills"] = json!([source.join("skill")]);
+                suite["skills"] = json!({"omp":[source.join("skill parents")]});
                 suite["extensions"] = json!({"omp":[source.join("extension").join("entry.ts")]});
             }
         }
         #[cfg(windows)]
         let source_hashes: Vec<_> = if resources {
             ["source A", "source B"].into_iter().flat_map(|name| {
-                ["skill/SKILL.md", "extension/entry.ts", "extension/asset.txt"].map(|relative| root.path().join(name).join(relative))
+                ["skill parents/selected/SKILL.md", "extension/entry.ts", "extension/asset.txt"].map(|relative| root.path().join(name).join(relative))
             }).map(|path| { let hash = file_hash(&path); (path, hash) }).collect()
         } else { Vec::new() };
         let initial = if same_suite { vec![first] } else { vec![first, second.clone()] };
@@ -345,14 +349,6 @@ async fn publication_scenarios(resources: bool) {
         let observation = std::panic::AssertUnwindSafe(async {
             let body_a = launch_body(&server, &task_a).await;
             let a = post(&server, "/api/chats", body_a).await;
-            #[cfg(windows)]
-            if resources && a.status == 400 && a.body.contains("1314") {
-                assert!(herdr.calls().is_empty(), "permission denial must precede all Herdr effects");
-                for (path, before) in &source_hashes { assert_eq!(file_hash(path), *before, "{}", path.display()); }
-                let generated = config.suites.generated_directory.join("first");
-                assert_eq!(fs::read_dir(&generated).unwrap().count(), 0, "failed link must leave no copied resource or partial tree");
-                println!("P36 DENIAL INVARIANTS VERIFIED: explicit HTTP 400/os error 1314; six independent source hashes unchanged; no copied resources, no partial tree, no Herdr effects. Real-link success remains BLOCKED.");
-            }
             assert_eq!(a.status, 202, "{}", a.body);
             accepted.push(serde_json::from_str::<Value>(&a.body).unwrap()["id"].as_str().unwrap().to_owned());
             let first_call = starts(&herdr, 1).await.remove(0);
@@ -387,5 +383,7 @@ async fn publication_scenarios(resources: bool) {
         let calls = match observation { Ok(calls) => calls, Err(error) => std::panic::resume_unwind(error) };
         observe(&calls[0], "PUBLICATION-A-193", resources);
         observe(&calls[1], "PUBLICATION-B-827", resources);
+        #[cfg(windows)]
+        for (path, before) in &source_hashes { assert_eq!(file_hash(path), *before, "{}", path.display()); }
     }
 }

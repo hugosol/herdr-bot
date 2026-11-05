@@ -1,7 +1,7 @@
 # Initial Suite native acceptance
 
-`python scripts/accept-initial-suites.py` owns P11's exploration OMP 18,
-exploration Pi 18 and implementation OMP 11 scenarios, P42's actual
+`python scripts/accept-initial-suites.py` owns P11's exploration OMP directory-set,
+exploration Pi explicit-skill and implementation OMP directory-set scenarios, P42's actual
 `hyper-auto-coding` command, and P44's complete two-repository delivery manifest
 and public-entrypoint consistency. The approved interfaces are isolated
 startup/deployment (S3), existing Task/Suite/Chat HTTP (S2), and installed native
@@ -68,18 +68,12 @@ be ancestors of their respective current source revisions. This evidence is not
 a new workflow scheduling gate or a claim that unrelated checks passed.
 
 ```powershell
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/accept-initial-suites.py `
-    --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
-    --herdr-bot-base "$HERDR_BOT_BEFORE_SUITES" --toolkit-base "$TOOLKIT_BEFORE_SUITES" `
-    --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
-    --paths-file "$ISOLATED_DEPENDENCIES" --scenario all `
-    --evidence-dir "$NEW_EXCLUSIVE_EVIDENCE_DIR"
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/accept-initial-suites.py `
+  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+  --herdr-bot-base "$HERDR_BOT_BEFORE_SUITES" --toolkit-base "$TOOLKIT_BEFORE_SUITES" `
+  --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
+  --paths-file "$ISOLATED_DEPENDENCIES" --scenario all `
+  --evidence-dir "$NEW_EXCLUSIVE_EVIDENCE_DIR"
 ```
 
 ## Independent native observations
@@ -91,7 +85,18 @@ its roots resolve to the real approved skill sources and an owned copy of the
 supplied toolkit. Suite `extensions` declare native source paths directly;
 relative entries resolve from the Suite declaration directory. Extensions
 are passed directly to the host without package links, generated manifests or
-package.json expansion. Only skills require true generated directory links. That copy excludes live runtime access records. Only its
+package.json expansion. Skills also use native source paths: OMP declares multiple
+collection directories, while Pi selects individual skill roots. Before every new
+OMP process, herdr-bot reads valid direct child skills from the current collections,
+canonicalizes and deduplicates identical resources, and rejects the same parsed
+name on different resources (including disabled declarations). The existing installed
+OMP's `--config` applies a high-priority overlay to `skills` only: original collection
+paths, the final selected-name `includeSkills` allowlist, all seven existing source
+`enable*` switches set to false, `ignoredSkills: []`, and `enabled` determined by
+whether any effective names remain. An empty collection disables skills and never
+falls back to defaults. This isolates the final available skill list; it does not
+promise that native default directories are never scanned. Native MCP, LSP, agents,
+extensions and project instructions remain unchanged. No generated skill links are required. That copy excludes live runtime access records. Only its
 connect-bot/workflow endpoint configuration is overridden to this run's dynamic
 loopback backend; the original source is untouched. The centralized MCP name is
 retained, pointing to a controlled external protocol server, not a replacement
@@ -119,9 +124,13 @@ any model request or task `.scratch` output fails acceptance.
 P44 separately retains both complete delivery inventories, build/source identity,
 installed Herdr/OMP/Pi package hashes before and after, ordinary launcher/package
 identity and the OS-observed installed CLI process under owned Herdr. Product
-diffs reject host patch/vendor delivery and recognized internal patch/SDK
-reconstruction patterns. These consistency checks do not make a missing native
-entrypoint pass: all three real scenarios and cleanup are required for P44.
+diffs reject runtime monkey-patching and SDK reconstruction patterns. Use the
+existing global OMP installation and its already-supported `--config` skills
+overlay; do not modify host source, replace the global installation or deploy a
+new host build. Check the actual OS process ExecutablePath and CommandLine against
+the existing launcher/package identity, not just a declared package path or hash.
+These consistency checks do not make a missing native entrypoint pass: all three
+real scenarios and cleanup are required for P44.
 
 ## Isolation, results and limits
 
@@ -142,9 +151,11 @@ is narrower feedback and cannot yield full acceptance. `--timeout` bounds each
 observation (default 90s, maximum 300s), not a retry budget. Scenarios are attempted
 independently; one failure does not prevent the remaining scenarios.
 
-Missing skill sources, Pi public factory flag/version incompatibility, Windows
-true-symlink denial (including OS error 1314), host dependency failures, a missing
-native response or cleanup failure are nonzero and explicitly unverified. Never
+Missing skill sources, Pi public factory flag/version incompatibility, an OMP
+final available skill list or source that differs from the selected collections,
+host dependency failures, a missing native response or cleanup failure are nonzero
+and explicitly unverified. Native default-directory scanning alone is not a
+failure of the final-list isolation contract. Never
 substitute junctions, copied skills, source-CLI success, historical prototypes,
 configuration counts or unrelated green tests. The S3 CLI regression proves
 foreign-backend evidence fails closed; it is not an S4 success claim. Complete
