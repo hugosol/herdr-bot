@@ -180,6 +180,9 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     };
     let gate = state.runs.map_lock(map).await;
     let _registration = gate.lock().await;
+    // Keep parent reference + child initialization indivisible to deletion,
+    // but release both gates before any Herdr call or association wait.
+    let _references = state.runs.history_references.lock().await;
     let checked = crate::scheduler::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
     let child = Run {
         id: crate::chats::new_creation_id(), name: None, map: map.to_owned(),

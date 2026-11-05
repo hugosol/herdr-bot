@@ -170,6 +170,8 @@ pub struct Runs {
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
     map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     registered_maps: Mutex<BTreeMap<String, String>>,
+    // Serializes reference publication with history scans/removal, never host effects.
+    history_references: Mutex<()>,
     deleted: Mutex<std::collections::BTreeSet<String>>,
 }
 impl Runs {
@@ -184,6 +186,7 @@ impl Runs {
 
     /// Caller holds this Map's registration gate, never a Chat/operation lock.
     pub(crate) async fn delete_map_history(&self, state: &AppState, map: &str) -> Result<(), String> {
+        let _references = self.history_references.lock().await;
         let mut ids: std::collections::BTreeSet<String> = self.registered_maps.lock().await.iter()
             .filter(|(_, name)| name.as_str() == map).map(|(id, _)| id.clone()).collect();
         let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
@@ -212,19 +215,40 @@ impl Runs {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
             Err(e) => return Err(e.to_string()),
         }
+        candidates.sort_unstable();
         Ok::<_, String>(candidates)
         })).await.map_err(|e| e.to_string())??;
+        let mut records = Vec::with_capacity(candidates.len());
         for id in candidates {
             let paths = Self::paths(state, &id);
             let directory = paths[0].parent().unwrap().to_path_buf();
-            let map = map.to_owned();
-            let associated = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
-                // Damaged/missing detail files must not prevent removing safely associated history.
+            let record = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
+                // Detail JSONL may be damaged, but the association must be fully readable.
                 validate_history_tree(access, &directory)?;
-                let record: serde_json::Value = access.read_json(&paths[0])?;
-                Ok::<_, String>(record.get("map").and_then(|v| v.as_str()) == Some(map.as_str()))
+                access.read_json::<Run>(&paths[0])
             })).await.map_err(|e| e.to_string())??;
-            if associated { ids.insert(id); }
+            if record.id != id { return Err(format!("Run {id} 保存身份不一致：{}。", record.id)); }
+            if record.map == map { ids.insert(id); }
+            records.push(record);
+        }
+        // Check the complete selection before removing anything. Either side
+        // alone is sufficient evidence; a missing counterpart is not permission
+        // to delete, and retired executions keep their original child links.
+        for run in &records {
+            if let Some(parent) = &run.parent {
+                if ids.contains(&run.id) || ids.contains(&parent.run_id) {
+                    return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", parent.run_id, parent.node_id, parent.execution_id, run.id));
+                }
+            }
+            for (node_id, node) in &run.nodes {
+                for execution in node.executions() {
+                    if let Some(child) = &execution.child_run_id {
+                        if ids.contains(&run.id) || ids.contains(child) {
+                            return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", run.id, node_id, execution.id, child));
+                        }
+                    }
+                }
+            }
         }
         for id in ids {
             let paths = Self::paths(state, &id);
