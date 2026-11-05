@@ -212,7 +212,7 @@ class Acceptance(support['Acceptance']):
         (self.extension / 'node_modules/owned-factor/index.js').write_text('export const factor=3;')
         (self.extension / 'extension/sibling.ts').write_text('export const offset=7;')
         (self.extension / 'assets/payload.json').write_text('{"unit":19}')
-        (self.extension / 'package.json').write_text(json.dumps({'type': 'module', 'omp': {'extensions': ['extension/probe.ts']}, 'pi': {'extensions': ['extension/probe.ts']}}))
+        (self.extension / 'package.json').write_text(json.dumps({'type': 'module'}))
         (self.extension / 'extension/probe.ts').write_text('''import {readFileSync} from "node:fs";
 import {factor} from "owned-factor";
 import {offset} from "./sibling.ts";
@@ -230,7 +230,7 @@ export default function(pi) {
                       'skills': ['${roots.resources}/root skill', 'relative skill'] if selected or self.scenario == 'unreadable-skill' else [],
                       'pi': {'codemode': 'on'}, 'mcp': []}
         if selected or self.scenario == 'unreadable-extension':
-            self.suite['extensions'] = {'omp': ['relative package'], 'pi': ['relative package']}
+            self.suite['extensions'] = {'omp': ['relative package/extension/probe.ts'], 'pi': ['relative package/extension/probe.ts']}
         native = {'native_file': self.server_config('native')}
         central = {}
         if selected or self.scenario == 'append':
@@ -415,8 +415,11 @@ export default function(pi) {
                     else {'path': str(p), 'sha256': digest(p)} for p in generated.rglob('*') if p.is_symlink() or p.is_file()]
                 if selected:
                     targets = {item['target'] for item in case['artifacts'] if 'target' in item}
-                    require({str(self.skill.resolve()), str((self.authority / 'relative skill').resolve()), str(self.extension.resolve())} <= targets,
-                            ('Final true-link artifacts missing', case['artifacts']))
+                    require({str(self.skill.resolve()), str((self.authority / 'relative skill').resolve())} <= targets,
+                            ('Final true-link skill artifacts missing', case['artifacts']))
+                    require(str(self.extension.resolve()) not in targets,
+                            ('Extension package must load from its source entry, not a generated link', case['artifacts']))
+                    case['sourceEntrypoint'] = str((self.extension / 'extension/probe.ts').resolve())
                 case['verified'] = True
                 self.command([self.args.herdr, 'pane', 'close', pane])
             finally:

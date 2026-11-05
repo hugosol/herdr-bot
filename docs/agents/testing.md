@@ -48,7 +48,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 ## 修改测试或夹具
 
 - **所有权**：每个用例独占可变临时数据与动态回环端口；同一竞争／重启场景保留必要共享。临时夹具目录须原子创建并跳过已有目录，不能因 Windows 重用 PID 而接管旧运行残留的数据。浏览器夹具探测端口后到子进程绑定前仍存在竞争；仅动态端口的已确认地址占用错误可重新分配（最多 32 次），固定地址及其他启动失败直接报错，不重试业务操作。自动发现目标不等于自动消除资源冲突。
-- **路径**：真实子进程使用测试拥有的临时目录。普通相对路径按声明配置文件的父目录解析，扩展入口按元数据文件父目录解析；cwd 可以与配置目录不同。需要根引用时生成隔离根文件，不读取开发者的 `paths.local.toml`。启动期 `data_directory` 与迁移标记也要归测试所有。
+- **路径**：真实子进程使用测试拥有的临时目录。普通相对路径按声明配置文件的父目录解析；共享扩展入口相对元数据文件，自定义扩展入口相对 Suite 文件解析；cwd 可以与配置目录不同。需要根引用时生成隔离根文件，不读取开发者的 `paths.local.toml`。启动期 `data_directory` 与迁移标记也要归测试所有。
 - **环境**：`HERDR_FIXTURE_DIR`、`HERDR_BOT_FIXTURE_RECORD_DIR` 会覆盖默认夹具位置；继承环境时保证它们不把不同用例导向同一可变目录。
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
 - **并发历史持久化诊断**：跨来源并发 register 验收的 `historySaved` 断言保留完整回执及所属后端 diagnostics，区分事件接受与历史保存失败；后续通过不能抹去先前失败，也不能据此宣称已修复无法定位的间歇故障。
@@ -59,11 +59,11 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ## 首批 Suite 与稳定 Task ID 迁移
 
-`cargo test --manifest-path backend/Cargo.toml --test initial_suite_migration` 拥有 P39/P40/P41/P43，使用真实 `migrate-initial-suites` 交付命令、独占临时权威文件和状态目录，以及公开 Task／Suite HTTP。22 个旧 Task 的 ID、agent、旧选择与 17/1/4 结果来自独立字面样例；显示名全部改成干扰值，trigger 含用户新编辑。Bot 引用、原生 Chat 来源、Run／node 执行身份分别独立写入并读回不变。18/11 技能、按宿主具体扩展路径、MCP、四语言及探索 Pi `on` 用独立批准清单核对；实际宿主发现及命令消费仍归对应专项，不从配置通过推断原生加载成功。
+`cargo test --manifest-path backend/Cargo.toml --test initial_suite_migration` 拥有 P39/P40/P41/P43，使用真实 `migrate-initial-suites` 交付命令、独占临时权威文件和状态目录，以及公开 Task／Suite HTTP。22 个旧 Task 的 ID、agent、旧选择与 17/1/4 结果来自独立字面样例；显示名全部改成干扰值，trigger 含用户新编辑。Bot 引用、原生 Chat 来源、Run／node 执行身份分别独立写入并读回不变。18/11 技能、按宿主共享扩展稳定 ID（`extensionOptions`）、MCP、四语言及探索 Pi `on` 用独立批准清单核对；实际宿主发现及命令消费仍归对应专项，不从配置通过推断原生加载成功。
 
 失败覆盖 Windows 真实目标替换拒绝、计划发布后的真实子进程终止、重启、部分生效后的新编辑冲突和完成后新编辑。只有所有输出独立读回成功才能有 `complete.json`；已生效文件保留，重跑不重复生成，不自动回滚。中断进程写测试拥有的日志文件并在所有分支终止／等待退出；普通命令通过 `Command::output` 并行消费输出并等待退出。测试不运行任何用户部署迁移，不读取用户凭据、连接原生 Chat、启动用户 daemon 或操作集成工作区。源码预设的格式升级与用户部署的明确授权操作不同，发布工单本身不是生产操作授权。
 
-Task API 的旧 `extensions` 字段（包括空数组）必须拒绝，固定扩展仍显示但不可勾选。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Pi Suite 扩展使用 `extensions: {pi: [...]}`，避免原生验收在启动前因旧请求或定义形状被拒绝。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
+Task API 的旧 `extensions` 字段（包括空数组）必须拒绝，固定扩展仍显示但不可勾选。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Suite 共享扩展使用 `extensionOptions: {pi: [稳定ID]}`（OMP 同理）；每次启动／新进程恢复从最新 TOML 的 optional 声明解析源入口，失效引用保留供修复并拒绝保存／启动。自定义原生入口仍使用 `extensions: {pi: [路径]}`，相对 Suite 文件解析；共享入口相对 TOML 解析，不能复制到 Suite 路径中。Pi 必须指向具体文件；OMP 仍可传原生支持的文件或目录；相同目标仅传一次。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
 
 ## 首批 Suite 原生发现与实现命令
 
@@ -109,7 +109,7 @@ try {
 }
 ```
 
-`windows_true_file_directory_and_cross_volume_links_preserve_targets_on_failed_rebuild` 独立尝试跨盘文件真符号链接及目录真符号链接，再通过产品启动生成目录链接，使用 Windows 文件类型核对（junction 不算）。成功发布后增加非法 Windows 链接名触发后续装配失败；核对旧完整产物链接、真实源文件的独立哈希与未拥有文件均不变，本次失败树已经移除，无新增 Herdr 调用。`windows_same_and_different_suites_publish_complete_linked_resource_sets` 在同 Suite 和不同 Suite 的外部门闩竞争中，观察两套独立技能正文、扩展源码／资产、入口清单和 LSP 哨兵，防止只验证参数或空技能配置冒充全资源发布一致性。
+`windows_true_file_directory_and_cross_volume_links_preserve_targets_on_failed_rebuild` 独立尝试跨盘文件真符号链接及目录真符号链接，再通过产品启动生成目录链接，使用 Windows 文件类型核对（junction 不算）。成功发布后增加非法 Windows 链接名触发后续装配失败；核对旧完整产物链接、真实源文件的独立哈希与未拥有文件均不变，本次失败树已经移除，无新增 Herdr 调用。`windows_same_and_different_suites_publish_complete_linked_resource_sets` 在同 Suite 和不同 Suite 的外部门闩竞争中，观察两套独立技能正文、直接扩展源入口／资产和 LSP 哨兵，防止只验证参数或空技能配置冒充全资源发布一致性。
 
 缺 Windows 权限（如 `os error 1314`）、第二盘或任一证据时专项非零失败并保留未验证结论；不自动提权、不改开发者模式、不创建 junction、不复制替代，也不以常规成功抵消。输出原始断言／OS 错误，成功时打印真实链接路径、跨盘事实及独立内容哈希；输出应保留在运行日志中。真实 Herdr／安装版 OMP／Pi 消费不由这些受控启动夹具宣称通过。完整后端交付仍运行 `node scripts/test-backend.mjs`；只有后端与文档修改，不要求前端构建或浏览器作为本票的替代证据。
 
@@ -167,23 +167,17 @@ foreach ($scenario in @('central', 'precedence', 'empty', 'full', 'unreachable')
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/test-real-herdr-suite-extensions.py `
-    --herdr 'C:/installed/herdr/herdr.exe' `
-    --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
-    --backend 'backend/target/debug/herdr-bot.exe'
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/test-real-herdr-suite-extensions.py `
+  --herdr 'C:/installed/herdr/herdr.exe' `
+  --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
+  --backend 'backend/target/debug/herdr-bot.exe'
 ```
 
-入口复用技能专项的独占配置、动态回环模型／HTTP 端口、持续消费日志和所属进程清理。一个 Suite 声明相对入口文件与集中根引用包目录，均包含空格；包目录的原生 manifest 选择非 index 入口。两个不同 Chat cwd 均放置错误相对入口哨兵。真实工厂 import 同包 sibling TS 和 `node_modules` 模块，真实工具读取 `import.meta.url` 相对 JSON 资产并计算，独立字面预期为 `RELATIVE-ASSET-412:64` 与 `ROOT-ASSET-905:80`。受控模型通过 OMP 原生 `write xd://...` 调用工具，不伪造工厂或工具执行；此证据只证明机制，不证明真实模型自主遵循。
+入口复用技能专项的独占配置、动态回环模型／HTTP 端口、持续消费日志和所属进程清理。一个 Suite 声明相对入口文件与集中根引用的具体非 index 源入口，均包含空格；直接传给原生宿主，不生成扩展链接或入口清单，也不自行展开 package.json。两个不同 Chat cwd 均放置错误相对入口哨兵。真实工厂 import 同包 sibling TS 和 `node_modules` 模块，真实工具读取 `import.meta.url` 相对 JSON 资产并计算，独立字面预期为 `RELATIVE-ASSET-412:64` 与 `ROOT-ASSET-905:80`。受控模型通过 OMP 原生 `write xd://...` 调用工具，不伪造工厂或工具执行；此证据只证明机制，不证明真实模型自主遵循。
 
-验收同时核对生成位置中的包目录真符号链接、入口清单、来源文件字节不变及固定扩展仍加载。输出的独占 Temp `evidence.json` 保留公开 HTTP 结果、原生模型请求／工具结果、源码与可执行文件哈希、原始日志和分开的清理错误。链接权限不足（如 Windows `os error 1314`）或任何真实依赖缺失时非零退出，明确记为未验证；源码直接加载成功、生成列表存在、junction 或普通套件通过均不能替代最终链接装配的 S4 成功证据。
+验收核对没有生成扩展包链接或 `omp-extensions.json`，来源文件字节不变且固定扩展仍加载。输出的独占 Temp `evidence.json` 保留源入口、公开 HTTP 结果、原生模型请求／工具结果、源码与可执行文件哈希、原始日志和分开的清理错误。此空技能专项不需要符号链接权限；任何真实依赖缺失或工具消费失败均非零退出并记为未验证，配置列表存在或普通套件通过不能替代原生直接加载的 S4 成功证据。
 
-P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_extensions`：真实 Windows 独占共享锁分别阻止入口文件及包内资产读取；另用普通文件只阻塞扩展输出子目录，保持技能装配可写。全部经公开预览／启动 HTTP 检查明确拒绝且 Herdr 无调用，不需要链接权限，不代替上述真实成功场景。
+P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --test suite_omp_extensions`：真实 Windows 独占共享锁阻止实际源入口读取，经公开预览／启动 HTTP 检查明确拒绝且 Herdr 无调用。装配器只检查入口可读性，不遍历包内资产或 node_modules；模块／资产由原生宿主从源目录读取。负例不需要链接权限，不代替上述真实成功场景。
 
 ## Pi Suite 启动开发烟测
 

@@ -260,13 +260,13 @@ class Acceptance(support['Acceptance']):
             package = self.authority / ('package-' + letter)
             package.mkdir()
             (package / 'asset.txt').write_text(SENTINELS[letter][1], encoding='utf-8')
-            (package / 'package.json').write_text(json.dumps({'type': 'module', 'omp': {'extensions': ['entry.ts']}, 'pi': {'extensions': ['entry.ts']}}), encoding='utf-8')
+            (package / 'package.json').write_text(json.dumps({'type': 'module'}), encoding='utf-8')
             (package / 'entry.ts').write_text('''import {readFileSync} from "node:fs";
 export default function(pi) { pi.registerTool({name:"lifecycle_asset",label:"Lifecycle asset",description:"Read complete native package asset",
  parameters:pi.zod ? pi.zod.object({}) : {type:"object",properties:{}},async execute(){return {content:[{type:"text",text:readFileSync(new URL("asset.txt",import.meta.url),"utf8")}],details:{}};}}); }
 ''', encoding='utf-8')
             self.suites[letter] = {'id': letter, 'name': 'Lifecycle ' + letter, 'agents': ['pi', 'omp'],
-                'skills': [str(initial), 'skill-' + letter], 'extensions': {'pi': ['package-' + letter], 'omp': ['package-' + letter]},
+                'skills': [str(initial), 'skill-' + letter], 'extensions': {'pi': ['package-' + letter + '/entry.ts'], 'omp': ['package-' + letter + '/entry.ts']},
                 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
         (self.authority / 'suites.json').write_text(json.dumps({'suites': list(self.suites.values())}), encoding='utf-8')
         (self.authority / 'mcp.json').write_text('{"mcpServers":{}}', encoding='utf-8')

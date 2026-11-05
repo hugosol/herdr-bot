@@ -59,10 +59,10 @@ async fn shared_extensions_preserve_roots_and_rebase_from_metadata_not_suite_sto
     }
     // No optional dependency exists; listing and saving do not inspect resources.
     assert!(!root.path().join("unavailable dependencies").exists());
-    let mut suite = json!({"id":"shared","name":"Shared choices","agents":["pi","omp"],"pi":{"codemode":"on"},"extensions":{
-        "pi":["${roots.pi_extensions}/pi-web-access", pi_package],
-        "omp":[omp_package, "custom-omp.ts"]
-    }});
+    let mut suite = json!({"id":"shared","name":"Shared choices","agents":["pi","omp"],"pi":{"codemode":"on"},
+        "extensionOptions":{"pi":["shared-pi","relative-pi"],"omp":["relative-omp"]},
+        "extensions":{"omp":["custom-omp.ts"]}
+    });
     for (method, url) in [("POST", "/api/suites"), ("PUT", "/api/suites/shared")] {
         let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
         assert_eq!(response.status, 200, "{}", response.body);
@@ -72,6 +72,7 @@ async fn shared_extensions_preserve_roots_and_rebase_from_metadata_not_suite_sto
     }
     let stored: Value = serde_json::from_slice(&fs::read(&config.suites.definition_file).unwrap()).unwrap();
     assert_eq!(stored["suites"][0]["extensions"], suite["extensions"]);
+    assert_eq!(stored["suites"][0]["extensionOptions"], suite["extensionOptions"]);
     // A catalog edit never rewrites an existing Suite declaration into its new path.
     let raw = fs::read_to_string(&config.tasks.metadata_file).unwrap().replace("pi-web-access", "replacement-package");
     fs::write(&config.tasks.metadata_file, raw).unwrap();

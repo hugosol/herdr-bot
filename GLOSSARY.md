@@ -45,7 +45,7 @@ _Avoid_: 当前选中 Task, Task 快照, 推测来源
 _Avoid_: Task, Task 实例
 
 **Suite 扩展选项**:
-可由多个兼容宿主的 Suite 分别选择的共享 agent 能力；同一能力既可单独组成 Suite，也可与其他场景资源组合。它不是某个 Suite 的专属能力，也不是所有 Task 都必须加载的固定扩展。
+可由多个兼容宿主的 Suite 按稳定身份分别选择的共享 agent 能力；同一能力既可单独组成 Suite，也可与其他场景资源组合，调整其实现位置不改变 Suite 的选用关系。它不是某个 Suite 的专属能力，也不是所有 Task 都必须加载的固定扩展。
 _Avoid_: Task 可选扩展, Suite 固定扩展, 专属扩展
 
 **Task 固定扩展**:

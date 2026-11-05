@@ -58,7 +58,14 @@ auth store is copied or linked.
 The toolkit deployment is made from the supplied worktree's source, excluding
 runtime owner-access records. Its workflow endpoint is changed only in the
 owned deployment copy to the dynamically bound backend. Source/deployment hashes
-are retained. No other source copy is silently substituted.
+are retained. No other source copy is silently substituted. Custom Suite
+`extensions` are concrete source entries passed directly to native hosts; no
+extension-package links or loader manifests are generated. Module dependencies
+and assets are read by the native host from their original source directory.
+True generated links and their Windows permission requirement apply to skills,
+not extensions. Shared `extensionOptions` IDs, when selected, resolve against
+the latest optional TOML catalog for each new native process; saving does not
+copy catalog entry paths into the Suite.
 
 ## Build, repository checks and invocation
 

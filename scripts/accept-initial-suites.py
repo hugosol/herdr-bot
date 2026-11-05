@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import threading
+import tomllib
 import json
 from pathlib import Path
 import runpy
@@ -160,6 +161,20 @@ export default function(pi) {
             for name, path in entries:
                 require(path.is_file(), ('Missing fixed extension', str(path)))
                 options += f'[[extensions]]\nid = "{name}"\nlabel = "{name}"\nagent = "{host}"\nkind = "fixed"\nentrypoint = {json.dumps(str(path))}\n'
+        metadata = self.args.repo / 'meta-data/task-options.toml'
+        declared = tomllib.loads(metadata.read_text(encoding='utf-8'))
+        for extension in declared.get('extensions', []):
+            if extension.get('kind') != 'optional':
+                continue
+            entrypoint = extension['entrypoint']
+            # Keep root references for the product resolver, including toolkit's
+            # isolated replacement; only metadata-relative paths need rebasing.
+            if not entrypoint.startswith('${roots.') and not Path(entrypoint).is_absolute():
+                entrypoint = str(metadata.parent / entrypoint)
+            values = {**extension, 'entrypoint': entrypoint}
+            options += '[[extensions]]\n' + ''.join(
+                f'{key} = {json.dumps(values[key])}\n'
+                for key in ['id', 'label', 'agent', 'kind', 'entrypoint'])
         (self.root / 'options.toml').write_text(options, encoding='utf-8')
         q = lambda value: json.dumps(str(value))
         (self.root / 'herdr.toml').write_text('onboarding = false\n[terminal]\ndefault_shell = "cmd.exe"\n[update]\nversion_check = false\nmanifest_check = false\n', encoding='utf-8')

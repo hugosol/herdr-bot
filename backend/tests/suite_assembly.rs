@@ -256,16 +256,14 @@ fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf 
         let skill = directory.join("skills").join("selected");
         assert!(fs::symlink_metadata(&skill).unwrap().file_type().is_symlink());
         let extension = native_argument(call, "--extension");
-        assert!(fs::symlink_metadata(extension.parent().unwrap()).unwrap().file_type().is_symlink());
+        assert!(!extension.starts_with(&directory), "native extension must remain at its source");
         let (body, asset) = if sentinel == "PUBLICATION-A-193" {
             ("SKILL-A-514", "EXTENSION-A-361")
         } else { ("SKILL-B-928", "EXTENSION-B-705") };
         assert!(fs::read_to_string(skill.join("SKILL.md")).unwrap().contains(body));
         assert_eq!(fs::read_to_string(extension.parent().unwrap().join("asset.txt")).unwrap(), asset);
         assert_eq!(fs::read_to_string(&extension).unwrap(), "export default function(pi) {}\n");
-        let entries: Value = serde_json::from_slice(&fs::read(directory.join("extensions").join("omp-extensions.json")).unwrap()).unwrap();
-        assert_eq!(entries.as_array().unwrap().len(), 1);
-        assert_eq!(entries[0]["entrypoint"], json!(extension));
+        assert!(!directory.join("extensions").exists(), "extensions need no generated package tree");
     }
     assert_eq!(skills["skills"]["customDirectories"], json!([directory.join("skills")]));
     assert!(directory.join("skills").is_dir());

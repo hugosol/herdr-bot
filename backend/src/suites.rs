@@ -34,6 +34,8 @@ pub struct Suite {
     pub skills: Vec<String>,
     #[serde(default)]
     pub extensions: BTreeMap<String, Vec<String>>,
+    #[serde(default, rename = "extensionOptions", skip_serializing_if = "BTreeMap::is_empty")]
+    pub extension_options: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub prompts: Vec<String>,
     #[serde(default)]
@@ -86,6 +88,17 @@ impl IntoResponse for SuiteError {
 }
 
 impl Suite {
+    pub(crate) fn validate_extensions(&self, options: &[crate::tasks::catalog::ExtensionOption]) -> Result<(), SuiteError> {
+        use crate::tasks::catalog::ExtensionKind;
+        for (host, ids) in &self.extension_options {
+            for id in ids {
+                if !options.iter().any(|option| option.id == *id && option.agent.label() == host && option.kind == ExtensionKind::Optional) {
+                    return Err(SuiteError::invalid(format!("Suite「{}」共享扩展引用失效：{host}/{id}；选项必须存在、为 optional 且属于对应宿主；请显式修正引用。", self.id)));
+                }
+            }
+        }
+        Ok(())
+    }
     fn validate(&self) -> Result<(), SuiteError> {
         if self.id.is_empty() || !self.id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
             return Err(SuiteError::invalid("Suite ID 只能包含英文字母、数字、连字符和下划线，且不能为空。"));
@@ -97,7 +110,7 @@ impl Suite {
         if self.agents.contains(&Agent::Pi) != self.pi.is_some() {
             return Err(SuiteError::invalid("Pi 适用 Suite 必须明确设置 codemode 为 on 或 only；OMP-only Suite 不接受 Pi 配置。"));
         }
-        for (host, paths) in &self.extensions {
+        for (host, paths) in self.extensions.iter().chain(&self.extension_options) {
             if !self.agents.iter().any(|agent| agent.label() == host) {
                 return Err(SuiteError::invalid(format!("扩展宿主 {host} 必须是 Suite 支持的宿主。")));
             }
@@ -189,8 +202,9 @@ impl Suites {
                 SuiteError::storage).map(|(document, ())| document.suites)
         }).map_err(SuiteError::storage)?
     }
-    pub fn save(&self, id: Option<&str>, suite: Suite) -> Result<Vec<Suite>, SuiteError> {
+    pub fn save(&self, id: Option<&str>, suite: Suite, extensions: &[crate::tasks::catalog::ExtensionOption]) -> Result<Vec<Suite>, SuiteError> {
         suite.validate()?;
+        suite.validate_extensions(extensions)?;
         if id.is_some_and(|id| id != suite.id) { return Err(SuiteError::invalid("编辑不能更改 Suite ID。")); }
         self.change(&[self.definition_file.clone(), self.mcp_file.clone()], |access, suites| {
             let catalog = self.read_mcp(access)?;
@@ -266,13 +280,13 @@ async fn input(request: Request) -> Result<Suite, SuiteError> {
 pub async fn create(State(state): State<AppState>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
     let catalogs = SuiteCatalogs::load(&state)?;
-    let suites = state.suites.save(None, suite)?;
+    let suites = state.suites.save(None, suite, &catalogs.extensions)?;
     Ok(catalogs.listing(suites))
 }
 pub async fn update(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
     let catalogs = SuiteCatalogs::load(&state)?;
-    let suites = state.suites.save(Some(&id), suite)?;
+    let suites = state.suites.save(Some(&id), suite, &catalogs.extensions)?;
     Ok(catalogs.listing(suites))
 }
 pub async fn delete(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {

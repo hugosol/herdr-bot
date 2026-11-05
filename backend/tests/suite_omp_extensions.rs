@@ -50,48 +50,6 @@ async fn unreadable_extension_rejects_public_launch_before_herdr() {
     assert!(herdr.calls().is_empty(), "Suite failure must never start a partial/empty environment");
 }
 
-// P46: directory declarations include assets, not just their entry file. The
-// factory could load successfully yet fail its tool later if this is ignored.
-#[cfg(windows)]
-#[tokio::test]
-async fn unreadable_bundled_asset_rejects_public_launch_before_herdr() {
-    let root = TempDir::new("unreadable bundled extension asset");
-    let herdr = common::HerdrFixture::new("extension asset failure Herdr");
-    let mut config = common::config(Path::new("unused.bat"), root.path());
-    config.tasks.storage_file = root.path().join("tasks.json");
-    config.zones.registry_file = root.path().join("zones.json");
-    config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
-    config.suites.generated_directory = root.path().join("generated");
-    config.herdr.executable = herdr.executable().to_path_buf();
-    let package = root.path().join("existing package");
-    fs::create_dir_all(package.join("assets")).unwrap();
-    fs::write(package.join("index.ts"), "export default function(pi) {}\n").unwrap();
-    let asset = package.join("assets").join("prices.json");
-    fs::write(&asset, "{\"unit\":19}").unwrap();
-    fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["existing package"]}
-    }]}).to_string()).unwrap();
-    let server = TestServer::start(&config).await;
-    let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
-        "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "suite":"selected"})).await;
-    assert_eq!(saved.status, 200, "{}", saved.body);
-    let saved: Value = serde_json::from_str(&saved.body).unwrap();
-    let id = &saved["tasks"][0]["id"];
-    assert_eq!(post(&server, "/api/zones", json!({"id":"owned", "path":root.path()})).await.status, 200);
-    let preview = post(&server, "/api/chats/preview", json!({"zone":"owned", "taskId":id})).await;
-    assert_eq!(preview.status, 200, "{}", preview.body);
-    let preview: Value = serde_json::from_str(&preview.body).unwrap();
-    use std::os::windows::fs::OpenOptionsExt;
-    let _locked = fs::OpenOptions::new().read(true).share_mode(0).open(&asset).unwrap();
-    let launch = post(&server, "/api/chats", json!({"zone":"owned", "taskId":id,
-        "chatId":preview["chatId"], "input":"must not start"})).await;
-    assert_eq!(launch.status, 400, "{}", launch.body);
-    assert!(launch.body.contains("prices.json"), "{}", launch.body);
-    assert!(herdr.calls().is_empty());
-}
-
 // P46: all Suite resources now share one private publication tree. A file
 // blocking its parent must prevent the entire environment reaching Herdr.
 #[tokio::test]

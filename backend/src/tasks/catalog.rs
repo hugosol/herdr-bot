@@ -81,7 +81,8 @@ impl Catalog {
         Self::load_paths(path, roots, false)
     }
 
-    /// Suite storage uses declarations, not machine-expanded root paths.
+    /// Display optional choices without requiring installed resources. Suites
+    /// persist IDs; launches independently resolve the current metadata snapshot.
     pub(crate) fn suite_extensions(path: &Path, roots: &crate::paths::Roots) -> Result<Vec<ExtensionOption>, TaskError> {
         let catalog = Self::load_paths(path, roots, true)?;
         let mut options = Vec::new();
@@ -95,10 +96,20 @@ impl Catalog {
     }
 
     fn load_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool) -> Result<Self, TaskError> {
+        let raw = crate::files::FileStore::default().read_to_string(path)
+            .map_err(|error| TaskError::Metadata(format!("选项元数据 {}：读取失败：{error}", path.display())))?;
+        Self::parse_paths(path, roots, preserve_roots, &raw)
+    }
+
+    pub(crate) fn load_access(path: &Path, roots: &crate::paths::Roots, access: &crate::files::FileAccess) -> Result<Self, TaskError> {
+        let raw = access.read_to_string(path)
+            .map_err(|error| TaskError::Metadata(format!("选项元数据 {}：读取失败：{error}", path.display())))?;
+        Self::parse_paths(path, roots, false, &raw)
+    }
+
+    fn parse_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool, raw: &str) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
-            let raw = crate::files::FileStore::default().read_to_string(path)
-                .map_err(|e| format!("读取失败：{e}"))?;
-            let mut catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
+            let mut catalog: Self = toml::from_str(raw).map_err(|e| format!("TOML：{e}"))?;
             catalog.validate()?;
             let base = path.parent().unwrap_or_else(|| Path::new("."));
             for extension in &mut catalog.extensions {

@@ -56,7 +56,14 @@ export function SuitesPanel({ active }: { active: boolean }) {
     try {
       const lsp: unknown = JSON.parse(draft.lsp)
       if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
-      suite = { ...draft, skills: lines(draft.skills), extensions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.extensions[agent]))]]).filter(([, paths]) => paths.length > 0)), prompts: lines(draft.prompts), lsp: lsp as Record<string, unknown> }
+      suite = {
+        ...draft,
+        skills: lines(draft.skills),
+        extensions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.extensions[agent]))]]).filter(([, paths]) => paths.length > 0)),
+        extensionOptions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(draft.extensionOptions?.[agent] ?? [])]]).filter(([, ids]) => ids.length > 0)),
+        prompts: lines(draft.prompts),
+        lsp: lsp as Record<string, unknown>,
+      }
     } catch (error) { setError(message(error)); return }
     setBusy(true)
     try {
@@ -124,16 +131,20 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <fieldset aria-describedby={`suite-extensions-note-${agent}`}>
               <legend>{agent.toUpperCase()} 共享可选扩展</legend>
               {data?.extensions.filter(extension => extension.agent === agent).map(extension => <label className="suites-choice suites-extension-choice" key={extension.id}>
-                <input type="checkbox" checked={lines(draft.extensions[agent]).includes(extension.entrypoint)} onChange={event => {
-                  const paths = lines(draft.extensions[agent])
-                  setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: (event.target.checked
-                    ? [...new Set([...paths, extension.entrypoint])]
-                    : paths.filter(path => path !== extension.entrypoint)).join('\n') } })
+                <input type="checkbox" checked={(draft.extensionOptions?.[agent] ?? []).includes(extension.id)} onChange={event => {
+                  const ids = draft.extensionOptions?.[agent] ?? []
+                  setDraft({ ...draft, extensionOptions: { ...draft.extensionOptions, [agent]: event.target.checked
+                    ? [...new Set([...ids, extension.id])]
+                    : ids.filter(id => id !== extension.id) } })
                 }} />
-                <span>{extension.label}<span className="suites-extension-path">{extension.entrypoint}</span></span>
+                <span>{extension.label}{extension.label !== extension.id && ` · ${extension.id}`}<span className="suites-extension-path">{extension.entrypoint}</span></span>
               </label>)}
               {data?.extensions.every(extension => extension.agent !== agent) && <p className="scope-note">此宿主暂无共享可选扩展，可在下方填写自定义路径。</p>}
-              <p className="scope-note" id={`suite-extensions-note-${agent}`}>勾选只保存资源声明，不表示扩展已经加载或运行。下方路径包含共享选择，也可添加自定义路径；目录移除的旧路径仍会保留。</p>
+              {data && [...new Set(draft.extensionOptions?.[agent] ?? [])].filter(id => !data.extensions.some(extension => extension.id === id && extension.agent === agent)).map(id => <label className="suites-choice zone-error" key={id}>
+                <input type="checkbox" checked onChange={() => setDraft({ ...draft, extensionOptions: { ...draft.extensionOptions, [agent]: (draft.extensionOptions?.[agent] ?? []).filter(value => value !== id) } })} />
+                {id}（失效：共享扩展不存在或宿主不匹配；请取消后保存）
+              </label>)}
+              <p className="scope-note" id={`suite-extensions-note-${agent}`}>勾选保存共享扩展 ID，入口随最新配置解析，不表示已经加载或运行。下方仅保存自定义入口，与共享选择相互独立；失效选择须显式取消。</p>
             </fieldset>
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
             <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />

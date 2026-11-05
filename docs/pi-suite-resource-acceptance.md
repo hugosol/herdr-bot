@@ -60,8 +60,10 @@ try {
 `--evidence-dir` must not already exist. `--scenario` selects one named scenario
 for narrower feedback; only `all` attempts the complete owned matrix. No scenario
 is silently skipped, and failures do not prevent independent scenarios from
-being attempted. Missing dependencies, Windows true-symlink permission (including
-OS error 1314), startup failure, mismatched results and cleanup failure return
+being attempted. True symlink permission is needed for selected skills only;
+extensions load directly and require no link permission. Missing dependencies,
+Windows skill-symlink permission (including OS error 1314), startup failure,
+mismatched results and cleanup failure return
 nonzero. The runner does not install programs, elevate privileges, modify PATH,
 read real authentication, enable LAN/mDNS, run real shutdown or operate existing
 user Chat/daemon processes.
@@ -70,13 +72,13 @@ user Chat/daemon processes.
 
 | Scenario | Coverage and independent oracle |
 | --- | --- |
-| `selected` | P6/P7/P9/P10: one logical declaration, both native hosts; Pi runs in two distinct cwd directories. Central root and declaration-relative sources contain spaces. Exactly `selected-relative` and `selected-root` are advertised, despite user/project/wrong-cwd/unselected/new-source sentinels. Native read consumes body, script and asset literals. A real extension factory imports sibling TS and a local dependency and reads an `import.meta.url` asset; expected `PACKAGE-ASSET-482:64` is the worked example 19×3+7. True generated links and unchanged source bytes are checked. The same Pi launch calls builtin native and added Suite MCP endpoints. |
+| `selected` | P6/P7/P9/P10: one logical declaration, both native hosts; Pi runs in two distinct cwd directories. Central root and declaration-relative sources contain spaces. Exactly `selected-relative` and `selected-root` are advertised, despite user/project/wrong-cwd/unselected/new-source sentinels. Native read consumes body, script and asset literals. A real extension factory imports sibling TS and a local dependency and reads an `import.meta.url` asset; expected `PACKAGE-ASSET-482:64` is the worked example 19×3+7. True generated skill links, absence of extension-package links, and unchanged source bytes are checked. Both hosts receive the concrete `relative package/extension/probe.ts` source entry; sibling modules, node_modules and assets load natively from the original directory, without a generated extension manifest. The same Pi launch calls builtin native and added Suite MCP endpoints. |
 | `append` | P17/P19: an initially empty project calls native `NATIVE-FILE-113` and centralized `SUITE-FILE-997`; no project MCP file is written. |
 | `same-name` | P20: a native file entry beats the same-named registered Suite entry; the losing endpoint has zero initializes/calls. |
 | `equivalent` | P20: equivalent URLs under different names retain both Pi servers; each native tool name is called, producing two connections and two reads of the same independent file. Pi's public MCP guide states that the same URL under different names retains separate sign-ins; OMP's URL-based deduplication is not imposed on Pi. |
 | `disabled` | P20: a disabled file entry beats an enabled Suite entry; zero connections/calls to that endpoint, plus native disabled status. |
 | `empty` | P21: explicit empty Suite MCP list still calls the native file server. |
-| `unreadable-skill`, `unreadable-extension` | P46: after successful preview, a Windows exclusive file handle makes a selected resource truly unreadable; public launch rejects with the resource identity, no model request and unchanged Herdr tab list. |
+| `unreadable-skill`, `unreadable-extension` | P46: after successful preview, a Windows exclusive file handle makes SKILL.md or the concrete extension entry truly unreadable (not an arbitrary package asset pre-scan); public launch rejects with the resource identity, no model request and unchanged Herdr tab list. |
 | `generation-failure` | P46: after preview a normal file blocks the owned output directory; launch refuses instead of continuing empty. |
 | `incompatible` | P46: after preview the same Suite becomes OMP-only; Pi startup rejects instead of ignoring it. |
 | `unreachable` | P46: a syntactically valid native MCP endpoint is unreachable. Normal startup and the working native MCP call still happen; real tool failure and native `/mcp` error/state are retained, not a new all-ready gate. |

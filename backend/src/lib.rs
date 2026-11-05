@@ -1072,6 +1072,9 @@ async fn preview_chat(State(state): State<AppState>, request: Request) -> Respon
         Err(error) => return task_error_response(error),
     };
 
+    if let Err(error) = state.tasks.validate_suite(&task) {
+        return task_error_response(error);
+    }
     let chat_id = chats::new_chat_id();
     let name = chats::render_chat_name(&task.chat_name, &zone, &task, &chat_id);
     let agent = task.agent.label();

@@ -2,17 +2,17 @@
 //! is returning native launch arguments, not creating the directory. No live
 //! tree is rewritten or reclaimed while an agent may still consume it.
 use crate::{paths::Roots, tasks::{Agent, TaskError}};
-use super::{Suite, Suites, extensions, skills};
+use super::{Suite, Suites, skills};
 
 impl Suites {
-    pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
+    pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots, shared_extensions: &[std::path::PathBuf]) -> Result<Vec<String>, TaskError> {
         let (pi_args, pi_config) = if agent == Agent::Pi {
             self.select_pi(suite, roots)?
         } else { (Vec::new(), None) };
         let Some(suite) = suite else { return Ok(pi_args) };
         // Resolve and validate every resource before creating any output.
         let skills = self.select_skills(suite, roots)?;
-        let extensions = self.select_extensions(suite, agent, roots)?;
+        let extensions = self.select_extensions(suite, agent, roots, shared_extensions)?;
         let mcp = self.select_mcp(suite, agent, roots)?;
         let directory = self.generated_directory.join(&suite.id);
         let assembly = directory.join(crate::chats::new_creation_id());
@@ -20,7 +20,6 @@ impl Suites {
             "Suite「{}」资源装配失败：{error}；没有回退为空环境、复制替代或自动提权。", suite.id));
         let mut scopes = vec![directory];
         scopes.extend(skills.iter().map(|skill| skill.directory.clone()));
-        scopes.extend(extensions.iter().map(|(_, package)| package.clone()));
         self.files.with(&scopes, |access| {
             access.create_dir_all(assembly.parent().unwrap())
                 .map_err(|error| fail(format!("{}：{error}", assembly.parent().unwrap().display())))?;
@@ -30,8 +29,9 @@ impl Suites {
             let result = (|| {
                 let mut args = skills::assemble(access, &assembly, suite, agent, &skills)
                     .map_err(|error| format!("技能装配失败：{error}"))?;
-                args.extend(extensions::assemble(access, &assembly, agent, &extensions)
-                    .map_err(|error| format!("扩展装配失败：{error}"))?);
+                for entry in &extensions {
+                    args.extend(["--extension".into(), entry.to_string_lossy().into_owned()]);
+                }
                 if let Some(bytes) = &mcp {
                     let native = assembly.join("mcp");
                     access.create_dir(&native).map_err(|error| error.to_string())?;

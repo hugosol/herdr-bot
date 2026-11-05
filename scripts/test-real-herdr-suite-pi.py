@@ -112,7 +112,7 @@ class Acceptance(support['Acceptance']):
         package = authority / 'selected package'
         (package / 'extension').mkdir(parents=True)
         (package / 'assets').mkdir()
-        (package / 'package.json').write_text(json.dumps({'type': 'module', 'pi': {'extensions': ['extension/probe.ts']}}))
+        (package / 'package.json').write_text(json.dumps({'type': 'module'}))
         (package / 'assets/payload.json').write_text('{"unit":19,"offset":7}')
         (package / 'extension/probe.ts').write_text('''import { readFileSync } from "node:fs";
 export default function(pi) {
@@ -124,7 +124,7 @@ export default function(pi) {
 }
 ''')
         (authority / 'suites.json').write_text(json.dumps({'suites': [{'id': 'selected', 'name': 'Selected',
-            'agents': ['pi'], 'skills': ['selected skill'], 'extensions': {'pi': ['selected package']},
+            'agents': ['pi'], 'skills': ['selected skill'], 'extensions': {'pi': ['selected package/extension/probe.ts']},
             'pi': {'codemode': 'on'}}]}))
         (self.root / 'paths.toml').write_text('[roots]\n')
         self.source_bytes = {p: p.read_bytes() for directory in [skill, package] for p in directory.rglob('*') if p.is_file()}

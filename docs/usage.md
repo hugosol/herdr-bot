@@ -68,7 +68,7 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 
 桌面采用工具集列表与编辑区双栏，列表显示名称、稳定 ID、适用宿主以及实际 Skills／MCP 数量；手机采用紧凑列表与单栏表单。编辑内容按基本信息、资源路径、语言服务和集中 MCP 分组，保存与关闭操作在编辑区顶部并随滚动保持可见；删除位于表单末尾，仍需确认。手机可通过左上角布局按钮收起侧栏，为路径和 JSON 编辑留出宽度。未选择工具集时显示编辑指引，读取失败时保留重新读取入口。
 
-在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。适用宿主至少选一个。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 显示共享可选扩展，勾选后加入当前 Suite 的宿主路径清单，也可继续按行填写自定义入口，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
+在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。适用宿主至少选一个。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 显示共享可选扩展，勾选后保存当前 Suite 的宿主扩展 ID，也可在独立文本框按行填写自定义入口，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
 
 OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声明写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi 跳过 LSP，不使用这一结果证明 OMP 已通过。
 
@@ -103,7 +103,8 @@ generated_directory = '.data/suites'
     "name": "评审工具",
     "agents": ["omp", "pi"],
     "skills": ["${roots.skills}/code-review"],
-    "extensions": {"omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"], "pi": ["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts"]},
+    "extensionOptions": {"omp": ["omp-codebase-tools"], "pi": ["pi-codebase-tools", "pi-web-access"]},
+    "extensions": {"pi": ["../extensions/review.ts"]},
     "prompts": ["../prompts/review.md"],
     "lsp": {},
     "mcp": ["catalog-search"],
@@ -116,11 +117,13 @@ generated_directory = '.data/suites'
 
 共享扩展选项复用 `tasks.metadata_file`（交付配置为 `meta-data/task-options.toml`）中的 `[[extensions]]`、`kind = 'optional'` 条目；`id` 标识目录项，`label` 是显示名，`agent` 限定宿主，`entrypoint` 是入口文件或包目录。`fixed` 条目仍属于 Task 固定环境，不放进 Suite 可选目录。读取和保存 Suite 时重新读取并验证目录；无效目录明确报错，不返回空选项，也不先写入 Suite 再报目录错误。这里不检查资源是否已安装或运行。
 
-勾选与路径文本框编辑同一份宿主路径清单，保存时去除相同字符串的重复路径；取消某项只删除它匹配的路径，不删除其他自定义入口，也不影响另一 Suite。目录中的有效 `${roots.*}` 前缀保留原文；普通相对入口先按**选项目录文件**所在目录转成绝对路径，避免保存到另一个目录的 Suite 后指向错误位置。Suite 不保存选项 ID 引用：目录项被删除或入口改变后，已保存的旧路径仍作为自定义路径保留，不自动迁移。
+共享选择保存在 `extensionOptions` 的宿主 ID 清单中，例如 `{"pi":["pi-web-access"]}`；自定义路径独立保存在 `extensions`。勾选不会把 TOML 入口复制到自定义路径，取消某项也不会删除自定义入口或影响另一 Suite。保存时分别去重 ID 和自定义字面路径；启动时对最终指向同一目标的入口再去重。
 
-Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":["entry.ts"],"pi":["pi-entry.ts"]}`），不接受旧数组，也不按目录项 ID 猜测路径。仅加载当前宿主对应的清单；OMP 的 `extensions.omp` 可以指向既有入口文件或原生可加载的包目录（目录入口按 OMP 自己的 `package.json`／index 规则处理）。装配保留最近 `package.json` 所在的包目录；没有包清单时，保留入口所在目录。整个目录以真实目录符号链接放入 `generated_directory/<suite-id>/<本次装配>/extensions/package-N`，相对模块、同包资产和 `node_modules` 不被拆成孤立源码副本。`omp-extensions.json` 记录来源、包目录和装配入口，启动经原生 `--extension` 消费对应装配路径；不会生成替代工厂或重写宿主加载器。固定扩展仍由既有执行角色规则单独加载。
+每次发起或需要新进程的来源 Task 会话恢复，均重新读取当前 TOML，按稳定 ID 解析 `entrypoint`。入口中的 `${roots.*}` 使用根配置；普通相对入口以**选项目录 TOML 文件**所在目录为基准，不随 Suite 文件或 Chat cwd 改变。目录中的入口改变后，不必重写 Suite，下次启动使用新入口；已有进程不热切换。目录项被删除、变成 fixed 或宿主不匹配时，读取保留原 ID，编辑器显示失效选择；保存、预览和启动明确拒绝，必须显式取消或修复目录，不能退化成旧路径继续运行。
 
-每次启动重新检查扩展包内资源可读性，所有链接及入口清单准备完成后才向 Herdr 提交启动。入口、配套资源、生成目录或链接权限失败会明确拒绝本次 Suite 启动，不沿用恢复流程中跳过单个旧扩展的降级行为。Windows 必须已经具备创建目录符号链接的权限；程序不提权、不改开发者模式，也不以 junction 或复制代替失败的链接。生成目录内只保存可重建装配信息，源码仍在原包维护。
+Suite 的 `extensions` 是按宿主分开的自定义路径对象（例如 `{"omp":["entry.ts"],"pi":["pi-entry.ts"]}`），不接受旧数组，也不将路径字符串猜作目录项 ID。共享 ID 仅放在 `extensionOptions`。启动只加载当前宿主的共享选择与自定义入口，直接把原始绝对入口传给宿主 `--extension`，与 Task 固定扩展的直接入口方式一致。Pi 必须声明具体文件；OMP 仍可使用原生支持的文件或目录。herdr-bot 不展开扩展的 `package.json`，不生成扩展链接、包副本或扩展清单，也不扫描整个包或 `node_modules`。模块导入与资产读取由原生宿主在源目录完成，固定扩展仍按既有执行角色规则单独加载。
+
+每次启动检查所选扩展入口可读性；入口缺失或不可读会拒绝本次 Suite 启动，不沿用恢复流程中跳过单个旧固定扩展的降级行为。包内依赖与资产不在启动前递归预检，缺失模块或运行期资产错误由原生宿主报告。扩展直接加载不需要创建目录符号链接的权限；非空 Skills 仍沿用下面的真目录链接装配契约，程序不会提权、修改开发者模式或以 junction／复制替代技能链接。生成目录只保存仍需要生成的技能及宿主配置，不保存扩展源码副本。
 
 ### OMP 精确技能环境
 
@@ -130,7 +133,7 @@ Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":
 
 生成位置默认 `.data/suites`，相对服务 TOML，可使用 `${roots.name}`；交付配置使用 `${roots.suite_resources}`。每次入口只有在链接和清单完整后才交给 Herdr，不原地改写已经交出的清单，不持有文件协调锁执行 Herdr。生成目录不是 Suite 权威副本、资源源码或认证目录，不要把它作为手工维护入口。源技能、资源或生成位置不可读／不可写，或 Windows 真目录符号链接缺少权限时，公开启动返回 `400 task-suite-invalid` 及具体 Suite／路径原因；不创建 Tab，不以空环境启动，不自动提权、启用开发者模式或复制／junction 替代。清理失败另行保留在错误说明中。
 
-同一次启动的技能、扩展入口清单及适用宿主的 LSP／MCP／Pi 配置共用独占新建的 `<suite-id>/<本次装配>` 目录，全部写好才发布启动参数。同 Suite 或不同 Suite 的并发启动各用自己的完整目录，不会改写或清理已经交付给另一启动的产物；协调范围在进入 Herdr 前结束。资源检查失败不创建半套输出；创建后失败仅删除本次确实新建的目录及其链接实体，不遍历删除链接目标，也不扫描删除生成根中的未拥有文件。清理失败会与原始失败一起反馈，不新增跨文件事务或跨进程写入协议。
+同一次启动的技能及适用宿主的 LSP／MCP／Pi 配置共用独占新建的 `<suite-id>/<本次装配>` 目录，全部写好才发布启动参数。同 Suite 或不同 Suite 的并发启动各用自己的完整目录，不会改写或清理已经交付给另一启动的产物；协调范围在进入 Herdr 前结束。资源检查失败不创建半套输出；创建后失败仅删除本次确实新建的目录及其链接实体，不遍历删除链接目标，也不扫描删除生成根中的未拥有文件。清理失败会与原始失败一起反馈，不新增跨文件事务或跨进程写入协议。
 
 成功交付的装配目录可能仍被已有进程消费，因此不会在下次装配时自动回收。需要手工重建生成目录时，先停止所有使用它的 Chat 进程，且只移除确认属于程序的装配子目录，不删除 Suite 权威定义或资源源目录。受控装配不会放宽 zone 浏览与普通持久化对任意重解析点的拒绝。真实文件／目录／跨盘链接和失败清理的独立入口见[装配安全验收](agents/testing.md#suite-装配发布与链接安全验收)。
 
@@ -138,7 +141,7 @@ Suite 的 `extensions` 是按宿主分开的具体路径对象（例如 `{"omp":
 
 ### Pi 原生启动资源
 
-Pi 的共享 Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP。技能仍是完整目录的真符号链接；明确空 Suite 与不选 Suite 不同，后者不添加技能／模板覆盖。Pi 扩展包目录必须有 `package.json` 的非空 `pi.extensions` **具体相对文件入口清单**；后端逐个传 `--extension`，不能将含若干扩展的裸目录误认为已加载。入口文件、同包依赖和资产保留在同一包链接下。Pi 本地模板通过原生 `--prompt-template` 逐项选择，初始化不展开；LSP 不传给 Pi。
+Pi 的共享 Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP。技能仍是完整目录的真符号链接；明确空 Suite 与不选 Suite 不同，后者不添加技能／模板覆盖。Pi 共享扩展的 TOML `entrypoint` 必须指向具体入口文件，自定义 `extensions.pi` 也必须填写具体文件；后端逐个传原始源码绝对路径 `--extension`，不解析包的 `pi.extensions`，也不创建包链接。依赖和资产留在原目录，由 Pi 原生加载。Pi 本地模板通过原生 `--prompt-template` 逐项选择，初始化不展开；LSP 不传给 Pi。
 
 交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以集中 MCP 文件目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
 
@@ -178,19 +181,19 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 
 `GET /api/tasks` 的 `options.suites` 提供当前 Suite 定义，`options.mcp` 提供集中 ID 清单；Task POST/PUT 的 `suite` 字段与读取字段一致。引用校验失败返回 `400 task-suite-invalid` 和具体原因。读取失效 Task 本身仍成功，以便保留并显式修正引用。
 
-公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, extensions}`（`mcp` 为集中 ID 清单，`extensions` 为共享可选扩展，条目含 `id`、`label`、`agent`、`kind: "optional"` 和可保存的 `entrypoint`）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, extensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
+公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, extensions}`（`mcp` 为集中 ID 清单，`extensions` 为共享可选扩展，条目含 `id`、`label`、`agent`、`kind: "optional"` 和当前配置的 `entrypoint`；Suite 选择保存 ID，不复制该入口）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, extensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
 
 定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 
 ### 首批定义与显式离线迁移
 
-交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，`meta-data/tasks.json` 是按批准稳定 ID 更新的源码预设。探索 Suite 固定选择 18 个技能，支持 OMP/Pi、Pi 明确 `on`；实现 Suite 固定选择 11 个技能，仅 OMP，保留 `oh-my-wayfinder`。两者引用集中 `codebase-memory-mcp` 和批准的四语言声明，不扫描或自动补进新技能。当前另提供仅支持 Pi 的「网页访问」Suite（`web-access`），Tibo-monitor（`tpl-18e0ceac0a89f9bc-0`）已选择它；探索 Suite 的 Pi 扩展列表也加入同一个联网扩展，OMP 分支与实现 Suite 不变。实际资源发现与命令消费仍需对应宿主验收，不能从声明或迁移成功推断。
+交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，`meta-data/tasks.json` 是按批准稳定 ID 更新的源码预设。探索 Suite 固定选择 18 个技能，支持 OMP/Pi、Pi 明确 `on`；实现 Suite 固定选择 11 个技能，仅 OMP，保留 `oh-my-wayfinder`。两者引用集中 `codebase-memory-mcp` 和批准的四语言声明，不扫描或自动补进新技能。当前另提供仅支持 Pi 的「网页访问」Suite（`web-access`），Tibo-monitor（`tpl-18e0ceac0a89f9bc-0`）已选择它；探索 Suite 的 Pi 分支也选择同一个联网扩展；已有共享扩展均改用稳定 ID 引用，OMP 分支与实现 Suite 的能力选择保持不变。实际资源发现与命令消费仍需对应宿主验收，不能从声明或迁移成功推断。
 
-共享扩展选项统一命名为 **`pi-web-access`**，不是 webSearch，也不是某个 Suite 专属的开关。「网页访问」是该能力的独立打包；探索 Suite 的 Pi 分支是在原有资源基础上整合该能力，两者默认均选中。以后新建的任何支持 Pi 的 Suite 都可从同一目录按需勾选或取消；仅支持 OMP 的 Suite 不显示这项 Pi 能力。两者均引用 `${roots.pi_extensions}/pi-web-access` 本地源码包，由包的 `pi.extensions` 清单选择 `index.ts`，保留包内依赖和资产；依赖须事先准备，Chat 启动不执行 npm 安装或更新。独立网页访问 Suite 明确使用 `pi.codemode: "on"`，Skills、Prompt templates、LSP 与集中 MCP 清单均为空：会关闭 Pi 默认技能和模板发现，但保留 Task 固定扩展及原生 MCP 合并行为。它不替换 Tibo-monitor 的模型、思考级别或初始提示词。
+共享扩展选项统一命名为 **`pi-web-access`**，不是 webSearch，也不是某个 Suite 专属的开关。「网页访问」是该能力的独立打包；探索 Suite 的 Pi 分支是在原有资源基础上整合该能力，两者默认均选中。以后新建的任何支持 Pi 的 Suite 都可从同一目录按需勾选或取消；仅支持 OMP 的 Suite 不显示这项 Pi 能力。两者的 `extensionOptions.pi` 均引用 `pi-web-access`，具体源码入口由 `meta-data/task-options.toml` 的 `entrypoint = '${roots.pi_extensions}/pi-web-access/index.ts'` 提供，不从包 manifest 推导；依赖须事先准备，Chat 启动不执行 npm 安装或更新。独立网页访问 Suite 明确使用 `pi.codemode: "on"`，Skills、Prompt templates、LSP 与集中 MCP 清单均为空：会关闭 Pi 默认技能和模板发现，但保留 Task 固定扩展及原生 MCP 合并行为。它不替换 Tibo-monitor 的模型、思考级别或初始提示词。
 
-`pi-web-access` 源码包当前版本 `0.41.0` 没有声明独立 skills、prompt templates 或 themes；工具指引和内部模型调用提示词由扩展自身提供，不复制到 Suite 模板或 Task 初始消息中。接入不修改扩展的 `auto` 工具激活方式、功能开关或 provider 配置；扩展已注册不等于全部工具立即 active，也不等于搜索服务或凭据可用。源码包入口与 npm 发布包的 `./dist` 目录声明不同，不能直接互换。两个 Suite 均沿用现有真符号链接装配前提，不以复制或 junction 降级；修改后只影响后续发起及需要新进程的来源 Task 会话恢复，不重配运行中的 Chat。
+`pi-web-access` 源码包当前版本 `0.41.0` 没有声明独立 skills、prompt templates 或 themes；工具指引和内部模型调用提示词由扩展自身提供，不复制到 Suite 模板或 Task 初始消息中。接入不修改扩展的 `auto` 工具激活方式、功能开关或 provider 配置；扩展已注册不等于全部工具立即 active，也不等于搜索服务或凭据可用。源码包入口与 npm 发布包的 `./dist` 目录声明不同，不能直接互换。该扩展直接加载不需要符号链接权限；探索 Suite 中的非空技能仍要求真符号链接权限，不以复制或 junction 降级；修改后只影响后续发起及需要新进程的来源 Task 会话恢复，不重配运行中的 Chat。
 
-已有部署的数据**不会在启动时自动套用**。下面的 `initial-suite-v1` 是历史首批探索／实现迁移，不包含后续网页访问 Suite 或 Tibo-monitor 的联网绑定；不要把重跑它当作本次联网配置更新。维护者先停掉该部署的全部后端，核对 `migrations/initial-suite-v1/mapping.json` 的 22 个稳定 ID，并取得对目标数据的明确操作授权，再运行专项命令；以下路径仅为占位示例，不是已批准操作用户数据：
+已有部署的数据**不会在启动时自动套用**。若原 Suite 曾将共享选项复制到 `extensions` 路径中，应显式选择对应 `extensionOptions` ID 并移除重复的旧路径；不会把任意自定义路径自动猜成共享引用。Pi 旧包目录声明应改为 TOML 中的具体文件入口。下面的 `initial-suite-v1` 是历史首批探索／实现迁移，不包含后续网页访问 Suite 或 Tibo-monitor 的联网绑定；不要把重跑它当作本次联网配置更新。维护者先停掉该部署的全部后端，核对 `migrations/initial-suite-v1/mapping.json` 的 22 个稳定 ID，并取得对目标数据的明确操作授权，再运行专项命令；以下路径仅为占位示例，不是已批准操作用户数据：
 
 ```powershell
 cargo run --manifest-path backend/Cargo.toml --bin migrate-initial-suites -- `

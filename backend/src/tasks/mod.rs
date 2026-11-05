@@ -344,13 +344,41 @@ impl Tasks {
             .ok_or(TaskError::NotFound)
     }
 
+    pub(crate) fn validate_suite(&self, task: &Task) -> Result<(), TaskError> {
+        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
+            self.resolve_suite(access, task.env.suite.as_deref(), task.agent).map(|_| ())
+        }).map_err(TaskError::Unreadable)?
+    }
+
     /// Re-read authority immediately before launch; do not hold coordination
     /// across Herdr or any other external effect.
     pub fn prepare_environment(&self, task: &Task) -> Result<Vec<String>, TaskError> {
-        let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
-            self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
+        let (suite, extensions) = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
+            let suite = self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)?;
+            let mut extensions = Vec::new();
+            if let Some(suite) = &suite {
+                if !suite.extension_options.is_empty() {
+                    let catalog = catalog::Catalog::load_access(&self.metadata_file, &self.roots, access)?;
+                    suite.validate_extensions(&catalog.extensions).map_err(|error| TaskError::InvalidSuite(error.message))?;
+                    for id in suite.extension_options.get(task.agent.label()).into_iter().flatten() {
+                        extensions.push(catalog.extensions.iter().find(|option| option.id == *id).unwrap().entrypoint.clone());
+                    }
+                }
+            }
+            Ok::<_, TaskError>((suite, extensions))
         }).map_err(TaskError::Unreadable)??;
-        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots)
+        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots, &extensions)
+    }
+
+    fn resolve_suite(&self, access: &FileAccess, id: Option<&str>, agent: Agent) -> Result<Option<crate::suites::Suite>, TaskError> {
+        let suite = self.suites.resolve_selection(access, id, agent)?;
+        if let Some(suite) = &suite {
+            if !suite.extension_options.is_empty() {
+                let catalog = catalog::Catalog::load_access(&self.metadata_file, &self.roots, access)?;
+                suite.validate_extensions(&catalog.extensions).map_err(|error| TaskError::InvalidSuite(error.message))?;
+            }
+        }
+        Ok(suite)
     }
 
     /// 新增一个 Task；成功返回保存后的完整列表。
@@ -358,7 +386,7 @@ impl Tasks {
         let fields = input.validate(&self.catalog()?)?;
 
         self.change(|access, tasks| {
-            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
+            let _ = self.resolve_suite(access, fields.suite.as_deref(), fields.agent)?;
             let id = next_id(tasks);
             tasks.push(Task {
                 id,
@@ -387,7 +415,7 @@ impl Tasks {
         let fields = input.validate(&self.catalog()?)?;
 
         self.change(|access, tasks| {
-            let _ = self.suites.resolve_selection(access, fields.suite.as_deref(), fields.agent)?;
+            let _ = self.resolve_suite(access, fields.suite.as_deref(), fields.agent)?;
             let target = tasks
                 .iter_mut()
                 .find(|task| task.id == id)
@@ -435,7 +463,7 @@ impl Tasks {
 
     /// Read, validate, mutate and publish under one shared resource scope.
     fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),
