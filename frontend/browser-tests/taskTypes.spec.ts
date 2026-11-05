@@ -6,9 +6,8 @@ import { startServer, type E2EServer } from './support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-// P5.01 / S1,S2: changing Task purpose preserves its host and selects only
-// the corresponding non-cancellable role extension.
-test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', async ({ page }, info) => {
+// P5.01 / S1,S2: changing Task purpose preserves its host without repeating the global extension catalog.
+test('P5.01 Pi Task types preserve agent without repeating global extensions', async ({ page }, info) => {
   server = await startServer()
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-tasks').click()
@@ -21,8 +20,8 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
   await expect(page.getByTestId('task-agent')).toHaveValue('pi')
   await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
   await page.getByTestId('task-next').click()
-  await expect(page.getByTestId('task-fixed-extensions')).toContainText('manager-chat')
-  await expect(page.getByTestId('task-fixed-extensions')).not.toContainText('node-chat')
+  await expect(page.getByTestId('task-fixed-extensions')).toHaveCount(0)
+  await expect(page.getByTestId('task-suite')).toHaveValue('')
   await expect(page.getByTestId('extension-pi-manager-chat')).toHaveCount(0)
   await expect(page.getByTestId('extension-pi-node-chat')).toHaveCount(0)
   await page.getByTestId('task-next').click()
@@ -30,7 +29,7 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
   await expect(page.getByTestId('task-dialog')).toBeHidden()
   let saved = (await server.getTasks()).tasks[0]
   expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi' })
-  await expect(page.getByTestId('task-item')).toContainText('manager-chat')
+  await expect(page.getByTestId('task-item')).not.toContainText('manager-chat')
   await expect(page.getByTestId('task-item')).not.toContainText('node-chat')
   for (const role of ['normal']) {
     await page.getByTestId('task-edit').click()
@@ -38,9 +37,8 @@ test('P5.01 Pi Task types preserve agent and non-cancellable role extensions', a
     await expect(page.getByTestId('task-agent')).toHaveValue('pi')
     await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
     await page.getByTestId('task-next').click()
-    const fixed = page.getByTestId('task-fixed-extensions')
-    await expect(fixed).not.toContainText('manager-chat')
-    await expect(fixed).not.toContainText('node-chat')
+    await expect(page.getByTestId('task-fixed-extensions')).toHaveCount(0)
+    await expect(page.getByTestId('task-suite')).toHaveValue('')
     await page.getByTestId('task-next').click()
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-dialog')).toBeHidden()
@@ -70,8 +68,8 @@ test('P5.01 role changes select exactly one fixed role environment', async ({}, 
     expect(created.status).toBe(202)
     const job = await created.json()
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')
-    const entries = role === 'manager' ? ['omp-herdr-agent-state', 'omp-model-cost', 'omp-manager-chat']
-      : ['omp-herdr-agent-state', 'omp-model-cost']
+    const entries = role === 'manager' ? ['omp-herdr-agent-state', 'omp-model-cost', 'omp-manager-chat', 'omp-connect-bot']
+      : ['omp-herdr-agent-state', 'omp-model-cost', 'omp-connect-bot']
     expect(server.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...entries.flatMap(entry => ['--extension', path.join(root, 'extensions', `${entry}.ts`)])])
   }
   fs.writeFileSync(info.outputPath('role-environments-NOT-native-loading.json'), JSON.stringify({ calls: server.herdrCalls(), tasks: await server.getTasks() }, null, 2))
@@ -98,7 +96,7 @@ for (const agent of ['omp', 'pi'] as const) {
     const chat = await post('/api/chats', { taskId: task.id, zone, chatId: preview.chatId, input: 'STANDALONE INPUT' }, 202)
     await expect.poll(async () => (await (await fetch(`${host.baseURL}/api/chats/${chat.id}`)).json()).stage).toBe('succeeded')
     const nativeBuiltins = agent === 'pi' ? ['--extension', 'builtin:mcp', '--extension', 'builtin:tool-search', '--extension', 'builtin:codemode'] : []
-    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`, ...(agent === 'pi' ? ['pi-suite'] : [])]
+    const entries = [`${agent}-herdr-agent-state`, `${agent}-model-cost`, ...(agent === 'pi' ? ['pi-suite'] : []), `${agent}-connect-bot`]
     expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...entries.flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
     fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
@@ -108,7 +106,7 @@ for (const agent of ['omp', 'pi'] as const) {
     const run = await post('/api/scheduler/maps/shared.json/runs', { managerTaskId: manager.id, zone, userInput: 'MANAGER INPUT' }, 201)
     identity('shared-node')
     expect((await post('/api/workflow/manager/dispatch', { sessionId: 'shared-manager', nodes: ['A'] })).results[0].status).toBe('running')
-    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...[...entries, `${agent}-node-chat`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
+    expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...[...entries.slice(0, -1), `${agent}-node-chat`, `${agent}-connect-bot`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])
     expect((await host.getTasks()).tasks.find(item => item.id === task.id)).toEqual(task)
     const history = JSON.parse(fs.readFileSync(path.join(root, 'session-history.json'), 'utf8'))
     expect(history.filter((item: { sourceTaskId: string }) => item.sourceTaskId === task.id)).toHaveLength(2)

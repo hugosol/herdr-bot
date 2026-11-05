@@ -29,12 +29,10 @@
       ],
       "extensions": {
         "omp": [
-          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
-          "${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts"
+          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
         ],
         "pi": [
-          "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
-          "${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts"
+          "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts"
         ]
       },
       "prompts": [],
@@ -131,7 +129,6 @@
       "extensions": {
         "omp": [
           "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
-          "${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts",
           "${roots.wayfinder}/extensions"
         ]
       },

@@ -60,7 +60,6 @@ export function SuitesPanel({ active }: { active: boolean }) {
         ...draft,
         skills: lines(draft.skills),
         extensions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(lines(draft.extensions[agent]))]]).filter(([, paths]) => paths.length > 0)),
-        extensionOptions: Object.fromEntries(draft.agents.map(agent => [agent, [...new Set(draft.extensionOptions?.[agent] ?? [])]]).filter(([, ids]) => ids.length > 0)),
         prompts: lines(draft.prompts),
         lsp: lsp as Record<string, unknown>,
       }
@@ -90,6 +89,22 @@ export function SuitesPanel({ active }: { active: boolean }) {
     <p className="scope-note">界面与手工维护使用同一份 Suite 权威文件。资源路径按声明文件所在目录或集中 roots 解析；这里不编辑 MCP 连接，也不表示资源已经运行。</p>
     {error && <p className="zone-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
+    <section className="suites-fixed" aria-label="全局固定扩展" aria-describedby="suite-fixed-note">
+      <h3>全局固定扩展 · 只读</h3>
+      <p className="scope-note" id="suite-fixed-note">固定扩展按宿主和执行角色加载，不受 Suite 选择影响；未选 Suite 的 Task 也会加载。这里展示已配置的入口与适用角色，不表示已连接或正在运行。</p>
+      {data === null ? <p>{error ? '未能读取固定扩展，请重新读取。' : '正在读取固定扩展…'}</p> : <div className="suites-fixed-groups">
+        {(['omp', 'pi'] as const).map(agent => <section key={agent} aria-label={`${agent.toUpperCase()} 固定扩展`}>
+          <h4>{agent.toUpperCase()}</h4>
+          {data.fixedExtensions.some(extension => extension.agent === agent) ? <ul>
+            {data.fixedExtensions.filter(extension => extension.agent === agent).map(extension => <li key={extension.id}>
+              <span className="suites-fixed-name">{extension.label}{extension.label !== extension.id && ` · ${extension.id}`}</span>
+              <span className="suites-extension-path">{extension.entrypoint}</span>
+              <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点' })[role]).join('、') || '无适用角色'}</span>
+            </li>)}
+          </ul> : <p className="scope-note">此宿主暂无固定扩展。</p>}
+        </section>)}
+      </div>}
+    </section>
     <div className="suites-layout">
       <section aria-label="Suite 列表" className="suites-list">
         <div className="suites-list-heading"><h3>工具集</h3><span>{data ? `${data.suites.length} 个 Suite` : '读取中'}</span></div>
@@ -128,26 +143,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <textarea id={`suite-${key}`} className="zone-form__input" rows={3} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
           </div>)}
           {draft.agents.map(agent => <div key={agent} className="suites-extensions">
-            <fieldset aria-describedby={`suite-extensions-note-${agent}`}>
-              <legend>{agent.toUpperCase()} 共享可选扩展</legend>
-              {data?.extensions.filter(extension => extension.agent === agent).map(extension => <label className="suites-choice suites-extension-choice" key={extension.id}>
-                <input type="checkbox" checked={(draft.extensionOptions?.[agent] ?? []).includes(extension.id)} onChange={event => {
-                  const ids = draft.extensionOptions?.[agent] ?? []
-                  setDraft({ ...draft, extensionOptions: { ...draft.extensionOptions, [agent]: event.target.checked
-                    ? [...new Set([...ids, extension.id])]
-                    : ids.filter(id => id !== extension.id) } })
-                }} />
-                <span>{extension.label}{extension.label !== extension.id && ` · ${extension.id}`}<span className="suites-extension-path">{extension.entrypoint}</span></span>
-              </label>)}
-              {data?.extensions.every(extension => extension.agent !== agent) && <p className="scope-note">此宿主暂无共享可选扩展，可在下方填写自定义路径。</p>}
-              {data && [...new Set(draft.extensionOptions?.[agent] ?? [])].filter(id => !data.extensions.some(extension => extension.id === id && extension.agent === agent)).map(id => <label className="suites-choice zone-error" key={id}>
-                <input type="checkbox" checked onChange={() => setDraft({ ...draft, extensionOptions: { ...draft.extensionOptions, [agent]: (draft.extensionOptions?.[agent] ?? []).filter(value => value !== id) } })} />
-                {id}（失效：共享扩展不存在或宿主不匹配；请取消后保存）
-              </label>)}
-              <p className="scope-note" id={`suite-extensions-note-${agent}`}>勾选保存共享扩展 ID，入口随最新配置解析，不表示已经加载或运行。下方仅保存自定义入口，与共享选择相互独立；失效选择须显式取消。</p>
-            </fieldset>
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
-            <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
+            <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} aria-describedby={`suite-extensions-note-${agent}`} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
+            <p className="scope-note" id={`suite-extensions-note-${agent}`}>{agent === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生扩展目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p>
           </div>)}
           </div>
           <p className="scope-note">Pi 跳过 LSP；OMP 跳过 Suite 本地 prompt templates，既不作为初始指示，也不转换语义。</p>

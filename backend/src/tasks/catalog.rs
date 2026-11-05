@@ -52,7 +52,6 @@ pub struct ExtensionOption {
 #[serde(rename_all = "lowercase")]
 pub enum ExtensionKind {
     Fixed,
-    Optional,
 }
 
 #[derive(Debug, Serialize)]
@@ -64,6 +63,14 @@ pub struct TaskOptions {
     skills: Vec<String>,
     labels: BTreeMap<String, BTreeMap<String, String>>,
     extensions: Vec<ExtensionOption>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixedExtensionOption {
+    #[serde(flatten)]
+    extension: ExtensionOption,
+    roles: Vec<&'static str>,
 }
 
 /// Runtime context is supplied by the launch owner, never by extension metadata.
@@ -81,16 +88,19 @@ impl Catalog {
         Self::load_paths(path, roots, false)
     }
 
-    /// Display optional choices without requiring installed resources. Suites
-    /// persist IDs; launches independently resolve the current metadata snapshot.
-    pub(crate) fn suite_extensions(path: &Path, roots: &crate::paths::Roots) -> Result<Vec<ExtensionOption>, TaskError> {
+    /// Display resolved global fixed entries without requiring installed resources.
+    pub(crate) fn suite_extensions(path: &Path, roots: &crate::paths::Roots) -> Result<Vec<FixedExtensionOption>, TaskError> {
         let catalog = Self::load_paths(path, roots, true)?;
-        let mut options = Vec::new();
-        for extension in catalog.extensions.into_iter().filter(|extension| extension.kind == ExtensionKind::Optional) {
+        let mut options = Vec::with_capacity(catalog.extensions.len());
+        for mut extension in catalog.extensions {
             if extension.entrypoint.as_os_str().is_empty() {
-                return Err(TaskError::Metadata(format!("选项元数据 {}：可选扩展 {} 缺少入口路径", path.display(), extension.id)));
+                return Err(TaskError::Metadata(format!("选项元数据 {}：扩展 {} 缺少入口路径", path.display(), extension.id)));
             }
-            options.push(extension);
+            extension.entrypoint = roots.resolve(&extension.entrypoint, path.parent().unwrap_or_else(|| Path::new(".")))
+                .map_err(|error| TaskError::Metadata(format!("扩展 {} 路径：{error:#}", extension.id)))?;
+            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node")]
+                .into_iter().filter_map(|(role, name)| extension.applies_to(extension.agent, role).then_some(name)).collect();
+            options.push(FixedExtensionOption { extension, roles });
         }
         Ok(options)
     }
@@ -99,12 +109,6 @@ impl Catalog {
         let raw = crate::files::FileStore::default().read_to_string(path)
             .map_err(|error| TaskError::Metadata(format!("选项元数据 {}：读取失败：{error}", path.display())))?;
         Self::parse_paths(path, roots, preserve_roots, &raw)
-    }
-
-    pub(crate) fn load_access(path: &Path, roots: &crate::paths::Roots, access: &crate::files::FileAccess) -> Result<Self, TaskError> {
-        let raw = access.read_to_string(path)
-            .map_err(|error| TaskError::Metadata(format!("选项元数据 {}：读取失败：{error}", path.display())))?;
-        Self::parse_paths(path, roots, false, &raw)
     }
 
     fn parse_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool, raw: &str) -> Result<Self, TaskError> {

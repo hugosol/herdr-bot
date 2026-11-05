@@ -5,8 +5,8 @@
       "name": "网页访问",
       "agents": ["pi"],
       "skills": [],
-      "extensionOptions": {
-        "pi": ["pi-web-access"]
+      "extensions": {
+        "pi": ["${roots.pi_extensions}/pi-web-access/index.ts"]
       },
       "prompts": [],
       "lsp": {},
@@ -42,9 +42,9 @@
         "${roots.wayfinder_skills}/to-spec",
         "${roots.wayfinder_skills}/to-tickets"
       ],
-      "extensionOptions": {
-        "omp": ["omp-codebase-tools", "omp-connect-bot"],
-        "pi": ["pi-codebase-tools", "pi-connect-bot", "pi-web-access"]
+      "extensions": {
+        "omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"],
+        "pi": ["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts", "${roots.pi_extensions}/pi-web-access/index.ts"]
       },
       "prompts": [],
       "lsp": {
@@ -137,8 +137,8 @@
         "${roots.wayfinder_skills}/to-spec",
         "${roots.matt_pocock_skills}/engineering/domain-modeling"
       ],
-      "extensionOptions": {
-        "omp": ["omp-codebase-tools", "omp-connect-bot", "omp-oh-my-wayfinder"]
+      "extensions": {
+        "omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts", "${roots.wayfinder}/extensions"]
       },
       "prompts": [],
       "lsp": {

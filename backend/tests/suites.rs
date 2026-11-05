@@ -23,63 +23,57 @@ fn shared_metadata(root: &TempDir, config: &mut herdr_bot::Config) -> String {
     let mut metadata: toml::Value = toml::from_str(&fs::read_to_string(common::test_metadata_file()).unwrap()).unwrap();
     let extensions = metadata["extensions"].as_array_mut().unwrap();
     extensions.retain(|extension| extension["kind"].as_str() == Some("fixed"));
-    for (id, label, agent, entrypoint) in [
-        ("shared-pi", "Shared Pi", "pi", "${roots.pi_extensions}/pi-web-access"),
-        ("relative-pi", "Relative Pi", "pi", "packages with spaces/pi-package"),
-        ("relative-omp", "Relative OMP", "omp", "packages with spaces/omp-package"),
-    ] {
-        extensions.push(toml::Value::try_from(json!({"id":id,"label":label,"agent":agent,"kind":"optional","entrypoint":entrypoint})).unwrap());
-    }
+    let connect = extensions.iter_mut().find(|extension| extension["id"].as_str() == Some("pi-connect-bot")).unwrap();
+    connect["entrypoint"] = toml::Value::String("${roots.pi_extensions}/connect-bot.ts".into());
     let raw = toml::to_string(&metadata).unwrap();
     fs::write(&config.tasks.metadata_file, &raw).unwrap();
     raw
 }
 
 #[tokio::test]
-async fn shared_extensions_preserve_roots_and_rebase_from_metadata_not_suite_storage() {
+async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() {
     let root = TempDir::new("suite shared extension declarations");
     let mut config = config(&root);
     shared_metadata(&root, &mut config);
-    let metadata_directory = config.tasks.metadata_file.parent().unwrap();
-    let pi_package = metadata_directory.join("packages with spaces").join("pi-package");
-    let omp_package = metadata_directory.join("packages with spaces").join("omp-package");
     let server = TestServer::start(&config).await;
     let response = get_over_tcp(server.addr(), "/api/suites").await;
     assert_eq!(response.status, 200, "{}", response.body);
     let listing: Value = serde_json::from_str(&response.body).unwrap();
-    let options = listing["extensions"].as_array().unwrap();
-    assert!(options.iter().all(|option| option["kind"] == "optional"));
-    let shared = options.iter().find(|option| option["id"] == "shared-pi").unwrap();
-    assert_eq!(shared["agent"], "pi");
-    assert_eq!(shared["entrypoint"], "${roots.pi_extensions}/pi-web-access");
-    for (id, agent, expected_path) in [("relative-pi", "pi", &pi_package), ("relative-omp", "omp", &omp_package)] {
-        let option = options.iter().find(|option| option["id"] == id).unwrap();
-        assert_eq!(option["agent"], agent);
-        assert_eq!(std::path::Path::new(option["entrypoint"].as_str().unwrap()), expected_path.as_path());
+    assert!(listing.get("extensions").is_none());
+    let fixed = listing["fixedExtensions"].as_array().unwrap();
+    for host in ["omp", "pi"] {
+        for (suffix, roles) in [("connect-bot", json!(["standalone","manager","node"])), ("manager-chat", json!(["manager"])), ("node-chat", json!(["node"]))] {
+            let id = format!("{host}-{suffix}");
+            let option = fixed.iter().find(|option| option["id"] == id).unwrap();
+            assert_eq!(option["agent"], host);
+            assert_eq!(option["kind"], "fixed");
+            assert_eq!(option["roles"], roles);
+        }
     }
-    // No optional dependency exists; listing and saving do not inspect resources.
+    let connect = fixed.iter().find(|option| option["id"] == "pi-connect-bot").unwrap();
+    assert_eq!(std::path::Path::new(connect["entrypoint"].as_str().unwrap()), root.path().join("unavailable dependencies/connect-bot.ts"));
+    // No source dependency exists; listing and saving do not inspect resources.
     assert!(!root.path().join("unavailable dependencies").exists());
     let mut suite = json!({"id":"shared","name":"Shared choices","agents":["pi","omp"],"pi":{"codemode":"on"},
-        "extensionOptions":{"pi":["shared-pi","relative-pi"],"omp":["relative-omp"]},
-        "extensions":{"omp":["custom-omp.ts"]}
+        "extensions":{"pi":["${roots.pi_extensions}/pi-web-access/index.ts","packages with spaces/entry.ts"],"omp":["custom-omp.ts"]}
     });
     for (method, url) in [("POST", "/api/suites"), ("PUT", "/api/suites/shared")] {
         let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["suites"][0]["extensions"], suite["extensions"]);
+        assert_eq!(body["fixedExtensions"], listing["fixedExtensions"]);
         suite["name"] = json!("Edited choices");
     }
     let stored: Value = serde_json::from_slice(&fs::read(&config.suites.definition_file).unwrap()).unwrap();
     assert_eq!(stored["suites"][0]["extensions"], suite["extensions"]);
-    assert_eq!(stored["suites"][0]["extensionOptions"], suite["extensionOptions"]);
     // A catalog edit never rewrites an existing Suite declaration into its new path.
-    let raw = fs::read_to_string(&config.tasks.metadata_file).unwrap().replace("pi-web-access", "replacement-package");
+    let raw = fs::read_to_string(&config.tasks.metadata_file).unwrap().replace("connect-bot.ts", "replacement.ts");
     fs::write(&config.tasks.metadata_file, raw).unwrap();
     let response = get_over_tcp(server.addr(), "/api/suites").await;
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(body["extensions"][0]["entrypoint"], "${roots.pi_extensions}/replacement-package");
+    assert!(body.get("extensions").is_none());
     assert_eq!(body["suites"][0]["extensions"], suite["extensions"]);
     let response = get_over_tcp(server.addr(), "/api/suites/shared").await;
     assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"suite":stored["suites"][0]}));
@@ -93,7 +87,8 @@ async fn shared_extensions_preserve_roots_and_rebase_from_metadata_not_suite_sto
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(body["suites"], json!([]));
-    assert_eq!(body["extensions"][0]["entrypoint"], "${roots.pi_extensions}/replacement-package");
+    assert!(body["fixedExtensions"].as_array().unwrap().iter().any(|entry| entry["id"] == "pi-connect-bot" && std::path::Path::new(entry["entrypoint"].as_str().unwrap()) == root.path().join("unavailable dependencies/replacement.ts")));
+    assert!(body.get("extensions").is_none());
 }
 
 #[tokio::test]
@@ -112,7 +107,7 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
     for damage in [
         "invalid TOML [".to_owned(),
         metadata.replace("${roots.pi_extensions}", "${roots.unknown}"),
-        metadata.replace("packages with spaces/pi-package", ""),
+        metadata.replace("${roots.pi_extensions}/connect-bot.ts", ""),
     ] {
         fs::write(&config.tasks.metadata_file, damage).unwrap();
         let response = get_over_tcp(server.addr(), "/api/suites").await;
@@ -128,7 +123,7 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
             assert!(response.body.contains("metadata-invalid"), "{}", response.body);
             assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
         }
-        // Single-definition reads remain independent of the optional catalog.
+        // Single-definition reads remain independent of fixed extension metadata.
         assert_eq!(get_over_tcp(server.addr(), "/api/suites/existing").await.status, 200);
     }
     fs::write(&config.tasks.metadata_file, metadata).unwrap();

@@ -5,14 +5,14 @@ use crate::{paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 impl Suites {
-    pub(super) fn select_extensions(&self, suite: &Suite, agent: Agent, roots: &Roots, shared: &[PathBuf]) -> Result<Vec<PathBuf>, TaskError> {
+    pub(super) fn select_extensions(&self, suite: &Suite, agent: Agent, roots: &Roots) -> Result<Vec<PathBuf>, TaskError> {
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」扩展入口无效：{error}；没有跳过失败资源或回退为空环境。", suite.id));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
         let declarations = suite.extensions.get(agent.label()).map(Vec::as_slice).unwrap_or_default();
-        let mut entries = Vec::with_capacity(shared.len() + declarations.len());
-        let mut seen = HashSet::with_capacity(shared.len() + declarations.len());
-        let candidates = shared.iter().cloned().map(Ok).chain(declarations.iter().map(|declaration|
-            roots.resolve(Path::new(declaration), base).map_err(|error| fail(error.to_string()))));
+        let mut entries = Vec::with_capacity(declarations.len());
+        let mut seen = HashSet::with_capacity(declarations.len());
+        let candidates = declarations.iter().map(|declaration|
+            roots.resolve(Path::new(declaration), base).map_err(|error| fail(error.to_string())));
         for entry in candidates {
             let entry = entry?;
             if entry.as_os_str().is_empty() { return Err(fail("缺少具体扩展入口".into())); }

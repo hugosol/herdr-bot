@@ -10,8 +10,7 @@ hosts launched by real Herdr (S4). No product test-only endpoint is added.
 ## Dependencies and preparation
 
 Run from the explicit herdr-bot worktree with a separately supplied toolkit Git
-worktree containing the delivered Pi Suite extension. Use Python 3.11+ for the
-standard-library `tomllib` reader of the current optional metadata catalog. Only herdr-bot is modified
+worktree containing the delivered Pi Suite extension. Use Python 3.11+. Only herdr-bot is modified
 by this acceptance ticket. Dependencies must already be installed. Do not
 install/elevate/change PATH, patch Herdr/OMP/Pi, use a source CLI/SDK-built agent,
 replace the native tool manager, copy credentials or use existing user Chats.
@@ -51,13 +50,11 @@ expert_translate = 'D:/sources/expert-tranlate'
 pi_extensions = 'D:/sources/pi-extension'
 ```
 
-The current exploration Pi declaration selects `pi-web-access` by stable ID in
-`extensionOptions.pi`. Prepare the source entry declared in the current
-`meta-data/task-options.toml` and its runtime dependencies before running this
-acceptance; Pi entries must name a concrete file (for example `index.ts`), not
-a package directory. The runner copies all current optional metadata declarations
-into its isolated options TOML, preserving root references (including the owned
-toolkit replacement) and rebasing metadata-relative entries to their source TOML.
+The current exploration Pi declaration names the `pi-web-access/index.ts` source
+entry directly in `extensions.pi`. Prepare that source and its runtime dependencies
+before running acceptance. Pi entries must name a concrete file, not a package
+directory. Suite paths preserve root references, including the owned toolkit
+replacement; there is no optional metadata catalog.
 The independent `web-access` Suite is not a scenario in this historical initial-Suite
 matrix. Its existence and the shared extension declaration do not make this runner
 proof of web tool registration or search-provider availability.
@@ -91,8 +88,8 @@ The independent name/source literals live in the acceptance runner, not in the
 assembler or an expectation recomputed from `suites.json`. The delivered
 `meta-data/suites.json` is copied **byte-for-byte** into each isolated deployment;
 its roots resolve to the real approved skill sources and an owned copy of the
-supplied toolkit. Shared extension IDs resolve against the current optional TOML
-catalog at launch; custom `extensions` remain native source paths. Extensions
+supplied toolkit. Suite `extensions` declare native source paths directly;
+relative entries resolve from the Suite declaration directory. Extensions
 are passed directly to the host without package links, generated manifests or
 package.json expansion. Only skills require true generated directory links. That copy excludes live runtime access records. Only its
 connect-bot/workflow endpoint configuration is overridden to this run's dynamic

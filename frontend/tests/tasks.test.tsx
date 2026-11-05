@@ -239,16 +239,11 @@ describe('Task tab：读取与展示', () => {
     )
   })
 
-  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和 Suite，角色固定扩展按类型筛选并保存', async (agent) => {
+  it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和 Suite，不重复展示扩展目录并保存', async (agent) => {
     const user = userEvent.setup()
     const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
       taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '' }
-    const options = { ...OPTIONS, extensions: (['omp', 'pi'] as const).flatMap(host => [
-      { id: `${host}-state`, label: `${host} 状态`, agent: host, kind: 'fixed', entrypoint: '/state.ts' },
-      { id: `${host}-manager-chat`, label: `${host} manager-chat`, agent: host, kind: 'fixed', entrypoint: '/manager.ts' },
-      { id: `${host}-node-chat`, label: `${host} node-chat`, agent: host, kind: 'fixed', entrypoint: '/node.ts' },
-      { id: `${host}-tools`, label: `${host} 工具`, agent: host, kind: 'optional', entrypoint: '/tools.ts' },
-    ]) }
+    const options = OPTIONS
     const { calls } = mockTaskFetch((url, method, body) => {
       if (url === '/api/tasks' && method === 'GET') return jsonResponse(200, { tasks: [original], options })
       if (url === '/api/tasks/role-task' && method === 'PUT') return jsonResponse(200, { tasks: [{ id: original.id, ...JSON.parse(body!) }], options })
@@ -265,14 +260,9 @@ describe('Task tab：读取与展示', () => {
       expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
       expect(within(dialog).getByTestId('task-thinking')).toHaveValue('high')
       await user.click(within(dialog).getByTestId('task-next'))
-      const fixed = within(dialog).getByTestId('task-fixed-extensions')
-      expect(fixed).toHaveTextContent(`${agent} 状态`)
-      expect(fixed).not.toHaveTextContent(`${agent === 'pi' ? 'omp' : 'pi'} `)
-      if (role === 'manager') expect(fixed).toHaveTextContent(`${agent} manager-chat`)
-      else expect(fixed).not.toHaveTextContent('manager-chat')
-      expect(fixed).not.toHaveTextContent('node-chat')
-      expect(within(dialog).queryByTestId(`extension-${agent}-tools`)).toBeNull()
-      expect(within(fixed).queryByRole('checkbox')).toBeNull()
+      expect(within(dialog).getByTestId('task-suite')).toHaveValue('')
+      expect(within(dialog).queryByTestId('task-fixed-extensions')).toBeNull()
+      expect(within(dialog).queryByRole('checkbox')).toBeNull()
       await user.click(within(dialog).getByTestId('task-back'))
     }
     await saveTask(user, dialog)

@@ -5,14 +5,14 @@ use crate::{paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites, skills};
 
 impl Suites {
-    pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots, shared_extensions: &[std::path::PathBuf]) -> Result<Vec<String>, TaskError> {
+    pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
         let (pi_args, pi_config) = if agent == Agent::Pi {
             self.select_pi(suite, roots)?
         } else { (Vec::new(), None) };
         let Some(suite) = suite else { return Ok(pi_args) };
         // Resolve and validate every resource before creating any output.
         let skills = self.select_skills(suite, roots)?;
-        let extensions = self.select_extensions(suite, agent, roots, shared_extensions)?;
+        let extensions = self.select_extensions(suite, agent, roots)?;
         let mcp = self.select_mcp(suite, agent, roots)?;
         let directory = self.generated_directory.join(&suite.id);
         let assembly = directory.join(crate::chats::new_creation_id());

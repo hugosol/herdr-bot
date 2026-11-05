@@ -159,7 +159,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   expect(edited.status).toBe(200)
   const latest = path.join(root, 'latest-extensions')
   fs.mkdirSync(latest)
-  const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat']
+  const extensionIds = ['omp-herdr-agent-state', 'omp-model-cost', 'omp-node-chat', 'omp-connect-bot']
   for (const entry of extensionIds) fs.writeFileSync(path.join(latest, `${entry}.ts`), "throw new Error('controlled fixture never loads extensions')\n")
   const metadata = fs.readFileSync(host.metadataFile, 'utf8').replaceAll('${roots.browser_extensions}', latest)
   fs.writeFileSync(host.metadataFile, metadata)
@@ -179,7 +179,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const managedObservationMs = Date.now() - observationStart
   const calls = host.herdrCalls().slice(before)
   expect(calls.filter(call => call.kind === 'agent_start')).toHaveLength(1)
-  expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual(['--no-extensions', '--extension', path.join(latest, 'omp-herdr-agent-state.ts'), '--extension', path.join(latest, 'omp-model-cost.ts'), '--extension', path.join(latest, 'omp-node-chat.ts'), '--resume', sessionFile])
+  expect(calls.find(call => call.kind === 'agent_start')!.args).toEqual(['--no-extensions', '--extension', path.join(latest, 'omp-herdr-agent-state.ts'), '--extension', path.join(latest, 'omp-model-cost.ts'), '--extension', path.join(latest, 'omp-node-chat.ts'), '--extension', path.join(latest, 'omp-connect-bot.ts'), '--resume', sessionFile])
   expect(calls.some(call => ['agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)
   expect(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))).toEqual(saved)
   const current = await (await fetch(`${host.baseURL}/api/workflow/runs/${id}`)).json()

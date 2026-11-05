@@ -141,9 +141,9 @@ async fn released_suites_expose_only_the_approved_resources() {
         let languages: Vec<_> = suite["lsp"].as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(languages,vec!["jdtls","pyright","rust-analyzer","typescript-language-server"]);
         assert_eq!(suite["lsp"]["pyright"]["command"],"pyright-langserver");
-        let mut extensions = json!({"omp":["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts","${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts"]});
+        let mut extensions = json!({"omp":["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"]});
         if id == "codebase-exploration" {
-            extensions["pi"] = json!(["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts","${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts"]);
+            extensions["pi"] = json!(["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts"]);
             assert_eq!(suite["pi"],json!({"codemode":"on"}));
         } else {
             extensions["omp"].as_array_mut().unwrap().push(json!("${roots.wayfinder}/extensions"));

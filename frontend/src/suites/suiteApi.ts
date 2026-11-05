@@ -4,20 +4,20 @@ export type Suite = {
   agents: ('omp' | 'pi')[]
   skills: string[]
   extensions: Partial<Record<'omp' | 'pi', string[]>>
-  extensionOptions?: Partial<Record<'omp' | 'pi', string[]>>
   prompts: string[]
   lsp: Record<string, unknown>
   mcp: string[]
   pi?: { codemode: 'on' | 'only' }
 }
-export type SuiteExtension = {
+export type SuiteFixedExtension = {
   id: string
   label: string
   agent: 'omp' | 'pi'
-  kind: 'optional'
+  kind: 'fixed'
   entrypoint: string
+  roles: ('standalone' | 'manager' | 'node')[]
 }
-export type SuiteList = { suites: Suite[]; mcp: string[]; extensions: SuiteExtension[] }
+export type SuiteList = { suites: Suite[]; mcp: string[]; fixedExtensions: SuiteFixedExtension[] }
 
 export async function suiteRequest(method = 'GET', id?: string, suite?: Suite): Promise<SuiteList> {
   const response = await fetch(`/api/suites${id === undefined ? '' : `/${encodeURIComponent(id)}`}`, {
@@ -28,12 +28,14 @@ export async function suiteRequest(method = 'GET', id?: string, suite?: Suite): 
   if (!response.ok) throw new Error(typeof result.message === 'string' ? result.message : 'Suite 请求失败。')
   if (result === null || typeof result !== 'object'
     || !Array.isArray(result.suites) || !Array.isArray(result.mcp)
-    || !Array.isArray(result.extensions) || !result.extensions.every((extension: unknown) => {
+    || Object.keys(result).some(key => !['suites', 'mcp', 'fixedExtensions'].includes(key))
+    || !Array.isArray(result.fixedExtensions) || !result.fixedExtensions.every((extension: unknown) => {
       if (extension === null || typeof extension !== 'object') return false
       const option = extension as Record<string, unknown>
       return typeof option.id === 'string' && typeof option.label === 'string'
         && (option.agent === 'omp' || option.agent === 'pi')
-        && option.kind === 'optional' && typeof option.entrypoint === 'string'
+        && option.kind === 'fixed' && typeof option.entrypoint === 'string'
+        && Array.isArray(option.roles) && option.roles.every(role => role === 'standalone' || role === 'manager' || role === 'node')
     })) throw new Error('Suite 响应无效，未确认保存。')
   return result as SuiteList
 }

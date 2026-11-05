@@ -44,9 +44,8 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   await page.getByTestId('task-prompt').fill(PRESET.prompt)
   await page.getByTestId('task-next').click()
   await expect(page.getByTestId('task-step')).toHaveText('2 / 3 · 扩展配置')
-  const fixed = page.getByTestId('task-fixed-extensions')
-  await expect(fixed).toHaveText('固定扩展（始终加载，不可取消）herdr-agent-state、model-cost')
-  await expect(fixed.getByRole('checkbox')).toHaveCount(0)
+  await expect(page.getByTestId('task-fixed-extensions')).toHaveCount(0)
+  await expect(page.getByTestId('task-suite')).toHaveValue('')
   await expect(page.getByRole('checkbox')).toHaveCount(0)
   await page.getByTestId('task-back').click()
   await expect(page.getByTestId('task-name')).toHaveValue('发布巡检')
@@ -62,14 +61,14 @@ test('三步新增和编辑保留完整草稿，摘要与公开持久结果一�
   const summary = page.getByTestId('task-summary')
   for (const [id, value] of Object.entries({
     name: '发布巡检', chatName: PRESET.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high',
-    skill: '/code-review', prompt: PRESET.prompt, fixed: 'herdr-agent-state、model-cost', discovery: '关闭',
+    skill: '/code-review', prompt: PRESET.prompt, discovery: '关闭',
   })) await expect(summary.getByTestId(`summary-${id}`)).toHaveText(value)
   expect((await server.getTasks()).tasks).toEqual([])
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   const saved = (await server.getTasks()).tasks[0]
   expect(saved).toEqual({ id: expect.any(String), ...PRESET })
-  await expect(page.getByTestId('task-item')).toContainText('固定扩展')
+  await expect(page.getByTestId('task-item')).not.toContainText('固定扩展')
   await expect(page.getByTestId('task-item')).toContainText('不选 Suite')
 
   // The externally hosted Chat already exists; deleting its Task must leave that conversation untouched.
@@ -138,7 +137,7 @@ test('切换 Agent 不提供旧扩展编辑，新 Task 明确不选 Suite', asyn
   await expect(page.getByTestId('task-thinking')).toHaveValue('default')
   await page.getByTestId('task-next').click()
   await page.getByTestId('task-next').click()
-  await expect(page.getByTestId('summary-fixed')).toHaveText('herdr-agent-state、model-cost')
+  await expect(page.getByTestId('summary-suite')).toHaveText('不选 Suite')
   await page.getByTestId('save-task').click()
   await expect(page.getByTestId('task-dialog')).toHaveCount(0)
   expect((await server.getTasks()).tasks[0]).toMatchObject({ name: '零选样例', model: 'default', thinking: 'default', skill: null, prompt: '' })

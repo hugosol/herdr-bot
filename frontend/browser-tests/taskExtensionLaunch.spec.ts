@@ -50,8 +50,8 @@ test('两宿主固定集合准确显式启动，固定项不可取消，创建�
   const { root, zone, zonePath } = await setup()
   const ext = path.join(root, 'extensions')
   const cases = [
-    { agent: 'omp', entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts'] },
-    { agent: 'pi', entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts'] },
+    { agent: 'omp', entries: ['omp-herdr-agent-state.ts', 'omp-model-cost.ts', 'omp-connect-bot.ts'] },
+    { agent: 'pi', entries: ['pi-herdr-agent-state.ts', 'pi-model-cost.ts', 'pi-suite.ts', 'pi-connect-bot.ts'] },
   ]
   // Agent settings are sentinels, never launch configuration output.
   const settings = ['.omp/config.yml', '.omp/config.yaml', '.omp/settings.json', '.pi/settings.json'].map(relative => path.join(zonePath, relative))
@@ -96,24 +96,18 @@ test('同进程相同已保存标识使用新入口且忽略未选缺失入口�
   const { root, zone, original } = await setup()
   const saved = await save({ ...task })
   const persistedBefore = fs.readFileSync(server!.storageFile, 'utf8')
-  fs.unlinkSync(path.join(root, 'extensions', 'omp-connect-bot.ts'))
   fs.unlinkSync(path.join(root, 'extensions', 'pi-model-cost.ts'))
   await finish(await create(zone, saved.id))
   const freshFixed = path.join(root, 'next-fixed.ts')
-  const freshOptional = path.join(root, 'next-optional.ts')
-  for (const file of [freshFixed, freshOptional]) {
-    fs.writeFileSync(file, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(root, 'extension-executed'))}, 'EXECUTED'); throw new Error('must not execute during check')`)
-  }
+  fs.writeFileSync(freshFixed, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(path.join(root, 'extension-executed'))}, 'EXECUTED'); throw new Error('must not execute during check')`)
   const oldFixed = path.join(root, 'extensions', 'omp-model-cost.ts')
-  const oldOptional = path.join(root, 'extensions', 'omp-codebase-tools.ts')
-  fs.writeFileSync(server!.metadataFile, original.replace('${roots.browser_extensions}/omp-model-cost.ts', freshFixed).replace('${roots.browser_extensions}/omp-codebase-tools.ts', freshOptional))
+  fs.writeFileSync(server!.metadataFile, original.replace('${roots.browser_extensions}/omp-model-cost.ts', freshFixed))
   fs.unlinkSync(oldFixed)
-  fs.unlinkSync(oldOptional)
   await finish(await create(zone, saved.id))
   const starts = server!.herdrCalls().filter(call => call.kind === 'agent_start')
   const official = path.join(root, 'extensions', 'omp-herdr-agent-state.ts')
-  expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed])
-  expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed])
+  expect(starts[0].args).toEqual(['--no-extensions', '--extension', official, '--extension', oldFixed, '--extension', path.join(root, 'extensions', 'omp-connect-bot.ts')])
+  expect(starts[1].args).toEqual(['--no-extensions', '--extension', official, '--extension', freshFixed, '--extension', path.join(root, 'extensions', 'omp-connect-bot.ts')])
   expect(fs.readFileSync(server!.storageFile, 'utf8')).toBe(persistedBefore)
   expect((await server!.getTasks()).tasks[0]).toEqual(saved)
   expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
