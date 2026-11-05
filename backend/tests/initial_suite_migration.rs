@@ -130,25 +130,24 @@ async fn released_suites_expose_only_the_approved_resources() {
         ("code-implementation",json!(["omp"])),
     ] {
         let suite = suites.iter().find(|suite| suite["id"] == id).unwrap();
-        let expected_omp = if id == "codebase-exploration" {
-            json!(["${roots.matt_pocock_skills}/engineering", "${roots.matt_pocock_skills}/productivity", "${roots.wayfinder_skills}", "${roots.expert_translate}/.."])
-        } else {
-            json!(["${roots.wayfinder_skills}", "${roots.matt_pocock_skills}/engineering", "${roots.matt_pocock_skills}/productivity"])
-        };
+        let expected_omp = json!([
+            "${roots.wayfinder_skills}",
+            format!("${{roots.wayfinder}}/dependent-skills/{id}")
+        ]);
         assert_eq!(suite["skills"]["omp"], expected_omp);
         let expected_pi = if id == "codebase-exploration" {
             json!([
-                "${roots.matt_pocock_skills}/engineering/grill-with-docs",
-                "${roots.matt_pocock_skills}/productivity/teach",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
                 "${roots.wayfinder_skills}/code-review",
                 "${roots.wayfinder_skills}/wayfinder",
-                "${roots.matt_pocock_skills}/productivity/writing-for-agents",
-                "${roots.matt_pocock_skills}/engineering/improve-codebase-architecture",
-                "${roots.expert_translate}",
-                "${roots.matt_pocock_skills}/productivity/grilling",
-                "${roots.matt_pocock_skills}/engineering/domain-modeling",
-                "${roots.matt_pocock_skills}/engineering/codebase-design",
-                "${roots.matt_pocock_skills}/engineering/research",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
+                "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
                 "${roots.wayfinder_skills}/prototype", "${roots.wayfinder_skills}/lighthouse",
                 "${roots.wayfinder_skills}/backtracer", "${roots.wayfinder_skills}/setup-matt-pocock-skills",
                 "${roots.wayfinder_skills}/to-contract", "${roots.wayfinder_skills}/to-spec",

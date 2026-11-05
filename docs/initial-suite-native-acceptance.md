@@ -43,9 +43,6 @@ pi_state_extension = 'D:/readonly-integrations/herdr-agent-state.ts'
 omp_state_extension = 'D:/readonly-integrations/herdr-omp-agent-state.ts'
 wayfinder = 'D:/sources/oh-my-wayfinder'
 wayfinder_skills = '${roots.wayfinder}/skills'
-matt_pocock_skills = 'D:/sources/matt-pocock/skills/skills'
-# The actual directory spelling can differ from the native skill name.
-expert_translate = 'D:/sources/expert-tranlate'
 # Current exploration Pi also loads this local source package, with dependencies prepared.
 pi_extensions = 'D:/sources/pi-extension'
 ```
@@ -85,8 +82,16 @@ its roots resolve to the real approved skill sources and an owned copy of the
 supplied toolkit. Suite `extensions` declare native source paths directly;
 relative entries resolve from the Suite declaration directory. Extensions
 are passed directly to the host without package links, generated manifests or
-package.json expansion. Skills also use native source paths: OMP declares multiple
-collection directories, while Pi selects individual skill roots. Before every new
+package.json expansion. Each target OMP Suite declares exactly two collection
+directories: `${roots.wayfinder_skills}` and
+`${roots.wayfinder}/dependent-skills/<suite-id>`. Wayfinder's own skills remain in
+`skills`; external dependencies are complete ordinary-file copies in
+`dependent-skills/codebase-exploration` (nine skills) and
+`dependent-skills/code-implementation` (four skills), with shared dependencies
+copied separately into each scenario. Neither Suite needs the original Matt Pocock
+or translation checkout at runtime. Exploration Pi preserves its 18 selected names:
+its nine external skills point individually into the exploration copies, while
+Wayfinder-owned skill paths are unchanged. Before every new
 OMP process, herdr-bot reads valid direct child skills from the current collections,
 canonicalizes and deduplicates identical resources, and rejects the same parsed
 name on different resources (including disabled declarations). The existing installed
@@ -107,9 +112,10 @@ public extension API. Its `pi.getCommands()` snapshot is the host's actual loade
 skill/extension command set and source metadata. This includes manual-only
 `expert-translate`, which a model-prompt-only check could miss. Exact equality
 rejects missing, duplicate, renamed and extra skills. Each discovered source is
-independently resolved against the approved wayfinder-first/matt-pocock-second
-literal and hashed. The directory `expert-tranlate` is not renamed into a skill
-alias; the native name remains `expert-translate`. `to-tickets` is required;
+independently resolved against the approved Wayfinder-owned or scenario-local
+copy literal and hashed. The bundled translation directory and its native name
+are both `expert-translate`; the upstream repository spelling `expert-tranlate`
+is not a runtime root or skill alias. `to-tickets` is required;
 `to-ticket` is not accepted. Config existence or the copied definition alone
 never certifies P11.
 

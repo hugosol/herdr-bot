@@ -24,23 +24,21 @@
       ],
       "skills": {
         "omp": [
-          "${roots.matt_pocock_skills}/engineering",
-          "${roots.matt_pocock_skills}/productivity",
           "${roots.wayfinder_skills}",
-          "${roots.expert_translate}/.."
+          "${roots.wayfinder}/dependent-skills/codebase-exploration"
         ],
         "pi": [
-        "${roots.matt_pocock_skills}/engineering/grill-with-docs",
-        "${roots.matt_pocock_skills}/productivity/teach",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
         "${roots.wayfinder_skills}/code-review",
         "${roots.wayfinder_skills}/wayfinder",
-        "${roots.matt_pocock_skills}/productivity/writing-for-agents",
-        "${roots.matt_pocock_skills}/engineering/improve-codebase-architecture",
-        "${roots.expert_translate}",
-        "${roots.matt_pocock_skills}/productivity/grilling",
-        "${roots.matt_pocock_skills}/engineering/domain-modeling",
-        "${roots.matt_pocock_skills}/engineering/codebase-design",
-        "${roots.matt_pocock_skills}/engineering/research",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
         "${roots.wayfinder_skills}/prototype",
         "${roots.wayfinder_skills}/lighthouse",
         "${roots.wayfinder_skills}/backtracer",
@@ -135,8 +133,7 @@
       "skills": {
         "omp": [
           "${roots.wayfinder_skills}",
-          "${roots.matt_pocock_skills}/engineering",
-          "${roots.matt_pocock_skills}/productivity"
+          "${roots.wayfinder}/dependent-skills/code-implementation"
         ],
         "pi": []
       },

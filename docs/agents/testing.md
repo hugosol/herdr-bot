@@ -67,7 +67,7 @@ Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩
 
 ## 首批 Suite 原生发现与实现命令
 
-`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 仅检查 S3 外来后端拒绝，不等于 S4 通过。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
+`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 检查 S3 外来后端拒绝，以及原生验收独立来源 oracle 对 Wayfinder 自有目录和场景副本的直接子技能发现、动态新增与场景隔离；不固定配置纯文字快照，也不等于 S4 通过。两个目标 OMP Suite 只声明 Wayfinder 自有技能目录及各自 `dependent-skills/<suite-id>`；探索 Pi 的九个外部技能逐项引用探索副本，保留原 18 个名称。原生验收不再需要原 Matt Pocock／翻译仓库根。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
 
 ## OMP Suite 四语言 LSP 真实验收
 

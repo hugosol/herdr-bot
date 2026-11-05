@@ -188,7 +188,12 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     let preview = post(&server, "/api/chats/preview", json!({"zone":"owned", "taskId":id})).await;
     assert_eq!(preview.status, 200, "{}", preview.body);
     let preview: Value = serde_json::from_str(&preview.body).unwrap();
-    let before = herdr.calls().len();
+    // Earlier successful Chats may still query native session identity.
+    // A rejected launch must add no effects, not stop those read-only queries.
+    let effects = || herdr.calls().into_iter().filter(|call| {
+        !matches!(call["kind"].as_str(), Some("workspace_list" | "agent_list" | "agent_get"))
+    }).collect::<Vec<_>>();
+    let before = effects();
     fs::create_dir(other.join("collision")).unwrap();
     fs::write(other.join("collision/SKILL.md"), "---\nname: repaired\ndescription: Different source\n---\nCOLLISION").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{"id":"selected","name":"Selected","agents":["omp"],
@@ -196,5 +201,5 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     let launch = post(&server, "/api/chats", json!({"zone":"owned", "taskId":id, "chatId":preview["chatId"], "input":"must not start"})).await;
     assert_eq!(launch.status, 400, "{}", launch.body);
     assert!(launch.body.contains("repaired"), "{}", launch.body);
-    assert_eq!(herdr.calls().len(), before);
+    assert_eq!(effects(), before);
 }

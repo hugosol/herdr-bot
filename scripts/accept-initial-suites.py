@@ -21,22 +21,21 @@ COVERAGE = ('P11/exploration-omp', 'P11/exploration-pi', 'P11/implementation-omp
 support = resources['support']
 digest, command, until = resources['digest'], resources['command'], resources['until']
 lifecycle = runpy.run_path(str(REPO / 'scripts/accept-suite-lifecycle.py'))
-# Independent original Pi roots and required baseline names. OMP discovers the
-# complete immediate-child contents of independently approved source parents.
-# expert-tranlate is a real directory spelling; expert-translate is its native
-# skill name, and to-ticket is never an alias.
+# Independent Pi sources and required baseline names. OMP discovers complete
+# immediate-child collections: Wayfinder-owned skills and scenario-local copies.
+# expert-translate keeps its native name; to-ticket is never an alias.
 EXPLORATION = {
-    'grill-with-docs': ('matt_pocock_skills', 'engineering/grill-with-docs'),
-    'teach': ('matt_pocock_skills', 'productivity/teach'),
+    'grill-with-docs': ('wayfinder', 'dependent-skills/codebase-exploration/grill-with-docs'),
+    'teach': ('wayfinder', 'dependent-skills/codebase-exploration/teach'),
     'code-review': ('wayfinder_skills', 'code-review'),
     'wayfinder': ('wayfinder_skills', 'wayfinder'),
-    'writing-for-agents': ('matt_pocock_skills', 'productivity/writing-for-agents'),
-    'improve-codebase-architecture': ('matt_pocock_skills', 'engineering/improve-codebase-architecture'),
-    'expert-translate': ('expert_translate', ''),
-    'grilling': ('matt_pocock_skills', 'productivity/grilling'),
-    'domain-modeling': ('matt_pocock_skills', 'engineering/domain-modeling'),
-    'codebase-design': ('matt_pocock_skills', 'engineering/codebase-design'),
-    'research': ('matt_pocock_skills', 'engineering/research'),
+    'writing-for-agents': ('wayfinder', 'dependent-skills/codebase-exploration/writing-for-agents'),
+    'improve-codebase-architecture': ('wayfinder', 'dependent-skills/codebase-exploration/improve-codebase-architecture'),
+    'expert-translate': ('wayfinder', 'dependent-skills/codebase-exploration/expert-translate'),
+    'grilling': ('wayfinder', 'dependent-skills/codebase-exploration/grilling'),
+    'domain-modeling': ('wayfinder', 'dependent-skills/codebase-exploration/domain-modeling'),
+    'codebase-design': ('wayfinder', 'dependent-skills/codebase-exploration/codebase-design'),
+    'research': ('wayfinder', 'dependent-skills/codebase-exploration/research'),
     'prototype': ('wayfinder_skills', 'prototype'),
     'lighthouse': ('wayfinder_skills', 'lighthouse'),
     'backtracer': ('wayfinder_skills', 'backtracer'),
@@ -48,21 +47,19 @@ EXPLORATION = {
 IMPLEMENTATION = {
     'tdd': ('wayfinder_skills', 'tdd'),
     'to-tickets': ('wayfinder_skills', 'to-tickets'),
-    'retro': ('matt_pocock_skills', 'engineering/retro'),
+    'retro': ('wayfinder', 'dependent-skills/code-implementation/retro'),
     'resolving-merge-conflicts': ('wayfinder_skills', 'resolving-merge-conflicts'),
-    'writing-for-agents': ('matt_pocock_skills', 'productivity/writing-for-agents'),
-    'codebase-design': ('matt_pocock_skills', 'engineering/codebase-design'),
+    'writing-for-agents': ('wayfinder', 'dependent-skills/code-implementation/writing-for-agents'),
+    'codebase-design': ('wayfinder', 'dependent-skills/code-implementation/codebase-design'),
     'code-review': ('wayfinder_skills', 'code-review'),
     'setup-matt-pocock-skills': ('wayfinder_skills', 'setup-matt-pocock-skills'),
     'to-contract': ('wayfinder_skills', 'to-contract'),
     'to-spec': ('wayfinder_skills', 'to-spec'),
-    'domain-modeling': ('matt_pocock_skills', 'engineering/domain-modeling'),
+    'domain-modeling': ('wayfinder', 'dependent-skills/code-implementation/domain-modeling'),
 }
 OMP_PARENTS = {
-    'codebase-exploration': [('matt_pocock_skills', 'engineering'), ('matt_pocock_skills', 'productivity'),
-                             ('wayfinder_skills', ''), ('expert_translate', '..')],
-    'code-implementation': [('wayfinder_skills', ''), ('matt_pocock_skills', 'engineering'),
-                            ('matt_pocock_skills', 'productivity')],
+    'codebase-exploration': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/codebase-exploration')],
+    'code-implementation': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/code-implementation')],
 }
 
 
@@ -389,7 +386,7 @@ def main():
         resources['preflight'](args, evidence)
         delivery_manifest(args, evidence)
         roots = evidence['paths']['roots']
-        required = ['wayfinder', 'wayfinder_skills', 'matt_pocock_skills', 'expert_translate',
+        required = ['wayfinder', 'wayfinder_skills',
                     'pi_state_extension', 'omp_state_extension']
         require(all(key in roots for key in required), ('Dependency-only roots missing', required, sorted(roots)))
         evidence['sourceResources'] = {}
