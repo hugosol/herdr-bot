@@ -34,7 +34,7 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 - 普通相对路径以**声明它的配置文件所在目录**为基准：根相对根文件，服务路径相对服务 TOML，扩展 `entrypoint` 相对选项 TOML。切换启动 cwd 不改变这些位置。
 - 根文件在启动时解析为快照。修改根或服务路径后重启；选项 TOML 仍按原规则动态读取，但使用本次启动的根快照。交给 agent 的扩展路径已经绝对化，不随 zone cwd 改变。
 - 未定义根、循环引用、空路径、非法表达式或指定的根文件缺失会明确失败。只使用普通路径、不声明 `paths_file` 的隔离配置无需本机根文件。
-- `herdr` 等裸程序名继续通过 `PATH` 查找；显式程序路径相对配置文件解析。Git、Windows 系统工具和开发语言服务的安装与 `PATH` 设置仍由机器环境负责。当前 `.omp` 中的 MCP 命令也使用 `PATH` 中的 `codebase-memory-mcp`，不内嵌旧机器路径。
+- `herdr` 等裸程序名继续通过 `PATH` 查找；显式程序路径相对配置文件解析。Git、Windows 系统工具和开发语言服务的安装与 `PATH` 设置仍由机器环境负责。Suite 集中 MCP 的 `command` 使用 `${roots.codebase_memory_mcp}/codebase-memory-mcp.exe`，安装目录在 `paths.local.toml` 的 `[roots].codebase_memory_mcp` 配置，交给 OMP／Pi 前解析为完整路径，不依赖 PATH 定位该 exe。独立的 `.omp/mcp.json` 仍使用裸命令并优先于同名 Suite 定义；它不经过 herdr-bot 的 roots 解析，需单独维护。
 - 顶层 `static_directory` 指定页面产物，默认 `backend/static`；`scheduler.run_instructions` 默认 `docs/workflow-runtime.md`，均相对服务配置目录，不再使用编译时源码目录。交付配置通过 `roots.project` 显式定位两者。
 - 顶层 `data_directory` 指定内部迁移标记目录，默认 `.data`。它不隐式覆盖其他持久化字段；交付配置将历史、zone 登记、Run 根及标记目录共同引用 `roots.data`。
 

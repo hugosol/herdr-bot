@@ -23,5 +23,5 @@ zone_parent = 'E:/Developer/bot-playground'
 # herdr = 'C:/Users/hugos/.herdr/packages/standalone/releases/0.9.5-x86_64-pc-windows-msvc'
 # pi_package = 'D:/nvm4w/nodejs/node_modules/@earendil-works/pi-coding-agent'
 # 原生会话验收还需 omp_package：填写已安装 OMP 包目录，旧记录无可确认的默认值。
-# 旧 MCP 程序：D:/developer/path/codebase-memory-mcp/codebase-memory-mcp.exe。
-# 当前 MCP 配置按 PATH 查找 codebase-memory-mcp；此注释仅保留旧机器安装线索。
+# 集中 MCP 配置引用此安装目录；按本机安装位置调整，不依赖 PATH 定位程序。
+codebase_memory_mcp = 'E:/Developer/tools/codebase-memory-mcp'
