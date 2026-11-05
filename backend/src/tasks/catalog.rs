@@ -75,7 +75,7 @@ pub(crate) struct FixedExtensionOption {
 
 /// Runtime context is supplied by the launch owner, never by extension metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionRole { Standalone, Manager, Node }
+pub enum ExecutionRole { Standalone, Manager, Node, NestedManager }
 
 impl From<TaskType> for ExecutionRole {
     fn from(task_type: TaskType) -> Self {
@@ -375,8 +375,16 @@ impl Catalog {
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
     pub fn resolve_env(&self, agent: Agent, role: ExecutionRole) -> Result<ResolvedEnvConfig, TaskError> {
-        if role != ExecutionRole::Standalone && !self.extensions.iter().any(|extension| extension.role() == Some((agent, role))) {
-            return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
+        let required: &[ExecutionRole] = match role {
+            ExecutionRole::Standalone => &[],
+            ExecutionRole::NestedManager => &[ExecutionRole::Manager, ExecutionRole::Node],
+            ExecutionRole::Manager => &[ExecutionRole::Manager],
+            ExecutionRole::Node => &[ExecutionRole::Node],
+        };
+        for required in required {
+            if !self.extensions.iter().any(|extension| extension.role() == Some((agent, *required))) {
+                return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
+            }
         }
         Ok(ResolvedEnvConfig {
             suite_args: Vec::new(),
@@ -430,7 +438,8 @@ impl ExtensionOption {
     }
 
     pub fn applies_to(&self, agent: Agent, role: ExecutionRole) -> bool {
-        self.agent == agent && self.role().is_none_or(|required| required == (agent, role))
+        self.agent == agent && self.role().is_none_or(|required| required == (agent, role)
+            || role == ExecutionRole::NestedManager && matches!(required.1, ExecutionRole::Manager | ExecutionRole::Node))
     }
 
     /// Check availability only; the agent remains responsible for loading.

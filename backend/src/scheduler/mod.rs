@@ -183,7 +183,9 @@ pub(crate) struct DispatchTarget {
     pub report_policy: ReportPolicy,
     pub auto_close: bool,
     pub zone: String,
+    pub zone_id: String,
     pub task: crate::tasks::Task,
+    pub map: Option<String>,
 }
 
 pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str) -> Result<DispatchTarget, String> {
@@ -195,13 +197,17 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
         },
     ).map_err(|e| e.message)?;
     let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
-    let task_id = bot.task_id.as_deref().ok_or("Bot 未绑定 Task")?;
+    let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
+        (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
+        (None, Some(_)) => (node.manager_task_id.as_deref().ok_or("Map 型 node 缺少 manager_task_id")?, crate::tasks::TaskType::Manager),
+        _ => return Err("Bot 执行目标或节点 manager 配置无效".into()),
+    };
     let task = state.tasks.get(task_id).await.map_err(|e| e.message())?;
-    if task.task_type != crate::tasks::TaskType::Normal {
-        return Err("node 必须绑定 normal 类型的 Task".into());
+    if task.task_type != required_role {
+        return Err("node 的执行 Task 类型与目标不一致".into());
     }
     let zone = node.zone;
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone, task })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task, map: bot.map_file.clone() })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -406,6 +412,11 @@ impl PreflightIssue {
 }
 
 pub(crate) struct PreflightFailure(Vec<PreflightIssue>);
+impl PreflightFailure {
+    pub(crate) fn message(&self) -> String {
+        self.0.iter().map(|issue| issue.message.as_str()).collect::<Vec<_>>().join("；")
+    }
+}
 impl IntoResponse for PreflightFailure {
     fn into_response(self) -> Response {
         (StatusCode::BAD_REQUEST, Json(serde_json::json!({

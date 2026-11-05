@@ -77,7 +77,7 @@ pub(super) async fn manager(
             })).await.map_err(|e| e.to_string())??;
         }
         effects.records_initialized = true;
-        protocol(state, &mut run, &task, &preset, Role::Manager, &mut effects, &mut stage).await
+        protocol(state, &mut run, &task, &preset, Role::Manager, None, &mut effects, &mut stage).await
     }
     .await;
     if let Err(message) = result {
@@ -118,15 +118,24 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         target.zone = run.zone_bindings.get(&target.zone).cloned().ok_or_else(|| format!("zone {} 不在本次 Run 启动快照中；请启动新 Run（旧历史仍可查看）", target.zone))?;
         crate::zones::browse::checked_root(&target.zone).map_err(|e| e.message())?;
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None, child_run_id: None });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         let suite_args = state.tasks.prepare_environment(&target.task).map_err(|error| error.message())?;
-        let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, crate::tasks::catalog::ExecutionRole::Node)).map_err(|e| e.message())?;
+        let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else { crate::tasks::catalog::ExecutionRole::Node };
+        let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, role)).map_err(|e| e.message())?;
         preset.env.suite_args = suite_args;
         preset.env.check_entrypoints()?;
-        protocol(state, &mut candidate, &target.task, &preset,
-            Role::Node { id, target: &target, committed: run }, &mut effects, &mut stage).await
+        let mut child = match &target.map {
+            Some(map) => Some(prepare_child(state, &mut candidate, id, map, &target, &mut effects, &mut stage).await?),
+            None => None,
+        };
+        let result = protocol(state, &mut candidate, &target.task, &preset,
+            Role::Node { id, target: &target, committed: run }, child.as_mut(), &mut effects, &mut stage).await;
+        if let (Some(child), Err(message)) = (child, &result) {
+            state.runs.active.lock().await.insert(child.id, Some(StartupFailure { stage: stage.into(), message: message.clone(), effects: Some(effects.clone()) }));
+        }
+        result
     }.await;
     if let Err(message) = result {
         let failure = StartupFailure { stage: stage.into(), message, effects: Some(effects.clone()) };
@@ -135,7 +144,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, chat: None,
+                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, chat: None, child_run_id: None,
             });
         }
         node.status = "failed".into();
@@ -161,6 +170,52 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
     value
 }
 
+async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &str, target: &crate::scheduler::DispatchTarget, effects: &mut Effects, stage: &mut &'static str) -> Result<Run, String> {
+    *stage = "child-preflight";
+    let zone_id = target.zone_id.clone();
+    let execution = parent.nodes[node_id].execution.as_ref().ok_or("缺少父 execution")?;
+    let input = crate::scheduler::RunPreflightRequest {
+        manager_task_id: target.task.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
+        file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
+    };
+    let gate = state.runs.map_lock(map).await;
+    let _registration = gate.lock().await;
+    let checked = crate::scheduler::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
+    let child = Run {
+        id: crate::chats::new_creation_id(), name: None, map: map.to_owned(),
+        created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
+        manager_task_id: target.task.id.clone(),
+        parent: Some(ParentExecution { run_id: parent.id.clone(), node_id: node_id.to_owned(), execution_id: execution.id.clone() }),
+        manager_zone_id: Some(zone_id.clone()), zone: target.zone.clone(),
+        zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
+        workspace_name: parent.workspace_name.clone(), user_input: target.input.clone(), file_inputs: input.file_inputs,
+        manager: None, status: "running".into(), finished: None,
+        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, previous_executions: Vec::new() })).collect(),
+    };
+    *stage = "child-register";
+    parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id = Some(child.id.clone());
+    save_run(state, parent).await?;
+    effects.child_run_id = Some(child.id.clone());
+    state.runs.registered_maps.lock().await.insert(child.id.clone(), child.map.clone());
+    state.runs.active.lock().await.insert(child.id.clone(), None);
+    *stage = "child-initialize";
+    let paths = Runs::paths(state, &child.id);
+    let initial = child.clone();
+    let initialized = state.runs.files.with_async(&[paths[0].parent().unwrap().to_path_buf()], move |access| Box::pin(async move {
+        access.create_dir_all(paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
+        access.create(&paths[0], &serde_json::to_vec_pretty(&initial).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        access.create(&paths[1], b"").map_err(|e| e.to_string())?;
+        access.create(&paths[2], b"").map_err(|e| e.to_string())?;
+        Ok::<_, String>(())
+    })).await.map_err(|e| e.to_string()).and_then(|result| result);
+    if let Err(message) = initialized {
+        state.runs.active.lock().await.insert(child.id, Some(StartupFailure { stage: (*stage).into(), message: message.clone(), effects: Some(effects.clone()) }));
+        return Err(message);
+    }
+    effects.child_records_initialized = true;
+    Ok(child)
+}
+
 // These are the two Run startup roles, not extension points. Node callers hold
 // the Run operation lock; only manager association acquires it here.
 enum Role<'a> {
@@ -178,6 +233,7 @@ async fn protocol(
     task: &crate::tasks::Task,
     preset: &crate::tasks::catalog::ResolvedPreset,
     mut role: Role<'_>,
+    mut child: Option<&mut Run>,
     effects: &mut Effects,
     stage: &mut &'static str,
 ) -> Result<(), String> {
@@ -216,9 +272,7 @@ async fn protocol(
         .await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
     effects.session_id = Some(identity.session_id.clone());
     if let Role::Node { target, committed, .. } = &role {
-        if committed.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id)
-            || committed.nodes.values().any(|node| node.executions().any(|execution|
-                execution.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
+        if state.runs.chat_role_with_current(state, &identity.session_id, &task.id, task.agent, Some(committed)).await?.is_some() {
             return Err("宿主未返回独立的新原生 Chat 身份".into());
         }
         if !crate::zones::same_path(&identity.cwd, &target.zone) {
@@ -229,6 +283,11 @@ async fn protocol(
         session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(),
         tab_id: tab.tab_id, pane_id: tab.pane_id, agent_name: agent.clone(),
     };
+    if let Some(child) = child.as_deref_mut() {
+        child.manager = Some(chat.clone());
+        *stage = "child-association";
+        save_run(state, child).await?;
+    }
     match &role {
         Role::Manager => run.manager = Some(chat),
         Role::Node { id, .. } => run.nodes.get_mut(*id).unwrap().execution.as_mut().unwrap().chat = Some(chat),
@@ -266,7 +325,7 @@ async fn protocol(
     let materials = std::path::Path::new(&run.zone).join(".workflow").join(&run.id);
     let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
     let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
-    let input = match &role {
+    let mut input = match &role {
         Role::Manager => {
             let mut input = format!(
                 "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}",
@@ -294,6 +353,11 @@ async fn protocol(
             input
         }
     };
+    if let Some(child) = child {
+        use std::fmt::Write;
+        let paths = Runs::paths(state, &child.id);
+        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".workflow").join(&child.id).display()).unwrap();
+    }
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     effects.input_attempted = true;
     state.herdr.prompt(&agent, &text).await.map_err(|e| e.message())?;

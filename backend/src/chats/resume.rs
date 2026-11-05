@@ -186,12 +186,13 @@ mod degradation {
 
         pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole) -> crate::tasks::catalog::ResolvedEnvConfig {
             use crate::tasks::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
-            let role_name = match role {
-                ExecutionRole::Standalone => None,
-                ExecutionRole::Manager => Some("manager"),
-                ExecutionRole::Node => Some("node"),
+            let role_names: &[&str] = match role {
+                ExecutionRole::Standalone => &[],
+                ExecutionRole::Manager => &["manager"],
+                ExecutionRole::Node => &["node"],
+                ExecutionRole::NestedManager => &["manager", "node"],
             };
-            if let Some(role_name) = role_name {
+            for role_name in role_names {
                 let id = format!("{}-{role_name}-chat", agent.label());
                 if !catalog.extensions.iter().any(|extension| extension.id == id) {
                     self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
