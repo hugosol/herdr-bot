@@ -3,6 +3,6 @@
   "name": "Task 创建者",
   "when": "需要将显式需求澄清为用户确认的 Task 固定指示，并创建独立 normal Task 时使用。只创建 Task，不创建 Bot，不运行所创建的 Task，不承担既有 Task 优化或缺失业务能力建设。",
   "plan_guide": "需求已明确到可开展确认时，安排 Task 创建工作，并预留用户确认完整固定指示和执行配置的环节。本能力只创建独立 normal Task；Bot 创建、既有 Task 优化和业务试运行分别安排。提供本次需求、输入输出、权限和执行配置约束；新业务取舍由用户决定。",
-  "node_guide": "通过 node.input 或其中说明用途的命名材料提供本次需求、目标输入输出、业务验收条件、资源权限、允许操作，以及 agent/model/thinking/skill/extensions 等执行配置选择或限制；注明已有确认结论和尚待用户决定的问题。背景材料说明各自用途。文件材料来源及标识写入 input_rule，交付文件及标识写入 output_rule；不在 input 重复文件读取规则或 Task 固定流程。",
+  "node_guide": "通过 node.input 或其中说明用途的命名材料提供本次需求、目标输入输出、业务验收条件、资源权限、允许操作，以及 agent/model/thinking/skill 及至多一个 suite（可为 null）等当前合法执行配置选择或限制；不把固定扩展作为 Task 选项；注明已有确认结论和尚待用户决定的问题。背景材料说明各自用途。文件材料来源及标识写入 input_rule，交付文件及标识写入 output_rule；不在 input 重复文件读取规则或 Task 固定流程。",
   "task_id": "task-18e31d30fe69a51c-2"
 }
