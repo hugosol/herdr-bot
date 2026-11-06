@@ -80,7 +80,7 @@ def revision_fixture(case, label, kind, optional=False):
         '三路各自展示 BEGIN_APPROVAL_when/END_APPROVAL_when、BEGIN_APPROVAL_plan_guide/END_APPROVAL_plan_guide、BEGIN_APPROVAL_node_guide/END_APPROVAL_node_guide 对应标记间所属完整正文；标记不进文件。'
         '整理表达在各自 Chat 完成，最终文件必须与实际全文批准版本逐字相同；任何变化必须重新展示确认。'
         '每路全文确认独立于 manual 报告发送确认；最终三路确认后授权保存者仅一次合法三字段保存。'
-        '共同 baseline 用无围栏 JSON 对象，键 bot、revision、target、requirements、authorization；bot 是包含真实 id 与全部配置的完整 Bot 对象，revision 原样取自 edit，target 保留完整目标 GET 配置，并保留本委托及实际澄清依据。saved 同样是包含真实 id 与全部配置的完整公开读回 Bot JSON，不是只有字段片段；保存请求 content 仍按公开接口规则不包含顶层 id。'
+        '共同 baseline 用无围栏 JSON 对象，键 bot、revision、target、requirements、authorization；bot 是包含真实 id 与全部配置的完整 Bot 对象，revision 原样取自 edit；Task 型 target 原样取自 GET 响应中的完整 task 对象（不含外层 task 包装），Map 型 target 原样取自完整 GET 响应对象，并保留本委托及实际澄清依据。saved 同样是包含真实 id 与全部配置的完整公开读回 Bot JSON，不是只有字段片段；保存请求 content 仍按公开接口规则不包含顶层 id。'
         'handoff 只记录准确来源、确认标识、授权、保留语义和未验证项，不复制配置或正文，不隐式传地址。')
     context['requirements'] = request
     context['request'].write_text(request, encoding='utf-8')
