@@ -459,6 +459,11 @@ export default function(pi) {
         chat, history = self.launch(source_id, user)
         users = [body_text(entry.get('message', {}).get('content')) for entry in history['branch']
                  if entry.get('message', {}).get('role') == 'user']
+        # OMP records an explicitly invoked Skill's initial user prompt as a
+        # user-attributed custom_message, not a role=user message. Agent-owned
+        # custom messages remain excluded from this original-input check.
+        users.extend(body_text(entry.get('content')) for entry in history['branch']
+                     if entry.get('type') == 'custom_message' and entry.get('attribution') == 'user')
         require(any(user in text for text in users), ('Original independent user input is missing from native history', source_id))
         events = [event for event in self.events() if event['id'] == chat['sessionId']]
         require(events and all(not {'run', 'collect', 'report'}.intersection(event.get('tools', [])) for event in events),

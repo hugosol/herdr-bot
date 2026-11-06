@@ -14,6 +14,29 @@ import unittest
 REPO = Path(__file__).resolve().parent.parent
 
 
+class NativeOriginalInput(unittest.TestCase):
+    def launch_with(self, entry):
+        from workflow_nesting_outer_acceptance import OuterAcceptance
+        acceptance = OuterAcceptance.__new__(OuterAcceptance)
+        acceptance.hosts = {}
+        acceptance.mapping = {'creator': 'omp'}
+        acceptance.launch = lambda *_: ({'sessionId': 'owned-session'}, {'branch': [entry]})
+        acceptance.events = lambda: [{'id': 'owned-session', 'tools': []}]
+        return acceptance.launch_independent('creator', 'literal original input')
+
+    def test_native_user_and_user_attributed_skill_preserve_original_input(self):
+        for entry in [
+            {'type': 'message', 'message': {'role': 'user', 'content': 'literal original input'}},
+            {'type': 'custom_message', 'attribution': 'user', 'content': 'Skill\nliteral original input'},
+        ]:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.launch_with(entry)[0]['sessionId'], 'owned-session')
+
+    def test_agent_owned_custom_message_cannot_stand_in_for_original_input(self):
+        with self.assertRaisesRegex(AssertionError, 'Original independent user input is missing'):
+            self.launch_with({'type': 'custom_message', 'attribution': 'agent', 'content': 'literal original input'})
+
+
 class OuterAcceptancePrerequisites(unittest.TestCase):
     def test_existing_invocation_evidence_is_never_reused(self):
         # Independent ticket requirement: each invocation owns new evidence.
