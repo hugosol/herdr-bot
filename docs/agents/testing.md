@@ -319,6 +319,10 @@ CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为�
 
 Map 目标的最小创建烟测使用同一安装版 Pi `--print --mode json` 入口（空白创建 Task 没有初始 Skill，因此不传 `--skill`），加载 `task-18e33fdc55177d1c-1` 的实际 prompt 和显式 Map 创建委托。当前 worktree 的 `debug/examples/safe_shutdown_shell.exe --config <隔离backend.toml>` 提供同一生产 HTTP interface；只配置数值回环动态端口、独占定义／运行／zone 文件并关闭 mDNS。先经公开接口准备 normal Task 和已有工作 Bot、放置测试拥有的真实 Map，再授权只新建指定 Map 型 Bot 和 baseline／handoff 文件。原生模型自行读取公开完整定义与真实 edit.revision、新建空白 Bot、写材料并完整读回；独立 HTTP 读回比较 Map 绑定、三空字段、真实 revision、完整共同基线、原有 Task／Map／Bot 不变及无 Run。保留原始 HTTP、native JSONL 和文件，失败及清理错误分开记录；受控的未加载 catalogue 资源只满足后端夹具结构，不作为目标工具或角色原生加载证据。完成后终止并等待所属安全后端与原生进程、关闭模型传输、移除隔离凭据。该调用是轻量启用证据，不认领 21／22 的完整真实案例或六 Task 配对覆盖。
 
+## 创建 Task＋Bot 外层真实兼容验收
+
+`python scripts/accept-workflow-nesting-outer.py --backend <本 worktree herdr-bot.exe> --toolkit <toolkit worktree> --hosts declared --paths-file <专用已安装依赖声明> --model-config <明确授权模型声明> --evidence-dir <不存在的独占目录>` 拥有 Task 创建者／既有 Task.prompt 优化者的独立 Chat 与实际外层 workflow 配对，以及旧两个独立创建入口兼容和未迁移 Map 范围保持。运行方式、完整 Suite/MCP 隔离、独立业务全文确认与报告发送确认、父子真实交接及证据边界见[包装能力运行说明](../create-bot-wrapper.md#真实外层与旧独立入口验收)。必须保留声明宿主，不能将原混合宿主改成单一 Pi 迁就 runner；`--hosts omp,pi` 要求两套完整场景各自通过。它不认领六共享 Task 独立配对或规划选择，也不能由组件、受控 provider、最终 completed 或全局回归代替。CLI fail-closed 回归设置 `OUTER_ACCEPTANCE_TOOLKIT` 后执行 `python scripts/accept-workflow-nesting-outer.test.py`；它仅验证拒绝边界，不是专项真实业务通过。
+
 ## softlink（符号链接）手动验收
 
 真实文件／目录符号链接检查默认关闭，只有显式设置 `HERDR_BOT_MANUAL_SYMLINKS=1` 才尝试创建。普通浏览器回归明确报告 manual-only 跳过；后端 zone 浏览／diff 的混合边界测试仍检查路径穿越和 junction，只跳过其中的符号链接部分，不调用 WSL 创建链接。即使当前终端已有管理员权限，未设置开关也不会自动运行符号链接检查。
