@@ -288,6 +288,8 @@ CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为�
 
 ## 共享 Bot 指南材料的启用检查
 
+独立修订入口为 `revise-bot-guides`，公开定义／五节点材料接线检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`，安全进程烟测为 `python scripts/check-revise-bot-guides.py --target-dir <本 worktree 独立 target>`。调用接口、稳定专属 Task `task-revise-bot-baseline-v1`（22 配对 owner）、原位切换及证据边界见[独立修订运行说明](../revise-bot-guides.md)；不强制修改目标 Task.prompt，旧独立入口及无关 Map 不变。
+
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
 
 最小原生烟测可针对 Pi 的 `task-18e31d34797f1464-3`：将当前 Task.prompt 与明确的独立 Chat 委托组合为测试拥有的 `request.md`，提供字面 `source.txt`，只授权当前隔离目录的新 `text.txt`、`handoff.md`。安装版入口为 `node <pi-package>/dist/bundle/cli.js --offline --no-extensions --no-mcp --no-skills --skill <writing-for-agents/SKILL.md> --no-context-files --no-prompt-templates --no-themes --model <专用provider/model> --thinking off --mode json --print @request.md`。使用本节上文的专用模型配置或公开 CompletionTransport，隔离 HOME／APPDATA／XDG／PI_CODING_AGENT_DIR 与原生 sessions；传输的公开 completion 上下文必须覆盖整个子进程等待期，不能先退出宿主调用再留后台线程访问已失效桥接。HTTP handler 线程不继承宿主 completion 调用上下文；将请求排队交给拥有该上下文的主线程执行，再把结果返回 handler，避免 `Missing session/run/name`。测试不读取用户凭据，不复用用户 Chat，也不启动 daemon。

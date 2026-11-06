@@ -1,0 +1,8 @@
+{
+  "id": "revise-bot-guides",
+  "name": "独立修订既有 Bot 三指南",
+  "when": "为真实既有 normal Task 型或 Map 型 Bot 独立修订 when、plan_guide、node_guide 时使用。只读准备共同基线，三路分别修订、整理与确认，汇合一次合法保存且完整读回；无需先优化 Task.prompt，不创建、修改或运行目标，不新增表达优化阶段。冲突、授权不足或运行禁写时停止。",
+  "plan_guide": "先提供真实 Bot ID、业务需求、三字段允许范围、保存授权、资源权限及可选材料用途，无需抄配置。接口为必填 request 和可选 materials，详见 ${herdr-bot-path}/docs/revise-bot-guides.md。安排本次子管理者 Task 与 zone；父节点显式绑定文件，不自动继承父 Chat。三分支确认全文与 manual 报告发送确认独立，保存者依据真实批准来源核实授权；父管理者仍须验收 saved／handoff。可在外层另安排适用的 Task.prompt 优化，本能力不强制该前置。",
+  "node_guide": "在 input 写明真实既有 Bot ID、修订目的、允许字段、保存授权、权限及非目标、材料用途与写入范围；以同名 input_rule 将可读 UTF-8 委托绑定为 request，可选 materials 不存在时不传。填写本次 manager_task_id 与 zone，并声明 saved／handoff 作为父节点交付，要求子管理者将 w5 同名真实结果报告父层后显式验收。baseline 或其他材料只有实际需要才额外显式声明，不借 handoff 隐式寻址。不抄完整目标、不改绑定、不自动试运行。",
+  "map_file": "enhance-existing-bot--bc-301b25d9f8d6.json"
+}
