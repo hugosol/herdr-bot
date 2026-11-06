@@ -46,6 +46,8 @@ mod plan_workflow;
 mod shared_business;
 #[path = "workflow_dispatch/create_bot_wrapper.rs"]
 mod create_bot_wrapper;
+#[path = "workflow_dispatch/revise_bot_guides.rs"]
+mod revise_bot_guides;
 #[path = "workflow_dispatch/outer_create.rs"]
 mod outer_create;
 #[path = "workflow_dispatch/input_resolution.rs"]

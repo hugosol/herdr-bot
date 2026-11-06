@@ -331,9 +331,34 @@ python scripts/accept-workflow-nesting-recovery.py `
 
 `WORKFLOW_HANDOFF_TOOLKIT=<实际 toolkit worktree> python scripts/accept-workflow-nesting-recovery.test.py` 只验证 CLI 缺依赖时保留错误、双宿主未验证且不启动服务；不替代原生专项。常规检查仍按票据分别执行 workflow_dispatch、完整后端、前端、toolkit workflow-chat／相关原生 dock、typecheck 和全量入口。
 
+## 嵌套 manager 双角色真实验收
+
+`python scripts/accept-workflow-nesting-roles.py` 经本 worktree 后端、指定 toolkit 的实际角色入口、已安装 Herdr 和真实授权模型，观察嵌套 manager 的内部 `run`／`collect` 与外层 `report`。入口不安装宿主、不读用户认证、不改全局 PATH，不启用 LAN／mDNS，也不执行关机。
+
+先按上文构建本 worktree 静态页和后端，在 toolkit 安装缺失的 frozen 依赖。依赖根文件必须显式指定，提供 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`；后两者分别仅只读使用 `extensions/herdr-agent-state.ts` 和 `extensions/herdr-omp-agent-state.ts`，不读取同目录的认证或配置。模型声明沿用本页的独立 `model.json`（`provider`、`model`、`baseUrl`、`apiKeyEnv`），密钥仅从显式环境名获取。公开 CompletionTransport 也可作为真实模型的文本传输，但不证明原生 provider wire 合规性。HOME／APPDATA／XDG、原生历史、业务和运行目录、命名 Herdr server、动态数值回环端口均为本次独占。
+
+```powershell
+python scripts/accept-workflow-nesting-roles.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
+  --toolkit $TOOLKIT_WT --hosts omp,pi `
+  --paths-file 'D:/isolated-acceptance/paths.toml' `
+  --model-config 'D:/isolated-acceptance/model.json' `
+  --evidence-dir 'D:/isolated-acceptance/new-exclusive-run'
+```
+
+`--hosts omp,pi` 对两个宿主分别运行两套独立 manager／zone／原始业务字面样例；每套重复调用同一 Map，并经真实 manager 的 fail／retry 保留旧 execution 干扰。`--hosts declared` 是额外的混合宿主业务夹具：第一套 parent OMP／child Pi／worker OMP，第二套相反，严格保留入口中 `DECLARED_ROLES` 的实际 Task 声明；不是把用户业务 Task 统一改成一个宿主，也不是对部署业务的验收。该模式不替代双宿主完整矩阵。
+
+每次实际外报分别经当前 Chat 中可记录的用户发送批准；业务批准不作发送批准。入口在内部未完成、内部全完成但未 finish、finish 后、进展 false、最终 true、父 manager 显式验收后分别检查公开事实。检查实际文件字节、原生历史／三工具／双指引，以及真实 Herdr 的目标 Tab 精确关闭、内部保留 Tab 不级联关闭；不凭最终 completed 或 observer 身份授予授权。
+
+`--evidence-dir` 必须不存在。原生运行状态使用原子创建的独占短 Temp 根，避免 Windows 已安装宿主的命名管道／存储路径长度限制；退出后完整复制到证据目录的逐宿主子目录，原始短根保留且记录为 `nativeRoot`，不把临时目录删除当作进程退出。成功或失败均保留 `evidence.json`、逐宿主独占子目录、两仓源码 revision／修改身份、锁文件／二进制／已安装宿主身份、模型／HTTP 原始请求结果、用户输入、原生历史、文件字节和分开的清理错误。模型配置在退出时删除。缺模型、宿主、能力、清理失败或行为不符均非零且未验证，不 skip，不重试业务或模型决策。`python scripts/accept-workflow-nesting-roles.test.py` 仅检查缺授权模型时的 CLI fail-closed 行为，不能代替真实专项通过。
+
 ## 共享 Bot 指南材料的启用检查
 
+独立修订入口为 `revise-bot-guides`，公开定义／五节点材料接线检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`，安全进程烟测为 `python scripts/check-revise-bot-guides.py --target-dir <本 worktree 独立 target>`。调用接口、稳定专属 Task `task-revise-bot-baseline-v1`（22 配对 owner）、原位切换及证据边界见[独立修订运行说明](../revise-bot-guides.md)；不强制修改目标 Task.prompt，旧独立入口及无关 Map 不变。
+
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
+
+创建链真实业务矩阵入口为 `python scripts/accept-workflow-nesting-create.py`，必须显式提供 `--backend`、`--toolkit`、`--hosts declared`（或完整 `omp,pi`）、`--paths-file`、`--model-config` 和独占 `--evidence-dir`。安装依赖、独立业务技能根、完整复跑命令及证据边界见[真实创建与配对验收](../create-bot-wrapper.md#真实创建与配对验收入口)。缺构建与重复证据目录的 CLI 回归为 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT python scripts/accept-workflow-nesting-create.test.py`；该回归不认领真实模型、混合宿主或保存安全通过。
 
 最小原生烟测可针对 Pi 的 `task-18e31d34797f1464-3`：将当前 Task.prompt 与明确的独立 Chat 委托组合为测试拥有的 `request.md`，提供字面 `source.txt`，只授权当前隔离目录的新 `text.txt`、`handoff.md`。安装版入口为 `node <pi-package>/dist/bundle/cli.js --offline --no-extensions --no-mcp --no-skills --skill <writing-for-agents/SKILL.md> --no-context-files --no-prompt-templates --no-themes --model <专用provider/model> --thinking off --mode json --print @request.md`。使用本节上文的专用模型配置或公开 CompletionTransport，隔离 HOME／APPDATA／XDG／PI_CODING_AGENT_DIR 与原生 sessions；传输的公开 completion 上下文必须覆盖整个子进程等待期，不能先退出宿主调用再留后台线程访问已失效桥接。HTTP handler 线程不继承宿主 completion 调用上下文；将请求排队交给拥有该上下文的主线程执行，再把结果返回 handler，避免 `Missing session/run/name`。测试不读取用户凭据，不复用用户 Chat，也不启动 daemon。
 
