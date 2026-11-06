@@ -67,6 +67,38 @@ python scripts/accept-workflow-nesting-outer.py `
 独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
 
 PowerShell 中先设置 `$env:OUTER_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再执行 `python scripts/accept-workflow-nesting-outer.test.py`；这是 CLI fail-closed 回归，仅证明缺后端不宣称通过、已有证据不可覆盖；不证明上述真实业务已通过。运行说明描述可复跑入口及其边界，不是当前部署的成功声明；结果仅以实际本次逐覆盖项证据为准。
+## 真实创建与配对验收入口
+
+`python scripts/accept-workflow-nesting-create.py` 使用实际授权模型、已安装 Herdr 与 OMP／Pi，经公开独立 Chat、Run 和定义 HTTP 入口验收。`--hosts declared` 保留六个共享 Task 的实际混合宿主：空白创建者和表达优化者为 Pi，三个指南编写者和保存者为 OMP；不得为适配 runner 全改 Pi。`--hosts omp,pi` 另对两宿主各执行完整矩阵，任一失败不可由另一成功抵消。此入口不安装宿主、不改全局 PATH、不读取用户认证，不连接现有 Chat 或 daemon。
+
+```powershell
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/create-acceptance-target'
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
+python scripts/accept-workflow-nesting-create.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --hosts declared `
+  --paths-file 'D:/isolated-dependencies/create-paths.toml' `
+  --model-config 'D:/isolated-dependencies/authorized-model.json' `
+  --evidence-dir (Join-Path $HERDR_BOT_WT '.scratch/workflow-nesting/evidence/create-exclusive-run') `
+  --shell-path 'D:/Program Files/Git/bin/bash.exe'
+```
+
+paths 文件为验收专属 TOML，`[roots]` 明确声明已安装的 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`，以及原 Suite 所需的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`。两个 agent 根**仅**用于只读加载 `extensions/herdr-agent-state.ts`／`extensions/herdr-omp-agent-state.ts`，不读取其 settings、models、auth、sessions 或技能目录。保留源码完整 Suite 声明、Task.suite 和初始 Skill，不把业务 Suite 缩成四个技能或删除 MCP／扩展／LSP。`toolkit` 根由本票指定源码复制到独占部署，不从默认同级旧仓取后端或角色源码；其他依赖可用同名 CLI 参数显式覆盖。
+
+隔离后端通过显式 `paths_file` 加载本次 `paths.local.toml`，包括固定扩展使用的 `omp_agent`／`pi_agent` 根；只在文件中声明根而不接入后端配置不能证明解析成功。隔离 Herdr 的 terminal 使用已安装的 `powershell.exe`，避免完整 Suite 的真实技能与扩展命令超过 `cmd.exe` 输入行上限；不裁剪 Suite 规避长度限制。Chat 启动失败保留原始状态及 pane 原始文本，额外捕获失败单独记录，不覆盖原始错误。
+
+完整固定扩展仍使用实际源码。仅在部署副本中将 connect-bot 指向本次动态后端，将 model-cost 存储指向本次独占目录。原生 codebase-memory-mcp 使用实际安装程序与完整工具能力，仅关闭无关可视化（`--ui=false`）；分别设置独占 `CBM_RUNTIME_DIR`、`CBM_CACHE_DIR` 和 `CBM_ALLOWED_ROOT`，runtime 目录限定为当前 Windows 所有者私有 ACL。缺这些已安装原生隔离能力则拒绝启动，不接入用户 account daemon。实际进程观察包含拥有进程的全部后代而非仅 OMP／Pi 白名单，持有并等待 MCP daemon 的进程句柄，退出失败仍为验收失败。
+
+模型文件使用[测试指引](agents/testing.md#文件交接真实角色自动验收)中的专用 `provider/model/baseUrl/apiKeyEnv` 声明；可使用同处说明的公开 CompletionTransport，其职责只传输真实模型决策，不生成业务步骤或伪造工具结果。密钥仅取显式环境变量，不写请求头日志；结束时删除所有验收拥有的 credential-bearing models 文件。`--timeout 1..900` 是每阶段观察窗口，不是重试次数。
+
+独立 normal Task 案例不提供可选材料，Map workflow 案例提供明确参考材料。独立 Chat 的必要日期口径歧义由真实用户消息澄清；三个分支分别展示完整全文并取得真实确认，manual 报告另行取得发送同意。六个稳定 Task 逐个保留独立／workflow 配对记录，创建 Map 当前没有额外专属 Task。保存检查比较最终唯一 text 字节、真实 Bot 完整读回及全部非目标与目标配置；不以创建成功推断业务能力已经执行或验证。表达质量另由同一明确授权服务的独立实际请求按预先固定的目标真实性、字段职责、语义保持、授权边界和正文独立性 rubric 逐项评价，保留原始输入、回答与逐项理由；任一混合／缺证结果失败，评价结果不授予业务确认或保存授权。
+
+独立保存安全场景经同一保存 Task 的真实 Chat 检查未授权、基线／目标冲突、实际运行使用、真实竞争 revision，以及保存已生效／未生效／未知效果。HTTP 故障只在实际传输边界断开观察或制造真实竞争编辑，不替换宿主、模型或产品结果；保留每次实际请求、原始错误与后续核实，不盲重试或自动回滚。普通文件使用真实 BOM／CRLF／非目标字节样例与真实隔离 junction／越界请求；没有链接能力仍为未验证，不能 skip 后当通过。
+
+证据目录必须不存在，由 runner 独占创建。HOME／APPDATA／XDG、原生存储、临时目录、命名 Herdr、业务定义和运行目录均隔离，动态数值回环后端关闭 mDNS。原生存储使用额外独占短路径避免 Windows 历史文件长路径，结束后将不含凭据的副本归档到证据目录。持续消费 stdout／stderr，成功与失败均停止并等待所属进程，分别保存原错误和清理错误。证据包括两仓根／revision／修改身份、锁文件／产物身份、已安装宿主／OS 进程、原始输入／批准、模型与工具结果、HTTP、原生历史、实际文件字节、只读运行事实和逐覆盖项结论。缺真实依赖、模型授权、实际消费或清理成功时非零，所有未完成项保持未验证。
+
+CLI fail-closed 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT`，运行 `python scripts/accept-workflow-nesting-create.test.py`。它只检查缺构建／重复证据目录不会变成成功或启动服务，不证明实际业务矩阵通过。真实矩阵结果以运行保存的原始证据为准，本使用说明本身不宣称通过。
 
 ## 验证入口与证据边界
 

@@ -252,6 +252,8 @@ Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`
 
 空白 Bot 创建、三份指南编写、通用提示词优化和通用文本替换共用[共同业务材料契约](business-materials.md)。目标可为真实 normal Task 或 Map；共同基线由执行者自行通过公开接口核实，用户只需明确目标、业务要求、授权和可选材料。baseline 单份直接交给每个必要消费者，text 是唯一完整正文，handoff 仅记录确认、来源、语义限制和未验证项。独立 Chat 不加载 node 角色也负责授权、配置冲突、真实 revision、运行禁写、非目标保持、安全落盘与完整读回。旧独立 create-bot／create-bot-task 不改变职责；源码交付不自动覆盖用户部署。
 
+既有 Task 型或 Map 型 Bot 可直接使用 `revise-bot-guides`，不必先优化 Task.prompt：只读核实共同基线，三路独立修订并确认，在同一 Chat 整理表达，最终汇合一次合法保存和完整读回。请求文件、可选材料、子管理者及 saved／handoff 交接见[独立修订指南](revise-bot-guides.md)。该能力原位替换原 enhance-existing-bot Map 的强制 Task 优化前置，不修改旧独立入口、真实目标或无关 Map；配置交付不是目标能力已验证。
+
 ### 数据格式要求
 
 Suite 专项离线迁移不会补齐更早的数据类型升级；请先使用当前 Task 类型格式。Task 必须显式包含 `taskType: "normal"` 或 `"manager"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
