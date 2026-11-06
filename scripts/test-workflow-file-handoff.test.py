@@ -64,7 +64,7 @@ class RoleAcceptancePrerequisites(unittest.TestCase):
             self.assertEqual(evidence['commands'], [])
             self.assertEqual(evidence['cleanupErrors'], [])
             self.assertFalse((evidence_file.parent / 'agent/models.json').exists())
-            self.assertFalse((evidence_file.parent / 'backend-stdout.log').exists())
+            self.assertEqual(list(evidence_file.parent.glob('backend*stdout.log')), [])
 
 
 if __name__ == '__main__':

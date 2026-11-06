@@ -309,6 +309,28 @@ CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为�
 
 通过必须同时具备两宿主 dock、真实模型链路与对应 worktree 常规检查证据。入口未取得模型、宿主缺失、行为不合预期、等待超时或清理失败均非零；缺依赖即明确未验证，不以准备完成、提示词存在或最终 completed 推断通过。正常/失败均停止所属服务与进程，分别保存原始与清理错误，不调用真实关机、不连接/关闭用户服务，不启用 LAN/mDNS。
 
+## 嵌套原生新进程恢复验收
+
+`python scripts/accept-workflow-nesting-recovery.py` 是 P29／P32／P33 的跨仓原生专项；不重复服务端旧记录／碰撞矩阵。先按上文构建当前 worktree 静态页面、`herdr-bot`、`herdr-fixture` 与 `safe_shutdown_shell`，使用独立绝对 `CARGO_TARGET_DIR`。toolkit 使用 Bun 1.4.4、当前 worktree 依赖与角色源码；已有安装版 OMP、Pi、Herdr 和两宿主只读官方状态扩展必须可用，不安装、不修改 PATH、不读取用户认证。授权模型声明及公开 CompletionTransport 的格式、能力和证据限制沿用“文件交接真实角色自动验收”；不能用受控 provider 代替真实模型。公开 completion 传输可用结构化 schema 固定 `content: string` 与 `tool_calls: [{name: string, arguments: object}]`，只约束序列化格式、不预选业务动作；原始请求／结构化结果仍须保留，错误不重试。原生 OMP 的 SessionManager.open 需要 await，且 JSONL 可以先有 title 元数据再有 session 头；读取真实身份时不能假定第一行就是 Session。原生关闭可以追加真实 `session_exit` 元数据，因此同时保留关闭前历史和确认进程退出后的恢复基线；Resume 前后完整 branch 仍须逐项相等，不能过滤业务消息掩盖重放。
+
+```powershell
+python scripts/accept-workflow-nesting-recovery.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
+  --toolkit $TOOLKIT_WT --hosts omp,pi `
+  --paths-file 'D:/isolated-acceptance/paths.toml' `
+  --model-config 'D:/isolated-acceptance/model.json' `
+  --shell-path 'D:/Program Files/Git/bin/bash.exe' `
+  --evidence-dir 'D:/isolated-acceptance/new-exclusive-recovery-evidence'
+```
+
+路径文件使用既有根解析器，声明 `herdr`、`omp_package`、`pi_package`、`pi_agent`、`omp_agent`；后两者分别只读加载 `extensions/herdr-agent-state.ts` 与 `extensions/herdr-omp-agent-state.ts`，隔离 HOME 后必须显式加载两宿主官方状态扩展，不能依赖用户默认发现。也可显式传 `--herdr`、`--omp-package`、`--pi-package`、`--pi-state-extension`、`--omp-state-extension`。证据目录必须尚不存在。Herdr 的原生状态和 IPC 使用原子创建的独占短 Temp 根，避免深层证据路径触发 Windows 路径限制；所属进程全部结束后将完整证据归档到该目录，`nativeRoot` 保留实际原生路径身份，归档失败也非零。`--hosts omp,pi` 分别运行两套同宿主真实业务；`--hosts declared` 保留固定业务声明的 OMP 父管理者与 Pi 子管理者，不修改声明来迁就 runner。单宿主参数只供较窄反馈，不等于两宿主验收。
+
+场景先由真实父管理者 dispatch，再明确确认失败并授权 retry；独立核对新旧 execution／child／Session 与两份实际字节。随后分别关闭并确认旧、当前原生进程退出，经公开 Chat Resume 启动真正新进程，读取安装版 SessionManager 历史、只读来源 Task 与父子事实，核对无新增 Run、无输入重放。恢复后用真实 `run`／`collect`／`report` 的后端结果证明内外角色归属。真正终止并等待旧后端、启动新后端后，再恢复两条 Chat，实际原生状态／collect／pause／recover／report 必须拒绝且三份业务记录不变。完整服务端拒绝矩阵仍由后端专项唯一维护。
+
+只读原生观察扩展仅记录 session_start／before_agent_start 的 PID、Session、cwd 和原生文件，不授予角色、不制造工具结果。证据包含两仓 revision／修改及锁文件身份、安装入口／二进制哈希、模型身份（无密钥）、原始用户授权、实际模型／HTTP 流量、原生历史、文件字节、前后记录哈希及持有的 OS 进程句柄退出确认。HOME／APPDATA／XDG／原生存储／命名 Herdr／定义与运行数据均独占，关闭 mDNS，持续消费 stdout／stderr；成功失败均停止并等待所属进程，原始与清理错误分开保留。任何宿主、模型、角色能力或清理失败都非零且未验证，不把启动成功、配置存在或最终状态当通过。
+
+`WORKFLOW_HANDOFF_TOOLKIT=<实际 toolkit worktree> python scripts/accept-workflow-nesting-recovery.test.py` 只验证 CLI 缺依赖时保留错误、双宿主未验证且不启动服务；不替代原生专项。常规检查仍按票据分别执行 workflow_dispatch、完整后端、前端、toolkit workflow-chat／相关原生 dock、typecheck 和全量入口。
+
 ## 嵌套 manager 双角色真实验收
 
 `python scripts/accept-workflow-nesting-roles.py` 经本 worktree 后端、指定 toolkit 的实际角色入口、已安装 Herdr 和真实授权模型，观察嵌套 manager 的内部 `run`／`collect` 与外层 `report`。入口不安装宿主、不读用户认证、不改全局 PATH，不启用 LAN／mDNS，也不执行关机。

@@ -235,7 +235,7 @@ class Acceptance:
             ('map_directory', self.root / 'maps'), ('bot_directory', self.root / 'bots'),
             ('run_directory', self.root / 'data/runs'), ('run_instructions', self.args.repo / 'docs/workflow-runtime.md')])
         (self.root / 'backend.toml').write_text(config)
-        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend')
+        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend-' + str(len(self.processes)))
         def address():
             require(backend.child.poll() is None, 'Backend exited during startup; see raw logs')
             while not backend.lines.empty():

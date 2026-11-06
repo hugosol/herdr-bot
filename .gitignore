@@ -43,6 +43,7 @@ __pycache__/
 
 # Rust 构建产物
 /backend/target
+/backend/target-ticket15/
 
 # 前端构建产物：由同一个 Axum 服务提供的打包页面（frontend 执行 npm run build 生成）
 /backend/static
