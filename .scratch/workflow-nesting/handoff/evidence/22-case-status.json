@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "scope": "ticket22 historical real business scenarios; not a new run",
+  "newModelRequests": 0,
+  "declaredSource": "22-declared-run.json",
+  "declaredSourceSha256Lf": "67f4c7efeb73c1b3308adf5f4bb3f257135e263314a46f7b1eb062435a0e936b",
+  "caseUnit": "14 top-level attempt calls; revision-baseline-files groups link and traversal",
+  "directlyVerifiedPassed": 0,
+  "counts": {
+    "failed": 7,
+    "not_started": 5,
+    "unverified": 2
+  },
+  "cases": [
+    {
+      "case": "dedicated-chat",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: Baseline omitted complete real Task/Map target"
+    },
+    {
+      "case": "task-no-materials",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: Real revision workflow did not finish"
+    },
+    {
+      "case": "task-materials",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: Timed out: real Chat reaches user boundary"
+    },
+    {
+      "case": "map-no-materials",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: ('Incomplete guide offered for approval', 'when')"
+    },
+    {
+      "case": "map-materials",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: Real revision workflow did not finish"
+    },
+    {
+      "case": "revise-unauthorized",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: ('Independent Chat incorrectly injected node role', [{'ProcessId': 38164, 'ParentProcessId': 53168, 'ExecutablePath': 'D:\\\\nvm4w\\\\nodejs\\\\node_modules\\\\bun\\\\bin\\\\bun.exe', 'CommandLine': '\"D:\\\\nvm4w\\\\nodejs\\\\node_modules\\\\bun\\\\bin\\\\bun.exe\" D:\\\\nvm4w\\\\nodejs/node_modules/@oh-my-pi/pi-coding-agent/dist/c"
+    },
+    {
+      "case": "revise-baseline-conflict",
+      "status": "unverified",
+      "attempted": null,
+      "inference": "[INFERENCE] Passed: the complete scenarioErrors list omits this planned case, attempt catches failures/skips, and rejected_save sets verified before successful return. Original success details are not retained here.",
+      "evidence": "22-declared-run.json#verificationError plus runner control flow; no direct success payload"
+    },
+    {
+      "case": "revise-target-conflict",
+      "status": "unverified",
+      "attempted": null,
+      "inference": "[INFERENCE] Passed: the complete scenarioErrors list omits this planned case, attempt catches failures/skips, and rejected_save sets verified before successful return. Original success details are not retained here.",
+      "evidence": "22-declared-run.json#verificationError plus runner control flow; no direct success payload"
+    },
+    {
+      "case": "revise-running",
+      "status": "failed",
+      "attempted": true,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "AssertionError: Actual model transport failed; no retry or later response can erase it"
+    },
+    {
+      "case": "revise-revision",
+      "status": "not_started",
+      "attempted": false,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "Actual model transport or owned cleanup already failed; no further business/model decision is retried."
+    },
+    {
+      "case": "revise-applied",
+      "status": "not_started",
+      "attempted": false,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "Actual model transport or owned cleanup already failed; no further business/model decision is retried."
+    },
+    {
+      "case": "revise-not-applied",
+      "status": "not_started",
+      "attempted": false,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "Actual model transport or owned cleanup already failed; no further business/model decision is retried."
+    },
+    {
+      "case": "revise-unknown",
+      "status": "not_started",
+      "attempted": false,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "Actual model transport or owned cleanup already failed; no further business/model decision is retried."
+    },
+    {
+      "case": "revision-baseline-files",
+      "status": "not_started",
+      "attempted": false,
+      "evidence": "22-declared-run.json#verificationError",
+      "errorSummary": "Actual model transport or owned cleanup already failed; no further business/model decision is retried."
+    }
+  ],
+  "forcedHosts": {
+    "source": "22-interruption-and-cleanup.json",
+    "omp": {
+      "status": "interrupted",
+      "perCaseFinalResults": "unavailable; do not infer success or non-execution from partial activity"
+    },
+    "pi": {
+      "status": "not_started",
+      "allPlannedCases": "not_started"
+    }
+  },
+  "runnerControlFlowCommit": "ec60bbe304d9f55dfd0979e5758b30a9ea6980fe",
+  "runnerControlFlowSources": [
+    "scripts/workflow_revise_acceptance.py:attempt/exercise",
+    "scripts/workflow_revise_safety.py:exercise_safety",
+    "scripts/workflow_create_safety.py:rejected_save"
+  ],
+  "warning": "No full evidence.json success payload was recovered. Inferred successful cases remain unverified and do not close any promise."
+}

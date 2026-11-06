@@ -14,11 +14,47 @@
 - [之后仅解决同步冲突的报告](evidence/22-final-sync.md)
 - 普通 Git 收尾后的源码基线（不含后续交接文档提交）：herdr-bot `0393c41df31bfb17b19bc299234671c521607d42`；toolkit `367cc4c5cbb7479b7d2878e63620350bae9f042c`。
 
+## 逐 case 结果：成功、失败、未执行与未知
+
+逐项清单及状态依据见 [机器可读 case 表](evidence/22-case-status.json)、[declared 原始终端结果](evidence/22-declared-run.json)及[双宿主中断记录](evidence/22-interruption-and-cleanup.json)。这些是旧运行的归档和结果重建，不是本次新执行。
+
+### declared：14个顶层 case
+
+已直接记录失败7项、未执行5项、待核实2项。没有找回可直接核实的成功详情，**不等于可以断言没有任何 case 成功**。计数以14次顶层 `attempt` 调用为单位；`revision-baseline-files` 内含 link／traversal 两个子项，不重复计数。
+
+| Case | 场景 | 状态 | 结果／依据 |
+|---|---|---|---|
+| `dedicated-chat` | 独立修订基线 Chat | 失败 | `Baseline omitted complete real Task/Map target` |
+| `task-no-materials` | Task型，无可选材料 | 失败 | `Real revision workflow did not finish` |
+| `task-materials` | Task型，有可选材料 | 失败 | `Timed out: real Chat reaches user boundary` |
+| `map-no-materials` | Map型，无可选材料 | 失败 | `Incomplete guide offered for approval`，字段 `when` |
+| `map-materials` | Map型，有可选材料 | 失败 | `Real revision workflow did not finish` |
+| `revise-unauthorized` | 未授权保存拒绝 | 失败 | 触发 `Independent Chat incorrectly injected node role` 断言；不能仅由该断言判定根因 |
+| `revise-baseline-conflict` | 共同基线冲突拒绝 | 待核实 | [INFERENCE] 按完整错误表与执行控制流推断通过，但原始成功详情缺失 |
+| `revise-target-conflict` | 真实目标变更冲突拒绝 | 待核实 | [INFERENCE] 按完整错误表与执行控制流推断通过，但原始成功详情缺失 |
+| `revise-running` | 使用中的定义禁止保存 | 失败 | `Actual model transport failed; no retry or later response can erase it` |
+| `revise-revision` | revision冲突 | 未执行 | 原始记录明确 `attempted=false`，此前传输或清理前提已失败 |
+| `revise-applied` | 保存已生效但报错 | 未执行 | 同上 |
+| `revise-not-applied` | 保存未生效 | 未执行 | 同上 |
+| `revise-unknown` | 保存结果未知 | 未执行 | 同上；“未知结果”是case主题，不是说本次是否执行未知 |
+| `revision-baseline-files` | 基线文件link／traversal越界拒绝 | 未执行 | 顶层 `attempted=false`，两个子项均未进入执行 |
+
+错误表来自原始终端 JSON 的 `verificationError` 中完整 `scenarioErrors`，通过安全的 `ast.literal_eval` 解析其 Python 字面量，不执行错误文本。两个待核实项均不在12条错误记录中；核对 runner 后，失败与未执行都会记录错误，而成功返回的 `rejected_save` 会设置 `verified=true`，因此可以作上述推断。相关三份 runner 源码与历史源码提交 `ec60bbe304d9f55dfd0979e5758b30a9ea6980fe` 无差异；**推断仍不等于找回了完整成功证据，不能据此关闭票据或promise**。
+
+### 强制双宿主：不能与declared混算
+
+| 执行范围 | 结果 | 逐case信息边界 |
+|---|---|---|
+| OMP强制宿主矩阵 | 已启动、外部中止，未验证 | 没有可用逐项终态；不能将所有case记成成功，也不能一律记为未执行 |
+| Pi强制宿主矩阵 | 未启动、未验证 | 中断记录明确 `piMatrix=not started`，该矩阵全部计划case未执行 |
+
+历史两仓回归、runner机制测试与定向dock通过列表见后文及原集成报告，**不折算成上表真实业务case通过**。
+
 ## 未解决事项一：真实修订专项
 
 已归档回归报告明确保留既有 declared 失败与双宿主中断，不再自动补跑付费矩阵。该报告的 `businessAcceptance.newModelRequests` 为0。
 
-此前会话已经观察到未完成基线、修订 workflow 未完成、user boundary 超时等失败；这些仅是历史现象，尚未形成根因结论。原完整场景证据未随本次交接归档，不能把摘要中的每种现象视为对当前源码的已复现缺陷。
+上表已逐项归档未完成基线、修订 workflow 未完成、user boundary 超时等失败。它们尚未形成根因结论，也不等于在当前源码上重新复现。原完整 `evidence.json` 和成功项的详细 `safety` 结果未找回；已保存的终端结果包含完整错误清单，证据缺口不得自动补成通过。
 
 传输使用的 `public-completion-transport/public-default` 是配置标识；当时没有取得底层实际服务模型名的可核实证据，不要把别名当成已解析的真实模型身份。
 
@@ -60,6 +96,6 @@ no consumption document the case expects was published
 
 ## 证据与编排边界
 
-原真实场景根为 `C:/Users/hugos/AppData/Local/Temp/hyper-ticket-ffG0QG/.scratch/workflow-nesting/evidence/revise22-20261106/`；后续回归证据根为同级 `integrate22-20261106/`。这些只是历史定位信息，临时目录可能已被部分删除。本次归档的是两份可读集成报告，不是完整运行目录、原生历史、HTTP日志或进程快照。
+原真实场景根为 `C:/Users/hugos/AppData/Local/Temp/hyper-ticket-ffG0QG/.scratch/workflow-nesting/evidence/revise22-20261106/`；后续回归证据根为同级 `integrate22-20261106/`。这些只是历史定位信息，临时目录可能已被部分删除。本次已归档两份集成报告、declared原始终端JSON、双宿主中断／清理JSON及重建的逐case状态表；不是完整运行目录、完整evidence.json、原生历史、HTTP日志或进程快照。
 
 编排曾把22记为 integrated，仅表示该流程已正常返回并合入，不能推导本票验收通过。13／14／23的failed状态、报告发布、retro和残留工作树清理是后续独立收尾问题；不得回滚已合入源码或因retro失败重跑实现。
