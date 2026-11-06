@@ -62,7 +62,7 @@ python scripts/accept-workflow-nesting-outer.py `
 
 模型声明沿用[真实角色自动验收](agents/testing.md#文件交接真实角色自动验收)的专用 `provider/model/baseUrl/apiKeyEnv`，或同页公开 CompletionTransport；不读全局 auth，不用受控 provider 代替模型决定。`--hosts declared` 保留每个实际源 Task 的宿主（包含包装内原有 OMP/Pi 混用），逐项记录源码稳定 ID、隔离真实 ID、实际角色和 OS 身份。`--hosts omp,pi` 分别在两宿主执行完整矩阵，任一失败均非零；不能拿单宿主成功抵消另一个。隔离 Herdr terminal 使用已安装的 `powershell.exe`，避免完整 Suite 启动命令超过 `cmd.exe` 行长上限，不裁剪技能或扩展。该入口不安装、不提权、不改全局 PATH、不重试业务或模型决定。
 
-专项先由真实独立 Chat 创建、优化一个仅配置交付的隔离 normal Task，再执行发布的三节点外层和八节点包装子 Run；外层创建者／优化者保持原 prompt，只使用明确业务要求与当前公开 HTTP。目标使用非空 Suite，以完整前后字段比较检查优化者不丢失该选择。候选全文先写入业务授权的 proposal 文件并真实读回；自动业务核对使用预先固定的 CSV 只读职责、完整配置字面预期与真实模型独立语义评价，成功后在原生 Chat 发送明确全文／保存确认。manual 节点保存读回后再发送另一条报告发送确认，两种授权分开留痕；评价本身不是用户批准。模型自主选择和执行真实工具，driver 不手改运行记录、不伪造 Session，也不替管理者 dispatch／complete／finish。
+专项先由真实独立 Chat 创建、优化一个仅配置交付的隔离 normal Task，再执行发布的三节点外层和八节点包装子 Run；外层创建者／优化者保持原 prompt，只使用明确业务要求与当前公开 HTTP。目标使用非空 Suite，以完整前后字段比较检查优化者不丢失该选择。候选全文先写入业务授权的 proposal 文件并真实读回；自动业务核对使用预先固定的 CSV 只读职责、完整配置字面预期与真实模型独立语义评价，评价输入显式标注当前候选的 Task.prompt／指南／独立完整配置角色，不能靠场景名称猜职责；成功后在原生 Chat 发送明确全文／保存确认。manual 节点保存读回后再发送另一条报告发送确认，两种授权分开留痕；评价本身不是用户批准。模型自主选择和执行真实工具，driver 不手改运行记录、不伪造 Session，也不替管理者 dispatch／complete／finish。
 
 证据必须同时具有真实 Task/Bot/Run/execution/Session 关联、原生工具及请求结果、命名 request／共同 baseline／实际输出的完整消费、真实文件字节、父子 finish/report/complete 顺序、目标全配置不变和无新目标业务运行。OMP 显式初始 Skill 的原始用户输入可能保存为 `attribution: user` 的原生 `custom_message`；核对完整输入时与普通 `role: user` 消息一起检查，绝不把 agent 归属的自定义消息当作用户输入。最终 `completed` 或 wrapper 文件存在均不充分。旧两个独立入口各自另外运行隔离场景；未迁移 Map 与共享执行 Task 逐项保持不变。保存前后、自动确认、报告确认、源码／锁文件／构建产物／安装宿主身份和原始错误均在本次独占目录保存，不将旧成功证据合并进新调用。
 

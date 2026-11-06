@@ -57,6 +57,27 @@ class NativeTaskUpdateTransport(unittest.TestCase):
             self.assertFalse(thread.is_alive())
 
 
+class BusinessEvaluationContext(unittest.TestCase):
+    def test_candidate_role_is_explicit_not_inferred_from_case_name(self):
+        from workflow_nesting_outer_acceptance import OuterAcceptance
+        acceptance = OuterAcceptance.__new__(OuterAcceptance)
+        acceptance.confirmed = {}
+        acceptance.file_bytes = lambda _: 'literal full candidate'
+        acceptance.observe_turn = lambda _: {}
+        acceptance.native_read = lambda *_: None
+        acceptance.prompt = lambda *_: {}
+        evaluated = []
+        acceptance.evaluate = lambda *args: evaluated.append(args)
+        with tempfile.TemporaryDirectory(prefix='outer-evaluation-role-') as directory:
+            for name, expected in [('independent-creator', 'normal Task.prompt'),
+                                   ('write_node_guide', 'Bot.node_guide concrete caller business inputs')]:
+                proposal = Path(directory) / (name + '.txt')
+                proposal.write_text('literal full candidate', encoding='utf-8')
+                acceptance.confirm_business({}, proposal, 'opaque-case')
+                self.assertEqual(evaluated[-1][1]['candidateRole'], expected)
+                self.assertEqual(evaluated[-1][1]['candidate'], 'literal full candidate')
+
+
 class NativeOriginalInput(unittest.TestCase):
     def launch_with(self, entry):
         from workflow_nesting_outer_acceptance import OuterAcceptance

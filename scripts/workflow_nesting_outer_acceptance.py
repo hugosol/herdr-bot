@@ -412,7 +412,17 @@ export default function(pi) {
         text = self.file_bytes(proposal)
         self.native_read(self.observe_turn(chat), proposal)
         require(bool(text.strip()), ('Incomplete full business candidate', case, text))
-        self.evaluate(case, {'candidate': text}, {
+        roles_by_proposal = {
+            'independent-creator': 'normal Task.prompt', 'w1': 'normal Task.prompt',
+            'independent-optimizer': 'existing normal Task.prompt', 'w2': 'existing normal Task.prompt',
+            'write_when': 'Bot.when selection guidance',
+            'write_plan_guide': 'Bot.plan_guide planning guidance',
+            'write_node_guide': 'Bot.node_guide concrete caller business inputs',
+            'legacy-create': 'new normal Task configuration and its Task-bound Bot with all three guides',
+            'legacy-bot': 'new Bot configuration for an existing normal Task with all three guides',
+        }
+        require(proposal.stem in roles_by_proposal, ('Unknown business candidate role', case, proposal.stem))
+        self.evaluate(case, {'candidate': text, 'candidateRole': roles_by_proposal[proposal.stem]}, {
             'scope': 'The candidate fits the caller CSV business requirements, never adds payment, mutation, external network access or automatic execution. All claims fit an existing target or explicitly requested configuration only.',
             'responsibility': 'The candidate is complete appropriate prose for its named Task/guide role. A when is selection guidance, plan_guide planning guidance, node_guide concrete caller business inputs; none is a path placeholder or material-routing protocol.',
             'authorization': 'No user approval, runtime success, implemented capability, hidden credential or missing decision is invented. Explicit-user-authorized local input and missing/unreadable material failure are preserved wherever relevant.'})
