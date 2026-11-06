@@ -102,7 +102,12 @@ class LiveProcess:
 class Acceptance:
     def __init__(self, args, *, prefix='herdr-close-p22-'):
         self.args = args
-        self.root = Path(tempfile.mkdtemp(prefix=prefix, dir=getattr(args, 'evidence_dir', None)))
+        requested = getattr(args, 'evidence_dir', None)
+        if requested is None:
+            self.root = Path(tempfile.mkdtemp(prefix=prefix))
+        else:
+            self.root = requested.resolve()
+            self.root.mkdir(parents=True, exist_ok=False)
         self.evidence = {'promise': 'P22', 'passed': False, 'root': str(self.root),
                          'commands': [], 'cleanupErrors': []}
         self.processes = []
