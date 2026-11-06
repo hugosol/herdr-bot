@@ -41,6 +41,8 @@
 | `task-18e31d30fe69a51c-2` | Task 创建者；POST 当前字段含至多一个 `suite`，不提交旧 `extensions`；按 tasks/options 列表取得真实 ID，再从 GET 的 task 完整读回；来源为 `backend/src/tasks/mod.rs` | 24（P45） |
 | `task-18e3454a33cecffc-6` | 既有 Task.prompt 交互优化者；PUT 只改变 prompt，完整保留 suite 和全部其他配置；不发送旧字段，确认、共享影响及运行禁写职责不因独立／node 身份改变 | 24（P45） |
 
+旧独立 `create-bot-task` 的 Task `task-18e315be1cf0ef10-0` 同样使用当前 `suite` 字段，不提交已退役的 `extensions`（包括空数组），并从 `backend/src/tasks/mod.rs` 核实接口；它仍只在当前 Chat 创建／复用 Task＋Bot，不转为 Map 包装或自动执行新能力。该旧入口兼容场景归 24（P46），不增加 P45 配对清单。
+
 上述两项不属于 21 拥有的共享六 Task 清单，不重复认领。源码修订只纠正当前公共契约，不增加旧字段别名、兜底重试或失败吞没。完整真实外层调用与旧入口保留的 contract 验收由 24 拥有（P46）；本票公开定义接线和最小共享烟测不是这两项通过证据。
 
 ## 真实外层与旧独立入口验收
