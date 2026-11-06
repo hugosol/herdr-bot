@@ -110,7 +110,9 @@ def deploy_tasks(case, host):
 
 def bot(case, identity):
     result = case.http('/api/scheduler/bots/edit', {'id': identity})
-    return json.loads(result['content']), result['revision']
+    check(result.get('id') == identity and isinstance(result['content'], dict),
+        ('Public Bot edit did not return the requested identity and complete content object', result))
+    return result['content'], result['revision']
 
 
 def save_bot(case, identity, value, revision=None):
@@ -318,13 +320,15 @@ def verify_target(case, context):
     case.evidence.setdefault('readOnlyNonExecutionFacts', []).append({'label': context['label'], 'runs': facts})
 
 
-def verify_handoff(case, path, texts, baseline):
+def verify_handoff(case, path, texts, baseline, additional_objects=()):
     body = record_bytes(case, path, 'handoff')
     compact = lambda value: re.sub(r'\s+', '', value)
     check(all(compact(text) not in compact(body) for text in texts if text), ('handoff duplicated full text', str(path)))
     check(compact(baseline) not in compact(body), ('handoff duplicated full baseline', str(path)))
     baseline_value = json.loads(baseline)
-    forbidden = [baseline_value, baseline_value['bot'], baseline_value['target']]
+    forbidden = [baseline_value, baseline_value['bot'], baseline_value['target'], *additional_objects]
+    if 'id' in baseline_value['bot']:
+        forbidden.append({key: value for key, value in baseline_value['bot'].items() if key != 'id'})
     decoder = json.JSONDecoder()
     for match in re.finditer(r'\{', body):
         try:
@@ -332,6 +336,17 @@ def verify_handoff(case, path, texts, baseline):
         except ValueError:
             continue
         check(value not in forbidden, ('handoff copied complete configuration with different formatting', str(path)))
+        pending = [value]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, dict):
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+            elif isinstance(item, str):
+                check(all(compact(text) not in compact(item) for text in texts if text),
+                    ('handoff duplicated escaped full text', str(path)))
+                check(compact(baseline) not in compact(item), ('handoff duplicated escaped full baseline', str(path)))
     check(len(body) > 30, ('Missing provenance/limitations handoff', str(path)))
     return body
 

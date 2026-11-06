@@ -52,4 +52,33 @@ node scripts/test-backend.mjs
 
 最小共享 Task 原生调用沿用[共享材料启用检查](agents/testing.md#共享-bot-指南材料的启用检查)：安装版 Pi、公开 CompletionTransport、隔离 HOME／APPDATA／XDG／sessions，加载实际共享 Task.prompt，真实读取源材料、写入唯一 text／handoff 并完整读回，核对原文和未授权哨兵不变。保留实际授权、原生 read／write 及准确文件字符；进程零退出、模型自称成功或静态定义存在均不充分。该窄烟测不是完整五节点自主执行。发布时实际用安装版 Pi 与 `task-18e31d34797f1464-3` 原始 prompt 执行独立 Chat：真实读取 writing-for-agents 与源文件，真实执行安全文件写入，再直接完整读取 text／handoff；独立核对来源准确、正文不重复、源文件与未授权哨兵不变。首次传输的真实模型输出混入 JSON 外文字，记录了 HTTP 502 与原生 stopReason:error，因此该次不判通过，即使 Pi 自动继续并生成了材料；保留原始失败材料。第二次在全新隔离目录仅对公开 completion 使用 JSON schema 约束序列化，不给定工具选择或业务答案，五次实际模型响应、原生真实工具与完整读回均成功，无原生或传输错误。两次均终止并等待所属原生进程、关闭传输并移除隔离模型配置。此结果不证明专属基线核实 Task 的自主质量或 22 的配对／完整修订验收。
 
-完整 P40／P42／P43／P44／P45 的 Task 型与 Map 型目标、有／无材料、真实澄清、全部负例与专属 Task 配对由 22 唯一负责；本票启用检查不认领这些 contract 场景。外层真实调用归 24。缺真实宿主、模型权限或其他依赖时保留未验证，不能以受控成功代替真实模型完成。
+## 真实模型跨仓修订验收
+
+从 herdr-bot worktree 运行 `python scripts/accept-workflow-nesting-revise.py`。入口复用公开 Chat／Run／HTTP、原生历史与真实宿主隔离设施，但使用本节修订场景和五节点定义，不运行创建场景或普通文件替换兼容用例。
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
+python scripts/accept-workflow-nesting-revise.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --hosts declared `
+  --paths-file 'D:/isolated-acceptance/paths.toml' `
+  --model-config 'D:/isolated-acceptance/model.json' `
+  --evidence-dir 'D:/isolated-acceptance/new-exclusive-revise-run' `
+  --shell-path 'D:/Program Files/Git/bin/bash.exe'
+```
+
+依赖均须预先安装；不安装、不提权、不修改全局 PATH、不读取用户认证。paths TOML 通过 herdr-paths 解析 `[roots]`，须明确声明 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`、`wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`。agent 根仅用于读取所声明的状态扩展源文件，不复制用户状态。原生 MCP 须支持公开 `CBM_RUNTIME_DIR`／`CBM_CACHE_DIR`／`CBM_ALLOWED_ROOT` 隔离选择；缺能力即失败，不连接用户 daemon。模型 JSON 的 `provider`、`model`、`baseUrl`、`apiKeyEnv` 必填，密钥只来自显式命名的环境变量；可选 `contextWindow`、`maxTokens`、`reasoning`。只支持真实 OpenAI-compatible chat-completions 服务或[公开 CompletionTransport](agents/testing.md#文件交接真实角色自动验收)，不以确定响应选择业务步骤。该模型传输证据不外推为原生 provider wire 合规性。
+
+公开 CompletionTransport 为 stateless：每轮重新发送完整原生历史和可用工具，业务 agent 的自主工具／子代理调用也可能增加请求，不能把一次 CLI 调用当作一次模型调用。`model=default` 仅是公开声明，不暴露实际 resolved provider/model 或 usage／账单，禁止推测它等于某个具体模型。运行时须保留请求数量与原始失败；不要将多个昂贵矩阵包装成没有中间反馈的长批次。用户因时长或额度要求中止时，区分外部终止与自然完成，清理并保持未完成矩阵未验证，不为补齐结果自动重跑。
+
+`--hosts declared` 保留实际发布 Task 的混合宿主和 Suite／初始 Skill；只重定位隔离资源和授权模型。`--hosts omp,pi` 则分别执行两套完整矩阵，两者都通过才通过，单宿主成功不能抵消另一宿主失败。HOME／APPDATA／XDG／原生存储、命名 Herdr、定义与运行目录独占，服务只监听动态数值回环、关闭 mDNS，不连接用户 Chat、不执行真实关机。
+
+修订入口分别为 Task／Map 目标执行有／无可选材料的四次完整修订；专属 `task-revise-bot-baseline-v1` 另有独立 Chat 核实，与 workflow 消费配对。用户真实澄清“扫描”范围，三路逐字全文批准与四个 manual 报告发送批准分别输入、记录。每个直接消费者须有成功原生 read 和完整工具结果；共同基线、唯一正文、必要 handoff 逐个核对，不从 completed 推断过程。保存前后完整目标和全部非目标保持，一次真实三字段保存、真实 revision、逐字段实际批准版本及完整 saved 读回共同构成成功证据。固定业务质量量表逐项评价目标真实性、字段职责、语义保持、授权边界和来源完整性；混合或缺证据不算通过。
+
+修订负例单独命名：未授权、基线／目标冲突、运行禁写、真实并发 revision 冲突、保存响应丢失后的已生效／未生效／未知。传输故障只作用于真实 HTTP 边界，不代替模型、宿主或后端决定；保存错误不盲重试、不回滚。独立业务场景各执行一次，失败逐项保留，不用其他场景成功抵消；一旦模型传输或所属资源清理已失败，余下不再提交并明确保持未验证。文件安全负例让专属基线核实 Task 面对实际 junction 和越界输出；正例实际安全生成 baseline／text／handoff／saved 并逐一原生完整读回，保留文件原字节和来源。这不是共享文本替换 Task 的普通文件兼容用例副本。六个已有共享 Task 的独立／workflow 配对不在此重认领，但本入口核对修订链实际 Task 身份和材料消费。
+
+证据目录必须不存在。保留两仓源码／锁文件／页面／二进制身份、实际安装入口和 OS 进程、模型服务身份（无密钥）、原始用户输入和确认、模型／HTTP／工具请求结果、原生历史、文件字节、只读运行事实和逐覆盖项结论。成功和失败都停止、等待并核实所属进程退出，原始验证错误与清理错误分开保留；移除含密钥的临时模型配置。缺依赖、宿主能力、模型权限或清理失败均非零、保持未验证。CLI 的缺依赖隔离回归为设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT` 后运行 `python scripts/accept-workflow-nesting-revise.test.py`，只证明拒绝与证据边界，不证明真实业务成功。
+
+完整 P40／P42／P43／P44／P45 的 Task 型与 Map 型目标、有／无材料、真实澄清、全部负例与专属 Task 配对由修订专项唯一负责；启用检查不认领这些 contract 场景。外层真实调用使用独立专项。入口存在、准备完成、受控响应或单次最终状态均不是完整通过，必须以实际运行证据判断。
