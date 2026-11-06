@@ -354,6 +354,8 @@ python scripts/accept-workflow-nesting-roles.py `
 
 ## 共享 Bot 指南材料的启用检查
 
+真实模型修订专项为 `python scripts/accept-workflow-nesting-revise.py --backend <本 worktree 后端> --toolkit <toolkit worktree> --hosts declared --paths-file <独占依赖配置> --model-config <专用授权模型声明> --evidence-dir <不存在的独占目录>`；依赖声明、混合宿主／双宿主行为、四次 Task／Map 有／无材料矩阵、专属 Task 配对、修订负例及证据边界见[独立修订验收运行说明](../revise-bot-guides.md#真实模型跨仓修订验收)。设置 `WORKFLOW_HANDOFF_TOOLKIT` 后运行 `python scripts/accept-workflow-nesting-revise.test.py` 仅验证缺后端／模型时非零、覆盖保持未验证且不启动宿主，不替代真实业务通过。
+
 独立修订入口为 `revise-bot-guides`，公开定义／五节点材料接线检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`，安全进程烟测为 `python scripts/check-revise-bot-guides.py --target-dir <本 worktree 独立 target>`。调用接口、稳定专属 Task `task-revise-bot-baseline-v1`（22 配对 owner）、原位切换及证据边界见[独立修订运行说明](../revise-bot-guides.md)；不强制修改目标 Task.prompt，旧独立入口及无关 Map 不变。
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
