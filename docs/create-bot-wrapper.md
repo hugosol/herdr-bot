@@ -1,6 +1,6 @@
 # 为既有目标包装完整 Bot
 
-公开能力为 `create-bot-wrapper` Bot，唯一目标是 `create-bot-wrapper.json` Map。使用现有 scheduler 的定义读取、Run 预检与发起入口，或由外层 Map 的节点引用这个 Bot；不增加产品入口。它与旧的“创建 Task＋Bot”流程不同：目标必须已经存在，不能由本流程新建、修改或执行。旧流程和其他 Map 保持原样；本文件不表示用户部署已迁移。
+公开能力为 `create-bot-wrapper` Bot，唯一目标是 `create-bot-wrapper.json` Map。使用现有 scheduler 的定义读取、Run 预检与发起入口，或由外层 Map 的节点引用这个 Bot；不增加产品入口。它与旧的“创建 Task＋Bot”流程不同：目标必须已经存在，不能由本流程新建、修改或执行。仅选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 已改为调用此能力，其他 Map 不自动替换；独立 `create-bot-task` 和 `create-bot` Bot 的职责及 Task 绑定保持原样。本文件不表示用户部署已迁移。
 
 ## 调用接口
 
@@ -24,15 +24,39 @@
 
 仅使用六个既有共享 Task，稳定 ID 和独立／workflow 配对归属见共同契约。本能力没有新增专属 Task。不会自动运行新能力、安装工具、补建目标、扩权或改写自身运行配置。配置交付不证明目标工具／Skill／扩展加载、模型遵从或业务效果。
 
+## 创建 Task＋Bot 的选定外层入口
+
+`create-bot-task-workflow--bc-61ce48b80a4c.json` 现在只有三个工作单元：
+
+1. `w1` → `create-task`：从本次 `Run.userInput` 和可选命名 `materials` 创建 normal Task。保留全文和执行配置确认，公开保存／完整读回；`handoff` 自包含地记录真实新 Task ID、需求、确认来源、权限及后续 Bot 创建委托。未明确的授权不得自行补齐。
+2. `w2` → `existing-task-prompt-optimizer`：直接消费 `w1.handoff`，在当前 Chat 交互确认并优化已创建 Task 的 prompt；只保存 prompt，完整保留其他配置。其 `handoff` 包含真实最新目标、业务要求、确认及授权、材料用途和写入范围，同时作为子流程的 `request`。两步均为 manual 报告，业务确认与发送报告确认分别成立；外层管理者核实真实报告后显式 complete 才可推进。
+3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与授权证据，显式 complete 本调用再 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+
+根 Run 仍由调用者经 scheduler 选择自己的 manager Task、zone 和本次业务输入；`materials` 缺席合法，提供却不可读必须拒绝。仅移除了本外层原先内联的空白 Bot、三路指南、三路优化及最终保存分支；包装 Map 的八节点职责保持不变，不将 Task 创建移入包装。旧独立 `create-bot-task` 仍绑定 `task-18e315be1cf0ef10-0`，`create-bot` 仍绑定 `task-18e31d347ccbeb4c-4`，不改变其独立职责，不迁移其他 Map 或用户部署。
+
+### 外层 Task 兼容与独立／workflow 配对清单
+
+| 真实稳定 Task ID | 本链职责与接口修正 | 配对验收唯一 owner |
+| --- | --- | --- |
+| `task-18e31d30fe69a51c-2` | Task 创建者；POST 当前字段含至多一个 `suite`，不提交旧 `extensions`；按 tasks/options 列表取得真实 ID，再从 GET 的 task 完整读回；来源为 `backend/src/tasks/mod.rs` | 24（P45） |
+| `task-18e3454a33cecffc-6` | 既有 Task.prompt 交互优化者；PUT 只改变 prompt，完整保留 suite 和全部其他配置；不发送旧字段，确认、共享影响及运行禁写职责不因独立／node 身份改变 | 24（P45） |
+
+上述两项不属于 21 拥有的共享六 Task 清单，不重复认领。源码修订只纠正当前公共契约，不增加旧字段别名、兜底重试或失败吞没。完整真实外层调用与旧入口保留的 contract 验收由 24 拥有（P46）；本票公开定义接线和最小共享烟测不是这两项通过证据。
+
 ## 验证入口与证据边界
 
 使用本 worktree 独立 `CARGO_TARGET_DIR`，先执行 `npm --prefix frontend ci`、`npm --prefix frontend run build`；定向入口为：
 
 ```powershell
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch outer_create -- --nocapture
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_bot_wrapper -- --nocapture
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business -- --nocapture
 node scripts/test-backend.mjs
 ```
+
+外层 `outer_create` 回归先用独立字面预期核对发布 Map 仅有 `w1`／`w2`／`wrap_bot`、当前稳定 Bot／Task 绑定、子 manager、zone、request／materials 和 saved／handoff 接口，然后经公开保存／读取及预检实际消费接线；旧内联十节点定义已观察到此用例失败。受控 host 环境使用测试拥有的 normal／manager Task 与 zone，保留包装子图完整拓扑，不证明部署 Suite 或原生角色加载。外层发布烟测实际运行本 worktree 构建的安全后端壳，复用 `scripts/check-workflow-file-consumption.py` 的隔离 `Smoke.prepare`、真实 Windows `deny_read` 和进程日志消费／清理设施，通过公开输入与节点保存／完整读取、预检检查可选材料缺席／可读成功、真实独占读锁和派发前删除输入拒绝、拒绝后定义完整不变且没有外部宿主调用。原始 HTTP、服务日志和 evidence.json 保留在执行输出的独占目录；它没有发起业务 Run，不替代 24 的真实外层调用。
+
+外层切换同时另行实际执行过上述安装版 Pi 最小共享 Task 烟测：使用当前 `task-18e31d34797f1464-3` 原始 prompt、原生 writing-for-agents 与公开 CompletionTransport，首次调用真实 read 源文件、真实写入唯一 text／handoff 并分别完整 read 回。独立读回确认来源路径字符准确、无重复正文、源文件及未授权哨兵不变；优化稿保留“用户提供且明确授权读取、仅差异报告、不改账单、不付款”四项已确认语义。原生 JSONL、真实模型 wire、request、源与交付文件保留在独占目录，隔离模型配置已移除，进程与传输已停止／等待。它只证明这一次独立共享 Task 的材料与授权边界，不证明创建者／Task.prompt 优化者配对、公开 Chat 启动、OMP 或完整子流程／外层执行。
 
 wrapper 回归通过既有公开 Bot 保存／读取、Map 输入与节点保存／读取、真实文件预检检查八节点完整接线、可选材料缺席合法和错误材料拒绝，不固定提示词措辞。发布检查还实际运行本 worktree 构建的 `debug/examples/safe_shutdown_shell.exe --config panel.toml`，复用 `scripts/check-workflow-file-consumption.py` 的隔离 Smoke.prepare 配置和日志消费设施，随后经 HTTP 保存／读取本 Map 八节点与包装 Bot；真实 request 文件、参考材料缺席／可读、Windows 独占读锁拒绝均已观察。语义上未声明的 Run 输入被现有接口拒绝为 `map-read-failed`／HTTP 500（不是本烟测最初预期的 400）；保留原错误后重启同一隔离后端，公开完整读回核实原定义未变。拒绝不以特定 4xx 为充分条件，必须核对无定义副作用；这不是新增的错误状态契约。全程无 Run 或外部宿主调用，成功失败均终止并等待所属安全后端与日志线程。测试先核对发布的六个共享 Bot／Task 稳定绑定；受控宿主预检使用测试拥有的 Task 环境和 zone，不能作为部署 Suite 或原生角色加载证据。shared_business 回归独立检查 Task／Map 两种绑定三字段一次保存、真实 stale revision 拒绝及完整非目标保持。
 
