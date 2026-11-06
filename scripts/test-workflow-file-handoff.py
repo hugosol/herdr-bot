@@ -59,6 +59,9 @@ class WireProxy:
             def do_GET(self):
                 self.forward()
 
+            def do_PUT(self):
+                self.forward()
+
             def forward(self):
                 raw = self.rfile.read(int(self.headers.get('Content-Length', '0')))
                 with owner.lock:

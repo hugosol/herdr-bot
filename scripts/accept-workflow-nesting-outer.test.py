@@ -14,6 +14,49 @@ import unittest
 REPO = Path(__file__).resolve().parent.parent
 
 
+class NativeTaskUpdateTransport(unittest.TestCase):
+    def test_put_reaches_real_upstream_and_records_unchanged_bytes(self):
+        import http.server
+        import threading
+        import urllib.request
+        from workflow_nesting_outer_acceptance import roles
+        received = []
+
+        class Upstream(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_PUT(self):
+                received.append((self.command, self.path, self.rfile.read(int(self.headers['Content-Length']))))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"saved":true}')
+
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='outer-put-wire-') as directory:
+                proxy = roles['WireProxy'](f'http://127.0.0.1:{server.server_port}', Path(directory) / 'wire')
+                try:
+                    payload = b'{"prompt":"literal revised prompt","suite":"preserved-suite"}'
+                    request = urllib.request.Request(proxy.base + '/api/tasks/owned-task', data=payload, method='PUT')
+                    with urllib.request.urlopen(request) as response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.read(), b'{"saved":true}')
+                finally:
+                    proxy.close()
+                self.assertEqual(received, [('PUT', '/api/tasks/owned-task', payload)])
+                self.assertEqual(proxy.records[0]['request'], payload.decode())
+                self.assertEqual(proxy.records[0]['method'], 'PUT')
+                self.assertEqual(proxy.records[0]['response'], '{"saved":true}')
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive())
+
+
 class NativeOriginalInput(unittest.TestCase):
     def launch_with(self, entry):
         from workflow_nesting_outer_acceptance import OuterAcceptance
