@@ -43,7 +43,7 @@
 
 旧独立 `create-bot-task` 的 Task `task-18e315be1cf0ef10-0` 同样使用当前 `suite` 字段，不提交已退役的 `extensions`（包括空数组），并从 `backend/src/tasks/mod.rs` 核实接口；它仍只在当前 Chat 创建／复用 Task＋Bot，不转为 Map 包装或自动执行新能力。该旧入口兼容场景归 24（P46），不增加 P45 配对清单。
 
-上述两项不属于 21 拥有的共享六 Task 清单，不重复认领。源码修订只纠正当前公共契约，不增加旧字段别名、兜底重试或失败吞没。完整真实外层调用与旧入口保留的 contract 验收由 24 拥有（P46）；本票公开定义接线和最小共享烟测不是这两项通过证据。
+上述两项不属于 21 拥有的共享六 Task 清单，不重复认领。源码修订只纠正当前公共契约，不增加旧字段别名、兜底重试或失败吞没。外层真实业务发现的共享 `task-18e340f5287462ec-4` 职责修正仅禁止生成指南正文复制框架文件路由语法，保留真实材料、命名输入与授权要求；其独立／workflow 配对唯一 owner 仍为 21，不在本清单重复认领。完整真实外层调用与旧入口保留的 contract 验收由 24 拥有（P46）；本票公开定义接线和最小共享烟测不是这两项通过证据。
 
 ## 真实外层与旧独立入口验收
 
@@ -66,7 +66,7 @@ python scripts/accept-workflow-nesting-outer.py `
 
 证据必须同时具有真实 Task/Bot/Run/execution/Session 关联、原生工具及请求结果、命名 request／共同 baseline／实际输出的完整消费、真实文件字节、父子 finish/report/complete 顺序、目标全配置不变和无新目标业务运行。OMP 显式初始 Skill 的原始用户输入可能保存为 `attribution: user` 的原生 `custom_message`；核对完整输入时与普通 `role: user` 消息一起检查，绝不把 agent 归属的自定义消息当作用户输入。最终 `completed` 或 wrapper 文件存在均不充分。旧两个独立入口各自另外运行隔离场景；未迁移 Map 与共享执行 Task 逐项保持不变。保存前后、自动确认、报告确认、源码／锁文件／构建产物／安装宿主身份和原始错误均在本次独占目录保存，不将旧成功证据合并进新调用。
 
-独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。回环 HTTP observer 对真实 Task `PUT` 与读取／创建请求一样原样转发方法、正文和状态，不自行代替服务返回；本地传输回归只证明透明转发，不充当优化业务通过。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
+独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。回环 HTTP observer 对真实 Task `PUT` 与读取／创建请求一样原样转发方法、正文和状态，不自行代替服务返回；本地传输回归只证明透明转发，不充当优化业务通过。原生 turn 失败时另用公开 `herdr agent read` 保存所属 pane 的真实近期终端，原错误与捕获错误分别保留；不补发 prompt、Enter 或改变业务状态。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
 
 PowerShell 中先设置 `$env:OUTER_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再执行 `python scripts/accept-workflow-nesting-outer.test.py`；这是 CLI fail-closed 回归，仅证明缺后端不宣称通过、已有证据不可覆盖；不证明上述真实业务已通过。运行说明描述可复跑入口及其边界，不是当前部署的成功声明；结果仅以实际本次逐覆盖项证据为准。
 ## 真实创建与配对验收入口

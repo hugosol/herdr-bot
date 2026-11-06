@@ -57,6 +57,23 @@ class NativeTaskUpdateTransport(unittest.TestCase):
             self.assertFalse(thread.is_alive())
 
 
+class NativeFailureDiagnostics(unittest.TestCase):
+    def test_terminal_capture_never_replays_input_or_replaces_original_failure(self):
+        from unittest.mock import patch
+        from workflow_nesting_outer_acceptance import OuterAcceptance, NativePlanningAcceptance
+        acceptance = OuterAcceptance.__new__(OuterAcceptance)
+        acceptance.evidence = {}
+        commands = []
+        acceptance.herdr = lambda *args: commands.append(args) or 'actual terminal buffer'
+        chat = {'sessionId': 'owned-session', 'paneId': 'w1:p3', 'agent': 'omp'}
+        with patch.object(NativePlanningAcceptance, 'native_turn', side_effect=AssertionError('original timeout')):
+            with self.assertRaisesRegex(AssertionError, 'original timeout'):
+                acceptance.native_turn(chat)
+        self.assertEqual(commands, [('agent', 'read', 'w1:p3', '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text')])
+        self.assertEqual(acceptance.evidence['nativeTurnFailures'][0]['terminal'], 'actual terminal buffer')
+        self.assertIn('original timeout', acceptance.evidence['nativeTurnFailures'][0]['originalError'])
+
+
 class BusinessEvaluationContext(unittest.TestCase):
     def test_candidate_role_is_explicit_not_inferred_from_case_name(self):
         from workflow_nesting_outer_acceptance import OuterAcceptance

@@ -301,7 +301,17 @@ export default function(pi) {
         return {**chat, 'agent': chat.get('agent', chat.get('agentName'))}
 
     def native_turn(self, chat, previous_ends=0):
-        history = super().native_turn(chat, previous_ends)
+        try:
+            history = super().native_turn(chat, previous_ends)
+        except BaseException:
+            diagnostic = {'chat': chat, 'originalError': traceback.format_exc()}
+            try:
+                diagnostic['terminal'] = self.herdr('agent', 'read', chat['paneId'],
+                    '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text')
+            except BaseException:
+                diagnostic['captureError'] = traceback.format_exc()
+            self.evidence.setdefault('nativeTurnFailures', []).append(diagnostic)
+            raise
         forbidden = ['workflow_nesting_outer_acceptance.py', 'accept-workflow-nesting-outer.py',
                      'accept-workflow-nesting-outer.test.py', str(self.root / 'agent/models.json'),
                      str(self.root / 'agent/models.yml'), str(self.args.model_config)]
