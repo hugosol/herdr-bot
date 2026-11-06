@@ -102,7 +102,7 @@ class LiveProcess:
 class Acceptance:
     def __init__(self, args, *, prefix='herdr-close-p22-'):
         self.args = args
-        self.root = Path(tempfile.mkdtemp(prefix=prefix))
+        self.root = Path(tempfile.mkdtemp(prefix=prefix, dir=getattr(args, 'evidence_dir', None)))
         self.evidence = {'promise': 'P22', 'passed': False, 'root': str(self.root),
                          'commands': [], 'cleanupErrors': []}
         self.processes = []
@@ -201,6 +201,11 @@ class Acceptance:
         self.workspace = workspace['workspace']['workspace_id']
         self.sentinel = workspace['tab']['tab_id']
         self.evidence['ownedWorkspace'] = workspace
+        catalog = self.role_catalog(toolkit)
+        (self.root / 'options.toml').write_text(catalog)
+        self.start_backend(role_config)
+
+    def role_catalog(self, toolkit):
         catalog = 'skills = []\n[[agents]]\nid = "pi"\nlabel = "Pi"\n'
         catalog += '[[models]]\nid = "default"\nlabel = "Default"\n'
         catalog += '[[models]]\nid = "probe"\nlabel = "Probe"\nprovider_model = ' + json.dumps(self.provider_model) + '\nthinking = { pi = ["off"] }\n'
@@ -208,7 +213,9 @@ class Acceptance:
                          ('pi-manager-chat', toolkit / 'entrypoints/pi-auto/manager-chat.ts'),
                          ('pi-node-chat', toolkit / 'entrypoints/pi-auto/node-chat.ts')]:
             catalog += f'[[extensions]]\nid = "{id}"\nlabel = "{id}"\nagent = "pi"\nkind = "fixed"\nentrypoint = {json.dumps(str(path))}\n'
-        (self.root / 'options.toml').write_text(catalog)
+        return catalog
+
+    def start_backend(self, role_config):
         q = lambda value: json.dumps(str(value))
         config = 'listen_addr = "127.0.0.1:0"\n'
         config += f'static_directory = {q(self.args.repo / "backend/static")}\ndata_directory = {q(self.root / "data")}\n'
@@ -223,7 +230,7 @@ class Acceptance:
             ('map_directory', self.root / 'maps'), ('bot_directory', self.root / 'bots'),
             ('run_directory', self.root / 'data/runs'), ('run_instructions', self.args.repo / 'docs/workflow-runtime.md')])
         (self.root / 'backend.toml').write_text(config)
-        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend')
+        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend-' + str(len(self.processes)))
         def address():
             require(backend.child.poll() is None, 'Backend exited during startup; see raw logs')
             while not backend.lines.empty():

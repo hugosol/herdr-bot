@@ -262,6 +262,8 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 ### 后端重启：历史现场只读
 
+跨仓原生验收入口为 `python scripts/accept-workflow-nesting-recovery.py --backend <当前 worktree 后端绝对路径> --toolkit <toolkit worktree> --hosts omp,pi --paths-file <独占依赖声明> --model-config <专用授权模型声明> --evidence-dir <尚不存在的独占目录>`。实际安装版两宿主在明确失败／retry 后分别恢复旧与当前子 manager Chat，原生新 PID／相同 Session、来源 Task、parent execution／child、原始输入、实际文件及真实 run／collect／report 的后端结果共同证明身份与无重放；随后真正更换后端进程，恢复同两条 Chat 并观察原生角色拒绝。`--hosts declared` 保持业务声明的 OMP 父层／Pi 子层，不为 runner 改宿主。独立后端矩阵、配置或受控宿主成功都不能替代该专项；命令与证据目录存在不表示已通过。依赖、授权、隔离、清理和复跑边界见[测试指引](agents/testing.md#嵌套原生新进程恢复验收)。
+
 嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。
 
 后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
