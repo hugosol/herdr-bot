@@ -102,7 +102,10 @@ def deploy_tasks(case, host):
     case.manager_id = case.manager['id']
     for task in tasks:
         observed = case.http('/api/tasks/' + urllib.parse.quote(task['id'], safe=''))['task']
-        check(observed == task, ('Deployed Task readback mismatch', task, observed))
+        expected = dict(task)
+        if expected.get('suite') is None:
+            expected.pop('suite', None)
+        check(observed == expected, ('Deployed Task readback mismatch', expected, observed))
 
 
 def bot(case, identity):
@@ -123,6 +126,13 @@ def task_chat(case, identity, request):
         'chatId': preview['chatId'], 'input': request}, status=202)
     def ready():
         state = case.http('/api/chats/' + started['id'])
+        if state['stage'] == 'failed' and state.get('paneId'):
+            record = {'state': state}
+            case.evidence.setdefault('failedChatTerminals', []).append(record)
+            try:
+                record['terminal'] = case.command([case.args.herdr, 'pane', 'read', state['paneId']])
+            except Exception as error:
+                record['captureError'] = repr(error)
         check(state['stage'] != 'failed', state)
         return state if state['stage'] == 'succeeded' else None
     state = wait(case, 'standalone real Chat started', ready)

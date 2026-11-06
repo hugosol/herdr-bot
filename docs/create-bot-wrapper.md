@@ -62,6 +62,8 @@ python scripts/accept-workflow-nesting-create.py `
 
 paths 文件为验收专属 TOML，`[roots]` 明确声明已安装的 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`，以及原 Suite 所需的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`。两个 agent 根**仅**用于只读加载 `extensions/herdr-agent-state.ts`／`extensions/herdr-omp-agent-state.ts`，不读取其 settings、models、auth、sessions 或技能目录。保留源码完整 Suite 声明、Task.suite 和初始 Skill，不把业务 Suite 缩成四个技能或删除 MCP／扩展／LSP。`toolkit` 根由本票指定源码复制到独占部署，不从默认同级旧仓取后端或角色源码；其他依赖可用同名 CLI 参数显式覆盖。
 
+隔离后端通过显式 `paths_file` 加载本次 `paths.local.toml`，包括固定扩展使用的 `omp_agent`／`pi_agent` 根；只在文件中声明根而不接入后端配置不能证明解析成功。隔离 Herdr 的 terminal 使用已安装的 `powershell.exe`，避免完整 Suite 的真实技能与扩展命令超过 `cmd.exe` 输入行上限；不裁剪 Suite 规避长度限制。Chat 启动失败保留原始状态及 pane 原始文本，额外捕获失败单独记录，不覆盖原始错误。
+
 完整固定扩展仍使用实际源码。仅在部署副本中将 connect-bot 指向本次动态后端，将 model-cost 存储指向本次独占目录。原生 codebase-memory-mcp 使用实际安装程序与完整工具能力，仅关闭无关可视化（`--ui=false`）；分别设置独占 `CBM_RUNTIME_DIR`、`CBM_CACHE_DIR` 和 `CBM_ALLOWED_ROOT`，runtime 目录限定为当前 Windows 所有者私有 ACL。缺这些已安装原生隔离能力则拒绝启动，不接入用户 account daemon。实际进程观察包含拥有进程的全部后代而非仅 OMP／Pi 白名单，持有并等待 MCP daemon 的进程句柄，退出失败仍为验收失败。
 
 模型文件使用[测试指引](agents/testing.md#文件交接真实角色自动验收)中的专用 `provider/model/baseUrl/apiKeyEnv` 声明；可使用同处说明的公开 CompletionTransport，其职责只传输真实模型决策，不生成业务步骤或伪造工具结果。密钥仅取显式环境变量，不写请求头日志；结束时删除所有验收拥有的 credential-bearing models 文件。`--timeout 1..900` 是每阶段观察窗口，不是重试次数。
