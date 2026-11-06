@@ -109,6 +109,10 @@ class OuterAcceptance(NativePlanningAcceptance):
             self.remember_process(item['ProcessId'])
 
     def start(self, argv, label):
+        if label == 'herdr':
+            config = self.root / 'herdr.toml'
+            config.write_text(config.read_text(encoding='utf-8').replace(
+                'default_shell = "cmd.exe"', 'default_shell = "powershell.exe"'), encoding='utf-8')
         if label == 'backend':
             self.install_resources()
         process = super().start(argv, label)
