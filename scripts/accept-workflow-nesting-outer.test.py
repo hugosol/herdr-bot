@@ -63,13 +63,15 @@ class NativeFailureDiagnostics(unittest.TestCase):
         from workflow_nesting_outer_acceptance import OuterAcceptance, NativePlanningAcceptance
         acceptance = OuterAcceptance.__new__(OuterAcceptance)
         acceptance.evidence = {}
+        from argparse import Namespace
+        acceptance.args = Namespace(herdr='owned-herdr.exe')
         commands = []
-        acceptance.herdr = lambda *args: commands.append(args) or 'actual terminal buffer'
+        acceptance.command = lambda args: commands.append(args) or 'actual terminal buffer'
         chat = {'sessionId': 'owned-session', 'paneId': 'w1:p3', 'agent': 'omp'}
         with patch.object(NativePlanningAcceptance, 'native_turn', side_effect=AssertionError('original timeout')):
             with self.assertRaisesRegex(AssertionError, 'original timeout'):
                 acceptance.native_turn(chat)
-        self.assertEqual(commands, [('agent', 'read', 'w1:p3', '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text')])
+        self.assertEqual(commands, [['owned-herdr.exe', 'agent', 'read', 'w1:p3', '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text']])
         self.assertEqual(acceptance.evidence['nativeTurnFailures'][0]['terminal'], 'actual terminal buffer')
         self.assertIn('original timeout', acceptance.evidence['nativeTurnFailures'][0]['originalError'])
 

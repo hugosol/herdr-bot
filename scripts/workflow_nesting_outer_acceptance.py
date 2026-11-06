@@ -306,8 +306,8 @@ export default function(pi) {
         except BaseException:
             diagnostic = {'chat': chat, 'originalError': traceback.format_exc()}
             try:
-                diagnostic['terminal'] = self.herdr('agent', 'read', chat['paneId'],
-                    '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text')
+                diagnostic['terminal'] = self.command([self.args.herdr, 'agent', 'read', chat['paneId'],
+                    '--source', 'recent-unwrapped', '--lines', '200', '--format', 'text'])
             except BaseException:
                 diagnostic['captureError'] = traceback.format_exc()
             self.evidence.setdefault('nativeTurnFailures', []).append(diagnostic)
