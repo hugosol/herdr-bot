@@ -6,7 +6,7 @@
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
 
-workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`report_policy`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`reportPolicy`、`autoClose`；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `reportPolicy` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
+workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`report_policy`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`reportPolicy`、`autoClose`、`childRunId`（保存关联时可导航）；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `reportPolicy` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
 
 | 方法及路径 | 请求与结果 |
 | --- | --- |
@@ -49,6 +49,35 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`report` 只定位关联的父 execution，包括保留的旧 execution。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；父可选项缺席而子接口要求必需项时，派发明确指出缺项，不启动该子工作。
+
+### 从 workflow 查看子 Run
+
+workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、Map 标题和 node 标题都不是导航身份。打开父 Run 后，当前节点的“当前执行事实”内以该 execution 保存的 `childRunId` 提供“查看子 Run”；展开“旧执行历史”后，每条旧 execution 使用自身保存的 `childRunId`，retry 后不会改指最新 child。目标仍是独立的 `#workflow/{id}` Run 详情，可手动“刷新 Run”并返回全部 Run。整页刷新沿用主界面默认进入 chat 的规则，再进入 workflow 并从列表选择相同 ID 即可重读原现场，不创建新 Run；这里不提供嵌套树或额外双向导航。
+
+执行未保存 `childRunId` 时明确显示未保存关联，不从当前 Bot 的 `map_file`、名称或 Chat 猜测子 Run。目标记录缺失或不可读时，详情查询显示公开读取错误，不跳转到同名 Run、不修复记录，也不重新发起 Run／dispatch。查看、刷新和浏览器导航只读取保存事实，不恢复 Run 管理资格。
+
+长期真实页面回归由 `frontend/browser-tests/workflowChildNavigation.spec.ts` 拥有 P36，入口 `npm --prefix frontend run test:browser:build`；开发定向入口可追加 `-- workflowChildNavigation.spec.ts --workers=1`。场景从实际 scheduler 表单启动，通过公开 HTTP 派发、失败并明确 retry，核对当前／旧链接各自打开的实际详情与 `parent` 持久关联、同名干扰下的并列列表，以及刷新前后的三份 Run 文件和受控宿主调用不变。拒绝路径使用测试独占目录内真正缺失／不可读记录，不以组件 mock 或静态 href 文本代替导航结果。页面连接真实公开 SSE；宿主只使用记录型安全 Herdr 夹具，证据只证明页面／HTTP／持久化导航和无重派副作用，不证明原生 agent 工作质量或真实外部宿主生命周期。命令本身不是当前部署已通过的证据。
+
+### 局部暂停、失败与并发推进
+
+父子 Run 是独立控制边界。父层 `pause` 仅拒绝本层新 dispatch／retry；已启动的子 manager 和子内部工作仍可显式派发、报告、验收及 finish。`resume` 只恢复本层资格，不自动重派失败工作或派发 pending node。子内部派发／执行失败保留在所属 Run，不自动失败、暂停或终止祖先、兄弟分支或独立 Run；现场处理仍须由所属 manager 显式决定。
+
+慢宿主输入与报告通知不应阻止其他 Run 推进，也不应使父子交接互等。报告先保存，再尝试通知；通知尚未返回时，管理者仍可依据已保存的有效报告显式 complete／finish。父 dispatch 尚在启动子 manager 时，子内部工作可推进；向父层的 report 可能等待该父层动作提交，但不能因此堵住子层 finish 或独立 Run。这里不承诺自动恢复、全局吞吐或固定锁结构。
+
+长期回归入口 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch local_lifecycle::` 拥有 P27／P28／P47：真实宿主提交拒绝、两层祖先与三条独立会话、暂停后的子工作与父层显式交接，以及受控输入／双通知门闩期间的有界推进。门闩观察失败也释放全部门闩并等待已接受请求；原始断言与清理错误同时保留。现有同层 dispatch／retry／pause 检查继续保留。
+
+独立进程烟测（先构建当前 worktree 的静态页与安全壳，使用独立 `CARGO_TARGET_DIR`）：
+
+```powershell
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-local-lifecycle.py `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
+node scripts/test-backend.mjs
+```
+
+入口通过公开定义／运行 HTTP 启动隔离数值回环后端，独立读回真实 `run.json` 并观察 CLI 接受的输入；在独占 Temp 中保留 HTTP、原始服务日志、`evidence.json` 及分开的原始／清理错误。成功和失败均释放门闩、等待所属请求并终止／等待安全后端。它证明受控宿主下的局部控制与并发机制，不证明原生模型职责、真实 Tab／进程寿命或规模性能；不读取用户凭据、不连接用户 Chat／daemon、不执行真实关机、LAN 或 mDNS。文档命令不是当前部署已通过的声明，实际结果以该次日志为准。
 
 ### 子流程交付与父层验收
 
@@ -241,6 +270,22 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 ### 后端重启：历史现场只读
 
+嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。
+
+后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
+
+```text
+npm --prefix frontend run build
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch resume_restart:: -- --nocapture
+cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
+python scripts/test-workflow-resume-restart.py --backend <target>/debug/examples/safe_shutdown_shell.exe --fixture <target>/debug/herdr-fixture.exe
+node scripts/test-backend.mjs
+```
+
+`dual_role_current_and_retired_chat_resume_preserves_all_facts_and_uses_current_environment` 检查当前／旧执行的双角色、最新来源环境、精确原生 ID 和无初始输入重放；`dual_role_resume_rejects_broken_parent_duplicate_identity_and_wrong_source_without_starting` 保留真实持久文件冲突，检查错误父执行、重复身份及来源 Task 不符均在创建 Tab／启动 agent 前明确拒绝。独立 HTTP 入口 `test-workflow-resume-restart.py` 通过公开定义／Run HTTP 发起真实受控执行、fail/retry，读回所有父子事实，再终止并等待原后端后启动新进程；读取独立字面旧非嵌套样例，逐项拒绝所有 manager 动作和 report，并在旧／当前 Chat 恢复后再次验证拒绝与三记录逐字不变。入口持续消费进程输出，成功失败均清理所属后端，独占 Temp 的 `evidence.json` 分开保留请求响应、实际进程、验证项、原始错误及清理错误；非零退出不是通过。受控 argv 只证明后端传递角色／环境和无重放，不能证明 OMP／Pi 原生新进程实际加载工具、模型行为或无限期无副作用；两宿主原生恢复／工具接线由原生生命周期专项另验。
+
+2026-11-06 本仓执行记录：当前 worktree 静态构建、上述 `resume_restart::` 两项定向用例、独立 safe shell／Herdr fixture 构建及 HTTP 重启入口均成功；独立入口记录两个真实后端进程、当前／旧 child 与父执行、字面旧记录，原始错误与清理错误均为空。随后以 `--binary-jobs 2 --test-threads 4` 完整执行一次 `node scripts/test-backend.mjs`，build、全部 binary 与 doctest 均通过、未派发为零。这些结果仅认领本仓后端恢复／重启语义，不外推为两宿主原生加载或业务模型验收。
+
 历史 Run 仅允许通过上述 PATCH 修改人用名称；名称写入 `run.json`，重启后保留，不向执行历史或报告追加事件。名称不参与调度、身份解析、Chat 名称、Map 引用或管理权限；同 Run 的名称更新与工作流写入互斥，外部身份等待期间保存的名称也不会被迟到的启动关联覆盖。
 
 管理归属仅存在于创建 Run 的当前后端进程；`managed=false` 是服务上下文事实，不是持久 Run 状态。真正重启服务后，旧 Run 仍可通过详情链接及 `GET /api/workflow/runs/<Run ID>` 读取，原 running/paused/completed 等状态、节点失败、执行与已知管理者/节点 Chat 关联、报告和三份记录保持原样。服务不扫描记录恢复控制权，不把 running 改写为 failed/completed，不发起执行，也不提供自动或手动接管入口。
@@ -310,7 +355,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 两案例共用[Bot 指南的共同业务材料契约](business-materials.md)。生产者、编写者、表达优化者和保存者使用同一 baseline／text／handoff 分工：共同基线单份，各分支 text 是唯一完整正文，handoff 仅承载确认依据、来源、语义限制与未验证项。每个必要消费者直接声明所需输入，不能从 handoff 获取正文或推导未声明地址。
 
-创建案例支持既有 normal Task 或 Map 作为目标：核实并创建空白 Bot 后交付共同基线，三份指南独立确认，各自独立优化表达，最终原样汇总一次合法保存。修订案例直接核实既有 Task 型／Map 型 Bot 并形成共同基线，三个分支各自在同一 Chat 整理表达和确认，无需先修改目标，也不额外强制独立优化阶段。两者都保持执行目标完整配置不变。
+创建案例支持既有 normal Task 或 Map 作为目标：公开的 `create-bot-wrapper` Bot 绑定 `create-bot-wrapper.json`，输入与父层交付、独立使用方法及检查边界见[既有目标 Bot 包装能力](create-bot-wrapper.md)。选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 保留创建 Task 与交互优化 Task.prompt 两步，再以真实目标、显式 request／materials 调用该包装能力；子管理者及 zone 在本次调用节点明确指定，真实 saved／handoff report 交付后仍需父管理者显式 complete。其他 Map 和旧独立 create-bot／create-bot-task 不自动切换；两项外层 Task 的稳定 ID 与 24 的配对归属见上述长期说明。包装内部核实并创建空白 Bot 后交付共同基线，三份指南独立确认，各自独立优化表达，最终原样汇总一次合法保存。修订案例直接核实既有 Task 型／Map 型 Bot 并形成共同基线，三个分支各自在同一 Chat 整理表达和确认，无需先修改目标，也不额外强制独立优化阶段。两者都保持执行目标完整配置不变。
 
 共享 Task 的固定业务核实、授权、配置冲突、真实 revision、运行禁写、非目标保持、文件安全、完整读回和部分生效核实职责在独立 Chat 同样成立；node 角色仅承接实际输入、材料位置与报告协议。三份 Bot 指南供规划者选择、安排和填写本次业务输入，不自动注入执行 Chat。业务确认、保存授权、报告发送确认与管理者完成分别成立。
 

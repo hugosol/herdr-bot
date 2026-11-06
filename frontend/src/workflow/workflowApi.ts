@@ -2,7 +2,7 @@ import type { InputRule, OutputRule } from '../scheduler/schedulerApi'
 
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
 export type FileAddress = { id: string; path: string }
-export type Execution = { id: string; taskId: string; agent: 'omp' | 'pi'; zone: string; chat: ChatReference | null; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
+export type Execution = { id: string; taskId: string; agent: 'omp' | 'pi'; zone: string; chat: ChatReference | null; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; childRunId?: string; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
 export type Failure = { stage: string; message: string; effects?: Record<string, unknown> }
 export type NodeState = {
   status: string
