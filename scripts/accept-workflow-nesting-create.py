@@ -129,6 +129,17 @@ class CreateAcceptance(Acceptance):
         from workflow_create_acceptance import prepare_source_resources
         prepare_source_resources(self)
 
+    def start(self, argv, label):
+        if label == 'herdr':
+            config = self.root / 'herdr.toml'
+            config.write_text(config.read_text(encoding='utf-8').replace(
+                'default_shell = "cmd.exe"', 'default_shell = "powershell.exe"'), encoding='utf-8')
+        if label == 'backend':
+            config = self.root / 'backend.toml'
+            config.write_text('paths_file = "paths.local.toml"\n' + config.read_text(encoding='utf-8'),
+                encoding='utf-8')
+        return super().start(argv, label)
+
     def provision(self):
         from workflow_create_acceptance import provision
         provision(self)
