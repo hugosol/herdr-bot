@@ -18,6 +18,7 @@ dist-ssr
 
 # 本地保留的工作流验收原始证据，不作为产品源码提交。
 /.scratch/workflow-file-handoff/evidence/
+/.scratch/workflow-nesting/evidence/
 /.scratch/suite-cli-research/evidence/09-pi-resources/
 /.scratch/suite-cli-research/evidence/14-initial/
 
@@ -42,6 +43,7 @@ __pycache__/
 
 # Rust 构建产物
 /backend/target
+/backend/target-ticket15/
 
 # 前端构建产物：由同一个 Axum 服务提供的打包页面（frontend 执行 npm run build 生成）
 /backend/static
