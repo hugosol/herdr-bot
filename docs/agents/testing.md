@@ -205,6 +205,29 @@ python scripts/test-real-herdr-close.py `
 
 stdout 返回 `evidence.json` 路径和真实结果；该文件包含命令原始输出、HTTP 响应、前后身份、存活及历史内容/哈希。Herdr/后端 stdout 与 stderr 持续消费并保存独立日志。成功或失败均停止且确认测试拥有的 server/子进程，原始错误与清理错误分别保留；Temp 数据保留供证据核对，不删除用户资源。缺失依赖、额外确认、目标仍在、进程仍活、原生历史不可读等均返回非零，不跳过且不算通过。文档仅说明入口，实际通过/失败以执行日志为准；本入口只验收 P22，不代表 P1–P21 已通过。
 
+## 嵌套流程真实文件消费验收
+
+独立入口 `python scripts/accept-workflow-nesting-files.py` 经本 worktree 构建的真实页面发起 Run，加载指定 toolkit worktree 的真实角色入口。toolkit 使用 Bun 1.4.4 和 frozen lock；若 typecheck 明确报告缺少已锁定的 `@typescript/typescript-win32-x64`，可在该 toolkit worktree 执行 `bun install --frozen-lockfile --linker isolated --force` 修复本地依赖链接，不替换编译器、不改锁定版本或借用其他 worktree 源码。不要用旧的普通文件交接场景、受控 provider 或最终产物替代它。入口的隔离业务定义显式声明 Pi；`--hosts declared` 保留并执行这些 Task 声明，证据只记 Pi，不外推 OMP 或双角色生命周期通过。现有真实宿主设施不提供 OMP 文件消费能力，显式 `--hosts omp` / `--hosts omp,pi` 非零并保持未验证，不能以 Pi 成功抵消。
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
+python scripts/accept-workflow-nesting-files.py `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --hosts declared `
+  --paths-file 'D:/isolated-acceptance/paths.toml' `
+  --model-config 'D:/isolated-acceptance/model.json' `
+  --evidence-dir 'D:/isolated-acceptance/new-exclusive-run' `
+  --shell-path 'D:/Program Files/Git/bin/bash.exe'
+```
+
+依赖声明是验收专属 TOML，使用 `[roots]` 下已安装的 `herdr`、`pi_package`、`pi_agent`（只读 `extensions/herdr-agent-state.ts`）及 `chrome`（包含 `chrome.exe` 的目录）。`--chrome <绝对chrome.exe路径>` 可显式选择已经安装的独立 Chromium；不自动发现或下载替代浏览器。Google Chrome 在完全隔离 Windows known-folder 环境中可能将显式独占 profile 误判为默认目录而拒绝调试，此时保留失败，不添加绕过调试限制的 feature flag、不借用用户 profile。已安装 Chromium 的成功只记录该实际浏览器身份，不覆盖 Chrome 失败。不安装宿主、不改 PATH、不读取用户认证。真实模型配置沿用下节的专用 `provider/model/baseUrl/apiKeyEnv` 声明或公开 `CompletionTransport`，不允许确定响应替代。后端必须来自同一独立绝对 `CARGO_TARGET_DIR`；两仓源码根、revision/diff、锁文件、后端身份、已安装依赖及真实 OS 进程均保留。缺依赖非零，不能以准备完成作为通过。
+
+场景两次经真实浏览器分别提交独立业务文字和不同文件字节，运行 root → middle → leaf 命名重映射，再让子交付分别进入普通执行者及另一子流程。实际 native read 调用与对应 tool result、原生 Session/Run/执行身份、输入绑定和交付字节共同作为证据，不只比地址。根空输入与嵌套空输入执行者不得读取或猜测材料路径，可选 appendix 明确缺席。首次 leaf 执行者实际停轮等待业务 release 后，driver 原地改写已派发文件；另一次实际派发后删除输入，再明确 release，真实执行者必须保留读取错误、报告不可完成，1.25 秒窗口内不修复或重试。release 是记录在原生历史的显式业务输入，不编辑运行记录，也不替模型选择工具。
+
+证据目录必须不存在，由 runner 独占创建；HOME/APPDATA/XDG/原生存储、命名 Herdr、定义和运行目录全部隔离，页面使用独立 Chrome profile，后端只绑定动态数值回环并关闭 mDNS。持续消费 stdout/stderr，正常与失败均停止并等待所属进程；原始错误与清理错误分别保留，清理失败仍非零。保留 browser 请求与确认截图、原始 HTTP/模型请求结果、原生历史、文件原字节、只读运行事实和逐项结论；删除带凭据的临时 models.json。专用 fail-closed CLI 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT` 后运行 `python scripts/accept-workflow-nesting-files.test.py`；它不证明真实消费。
+
 ## 文件交接真实角色自动验收
 
 `python scripts/test-workflow-file-handoff.py --scenario roles` 是独立的跨仓入口，加载指定 toolkit worktree 的实际角色源码及当前 herdr-bot worktree 构建的后端。它不使用确定响应服务替代真实业务模型，也不修改用户部署。当前真实模型链路仅支持 Windows / Herdr / **Pi** 和 OpenAI-compatible chat-completions 服务；结果不外推为 OMP 真实模型通过。参数保真、严格 report 校验和真实后端落盘另由入口内调用的 `tests/harness-dock/node-report-contract.test.ts` 同时覆盖 OMP/Pi；该 dock 使用受控 provider/Herdr，不能充当模型职责遵从证据。
