@@ -1,8 +1,9 @@
-"""Acceptance-only transport for a public text completion callable.
+"""Acceptance HTTP transports for actual text or native model decisions.
 
-The caller supplies completion(prompt) -> actual model text. No business state,
-expected action, tool implementation or retry lives here. Pi executes every tool
-and owns its native history. This is not provider wire-compliance evidence.
+CompletionTransport accepts completion(prompt) -> actual model text;
+NativeCompletionTransport accepts completion(request) -> SDK-native decision.
+Neither chooses business actions or executes tools: the real host owns those
+and its history. Request serialization is not direct-host wire compliance.
 """
 import http.server
 import json
@@ -27,12 +28,20 @@ it adds no business decisions. Actual native request follows:\n'''
 
 
 class CompletionTransport:
+    def decision(self, request, record):
+        prompt = PROTOCOL + json.dumps(request, ensure_ascii=False)
+        record['completionPrompt'] = prompt
+        raw = self.complete(prompt)
+        record['completionOutput'] = raw
+        return json.loads(raw)
+
     def __init__(self, complete, directory):
         self.complete = complete
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.records = []
         self.lock = threading.Lock()
+        self.failed = False
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -40,19 +49,22 @@ class CompletionTransport:
                 pass
 
             def do_POST(self):
+                # A queued host retry must observe failure only after the prior
+                # model decision and its serialization have both settled.
                 with owner.lock:
-                    record = {'index': len(owner.records), 'started': time.monotonic(), 'path': self.path}
-                    owner.records.append(record)
+                    self.respond()
+
+            def respond(self):
+                record = {'index': len(owner.records), 'started': time.monotonic(), 'path': self.path}
+                owner.records.append(record)
                 try:
+                    if owner.failed:
+                        raise RuntimeError('Earlier completion failure is terminal; no additional model call')
                     if self.path != '/chat/completions':
                         raise ValueError('Only /chat/completions is supported')
                     request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                     record['request'] = request
-                    prompt = PROTOCOL + json.dumps(request, ensure_ascii=False)
-                    record['completionPrompt'] = prompt
-                    raw = owner.complete(prompt)
-                    record['completionOutput'] = raw
-                    decision = json.loads(raw)
+                    decision = owner.decision(request, record)
                     if not isinstance(decision.get('content'), str) or not isinstance(decision.get('tool_calls'), list):
                         raise ValueError('Completion must return content string and tool_calls array')
                     calls = []
@@ -60,7 +72,10 @@ class CompletionTransport:
                         if not isinstance(call.get('name'), str) or not isinstance(call.get('arguments'), dict):
                             raise ValueError('Completion tool call requires name string and arguments object')
                         # Do not filter/coerce/validate tool arguments here: native host owns it.
-                        calls.append({'id': 'call_' + uuid.uuid4().hex, 'type': 'function',
+                        call_id = call.get('id')
+                        if call_id is not None and (not isinstance(call_id, str) or not call_id):
+                            raise ValueError('Native tool call identity must be a nonempty string')
+                        calls.append({'id': call_id or 'call_' + uuid.uuid4().hex, 'type': 'function',
                             'function': {'name': call['name'], 'arguments': json.dumps(call['arguments'], ensure_ascii=False)}})
                     message = {'role': 'assistant', 'content': decision['content']}
                     if calls:
@@ -74,10 +89,15 @@ class CompletionTransport:
                             delta['tool_calls'] = [dict(call, index=index) for index, call in enumerate(calls)]
                         frames = [dict(common, object='chat.completion.chunk', choices=[{'index': 0, 'delta': delta, 'finish_reason': None}]),
                             dict(common, object='chat.completion.chunk', choices=[{'index': 0, 'delta': {}, 'finish_reason': reason}])]
+                        if isinstance(decision.get('usage'), dict):
+                            frames[-1]['usage'] = decision['usage']
                         payload = ''.join('data: ' + json.dumps(frame, ensure_ascii=False) + '\n\n' for frame in frames) + 'data: [DONE]\n\n'
                         content_type = 'text/event-stream'
                     else:
-                        payload = json.dumps(dict(common, object='chat.completion', choices=[{'index': 0, 'message': message, 'finish_reason': reason}]))
+                        response = dict(common, object='chat.completion', choices=[{'index': 0, 'message': message, 'finish_reason': reason}])
+                        if isinstance(decision.get('usage'), dict):
+                            response['usage'] = decision['usage']
+                        payload = json.dumps(response)
                         content_type = 'application/json'
                     encoded = payload.encode('utf-8')
                     self.send_response(200)
@@ -86,6 +106,7 @@ class CompletionTransport:
                     self.end_headers()
                     self.wfile.write(encoded)
                 except BaseException:
+                    owner.failed = True
                     record['error'] = traceback.format_exc()
                     self.send_error(502, 'Actual completion or transport failed; see raw evidence')
                 finally:
@@ -94,6 +115,9 @@ class CompletionTransport:
                         json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
 
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        # server_close joins owned handlers; daemon handlers could leave the
+        # provider subprocess running after evidence/context cleanup returned.
+        self.server.daemon_threads = False
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.base = f'http://127.0.0.1:{self.server.server_port}'
 
@@ -107,3 +131,11 @@ class CompletionTransport:
         self.thread.join(timeout=15)
         if self.thread.is_alive():
             raise RuntimeError('Completion transport did not stop')
+
+
+class NativeCompletionTransport(CompletionTransport):
+    """The provider returns actual tool calls; no model-written JSON envelope."""
+    def decision(self, request, record):
+        decision = self.complete(request)
+        record['nativeCompletion'] = decision
+        return decision

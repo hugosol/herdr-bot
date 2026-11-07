@@ -466,7 +466,7 @@ def parser():
     cli = argparse.ArgumentParser(description=__doc__)
     for name in ['backend', 'toolkit', 'paths-file', 'model-config', 'evidence-dir']:
         cli.add_argument('--' + name, type=Path, required=True)
-    cli.add_argument('--hosts', choices=['omp,pi', 'declared'], required=True)
+    cli.add_argument('--hosts', choices=['omp,pi', 'declared', 'omp', 'pi'], required=True)
     for name in ['herdr', 'pi-package', 'omp-package', 'pi-state-extension', 'omp-state-extension', 'shell-path']:
         cli.add_argument('--' + name, type=Path)
     cli.add_argument('--node', default='node')
@@ -483,7 +483,7 @@ def main():
             os.environ.pop(key)
     args.evidence_dir = args.evidence_dir.resolve()
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
-    evidence = {'passed': False, 'requestedHosts': ['omp', 'pi'] if args.hosts == 'omp,pi' else [],
+    evidence = {'passed': False, 'requestedHosts': [] if args.hosts == 'declared' else args.hosts.split(','),
                 'processes': [], 'verified': [], 'cleanupErrors': []}
     try:
         require(args.model_config.is_file(), ('Missing explicit authorized model configuration', str(args.model_config)))
@@ -506,7 +506,7 @@ def main():
             case = DualRoleAcceptance(args)
             code = case.run()
             archived = args.evidence_dir / host
-            shutil.copytree(case.root, archived)
+            shared['copy_evidence'](case.root, archived)
             evidence['processes'].extend(case.evidence.get('nativeProcesses', []))
             evidence['cleanupErrors'].extend({'host': host, 'error': error} for error in case.evidence.get('cleanupErrors', []))
             evidence.setdefault('hosts', {})[host] = {'exit': code, 'evidence': str(archived / 'evidence.json'), 'nativeRoot': str(case.root)}

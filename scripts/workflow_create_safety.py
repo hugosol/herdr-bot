@@ -193,7 +193,7 @@ def faulted_save(case, mode, context=None):
         check(len(saves) == 1, ('Missing actual save or blind save retry', mode, saves))
         actual, _ = bot(case, context['id'])
         if mode == 'revision':
-            check(saves[0].get('status', 0) >= 400 and json.loads(saves[0].get('response', '{}')).get('code') == 'bot-conflict',
+            check(saves[0].get('status', 0) == 409 and json.loads(saves[0].get('response', '{}')).get('code') == 'bot-conflict',
                 ('No real backend stale revision rejection', saves))
             check(actual['name'].endswith('REAL-CONCURRENT-EDIT') and all(actual[field] == context['blank'][field] for field in FIELDS), 'Native saver overwrote real competing revision')
         elif mode == 'not-applied':

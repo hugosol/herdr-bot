@@ -11,6 +11,7 @@ import runpy
 import sys
 
 from developer_paths import REPO
+from workflow_revise_acceptance import CASE_NAMES, select_cases
 
 runtime = runpy.run_path(str(Path(__file__).with_name('accept-workflow-nesting-create.py')))
 PROMISES = ['P40', 'P42', 'P43', 'P44', 'P45']
@@ -23,7 +24,20 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
         self.evidence.update(scenario='workflow-nesting-revise', promises=PROMISES,
             coverage={key: {'verified': False} for key in PROMISES},
             taskPairs={DEDICATED: {'standalone': False, 'workflow': False}},
-            revisionSpecificTasks=[DEDICATED])
+            revisionSpecificTasks=[DEDICATED], requestedCases=list(args.cases),
+            filtered=set(args.cases) != set(CASE_NAMES),
+            subsetPassed=False)
+
+    def run(self):
+        code = super().run()
+        if not self.evidence['filtered']:
+            return code
+        self.evidence['subsetPassed'] = bool(self.evidence['subsetPassed']
+            and not self.evidence.get('verificationError') and not self.evidence['cleanupErrors'])
+        self.evidence['passed'] = False
+        self.evidence['verifiedHosts'] = []
+        (self.root / 'evidence.json').write_text(json.dumps(self.evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+        return 0 if self.evidence['subsetPassed'] else 1
 
     def prepare(self):
         # Even an unavailable real dependency must leave attributable evidence.
@@ -69,6 +83,8 @@ def main():
     for name in ['backend', 'toolkit', 'paths-file', 'model-config', 'evidence-dir']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi'], required=True)
+    parser.add_argument('--cases', type=select_cases, default='all',
+        help='all (default), or unique comma-separated names: ' + ', '.join(CASE_NAMES))
     for name in ['herdr', 'pi-package', 'omp-package', 'pi-state-extension', 'omp-state-extension',
                  'wayfinder', 'wayfinder-skills', 'pi-extensions', 'codebase-memory-mcp', 'shell-path']:
         parser.add_argument('--' + name, type=Path)
@@ -84,7 +100,9 @@ def main():
         return case.run()
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     results = {'passed': False, 'scenario': 'workflow-nesting-revise', 'requestedHosts': ['omp', 'pi'],
-        'verifiedHosts': [], 'coverage': {key: {'verified': False} for key in PROMISES}, 'hosts': {}, 'cleanupErrors': []}
+        'verifiedHosts': [], 'coverage': {key: {'verified': False} for key in PROMISES}, 'hosts': {}, 'cleanupErrors': [],
+        'requestedCases': list(args.cases), 'filtered': set(args.cases) != set(CASE_NAMES), 'subsetPassed': False}
+    successful_hosts = []
     for host in ['omp', 'pi']:
         native_args = argparse.Namespace(**vars(args))
         native_args.execution_host = host
@@ -95,13 +113,16 @@ def main():
         results['hosts'][host] = {'exit': code, 'evidence': str(case.root / 'evidence.json')}
         results['cleanupErrors'].extend(case.evidence['cleanupErrors'])
         if code == 0:
-            results['verifiedHosts'].append(host)
-    results['passed'] = results['verifiedHosts'] == ['omp', 'pi'] and not results['cleanupErrors']
+            successful_hosts.append(host)
+            if not results['filtered']:
+                results['verifiedHosts'].append(host)
+    results['subsetPassed'] = results['filtered'] and successful_hosts == ['omp', 'pi'] and not results['cleanupErrors']
+    results['passed'] = not results['filtered'] and results['verifiedHosts'] == ['omp', 'pi'] and not results['cleanupErrors']
     for key in PROMISES:
         results['coverage'][key]['verified'] = results['passed']
     (args.evidence_dir / 'evidence.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(results, ensure_ascii=False, indent=2))
-    return 0 if results['passed'] else 1
+    return 0 if results['passed'] or results['subsetPassed'] else 1
 
 
 if __name__ == '__main__':

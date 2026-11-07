@@ -17,7 +17,7 @@
 
 全部业务材料、安全文件写入、授权、真实 revision 冲突、运行禁写与部分效果规则只遵循[共同业务材料契约](business-materials.md)，不引入另一套协议。
 
-1. `w1` 使用 `prepare-bot-revision`：直接读取 request 与实际提供的 materials，自行经公开接口读取目录、完整 Bot 和真实 revision，核实唯一绑定的 normal Task 或 Map 及完整目标配置。未知事实自行调查，未决业务取舍用 grill-with-docs 在当前 Chat 真实澄清；身份、职责、授权或绑定冲突未解决则阻塞。仅保存单份 baseline 和必要 handoff，完整读回；不创建或修改目标或 Bot，不优化 Task.prompt。
+1. `w1` 使用 `prepare-bot-revision`：直接读取 request 与实际提供的 materials，自行经公开接口读取目录、完整 Bot 和真实 revision，核实唯一绑定的 normal Task 或 Map 及完整目标配置。未知事实自行调查，未决业务取舍用 grill-with-docs 在当前 Chat 真实澄清；身份、职责、授权或绑定冲突未解决则阻塞。仅保存单份 baseline 和必要 handoff，完整读回；不创建或修改目标或 Bot，不优化 Task.prompt。共同基线先于三路编写：w1 不起草三字段新正文，也不等待未来的字段全文批准或 Bot 保存后才交付；只记录已经取得的真实委托、澄清和授权。三路全文批准仍由后续各编写者分别取得，最终保存者完整核验，不因基线可交付而省略。
 2. `w2`／`w3`／`w4` 分别使用既有 when／plan_guide／node_guide 编写者，直接绑定同一 `w1.baseline`，独立修订、整理并确认所属全文，不读取兄弟定稿。修订案例在同一 Chat 整理表达，不新增独立优化阶段。各自产出唯一 text 与必要 handoff，不写 Bot。
 3. `w5` 使用既有文本替换者，直接绑定共同 baseline 与三组 text／handoff。真实批准来源必须覆盖整个保存批次；流程到达、报告发送确认或 `can_complete` 不授予保存权。重读完整 Bot、真实 revision 和完整目标，与 baseline 精确比较。任何缺项、冲突或禁写条件都使整批不开始，不自动合并、重试、回滚或替换对象。
 4. 合法时一次 edit/revision/save 保存三个字段，原样使用各 text，保持 id、name、唯一绑定及全部非目标；公开完整读回后逐字段核对，再重读完整目标确认未变。失败或结果不明先核实现场并保留原错误与已生效／未生效／无法确认效果，不吞掉失败。
@@ -76,6 +76,8 @@ python scripts/accept-workflow-nesting-revise.py `
 `--hosts declared` 保留实际发布 Task 的混合宿主和 Suite／初始 Skill；只重定位隔离资源和授权模型。`--hosts omp,pi` 则分别执行两套完整矩阵，两者都通过才通过，单宿主成功不能抵消另一宿主失败。HOME／APPDATA／XDG／原生存储、命名 Herdr、定义与运行目录独占，服务只监听动态数值回环、关闭 mDNS，不连接用户 Chat、不执行真实关机。
 
 修订入口分别为 Task／Map 目标执行有／无可选材料的四次完整修订；专属 `task-revise-bot-baseline-v1` 另有独立 Chat 核实，与 workflow 消费配对。用户真实澄清“扫描”范围，三路逐字全文批准与四个 manual 报告发送批准分别输入、记录。每个直接消费者须有成功原生 read 和完整工具结果；共同基线、唯一正文、必要 handoff 逐个核对，不从 completed 推断过程。保存前后完整目标和全部非目标保持，一次真实三字段保存、真实 revision、逐字段实际批准版本及完整 saved 读回共同构成成功证据。固定业务质量量表逐项评价目标真实性、字段职责、语义保持、授权边界和来源完整性；混合或缺证据不算通过。
+
+最小诊断可在同一入口增加 `--cases task-no-materials`，或用逗号选择 `dedicated-chat`、`task-materials`、`map-no-materials`、`map-materials` 及 `--help` 列出的独立安全 case；默认 `--cases all` 才运行完整矩阵。空项、重复项及未知 case 在启动前拒绝。过滤执行只运行所选 case，不自动补跑；成功时退出码为 0、`subsetPassed=true`，但 `passed=false`、`verifiedHosts=[]`，全部 promise coverage 仍未验证。`requestedCases` 与 `filtered` 标明证据范围；完整验收不得以子集退出码代替。真实模型的职责遵循只能由所选真实业务运行核实，CLI 离线回归不证明提示有效。
 
 修订负例单独命名：未授权、基线／目标冲突、运行禁写、真实并发 revision 冲突、保存响应丢失后的已生效／未生效／未知。传输故障只作用于真实 HTTP 边界，不代替模型、宿主或后端决定；保存错误不盲重试、不回滚。独立业务场景各执行一次，失败逐项保留，不用其他场景成功抵消；一旦模型传输或所属资源清理已失败，余下不再提交并明确保持未验证。文件安全负例让专属基线核实 Task 面对实际 junction 和越界输出；正例实际安全生成 baseline／text／handoff／saved 并逐一原生完整读回，保留文件原字节和来源。这不是共享文本替换 Task 的普通文件兼容用例副本。六个已有共享 Task 的独立／workflow 配对不在此重认领，但本入口核对修订链实际 Task 身份和材料消费。
 

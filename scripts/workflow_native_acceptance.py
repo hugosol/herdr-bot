@@ -64,7 +64,7 @@ class NativeAcceptance(Acceptance):
         try:
             # Herdr IPC needs a short native path. Base.run first finishes its
             # cleanup/exit checks and writes evidence; cleanup errors stay failed.
-            shutil.copytree(self.root, target)
+            shared['copy_evidence'](self.root, target)
         except BaseException:
             self.evidence['cleanupErrors'].append('Evidence retention failed: ' + traceback.format_exc())
             self.evidence['passed'] = False

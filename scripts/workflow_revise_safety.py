@@ -77,6 +77,8 @@ def baseline_file_rejections(case):
 def exercise_safety(case):
     case.evidence['safety'] = {}
     for mode in ['unauthorized', 'baseline-conflict', 'target-conflict', 'running', 'revision', 'applied', 'not-applied', 'unknown']:
+        if 'revise-' + mode not in case.args.cases:
+            continue
         action = rejected_save if mode in ['unauthorized', 'baseline-conflict', 'target-conflict', 'running'] else faulted_save
         passed = attempt(case, 'revise-' + mode, lambda: action(case, mode, save_context(case, mode)))
         result = case.evidence['safety'].pop(mode, {})
@@ -84,11 +86,15 @@ def exercise_safety(case):
         if not passed:
             result['failure'] = case.evidence['scenarioErrors'][-1]
         case.evidence['safety']['revise-' + mode] = result
-    if not attempt(case, 'revision-baseline-files', lambda: baseline_file_rejections(case)):
+    if 'revision-baseline-files' in case.args.cases and not attempt(case, 'revision-baseline-files', lambda: baseline_file_rejections(case)):
         for mode in ['link', 'traversal']:
             case.evidence['safety'].setdefault('revise-baseline-file-' + mode,
                 {'verified': False, 'failure': case.evidence['scenarioErrors'][-1]})
     required = {'revise-' + name for name in ['unauthorized', 'baseline-conflict', 'target-conflict', 'running',
         'revision', 'applied', 'not-applied', 'unknown', 'baseline-file-link', 'baseline-file-traversal']}
-    check(set(case.evidence['safety']) == required, 'Revision-owned failure and file boundary matrix was not accounted for')
-    case.evidence['safetyVerified'] = all(item['verified'] for item in case.evidence['safety'].values())
+    selected = set(case.args.cases) & (required | {'revision-baseline-files'})
+    if 'revision-baseline-files' in selected:
+        selected.remove('revision-baseline-files')
+        selected.update(['revise-baseline-file-link', 'revise-baseline-file-traversal'])
+    check(set(case.evidence['safety']) == selected, 'Selected revision failure and file boundary cases were not accounted for')
+    case.evidence['safetyVerified'] = selected == required and all(item['verified'] for item in case.evidence['safety'].values())

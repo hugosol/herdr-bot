@@ -44,7 +44,9 @@ async fn shared_business_batch_save_preserves_target_and_rejects_stale_baseline(
         let mut stale = candidate.clone();
         stale["when"] = json!("STALE MUST NOT REPLACE");
         let rejected = save_bot(&s, id, &stale, &baseline["revision"]).await;
-        assert!(rejected.status >= 400, "{}", rejected.body);
+        assert_eq!(rejected.status, 409, "{}", rejected.body);
+        let conflict: Value = serde_json::from_str(&rejected.body).unwrap();
+        assert_eq!(conflict["code"], "bot-conflict");
         assert_eq!(edit_bot(&s, id).await, final_state);
     }
     assert_eq!(get_over_tcp(s.server.addr(), &format!("/api/tasks/{task_id}")).await.body, task_before.body);

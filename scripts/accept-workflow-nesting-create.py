@@ -109,11 +109,6 @@ class CreateAcceptance(Acceptance):
         self.provision()
 
     def configure_model(self):
-        package = json.loads((self.args.toolkit / 'package.json').read_text(encoding='utf-8'))
-        for dependency in package.get('dependencies', {}):
-            source = self.args.toolkit / 'node_modules' / dependency
-            require(source.is_dir(), ('Missing frozen Toolkit runtime dependency', str(source)))
-            shutil.copytree(source, self.root / 'toolkit/node_modules' / dependency, dirs_exist_ok=True)
         RolesAcceptance.configure_model(self)
         agent = self.root / 'agent'
         shutil.copy2(agent / 'models.json', agent / 'models.yml')
@@ -134,7 +129,7 @@ class CreateAcceptance(Acceptance):
             config = self.root / 'herdr.toml'
             config.write_text(config.read_text(encoding='utf-8').replace(
                 'default_shell = "cmd.exe"', 'default_shell = "powershell.exe"'), encoding='utf-8')
-        if label == 'backend':
+        if label.startswith('backend-'):
             config = self.root / 'backend.toml'
             config.write_text('paths_file = "paths.local.toml"\n' + config.read_text(encoding='utf-8'),
                 encoding='utf-8')
@@ -281,7 +276,7 @@ class CreateAcceptance(Acceptance):
                     (directory / name).unlink(missing_ok=True)
         if self.native_root is not None:
             archive = self.root / 'native-storage'
-            shutil.copytree(self.native_root, archive)
+            shared['copy_evidence'](self.native_root, archive)
             self.evidence['nativeStorageArchive'] = str(archive)
         require(not errors, errors)
 

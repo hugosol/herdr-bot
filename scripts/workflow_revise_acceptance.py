@@ -25,6 +25,18 @@ OLD = {'when': '已有账单只读能力；扫描边界须明确，不付款。'
     'plan_guide': '先核实来源、只读授权和人民币分，再安排已有目标；不外网。',
     'node_guide': '提供账单 CSV、只读授权和差异报告位置；不修改账单。'}
 CLARIFICATION = '扫描仅指读取本次用户明确提供且授权的账单 CSV，不搜索硬盘、不连接外网、不付款，金额保持人民币分整数。'
+CASE_NAMES = ('dedicated-chat', 'task-no-materials', 'task-materials', 'map-no-materials', 'map-materials',
+    'revise-unauthorized', 'revise-baseline-conflict', 'revise-target-conflict', 'revise-running',
+    'revise-revision', 'revise-applied', 'revise-not-applied', 'revise-unknown', 'revision-baseline-files')
+
+
+def select_cases(value):
+    if value == 'all':
+        return list(CASE_NAMES)
+    names = value.split(',')
+    if any(name not in CASE_NAMES for name in names) or len(names) != len(set(names)):
+        raise ValueError('Invalid revision case selection: use all or unique comma-separated case names')
+    return [name for name in CASE_NAMES if name in names]
 
 
 def deploy(case):
@@ -322,11 +334,14 @@ def attempt(case, label, action):
 
 def exercise(case):
     deploy(case)
-    attempt(case, 'dedicated-chat', lambda: standalone_baseline(case, revision_fixture(case, 'dedicated-chat', 'task')))
+    selected = case.args.cases
+    if 'dedicated-chat' in selected:
+        attempt(case, 'dedicated-chat', lambda: standalone_baseline(case, revision_fixture(case, 'dedicated-chat', 'task')))
     for kind in ['task', 'map']:
         for optional in [False, True]:
             label = kind + ('-materials' if optional else '-no-materials')
-            attempt(case, label, lambda: workflow(case, revision_fixture(case, label, kind, optional)))
+            if label in selected:
+                attempt(case, label, lambda: workflow(case, revision_fixture(case, label, kind, optional)))
     from workflow_revise_safety import exercise_safety
     exercise_safety(case)
     targets = {item['taskId'] for item in case.evidence.get('revisionTargets', [])}
@@ -341,8 +356,12 @@ def exercise(case):
         for node in item['run']['nodes'].values() if node.get('execution')),
         'Revision dispatched an existing target Task')
     case.evidence['finalReadOnlyRunFacts'] = facts
-    check(not case.evidence.get('scenarioErrors') and case.evidence['safetyVerified'],
+    check(not case.evidence.get('scenarioErrors'),
         ('Real revision scenarios failed or remained unverified', case.evidence.get('scenarioErrors')))
+    if case.evidence['filtered']:
+        case.evidence['subsetPassed'] = True
+        return
+    check(case.evidence['safetyVerified'], 'Revision safety matrix remained unverified')
     check(all(all(pair.values()) for pair in case.evidence['taskPairs'].values()), 'Dedicated revision Task lacks public Chat/workflow pair')
     for promise in case.evidence['coverage']:
         case.evidence['coverage'][promise] = {'verified': True, 'evidence': ['cases', 'taskPairs', 'materialReads', 'fieldApprovals', 'safety']}

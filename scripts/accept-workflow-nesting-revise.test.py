@@ -44,6 +44,37 @@ class RevisionPrerequisites(unittest.TestCase):
         self.assertFalse((evidence / 'backend-stdout.log').exists())
         return command, observed
 
+    def test_case_selection_rejects_empty_and_unknown_before_starting(self):
+        with tempfile.TemporaryDirectory(prefix='revise-select-') as directory:
+            root = Path(directory)
+            for selection in ['', 'task-no-materials,', 'unknown', 'all,task-no-materials']:
+                evidence = root / 'evidence'
+                result = subprocess.run([sys.executable, str(REPO / 'scripts/accept-workflow-nesting-revise.py'),
+                    '--backend', str(root / 'missing.exe'), '--toolkit', os.environ['WORKFLOW_HANDOFF_TOOLKIT'],
+                    '--hosts', 'declared', '--paths-file', str(root / 'paths.toml'),
+                    '--model-config', str(root / 'model.json'), '--evidence-dir', str(evidence),
+                    '--cases', selection], cwd=REPO, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 2)
+                self.assertFalse(evidence.exists())
+
+    def test_filtered_case_selection_is_recorded_without_full_coverage(self):
+        with tempfile.TemporaryDirectory(prefix='revise-select-evidence-') as directory:
+            root = Path(directory)
+            evidence = root / 'evidence'
+            result = subprocess.run([sys.executable, str(REPO / 'scripts/accept-workflow-nesting-revise.py'),
+                '--backend', str(root / 'missing.exe'), '--toolkit', os.environ['WORKFLOW_HANDOFF_TOOLKIT'],
+                '--hosts', 'declared', '--paths-file', str(root / 'paths.toml'),
+                '--model-config', str(root / 'model.json'), '--evidence-dir', str(evidence),
+                '--cases', 'task-no-materials'], cwd=REPO, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            observed = json.loads((evidence / 'evidence.json').read_text(encoding='utf-8'))
+            self.assertEqual(observed['requestedCases'], ['task-no-materials'])
+            self.assertTrue(observed['filtered'])
+            self.assertFalse(observed['passed'])
+            self.assertFalse(observed['subsetPassed'])
+            self.assertFalse(observed['verifiedHosts'])
+            self.assertTrue(all(not item['verified'] for item in observed['coverage'].values()))
+
     def test_missing_backend_stays_unverified_and_preserves_existing_evidence(self):
         with tempfile.TemporaryDirectory(prefix='revise-cli-') as directory:
             root = Path(directory)

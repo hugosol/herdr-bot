@@ -185,7 +185,11 @@ class Acceptance:
             shutil.copytree(self.args.toolkit / name, toolkit / name,
                             ignore=shutil.ignore_patterns('.runtime', 'node_modules', '.git'))
         shutil.copy2(self.args.toolkit / 'package.json', toolkit / 'package.json')
-        shutil.copytree(self.args.toolkit / 'node_modules/yaml', toolkit / 'node_modules/yaml')
+        package = json.loads((toolkit / 'package.json').read_text(encoding='utf-8'))
+        for dependency in package.get('dependencies', {}):
+            source = self.args.toolkit / 'node_modules' / dependency
+            require(source.is_dir(), ('Missing frozen Toolkit runtime dependency', str(source)))
+            shutil.copytree(source, toolkit / 'node_modules' / dependency, dirs_exist_ok=True)
         role_config = toolkit / 'extensions/workflow-chat/config.yaml'
         role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
         self.configure_model()

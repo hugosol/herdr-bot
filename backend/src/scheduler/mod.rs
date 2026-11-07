@@ -1107,7 +1107,7 @@ impl IntoResponse for DirectoryError {
     fn into_response(self) -> Response {
         let status = match self.code {
             "map-input-invalid" => StatusCode::BAD_REQUEST,
-            "map-conflict" => StatusCode::CONFLICT,
+            "map-conflict" | "bot-conflict" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(serde_json::json!({
