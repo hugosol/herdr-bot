@@ -105,6 +105,34 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
     })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ContextRequest {
+    session_id: String,
+}
+
+pub async fn node_context(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> Response {
+    if !crate::sessions::is_local_source(peer.ip()) {
+        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
+    }
+    let input: ContextRequest = match crate::chat_command_body::<crate::scheduler::JsonObject<ContextRequest>>(request, "节点上下文").await {
+        Ok(input) => input.0,
+        Err(response) => return response,
+    };
+    let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
+        Ok(binding) => binding,
+        Err(response) => return response,
+    };
+    let Some(execution) = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id) else {
+        return error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的节点执行归属。");
+    };
+    Json(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})).into_response()
+}
+
 pub async fn node_report(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,

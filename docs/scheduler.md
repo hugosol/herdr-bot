@@ -117,7 +117,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 定向自动验收：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch named_inputs:: -- --nocapture`。测试通过真实 HTTP 保存／读取／创建 Run／显式派发，使用隔离存储、动态数值回环端口和记录型 Herdr 进程，核对实际提交的初始化与无隐式启动；它不替代真实 Chat 的角色注入验收。
 
-`report_policy` 是独立于业务 `input` 的提示词约束：`auto` 在结果可交接时自行发送 report；`manual` 每次发送前先在本 node Chat 展示摘要、结果地址和限制，询问用户并停轮等待，用户在此 Chat 自然语言确认后才发送。要求修改时先修改、重新展示并确认；补充或更正报告也重新确认。它不新增审批状态、按钮或后端 report/complete 门禁，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
+`report_policy` 独立于业务 `input`：`auto` 在结果可交接时自行发送 report；`manual` 调用 report 后由工具展示完整待发送 payload，只有用户在宿主原生确认界面明确批准该次 payload 才发送，自然语言同意不构成发送授权。修改、补充和更正均须重新确认；拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无可用确认 UI 均不发送，停止并等待用户重新提出请求，不自行重试。它不新增后端审批状态、授权令牌或 report/complete 门禁；业务批准要求独立保留，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
 
 ### node 策略编辑
 

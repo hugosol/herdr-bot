@@ -25,7 +25,7 @@ mod completion;
 mod operation;
 mod collect;
 pub use collect::manager_collect;
-pub use reports::node_report;
+pub use reports::{node_context, node_report};
 pub(crate) fn validate_report_source(source: &str) -> Result<(), String> {
     serde_json::from_str::<reports::Report>(source).map(|_| ()).map_err(|error| error.to_string())
 }

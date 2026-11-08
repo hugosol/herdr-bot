@@ -48,7 +48,7 @@ impl ReportPolicy {
     pub(crate) fn control_section(self) -> &'static str {
         match self {
             Self::Auto => "report_policy: auto\nReport handoff-ready results without waiting for user confirmation. Reporting does not complete the node; the manager still decides complete.",
-            Self::Manual => "report_policy: manual\nBefore every handoff-ready report, show the user a summary, result locations and limitations in this node Chat, ask whether to send the report, then stop the turn and wait. Send report only after the user confirms in natural language here. If changes are requested, make them first, show the revised result and ask again. Supplements and corrections also require this confirmation. Reporting does not complete the node; the manager still decides complete.",
+            Self::Manual => "report_policy: manual\nInvoke report with the full intended payload to display it for explicit native user confirmation before sending. Natural-language agreement is not report authorization. Every report, including supplements, corrections and changed payloads, requires its own native confirmation. If confirmation is refused, times out or no confirmation UI is available, do not send and stop; wait for a renewed user request before invoking report again. Reporting does not complete the node; the manager still decides complete. Separate business approval requirements still apply.",
         }
     }
 }
@@ -109,7 +109,7 @@ struct MapNode {
 // require named JSON objects; forward only map access without copying the input.
 #[derive(Serialize)]
 #[serde(transparent)]
-struct JsonObject<T>(T);
+pub(crate) struct JsonObject<T>(pub(crate) T);
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for JsonObject<T> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {

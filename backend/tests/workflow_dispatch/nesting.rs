@@ -43,6 +43,11 @@ async fn dual_role_routes_report_to_parent_and_management_to_child_without_selec
         let value = role_request(&s, &format!("/api/workflow/manager/{route}"), json!({"sessionId":"dual-child"}), 200).await;
         assert_eq!(value["snapshot"]["id"], child_id);
     }
+    let calls = s.herdr.calls();
+    let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"dual-child"}), 200).await;
+    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"reportPolicy":"auto"}));
+    assert_eq!(s.herdr.calls(), calls);
+    assert!(detail(&s, root["id"].as_str().unwrap()).await["reports"].as_array().unwrap().is_empty());
     let report = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"dual-child","body":"Progress, not complete","canComplete":false}), 200).await;
     assert_eq!(report["report"]["runId"], root["id"]);
     assert_eq!(report["report"]["nodeId"], "A");

@@ -321,6 +321,7 @@ pub fn app_with_state(
         .route("/api/workflow/manager/finish", post(runs::manager_finish))
         .route("/api/workflow/manager/pause", post(runs::manager_pause))
         .route("/api/workflow/manager/resume", post(runs::manager_resume))
+        .route("/api/workflow/node/context", post(runs::node_context))
         .route("/api/workflow/node/report", post(runs::node_report))
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))

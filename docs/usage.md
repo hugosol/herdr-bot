@@ -41,7 +41,7 @@ Zone 列表显示目录名、稳定 ID 和服务器完整路径，可按名称�
 
 ### 节点报告策略的显示
 
-scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto` 为圆角矩形，`manual` 为四角切角矩形；图内不增加策略文字，选择节点后在详情查看 `report_policy: auto/manual`。Map JSON 的可选 `report_policy` 默认 `auto`。Run 中已有执行的节点使用该执行保存的策略，旧执行未保存策略时按 `auto` 显示；尚未派发的节点使用当前 Map 配置。编辑 Map 不会改变已有执行的策略。策略不新增审批按钮；`manual` 的交接确认在对应 node Chat 内以自然语言进行。
+scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto` 为圆角矩形，`manual` 为四角切角矩形；图内不增加策略文字，选择节点后在详情查看 `report_policy: auto/manual`。Map JSON 的可选 `report_policy` 默认 `auto`。Run 中已有执行的节点使用该执行保存的策略，旧执行未保存策略时按 `auto` 显示；尚未派发的节点使用当前 Map 配置。编辑 Map 不会改变已有执行的策略。`manual` 调用 report 后在宿主原生确认界面展示完整待发送 payload，用户须明确批准该次 payload，自然语言同意不授权发送。拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无确认 UI 均不发送；等待用户重新请求，不自行重试。业务批准与管理者交接验收仍是独立要求，不增加后端审批状态或授权令牌。
 
 ### 完成后的 Tab 清理与诊断
 
