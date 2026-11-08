@@ -102,3 +102,22 @@ canonical 曾有 1820 通过、1 个 5 秒超时失败；用户明确授权只�
 5. 对相关修改重新执行受影响定向检查、类型检查和所属仓库回归；后端／前端／toolkit 规范入口见[测试指引](../../../docs/agents/testing.md)与 `D:/developer/myhub/my-agent-toolkit/docs/agents/testing.md`，真实业务入口要求见[修订验收说明](../../../docs/revise-bot-guides.md)。改变后的源码不能沿用旧绿为新结果。
 
 只有全部归属验收项与必要仓库检查均有实际通过证据后，才讨论关闭 ticket22。不能因为三个主要阻塞被修复就提前认领剩余未测项通过。
+
+## 后续 report UI 回归补充
+
+本节是后续新证据，不改写上文历史。汇总与原始证据在 [report UI 回归结果](../evidence/ticket22-report-ui-20261108/summary.json)。用户随后明确要求跳过修订 cases，改用以往已通过的 workflow；本轮未恢复完整 ticket22 验收，也未修改票据生命周期。
+
+- 已定位并修复**验收驱动前置配置遗漏**：重写 workflow-chat 配置时缺少新增必填 `reportConfirmationTimeoutMs`，实际模型请求没有 run／collect 等角色工具。最初 task-materials 的 101 次与 task-no-materials 的 10 次 Luna 调用不能归因为“首条输入没提交”，也不能作为模型职责理解偏差的业务判据。后者按用户要求结束，原始连接拒绝是停止测试所属后端触发正常清理的结果，不是新产品缺陷。
+- 切换至历史 `roles --hosts declared` 已通过的双角色流程。补齐配置后实际请求出现 run／collect，模型真实派发。随后还移除了旧 driver 对聊天文字发送批准的依赖，改为逐次观察真实原生 report UI、明确选择 Yes 并核对 HTTP 与冻结载荷一致；业务文件、报告次数及阶段门禁保留。
+- **Pi 实际证明**：一次取消确认对应会话的 manual report HTTP 为 0；三次独立 UI Yes 均先于对应 HTTP 且载荷一致。其中两次未 finish 的 true 诊断正确返回 400／child-run-not-finished，之后一次 false 进展报告返回 200／saved=true，报告 `bc-069379f5b648`。实际文件字节独立核对正确。这不是最终 true 交接或 OMP UI 发送通过。
+- 完整历史流程仍未通过：第 43 次模型请求发生 provider-error／network timeout，之后未重试、未回退模型；最终 true、父层验收和第二种宿主方向未到达。该轮 42 次成功响应均核对为 gpt-6-luna。10 个已观察所属进程确认退出，cleanupErrors=[]；所有本轮 wrapper 临时模型配置均已确认移除。
+- 补充机制回归 10/10（28 断言），受影响 CLI 10 文件／28 用例通过；缺测试环境变量等初次运行错误保留在证据中。修订四场景在正确配置和新 UI 驱动下仍未重跑，不得据此关闭 ticket22。
+
+### 用户授权再重跑一次后的结果
+
+[本次独立结果](../evidence/ticket22-report-ui-20261108/known-good-roles-native-ui-user-retry/summary.json) 与上次失败分别保留。命令、runner 哈希、后端哈希及已安装宿主身份与上次一致，没有改代码、放宽断言、自动重试或切换模型。66 次实际响应均核对为 gpt-6-luna，模型传输未失败。
+
+- Pi 四次报告均有独立真实 UI Yes，确认前无该次 HTTP，确认后载荷一致。两次未 finish 的 true 诊断正确拒绝；false 进展报告和 **最终 true 报告均返回 200／saved=true**。最终报告为 `bc-b3a8d0d6b333`。取消的旧会话 manual report HTTP 仍为 0，实际业务文件字节正确。
+- 内部 Run 已完成；父层对 false 报告的 complete 诊断正确返回 409／report-not-completable。父层随后已 collect 到最终 true 报告，但收到 ACCEPT_FIRST 后再次调用 collect 并等待，没有观察到成功的父层 complete，最终超时于“关闭精确目标 Tab”。因此不能认定自动关闭故障：其成功 complete 前置条件尚未发生。该等待请求在收尾时留下空正文及 WinError 10054 的原始记录，不是 Luna 网络超时。
+- 原生终端还显示父层一开始同时派发 first／second，而不是按 fixture 要求只派发 first；这是新的阶段偏离观察，不把它或 collect 等待未经诊断直接定为产品根因。本次仅执行授权的一次重跑，没有继续修复或重跑。
+- 完整 workflow、父层验收／Tab 自动关闭、后续节点及第二种宿主方向仍未通过或未到达，OMP manual UI 发送仍未验证；ticket22 修订 cases 保持先前跳过状态。11 个已观察所属进程均确认退出，cleanupErrors=[]，临时模型配置已确认移除。

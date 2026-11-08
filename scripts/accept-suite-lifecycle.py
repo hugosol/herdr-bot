@@ -375,7 +375,7 @@ export default function(pi) {
                     return 'http://' + match[1]
         self.base = until('backend dynamic loopback', address)
         (self.deployment / 'extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         config = self.deployment / 'extensions/workflow-chat/config.yaml'
         self.evidence.setdefault('deploymentOverrides', []).append({'path': str(config), 'sha256': digest(config),
             'content': config.read_text(encoding='utf-8')})

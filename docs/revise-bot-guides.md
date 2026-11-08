@@ -75,7 +75,7 @@ python scripts/accept-workflow-nesting-revise.py `
 
 `--hosts declared` 保留实际发布 Task 的混合宿主和 Suite／初始 Skill；只重定位隔离资源和授权模型。`--hosts omp,pi` 则分别执行两套完整矩阵，两者都通过才通过，单宿主成功不能抵消另一宿主失败。HOME／APPDATA／XDG／原生存储、命名 Herdr、定义与运行目录独占，服务只监听动态数值回环、关闭 mDNS，不连接用户 Chat、不执行真实关机。
 
-修订入口分别为 Task／Map 目标执行有／无可选材料的四次完整修订；专属 `task-revise-bot-baseline-v1` 另有独立 Chat 核实，与 workflow 消费配对。用户真实澄清“扫描”范围，三路逐字全文批准与四个 manual 报告发送批准分别输入、记录。每个直接消费者须有成功原生 read 和完整工具结果；共同基线、唯一正文、必要 handoff 逐个核对，不从 completed 推断过程。保存前后完整目标和全部非目标保持，一次真实三字段保存、真实 revision、逐字段实际批准版本及完整 saved 读回共同构成成功证据。固定业务质量量表逐项评价目标真实性、字段职责、语义保持、授权边界和来源完整性；混合或缺证据不算通过。
+修订入口分别为 Task／Map 目标执行有／无可选材料的四次完整修订；专属 `task-revise-bot-baseline-v1` 另有独立 Chat 核实，与 workflow 消费配对。用户真实澄清“扫描”范围，三路逐字全文批准分别在 Chat 输入、记录；四个 manual 报告各自通过真实原生 UI 的 Yes 明确确认，记录完整预览、键盘选择和实际 report HTTP 顺序，不把聊天文字当作发送批准。每个直接消费者须有成功原生 read 和完整工具结果；共同基线、唯一正文、必要 handoff 逐个核对，不从 completed 推断过程。保存前后完整目标和全部非目标保持，一次真实三字段保存、真实 revision、逐字段实际批准版本及完整 saved 读回共同构成成功证据。固定业务质量量表逐项评价目标真实性、字段职责、语义保持、授权边界和来源完整性；混合或缺证据不算通过。
 
 最小诊断可在同一入口增加 `--cases task-no-materials`，或用逗号选择 `dedicated-chat`、`task-materials`、`map-no-materials`、`map-materials` 及 `--help` 列出的独立安全 case；默认 `--cases all` 才运行完整矩阵。空项、重复项及未知 case 在启动前拒绝。过滤执行只运行所选 case，不自动补跑；成功时退出码为 0、`subsetPassed=true`，但 `passed=false`、`verifiedHosts=[]`，全部 promise coverage 仍未验证。`requestedCases` 与 `filtered` 标明证据范围；完整验收不得以子集退出码代替。真实模型的职责遵循只能由所选真实业务运行核实，CLI 离线回归不证明提示有效。
 

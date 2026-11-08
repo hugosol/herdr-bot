@@ -118,7 +118,7 @@ class NativeAcceptance(Acceptance):
         super().prepare()
         self.backend_wire = WireProxy(self.base, self.root / 'backend-wire')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
 
     def detail(self, run):
         return self.http('/api/workflow/runs/' + run)

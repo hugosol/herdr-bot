@@ -221,7 +221,7 @@ export default function(pi) {
                     return 'http://' + match[1]
         self.base = until('owned backend dynamic loopback', address)
         for folder, content in [('connect-bot', f'endpoint: {self.base}\nrequestTimeoutMs: 1000\n'),
-                                ('workflow-chat', f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')]:
+                                ('workflow-chat', f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')]:
             path = self.deployment / f'extensions/{folder}/config.yaml'
             path.write_text(content, encoding='utf-8')
             self.evidence.setdefault('deploymentOverrides', []).append({'path': str(path), 'sha256': digest(path), 'content': content})

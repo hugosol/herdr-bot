@@ -142,7 +142,35 @@ def approve_field(case, chat, field, context):
 
 def send_report(case, chat, context, node):
     marker = 'P22-SEND-' + context['label'] + '-' + node
-    case.send(chat, f'用户报告发送确认 {marker}：仅同意现在发送本节点已核实的真实交付位置和结论的 manual 报告；不新增业务批准、保存授权或执行权限。', marker)
+    terminal = case.command([case.args.herdr, 'pane', 'read', chat['paneId']])
+    if '发送报告？（仅批准本次报告发送）' not in terminal:
+        case.send(chat, f'用户请求准备报告 {marker}：请调用 report 展示本节点已核实的真实交付位置和结论，等待我在 UI 上确认；此文字不批准发送，不新增业务批准、保存授权或执行权限。', marker)
+        terminal = case.command([case.args.herdr, 'pane', 'read', chat['paneId']])
+    check('发送报告？（仅批准本次报告发送）' in terminal and 'Yes' in terminal and 'No' in terminal,
+        'Missing actual native report confirmation UI')
+    check('→ Yes' in terminal or '❯ Yes' in terminal, 'Native UI does not visibly select Yes')
+    before = [r for r in case.backend_wire.records if r['path'] == '/api/workflow/node/report'
+        and json.loads(r['request']).get('sessionId') == chat['sessionId']]
+    check(not before, 'Manual report HTTP preceded explicit UI Yes')
+    approval = {'purpose': marker, 'chat': chat, 'preview': terminal, 'choice': 'Yes',
+        'beforeReportRequests': before, 'at': time.monotonic()}
+    case.evidence.setdefault('reportUIApprovals', []).append(approval)
+    approval['result'] = case.herdr('agent', 'send-keys', chat['paneId'], 'enter')
+    # Await the actual tool result, not the stale confirmation screen immediately after Enter.
+    deadline = time.monotonic() + case.args.timeout
+    while True:
+        history = case.native(chat)
+        messages = case.messages(history) if history else []
+        if messages and messages[-1].get('role') == 'assistant' and not any(
+                part.get('type') == 'toolCall' for part in messages[-1].get('content', []) if isinstance(part, dict)):
+            break
+        check(time.monotonic() < deadline, 'UI-approved report did not reach native result boundary')
+        time.sleep(.25)
+    case.await_chat(chat)
+    approval['reportRequests'] = [r for r in case.backend_wire.records if r['path'] == '/api/workflow/node/report'
+        and json.loads(r['request']).get('sessionId') == chat['sessionId']]
+    check(len(approval['reportRequests']) == 1 and approval['reportRequests'][0].get('status') == 200,
+        'Explicit UI Yes did not produce exactly one successful report HTTP')
 
 
 def verify_public_reads(case, context, records):

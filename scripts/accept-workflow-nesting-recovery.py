@@ -252,7 +252,7 @@ export default function(pi) {
         require(self.processes[-1].child.pid != previous_pid, 'Backend restart did not replace process')
         self.backend_wire = WireProxy(self.base, self.root / 'backend-wire-restarted')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         self.evidence['backendRestart'] = {'oldPid': previous_pid, 'oldExit': backend.child.poll(), 'newPid': self.processes[-1].child.pid}
         for execution in [old, current]:
             detail = self.detail(execution['childRunId'])

@@ -191,7 +191,7 @@ class Acceptance:
             require(source.is_dir(), ('Missing frozen Toolkit runtime dependency', str(source)))
             shutil.copytree(source, toolkit / 'node_modules' / dependency, dirs_exist_ok=True)
         role_config = toolkit / 'extensions/workflow-chat/config.yaml'
-        role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
+        role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')
         self.configure_model()
         herdr_config = self.root / 'herdr.toml'
         herdr_config.write_text('onboarding = false\n[terminal]\ndefault_shell = "cmd.exe"\n'
@@ -247,7 +247,7 @@ class Acceptance:
                 if match:
                     return 'http://' + match[1]
         self.base = until('backend bound loopback address', address)
-        role_config.write_text(f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
+        role_config.write_text(f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')
 
     def history(self, file):
         module = (self.args.pi_package / 'dist/core/session-manager.js').as_uri()

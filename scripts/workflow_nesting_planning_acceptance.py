@@ -152,7 +152,7 @@ export default function(pi) {
         self.backend_wire = WireProxy(self.base, self.root / 'backend-wire')
         self.base = self.backend_wire.base
         (self.deployment / 'extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         (self.root / 'prompts.local.toml').write_text(f'herdr-bot-path = {q(REPO.as_posix())}\nherdr-bot-api-url = {q(self.base)}\n', encoding='utf-8')
         self.provision()
 

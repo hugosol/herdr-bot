@@ -57,7 +57,23 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
         self.evidence.pop('creationSpecificTasks', None)
 
     def await_chat(self, chat, after=None):
-        history = super().await_chat(chat, after)
+        def ready():
+            history = self.native(chat)
+            if not history:
+                return None
+            messages = self.messages(history)
+            if after and not any(m.get('role') == 'user' and after in runtime['RolesAcceptance'].message_text(m) for m in messages):
+                return None
+            terminal = self.command([self.args.herdr, 'pane', 'read', chat['paneId']])
+            if '发送报告？（仅批准本次报告发送）' in terminal and 'Yes' in terminal and 'No' in terminal:
+                self.evidence.setdefault('reportConfirmationPreviews', {})[chat['sessionId']] = terminal
+                return history
+            if not messages or messages[-1].get('role') != 'assistant':
+                return None
+            last = messages[-1]
+            runtime['require'](last.get('stopReason') not in ['error', 'aborted'], ('Native model error', last))
+            return history if not any(p.get('type') == 'toolCall' for p in last.get('content', []) if isinstance(p, dict)) else None
+        history = runtime['until']('real Chat reaches user or report UI boundary', ready, self.args.timeout)
         runtime['require'](not any(message.get('stopReason') in ['error', 'aborted']
             for message in self.messages(history)), 'A real native model failure cannot be hidden by continuation')
         runtime['require'](all(record.get('status') == 200 and not record.get('error') for record in self.model_wire.records if 'ended' in record),

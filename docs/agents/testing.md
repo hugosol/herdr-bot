@@ -273,6 +273,8 @@ python scripts/test-workflow-file-handoff.py `
 
 Windows 验收可显式追加 `--shell-path 'D:/Program Files/Git/bin/bash.exe'`，将实际安装的 Git Bash 写入本次隔离 Pi settings，不修改用户配置。不要让原生 Bash 工具落到 WSL：其 Linux 回环与 Windows 后端不同，`curl 127.0.0.1` 会报告连接失败，不能把该环境阻塞当业务能力缺口或强行推进。toolkit 全量跨仓检查还应显式设置 `HERDR_BOT_BINARY` 为本 worktree 的 `backend/target/debug/examples/safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 为本 worktree 的 `meta-data/task-options.toml`；`HERDR_BOT_REPO` 不替代这两个 interop 参数，禁止使用生产可执行文件冒充安全壳。
 
+验收重定位 `extensions/workflow-chat/config.yaml` 时须保留全部必填配置，包括 `reportConfirmationTimeoutMs`；遗漏会使角色扩展无法加载。模型开始请求不等于角色已就绪，须核对实际模型请求中的 `run`／`collect`／`report` 与当前角色匹配，再归因于模型职责理解。
+
 入口沿用 `test-real-herdr-close.py` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 所需输出已登记的 consumer 启动并完成；所需输出缺失的拒绝派发边界由后端隔离回归覆盖，不再把 unresolved 地址注入 Chat。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
 
 证据保留在输出的独占 Temp 根：源码根/revision/diff、锁文件与后端哈希、依赖版本、模型服务身份（仅密钥指纹）、实际模型请求/响应、工具参数/结果、HTTP 起止、原生 Session 历史、实际文件、只读运行记录副本及每项覆盖关联。独立背景、业务 input、当前地址和正文/聊天敏感标记核对原生初始化；manager 工具轨迹限定为 run/collect，不默认读输出正文。报告只允许简短编排结论，不复制详细行。观察窗口默认每阶段 300 秒（`--timeout 1..900`），外部业务等待 240 秒，保留报告后 collect 至少观察 1.25 秒仍未返回，再释放新报告；runner 不重试业务/模型选择，不延时掩盖失败。
@@ -352,7 +354,7 @@ python scripts/accept-workflow-nesting-roles.py `
 
 `--hosts omp,pi` 对两个宿主分别运行两套独立 manager／zone／原始业务字面样例；每套重复调用同一 Map，并经真实 manager 的 fail／retry 保留旧 execution 干扰。`--hosts declared` 是额外的混合宿主业务夹具：第一套 parent OMP／child Pi／worker OMP，第二套相反，严格保留入口中 `DECLARED_ROLES` 的实际 Task 声明；不是把用户业务 Task 统一改成一个宿主，也不是对部署业务的验收。该模式不替代双宿主完整矩阵。
 
-每次实际外报分别经当前 Chat 中可记录的用户发送批准；业务批准不作发送批准。入口在内部未完成、内部全完成但未 finish、finish 后、进展 false、最终 true、父 manager 显式验收后分别检查公开事实。检查实际文件字节、原生历史／三工具／双指引，以及真实 Herdr 的目标 Tab 精确关闭、内部保留 Tab 不级联关闭；不凭最终 completed 或 observer 身份授予授权。
+每次 manual 外报由原生 UI 展示完整载荷，driver 核对选中 Yes 后提交 Enter，并记录确认前无该次报告 HTTP、确认后请求与预览载荷一致；聊天文字和业务批准不作发送批准。旧执行的确认框明确取消后，须没有该会话的 report HTTP。入口在内部未完成、内部全完成但未 finish、finish 后、进展 false、最终 true、父 manager 显式验收后分别检查公开事实。检查实际文件字节、原生历史／三工具／双指引，以及真实 Herdr 的目标 Tab 精确关闭、内部保留 Tab 不级联关闭；不凭最终 completed 或 observer 身份授予授权。
 
 `--evidence-dir` 必须不存在。原生运行状态使用原子创建的独占短 Temp 根，避免 Windows 已安装宿主的命名管道／存储路径长度限制；退出后完整复制到证据目录的逐宿主子目录，原始短根保留且记录为 `nativeRoot`，不把临时目录删除当作进程退出。成功或失败均保留 `evidence.json`、逐宿主独占子目录、两仓源码 revision／修改身份、锁文件／二进制／已安装宿主身份、模型／HTTP 原始请求结果、用户输入、原生历史、文件字节和分开的清理错误。模型配置在退出时删除。缺模型、宿主、能力、清理失败或行为不符均非零且未验证，不 skip，不重试业务或模型决策。`python scripts/accept-workflow-nesting-roles.test.py` 仅检查缺授权模型时的 CLI fail-closed 行为，不能代替真实专项通过。
 

@@ -97,7 +97,7 @@ class DualRoleAcceptance(Acceptance):
         super().prepare()
         self.backend_wire = WireProxy(self.base, self.root / 'backend-wire')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
 
     def detail(self, run):
         return self.http('/api/workflow/runs/' + run)
@@ -132,7 +132,24 @@ class DualRoleAcceptance(Acceptance):
                 return history
         return None
 
+    def report_preview(self, chat):
+        terminal = self.command([self.args.herdr, 'pane', 'read', chat['paneId']])
+        if '发送报告？（仅批准本次报告发送）' not in terminal or 'Yes' not in terminal or 'No' not in terminal:
+            return None
+        history = self.native(chat)
+        if not history:
+            return None
+        calls = [part for entry in history['branch'] if entry.get('type') == 'message'
+            for part in entry['message'].get('content', []) if isinstance(part, dict)
+            and part.get('type') == 'toolCall' and part.get('name') == 'report']
+        if not calls or any(entry['sessionId'] == chat['sessionId'] and entry['pendingCall']['id'] == calls[-1]['id']
+                for entry in self.evidence.get('reportUIApprovals', [])):
+            return None
+        return {'terminal': terminal, 'history': history, 'pending': calls[-1]}
+
     def await_note(self, chat, marker):
+        if marker.startswith('REQUEST_SEND_APPROVAL_'):
+            return until('native report UI boundary ' + marker, lambda: self.report_preview(chat), self.args.timeout)['history']
         def probe():
             history = self.native(chat)
             if not history:
@@ -144,23 +161,40 @@ class DualRoleAcceptance(Acceptance):
         return until('native assistant approval boundary ' + marker, probe, self.args.timeout)
 
     def await_approval(self, chat, marker, output=None):
-        history = self.await_note(chat, marker)
-        assistant = [entry['message'] for entry in history['branch'] if entry.get('type') == 'message' and entry['message'].get('role') == 'assistant'][-1]
-        note = RolesAcceptance.message_text(assistant)
-        # A marker is synchronization, not approval evidence. The visible native
-        # answer must actually ask about sending, state a limitation and describe
-        # the current handoff (including its real location once one exists).
-        visible = note.replace(marker, '')
-        require(len(visible) > 50 and re.search(r'[?？]', visible) and re.search(r'send|report|发送|报告', visible, re.I), 'Native model did not actually ask for report-send approval')
-        require(re.search(r'limitation|not |no |only|diagnostic|before|限制|仅|尚|未|诊断', visible, re.I), 'Approval summary omitted actual limitations')
+        preview = until('native full-payload approval ' + marker, lambda: self.report_preview(chat), self.args.timeout)
+        params = preview['pending']['arguments']
+        expected_complete = marker != 'REQUEST_SEND_APPROVAL_2'
+        require(params.get('can_complete') is expected_complete, 'Wrong report completion value at lifecycle boundary')
         if output:
-            require(str(output).replace('\\', '/') in note.replace('\\', '/'), 'Approval summary omitted actual result location')
-        self.evidence.setdefault('approvalSummaries', []).append({'sessionId': chat['sessionId'], 'marker': marker, 'text': note, 'criteria': 'visible summary, send question, limitation, actual result address when available'})
-        return history
+            paths = [entry['path'] for entry in params.get('outputs', [])]
+            require(str(output) in paths, 'Native report preview omitted the actual result location')
+        self.evidence.setdefault('approvalPreviews', []).append({'sessionId': chat['sessionId'], 'stage': marker,
+            'terminal': preview['terminal'], 'pendingCall': preview['pending']})
+        return preview['history']
 
     def send(self, chat, message, kind):
         self.evidence.setdefault('userInputs', []).append({'kind': kind, 'sessionId': chat['sessionId'], 'input': message, 'at': time.monotonic()})
-        return self.herdr('agent', 'prompt', chat['paneId'], message)
+        before_reports = [r for r in self.backend_wire.records if r['path'] == '/api/workflow/node/report'
+            and (decode(r, 'request') or {}).get('sessionId') == chat['sessionId']]
+        preview = self.report_preview(chat) if kind.startswith('send-approval-') else None
+        result = None if preview else self.herdr('agent', 'prompt', chat['paneId'], message)
+        self.evidence['userInputs'][-1]['deliveredAsChatInput'] = preview is None
+        if kind.startswith('send-approval-'):
+            preview = preview or until('actual native report confirmation UI', lambda: self.report_preview(chat), self.args.timeout)
+            terminal = preview['terminal']
+            require('→ Yes' in terminal or '❯ Yes' in terminal, 'Native report UI does not visibly select Yes')
+            prior = [r for r in self.backend_wire.records if r['path'] == '/api/workflow/node/report'
+                and (decode(r, 'request') or {}).get('sessionId') == chat['sessionId']]
+            history = self.native(chat)
+            pending = [part for entry in history['branch'] if entry.get('type') == 'message'
+                for part in entry['message'].get('content', []) if isinstance(part, dict)
+                and part.get('type') == 'toolCall' and part.get('name') == 'report'][-1]
+            record = {'sessionId': chat['sessionId'], 'kind': kind, 'preview': terminal,
+                'pendingCall': pending, 'choice': 'Yes', 'priorReportRequests': len(prior), 'at': time.monotonic()}
+            self.evidence.setdefault('reportUIApprovals', []).append(record)
+            require(len(prior) == len(before_reports), 'This report HTTP preceded explicit UI Yes')
+            record['result'] = self.herdr('agent', 'send-keys', chat['paneId'], 'enter')
+        return result
 
     def tabs(self, workspace):
         return self.herdr('tab', 'list', '--workspace', workspace)['tabs']
@@ -268,11 +302,11 @@ class DualRoleAcceptance(Acceptance):
             'Report with can_complete=true and outputs=[{id:"result",path:absolute actual file path}]. The internal report_policy is auto: do not ask for send approval. Do not orchestrate, read test drivers, runtime records, credentials or other Chats.', roles['worker'])
         child = self.task(f'child-manager-{index}', 'manager',
             'You have BOTH actual workflow roles. run/collect manage only your internal Run; report sends only to your parent execution. Use ONLY these native tools for workflow operations, never HTTP/bash substitutions. '
-            'Business work is approved but manual report sending is NOT approved. Initially inspect run status, read your parent output requirements, explain the result/limitation and ask for send confirmation, then stop with REQUEST_SEND_APPROVAL_1. '
-            'After SEND_APPROVAL_1, make exactly one can_complete=true report diagnostic BEFORE dispatch; it must be refused because the child is unfinished. '
-            'Dispatch your internal node first, collect its actual report, accept it and explicitly complete your internal node first. Then show its result and ask for a separate diagnostic send confirmation, stopping with REQUEST_SEND_APPROVAL_1B. '
-            'After SEND_APPROVAL_1B make exactly one more can_complete=true diagnostic report BEFORE finish; it must again be refused. Then finish the internal Run. Do NOT exit this Chat and do NOT report automatically. Explain the actual result address and ask a NEW send confirmation, stopping with REQUEST_SEND_APPROVAL_2. '
-            'After SEND_APPROVAL_2, report actual handoff with can_complete=false first, then show the final summary/address/limitations and ask for a new send confirmation, stopping with PROGRESS_REPORTED. Wait for FINAL_SEND_APPROVAL before reporting can_complete=true with the output ID from your ACTUAL PARENT output requirements (not the internal worker output ID) and the real worker file address. After the final report succeeds, acknowledge its actual receipt and stop with FINAL_REPORTED. Do not invent files or copy detailed contents into reports.', roles['child'])
+            'Business work is approved but manual report sending requires a separate explicit Yes in the native report UI for EVERY payload. Invoke report to display the full payload; a chat message or stage marker is never send approval. Stop after denied, cancelled or timed-out confirmation; never retry without a renewed user request. '
+            'Initially inspect run status and read your parent output requirements. Invoke exactly one can_complete=true diagnostic report BEFORE dispatch, explaining that no internal result exists yet. Wait for native UI approval; after approval the backend must refuse it because the child is unfinished. '
+            'Only after that refusal, dispatch your internal node, collect its actual report, accept it and explicitly complete it. Invoke exactly one more can_complete=true diagnostic report BEFORE finish, with the actual result address registered under the parent output ID and an explanation that finish has not happened. Wait for its separate native UI approval and backend refusal. '
+            'Only after that refusal finish the internal Run. Do NOT exit this Chat. Invoke the actual handoff report with can_complete=false and the real file address, waiting for its separate native UI approval. After it succeeds, stop with PROGRESS_REPORTED and wait for the user final-report request. '
+            'Only after FINAL_SEND_APPROVAL invoke the final can_complete=true handoff, with the output ID from your ACTUAL PARENT requirements (not the worker output ID) and the real worker file address; wait for a NEW native UI Yes. After its actual receipt stop with FINAL_REPORTED. Do not invent files or copy detailed contents into reports.', roles['child'])
         parent = self.task(f'parent-manager-{index}', 'manager',
             'Use native run/collect for orchestration only. Dispatch first, then stop with PARENT_DISPATCHED; do not complete or finish automatically. '
             'When explicitly asked RETRY_FIRST, explicitly fail first then retry first with confirmed=true; this replacement is business-approved, and stop with RETRY_DISPATCHED. '
@@ -313,6 +347,9 @@ class DualRoleAcceptance(Acceptance):
                 self.await_approval(execution['chat'], 'REQUEST_SEND_APPROVAL_1')
                 self.await_note(parent_chat, 'PARENT_DISPATCHED')
                 old = execution
+                self.evidence.setdefault('cancelledReportPreviews', []).append({'chat': old['chat'],
+                    'preview': self.report_preview(old['chat']), 'choice': 'cancel', 'at': time.monotonic()})
+                self.herdr('agent', 'send-keys', old['chat']['paneId'], 'esc')
                 self.send(parent_chat, 'RETRY_FIRST: Explicit business approval to fail first and retry it exactly once with confirmed=true. Preserve the old Chat and execution; this is not manual report-send approval.', 'business-replacement-approval')
                 execution = until('new native child with retained old execution', lambda: (e if (e := child_started()) and e['id'] != old['id'] else None), self.args.timeout)
                 sample['retainedOldExecution'] = old
@@ -352,7 +389,7 @@ class DualRoleAcceptance(Acceptance):
             require(chat['tabId'] in tab_ids and internal_tab in tab_ids, 'finish closed manager or retained internal Tab')
             self.observe_processes()
             self.send(chat, 'SEND_APPROVAL_2: I approve sending the actual concise progress report with can_complete=false now. This does NOT authorize completion or the later true report. Then stop with PROGRESS_REPORTED.', 'send-approval-progress')
-            self.await_approval(chat, 'PROGRESS_REPORTED', actual_file)
+            self.await_note(chat, 'PROGRESS_REPORTED')
             progress = self.detail(run_id)
             report = [r for r in progress['reports'] if r['executionId'] == execution['id']][-1]
             require(report['canComplete'] is False and progress['run']['nodes'][node]['status'] == 'running', 'Progress granted completion eligibility')
@@ -395,6 +432,9 @@ class DualRoleAcceptance(Acceptance):
             sample['calls'][-1]['tabsAfterParentComplete'] = after_tabs
         final = until('root manager explicitly finished', lambda: (d if (d := self.detail(run_id))['run']['status'] == 'completed' else None), self.args.timeout)
         sample['final'] = final
+        cancelled_session = sample['retainedOldExecution']['chat']['sessionId']
+        require(not any(record['path'].endswith('/node/report') and (decode(record, 'request') or {}).get('sessionId') == cancelled_session
+            for record in self.backend_wire.records), 'Cancelled native confirmation still issued report HTTP')
         self.await_note(parent_chat, 'ROOT_FINISHED')
         require(final['run']['userInput'] == raw_input, 'Root original business input changed')
         parent_completes = [record for record in self.backend_wire.records if record['path'].endswith('/manager/complete')
@@ -429,8 +469,18 @@ class DualRoleAcceptance(Acceptance):
         require(any({'run', 'collect', 'report'} <= {tool.get('function', {}).get('name') for tool in (decode(r, 'request') or {}).get('tools', [])} for r in co_loaded), 'Three real tools and both guides did not coexist in an actual provider request')
         user_messages = [RolesAcceptance.message_text(entry['message']) for entry in after['branch'] if entry.get('type') == 'message' and entry['message'].get('role') == 'user']
         confirmations = [entry for entry in self.evidence['userInputs'] if entry['sessionId'] == session and entry['kind'].startswith('send-approval')]
-        require(len(confirmations) == 4 and all(any(entry['input'] in actual for actual in user_messages) for entry in confirmations), 'Original send confirmations were not actually delivered as native user messages')
-        require(all(report['started'] >= confirmation['at'] for report, confirmation in zip(reports, confirmations)), 'An external report preceded its own explicit user send approval')
+        require(len(confirmations) == 4, 'Expected four independent report-send decisions')
+        require(all(any(entry['input'] in actual for actual in user_messages) for entry in confirmations
+            if entry.get('deliveredAsChatInput')), 'A submitted user request is absent from native history')
+        ui_confirmations = [entry for entry in self.evidence.get('reportUIApprovals', []) if entry['sessionId'] == session]
+        require(len(ui_confirmations) == 4, 'Each manual report must have its own actual UI Yes')
+        for report, confirmation in zip(reports, ui_confirmations):
+            require(report['started'] >= confirmation['at'], 'Report HTTP preceded actual UI Yes')
+            params = confirmation['pendingCall']['arguments']
+            expected = {'sessionId': session, 'body': params['body'], 'canComplete': params['can_complete']}
+            if 'outputs' in params:
+                expected['outputs'] = params['outputs']
+            require(decode(report, 'request') == expected, 'Report HTTP differs from UI-confirmed payload')
         for name in ['run', 'collect', 'report']:
             require(any(part.get('type') == 'toolCall' and part.get('name') == name for e in after['branch'] if e.get('type') == 'message' for part in e['message'].get('content', []) if isinstance(part, dict)), ('No actual native tool call', name))
 
