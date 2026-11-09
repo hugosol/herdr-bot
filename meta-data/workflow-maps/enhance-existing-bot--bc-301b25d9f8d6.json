@@ -15,7 +15,7 @@
     "w1": {
       "title": "W1 核实既有 Bot 与目标并交付共同基线",
       "bot_id": "prepare-bot-revision",
-      "input": "按 ${herdr-bot-path}/docs/business-materials.md 的共同基线、唯一正文、安全文件与一次保存契约执行；配置服务为 ${herdr-bot-api-url}，其他 zone 不改变服务位置。\n直接完整读取 request 与实际提供的可选 materials，核实真实 Bot ID、本次业务要求、三字段修订范围、授权、材料用途及写入范围；无可选材料合法，不要求用户抄写完整配置。自行读取 Bot 目录、完整 Bot 与真实 revision，核实唯一绑定的 normal Task 或 Map 及完整真实目标配置。未知事实自行调查，未决业务取舍在当前 Chat 用 grill-with-docs 真实澄清；授权、目标、职责或绑定冲突未解决时阻塞。\n只读核实 Bot／目标，不新建或修改 Bot、Task、Map，不优化或保存 Task.prompt，不运行能力。保存单份 baseline：完整 Bot、真实 revision、完整目标、需求、修订及保存授权范围、确认依据、非目标和资源限制；必要 handoff 仅记来源、确认、核对结论与未验证项，不复制配置或正文。两文件按授权安全写入并完整读回，供全部消费者直接取得同一 baseline。\n本节点是三路编写的前置基线生产者，不是完整修订流程。request 中三字段正文的整理、全文展示和逐字批准由 w2／w3／w4 各自在所属 Chat 执行；w5 才核验三路真实批准并一次保存。不要在 w1 起草三字段新正文、请求它们的全文批准，或把未来批准及 Bot 保存设成 baseline／handoff 交付前提，否则编写者无法取得所需基线。已有委托、澄清及授权来源如实写入 baseline，未发生的字段批准不伪造、不代替。目标、需求与授权冲突已解决且两份材料安全完整读回即具备本节点的业务交付条件；manual 报告发送确认仍独立遵守原策略，由管理者核实本节点真实交付后显式完成交接。",
+      "input": "request 是本次既有 Bot 三指南修订委托；materials（若提供）是参考材料，按委托说明的用途使用。本次要求以文件交付 baseline 与 handoff，作为各编写者及保存者的共同核实依据。",
       "input_rule": [
         {
           "id": "request",
@@ -44,7 +44,7 @@
     "w2": {
       "title": "独立修订并确认 Bot.when",
       "bot_id": "write-bot-when",
-      "input": "按 ${herdr-bot-path}/docs/business-materials.md 的共同基线、唯一正文、安全文件与一次保存契约执行；配置服务为 ${herdr-bot-api-url}，其他 zone 不改变服务位置。\n直接完整读取同一 baseline，以既有 when 为基线，在授权范围修订供能力发现与选用的完整字段。重读完整 Bot、真实 revision 与 normal Task／Map 完整目标并与基线比较，任何冲突阻塞。无需兄弟指南先完成，也不读取兄弟定稿。\n使用 grill-with-docs 澄清未决业务取舍，沿用仍有效确认，在同一 Chat 完成表达整理并展示确认所属字段全文；不另设表达优化阶段。只交付唯一完整 UTF-8 纯正文 text 与必要 handoff，handoff 只记录有效确认范围与依据、来源、必须保留语义及未验证项，不复制正文、基线或完整配置，不承担隐式寻址。按授权安全写入并完整读回，不写 Bot／目标或运行能力。业务全文确认、最终保存授权与 manual 报告发送确认分别成立。",
+      "input": "依据 baseline 中的既有 when、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
           "id": "baseline",
@@ -71,7 +71,7 @@
     "w3": {
       "title": "独立修订并确认 Bot.plan_guide",
       "bot_id": "write-bot-plan-guide",
-      "input": "按 ${herdr-bot-path}/docs/business-materials.md 的共同基线、唯一正文、安全文件与一次保存契约执行；配置服务为 ${herdr-bot-api-url}，其他 zone 不改变服务位置。\n直接完整读取同一 baseline，以既有 plan_guide 为基线，在授权范围修订供规划者安排工作的完整字段。重读完整 Bot、真实 revision 与 normal Task／Map 完整目标并与基线比较，任何冲突阻塞。无需兄弟指南先完成，也不读取兄弟定稿。\n使用 grill-with-docs 澄清未决业务取舍，沿用仍有效确认，在同一 Chat 完成表达整理并展示确认所属字段全文；不另设表达优化阶段。只交付唯一完整 UTF-8 纯正文 text 与必要 handoff，handoff 只记录有效确认范围与依据、来源、必须保留语义及未验证项，不复制正文、基线或完整配置，不承担隐式寻址。按授权安全写入并完整读回，不写 Bot／目标或运行能力。业务全文确认、最终保存授权与 manual 报告发送确认分别成立。",
+      "input": "依据 baseline 中的既有 plan_guide、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
           "id": "baseline",
@@ -98,7 +98,7 @@
     "w4": {
       "title": "独立修订并确认 Bot.node_guide",
       "bot_id": "write-bot-node-guide",
-      "input": "按 ${herdr-bot-path}/docs/business-materials.md 的共同基线、唯一正文、安全文件与一次保存契约执行；配置服务为 ${herdr-bot-api-url}，其他 zone 不改变服务位置。\n直接完整读取同一 baseline，以既有 node_guide 为基线，在授权范围修订供规划者填写 Task／Map 的本次业务输入、材料、选择与授权责任的完整字段。重读完整 Bot、真实 revision 与 normal Task／Map 完整目标并与基线比较，任何冲突阻塞。无需兄弟指南先完成，也不读取兄弟定稿。\n使用 grill-with-docs 澄清未决业务取舍，沿用仍有效确认，在同一 Chat 完成表达整理并展示确认所属字段全文；不另设表达优化阶段。只交付唯一完整 UTF-8 纯正文 text 与必要 handoff，handoff 只记录有效确认范围与依据、来源、必须保留语义及未验证项，不复制正文、基线或完整配置，不承担隐式寻址。按授权安全写入并完整读回，不写 Bot／目标或运行能力。业务全文确认、最终保存授权与 manual 报告发送确认分别成立。",
+      "input": "依据 baseline 中的既有 node_guide、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
           "id": "baseline",
@@ -125,7 +125,7 @@
     "w5": {
       "title": "W5 汇合三份定稿并一次保存完整读回",
       "bot_id": "replace-text",
-      "input": "按 ${herdr-bot-path}/docs/business-materials.md 的共同基线、唯一正文及安全文件交付契约执行；使用服务 ${herdr-bot-api-url} 的公开接口。\n直接完整读取 baseline 与 when_text／when_handoff、plan_guide_text／plan_guide_handoff、node_guide_text／node_guide_handoff。三份 text 是对应字段的唯一最终正文，原样使用；handoff 只供核对真实批准来源、有效范围、语义限制及未验证项，不作正文或路径来源。\n核实三分支属于同一真实 Bot、同一 normal Task／Map 目标及同一共同基线。依实际批准来源核实全部替换项的业务确认与本次保存授权，流程到达、报告发送同意或 can_complete=true 均不授权保存；缺授权或任何必要材料时整批不开始。重读完整 Bot、真实 revision 与完整目标，与 baseline 精确比较；冲突、运行禁写或自身配置限制时阻塞，不自动合并或替换目标。\n仅在授权成立后，把三份完整 text 组成同一候选，经 edit/revision/save 合法接口一次保存三字段；保持真实 id/name、唯一绑定及全部非目标，关联 Task／Map 完整配置不变。不运行新能力或新建目标。保存后经公开接口完整读回，逐字段核对 text、非目标和绑定，再重读目标确认未变。saved 单独交付完整真实读回 Bot；handoff 仅记真实身份、绑定、批准来源、三字段来源、实际保存与读回结论、已发生效果及未验证项，不复制 saved、基线或正文。失败、超时或不明先读取现场核实已生效／未生效／无法确认，不盲目重试、回滚或吞掉原错误。\n父层所需最终交付为 saved 与 handoff。子管理者完成全部节点及子 Run 后，应按父节点实际输出约定报告这两项真实地址；完成子 Run 不等于父层验收，不自动执行新能力。",
+      "input": "本次替换目标为 baseline 标识的既有 Bot，仅替换 when、plan_guide、node_guide 三字段。配置服务：${herdr-bot-api-url}；接口与保存约束见 ${herdr-bot-path}/docs/scheduler.md。\n来源对应关系：when_text → when，plan_guide_text → plan_guide，node_guide_text → node_guide；各同名前缀的 handoff 提供所属定稿的批准依据和语义限制，baseline 提供共同配置基线及本次保存授权范围。\n本次按 ${herdr-bot-path}/docs/business-materials.md 的“一次合法保存与失败核实”和“文件与独立 Chat”完成整批替换与材料交付。交付 saved 与 handoff 文件，供调用方核验保存结果。",
       "input_rule": [
         {
           "id": "baseline",
