@@ -6,7 +6,7 @@
 
 对比基准：Git 提交 `78a6955a01507d5934b813bd635b28170718e6a6`（`workflow-nesting checkpoint`）。范围是该基准到当前文件，包含后续提交和工作区修改，不只看未提交 diff。初次调查时 HEAD 为 `6e6b8d7`；后续扫描已观察到其他提示词变化，下一会话应重新确认当前 HEAD 和实际差异。
 
-已完成“独立修订既有 Bot 三指南”的局部精简，以及 2026-11-09“创建并优化 Task＋Bot”三节点外层及两个执行 Task／Bot 的文本与定义优化；包装内部及真实模型行为验收仍未完成。逐项进度与证据见下文；本文件不授权自动启动全部优化、付费模型矩阵、修改用户部署或票据状态。
+已完成“独立修订既有 Bot 三指南”的局部精简、2026-11-09“创建并优化 Task＋Bot”三节点外层优化，以及本文件下述包装八节点与共享能力的文本／定义优化。真实模型行为验收仍未完成。逐项进度与证据见下文；本文件不授权自动启动全部优化、付费模型矩阵、修改用户部署或票据状态。
 
 ## 背景与原问题
 
@@ -89,8 +89,8 @@ w1 基线交付不依赖未来三字段全文批准或最终保存；编写者�
 
 | Map／文件（均位于 meta-data/workflow-maps） | 相对 checkpoint 的提示词范围 | 当前优化进度 |
 | --- | --- | --- |
-| 为既有 Task 或 Map 包装完整 Bot：`create-bot-wrapper.json` | 新增八节点图；空白创建者、三编写者、表达优化者、保存者的 Task 与 Bot 指南；包装 Bot | 整体待做 |
-| 创建并优化 Task＋Bot：`create-bot-task-workflow--bc-61ce48b80a4c.json` | 十节点变三节点；w1/w2/wrap_bot input，Task 创建者、通用优化者直接保存分支及包装调用 | 外层文本／定义优化完成；W2 已恢复 optimize-prompt，专用优化者已删除；包装内部仍待做，真实模型行为未验证 |
+| 为既有 Task 或 Map 包装完整 Bot：`create-bot-wrapper.json` | 新增八节点图；空白创建者、三编写者、表达优化者、保存者的 Task 与 Bot 指南；包装 Bot | 文本／定义优化完成；通用优化者沿用既有优化，真实模型行为未验证 |
+| 创建并优化 Task＋Bot：`create-bot-task-workflow--bc-61ce48b80a4c.json` | 十节点变三节点；w1/w2/wrap_bot input，Task 创建者、通用优化者直接保存分支及包装调用 | 外层文本／定义优化完成；W2 已恢复 optimize-prompt，专用优化者已删除；包装进度见上一行，真实模型行为未验证 |
 | 独立修订既有 Bot 三指南：`enhance-existing-bot--bc-301b25d9f8d6.json` | 五节点；w1 换为基线核实能力，三编写者与保存者共享，新增修订包装 Bot | 局部精简完成；整体优化和行为验收未完成 |
 | `plan_workflow.json` | 两 Task.prompt、两 Bot.plan_guide、outline.input；拓扑仍为两节点 | 整体待做 |
 | Tibo监测后排查C盘：`tibo-monitor-then-c-drive-inspection.json` | Map 本身未改；其 Tibo-monitor Task.prompt 与 Bot.node_guide 有变更 | 独立外围项，待做 |
@@ -212,6 +212,22 @@ W2.input 删除“本次不采用 Bot 三指南”等反向说明及与 Task 重
 用户指出包装文档承载 Task 写入方法会混淆只读目标边界。已将原“外层 Task.prompt 直接保存”移至 `docs/usage.md` 的“仅修改 Task.prompt”，移除外层专属措辞与输出命名；包装文档仅链接 Task 保存规则，不再持有其副本。W2 保存指针和独立验收输入同步更新；W2 的包装 request 仍单独指向包装文档“调用接口”。以上历史章节中的旧保存地址已被本次迁移取代。
 
 验证：新保存章节与包装接口指针可解析、唯一保存章节归属正确；JSON 比较确认只改 W2.input，验收 Python 语法通过。本次仅迁移文档归属及指针，不改变保存逻辑，未运行真实模型或业务流程。
+
+## 2026-11-09：包装八节点与共享能力优化
+
+范围以当前文件为准；开始时 HEAD 为 `1288d1acb8d28ff98e0cd2ee9af96ec48289e797`，已确认当前仓库存在 `herdr-bot` 索引。保留 checkpoint 之后及工作区的其他修改，不重新改造已完成的外层。
+
+修改对象：
+- `meta-data/tasks.json`：仅空白创建者 `task-18e33fdc55177d1c-1`、三个编写者 `task-18e3404478db1ef8-2`／`task-18e340545eb481bc-3`／`task-18e340f5287462ec-4`、保存者 `task-18e3415003d8cd00-5` 的 prompt；对应五个 Bot 仅改 when／plan_guide／node_guide。按核实、当前工作、确认和交付设完成条件，保留三字段各自的信息筛选规则；Skill 调用沿用现有配置。
+- `meta-data/workflow-maps/create-bot-wrapper.json`：仅 description 与八个 input；`meta-data/bots/create-bot-wrapper.json`：仅三指南。固定服务不在已内置服务的创建／编写节点重复，通用优化者与保存者仍显式取得真实服务及业务协议。
+- `docs/business-materials.md`：改为按职责读取，新增“共同基线消费”和“表达优化”；保留已有章节指针。集中承接完整配置／真实 revision 比较、独立 Chat 无基线分支、材料分工与文件安全；明确授权目录中新建材料可选择无冲突文件名，目录存在不等于授权。基线交付不等待未来全文批准；最终 text 必须有仍有效的确认覆盖，语义变化或本次要求最终版本批准时重新确认。
+- `docs/create-bot-wrapper.md`：用职责章节索引承接执行规则；包装 Bot 的规划指南指向“调用接口”，保存节点不再指挥 manager。父子 finish／report／complete 边界仍由调用接口及外层承接。
+
+共享影响：三个编写者与保存者同时供包装和修订 Map 使用；修订现有 input 已显式提供共同 baseline、所属字段、同 Chat 整理确认及保存协议，保持不改。空白创建者只被包装 Map 引用。通用 `optimize-prompt` Task／Bot 完全不改，其四个调用为包装三路与外层 W2；三路 Bot 专属规则由本次 input 的章节指针承担。保存者同样去除内置 Bot 专用协议，独立 Chat 通过本次显式协议选择业务分支。外层 Map、修订 Map、旧独立创建入口和其他 Map 定义保持不变。
+
+验证：一次内存检查通过，解析全部五张 Map 的 Bot→Task／Map 绑定、子输入必填覆盖、manager 类型、材料来源与依赖无环，核对章节存在；与编辑前对象比较，确认修改仅限上述文本字段，所有 Task 非目标配置、八节点接线及报告策略保持不变。使用本 worktree 的绝对 `CARGO_TARGET_DIR=E:/Developer/myhub/herdr-bot/backend/target` 执行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_bot_wrapper -- --nocapture`，1 passed；验证公开定义与材料接口，不证明模型遵循。无新增永久测试或临时脚本文件。
+
+结论：包装及本轮共享能力的文本／定义优化完成。未启动真实模型、付费矩阵、用户业务或部署迁移；Task／Map、有／无材料、独立 Chat 配对、有效批准沿用和完整八节点行为仍未验证。修订图整体优化不在本轮认领范围。
 
 ## 每次新会话的交接要求
 

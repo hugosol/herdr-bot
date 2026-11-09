@@ -1,8 +1,8 @@
 {
   "id": "create-bot-wrapper",
   "name": "为既有目标包装完整 Bot",
-  "when": "为已经存在的 normal Task 或 Map 创建并绑定完整 Bot 时使用。自行核实真实目标，创建三指南为空的新 Bot，三路独立编写确认和表达优化，再一次合法保存并完整读回。不创建、修改或执行目标，不适用于修订已有 Bot。名称／ID 冲突或授权不足时停止。配置交付不是业务能力验证。",
-  "plan_guide": "先确认真实目标定位、业务要求、资源权限和创建范围；无需用户抄完整配置，可选材料为空合法。接口为 create-bot-wrapper.json 的必填 request 与可选 materials 文件输入，调用指南见 ${herdr-bot-path}/docs/create-bot-wrapper.md。安排独立子 Run 的管理者和 zone；本能力不替父层选择管理者，也不自动继承材料。三份指南各自确认全文，manual 报告发送确认与业务确认分开；表达优化只改表达，最终保存依真实批准来源核实授权，不以 can_complete=true 或流程到达替代批准。共同基线、唯一正文和 handoff 遵循 docs/business-materials.md。父层要求 saved 与 handoff，由子管理者完成后显式报告并由父层接受交接；不得自动运行新能力。",
-  "node_guide": "在 node.input 写明真实 normal Task ID 或 Map 文件名、创建委托与业务要求、资源权限、非目标、材料用途和写入范围；可选指定名称／ID 和正式交付位置。通过 input_rule 直接以 request 绑定包含这些要求的可读 UTF-8 文件，可选 materials 绑定参考材料；没有材料不传该绑定，不造空地址。不得要求抄写完整配置或依赖父 Chat 隐式传入。填写本调用的 manager_task_id 与 zone，声明父节点 output_rule 的 saved、handoff，要求子管理者完成子 Run 后报告 save_bot 的真实同名产物。saved 是完整公开读回 Bot，handoff 是身份、绑定、批准来源、保存核对结论及未验证项；父层核实后显式接受。创建目标、执行新能力、修改其他 Map、自身配置和运行记录均不授权；缺合法保存授权或冲突就阻塞。",
+  "when": "为已经存在的 normal Task 或 Map 新建并绑定完整 Bot 时使用，交付经确认和表达优化的三指南及完整保存读回对象。目标由本能力自行核实；不创建、修改或执行目标，也不用于修订已有 Bot。配置交付不等于业务能力验证。",
+  "plan_guide": "目标必须已经存在，且业务需求与实际能力相符；不要求用户抄完整配置。安排三指南全文确认所需的用户参与，区分材料写入、全文确认与最终保存授权。选用或嵌套本能力时，读取 ${herdr-bot-path}/docs/create-bot-wrapper.md「调用接口」，据此准备 request／可选 materials、核实本次真实 manager 与 zone，并安排 saved／handoff 的父子交接；配置交付不包含新能力试运行。",
+  "node_guide": "提供自包含的 UTF-8 request：真实 normal Task ID 或 Map 文件名（二选一）、明确 Bot 创建委托、业务需求、资源与权限、非目标、材料写入范围；可选指定 Bot 名称／ID、正式交付位置和额外验收。materials 如提供，说明参考材料内容与用途；缺席合法，提供却不可读需解决。分别说明材料写入、三指南确认及最终 Bot 保存的授权与已有依据；本次范围仅为包装既有目标，不包含目标变更或业务执行。",
   "map_file": "create-bot-wrapper.json"
 }
