@@ -30,7 +30,7 @@ export function EntityGroups<T>({ items, groupOf, children, listClass, testId }:
   </details>)
 }
 
-export function GroupButton({ name, group, names, disabled, onSave }: { name: string; group?: string | null; names: (string | null | undefined)[]; disabled?: boolean; onSave: (group: string | null) => Promise<void> }) {
+export function GroupButton({ name, group, names, disabled, compact = false, onSave }: { name: string; group?: string | null; names: (string | null | undefined)[]; disabled?: boolean; compact?: boolean; onSave: (group: string | null) => Promise<void> }) {
   const id = useId()
   const dialog = useRef<HTMLDialogElement>(null)
   const [opened, setOpened] = useState(false)
@@ -46,7 +46,7 @@ export function GroupButton({ name, group, names, disabled, onSave }: { name: st
     catch (error) { setError(error instanceof Error ? error.message : '分组保存失败；原配置未改变。') }
     finally { setBusy(false) }
   }
-  return <><button type="button" className="entity-group-button" disabled={disabled} aria-label={`group：${name}（${group ?? '未分组'}）`} onClick={() => { setValue(''); setError(null); setOpened(true) }}>group · {group ?? '未分组'}</button>
+  return <><button type="button" className="entity-group-button" disabled={disabled} aria-label={`group：${name}（${group ?? '未分组'}）`} onClick={() => { setValue(''); setError(null); setOpened(true) }} title={`调整分组：${group ?? '未分组'}`}>{compact ? '分组' : `group · ${group ?? '未分组'}`}</button>
     {opened && createPortal(<dialog ref={dialog} className="zone-dialog entity-group-dialog" aria-labelledby={`${id}-title`} onCancel={event => { event.preventDefault(); if (!busy) setOpened(false) }}>
       <h2 id={`${id}-title`} className="zone-dialog__title">{name} · group</h2>
       <label htmlFor={`${id}-existing`}>选择分组</label>
