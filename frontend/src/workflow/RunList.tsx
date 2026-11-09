@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
+import { listMaps, type MapCatalog } from '../scheduler/schedulerApi'
 import type { RunEntry } from './useWorkflowRefresh'
 import { WorkflowStatus } from './WorkflowStatus'
 
@@ -8,6 +10,10 @@ function creationTime(entry: RunEntry): number | null {
 }
 
 export function RunList({ entries, error = null, onOpen }: { entries: RunEntry[] | null; error?: string | null; onOpen?: () => void }) {
+  const groupRevision = useGroupRefresh()
+  const [catalog, setCatalog] = useState<MapCatalog | null>(null)
+  const [groupError, setGroupError] = useState<string | null>(null)
+  useEffect(() => { let cancelled = false; void listMaps().then(value => { if (!cancelled) { setCatalog(value); setGroupError(null) } }, error => { if (!cancelled) setGroupError(error instanceof Error ? error.message : 'Map 分组读取失败。') }); return () => { cancelled = true } }, [groupRevision])
   const [search, setSearch] = useState('')
   const [map, setMap] = useState('')
   const [status, setStatus] = useState('')
@@ -42,9 +48,10 @@ export function RunList({ entries, error = null, onOpen }: { entries: RunEntry[]
     <div className="workflow-filters">
       <label>搜索 Run / Map<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Run 名称、ID 或 Map 标识" /></label>
       <label>状态<select value={status} onChange={event => setStatus(event.target.value)}><option value="">全部状态</option>{statuses.map(value => <option key={value} value={value}>{({ pending: '待执行', ready: '可派发', blocked: '等待依赖', running: '运行中', paused: '已暂停', completed: '已完成', failed: '失败', unreadable: '记录读取失败' } as Record<string, string>)[value] ?? value}</option>)}</select></label>
-      <label>Map<select value={map} onChange={event => setMap(event.target.value)}><option value="">全部 Map</option>{maps.map(value => <option key={value}>{value}</option>)}</select></label>
+      <label>Map<select value={map} onChange={event => setMap(event.target.value)}><option value="">全部 Map</option><GroupOptions items={maps} groupOf={value => catalog?.groups?.[value]}>{value => <option key={value} value={value}>{value}</option>}</GroupOptions></select></label>
       <label>管理归属<select value={managed} onChange={event => setManaged(event.target.value)}><option value="">全部归属</option><option value="true">当前后端管理</option><option value="false">历史现场 / 未接管</option></select></label>
     </div>
+    {groupError && <p role="alert">Map 分组读取失败：{groupError}</p>}
     <p className="workflow-muted" role="status" aria-label="Run 显示计数">显示 {visible.length} / {entries?.length ?? 0} · 创建时间倒序 · 未命名时使用 Map 文件标识</p>
     {!entries && <p className="workflow-empty">{error ? 'Run 列表读取失败，请查看更新错误。' : '正在加载 Run 列表…'}</p>}
     {entries?.length === 0 && <p className="workflow-empty">尚无 Run。从 scheduler 选择 Map 并显式发起。</p>}

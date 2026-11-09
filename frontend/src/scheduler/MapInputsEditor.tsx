@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { loadMapInputs, saveMapInputs, type BotRevision } from './schedulerApi'
+import { groupOnlyRevision, loadMapInputs, saveMapInputs, type BotRevision } from './schedulerApi'
 
 export function MapInputsEditor({ file, onClose, onSaved }: { file: string; onClose: () => void; onSaved: () => void }) {
   const [content, setContent] = useState('')
@@ -12,6 +12,11 @@ export function MapInputsEditor({ file, onClose, onSaved }: { file: string; onCl
       if (!cancelled) { setContent(JSON.stringify(draft.input_files, null, 2)); setRevision(draft.revision) }
     }, failure => { if (!cancelled) setError(failure instanceof Error ? failure.message : '输入声明读取失败。') })
     return () => { cancelled = true }
+  }, [file])
+  useEffect(() => {
+    function updated(event: Event) { const { kind, id, revision } = (event as CustomEvent<{ kind: string; id: string; revision: BotRevision }>).detail; if (kind === 'maps' && id === file) setRevision(previous => groupOnlyRevision(previous, revision) ? revision : previous) }
+    window.addEventListener('herdr-group-revision', updated)
+    return () => window.removeEventListener('herdr-group-revision', updated)
   }, [file])
   async function save() {
     if (!revision || busy) return

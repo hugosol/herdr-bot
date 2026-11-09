@@ -4,6 +4,8 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 主界面的配置组提供独立 `bot` 入口，直接进入同一套共享 Bot 管理功能；`scheduler` 入口进入 Map 视图。Map 内关联 Bot 会同步选中外侧 `bot`，返回时点击外侧 `scheduler`，不创建另一份编辑器或定义。两页只保留各自面板，Bot 页提供 `refresh`，Map 页提供“刷新全部”。紧凑／展开布局与刷新行为见[页面导航](usage.md#页面导航)。
 
+Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分组／未分组／指定分组”筛选；“清除筛选”同时重置两项条件。分组标题可折叠并显示当前筛选结果数量，行尾“分组”可直接调整归属。详情页的 group 按钮与新增 node、发起 Run、编辑文件输入声明及删除 Map 集中在顶部操作区；手机端分组按钮独占一行，其余操作按两列排列，避免挤压标题与说明。分组保存仍即时生效，不改变 Map 或 node 的编辑与删除确认规则。
+
 ## 定义职责与唯一格式
 
 | 对象 | 字段与职责 |
@@ -13,6 +15,8 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）或 `map_file`（目录内确切 Map JSON 文件名），二者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
+
+Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
 只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。历史更名工具只处理其原来的命名迁移，不完成这次格式切换。
 
@@ -218,7 +222,9 @@ Map 文件加载、结构或依赖失败时清除当前图和详情，不把上�
 
 | 方法及路径 | 输入／结果 |
 | --- | --- |
-| `GET /api/scheduler/maps` | 顶层 Map 文件列表 `files`，以及按文件名索引的可用标题 `titles`（无可用标题时省略）；单个 Map 读取／校验失败不阻断目录 |
+| `GET /api/scheduler/maps` | 顶层 Map 文件列表 `files`，按文件名索引的可用标题 `titles` 和分组名 `groups`；未分组文件不进入 `groups`；单个 Map 读取／校验失败不阻断目录 |
+| `PATCH /api/scheduler/maps/{filename}/group` | `{group: 字符串或null}` → 更新后的 Map 字段与 `revision` |
+| `PATCH /api/scheduler/bots/{id}/group` | `{group: 字符串或null}` → 更新后的 Bot 字段与 `revision` |
 | `GET /api/scheduler/maps/{filename}` | 完整校验后的 Map |
 | `GET /api/scheduler/bots` | Bot 目录和局部问题 |
 | `GET /api/scheduler/bots/new` | 打包草稿，不含 id |

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { EntityGroups, GroupButton } from '../app/entityGroups'
 import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
 import { orderedMapNodeIds } from './mapNodeOrder'
@@ -14,14 +15,17 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const botView = view === 'bot'
   const editorState = useSchedulerEditor({ active, view, onViewChange })
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
-    abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
+    changeGroup, abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
   const [inputsOpen, setInputsOpen] = useState(false)
   const [directoryOpen, setDirectoryOpen] = useState(false)
   const inspectorHeading = useRef<HTMLHeadingElement>(null)
   const editorHeading = useRef<HTMLHeadingElement>(null)
   const [filter, setFilter] = useState('')
+  const [mapGroup, setMapGroup] = useState('all')
   const [botFilter, setBotFilter] = useState('')
+  const [botGroup, setBotGroup] = useState('all')
+  const botListPosition = useRef({ top: 0, button: null as HTMLButtonElement | null })
   const deleteMapDialog = useRef<HTMLDialogElement>(null)
   const cancelMapDeletion = useRef<HTMLButtonElement>(null)
   const directoryHeading = useRef<HTMLHeadingElement>(null)
@@ -61,10 +65,24 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const botProblem = bots.kind === 'ready' ? bots.problems?.find((item) => item.bot_id === botId) : undefined
   const map = preview?.kind === 'ready' ? preview.map : null
   const busy = listing.kind === 'loading' || bots.kind === 'loading' || preview?.kind === 'loading'
+  const mapGroups = listing.kind === 'ready' ? [...new Set(Object.values(listing.groups ?? {}))].sort() : []
   const visibleFiles = listing.kind === 'ready'
-    ? listing.files.filter((name) => `${listing.titles?.[name] ?? ''} ${name}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : []
+    ? listing.files.filter((name) => (mapGroup === 'all' || (mapGroup === 'ungrouped' ? listing.groups?.[name] == null : listing.groups?.[name] === mapGroup.slice(6)))
+      && `${listing.titles?.[name] ?? ''} ${name} ${listing.groups?.[name] ?? '未分组'}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : []
+  const botGroups = bots.kind === 'ready' ? [...new Set(bots.bots.flatMap(item => item.group == null ? [] : [item.group]))].sort() : []
   const visibleBots = bots.kind === 'ready'
-    ? bots.bots.filter((item) => `${item.name} ${item.id}`.toLocaleLowerCase().includes(botFilter.toLocaleLowerCase())) : []
+    ? bots.bots.filter((item) => (botGroup === 'all' || (botGroup === 'ungrouped' ? item.group == null : item.group === botGroup.slice(6)))
+      && `${item.name} ${item.id} ${item.group ?? '未分组'}`.toLocaleLowerCase().includes(botFilter.toLocaleLowerCase())) : []
+  const botDetailOpen = botId !== null || draft !== null
+
+  function returnToBotList() {
+    if (!abandonDraft()) return
+    openBot(null)
+    requestAnimationFrame(() => {
+      botListPosition.current.button?.focus({ preventScroll: true })
+      window.scrollTo({ top: botListPosition.current.top })
+    })
+  }
   const botProblems: Record<string, string> = Object.create(null)
   if (map && bots.kind === 'ready') {
     const available = new Set(bots.bots.map((bot) => bot.id))
@@ -95,6 +113,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     if (draft.kind === 'node' && event.target.matches('input:focus-visible, textarea:focus-visible, select:focus-visible, .scheduler-node-content button:focus-visible, .scheduler-node-content summary:focus-visible')) event.target.scrollIntoView({ block: 'center', inline: 'nearest' })
   }} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
     <div className="scheduler-section-heading"><h3 ref={editorHeading} tabIndex={-1}>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3><span>保存后生效</span></div>
+    {draft.kind === 'Bot' && !draft.create && bot && bots.kind === 'ready' && <GroupButton name={bot.name} group={bot.group} names={bots.bots.map(item => item.group)} disabled={editingBusy} onSave={group => changeGroup('bots', bot.id, group)} />}
     {draft.kind === 'Bot' && <label>Bot ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>}
     {draft.kind === 'node' && map && draft.settings && <MapNodeDetails key={`${draft.file}:${draft.initialId}`} map={map} nodeId={draft.id} catalog={bots.kind === 'ready' ? bots : undefined} onSelect={selectRelatedNode} edit={{ content: draft.content, settings: draft.settings, create: draft.create, disabled: editingBusy, onContentChange: content => editDraft({ content }), onSettingsChange: settings => editDraft({ settings }), onIdChange: id => editDraft({ id }) }} />}
     <details className="scheduler-format-help"><summary>字段格式与保存约束</summary><p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
@@ -121,30 +140,40 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         </ul>
       </section>}
     </div>
-    {botView ? <div className="scheduler-bot-page">
+    {botView ? <div className="scheduler-bot-page" data-detail-open={botDetailOpen}>
       <div className="scheduler-bot-heading">
-        <h2 ref={botHeading} tabIndex={-1}>bot</h2>
+        <h1 ref={botHeading} tabIndex={-1}>Bot</h1>
         <div className="scheduler-actions">
           {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>new</button>}
           {refreshButton}
         </div>
       </div>
+      {editError && <p role="alert">{editError}</p>}
       <div className="scheduler-bot-layout">
         <section aria-label="共享 Bot 列表" className="scheduler-bot-directory">
-          <label className="scheduler-filter">筛选 Bot<input type="search" value={botFilter} onChange={(event) => setBotFilter(event.target.value)} placeholder="名称或 ID…" /></label>
+          <div className="scheduler-bot-filters">
+            <label className="scheduler-filter">筛选 Bot<input type="search" value={botFilter} onChange={(event) => setBotFilter(event.target.value)} placeholder="名称、ID 或组名…" /></label>
+            <label className="scheduler-filter">分组<select value={botGroup} onChange={event => setBotGroup(event.target.value)}>
+              <option value="all">全部分组</option>
+              <option value="ungrouped">未分组</option>
+              {botGroups.map(name => <option key={name} value={'group:' + name}>{name}</option>)}
+              {botGroup.startsWith('group:') && !botGroups.includes(botGroup.slice(6)) && <option value={botGroup}>{botGroup.slice(6)}（已无 Bot）</option>}
+            </select></label>
+          </div>
           {bots.kind === 'ready' && <>
-            <p className="scheduler-filter-count" role="status">显示 {visibleBots.length} / {bots.bots.length}</p>
+            <div className="scheduler-bot-list-meta"><p className="scheduler-filter-count" role="status">显示 {visibleBots.length} / {bots.bots.length} 个 Bot</p>{(botFilter || botGroup !== 'all') && <button type="button" onClick={() => { setBotFilter(''); setBotGroup('all') }}>清除筛选</button>}</div>
             {bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">共享 Bot 目录没有 Bot JSON 文件。</p>}
             {bots.bots.length > 0 && visibleBots.length === 0 && <p>没有匹配的 Bot。清除筛选可查看全部。</p>}
-            <ul className="scheduler-map-list">{visibleBots.map((item) => <li key={item.id}>
-              <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={() => openBot(item.id)}><strong>{item.name}</strong><small>{item.id}</small></button>
-            </li>)}</ul>
+            <EntityGroups items={visibleBots} groupOf={item => item.group} listClass="scheduler-map-list">{(item) => <li key={item.id}>
+              <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={event => { botListPosition.current = { top: window.scrollY, button: event.currentTarget }; openBot(item.id) }}><strong>{item.name}</strong><small title={item.id}>{item.id}</small></button>
+              <GroupButton compact name={item.name} group={item.group} names={bots.bots.map(bot => bot.group)} disabled={editingBusy} onSave={group => changeGroup('bots', item.id, group)} />
+            </li>}</EntityGroups>
           </>}
         </section>
         <div className="scheduler-bot-main">
-          {editError && <p role="alert">{editError}</p>}
+          {botDetailOpen && <button type="button" className="scheduler-bot-back" disabled={editingBusy} onClick={returnToBotList}>← 返回 Bot 列表</button>}
           {draft ? editor : botId === null ? <div className="scheduler-placeholder"><h3>选择一个 Bot</h3><p>从左侧列表选择 Bot，分别阅读 when、plan_guide 和 node_guide。</p></div> : <>
-            {bot && !botProblem && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>edit</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>delete</button></div>}
+            {bot && !botProblem && <div className="scheduler-actions"><GroupButton name={bot.name} group={bot.group} names={bots.kind === 'ready' ? bots.bots.map(item => item.group) : []} disabled={editingBusy} onSave={group => changeGroup('bots', bot.id, group)} /><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>edit</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>delete</button></div>}
             <section aria-label="Bot 预览" className="scheduler-details">
               {bots.kind === 'ready' && (botProblem
                 ? <p role="alert">共享 Bot {botId}：{botProblem.message}</p>
@@ -156,29 +185,41 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     </div> : <div className="scheduler-layout">
       <aside id="scheduler-map-directory" className="scheduler-directory" aria-label="Map 文件目录">
         <div className="scheduler-section-heading scheduler-directory-heading"><h3 ref={directoryHeading} tabIndex={-1}>Map 目录</h3>{listing.kind === 'ready' && <span>{listing.files.length} 个文件</span>}{refreshButton}</div>
-        <label className="scheduler-filter">筛选 Map<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="名称或文件名…" /></label>
+        <div className="scheduler-map-filters">
+          <label className="scheduler-filter">筛选 Map<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="名称、文件名或组名…" /></label>
+          <label className="scheduler-filter">分组<select value={mapGroup} onChange={event => setMapGroup(event.target.value)}>
+            <option value="all">全部分组</option>
+            <option value="ungrouped">未分组</option>
+            {mapGroups.map(name => <option key={name} value={'group:' + name}>{name}</option>)}
+            {mapGroup.startsWith('group:') && !mapGroups.includes(mapGroup.slice(6)) && <option value={mapGroup}>{mapGroup.slice(6)}（已无 Map）</option>}
+          </select></label>
+        </div>
         {listing.kind === 'loading' && <p>正在读取 Map 目录……</p>}
         {listing.kind === 'error' && <p role="alert" data-testid="scheduler-error">{listing.message}</p>}
         {listing.kind === 'ready' && (listing.files.length === 0
           ? <p data-testid="scheduler-empty">此目录没有 Map JSON 文件。</p>
           : <>
-            <p className="scheduler-filter-count" role="status">显示 {visibleFiles.length} / {listing.files.length}</p>
+            <div className="scheduler-map-list-meta"><p className="scheduler-filter-count" role="status">显示 {visibleFiles.length} / {listing.files.length} 个 Map</p>{(filter || mapGroup !== 'all') && <button type="button" onClick={() => { setFilter(''); setMapGroup('all') }}>清除筛选</button>}</div>
             {visibleFiles.length === 0 && <p>没有匹配的 Map 文件。清除筛选可查看全部。</p>}
-            <ul data-testid="scheduler-map-list" className="scheduler-map-list">{visibleFiles.map((name) => <li key={name}>
+            <div data-testid="scheduler-map-list"><EntityGroups items={visibleFiles} groupOf={name => listing.groups?.[name]} listClass="scheduler-map-list">{(name) => <li key={name}>
               <button type="button" data-map-file={name} aria-pressed={file === name} onClick={() => selectFile(name)}>{listing.titles?.[name]?.trim() ? listing.titles[name] : name}</button>
-            </li>)}</ul>
+              <GroupButton compact name={listing.titles?.[name] || name} group={listing.groups?.[name]} names={Object.values(listing.groups ?? {})} disabled={editingBusy} onSave={group => changeGroup('maps', name, group)} />
+            </li>}</EntityGroups></div>
           </>)}
       </aside>
       <div className="scheduler-main">
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && !map && editor}
-        {file !== null && !draft && <div className="scheduler-actions scheduler-map-actions">
+        {file !== null && <div className="scheduler-actions scheduler-map-actions" role="group" aria-label="Map 操作">
+          {map && <GroupButton name={map.title} group={map.group} names={listing.kind === 'ready' ? Object.values(listing.groups ?? {}) : []} disabled={editingBusy} onSave={group => changeGroup('maps', file, group)} />}
+          {!draft && <>
           {map && <>
             <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
             <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setLaunchOpen(true); setInputsOpen(false) }}>+ 发起 Run</button>
             <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setInputsOpen(true); setLaunchOpen(false) }}>编辑文件输入声明</button>
           </>}
-          <button type="button" disabled={editingBusy || deletingMap} onClick={requestMapDeletion}>删除 Map</button>
+          <button type="button" className="scheduler-map-delete" disabled={editingBusy || deletingMap} onClick={requestMapDeletion}>删除 Map</button>
+          </>}
         </div>}
         {inputsOpen && file && !botView && !draft && <MapInputsEditor key={file} file={file} onClose={() => setInputsOpen(false)} onSaved={() => { setInputsOpen(false); refreshAll() }} />}
         {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} declarations={map?.input_files} active={active && !botView && !draft}

@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "optimize-prompt",
   "name": "通用提示词优化者",
   "when": "已明确文本意图与必须保留的语义，需要用 writing-for-agents 优化 Agent 文本表达时使用。直接使用本次材料，支持独立 Chat 与 workflow；不决定新的业务意图，不重做需求访谈。",

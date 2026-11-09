@@ -1,0 +1,13 @@
+.entity-group { min-width: 0; margin-block: 12px; }
+.entity-group > summary { cursor: pointer; padding: 10px 4px; font-weight: 600; overflow-wrap: anywhere; }
+.entity-group > summary span { font-weight: 400; }
+.entity-group > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.entity-group-button { color: inherit; }
+.entity-group-dialog { color: inherit; font: inherit; width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+.entity-group-dialog label { display: block; margin-block: 14px 6px; }
+.entity-group-dialog input, .entity-group-dialog select { width: 100%; box-sizing: border-box; }
+.scheduler-map-list .entity-group-dialog { font: inherit; }
+.scheduler-map-list li:has(> button + button) { display: flex; flex-wrap: wrap; gap: 4px; }
+.scheduler-map-list li:has(> button + button) > button:first-child { flex: 1 1 140px; }
+.scheduler-map-list li > button[aria-label^="group"] { width: auto; flex: 0 1 auto; padding: 8px; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .entity-group > summary { min-height: 44px; box-sizing: border-box; } .entity-group-dialog input, .entity-group-dialog select { min-height: 44px; font-size: 16px; } }

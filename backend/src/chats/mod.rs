@@ -461,6 +461,7 @@ mod tests {
     fn task(rule: &str) -> Task {
         Task {
             id: "tpl-literal".to_string(),
+            group: None,
             task_type: crate::tasks::TaskType::Normal,
             name: "审查".to_string(),
             chat_name: rule.to_string(),

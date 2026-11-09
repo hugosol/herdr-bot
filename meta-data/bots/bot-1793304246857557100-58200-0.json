@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "outline-planning",
   "name": "概要规划",
   "when": "需要澄清业务目标、调查和组合既有 Task 型／Map 型 Bot，并形成经用户确认的概要方案时使用。支持独立 Chat 与 workflow 节点；不创建能力、不生成 Map JSON、不调度或启动业务。",

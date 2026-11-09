@@ -302,6 +302,9 @@ pub fn app_with_state(
         .route("/api/suites/{id}", get(suites::get).put(suites::update).delete(suites::delete))
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
+        .route("/api/scheduler/maps/{name}/group", axum::routing::patch(scheduler::set_map_group))
+        .route("/api/scheduler/bots/{id}/group", axum::routing::patch(scheduler::set_bot_group))
+        .route("/api/tasks/{id}/group", axum::routing::patch(set_task_group))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
         .route("/api/scheduler/maps/{name}/inputs", get(scheduler::edit_map_inputs).post(scheduler::save_map_inputs))
         .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
@@ -868,6 +871,14 @@ async fn create_task(State(state): State<AppState>, request: Request) -> Respons
     task_list_response(&state, state.tasks.create(input).await)
 }
 
+async fn set_task_group(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(input): Json<tasks::GroupInput>,
+) -> Response {
+    task_list_response(&state, state.tasks.set_group(&id, input.group).await)
+}
+
 /// “编辑 Task”：标识不变；只有存储成功后返回当前完整列表。
 async fn update_task(
     State(state): State<AppState>,
@@ -987,7 +998,8 @@ fn task_error_with_context(error: tasks::TaskError, context: &str) -> Response {
         | TaskError::Metadata(_)
         | TaskError::Corrupt(_)
         | TaskError::WriteFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        TaskError::NameRequired
+        TaskError::InvalidGroup
+        | TaskError::NameRequired
         | TaskError::ChatNameRequired
         | TaskError::ChatNameNotSingleLine
         | TaskError::AgentRequired

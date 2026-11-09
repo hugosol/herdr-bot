@@ -70,23 +70,65 @@
 .scheduler-details li button { width: 100%; text-align: left; color: #b7d8f4; background: #19222d; }
 .scheduler-details li, .scheduler-details h3 { overflow-wrap: anywhere; }
 .scheduler-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.scheduler-bot-page { border: 1px solid var(--scheduler-line); border-radius: .65rem; background: #1b242d; padding: 1.5rem; min-width: 0; }
-.scheduler-bot-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }
-.scheduler-bot-heading h2 { margin: 0; font-size: 1.1rem; }
-.scheduler-bot-layout { display: grid; grid-template-columns: 18rem minmax(0, 1fr); border-top: 1px solid #465568; min-height: 35rem; }
-.scheduler-bot-directory { padding: 1.2rem 1.3rem 1.2rem 0; border-right: 1px solid var(--scheduler-line); min-width: 0; }
-.scheduler-bot-directory strong, .scheduler-bot-directory small { display: block; overflow-wrap: anywhere; }
-.scheduler-bot-directory small { color: var(--scheduler-muted); font: .75rem/1.8 Consolas, monospace; margin-top: .3rem; }
-.scheduler-bot-main { min-width: 0; padding: 1.5rem 2rem; background: #1b212a; }
-.scheduler-bot-main > .scheduler-actions { margin-bottom: 1rem; }
-.scheduler-bot-main .scheduler-details h3 { font-size: 1.5rem; }
-.scheduler-bot-sections { display: flex; flex-wrap: wrap; gap: .5rem; padding: 1.25rem 0 .7rem; margin-bottom: 2rem; border-bottom: 1px solid #465568; }
-@media (max-width: 760px) {
-  .scheduler-bot-page { padding: 1rem; }
-  .scheduler-bot-layout { grid-template-columns: minmax(0, 1fr); }
-  .scheduler-bot-directory { border-right: 0; padding-right: 0; }
-  .scheduler-bot-directory .scheduler-map-list { max-height: 18rem; overflow: auto; }
-  .scheduler-bot-main { padding: 1.25rem; }
+.scheduler-bot-page {
+  --bot-ground: #14161a;
+  --bot-surface: #1b1d21;
+  --bot-raised: #24262b;
+  --bot-control: #626870;
+  --scheduler-line: #35383e;
+  --scheduler-muted: #b4bac4;
+  --bot-ink: #f2f4f8;
+  min-width: 0; color: var(--bot-ink); background: var(--bot-surface); padding: 24px; border-radius: 8px;
+}
+.scheduler-bot-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.scheduler-bot-heading h1 { margin: 0; font-size: 24px; line-height: 1.3; }
+/* Full catalogue until a Bot is opened. Then: 360px directory + 24px gap + remaining detail. */
+.scheduler-bot-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.scheduler-bot-page[data-detail-open="true"] .scheduler-bot-layout { grid-template-columns: 360px minmax(0, 1fr); }
+.scheduler-bot-directory { min-width: 0; }
+.scheduler-bot-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+.scheduler-bot-page .scheduler-filter { font-size: 14px; }
+.scheduler-bot-page .scheduler-filter :is(input, select) { width: 100%; min-width: 0; min-height: 44px; padding: 10px; background: var(--bot-ground); color: var(--bot-ink); border: 1px solid var(--bot-control); border-radius: 6px; font: inherit; }
+.scheduler-bot-page input::placeholder { color: var(--scheduler-muted); opacity: 1; }
+.scheduler-bot-list-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; }
+.scheduler-bot-page .scheduler-filter-count { font-size: 12px; font-variant-numeric: tabular-nums; margin: 12px 0; }
+.scheduler-bot-page .entity-group { margin: 0 0 20px; }
+.scheduler-bot-page .entity-group > summary { padding: 12px; min-height: 44px; background: var(--bot-raised); border-radius: 4px; font-size: 14px; }
+.scheduler-bot-page .entity-group > summary span { float: right; font-size: 12px; color: var(--scheduler-muted); font-variant-numeric: tabular-nums; }
+.scheduler-bot-page .scheduler-map-list { gap: 0; }
+@media (min-width: 1101px) {
+  .scheduler-bot-page[data-detail-open="false"] .scheduler-map-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+}
+.scheduler-bot-page .scheduler-map-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--scheduler-line); }
+.scheduler-bot-page .scheduler-map-list li > button:first-child { min-width: 0; padding: 14px 12px; }
+.scheduler-bot-directory strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.scheduler-bot-directory small { display: block; color: var(--scheduler-muted); font: 12px/1.5 Consolas, monospace; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scheduler-bot-page .scheduler-map-list li > .entity-group-button { padding: 8px 12px; font-size: 12px; white-space: nowrap; color: var(--scheduler-muted); }
+.scheduler-bot-page button { color: var(--bot-ink); background: transparent; box-shadow: none; }
+.scheduler-bot-page button:hover:not(:disabled) { background: var(--bot-raised); }
+.scheduler-bot-page button[aria-pressed="true"] { background: var(--bot-raised); border-color: transparent; border-bottom: 1px solid var(--scheduler-accent); box-shadow: none; }
+.scheduler-bot-page :is(button, input, select, summary):focus-visible { outline: 2px solid var(--scheduler-accent); outline-offset: 2px; }
+.scheduler-bot-page button:active:not(:disabled) { transform: translateY(1px); }
+.scheduler-bot-main { min-width: 0; padding: 20px; background: var(--bot-ground); border-radius: 8px; }
+.scheduler-bot-page[data-detail-open="false"] .scheduler-bot-main { display: none; }
+.scheduler-bot-back { margin-bottom: 16px; }
+.scheduler-bot-main > .scheduler-actions { margin-bottom: 16px; justify-content: flex-start; }
+.scheduler-bot-main .scheduler-details h3 { font-size: 22px; }
+.scheduler-bot-main .scheduler-details dd { background: var(--bot-surface); }
+.scheduler-bot-main .scheduler-details pre { font-size: 14px; line-height: 1.7; }
+.scheduler-bot-sections { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 0; margin-bottom: 16px; border-bottom: 1px solid var(--scheduler-line); }
+@media (max-width: 1100px) {
+  .scheduler-bot-page[data-detail-open="true"] .scheduler-bot-layout { grid-template-columns: minmax(0, 1fr); }
+  .scheduler-bot-page[data-detail-open="true"] .scheduler-bot-directory { display: none; }
+}
+@media (max-width: 650px) {
+  .scheduler-bot-page { padding: 16px; }
+  .scheduler-bot-heading h1 { font-size: 22px; }
+  .scheduler-bot-filters { grid-template-columns: minmax(0, 1fr); }
+  .scheduler-bot-page .scheduler-filter :is(input, select) { font-size: 16px; }
+  .scheduler-bot-main { padding: 16px; }
+  .scheduler-bot-page .scheduler-map-list li > button:first-child { padding-inline: 4px; }
+  .scheduler-bot-page .scheduler-map-list li > .entity-group-button { padding-inline: 8px; }
 }
 .scheduler-run-form { display: grid; gap: .85rem; padding: 1.25rem; border-bottom: 1px solid var(--scheduler-line); min-width: 0; }
 .scheduler-run-form label { display: grid; gap: .5rem; min-width: 0; }

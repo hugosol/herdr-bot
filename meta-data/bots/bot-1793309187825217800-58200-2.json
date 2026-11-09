@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "create-task",
   "name": "Task 创建者",
   "when": "需要把业务需求澄清为固定指示和执行配置，并新建一个 normal Task 时使用。交付经确认、保存及完整读回的配置；Bot 包装、既有 Task 优化和业务运行另行安排。",

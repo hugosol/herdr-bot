@@ -71,5 +71,6 @@
       "zone": "hugosol/herdr-bot"
     }
   },
+  "group": "meta-map",
   "title": "创建map"
 }

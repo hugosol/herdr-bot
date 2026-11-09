@@ -10,6 +10,8 @@ use std::collections::{BTreeMap, VecDeque};
 #[serde(deny_unknown_fields)]
 struct WorkflowMap {
     title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
     description: String,
     #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
     input_files: Vec<MapFileInput>,
@@ -224,6 +226,9 @@ pub(crate) fn valid_relative_file(path: &str) -> bool {
 }
 
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
+    if !crate::tasks::valid_group(map.group.as_deref()) {
+        return Err(map_error("分组名称不能为空或包含首尾空白。"));
+    }
     let mut input_ids = std::collections::BTreeSet::new();
     for input in &map.input_files {
         if input.id.trim().is_empty() || !input_ids.insert(&input.id) {
@@ -601,6 +606,8 @@ pub async fn preflight_run(
 #[serde(deny_unknown_fields)]
 struct Bot {
     id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
     name: String,
     when: String,
     plan_guide: String,
@@ -613,6 +620,9 @@ struct Bot {
 
 impl Bot {
     fn validate_target(&self) -> Result<(), DirectoryError> {
+        if !crate::tasks::valid_group(self.group.as_deref()) {
+            return Err(edit_error("group-invalid", "分组名称不能为空或包含首尾空白。"));
+        }
         if self.task_id.is_some() && self.map_file.is_some() {
             return Err(edit_error("bot-invalid", "Bot 的 task_id 与 map_file 互斥；请只选择一个执行目标。"));
         }
@@ -882,6 +892,13 @@ pub async fn save_bot(
             .map_err(|e| edit_error("bot-invalid", format!("Bot JSON 无效：{e}")))?;
         let object = content.as_object_mut().ok_or_else(|| edit_error("bot-invalid", "Bot 内容必须为 JSON 对象。"))?;
         if object.contains_key("id") { return Err(edit_error("bot-invalid", "请移除 Bot 内容中的顶层 id；使用独立 Bot ID。")); }
+        if !object.contains_key("group") {
+            if let Some(revision) = bot_target(access, &state.bot_directory, &draft.id)? {
+                let JsonObject(existing): JsonObject<Bot> = serde_json::from_str(&revision.original)
+                    .map_err(|error| edit_error("bot-invalid", error.to_string()))?;
+                if let Some(group) = existing.group { object.insert("group".into(), group.into()); }
+            }
+        }
         object.insert("id".into(), serde_json::Value::String(draft.id.clone()));
         let JsonObject(bot): JsonObject<Bot> = serde_path_to_error::deserialize(content)
             .map_err(|e| edit_error("bot-invalid", format!("Bot 结构无效：{e}")))?;
@@ -1083,16 +1100,20 @@ struct MapCatalog {
     files: Vec<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     titles: BTreeMap<String, String>,
+    groups: BTreeMap<String, String>,
 }
 
 fn read_map_catalog(access: &FileAccess, directory: &Path) -> Result<MapCatalog, DirectoryError> {
     let files = read_files(access, directory)?.files;
-    let titles = files.iter().filter_map(|name| {
-        let map = read_map(access, directory, name).ok()?;
-        if map.title.trim().is_empty() { return None; }
-        Some((name.clone(), map.title))
-    }).collect();
-    Ok(MapCatalog { files, titles })
+    let mut titles = BTreeMap::new();
+    let mut groups = BTreeMap::new();
+    for name in &files {
+        if let Ok(map) = read_map(access, directory, name) {
+            if !map.title.trim().is_empty() { titles.insert(name.clone(), map.title); }
+            if let Some(group) = map.group { groups.insert(name.clone(), group); }
+        }
+    }
+    Ok(MapCatalog { files, titles, groups })
 }
 
 struct DirectoryError { code: &'static str, message: String }
@@ -1104,7 +1125,7 @@ impl DirectoryError {
 impl IntoResponse for DirectoryError {
     fn into_response(self) -> Response {
         let status = match self.code {
-            "map-input-invalid" => StatusCode::BAD_REQUEST,
+            "map-input-invalid" | "group-invalid" => StatusCode::BAD_REQUEST,
             "map-conflict" | "bot-conflict" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -1240,6 +1261,69 @@ pub async fn delete_map(
         Ok(Ok(files)) => Json(files).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" )).into_response(),
+    }
+}
+
+pub(crate) async fn set_map_group(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(input): Json<crate::tasks::GroupInput>,
+) -> Response {
+    if !crate::tasks::valid_group(input.group.as_deref()) {
+        return edit_error("group-invalid", "分组名称不能为空或包含首尾空白。").into_response();
+    }
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
+        let original = read_map_source(access, &state.map_directory, &name)?;
+        let mut map = parse_map(&original)?;
+        map.group = input.group;
+        let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
+        let root = prepare_directory(access, &state.map_directory)?;
+        access.publish_checked(&root.join(&name), &bytes, PublishMode::Replace, |_| {
+            if read_map_source(access, &state.map_directory, &name)? != original {
+                return Err(edit_error("map-conflict", "Map 文件已变化；请重新加载。"));
+            }
+            Ok(())
+        }, |error| edit_error("map-write-failed", error.to_string()))?;
+        let mut value = serde_json::to_value(map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
+        value["revision"] = serde_json::json!({"file":name,"original":String::from_utf8(bytes).expect("JSON is UTF-8")});
+        Ok(value)
+    })).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+    }
+}
+
+pub(crate) async fn set_bot_group(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(input): Json<crate::tasks::GroupInput>,
+) -> Response {
+    if !crate::tasks::valid_group(input.group.as_deref()) {
+        return edit_error("group-invalid", "分组名称不能为空或包含首尾空白。").into_response();
+    }
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone()], "bot-write-failed", |access| {
+        let revision = bot_target(access, &state.bot_directory, &id)?
+            .ok_or_else(|| edit_error("bot-conflict", "Bot 已移除；请重新加载。"))?;
+        let JsonObject(mut bot): JsonObject<Bot> = serde_json::from_str(&revision.original)
+            .map_err(|error| edit_error("bot-invalid", error.to_string()))?;
+        bot.validate_target()?;
+        bot.group = input.group;
+        let bytes = serde_json::to_vec_pretty(&bot).map_err(|error| edit_error("bot-write-failed", error.to_string()))?;
+        let root = prepare_directory(access, &state.bot_directory).map_err(bot_directory_error)?;
+        access.publish_checked(&root.join(&revision.file), &bytes, PublishMode::Replace, |_| {
+            if bot_target(access, &state.bot_directory, &id)?.as_ref() != Some(&revision) {
+                return Err(edit_error("bot-conflict", "Bot 文件已变化；请重新加载。"));
+            }
+            Ok(())
+        }, |error| edit_error("bot-write-failed", error.to_string()))?;
+        let mut value = serde_json::to_value(bot).map_err(|error| edit_error("bot-write-failed", error.to_string()))?;
+        value["revision"] = serde_json::json!({"file":revision.file,"original":String::from_utf8(bytes).expect("JSON is UTF-8")});
+        Ok(value)
+    })).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("bot-write-failed", error.to_string()).into_response(),
     }
 }
 

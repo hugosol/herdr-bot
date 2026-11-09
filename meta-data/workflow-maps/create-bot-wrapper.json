@@ -1,4 +1,5 @@
 {
+  "group": "meta-map",
   "title": "创建bot",
   "description": "为真实既有 normal Task／Map 创建完整 Bot：request 提供创建委托与业务需求，materials 为可选参考材料；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
   "input_files": [

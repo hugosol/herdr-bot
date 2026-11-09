@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { fetchTasks, type Task } from '../tasks/taskApi'
 import { fetchZones, type ZoneRegistration } from '../zones/zoneApi'
 import { preflightRun, startRun, type MapFileInput, type PreflightIssue, type RunPreflightInput, type RunPreflightResult } from './schedulerApi'
@@ -16,6 +17,7 @@ type Props = {
 
 /** Preflight and launch share the backend's whole-Map admission check. */
 export function RunLaunchForm({ file, declarations = [], active, onClose, onNode, onBot, onTask, onZones }: Props) {
+  const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[]>([])
   const [zones, setZones] = useState<ZoneRegistration[]>([])
   const [input, setInput] = useState<RunPreflightInput>({ managerTaskId: '', zone: '', userInput: '' })
@@ -42,7 +44,7 @@ export function RunLaunchForm({ file, declarations = [], active, onClose, onNode
       setResult(null)
     })
     return () => { cancelled = true }
-  }, [active, revision])
+  }, [active, revision, groupRevision])
 
   function change(patch: Partial<RunPreflightInput>) {
     setInput(value => ({ ...value, ...patch }))
@@ -96,7 +98,7 @@ export function RunLaunchForm({ file, declarations = [], active, onClose, onNode
     <p>选择管理者配置并检查整张 Map。校验不创建 Run 或 Chat；启动 Run 会再次预检，保存本次要求并启动真实管理者，取得标识后进入只读详情。</p>
     <label>管理者 Task<select aria-label="管理者 Task" value={input.managerTaskId} disabled={loading || busy} onChange={event => change({ managerTaskId: event.target.value })}>
       <option value="">请选择管理者 Task</option>
-      {tasks.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
+      <GroupOptions items={tasks} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name}</option>}</GroupOptions>
     </select></label>
     {!loading && tasks.length === 0 && <p>没有可选的 manager 类型 Task。<button type="button" onClick={() => onTask()}>管理 Task</button></p>}
     <label>管理者 zone<select aria-label="管理者 zone" value={input.zone} disabled={loading || busy} onChange={event => change({ zone: event.target.value })}>

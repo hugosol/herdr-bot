@@ -1,4 +1,5 @@
 export type Bot = {
+  group?: string | null
   id: string
   name: string
   when: string
@@ -42,7 +43,7 @@ export type BotCatalog = { bots: Bot[]; problems?: BotProblem[] }
 
 function isBotCatalog(value: unknown): value is BotCatalog {
   if (typeof value !== 'object' || value === null || !('bots' in value) || !Array.isArray(value.bots)) return false
-  if (!value.bots.every(bot => bot && ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof bot[key] === 'string'))) return false
+  if (!value.bots.every(bot => bot && (bot.group == null || (typeof bot.group === 'string' && bot.group.length > 0 && bot.group.trim() === bot.group)) && ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof bot[key] === 'string'))) return false
   return !('problems' in value) || (Array.isArray(value.problems) && value.problems.every(problem => problem && typeof problem.code === 'string' && typeof problem.message === 'string' && Array.isArray(problem.files)))
 }
 
@@ -56,14 +57,30 @@ export async function listBots(signal?: AbortSignal): Promise<BotCatalog> {
 
 export type BotRevision = { file: string; original: string }
 
+/** Only a membership-only write may advance an open draft's optimistic revision. */
+export function groupOnlyRevision(previous: BotRevision | null, next: BotRevision): boolean {
+  if (!previous || previous.file !== next.file) return false
+  try {
+    const withoutGroup = (source: string) => {
+      const value: unknown = JSON.parse(source)
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+      const { group: _group, ...definition } = value as Record<string, unknown>
+      return JSON.stringify(definition)
+    }
+    const before = withoutGroup(previous.original)
+    return before !== null && before === withoutGroup(next.original)
+  } catch { return false }
+}
+
 export async function loadBotDraft(id: string | null): Promise<{ id: string; content: string; revision: BotRevision | null }> {
   const response = await fetch(id === null ? '/api/scheduler/bots/new' : '/api/scheduler/bots/edit', id === null ? undefined : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
   })
   const value = await response.json()
   if (!response.ok) throw new Error(value.message ?? `Bot 读取失败：HTTP ${response.status}`)
-  return id === null ? { id: '', content: JSON.stringify(value, null, 2), revision: null }
-    : { id: value.id, content: JSON.stringify(value.content, null, 2), revision: value.revision }
+  const content = id === null ? value : value.content
+  const { group: _group, ...fields } = content
+  return { id: id === null ? '' : value.id, content: JSON.stringify(fields, null, 2), revision: id === null ? null : value.revision }
 }
 
 async function writeDefinition(url: string, payload: unknown, valid: (value: unknown) => boolean, label: string): Promise<unknown> {
@@ -102,7 +119,7 @@ function isMapFileInputs(value: unknown): value is MapFileInput[] {
 }
 
 function isMap(value: unknown): value is WorkflowMap {
-  return typeof value === 'object' && value !== null && 'title' in value && typeof value.title === 'string' &&
+  return typeof value === 'object' && value !== null && (!('group' in value) || value.group == null || (typeof value.group === 'string' && value.group.length > 0 && value.group.trim() === value.group)) && 'title' in value && typeof value.title === 'string' &&
     (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
     Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && typeof node.zone === 'string' && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
@@ -110,6 +127,7 @@ function isMap(value: unknown): value is WorkflowMap {
 
 function isCatalog(value: unknown): value is MapCatalog {
   return typeof value === 'object' && value !== null && 'files' in value && Array.isArray(value.files) && value.files.every(name => typeof name === 'string') &&
+    (!('groups' in value) || (typeof value.groups === 'object' && value.groups !== null && !Array.isArray(value.groups) && Object.values(value.groups).every(group => typeof group === 'string' && group.length > 0 && group.trim() === group))) &&
     (!('titles' in value) || (typeof value.titles === 'object' && value.titles !== null && !Array.isArray(value.titles) && Object.values(value.titles).every(title => typeof title === 'string')))
 }
 
@@ -193,6 +211,7 @@ export async function saveMapInputs(file: string, draft: { input_files: unknown;
 }
 
 export type WorkflowMap = {
+  group?: string | null
   title: string
   description: string
   input_files?: MapFileInput[]
@@ -207,7 +226,15 @@ export async function loadMap(name: string, signal?: AbortSignal): Promise<Workf
   return value
 }
 
-export type MapCatalog = { files: string[]; titles?: Record<string, string> }
+export type MapCatalog = { files: string[]; titles?: Record<string, string>; groups?: Record<string, string> }
+
+export async function updateEntityGroup(kind: 'bots' | 'maps', id: string, group: string | null): Promise<BotRevision> {
+  const response = await fetch(`/api/scheduler/${kind}/${encodeURIComponent(id)}/group`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group }) })
+  const value = await response.json()
+  if (!response.ok) throw new Error(value?.message ?? `分组保存失败：HTTP ${response.status}`)
+  if (typeof value !== 'object' || value === null || (value.group ?? null) !== group || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('无法确认分组保存结果：响应无效。请刷新核实。')
+  return value.revision
+}
 
 export async function listMaps(signal?: AbortSignal): Promise<MapCatalog> {
   const response = await fetch('/api/scheduler/maps', { signal })

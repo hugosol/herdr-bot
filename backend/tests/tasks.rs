@@ -30,6 +30,128 @@ fn tasks_of(response: &HttpResponse) -> Vec<Value> {
         .clone()
 }
 
+#[tokio::test]
+async fn task_groups_save_preserve_clear_and_validate_without_changing_identity() {
+    let dir = TempDir::new("task groups HTTP");
+    let storage = dir.path().join("tasks.json");
+    let server = TestServer::start(&config_with_tasks(&storage)).await;
+    let mut input = json!({"name":"Grouped", "chatName":"{task.name}", "agent":"pi"});
+    let created = tasks_of(&post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await);
+    assert!(created[0].get("group").is_none());
+    let id = created[0]["id"].as_str().unwrap();
+    let route = format!("/api/tasks/{id}/group");
+    for name in ["Operations", "operations", "研发 / arbitrary"] {
+        let changed = tasks_of(&common::request_json_over_tcp(server.addr(), "PATCH", &route, Some(&json!({"group":name}).to_string())).await);
+        assert_eq!(changed[0]["group"], name);
+        assert_eq!(changed[0]["id"], id);
+        input["prompt"] = json!("Unrelated update");
+        let updated = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
+        assert_eq!(updated[0]["group"], name);
+        let persisted: Value = serde_json::from_slice(&std::fs::read(&storage).unwrap()).unwrap();
+        assert_eq!(persisted["tasks"][0]["group"], name);
+        assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), updated);
+    }
+    for invalid in ["", " ", " leading", "trailing ", "\nname"] {
+        let before = std::fs::read(&storage).unwrap();
+        let rejected = common::request_json_over_tcp(server.addr(), "PATCH", &route, Some(&json!({"group":invalid}).to_string())).await;
+        assert_eq!(rejected.status, 400, "{}", rejected.body);
+        assert!(rejected.body.contains("group-invalid"));
+        input["group"] = json!(invalid);
+        let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await;
+        assert_eq!(rejected.status, 400, "{}", rejected.body);
+        assert_eq!(std::fs::read(&storage).unwrap(), before);
+    }
+    input["group"] = Value::Null;
+    let cleared = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
+    assert!(cleared[0].get("group").is_none());
+    let grouped = tasks_of(&common::request_json_over_tcp(server.addr(), "PATCH", &route, Some("{\"group\":\"Again\"}")).await);
+    assert_eq!(grouped[0]["group"], "Again");
+    let cleared = tasks_of(&common::request_json_over_tcp(server.addr(), "PATCH", &route, Some("{\"group\":null}")).await);
+    assert!(cleared[0].get("group").is_none());
+    assert_eq!(cleared[0]["prompt"], "Unrelated update");
+    let missing = common::request_json_over_tcp(server.addr(), "PATCH", &route, Some("{}")).await;
+    assert!(missing.status >= 400, "{}", missing.body);
+}
+
+#[tokio::test]
+async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() {
+    let dir = TempDir::new("scheduler groups HTTP");
+    let mut config = config_with_tasks(&dir.path().join("tasks.json"));
+    config.scheduler.map_directory = dir.path().join("maps");
+    config.scheduler.bot_directory = dir.path().join("bots");
+    std::fs::create_dir_all(&config.scheduler.map_directory).unwrap();
+    std::fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
+    let map_path = config.scheduler.map_directory.join("work.json");
+    std::fs::write(&map_path, json!({"title":"Work", "description":"Keep description", "nodes":{}}).to_string()).unwrap();
+    let server = TestServer::start(&config).await;
+    let bot_content = json!({"name":"Worker", "when":"Keep when", "plan_guide":"Keep plan", "node_guide":"Keep node", "task_id":"stable-task"});
+    let saved = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":null}).to_string()).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    assert!(serde_json::from_str::<Value>(&saved.body).unwrap().get("group").is_none());
+    let bot_route = "/api/scheduler/bots/worker/group";
+    let map_route = "/api/scheduler/maps/work.json/group";
+    for name in ["Operations", "operations", "研发 / arbitrary"] {
+        let mut revisions = Vec::new();
+        for route in [bot_route, map_route] {
+            let response = common::request_json_over_tcp(server.addr(), "PATCH", route, Some(&json!({"group":name}).to_string())).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+            let value: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(value["group"], name);
+            let persisted: Value = serde_json::from_str(value["revision"]["original"].as_str().unwrap()).unwrap();
+            assert_eq!(persisted["group"], name);
+            revisions.push(value["revision"].clone());
+        }
+        // A narrow membership write refreshes revisions without replacing unsaved editor fields.
+        let response = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":revisions[0]}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
+        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"brief","required":true}], "revision":revisions[1]}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
+        let maps: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps").await.body).unwrap();
+        assert_eq!(maps["groups"]["work.json"], name);
+        assert_eq!(maps["titles"]["work.json"], "Work");
+        let bots: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/bots").await.body).unwrap();
+        assert_eq!(bots["bots"][0]["group"], name);
+        assert_eq!(bots["bots"][0]["task_id"], "stable-task");
+    }
+    for invalid in ["", " ", " leading", "trailing ", "\nname"] {
+        for route in [bot_route, map_route] {
+            let rejected = common::request_json_over_tcp(server.addr(), "PATCH", route, Some(&json!({"group":invalid}).to_string())).await;
+            assert_eq!(rejected.status, 400, "{}", rejected.body);
+            assert!(rejected.body.contains("group-invalid"));
+        }
+        let mut content = bot_content.clone();
+        content["group"] = json!(invalid);
+        let edit = post_json_over_tcp(server.addr(), "/api/scheduler/bots/edit", "{\"id\":\"worker\"}").await;
+        let edit: Value = serde_json::from_str(&edit.body).unwrap();
+        let rejected = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":content.to_string(), "revision":edit["revision"]}).to_string()).await;
+        assert!(rejected.status >= 400, "{}", rejected.body);
+    }
+    let edit = post_json_over_tcp(server.addr(), "/api/scheduler/bots/edit", "{\"id\":\"worker\"}").await;
+    let edit: Value = serde_json::from_str(&edit.body).unwrap();
+    let mut clear_content = bot_content.clone();
+    clear_content["group"] = Value::Null;
+    let cleared = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":clear_content.to_string(), "revision":edit["revision"]}).to_string()).await;
+    assert_eq!(cleared.status, 200, "{}", cleared.body);
+    assert!(serde_json::from_str::<Value>(&cleared.body).unwrap().get("group").is_none());
+    let regrouped = common::request_json_over_tcp(server.addr(), "PATCH", bot_route, Some("{\"group\":\"Again\"}")).await;
+    assert_eq!(regrouped.status, 200, "{}", regrouped.body);
+    for route in [bot_route, map_route] {
+        let cleared = common::request_json_over_tcp(server.addr(), "PATCH", route, Some("{\"group\":null}")).await;
+        assert_eq!(cleared.status, 200, "{}", cleared.body);
+        assert!(serde_json::from_str::<Value>(&cleared.body).unwrap().get("group").is_none());
+        let missing = common::request_json_over_tcp(server.addr(), "PATCH", route, Some("{}")).await;
+        assert!(missing.status >= 400, "{}", missing.body);
+    }
+    let maps: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps").await.body).unwrap();
+    assert_eq!(maps["groups"], json!({}));
+    let persisted: Value = serde_json::from_slice(&std::fs::read(&map_path).unwrap()).unwrap();
+    assert!(persisted.get("group").is_none());
+    assert_eq!(persisted["description"], "Keep description");
+    assert_eq!(persisted["input_files"], json!([{"id":"brief", "required":true}]));
+}
+
 // Both hosts support every Task role; role extensions remain fixed resources,
 // never caller-selectable permissions. Observe the persisted HTTP contract.
 #[tokio::test]

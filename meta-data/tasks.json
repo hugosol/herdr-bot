@@ -84,6 +84,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e2c2827c484128-0",
       "name": "manager",
       "chatName": "{zone.name} · {task.name} · {chat.id}",
@@ -107,6 +108,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e318b13b71a8bc-0",
       "name": "概要规划",
       "chatName": "[概要规划] {zone.name} · {chat.id}",
@@ -119,6 +121,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e319d73777fc6c-1",
       "name": "概要方案转 Map",
       "chatName": "[Plan to Map] {zone.name} · {chat.id}",
@@ -131,6 +134,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e31d30fe69a51c-2",
       "name": "Task 创建者",
       "chatName": "{task.name} · {chat.id}",
@@ -143,6 +147,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e31d34797f1464-3",
       "name": "通用提示词优化者",
       "chatName": "{task.name} · {chat.id}",
@@ -179,6 +184,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e33fdc55177d1c-1",
       "name": "空白 Bot 创建者",
       "chatName": "[空白 Bot 创建] {zone.name} · {chat.id}",
@@ -191,6 +197,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e3404478db1ef8-2",
       "name": "Bot.when 编写者",
       "chatName": "[when 编写] {zone.name} · {chat.id}",
@@ -203,6 +210,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e340545eb481bc-3",
       "name": "Bot.plan_guide 编写者",
       "chatName": "[plan_guide 编写] {zone.name} · {chat.id}",
@@ -215,6 +223,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e340f5287462ec-4",
       "name": "Bot.node_guide 编写者",
       "chatName": "[node_guide 编写] {zone.name} · {chat.id}",
@@ -227,6 +236,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e3415003d8cd00-5",
       "name": "通用文本替换者",
       "chatName": "[文本替换] {zone.name} · {chat.id}",
@@ -262,6 +272,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e65aed740825f8-0",
       "name": "prompt优化者——Map维度",
       "chatName": "[Map 提示词优化] {zone.name} · {chat.id}",
@@ -274,6 +285,7 @@
       "suite": "codebase-exploration"
     },
     {
+      "group": "meta-task",
       "id": "task-18e66273ae718d14-1",
       "name": "prompt优化者——Bot维度",
       "chatName": "[Bot 提示词优化] {zone.name} · {chat.id}",
