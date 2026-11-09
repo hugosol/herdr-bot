@@ -36,13 +36,13 @@ class PlanWorkflowScenario:
         super().configure_model()
         # Copy only the explicit read-only dependency skills, never user state.
         source = self.args.pi_state_extension.parent.parent / 'skills'
-        for name in ['grill-with-docs', 'grilling', 'domain-modeling']:
+        for name in ['grill-with-docs', 'grilling', 'domain-modeling', 'writing-for-agents']:
             self.check((source / name / 'SKILL.md').is_file(), ('Missing actual planning skill dependency', str(source / name)))
             shutil.copytree(source / name, self.root / 'agent/skills' / name)
         self.evidence['planningSkills'] = {name: {
             'source': str(source / name),
             'sha256': hashlib.sha256((source / name / 'SKILL.md').read_bytes()).hexdigest()
-        } for name in ['grill-with-docs', 'grilling', 'domain-modeling']}
+        } for name in ['grill-with-docs', 'grilling', 'domain-modeling', 'writing-for-agents']}
 
     def write_business_program(self):
         # RolesAcceptance.prepare invokes this after provisioning the real host.
@@ -52,11 +52,12 @@ class PlanWorkflowScenario:
         self.check(suite_entry.is_file(), ('Missing actual Pi Suite factory', str(suite_entry)))
         options.write_text(options.read_text(encoding='utf-8').replace('skills = []\n', '') +
             '\n[[skills]]\nid = "grill-with-docs"\nlabel = "/grill-with-docs"\nnative_name = "grill-with-docs"\n' +
+            '\n[[skills]]\nid = "writing-for-agents"\nlabel = "/writing-for-agents"\nnative_name = "writing-for-agents"\n' +
             '\n[[extensions]]\nid = "pi-suite"\nlabel = "Pi Suite"\nagent = "pi"\nkind = "fixed"\nentrypoint = ' + json.dumps(str(suite_entry)) + '\n', encoding='utf-8')
         # The isolated backend owns this Suite; no machine/user deployment is read.
         planning_suite = {'id': 'acceptance-planning', 'name': 'Isolated planning',
             'agents': ['pi'], 'skills': {'pi': [str(self.root / 'agent/skills' / name)
-                for name in ['grill-with-docs', 'grilling', 'domain-modeling']]},
+                for name in ['grill-with-docs', 'grilling', 'domain-modeling', 'writing-for-agents']]},
             'extensions': {}, 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
         self.http('/api/suites', planning_suite)
         self.evidence['planningSuite'] = planning_suite
@@ -86,7 +87,7 @@ class PlanWorkflowScenario:
             'repository': str(REPO), 'service': self.backend_wire.base, 'zone': str(self.root / 'zone'),
             'host': 'Pi', 'model': self.provider_model,
             'note': 'Task business prompts and initial skill preserved; host/model, selected Suite resources, fixed Pi Suite factory and physical locations relocated to explicit isolated deployment.'}}
-        for name in ['manager', '概要规划', '概要方案转 Map']:
+        for name in ['manager', '概要规划', '概要方案转 Map', 'prompt优化者——Map维度']:
             original = next(task for task in tasks if task['name'] == name)
             deployed = {key: value for key, value in original.items() if key != 'id'}
             deployed.update(agent='pi', model='probe', thinking='default', suite=planning_suite['id'] if original.get('suite') else None)
@@ -94,7 +95,8 @@ class PlanWorkflowScenario:
             saved = next(task for task in result['tasks'] if task['name'] == name)
             self.ids[name] = saved['id']
             self.deployment['tasks'].append({'original': original, 'deployed': saved})
-        for filename in ['bot-1793304246857557100-58200-0.json', 'bot-1793305512701853300-58200-1.json']:
+        for filename in ['bot-1793304246857557100-58200-0.json', 'bot-1793305512701853300-58200-1.json',
+                'bot-1794222010819446100-10104-0.json']:
             original = json.loads((REPO / 'meta-data/bots' / filename).read_text(encoding='utf-8'))
             deployed = json.loads(json.dumps(original, ensure_ascii=False))
             deployed['task_id'] = self.ids[deployed['name']]
@@ -297,10 +299,11 @@ else:
             '各工作完成条件明确：W1 产出 books=1500、food=800 的分类金额；W2 独立验证金额、列及币种后交付 accepted=true 的 review.json。'
             f'配置服务 {self.backend_wire.base}；配置源 {self.root / "backend.toml"}，服务 cwd {self.root}；产品文档根 {REPO}。'
             '缺新业务 managerTaskId/管理者 zone/userInput，不授权代选或从本自举 Run 继承，不做启动预检。'
-            '只授权只读调查、规划材料和静态新 Map，不执行汇总/核对业务，不启动生成 Map，不修改已有配置和运行记录。'
+            '只授权只读调查、规划材料、静态新 Map 及其后续提示词优化与交付材料；本验收具体边界仅为新 Map，相关 Task/Bot/文档只读。'
+            '不执行汇总/核对业务，不启动生成 Map，不修改已有配置和运行记录。'
             '当前没有 Skill 工具时，直接读取隔离 skills 下真实 grilling/domain-modeling 指引完成讨论；不为讨论另建或改写产品领域文档。'
             '管理者先 dispatch outline，再 collect 等待报告；读报告后核实用户确认范围及 manual 发送依据，显式 complete outline、dispatch generate_map。'
-            '生成节点完成后核对报告并显式 complete、finish。管理者无需读取详细业务文件，报告不自动推进。')
+            '生成节点完成后核对报告并显式 complete、dispatch optimize_map；优化节点经用户单独确认发送 manual 报告后，验收并 complete、finish。报告不自动推进。')
         self.evidence['initialUserInput'] = context
         started = self.start_plan(context, 'success')
         def running_outline():
@@ -337,7 +340,17 @@ else:
         self.confirmations['success'] = {'revision': revision, 'approval': approval, 'path': str(confirmed_path), 'draftSha256': hashlib.sha256(before.encode()).hexdigest()}
         send = '用户报告发送确认 P28-SEND-R2：同意现在发送当前已确认 p27-business-plan r2 的 manual 报告，登记刚刚保存读回的概要方案绝对路径为 outline 命名输出；只声明实际完成情况，不启动新业务。'
         self.user_input(chat, send, 'separate explicit manual report send approval')
-        final = self.wait_for('native manager explicitly finishes outline to generated Map', lambda: (detail if (detail := self.detail())['run']['status'] == 'completed' else None))
+        def running_optimizer():
+            execution = self.detail()['run']['nodes']['optimize_map'].get('execution')
+            return execution['chat'] if execution and execution.get('chat') else None
+        optimizer = self.wait_for('native manager dispatches Map optimizer', running_optimizer)
+        self.await_chat(optimizer, 'optimizer saves scoped Map and awaits manual report confirmation')
+        self.check(not any(report['nodeId'] == 'optimize_map' for report in self.detail()['reports']),
+            'Optimizer reported before separate user send approval')
+        optimize_send = '用户报告发送确认：同意发送本次 Map 优化 manual 报告，登记最终完整 Map 为 map、优化说明为 handoff；如实说明检查结果与行为未验证。'
+        self.user_input(optimizer, optimize_send, 'separate optimizer manual report send approval')
+        self.confirmations['optimization'] = optimize_send
+        final = self.wait_for('native manager explicitly finishes optimized Map', lambda: (detail if (detail := self.detail())['run']['status'] == 'completed' else None))
         self.evidence['successFinal'] = final
         self.verify_success(final, chat, confirmed_path, approval, send)
         self.exercise_gap(context)
@@ -370,9 +383,20 @@ else:
     def verify_success(self, final, outline_chat, confirmed_path, approval, send):
         outline = final['run']['nodes']['outline']
         generate = final['run']['nodes']['generate_map']
-        identities = [final['run']['manager'], outline_chat, generate['execution']['chat']]
-        self.check(len({chat['sessionId'] for chat in identities}) == 3, 'Native manager/outline/generator identities must differ')
-        histories = [self.preserve_history(chat, label) for chat, label in zip(identities, ['success-manager', 'success-outline', 'success-generator'])]
+        optimizer = final['run']['nodes']['optimize_map']
+        identities = [final['run']['manager'], outline_chat, generate['execution']['chat'], optimizer['execution']['chat']]
+        self.check(len({chat['sessionId'] for chat in identities}) == 4, 'Native manager/outline/generator/optimizer identities must differ')
+        histories = [self.preserve_history(chat, label) for chat, label in zip(identities,
+            ['success-manager', 'success-outline', 'success-generator', 'success-optimizer'])]
+        self.check(any(message.get('role') == 'user' and self.confirmations['optimization'] in self.message_text(message)
+            for message in self.native_messages(histories[3])), 'Optimizer send confirmation absent from native history')
+        optimized_report = next(report for report in reversed(final['reports']) if report['nodeId'] == 'optimize_map')
+        optimized_outputs = {item['id']: Path(item['path']) for item in optimized_report.get('outputs', [])}
+        self.check(optimized_report.get('canComplete') is True and {'map', 'handoff'} <= optimized_outputs.keys(),
+            ('Incomplete optimizer handoff', optimized_report))
+        self.check(all(path.is_file() for path in optimized_outputs.values()), 'Optimizer output files missing')
+        self.check(json.loads(optimized_outputs['map'].read_bytes()) == json.loads((self.root / 'maps/p27-business-plan.json').read_bytes()),
+            'Optimizer Map output differs from final saved definition')
         native_outline = self.native_messages(histories[1])
         users = [message for message in native_outline if message.get('role') == 'user']
         self.check(all(any(value in self.message_text(message) for message in users) for value in [approval, send]),
@@ -380,7 +404,7 @@ else:
         report = next(report for report in reversed(final['reports']) if report['nodeId'] == 'outline')
         self.check(report.get('canComplete') is True and Path(next((item['path'] for item in report.get('outputs', []) if item['id'] == 'outline'), '')) == confirmed_path, ('Wrong named outline output', report))
         for saved in final['reports']:
-            chat = outline_chat if saved['nodeId'] == 'outline' else identities[2]
+            chat = final['run']['nodes'][saved['nodeId']]['execution']['chat']
             self.check(saved['from']['sessionId'] == chat['sessionId'] and saved['executionId'] == final['run']['nodes'][saved['nodeId']]['execution']['id'], ('Report identity/execution mismatch', saved))
         gen_calls = self.calls(histories[2])
         reads = [call for call in gen_calls if call.get('name') == 'read']

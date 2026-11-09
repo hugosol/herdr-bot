@@ -92,7 +92,7 @@ w1 基线交付不依赖未来三字段全文批准或最终保存；编写者�
 | 为既有 Task 或 Map 包装完整 Bot：`create-bot-wrapper.json` | 新增八节点图；空白创建者、三编写者、表达优化者、保存者的 Task 与 Bot 指南；包装 Bot | 文本／定义优化完成；通用优化者沿用既有优化，真实模型行为未验证 |
 | 创建并优化 Task＋Bot：`create-bot-task-workflow--bc-61ce48b80a4c.json` | 十节点变三节点；w1/w2/wrap_bot input，Task 创建者、通用优化者直接保存分支及包装调用 | 外层文本／定义优化完成；W2 已恢复 optimize-prompt，专用优化者已删除；包装进度见上一行，真实模型行为未验证 |
 | 独立修订既有 Bot 三指南：`enhance-existing-bot--bc-301b25d9f8d6.json` | 五节点；w1 换为基线核实能力，三编写者与保存者共享，新增修订包装 Bot | 局部精简完成；整体优化和行为验收未完成 |
-| `plan_workflow.json` | 两 Task.prompt、两 Bot.plan_guide、outline.input；拓扑仍为两节点 | 整体待做 |
+| `plan_workflow.json` | 规划与转换后新增整图提示词优化节点，消费 Map 与已确认概要方案，manual 报告；本轮未优化共享 Task／Bot 本身 | 三节点定义与公开读写检查通过；真实模型流程未验证 |
 | Tibo监测后排查C盘：`tibo-monitor-then-c-drive-inspection.json` | Map 本身未改；其 Tibo-monitor Task.prompt 与 Bot.node_guide 有变更 | 独立外围项，待做 |
 
 另有未被当前 Map 引用的“能力创建者 · Bot＋Task”Task，其 prompt 有修改，单列检查。旧独立 create-bot 不因新包装能力出现而自动改绑或迁移。
@@ -232,6 +232,20 @@ W2.input 删除“本次不采用 Bot 三指南”等反向说明及与 Task 重
 ## 2026-11-09：三条主流程显示名称
 
 按用户要求，仅修改 Map.title：创建并优化 Task＋Bot → `创建task`，为既有 Task 或 Map 包装完整 Bot → `创建bot`，plan_workflow → `创建map`。文件名、Bot 名称／ID、能力范围与调用接线不变；创建task 仍包含后续 Bot 包装。历史记录保留当时名称。JSON 解析及修改前后对象比较通过，三文件均仅 title 改变；未修改用户部署。
+
+## 2026-11-09：创建 Map 后追加整图优化
+
+按用户确认，仅扩展 `plan_workflow.json` 为 outline → generate_map → optimize_map，复用既有 Map 维度优化 Bot／Task。新节点直接接收生成 Map 与已确认概要方案，交付最终 map／handoff，报告策略为 manual。node.input 授权相关 Task、Bot、子 Map 文本与共同文档优化；多处引用时先提醒用户受影响调用方与拟改范围，由该 Chat 中的用户决定具体边界。稳定方法与运行禁写仍归 Task，优化方向按条件指针读取本文对应章节；当前规划 Map 不被优化，生成业务不启动。
+
+同步 `docs/planning-deliverables.md` 的三阶段交接及授权边界。现有公开读写回归遍历全部实际节点，删除旧节点数量、固定接线及显示标题断言，保留完整保存读回与不启动副作用检查。`scripts/workflow_plan_acceptance.py` 同步部署优化者、技能、独立 manual 确认和最终交付核对；隔离场景具体授权仅新业务 Map，不宣称覆盖共享修改。
+
+验证：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture` 3 passed；命令前置使用 PowerShell 环境变量语法被当前 Bash 拒绝，Cargo 实际使用本仓库 `backend/target`，测试本身通过。一次内存检查通过三节点真实 Bot→Task 绑定、依赖无环、两项输入来源、map／handoff 输出、manual 策略、参考章节及验收脚本 Python 语法。未运行真实模型、用户业务或部署迁移；共享 Task／Bot 定义本身未修改，真实优化行为仍未验证。
+
+## 2026-11-09：优化节点 input 去重与移除临时文档依赖
+
+用户澄清本文仅供设计时核对 Task.prompt 的遗漏，不应成为运行时依赖。对照本文优化方向与当前 Map 维度 Task.prompt／writing-for-agents，分层、阶段、指针、授权、共享完整性及验证边界已有承接，Task 无需补写。`optimize_map.input` 移除本文指针及重复的保义、运行禁写、保存隔离、审批和交付检查规则，仅保留本次目标、材料用途、修改授权、多处引用提醒及用户边界、文件交付要求。上一节的运行时章节引用已由本次修改取消。
+
+验证：JSON 解析与前后对象比较通过，仅该 input 改变，525→252 字符；Task 定义字节、节点接线及 manual 策略不变。未运行真实模型，未将精简视为行为验证。
 
 ## 每次新会话的交接要求
 
