@@ -5,8 +5,8 @@ and optimize a normal Task, then call the eight-node wrapper without touching th
 target. A plausible violation is an inline Bot save, a dropped baseline/output or
 an automatic parent completion. Real native HTTP/tool traces, explicit confirmation
 turns, complete target snapshots and bidirectional Run identities distinguish them.
-P45 owns ONLY the two outer Tasks below; the wrapper's six paired Tasks belong to
-the separate create acceptance entrypoint.
+P45 here covers the creator and the generic optimizer's Task.prompt direct-save
+branch. The wrapper's six material-writing pairs belong to the create entrypoint.
 """
 import argparse
 import json
@@ -23,7 +23,7 @@ from workflow_nesting_planning_acceptance import NativePlanningAcceptance, roles
 OUTER = 'create-bot-task-workflow--bc-61ce48b80a4c.json'
 WRAPPER = 'create-bot-wrapper.json'
 CREATOR = 'task-18e31d30fe69a51c-2'
-OPTIMIZER = 'task-18e3454a33cecffc-6'
+OPTIMIZER = 'task-18e31d34797f1464-3'
 MANAGER = 'task-18e2c2827c484128-0'
 LEGACY_CREATE = 'task-18e315be1cf0ef10-0'
 LEGACY_BOT = 'task-18e31d347ccbeb4c-4'
@@ -528,7 +528,10 @@ export default function(pi) {
         self.evidence['scenarios'].append({'id': 'P45/creator/Chat', 'verified': True, 'sourceTaskId': CREATOR,
             'chat': chat, 'target': target, 'native': history})
         user = (self.business('independent-optimizer', bot=False, mode='optimize') + f' 本次不新建 Task，只优化真实既有 Task ID={target["id"]}，'
-            '保持所有非 prompt 配置。允许调整表达与段落，全部固定业务语义保持。')
+            '保持所有非 prompt 配置。允许调整表达与段落，全部固定业务语义保持。'
+            f' 待优化原文及完整配置：{json.dumps(target, ensure_ascii=False)}。'
+            f' 配置服务为 {self.base}；保存前读取 {REPO}/docs/usage.md 的“仅修改 Task.prompt”，'
+            '仅在本场景明确全文批准后保存；交付完整读回 saved 和必要 handoff，不套用 Bot 三指南材料分工。')
         wire_start = len(self.backend_wire.records)
         optimizer, draft = self.launch_independent(OPTIMIZER, user)
         require(self.task(target['id']) == target, 'Independent optimizer changed target before approval')

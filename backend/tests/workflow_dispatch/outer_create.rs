@@ -1,6 +1,6 @@
 //! Enabling seam: public definition write/read and preflight, not P45/P46's
 //! real outer execution or independent/workflow pairs (owned by 24).
-//! Independent expectation: exactly Task creation, interactive prompt optimization,
+//! Independent expectation: exactly Task creation, meaning-preserving prompt optimization,
 //! then one Map call. Keeping any inlined Bot-writing branch or omitting the
 //! explicit request edge must fail before controlled host substitution.
 use super::*;
@@ -15,7 +15,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
     assert_eq!(nodes.keys().map(String::as_str).collect::<Vec<_>>(), ["w1", "w2", "wrap_bot"]);
     assert_eq!(definition["input_files"], json!([{"id":"materials","required":false}]));
     assert_eq!(nodes["w1"]["bot_id"], "create-task");
-    assert_eq!(nodes["w2"]["bot_id"], "existing-task-prompt-optimizer");
+    assert_eq!(nodes["w2"]["bot_id"], "optimize-prompt");
     assert_eq!(nodes["w2"]["blocked_by"], json!(["w1"]));
     assert_eq!(nodes["w2"]["input_rule"], json!([{"id":"task_created","type":"node","node_id":"w1","output_id":"handoff"}]));
     assert_eq!(nodes["wrap_bot"]["bot_id"], "create-bot-wrapper");
@@ -31,7 +31,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
         ("bot-1793301029285548400-31876-1.json","create-bot-task","task-18e315be1cf0ef10-0"),
         ("bot-1793309187911298500-58200-4.json","create-bot","task-18e31d347ccbeb4c-4"),
         ("bot-1793309187825217800-58200-2.json","create-task","task-18e31d30fe69a51c-2"),
-        ("bot-1793353937334260800-25960-12.json","existing-task-prompt-optimizer","task-18e3454a33cecffc-6")
+        ("bot-1793309187850682300-58200-3.json","optimize-prompt","task-18e31d34797f1464-3")
     ] {
         let bot: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/bots").join(file)).unwrap()).unwrap();
         assert_eq!(bot["id"],id);
@@ -40,7 +40,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
     }
     let worker = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"worker"}"#).await;
     let worker: Value = serde_json::from_str(&worker.body).unwrap();
-    for id in ["create-task","existing-task-prompt-optimizer"] {
+    for id in ["create-task","optimize-prompt"] {
         let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":id,"content":worker["content"].to_string(),"revision":null}).to_string()).await;
         assert_eq!(saved.status,200,"{}",saved.body);
     }

@@ -1,6 +1,4 @@
 /* The shell and blue brand are retained; the work surface uses neutral elevation. */
-body:has(#panel-scheduler:not([hidden])) .layout-nav-item { box-shadow: none; }
-body:has(#panel-scheduler:not([hidden])) .layout-nav-item span { font-size: 11px; }
 .scheduler-workspace {
   --scheduler-ground: #14161a;
   --scheduler-surface: #1b1d21;
@@ -121,12 +119,6 @@ body:has(#panel-scheduler:not([hidden])) .layout-nav-item span { font-size: 11px
 .scheduler-workspace .scheduler-field-help { font-size: 12px; margin: 8px 0 16px; }
 .scheduler-workspace .scheduler-main > [role="alert"] { margin: 16px 20px; color: var(--scheduler-warning); }
 @media (max-width: 1100px) {
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-nav { padding: 4px 16px; border-right: 0; }
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-nav-track { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-nav-group { display: contents; }
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-nav-item { min-height: 48px; padding: 4px 0; gap: 4px; }
-  body:has(#panel-scheduler:not([hidden])) .app-layout[data-layout="expanded"] .layout-nav-icon { width: 16px; height: 16px; }
   .scheduler-workspace .scheduler-layout { grid-template-columns: minmax(0, 1fr); }
   .scheduler-workspace .scheduler-directory-toggle { display: block; }
   .scheduler-workspace:not([data-directory-open]) .scheduler-directory { display: none; }
