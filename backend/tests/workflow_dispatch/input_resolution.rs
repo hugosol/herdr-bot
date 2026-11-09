@@ -272,7 +272,7 @@ async fn shared_consumers_and_business_summary_receive_original_external_address
     assert_eq!(fs::read(&summary).unwrap(), b"independently authored summary", "framework must not generate/merge business content");
     assert_eq!(fs::read_dir(business.path()).unwrap().count(), 2);
     assert_eq!(fs::read_dir(s.data.path().join("node-zone")).unwrap().count(), 0);
-    assert!(!s.data.path().join(".workflow").exists(), "no zone cache or relocation");
+    assert!(!s.data.path().join(".manager-zone").join(".workflow").exists(), "no zone cache or relocation");
     let root = s.config.scheduler.run_directory.join(run["id"].as_str().unwrap());
     let reports = common::read_json_lines(&root.join("messages.jsonl"));
     assert_eq!(reports, vec![source_report["report"].clone(), summary_report["report"].clone()]);

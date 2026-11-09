@@ -290,7 +290,7 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         root.join("run.json").display(),
         root.join("history.jsonl").display(),
         root.join("messages.jsonl").display(),
-        data.path().join(".workflow").join(original["id"].as_str().unwrap()).display()
+        data.path().join(".manager-zone").join(".workflow").join(original["id"].as_str().unwrap()).display()
     );
     assert_eq!(common::prompt_body(&prompt), expected);
     let status = post_json_over_tcp(

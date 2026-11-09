@@ -325,7 +325,7 @@ async fn protocol(
         identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
     *stage = "submit";
     let paths = Runs::paths(state, &run.id);
-    let materials = std::path::Path::new(&run.zone).join(".workflow").join(&run.id);
+    let materials = std::path::Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id);
     let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
     let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
     let mut input = match &role {
@@ -359,7 +359,7 @@ async fn protocol(
     if let Some(child) = child {
         use std::fmt::Write;
         let paths = Runs::paths(state, &child.id);
-        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".workflow").join(&child.id).display()).unwrap();
+        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".manager-zone").join(".workflow").join(&child.id).display()).unwrap();
     }
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     effects.input_attempted = true;

@@ -249,6 +249,6 @@ async fn dispatched_addresses_stay_fixed_without_content_snapshot_or_repair() {
     assert_eq!(s.herdr.calls(), calls, "no automatic work during 300ms observation");
     assert!(!old.exists());
     assert_eq!(fs::read_dir(business.path()).unwrap().count(), 2);
-    assert!(!s.data.path().join(".workflow").exists());
+    assert!(!s.data.path().join(".manager-zone").join(".workflow").exists());
     assert_eq!(fs::read_dir(s.data.path().join("node-zone")).unwrap().count(), 0);
 }

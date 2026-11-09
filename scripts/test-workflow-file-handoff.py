@@ -673,7 +673,7 @@ class FanInAcceptance(RolesAcceptance):
             histories[name] = {'chat': chat, 'path': str(path), 'header': header, 'native': self.history(str(path)),
                 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
         evidence['nativeHistories'] = histories
-        materials = zones['manager'] / '.workflow' / run['id']
+        materials = zones['manager'] / '.manager-zone' / '.workflow' / run['id']
         for name, history in histories.items():
             require(any(str(materials) in self.message_text(entry.get('message', {}))
                 for entry in history['native']['branch'] if entry.get('type') == 'message'),

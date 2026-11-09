@@ -94,7 +94,7 @@ async fn omitted_rules_default_to_empty_arrays_and_dispatch() {
     for field in ["inputRule", "outputRule", "inputs"] {
         assert_eq!(execution[field], json!([]), "{field}");
     }
-    assert!(!s.data.path().join(".workflow").exists());
+    assert!(!s.data.path().join(".manager-zone").join(".workflow").exists());
     assert_eq!(fs::read_dir(s.data.path().join("node-zone")).unwrap().count(), 0);
 }
 
@@ -168,7 +168,7 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
         assert_eq!(result["results"][0]["status"], "running");
         let calls = s.herdr.calls();
         let text = calls.iter().rev().find(|c| c["kind"] == "agent_prompt").unwrap()["text"].as_str().unwrap();
-        let materials = s.data.path().join(".workflow").join(started["id"].as_str().unwrap());
+        let materials = s.data.path().join(".manager-zone").join(".workflow").join(started["id"].as_str().unwrap());
         assert!(text.contains("MANAGER-USER-SECRET"), "Run background missing: {text}");
         assert!(text.contains("NODE-INPUT\n第二行"), "business input missing: {text}");
         assert!(text.contains(file.to_str().unwrap()), "direct file address missing: {text}");
@@ -180,7 +180,7 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
         }
         println!("P4/P24 dispatchRequest={} result={result} actualHostInput={text}", json!({"sessionId":manager,"nodes":["A"]}));
     }
-    assert!(!s.data.path().join(".workflow").exists(), "location is guidance, not a directory/output preallocation protocol");
+    assert!(!s.data.path().join(".manager-zone").join(".workflow").exists(), "location is guidance, not a directory/output preallocation protocol");
     assert_eq!(fs::read_to_string(file).unwrap(), "FILE-BODY-SENSITIVE-9204");
 }
 
