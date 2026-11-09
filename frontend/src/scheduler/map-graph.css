@@ -1,10 +1,10 @@
 .scheduler .scheduler-graph {
   min-width: 0;
-  color: #e4ebf3;
+  color: var(--nier-ink);
 }
 
 .scheduler .scheduler-graph-empty {
-  color: #95a3b5;
+  color: var(--nier-muted);
   line-height: 1.6;
 }
 
@@ -14,9 +14,9 @@
   height: clamp(22rem, 55vh, 38rem);
   overflow: hidden;
   box-sizing: border-box;
-  border: 1px solid #637587;
+  border: 1px solid var(--nier-border);
   border-radius: .5rem;
-  background: #171d25;
+  background: var(--nier-ground);
 }
 
 .scheduler .scheduler-graph-viewport > svg {
@@ -34,12 +34,12 @@
 
 .scheduler .scheduler-graph-edge {
   fill: none;
-  stroke: #95a3b5;
+  stroke: var(--nier-muted);
   stroke-width: 2;
 }
 
 .scheduler .scheduler-graph-edge-related {
-  stroke: #a9d0f0;
+  stroke: var(--nier-ink);
   stroke-width: 3;
   stroke-dasharray: 7 4;
 }
@@ -56,10 +56,10 @@
   margin: 0;
   padding: .6rem .75rem;
   overflow: auto;
-  border: 2px solid #637587;
+  border: 2px solid var(--nier-border);
   border-radius: .5rem;
-  background: #1b222c;
-  color: #e4ebf3;
+  background: var(--nier-surface);
+  color: var(--nier-ink);
   text-align: left;
   cursor: pointer;
 }
@@ -87,32 +87,32 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #95a3b5;
+  color: var(--nier-muted);
   font-family: Consolas, monospace;
   font-size: .85rem;
 }
 
 .scheduler .scheduler-node[aria-pressed="true"] {
-  border: 4px double #a9d0f0;
-  background: #253446;
+  border: 4px double var(--nier-ink);
+  background: var(--nier-control);
 }
 
 .scheduler .scheduler-node-related {
   border-style: dashed;
-  border-color: #a9d0f0;
+  border-color: var(--nier-ink);
 }
 
 .scheduler .scheduler-node-relation {
-  color: #a9d0f0;
+  color: var(--nier-ink);
   font-weight: 600;
 }
 
 .scheduler .scheduler-node-problem {
-  color: #f1c7a1;
+  color: var(--nier-warning);
 }
 
 .scheduler .scheduler-node:focus-visible {
-  outline: 3px solid #e4ebf3;
+  outline: 3px solid var(--nier-ink);
   outline-offset: -5px;
 }
 
@@ -134,17 +134,17 @@
   pointer-events: none;
 }
 .scheduler .scheduler-node-shape polygon {
-  fill: #1b222c;
-  stroke: #637587;
+  fill: var(--nier-surface);
+  stroke: var(--nier-border);
   stroke-width: 2;
 }
 .scheduler .scheduler-node-related .scheduler-node-shape polygon {
-  stroke: #a9d0f0;
+  stroke: var(--nier-ink);
   stroke-dasharray: 6 4;
 }
 .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon {
-  fill: #253446;
-  stroke: #a9d0f0;
+  fill: var(--nier-control);
+  stroke: var(--nier-ink);
   stroke-width: 4;
   stroke-dasharray: none;
 }

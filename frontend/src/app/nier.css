@@ -1,0 +1,91 @@
+/* NieR-inspired presentation only. Keep business DOM, geometry and graph transforms intact. */
+body {
+  background-color: var(--nier-ground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M6 0H0V6' fill='none' stroke='%2357544a' stroke-opacity='.045'/%3E%3C/svg%3E");
+  color: var(--nier-ink);
+}
+
+::selection { background: var(--nier-muted); color: var(--nier-raised); }
+
+.layout-header { border-bottom: 3px double var(--nier-border); }
+.layout-brand { letter-spacing: .06em; }
+.layout-brand::before {
+  content: '';
+  width: 5px;
+  height: 22px;
+  margin-right: 12px;
+  background: var(--nier-muted);
+  box-shadow: 4px 0 var(--nier-control);
+}
+
+.layout-header button, .layout-nav-item, .layout-nav-icon { border-radius: 0; }
+.layout-nav-item { transition: background-color var(--nier-motion), color var(--nier-motion); }
+.layout-nav-item[aria-selected='true'],
+.app-layout[data-layout='compact'] .layout-nav-item[aria-selected='true'] {
+  color: var(--nier-raised);
+  background-color: var(--nier-muted);
+  border-bottom-color: var(--nier-muted);
+}
+.app-layout[data-layout='expanded'] .layout-nav-item[aria-selected='true'] {
+  box-shadow: none;
+}
+
+/* Hard-edged wash travels across the existing fill; no overlay intercepts pointer events. */
+:where(button):not(:disabled):not([aria-disabled='true']) {
+  background-image: linear-gradient(90deg, transparent 50%, rgb(63 61 54 / 9%) 50%);
+  background-size: 210% 100%;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  transition: background-position var(--nier-motion), background-color var(--nier-motion), color var(--nier-motion), border-color var(--nier-motion);
+}
+@media (hover: hover) {
+  :where(button):not(:disabled):not([aria-disabled='true']):hover { background-position: 100% 0; }
+}
+:where(button):not(:disabled):active { background-position: 100% 0; }
+:where(button, input, select, textarea, [contenteditable='true']):focus-visible {
+  outline: 2px solid var(--nier-info);
+  outline-offset: 3px;
+}
+:where(input, select, textarea) { accent-color: var(--nier-muted); color-scheme: light; }
+:where(input, textarea)::placeholder { color: var(--nier-muted); opacity: 1; }
+
+/* The source SVG has a dark-theme presentation fill; keep arrowheads legible on bone. */
+.scheduler-graph-viewport marker path { fill: var(--nier-muted); }
+
+/* Never animate layout or graph coordinates; updates and cancellation remain immediate. */
+.tabpanel:not([hidden]) { animation: nier-panel-reveal var(--nier-motion) ease-out; }
+@keyframes nier-panel-reveal { from { opacity: .75; } to { opacity: 1; } }
+
+.entity-group-dialog {
+  border: 1px solid var(--nier-border);
+  border-radius: 0;
+  background: var(--nier-raised);
+  color: var(--nier-ink);
+}
+.entity-group-dialog :is(input, select) {
+  border: 1px solid var(--nier-border);
+  background: var(--nier-surface);
+  color: var(--nier-ink);
+}
+.entity-group-dialog::backdrop { background: rgb(63 61 54 / 55%); }
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button):not(:disabled):not([aria-disabled='true']), .layout-nav-item { transition: none; }
+  .tabpanel:not([hidden]) { animation: none; }
+}
+@media (forced-colors: active) {
+  .scheduler-graph-viewport marker path { fill: CanvasText; }
+  body { background-image: none; }
+  :where(button):not(:disabled):not([aria-disabled='true']) { background-image: none; }
+  .layout-nav-item[aria-selected='true'],
+  .app-layout[data-layout='compact'] .layout-nav-item[aria-selected='true'] {
+    color: HighlightText;
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .entity-group-dialog, .entity-group-dialog :is(input, select) {
+    color: CanvasText;
+    background: Canvas;
+    border-color: CanvasText;
+  }
+}

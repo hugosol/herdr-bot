@@ -1,10 +1,10 @@
 .browser {
-  --browser-surface: #151515;
-  --browser-raised: #222222;
-  --browser-border: #303030;
-  --browser-ink: #f2f2f2;
-  --browser-muted: #b4b4b4;
-  --browser-faint: #a0a0a0;
+  --browser-surface: var(--nier-ground);
+  --browser-raised: var(--nier-raised);
+  --browser-border: var(--nier-line);
+  --browser-ink: var(--nier-ink);
+  --browser-muted: var(--nier-muted);
+  --browser-faint: var(--nier-muted);
   gap: 1rem;
   color: var(--browser-ink);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -65,8 +65,8 @@
 .browser .file-view__read-html,
 .browser .commit-confirm__cancel {
   box-sizing: border-box;
-  border: 1px solid #484848;
-  border-radius: 4px;
+  border: 1px solid var(--nier-border);
+  border-radius: 2px;
   background: var(--browser-raised);
   color: var(--browser-ink);
   font-family: inherit;
@@ -78,12 +78,12 @@
 .browser .sync-bar__button:not(:disabled):not(.sync-bar__button--primary):hover,
 .browser .file-view__read-html:hover,
 .browser .commit-confirm__cancel:hover {
-  background: #303030;
+  background: var(--nier-line);
 }
 
 .browser button:focus-visible,
 .browser input:focus-visible {
-  outline: 2px solid #f2f2f2;
+  outline: 2px solid var(--nier-ink);
   outline-offset: -3px;
 }
 
@@ -101,7 +101,7 @@
 .browser .browser-view {
   padding: 0.65rem 1rem;
   color: var(--browser-muted);
-  border-radius: 4px 4px 0 0;
+  border-radius: 2px;
   border-bottom: 3px solid transparent;
   font-size: 0.9375rem;
 }
@@ -144,7 +144,7 @@
 .browser .changes-detail {
   padding: 0.75rem;
   border-color: var(--browser-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--browser-surface);
 }
 
@@ -160,7 +160,7 @@
 .browser .mobile-row,
 .browser .change-row {
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: 2px;
   line-height: 1.5;
 }
 
@@ -173,7 +173,7 @@
 /* Only the selection surface changes: Git's semantic text colours stay intact. */
 .browser .tree-row--file.is-selected,
 .browser .change-row.is-selected {
-  background: #333333;
+  background: var(--nier-control);
 }
 
 .browser .tree-row--file.is-selected:not([data-change]) {
@@ -182,7 +182,7 @@
 
 .browser .tree-row--link,
 .browser .mobile-row--link {
-  background: #202020;
+  background: var(--nier-surface);
 }
 
 .browser .browser-placeholder {
@@ -202,7 +202,7 @@
 }
 
 .browser .browser-note {
-  border-left-color: #606060;
+  border-left-color: var(--nier-border);
   background: var(--browser-surface);
   color: var(--browser-muted);
 }
@@ -211,16 +211,16 @@
   gap: 0.625rem;
   padding: 1rem;
   border-color: var(--browser-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--browser-surface);
 }
 
 .browser .commit-bar__input {
   box-sizing: border-box;
   min-height: 44px;
-  border-color: #505050;
-  border-radius: 4px;
-  background: #0b0b0b;
+  border-color: var(--nier-border);
+  border-radius: 2px;
+  background: var(--nier-ground);
   color: var(--browser-ink);
   font-family: inherit;
 }
@@ -238,24 +238,24 @@
 .browser .commit-bar__button,
 .browser .sync-bar__button--primary,
 .browser .commit-confirm__go {
-  border-radius: 4px;
-  border-color: #2f7d32;
-  background: #2f7d32;
-  color: #ffffff;
+  border-radius: 2px;
+  border-color: var(--nier-positive);
+  background: var(--nier-positive);
+  color: var(--nier-raised);
 }
 
 .browser .commit-bar__button:not(:disabled):hover,
 .browser .sync-bar__button--primary:not(:disabled):hover,
 .browser .commit-confirm__go:not(:disabled):hover {
-  border-color: #388c3c;
-  background: #388c3c;
+  border-color: var(--nier-positive);
+  background: var(--nier-positive);
 }
 
 .browser .commit-bar__button:disabled,
 .browser .sync-bar__button:disabled,
 .browser .commit-confirm__go:disabled {
-  border-color: #383838;
-  background: #303030;
+  border-color: var(--nier-line);
+  background: var(--nier-line);
   color: var(--browser-faint);
 }
 
@@ -300,7 +300,7 @@
   .browser .browser-mobile > .diff {
     box-sizing: border-box;
     padding: 0.75rem;
-    border-radius: 4px;
+    border-radius: 2px;
     background: var(--browser-surface);
   }
 
