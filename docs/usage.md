@@ -200,7 +200,7 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 
 定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 
-### 首批定义与显式离线迁移
+### 当前交付定义与旧格式更新
 
 交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，`meta-data/tasks.json` 是按批准稳定 ID 更新的源码预设。探索 Suite 支持 OMP/Pi、Pi 明确 `on`；OMP 选择声明的技能集合目录，Pi 保留逐技能选择。实现 Suite 仅 OMP，保留 `oh-my-wayfinder` 并加载所声明集合目录中的直接子技能。两者引用集中 `codebase-memory-mcp` 和批准的四语言声明；OMP 集合中新技能会参与后续发现，不再承诺旧的固定 18／11 技能数量。当前另提供仅支持 Pi 的「网页访问」Suite（`web-access`），Tibo-monitor（`tpl-18e0ceac0a89f9bc-0`）已选择它；探索 Suite 的 Pi 分支也选择同一个联网扩展；已有 Suite 扩展均直接声明入口路径，OMP 分支与实现 Suite 的能力选择保持不变。实际资源发现与命令消费仍需对应宿主验收，不能从声明或迁移成功推断。
 
@@ -210,22 +210,9 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 
 已有部署的数据**不会在启动时自动套用**。旧 `skills: [...]` 须在升级前改为宿主键对象：Pi 将原技能目录列表放入 `skills.pi`；OMP 将原技能目录的父集合目录去重后放入 `skills.omp`，并确认接受集合内所有直接子技能参与发现。不要把单技能目录原样放入 OMP 集合列表。API 不保留旧数组兼容分支；OMP 技能覆盖复用现有安装的 `--config` 能力，无需修改或升级宿主。旧 `extensionOptions` 须在升级前显式迁移：按旧 TOML 将每个 ID 转为对应宿主的入口，合并到 `extensions` 并删除 ID 字段；根引用可以保留，TOML 相对路径必须换算为 Suite 相对路径或绝对路径。未知 ID 不可猜测或丢弃，应先修复来源。已成为固定项的 `connect-bot` 不重复加入 Suite，并移除 Suite 里同扩展的 manual／auto 入口。随后移除 TOML 可选声明，仅保留固定项。交付源码定义已完成转换，其他用户部署仍须显式更新，不保留旧 ID 运行兼容分支。
 
-已有 `extensions` 路径继续使用，不转换回 ID；Pi 旧包目录须改为具体入口文件。下面的 `initial-suite-v1` 是历史首批探索／实现迁移，不包含后续网页访问 Suite 或 Tibo-monitor 的联网绑定；不要把重跑它当作本次扩展格式更新。维护者先停掉该部署的全部后端，核对 `migrations/initial-suite-v1/mapping.json` 的 22 个稳定 ID，并取得对目标数据的明确操作授权，再运行专项命令；以下路径仅为占位示例，不是已批准操作用户数据：
+已有 `extensions` 路径继续使用，不转换回 ID；Pi 旧包目录须改为具体入口文件。历史首批 Suite 离线迁移工具、发布输入与专属测试已归档，不再随仓库提供；它们也不包含后续网页访问 Suite 或 Tibo-monitor 的联网绑定，不能替代当前格式更新。
 
-```powershell
-cargo run --manifest-path backend/Cargo.toml --bin migrate-initial-suites -- `
-  'D:/authorized-deployment/meta-data/tasks.json' `
-  'D:/authorized-deployment/meta-data/suites.json' `
-  'D:/authorized-deployment/meta-data/mcp.json' `
-  'D:/authorized-deployment/.data/initial-suite-v1' `
-  'C:/release/herdr-bot/migrations/initial-suite-v1'
-```
-
-五个参数分别为 Task 权威文件、Suite 权威文件、集中 MCP 文件、本次迁移独占状态目录、批准的只读发布输入目录。后者包含 `mapping.json`、`suites.json`、`mcp.json`；它们只是显式迁移输入，不是运行时回退副本。不要让不同部署共享状态目录，也不要从源码默认定义覆盖已有部署的权威文件。
-
-命令按稳定 ID 核对每条当前 Task 的 agent 和旧扩展选择，不按显示名匹配。当前已有 Suite 字段、环境已改、缺少／重复 ID、未映射的旧格式 Task，或同 ID 的现有 Suite/MCP 与发布输入不同，都明确报冲突，不猜测覆盖。Task 的名称、trigger、类型和身份原样保留；Bot、Chat 历史、Run/node 文件不会被打开。首次操作前保留精确 `plan.json`（含原始字节），逐文件原子发布并独立读回，只有全部读回成功才生成 `complete.json`。中断或后项失败保留前项已生效文件；重新执行同命令按原计划继续，遇新编辑即停，不新增事务、自动重试或回滚。完成后的重复执行不读写用户新编辑，不重复生成定义。状态文件含 Task 原文，应按部署数据保护；冲突需要维护者明确协调，不要直接删状态文件来强制重跑。
-
-自动验收只操作测试创建的临时数据：`cargo test --manifest-path backend/Cargo.toml --test initial_suite_migration` 覆盖 17/1/4 独立映射、保留 trigger/引用身份、真实进程中断、Windows 写入失败、冲突、重启及完成标记。测试或发布工单本身不授权操作任何用户生产 Task。
+维护者须先停掉目标部署的全部后端，备份并取得明确操作授权，再按当前格式显式更新部署数据；正常启动不会自动迁移旧格式。不要从源码默认定义覆盖已有部署的权威文件。更新时保留 Task 的稳定 ID、名称、trigger、类型和引用身份，核对 Suite 的宿主适用配置及集中 MCP 引用，不按显示名猜测映射，也不改写 Bot、Chat 或 Run/node 历史。当前定义管理与 Task 引用的 API／页面验收沿用上节隔离入口；测试或发布工单本身不授权操作用户生产 Task。
 
 ## Task 模型与删除
 

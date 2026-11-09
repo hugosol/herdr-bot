@@ -185,7 +185,7 @@ impl Zones {
         match access.read_to_string(&self.registry_file) {
             Ok(raw) => {
                 let document: RegistryDocument = serde_json::from_str(&raw)
-                    .map_err(|error| ZoneError::Corrupt(format!("{error}；旧登记请运行 migrate-zone-portability 并提供显式路径到 ID 映射，禁止推测 ID")))?;
+                    .map_err(|error| ZoneError::Corrupt(format!("{error}；旧登记格式不受支持，请显式提供路径和 zone ID，禁止推测 ID")))?;
                 validate(&document.zones)?;
                 Ok(document.zones)
             }
@@ -220,7 +220,7 @@ fn validate(zones: &[RegisteredZone]) -> Result<(), ZoneError> {
             return Err(ZoneError::Corrupt("登记项缺少路径".to_string()));
         }
         if entry.id.trim().is_empty() || entry.id != entry.id.trim() {
-            return Err(ZoneError::Corrupt("登记项需要非空 zone ID；旧数据请先运行 migrate-zone-portability 并提供显式路径到 ID 映射".to_string()));
+            return Err(ZoneError::Corrupt("登记项需要非空 zone ID；旧登记格式不受支持，请显式提供路径和 zone ID".to_string()));
         }
         if seen.contains(&entry.id) {
             return Err(ZoneError::Corrupt("登记项包含重复 zone ID".to_string()));

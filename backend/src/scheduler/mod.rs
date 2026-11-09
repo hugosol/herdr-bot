@@ -135,8 +135,6 @@ pub(crate) fn optional_object_array<'de, D: serde::Deserializer<'de>, T: Deseria
     Option::<Vec<JsonObject<T>>>::deserialize(deserializer).map(|values| values.map(|values| values.into_iter().map(|value| value.0).collect()))
 }
 
-pub(crate) fn validate_map_source(source: &str) -> Result<(), String> { parse_map(source).map(|_| ()).map_err(|error| error.message) }
-
 fn map_error(message: impl Into<String>) -> DirectoryError {
     DirectoryError { code: "map-read-failed", message: message.into() }
 }
@@ -248,7 +246,7 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
             if name.trim().is_empty() || !input_ids.insert(name) { return Err(map_error(format!("node {id} 的 input_rule ID 重复：{name}"))); }
             match input {
                 InputRule::File { path, zone_id, .. } if !valid_relative_file(path) || zone_id.as_ref().is_some_and(|id| id.trim().is_empty()) => {
-                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧数据请运行 migrate-zone-portability 并提供显式映射。")));
+                    return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧格式不受支持，请显式提供 zone ID 和相对路径。")));
                 }
                 InputRule::Run { input_id, .. } => {
                     if !map.input_files.iter().any(|input| input.id == *input_id) {

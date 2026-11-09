@@ -46,8 +46,6 @@ pub mod sessions;
 pub mod scheduler;
 pub mod runs;
 pub mod files;
-pub mod handoff_migration;
-pub mod portability_migration;
 pub mod prompts;
 pub mod shutdown;
 pub mod tasks;
