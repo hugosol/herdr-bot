@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "plan-to-map",
   "name": "概要方案转 Map",
   "when": "已有用户确认且可翻译的概要方案，需要忠实生成、保存并校验完整 Map JSON 时使用。支持独立 Chat 与 workflow 节点；不重做概要规划、不建设能力、不调度或启动业务，不修改当前执行的 Map。",

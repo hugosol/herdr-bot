@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "write-bot-when",
   "name": "Bot.when 编写者",
   "when": "需要为真实 normal Task 或 Map 型 Bot 编写或修订并确认完整 when，说明能力发现与选用时使用。交付唯一正文和确认说明，不保存目标 Bot。",

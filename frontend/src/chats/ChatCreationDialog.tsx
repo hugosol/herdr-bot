@@ -8,6 +8,7 @@ import {
   type ChatPreview,
 } from './chatCreationApi'
 import { fetchTasks, type Task } from '../tasks/taskApi'
+import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 
 const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
@@ -56,6 +57,7 @@ function failureOutcomeText(creation: ChatCreation): string {
  * 不自动切换会话列表。
  */
 export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
+  const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [taskId, setTaskId] = useState('')
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
@@ -79,7 +81,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
       if (cancelled) return
       if (result.kind === 'ok') {
         setTasks(result.tasks)
-        setTaskId(result.tasks[0]?.id ?? '')
+        setTaskId(current => current || result.tasks[0]?.id || '')
         setLoadError(null)
       } else {
         setTasks(null)
@@ -93,7 +95,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [groupRevision])
 
   // Task 切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
   useEffect(() => {
@@ -232,11 +234,11 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           disabled={tasks === null || submitting || running || finished}
         >
           {tasks !== null && tasks.length === 0 && <option value="">没有可用的 Task</option>}
-          {(tasks ?? []).map((task) => (
+          {<GroupOptions items={tasks ?? []} groupOf={task => task.group}>{(task) => (
             <option key={task.id} value={task.id}>
               {task.name}（{task.agent}）
             </option>
-          ))}
+          )}</GroupOptions>}
         </select>
 
         <label className="zone-form__label" htmlFor="chat-workspace-target">

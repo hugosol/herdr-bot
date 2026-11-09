@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "write-bot-node-guide",
   "name": "Bot.node_guide 编写者",
   "when": "需要为真实 normal Task 或 Map 型 Bot 编写或修订并确认完整 node_guide，让规划者明确本次业务输入责任时使用。交付唯一正文和确认说明，不保存目标 Bot或生成 Map；指南不自动注入执行 Chat。",

@@ -14,6 +14,8 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
+Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
+
 只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。历史更名工具只处理其原来的命名迁移，不完成这次格式切换。
 
 完整 Map 示例：
@@ -218,7 +220,9 @@ Map 文件加载、结构或依赖失败时清除当前图和详情，不把上�
 
 | 方法及路径 | 输入／结果 |
 | --- | --- |
-| `GET /api/scheduler/maps` | 顶层 Map 文件列表 `files`，以及按文件名索引的可用标题 `titles`（无可用标题时省略）；单个 Map 读取／校验失败不阻断目录 |
+| `GET /api/scheduler/maps` | 顶层 Map 文件列表 `files`，按文件名索引的可用标题 `titles` 和分组名 `groups`；未分组文件不进入 `groups`；单个 Map 读取／校验失败不阻断目录 |
+| `PATCH /api/scheduler/maps/{filename}/group` | `{group: 字符串或null}` → 更新后的 Map 字段与 `revision` |
+| `PATCH /api/scheduler/bots/{id}/group` | `{group: 字符串或null}` → 更新后的 Bot 字段与 `revision` |
 | `GET /api/scheduler/maps/{filename}` | 完整校验后的 Map |
 | `GET /api/scheduler/bots` | Bot 目录和局部问题 |
 | `GET /api/scheduler/bots/new` | 打包草稿，不含 id |

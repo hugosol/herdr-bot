@@ -6,12 +6,14 @@ import {
   deleteTask,
   fetchTasks,
   updateTask,
+  updateTaskGroup,
   type Task,
   type TaskInput,
   type TaskList,
   type TaskOptions,
   type TaskResult,
 } from './taskApi'
+import { EntityGroups, GroupButton } from '../app/entityGroups'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'
 
 type Feedback = {
@@ -370,9 +372,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             尚未保存任何 Task。
           </p>
         ) : (
-          <ul className="task-list" data-testid="task-list">
-            {visibleTasks.length === 0 && <li className="tasks__empty">没有匹配的 Task。试试其他关键词，或清除筛选。</li>}
-            {visibleTasks.map((task) => (
+          <div data-testid="task-list">
+            {visibleTasks.length === 0 && <p className="tasks__empty">没有匹配的 Task。试试其他关键词，或清除筛选。</p>}
+            {<EntityGroups items={visibleTasks} groupOf={task => task.group} listClass="task-list">{(task) => (
               <li
                 key={task.id}
                 className="task-item"
@@ -387,6 +389,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>
                   <div className="task-item__suite"><span className="task-item__label">Suite</span><p>{suiteLabel(task, data.options)}</p></div>
                   <div className="task-item__actions">
+                    <GroupButton name={task.name} group={task.group} names={data.tasks.map(item => item.group)} disabled={saving || deleting !== null} onSave={async group => { const result = await updateTaskGroup(task.id, group); if (result.kind !== 'ok') throw new Error(describeFailure(result, '分组保存')); setData({ tasks: result.tasks, options: result.options }) }} />
                     <button type="button" className="zone-dialog__cancel" data-testid="task-edit"
                       disabled={saving || deleting !== null} onClick={() => openEdit(task)}>编辑</button>
                     <button type="button" className="zone-dialog__cancel task-item__delete" data-testid="task-delete"
@@ -425,8 +428,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 </pre>
                 </details>
               </li>
-            ))}
-          </ul>
+            )}</EntityGroups>}
+          </div>
         ))}
 
       {deleteTarget !== null && (
@@ -473,6 +476,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             data-testid="task-dialog"
             onSubmit={(event) => void submit(event)}
           >
+            {dialog.kind === 'edit' && (() => { const task = data.tasks.find(item => item.id === dialog.id); return task && <GroupButton name={task.name} group={task.group} names={data.tasks.map(item => item.group)} disabled={saving} onSave={async group => { const result = await updateTaskGroup(task.id, group); if (result.kind !== 'ok') throw new Error(describeFailure(result, '分组保存')); setData({ tasks: result.tasks, options: result.options }) }} /> })()}
             <h2 className="zone-dialog__title">
               {dialog.kind === 'create' ? '新增 Task' : '编辑 Task'}
             </h2>

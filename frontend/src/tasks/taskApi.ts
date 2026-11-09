@@ -25,6 +25,7 @@ export type Task = {
   skill: TaskSkill | null
   prompt: string
   suite?: string | null
+  group?: string | null
 }
 
 /** 新增或编辑时提交的字段（标识由后端维护）。 */
@@ -76,6 +77,7 @@ function isTask(value: unknown): value is Task {
     typeof task.thinking === 'string' &&
     (task.skill === null || typeof task.skill === 'string') &&
     typeof task.prompt === 'string' &&
+    (task.group == null || (typeof task.group === 'string' && task.group.length > 0 && task.group.trim() === task.group)) &&
     (task.suite === undefined || task.suite === null || typeof task.suite === 'string')
   )
 }
@@ -176,6 +178,10 @@ export function updateTask(
   input: TaskInput,
 ): Promise<TaskResult> {
   return taskRequest(`/api/tasks/${encodeURIComponent(id)}`, jsonInit('PUT', input))
+}
+
+export function updateTaskGroup(id: string, group: string | null): Promise<TaskResult> {
+  return taskRequest(`/api/tasks/${encodeURIComponent(id)}/group`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group }) })
 }
 
 /** 删除一个 Task；只移除 Task，不改变任何已经发起的 Chat。 */

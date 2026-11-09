@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NodeSettingsValue } from './NodeSettings'
-import { listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
+import { groupOnlyRevision, updateEntityGroup, listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
 
 type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
@@ -199,6 +199,22 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       if (valid()) update({ listing: { kind: 'ready', ...catalog }, file: null, preview: null, selectedId: null, returnProblem: null, deleteMapTarget: null })
     }, true)
   }
+  async function changeGroup(kind: 'bots' | 'maps', id: string, group: string | null) {
+    if (inFlight.current) throw new Error('请等待当前保存完成。')
+    await operation(async valid => {
+      const revision = await updateEntityGroup(kind, id, group)
+      if (!valid()) return
+      const { bots, listing, preview, file, draft } = current.current
+      if (draft && groupOnlyRevision(draft.revision, revision) && (kind === 'bots' ? draft.kind === 'Bot' && draft.initialId === id : draft.kind === 'node' && draft.file === id)) update({ draft: { ...draft, revision } })
+      window.dispatchEvent(new CustomEvent('herdr-group-revision', { detail: { kind, id, revision } }))
+      if (kind === 'bots' && bots.kind === 'ready') update({ bots: { ...bots, bots: bots.bots.map(bot => bot.id === id ? { ...bot, group } : bot) } })
+      if (kind === 'maps') {
+        if (listing.kind === 'ready') { const groups = { ...listing.groups }; if (group === null) delete groups[id]; else groups[id] = group; update({ listing: { ...listing, groups } }) }
+        if (file === id && preview?.kind === 'ready') update({ preview: { ...preview, map: { ...preview.map, group } } })
+      }
+    })
+    if (current.current.editError) throw new Error(current.current.editError)
+  }
   function refreshAll() { if (abandonDraft()) void refresh() }
   async function returnToMap() {
     if (!abandonDraft()) return
@@ -229,5 +245,5 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty, state.editingBusy])
-  return { ...state, editingBusy: state.editingBusy || state.listing.kind === 'loading' || state.bots.kind === 'loading' || state.preview?.kind === 'loading', abandonDraft, selectFile, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap }
+  return { ...state, editingBusy: state.editingBusy || state.listing.kind === 'loading' || state.bots.kind === 'loading' || state.preview?.kind === 'loading', changeGroup, abandonDraft, selectFile, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap }
 }

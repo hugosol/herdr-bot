@@ -55,6 +55,8 @@ pub struct Task {
     pub id: String,
     /// Task 显示名，不是新 Chat 的固定名字。
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Chat 自动命名规则：单行固定文字与占位符。
     pub chat_name: String,
     pub agent: Agent,
@@ -89,6 +91,8 @@ pub struct EnvConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskInput {
     name: Option<String>,
+    #[serde(default, deserialize_with = "group_change")]
+    group: Option<Option<String>>,
     chat_name: Option<String>,
     agent: Option<String>,
     task_type: Option<String>,
@@ -102,6 +106,7 @@ pub struct TaskInput {
 /// 校验后的 Task 字段（不含标识）。
 struct TaskFields {
     name: String,
+    group: Option<Option<String>>,
     chat_name: String,
     agent: Agent,
     task_type: TaskType,
@@ -110,6 +115,21 @@ struct TaskFields {
     skill: Option<String>,
     prompt: String,
     suite: Option<String>,
+}
+
+pub(crate) fn valid_group(group: Option<&str>) -> bool {
+    group.is_none_or(|name| !name.is_empty() && name.trim() == name)
+}
+
+fn group_change<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GroupInput {
+    #[serde(deserialize_with = "Option::<String>::deserialize")]
+    pub group: Option<String>,
 }
 
 impl TaskInput {
@@ -166,8 +186,12 @@ impl TaskInput {
             .map(|v| v.strip_prefix('/').unwrap_or(v).to_owned());
         catalog.validate_selection(agent, &model, &thinking, skill.as_deref())?;
 
+        if !valid_group(self.group.as_ref().and_then(|group| group.as_deref())) {
+            return Err(TaskError::InvalidGroup);
+        }
         Ok(TaskFields {
             name,
+            group: self.group,
             chat_name,
             agent,
             task_type,
@@ -184,6 +208,7 @@ impl TaskInput {
 #[derive(Debug)]
 pub enum TaskError {
     NameRequired,
+    InvalidGroup,
     ChatNameRequired,
     ChatNameNotSingleLine,
     AgentRequired,
@@ -212,6 +237,7 @@ impl TaskError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::NameRequired => "task-name-required",
+            Self::InvalidGroup => "group-invalid",
             Self::ChatNameRequired => "task-chat-name-required",
             Self::ChatNameNotSingleLine => "task-chat-name-not-single-line",
             Self::AgentRequired => "task-agent-required",
@@ -235,6 +261,7 @@ impl TaskError {
     pub fn message(&self) -> String {
         match self {
             Self::NameRequired => "Task显示名不能为空。".to_string(),
+            Self::InvalidGroup => "分组名称不能为空或包含首尾空白。".to_string(),
             Self::ChatNameRequired => "chat-name 命名规则不能为空。".to_string(),
             Self::ChatNameNotSingleLine => {
                 "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
@@ -369,6 +396,7 @@ impl Tasks {
             tasks.push(Task {
                 id,
                 name: fields.name,
+                group: fields.group.flatten(),
                 chat_name: fields.chat_name,
                 agent: fields.agent,
                 task_type: fields.task_type,
@@ -399,6 +427,7 @@ impl Tasks {
                 .find(|task| task.id == id)
                 .ok_or(TaskError::NotFound)?;
             target.name = fields.name;
+            if let Some(group) = fields.group { target.group = group; }
             target.chat_name = fields.chat_name;
             target.agent = fields.agent;
             target.task_type = fields.task_type;
@@ -409,6 +438,15 @@ impl Tasks {
                 prompt: fields.prompt,
             };
             target.env = EnvConfig { suite: fields.suite };
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn set_group(&self, id: &str, group: Option<String>) -> Result<Vec<Task>, TaskError> {
+        if !valid_group(group.as_deref()) { return Err(TaskError::InvalidGroup); }
+        self.change(|_, tasks| {
+            let target = tasks.iter_mut().find(|task| task.id == id).ok_or(TaskError::NotFound)?;
+            target.group = group;
             Ok(())
         })
     }
@@ -476,6 +514,9 @@ fn validate_document(tasks: &[Task]) -> Result<(), TaskError> {
         }
         seen.push(task.id.clone());
 
+        if !valid_group(task.group.as_deref()) {
+            return Err(TaskError::Corrupt(format!("Task {} 分组名称无效", task.id)));
+        }
         if task.name.trim().is_empty() {
             return Err(TaskError::Corrupt(format!(
                 "Task {} 缺少显示名",

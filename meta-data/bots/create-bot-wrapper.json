@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "create-bot-wrapper",
   "name": "为既有目标包装完整 Bot",
   "when": "为已经存在的 normal Task 或 Map 新建并绑定完整 Bot 时使用，交付经确认和表达优化的三指南及完整保存读回对象。目标由本能力自行核实；不创建、修改或执行目标，也不用于修订已有 Bot。配置交付不等于业务能力验证。",

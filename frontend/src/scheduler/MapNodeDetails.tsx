@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { Bot, BotCatalog, WorkflowMap } from './schedulerApi'
+import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { fetchTasks, type TaskResult } from '../tasks/taskApi'
 import { NodeSettings, type NodeSettingsValue } from './NodeSettings'
 
@@ -60,6 +61,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
   edit?: NodeEdit
 }) {
   const id = useId()
+  const groupRevision = useGroupRefresh()
   const [jsonMode, setJsonMode] = useState(false)
   const [managerLookup, setManagerLookup] = useState<TaskResult | null>(null)
   const editing = !!edit
@@ -68,7 +70,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
     let cancelled = false
     void fetchTasks().then(result => { if (!cancelled) setManagerLookup(result) })
     return () => { cancelled = true }
-  }, [editing])
+  }, [editing, groupRevision])
   const parsed = edit ? parseContent(edit.content) : { definition: map.nodes[nodeId], error: null }
   const { definition, error } = parsed
   const showJson = !!edit && (jsonMode || definition === null)
@@ -105,7 +107,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
     </div>
     {edit ? <NodeSettings value={settings} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} readOnly />}
     <div className="scheduler-node-bot"><label htmlFor={`${id}-bot`}>Bot ID</label>
-      {edit && !showJson ? <><input id={`${id}-bot`} list={`${id}-bots`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><datalist id={`${id}-bots`}>{catalog?.bots.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</datalist></> : <p className="scheduler-node-value">{botId || '尚未填写 Bot ID'}</p>}
+      {edit && !showJson ? <><input id={`${id}-bot`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><select aria-label="选择已有 Bot" value={catalog?.bots.some(item => item.id === botId) ? botId : ''} disabled={edit.disabled} onChange={event => { if (event.target.value) changeField('bot_id', event.target.value) }}><option value="">选择已有 Bot</option><GroupOptions items={catalog?.bots ?? []} groupOf={item => item.group}>{item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>}</GroupOptions></select></> : <p className="scheduler-node-value">{botId || '尚未填写 Bot ID'}</p>}
       {botProblem && <p role="alert">{botProblem}</p>}
     </div>
     {(bot?.map_file != null || definition?.manager_task_id != null) && <section aria-label="Map 调用配置">
@@ -114,7 +116,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
       {edit && !showJson ? <select id={`${id}-manager`} value={typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : ''} disabled={edit.disabled || managerLookup?.kind !== 'ok'} onChange={event => changeField('manager_task_id', event.target.value || undefined)}>
         <option value="">未指定</option>
         {typeof definition?.manager_task_id === 'string' && !(managerLookup?.kind === 'ok' && managerLookup.tasks.some(task => task.id === definition.manager_task_id && task.taskType === 'manager')) && <option value={definition.manager_task_id} disabled>{definition.manager_task_id}（不存在、类型无效或尚未核实）</option>}
-        {managerLookup?.kind === 'ok' && managerLookup.tasks.filter(task => task.taskType === 'manager').map(task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>)}
+        {managerLookup?.kind === 'ok' && <GroupOptions items={managerLookup.tasks.filter(task => task.taskType === 'manager')} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>}</GroupOptions>}
       </select> : <p>{typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : '未指定 manager Task'}</p>}
       {edit && managerLookup && managerLookup.kind !== 'ok' && <p role="status">manager Task 列表读取失败；当前配置未改变。</p>}
       <p>manager_task_id 属于本次调用节点，不保存到 Bot；仅 manager 类型 Task 可管理子 Run。</p>

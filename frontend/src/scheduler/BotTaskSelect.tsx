@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { fetchTasks, type Task } from '../tasks/taskApi'
 import { listMaps, type MapCatalog } from './schedulerApi'
 
 type Props = { content: string; disabled: boolean; onChange: (content: string) => void }
 
 export function BotTaskSelect({ content, disabled, onChange }: Props) {
+  const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +25,7 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
       if (!cancelled) setMapError(error instanceof Error ? error.message : 'Map 列表读取失败。')
     })
     return () => { cancelled = true }
-  }, [])
+  }, [groupRevision])
 
   let definition: Record<string, unknown> | null = null
   let jsonError: string | null = null
@@ -67,14 +69,14 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
       <select id="bot-task-binding" value={binding === null ? '' : `task:${binding}`} disabled={disabled || loading || error !== null || jsonError !== null} onChange={event => change(event.target.value)} aria-describedby="bot-task-binding-help">
         <option value="">未绑定</option>
         {invalidBinding && <option value={`task:${binding}`} disabled>{loading || error ? `${binding || '空 task_id'}（尚未核实）` : invalidLabel}</option>}
-        {tasks.filter(task => task.taskType === 'normal').map(task => <option key={task.id} value={`task:${task.id}`}>{task.name} · {task.id}</option>)}
+        <GroupOptions items={tasks.filter(task => task.taskType === 'normal')} groupOf={task => task.group}>{task => <option key={task.id} value={`task:${task.id}`}>{task.name} · {task.id}</option>}</GroupOptions>
       </select>
     </label>
     <label htmlFor="bot-map-binding">Map
       <select id="bot-map-binding" value={mapBinding} disabled={disabled || maps === null || jsonError !== null} onChange={event => changeMap(event.target.value)}>
         <option value="">未绑定</option>
         {mapBinding && !maps?.files.includes(mapBinding) && <option value={mapBinding} disabled>{mapBinding}（Map 不存在或尚未核实）</option>}
-        {maps?.files.map(file => <option key={file} value={file}>{maps.titles?.[file] || file} · {file}</option>)}
+        <GroupOptions items={maps?.files ?? []} groupOf={file => maps?.groups?.[file]}>{file => <option key={file} value={file}>{maps?.titles?.[file] || file} · {file}</option>}</GroupOptions>
       </select>
     </label>
     <p id="bot-task-binding-help">仅引用普通（normal）Task 或 Map，不复制配置，两者互斥。可保持未绑定并保存；执行前必须绑定有效目标。选择与下方 JSON 中的 task_id / map_file 同步；Map 的 manager Task 由调用节点指定。</p>

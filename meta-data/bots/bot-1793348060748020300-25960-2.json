@@ -1,4 +1,5 @@
 {
+  "group": "meta-bot",
   "id": "create-blank-bot",
   "name": "空白 Bot 创建者",
   "when": "需要为既有 normal Task 或 Map 新建唯一绑定它、三指南均为空字符串的 Bot，并取得创建后的共同基线时使用。自行核实目标，只创建空白 Bot，不创建或修改执行目标，不编写指南或运行能力。",

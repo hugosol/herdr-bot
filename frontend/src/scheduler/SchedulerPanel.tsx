@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { EntityGroups, GroupButton } from '../app/entityGroups'
 import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
 import { orderedMapNodeIds } from './mapNodeOrder'
@@ -14,7 +15,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const botView = view === 'bot'
   const editorState = useSchedulerEditor({ active, view, onViewChange })
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
-    abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
+    changeGroup, abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
   const [inputsOpen, setInputsOpen] = useState(false)
   const [directoryOpen, setDirectoryOpen] = useState(false)
@@ -95,6 +96,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     if (draft.kind === 'node' && event.target.matches('input:focus-visible, textarea:focus-visible, select:focus-visible, .scheduler-node-content button:focus-visible, .scheduler-node-content summary:focus-visible')) event.target.scrollIntoView({ block: 'center', inline: 'nearest' })
   }} onSubmit={(event) => { event.preventDefault(); void submitDefinition() }}>
     <div className="scheduler-section-heading"><h3 ref={editorHeading} tabIndex={-1}>{draft.create ? '新增' : '修改'}{draft.kind === 'node' ? ' node' : ' Bot'}</h3><span>保存后生效</span></div>
+    {draft.kind === 'Bot' && !draft.create && bot && bots.kind === 'ready' && <GroupButton name={bot.name} group={bot.group} names={bots.bots.map(item => item.group)} disabled={editingBusy} onSave={group => changeGroup('bots', bot.id, group)} />}
     {draft.kind === 'Bot' && <label>Bot ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>}
     {draft.kind === 'node' && map && draft.settings && <MapNodeDetails key={`${draft.file}:${draft.initialId}`} map={map} nodeId={draft.id} catalog={bots.kind === 'ready' ? bots : undefined} onSelect={selectRelatedNode} edit={{ content: draft.content, settings: draft.settings, create: draft.create, disabled: editingBusy, onContentChange: content => editDraft({ content }), onSettingsChange: settings => editDraft({ settings }), onIdChange: id => editDraft({ id }) }} />}
     <details className="scheduler-format-help"><summary>字段格式与保存约束</summary><p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
@@ -136,15 +138,16 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <p className="scheduler-filter-count" role="status">显示 {visibleBots.length} / {bots.bots.length}</p>
             {bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">共享 Bot 目录没有 Bot JSON 文件。</p>}
             {bots.bots.length > 0 && visibleBots.length === 0 && <p>没有匹配的 Bot。清除筛选可查看全部。</p>}
-            <ul className="scheduler-map-list">{visibleBots.map((item) => <li key={item.id}>
+            <EntityGroups items={visibleBots} groupOf={item => item.group} listClass="scheduler-map-list">{(item) => <li key={item.id}>
               <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={() => openBot(item.id)}><strong>{item.name}</strong><small>{item.id}</small></button>
-            </li>)}</ul>
+              <GroupButton name={item.name} group={item.group} names={bots.bots.map(bot => bot.group)} disabled={editingBusy} onSave={group => changeGroup('bots', item.id, group)} />
+            </li>}</EntityGroups>
           </>}
         </section>
         <div className="scheduler-bot-main">
           {editError && <p role="alert">{editError}</p>}
           {draft ? editor : botId === null ? <div className="scheduler-placeholder"><h3>选择一个 Bot</h3><p>从左侧列表选择 Bot，分别阅读 when、plan_guide 和 node_guide。</p></div> : <>
-            {bot && !botProblem && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>edit</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>delete</button></div>}
+            {bot && !botProblem && <div className="scheduler-actions"><GroupButton name={bot.name} group={bot.group} names={bots.kind === 'ready' ? bots.bots.map(item => item.group) : []} disabled={editingBusy} onSave={group => changeGroup('bots', bot.id, group)} /><button type="button" disabled={editingBusy} onClick={() => void beginEdit(bot.id)}>edit</button><button type="button" disabled={editingBusy} onClick={() => void removeBot()}>delete</button></div>}
             <section aria-label="Bot 预览" className="scheduler-details">
               {bots.kind === 'ready' && (botProblem
                 ? <p role="alert">共享 Bot {botId}：{botProblem.message}</p>
@@ -164,9 +167,10 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
           : <>
             <p className="scheduler-filter-count" role="status">显示 {visibleFiles.length} / {listing.files.length}</p>
             {visibleFiles.length === 0 && <p>没有匹配的 Map 文件。清除筛选可查看全部。</p>}
-            <ul data-testid="scheduler-map-list" className="scheduler-map-list">{visibleFiles.map((name) => <li key={name}>
+            <div data-testid="scheduler-map-list"><EntityGroups items={visibleFiles} groupOf={name => listing.groups?.[name]} listClass="scheduler-map-list">{(name) => <li key={name}>
               <button type="button" data-map-file={name} aria-pressed={file === name} onClick={() => selectFile(name)}>{listing.titles?.[name]?.trim() ? listing.titles[name] : name}</button>
-            </li>)}</ul>
+              <GroupButton name={listing.titles?.[name] || name} group={listing.groups?.[name]} names={Object.values(listing.groups ?? {})} disabled={editingBusy} onSave={group => changeGroup('maps', name, group)} />
+            </li>}</EntityGroups></div>
           </>)}
       </aside>
       <div className="scheduler-main">
@@ -190,7 +194,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
-          <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
+          <header className="scheduler-map-heading"><GroupButton name={map.title} group={map.group} names={listing.kind === 'ready' ? Object.values(listing.groups ?? {}) : []} disabled={editingBusy} onSave={group => changeGroup('maps', file!, group)} /><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">
