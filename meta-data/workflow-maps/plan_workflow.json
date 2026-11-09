@@ -1,12 +1,12 @@
 {
-  "description": "自举规划：用户需求 → 用户确认的概要方案 → 新业务 Map。能力缺口由用户另开能力创建 Chat 手动补齐。本图只生成定义，不自动执行业务。管理者先派发 outline；核实当前执行报告、用户对当前方案的明确确认和 manual 报告发送确认后再 complete outline、派发 generate_map；概要方案地址通过命名输出 outline 交接。can_complete 只声明完成情况，不替代业务确认。核实新 Map 的保存与校验结果后完成运行。不要把草案、待补齐能力或阻塞报告当作交接完成，也不要修改本图或自动发起产出的业务 Map。",
+  "description": "将用户需求经概要规划与明确确认，转换为新业务 Map 定义；能力缺口由用户人工衔接补齐，不启动生成的业务。管理者验收规划与转换交接前，读取 ${herdr-bot-path}/docs/planning-deliverables.md「创建 Map 的整图交接」，据此核实业务确认、可翻译性及保存校验结果；依赖、材料与报告策略以本图结构化字段为准。",
   "nodes": {
     "generate_map": {
       "blocked_by": [
         "outline"
       ],
       "bot_id": "plan-to-map",
-      "input": "将命名输入 outline 中已确认的概要方案忠实转换为新业务 Map，以 map 交付生成的 JSON 文件，按转换 Task 的流程核实、保存和验收。\n本次只授权在核实的服务 Map 目录新增文件，不授权覆盖既有 Map；当前 plan_workflow 保持不变。影响翻译的业务缺口交回概要规划者。\n业务启动配置仅取自方案明确提供的内容；本次不发起生成的业务 Run。",
+      "input": "将命名输入 outline 作为本次已确认的概要方案，忠实转换为新业务 Map，并交付完整 JSON 文件。本次仅授权在核实的服务 Map 目录新增，不覆盖既有 Map；当前 plan_workflow 保持不变。按 Task 核实、保存并验收，业务缺口交回概要规划者，不启动生成的业务 Run。",
       "input_rule": [
         {
           "id": "outline",
@@ -27,7 +27,7 @@
     "outline": {
       "blocked_by": [],
       "bot_id": "outline-planning",
-      "input": "根据本次 userInput 形成用户确认的概要方案，供下游 Map 生成者使用。以独立 Markdown 文件交付 outline，按概要规划 Task 的交付契约组织，不以聊天正文代替文件。\n本次最终交付须取得用户对当前版本的明确确认，并消除所有阻止 Map 翻译的能力缺口和业务矛盾；仅缺外层新业务根 Run 启动配置时列为待配置，不阻止方案交付；Map 型调用节点自身的 manager、业务输入、zone 和材料映射必须明确。\n本次只交付规划文档，保持当前 plan_workflow 定义不变。",
+      "input": "根据本次 userInput 规划新业务，供下游 Map 转换者使用。以独立 Markdown 文件交付概要方案；最终交接必须达到 Task 所引契约的可翻译条件，草案或待补能力方案只作中间材料。本次仅交付规划文档，保持当前 plan_workflow 定义不变。",
       "input_rule": [],
       "output_rule": [
         {
