@@ -31,11 +31,15 @@
 
 ## 创建 Task＋Bot 的选定外层入口
 
-`create-bot-task-workflow--bc-61ce48b80a4c.json` 现在只有三个工作单元：
+`create-bot-task-workflow--bc-61ce48b80a4c.json` 现在有四个工作单元：
 
 1. `w1` → `create-task`：从本次 `Run.userInput` 和可选命名 `materials` 创建 normal Task。保留全文和执行配置确认，公开保存／完整读回；`handoff` 自包含地记录真实新 Task ID、需求、确认来源、权限及后续 Bot 创建委托。未明确的授权不得自行补齐。
 2. `w2` → `optimize-prompt`：直接消费 `w1.handoff` 中的完整 prompt、已确认语义与授权，仅整理表达并保存 prompt，保留其他配置，不重做需求访谈。W1 记录后续保义优化及保存授权；授权不足、语义变化或冲突须先解决。`saved` 单独承载完整最新 Task 配置，`handoff` 只含真实 Task ID、需求、确认／授权、核对结论和包装委托，作为子流程的 `request`，不复制配置或正文。报告按各节点实际 report_policy 执行，manual 时由原生 UI 单独批准发送 payload；外层管理者核实真实报告后显式 complete。
-3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与授权证据，显式 complete 本调用再 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与授权证据，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+
+4. `optimize_bot` → `prompt优化者——Bot维度`：依赖 `wrap_bot`，显式接收其 `saved`／`handoff` 为 `bot_saved`／`bot_handoff`，并接收外层可选 `materials`。沿用有效需求与确认，查询服务最新配置，联合优化刚创建的 Task.prompt 与 Bot 三指南；展示整体方案、共享影响和完整候选，取得最终文本与保存授权。Skill／文档只读，保持业务语义、身份、绑定和执行配置，不运行目标能力。`saved` 交付完整读回的最终 Bot 与 Task 配置，`handoff` 交付修改说明、确认依据、保存核对结果及未验证项。采用 manual 报告且不自动关闭；保存确认不替代报告发送确认。父管理者验收并 complete 此节点后才可 finish 外层；阻塞或部分保存不算整体完成，保留对象，不自动删除或回滚。包装产物仅是阶段记录，最终注明“文本／定义优化完成，行为未验证”。
+
+本次只更新仓库定义，不自动部署服务配置；其他创建 Bot 的入口不增加该节点。四节点定义的公开保存／读取及可选材料预检由 `workflow_dispatch::outer_create` 回归覆盖；真实外层验收入口已纳入最后的候选确认、交接及完成边界，但接线回归通过不代表新增优化节点的真实模型执行已验收。
 
 根 Run 仍由调用者经 scheduler 选择自己的 manager Task、zone 和本次业务输入；`materials` 缺席合法，提供却不可读必须拒绝。仅移除了本外层原先内联的空白 Bot、三路指南、三路优化及最终保存分支；包装 Map 的八节点职责保持不变，不将 Task 创建移入包装。旧独立 `create-bot-task` 仍绑定 `task-18e315be1cf0ef10-0`，`create-bot` 仍绑定 `task-18e31d347ccbeb4c-4`，不改变其独立职责，不迁移其他 Map 或用户部署。
 

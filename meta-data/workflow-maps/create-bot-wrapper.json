@@ -244,7 +244,7 @@
         }
       ],
       "report_policy": "manual",
-      "auto_close": false,
+      "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "create_blank"
@@ -271,7 +271,7 @@
         }
       ],
       "report_policy": "manual",
-      "auto_close": false,
+      "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "create_blank"
@@ -298,7 +298,7 @@
         }
       ],
       "report_policy": "manual",
-      "auto_close": false,
+      "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "create_blank"

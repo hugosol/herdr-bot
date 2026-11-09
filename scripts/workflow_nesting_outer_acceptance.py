@@ -1,8 +1,7 @@
 """Real outer business scenarios, through published definitions and native roles.
 
-Design before red: P46 requires the actual three-node outer definition to create
-and optimize a normal Task, then call the eight-node wrapper without touching that
-target. A plausible violation is an inline Bot save, a dropped baseline/output or
+P46 exercises Task creation and prompt optimization, the eight-node wrapper
+with a read-only target, then final Bot-level optimization with separate approval. A plausible violation is an inline Bot save, a dropped baseline/output or
 an automatic parent completion. Real native HTTP/tool traces, explicit confirmation
 turns, complete target snapshots and bidirectional Run identities distinguish them.
 P45 here covers the creator and the generic optimizer's Task.prompt direct-save
@@ -425,6 +424,7 @@ export default function(pi) {
         roles_by_proposal = {
             'independent-creator': 'normal Task.prompt', 'w1': 'normal Task.prompt',
             'independent-optimizer': 'existing normal Task.prompt', 'w2': 'existing normal Task.prompt',
+            'optimize_bot': 'joint existing Task.prompt and Bot when/plan_guide/node_guide optimization, with complete candidates and overall plan',
             'write_when': 'Bot.when selection guidance',
             'write_plan_guide': 'Bot.plan_guide planning guidance',
             'write_node_guide': 'Bot.node_guide concrete caller business inputs',
@@ -550,7 +550,9 @@ export default function(pi) {
         request = {'managerTaskId': self.ids[MANAGER], 'zone': 'hugosol/herdr-bot',
             'userInput': self.business('outer', wrapper=True) + ' 管理者自主按实际定义执行完整外层；每次真实交接后显式验收 complete，'
                 '不要代节点补写配置／材料。子管理者完成内部八节点后 finish，再真实 report 直接交付 saved 与 handoff；'
-                '父管理者核实后另行 complete wrap_bot、finish。不得读取验收 driver、oracle、凭据或用户原生存储。',
+                '父管理者核实后另行 complete wrap_bot，再派发 optimize_bot；最终优化验收完成后才 finish。'
+                '最终优化候选包含 Task.prompt 与 Bot 三指南完整正文及整体方案，沿用上述候选文件与单独报告确认约定。'
+                '不得读取验收 driver、oracle、凭据或用户原生存储。',
             'fileInputs': []}
         started = self.http('/api/scheduler/maps/' + OUTER + '/runs', request, 201)
         self.outer_id = started['id']
@@ -558,6 +560,9 @@ export default function(pi) {
         seen = {}
         self.target_before_wrapper = None
         self.wrapper_wire_start = None
+        self.wrapper_wire_end = None
+        self.target_after_wrapper = None
+        self.bots_after_wrapper = None
         deadline = time.monotonic() + self.args.timeout * 8
         while time.monotonic() < deadline:
             facts = self.snapshots()
@@ -580,13 +585,18 @@ export default function(pi) {
                     if case not in self.confirmed:
                         reports = [item for item in detail['reports'] if item['executionId'] == execution['id']]
                         require(not reports, ('Manual report sent before separate explicit confirmation', case, reports))
-                        if detail['id'] == self.outer_id:
+                        if detail['id'] == self.outer_id and node_id in ['w1', 'w2']:
                             if node_id == 'w1':
                                 require(not any(task['name'] == self.marker + '-outer' for task in self.http('/api/tasks')['tasks']),
                                         'Workflow creator saved before approval')
                             elif node_id == 'w2':
                                 require(self.task(self.outer_created_target['id']) == self.outer_created_target, 'Workflow optimizer saved before approval')
                             require(self.bot_catalog() == self.baseline_bots, 'Outer creator/optimizer took over Bot creation')
+                        if detail['id'] == self.outer_id and node_id == 'optimize_bot':
+                            self.target_after_wrapper = self.task(self.target_before_wrapper['id'])
+                            require(self.target_after_wrapper == self.target_before_wrapper, 'Target changed before final optimization approval')
+                            self.bots_after_wrapper = self.bot_catalog()
+                            self.wrapper_wire_end = len(self.backend_wire.records)
                         wire_start = len(self.backend_wire.records)
                         self.confirm_business(chat, self.root / 'zone/proposals' / (node_id + '.txt'), case)
                         native_traffic = self.backend_wire.records[wire_start:]
@@ -634,7 +644,6 @@ export default function(pi) {
 
     def verify_outer(self, facts, outer):
         parent = outer['run']
-        require(set(parent['nodes']) == {'w1', 'w2', 'wrap_bot'}, 'Outer flattened or substituted the published definition')
         wrapper_execution = parent['nodes']['wrap_bot']['execution']
         child = next(item for item in facts if item['id'] == wrapper_execution['childRunId'])
         require(len(facts) == 2, ('Unexpected new business Run', facts))
@@ -644,15 +653,17 @@ export default function(pi) {
         require(all(node['status'] == 'completed' and node.get('completion') for node in child['run']['nodes'].values()), 'Missing explicit child acceptance')
         require(all(node['status'] == 'completed' and node.get('completion') for node in parent['nodes'].values()), 'Missing explicit parent acceptance')
         target = self.target_before_wrapper
-        require(self.task(target['id']) == target, 'Wrapper changed handed-off complete target configuration')
-        wrapper_traffic = self.backend_wire.records[self.wrapper_wire_start:]
+        require(self.target_after_wrapper == target, 'Wrapper changed handed-off complete target configuration')
+        require(self.wrapper_wire_end is not None, 'Final optimizer never reached explicit approval')
+        wrapper_traffic = self.backend_wire.records[self.wrapper_wire_start:self.wrapper_wire_end]
         require(not any(item['method'] != 'GET' and (item['path'].startswith('/api/tasks') or item['path'] == '/api/chats')
                         for item in wrapper_traffic), 'Wrapper created/modified a Task or launched a new business Chat')
         parent_reports = [item for item in outer['reports'] if item['executionId'] == wrapper_execution['id']]
         require(parent_reports and parent_reports[-1]['from'] == child['run']['manager']
                 and parent_reports[-1]['to'] == parent['manager'], 'Report used fabricated parent/child identity')
         require(child['run']['finished']['at'] <= parent_reports[-1]['at'] <= parent['nodes']['wrap_bot']['completion']['at']
-                <= parent['finished']['at'], 'Child finish/report and explicit parent acceptance order was lost')
+                <= parent['nodes']['optimize_bot']['completion']['at'] <= parent['finished']['at'],
+                'Child finish/report and final optimization acceptance order was lost')
         require(all(node['completion']['actor'] == parent['manager'] for node in parent['nodes'].values()), 'Parent nodes were not accepted by their real manager')
         require(all(node['completion']['actor'] == child['run']['manager'] for node in child['run']['nodes'].values()), 'Child nodes were not accepted by their real manager')
         require(wrapper_execution['taskId'] == self.ids[MANAGER], 'Wrong source manager Task')
@@ -701,7 +712,25 @@ export default function(pi) {
         created = [item for item in catalog if item['id'] not in original_bots]
         require(len(created) == 1 and created[0].get('task_id') == target['id'] and not created[0].get('map_file'),
                 ('Outer did not create exactly one uniquely Task-bound Bot', created))
-        bot = created[0]
+        final_bot = created[0]
+        bot = next(item for item in self.bots_after_wrapper['bots'] if item['id'] == final_bot['id'])
+        final_task = self.task(target['id'])
+        require({k: v for k, v in final_task.items() if k != 'prompt'} ==
+                {k: v for k, v in target.items() if k != 'prompt'}, 'Final optimizer changed Task execution configuration')
+        require({k: v for k, v in final_bot.items() if k not in ['when', 'plan_guide', 'node_guide']} ==
+                {k: v for k, v in bot.items() if k not in ['when', 'plan_guide', 'node_guide']},
+                'Final optimizer changed Bot identity or binding')
+        final_outputs = self.output_files(outer, 'optimize_bot')
+        final_inputs = parent['nodes']['optimize_bot']['execution']['inputs']
+        require({'id': 'bot_saved', 'path': exported['saved']['path']} in final_inputs and
+                {'id': 'bot_handoff', 'path': exported['handoff']['path']} in final_inputs,
+                'Final optimizer did not consume explicit wrapper outputs')
+        self.evaluate('final-bot-optimization', {'beforeTask': target, 'beforeBot': bot,
+            'finalTask': final_task, 'finalBot': final_bot, 'outputs': final_outputs,
+            'confirmation': self.confirmed[outer['id'] + '/optimize_bot']}, {
+            'preservation': 'Final Task and Bot preserve the full original business meaning, permissions and acceptance; constraints remain reachable by their consumers.',
+            'approval': 'All final modified text matches the explicitly confirmed complete candidate; no business change or permission is invented.',
+            'delivery': 'saved contains the complete final Bot and Task configurations matching service readback; handoff records changes, confirmation, checks and unverified behavior without claiming runtime quality.'})
         require(bot['name'] == self.marker + '-outer', 'Wrapper changed the explicitly requested Bot name')
         require(json.loads(saved['saved']['bytes']) == bot, 'Saved output is not the complete public Bot readback')
         saves = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/save'

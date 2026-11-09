@@ -1,6 +1,6 @@
 {
   "title": "创建task",
-  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot。需求来自本次 Run.userInput，可选 materials 为参考材料。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
+  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 三指南并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。需求来自本次 Run.userInput，可选 materials 为参考材料。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
   "input_files": [
     {
       "id": "materials",
@@ -54,6 +54,44 @@
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "w1"
+      ]
+    },
+    "optimize_bot": {
+      "title": "prompt优化者——Bot维度",
+      "bot_id": "bot-task-18e66273ae718d14-1",
+      "input": "完整读取 bot_saved 与 bot_handoff，核实本次刚创建的真实 Bot、唯一 normal Task 绑定、需求、确认来源及授权范围；materials 为可选参考材料，沿用已声明用途与读取权限。查询服务 ${herdr-bot-api-url} 的最新完整 Bot／Task 配置，以读回结果为修改基线，不把包装阶段快照当成当前配置，不依赖前序 Chat 历史。\n本次优化服务中的 Task.prompt 与 Bot.when／plan_guide／node_guide，联合检查约束归属、可达承接、输入输出和权限一致性，保持已确认业务语义、身份、名称、绑定、执行配置及其他非目标内容不变。Skill 和文档只读，不修改仓库定义、Map 或运行记录，不运行目标能力。沿用有效业务确认；展示整体方案、共享影响及完整候选，取得本次最终文本与保存授权后再写入。新取舍、授权缺口或运行禁写按固定职责阻塞，不自行补齐。\n交付 saved 为完整读回的最终 Bot 与 Task 配置，handoff 为修改说明、确认依据及范围、约束归属与共享影响、保存核对结果、资源缺口和未验证项；在获准交付位置安全写入 UTF-8 文件。包装产物保留为阶段记录，不作为本流程最终配置。保存确认与 manual 报告发送确认分别处理。\n仅在全部获准修改保存、读回核对及交付完成后报告可交接；受阻或部分保存须如实报告，保留已创建对象，不自动删除或回滚。最终注明文本／定义优化完成，行为未验证。管理者验收并 complete 本节点后才能 finish 外层 Run。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "bot_saved",
+          "node_id": "wrap_bot",
+          "output_id": "saved"
+        },
+        {
+          "type": "node",
+          "id": "bot_handoff",
+          "node_id": "wrap_bot",
+          "output_id": "handoff"
+        },
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "wrap_bot"
       ]
     },
     "wrap_bot": {
