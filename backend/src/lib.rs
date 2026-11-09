@@ -46,8 +46,6 @@ pub mod sessions;
 pub mod scheduler;
 pub mod runs;
 pub mod files;
-pub mod handoff_migration;
-pub mod portability_migration;
 pub mod prompts;
 pub mod shutdown;
 pub mod tasks;
@@ -305,6 +303,7 @@ pub fn app_with_state(
         .route("/api/scheduler/maps", get(scheduler::list_maps))
         .route("/api/scheduler/maps/{name}", get(scheduler::get_map))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
+        .route("/api/scheduler/maps/{name}/inputs", get(scheduler::edit_map_inputs).post(scheduler::save_map_inputs))
         .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
         .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
         .route("/api/workflow/runs", get(runs::list_runs))
@@ -320,6 +319,7 @@ pub fn app_with_state(
         .route("/api/workflow/manager/finish", post(runs::manager_finish))
         .route("/api/workflow/manager/pause", post(runs::manager_pause))
         .route("/api/workflow/manager/resume", post(runs::manager_resume))
+        .route("/api/workflow/node/context", post(runs::node_context))
         .route("/api/workflow/node/report", post(runs::node_report))
         .route("/api/scheduler/maps/{name}/nodes/new", get(scheduler::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(scheduler::edit_node))
@@ -1072,6 +1072,9 @@ async fn preview_chat(State(state): State<AppState>, request: Request) -> Respon
         Err(error) => return task_error_response(error),
     };
 
+    if let Err(error) = state.tasks.validate_suite(&task) {
+        return task_error_response(error);
+    }
     let chat_id = chats::new_chat_id();
     let name = chats::render_chat_name(&task.chat_name, &zone, &task, &chat_id);
     let agent = task.agent.label();

@@ -161,32 +161,47 @@ impl FileStore {
         Ok((FileAccess { scopes }, identities))
     }
     pub fn with<R>(&self, paths: &[PathBuf], action: impl FnOnce(&FileAccess) -> R) -> io::Result<R> {
-        let (access, paths) = Self::prepare(paths)?;
+        let (_, mut identities) = Self::prepare(paths)?;
         let coordinator = coordinator();
-        let mut active = coordinator.active.lock().unwrap_or_else(|error| error.into_inner());
-        let lease = loop {
-            if let Some(lease) = reserve(&mut active, &paths) { break lease; }
-            active = coordinator.changed.wait(active).unwrap_or_else(|error| error.into_inner());
+        let (access, lease) = loop {
+            let mut active = coordinator.active.lock().unwrap_or_else(|error| error.into_inner());
+            let lease = loop {
+                if let Some(lease) = reserve(&mut active, &identities) { break lease; }
+                active = coordinator.changed.wait(active).unwrap_or_else(|error| error.into_inner());
+            };
+            drop(active);
+            // Resolution before acquisition can race an atomic replacement. In
+            // particular, Windows may return the renamed file's temporary name.
+            // Only use an observation made while its identities are reserved.
+            let (access, current) = Self::prepare(paths)?;
+            if current == identities { break (access, lease); }
+            drop(lease);
+            identities = current;
         };
-        drop(active);
         let result = action(&access);
         drop(lease);
         Ok(result)
     }
     pub async fn with_async<R, F>(&self, paths: &[PathBuf], action: F) -> io::Result<R>
     where F: for<'a> FnOnce(&'a FileAccess) -> Pin<Box<dyn Future<Output = R> + Send + 'a>> {
-        let (access, paths) = Self::prepare(paths)?;
+        let (_, mut identities) = Self::prepare(paths)?;
         let coordinator = coordinator();
-        let lease = loop {
+        let (access, lease) = loop {
             let notified = coordinator.notified.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
             let lease = {
                 let mut active = coordinator.active.lock().unwrap_or_else(|error| error.into_inner());
-                reserve(&mut active, &paths)
+                reserve(&mut active, &identities)
             };
-            if let Some(lease) = lease { break lease; }
-            notified.await;
+            if let Some(lease) = lease {
+                let (access, current) = Self::prepare(paths)?;
+                if current == identities { break (access, lease); }
+                drop(lease);
+                identities = current;
+            } else {
+                notified.await;
+            }
         };
         let result = action(&access).await;
         drop(lease);
@@ -257,20 +272,6 @@ impl FileAccess {
         if self.scopes.iter().any(|scope| scope.lexical.starts_with(&lexical) || scope.resolved.starts_with(&lexical)) {
             self.authorize(path, true)
         } else { self.authorize(path, false) }
-    }
-    /// Create a new link for a declared external resource. Both source and
-    /// destination must be explicitly coordinated; ordinary file operations
-    /// retain their existing resolved-path boundary. Never copy or elevate.
-    pub(crate) fn link_resource_directory(&self, source: &Path, link: &Path) -> io::Result<()> {
-        self.authorize(source, false)?;
-        self.authorize_creation(link)?;
-        if !fs::metadata(source)?.is_dir() {
-            return Err(io::Error::new(io::ErrorKind::NotADirectory, "skill source is not a directory"));
-        }
-        #[cfg(windows)]
-        { std::os::windows::fs::symlink_dir(source, link) }
-        #[cfg(unix)]
-        { std::os::unix::fs::symlink(source, link) }
     }
     pub fn remove_file(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.authorize(path.as_ref(), false)?; fs::remove_file(path)

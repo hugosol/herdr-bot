@@ -115,7 +115,8 @@ class Model(http.server.BaseHTTPRequestHandler):
                         advertised = dict((name, html.unescape(location)) for name, location in re.findall(
                             r'<name>(.*?)</name>\s*<description>.*?</description>\s*<location>(.*?)</location>', system, re.S))
                         require(sorted(advertised) == ['selected-relative', 'selected-root'], ('Exact selected skills', advertised, system))
-                        require(all('generated resources' in p for p in advertised.values()), advertised)
+                        require({str(Path(path).resolve()) for path in advertised.values()} == set(case['expectedSkillFiles']),
+                                ('Skills must advertise original source files', advertised, case['expectedSkillFiles']))
                         paths = [advertised['selected-root'], str(Path(advertised['selected-root']).parent / 'scripts/probe.py'),
                                  str(Path(advertised['selected-root']).parent / 'assets/payload.txt'), advertised['selected-relative']]
                     else:
@@ -198,7 +199,7 @@ class Acceptance(support['Acceptance']):
         self.extension = authority / 'relative package'
         for directory, name, text in [(self.skill, 'selected-root', 'ROOT-SKILL-BODY-119'),
             (authority / 'relative skill', 'selected-relative', 'RELATIVE-SKILL-BODY-508'),
-            (root / 'unselected', 'not-selected', 'UNSELECTED-BODY-MUST-NOT-APPEAR')]:
+            (self.root / 'unselected', 'not-selected', 'UNSELECTED-BODY-MUST-NOT-APPEAR')]:
             directory.mkdir()
             (directory / 'SKILL.md').write_text(f'---\nname: {name}\ndescription: Owned resource\n---\n{text}\n')
         (self.skill / 'scripts').mkdir()
@@ -212,7 +213,7 @@ class Acceptance(support['Acceptance']):
         (self.extension / 'node_modules/owned-factor/index.js').write_text('export const factor=3;')
         (self.extension / 'extension/sibling.ts').write_text('export const offset=7;')
         (self.extension / 'assets/payload.json').write_text('{"unit":19}')
-        (self.extension / 'package.json').write_text(json.dumps({'type': 'module', 'omp': {'extensions': ['extension/probe.ts']}, 'pi': {'extensions': ['extension/probe.ts']}}))
+        (self.extension / 'package.json').write_text(json.dumps({'type': 'module'}))
         (self.extension / 'extension/probe.ts').write_text('''import {readFileSync} from "node:fs";
 import {factor} from "owned-factor";
 import {offset} from "./sibling.ts";
@@ -227,10 +228,11 @@ export default function(pi) {
         selected = self.scenario == 'selected'
         negative = self.scenario in ['unreadable-skill', 'unreadable-extension', 'generation-failure', 'incompatible']
         self.suite = {'id': 'shared', 'name': 'Shared declaration', 'agents': ['omp', 'pi'],
-                      'skills': ['${roots.resources}/root skill', 'relative skill'] if selected or self.scenario == 'unreadable-skill' else [],
+                      'skills': {'omp': ['${roots.resources}', '.'] if selected or self.scenario == 'unreadable-skill' else [],
+                                 'pi': ['${roots.resources}/root skill', 'relative skill'] if selected or self.scenario == 'unreadable-skill' else []},
                       'pi': {'codemode': 'on'}, 'mcp': []}
         if selected or self.scenario == 'unreadable-extension':
-            self.suite['extensions'] = {'omp': ['relative package'], 'pi': ['relative package']}
+            self.suite['extensions'] = {'omp': ['relative package/extension/probe.ts'], 'pi': ['relative package/extension/probe.ts']}
         native = {'native_file': self.server_config('native')}
         central = {}
         if selected or self.scenario == 'append':
@@ -291,8 +293,6 @@ export default function(pi) {
                     return 'http://' + match[1]
         self.base = until('owned backend loopback', address)
         self.http('/api/suites')
-        if not negative and (selected):
-            require(os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1', 'Selected resource acceptance requires explicit HERDR_BOT_MANUAL_SYMLINKS=1; no link fallback')
 
     def server_config(self, route):
         return {'url': f'http://127.0.0.1:{self.mcp.server_port}/{route}', 'exposure': 'direct'}
@@ -343,7 +343,9 @@ export default function(pi) {
                 self.publish()
                 self.http('/api/suites')  # Still a valid declaration; only Task compatibility changed.
             case = {'agent': agent, 'scenario': self.scenario, 'selected': selected, 'requests': [],
-                    'expected': [], 'mcpTools': [], 'consumed': False, 'cwd': str(zone)}
+                    'expected': [], 'mcpTools': [], 'consumed': False, 'cwd': str(zone),
+                    'expectedSkillFiles': [str((self.skill / 'SKILL.md').resolve()),
+                                           str((self.authority / 'relative skill/SKILL.md').resolve())]}
             if selected:
                 case['expected'] = ['ROOT-SKILL-BODY-119', 'SCRIPT-READ-947', 'ASSET-BYTES-276', 'RELATIVE-SKILL-BODY-508', 'PACKAGE-ASSET-482:64']
             if agent == 'pi':
@@ -415,8 +417,11 @@ export default function(pi) {
                     else {'path': str(p), 'sha256': digest(p)} for p in generated.rglob('*') if p.is_symlink() or p.is_file()]
                 if selected:
                     targets = {item['target'] for item in case['artifacts'] if 'target' in item}
-                    require({str(self.skill.resolve()), str((self.authority / 'relative skill').resolve()), str(self.extension.resolve())} <= targets,
-                            ('Final true-link artifacts missing', case['artifacts']))
+                    require(not targets, ('Resources must load from original sources without generated links', case['artifacts']))
+                    case['sourceSkillRoots'] = [str(self.skill.resolve()), str((self.authority / 'relative skill').resolve())]
+                    require(str(self.extension.resolve()) not in targets,
+                            ('Extension package must load from its source entry, not a generated link', case['artifacts']))
+                    case['sourceEntrypoint'] = str((self.extension / 'extension/probe.ts').resolve())
                 case['verified'] = True
                 self.command([self.args.herdr, 'pane', 'close', pane])
             finally:

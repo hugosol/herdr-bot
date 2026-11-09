@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "codebase-memory-mcp": {
-      "command": "codebase-memory-mcp",
+      "command": "${roots.codebase_memory_mcp}/codebase-memory-mcp.exe",
       "args": [
         "--ui=true",
         "--port=9749"

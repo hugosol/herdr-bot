@@ -1,0 +1,8 @@
+{
+  "id": "create-bot-wrapper",
+  "name": "为既有目标包装完整 Bot",
+  "when": "为已经存在的 normal Task 或 Map 新建并绑定完整 Bot 时使用，交付经确认和表达优化的三指南及完整保存读回对象。目标由本能力自行核实；不创建、修改或执行目标，也不用于修订已有 Bot。配置交付不等于业务能力验证。",
+  "plan_guide": "目标必须已经存在，且业务需求与实际能力相符；不要求用户抄完整配置。安排三指南全文确认所需的用户参与，区分材料写入、全文确认与最终保存授权。选用或嵌套本能力时，读取 ${herdr-bot-path}/docs/create-bot-wrapper.md「调用接口」，据此准备 request／可选 materials、核实本次真实 manager 与 zone，并安排 saved／handoff 的父子交接；配置交付不包含新能力试运行。",
+  "node_guide": "提供自包含的 UTF-8 request：真实 normal Task ID 或 Map 文件名（二选一）、明确 Bot 创建委托、业务需求、资源与权限、非目标、材料写入范围；可选指定 Bot 名称／ID、正式交付位置和额外验收。materials 如提供，说明参考材料内容与用途；缺席合法，提供却不可读需解决。分别说明材料写入、三指南确认及最终 Bot 保存的授权与已有依据；本次范围仅为包装既有目标，不包含目标变更或业务执行。",
+  "map_file": "create-bot-wrapper.json"
+}

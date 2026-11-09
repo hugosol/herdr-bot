@@ -1,0 +1,308 @@
+{
+  "title": "创建bot",
+  "description": "为真实既有 normal Task／Map 创建完整 Bot：request 提供创建委托与业务需求，materials 为可选参考材料；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "input_files": [
+    {
+      "id": "request",
+      "required": true
+    },
+    {
+      "id": "materials",
+      "required": false
+    }
+  ],
+  "nodes": {
+    "create_blank": {
+      "title": "核实既有目标并创建空白 Bot",
+      "bot_id": "create-blank-bot",
+      "input": "request 是本次既有 normal Task／Map 的定位、创建委托、业务需求、资源权限、非目标与材料写入范围；materials 为可选参考材料，提供时按其用途消费，不可读不能当作缺席。\n本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
+      "input_rule": [
+        {
+          "type": "run",
+          "id": "request",
+          "input_id": "request"
+        },
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "baseline"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "auto",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    },
+    "optimize_node_guide": {
+      "title": "优化 Bot.node_guide 表达",
+      "bot_id": "optimize-prompt",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.node_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        },
+        {
+          "type": "node",
+          "id": "text",
+          "node_id": "write_node_guide",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "handoff",
+          "node_id": "write_node_guide",
+          "output_id": "handoff"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "auto",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "write_node_guide"
+      ]
+    },
+    "optimize_plan_guide": {
+      "title": "优化 Bot.plan_guide 表达",
+      "bot_id": "optimize-prompt",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.plan_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        },
+        {
+          "type": "node",
+          "id": "text",
+          "node_id": "write_plan_guide",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "handoff",
+          "node_id": "write_plan_guide",
+          "output_id": "handoff"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "auto",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "write_plan_guide"
+      ]
+    },
+    "optimize_when": {
+      "title": "优化 Bot.when 表达",
+      "bot_id": "optimize-prompt",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.when 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        },
+        {
+          "type": "node",
+          "id": "text",
+          "node_id": "write_when",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "handoff",
+          "node_id": "write_when",
+          "output_id": "handoff"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "auto",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "write_when"
+      ]
+    },
+    "save_bot": {
+      "title": "一次保存并完整读回 Bot 三指南",
+      "bot_id": "replace-text",
+      "input": "使用服务 ${herdr-bot-api-url}。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「一次合法保存与失败核实」「文件与独立 Chat」，用于本次材料分工、整批授权与基线核实、一次保存读回及失败核实、安全文件交付。\n直接消费 baseline 和三组最终材料：when_text／when_handoff → when，plan_guide_text／plan_guide_handoff → plan_guide，node_guide_text／node_guide_handoff → node_guide。以各 text 为唯一完整正文、各 handoff 为确认与限制依据，仅按有效授权一次替换同一 Bot 的三个字段，保持全部非目标和关联 normal Task／Map 配置。\n交付 saved 文件，内容为公开接口完整读回的真实 Bot；另交付 handoff 文件，记录真实身份、唯一绑定、确认／授权依据、三字段来源、保存及非目标保持核对结论、已发生效果和未验证项，不复制配置或正文。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        },
+        {
+          "type": "node",
+          "id": "when_text",
+          "node_id": "optimize_when",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "when_handoff",
+          "node_id": "optimize_when",
+          "output_id": "handoff"
+        },
+        {
+          "type": "node",
+          "id": "plan_guide_text",
+          "node_id": "optimize_plan_guide",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "plan_guide_handoff",
+          "node_id": "optimize_plan_guide",
+          "output_id": "handoff"
+        },
+        {
+          "type": "node",
+          "id": "node_guide_text",
+          "node_id": "optimize_node_guide",
+          "output_id": "text"
+        },
+        {
+          "type": "node",
+          "id": "node_guide_handoff",
+          "node_id": "optimize_node_guide",
+          "output_id": "handoff"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "auto",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "optimize_when",
+        "optimize_plan_guide",
+        "optimize_node_guide"
+      ]
+    },
+    "write_node_guide": {
+      "title": "编写并确认 Bot.node_guide",
+      "bot_id": "write-bot-node-guide",
+      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 node_guide，供规划者填写本次业务输入责任，包括 Task／Map 所需材料、选择和授权；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_blank"
+      ]
+    },
+    "write_plan_guide": {
+      "title": "编写并确认 Bot.plan_guide",
+      "bot_id": "write-bot-plan-guide",
+      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 plan_guide，供规划者安排工作；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_blank"
+      ]
+    },
+    "write_when": {
+      "title": "编写并确认 Bot.when",
+      "bot_id": "write-bot-when",
+      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 when，供能力发现与选用；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "baseline",
+          "node_id": "create_blank",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": true,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_blank"
+      ]
+    }
+  }
+}

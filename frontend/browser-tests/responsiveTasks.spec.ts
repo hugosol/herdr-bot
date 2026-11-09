@@ -64,7 +64,7 @@ for (const profile of [
       await rule.scrollIntoViewIfNeeded()
       await capture('preset')
       await action('task-next')
-      await expect(page.getByTestId('task-fixed-extensions')).toContainText('model-cost')
+      await expect(page.getByTestId('task-suite')).toHaveValue('')
       await capture('extensions')
       await action('task-back')
       for (const [id, expected] of [['name', draft.name], ['agent', 'omp'], ['model', 'gpt-6.1-sol'], ['thinking', 'high'], ['skill', 'code-review'], ['prompt', draft.prompt]]) {
@@ -73,7 +73,7 @@ for (const profile of [
       await expect(dialog.getByTestId('chat-name-preview')).toHaveText('巡检 alphaP49 发布巡检ompa7f3c2')
       await action('task-next')
       await action('task-next')
-      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, fixed: 'herdr-agent-state、model-cost', discovery: '关闭' })) {
+      for (const [id, expected] of Object.entries({ name: draft.name, chatName: draft.chatName, agent: 'oh-my-pi', model: 'GPT-6.1-Sol', thinking: 'high', skill: '/code-review', prompt: draft.prompt, discovery: '关闭' })) {
         await expect(page.getByTestId(`summary-${id}`)).toHaveText(expected)
       }
       expect((await server.getTasks()).tasks).toEqual([])

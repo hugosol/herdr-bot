@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchTasks, type Task } from '../tasks/taskApi'
+import { listMaps, type MapCatalog } from './schedulerApi'
 
 type Props = { content: string; disabled: boolean; onChange: (content: string) => void }
 
@@ -7,6 +8,8 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [maps, setMaps] = useState<MapCatalog | null>(null)
+  const [mapError, setMapError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -15,6 +18,9 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
       setLoading(false)
       if (result.kind === 'ok') setTasks(result.tasks)
       else setError(result.kind === 'rejected' ? result.message : 'Task 列表读取失败；请保留草稿，重新打开编辑器后再选择。')
+    })
+    void listMaps().then(catalog => { if (!cancelled) setMaps(catalog) }).catch(error => {
+      if (!cancelled) setMapError(error instanceof Error ? error.message : 'Map 列表读取失败。')
     })
     return () => { cancelled = true }
   }, [])
@@ -27,8 +33,8 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
       jsonError = '请先将 Bot 内容修正为 JSON 对象，再选择 Task。'
     } else {
       definition = value as Record<string, unknown>
-      if (definition.task_id != null && typeof definition.task_id !== 'string') {
-        jsonError = '请先修正 JSON 中的 task_id：必须是字符串、null 或省略。'
+      if (['task_id', 'map_file'].some(key => definition![key] != null && typeof definition![key] !== 'string')) {
+        jsonError = '请先修正 JSON 中的 task_id / map_file：必须是字符串、null 或省略。'
       }
     }
   } catch {
@@ -44,7 +50,15 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
     if (!definition || jsonError) return
     const updated = { ...definition }
     if (value === '') delete updated.task_id
-    else updated.task_id = value.slice('task:'.length)
+    else { updated.task_id = value.slice('task:'.length); delete updated.map_file }
+    onChange(JSON.stringify(updated, null, 2))
+  }
+  const mapBinding = typeof definition?.map_file === 'string' ? definition.map_file : ''
+  function changeMap(value: string) {
+    if (!definition || jsonError) return
+    const updated = { ...definition }
+    if (value === '') delete updated.map_file
+    else { updated.map_file = value; delete updated.task_id }
     onChange(JSON.stringify(updated, null, 2))
   }
 
@@ -56,7 +70,16 @@ export function BotTaskSelect({ content, disabled, onChange }: Props) {
         {tasks.filter(task => task.taskType === 'normal').map(task => <option key={task.id} value={`task:${task.id}`}>{task.name} · {task.id}</option>)}
       </select>
     </label>
-    <p id="bot-task-binding-help">仅引用普通（normal）Task，不复制其配置。可保持未绑定并保存；执行前必须绑定有效 Task。选择与下方 JSON 中的 task_id 同步。</p>
+    <label htmlFor="bot-map-binding">Map
+      <select id="bot-map-binding" value={mapBinding} disabled={disabled || maps === null || jsonError !== null} onChange={event => changeMap(event.target.value)}>
+        <option value="">未绑定</option>
+        {mapBinding && !maps?.files.includes(mapBinding) && <option value={mapBinding} disabled>{mapBinding}（Map 不存在或尚未核实）</option>}
+        {maps?.files.map(file => <option key={file} value={file}>{maps.titles?.[file] || file} · {file}</option>)}
+      </select>
+    </label>
+    <p id="bot-task-binding-help">仅引用普通（normal）Task 或 Map，不复制配置，两者互斥。可保持未绑定并保存；执行前必须绑定有效目标。选择与下方 JSON 中的 task_id / map_file 同步；Map 的 manager Task 由调用节点指定。</p>
+    {definition?.task_id != null && definition?.map_file != null && <p>task_id 与 map_file 互斥；双绑定不会保存或按优先级执行。</p>}
+    {mapError && <p role="status">{mapError} 当前引用和 JSON 草稿未改变。</p>}
     {loading && <p role="status">正在读取 Task 列表…</p>}
     {error && <p role="status">{error} 当前引用和 JSON 草稿未改变。</p>}
     {jsonError && <p>{jsonError}</p>}

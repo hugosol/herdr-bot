@@ -5,10 +5,13 @@ export type Bot = {
   plan_guide: string
   node_guide: string
   task_id?: string
+  map_file?: string
 }
 
-export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string }
-export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone'; message: string; nodeId?: string; botId?: string; taskId?: string }
+export type MapFileInput = { id: string; required: boolean }
+export type RunFileInput = { id: string; path: string }
+export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
+export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
 
 export async function preflightRun(file: string, input: RunPreflightInput): Promise<RunPreflightResult> {
@@ -84,6 +87,7 @@ function isInputRule(value: unknown): value is InputRule[] {
   return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' &&
     (rule.type === 'file' ? typeof rule.path === 'string' && (!('zone_id' in rule) || typeof rule.zone_id === 'string') && Object.keys(rule).every(key => ['id', 'type', 'path', 'zone_id'].includes(key))
+      : rule.type === 'run' ? typeof rule.input_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'input_id'].includes(key))
       : rule.type === 'node' && typeof rule.node_id === 'string' && typeof rule.output_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'node_id', 'output_id'].includes(key))))
 }
 
@@ -92,8 +96,14 @@ function isOutputRule(value: unknown): value is OutputRule[] {
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' && Object.keys(rule).every(key => key === 'id'))
 }
 
+function isMapFileInputs(value: unknown): value is MapFileInput[] {
+  return Array.isArray(value) && new Set(value.map(input => input?.id)).size === value.length && value.every(input =>
+    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && Object.keys(input).every(key => ['id', 'required'].includes(key)))
+}
+
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && 'title' in value && typeof value.title === 'string' &&
+    (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
     Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && typeof node.zone === 'string' && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
@@ -127,12 +137,13 @@ export async function deleteBot(target: { id: string; revision: BotRevision }): 
   return await writeDefinition('/api/scheduler/bots/delete', target, isBotCatalog, 'Bot 删除') as BotCatalog
 }
 
-export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string }
+export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
 export type OutputRule = { id: string }
 
 export type MapNode = {
   title: string
   bot_id: string
+  manager_task_id?: string
   input: string
   input_rule?: InputRule[]
   output_rule?: OutputRule[]
@@ -169,9 +180,22 @@ export async function deleteNode(file: string, target: { id: string; revision: B
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/delete`, target, isMap, 'node 删除') as WorkflowMap
 }
 
+export async function loadMapInputs(file: string): Promise<{ input_files: MapFileInput[]; revision: BotRevision }> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`)
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `Map 输入声明读取失败：HTTP ${response.status}`)
+  if (!isMapFileInputs(value.input_files) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 输入声明响应无效。')
+  return value
+}
+
+export async function saveMapInputs(file: string, draft: { input_files: unknown; revision: BotRevision }): Promise<WorkflowMap> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 输入声明保存') as WorkflowMap
+}
+
 export type WorkflowMap = {
   title: string
   description: string
+  input_files?: MapFileInput[]
   nodes: Record<string, MapNode>
 }
 

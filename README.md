@@ -6,7 +6,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 
 - **chat**：查看当前与历史会话，恢复原生对话，以及监听会话完成后关机。
 - **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。场景资源只选择一个 Suite 或不选，不再编辑 Task 可选扩展。
-- **suite**：维护场景工具集与按宿主声明的资源。首批探索／实现定义及旧部署的显式离线迁移见[使用说明](docs/usage.md#首批定义与显式离线迁移)；发布不自动操作用户生产 Task。
+- **suite**：维护场景工具集与按宿主声明的资源。探索／实现及 Pi 网页访问定义、旧部署的显式离线迁移见[使用说明](docs/usage.md#首批定义与显式离线迁移)；发布不自动操作用户生产 Task。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **bot**：独立访问共享 Bot 能力定义，复用 scheduler 的原有管理功能。
 - **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。node 可配置 `report_policy: auto/manual`；Map 与 Run 图用圆角／切角节点区分策略，详情显示具体值。
@@ -34,7 +34,7 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 - 普通相对路径以**声明它的配置文件所在目录**为基准：根相对根文件，服务路径相对服务 TOML，扩展 `entrypoint` 相对选项 TOML。切换启动 cwd 不改变这些位置。
 - 根文件在启动时解析为快照。修改根或服务路径后重启；选项 TOML 仍按原规则动态读取，但使用本次启动的根快照。交给 agent 的扩展路径已经绝对化，不随 zone cwd 改变。
 - 未定义根、循环引用、空路径、非法表达式或指定的根文件缺失会明确失败。只使用普通路径、不声明 `paths_file` 的隔离配置无需本机根文件。
-- `herdr` 等裸程序名继续通过 `PATH` 查找；显式程序路径相对配置文件解析。Git、Windows 系统工具和开发语言服务的安装与 `PATH` 设置仍由机器环境负责。当前 `.omp` 中的 MCP 命令也使用 `PATH` 中的 `codebase-memory-mcp`，不内嵌旧机器路径。
+- `herdr` 等裸程序名继续通过 `PATH` 查找；显式程序路径相对配置文件解析。Git、Windows 系统工具和开发语言服务的安装与 `PATH` 设置仍由机器环境负责。Suite 集中 MCP 的 `command` 使用 `${roots.codebase_memory_mcp}/codebase-memory-mcp.exe`，安装目录在 `paths.local.toml` 的 `[roots].codebase_memory_mcp` 配置，交给 OMP／Pi 前解析为完整路径，不依赖 PATH 定位该 exe。独立的 `.omp/mcp.json` 仍使用裸命令并优先于同名 Suite 定义；它不经过 herdr-bot 的 roots 解析，需单独维护。
 - 顶层 `static_directory` 指定页面产物，默认 `backend/static`；`scheduler.run_instructions` 默认 `docs/workflow-runtime.md`，均相对服务配置目录，不再使用编译时源码目录。交付配置通过 `roots.project` 显式定位两者。
 - 顶层 `data_directory` 指定内部迁移标记目录，默认 `.data`。它不隐式覆盖其他持久化字段；交付配置将历史、zone 登记、Run 根及标记目录共同引用 `roots.data`。
 
@@ -89,24 +89,9 @@ run_directory = '.data/workflow-runs'
 
 升级后核对 task、bot、scheduler 列表。原生 agent 会话、Run 历史和 UI 入口不受这次布局调整影响。
 
-### 从路径 zone 升级为稳定 ID
+### zone 稳定 ID 与旧格式
 
-先停止使用同一数据的旧服务并备份，明确每个旧目录对应的 ID 和当前 server 的目录，再运行一次离线迁移。映射是 JSON 数组，例如：
-
-```json
-[
-  { "path": "E:/Developer/myhub/herdr-bot", "id": "hugosol/herdr-bot" },
-  { "path": "D:/developer/bot-playground", "id": "default/bot-playground", "local_path": "E:/Developer/bot-playground" }
-]
-```
-
-`path` 是旧定义中的目录，`local_path` 可省略（沿用旧目录）；不同旧路径可映射到同一 ID，但其本机绑定必须一致。使用实际配置中的登记文件和 Map 目录：
-
-```powershell
-cargo run --manifest-path backend/Cargo.toml --bin migrate-zone-portability -- .data/zones.json meta-data/workflow-maps zone-portability.local.json
-```
-
-迁移将登记改为 `{id,path}`、node 的 `zone` 改为 ID，并将直接文件绝对地址改为明确的 `zone_id` 与相对 `path`；缺失或有歧义的映射必须明确解决，不根据目录名猜测。原文件保留 `.zone-portability-v1.bak` 备份，Run/Chat 历史不改写。发布不是跨文件事务；失败时保持停服并检查已发布项与备份，不让旧、新服务混写。新接口只接受 ID 引用，不在普通请求中兼容旧路径格式。
+当前 zone 登记使用 `{id,path}`，node 的 `zone` 使用稳定 ID，直接文件输入使用相对 `path` 与可选 `zone_id`。新接口只接受 ID 引用，不兼容旧路径格式；正常启动不会自动迁移旧格式。历史离线迁移工具已归档，不再随仓库提供。已有旧数据须先停服并备份，明确每个旧目录的稳定 ID 和本机绑定，完成显式格式更新后再启动，不根据目录名猜测或让旧、新服务混写。
 
 新 server 的 zone 登记入口要求 ID 与本地目录；登记 JSON 使用 `{ "id": "hugosol/herdr-bot", "path": "E:/Developer/myhub/herdr-bot" }`。取消登记按 ID，改绑只影响新 Run，不删除目录。Map 可在绑定未完成时保存，启动前必须补齐。
 
@@ -114,15 +99,9 @@ cargo run --manifest-path backend/Cargo.toml --bin migrate-zone-portability -- .
 
 静态 node 现在使用 `input_rule`／`output_rule` 数组；执行固定规则并记录实际 `inputs: [{id,path}]`；报告保存 `from`／`to` Chat 关联及 `outputs: [{id,path}]`。规则 ID 是逻辑引用，不是文件名。完整字段与校验见 [scheduler](docs/scheduler.md#文件输入与输出规则) 和 [运行说明](docs/workflow-runtime.md)。本次同时更新 toolkit 角色工具与指引，不能混用新后端和旧 report 参数。
 
-已有数据须先停服，核实配置中实际使用的 Map／Run 目录并备份，再执行一次离线迁移。例如默认布局：
+普通启动与请求不兼容旧字段，不在读取时自动转换。历史离线迁移工具已归档，不再随仓库提供。已有数据须先停服，核实配置中实际使用的 Map／Run 目录并备份，显式更新格式后核对 Map 可读、规则引用、历史报告与执行事实，再启动新后端并部署同版本 toolkit，不混合新旧数据继续运行。
 
-```powershell
-cargo run --manifest-path backend/Cargo.toml --bin migrate-file-handoff -- meta-data/workflow-maps .data/workflow-runs
-```
-
-普通启动与请求不兼容旧字段，不在读取时自动转换。迁移工具预检查待转换内容，将旧输入对象转换为规则数组，并从已有引用及报告登记推导旧 Map 的输出 ID；报告输出转换为数组，Chat 来源／接收者改为 `from`／`to`。无法确定的历史执行规则与实际输入保持未知，不从当前 Map 伪造派发时快照。更早历史事件中缺失的非交接元数据（如 `agent`）保持原样，不因本次迁移猜测补填；当前 Run 记录仍按当前结构完整校验。原始文件保留为 `*.file-handoff-v1.bak`，不改变工作状态、报告归属或业务文件名称／地址；不恢复旧 Run 的管理资格。
-
-文件发布是逐文件原子替换，不是跨目录事务；I/O 错误时可能部分生效，保持停服并保留现场及备份。排除错误后，先核实并从本轮备份恢复一致的原始集合，再重新迁移，不混合新旧数据继续启动。迁移后核对 Map 可读、规则引用、历史报告与执行事实，再启动新后端并部署同版本 toolkit。
+无法确定的历史执行规则与实际输入保持未知，不从当前 Map 伪造派发时快照。更早历史事件中缺失的非交接元数据（如 `agent`）保持原样，不猜测补填；当前 Run 记录仍按当前结构完整校验。格式更新不应改变工作状态、报告归属或业务文件名称／地址，也不恢复旧 Run 的管理资格。
 
 ## 安全边界
 

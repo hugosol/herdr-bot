@@ -8,9 +8,9 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 | 对象 | 字段与职责 |
 | --- | --- |
-| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。 |
-| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可省略 `task_id`。跨 Map 共享，只引用 Task，不复制 Task 配置。 |
+| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_files: [{id,required}]` 声明调用方文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
+| node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
+| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）或 `map_file`（目录内确切 Map JSON 文件名），二者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
@@ -70,9 +70,25 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 交接说明与可直接使用的纯正文分别声明输出，下游逐项引用；不只登记交接说明，再通过同目录、固定文件名或报告正文发现其他文件。内部交接使用初始化提供的中间资料位置，不在每个 input 中规定材料根／Run ID／工作编号／execution ID 的路径算法。用户明确指定的正式交付位置、格式或业务命名仍保留。输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。
 
-例如汇总 Bot 三份指南时，命名输入可为 `when_text`、`when_handoff`、`plan_guide_text`、`plan_guide_handoff`、`node_guide_text`、`node_guide_handoff` 和 `bot_baseline`。input 说明将三份纯正文原样替换对应字段，使用交接说明及基线核对同一 Bot／Task、确认范围和配置一致性，仅保存授权字段并完整读回；不再描述如何查询上游 execution、筛选报告或拼接目录。材料身份、共同基线、用户确认及保存冲突的业务检查不能随寻址协议一起删除。
+例如汇总 Bot 三份指南时，命名输入可为 `when_text`、`when_handoff`、`plan_guide_text`、`plan_guide_handoff`、`node_guide_text`、`node_guide_handoff` 和 `baseline`。各编写者、表达优化者与保存者直接取得同一份共同基线；text 是所属字段唯一完整正文，handoff 仅记确认依据、来源、语义限制和未验证项，不复制完整正文／配置或承担隐式寻址。input 说明原样汇总三个字段、核对同一 Bot 及其 normal Task／Map 目标、确认范围和真实 revision，一次合法保存并完整读回，保持全部非目标和执行目标配置不变。完整最终对象另交付 saved。详细职责与独立 Chat 分支统一见[共同业务材料契约](business-materials.md)，不复制协议或查询运行记录。材料身份、共同基线、用户确认及保存冲突检查不能随寻址去重删除。
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
+
+### Map 命名文件输入与根 Run 绑定
+
+在 Map 页面点击“编辑文件输入声明”，编辑声明数组并保存，例如：
+
+```json
+[{"id":"brief","required":true},{"id":"appendix","required":false}]
+```
+
+`input_files` 只声明材料 ID 与布尔 `required`，不保存每次实际文件地址。ID 必须非空且在本接口内唯一；其他 Map 与其他 Run 可重复使用同名 ID，各自解析。缺省或 `[]` 表示无文件接口。重复 ID 保存被拒绝且不改变原 Map；编辑带原文 revision，文件已被其他操作修改时拒绝覆盖。
+
+“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。可选项留空表示本次未提供，持久 `fileInputs` 不生成该项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。更换文件只改变新 Run 的绑定，不需要重写 Map，也不改变已启动 Run 的地址。地址绑定不是文件内容快照，不复制或锁定源文件。
+
+公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。必需缺失、未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读均在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+
+根输入可读性与普通节点解析使用 `workflow_dispatch file_consumption::` 专项核对真实文件和 Windows 实际访问拒绝；原生 Chat 真正消费材料仍由原生专项负责，不能从页面成功或记录存在推断原生消费已经通过。
 
 ### 文件输入与输出规则
 
@@ -81,7 +97,8 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 ```json
 "input_rule": [
   { "id": "brief", "type": "file", "zone_id": "default/business", "path": "brief.md" },
-  { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" }
+  { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" },
+  { "id": "local_brief", "type": "run", "input_id": "brief" }
 ],
 "output_rule": [
   { "id": "decision" }
@@ -90,7 +107,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 `id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。
 
-`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
+`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。`type: run` 只接受 `id`、`type`、字符串 `input_id`，引用本 Map 的 `input_files` 声明，并按节点本地 `id` 重命名；不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
 
 引用节点须存在于同图，`output_id` 须由提供方 `output_rule` 预先声明，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
 
@@ -100,7 +117,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 定向自动验收：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch named_inputs:: -- --nocapture`。测试通过真实 HTTP 保存／读取／创建 Run／显式派发，使用隔离存储、动态数值回环端口和记录型 Herdr 进程，核对实际提交的初始化与无隐式启动；它不替代真实 Chat 的角色注入验收。
 
-`report_policy` 是独立于业务 `input` 的提示词约束：`auto` 在结果可交接时自行发送 report；`manual` 每次发送前先在本 node Chat 展示摘要、结果地址和限制，询问用户并停轮等待，用户在此 Chat 自然语言确认后才发送。要求修改时先修改、重新展示并确认；补充或更正报告也重新确认。它不新增审批状态、按钮或后端 report/complete 门禁，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
+`report_policy` 独立于业务 `input`：`auto` 在结果可交接时自行发送 report；`manual` 调用 report 后由工具展示完整待发送 payload，只有用户在宿主原生确认界面明确批准该次 payload 才发送，自然语言同意不构成发送授权。修改、补充和更正均须重新确认；拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无可用确认 UI 均不发送，停止并等待用户重新提出请求，不自行重试。它不新增后端审批状态、授权令牌或 report/complete 门禁；业务批准要求独立保留，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
 
 ### node 策略编辑
 
@@ -120,31 +137,39 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 - **保留历史**：只删除 Map 定义，关联 Run 仍可在 workflow 中查看；当前 Map 与依赖图会显示不可用，不补造历史定义。
 - **取消**：不删除任何内容。
 
-删除不以 Run 的持久状态或 Chat 是否在线／工作中为门槛；仍标为 `running` 的记录也可清理。两种删除都不会停止 Chat，也不会删除 Chat、原生对话历史、共享 Bot、Task 或 zone 内工作文件。删除历史后，相关 Chat 后续针对该 Run 的上报或操作可能失败；正在进行的后端写入不会重新创建已删除的 Run 历史。
+两种删除都先检查整个 Bot 定义目录。只要任一 Bot 的 `map_file` 引用本 Map，就拒绝并显示 Bot ID 与文件位置；不自动解绑。损坏、不可读或链接／重解析点 JSON 定义，以及无法读取的目录均使引用检查失败，不能按无引用处理；拒绝发生在历史清理前。取消不发送删除请求。
+
+“删除历史”还会完整检查 Run 的双向执行引用：所选 Run 有 `parent`，或其当前／旧 execution 有 `childRunId`，以及其他 Run 单向引用所选记录时，均拒绝并定位父 Run、node、execution 与 child Run。即使父子同属所选 Map，也不级联删除、不自动解绑；修改现有 Map／Bot 定义不清除已保存的执行关联。“保留历史”不移除这些记录，仍只受 Bot 定义引用检查约束。任何无法可靠读取／解析的 Run 关联或身份不一致都会拒绝历史清理；损坏的历史／报告 JSONL 正文不阻止安全判定无关联的旧记录被清理，原有链接边界保持不变。
+
+无父子引用时，删除不以 Run 的持久状态或 Chat 是否在线／工作中为门槛；仍标为 `running` 的记录也可清理。两种删除都不会停止 Chat，也不会删除 Chat、原生对话历史、共享 Bot、Task 或 zone 内工作文件。删除历史后，相关 Chat 后续针对该 Run 的上报或操作可能失败；正在进行的后端写入不会重新创建已删除的 Run 历史。
 
 成功后刷新 Map 列表并清空该 Map 的详情和节点选择。格式损坏但仍列在目录中的 Map 也可删除。失败会显示具体错误；若历史删除只完成了一部分，或删除完成后目录读取失败，提示会明确说明，不宣称全部成功。响应丢失时应取消弹窗并刷新核实，不盲目重复提交。
 
 ## 保存与校验边界
 
-内部结构合法即可保存：Bot 可没有 `task_id`，可引用不存在的 Task；node 可引用不存在的 Bot 或尚未绑定／失效的 zone ID。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是跨 server 的稳定 zone ID，不是目录路径，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
+内部结构合法即可保存：Bot 可没有执行目标，也可引用不存在或用途已失效的 Task／Map，但不能同时绑定两类目标；node 可引用不存在的 Bot 或尚未绑定／失效的 zone ID。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是跨 server 的稳定 zone ID，不是目录路径，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
 
-必需字段不可漏填，不用 `null`、对象、数组代替字符串；Map/node/Bot 都必须是 JSON 命名对象，不能用位置数组代替。未知字段明确拒绝，不静默丢弃。显式 `nodes: {}`、`blocked_by: []`、文本 `""` 合法。`task_id` 可缺省或为 null（读取／保存结果省略无绑定字段）；有值必须是字符串。不额外限制文档长度。
+必需字段不可漏填，不用 `null`、对象、数组代替字符串；Map/node/Bot 都必须是 JSON 命名对象，不能用位置数组代替。未知字段明确拒绝，不静默丢弃。显式 `nodes: {}`、`blocked_by: []`、文本 `""` 合法。`task_id`、`map_file`、node 的 `manager_task_id` 可缺省或为 null（读取／保存结果省略无绑定字段）；有值必须是字符串。Bot 编辑页的 Task／Map 控件与原始 JSON 同步；主动选择一类目标会移除另一类引用，原始双绑定草稿则明确拒绝，不能按隐含优先级运行。不额外限制文档长度。
 
 `blocked_by` 只引用同图 node ID。未知前置、自依赖或环拒绝整个保存，不能通过删边／删节点生成成功图。依赖错误指出相关 node；结构错误提供可用字段路径，例如 `nodes.work.input`。**非法保存不覆盖原定义**，失败保留独立 ID 与原始草稿；保存失败和冲突都不是成功预览。
 
 ## 从选中 Map 校验启动配置
 
-在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单只提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace 和可空的 Markdown“本次要求”。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
+在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace、可空的 Markdown“本次要求”及按当前 Map 声明填写的独立文件绑定。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
 
 “校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录、启动真实管理者并在原生身份关联保存成功后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
 
 预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
+Map 型 Bot 通过 `map_file` 继续检查被调用 Map，节点自己的 `manager_task_id` 必须引用 manager Task。合法 A→B→C 及不同节点重复调用 B 均接受；A→A、A→B→A 按**当前调用路径**拒绝，错误 `map-call-cycle` 的 `callChain` 给出确切文件名链。调用关系检查不展开父图、不保存定义快照、不启动任何宿主。嵌套调用的执行与父子 Run 事实另见运行说明；预检通过本身不是执行成功证据。
+
 拒绝保留发起页并逐项指出错误及来源 node／Bot／Task。用“修正 node”回到原 node 编辑器，用“修正 Bot”回到共享 Bot 配置，用“修正 Task”直接打开原 Task 编辑器；Task 已删除时明确显示不存在，不转成新增或默认 Task。zone 错误可回到 zone 登记入口，或回到原 node 修改 zone ID。原 Map 文件损坏时按错误修复配置目录中的文件。修正后返回 scheduler，显式重新校验；刷新启动选项可重读 Task 和 zone，不自动重试启动。
 
 zone 引用按稳定 ID 解析本机绑定。同一 ID 绑定一个目录，不同 ID 可绑定同一目录；推荐 `namespace/name`，界面提示规范而不强制该格式。启动 Run 时冻结本次所需 ID 与路径，后续改绑或取消登记只影响新 Run，不改变已有执行或后续派发的位置。旧目录消失、变成文件或被重定向时拒绝执行，不跟随新绑定或目录联接。注销不删除目录，目录内容没有版本或跨 server 一致性保证。
 
-HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求只接受 `managerTaskId`、`zone`、`userInput` 三个字符串；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
+HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求接受 `managerTaskId`、`zone`、`userInput` 三个字符串及可选 `fileInputs: [{id,path}]`；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
+
+两类目标、节点 manager 配置、循环和引用保护的可重复入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch bot_targets`、`npm --prefix frontend run test:browser:build -- workflowBotTargets.spec.ts --workers=1`。后端用真实临时定义、Windows 独占读锁与目录 junction 核对无启动／无删除；页面检查真实表单、HTTP 持久读回、重载、取消和引用拒绝。多层正例只证明公开预检接受，不替代真实嵌套执行与原生角色消费验收。运行前使用本 worktree 独立 `CARGO_TARGET_DIR` 并先构建静态页面；完整回归入口见[测试指引](agents/testing.md)。
 
 可重复契约检查：`npm --prefix frontend run test:browser:build -- runPreflight.spec.ts --workers=1`。真实隔离页面及 HTTP 检查空图、缺失绑定、角色／agent、真实目录注销／重登记／搬迁／替换及原配置修正；结果目录保留页面截图与响应、文件核对、外部 Herdr 记录。外部调用缺席只承诺每个测试从服务启动至最终完成请求的有界窗口（90 秒用例上限），不声称无限期不存在；记录型 Herdr 只证明拒绝路径无启动调用，不证明原生宿主或模型执行质量。P8 的有效节点实际 cwd、P9 的有效 Run/Chat 关联由实际运行链路另行验收。
 

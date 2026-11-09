@@ -6,6 +6,7 @@ import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
+import { MapInputsEditor } from './MapInputsEditor'
 import './scheduler.css'
 import './scheduler-workspace.css'
 
@@ -15,6 +16,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
     abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
+  const [inputsOpen, setInputsOpen] = useState(false)
   const [directoryOpen, setDirectoryOpen] = useState(false)
   const inspectorHeading = useRef<HTMLHeadingElement>(null)
   const editorHeading = useRef<HTMLHeadingElement>(null)
@@ -74,7 +76,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (editorState.selectFile(name)) { setLaunchOpen(false); setDirectoryOpen(false) }
+    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setDirectoryOpen(false) }
   }
 
   function selectRelatedNode(id: string) {
@@ -96,7 +98,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     {draft.kind === 'Bot' && <label>Bot ID<input value={draft.id} readOnly={!draft.create} disabled={editingBusy} onChange={(event) => editDraft({ id: event.target.value })} /></label>}
     {draft.kind === 'node' && map && draft.settings && <MapNodeDetails key={`${draft.file}:${draft.initialId}`} map={map} nodeId={draft.id} catalog={bots.kind === 'ready' ? bots : undefined} onSelect={selectRelatedNode} edit={{ content: draft.content, settings: draft.settings, create: draft.create, disabled: editingBusy, onContentChange: content => editDraft({ content }), onSettingsChange: settings => editDraft({ settings }), onIdChange: id => editDraft({ id }) }} />}
     <details className="scheduler-format-help"><summary>字段格式与保存约束</summary><p>内容不含顶层 id；身份由独立 ID 决定。保存期间请勿用外部编辑器修改定义。</p>
-    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"relative/file.txt",zone_id:"namespace/name"}（zone_id 可省略，默认使用本次 Run 的管理者 zone，不使用 node zone；path 必须为 / 分隔的相对路径，不可越界） 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本，task_id 可暂缺；执行时必须引用普通（normal）Task，不能使用 manager。同一普通 Task 也可从 zone 独立启动。只保存 Task 引用，不复制 Task 或 Chat。'} 不支持 schema_version 或旧格式字段。</p></details>
+    <p>{draft.kind === 'node' ? 'node ID 独立填写；zone、report_policy、auto_close 使用独立控件，不放入内容 JSON。其余字段保持原格式 JSON：必填 title、bot_id、字符串 input 和 blocked_by。可选 input_rule 数组填写 {id:"输入 ID",type:"file",path:"relative/file.txt",zone_id:"namespace/name"}（zone_id 可省略，默认使用本次 Run 的管理者 zone，不使用 node zone；path 必须为 / 分隔的相对路径，不可越界） 或 {id:"输入 ID",type:"node",node_id:"来源 ID",output_id:"输出 ID"}，或 {id:"本地 ID",type:"run",input_id:"本 Map 声明的输入 ID"}（仅本次 Run，不接受 run_id；未提供的可选项不生成地址）。实际文件在启动／派发时须存在且可读；output_rule 数组填写 {id:"输出 ID"}。各数组内 ID 唯一；输出 ID 不是文件名。输入引用不增加 blocked_by。允许暂未登记的 Bot 或 zone；来源 node 和其声明的 output_rule ID 必须存在，同图依赖必须存在且无环。' : 'Bot 必须填写 name、when、plan_guide、node_guide；三份文档允许空文本。可未绑定，或只填写 task_id（普通 normal Task）与 map_file（Map 文件名）之一，两者互斥。Map 型调用节点填写 manager_task_id（manager Task）；Bot 不固化 manager。不复制 Task、Map 或 Chat。'} 不支持 schema_version 或旧格式字段。</p></details>
     {draft.kind === 'Bot' && <BotTaskSelect content={draft.content} disabled={editingBusy} onChange={content => editDraft({ content })} />}
     {draft.kind === 'Bot' && <><label htmlFor="definition-content-json">Bot 内容 JSON</label><textarea id="definition-content-json" aria-label="Bot 内容 JSON" spellCheck={false} value={draft.content} disabled={editingBusy} onChange={(event) => editDraft({ content: event.target.value })} /></>}
     <div className="scheduler-actions"><button type="submit" disabled={editingBusy}>{draft.kind === 'Bot' ? 'save' : '保存 node'}</button><button type="button" disabled={editingBusy} onClick={abandonDraft}>{draft.kind === 'Bot' ? 'cancel' : '放弃编辑'}</button>{draft.kind === 'node' && <button type="button" disabled={editingBusy} onClick={closeNode}>返回 Map</button>}</div>
@@ -173,11 +175,13 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {file !== null && !draft && <div className="scheduler-actions scheduler-map-actions">
           {map && <>
             <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null, 'node')}>新增 node</button>
-            <button type="button" disabled={editingBusy} onClick={() => setLaunchOpen(true)}>+ 发起 Run</button>
+            <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setLaunchOpen(true); setInputsOpen(false) }}>+ 发起 Run</button>
+            <button type="button" disabled={editingBusy || inputsOpen} onClick={() => { setInputsOpen(true); setLaunchOpen(false) }}>编辑文件输入声明</button>
           </>}
           <button type="button" disabled={editingBusy || deletingMap} onClick={requestMapDeletion}>删除 Map</button>
         </div>}
-        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} active={active && !botView && !draft}
+        {inputsOpen && file && !botView && !draft && <MapInputsEditor key={file} file={file} onClose={() => setInputsOpen(false)} onSaved={() => { setInputsOpen(false); refreshAll() }} />}
+        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} declarations={map?.input_files} active={active && !botView && !draft}
           onClose={() => { setLaunchOpen(false); void returnToMap() }}
           onNode={(id) => { selectNode(id); void beginEdit(id, 'node') }}
           onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}

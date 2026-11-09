@@ -7,6 +7,7 @@ violation is accepting any executable, then reporting manifest-only success.
 Observe nonzero, all four promises unverified, and no started host processes.
 """
 import json
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -38,6 +39,39 @@ class DeliveryCli(unittest.TestCase):
                 'P11/exploration-omp', 'P11/exploration-pi', 'P11/implementation-omp',
                 'P42', 'P44'})
             self.assertTrue(all(not item['verified'] for item in evidence['coverage'].values()))
+
+
+class SkillSources(unittest.TestCase):
+    def test_omp_oracle_discovers_only_immediate_children_and_new_sources(self):
+        discover = runpy.run_path(str(ROOT / 'scripts/accept-initial-suites.py'))['discovered_sources']
+        with tempfile.TemporaryDirectory(prefix='initial-suite-sources-') as directory:
+            root = Path(directory)
+            wayfinder = root / 'wayfinder'
+            exploration = wayfinder / 'dependent-skills/codebase-exploration'
+            implementation = wayfinder / 'dependent-skills/code-implementation'
+            for parent in [wayfinder / 'skills', exploration, implementation]:
+                parent.mkdir(parents=True)
+            for relative, header in [('wayfinder/skills/one', 'name: first\ndescription: First'),
+                    ('wayfinder/skills/.hidden', 'name: hidden\ndescription: Hidden'),
+                    ('wayfinder/skills/missing-description', 'name: absent'),
+                    ('wayfinder/skills/disabled', 'name: disabled\ndescription: Disabled\ndisabled: false'),
+                    ('wayfinder/skills/one/nested', 'name: nested\ndescription: Nested'),
+                    ('wayfinder/dependent-skills/codebase-exploration/expert-translate', 'name: expert-translate\ndescription: Translate'),
+                    ('wayfinder/dependent-skills/code-implementation/retro', 'name: retro\ndescription: Retro')]:
+                child = root / relative
+                child.mkdir(parents=True, exist_ok=True)
+                (child / 'SKILL.md').write_text('---\n' + header + '\n---\nBody', encoding='utf-8')
+            roots = {'wayfinder': str(wayfinder), 'wayfinder_skills': str(wayfinder / 'skills')}
+            first = discover(roots, 'codebase-exploration')
+            self.assertEqual(set(first), {'first', 'expert-translate'})
+            self.assertEqual(set(discover(roots, 'code-implementation')), {'first', 'retro'})
+            added = exploration / 'added'
+            added.mkdir()
+            (added / 'SKILL.md').write_text('---\nname: added\ndescription: Added\n---\nBody', encoding='utf-8')
+            second = discover(roots, 'codebase-exploration')
+            self.assertEqual(set(second), {'first', 'expert-translate', 'added'})
+            self.assertEqual(second['added'], added.resolve())
+            self.assertEqual(set(discover(roots, 'code-implementation')), {'first', 'retro'})
 
 
 if __name__ == '__main__':

@@ -1,0 +1,8 @@
+{
+  "id": "prepare-bot-revision",
+  "name": "既有 Bot 修订基线核实者",
+  "when": "需要只读核实既有 Task 型或 Map 型 Bot、真实绑定目标、业务需求与修订授权，生成共同基线时使用。支持独立 Chat 与 workflow；不要求先修改 Task.prompt，不创建或修改执行目标，不编写指南或运行能力。缺业务决定时在当前 Chat 真实澄清。",
+  "plan_guide": "三路指南修订前安排一次核实；只需真实 Bot ID、业务要求、修订和保存授权及可选材料，不要求抄配置。目标和授权冲突未解决时保持阻塞。单份 baseline 直接供三个编写者与最终保存者使用；材料交付不证明目标能力已验证。稳定 Task ID 与独立／workflow 配对归属见 ${herdr-bot-path}/docs/revise-bot-guides.md。",
+  "node_guide": "提供真实 Bot ID、业务需求、三字段修订范围、保存授权、资源权限、非目标及材料写入范围，可附参考材料和用途；未提供材料不伪造空地址。采用 ${herdr-bot-path}/docs/business-materials.md；文件以 input_rule 显式绑定，baseline 与必要 handoff 用 output_rule 声明，handoff 不复制配置或正文。只读核实真实目标，不改绑、不补建或运行能力。",
+  "task_id": "task-revise-bot-baseline-v1"
+}

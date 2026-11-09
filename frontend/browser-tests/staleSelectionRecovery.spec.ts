@@ -22,12 +22,10 @@ provider_model = 'archive/original'
 thinking = { omp = ['low', 'high'], pi = ['low'] }
 `
 const PRESET = { taskType: 'normal', name: '待修正 Bot', chatName: '{zone.name}-{chat.id}', agent: 'omp', model: 'archive-model', thinking: 'high', skill: null, prompt: '保留第一行\n保留第二行' }
-function catalog(model = MODEL, optional = true, recovered = false) {
+function catalog(model = MODEL, recovered = false) {
   const root = path.dirname(server.metadataFile)
   const fixed = path.join(root, recovered ? 'repaired-cost.ts' : 'cost.ts')
   fs.writeFileSync(fixed, '// file check only; no execution\n')
-  const entry = path.join(root, 'tools.ts')
-  fs.writeFileSync(entry, '// file check only; no execution\n')
   return `skills = []
 [[agents]]
 id = 'omp'
@@ -51,12 +49,6 @@ label = 'Pi 固定费用'
 agent = 'pi'
 kind = 'fixed'
 entrypoint = '${fixed}'
-${optional ? `[[extensions]]
-id = 'archive-tools'
-label = '归档工具'
-agent = 'omp'
-kind = 'optional'
-entrypoint = '${entry}'` : ''}
 `
 }
 async function request(endpoint: string, body?: unknown, method = 'POST') {
@@ -158,16 +150,12 @@ test('适用 thinking 被移除时保留原级别，用户明确改选后才能�
   await succeeded(await create(zone, saved.id))
 })
 
-// P28/P29: metadata removal cannot hide a selected extension or silently drop it on save.
-// A checked unavailable item must remain user-removable; all three external side effects stay absent.
-
-
 // S1/S2/S3, P27: both pages have genuinely loaded the old valid choices before the file changes.
 // Violation: trusting a browser snapshot or cached catalogue permits a stale save/create.
 for (const scenario of [
-  { name: '移除模型', model: '', optional: true, reason: 'archive-model' },
-  { name: '改变模型 Agent 适用关系', model: MODEL.replace("omp = ['low', 'high'], ", ''), optional: true, reason: 'archive-model' },
-  { name: '移除适用 thinking', model: MODEL.replace("omp = ['low', 'high']", "omp = ['low']"), optional: true, reason: 'high' },
+  { name: '移除模型', model: '', reason: 'archive-model' },
+  { name: '改变模型 Agent 适用关系', model: MODEL.replace("omp = ['low', 'high'], ", ''), reason: 'archive-model' },
+  { name: '移除适用 thinking', model: MODEL.replace("omp = ['low', 'high']", "omp = ['low']"), reason: 'high' },
 
 ]) {
   test(`旧页面${scenario.name}后保存及创建按当前目录拒绝`, async ({ page, context }, info) => {
@@ -182,7 +170,7 @@ for (const scenario of [
     await expect(creator.getByTestId('chat-name-preview')).toHaveAttribute('data-state', 'ready')
     const preview = await request('/api/chats/preview', { zone, taskId: saved.id })
     expect(preview.status).toBe(200)
-    fs.writeFileSync(server.metadataFile, catalog(scenario.model, scenario.optional))
+    fs.writeFileSync(server.metadataFile, catalog(scenario.model))
     await summary(page)
     await page.getByTestId('save-task').click()
     await expect(page.getByTestId('task-form-error')).toContainText(scenario.reason)
@@ -300,7 +288,7 @@ for (const fault of ['损坏', '移走']) {
     await expect(page.getByTestId('task-feedback')).toContainText(reason)
 
     // No restart, reload or restored original file: this independent replacement has new IDs and mappings.
-    fs.writeFileSync(server.metadataFile, catalog(REPAIRED_MODEL, false, true))
+    fs.writeFileSync(server.metadataFile, catalog(REPAIRED_MODEL, true))
     const recovered = await request('/api/tasks')
     expect(recovered.status).toBe(200)
     expect(recovered.body.options.models).toEqual(['default', 'fresh-model'])

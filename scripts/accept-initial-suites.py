@@ -21,21 +21,21 @@ COVERAGE = ('P11/exploration-omp', 'P11/exploration-pi', 'P11/implementation-omp
 support = resources['support']
 digest, command, until = resources['digest'], resources['command'], resources['until']
 lifecycle = runpy.run_path(str(REPO / 'scripts/accept-suite-lifecycle.py'))
-# Independent approved names AND source paths, not derived from suites.json or
-# the assembler. In particular expert-tranlate is a real directory spelling,
-# expert-translate is its native skill name; to-ticket is never an alias.
+# Independent Pi sources and required baseline names. OMP discovers complete
+# immediate-child collections: Wayfinder-owned skills and scenario-local copies.
+# expert-translate keeps its native name; to-ticket is never an alias.
 EXPLORATION = {
-    'grill-with-docs': ('matt_pocock_skills', 'engineering/grill-with-docs'),
-    'teach': ('matt_pocock_skills', 'productivity/teach'),
+    'grill-with-docs': ('wayfinder', 'dependent-skills/codebase-exploration/grill-with-docs'),
+    'teach': ('wayfinder', 'dependent-skills/codebase-exploration/teach'),
     'code-review': ('wayfinder_skills', 'code-review'),
     'wayfinder': ('wayfinder_skills', 'wayfinder'),
-    'writing-for-agents': ('matt_pocock_skills', 'productivity/writing-for-agents'),
-    'improve-codebase-architecture': ('matt_pocock_skills', 'engineering/improve-codebase-architecture'),
-    'expert-translate': ('expert_translate', ''),
-    'grilling': ('matt_pocock_skills', 'productivity/grilling'),
-    'domain-modeling': ('matt_pocock_skills', 'engineering/domain-modeling'),
-    'codebase-design': ('matt_pocock_skills', 'engineering/codebase-design'),
-    'research': ('matt_pocock_skills', 'engineering/research'),
+    'writing-for-agents': ('wayfinder', 'dependent-skills/codebase-exploration/writing-for-agents'),
+    'improve-codebase-architecture': ('wayfinder', 'dependent-skills/codebase-exploration/improve-codebase-architecture'),
+    'expert-translate': ('wayfinder', 'dependent-skills/codebase-exploration/expert-translate'),
+    'grilling': ('wayfinder', 'dependent-skills/codebase-exploration/grilling'),
+    'domain-modeling': ('wayfinder', 'dependent-skills/codebase-exploration/domain-modeling'),
+    'codebase-design': ('wayfinder', 'dependent-skills/codebase-exploration/codebase-design'),
+    'research': ('wayfinder', 'dependent-skills/codebase-exploration/research'),
     'prototype': ('wayfinder_skills', 'prototype'),
     'lighthouse': ('wayfinder_skills', 'lighthouse'),
     'backtracer': ('wayfinder_skills', 'backtracer'),
@@ -47,16 +47,50 @@ EXPLORATION = {
 IMPLEMENTATION = {
     'tdd': ('wayfinder_skills', 'tdd'),
     'to-tickets': ('wayfinder_skills', 'to-tickets'),
-    'retro': ('matt_pocock_skills', 'engineering/retro'),
+    'retro': ('wayfinder', 'dependent-skills/code-implementation/retro'),
     'resolving-merge-conflicts': ('wayfinder_skills', 'resolving-merge-conflicts'),
-    'writing-for-agents': ('matt_pocock_skills', 'productivity/writing-for-agents'),
-    'codebase-design': ('matt_pocock_skills', 'engineering/codebase-design'),
+    'writing-for-agents': ('wayfinder', 'dependent-skills/code-implementation/writing-for-agents'),
+    'codebase-design': ('wayfinder', 'dependent-skills/code-implementation/codebase-design'),
     'code-review': ('wayfinder_skills', 'code-review'),
     'setup-matt-pocock-skills': ('wayfinder_skills', 'setup-matt-pocock-skills'),
     'to-contract': ('wayfinder_skills', 'to-contract'),
     'to-spec': ('wayfinder_skills', 'to-spec'),
-    'domain-modeling': ('matt_pocock_skills', 'engineering/domain-modeling'),
+    'domain-modeling': ('wayfinder', 'dependent-skills/code-implementation/domain-modeling'),
 }
+OMP_PARENTS = {
+    'codebase-exploration': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/codebase-exploration')],
+    'code-implementation': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/code-implementation')],
+}
+
+
+def discovered_sources(roots, suite_id):
+    """Independent immediate-child source oracle, not generated Suite artifacts."""
+    sources = {}
+    for root, suffix in OMP_PARENTS[suite_id]:
+        parent = (Path(roots[root]) / suffix).resolve()
+        require(parent.is_dir(), ('Missing approved OMP source parent', str(parent)))
+        for child in sorted(parent.iterdir()):
+            skill = child / 'SKILL.md'
+            if child.name.startswith('.') or not child.is_dir() or not skill.is_file():
+                continue
+            text = skill.read_text(encoding='utf-8-sig')
+            header = re.match(r'^---\s*\n(.*?)\n---(?:\s*\n|$)', text, re.S)
+            if not header:
+                continue
+            fields = dict(re.findall(r'^([\w-]+):[ \t]*(.*)$', header[1], re.M))
+            description = fields.get('description', '').strip().strip('\"\'').strip()
+            if description in ['|', '|-', '|+', '>', '>-', '>+']:
+                block = re.search(r'^description:[^\n]*\n((?:[ \t]+[^\n]*(?:\n|$))*)', header[1], re.M)
+                description = block[1].strip() if block else ''
+            if not description or fields.get('disabled', '').strip() == 'false':
+                continue
+            name = fields.get('name', '').strip().strip('\"\'').strip() or child.name
+            require(name not in sources or sources[name] == child.resolve(),
+                    ('Duplicate native skill name across approved parents', name, str(child)))
+            sources[name] = child.resolve()
+    return sources
+
+
 SCENARIOS = {
     'exploration-omp': ('omp', 'codebase-exploration', EXPLORATION),
     'exploration-pi': ('pi', 'codebase-exploration', EXPLORATION),
@@ -83,7 +117,10 @@ class Acceptance(support['Acceptance']):
     def __init__(self, args, scenario, roots):
         super().__init__(args, prefix=str(args.evidence_dir / (scenario + '-')))
         self.scenario, self.roots = scenario, roots
-        self.agent, self.suite_id, self.expected = SCENARIOS[scenario]
+        self.agent, self.suite_id, approved = SCENARIOS[scenario]
+        self.expected = ({name: (Path(roots[root]) / suffix).resolve() for name, (root, suffix) in approved.items()}
+                         if self.agent == 'pi' else discovered_sources(roots, self.suite_id))
+        require(set(approved) <= set(self.expected), ('Approved baseline skills missing from source parents', sorted(set(approved) - set(self.expected))))
         self.handles, self.handles_lock = {}, threading.Lock()
         self.mcp = None
         self.env = {k: v for k, v in self.env.items() if not any(x in k.upper() for x in
@@ -93,8 +130,6 @@ class Acceptance(support['Acceptance']):
 
     def prepare(self):
         require(sys.platform == 'win32', 'Installed Herdr acceptance requires Windows process handles')
-        require(os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1',
-                'Set HERDR_BOT_MANUAL_SYMLINKS=1 to attempt true links; no elevation or copied-resource fallback')
         self.model = http.server.ThreadingHTTPServer(('127.0.0.1', 0), NoTaskModel)
         self.model.requests = []
         threading.Thread(target=self.model.serve_forever, daemon=True).start()
@@ -135,7 +170,7 @@ class Acceptance(support['Acceptance']):
         observer = self.root / 'native-discovery.ts'
         # Public extension APIs only; getCommands observes the host's final
         # loaded skills including manual-only expert-translate. A prompt-only
-        # oracle would miss that skill and weaken the promised 18-item set.
+        # oracle would miss that skill and narrow the complete source-parent set.
         observer.write_text('''import {writeFileSync} from "node:fs";
 export default function(pi) {
  pi.registerCommand("initial-suite-discovery", {description:"Observe loaded native resources", handler:async (_args,ctx)=>{
@@ -154,7 +189,8 @@ export default function(pi) {
                 (host + '-herdr-agent-state', Path(self.roots[host + '_state_extension'])),
                 (host + '-model-cost', self.deployment / f'entrypoints/{host}/model-cost.ts'),
                 (host + '-manager-chat', self.deployment / f'entrypoints/{host}-auto/manager-chat.ts'),
-                (host + '-node-chat', self.deployment / f'entrypoints/{host}-auto/node-chat.ts')]
+                (host + '-node-chat', self.deployment / f'entrypoints/{host}-auto/node-chat.ts'),
+                (host + '-connect-bot', self.deployment / f'entrypoints/{host}-auto/connect-bot.ts')]
             if host == 'pi':
                 entries.append(('pi-suite', self.deployment / 'entrypoints/pi/pi-suite.ts'))
             for name, path in entries:
@@ -185,7 +221,7 @@ export default function(pi) {
                     return 'http://' + match[1]
         self.base = until('owned backend dynamic loopback', address)
         for folder, content in [('connect-bot', f'endpoint: {self.base}\nrequestTimeoutMs: 1000\n'),
-                                ('workflow-chat', f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')]:
+                                ('workflow-chat', f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')]:
             path = self.deployment / f'extensions/{folder}/config.yaml'
             path.write_text(content, encoding='utf-8')
             self.evidence.setdefault('deploymentOverrides', []).append({'path': str(path), 'sha256': digest(path), 'content': content})
@@ -223,8 +259,7 @@ export default function(pi) {
                 actual = Path(source).resolve()
                 if actual.is_file():
                     actual = actual.parent
-                root, suffix = self.expected[name]
-                expected = (Path(self.roots[root]) / suffix).resolve()
+                expected = self.expected[name]
                 require(actual == expected, ('Wrong skill source priority/origin', name, str(expected), str(actual)))
                 origins[name] = {'path': str(actual), 'skillSha256': digest(actual / 'SKILL.md')}
             self.evidence['nativeSkillOrigins'] = origins
@@ -351,7 +386,7 @@ def main():
         resources['preflight'](args, evidence)
         delivery_manifest(args, evidence)
         roots = evidence['paths']['roots']
-        required = ['wayfinder', 'wayfinder_skills', 'matt_pocock_skills', 'expert_translate',
+        required = ['wayfinder', 'wayfinder_skills',
                     'pi_state_extension', 'omp_state_extension']
         require(all(key in roots for key in required), ('Dependency-only roots missing', required, sorted(roots)))
         evidence['sourceResources'] = {}

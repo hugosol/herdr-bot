@@ -30,7 +30,18 @@ describe('node save response handoff schema boundary', () => {
     expect(map.nodes.B.input_rule).toEqual(input_rule)
   })
 
+  // Public save API: rejecting the new valid source would hide a successfully
+  // persisted definition; accepting run_id would allow an unsupported source.
+  it('accepts a local name for this Run input without changing dependencies', async () => {
+    const input_rule = [{ id: 'local', type: 'run', input_id: 'brief' }]
+    responseWith({ input_rule })
+    const map = await saveNode('map.json', draft)
+    expect(map.nodes.B).toEqual({ ...node, input_rule })
+  })
+
   it.each([
+    { input_rule: [{ id: 'local', type: 'run', input_id: 'brief', run_id: 'another-run' }] },
+    { input_rule: [{ id: 'local', type: 'run' }] },
     { input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 3 }] },
     { inputs: { source: { source: 'file', path: 'C:/input.txt' } } },
     { input_rule: { source: { type: 'file', path: 'C:/input.txt' } } },

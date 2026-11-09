@@ -21,12 +21,6 @@ type Feedback = {
 
 type Dialog = { kind: 'create' } | { kind: 'edit'; id: string }
 
-function isVisibleFixedExtension(entry: NonNullable<TaskOptions['extensions']>[number], task: Pick<Task, 'agent' | 'taskType'>): boolean {
-  return entry.agent === task.agent && entry.kind === 'fixed'
-    && entry.id !== `${task.agent}-node-chat`
-    && (entry.id !== `${task.agent}-manager-chat` || task.taskType === 'manager')
-}
-
 /** 把一次失败归一化成面向使用者的说明；未得到可用响应时明确说“无法确认”。 */
 function describeFailure(result: TaskResult, action: string): string {
   return result.kind === 'rejected'
@@ -296,8 +290,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
       : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
 
   const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
-  const extensions = (data?.options.extensions ?? []).filter((entry) => entry.agent === draft.agent)
-  const fixedExtensions = extensions.filter((entry) => isVisibleFixedExtension(entry, draft))
   const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
   const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
@@ -426,10 +418,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <div>
                     <dt>Skill</dt>
                     <dd>{skillLabel(task)}</dd>
-                  </div>
-                  <div>
-                    <dt>固定扩展</dt>
-                    <dd>{data.options.extensions?.filter((entry) => isVisibleFixedExtension(entry, task)).map((entry) => entry.label).join('、') || '无'}</dd>
                   </div>
                 </dl>
                 <pre className="task-item__prompt" data-testid="task-prompt-view">
@@ -670,7 +658,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             </div>
             </>}
 
-            {step === 2 && <section className="task-extensions" aria-label="扩展配置">
+            {step === 2 && <section aria-label="扩展配置">
               <label htmlFor="task-suite">Suite（至多一个）</label>
               <select id="task-suite" data-testid="task-suite" className="zone-form__input" disabled={saving}
                 value={draft.suite ?? ''} onChange={event => setDraft(current => ({ ...current, suite: event.target.value || null }))}>
@@ -680,10 +668,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
               </select>
               {selectedSuiteIssue && <p className="zone-error" data-testid="task-suite-issue" role="alert">{selectedSuiteIssue}</p>}
               <p>Suite 不替代初始 Skill、固定 prompt、模型或命名规则。切换 Agent 不会自动更换 Suite。</p>
-              <section data-testid="task-fixed-extensions">
-                <h3>固定扩展（始终加载，不可取消）</h3>
-                <p>{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</p>
-              </section>
               <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与所选 Suite 声明。</p>
             </section>}
 
@@ -699,7 +683,6 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                 <div><dt>model</dt><dd data-testid="summary-model">{data.options.labels?.models?.[draft.model] ?? modelLabel(draft)}</dd></div>
                 <div><dt>thinking</dt><dd data-testid="summary-thinking">{thinkingLabel(draft)}</dd></div>
                 <div><dt>Skill</dt><dd data-testid="summary-skill">{draft.skill === null ? '无' : (data.options.labels?.skills?.[draft.skill] ?? skillLabel(draft))}</dd></div>
-                <div><dt>固定扩展（始终加载，不可取消）</dt><dd data-testid="summary-fixed">{fixedExtensions.map((entry) => entry.label).join('、') || '无'}</dd></div>
                 <div><dt>扩展自动发现</dt><dd data-testid="summary-discovery">关闭</dd></div>
               </dl>
               <h4>固定 prompt</h4>

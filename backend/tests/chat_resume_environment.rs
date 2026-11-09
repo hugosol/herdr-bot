@@ -61,7 +61,7 @@ fn catalog(root: &Path, agent: &str, revision: &str, trigger: bool) {
     if trigger {
         text.push_str(&format!("[[models]]\nid = 'launch-model'\nlabel = 'Launch model'\nprovider_model = 'provider/launch-model'\nthinking = {{ {agent} = ['high'] }}\n[[skills]]\nid = 'launch-skill'\nlabel = 'Launch skill'\nnative_name = 'start-only'\n"));
     }
-    for (id, kind) in [("fixed", "fixed"), ("a", "optional"), ("b", "fixed"), ("ambient", "optional")] {
+    for (id, kind) in [("fixed", "fixed"), ("b", "fixed")] {
         let entry = root.join(format!("{agent}-{id}-{revision}.ts"));
         fs::write(&entry, "// Independent valid extension fixture; never execute at validation.\nexport default function () {}\n").unwrap();
         text.push_str(&format!("[[extensions]]\nid = '{id}'\nlabel = '{id}'\nagent = '{agent}'\nkind = '{kind}'\nentrypoint = '{}'\n",entry.display()));
@@ -139,7 +139,7 @@ fn native(root: &Path, herdr: &HerdrFixture, agent: &str, id: &str) -> PathBuf {
     file
 }
 // P1/P2/P3/P4/P9/P10/P18. Independent expected set: both newest fixed entries,
-// not optional A or ambient; only creation submits trigger actions. A plausible
+// only creation submits trigger actions. A plausible
 // violation is restoring stale fixed entries or trigger settings. Normal
 // creation, public edit, a real process restart and external argv distinguish it.
 #[tokio::test]

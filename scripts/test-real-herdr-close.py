@@ -102,7 +102,12 @@ class LiveProcess:
 class Acceptance:
     def __init__(self, args, *, prefix='herdr-close-p22-'):
         self.args = args
-        self.root = Path(tempfile.mkdtemp(prefix=prefix))
+        requested = getattr(args, 'evidence_dir', None)
+        if requested is None:
+            self.root = Path(tempfile.mkdtemp(prefix=prefix))
+        else:
+            self.root = requested.resolve()
+            self.root.mkdir(parents=True, exist_ok=False)
         self.evidence = {'promise': 'P22', 'passed': False, 'root': str(self.root),
                          'commands': [], 'cleanupErrors': []}
         self.processes = []
@@ -180,9 +185,13 @@ class Acceptance:
             shutil.copytree(self.args.toolkit / name, toolkit / name,
                             ignore=shutil.ignore_patterns('.runtime', 'node_modules', '.git'))
         shutil.copy2(self.args.toolkit / 'package.json', toolkit / 'package.json')
-        shutil.copytree(self.args.toolkit / 'node_modules/yaml', toolkit / 'node_modules/yaml')
+        package = json.loads((toolkit / 'package.json').read_text(encoding='utf-8'))
+        for dependency in package.get('dependencies', {}):
+            source = self.args.toolkit / 'node_modules' / dependency
+            require(source.is_dir(), ('Missing frozen Toolkit runtime dependency', str(source)))
+            shutil.copytree(source, toolkit / 'node_modules' / dependency, dirs_exist_ok=True)
         role_config = toolkit / 'extensions/workflow-chat/config.yaml'
-        role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
+        role_config.write_text('endpoint: http://127.0.0.1:9\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')
         self.configure_model()
         herdr_config = self.root / 'herdr.toml'
         herdr_config.write_text('onboarding = false\n[terminal]\ndefault_shell = "cmd.exe"\n'
@@ -201,6 +210,11 @@ class Acceptance:
         self.workspace = workspace['workspace']['workspace_id']
         self.sentinel = workspace['tab']['tab_id']
         self.evidence['ownedWorkspace'] = workspace
+        catalog = self.role_catalog(toolkit)
+        (self.root / 'options.toml').write_text(catalog)
+        self.start_backend(role_config)
+
+    def role_catalog(self, toolkit):
         catalog = 'skills = []\n[[agents]]\nid = "pi"\nlabel = "Pi"\n'
         catalog += '[[models]]\nid = "default"\nlabel = "Default"\n'
         catalog += '[[models]]\nid = "probe"\nlabel = "Probe"\nprovider_model = ' + json.dumps(self.provider_model) + '\nthinking = { pi = ["off"] }\n'
@@ -208,7 +222,9 @@ class Acceptance:
                          ('pi-manager-chat', toolkit / 'entrypoints/pi-auto/manager-chat.ts'),
                          ('pi-node-chat', toolkit / 'entrypoints/pi-auto/node-chat.ts')]:
             catalog += f'[[extensions]]\nid = "{id}"\nlabel = "{id}"\nagent = "pi"\nkind = "fixed"\nentrypoint = {json.dumps(str(path))}\n'
-        (self.root / 'options.toml').write_text(catalog)
+        return catalog
+
+    def start_backend(self, role_config):
         q = lambda value: json.dumps(str(value))
         config = 'listen_addr = "127.0.0.1:0"\n'
         config += f'static_directory = {q(self.args.repo / "backend/static")}\ndata_directory = {q(self.root / "data")}\n'
@@ -223,7 +239,7 @@ class Acceptance:
             ('map_directory', self.root / 'maps'), ('bot_directory', self.root / 'bots'),
             ('run_directory', self.root / 'data/runs'), ('run_instructions', self.args.repo / 'docs/workflow-runtime.md')])
         (self.root / 'backend.toml').write_text(config)
-        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend')
+        backend = self.start([self.args.backend, '--config', self.root / 'backend.toml'], 'backend-' + str(len(self.processes)))
         def address():
             require(backend.child.poll() is None, 'Backend exited during startup; see raw logs')
             while not backend.lines.empty():
@@ -231,7 +247,7 @@ class Acceptance:
                 if match:
                     return 'http://' + match[1]
         self.base = until('backend bound loopback address', address)
-        role_config.write_text(f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n')
+        role_config.write_text(f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n')
 
     def history(self, file):
         module = (self.args.pi_package / 'dist/core/session-manager.js').as_uri()

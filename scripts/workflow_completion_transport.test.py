@@ -7,6 +7,8 @@ tool definitions, arguments and raw evidence, without inventing tool choices.
 import json
 from pathlib import Path
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 import urllib.error
 import urllib.request
@@ -15,6 +17,76 @@ from workflow_completion_transport import CompletionTransport
 
 
 class TransportContract(unittest.TestCase):
+    def test_context_exit_waits_for_owned_model_call_to_finish(self):
+        entered = threading.Event()
+        release = threading.Event()
+        exited = threading.Event()
+
+        def external_completion(_prompt):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('Test-owned release was not delivered')
+            return '{"content":"finished","tool_calls":[]}'
+
+        with tempfile.TemporaryDirectory() as directory:
+            server = CompletionTransport(external_completion, Path(directory))
+            server.__enter__()
+            def post():
+                request = urllib.request.Request(server.base + '/chat/completions',
+                    data=json.dumps({'model': 'actual-model', 'messages': []}).encode())
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return json.load(response)['choices'][0]['message']['content']
+            def close():
+                try:
+                    server.__exit__(None, None, None)
+                finally:
+                    exited.set()
+            with ThreadPoolExecutor(max_workers=2) as workers:
+                client = workers.submit(post)
+                try:
+                    self.assertTrue(entered.wait(5), 'Actual model call never began')
+                    closing = workers.submit(close)
+                    premature = exited.wait(1.25)
+                finally:
+                    release.set()
+                self.assertEqual(client.result(), 'finished')
+                closing.result()
+                self.assertFalse(premature, 'Transport cleanup returned while its model call was still held')
+
+    def test_serialization_failure_prevents_queued_model_requests(self):
+        entered = threading.Event()
+        release = threading.Event()
+        calls = []
+
+        def external_completion(prompt):
+            calls.append(prompt)
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('Test-owned release was not delivered')
+            return 'not a JSON model decision'
+
+        with tempfile.TemporaryDirectory() as directory:
+            with CompletionTransport(external_completion, Path(directory)) as server:
+                def post():
+                    request = urllib.request.Request(server.base + '/chat/completions',
+                        data=json.dumps({'model': 'actual-model', 'messages': []}).encode(),
+                        headers={'Content-Type': 'application/json'})
+                    try:
+                        with urllib.request.urlopen(request, timeout=10) as response:
+                            return response.status
+                    except urllib.error.HTTPError as error:
+                        return error.code
+
+                with ThreadPoolExecutor(max_workers=2) as clients:
+                    first = clients.submit(post)
+                    try:
+                        self.assertTrue(entered.wait(5), 'First actual model call never began')
+                        second = clients.submit(post)
+                    finally:
+                        release.set()
+                    self.assertEqual([first.result(), second.result()], [502, 502])
+                self.assertEqual(len(calls), 1, 'A terminal model failure must not spend a queued model call')
+
     def test_full_request_and_model_decision_survive_streaming_transport(self):
         request = {'messages': [{'role': 'system', 'content': 'public guide'},
             {'role': 'user', 'content': 'independent business input'},

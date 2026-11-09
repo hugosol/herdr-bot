@@ -38,7 +38,7 @@ python scripts/test-workflow-file-handoff.py `
 
 入口为一次执行创建独占 Temp 根；隔离 HOME/USERPROFILE、APPDATA、LOCALAPPDATA、XDG、Pi 存储、命名 Herdr server、后端持久目录和实际角色部署。后端只绑定动态数值回环地址，关闭 mDNS，不操作用户 Chat、Run、业务文件或真实关机。
 
-manager zone、source/left/right/summary 四个 node zone 互不相同；每组业务产物位于 `business/0` 或 `business/1`，均在所有 zone 外。文件直接登记外部原地址，消费者原生读取这个地址，不复制或移动到 zone。两个 Run 的中间资料指引为 manager zone 下各自的 `.workflow/<Run ID>`，从实际初始化观察其区别；它只是位置指引，不要求预分配目录、输出文件或强制业务落盘位置。
+manager zone、source/left/right/summary 四个 node zone 互不相同；每组业务产物位于 `business/0` 或 `business/1`，均在所有 zone 外。文件直接登记外部原地址，消费者原生读取这个地址，不复制或移动到 zone。两个 Run 的中间资料指引为 manager zone 下各自的 `.manager-zone/.workflow/<Run ID>`，从实际初始化观察其区别；它只是位置指引，不要求预分配目录、输出文件或强制业务落盘位置。
 
 取得端口后持续消费 Herdr 和后端进程 stdout/stderr。正常或失败均停止并确认本次拥有的 server/进程；原始错误与清理错误分别保留。凭据配置退出时移除，不把密钥写入证据。临时证据保留供核对，不删除用户资源。
 

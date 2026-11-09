@@ -9,7 +9,6 @@ import argparse
 import hashlib
 import http.server
 import json
-import os
 from pathlib import Path
 import runpy
 import shutil
@@ -71,16 +70,14 @@ class Acceptance(skills['Acceptance']):
         self.evidence.update(promise=['P7:OMP-extensions', 'P9:OMP'], scenario='extension-packages', cases=[])
 
     def prepare(self):
-        require(os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1',
-                'Set HERDR_BOT_MANUAL_SYMLINKS=1 explicitly; no copy, junction, elevation or fallback')
         super().prepare()
         self.model.RequestHandlerClass = Model
         relative = self.authority / 'relative existing package'
         rooted = self.root / 'central extension package'
         self.make_package(relative, 'suite_relative_total', 19, 7, 'RELATIVE-ASSET-412')
         self.make_package(rooted, 'suite_root_total', 23, 11, 'ROOT-ASSET-905')
-        # A package with a non-index entry must use native manifest resolution.
-        (rooted / 'package.json').write_text(json.dumps({'type':'module', 'omp':{'extensions':['extension/entry.ts']}}))
+        # Non-index entries load directly from their original package directories.
+        self.entrypoints = [(relative / 'extension/entry.ts').resolve(), (rooted / 'extension/entry.ts').resolve()]
         self.expected_targets = {relative.resolve(), rooted.resolve()}
         self.source_bytes = {path:path.read_bytes() for source in self.expected_targets for path in source.rglob('*') if path.is_file()}
         (self.root / 'paths.toml').write_text('[roots]\nowned_extensions = ' + json.dumps(str(rooted)) + '\n')
@@ -88,7 +85,7 @@ class Acceptance(skills['Acceptance']):
         backend = self.processes[-1]
         backend.stop()
         (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':[], 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}']}}]}))
+            'skills':{'omp': [], 'pi': []}, 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}/extension/entry.ts']}}]}))
         for zone in self.zones:
             # Wrong-cwd resource must not be selected; literal wrong result is distinguishable.
             wrong = zone / 'relative existing package/extension'
@@ -161,12 +158,9 @@ export default function(pi) {
                 raise
             generated = self.root / 'generated resources with spaces'
             links = [path for path in generated.rglob('*') if path.is_symlink()]
-            require({path.resolve() for path in links} == self.expected_targets,
-                    ('Assembly must link the existing package directories, not copy source or load source directly', [str(x) for x in links]))
-            manifests = list(generated.rglob('omp-extensions.json'))
-            require(manifests, 'No generated extension entry manifest')
-            case['manifests'] = {str(path):json.loads(path.read_text()) for path in manifests}
-            case['links'] = [{'link':str(path), 'target':str(path.resolve())} for path in links]
+            require(not links, ('Direct extension entries must not create package links', [str(x) for x in links]))
+            require(not list(generated.rglob('omp-extensions.json')), 'Direct extension entries must not create a loader manifest')
+            case['sourceEntrypoints'] = [str(path) for path in self.entrypoints]
             require((self.root / 'fixed-loaded.txt').read_text() == 'FIXED-LOADED-628', 'Fixed extension was lost')
             for path, original in self.source_bytes.items():
                 require(path.read_bytes() == original, ('Source package was modified', str(path)))

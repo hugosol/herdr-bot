@@ -52,7 +52,6 @@ pub struct ExtensionOption {
 #[serde(rename_all = "lowercase")]
 pub enum ExtensionKind {
     Fixed,
-    Optional,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,9 +65,17 @@ pub struct TaskOptions {
     extensions: Vec<ExtensionOption>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixedExtensionOption {
+    #[serde(flatten)]
+    extension: ExtensionOption,
+    roles: Vec<&'static str>,
+}
+
 /// Runtime context is supplied by the launch owner, never by extension metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionRole { Standalone, Manager, Node }
+pub enum ExecutionRole { Standalone, Manager, Node, NestedManager }
 
 impl From<TaskType> for ExecutionRole {
     fn from(task_type: TaskType) -> Self {
@@ -78,16 +85,44 @@ impl From<TaskType> for ExecutionRole {
 
 impl Catalog {
     pub fn load(path: &Path, roots: &crate::paths::Roots) -> Result<Self, TaskError> {
+        Self::load_paths(path, roots, false)
+    }
+
+    /// Display resolved global fixed entries without requiring installed resources.
+    pub(crate) fn suite_extensions(path: &Path, roots: &crate::paths::Roots) -> Result<Vec<FixedExtensionOption>, TaskError> {
+        let catalog = Self::load_paths(path, roots, true)?;
+        let mut options = Vec::with_capacity(catalog.extensions.len());
+        for mut extension in catalog.extensions {
+            if extension.entrypoint.as_os_str().is_empty() {
+                return Err(TaskError::Metadata(format!("选项元数据 {}：扩展 {} 缺少入口路径", path.display(), extension.id)));
+            }
+            extension.entrypoint = roots.resolve(&extension.entrypoint, path.parent().unwrap_or_else(|| Path::new(".")))
+                .map_err(|error| TaskError::Metadata(format!("扩展 {} 路径：{error:#}", extension.id)))?;
+            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node")]
+                .into_iter().filter_map(|(role, name)| extension.applies_to(extension.agent, role).then_some(name)).collect();
+            options.push(FixedExtensionOption { extension, roles });
+        }
+        Ok(options)
+    }
+
+    fn load_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool) -> Result<Self, TaskError> {
+        let raw = crate::files::FileStore::default().read_to_string(path)
+            .map_err(|error| TaskError::Metadata(format!("选项元数据 {}：读取失败：{error}", path.display())))?;
+        Self::parse_paths(path, roots, preserve_roots, &raw)
+    }
+
+    fn parse_paths(path: &Path, roots: &crate::paths::Roots, preserve_roots: bool, raw: &str) -> Result<Self, TaskError> {
         let result = (|| -> Result<Self, String> {
-            let raw = crate::files::FileStore::default().read_to_string(path)
-                .map_err(|e| format!("读取失败：{e}"))?;
-            let mut catalog: Self = toml::from_str(&raw).map_err(|e| format!("TOML：{e}"))?;
+            let mut catalog: Self = toml::from_str(raw).map_err(|e| format!("TOML：{e}"))?;
             catalog.validate()?;
             let base = path.parent().unwrap_or_else(|| Path::new("."));
             for extension in &mut catalog.extensions {
                 if !extension.entrypoint.as_os_str().is_empty() {
-                    extension.entrypoint = roots.resolve(&extension.entrypoint, base)
+                    let resolved = roots.resolve(&extension.entrypoint, base)
                         .map_err(|error| format!("扩展 {} 路径：{error:#}", extension.id))?;
+                    if !preserve_roots || !extension.entrypoint.to_string_lossy().starts_with("${roots.") {
+                        extension.entrypoint = resolved;
+                    }
                 }
             }
             Ok(catalog)
@@ -340,8 +375,16 @@ impl Catalog {
     /// Resolve only the current session environment. Trigger choices may have
     /// become invalid since the Task was saved and are deliberately not consulted.
     pub fn resolve_env(&self, agent: Agent, role: ExecutionRole) -> Result<ResolvedEnvConfig, TaskError> {
-        if role != ExecutionRole::Standalone && !self.extensions.iter().any(|extension| extension.role() == Some((agent, role))) {
-            return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
+        let required: &[ExecutionRole] = match role {
+            ExecutionRole::Standalone => &[],
+            ExecutionRole::NestedManager => &[ExecutionRole::Manager, ExecutionRole::Node],
+            ExecutionRole::Manager => &[ExecutionRole::Manager],
+            ExecutionRole::Node => &[ExecutionRole::Node],
+        };
+        for required in required {
+            if !self.extensions.iter().any(|extension| extension.role() == Some((agent, *required))) {
+                return Err(TaskError::Metadata("当前目录缺少执行角色对应的固定扩展。".into()));
+            }
         }
         Ok(ResolvedEnvConfig {
             suite_args: Vec::new(),
@@ -395,7 +438,8 @@ impl ExtensionOption {
     }
 
     pub fn applies_to(&self, agent: Agent, role: ExecutionRole) -> bool {
-        self.agent == agent && self.role().is_none_or(|required| required == (agent, role))
+        self.agent == agent && self.role().is_none_or(|required| required == (agent, role)
+            || role == ExecutionRole::NestedManager && matches!(required.1, ExecutionRole::Manager | ExecutionRole::Node))
     }
 
     /// Check availability only; the agent remains responsible for loading.

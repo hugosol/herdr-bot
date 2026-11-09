@@ -866,22 +866,8 @@ label = '固定扩展'
 agent = 'omp'
 kind = 'fixed'
 entrypoint = '{}'
-[[extensions]]
-id = 'tools'
-label = '工具扩展'
-agent = 'omp'
-kind = 'optional'
-entrypoint = '{}'
-[[extensions]]
-id = 'connect'
-label = '接入扩展'
-agent = 'omp'
-kind = 'optional'
-entrypoint = '{}'
 "#,
-            storage.path().join(fixed).display(),
-            storage.path().join(tools).display(),
-            storage.path().join(connect).display()
+            storage.path().join(fixed).display()
         ),
     )
     .expect("写入真实元数据");

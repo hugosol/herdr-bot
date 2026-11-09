@@ -35,6 +35,20 @@ require = shared['require']
 until = shared['until']
 
 
+def copy_evidence(source, destination):
+    """Retain the full owned tree, including Windows paths beyond MAX_PATH."""
+    def native(path):
+        absolute = os.path.abspath(path)
+        if os.name != 'nt' or absolute.startswith('\\\\?\\'):
+            return absolute
+        if absolute.startswith('\\\\'):
+            return '\\\\?\\UNC\\' + absolute[2:]
+        return '\\\\?\\' + absolute
+    # Keep copytree's exclusive destination semantics: an old/partial archive
+    # must never be silently merged with a different invocation.
+    shutil.copytree(native(source), native(destination))
+
+
 class WireProxy:
     """Transparent loopback observer. Never chooses/replaces a model response.
 
@@ -57,6 +71,9 @@ class WireProxy:
                 self.forward()
 
             def do_GET(self):
+                self.forward()
+
+            def do_PUT(self):
                 self.forward()
 
             def forward(self):
@@ -203,7 +220,7 @@ class RolesAcceptance(Acceptance):
         super().prepare()
         self.backend_wire = WireProxy(self.base, self.root / 'backend-wire')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         self.run_contract_dock()
         self.write_business_program()
 
@@ -656,7 +673,7 @@ class FanInAcceptance(RolesAcceptance):
             histories[name] = {'chat': chat, 'path': str(path), 'header': header, 'native': self.history(str(path)),
                 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
         evidence['nativeHistories'] = histories
-        materials = zones['manager'] / '.workflow' / run['id']
+        materials = zones['manager'] / '.manager-zone' / '.workflow' / run['id']
         for name, history in histories.items():
             require(any(str(materials) in self.message_text(entry.get('message', {}))
                 for entry in history['native']['branch'] if entry.get('type') == 'message'),

@@ -15,6 +15,15 @@
 .suites-panel button:active { transform: translateY(1px); }
 .suites-panel :is(button, input, textarea):focus-visible { outline: 2px solid var(--suite-accent); outline-offset: 3px; }
 .suites-panel button:disabled { color: var(--suite-muted); cursor: wait; }
+.suites-fixed { min-width: 0; padding: 20px; margin-bottom: 24px; background: var(--suite-surface); border-radius: 8px; }
+.suites-fixed h3 { margin-bottom: 8px; }
+.suites-fixed-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.suites-fixed-groups > section { min-width: 0; }
+.suites-fixed h4 { font-size: 14px; margin: 12px 0; }
+.suites-fixed ul { list-style: none; margin: 0; padding: 0; }
+.suites-fixed li { min-width: 0; padding: 8px 0; overflow-wrap: anywhere; }
+.suites-fixed-name { display: block; font-weight: 500; }
+.suites-fixed-roles { display: block; color: var(--suite-muted); font-size: 13px; margin-top: 4px; }
 .suites-layout { display: grid; grid-template-columns: 272px minmax(0, 1fr); align-items: start; gap: 24px; }
 .suites-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .suites-list-heading { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 8px; }
@@ -51,6 +60,8 @@
 .suites-editor #suite-lsp { font-family: ui-monospace, monospace; min-height: 200px; }
 .suites-editor .suites-choice { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; margin: 0 20px 0 0; overflow-wrap: anywhere; }
 .suites-choice input { width: 18px; height: 18px; flex: none; accent-color: var(--suite-accent); }
+.suites-extensions { min-width: 0; }
+.suites-extension-path { display: block; color: var(--suite-muted); font-size: 12px; overflow-wrap: anywhere; }
 .suites-section fieldset { margin-top: 16px; }
 .suites-section fieldset > legend { color: var(--suite-muted); font-size: 13px; }
 .suites-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
@@ -60,7 +71,9 @@
 @media (max-width: 1050px) { .suites-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 16px; } .suites-field-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
 @media (max-width: 700px) {
   .panel:has(.suites-panel) { padding: 20px 16px; }
-  .suites-layout { grid-template-columns: minmax(0, 1fr); }
+  .suites-layout, .suites-fixed-groups { grid-template-columns: minmax(0, 1fr); }
+  .suites-fixed { padding: 16px; }
+  .suites-fixed-groups { gap: 8px; }
   .suites-page-header > div { width: 100%; margin-bottom: 8px; }
   .suites-panel h2 { font-size: 22px; }
   .suites-panel button { min-height: 44px; }

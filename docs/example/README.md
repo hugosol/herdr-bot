@@ -24,13 +24,7 @@
 
 示例使用未登记的稳定 ID `example/travel`，不是目录。仅浏览无需登记；实际启动前显式将该 ID 登记到本机已有目录，另一台机器可为同一 ID 登记不同目录。Map 不保存本机绑定；Run 启动时冻结所需绑定。直接 File 输入使用 `{"id":"source","type":"file","zone_id":"example/travel","path":"inputs/source.txt"}`，其中 path 是以 `/` 分隔的相对路径，省略 zone_id 时使用管理者 zone，不使用 node zone。
 
-旧定义须离线显式迁移，不能把旧路径当成新 ID。先停止全部后端进程，准备例如 `[ {"path":"C:/old/travel","id":"example/travel","local_path":"D:/current/travel"} ]` 的 mapping.json，然后执行：
-
-```powershell
-cargo run --manifest-path backend/Cargo.toml --bin migrate-zone-portability -- C:/isolated/zones.json C:/isolated/maps C:/isolated/mapping.json
-```
-
-替换参数为自己的隔离副本位置，不要对示例凭空登记或创建目录。local_path 可省略（保留旧目录绑定）；同一 ID 的多个旧路径别名必须显式声明相同 local_path。迁移只修改登记和顶层 Map JSON，历史 Run／Chat 不变；绝对 File 输入转换为明确 zone_id 加相对路径，多个包含根存在歧义时须指定 zone_id，不猜最近父目录。全部输入验证通过后才写入，原文件保留为 `*.zone-portability-v1.bak`；每个文件独立发布，故障后根据报错核对已生效文件再重试。缺失映射会列出需要补充的路径并拒绝修改。
+旧定义须在停服并备份后显式更新为上述格式，不能把旧路径当成新 ID；正常启动不会自动迁移旧格式。历史离线迁移工具已归档，不再随仓库提供。更新时须明确稳定 ID 与本机绑定；绝对 File 输入须改为明确的 zone_id 与相对路径，多个包含根有歧义时不猜最近父目录。不要为浏览示例凭空登记或创建目录，也不要改写历史 Run／Chat。
 
 ## 在隔离目录运行
 

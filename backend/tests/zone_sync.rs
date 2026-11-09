@@ -1125,13 +1125,15 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
     write_hook(
         &root,
         "pre-push",
-        "#!/bin/sh\necho 'push hook started' >&2\n( sleep 8; echo child-alive > child-marker.txt ) &\nsleep 8\n",
+        "#!/bin/sh\necho 'push hook started' >&2\n( sleep 30; echo child-alive > child-marker.txt ) &\nwait\n",
     );
 
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
+    // Leave ordinary local fetch/pull enough time on Windows so the deliberate
+    // thirty-second pre-push hook, not setup work, exercises command termination.
     config.git.command_timeout_seconds =
-        herdr_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(5).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
 
@@ -1143,14 +1145,14 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
         response.body
     );
     assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "超时必须按配置结束，而不是无限等待"
+        started.elapsed() < Duration::from_secs(20),
+        "超时必须在 hook 的 30 秒自然结束之前按配置结束，而不是无限等待"
     );
     let payload = body(&response);
     assert_eq!(payload["code"], json!("git-timeout"));
     let message = payload["message"].as_str().expect("message 字符串");
     assert!(
-        message.contains("本功能配置的 1 秒执行上限"),
+        message.contains("本功能配置的 5 秒执行上限"),
         "页面必须标明本功能超时：{message}"
     );
     assert!(
@@ -1169,7 +1171,9 @@ async fn configured_timeout_stops_the_running_command_and_keeps_effective_pull_s
         git_stdout(&root, &["show", "HEAD:remote.txt"]).contains("remote"),
         "pull 已生效的内容不能被超时回滚"
     );
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Observe beyond the hook child's natural lifetime: an orphaned child
+    // must not escape detection simply because its marker is not due yet.
+    tokio::time::sleep(Duration::from_secs(31)).await;
     assert!(
         !root.join("child-marker.txt").exists(),
         "超时必须终止 Git 的派生执行"

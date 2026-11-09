@@ -321,6 +321,10 @@ impl Tasks {
         crate::tasks::catalog::Catalog::load(&self.metadata_file, &self.roots)
     }
 
+    pub(crate) fn suite_extensions(&self) -> Result<Vec<catalog::FixedExtensionOption>, TaskError> {
+        catalog::Catalog::suite_extensions(&self.metadata_file, &self.roots)
+    }
+
     /// 存储文件位置（启动日志与测试观察用）。
     pub fn storage_file(&self) -> &Path {
         &self.storage_file
@@ -338,6 +342,12 @@ impl Tasks {
             .into_iter()
             .find(|task| task.id == id)
             .ok_or(TaskError::NotFound)
+    }
+
+    pub(crate) fn validate_suite(&self, task: &Task) -> Result<(), TaskError> {
+        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+            self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent).map(|_| ())
+        }).map_err(TaskError::Unreadable)?
     }
 
     /// Re-read authority immediately before launch; do not hold coordination
@@ -431,7 +441,7 @@ impl Tasks {
 
     /// Read, validate, mutate and publish under one shared resource scope.
     fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),

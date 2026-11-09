@@ -1,32 +1,56 @@
 {
-  "description": "优化并保存既有 Task.prompt → 三个独立 grilling 分支修订并确认既有 Bot.when、plan_guide、node_guide → 原样汇总，一次保存 Bot 三字段。业务目标、材料与授权使用本次注入的 userInput；文件通过命名输入输出交接。w1–w4 manual，w5 auto；业务确认与报告发送确认独立。不新增表达优化节点，不改绑定，不自动执行业务或试运行。",
+  "title": "独立修订既有 Bot 三指南",
+  "description": "核实既有 Task 型或 Map 型 Bot 与真实目标，生成共同基线；三路独立修订、整理并确认，再汇合一次合法保存且完整读回。不先修改 Task.prompt、不新建或修改执行目标，不新增表达优化阶段。业务确认、保存授权和报告发送确认独立。配置交付不证明业务能力已验证。",
+  "input_files": [
+    {
+      "id": "request",
+      "required": true
+    },
+    {
+      "id": "materials",
+      "required": false
+    }
+  ],
   "nodes": {
     "w1": {
-      "blocked_by": [],
-      "bot_id": "existing-task-prompt-optimizer",
-      "input": "优化本次 userInput 指定的既有 Task.prompt。本图后续需要修订绑定它的 Bot，目标 Task 限 normal。\n本次要求文件输出 handoff，内容采用 Task 的标准交付，供三个指南分支及最终汇总使用已保存的 Task 定稿与确认依据。",
-      "input_rule": [],
+      "title": "W1 核实既有 Bot 与目标并交付共同基线",
+      "bot_id": "prepare-bot-revision",
+      "input": "request 是本次既有 Bot 三指南修订委托；materials（若提供）是参考材料，按委托说明的用途使用。本次要求以文件交付 baseline 与 handoff，作为各编写者及保存者的共同核实依据。",
+      "input_rule": [
+        {
+          "id": "request",
+          "type": "run",
+          "input_id": "request"
+        },
+        {
+          "id": "materials",
+          "type": "run",
+          "input_id": "materials"
+        }
+      ],
       "output_rule": [
+        {
+          "id": "baseline"
+        },
         {
           "id": "handoff"
         }
       ],
+      "blocked_by": [],
       "report_policy": "manual",
-      "title": "W1 优化并保存既有 Task.prompt",
+      "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
     "w2": {
-      "blocked_by": [
-        "w1"
-      ],
+      "title": "独立修订并确认 Bot.when",
       "bot_id": "write-bot-when",
-      "input": "修订本次 userInput 指定的既有 Bot.when，按其中明确的修订范围与业务意图，以现有字段为基线。\n命名输入 task_updated 提供已保存的 Task 定稿及确认依据；目标 Bot 必须绑定该 Task，当前完整 Task 配置须与定稿一致。本分支独立形成确认稿，不读取兄弟分支定稿，结果直接交最终汇总。\n本次交付两个独立文件：text 为已确认纯正文；handoff 在标准交接内容外，附完整原 Bot 基线、task_updated 来源地址、完整 Task 定稿及核对结果、完整字段正文和 text 地址。两份正文须逐字一致。",
+      "input": "依据 baseline 中的既有 when、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
-          "id": "task_updated",
+          "id": "baseline",
           "type": "node",
           "node_id": "w1",
-          "output_id": "handoff"
+          "output_id": "baseline"
         }
       ],
       "output_rule": [
@@ -37,22 +61,23 @@
           "id": "handoff"
         }
       ],
+      "blocked_by": [
+        "w1"
+      ],
       "report_policy": "manual",
-      "title": "W2 独立修订并确认 Bot.when",
+      "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
     "w3": {
-      "blocked_by": [
-        "w1"
-      ],
+      "title": "独立修订并确认 Bot.plan_guide",
       "bot_id": "write-bot-plan-guide",
-      "input": "修订本次 userInput 指定的既有 Bot.plan_guide，按其中明确的修订范围与业务意图，以现有字段为基线。\n命名输入 task_updated 提供已保存的 Task 定稿及确认依据；目标 Bot 必须绑定该 Task，当前完整 Task 配置须与定稿一致。本分支独立形成确认稿，不读取兄弟分支定稿，结果直接交最终汇总。\n本次交付两个独立文件：text 为已确认纯正文；handoff 在标准交接内容外，附完整原 Bot 基线、task_updated 来源地址、完整 Task 定稿及核对结果、完整字段正文和 text 地址。两份正文须逐字一致。",
+      "input": "依据 baseline 中的既有 plan_guide、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
-          "id": "task_updated",
+          "id": "baseline",
           "type": "node",
           "node_id": "w1",
-          "output_id": "handoff"
+          "output_id": "baseline"
         }
       ],
       "output_rule": [
@@ -63,22 +88,23 @@
           "id": "handoff"
         }
       ],
+      "blocked_by": [
+        "w1"
+      ],
       "report_policy": "manual",
-      "title": "W3 独立修订并确认 Bot.plan_guide",
+      "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
     "w4": {
-      "blocked_by": [
-        "w1"
-      ],
+      "title": "独立修订并确认 Bot.node_guide",
       "bot_id": "write-bot-node-guide",
-      "input": "修订本次 userInput 指定的既有 Bot.node_guide，按其中明确的修订范围与业务意图，以现有字段为基线。\n命名输入 task_updated 提供已保存的 Task 定稿及确认依据；目标 Bot 必须绑定该 Task，当前完整 Task 配置须与定稿一致。本分支独立形成确认稿，不读取兄弟分支定稿，结果直接交最终汇总。\n本次交付两个独立文件：text 为已确认纯正文；handoff 在标准交接内容外，附完整原 Bot 基线、task_updated 来源地址、完整 Task 定稿及核对结果、完整字段正文和 text 地址。两份正文须逐字一致。",
+      "input": "依据 baseline 中的既有 node_guide、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
       "input_rule": [
         {
-          "id": "task_updated",
+          "id": "baseline",
           "type": "node",
           "node_id": "w1",
-          "output_id": "handoff"
+          "output_id": "baseline"
         }
       ],
       "output_rule": [
@@ -89,24 +115,23 @@
           "id": "handoff"
         }
       ],
+      "blocked_by": [
+        "w1"
+      ],
       "report_policy": "manual",
-      "title": "W4 独立修订并确认 Bot.node_guide",
+      "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
     "w5": {
-      "blocked_by": [
-        "w2",
-        "w3",
-        "w4"
-      ],
+      "title": "W5 汇合三份定稿并一次保存完整读回",
       "bot_id": "replace-text",
-      "input": "将 when_text、plan_guide_text、node_guide_text 分别替换本次 userInput 指定的同一 Bot 的 when、plan_guide、node_guide；本次保存授权以 userInput 及有效确认为依据。对应 *_handoff 提供确认范围、来源与原 Bot 基线，task_updated 提供已保存的 Task 定稿。\n本图的整批基线：三分支须对应同一 Bot、同一 normal Task、同一 task_updated 来源及相同完整 Task 定稿；原 Bot 基线须一致。当前完整 Bot／Task 须分别与这些基线一致，各 text 须与对应 handoff 的定稿逐字一致。\n授权范围仅为上述三个完整字段和交付材料；关联 Task 保持不变。保存前核实本流程执行者保护、共享影响及运行使用，检查管理者 Task、保存的 execution.taskId 和关联 Map／Bot 引用；受运行期间配置不变约束的目标保持只读，暂停、未接管或节点完成不解除该约束，核实不完整时阻塞。\n配置服务 ${herdr-bot-api-url}。保存前读取 ${herdr-bot-path}/docs/scheduler.md 的“HTTP interface 与路径边界”“安全删除与并发”，按当前 Bot edit/revision/save 契约操作；运行使用检查读取 docs/workflow-runtime.md 的“发起与观察”，Task 核验读取 docs/usage.md。文件交付前读取 docs/workflow-runtime.md 的“统一文件交接约定”。\n除 Task 的标准替换验收外，保存后再次核对关联 Task 完整配置与 task_updated 定稿一致。输出 handoff 在标准交付外，附完整最终 Bot、完整 Task 核对结果、三字段确认依据、共同基线及共享影响／运行禁写证据；若指南保存失败，明确上游 Task 已保存的阶段性效果。",
+      "input": "本次替换目标为 baseline 标识的既有 Bot，仅替换 when、plan_guide、node_guide 三字段。配置服务：${herdr-bot-api-url}；接口与保存约束见 ${herdr-bot-path}/docs/scheduler.md。\n来源对应关系：when_text → when，plan_guide_text → plan_guide，node_guide_text → node_guide；各同名前缀的 handoff 提供所属定稿的批准依据和语义限制，baseline 提供共同配置基线及本次保存授权范围。\n本次按 ${herdr-bot-path}/docs/business-materials.md 的“一次合法保存与失败核实”和“文件与独立 Chat”完成整批替换与材料交付。交付 saved 与 handoff 文件，供调用方核验保存结果。",
       "input_rule": [
         {
-          "id": "task_updated",
+          "id": "baseline",
           "type": "node",
           "node_id": "w1",
-          "output_id": "handoff"
+          "output_id": "baseline"
         },
         {
           "id": "when_text",
@@ -147,13 +172,20 @@
       ],
       "output_rule": [
         {
+          "id": "saved"
+        },
+        {
           "id": "handoff"
         }
       ],
+      "blocked_by": [
+        "w2",
+        "w3",
+        "w4"
+      ],
       "report_policy": "auto",
-      "title": "W5 汇总定稿并一次保存 Bot",
+      "auto_close": false,
       "zone": "hugosol/herdr-bot"
     }
-  },
-  "title": "既有 Bot 与绑定 Task 的交互优化"
+  }
 }

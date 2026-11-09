@@ -58,6 +58,7 @@ struct ReportRequest {
 async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, String), Response> {
     let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
     let mut matched = None;
+    let mut managers = Vec::new();
     let mut read_error = None;
     for id in ids {
         let run = match state.runs.read(state, &id).await {
@@ -68,7 +69,7 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
             }
         };
         if run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id) {
-            return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "管理者身份不能提交节点报告。"));
+            managers.push(run.clone());
         }
         for (node_id, node) in &run.nodes {
             for execution in node.executions() {
@@ -81,10 +82,55 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
             }
         }
     }
+    let child_execution = matched.as_ref().is_some_and(|(parent, node_id, execution_id)|
+        parent.nodes[node_id].executions().any(|execution| execution.id == *execution_id && execution.child_run_id.is_some()));
+    if child_execution && managers.is_empty() {
+        return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "子 Run 缺少对应管理者真实 Chat 关联。"));
+    }
+    if !managers.is_empty() {
+        let authorized = managers.len() == 1 && matched.as_ref().is_some_and(|(parent, node_id, execution_id)| {
+            parent.nodes[node_id].executions().find(|execution| execution.id == *execution_id)
+                .is_some_and(|execution| nested_pair(&managers[0], parent, node_id, execution))
+        });
+        let source_valid = if let Some((parent, node_id, execution_id)) = &matched {
+            if let Some(execution) = parent.nodes[node_id].executions().find(|execution| execution.id == *execution_id) {
+                nested_source(state, &managers[0], execution).await
+            } else { false }
+        } else { false };
+        if !authorized || !source_valid { return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "管理者身份没有唯一合法的父执行关联。")); }
+    }
     matched.ok_or_else(|| match read_error {
         Some(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
         None => error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的当前节点执行归属。"),
     })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ContextRequest {
+    session_id: String,
+}
+
+pub async fn node_context(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> Response {
+    if !crate::sessions::is_local_source(peer.ip()) {
+        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
+    }
+    let input: ContextRequest = match crate::chat_command_body::<crate::scheduler::JsonObject<ContextRequest>>(request, "节点上下文").await {
+        Ok(input) => input.0,
+        Err(response) => return response,
+    };
+    let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
+        Ok(binding) => binding,
+        Err(response) => return response,
+    };
+    let Some(execution) = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id) else {
+        return error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的节点执行归属。");
+    };
+    Json(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})).into_response()
 }
 
 pub async fn node_report(
@@ -118,6 +164,17 @@ pub async fn node_report(
     };
     if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
         return error(StatusCode::BAD_REQUEST, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。");
+    }
+    if input.can_complete {
+        if let Some(child_id) = &execution.child_run_id {
+            let child = match state.runs.read(&state, child_id).await {
+                Ok(child) => child,
+                Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "child-run-read-failed", &message),
+            };
+            if child.status != "completed" || child.finished.is_none() {
+                return error(StatusCode::BAD_REQUEST, "child-run-not-finished", "子 Run 必须显式 finish 后才能提交 canComplete=true；进展报告请使用 false。");
+            }
+        }
     }
     // Once accepted, persist and attempt notification exactly once even if the
     // HTTP caller disconnects. No file/business lock spans host delivery.

@@ -43,7 +43,7 @@ async fn legacy_registry_requires_explicit_migration_and_stays_untouched() {
     std::fs::write(&path, &original).unwrap();
     let zones = Zones::new(path.clone());
     let error = zones.list().await.unwrap_err();
-    assert!(error.message().contains("migrate-zone-portability"));
+    assert_eq!(error.code(), "registry-corrupt");
     assert!(zones.register("explicit/id", data.path().to_str().unwrap()).await.is_err());
     assert_eq!(std::fs::read_to_string(path).unwrap(), original);
 }

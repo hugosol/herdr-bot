@@ -25,13 +25,10 @@ mod completion;
 mod operation;
 mod collect;
 pub use collect::manager_collect;
-pub use reports::node_report;
-pub(crate) fn validate_report_source(source: &str) -> Result<(), String> {
-    serde_json::from_str::<reports::Report>(source).map(|_| ()).map_err(|error| error.to_string())
-}
+pub use reports::{node_context, node_report};
 pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChatReference {
     pub session_id: String,
@@ -86,6 +83,15 @@ pub struct NodeExecution {
     #[serde(default)]
     pub auto_close: bool,
     pub chat: Option<ChatReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_run_id: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ParentExecution {
+    pub run_id: String,
+    pub node_id: String,
+    pub execution_id: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -104,12 +110,16 @@ pub struct Run {
     pub created_at: u64,
     pub manager_task_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<ParentExecution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manager_zone_id: Option<String>,
     #[serde(default)]
     pub zone_bindings: BTreeMap<String, String>,
     pub zone: String,
     pub workspace_name: String,
     pub user_input: String,
+    #[serde(default)]
+    pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
     pub manager: Option<ChatReference>,
     pub status: String,
     pub finished: Option<Finished>,
@@ -119,6 +129,10 @@ pub struct Run {
 #[serde(rename_all = "camelCase")]
 pub struct Effects {
     pub records_initialized: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_run_id: Option<String>,
+    #[serde(default)]
+    pub child_records_initialized: bool,
     pub workspace_id: Option<String>,
     pub tab_id: Option<String>,
     pub pane_id: Option<String>,
@@ -128,7 +142,13 @@ pub struct Effects {
     pub association_saved: bool,
     pub input_attempted: bool,
     pub input_submitted: bool,
+    /// Missing on historical records; never infer a rejected delivery from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_outcome: Option<InputOutcome>,
 }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputOutcome { Submitted, Rejected, Unknown }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupFailure {
@@ -147,6 +167,8 @@ pub struct Runs {
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
     map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     registered_maps: Mutex<BTreeMap<String, String>>,
+    // Serializes reference publication with history scans/removal, never host effects.
+    history_references: Mutex<()>,
     deleted: Mutex<std::collections::BTreeSet<String>>,
 }
 impl Runs {
@@ -161,6 +183,7 @@ impl Runs {
 
     /// Caller holds this Map's registration gate, never a Chat/operation lock.
     pub(crate) async fn delete_map_history(&self, state: &AppState, map: &str) -> Result<(), String> {
+        let _references = self.history_references.lock().await;
         let mut ids: std::collections::BTreeSet<String> = self.registered_maps.lock().await.iter()
             .filter(|(_, name)| name.as_str() == map).map(|(id, _)| id.clone()).collect();
         let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
@@ -189,19 +212,40 @@ impl Runs {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
             Err(e) => return Err(e.to_string()),
         }
+        candidates.sort_unstable();
         Ok::<_, String>(candidates)
         })).await.map_err(|e| e.to_string())??;
+        let mut records = Vec::with_capacity(candidates.len());
         for id in candidates {
             let paths = Self::paths(state, &id);
             let directory = paths[0].parent().unwrap().to_path_buf();
-            let map = map.to_owned();
-            let associated = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
-                // Damaged/missing detail files must not prevent removing safely associated history.
+            let record = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
+                // Detail JSONL may be damaged, but the association must be fully readable.
                 validate_history_tree(access, &directory)?;
-                let record: serde_json::Value = access.read_json(&paths[0])?;
-                Ok::<_, String>(record.get("map").and_then(|v| v.as_str()) == Some(map.as_str()))
+                access.read_json::<Run>(&paths[0])
             })).await.map_err(|e| e.to_string())??;
-            if associated { ids.insert(id); }
+            if record.id != id { return Err(format!("Run {id} 保存身份不一致：{}。", record.id)); }
+            if record.map == map { ids.insert(id); }
+            records.push(record);
+        }
+        // Check the complete selection before removing anything. Either side
+        // alone is sufficient evidence; a missing counterpart is not permission
+        // to delete, and retired executions keep their original child links.
+        for run in &records {
+            if let Some(parent) = &run.parent {
+                if ids.contains(&run.id) || ids.contains(&parent.run_id) {
+                    return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", parent.run_id, parent.node_id, parent.execution_id, run.id));
+                }
+            }
+            for (node_id, node) in &run.nodes {
+                for execution in node.executions() {
+                    if let Some(child) = &execution.child_run_id {
+                        if ids.contains(&run.id) || ids.contains(child) {
+                            return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", run.id, node_id, execution.id, child));
+                        }
+                    }
+                }
+            }
         }
         for id in ids {
             let paths = Self::paths(state, &id);
@@ -239,32 +283,49 @@ impl Runs {
     }
     /// Recover role from persisted execution identity, including retired attempts.
     pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
+        self.chat_role_with_current(state, session_id, task_id, agent, None).await
+    }
+
+    // A dispatch owns its current Run operation gate. Use that committed
+    // snapshot for identity checks; a concurrent storage failure must still be
+    // reported at association, with the actual newly started Chat preserved.
+    async fn chat_role_with_current(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent, current: Option<&Run>) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
         let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.to_string()),
         };
-        let mut role = None;
+        let mut managers = Vec::new();
+        let mut nodes = Vec::new();
         for entry in entries {
             if !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
             let id = entry.file_name().to_string_lossy().into_owned();
-            let run = self.read(state, &id).await?;
-            let manager = run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id);
-            let nodes = run.nodes.values().flat_map(NodeState::executions)
-                .filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id));
-            for execution in nodes {
-                if role.is_some() || manager || execution.task_id != task_id || execution.agent != agent {
-                    return Err("原生 Chat 的持久执行关联不唯一或与来源 Task 不一致。".into());
+            let run = match current.filter(|run| run.id == id) {
+                Some(run) => run.clone(),
+                None => self.read(state, &id).await?,
+            };
+            for (node_id, node) in &run.nodes {
+                for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
+                    if execution.task_id != task_id || execution.agent != agent {
+                        return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
+                    }
+                    nodes.push((run.clone(), node_id.clone(), execution.clone()));
                 }
-                role = Some(crate::tasks::catalog::ExecutionRole::Node);
             }
-            if manager {
-                if role.is_some() || run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联不唯一或与来源 Task 不一致。".into()); }
-                role = Some(crate::tasks::catalog::ExecutionRole::Manager);
+            if run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id) {
+                if run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
+                managers.push(run);
             }
         }
-        Ok(role)
+        use crate::tasks::catalog::ExecutionRole;
+        match (managers.as_slice(), nodes.as_slice()) {
+            ([], []) => Ok(None),
+            ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
+            ([], [(_, _, execution)]) if execution.child_run_id.is_none() => Ok(Some(ExecutionRole::Node)),
+            ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
+            _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
+        }
     }
 
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
@@ -461,11 +522,13 @@ pub async fn start_run(
             .unwrap_or_default()
             .as_millis() as u64,
         manager_task_id: task.id.clone(),
+        parent: None,
         zone: checked.zone_bindings[&input.zone].clone(),
         manager_zone_id: Some(input.zone),
         zone_bindings: checked.zone_bindings,
         workspace_name: checked.workspace_name,
         user_input: input.user_input,
+        file_inputs: input.file_inputs,
         manager: None,
         status: "running".into(),
         finished: None,
@@ -546,6 +609,19 @@ pub async fn manager_status(
     }
 }
 
+fn nested_pair(child: &Run, parent: &Run, node_id: &str, execution: &NodeExecution) -> bool {
+    child.id != parent.id && child.parent.as_ref().is_some_and(|link|
+        link.run_id == parent.id && link.node_id == node_id && link.execution_id == execution.id)
+        && execution.child_run_id.as_deref() == Some(child.id.as_str())
+        && execution.task_id == child.manager_task_id
+        && child.manager.is_some() && child.manager == execution.chat
+}
+
+async fn nested_source(state: &AppState, child: &Run, execution: &NodeExecution) -> bool {
+    state.tasks.get(&child.manager_task_id).await.is_ok_and(|task|
+        task.id == execution.task_id && task.agent == execution.agent && task.task_type == crate::tasks::TaskType::Manager)
+}
+
 async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response> {
     let ids = state
         .runs
@@ -557,7 +633,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         .collect::<Vec<_>>();
     let mut matched = None;
     let mut read_error = None;
-    let mut node_associated = false;
+    let mut node_associations = Vec::new();
     for id in ids {
         let run = match state.runs.read(&state, &id).await {
             Ok(v) => v,
@@ -566,11 +642,11 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
                 continue;
             }
         };
-        node_associated |= run.nodes.values().any(|node| {
-            node.executions().any(|execution| {
-                execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)
-            })
-        });
+        for (node_id, node) in &run.nodes {
+            for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
+                node_associations.push((run.clone(), node_id.clone(), execution.clone()));
+            }
+        }
         if run
             .manager
             .as_ref()
@@ -587,12 +663,18 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         }
     }
     match matched {
-        Some(_) if node_associated => Err(error(
+        Some(run) if !node_associations.is_empty() && !(node_associations.len() == 1 && nested_pair(&run, &node_associations[0].0, &node_associations[0].1, &node_associations[0].2)) => Err(error(
             StatusCode::FORBIDDEN,
             "manager-ambiguous",
             "原生身份同时关联节点执行与管理者，归属不唯一。",
         )),
-        Some(run) => Ok(run),
+        Some(run) => {
+            if run.parent.is_some() && node_associations.is_empty()
+                || !node_associations.is_empty() && !nested_source(state, &run, &node_associations[0].2).await {
+                return Err(error(StatusCode::FORBIDDEN, "manager-ambiguous", "父子执行来源 Task 或 agent 不一致。"));
+            }
+            Ok(run)
+        },
         None if read_error.is_some() => Err(error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "run-read-failed",

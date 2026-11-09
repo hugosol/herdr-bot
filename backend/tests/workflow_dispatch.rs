@@ -8,6 +8,8 @@ mod portability;
 mod recovery;
 #[path = "workflow_dispatch/retry.rs"]
 mod retry;
+#[path = "workflow_dispatch/nested_retry.rs"]
+mod nested_retry;
 #[path = "workflow_dispatch/records.rs"]
 mod records;
 #[path = "workflow_dispatch/integrity.rs"]
@@ -22,18 +24,42 @@ mod roles;
 mod report_policy;
 #[path = "workflow_dispatch/map_deletion.rs"]
 mod map_deletion;
+#[path = "workflow_dispatch/history_integrity.rs"]
+mod history_integrity;
+#[path = "workflow_dispatch/bot_targets.rs"]
+mod bot_targets;
+#[path = "workflow_dispatch/nesting.rs"]
+mod nesting;
+#[path = "workflow_dispatch/nested_completion.rs"]
+mod nested_completion;
+#[path = "workflow_dispatch/local_lifecycle.rs"]
+mod local_lifecycle;
+#[path = "workflow_dispatch/partial_startup.rs"]
+mod partial_startup;
 #[path = "workflow_dispatch/auto_close.rs"]
 mod auto_close;
 #[path = "workflow_dispatch/named_inputs.rs"]
 mod named_inputs;
 #[path = "workflow_dispatch/plan_workflow.rs"]
 mod plan_workflow;
+#[path = "workflow_dispatch/shared_business.rs"]
+mod shared_business;
+#[path = "workflow_dispatch/create_bot_wrapper.rs"]
+mod create_bot_wrapper;
+#[path = "workflow_dispatch/revise_bot_guides.rs"]
+mod revise_bot_guides;
+#[path = "workflow_dispatch/outer_create.rs"]
+mod outer_create;
 #[path = "workflow_dispatch/input_resolution.rs"]
 mod input_resolution;
+#[path = "workflow_dispatch/file_consumption.rs"]
+mod file_consumption;
 #[path = "workflow_dispatch/report_outputs.rs"]
 mod report_outputs;
 #[path = "workflow_dispatch/report_restart.rs"]
 mod report_restart;
+#[path = "workflow_dispatch/resume_restart.rs"]
+mod resume_restart;
 #[path = "workflow_dispatch/completion_gate.rs"]
 mod completion_gate;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};

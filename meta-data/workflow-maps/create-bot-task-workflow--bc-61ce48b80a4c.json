@@ -1,140 +1,24 @@
 {
-  "title": "创建并优化 Task＋Bot",
-  "description": "创建 Task → 优化并保存 Task.prompt → 创建并绑定空白 Bot → 并行编写并确认 when、plan_guide、node_guide → 各自独立优化表达 → 汇总三个最终文本，一次保存 Bot。初始需求使用本次 Run.userInput；材料通过命名文件输入输出交接。w1 与三个编写节点 manual，其余 auto；业务确认与报告发送确认独立。配置交付不等于业务验证或启动，不自动运行新能力。",
+  "title": "创建task",
+  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 三指南并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。需求来自本次 Run.userInput，可选 materials 为参考材料。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
+  "input_files": [
+    {
+      "id": "materials",
+      "required": false
+    }
+  ],
   "nodes": {
-    "optimize_node_guide": {
-      "title": "优化 Bot.node_guide",
-      "bot_id": "optimize-prompt",
-      "input": "优化命名输入 text 中的 node_guide 正文；handoff 提供已确认意图、约束、目标 Bot／Task 和创建基线。正文用途是Map 生成者明确本次输入责任及结构化材料规则，交接背景用于核实，不作为补回正文的清单。输入 text 须与 handoff 中的完整定稿逐字一致。\n本次只授权保存优化材料，业务配置只读。服务 ${herdr-bot-api-url}；核验前读取 ${herdr-bot-path}/docs/scheduler.md 的 Bot 查询契约、docs/usage.md 的 Task 规则。当前完整 Bot／Task 配置须与交接基线一致，冲突则阻塞。\n文件交付遵循该仓库 docs/workflow-runtime.md 的“统一文件交接约定”。输出 text 为完整优化纯正文；输出 handoff 保留真实目标身份、字段名、原确认意图和不变语义、变更说明、资源/权限/验收限制、输入来源与创建基线来源、完整 Bot／Task 基线、text 地址、完整最终正文、读回结果及未验证项。两份正文逐字一致；交付状态为文本已保存、目标 Bot 未写入，供 save_bot 原样汇总。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "text",
-          "node_id": "write_node_guide",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "handoff",
-          "node_id": "write_node_guide",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "auto",
-      "auto_close": true,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "write_node_guide"
-      ]
-    },
-    "optimize_plan_guide": {
-      "title": "优化 Bot.plan_guide",
-      "bot_id": "optimize-prompt",
-      "input": "优化命名输入 text 中的 plan_guide 正文；handoff 提供已确认意图、约束、目标 Bot／Task 和创建基线。正文用途是概要规划者安排工作，交接背景用于核实，不作为补回正文的清单。输入 text 须与 handoff 中的完整定稿逐字一致。\n本次只授权保存优化材料，业务配置只读。服务 ${herdr-bot-api-url}；核验前读取 ${herdr-bot-path}/docs/scheduler.md 的 Bot 查询契约、docs/usage.md 的 Task 规则。当前完整 Bot／Task 配置须与交接基线一致，冲突则阻塞。\n文件交付遵循该仓库 docs/workflow-runtime.md 的“统一文件交接约定”。输出 text 为完整优化纯正文；输出 handoff 保留真实目标身份、字段名、原确认意图和不变语义、变更说明、资源/权限/验收限制、输入来源与创建基线来源、完整 Bot／Task 基线、text 地址、完整最终正文、读回结果及未验证项。两份正文逐字一致；交付状态为文本已保存、目标 Bot 未写入，供 save_bot 原样汇总。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "text",
-          "node_id": "write_plan_guide",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "handoff",
-          "node_id": "write_plan_guide",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "auto",
-      "auto_close": true,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "write_plan_guide"
-      ]
-    },
-    "save_bot": {
-      "title": "汇总并保存 Bot 三份指南",
-      "bot_id": "replace-text",
-      "input": "将 when_text、plan_guide_text、node_guide_text 的全文分别替换到同一业务 Bot 的 when、plan_guide、node_guide。对应的 *_handoff 用于核对确认范围、原意、来源和创建基线；bot_baseline 是空白 Bot 创建基线。各正文须与对应交接中的最终文本逐字一致。\n三分支必须指向同一真实 Bot、同一 Task、同一创建基线来源及相同完整创建基线。当前 Bot 完整配置须与 bot_baseline 一致（三份指南均为空），绑定 Task 须为 normal 且完整配置未变；任一冲突则整批阻塞。\n本次授权一次保存上述三个完整字段及交付材料，保留 Bot 的 id/name/task_id、全部其他字段与关联 Task 完整配置。目标不得是任一流程执行者自身对象；不运行新能力。\n服务 ${herdr-bot-api-url}。配置读写前读取 ${herdr-bot-path}/docs/scheduler.md 的“HTTP interface 与路径边界”及保存并发契约；Task 核验依据 docs/usage.md。采用该服务 edit/revision/save 契约，接口细节以当前文档及真实响应为准。\n除 Task 的标准替换验收外，再次读回关联 Task，核对完整配置未变。文件交付遵循该仓库 docs/workflow-runtime.md 的“统一文件交接约定”；输出 handoff 包含完整最终 Bot 配置、真实 Bot／Task 身份、三字段精确来源及确认依据、实际版本与保存读回证据、非目标配置和 Task 未变结论、已发生效果、缺项及未验证项。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "when_text",
-          "node_id": "w4",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "when_handoff",
-          "node_id": "w4",
-          "output_id": "handoff"
-        },
-        {
-          "type": "node",
-          "id": "plan_guide_text",
-          "node_id": "optimize_plan_guide",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "plan_guide_handoff",
-          "node_id": "optimize_plan_guide",
-          "output_id": "handoff"
-        },
-        {
-          "type": "node",
-          "id": "node_guide_text",
-          "node_id": "optimize_node_guide",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "node_guide_handoff",
-          "node_id": "optimize_node_guide",
-          "output_id": "handoff"
-        },
-        {
-          "type": "node",
-          "id": "bot_baseline",
-          "node_id": "w3",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "auto",
-      "auto_close": true,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "w4",
-        "optimize_plan_guide",
-        "optimize_node_guide"
-      ]
-    },
     "w1": {
       "title": "W1 创建 Task",
       "bot_id": "create-task",
-      "input": "以初始化的本次 userInput 及其中材料为需求，创建一个业务 normal Task；需求、prompt 和执行配置的确认按 Task 固定流程完成。\n本次要求文件交付 handoff：除 Task 的标准交付外，保留完整读回配置、原始需求与材料指针、补充结论、确认范围、硬约束和资源限制，供后续独立优化及创建 Bot。仅交付已保存读回且确认完整的结果。",
-      "input_rule": [],
+      "input": "根据本次初始化提供的 Run.userInput 创建业务 normal Task；可选 materials 为需求参考，提供时完整消费。将已明确的后续 Bot 包装委托与本次 Task 创建授权分别记录，未来三指南全文批准不作为本阶段交付条件。\n输出 handoff 为自包含 UTF-8 创建交接，按 Task 固定交付清单保存，并保留材料用途、允许材料写入范围、后续 Bot 创建委托及已获授权、可选 Bot 名称／ID 和正式交付位置；未决授权如实记录，不代为补齐。\n确认并记录后续 W2 仅优化 prompt 表达、保持全部业务语义及其他配置并保存的授权；缺失授权如实交接，不替用户批准。",
+      "input_rule": [
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        }
+      ],
       "output_rule": [
         {
           "id": "handoff"
@@ -146,9 +30,9 @@
       "blocked_by": []
     },
     "w2": {
-      "title": "W2 优化 Task.prompt",
+      "title": "W2 保义优化 Task.prompt",
       "bot_id": "optimize-prompt",
-      "input": "优化命名输入 task_created 中业务 Task 的 prompt；该材料提供真实目标 ID、完整创建配置、已确认意图和硬约束。本次授权保存该目标的 prompt，其余配置保持不变，目标不得为任一流程执行者自身 Task。\n配置服务 ${herdr-bot-api-url}；操作前读取 ${herdr-bot-path}/docs/usage.md 的 Task 规则，接口字段及响应形状按该仓库 backend/src/tasks.rs 与 backend/src/lib.rs 当前契约核实。保存前比较完整当前配置与输入基线，冲突则阻塞；完成时核对 prompt 为优化文本、其他字段未变。本次仅授权该配置修改及交付材料，不运行新能力。\n文件交付遵循该仓库 docs/workflow-runtime.md 的“统一文件交接约定”。输出 handoff 包含完整最新 Task 配置、优化文本、原始意图及不变约束、原始需求与澄清结论、资源权限、已给定的能力名称（未给定则保持缺省），以及保存读回证据和未验证项，供空白 Bot 创建者独立接手。",
+      "input": "完整读取 task_created：其中 Task.prompt 是原文，需求、确认及硬约束是保义依据。优化并保存该真实 normal Task 的 prompt，保持其余配置不变。\n保存前读取 ${herdr-bot-path}/docs/usage.md 的“仅修改 Task.prompt”，使用服务 ${herdr-bot-api-url}，按上游记录的授权执行。\n交付 saved 为完整读回的最新 Task 配置；handoff 按 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“调用接口”整理为包装 request，保留上游需求、委托、授权来源／范围及限制，补充真实 Task ID、保存与保义核对结论、未验证项。handoff 不复制配置或 prompt。包装必需项缺失时明确阻塞。",
       "input_rule": [
         {
           "type": "node",
@@ -158,6 +42,9 @@
         }
       ],
       "output_rule": [
+        {
+          "id": "saved"
+        },
         {
           "id": "handoff"
         }
@@ -169,142 +56,75 @@
         "w1"
       ]
     },
-    "w3": {
-      "title": "W3 创建并绑定空白 Bot",
-      "bot_id": "create-blank-bot",
-      "input": "为命名输入 task_optimized 中的业务 normal Task 创建并绑定空白 Bot；材料提供真实 Task ID、已保存完整配置、原始需求、确认结论及资源限制。按 Task 固定流程自动完成，名称和 ID 未给定时使用默认命名规则。\n额外核验：绑定 Task 的完整当前配置须与输入一致，创建后仍保持不变。\n本次要求文件交付 handoff：完整 Bot 创建基线、完整 Task 配置、真实身份与命名依据、原始需求及补充结论、确认范围、各指南编写所需的目标/场景/输入输出/权限/验收/资源限制、来源及保存读回证据、缺项和未验证项。该材料供三个编写分支独立使用。",
+    "optimize_bot": {
+      "title": "prompt优化者——Bot维度",
+      "bot_id": "bot-task-18e66273ae718d14-1",
+      "input": "完整读取 bot_saved 与 bot_handoff，核实本次刚创建的真实 Bot、唯一 normal Task 绑定、需求、确认来源及授权范围；materials 为可选参考材料，沿用已声明用途与读取权限。查询服务 ${herdr-bot-api-url} 的最新完整 Bot／Task 配置，以读回结果为修改基线，不把包装阶段快照当成当前配置，不依赖前序 Chat 历史。\n本次优化服务中的 Task.prompt 与 Bot.when／plan_guide／node_guide，联合检查约束归属、可达承接、输入输出和权限一致性，保持已确认业务语义、身份、名称、绑定、执行配置及其他非目标内容不变。Skill 和文档只读，不修改仓库定义、Map 或运行记录，不运行目标能力。沿用有效业务确认；展示整体方案、共享影响及完整候选，取得本次最终文本与保存授权后再写入。新取舍、授权缺口或运行禁写按固定职责阻塞，不自行补齐。\n交付 saved 为完整读回的最终 Bot 与 Task 配置，handoff 为修改说明、确认依据及范围、约束归属与共享影响、保存核对结果、资源缺口和未验证项；在获准交付位置安全写入 UTF-8 文件。包装产物保留为阶段记录，不作为本流程最终配置。保存确认与 manual 报告发送确认分别处理。\n仅在全部获准修改保存、读回核对及交付完成后报告可交接；受阻或部分保存须如实报告，保留已创建对象，不自动删除或回滚。最终注明文本／定义优化完成，行为未验证。管理者验收并 complete 本节点后才能 finish 外层 Run。",
       "input_rule": [
         {
           "type": "node",
-          "id": "task_optimized",
-          "node_id": "w2",
+          "id": "bot_saved",
+          "node_id": "wrap_bot",
+          "output_id": "saved"
+        },
+        {
+          "type": "node",
+          "id": "bot_handoff",
+          "node_id": "wrap_bot",
           "output_id": "handoff"
+        },
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
         }
       ],
       "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "wrap_bot"
+      ]
+    },
+    "wrap_bot": {
+      "title": "为已优化 Task 包装完整 Bot",
+      "bot_id": "create-bot-wrapper",
+      "manager_task_id": "task-18e2c2827c484128-0",
+      "input": "为 request 指定的已优化 normal Task 创建并绑定完整 Bot；request 是本次创建委托与需求，materials 是可选参考材料，提供却不可读时保持阻塞。目标 Task 保持只读，不运行新能力。\n调用前读 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“调用接口”；本次只承担包装子 Run 的管理及向父层交接，不代执行者编写或保存配置。子节点验收完成并 finish 子 Run 后，通过真实 node report 将 save_bot 的 saved／handoff 直接登记为本节点同名输出。交付须能核对真实 Bot ID、唯一 Task 绑定、完整保存读回、授权来源和未验证项；父管理者另行验收并 complete 本调用，子 Run 结束不代替父层完成。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "request",
+          "node_id": "w2",
+          "output_id": "handoff"
+        },
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
         {
           "id": "handoff"
         }
       ],
       "report_policy": "auto",
-      "auto_close": true,
+      "auto_close": false,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "w2"
-      ]
-    },
-    "w4": {
-      "title": "W4 优化 Bot.when",
-      "bot_id": "optimize-prompt",
-      "input": "优化命名输入 text 中的 when 正文；handoff 提供已确认意图、约束、目标 Bot／Task 和创建基线。正文用途是规划者发现和选用能力，交接背景用于核实，不作为补回正文的清单。输入 text 须与 handoff 中的完整定稿逐字一致。\n本次只授权保存优化材料，业务配置只读。服务 ${herdr-bot-api-url}；核验前读取 ${herdr-bot-path}/docs/scheduler.md 的 Bot 查询契约、docs/usage.md 的 Task 规则。当前完整 Bot／Task 配置须与交接基线一致，冲突则阻塞。\n文件交付遵循该仓库 docs/workflow-runtime.md 的“统一文件交接约定”。输出 text 为完整优化纯正文；输出 handoff 保留真实目标身份、字段名、原确认意图和不变语义、变更说明、资源/权限/验收限制、输入来源与创建基线来源、完整 Bot／Task 基线、text 地址、完整最终正文、读回结果及未验证项。两份正文逐字一致；交付状态为文本已保存、目标 Bot 未写入，供 save_bot 原样汇总。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "text",
-          "node_id": "write_when",
-          "output_id": "text"
-        },
-        {
-          "type": "node",
-          "id": "handoff",
-          "node_id": "write_when",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "auto",
-      "auto_close": true,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "write_when"
-      ]
-    },
-    "write_node_guide": {
-      "title": "Bot.node_guide 编写并确认",
-      "bot_id": "write-bot-node-guide",
-      "input": "为命名输入 bot_baseline 中的空白 Bot 编写并确认 node_guide。该材料提供目标 Bot／Task、完整创建基线、原始需求、确认结论及资源和业务约束；当前完整 Bot／Task 配置须与基线一致，有冲突则阻塞。\n本次要求两个独立文件：text 为完整已确认纯正文；handoff 按 Task 的交接要求记录确认范围和必须保留语义，并附完整字段正文、text 地址、bot_baseline 来源地址、完整 Bot 创建基线和 Task 配置。两份正文逐字一致，供独立优化和最终汇合核对。\n本分支只写交付材料，其他指南分支独立工作；目标 Bot 的保存由最终汇总节点承担。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "bot_baseline",
-          "node_id": "w3",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "manual",
-      "auto_close": false,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "w3"
-      ]
-    },
-    "write_plan_guide": {
-      "title": "Bot.plan_guide 编写并确认",
-      "bot_id": "write-bot-plan-guide",
-      "input": "为命名输入 bot_baseline 中的空白 Bot 编写并确认 plan_guide。该材料提供目标 Bot／Task、完整创建基线、原始需求、确认结论及资源和业务约束；当前完整 Bot／Task 配置须与基线一致，有冲突则阻塞。\n本次要求两个独立文件：text 为完整已确认纯正文；handoff 按 Task 的交接要求记录确认范围和必须保留语义，并附完整字段正文、text 地址、bot_baseline 来源地址、完整 Bot 创建基线和 Task 配置。两份正文逐字一致，供独立优化和最终汇合核对。\n本分支只写交付材料，其他指南分支独立工作；目标 Bot 的保存由最终汇总节点承担。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "bot_baseline",
-          "node_id": "w3",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "manual",
-      "auto_close": false,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "w3"
-      ]
-    },
-    "write_when": {
-      "title": "Bot.when 编写并确认",
-      "bot_id": "write-bot-when",
-      "input": "为命名输入 bot_baseline 中的空白 Bot 编写并确认 when。该材料提供目标 Bot／Task、完整创建基线、原始需求、确认结论及资源和业务约束；当前完整 Bot／Task 配置须与基线一致，有冲突则阻塞。\n本次要求两个独立文件：text 为完整已确认纯正文；handoff 按 Task 的交接要求记录确认范围和必须保留语义，并附完整字段正文、text 地址、bot_baseline 来源地址、完整 Bot 创建基线和 Task 配置。两份正文逐字一致，供独立优化和最终汇合核对。\n本分支只写交付材料，其他指南分支独立工作；目标 Bot 的保存由最终汇总节点承担。",
-      "input_rule": [
-        {
-          "type": "node",
-          "id": "bot_baseline",
-          "node_id": "w3",
-          "output_id": "handoff"
-        }
-      ],
-      "output_rule": [
-        {
-          "id": "text"
-        },
-        {
-          "id": "handoff"
-        }
-      ],
-      "report_policy": "manual",
-      "auto_close": false,
-      "zone": "hugosol/herdr-bot",
-      "blocked_by": [
-        "w3"
       ]
     }
   }

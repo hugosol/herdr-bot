@@ -30,8 +30,8 @@ pub struct Suite {
     pub id: String,
     pub name: String,
     pub agents: Vec<Agent>,
-    #[serde(default)]
-    pub skills: Vec<String>,
+    #[serde(default = "empty_skills", deserialize_with = "deserialize_skills")]
+    pub skills: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub extensions: BTreeMap<String, Vec<String>>,
     #[serde(default)]
@@ -42,6 +42,17 @@ pub struct Suite {
     pub mcp: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pi: Option<PiConfig>,
+}
+
+fn empty_skills() -> BTreeMap<String, Vec<String>> {
+    BTreeMap::from([("omp".into(), Vec::new()), ("pi".into(), Vec::new())])
+}
+
+fn deserialize_skills<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
+    let mut skills = BTreeMap::<String, Vec<String>>::deserialize(deserializer)?;
+    skills.entry("omp".into()).or_default();
+    skills.entry("pi".into()).or_default();
+    Ok(skills)
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -106,7 +117,15 @@ impl Suite {
                 return Err(SuiteError::invalid(format!("{host} 扩展路径不能包含空值或重复项。")));
             }
         }
-        for (name, values) in [("skills", &self.skills), ("prompts", &self.prompts), ("mcp", &self.mcp)] {
+        for (host, paths) in &self.skills {
+            if !matches!(host.as_str(), "omp" | "pi") {
+                return Err(SuiteError::invalid(format!("未知技能宿主 {host}；只接受 omp 或 pi。")));
+            }
+            if paths.iter().any(|path| path.trim().is_empty()) {
+                return Err(SuiteError::invalid(format!("{host} 技能路径不能包含空值。")));
+            }
+        }
+        for (name, values) in [("prompts", &self.prompts), ("mcp", &self.mcp)] {
             let mut seen = HashSet::new();
             if values.iter().any(|value| value.trim().is_empty() || !seen.insert(value)) {
                 return Err(SuiteError::invalid(format!("{name} 声明不能包含空值或重复项。")));
@@ -226,12 +245,35 @@ impl Suites {
 }
 
 #[derive(Serialize)]
-struct SuiteList { suites: Vec<Suite>, mcp: Vec<String> }
-fn listing(suites: &Suites, definitions: Vec<Suite>) -> Result<Json<SuiteList>, SuiteError> {
-    Ok(Json(SuiteList { suites: definitions, mcp: suites.mcp_catalog()?.into_keys().collect() }))
+#[serde(rename_all = "camelCase")]
+struct SuiteList {
+    suites: Vec<Suite>,
+    mcp: Vec<String>,
+    fixed_extensions: Vec<crate::tasks::catalog::FixedExtensionOption>,
+}
+
+/// Obtain all fallible response catalogs before a mutation can publish bytes.
+struct SuiteCatalogs {
+    mcp: Vec<String>,
+    fixed_extensions: Vec<crate::tasks::catalog::FixedExtensionOption>,
+}
+impl SuiteCatalogs {
+    fn load(state: &AppState) -> Result<Self, SuiteError> {
+        let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+        let extensions = state.tasks.suite_extensions().map_err(|error| SuiteError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: error.code(),
+            message: error.message(),
+        })?;
+        Ok(Self { mcp, fixed_extensions: extensions })
+    }
+    fn listing(self, suites: Vec<Suite>) -> Json<SuiteList> {
+        Json(SuiteList { suites, mcp: self.mcp, fixed_extensions: self.fixed_extensions })
+    }
 }
 pub async fn list(State(state): State<AppState>) -> Result<impl IntoResponse, SuiteError> {
-    listing(&state.suites, state.suites.list()?)
+    let catalogs = SuiteCatalogs::load(&state)?;
+    Ok(catalogs.listing(state.suites.list()?))
 }
 pub async fn get(State(state): State<AppState>, Path(id): Path<String>) -> Result<impl IntoResponse, SuiteError> {
     Ok(Json(serde_json::json!({ "suite": state.suites.get(&id)? })))
@@ -243,21 +285,21 @@ async fn input(request: Request) -> Result<Suite, SuiteError> {
 }
 pub async fn create(State(state): State<AppState>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.save(None, suite)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }
 pub async fn update(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     let suite = input(request).await?;
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.save(Some(&id), suite)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }
 pub async fn delete(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
     if request.uri().query().is_some() { return Err(SuiteError::invalid("删除 Suite 不接受查询参数。")); }
     let bytes = axum::body::to_bytes(request.into_body(), 1024 * 1024).await.map_err(|error| SuiteError::invalid(error.to_string()))?;
     if !bytes.is_empty() { return Err(SuiteError::invalid("删除 Suite 不接受请求体。")); }
-    let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+    let catalogs = SuiteCatalogs::load(&state)?;
     let suites = state.suites.delete(&id, &state.tasks)?;
-    Ok(Json(SuiteList { suites, mcp }))
+    Ok(catalogs.listing(suites))
 }

@@ -40,6 +40,7 @@ function TaskPrompt({ bot, botProblem }: { bot?: Bot; botProblem?: string }) {
   const task = result?.kind === 'ok' ? result.tasks.find(task => task.id === bot?.task_id) : undefined
   const taskProblem = botProblem ? 'Bot 无效，无法读取绑定 Task 的 prompt。'
     : !bot ? '尚未取得关联 Bot。'
+      : bot.map_file != null ? 'Map 型 Bot；使用调用节点指定的 manager Task，不绑定普通 Task。'
       : bot.task_id == null ? '尚未绑定 Task。'
         : result == null ? '正在读取 Task prompt…'
           : result.kind !== 'ok' ? `Task prompt 读取失败${result.kind === 'rejected' ? `：${result.message}` : '，请刷新重试。'}`
@@ -60,6 +61,14 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
 }) {
   const id = useId()
   const [jsonMode, setJsonMode] = useState(false)
+  const [managerLookup, setManagerLookup] = useState<TaskResult | null>(null)
+  const editing = !!edit
+  useEffect(() => {
+    if (!editing) return
+    let cancelled = false
+    void fetchTasks().then(result => { if (!cancelled) setManagerLookup(result) })
+    return () => { cancelled = true }
+  }, [editing])
   const parsed = edit ? parseContent(edit.content) : { definition: map.nodes[nodeId], error: null }
   const { definition, error } = parsed
   const showJson = !!edit && (jsonMode || definition === null)
@@ -99,6 +108,17 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
       {edit && !showJson ? <><input id={`${id}-bot`} list={`${id}-bots`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><datalist id={`${id}-bots`}>{catalog?.bots.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</datalist></> : <p className="scheduler-node-value">{botId || '尚未填写 Bot ID'}</p>}
       {botProblem && <p role="alert">{botProblem}</p>}
     </div>
+    {(bot?.map_file != null || definition?.manager_task_id != null) && <section aria-label="Map 调用配置">
+      <p>Map：{bot?.map_file ?? '当前 Bot 不是 Map 型；请修正 manager_task_id'}</p>
+      <label htmlFor={`${id}-manager`}>manager Task</label>
+      {edit && !showJson ? <select id={`${id}-manager`} value={typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : ''} disabled={edit.disabled || managerLookup?.kind !== 'ok'} onChange={event => changeField('manager_task_id', event.target.value || undefined)}>
+        <option value="">未指定</option>
+        {typeof definition?.manager_task_id === 'string' && !(managerLookup?.kind === 'ok' && managerLookup.tasks.some(task => task.id === definition.manager_task_id && task.taskType === 'manager')) && <option value={definition.manager_task_id} disabled>{definition.manager_task_id}（不存在、类型无效或尚未核实）</option>}
+        {managerLookup?.kind === 'ok' && managerLookup.tasks.filter(task => task.taskType === 'manager').map(task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>)}
+      </select> : <p>{typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : '未指定 manager Task'}</p>}
+      {edit && managerLookup && managerLookup.kind !== 'ok' && <p role="status">manager Task 列表读取失败；当前配置未改变。</p>}
+      <p>manager_task_id 属于本次调用节点，不保存到 Bot；仅 manager 类型 Task 可管理子 Run。</p>
+    </section>}
     <div className="scheduler-node-relations">
       <section aria-label="blocked_by"><h4><span aria-hidden="true">→ </span>前置依赖 <small>blocked_by</small></h4>
         {relatedNodes(prerequisites, '前置')}

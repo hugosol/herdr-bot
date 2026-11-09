@@ -129,7 +129,8 @@ class Model(http.server.BaseHTTPRequestHandler):
                             require(sorted(advertised) == sorted(['lifecycle-initial', 'lifecycle-' + letter]),
                                     ('Incomplete or mixed advertised native Skills', advertised))
                             skill = advertised['lifecycle-' + letter]
-                            require('generated resources' in skill, ('Native Skill bypassed published artifact', skill))
+                            expected = (owner.authority / ('skills-' + letter) / ('skill-' + letter) / 'SKILL.md').resolve()
+                            require(Path(skill).resolve() == expected, ('Native Skill must use its original source', skill, str(expected)))
                             case['resourcePaths'] = advertised
                         else:
                             tables = re.findall(r'<skills>\s*(.*?)</skills>', system, re.S)
@@ -219,9 +220,6 @@ class Acceptance(support['Acceptance']):
 
     def prepare(self):
         require(sys.platform == 'win32', 'Real lifecycle acceptance requires Windows process handles')
-        if self.scenario in ['suite-lifecycle', 'roles-suite', 'concurrency']:
-            require(os.environ.get('HERDR_BOT_MANUAL_SYMLINKS') == '1',
-                    'Set HERDR_BOT_MANUAL_SYMLINKS=1 to attempt real links; no installation, elevation or copy fallback')
         self.model = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Model)
         self.model.owner = self
         threading.Thread(target=self.model.serve_forever, daemon=True).start()
@@ -254,19 +252,19 @@ class Acceptance(support['Acceptance']):
         (initial / 'SKILL.md').write_text('---\nname: lifecycle-initial\ndescription: Owned initial instruction\n---\n' + INITIAL + '\n', encoding='utf-8')
         self.suites = {}
         for letter in SENTINELS:
-            skill = self.authority / ('skill-' + letter)
-            skill.mkdir()
+            skill = self.authority / ('skills-' + letter) / ('skill-' + letter)
+            skill.mkdir(parents=True)
             (skill / 'SKILL.md').write_text(f'---\nname: lifecycle-{letter}\ndescription: Owned complete sentinel\n---\n{SENTINELS[letter][0]}\n', encoding='utf-8')
             package = self.authority / ('package-' + letter)
             package.mkdir()
             (package / 'asset.txt').write_text(SENTINELS[letter][1], encoding='utf-8')
-            (package / 'package.json').write_text(json.dumps({'type': 'module', 'omp': {'extensions': ['entry.ts']}, 'pi': {'extensions': ['entry.ts']}}), encoding='utf-8')
+            (package / 'package.json').write_text(json.dumps({'type': 'module'}), encoding='utf-8')
             (package / 'entry.ts').write_text('''import {readFileSync} from "node:fs";
 export default function(pi) { pi.registerTool({name:"lifecycle_asset",label:"Lifecycle asset",description:"Read complete native package asset",
  parameters:pi.zod ? pi.zod.object({}) : {type:"object",properties:{}},async execute(){return {content:[{type:"text",text:readFileSync(new URL("asset.txt",import.meta.url),"utf8")}],details:{}};}}); }
 ''', encoding='utf-8')
             self.suites[letter] = {'id': letter, 'name': 'Lifecycle ' + letter, 'agents': ['pi', 'omp'],
-                'skills': [str(initial), 'skill-' + letter], 'extensions': {'pi': ['package-' + letter], 'omp': ['package-' + letter]},
+                'skills': {'omp': [str(initial.parent), 'skills-' + letter], 'pi': [str(initial), 'skills-' + letter + '/skill-' + letter]}, 'extensions': {'pi': ['package-' + letter + '/entry.ts'], 'omp': ['package-' + letter + '/entry.ts']},
                 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
         (self.authority / 'suites.json').write_text(json.dumps({'suites': list(self.suites.values())}), encoding='utf-8')
         (self.authority / 'mcp.json').write_text('{"mcpServers":{}}', encoding='utf-8')
@@ -377,7 +375,7 @@ export default function(pi) {
                     return 'http://' + match[1]
         self.base = until('backend dynamic loopback', address)
         (self.deployment / 'extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         config = self.deployment / 'extensions/workflow-chat/config.yaml'
         self.evidence.setdefault('deploymentOverrides', []).append({'path': str(config), 'sha256': digest(config),
             'content': config.read_text(encoding='utf-8')})

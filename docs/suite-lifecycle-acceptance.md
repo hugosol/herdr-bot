@@ -58,7 +58,14 @@ auth store is copied or linked.
 The toolkit deployment is made from the supplied worktree's source, excluding
 runtime owner-access records. Its workflow endpoint is changed only in the
 owned deployment copy to the dynamically bound backend. Source/deployment hashes
-are retained. No other source copy is silently substituted.
+are retained. No other source copy is silently substituted. Custom Suite
+`extensions` are concrete source entries passed directly to native hosts; no
+extension-package links or loader manifests are generated. Module dependencies
+and assets are read by the native host from their original source directory.
+Skills also reference source paths directly; no generated skill links or Windows
+symlink privilege are required. Each Suite declares source paths directly in its host-keyed
+`extensions` lists. New native processes consume the current Suite declarations;
+there is no optional TOML catalog or extension ID lookup.
 
 ## Build, repository checks and invocation
 
@@ -94,21 +101,15 @@ bun run test
 Set-Location $HERDR_BOT_WT
 $env:LIFECYCLE_TOOLKIT_WORKTREE = $TOOLKIT_WT
 python scripts/accept-suite-lifecycle.test.py
-$previous = $env:HERDR_BOT_MANUAL_SYMLINKS
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-try {
-  python scripts/accept-suite-lifecycle.py `
-    --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
-    --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
-    --paths-file "$ISOLATED_PATHS" --scenario all --host all `
-    --evidence-dir "$EVIDENCE_DIR"
-} finally {
-  $env:HERDR_BOT_MANUAL_SYMLINKS = $previous
-}
+python scripts/accept-suite-lifecycle.py `
+  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+  --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
+  --paths-file "$ISOLATED_PATHS" --scenario all --host all `
+  --evidence-dir "$EVIDENCE_DIR"
 ```
 
-The link flag authorizes an attempt only. Native directory links are not replaced
-with copies or junctions if Windows denies permission. `--timeout` bounds an
+Skills use host-specific source declarations: OMP selects collection directories
+exclusively, while Pi selects individual skill directories. `--timeout` bounds an
 observation (default 90 seconds, maximum 300), not a retry budget. Evidence output
 must not already exist. Each scenario has its own deployment/native storage,
 named Herdr server, dynamic loopback model/backend ports and processes. stdout
@@ -120,7 +121,7 @@ headers in evidence, or logs; credential stores are removed after confirmed exit
 
 ## Executed parameter provenance
 
-The ticket's first execution used the following explicit values (not discovery
+The historical, pre-source-path ticket's first execution used the following explicit values (not discovery
 of a user deployment). These are a record of the invoked command parameters,
 not a claim that all acceptance observations passed:
 
