@@ -476,14 +476,14 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
                       const linked = botsByTask.get(task.id) ?? []
                       const unique = linked.length === 1 ? linked[0] : null
                       const label = botFailure ? 'Bot 读取失败' : bots === null ? '正在读取 Bot…' : linked.length > 1 ? '关联冲突' : unique ? `Bot · ${unique.name}` : '无关联 Bot'
-                      return <button type="button" className="zone-dialog__cancel" data-testid="task-linked-bot"
+                      return <button type="button" className="zone-dialog__cancel task-item__bot" data-testid="task-linked-bot"
                         disabled={bots === null || botFailure !== null || unique === null || !onBot || saving || deleting !== null}
                         onClick={() => { if (unique && onBot) { discardDraft(); onBot(unique.id) } }}>{label}</button>
                     })()}
-                    <button type="button" className="zone-dialog__cancel" data-testid="task-create-chat"
+                    <button type="button" className="zone-dialog__cancel task-item__launch chat-launch-button" data-testid="task-create-chat"
                       disabled={saving || deleting !== null} onClick={() => setLaunchTaskId(task.id)}>发起 Chat</button>
                     <GroupButton name={task.name} group={task.group} names={data.tasks.map(item => item.group)} disabled={saving || deleting !== null} onSave={async group => { const result = await updateTaskGroup(task.id, group); if (result.kind !== 'ok') throw new Error(describeFailure(result, '分组保存')); setData({ tasks: result.tasks, options: result.options }) }} />
-                    <button type="button" className="zone-dialog__cancel" data-testid="task-edit"
+                    <button type="button" className="zone-dialog__cancel task-item__edit" data-testid="task-edit"
                       disabled={saving || deleting !== null} onClick={() => openEdit(task)}>编辑</button>
                     <button type="button" className="zone-dialog__cancel task-item__delete" data-testid="task-delete"
                       disabled={saving || deleting !== null} onClick={() => setDeleteTarget(task)}>{deleting === task.id ? '删除中…' : '删除'}</button>
