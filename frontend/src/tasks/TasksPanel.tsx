@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
+import { NierTitleText } from '../app/NierTitleText'
 import {
   createTask,
   deleteTask,
@@ -311,7 +312,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
     <section className="tasks" data-testid="tasks" aria-labelledby="tasks-title">
       <header className="tasks__header">
         <div>
-          <h1 id="tasks-title">Task</h1>
+          <h1 id="tasks-title"><NierTitleText>Task</NierTitleText></h1>
           <p>可复用的对话预设，连接 Agent 与场景工具集。</p>
         </div>
         <button

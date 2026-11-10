@@ -27,7 +27,7 @@
 .workflow-run-heading > div:first-child { text-align:left; }
 .workflow h2.workflow-run-detail-label { margin:0; }
 .workflow-run-title { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
-.workflow-run-title h1 { overflow-wrap:anywhere; min-width:0; }
+.workflow-run-title h2 { overflow-wrap:anywhere; min-width:0; }
 .workflow-run-title button { flex-shrink:0; }
 .workflow-run-rename { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin:8px 0 12px; }
 .workflow-run-rename label { display:flex; flex-direction:column; gap:4px; min-width:0; }

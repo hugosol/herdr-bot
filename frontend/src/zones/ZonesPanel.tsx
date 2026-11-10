@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatCreationDialog } from '../chats/ChatCreationDialog'
+import { NierTitleText } from '../app/NierTitleText'
 import { GitAheadIndicator } from './git/GitAheadIndicator'
 import { ZoneBrowser } from './browser/ZoneBrowser'
 import {
@@ -323,7 +324,7 @@ export function ZonesPanel({
     <section className="zones zones--register" data-testid="file-list" aria-labelledby="zone-title">
       <header className="zones__header">
         <div>
-          <h1 id="zone-title">Zone</h1>
+          <h1 id="zone-title"><NierTitleText>Zone</NierTitleText></h1>
           <p className="zones__intro">服务器上的工作目录，连接文件、Git 与 Chat。</p>
         </div>
       <div className="zone-actions">

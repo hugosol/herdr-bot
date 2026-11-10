@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { suiteRequest, type Suite, type SuiteList } from './suiteApi'
 import './suites.css'
+import { NierTitleText } from '../app/NierTitleText'
 
 type Draft = Omit<Suite, 'skills' | 'extensions' | 'prompts' | 'lsp'> & {
   skills: Record<'omp' | 'pi', string>; extensions: Record<'omp' | 'pi', string>; prompts: string; lsp: string
@@ -82,7 +83,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
 
   return <section className="suites-panel" aria-label="Suite 管理" data-editing={draft !== null}>
     <header className="suites-toolbar suites-page-header">
-      <div><h2>Suite · 场景工具集</h2><p className="suites-subtitle">为 OMP 与 Pi 配置可复用的场景资源。</p></div>
+      <div><h1><NierTitleText>Suite</NierTitleText></h1><p className="suites-subtitle">场景工具集：为 OMP 与 Pi 配置可复用的场景资源。</p></div>
       <button type="button" disabled={busy} onClick={() => open(emptySuite, true)}>创建 Suite</button>
       <button type="button" disabled={busy} onClick={() => void reload()}>重新读取 Suite</button>
     </header>
