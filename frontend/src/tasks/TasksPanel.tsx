@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
+import { NierTitleText } from '../app/NierTitleText'
 import {
   createTask,
   deleteTask,
@@ -311,7 +312,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
     <section className="tasks" data-testid="tasks" aria-labelledby="tasks-title">
       <header className="tasks__header">
         <div>
-          <h1 id="tasks-title">Task</h1>
+          <h1 id="tasks-title"><NierTitleText>Task</NierTitleText></h1>
           <p>可复用的对话预设，连接 Agent 与场景工具集。</p>
         </div>
         <button
@@ -401,10 +402,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <summary>查看配置与提示词</summary>
                 <dl className="task-item__fields">
                   <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
-                  <div><dt>Suite</dt><dd>{suiteLabel(task, data.options)}</dd></div>
+                  <div><dt>Suite</dt><dd className="task-item__reference">{suiteLabel(task, data.options)}</dd></div>
                   <div>
                     <dt>chat-name 示例</dt>
-                    <dd>{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
+                    <dd className="task-item__reference">{renderChatNameExample(task.chatName, task.name, task.agent)}</dd>
                   </div>
                   <div>
                     <dt>agent</dt>
@@ -412,7 +413,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   </div>
                   <div>
                     <dt>model</dt>
-                    <dd>{modelLabel(task)}</dd>
+                    <dd className="task-item__resource">{modelLabel(task)}</dd>
                   </div>
                   <div>
                     <dt>thinking</dt>
@@ -420,7 +421,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   </div>
                   <div>
                     <dt>Skill</dt>
-                    <dd>{skillLabel(task)}</dd>
+                    <dd className="task-item__resource">{skillLabel(task)}</dd>
                   </div>
                 </dl>
                 <pre className="task-item__prompt" data-testid="task-prompt-view">

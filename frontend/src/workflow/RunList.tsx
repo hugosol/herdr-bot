@@ -44,7 +44,7 @@ export function RunList({ entries, error = null, onOpen }: { entries: RunEntry[]
   const maps = [...new Set([...(map ? [map] : []), ...(entries ?? []).flatMap(entry => entry.run ? [entry.run.map] : [])])].sort()
   const statuses = [...new Set(['running', 'paused', 'completed', ...(status ? [status] : []), ...(entries ?? []).map(entry => entry.run?.status ?? 'unreadable')])].sort()
   return <section aria-label="Run 列表" className="workflow-run-list">
-    <header className="workflow-list-heading"><div><span className="workflow-eyebrow">WORKFLOW / RUNS</span><h1>运行记录</h1><p className="workflow-muted">从一次运行出发，查看工作流现场与交接材料。</p></div><span className="workflow-count">{entries?.length ?? 0} 次运行</span></header>
+    <header className="workflow-list-heading"><div><h2>运行记录</h2><p className="workflow-muted">从一次运行出发，查看工作流现场与交接材料。</p></div><span className="workflow-count">{entries?.length ?? 0} 次运行</span></header>
     <div className="workflow-filters">
       <label>搜索 Run / Map<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Run 名称、ID 或 Map 标识" /></label>
       <label>状态<select value={status} onChange={event => setStatus(event.target.value)}><option value="">全部状态</option>{statuses.map(value => <option key={value} value={value}>{({ pending: '待执行', ready: '可派发', blocked: '等待依赖', running: '运行中', paused: '已暂停', completed: '已完成', failed: '失败', unreadable: '记录读取失败' } as Record<string, string>)[value] ?? value}</option>)}</select></label>

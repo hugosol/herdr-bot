@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
+import { NierTitleText } from '../app/NierTitleText'
 import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
 import { orderedMapNodeIds } from './mapNodeOrder'
@@ -126,7 +127,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const refreshButton = <button type="button" disabled={busy || editingBusy} onClick={refreshAll}>{botView ? 'refresh' : '刷新全部'}</button>
 
   return <section ref={schedulerRoot} className={`scheduler${!botView ? ' scheduler-workspace' : ''}`} aria-label="Map 目录" data-node-open={selectedId !== null || draft?.kind === 'node' ? 'true' : undefined} data-directory-open={directoryOpen || file === null ? 'true' : undefined}>
-    {!botView && <header className="scheduler-workspace-heading"><div><h1>Scheduler</h1><p>Map 定义与节点编排</p></div><button type="button" className="scheduler-directory-toggle" aria-expanded={directoryOpen || file === null} aria-controls="scheduler-map-directory" onClick={() => setDirectoryOpen(value => !value)}>Map 目录</button></header>}
+    {!botView && <header className="scheduler-workspace-heading"><div><h1><NierTitleText>Scheduler</NierTitleText></h1><p>Map 定义与节点编排</p></div><button type="button" className="scheduler-directory-toggle" aria-expanded={directoryOpen || file === null} aria-controls="scheduler-map-directory" onClick={() => setDirectoryOpen(value => !value)}>Map 目录</button></header>}
     {busy && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
       {returnProblem && <p role="alert">{returnProblem}</p>}
@@ -142,7 +143,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     </div>
     {botView ? <div className="scheduler-bot-page" data-detail-open={botDetailOpen}>
       <div className="scheduler-bot-heading">
-        <h1 ref={botHeading} tabIndex={-1}>Bot</h1>
+        <h1 ref={botHeading} tabIndex={-1}><NierTitleText>Bot</NierTitleText></h1>
         <div className="scheduler-actions">
           {!draft && <button type="button" disabled={editingBusy} onClick={() => void beginEdit(null)}>new</button>}
           {refreshButton}

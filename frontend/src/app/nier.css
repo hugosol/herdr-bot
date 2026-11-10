@@ -1,0 +1,143 @@
+/* NieR presentation: preserve the original bone ground and motion, with semantic detail colours. */
+body {
+  background-color: var(--nier-ground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M6 0H0V6' fill='none' stroke='%2357544a' stroke-opacity='.045'/%3E%3C/svg%3E");
+  color: var(--nier-ink);
+}
+::selection { background: var(--nier-muted); color: var(--nier-raised); }
+.layout-header { border-bottom: 3px double var(--nier-border); }
+.layout-brand { letter-spacing: .06em; }
+.layout-brand::before {
+  content: '';
+  width: 5px;
+  height: 22px;
+  margin-right: 12px;
+  background: var(--nier-muted);
+  box-shadow: 4px 0 var(--nier-control);
+}
+.layout-header button, .layout-nav-item, .layout-nav-icon { border-radius: 0; }
+.layout-nav-item { transition: background-color var(--nier-motion), color var(--nier-motion); }
+.layout-nav-item[aria-selected='true'],
+.app-layout[data-layout='compact'] .layout-nav-item[aria-selected='true'] {
+  color: var(--nier-raised);
+  background-color: var(--nier-muted);
+  border-bottom-color: var(--nier-muted);
+  font-weight: 600;
+}
+.app-layout[data-layout='expanded'] .layout-nav-item[aria-selected='true'] { box-shadow: none; }
+.layout-content h1 {
+  color: var(--nier-ink);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: .16em;
+  text-shadow: 7px 5px rgb(0 0 0 / 19%);
+}
+.layout-content .nier-page-title { margin: 0 0 24px; }
+.nier-title-readable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.nier-title-letter {
+  display: inline-block;
+  white-space: pre;
+  animation: nier-letter-reveal 180ms cubic-bezier(.16, 1, .3, 1) both;
+  animation-delay: var(--nier-letter-delay);
+}
+[hidden] .nier-title-letter { animation: none; }
+@keyframes nier-letter-reveal {
+  from { opacity: 0; transform: translateY(.28em); }
+  to { opacity: 1; transform: translateY(0); }
+}
+:where(button):not(:disabled):not([aria-disabled='true']) {
+  transition: background-color var(--nier-motion), color var(--nier-motion), border-color var(--nier-motion);
+}
+/* Original sweep and paired rails belong to the option itself, not the adjacent actions. */
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) {
+  display: grid;
+  row-gap: 20px;
+  padding-block: 10px;
+  padding-inline: 3px;
+}
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li,
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li + li { border: 0; }
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child {
+  position: relative;
+  isolation: isolate;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: var(--nier-control);
+  color: var(--nier-ink);
+  box-shadow: none;
+  transform: none;
+}
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--nier-ink);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms linear;
+  pointer-events: none;
+}
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+  border-block: 2px solid var(--nier-ink);
+  opacity: 0;
+  transform: scaleY(.8);
+  transition: opacity 200ms linear, transform 200ms linear;
+  pointer-events: none;
+}
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active) { color: var(--nier-raised); }
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::before { transform: scaleX(1); }
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::after { opacity: 1; transform: scaleY(1); }
+.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child :is(small, .scheduler-node-id, .scheduler-node-summary > span) { color: inherit; }
+.scheduler .scheduler-node-list .scheduler-node-id { background: transparent; }
+@media (hover: hover) {
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover { color: var(--nier-raised); }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover::before { transform: scaleX(1); }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover::after { opacity: 1; transform: scaleY(1); }
+}
+:where(button, input, select, textarea, summary, [contenteditable='true']):focus-visible { outline: 2px solid var(--nier-info); outline-offset: 3px; }
+:where(input, select, textarea) { accent-color: var(--nier-info); color-scheme: light; }
+:where(input, textarea)::placeholder { color: var(--nier-faint); opacity: 1; }
+:where(time) { font-variant-numeric: tabular-nums; }
+.scheduler-graph-viewport marker path { fill: var(--nier-muted); }
+.tabpanel:not([hidden]) { animation: nier-panel-reveal var(--nier-motion) ease-out; }
+@keyframes nier-panel-reveal { from { opacity: .75; } to { opacity: 1; } }
+.entity-group-dialog { border: 1px solid var(--nier-border); border-radius: 0; background: var(--nier-raised); color: var(--nier-ink); }
+.entity-group-dialog :is(input, select) { border: 1px solid var(--nier-border); background: var(--nier-surface); color: var(--nier-ink); }
+.entity-group-dialog::backdrop { background: rgb(63 61 54 / 55%); }
+@media (max-width: 650px) {
+  .layout-content h1 { font-size: 24px; letter-spacing: .1em; text-shadow: 4px 3px rgb(0 0 0 / 19%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nier-title-letter, .tabpanel:not([hidden]) { animation: none; }
+  :where(button):not(:disabled):not([aria-disabled='true']), .layout-nav-item { transition: none; }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child,
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before,
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after { transition: none; }
+}
+@media (forced-colors: active) {
+  .scheduler-graph-viewport marker path { fill: CanvasText; }
+  body { background-image: none; }
+  .layout-content h1 { text-shadow: none; }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before { background: Highlight; }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after { border-color: Highlight; }
+  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :focus-visible, :active, :enabled:hover) { color: HighlightText; forced-color-adjust: none; }
+  .layout-nav-item[aria-selected='true'],
+  .app-layout[data-layout='compact'] .layout-nav-item[aria-selected='true'] { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
+  .entity-group-dialog, .entity-group-dialog :is(input, select) { color: CanvasText; background: Canvas; border-color: CanvasText; }
+}

@@ -1,10 +1,10 @@
 .scheduler .scheduler-graph {
   min-width: 0;
-  color: #e4ebf3;
+  color: var(--nier-ink);
 }
 
 .scheduler .scheduler-graph-empty {
-  color: #95a3b5;
+  color: var(--nier-muted);
   line-height: 1.6;
 }
 
@@ -14,9 +14,9 @@
   height: clamp(22rem, 55vh, 38rem);
   overflow: hidden;
   box-sizing: border-box;
-  border: 1px solid #637587;
-  border-radius: .5rem;
-  background: #171d25;
+  border: 1px solid var(--nier-border);
+  border-radius: 0;
+  background: var(--nier-ground);
 }
 
 .scheduler .scheduler-graph-viewport > svg {
@@ -34,12 +34,12 @@
 
 .scheduler .scheduler-graph-edge {
   fill: none;
-  stroke: #95a3b5;
+  stroke: var(--nier-muted);
   stroke-width: 2;
 }
 
 .scheduler .scheduler-graph-edge-related {
-  stroke: #a9d0f0;
+  stroke: var(--nier-info);
   stroke-width: 3;
   stroke-dasharray: 7 4;
 }
@@ -56,10 +56,10 @@
   margin: 0;
   padding: .6rem .75rem;
   overflow: auto;
-  border: 2px solid #637587;
-  border-radius: .5rem;
-  background: #1b222c;
-  color: #e4ebf3;
+  border: 2px solid var(--nier-border);
+  border-radius: 0;
+  background: var(--nier-surface);
+  color: var(--nier-ink);
   text-align: left;
   cursor: pointer;
 }
@@ -76,43 +76,48 @@
 }
 
 .scheduler .scheduler-node strong {
+  color: var(--nier-ink);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.35;
 }
 
 .scheduler .scheduler-node-id-label {
+  color: var(--nier-ink);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #95a3b5;
-  font-family: Consolas, monospace;
-  font-size: .85rem;
+  font-family: var(--nier-code-font);
+  font-size: 13px;
 }
 
 .scheduler .scheduler-node[aria-pressed="true"] {
-  border: 4px double #a9d0f0;
-  background: #253446;
+  border: 4px double var(--nier-info);
+  background: var(--nier-info-bg);
 }
 
 .scheduler .scheduler-node-related {
   border-style: dashed;
-  border-color: #a9d0f0;
+  border-color: var(--nier-ink);
 }
 
 .scheduler .scheduler-node-relation {
-  color: #a9d0f0;
+  color: var(--nier-info);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .scheduler .scheduler-node-problem {
-  color: #f1c7a1;
+  color: var(--nier-warning);
+  font-size: 12px;
 }
 
 .scheduler .scheduler-node:focus-visible {
-  outline: 3px solid #e4ebf3;
+  outline: 3px solid var(--nier-info);
   outline-offset: -5px;
 }
 
@@ -134,17 +139,17 @@
   pointer-events: none;
 }
 .scheduler .scheduler-node-shape polygon {
-  fill: #1b222c;
-  stroke: #637587;
+  fill: var(--nier-surface);
+  stroke: var(--nier-border);
   stroke-width: 2;
 }
 .scheduler .scheduler-node-related .scheduler-node-shape polygon {
-  stroke: #a9d0f0;
+  stroke: var(--nier-ink);
   stroke-dasharray: 6 4;
 }
 .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon {
-  fill: #253446;
-  stroke: #a9d0f0;
+  fill: var(--nier-info-bg);
+  stroke: var(--nier-info);
   stroke-width: 4;
   stroke-dasharray: none;
 }

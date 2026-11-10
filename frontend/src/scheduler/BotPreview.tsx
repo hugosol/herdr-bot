@@ -29,18 +29,18 @@ export function BotPreview({ bot }: { bot: Bot }) {
         : task ? task.name || '（Task 未命名）' : `绑定的 Task 不存在（${bot.task_id}）`
 
   return <>
-    <p className="scheduler-filename">{bot.id}</p>
+    <p className="scheduler-filename scheduler-reference">{bot.id}</p>
     <h3 className="scheduler-text">{bot.name}</h3>
-    {bot.map_file != null ? <dl aria-label="绑定 Map"><dt>Map</dt><dd className="scheduler-text">{bot.map_file}</dd></dl>
-      : <dl aria-label="绑定 Task"><dt>Task</dt><dd className="scheduler-text">{taskName}</dd></dl>}
+    {bot.map_file != null ? <dl aria-label="绑定 Map"><dt>Map</dt><dd className="scheduler-text scheduler-path">{bot.map_file}</dd></dl>
+      : <dl aria-label="绑定 Task"><dt>Task</dt><dd className="scheduler-text scheduler-reference">{taskName}</dd></dl>}
     <nav className="scheduler-bot-sections" aria-label="Bot 内容分区">
       {documents.map(({ key, title }) => <button type="button" key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{title}</button>)}
       <button type="button" aria-pressed={section === 'raw'} onClick={() => setSection('raw')}>json</button>
     </nav>
     {documents.map(({ key, title }) => <section key={key} aria-label={title} hidden={section !== key}>
-      <pre className="scheduler-text">{bot[key]}</pre>
+      <pre className="scheduler-text scheduler-prose">{bot[key]}</pre>
     </section>)}
     <div hidden={section !== 'raw'}><pre aria-label="Bot 原始定义">{JSON.stringify(bot, null, 2)}</pre></div>
-    <p>三份文档可独立阅读、允许空文本；Markdown 是指引，不是输入校验规则。仅保存定义，不启动 Chat。</p>
+    <p className="scheduler-help">三份文档可独立阅读、允许空文本；Markdown 是指引，不是输入校验规则。仅保存定义，不启动 Chat。</p>
   </>
 }
