@@ -5,6 +5,11 @@
   --browser-ink: var(--nier-ink);
   --browser-muted: var(--nier-muted);
   --browser-faint: var(--nier-faint);
+  --browser-added: #0c5423;
+  --browser-modified: #10468a;
+  --browser-deleted: #8f1526;
+  --browser-added-bg: #dcebd9;
+  --browser-deleted-bg: #f3d9d7;
   gap: 1rem;
   color: var(--browser-ink);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -276,7 +281,21 @@
 .browser .tree-row--directory { font-weight: 600; }
 .browser .browser-region-title { color: var(--browser-ink); }
 
-/* Do not restyle pre/code, diff cells or Git change colours: they carry content. */
+/* Keep Git hues local: changed files stay legible on bone and selected rows. */
+.browser .change-added,
+.browser .change-row.change-added,
+.browser .tree-row--file.is-selected.change-added { color: var(--browser-added); }
+.browser .change-modified,
+.browser .change-directory,
+.browser .change-row.change-modified,
+.browser .tree-row--file.is-selected.change-modified { color: var(--browser-modified); }
+.browser .change-deleted,
+.browser .change-row.change-deleted,
+.browser .tree-row--file.is-selected.change-deleted { color: var(--browser-deleted); }
+.browser :is(.tree-row--file, .mobile-row--file, .change-row):is(.change-added, .change-modified, .change-deleted) { font-weight: 600; }
+.browser :is(.diff-line--added, .diff-cell--added) { color: var(--browser-added); background: var(--browser-added-bg); }
+.browser :is(.diff-line--removed, .diff-cell--removed) { color: var(--browser-deleted); background: var(--browser-deleted-bg); }
+.browser :is(.diff-line--added, .diff-line--removed) .diff-line__marker { color: inherit; font-weight: 700; }
 @media (min-width: 721px) and (max-width: 1000px) {
   .browser .browser-layout,
   .browser .changes-layout {
