@@ -268,7 +268,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && !map && editor}
         {file !== null && <div className="scheduler-actions scheduler-map-actions" role="group" aria-label="Map 操作">
-          {associatedBot(file)}
           {map && <GroupButton name={map.title} group={map.group} names={listing.kind === 'ready' ? Object.values(listing.groups ?? {}) : []} disabled={editingBusy} onSave={group => changeGroup('maps', file, group)} />}
           {!draft && <>
           {map && <>
@@ -289,7 +288,14 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
-          <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3>{titleOpen && file ? <MapTitleEditor key={file} file={file} title={map.title} onClose={() => setTitleOpen(false)} onSaved={() => { setTitleOpen(false); refreshAll() }} /> : <button type="button" disabled={editingBusy || draft !== null} onClick={() => setTitleOpen(true)}>修改显示名称</button>}<p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
+          <header className="scheduler-map-heading">
+            <div className="scheduler-map-identity"><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3></div>
+            <button className="scheduler-map-rename" type="button" disabled={editingBusy || draft !== null || titleOpen} onClick={() => setTitleOpen(true)}>修改显示名称</button>
+            {file && <div className="scheduler-map-association">{associatedBot(file)}</div>}
+            {titleOpen && file && <div className="scheduler-map-title-editor"><MapTitleEditor key={file} file={file} title={map.title} onClose={() => setTitleOpen(false)} onSaved={() => { setTitleOpen(false); refreshAll() }} /></div>}
+            <p className="scheduler-text scheduler-map-description">{map.description}</p>
+            <span className="scheduler-badge">静态定义</span>
+          </header>
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">
