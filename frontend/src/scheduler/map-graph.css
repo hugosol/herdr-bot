@@ -15,7 +15,7 @@
   overflow: hidden;
   box-sizing: border-box;
   border: 1px solid var(--nier-border);
-  border-radius: .5rem;
+  border-radius: 0;
   background: var(--nier-ground);
 }
 
@@ -39,7 +39,7 @@
 }
 
 .scheduler .scheduler-graph-edge-related {
-  stroke: var(--nier-ink);
+  stroke: var(--nier-info);
   stroke-width: 3;
   stroke-dasharray: 7 4;
 }
@@ -57,7 +57,7 @@
   padding: .6rem .75rem;
   overflow: auto;
   border: 2px solid var(--nier-border);
-  border-radius: .5rem;
+  border-radius: 0;
   background: var(--nier-surface);
   color: var(--nier-ink);
   text-align: left;
@@ -76,25 +76,28 @@
 }
 
 .scheduler .scheduler-node strong {
+  color: var(--nier-ink);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.35;
 }
 
 .scheduler .scheduler-node-id-label {
+  color: var(--nier-ink);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--nier-muted);
-  font-family: Consolas, monospace;
-  font-size: .85rem;
+  font-family: var(--nier-code-font);
+  font-size: 13px;
 }
 
 .scheduler .scheduler-node[aria-pressed="true"] {
-  border: 4px double var(--nier-ink);
-  background: var(--nier-control);
+  border: 4px double var(--nier-info);
+  background: var(--nier-info-bg);
 }
 
 .scheduler .scheduler-node-related {
@@ -103,16 +106,18 @@
 }
 
 .scheduler .scheduler-node-relation {
-  color: var(--nier-ink);
+  color: var(--nier-info);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .scheduler .scheduler-node-problem {
   color: var(--nier-warning);
+  font-size: 12px;
 }
 
 .scheduler .scheduler-node:focus-visible {
-  outline: 3px solid var(--nier-ink);
+  outline: 3px solid var(--nier-info);
   outline-offset: -5px;
 }
 
@@ -143,8 +148,8 @@
   stroke-dasharray: 6 4;
 }
 .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon {
-  fill: var(--nier-control);
-  stroke: var(--nier-ink);
+  fill: var(--nier-info-bg);
+  stroke: var(--nier-info);
   stroke-width: 4;
   stroke-dasharray: none;
 }

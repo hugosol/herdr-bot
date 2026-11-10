@@ -4,7 +4,7 @@
   --browser-border: var(--nier-line);
   --browser-ink: var(--nier-ink);
   --browser-muted: var(--nier-muted);
-  --browser-faint: var(--nier-muted);
+  --browser-faint: var(--nier-faint);
   gap: 1rem;
   color: var(--browser-ink);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -83,7 +83,7 @@
 
 .browser button:focus-visible,
 .browser input:focus-visible {
-  outline: 2px solid var(--nier-ink);
+  outline: 2px solid var(--nier-info);
   outline-offset: -3px;
 }
 
@@ -266,8 +266,15 @@
 }
 
 .browser .file-view__path {
-  color: var(--browser-ink);
+  color: var(--nier-ink);
+  font-family: var(--nier-code-font);
+  font-size: 14px;
+  font-weight: 500;
 }
+.browser .file-view__size { color: var(--nier-description); font-size: 12px; font-variant-numeric: tabular-nums; }
+.browser .browser-toolbar__branch { color: var(--nier-info); font-weight: 500; }
+.browser .tree-row--directory { font-weight: 600; }
+.browser .browser-region-title { color: var(--browser-ink); }
 
 /* Do not restyle pre/code, diff cells or Git change colours: they carry content. */
 @media (min-width: 721px) and (max-width: 1000px) {

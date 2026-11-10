@@ -1,6 +1,6 @@
 /* 1200px canvas = 272px list + 24px gutter + 904px editor. */
 .panel:has(.suites-panel) { width: min(100%, 1256px); padding: 28px; }
-.suites-panel { --suite-ground: var(--nier-ground); --suite-surface: var(--nier-surface); --suite-raised: var(--nier-raised); --suite-ink: var(--nier-ink); --suite-muted: var(--nier-muted); --suite-accent: var(--nier-ink); --suite-line: var(--nier-line); --suite-negative: var(--nier-negative); color: var(--suite-ink); font-size: 14px; line-height: 1.5; }
+.suites-panel { --suite-ground: var(--nier-ground); --suite-surface: var(--nier-surface); --suite-raised: var(--nier-raised); --suite-ink: var(--nier-ink); --suite-muted: var(--nier-muted); --suite-accent: var(--nier-info); --suite-line: var(--nier-line); --suite-negative: var(--nier-negative); color: var(--suite-ink); font-size: 14px; line-height: 1.5; }
 .suites-panel * { box-sizing: border-box; }
 .suites-panel h2 { font-size: 24px; line-height: 1.3; margin: 0; }
 .suites-panel h3 { font-size: 16px; line-height: 1.5; margin: 0 0 16px; font-weight: 600; }
@@ -11,19 +11,20 @@
 .suites-page-header > div { margin-right: auto; }
 .suites-panel > .scope-note { max-width: 85ch; margin-bottom: 24px; }
 .suites-panel button { min-height: 40px; border: 1px solid var(--suite-line); border-radius: 2px; background: var(--suite-surface); color: var(--suite-ink); padding: 8px 14px; font: inherit; cursor: pointer; }
-.suites-panel button:hover { background: var(--suite-raised); }
+.suites-panel button:enabled:hover { background: var(--suite-raised); }
 .suites-panel button:active { transform: translateY(1px); }
 .suites-panel :is(button, input, textarea):focus-visible { outline: 2px solid var(--suite-accent); outline-offset: 3px; }
-.suites-panel button:disabled { color: var(--suite-muted); cursor: wait; }
+.suites-panel button:disabled { color: var(--suite-muted); background: var(--suite-raised); border-color: var(--suite-line); cursor: not-allowed; }
 .suites-fixed { min-width: 0; padding: 20px; margin-bottom: 24px; background: var(--suite-surface); border-radius: 2px; }
 .suites-fixed h3 { margin-bottom: 8px; }
 .suites-fixed-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .suites-fixed-groups > section { min-width: 0; }
-.suites-fixed h4 { font-size: 14px; margin: 12px 0; }
+.suites-fixed h4 { color: var(--suite-ink); font-size: 14px; font-weight: 650; margin: 12px 0; }
 .suites-fixed ul { list-style: none; margin: 0; padding: 0; }
 .suites-fixed li { min-width: 0; padding: 8px 0; overflow-wrap: anywhere; }
-.suites-fixed-name { display: block; font-weight: 500; }
-.suites-fixed-roles { display: block; color: var(--suite-muted); font-size: 13px; margin-top: 4px; }
+.suites-fixed-name { display: block; color: var(--nier-ink); font-size: 14px; font-weight: 650; }
+.suites-resource-id { color: var(--suite-accent); font-family: var(--nier-code-font); font-size: 12px; font-weight: 500; }
+.suites-fixed-roles { display: block; color: var(--nier-description); font-size: 12px; line-height: 1.6; margin-top: 4px; }
 .suites-layout { display: grid; grid-template-columns: 272px minmax(0, 1fr); align-items: start; gap: 24px; }
 .suites-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .suites-list-heading { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 8px; }
@@ -32,10 +33,10 @@
 .suites-list button { width: 100%; padding: 16px; text-align: left; border-color: transparent; }
 .suites-list button[aria-pressed="true"] { background: var(--suite-raised); border-color: var(--suite-accent); }
 .suites-list-name, .suites-list-id, .suites-list-meta { display: block; }
-.suites-list-name { font-size: 16px; font-weight: 600; }
-.suites-list-id { color: var(--suite-muted); font-size: 12px; overflow-wrap: anywhere; margin-top: 3px; }
-.suites-list-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 16px; font-size: 12px; color: var(--suite-accent); font-variant-numeric: tabular-nums; }
-.suites-list-meta > span { color: var(--suite-muted); }
+.suites-list-name { color: var(--nier-ink); font-size: 16px; font-weight: 600; }
+.suites-list-id { color: var(--nier-ink); font-family: var(--nier-code-font); font-size: 12px; overflow-wrap: anywhere; margin-top: 3px; }
+.suites-list-meta { font-weight: 600; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 16px; font-size: 12px; color: var(--suite-ink); font-variant-numeric: tabular-nums; }
+.suites-list-meta > span { color: var(--suite-muted); font-weight: 400; }
 .suites-empty { background: var(--suite-surface); padding: 24px; border-radius: 2px; }
 .suites-empty > p { color: var(--suite-muted); }
 .suites-empty dl { margin: 24px 0; display: grid; gap: 16px; }
@@ -46,24 +47,26 @@
 .suites-editor fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
 .suites-editor > fieldset > legend { font-size: 12px; color: var(--suite-muted); padding: 0; margin-bottom: 8px; }
 .suites-editor-actions { position: sticky; top: 0; z-index: 2; padding: 12px 0; margin-bottom: 16px; background: var(--suite-ground); }
-.suites-editor-actions > span { font-size: 18px; font-weight: 600; margin-right: auto; overflow-wrap: anywhere; }
+.suites-editor-actions > span { color: var(--nier-ink); font-size: 18px; font-weight: 600; margin-right: auto; overflow-wrap: anywhere; }
 .suites-panel .suites-primary { color: var(--suite-ground); background: var(--suite-ink); border-color: var(--suite-ink); }
-.suites-panel .suites-primary:hover { background: var(--suite-accent); }
+.suites-panel .suites-primary:enabled:hover { background: var(--suite-ink); filter: brightness(.9); }
 .suites-editor .suites-section { padding: 20px; background: var(--suite-surface); border-radius: 2px; margin-bottom: 16px; }
 .suites-section > legend { padding: 0; float: left; width: 100%; font-size: 16px; font-weight: 600; margin-bottom: 8px; }
 .suites-section > legend + * { clear: both; }
 .suites-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-.suites-editor label { display: block; margin-bottom: 8px; font-size: 14px; }
+.suites-editor label { display: block; margin-bottom: 8px; color: var(--suite-ink); font-size: 14px; font-weight: 500; }
 .suites-editor .zone-form__input { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--suite-line); border-radius: 2px; background: var(--suite-ground); color: var(--suite-ink); font: inherit; line-height: 1.6; }
 .suites-editor .zone-form__input:disabled { color: var(--suite-muted); }
 .suites-editor textarea.zone-form__input { min-height: 128px; resize: vertical; }
-.suites-editor #suite-lsp { font-family: ui-monospace, monospace; min-height: 200px; }
+.suites-editor textarea.zone-form__input { color: var(--suite-ink); font-family: var(--nier-code-font); font-size: 13px; line-height: 1.65; }
+.suites-editor #suite-lsp { min-height: 200px; }
+.suites-resource-block { min-width: 0; border-top: 1px solid var(--suite-line); padding-top: 12px; }
 .suites-editor .suites-choice { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; margin: 0 20px 0 0; overflow-wrap: anywhere; }
-.suites-choice input { width: 18px; height: 18px; flex: none; accent-color: var(--suite-accent); }
+.suites-choice input { width: 18px; height: 18px; flex: none; accent-color: var(--suite-ink); }
 .suites-extensions { min-width: 0; }
-.suites-extension-path { display: block; color: var(--suite-muted); font-size: 12px; overflow-wrap: anywhere; }
+.suites-extension-path { display: block; color: var(--nier-resource); font-family: var(--nier-code-font); font-size: 12px; line-height: 1.65; margin-top: 3px; overflow-wrap: anywhere; }
 .suites-section fieldset { margin-top: 16px; }
-.suites-section fieldset > legend { color: var(--suite-muted); font-size: 13px; }
+.suites-section fieldset > legend { color: var(--nier-detail-label); font-size: 13px; font-weight: 600; }
 .suites-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
 .suites-danger p { color: var(--suite-muted); font-size: 12px; margin: 0; }
 .suites-danger button { color: var(--suite-negative); }

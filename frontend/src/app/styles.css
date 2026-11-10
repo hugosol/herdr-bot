@@ -1,20 +1,26 @@
 :root {
+  /* Original NieR bone surfaces; semantic accents add hierarchy without a theme change. */
   --nier-ground: #dad4bb;
   --nier-surface: #e6e0cb;
   --nier-raised: #f0ead6;
   --nier-control: #c3bda6;
   --nier-ink: #3f3d36;
   --nier-muted: #57544a;
+  --nier-faint: #57544a;
   --nier-line: #aaa48d;
   --nier-border: #807b68;
   --nier-positive: #3f6148;
   --nier-negative: #963f32;
   --nier-warning: #735214;
-  --nier-info: #365c70;
-  --nier-positive-bg: #e0e6d5;
-  --nier-negative-bg: #eeddd0;
-  --nier-warning-bg: #e9dec0;
-  --nier-info-bg: #dde3df;
+  --nier-info: #225c79;
+  --nier-detail-label: #15534f;
+  --nier-resource: #254c76;
+  --nier-description: #564a40;
+  --nier-positive-bg: #e6f3eb;
+  --nier-negative-bg: #fbecef;
+  --nier-warning-bg: #fff2d8;
+  --nier-info-bg: #e6f3fa;
+  --nier-code-font: Consolas, "Cascadia Code", monospace;
   --nier-motion: 160ms;
   color-scheme: light;
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -81,16 +87,20 @@ h1 {
 .history-pagination button:disabled, .history-memo button:disabled, .history-resume:disabled { opacity: 0.5; cursor: default; }
 .history-pagination button:focus-visible, .history-memo button:focus-visible, .history-memo textarea:focus-visible, .history-resume:focus-visible { outline: 2px solid var(--nier-info); outline-offset: 2px; }
 .history-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.8rem; }
-.history-table th, .history-table td { text-align: left; vertical-align: top; padding: 0.5rem 0.3rem; border-bottom: 1px solid var(--nier-border); overflow-wrap: anywhere; }
+.history-table th, .history-table td { text-align: left; vertical-align: top; padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--nier-line); overflow-wrap: anywhere; }
+.history-table th { color: var(--nier-detail-label); font-size: 12px; font-weight: 500; }
+.history-table td { font-size: 14px; line-height: 1.6; }
+.history-table :is(time, code) { color: var(--nier-faint); font-size: 12px; }
+.history-table code { color: var(--nier-faint); font-family: var(--nier-code-font); }
 .history-table th:nth-child(1) { width: 18%; }
 .history-table th:nth-child(2) { width: 9%; }
 .history-table th:nth-child(3) { width: 20%; }
 .history-table th:nth-child(4) { width: 15%; }
 .history-table th:nth-child(5) { width: 23%; }
 .history-table th:nth-child(6) { width: 15%; }
-.history-workspace-name { display: block; margin-bottom: 0.25rem; }
+.history-workspace-name { display: block; margin-bottom: 0.25rem; color: var(--nier-ink); font-size: 14px; font-weight: 600; }
 .history-memo { min-width: 0; }
-.history-memo__text { margin: 0 0 0.5rem; white-space: pre-wrap; }
+.history-memo__text { margin: 0 0 0.5rem; white-space: pre-wrap; color: var(--nier-ink); line-height: 1.6; }
 .history-memo label { display: grid; gap: 0.35rem; }
 .history-memo textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 0.4rem; background: var(--nier-surface); color: var(--nier-ink); border: 1px solid var(--nier-border); border-radius: 0; font: inherit; }
 .history-memo__controls { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
@@ -1553,7 +1563,7 @@ h1 {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
-  letter-spacing: 0.15em;
+  letter-spacing: 0;
   color: var(--nier-warning);
 }
 
@@ -1565,22 +1575,24 @@ h1 {
   background: var(--nier-surface);
 }
 
-/* 离线卡片压暗并去掉实线边框：与仍在线、可能实时刷新的卡片区分开。 */
+/* Offline stays readable; its explicit label and neutral surface carry the state. */
 .session-card.is-offline {
-  opacity: 0.65;
+  background: var(--nier-ground);
   border-style: dashed;
 }
 
 /* 等待组内的卡片：保持实线并加深底色，强调这一张正等着接话。 */
 .session-card.is-waiting {
-  background: var(--nier-surface);
+  background: var(--nier-warning-bg);
 }
 
 .session-card__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
+.session-card__head .session-card__name { flex: 1 1 8rem; min-width: 0; }
 
 /* keepAlive 灯：绿=在线、灰=离线；只表示会话是否还在，与 agent 状态无关。 */
 .session-card__dot {
@@ -1591,7 +1603,7 @@ h1 {
 }
 
 .session-card__dot--online {
-  background: var(--nier-positive-bg);
+  background: var(--nier-positive);
 }
 
 .session-card__dot--offline {
@@ -1599,6 +1611,7 @@ h1 {
 }
 
 .session-card__name {
+  color: var(--nier-ink);
   font-size: 1.05rem;
   overflow-wrap: anywhere;
 }
@@ -1608,9 +1621,11 @@ h1 {
   padding: 0.1rem 0.4rem;
   border: 1px solid var(--nier-border);
   border-radius: 0;
-  color: var(--nier-ink);
+  color: var(--nier-info);
+  background: var(--nier-info-bg);
   font-size: 0.75rem;
-  line-height: 1.3;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .session-card__offline {
@@ -1665,13 +1680,15 @@ h1 {
   flex-wrap: wrap;
   gap: 0.25rem 0.75rem;
   margin: 0.5rem 0 0;
-  color: var(--nier-muted);
+  color: var(--nier-description);
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 
+.session-card__cwd { color: var(--nier-resource); font-family: var(--nier-code-font); font-size: 12px; line-height: 1.6; }
 .session-card__model {
-  color: var(--nier-muted);
+  color: var(--nier-ink);
+  font-weight: 500;
 }
 
 /* 完成后关机监听：未选中的次要按钮；已选中时换成醒目的实心色，一眼能看出这个会话在等它结束。 */

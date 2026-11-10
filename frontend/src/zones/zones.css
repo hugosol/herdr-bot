@@ -5,8 +5,8 @@
   --zone-line: var(--nier-line);
   --zone-ink: var(--nier-ink);
   --zone-muted: var(--nier-muted);
-  --zone-primary: var(--nier-positive);
-  --zone-focus: var(--nier-ink);
+  --zone-primary: var(--nier-ink);
+  --zone-focus: var(--nier-info);
   --zone-danger: var(--nier-negative);
 }
 
@@ -18,7 +18,7 @@
 .zones--register .zone-actions { flex: none; gap: 8px; }
 .zones--register .zone-action { flex: none; min-height: 44px; padding: 8px 16px; font-size: 14px; border-radius: 2px; font-weight: 600; }
 .zones--register .zone-action--register { background: var(--zone-surface); color: var(--zone-ink); border: 1px solid var(--zone-line); }
-.zones--register .zone-action--create { background: var(--zone-primary); color: var(--nier-raised); border: 1px solid transparent; }
+.zones--register .zone-action--create { background: var(--zone-primary); color: var(--nier-surface); border: 1px solid transparent; }
 .zones--register button:disabled { opacity: 1; background: var(--zone-raised); color: var(--zone-muted); cursor: not-allowed; }
 .zones--register :is(button, input):focus-visible { outline: 2px solid var(--zone-focus); outline-offset: 3px; }
 .zones--register button:active:enabled { transform: translateY(1px); }
@@ -37,9 +37,9 @@
 .zones--register .zone-item__open:hover:enabled { background: transparent; }
 .zones--register .zone-item__open:hover .zone-item__name { text-decoration: underline; text-underline-offset: 4px; }
 .zones--register .zone-item__identity { gap: 4px; }
-.zones--register .zone-item__name { font-size: 16px; font-weight: 600; color: var(--zone-ink); }
-.zones--register .zone-item__identity code { font-family: inherit; color: var(--zone-muted); font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
-.zones--register .zone-item__path { font-size: 12px; line-height: 1.5; color: var(--zone-muted); overflow-wrap: anywhere; }
+.zones--register .zone-item__name { font-size: 16px; font-weight: 600; color: var(--nier-ink); }
+.zones--register .zone-item__identity code { font-family: var(--nier-code-font); color: var(--nier-ink); font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+.zones--register .zone-item__path { font-size: 12px; line-height: 1.5; color: var(--nier-resource); overflow-wrap: anywhere; }
 .zone-item__status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 180px; font-variant-numeric: tabular-nums; }
 .zone-item__actions { display: flex; gap: 8px; }
 .zones--register .zone-item__chat, .zones--register .zone-item__remove { width: auto; height: auto; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 2px; font-size: 14px; line-height: 1.5; white-space: nowrap; }

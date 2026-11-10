@@ -120,7 +120,7 @@ export function MapGraph({ map, selectedId, onSelect, botProblems = {} }: {
         onPointerCancel={() => { dragRef.current = null; setDragging(false) }}
         onLostPointerCapture={() => { dragRef.current = null; setDragging(false) }}>
         <defs><marker id={markerId} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="10" markerHeight="10" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#a9d0f0" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--nier-info)" />
         </marker></defs>
         <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
           {nodes.flatMap((target) => map.nodes[target.id].blocked_by.map((sourceId, index) => {
