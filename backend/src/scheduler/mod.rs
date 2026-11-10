@@ -369,6 +369,65 @@ pub async fn save_map_inputs(
     }
 }
 
+pub async fn edit_map_title(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
+        let original = read_map_source(access, &state.map_directory, &name)?;
+        let map = parse_map(&original)?;
+        Ok::<_, DirectoryError>(serde_json::json!({"title": map.title, "revision": {"file": name, "original": original}}))
+    })).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => map_error(error.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapTitleSave {
+    title: String,
+    revision: BotRevision,
+}
+
+pub async fn save_map_title(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(draft): Json<MapTitleSave>,
+) -> Response {
+    let title = draft.title.trim().to_owned();
+    if title.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "code": "map-title-invalid", "message": "Map 显示名称不能为空。",
+        }))).into_response();
+    }
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
+        let check = || -> Result<(), DirectoryError> {
+            let current = read_map_source(access, &state.map_directory, &name)?;
+            if draft.revision.file != name || draft.revision.original != current {
+                return Err(edit_error("map-conflict", "Map 文件已变化；请重新加载后再编辑名称。"));
+            }
+            Ok(())
+        };
+        check()?;
+        parse_map(&draft.revision.original)?;
+        // Preserve every other field exactly as represented, including omitted defaults.
+        let mut map: serde_json::Value = serde_json::from_str(&draft.revision.original)
+            .map_err(|error| edit_error("map-write-failed", error.to_string()))?;
+        map["title"] = serde_json::Value::String(title);
+        let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
+        let root = prepare_directory(access, &state.map_directory)?;
+        access.publish_checked(&root.join(&name), &bytes, PublishMode::Replace,
+            |_| check(), |error| edit_error("map-write-failed", format!("Map 名称写入失败：{error}")))?;
+        Ok(map)
+    })).await {
+        Ok(Ok(map)) => Json(map).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+    }
+}
+
 /// Launch configuration is not a definition override or a Run allocation.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

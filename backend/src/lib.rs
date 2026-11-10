@@ -307,6 +307,7 @@ pub fn app_with_state(
         .route("/api/tasks/{id}/group", axum::routing::patch(set_task_group))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
         .route("/api/scheduler/maps/{name}/inputs", get(scheduler::edit_map_inputs).post(scheduler::save_map_inputs))
+        .route("/api/scheduler/maps/{name}/title", get(scheduler::edit_map_title).post(scheduler::save_map_title))
         .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
         .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
         .route("/api/workflow/runs", get(runs::list_runs))

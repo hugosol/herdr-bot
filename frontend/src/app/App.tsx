@@ -88,6 +88,8 @@ export default function App({
   const [navigationFade, setNavigationFade] = useState(false)
   const [serverOpen, setServerOpen] = useState(false)
   const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
+  const [taskDetailRequest, setTaskDetailRequest] = useState<{ id: string }>()
+  const [schedulerNavigationRequest, setSchedulerNavigationRequest] = useState<{ kind: 'bot' | 'map'; id: string }>()
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   const acceptedHash = useRef(window.location.hash)
   const touchStart = useRef<{ id: number; x: number; y: number; horizontal: boolean } | null>(null)
@@ -290,7 +292,9 @@ export default function App({
         data-testid="panel-tasks"
         hidden={serverOpen || tab !== 'tasks'}
       >
-        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)}
+          detailRequest={taskDetailRequest}
+          onBot={(id) => { setTaskEditRequest(null); setSchedulerNavigationRequest({ kind: 'bot', id }); selectTab('bot', false) }} />
       </div>
 
       <div id="panel-suite" role="tabpanel" aria-labelledby="tab-suite" className="tabpanel" hidden={serverOpen || tab !== 'suite'}>
@@ -317,6 +321,8 @@ export default function App({
         hidden={serverOpen || !schedulerTab}
       >
         <SchedulerPanel active={!serverOpen && schedulerTab} view={tab === 'bot' ? 'bot' : 'map'}
+          navigationRequest={schedulerNavigationRequest}
+          onNavigateTask={(id) => { setTaskEditRequest(null); setTaskDetailRequest({ id }); selectTab('tasks', false) }}
           onViewChange={(view) => { selectTab(view === 'bot' ? 'bot' : 'scheduler', false) }} navigationGuard={schedulerNavigationGuard}
           onTask={(id) => { if (selectTab('tasks')) setTaskEditRequest(id ? { id } : null) }}
           onZones={() => { selectTab('files') }} />

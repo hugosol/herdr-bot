@@ -24,6 +24,8 @@ mod roles;
 mod report_policy;
 #[path = "workflow_dispatch/map_deletion.rs"]
 mod map_deletion;
+#[path = "workflow_dispatch/map_title.rs"]
+mod map_title;
 #[path = "workflow_dispatch/history_integrity.rs"]
 mod history_integrity;
 #[path = "workflow_dispatch/bot_targets.rs"]

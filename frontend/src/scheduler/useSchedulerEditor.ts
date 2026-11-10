@@ -106,6 +106,19 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     if (!abandonDraft()) return
     update({ botId: id }); onViewChange('bot')
   }
+  function discardForNavigation() {
+    if (inFlight.current) return false
+    update({ draft: null, editError: null, deleteMapTarget: null, deleteMapError: null })
+    return true
+  }
+  function navigateDefinition(target: { kind: 'bot' | 'map'; id: string }) {
+    if (!discardForNavigation()) return
+    update(target.kind === 'bot'
+      ? { botId: target.id, selectedId: null }
+      : { file: target.id, selectedId: null, preview: { kind: 'loading' }, returnProblem: null })
+    onViewChange(target.kind)
+    void refresh()
+  }
   async function beginEdit(id: string | null, kind: Draft['kind'] = 'Bot') {
     if (!abandonDraft()) return
     const file = current.current.file
@@ -245,5 +258,5 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty, state.editingBusy])
-  return { ...state, editingBusy: state.editingBusy || state.listing.kind === 'loading' || state.bots.kind === 'loading' || state.preview?.kind === 'loading', changeGroup, abandonDraft, selectFile, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap }
+  return { ...state, editingBusy: state.editingBusy || state.listing.kind === 'loading' || state.bots.kind === 'loading' || state.preview?.kind === 'loading', changeGroup, abandonDraft, discardForNavigation, navigateDefinition, selectFile, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap }
 }
