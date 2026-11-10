@@ -26,6 +26,9 @@
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
 }
 
+.entity-link-label { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; text-align: left; }
+.entity-link-label svg { flex: none; }
+.entity-link-label__name { min-width: 0; overflow-wrap: anywhere; }
 /* Shared primary action; panel styles retain only placement and width. */
 :is(.tasks .task-item__actions, .zones--register .zone-item__actions) button.chat-launch-button {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

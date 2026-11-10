@@ -160,6 +160,7 @@
   .scheduler-workspace .scheduler-map-actions { padding: 12px 16px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .scheduler-workspace .scheduler-map-actions > button { min-width: 0; max-width: none; min-height: 44px; }
   .scheduler-workspace .scheduler-map-actions > .entity-group-button { grid-column: 1 / -1; max-width: none; text-align: left; }
+  .scheduler-workspace .scheduler-map-actions > .scheduler-associated-bot { grid-column: 1 / -1; text-align: left; }
   .scheduler-workspace .scheduler-map-heading { display: block; }
   .scheduler-workspace .scheduler-map-heading > .scheduler-badge { display: inline-block; margin-top: 12px; }
   .scheduler-workspace .scheduler-map-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }

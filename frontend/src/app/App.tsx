@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
 import './navigation.css'
+import { ENTITY_ICON_PATHS } from './EntityLinkLabel'
 import { NierTitleText } from './NierTitleText'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from '../server/operationsApi'
@@ -48,10 +49,10 @@ const TAB_ICONS: Record<TabKey, string> = {
   sessions: 'M4 4h16v12H9l-5 4V4Z',
   files: 'M3 6h7l2 2h9v12H3V6Z',
   workflow: 'm12 3 9 9-9 9-9-9 9-9Z',
-  tasks: 'M5 3h9l5 5v13H5V3ZM14 3v5h5M8 14l3 3 5-6',
+  tasks: ENTITY_ICON_PATHS.task,
   suite: 'M3 5h7l2 2h9v14H3V5ZM7 11h10M7 15h10',
-  bot: 'M5 7h14v13H5V7ZM12 3v4M8 12h1M15 12h1M9 16h6',
-  scheduler: 'M9 2h6v6H9V2ZM2 16h6v6H2v-6ZM16 16h6v6h-6v-6ZM12 8v4M5 16v-4h14v4',
+  bot: ENTITY_ICON_PATHS.bot,
+  scheduler: ENTITY_ICON_PATHS.map,
 }
 
 type Feedback = {

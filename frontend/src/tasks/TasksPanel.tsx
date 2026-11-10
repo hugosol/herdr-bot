@@ -18,6 +18,7 @@ import {
 } from './taskApi'
 import { listBots, type Bot } from '../scheduler/schedulerApi'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
+import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'
 
 type Feedback = {
@@ -475,10 +476,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
                     {(() => {
                       const linked = botsByTask.get(task.id) ?? []
                       const unique = linked.length === 1 ? linked[0] : null
-                      const label = botFailure ? 'Bot 读取失败' : bots === null ? '正在读取 Bot…' : linked.length > 1 ? '关联冲突' : unique ? `Bot · ${unique.name}` : '无关联 Bot'
-                      return <button type="button" className="zone-dialog__cancel task-item__bot" data-testid="task-linked-bot"
+                      const label = botFailure ? 'Bot 读取失败' : bots === null ? '正在读取 Bot…' : linked.length > 1 ? '关联冲突' : unique ? unique.name : '无关联 Bot'
+                      return <button type="button" className="zone-dialog__cancel task-item__bot" data-testid="task-linked-bot" title={unique ? `打开 Bot：${unique.name}` : label} aria-label={unique ? `打开 Bot：${unique.name}` : label}
                         disabled={bots === null || botFailure !== null || unique === null || !onBot || saving || deleting !== null}
-                        onClick={() => { if (unique && onBot) { discardDraft(); onBot(unique.id) } }}>{label}</button>
+                        onClick={() => { if (unique && onBot) { discardDraft(); onBot(unique.id) } }}><EntityLinkLabel kind="bot" name={label} /></button>
                     })()}
                     <button type="button" className="zone-dialog__cancel task-item__launch chat-launch-button" data-testid="task-create-chat"
                       disabled={saving || deleting !== null} onClick={() => setLaunchTaskId(task.id)}>发起 Chat</button>

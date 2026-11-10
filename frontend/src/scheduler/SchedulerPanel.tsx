@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
+import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { NierTitleText } from '../app/NierTitleText'
 import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
@@ -140,17 +141,19 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       ? listing.kind === 'ready' && listing.files.includes(id) ? listing.titles?.[id] || id : null
       : taskLookup?.kind === 'ok' ? taskLookup.tasks.find(task => task.id === id)?.name : null
     const loading = mapTarget ? listing.kind === 'loading' : taskLookup === null
-    return <button type="button" className="scheduler-target" disabled={editingBusy || !ready || name == null || (!mapTarget && !onNavigateTask)} onClick={() => {
+    const label = name ?? (loading ? '正在读取…' : ready ? `目标不存在（${id}）` : '读取失败')
+    const destination = `${mapTarget ? 'Scheduler / Map' : 'Task'}：${label}`
+    return <button type="button" className="scheduler-target" title={`打开 ${destination}`} aria-label={`打开 ${destination}`} disabled={editingBusy || !ready || name == null || (!mapTarget && !onNavigateTask)} onClick={() => {
       if (mapTarget) followDefinition({ kind: 'map', id })
       else if (discardForNavigation()) { setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); onNavigateTask?.(id) }
-    }}>执行目标：{mapTarget ? 'Map' : 'Task'} · {name ?? (loading ? '正在读取…' : ready ? `目标不存在（${id}）` : '读取失败')}</button>
+    }}><EntityLinkLabel kind={mapTarget ? 'map' : 'task'} name={label} /></button>
   }
 
   function associatedBot(name: string) {
     const matches = bots.kind === 'ready' ? bots.bots.filter(item => item.map_file === name) : []
     const label = bots.kind !== 'ready' ? bots.kind === 'loading' ? '正在读取 Bot…' : 'Bot 读取失败'
-      : matches.length === 0 ? '无关联 Bot' : matches.length > 1 ? '关联冲突' : `Bot：${matches[0].name}`
-    return <button type="button" className="scheduler-associated-bot" disabled={editingBusy || matches.length !== 1} onClick={() => followDefinition({ kind: 'bot', id: matches[0].id })}>{label}</button>
+      : matches.length === 0 ? '无关联 Bot' : matches.length > 1 ? '关联冲突' : matches[0].name
+    return <button type="button" className="scheduler-associated-bot" title={matches.length === 1 ? `打开 Bot：${label}` : label} aria-label={matches.length === 1 ? `打开 Bot：${label}` : label} disabled={editingBusy || matches.length !== 1} onClick={() => followDefinition({ kind: 'bot', id: matches[0].id })}><EntityLinkLabel kind="bot" name={label} /></button>
   }
 
   function selectRelatedNode(id: string) {
