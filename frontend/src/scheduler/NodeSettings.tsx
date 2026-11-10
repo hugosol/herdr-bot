@@ -27,7 +27,7 @@ export function NodeSettings(props: Props) {
     </div>
     <div className="scheduler-zone-setting">
       <label htmlFor={`${id}-zone`}>zone</label>
-      {props.readOnly ? <p className="scheduler-node-value">{value.zone || '尚未绑定 zone'}</p> : <input id={`${id}-zone`} value={value.zone} placeholder="namespace/name" aria-describedby={`${id}-zone-help`} disabled={props.disabled} onChange={event => props.onChange({ zone: event.target.value })} />}
+      {props.readOnly ? <p className="scheduler-node-value scheduler-identifier">{value.zone || '尚未绑定 zone'}</p> : <input id={`${id}-zone`} value={value.zone} placeholder="namespace/name" aria-describedby={`${id}-zone-help`} disabled={props.disabled} onChange={event => props.onChange({ zone: event.target.value })} />}
     </div>
     {!props.readOnly && <div className="scheduler-setting-help">
       <p id={`${id}-zone-help`}>填写稳定 zone ID，不是本机目录；保存 Map 无需先登记，启动 Run 时校验绑定。</p>

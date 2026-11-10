@@ -8,16 +8,16 @@
 
 .layout-header,
 .layout-nav {
-  --layout-surface: #192230;
-  --layout-ink: #e4ebf5;
-  --layout-muted: #a4b1c4;
-  --layout-line: #354258;
-  --layout-accent: #a8c6ff;
-  --layout-active: #293d5a;
+  --layout-surface: var(--nier-ground);
+  --layout-ink: var(--nier-ink);
+  --layout-muted: var(--nier-muted);
+  --layout-line: var(--nier-line);
+  --layout-accent: var(--nier-info);
+  --layout-active: var(--nier-control);
   color: var(--layout-ink);
   background: var(--layout-surface);
   font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .layout-header,
@@ -152,7 +152,7 @@
   flex: 0 0 25px;
   border: 1px solid currentColor;
   border-radius: 6px;
-  font: 12px/1 ui-monospace, monospace;
+  font: inherit;
 }
 
 .app-layout[data-layout="compact"] .layout-nav {
@@ -202,9 +202,9 @@
 }
 
 .app-layout[data-layout="compact"][data-group="config"] .layout-nav {
-  --layout-surface: #30271e;
-  --layout-accent: #f0c58a;
-  --layout-active: #443625;
+  --layout-surface: var(--nier-ground);
+  --layout-accent: var(--nier-info);
+  --layout-active: var(--nier-control);
 }
 
 .app-layout[data-layout="expanded"] .layout-shell {
@@ -235,7 +235,7 @@
   gap: 7px;
   min-height: 74px;
   padding: 10px 2px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .app-layout[data-layout="expanded"] .layout-nav-item[aria-selected="true"] {
@@ -262,7 +262,7 @@
 
 @media (max-width: 600px) {
   .layout-header {
-    padding: 10px 12px;
+    padding: 10px 16px;
     gap: 8px;
     min-height: 63px;
   }
@@ -298,7 +298,7 @@
   }
 
   .app-layout[data-layout="expanded"] {
-    --layout-sidebar: 78px;
+    --layout-sidebar: 90px;
   }
 
   .app-layout[data-layout="expanded"] .layout-nav {
@@ -309,7 +309,7 @@
     gap: 6px;
     min-height: 68px;
     padding: 8px 2px;
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 

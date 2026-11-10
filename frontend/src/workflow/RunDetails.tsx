@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { renameRun, type RunDetail } from './workflowApi'
 import { RunList } from './RunList'
+import { NierTitleText } from '../app/NierTitleText'
 import { RunCurrentView } from './RunCurrentView'
 import { useWorkflowRefresh } from './useWorkflowRefresh'
 import { RunChatReference } from './RunChatReference'
@@ -37,7 +38,7 @@ function RunTitle({ id, title, onSaved }: { id: string; title: string; onSaved: 
     }
   }
   return <>
-    <div className="workflow-run-title"><h1>{title}</h1>{!editing && <button type="button" onClick={() => { setDraft(title); setError(null); setEditing(true) }}>重命名</button>}</div>
+    <div className="workflow-run-title"><h2>{title}</h2>{!editing && <button type="button" onClick={() => { setDraft(title); setError(null); setEditing(true) }}>重命名</button>}</div>
     {editing && <form className="workflow-run-rename" onSubmit={event => { event.preventDefault(); if (!saving) void save() }}>
       <label>name<input autoFocus value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} /></label>
       <button type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</button>
@@ -66,8 +67,9 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
     }
   }, [id])
   return <section aria-label="workflow" className="workflow">
+    <h1 className="nier-page-title"><NierTitleText>Workflow</NierTitleText></h1>
     {id && <header className="workflow-run-heading">
-      <div><a className="workflow-back" href="#workflow"><span aria-hidden="true">← </span>返回全部 Run</a><h2 className="workflow-eyebrow workflow-run-detail-label">Run 详情</h2>{run ? <RunTitle key={id} id={id} title={run.name || snapshot?.current?.map?.title || run.map} onSaved={updated => { updateRun(updated); refresh() }} /> : <h1>运行记录</h1>}<code>{run ? `${run.map} / ${id}` : id}</code></div>
+      <div><a className="workflow-back" href="#workflow"><span aria-hidden="true">← </span>返回全部 Run</a><h2 className="workflow-eyebrow workflow-run-detail-label">Run 详情</h2>{run ? <RunTitle key={id} id={id} title={run.name || snapshot?.current?.map?.title || run.map} onSaved={updated => { updateRun(updated); refresh() }} /> : <h2>运行记录</h2>}<code>{run ? `${run.map} / ${id}` : id}</code></div>
       {run && <div><WorkflowStatus status={run.status} saved={!detail?.managed} /><p className="workflow-muted">{Number.isFinite(run.createdAt) && !Number.isNaN(new Date(run.createdAt).getTime()) && <><time dateTime={new Date(run.createdAt).toISOString()}>{new Date(run.createdAt).toLocaleString()}</time> · </>}{Object.values(run.nodes).filter(node => node.status === 'completed').length} / {Object.keys(run.nodes).length} 已交接</p></div>}
     </header>}
     <div className="workflow-refresh-info"><p role="status" aria-label="workflow 更新">最后成功时间：{snapshot && snapshot.id === id ? <time dateTime={new Date(snapshot.at).toISOString()}>{new Date(snapshot.at).toLocaleString()}</time> : '尚无成功查询。'}</p><button type="button" onClick={refresh}>刷新 Run</button></div>
@@ -87,9 +89,9 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
         <details className="workflow-run-background">
           <summary>运行背景 · 本次要求与管理者</summary>
           <dl><dt>managerTaskId</dt><dd>{run.managerTaskId}</dd><dt>zone</dt><dd>{run.zone}</dd><dt>workspaceName</dt><dd>{run.workspaceName}</dd></dl>
-          <h3>userInput</h3><pre data-testid="run-user-input">{run.userInput}</pre>
+          <h3>userInput</h3><pre className="workflow-prose" data-testid="run-user-input">{run.userInput}</pre>
           <section aria-label="Run 文件输入"><h3>fileInputs</h3>
-            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt>{file.id}</dt><dd>{file.path}</dd></div>)}</dl> : <p>未提供文件输入（可选缺席）；没有默认地址或自动发现。</p>}
+            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未提供文件输入（可选缺席）；没有默认地址或自动发现。</p>}
           </section>
           <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>

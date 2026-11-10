@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { suiteRequest, type Suite, type SuiteList } from './suiteApi'
 import './suites.css'
+import { NierTitleText } from '../app/NierTitleText'
 
 type Draft = Omit<Suite, 'skills' | 'extensions' | 'prompts' | 'lsp'> & {
   skills: Record<'omp' | 'pi', string>; extensions: Record<'omp' | 'pi', string>; prompts: string; lsp: string
@@ -82,7 +83,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
 
   return <section className="suites-panel" aria-label="Suite 管理" data-editing={draft !== null}>
     <header className="suites-toolbar suites-page-header">
-      <div><h2>Suite · 场景工具集</h2><p className="suites-subtitle">为 OMP 与 Pi 配置可复用的场景资源。</p></div>
+      <div><h1><NierTitleText>Suite</NierTitleText></h1><p className="suites-subtitle">场景工具集：为 OMP 与 Pi 配置可复用的场景资源。</p></div>
       <button type="button" disabled={busy} onClick={() => open(emptySuite, true)}>创建 Suite</button>
       <button type="button" disabled={busy} onClick={() => void reload()}>重新读取 Suite</button>
     </header>
@@ -97,7 +98,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
           <h4>{agent.toUpperCase()}</h4>
           {data.fixedExtensions.some(extension => extension.agent === agent) ? <ul>
             {data.fixedExtensions.filter(extension => extension.agent === agent).map(extension => <li key={extension.id}>
-              <span className="suites-fixed-name">{extension.label}{extension.label !== extension.id && ` · ${extension.id}`}</span>
+              <span className="suites-fixed-name">{extension.label}{extension.label !== extension.id && <> · <span className="suites-resource-id">{extension.id}</span></>}</span>
               <span className="suites-extension-path">{extension.entrypoint}</span>
               <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点' })[role]).join('、') || '无适用角色'}</span>
             </li>)}
@@ -138,16 +139,16 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </section>
           <section className="suites-section" aria-label="资源路径"><h3>资源路径</h3>
           <div className="suites-field-grid">
-          {draft.agents.map(agent => <div key={`skills-${agent}`}>
+          {draft.agents.map(agent => <div key={`skills-${agent}`} className="suites-resource-block">
             <label htmlFor={`suite-skills-${agent}`}>{agent === 'omp' ? 'OMP 技能集合目录（每行一个路径）' : 'Pi 单技能目录（每行一个路径）'}</label>
             <textarea id={`suite-skills-${agent}`} className="zone-form__input" rows={3} aria-describedby={`suite-skills-note-${agent}`} value={draft.skills[agent]} onChange={event => setDraft({ ...draft, skills: { ...draft.skills, [agent]: event.target.value } })} />
             <p className="scope-note" id={`suite-skills-note-${agent}`}>{agent === 'omp' ? '填写技能集合的父目录：全选直接子目录中含 SKILL.md 的技能，不递归，也不加载父目录自身。每次启动按所选集合生成技能白名单，排除未选中的默认、托管或插件技能；原生发现仍可能扫描默认目录。留空表示禁用技能。' : '每行填写一个直接含 SKILL.md 的单技能根目录，不填写技能集合父目录。仅加载指定技能；留空表示不加载技能。'}路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的技能同名会列出路径并报错。</p>
           </div>)}
-          <div>
+          <div className="suites-resource-block">
             <label htmlFor="suite-prompts">Prompt templates（每行一个路径）</label>
             <textarea id="suite-prompts" className="zone-form__input" rows={3} value={draft.prompts} onChange={event => setDraft({ ...draft, prompts: event.target.value })} />
           </div>
-          {draft.agents.map(agent => <div key={agent} className="suites-extensions">
+          {draft.agents.map(agent => <div key={agent} className="suites-extensions suites-resource-block">
             <label htmlFor={`suite-extensions-${agent}`}>{agent.toUpperCase()} Extensions（每行一个具体路径）</label>
             <textarea id={`suite-extensions-${agent}`} className="zone-form__input" rows={3} aria-describedby={`suite-extensions-note-${agent}`} value={draft.extensions[agent]} onChange={event => setDraft({ ...draft, extensions: { ...draft.extensions, [agent]: event.target.value } })} />
             <p className="scope-note" id={`suite-extensions-note-${agent}`}>{agent === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生扩展目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p>

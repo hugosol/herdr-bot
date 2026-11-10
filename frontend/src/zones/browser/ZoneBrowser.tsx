@@ -15,6 +15,7 @@ import {
   type FileView,
 } from './browseApi'
 import { HtmlReaderView } from '../reader/HtmlReaderView'
+import { NierTitleText } from '../../app/NierTitleText'
 import { zoneDisplayName } from '../zoneDisplay'
 import './zoneBrowser.css'
 import { GitAheadIndicator } from '../git/GitAheadIndicator'
@@ -1330,7 +1331,7 @@ export function ZoneBrowser({
           </button>
         </div>
         <div className="browser-heading">
-          <h1 className="browser-heading__title">{zoneDisplayName(zone)}</h1>
+          <h1 className="browser-heading__title"><NierTitleText>{zoneDisplayName(zone)}</NierTitleText></h1>
           <p className="browser-toolbar__zone" data-testid="browser-zone">
             {zone}
           </p>

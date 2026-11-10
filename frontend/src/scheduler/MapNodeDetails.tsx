@@ -48,8 +48,8 @@ function TaskPrompt({ bot, botProblem }: { bot?: Bot; botProblem?: string }) {
             : !task ? `绑定的 Task 不存在（${bot.task_id}）` : null
   return <section aria-label="Task.prompt"><h4>Task.prompt</h4>
     {taskProblem ? <p>{taskProblem}</p> : <>
-      <p className="scheduler-text">Task：{task!.name || '（Task 未命名）'}</p>
-      {task!.prompt === '' ? <p>固定 prompt 为空。</p> : <pre className="scheduler-text">{task!.prompt}</pre>}
+      <p className="scheduler-text scheduler-reference">Task：{task!.name || '（Task 未命名）'}</p>
+      {task!.prompt === '' ? <p>固定 prompt 为空。</p> : <pre className="scheduler-text scheduler-prose">{task!.prompt}</pre>}
     </>}
   </section>
 }
@@ -96,30 +96,33 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
   }
   function relatedNodes(keys: string[], direction: '前置' | '后继') {
     return keys.length === 0 ? <p className="scheduler-relation-empty">{direction === '前置' ? '无前置依赖。' : '无后继节点。'}</p> : <ul>
-      {keys.map(key => <li key={key}>{edit ? <span className="scheduler-relation-node">{nodeName(key)}</span> : <button type="button" aria-label={`查看${direction}节点 ${map.nodes[key]?.title ?? ''} ${key}`} onClick={() => onSelect(key)}>{nodeName(key)}</button>}</li>)}
+      {keys.map(key => {
+        const identity = <><strong>{map.nodes[key]?.title ?? '当前节点列表中不存在'}</strong><span className="scheduler-identifier">{key}</span></>
+        return <li key={key}>{edit ? <span className="scheduler-relation-node">{identity}</span> : <button type="button" aria-label={`查看${direction}节点 ${map.nodes[key]?.title ?? ''} ${key}`} onClick={() => onSelect(key)}>{identity}</button>}</li>
+      })}
     </ul>
   }
 
   return <section aria-label="node 详情" className="scheduler-details scheduler-node-content">
     <div className="scheduler-node-identity">
-      <div><label htmlFor={`${id}-node-id`}>node_id</label>{edit ? <input id={`${id}-node-id`} value={nodeId} readOnly={!edit.create} disabled={edit.disabled} onChange={event => edit.onIdChange(event.target.value)} /> : <p className="scheduler-node-value">{nodeId}</p>}</div>
+      <div><label htmlFor={`${id}-node-id`}>node_id</label>{edit ? <input id={`${id}-node-id`} value={nodeId} readOnly={!edit.create} disabled={edit.disabled} onChange={event => edit.onIdChange(event.target.value)} /> : <p className="scheduler-node-value scheduler-identifier">{nodeId}</p>}</div>
       <div><label htmlFor={`${id}-title`}>节点标题</label>{edit && !showJson ? <input id={`${id}-title`} value={title} disabled={edit.disabled} onChange={event => changeField('title', event.target.value)} /> : <h3 className="scheduler-node-value">{title || (showJson ? '由下方 JSON 编辑' : '未命名节点')}</h3>}</div>
     </div>
     {edit ? <NodeSettings value={settings} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} readOnly />}
     <div className="scheduler-node-bot"><label htmlFor={`${id}-bot`}>Bot ID</label>
-      {edit && !showJson ? <><input id={`${id}-bot`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><select aria-label="选择已有 Bot" value={catalog?.bots.some(item => item.id === botId) ? botId : ''} disabled={edit.disabled} onChange={event => { if (event.target.value) changeField('bot_id', event.target.value) }}><option value="">选择已有 Bot</option><GroupOptions items={catalog?.bots ?? []} groupOf={item => item.group}>{item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>}</GroupOptions></select></> : <p className="scheduler-node-value">{botId || '尚未填写 Bot ID'}</p>}
+      {edit && !showJson ? <><input id={`${id}-bot`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><select aria-label="选择已有 Bot" value={catalog?.bots.some(item => item.id === botId) ? botId : ''} disabled={edit.disabled} onChange={event => { if (event.target.value) changeField('bot_id', event.target.value) }}><option value="">选择已有 Bot</option><GroupOptions items={catalog?.bots ?? []} groupOf={item => item.group}>{item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>}</GroupOptions></select></> : <p className="scheduler-node-value scheduler-identifier">{botId || '尚未填写 Bot ID'}</p>}
       {botProblem && <p role="alert">{botProblem}</p>}
     </div>
     {(bot?.map_file != null || definition?.manager_task_id != null) && <section aria-label="Map 调用配置">
-      <p>Map：{bot?.map_file ?? '当前 Bot 不是 Map 型；请修正 manager_task_id'}</p>
+      <p className="scheduler-path">Map：{bot?.map_file ?? '当前 Bot 不是 Map 型；请修正 manager_task_id'}</p>
       <label htmlFor={`${id}-manager`}>manager Task</label>
       {edit && !showJson ? <select id={`${id}-manager`} value={typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : ''} disabled={edit.disabled || managerLookup?.kind !== 'ok'} onChange={event => changeField('manager_task_id', event.target.value || undefined)}>
         <option value="">未指定</option>
         {typeof definition?.manager_task_id === 'string' && !(managerLookup?.kind === 'ok' && managerLookup.tasks.some(task => task.id === definition.manager_task_id && task.taskType === 'manager')) && <option value={definition.manager_task_id} disabled>{definition.manager_task_id}（不存在、类型无效或尚未核实）</option>}
         {managerLookup?.kind === 'ok' && <GroupOptions items={managerLookup.tasks.filter(task => task.taskType === 'manager')} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>}</GroupOptions>}
-      </select> : <p>{typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : '未指定 manager Task'}</p>}
+      </select> : <p className="scheduler-identifier">{typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : '未指定 manager Task'}</p>}
       {edit && managerLookup && managerLookup.kind !== 'ok' && <p role="status">manager Task 列表读取失败；当前配置未改变。</p>}
-      <p>manager_task_id 属于本次调用节点，不保存到 Bot；仅 manager 类型 Task 可管理子 Run。</p>
+      <p className="scheduler-help">manager_task_id 属于本次调用节点，不保存到 Bot；仅 manager 类型 Task 可管理子 Run。</p>
     </section>}
     <div className="scheduler-node-relations">
       <section aria-label="blocked_by"><h4><span aria-hidden="true">→ </span>前置依赖 <small>blocked_by</small></h4>
@@ -140,7 +143,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
           <p id={`${id}-json-help`} className="scheduler-field-help">可编辑 input_rule、output_rule 及其他内容字段。无效 JSON 不会被自动修复或覆盖；有效对象可切换回表单。</p>
           {error && <p id={`${id}-json-error`} className="scheduler-node-content-error" role="status">{error}</p>}
         </div> : <section aria-label="input"><h4>输入内容 · input</h4>
-          {edit ? <textarea id={`${id}-input`} aria-label="输入内容" value={input} disabled={edit.disabled} rows={6} onChange={event => changeField('input', event.target.value)} /> : <>{input === '' && <p>未填写输入内容。</p>}<pre className="scheduler-text" data-testid="node-input">{input}</pre></>}
+          {edit ? <textarea id={`${id}-input`} aria-label="输入内容" value={input} disabled={edit.disabled} rows={6} onChange={event => changeField('input', event.target.value)} /> : <>{input === '' && <p>未填写输入内容。</p>}<pre className="scheduler-text scheduler-prose" data-testid="node-input">{input}</pre></>}
         </section>}
         <TaskPrompt bot={bot} botProblem={botProblem} />
         {(['input_rule', 'output_rule'] as const).map(field => <section key={field} aria-label={field}><h4>{field}</h4><pre className="scheduler-text">{definition ? JSON.stringify(definition[field] ?? [], null, 2) : 'JSON 无效，无法预览。'}</pre></section>)}

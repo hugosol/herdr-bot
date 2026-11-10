@@ -6,6 +6,7 @@ import { createSseSessionFeed } from './chats/sseSessionFeed'
 import { createZoneWatchFeed } from './zones/zoneWatch'
 import './app/styles.css'
 import './tasks/tasks.css'
+import './app/nier.css'
 
 const root = document.getElementById('root')
 if (!root) {
