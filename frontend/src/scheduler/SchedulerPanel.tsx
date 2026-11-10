@@ -222,8 +222,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             {bots.bots.length > 0 && visibleBots.length === 0 && <p>没有匹配的 Bot。清除筛选可查看全部。</p>}
             <EntityGroups items={visibleBots} groupOf={item => item.group} listClass="scheduler-map-list">{(item) => <li key={item.id}>
               <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={event => { botListPosition.current = { top: window.scrollY, button: event.currentTarget }; openBot(item.id) }}><strong>{item.name}</strong><small title={item.id}>{item.id}</small></button>
-              {targetLink(item)}
-                <GroupButton compact name={item.name} group={item.group} names={bots.bots.map(bot => bot.group)} disabled={editingBusy} onSave={group => changeGroup('bots', item.id, group)} />
             </li>}</EntityGroups>
           </>}
         </section>
@@ -260,8 +258,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             {visibleFiles.length === 0 && <p>没有匹配的 Map 文件。清除筛选可查看全部。</p>}
             <div data-testid="scheduler-map-list"><EntityGroups items={visibleFiles} groupOf={name => listing.groups?.[name]} listClass="scheduler-map-list">{(name) => <li key={name}>
               <button type="button" data-map-file={name} aria-pressed={file === name} onClick={() => selectFile(name)}>{listing.titles?.[name]?.trim() ? listing.titles[name] : name}</button>
-              {associatedBot(name)}
-                <GroupButton compact name={listing.titles?.[name] || name} group={listing.groups?.[name]} names={Object.values(listing.groups ?? {})} disabled={editingBusy} onSave={group => changeGroup('maps', name, group)} />
             </li>}</EntityGroups></div>
           </>)}
       </aside>
@@ -269,6 +265,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {editError && <p role="alert">{editError}</p>}
         {draft?.kind === 'node' && !map && editor}
         {file !== null && <div className="scheduler-actions scheduler-map-actions" role="group" aria-label="Map 操作">
+          {associatedBot(file)}
           {map && <GroupButton name={map.title} group={map.group} names={listing.kind === 'ready' ? Object.values(listing.groups ?? {}) : []} disabled={editingBusy} onSave={group => changeGroup('maps', file, group)} />}
           {!draft && <>
           {map && <>

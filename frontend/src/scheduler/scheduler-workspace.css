@@ -42,7 +42,6 @@
 .scheduler-workspace .scheduler-map-list { gap: 0; }
 .scheduler-workspace .scheduler-map-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; border-bottom: 1px solid var(--scheduler-line); }
 .scheduler-workspace .scheduler-map-list li > button:first-child { min-width: 0; padding: 12px 8px; border: 0; font-size: 14px; line-height: 1.5; }
-.scheduler-workspace .scheduler-map-list li > .entity-group-button { width: auto; padding: 8px; border: 0; white-space: nowrap; color: var(--scheduler-muted); font-size: 13px; }
 .scheduler-workspace .scheduler-map-actions > .entity-group-button { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scheduler-workspace .scheduler-map-actions > .scheduler-map-delete { color: var(--nier-negative); }
 .scheduler-workspace .scheduler-map-heading > div { flex: 1; }

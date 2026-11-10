@@ -30,7 +30,7 @@ export function EntityGroups<T>({ items, groupOf, children, listClass, testId }:
   </details>)
 }
 
-export function GroupButton({ name, group, names, disabled, compact = false, onSave }: { name: string; group?: string | null; names: (string | null | undefined)[]; disabled?: boolean; compact?: boolean; onSave: (group: string | null) => Promise<void> }) {
+export function GroupButton({ name, group, names, disabled, onSave }: { name: string; group?: string | null; names: (string | null | undefined)[]; disabled?: boolean; onSave: (group: string | null) => Promise<void> }) {
   const id = useId()
   const dialog = useRef<HTMLDialogElement>(null)
   const [opened, setOpened] = useState(false)
@@ -46,7 +46,7 @@ export function GroupButton({ name, group, names, disabled, compact = false, onS
     catch (error) { setError(error instanceof Error ? error.message : '分组保存失败；原配置未改变。') }
     finally { setBusy(false) }
   }
-  return <><button type="button" className="entity-group-button" disabled={disabled} aria-label={`group：${name}（${group ?? '未分组'}）`} onClick={() => { setValue(''); setError(null); setOpened(true) }} title={`调整分组：${group ?? '未分组'}`}>{compact ? '分组' : `group · ${group ?? '未分组'}`}</button>
+  return <><button type="button" className="entity-group-button" disabled={disabled} aria-haspopup="dialog" aria-label={`group：${name}（${group ?? '未分组'}）`} onClick={() => { setValue(''); setError(null); setOpened(true) }} title={`调整分组：${group ?? '未分组'}`}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" /></svg></button>
     {opened && createPortal(<dialog ref={dialog} className="zone-dialog entity-group-dialog" aria-labelledby={`${id}-title`} onCancel={event => { event.preventDefault(); if (!busy) setOpened(false) }}>
       <h2 id={`${id}-title`} className="zone-dialog__title">{name} · group</h2>
       <label htmlFor={`${id}-existing`}>选择分组</label>
