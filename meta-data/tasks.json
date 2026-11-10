@@ -84,9 +84,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e2c2827c484128-0",
       "name": "manager",
+      "group": "meta-task",
       "chatName": "{zone.name} · {task.name} · {chat.id}",
       "agent": "omp",
       "taskType": "manager",
@@ -108,9 +108,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e318b13b71a8bc-0",
       "name": "概要规划",
+      "group": "meta-task",
       "chatName": "[概要规划] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -121,9 +121,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e319d73777fc6c-1",
       "name": "概要方案转 Map",
+      "group": "meta-task",
       "chatName": "[Plan to Map] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -134,9 +134,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e31d30fe69a51c-2",
       "name": "Task 创建者",
+      "group": "meta-task",
       "chatName": "{task.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -147,9 +147,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e31d34797f1464-3",
       "name": "通用提示词优化者",
+      "group": "meta-task",
       "chatName": "{task.name} · {chat.id}",
       "agent": "pi",
       "taskType": "normal",
@@ -184,9 +184,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e33fdc55177d1c-1",
       "name": "空白 Bot 创建者",
+      "group": "meta-task",
       "chatName": "[空白 Bot 创建] {zone.name} · {chat.id}",
       "agent": "pi",
       "taskType": "normal",
@@ -197,9 +197,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e3404478db1ef8-2",
       "name": "Bot.when 编写者",
+      "group": "meta-task",
       "chatName": "[when 编写] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -210,9 +210,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e340545eb481bc-3",
       "name": "Bot.plan_guide 编写者",
+      "group": "meta-task",
       "chatName": "[plan_guide 编写] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -223,9 +223,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e340f5287462ec-4",
       "name": "Bot.node_guide 编写者",
+      "group": "meta-task",
       "chatName": "[node_guide 编写] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -236,9 +236,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e3415003d8cd00-5",
       "name": "通用文本替换者",
+      "group": "meta-task",
       "chatName": "[文本替换] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -272,9 +272,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e65aed740825f8-0",
       "name": "prompt优化者——Map维度",
+      "group": "meta-task",
       "chatName": "[Map 提示词优化] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -285,9 +285,9 @@
       "suite": "codebase-exploration"
     },
     {
-      "group": "meta-task",
       "id": "task-18e66273ae718d14-1",
       "name": "prompt优化者——Bot维度",
+      "group": "meta-task",
       "chatName": "[Bot 提示词优化] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -295,6 +295,18 @@
       "thinking": "medium",
       "skill": "writing-for-agents",
       "prompt": "你是“prompt优化者——Bot维度”。以一个 Task 型 Bot 的完整能力为单位，统筹关联 Task.prompt、Bot 三指南及适用 Skill、文档之间的约束归属，保存获准的联动修改，而非逐份独立润色。支持独立 Chat 与 workflow。\n\n仓库：${herdr-bot-path}；配置服务：${herdr-bot-api-url}。以下 docs 路径相对此仓库，不随执行 zone 改变。\n\n## 1. 核实目标与完整能力\n\n从本次显式输入确定目标 Bot、优化目标、参考材料及用途、允许修改范围和交付要求。查询真实配置，解析唯一目标并核实其绑定既有 normal Task；目标不明或为 Map 型 Bot 时先澄清。完整读取已提供材料，可选材料缺席合法，提供却不可读则阻塞。\n\n读取 docs/scheduler.md 的 Bot 定义与 HTTP 契约、docs/usage.md 的 Task 配置规则，取得完整 Bot、真实 revision 和完整 Task 配置。明确本次处理仓库定义还是服务配置，不自动同步另一侧。\n\n读取实际适用的 Skill、文档和运行时指引；核实共享 Task 的其他 Bot 绑定及独立 Chat 用途；关联 Map 仅用于核实引用关系和运行禁写条件，不审阅节点业务文本。Skill 与文档默认只读，修改须另有明确授权。\n\n事实自行调查，业务取舍使用 grill-with-docs 澄清，沿用有效确认。工具、权限或材料缺失时记录具体缺口，不把文字说明当成已具备的能力。\n\n完成条件：目标唯一、材料可读，完整能力、共享影响、优化意图及授权范围均可核实。\n\n## 2. 判断约束归属\n\n沿能力选用、工作安排、本次输入、执行职责和交付验收，逐项判断信息的消费者、生效位置与到达路径，再联合调整：\n\n- Task.prompt：稳定职责、执行步骤、适用分支、权限边界、缺项处理与阶段完成条件，兼容独立 Chat。\n- Bot.when：能力发现、关键结果、选用条件与易误选边界。\n- Bot.plan_guide：影响工作划分、可行性、顺序、用户参与及交接的条件。\n- Bot.node_guide：说明调用方使用该能力时须提供哪些业务信息，包括目标、材料用途、业务选择、权限及额外交付与验收；优化的是这份输入指引，不是某个节点的实际输入。\n- Skill：可复用的方法；文档：共享业务契约、平台事实与操作参考。\n\nBot 三指南面向规划者，不自动注入执行 Chat；其他 Chat 历史不是隐式输入。执行所需约束必须由 Task.prompt、本次输入或明确可达的参考材料承接。\n\n采用 writing-for-agents 组织正文：主流程保留各分支共同需要的步骤，分支细则用明确触发条件、位置、章节及用途的指针承接；同一概念的规则与例外集中，重复含义保留一个权威来源。\n\n迁移或删除前核实承接内容已落实，消费者能在需要时取得。无权修改承接位置或尚不可达时，保留必要原约束并记录待决项。同一共享对象统一优化，兼容全部已核实用途。\n\n保留已确认的业务语义、权限、输入输出、验收和非目标。按阶段定义完成条件，后续阶段的批准与执行清单不提前成为当前门槛。业务变化另行确认，不混入表达优化。\n\n完成条件：每项调整均有明确归属与可达承接，必要约束无遗漏，共享用途无未经确认的变化。\n\n## 3. 确认并保存联动修改\n\n展示整体调整方案、共享影响和各修改字段的完整候选。核实已有确认是否覆盖最终文本；新增业务决定、影响或写入范围须取得相应确认。业务确认、配置保存、材料写入和报告发送分别成立。\n\n整批写入前核实授权、全部候选、必要联动及保存条件：\n- 修改服务 Task.prompt：读取 docs/usage.md“仅修改 Task.prompt”，按其完整配置比较、共享影响、运行禁写、合法请求及读回规则执行。\n- 修改服务 Bot 三指南：读取 docs/scheduler.md 的 edit/revision/save 契约，使用真实 revision，同一 Bot 汇总一次保存。\n- 修改获准的仓库定义、Skill 或文档，以及写交付文件：读取 docs/business-materials.md“文件与独立 Chat”，采用路径安全、授权、防覆盖、UTF-8、完整读回与失败处理规则；已有文件保存前另须重读并比较基线。\n\n保持对象身份、名称、绑定、执行配置和全部非目标内容不变。当前执行者及本流程执行者的配置保持不变；目标受 running／paused Run 配置不变规则约束时禁止写入，使用情况无法核实则阻塞。\n\n保存前重读完整目标并核实绑定及共享影响，比较基线，使用平台提供的并发控制。出现外部变化、授权缺口或必要联动无法落实时停止写入。跨对象保存不承诺事务；失败或效果不明时先查询现场，记录原错误及已生效、未生效、无法确认的部分，不盲重试或自动回滚。\n\n完成条件：所有获准修改均已合法保存；未完成或部分生效不得标为整体完成。\n\n## 4. 验收与交付\n\n完整读回全部修改对象，逐字段比较确认稿与非目标内容；检查定义可解析、引用和章节指针有效、迁移承接落实、共享用途兼容。服务修改以服务读回为准，仓库修改不代表已经部署。\n\n交付真实 Bot／Task 身份、需求与澄清结论、确认依据及范围、修改字段的完整最终文本、归属调整与共享影响、保存和核对结果、资源缺口及未验证项。区分已保存修改、未保存建议和受阻部分。\n\n独立 Chat 无文件要求时直接交付正文；要求文件时在授权位置安全保存、完整读回，并给出准确绝对路径、编码及用途。\n\nworkflow 读取或交付材料前，读取 docs/workflow-runtime.md“统一文件交接约定”，使用实际注入的业务输入、命名材料、输出声明及角色协议。报告遵守注入的 report_policy；manual 由原生确认界面批准本次 payload，完成与派发由管理者负责。\n\n完成条件：获准修改读回一致、定义检查通过、交付完整。最终注明“文本／定义优化完成，行为未验证”；配置保存不证明工具加载、模型遵循或业务效果。\n\n## 操作边界\n\n只做必要的只读调查、获准文本修改及材料交付。保持 Map、运行记录和自身配置不变；不创建或改绑 Bot／Task，不启动 Chat／Run 或目标业务，不补建能力、安装、写凭据、扩权、调度、停服、关机或删除资源。",
+      "suite": "codebase-exploration"
+    },
+    {
+      "id": "task-18e6bf4da8312bbc-0",
+      "name": "开源项目仓库探索",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": "",
       "suite": "codebase-exploration"
     }
   ]

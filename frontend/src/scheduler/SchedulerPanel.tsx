@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
+import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { NierTitleText } from '../app/NierTitleText'
 import { useSchedulerEditor } from './useSchedulerEditor'
 import { MapGraph } from './MapGraph'
@@ -9,16 +10,35 @@ import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
 import { MapInputsEditor } from './MapInputsEditor'
+import { MapTitleEditor } from './MapTitleEditor'
+import { fetchTasks, type TaskResult } from '../tasks/taskApi'
+import type { Bot } from './schedulerApi'
 import './scheduler.css'
 import './scheduler-workspace.css'
 
-export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones }: { active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
+export function SchedulerPanel({ active, view, onViewChange, navigationGuard, onTask, onZones, navigationRequest, onNavigateTask }: { navigationRequest?: { kind: 'bot' | 'map'; id: string } | null; onNavigateTask?: (id: string) => void; active: boolean; view: 'bot' | 'map'; onViewChange: (view: 'bot' | 'map') => void; navigationGuard?: RefObject<(() => boolean) | null>; onTask: (id?: string) => void; onZones: () => void }) {
   const botView = view === 'bot'
   const editorState = useSchedulerEditor({ active, view, onViewChange })
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
-    changeGroup, abandonDraft, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
+    changeGroup, abandonDraft, discardForNavigation, navigateDefinition, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
   const [launchOpen, setLaunchOpen] = useState(false)
   const [inputsOpen, setInputsOpen] = useState(false)
+  const [titleOpen, setTitleOpen] = useState(false)
+  const [taskLookup, setTaskLookup] = useState<TaskResult | null>(null)
+  const handledNavigation = useRef<typeof navigationRequest>(null)
+  const focusDestination = useRef(false)
+  useEffect(() => {
+    if (!active || !navigationRequest || handledNavigation.current === navigationRequest) return
+    handledNavigation.current = navigationRequest
+    followDefinition(navigationRequest)
+  }, [active, navigationRequest])
+  useEffect(() => {
+    if (!active || !botView) return
+    let cancelled = false
+    setTaskLookup(null)
+    void fetchTasks().then(result => { if (!cancelled) setTaskLookup(result) })
+    return () => { cancelled = true }
+  }, [active, botView])
   const [directoryOpen, setDirectoryOpen] = useState(false)
   const inspectorHeading = useRef<HTMLHeadingElement>(null)
   const editorHeading = useRef<HTMLHeadingElement>(null)
@@ -75,6 +95,11 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     ? bots.bots.filter((item) => (botGroup === 'all' || (botGroup === 'ungrouped' ? item.group == null : item.group === botGroup.slice(6)))
       && `${item.name} ${item.id} ${item.group ?? '未分组'}`.toLocaleLowerCase().includes(botFilter.toLocaleLowerCase())) : []
   const botDetailOpen = botId !== null || draft !== null
+  useEffect(() => {
+    if (!active || !focusDestination.current || busy) return
+    const target = schedulerRoot.current?.querySelector<HTMLElement>(botView ? '[aria-label="Bot 预览"] h3' : '[aria-label="Map 预览"] h3')
+    if (target) { target.tabIndex = -1; target.focus(); focusDestination.current = false }
+  }, [active, botView, botId, file, busy])
 
   function returnToBotList() {
     if (!abandonDraft()) return
@@ -95,7 +120,40 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setDirectoryOpen(false) }
+    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); setDirectoryOpen(false) }
+  }
+
+  function followDefinition(target: { kind: 'bot' | 'map'; id: string }) {
+    if (!discardForNavigation()) return
+    setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); setDirectoryOpen(false)
+    if (target.kind === 'bot') { setBotFilter(''); setBotGroup('all') }
+    else { setFilter(''); setMapGroup('all') }
+    focusDestination.current = true
+    navigateDefinition(target)
+  }
+
+  function targetLink(item: Bot) {
+    const mapTarget = item.map_file != null
+    const id = mapTarget ? item.map_file : item.task_id
+    if (!id) return <span className="scheduler-target">执行目标：未绑定</span>
+    const ready = mapTarget ? listing.kind === 'ready' : taskLookup?.kind === 'ok'
+    const name = mapTarget
+      ? listing.kind === 'ready' && listing.files.includes(id) ? listing.titles?.[id] || id : null
+      : taskLookup?.kind === 'ok' ? taskLookup.tasks.find(task => task.id === id)?.name : null
+    const loading = mapTarget ? listing.kind === 'loading' : taskLookup === null
+    const label = name ?? (loading ? '正在读取…' : ready ? `目标不存在（${id}）` : '读取失败')
+    const destination = `${mapTarget ? 'Scheduler / Map' : 'Task'}：${label}`
+    return <button type="button" className="scheduler-target" title={`打开 ${destination}`} aria-label={`打开 ${destination}`} disabled={editingBusy || !ready || name == null || (!mapTarget && !onNavigateTask)} onClick={() => {
+      if (mapTarget) followDefinition({ kind: 'map', id })
+      else if (discardForNavigation()) { setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); onNavigateTask?.(id) }
+    }}><EntityLinkLabel kind={mapTarget ? 'map' : 'task'} name={label} /></button>
+  }
+
+  function associatedBot(name: string) {
+    const matches = bots.kind === 'ready' ? bots.bots.filter(item => item.map_file === name) : []
+    const label = bots.kind !== 'ready' ? bots.kind === 'loading' ? '正在读取 Bot…' : 'Bot 读取失败'
+      : matches.length === 0 ? '无关联 Bot' : matches.length > 1 ? '关联冲突' : matches[0].name
+    return <button type="button" className="scheduler-associated-bot" title={matches.length === 1 ? `打开 Bot：${label}` : label} aria-label={matches.length === 1 ? `打开 Bot：${label}` : label} disabled={editingBusy || matches.length !== 1} onClick={() => followDefinition({ kind: 'bot', id: matches[0].id })}><EntityLinkLabel kind="bot" name={label} /></button>
   }
 
   function selectRelatedNode(id: string) {
@@ -167,7 +225,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             {bots.bots.length > 0 && visibleBots.length === 0 && <p>没有匹配的 Bot。清除筛选可查看全部。</p>}
             <EntityGroups items={visibleBots} groupOf={item => item.group} listClass="scheduler-map-list">{(item) => <li key={item.id}>
               <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={event => { botListPosition.current = { top: window.scrollY, button: event.currentTarget }; openBot(item.id) }}><strong>{item.name}</strong><small title={item.id}>{item.id}</small></button>
-              <GroupButton compact name={item.name} group={item.group} names={bots.bots.map(bot => bot.group)} disabled={editingBusy} onSave={group => changeGroup('bots', item.id, group)} />
             </li>}</EntityGroups>
           </>}
         </section>
@@ -178,7 +235,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <section aria-label="Bot 预览" className="scheduler-details">
               {bots.kind === 'ready' && (botProblem
                 ? <p role="alert">共享 Bot {botId}：{botProblem.message}</p>
-                : bot ? <BotPreview key={bot.id} bot={bot} /> : <p role="alert">缺失共享 Bot：{botId}</p>)}
+                : bot ? <BotPreview key={bot.id} bot={bot} target={targetLink(bot)} /> : <p role="alert">缺失共享 Bot：{botId}</p>)}
             </section>
           </>}
         </div>
@@ -204,7 +261,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             {visibleFiles.length === 0 && <p>没有匹配的 Map 文件。清除筛选可查看全部。</p>}
             <div data-testid="scheduler-map-list"><EntityGroups items={visibleFiles} groupOf={name => listing.groups?.[name]} listClass="scheduler-map-list">{(name) => <li key={name}>
               <button type="button" data-map-file={name} aria-pressed={file === name} onClick={() => selectFile(name)}>{listing.titles?.[name]?.trim() ? listing.titles[name] : name}</button>
-              <GroupButton compact name={listing.titles?.[name] || name} group={listing.groups?.[name]} names={Object.values(listing.groups ?? {})} disabled={editingBusy} onSave={group => changeGroup('maps', name, group)} />
             </li>}</EntityGroups></div>
           </>)}
       </aside>
@@ -232,7 +288,14 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
-          <header className="scheduler-map-heading"><div><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3><p className="scheduler-text">{map.description}</p></div><span className="scheduler-badge">静态定义</span></header>
+          <header className="scheduler-map-heading">
+            <div className="scheduler-map-identity"><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3></div>
+            <button className="scheduler-map-rename" type="button" disabled={editingBusy || draft !== null || titleOpen} onClick={() => setTitleOpen(true)}>修改显示名称</button>
+            {file && <div className="scheduler-map-association">{associatedBot(file)}</div>}
+            {titleOpen && file && <div className="scheduler-map-title-editor"><MapTitleEditor key={file} file={file} title={map.title} onClose={() => setTitleOpen(false)} onSaved={() => { setTitleOpen(false); refreshAll() }} /></div>}
+            <p className="scheduler-text scheduler-map-description">{map.description}</p>
+            <span className="scheduler-badge">静态定义</span>
+          </header>
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">

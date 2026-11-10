@@ -307,6 +307,7 @@ pub fn app_with_state(
         .route("/api/tasks/{id}/group", axum::routing::patch(set_task_group))
         .route("/api/scheduler/maps/{name}/delete", post(scheduler::delete_map))
         .route("/api/scheduler/maps/{name}/inputs", get(scheduler::edit_map_inputs).post(scheduler::save_map_inputs))
+        .route("/api/scheduler/maps/{name}/title", get(scheduler::edit_map_title).post(scheduler::save_map_title))
         .route("/api/scheduler/maps/{name}/preflight", post(scheduler::preflight_run))
         .route("/api/scheduler/maps/{name}/runs", post(runs::start_run))
         .route("/api/workflow/runs", get(runs::list_runs))
@@ -1047,6 +1048,11 @@ struct CreateChatRequest {
     workspace_target: WorkspaceTarget,
     #[serde(default)]
     input: String,
+    /// Launch-only overrides; omitted fields retain the saved Task values.
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    thinking: Option<String>,
     /// 仅用于本次创建的命名规则；省略时使用 Task 规则，不写回 Task。
     #[serde(default)]
     chat_name_rule: Option<String>,
@@ -1129,7 +1135,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         Ok(zone) => zone,
         Err(rejection) => return rejection,
     };
-    let task = match state.tasks.get(&input.task_id).await {
+    let mut task = match state.tasks.get(&input.task_id).await {
         Ok(task) => task,
         Err(error) => {
             return task_error_with_context(
@@ -1184,10 +1190,13 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
-    let suite_args = match state.tasks.prepare_environment(&task) {
-        Ok(args) => args,
-        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
-    };
+    if let Some(model) = input.model {
+        task.trigger.model = model;
+    }
+    if let Some(thinking) = input.thinking {
+        task.trigger.thinking = thinking;
+    }
+    // Resolve through Task validation before preparing any launch resources.
     let mut preset = match state
         .tasks
         .catalog()
@@ -1201,7 +1210,10 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
-    preset.env.suite_args = suite_args;
+    preset.env.suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
     if let Err(message) = preset.env.check_entrypoints() {
         return rejected_owned(
             StatusCode::INTERNAL_SERVER_ERROR,

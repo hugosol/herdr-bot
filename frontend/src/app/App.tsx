@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
 import './navigation.css'
+import { ENTITY_ICON_PATHS } from './EntityLinkLabel'
 import { NierTitleText } from './NierTitleText'
 
 import { runOperation, type FailureKind, type OperationName, type OperationResult } from '../server/operationsApi'
@@ -48,10 +49,10 @@ const TAB_ICONS: Record<TabKey, string> = {
   sessions: 'M4 4h16v12H9l-5 4V4Z',
   files: 'M3 6h7l2 2h9v12H3V6Z',
   workflow: 'm12 3 9 9-9 9-9-9 9-9Z',
-  tasks: 'M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1',
+  tasks: ENTITY_ICON_PATHS.task,
   suite: 'M3 5h7l2 2h9v14H3V5ZM7 11h10M7 15h10',
-  bot: 'M5 7h14v13H5V7ZM12 3v4M8 12h1M15 12h1M9 16h6',
-  scheduler: 'M4 4h16v16H4V4ZM4 9h16M9 9v11M15 9v11',
+  bot: ENTITY_ICON_PATHS.bot,
+  scheduler: ENTITY_ICON_PATHS.map,
 }
 
 type Feedback = {
@@ -88,6 +89,8 @@ export default function App({
   const [navigationFade, setNavigationFade] = useState(false)
   const [serverOpen, setServerOpen] = useState(false)
   const [taskEditRequest, setTaskEditRequest] = useState<{ id: string } | null>(null)
+  const [taskDetailRequest, setTaskDetailRequest] = useState<{ id: string }>()
+  const [schedulerNavigationRequest, setSchedulerNavigationRequest] = useState<{ kind: 'bot' | 'map'; id: string }>()
   const schedulerNavigationGuard = useRef<(() => boolean) | null>(null)
   const acceptedHash = useRef(window.location.hash)
   const touchStart = useRef<{ id: number; x: number; y: number; horizontal: boolean } | null>(null)
@@ -290,7 +293,9 @@ export default function App({
         data-testid="panel-tasks"
         hidden={serverOpen || tab !== 'tasks'}
       >
-        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)} />
+        <TasksPanel active={!serverOpen && tab === 'tasks'} editRequest={taskEditRequest} onEditRequestHandled={() => setTaskEditRequest(null)}
+          detailRequest={taskDetailRequest}
+          onBot={(id) => { setTaskEditRequest(null); setSchedulerNavigationRequest({ kind: 'bot', id }); selectTab('bot', false) }} />
       </div>
 
       <div id="panel-suite" role="tabpanel" aria-labelledby="tab-suite" className="tabpanel" hidden={serverOpen || tab !== 'suite'}>
@@ -317,6 +322,8 @@ export default function App({
         hidden={serverOpen || !schedulerTab}
       >
         <SchedulerPanel active={!serverOpen && schedulerTab} view={tab === 'bot' ? 'bot' : 'map'}
+          navigationRequest={schedulerNavigationRequest}
+          onNavigateTask={(id) => { setTaskEditRequest(null); setTaskDetailRequest({ id }); selectTab('tasks', false) }}
           onViewChange={(view) => { selectTab(view === 'bot' ? 'bot' : 'scheduler', false) }} navigationGuard={schedulerNavigationGuard}
           onTask={(id) => { if (selectTab('tasks')) setTaskEditRequest(id ? { id } : null) }}
           onZones={() => { selectTab('files') }} />

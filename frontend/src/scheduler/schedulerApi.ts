@@ -210,6 +210,18 @@ export async function saveMapInputs(file: string, draft: { input_files: unknown;
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 输入声明保存') as WorkflowMap
 }
 
+export async function loadMapTitle(file: string): Promise<{ title: string; revision: BotRevision }> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/title`)
+  const value = await response.json()
+  if (!response.ok) throw new Error(value.message ?? `Map 名称读取失败：HTTP ${response.status}`)
+  if (typeof value.title !== 'string' || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 名称响应无效。')
+  return value
+}
+
+export async function saveMapTitle(file: string, draft: { title: string; revision: BotRevision }): Promise<WorkflowMap> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/title`, draft, isMap, 'Map 名称保存') as WorkflowMap
+}
+
 export type WorkflowMap = {
   group?: string | null
   title: string

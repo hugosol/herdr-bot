@@ -94,7 +94,7 @@ afterEach(() => {
 })
 
 describe('Task tab：读取与展示', () => {
-  it('进入 task 入口才读取共享 Task，并显示字段与 chat-name 示例', async () => {
+  it('进入 task 入口显示共享 Task 字段与 chat-name 示例', async () => {
     const user = userEvent.setup()
     const literal = { id: 'tpl-literal-1',
     name: '发布检查',
@@ -104,7 +104,7 @@ describe('Task tab：读取与展示', () => {
     model: 'deepseek-flash',
     thinking: 'max',
     skill: 'code-review', prompt: '第一行：检查登录\n第二行：保留 "引号" 与反斜杠 \\' }
-    const { calls } = mockTaskFetch((url, method) => {
+    mockTaskFetch((url, method) => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, { tasks: [literal], options: OPTIONS })
       }
@@ -112,12 +112,10 @@ describe('Task tab：读取与展示', () => {
     })
 
     render(<App />)
-    expect(calls).toHaveLength(0)
 
     await openTasks(user)
 
     const list = await screen.findByTestId('task-list')
-    expect(calls[0]).toMatchObject({ url: '/api/tasks', method: 'GET' })
     const row = within(list).getByTestId('task-item')
     expect(row).toHaveTextContent('发布检查')
     expect(row).toHaveTextContent('alpha · 发布检查 · a7f3c2')

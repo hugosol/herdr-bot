@@ -446,7 +446,7 @@ export function ZonesPanel({
                 <div className="zone-item__actions">
                 <button
                   type="button"
-                  className="zone-item__chat"
+                  className="zone-item__chat chat-launch-button"
                   data-testid="zone-create-chat"
                   aria-label={`从 ${registration.path} 发起 Chat`}
                   title={`从 ${registration.path} 发起 Chat`}

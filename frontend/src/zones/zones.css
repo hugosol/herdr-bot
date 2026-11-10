@@ -43,9 +43,7 @@
 .zone-item__status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 180px; font-variant-numeric: tabular-nums; }
 .zone-item__actions { display: flex; gap: 8px; }
 .zones--register .zone-item__chat, .zones--register .zone-item__remove { width: auto; height: auto; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 2px; font-size: 14px; line-height: 1.5; white-space: nowrap; }
-.zones--register .zone-item__chat { background: var(--zone-raised); color: var(--zone-ink); }
 .zones--register .zone-item__remove { background: transparent; color: var(--zone-muted); }
-.zones--register .zone-item__chat:hover:enabled { background: var(--zone-line); }
 .zones--register .zone-item__remove:hover:enabled { background: var(--zone-raised); color: var(--zone-danger); }
 .zones--register .zones__empty { padding: 24px; background: var(--zone-surface); color: var(--zone-muted); line-height: 1.6; }
 .zones__empty button { min-height: 44px; margin-left: 8px; border: 0; background: transparent; color: var(--zone-ink); text-decoration: underline; cursor: pointer; }

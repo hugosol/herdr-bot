@@ -87,7 +87,7 @@ function mockCreationFailure(failed: Record<string, unknown>) {
     if (url === '/api/tasks' && method === 'GET') {
       return jsonResponse(200, {
         tasks: [TASK],
-        options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+        options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
       })
     }
     if (url === '/api/chats/preview' && method === 'POST') {
@@ -127,7 +127,8 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
   ])('$label 禁止提交且不发送创建请求', async ({ chatNameRule, taskName }) => {
     const user = userEvent.setup()
     const { calls } = mockFetch((url) => {
-      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK], options: { agents: ['omp'], models: [], thinking: {}, skills: [] } })
+      if (url === '/api/zones') return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
+      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK], options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] } })
       if (url === '/api/chats/preview') return jsonResponse(200, { ...PREVIEW, chatNameRule, taskName })
       return jsonResponse(404, { code: 'unknown-endpoint', message: '未知请求' })
     })
@@ -152,7 +153,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp', 'pi'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview' && method === 'POST') {
@@ -168,7 +169,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
 
     await user.click(within(rows[1]).getByTestId('zone-create-chat'))
     const dialog = screen.getByTestId('chat-creation-dialog')
-    expect(within(dialog).getByTestId('chat-zone')).toHaveTextContent('test/beta')
+    expect(within(dialog).getByTestId('chat-zone')).toHaveValue('test/beta')
 
     const preview = await within(dialog).findByTestId('chat-name-preview')
     await vi.waitFor(() => expect(preview).toHaveTextContent(PREVIEW.name))
@@ -200,7 +201,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const { calls } = mockFetch((url, method, body) => {
       if (url === '/api/zones') return jsonResponse(200, { zones: [{ id: 'test/alpha', path: PREVIEW.zone }] })
       if (url === '/api/zones/overview') return jsonResponse(200, { zones: [] })
-      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK, second], options: { agents: ['omp', 'pi'], models: [], thinking: {}, skills: [] } })
+      if (url === '/api/tasks') return jsonResponse(200, { tasks: [TASK, second], options: { agents: ['omp', 'pi'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] } })
       if (url === '/api/chats/preview') return jsonResponse(200, JSON.parse(body ?? '{}').taskId === second.id ? secondPreview : PREVIEW)
       if (url === '/api/chats' && method === 'POST') {
         attempts += 1
@@ -228,7 +229,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(JSON.parse(calls.find((call) => call.url === '/api/chats')?.body ?? '{}')).toEqual({
       zone: 'test/alpha', taskId: second.id, chatId: secondPreview.chatId,
       chatNameRule: '  {zone.name} / {agent} / {chat.id} / {unknown}  ',
-      expectedName: '  实际目录 / pi / b8c9d0 / {unknown}  ', input: '', workspaceTarget: 'current',
+      expectedName: '  实际目录 / pi / b8c9d0 / {unknown}  ', input: '', workspaceTarget: 'current', model: 'default', thinking: 'default',
     })
     expect(await within(dialog).findByTestId('chat-request-error')).toHaveTextContent('名称已过期')
     await vi.waitFor(() => expect(rule).toHaveValue(second.chatName))
@@ -253,7 +254,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview' && method === 'POST') {
@@ -309,7 +310,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       expectedName: PREVIEW.name,
       chatNameRule: PREVIEW.chatNameRule,
       input: '检查登录逻辑',
-      workspaceTarget: 'current',
+      workspaceTarget: 'current', model: 'default', thinking: 'default',
     })
     expect(body).not.toHaveProperty('workspace')
   })
@@ -330,7 +331,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview' && method === 'POST') {
@@ -371,7 +372,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       expectedName: PREVIEW.name,
       chatNameRule: PREVIEW.chatNameRule,
       input: '',
-      workspaceTarget: 'current',
+      workspaceTarget: 'current', model: 'default', thinking: 'default',
     })
 
     resolveCreate(jsonResponse(202, creation('starting')))
@@ -396,10 +397,11 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     let resolveRetry!: (response: Response) => void
     const retryResponse = new Promise<Response>((resolve) => { resolveRetry = resolve })
     const { calls } = mockFetch((url, method) => {
+      if (url === '/api/zones') return jsonResponse(200, { zones: [{ id: 'test/alpha', path: 'C:\\work\\alpha' }] })
       if (url === '/api/tasks') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview') return jsonResponse(200, PREVIEW)
@@ -454,9 +456,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const bodies = calls.filter((call) => call.url === '/api/chats').map((call) => JSON.parse(call.body ?? '{}'))
     expect(bodies).toEqual([
       { zone: 'test/alpha', taskId: TASK.id, chatId: PREVIEW.chatId,
-        expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: 'current' },
+        expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: 'current', model: 'default', thinking: 'default' },
       { zone: 'test/alpha', taskId: TASK.id, chatId: PREVIEW.chatId,
-        expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: target },
+        expectedName, chatNameRule: expectedRule, input: '保留我的初始指示', workspaceTarget: target, model: 'default', thinking: 'default' },
     ])
     expect(calls.filter((call) => call.url === '/api/chats/preview')).toHaveLength(1)
   })
@@ -492,7 +494,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview' && method === 'POST') {
@@ -547,7 +549,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       if (url === '/api/tasks' && method === 'GET') {
         return jsonResponse(200, {
           tasks: [TASK],
-          options: { agents: ['omp'], models: [], thinking: {}, skills: [] },
+          options: { agents: ['omp'], models: ['default'], thinking: { omp: { default: [] }, pi: { default: [] } }, skills: [] },
         })
       }
       if (url === '/api/chats/preview' && method === 'POST') {

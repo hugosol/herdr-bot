@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
+import { TaskModelControls, changeTaskModel, modelCompatibility } from './TaskModelControls'
+import { ChatCreationDialog } from '../chats/ChatCreationDialog'
 import { NierTitleText } from '../app/NierTitleText'
 import {
   createTask,
@@ -14,7 +16,9 @@ import {
   type TaskOptions,
   type TaskResult,
 } from './taskApi'
+import { listBots, type Bot } from '../scheduler/schedulerApi'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
+import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'
 
 type Feedback = {
@@ -93,7 +97,15 @@ function draftFrom(task: Task): TaskInput {
  * Task 由后端持久保存，电脑与手机读取同一份。页面不缓存列表：每次进入 task 入口都重新读取，
  * 保存/删除成功后才用后端返回的完整列表更新界面；保存失败不表示已保存。
  */
-export function TasksPanel({ active, editRequest, onEditRequestHandled }: { active: boolean; editRequest: { id: string } | null; onEditRequestHandled: () => void }) {
+export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRequest, onBot }: {
+  active: boolean
+  editRequest: { id: string } | null
+  onEditRequestHandled: () => void
+  /** Fresh object per cross-link: discard the draft, refresh saved data, clear filters and reveal details. */
+  detailRequest?: { id: string }
+  /** Navigate to the sole Bot whose saved task_id references this Task. */
+  onBot?: (id: string) => void
+}) {
   const [data, setData] = useState<TaskList | null>(null)
   const [loading, setLoading] = useState(false)
   const [listFailure, setListFailure] = useState<string | null>(null)
@@ -109,8 +121,88 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   const deleteDialog = useRef<HTMLDialogElement>(null)
   const editorDialog = useRef<HTMLDialogElement>(null)
   const editorTrigger = useRef<HTMLElement | null>(null)
+  const [launchTaskId, setLaunchTaskId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [agentFilter, setAgentFilter] = useState('all')
+  const [bots, setBots] = useState<Bot[] | null>(null)
+  const [botFailure, setBotFailure] = useState<string | null>(null)
+  const [botRefresh, setBotRefresh] = useState(0)
+  const botsByTask = useMemo(() => {
+    const links = new Map<string, Bot[]>()
+    for (const bot of bots ?? []) {
+      if (!bot.task_id) continue
+      const linked = links.get(bot.task_id)
+      if (linked) linked.push(bot)
+      else links.set(bot.task_id, [bot])
+    }
+    return links
+  }, [bots])
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const targetDetail = useRef<HTMLDetailsElement>(null)
+  const revealDetail = useRef(false)
+  const editorRequest = useRef(0)
+
+  useEffect(() => {
+    if (!active) return
+    const controller = new AbortController()
+    setBots(null)
+    setBotFailure(null)
+    void listBots(controller.signal).then(catalog => {
+      if (!controller.signal.aborted) setBots(catalog.bots)
+    }).catch(error => {
+      if (!controller.signal.aborted) setBotFailure(error instanceof Error ? error.message : '共享 Bot 目录读取失败。')
+    })
+    return () => controller.abort()
+  }, [active, botRefresh])
+
+  useEffect(() => {
+    if (!detailRequest) return
+    discardDraft()
+    setDetailId(null)
+    setQuery('')
+    setAgentFilter('all')
+    setLoading(true)
+    let cancelled = false
+    void fetchTasks().then(result => {
+      if (cancelled) return
+      setLoading(false)
+      if (result.kind !== 'ok') {
+        setData(null)
+        setListFailure(describeFailure(result, '详情读取'))
+        return
+      }
+      setData({ tasks: result.tasks, options: result.options })
+      setListFailure(null)
+      if (result.tasks.some(task => task.id === detailRequest.id)) {
+        revealDetail.current = true
+        setDetailId(detailRequest.id)
+      } else setFeedback({ kind: 'error', text: '目标 Task 不存在：可能已被删除。' })
+    })
+    return () => { cancelled = true }
+  }, [detailRequest])
+
+  useEffect(() => {
+    const element = targetDetail.current
+    if (!active || !element || !revealDetail.current) return
+    revealDetail.current = false
+    element.open = true
+    const group = element.closest('.entity-group')
+    if (group instanceof HTMLDetailsElement) group.open = true
+    element.querySelector('summary')?.focus({ preventScroll: true })
+    element.scrollIntoView?.({ block: 'nearest' })
+  }, [active, data, detailId])
+
+  function discardDraft() {
+    editorRequest.current += 1
+    editorTrigger.current = null
+    closeDialog()
+    setDraft(emptyDraft())
+    setLoading(false)
+    setStep(1)
+    setDeleteTarget(null)
+    setLaunchTaskId(null)
+    setFeedback(null)
+  }
 
   useEffect(() => {
     const element = editorDialog.current
@@ -160,9 +252,11 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   }, [active, editRequest])
 
   async function openEditor(taskId?: string) {
+    const request = ++editorRequest.current
     editorTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setLoading(true)
     const result = await fetchTasks()
+    if (request !== editorRequest.current) return
     setLoading(false)
     if (result.kind !== 'ok') {
       setFeedback({ kind: 'error', text: describeFailure(result, '选项读取') })
@@ -207,19 +301,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   }
 
   function changeModel(model: TaskInput['model']) {
-    const supported =
-      model === 'default' ? [] : (data?.options.thinking[draft.agent]?.[model] ?? [])
-    const retained = draft.thinking === 'default' || supported.includes(draft.thinking)
-    setDraft((current) => ({
-      ...current,
-      model,
-      thinking: retained ? current.thinking : 'default',
-    }))
-    setNotice(
-      retained
-        ? null
-        : `当前思考级别「${thinkingLabel(draft)}」不适用于 ${draft.agent} / ${model}，已重置为「沿用 Agent 默认值」。`,
-    )
+    if (data === null) return
+    const next = changeTaskModel(draft, model, data.options)
+    setDraft(current => ({ ...current, model: next.model, thinking: next.thinking }))
+    setNotice(next.notice)
   }
 
   function closeDeleteDialog() {
@@ -284,15 +369,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
     }
   }
 
-  const modelUnavailable = data !== null &&
-    !(draft.model in (data.options.thinking[draft.agent] ?? {}))
-
-  const thinkingOptions: TaskOptions['thinking'][string][string] =
-    draft.model === 'default'
-      ? []
-      : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
-
-  const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
+  const { modelUnavailable, thinkingUnavailable } = data === null
+    ? { modelUnavailable: false, thinkingUnavailable: false }
+    : modelCompatibility(draft, data.options)
   const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
   const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
@@ -361,6 +440,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
         </p>
       )}
 
+      {botFailure !== null && <p className="zone-error" role="alert" data-testid="task-bot-error">
+        无法读取关联 Bot：{botFailure} <button type="button" className="zone-dialog__cancel" onClick={() => setBotRefresh(value => value + 1)}>重试</button>
+      </p>}
+
       {listFailure !== null && (
         <p className="zone-error" data-testid="task-list-error" role="alert">
           {listFailure}
@@ -390,15 +473,25 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>
                   <div className="task-item__suite"><span className="task-item__label">Suite</span><p>{suiteLabel(task, data.options)}</p></div>
                   <div className="task-item__actions">
+                    {(() => {
+                      const linked = botsByTask.get(task.id) ?? []
+                      const unique = linked.length === 1 ? linked[0] : null
+                      const label = botFailure ? 'Bot 读取失败' : bots === null ? '正在读取 Bot…' : linked.length > 1 ? '关联冲突' : unique ? unique.name : '无关联 Bot'
+                      return <button type="button" className="zone-dialog__cancel task-item__bot" data-testid="task-linked-bot" title={unique ? `打开 Bot：${unique.name}` : label} aria-label={unique ? `打开 Bot：${unique.name}` : label}
+                        disabled={bots === null || botFailure !== null || unique === null || !onBot || saving || deleting !== null}
+                        onClick={() => { if (unique && onBot) { discardDraft(); onBot(unique.id) } }}><EntityLinkLabel kind="bot" name={label} /></button>
+                    })()}
+                    <button type="button" className="zone-dialog__cancel task-item__launch chat-launch-button" data-testid="task-create-chat"
+                      disabled={saving || deleting !== null} onClick={() => setLaunchTaskId(task.id)}>发起 Chat</button>
                     <GroupButton name={task.name} group={task.group} names={data.tasks.map(item => item.group)} disabled={saving || deleting !== null} onSave={async group => { const result = await updateTaskGroup(task.id, group); if (result.kind !== 'ok') throw new Error(describeFailure(result, '分组保存')); setData({ tasks: result.tasks, options: result.options }) }} />
-                    <button type="button" className="zone-dialog__cancel" data-testid="task-edit"
+                    <button type="button" className="zone-dialog__cancel task-item__edit" data-testid="task-edit"
                       disabled={saving || deleting !== null} onClick={() => openEdit(task)}>编辑</button>
                     <button type="button" className="zone-dialog__cancel task-item__delete" data-testid="task-delete"
                       disabled={saving || deleting !== null} onClick={() => setDeleteTarget(task)}>{deleting === task.id ? '删除中…' : '删除'}</button>
                   </div>
                 </div>
                 {suiteIssue(task, data.options) && <p className="zone-error" role="alert">{suiteIssue(task, data.options)}</p>}
-                <details className="task-item__details">
+                <details className="task-item__details" ref={detailId === task.id ? targetDetail : undefined}>
                   <summary>查看配置与提示词</summary>
                 <dl className="task-item__fields">
                   <div><dt>Task 类型</dt><dd>{task.taskType}</dd></div>
@@ -432,6 +525,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             )}</EntityGroups>}
           </div>
         ))}
+
+      {launchTaskId !== null && <ChatCreationDialog initialTaskId={launchTaskId} onClose={() => setLaunchTaskId(null)} />}
 
       {deleteTarget !== null && (
         <dialog
@@ -561,49 +656,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   ))}
                 </select>
 
-                <label className="zone-form__label" htmlFor="task-model">
-                  model
-                </label>
-                <select
-                  id="task-model"
-                  className="zone-form__input zone-form__select"
-                  data-testid="task-model"
-                  value={draft.model}
-                  onChange={(event) => changeModel(event.target.value as TaskInput['model'])}
-                  disabled={saving}
-                >
-                  {modelUnavailable && <option value={draft.model} disabled>{draft.model}（不可用）</option>}
-                  {data.options.models.filter((model) => model in (data.options.thinking[draft.agent] ?? {})).map((model) => (
-                    <option key={model} value={model}>
-                      {data.options.labels?.models?.[model] ?? (model === 'default' ? '沿用 Agent 默认值' : model)}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="zone-form__label" htmlFor="task-thinking">
-                  thinking
-                </label>
-                <select
-                  id="task-thinking"
-                  className="zone-form__input zone-form__select"
-                  data-testid="task-thinking"
-                  value={draft.thinking}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      thinking: event.target.value as TaskInput['thinking'],
-                    }))
-                  }
-                  disabled={saving}
-                >
-                  <option value="default">沿用 Agent 默认值</option>
-                  {thinkingUnavailable && <option value={draft.thinking} disabled>{draft.thinking}（不可用）</option>}
-                  {thinkingOptions.map((thinking) => (
-                    <option key={thinking} value={thinking}>
-                      {thinking}
-                    </option>
-                  ))}
-                </select>
+                <TaskModelControls value={draft} options={data.options} disabled={saving}
+                  onModel={changeModel}
+                  onThinking={thinking => setDraft(current => ({ ...current, thinking }))} />
 
                 {notice !== null && (
                   <p className="zone-feedback" data-testid="thinking-notice" role="status">
