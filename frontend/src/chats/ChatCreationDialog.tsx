@@ -7,7 +7,9 @@ import {
   type ChatCreation,
   type ChatPreview,
 } from './chatCreationApi'
-import { fetchTasks, type Task } from '../tasks/taskApi'
+import { fetchTasks, type Task, type TaskOptions } from '../tasks/taskApi'
+import { TaskModelControls, changeTaskModel, modelCompatibility } from '../tasks/TaskModelControls'
+import { fetchZones, type ZoneRegistration } from '../zones/zoneApi'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 
@@ -50,16 +52,23 @@ function failureOutcomeText(creation: ChatCreation): string {
 }
 
 /**
- * 从某个 zone 发起 Chat 的弹窗。
+ * 从 zone 或 Task 发起 Chat 的共享弹窗；选择只影响本次启动。
  *
  * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Task。确认后页面轮询同一次创建：只有后端确认目标
  * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
-export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
+export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '', onClose }: { zone?: string; initialTaskId?: string; onClose: () => void }) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[] | null>(null)
-  const [taskId, setTaskId] = useState('')
+  const [taskId, setTaskId] = useState(initialTaskId)
+  const [zone, setZone] = useState(initialZone)
+  const [zones, setZones] = useState<ZoneRegistration[] | null>(null)
+  const [zoneError, setZoneError] = useState<string | null>(null)
+  const [options, setOptions] = useState<TaskOptions | null>(null)
+  const [model, setModel] = useState('default')
+  const [thinking, setThinking] = useState('default')
+  const [notice, setNotice] = useState<string | null>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
   const [chatNameRule, setChatNameRule] = useState('')
@@ -81,7 +90,8 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
       if (cancelled) return
       if (result.kind === 'ok') {
         setTasks(result.tasks)
-        setTaskId(current => current || result.tasks[0]?.id || '')
+        setOptions(result.options)
+        setTaskId(current => current === '' ? (result.tasks[0]?.id ?? '') : (result.tasks.some(task => task.id === current) ? current : ''))
         setLoadError(null)
       } else {
         setTasks(null)
@@ -97,24 +107,43 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
     }
   }, [groupRevision])
 
-  // Task 切换或请求重试时读取真实上下文并重置本次规则；规则编辑不触发请求。
   useEffect(() => {
-    if (taskId === '') {
-      setPreview(null)
+    let cancelled = false
+    setZones(null)
+    setZoneError(null)
+    void fetchZones().then(result => {
+      if (cancelled) return
+      if (result.kind === 'ok') setZones(result.zones)
+      else setZoneError(result.kind === 'rejected' ? result.message : '无法读取已登记 zone：请求没有得到可用响应。')
+    })
+    return () => { cancelled = true }
+  }, [groupRevision])
+
+  const selectedTask = tasks?.find(task => task.id === taskId)
+  const validZone = zones?.some(entry => entry.id === zone) ?? false
+
+  useEffect(() => {
+    setModel(selectedTask?.model ?? 'default')
+    setThinking(selectedTask?.thinking ?? 'default')
+    setNotice(null)
+  }, [selectedTask])
+
+  // 每次选择变化先作废旧请求；名称编辑不触发请求。
+  useEffect(() => {
+    const sequence = ++previewSequence.current
+    setPreview(null)
+    setPreviewError(null)
+    if (!validZone || selectedTask === undefined) {
+      setPreviewing(false)
       return
     }
-    const sequence = previewSequence.current + 1
-    previewSequence.current = sequence
     setPreviewing(true)
-    setPreview(null)
-    setChatNameRule('')
-    setPreviewError(null)
     void previewChat(zone, taskId).then((result) => {
       if (previewSequence.current !== sequence) return
       setPreviewing(false)
       if (result.kind === 'ok') {
         setPreview(result.value)
-        setChatNameRule(result.value.chatNameRule)
+        setChatNameRule(current => current || result.value.chatNameRule)
       } else {
         setPreview(null)
         setPreviewError(
@@ -124,7 +153,8 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
         )
       }
     })
-  }, [zone, taskId, previewRevision])
+    return () => { previewSequence.current++ }
+  }, [zone, taskId, validZone, selectedTask, previewRevision])
 
   // 已接受的创建由后端继续；页面只观察同一次创建，直到成功或失败。
   useEffect(() => {
@@ -167,7 +197,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (preview === null || previewing || !validName || submitting || (creation !== null && !workspaceFailed)) return
+    if (!canSubmit || preview === null) return
 
     setSubmitting(true)
     setRequestError(null)
@@ -180,6 +210,8 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
       chatNameRule,
       input,
       workspaceTarget,
+      model,
+      thinking,
     })
     setSubmitting(false)
     if (result.kind === 'ok') {
@@ -192,11 +224,15 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
       )
       // 预览可能已过期（Task 被编辑）：丢弃旧名称，重新从后端取一次。
       setPreview(null)
+      setChatNameRule('')
       setPreviewRevision((revision) => revision + 1)
     }
   }
 
+  const compatibility = selectedTask && options ? modelCompatibility({ agent: selectedTask.agent, model, thinking }, options) : null
   const canSubmit =
+    validZone && selectedTask !== undefined && compatibility !== null &&
+    !compatibility.modelUnavailable && !compatibility.thinkingUnavailable &&
     preview !== null && validName && !previewing && !submitting &&
     (creation === null || workspaceFailed) && tasks !== null
 
@@ -207,7 +243,7 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
         data-testid="chat-creation-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={`从 ${zone} 发起 Chat`}
+        aria-label={zone ? `从 ${zone} 发起 Chat` : '发起 Chat'}
         onSubmit={(event) => void submit(event)}
       >
         <h2 className="zone-dialog__title">发起 Chat</h2>
@@ -218,9 +254,16 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
         </p>
 
-        <p className="chat-zone" data-testid="chat-zone">
-          zone：<code>{zone}</code>
-        </p>
+        <label className="zone-form__label" htmlFor="chat-zone">zone</label>
+        <select id="chat-zone" className="zone-form__input zone-form__select" data-testid="chat-zone"
+          value={validZone ? zone : ''} onChange={event => { previewSequence.current++; setPreview(null); setZone(event.target.value) }}
+          disabled={zones === null || submitting || running || finished}>
+          <option value="">请选择已登记 zone</option>
+          {(zones ?? []).map(entry => <option key={entry.id} value={entry.id}>{entry.id} · {entry.path}</option>)}
+        </select>
+        {zones === null && zoneError === null && <p role="status">正在读取已登记 zone……</p>}
+        {zones?.length === 0 && <p>尚未登记 zone。</p>}
+        {zoneError !== null && <p className="zone-feedback" role="alert">{zoneError}</p>}
 
         <label className="zone-form__label" htmlFor="task">
           Task
@@ -230,16 +273,32 @@ export function ChatCreationDialog({ zone, onClose }: { zone: string; onClose: (
           className="zone-form__input zone-form__select"
           data-testid="task"
           value={taskId}
-          onChange={(event) => setTaskId(event.target.value)}
+          onChange={event => { previewSequence.current++; setPreview(null); setChatNameRule(''); setTaskId(event.target.value) }}
           disabled={tasks === null || submitting || running || finished}
         >
-          {tasks !== null && tasks.length === 0 && <option value="">没有可用的 Task</option>}
+          {tasks === null && <option value="">正在读取 Task……</option>}
+          {tasks !== null && <option value="">{tasks.length === 0 ? '没有可用的 Task' : '请选择 Task'}</option>}
           {<GroupOptions items={tasks ?? []} groupOf={task => task.group}>{(task) => (
             <option key={task.id} value={task.id}>
               {task.name}（{task.agent}）
             </option>
           )}</GroupOptions>}
         </select>
+
+        {selectedTask && options && <>
+          <p>agent：{selectedTask.agent}（来自 Task）</p>
+          <TaskModelControls value={{ agent: selectedTask.agent, model, thinking }} options={options}
+            prefix="chat" disabled={submitting || running || finished}
+            onModel={nextModel => {
+              const next = changeTaskModel({ agent: selectedTask.agent, model, thinking }, nextModel, options)
+              setModel(next.model)
+              setThinking(next.thinking)
+              setNotice(next.notice)
+            }} onThinking={setThinking} />
+          {notice !== null && <p className="zone-feedback" data-testid="thinking-notice" role="status">{notice}</p>}
+          {(compatibility?.modelUnavailable || compatibility?.thinkingUnavailable) &&
+            <p className="zone-feedback" role="alert">模型或思考级别不可用，请显式修正本次选择。</p>}
+        </>}
 
         <label className="zone-form__label" htmlFor="chat-workspace-target">
           Herdr Workspace

@@ -657,6 +657,7 @@ async fn assert_launch_from_public_entry(
     thinking: &str,
     expected_args: Value,
     input: &str,
+    launch_overrides: Option<Value>,
 ) -> Value {
     let task = json!({
         "name": format!("启动配置 {agent} {model} {thinking}"),
@@ -688,9 +689,14 @@ async fn assert_launch_from_public_entry(
     );
     let preview: Value = serde_json::from_str(&preview_response.body).expect("预览响应是 JSON");
 
-    let response = create(server, create_body(zone, &task_id, &preview, input)).await;
+    let mut body = create_body(zone, &task_id, &preview, input);
+    if let Some(overrides) = launch_overrides {
+        body.as_object_mut().unwrap().extend(overrides.as_object().unwrap().clone());
+    }
+    let response = create(server, body).await;
     assert_eq!(response.status, 202, "创建应被接受：{}", response.body);
     let accepted: Value = serde_json::from_str(&response.body).expect("创建回执是 JSON");
+    assert_eq!(accepted["taskId"], task_id, "启动保留来源 Task 身份");
     let id = accepted["id"].as_str().expect("创建标识").to_string();
 
     let finished = wait_stage(server, &id, "succeeded").await;
@@ -750,6 +756,7 @@ async fn assert_launch_from_public_entry(
         "初始指示必须提交给本次启动的 agent"
     );
     assert_eq!(common::prompt_body(&prompt), input, "初始指示按字面提交一次");
+    assert_eq!(read_task(server, &task_id).await, stored, "启动不修改保存的 Task");
     finished
 }
 
@@ -777,6 +784,7 @@ async fn explicit_agents_and_models_reach_herdr_as_native_launch_arguments() {
             thinking,
             json!(expected_args),
             &input,
+            None,
         )
         .await;
     }
@@ -822,8 +830,89 @@ async fn defaulted_model_and_thinking_are_absent_from_native_launch_arguments() 
             thinking,
             expected_args,
             &input,
+            None,
         )
         .await;
+    }
+}
+
+/// Per-launch values reach native startup without editing the source Task; each omitted
+/// field independently retains its Task value, while explicit default suppresses flags.
+#[tokio::test(flavor = "multi_thread")]
+async fn per_launch_model_and_thinking_override_native_arguments_without_saving() {
+    let herdr = HerdrFixture::new("chat launch overrides");
+    let storage = TempDir::new("chat launch overrides storage");
+    let server = TestServer::start(&config_with(&herdr, &storage)).await;
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+    let cases = [
+        (json!({"model": "deepseek-flash", "thinking": "max"}),
+         json!(["--model", "deepseek/deepseek-flash", "--thinking", "max"])),
+        (json!({"model": "deepseek-flash"}),
+         json!(["--model", "deepseek/deepseek-flash", "--thinking", "high"])),
+        (json!({"thinking": "xhigh"}),
+         json!(["--model", "openai-codex/gpt-6.1-sol", "--thinking", "xhigh"])),
+        (json!({"thinking": "default"}),
+         json!(["--model", "openai-codex/gpt-6.1-sol"])),
+        (json!({"model": "default", "thinking": "default"}), json!([])),
+    ];
+    for agent in ["omp", "pi"] {
+        for (overrides, expected_args) in &cases {
+            assert_launch_from_public_entry(
+                &server,
+                &herdr,
+                &zone_path,
+                agent,
+                "gpt-6.1-sol",
+                "high",
+                expected_args.clone(),
+                "launch-only override",
+                Some(overrides.clone()),
+            ).await;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn invalid_launch_overrides_are_rejected_before_side_effects_without_saving() {
+    let herdr = HerdrFixture::new("invalid chat launch overrides");
+    let storage = TempDir::new("invalid chat launch overrides storage");
+    let config = config_with(&herdr, &storage);
+    let server = TestServer::start(&config).await;
+    let zone = storage.path().join("alpha");
+    fs::create_dir_all(&zone).expect("创建 zone");
+    let zone_path = register(&server, &zone).await;
+    for agent in ["omp", "pi"] {
+        let mut task = default_task();
+        task["agent"] = json!(agent);
+        task["model"] = json!("gpt-6.1-sol");
+        task["thinking"] = json!("xhigh");
+        let saved = save_task(&server, task).await;
+        let task_id = saved["id"].as_str().expect("Task标识");
+        let persisted = fs::read(&config.tasks.storage_file).expect("读取保存文件");
+        let preview_response = preview(&server, &zone_path, task_id).await;
+        assert_eq!(preview_response.status, 200, "{}", preview_response.body);
+        let preview: Value = serde_json::from_str(&preview_response.body).unwrap();
+        let cases = [
+            (json!({"model": "default"}), "task-thinking-requires-default-model"),
+            (json!({"model": "deepseek-flash"}), "task-thinking-unsupported"),
+            (json!({"model": "missing-model"}), "task-model-invalid"),
+            (json!({"thinking": "missing-thinking"}), "task-thinking-invalid"),
+            (json!({"model": ""}), "task-model-invalid"),
+            (json!({"thinking": ""}), "task-thinking-invalid"),
+        ];
+        for (overrides, code) in cases {
+            let mut body = create_body(&zone_path, task_id, &preview, "must not submit");
+            body.as_object_mut().unwrap().extend(overrides.as_object().unwrap().clone());
+            let response = create(&server, body).await;
+            assert_eq!(response.status, 400, "{}", response.body);
+            let rejected: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(rejected["code"], code);
+            assert!(herdr.calls().is_empty(), "invalid launch must not call Herdr");
+            assert_eq!(fs::read(&config.tasks.storage_file).unwrap(), persisted);
+            assert_eq!(read_task(&server, task_id).await, saved);
+        }
     }
 }
 

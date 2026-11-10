@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ChatNameRuleEditor } from './ChatNameRuleEditor'
+import { TaskModelControls, changeTaskModel, modelCompatibility } from './TaskModelControls'
+import { ChatCreationDialog } from '../chats/ChatCreationDialog'
 import { NierTitleText } from '../app/NierTitleText'
 import {
   createTask,
@@ -109,6 +111,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   const deleteDialog = useRef<HTMLDialogElement>(null)
   const editorDialog = useRef<HTMLDialogElement>(null)
   const editorTrigger = useRef<HTMLElement | null>(null)
+  const [launchTaskId, setLaunchTaskId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [agentFilter, setAgentFilter] = useState('all')
 
@@ -207,19 +210,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
   }
 
   function changeModel(model: TaskInput['model']) {
-    const supported =
-      model === 'default' ? [] : (data?.options.thinking[draft.agent]?.[model] ?? [])
-    const retained = draft.thinking === 'default' || supported.includes(draft.thinking)
-    setDraft((current) => ({
-      ...current,
-      model,
-      thinking: retained ? current.thinking : 'default',
-    }))
-    setNotice(
-      retained
-        ? null
-        : `当前思考级别「${thinkingLabel(draft)}」不适用于 ${draft.agent} / ${model}，已重置为「沿用 Agent 默认值」。`,
-    )
+    if (data === null) return
+    const next = changeTaskModel(draft, model, data.options)
+    setDraft(current => ({ ...current, model: next.model, thinking: next.thinking }))
+    setNotice(next.notice)
   }
 
   function closeDeleteDialog() {
@@ -284,15 +278,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
     }
   }
 
-  const modelUnavailable = data !== null &&
-    !(draft.model in (data.options.thinking[draft.agent] ?? {}))
-
-  const thinkingOptions: TaskOptions['thinking'][string][string] =
-    draft.model === 'default'
-      ? []
-      : (data?.options.thinking[draft.agent]?.[draft.model] ?? [])
-
-  const thinkingUnavailable = draft.thinking !== 'default' && !thinkingOptions.includes(draft.thinking)
+  const { modelUnavailable, thinkingUnavailable } = data === null
+    ? { modelUnavailable: false, thinkingUnavailable: false }
+    : modelCompatibility(draft, data.options)
   const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
   const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
@@ -390,6 +378,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>
                   <div className="task-item__suite"><span className="task-item__label">Suite</span><p>{suiteLabel(task, data.options)}</p></div>
                   <div className="task-item__actions">
+                    <button type="button" className="zone-dialog__cancel" data-testid="task-create-chat"
+                      disabled={saving || deleting !== null} onClick={() => setLaunchTaskId(task.id)}>发起 Chat</button>
                     <GroupButton name={task.name} group={task.group} names={data.tasks.map(item => item.group)} disabled={saving || deleting !== null} onSave={async group => { const result = await updateTaskGroup(task.id, group); if (result.kind !== 'ok') throw new Error(describeFailure(result, '分组保存')); setData({ tasks: result.tasks, options: result.options }) }} />
                     <button type="button" className="zone-dialog__cancel" data-testid="task-edit"
                       disabled={saving || deleting !== null} onClick={() => openEdit(task)}>编辑</button>
@@ -432,6 +422,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
             )}</EntityGroups>}
           </div>
         ))}
+
+      {launchTaskId !== null && <ChatCreationDialog initialTaskId={launchTaskId} onClose={() => setLaunchTaskId(null)} />}
 
       {deleteTarget !== null && (
         <dialog
@@ -561,49 +553,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled }: { acti
                   ))}
                 </select>
 
-                <label className="zone-form__label" htmlFor="task-model">
-                  model
-                </label>
-                <select
-                  id="task-model"
-                  className="zone-form__input zone-form__select"
-                  data-testid="task-model"
-                  value={draft.model}
-                  onChange={(event) => changeModel(event.target.value as TaskInput['model'])}
-                  disabled={saving}
-                >
-                  {modelUnavailable && <option value={draft.model} disabled>{draft.model}（不可用）</option>}
-                  {data.options.models.filter((model) => model in (data.options.thinking[draft.agent] ?? {})).map((model) => (
-                    <option key={model} value={model}>
-                      {data.options.labels?.models?.[model] ?? (model === 'default' ? '沿用 Agent 默认值' : model)}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="zone-form__label" htmlFor="task-thinking">
-                  thinking
-                </label>
-                <select
-                  id="task-thinking"
-                  className="zone-form__input zone-form__select"
-                  data-testid="task-thinking"
-                  value={draft.thinking}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      thinking: event.target.value as TaskInput['thinking'],
-                    }))
-                  }
-                  disabled={saving}
-                >
-                  <option value="default">沿用 Agent 默认值</option>
-                  {thinkingUnavailable && <option value={draft.thinking} disabled>{draft.thinking}（不可用）</option>}
-                  {thinkingOptions.map((thinking) => (
-                    <option key={thinking} value={thinking}>
-                      {thinking}
-                    </option>
-                  ))}
-                </select>
+                <TaskModelControls value={draft} options={data.options} disabled={saving}
+                  onModel={changeModel}
+                  onThinking={thinking => setDraft(current => ({ ...current, thinking }))} />
 
                 {notice !== null && (
                   <p className="zone-feedback" data-testid="thinking-notice" role="status">
