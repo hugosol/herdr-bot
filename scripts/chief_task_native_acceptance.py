@@ -107,6 +107,29 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         self.no_business_effect()
         return history
 
+    def ambiguous_turn(self):
+        # OMP can ask through its native form instead of ending an assistant
+        # message. Observe the actual question first; the user declines to fill
+        # unknown requirements and then moves to a different demand.
+        def clarification():
+            history = self.native(self.chief)
+            replies = [m for m in messages(history) if m.get('role') == 'assistant'] if history else []
+            if replies and replies[-1].get('stopReason') == 'stop':
+                return {'history': history, 'question': text(replies[-1])}
+            terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'],
+                '--source', 'visible', '--format', 'text'])
+            if '─ Ask ' in terminal and 'cancel' in terminal and any(word in terminal for word in ['目标', '要求', '用途']):
+                return {'terminal': terminal, 'question': terminal}
+            return None
+        observed = until('actual native business clarification', clarification, self.args.timeout)
+        self.evidence['ambiguousClarification'] = observed
+        if 'terminal' in observed:
+            self.herdr('agent', 'send-keys', self.chief['paneId'], 'esc')
+            observed['userDecision'] = 'Decline unknown form fields; abandon this demand'
+            observed['history'] = self.settled(0, 'AMBIGUOUS-731')
+        self.no_business_effect()
+        return observed['history'], observed['question']
+
     def user_turn(self, content, marker):
         previous = self.native(self.chief)
         start = len(previous['branch']) if previous else 0
@@ -249,8 +272,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         self.chief = until('real native chief ready', ready, self.args.timeout)
         self.chat_hosts[self.chief['sessionId']] = self.host
         self.native_pids()
-        ambiguous = self.settled(0, 'AMBIGUOUS-731')
-        answer = text([m for m in messages(ambiguous) if m.get('role') == 'assistant'][-1])
+        ambiguous, answer = self.ambiguous_turn()
         require(any(cue in answer for cue in ['？', '?', '请补充', '请说明', '请提供', '请告诉', '需要明确', '需要确认', '想先了解']) and
             any(word in answer for word in ['目标', '要求', '用途']), 'Ambiguous request did not elicit missing business information')
         require(not self.wire('/api/chief/delegations/preview') and not self.wire('/api/chief/delegations'), 'Ambiguous request guessed an execution')
