@@ -45,6 +45,7 @@ pub mod operations;
 pub mod sessions;
 pub mod scheduler;
 pub mod runs;
+mod report_delivery;
 pub mod files;
 pub mod prompts;
 pub mod shutdown;
