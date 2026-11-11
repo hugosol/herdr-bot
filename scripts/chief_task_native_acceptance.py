@@ -46,7 +46,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         super().__init__(args)
         self.evidence.update(scenario='chief-task', promises=['P8', 'P9', 'P10/Task', 'P11', 'P13'],
             coverage={key: {'verified': False} for key in ITEMS}, cases=[],
-            budgets={'requestSeconds': 30, 'confirmationSeconds': 20, 'onlineSeconds': 10,
+            budgets={'requestSeconds': 30, 'confirmationSeconds': 20, 'choiceObservationSeconds': 5, 'onlineSeconds': 10,
                      'retentionSeconds': 30, 'maintenanceScanSeconds': 5,
                      'negativeObservationSeconds': 61, 'nativeRoundSeconds': args.timeout,
                      'startup': {'querySeconds': 15, 'tabSeconds': 20, 'agentSeconds': 40,
@@ -143,7 +143,12 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
                 return any(arrow + ' ' + choice in screen for arrow in ['→', '❯'])
             if not selected(terminal):
                 self.herdr('agent', 'send-keys', self.chief['paneId'], 'down' if choice == 'No' else 'up')
-                terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--source', 'visible', '--format', 'text'])
+                def observed_choice():
+                    screen = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--source', 'visible', '--format', 'text'])
+                    return screen if selected(screen) else None
+                # send-keys acknowledges bytes, not the host's next rendered frame.
+                # Observe that one key; never repeat it or extend product approval.
+                terminal = until('native ' + choice + ' choice rendered', observed_choice, 5)
             require(selected(terminal), 'Requested native ' + choice + ' choice is not visibly selected')
             self.herdr('agent', 'send-keys', self.chief['paneId'], 'enter')
         elif condition == 'cancelled':
@@ -307,7 +312,14 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         self.evidence['coverage']['P10/approved'] = {'verified': True, 'case': approved['label']}
         self.evidence['coverage']['P11'] = {'verified': True, 'sessionId': worker['sessionId']}
         answer = text([m for m in messages(final, approved['branchStart']) if m.get('role') == 'assistant'][-1])
-        require(not any(word in answer for word in ['业务已完成', '任务已完成', '摘要已完成']), 'Chief confused startup with business completion')
+        require(any(cue in answer for cue in [created['id'], '启动', 'starting', '202']),
+            'Chief did not return the actual startup result')
+        for sentence in re.split(r'[。；;\n]', answer):
+            for completed in re.finditer(r'(?:业务|任务|摘要|工作)(?:已经|已)?完成', sentence):
+                # Negated/conjoined facts such as “不表示 Chat 已准备好、业务已完成”
+                # explicitly deny completion; an unqualified completion claim fails.
+                require(re.search(r'(?:不表示|不代表|不意味着|不等于|并非|不是|尚未|没有)', sentence[:completed.start()]),
+                    'Chief confused startup with business completion')
         next_history, next_start = self.user_turn('先不释放执行者。这是独立的下一条输入：只告诉我当前是否能继续与你澄清另一个需求，不启动新工作。', 'NEXT-INPUT-731')
         next_answer = text([m for m in messages(next_history, next_start) if m.get('role') == 'assistant'][-1])
         require(any(cue in next_answer for cue in ['可以', '能继续', '当然', '没问题', '继续澄清', '是的']) and
