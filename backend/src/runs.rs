@@ -516,8 +516,22 @@ pub async fn start_run(
             &message,
         );
     }
-    let id = crate::chats::new_creation_id();
-    let run = Run {
+    let run = root_run(map, input, checked, &task, crate::chats::new_creation_id());
+    register_root(&state, &run).await;
+    drop(map_operation);
+    launch_root(state, run, task, preset, None).await
+}
+
+/// Construct a root Run from the same preflight for UI and chief delegation.
+/// Previewing allocates no records and never invents a parent execution.
+pub(crate) fn root_run(
+    map: String,
+    input: crate::scheduler::RunPreflightRequest,
+    checked: crate::scheduler::RunPreflight,
+    task: &crate::tasks::Task,
+    id: String,
+) -> Run {
+    Run {
         id: id.clone(),
         name: None,
         map,
@@ -553,14 +567,28 @@ pub async fn start_run(
                 )
             })
             .collect(),
-    };
-    state.runs.registered_maps.lock().await.insert(id.clone(), run.map.clone());
-    state.runs.active.lock().await.insert(id.clone(), None);
-    drop(map_operation);
+    }
+}
+
+pub(crate) use startup::manager_prompt;
+
+pub(crate) async fn register_root(state: &AppState, run: &Run) {
+    state.runs.registered_maps.lock().await.insert(run.id.clone(), run.map.clone());
+    state.runs.active.lock().await.insert(run.id.clone(), None);
+}
+
+pub(crate) async fn launch_root(
+    state: AppState,
+    run: Run,
+    task: crate::tasks::Task,
+    preset: crate::tasks::catalog::ResolvedPreset,
+    delegation: Option<crate::chief_delegation::Launch>,
+) -> Response {
+    let id = run.id.clone();
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
     let owned = state.clone();
-    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset).await }).await;
+    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset, delegation).await }).await;
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
         if let Err(message) = startup::manager_interrupted(&state, &id, join).await {
