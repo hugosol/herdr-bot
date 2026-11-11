@@ -136,8 +136,11 @@ class ChiefEntryAcceptance(NativeAcceptance):
         require(any('chief_definitions' in str(call) for call in calls), 'No real native chief definition call in this phase')
         require(any(literal in json.dumps(result, ensure_ascii=False) and not result.get('isError') for result in results), 'No actual literal definition tool result')
         records = self.check_model_identity(wire_start)
-        requests = '\n'.join(record['request'] for record in records)
-        require('chief-chat:tools' in requests and '不要亲自' in requests, 'Actual model request did not consume shipped chief role guidance')
+        requests = '\n'.join(json.dumps(json.loads(record['request']), ensure_ascii=False) for record in records)
+        # Native history markers identify stored messages, not provider text.
+        # Observe the actual role and business boundary sent to the model.
+        require('你是 chief：用户需求的澄清与能力选择入口' in requests and '不要亲自编辑业务文件、运行业务命令' in requests,
+                'Actual model request did not consume shipped chief role guidance')
         self.evidence['phases'].append({'phase': label, 'sessionId': chat['sessionId'], 'history': history,
             'nativeCalls': calls, 'nativeResults': results, 'modelRequestIndices': [r['index'] for r in records], 'verified': True})
         return history

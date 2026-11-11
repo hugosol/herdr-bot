@@ -52,7 +52,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 隔离 paths TOML 使用已有 Rust 路径解析器，声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`（后两项是具体官方扩展文件）、`chrome`（含 chrome.exe 的安装目录），以及交付固定扩展所需根。模型配置使用既有真实模型设施的 `provider/model/baseUrl/apiKeyEnv` JSON，model 严格为 `gpt-6-luna`，密钥仅来自显式授权的环境变量；返回 model 身份必须同为 `gpt-6-luna`。也可沿用下文 `NativeCompletionTransport` 与 `workflow-codex-completion.mjs`：仅在用户明确授权某个 auth 文件后，以已安装 Pi 原生 Codex provider 只读消费，不复制、刷新或修改认证文件；回环配置中的 apiKeyEnv 仅是独占传输标记。先独立烟测并检查真实 `serverModel`，再将真实决策送入本入口，由原生 OMP/Pi 执行工具；不证明两宿主直接使用 Codex provider 的 wire 合规性。adapter 通过 Node 的安装包解析定位该 Pi 声明的 pi-ai（含嵌套 npm 布局），使用 Node 22.19.0 或满足宿主要求的更新版本。缺授权、依赖或任一宿主证据均非零，不自动发现用户 auth store，不以受控响应替代真实模型。
 
-P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model-cost 存储配置（副本中禁用指向正常服务的 Codex proxy），经公开发起和新进程恢复，各自让真实模型查询新发布的独立字面 Bot.when。原生 SessionManager 历史、chief 工具输入/真实结果、模型请求中的角色指引和最终回答共同作为消费证据；恢复前持有 OS 进程句柄确认退出，恢复后要求不同 PID 及相同原生会话身份。没有 Suite，不把配置文件或 argv 当作已加载。查询没有原生批准操作，因此不伪造确认；只读用户输入和 HTTP/原生历史保留在证据。
+P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model-cost 存储配置（副本中禁用指向正常服务的 Codex proxy），经公开发起和新进程恢复，各自让真实模型查询新发布的独立字面 Bot.when。原生 SessionManager 历史、chief 工具输入/真实结果、模型请求中的角色指引和最终回答共同作为消费证据；恢复前持有 OS 进程句柄确认退出，恢复后要求不同 PID 及相同原生会话身份。没有 Suite，不把配置文件或 argv 当作已加载；角色消费断言检查解码后的实际模型消息中的角色与禁止亲自执行业务边界，不要求只存在于原生历史中的 message marker 被传给 provider。查询没有原生批准操作，因此不伪造确认；只读用户输入和 HTTP/原生历史保留在证据。
 
 `frontend/browser-tests/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
 
