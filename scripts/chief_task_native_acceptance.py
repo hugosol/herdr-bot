@@ -139,6 +139,12 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         self.used_previews.add(preview['response']['previewId'])
         preview['decision'] = {'condition': condition, 'terminal': terminal, 'at': time.monotonic()}
         result = self.settled(preview['branchStart'], preview['label'])
+        preview['chiefReplyObservedAt'] = time.monotonic()
+        if condition == 'approved':
+            # The observer may await an in-flight executor response after the
+            # chief has already replied; this is not a product business wait.
+            until('concurrent native model responses finish', lambda: all(record.get('ended')
+                for record in self.model_wire.records[preview['modelStart']:]), self.args.timeout)
         self.check_model_identity(preview['modelStart'])
         preview['afterHistory'] = result
         return result
