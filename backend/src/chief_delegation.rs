@@ -64,7 +64,7 @@ struct Prepared {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Record {
-    id: String,
+    pub(crate) id: String,
     facts: Facts,
     creation: ChatCreationView,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,6 +115,16 @@ impl Delegations {
         self.access(true, |records| {
             records.push(record);
             Ok(())
+        })
+    }
+    pub(crate) fn sender(&self, session_id: &str) -> io::Result<Option<Record>> {
+        self.access(false, |records| {
+            let mut matches = records.iter().filter(|record| record.session_id.as_deref() == Some(session_id));
+            let record = matches.next().cloned();
+            if matches.next().is_some() {
+                return Err(io::Error::other("native Chat has ambiguous delegation provenance"));
+            }
+            Ok(record)
         })
     }
     pub fn bind(&self, id: &str, session_id: &str) -> io::Result<()> {

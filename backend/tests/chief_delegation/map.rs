@@ -106,7 +106,7 @@ async fn map_preview_requires_explicit_manager_and_all_required_named_materials(
     }
 }
 
-async fn map_fixture() -> (Fixture, Value, Value) {
+pub(super) async fn map_fixture() -> (Fixture, Value, Value) {
     let f = Fixture::new().await;
     let tasks = post(&f.server, "/api/tasks", json!({"name":"flow manager","taskType":"manager","chatName":"manager {chat.id}","agent":"pi","model":"default","prompt":"MANAGER-FIXED-731"})).await;
     let manager = tasks["tasks"].as_array().unwrap().iter().find(|t| t["name"] == "flow manager").unwrap().clone();

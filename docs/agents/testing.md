@@ -72,6 +72,14 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 专项沿用本文件上节的独占资源／进程退出规则；门闩进入预算 5 秒、外部阻塞预算 10 秒、创建完成预算 20 秒，后端启动预算 30 秒，没有新增产品等待或重试策略。外部 CLI 和原生文件是受控协议输入，没有模型请求；不能替代 13 的两宿主原生确认／GPT-6-luna／真实创建阶段审批、14 的报告资格或 19 的恢复验收。完成检查使用本 worktree 构建的静态页面及独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
 
+## Chief 报告持久化与资格回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 通过 S2 HTTP 提交／列表／单份读取、真实独占后端进程和生产 Herdr CLI adapter 验证 P17／P21。报告夹具复用真实 Task Chat／Map Run 的公开委派入口；合法独立 Chat、直接 manager 与无关联身份、同 Task 另一实际 Chat、普通 node 和伪造归属／收件人参数作对比，不通过内部 helper 授权。外部 prompt 门闩进入后先从公开接口读取报告，确认保存先于通知；无 chief 与明确通知失败后均实际终止并重启后端，核对稳定 ID 和完整内容。真实只读 journal 制造保存失败，保存失败无外部通知；接受输入后返回无效回执的 CLI 验证 `uncertain`，不冒充未提交。
+
+所有定义、原生引用、报告 journal、HOME／APPDATA／XDG、动态数值回环端口及 Herdr 副本由当前用例独占。后端 stdout 持续消费、stderr 落在独占目录；Drop 终止并 wait 所属进程，确认退出后才删除临时目录，清理错误不覆盖原始错误。启动预算 30 秒，Chat 完成预算 20 秒，外部门闩进入 5 秒、阻塞 10 秒；实际生产在线 10 秒＋保留 30 秒、维护扫描 5 秒。失败后实际重启并重新登记 chief，再观察 46 秒（超过完整 45 秒维护上界），无新增通知或报告；该有界初始化回归不替代 19 的全部恢复／人工重发矩阵。受控 CLI 仅证明协议／故障，无真实模型请求，不认领 S3／GPT-6-luna 职责证据或 16／19 的独占验收。
+
+完成检查使用当前 worktree 构建的静态页面和独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另运行 `npm --prefix frontend run test:browser:build`。报告持久化仍在后端 `files` authority；chief 和 node 共享 `report_delivery` 的单次保存后通知，但各自持有身份、正文和收件策略。`submitted`／`failed`／`uncertain`／`not-attempted` 是通知事实，不是可靠接收、已呈现或用户验收。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。

@@ -11,7 +11,7 @@ use std::{future::Future, io::Write, sync::Arc};
 /// `diagnostic` contains only body-free identity fields and the event name.
 pub(crate) struct SavedReport<T> {
     pub report: T,
-    pub target: String,
+    pub target: Result<String, Notification>,
     pub text: String,
     pub diagnostic: serde_json::Value,
 }
@@ -20,6 +20,12 @@ pub(crate) struct SavedReport<T> {
 pub(crate) struct Notification {
     status: &'static str,
     reason: String,
+}
+
+impl Notification {
+    pub(crate) fn not_attempted(reason: impl Into<String>) -> Self {
+        Self { status: "not-attempted", reason: reason.into() }
+    }
 }
 
 #[derive(Serialize)]
@@ -46,19 +52,29 @@ pub(crate) async fn save_and_notify<T: Send + 'static>(
 ) -> Result<SubmittedReport<T>, SubmitError> {
     tokio::spawn(async move {
         let SavedReport { report, target, text, mut diagnostic } = save.await?;
-        let (status, reason, diagnostic_reason) = match herdr.prompt(&target, &text).await {
-            Ok(()) => ("submitted", "Herdr 已确认输入提交；不代表已阅读。".to_owned(), "input-submission-confirmed"),
-            // Host details may echo the input. Only the typed category belongs
-            // in diagnostics; the caller still receives the detailed failure.
-            Err(error) => ("failed", error.message(), error.code()),
+        let (notification, diagnostic_reason) = match target {
+            Ok(target) => match herdr.prompt(&target, &text).await {
+                Ok(()) => (Notification { status: "submitted", reason: "Herdr 已确认输入提交；不代表可靠接收、已呈现或已阅读。".into() }, "input-submission-confirmed"),
+                // Host details may echo the input. Only the typed category
+                // belongs in diagnostics; the caller receives the full failure.
+                Err(error) => {
+                    use crate::chats::herdr::HerdrError;
+                    let status = match &error {
+                        HerdrError::NotStarted(_) | HerdrError::CommandFailed { .. } => "failed",
+                        _ => "uncertain",
+                    };
+                    (Notification { status, reason: error.message() }, error.code())
+                }
+            },
+            Err(notification) => (notification, "no-authorized-recipient"),
         };
-        diagnostic["result"] = status.into();
+        diagnostic["result"] = notification.status.into();
         diagnostic["reason"] = diagnostic_reason.into();
         // A broken diagnostic sink must not panic or cause another attempt.
         let diagnostic_status = if writeln!(std::io::stderr().lock(), "{diagnostic}").is_ok() { "written" } else { "failed" };
         Ok(SubmittedReport {
             report,
-            notification: Notification { status, reason },
+            notification,
             diagnostic: Diagnostic { status: diagnostic_status },
         })
     }).await.map_err(SubmitError::Internal)?.map_err(SubmitError::Save)
