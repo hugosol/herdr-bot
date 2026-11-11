@@ -86,6 +86,20 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 
 专项沿用本文件上节的独占资源／进程退出规则；门闩进入预算 5 秒、外部阻塞预算 10 秒、创建完成预算 20 秒，后端启动预算 30 秒，没有新增产品等待或重试策略。外部 CLI 和原生文件是受控协议输入，没有模型请求；不能替代 13 的两宿主原生确认／GPT-6-luna／真实创建阶段审批、14 的报告资格或 19 的恢复验收。完成检查使用本 worktree 构建的静态页面及独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
 
+## Chief Map 与能力创建跨仓专项
+
+从显式 Herdr worktree 根运行 `python scripts/accept-chief-map.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。所有路径必须绝对，证据目录必须不存在。模型配置、只读授权 Codex adapter／`NativeCompletionTransport` 和返回身份要求沿用上文入口专项；只允许 GPT-6-luna，不自动发现认证或重试模型决策。后端旁置当前 worktree 的 `herdr-paths`，页面与后端均须由参与源码构建。
+
+`chief_map_native_acceptance.py` 独占 P9 的 Map 修正、P10 的 Map 原生确认、P12 的 manager／node 位置与内部管理关系、P14/P15 的完整创建能力选择与否决后授权、P16 的创建阶段批准和结果后无新业务。每个宿主／场景独占 Herdr、HOME／APPDATA／XDG、定义、存储、动态回环端口和原生会话；复用进程句柄退出确认与原始错误／清理错误分别保留。创建目标使用交付的完整 Task＋Bot／Map 创建定义，保留节点 Task 的真实 Suite／Skill／宿主和原有审批，只将物理位置、模型传输和存储移至独占根；原生 MCP 必须支持既有隔离 selectors，不能接入账户 daemon。
+
+测试独占部署还加载 `scripts/chief-ui-observer.mjs` 的副本：仅透传观察安装宿主公开 `ui.confirm` 的原始参数、原始返回／异常与真实 abort 时刻，不选择工具、不修改确认内容或结果、不代用户批准。每条观察原子发布；专项把实际原生消息内的完整 JSON 与 HTTP 预览及提交载荷分别比较，观察缺失不能通过。原生键选择和真实历史仍独立保留。
+
+P15 的四种输入均先取得真实匹配复用建议，再分别仅否决、明确创建 Task、明确创建 Map、放弃；不能用本来没有复用候选的场景冒充否决边界。P16 分别保留实际阶段候选的拒绝／受阻返回，以及真实成功创建后无新业务的场景。成功案例只走所选既有创建流程需要的真实逐阶段正文／保存批准、独立原生报告批准和交接；核对实际新 Task＋完整 Bot 或多节点 Map，不追加创建产品的完整质量验收。创建观察预算为 `20 × --timeout` 秒（默认 3600 秒），与生产等待策略无关；拒绝／受阻不能冲抵成功创建后的授权边界。
+
+原生确认预算 20 秒、请求预算 30 秒；拒绝／取消／超时／陈旧批准及创建结果后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒维护上界。实际生产预算不改写为测试重试策略。`tests/harness-dock/chief-map-unavailable.test.ts` 是明确标注的受控 provider／peer、真实安装宿主无 UI 机械故障用例，不证明真实模型业务选择；其原生 2 秒预算使用真实进程时钟。其它业务场景须有 GPT-6-luna 返回身份、实际历史、完整工具／HTTP 及公开 Run 事实，不能用 dock 或全局套件结果冲抵。
+
+`CHIEF_MAP_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-map.test.py` 仅验证 CLI 的缺依赖／错误模型 fail-closed、拒绝相对路径与不覆盖旧证据。过滤单宿主不能通过整体双宿主覆盖。两仓仍分别完成票据要求的完整构建／后端／前端／浏览器及 Bun typecheck／test／check:integrations，配对 dock 必须使用本次安全关机壳与 worktree 元数据，不能用生产后端运行关机回归。
+
 ## Chief 报告持久化与资格回归
 
 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 通过 S2 HTTP 提交／列表／单份读取、真实独占后端进程和生产 Herdr CLI adapter 验证 P17／P21。报告夹具复用真实 Task Chat／Map Run 的公开委派入口；合法独立 Chat、直接 manager 与无关联身份、同 Task 另一实际 Chat、普通 node 和伪造归属／收件人参数作对比，不通过内部 helper 授权。外部 prompt 门闩进入后先从公开接口读取报告，确认保存先于通知；无 chief 与明确通知失败后均实际终止并重启后端，核对稳定 ID 和完整内容。真实只读 journal 制造保存失败，保存失败无外部通知；接受输入后返回无效回执的 CLI 验证 `uncertain`，不冒充未提交。
