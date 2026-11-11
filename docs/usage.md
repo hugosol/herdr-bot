@@ -263,6 +263,20 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 只切换 zone 不重置 model、thinking 或初始 input。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
 
+## 当前 chief 的后端权威
+
+chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/resume` 定位或恢复；所有入口共享同一占位，不按浏览器、zone 或 Task 分区。占位先持久保存再调用 Herdr；chief 启动须在提交初始输入前确认真实原生身份并保存来源。普通会话的名称、客户端声明角色或同名 Task 不授予 chief 资格。
+
+- `GET /api/chief` 返回 `{current: null}` 或 `{current: {claimId, creationId?, sessionId?, phase}}`。`claimId` 是本次授权身份，不是密码；`creationId` 对应既有创建进度，`sessionId` 仅在原生身份已确认或用户明确恢复该历史 Chat 时出现。
+- `phase` 为 `starting`（新发起）、`resuming`（恢复占位）、`awaiting-registration`（身份已确认，等待登记）、`registered`（当前登记保留）或 `uncertain`（已尝试的外部效果未确认）。不能把无 `sessionId` 的占位或 `uncertain` 当作“没有 chief”再次发起。
+- `POST /api/chief/qualify` 接受 `{sessionId}`，只有当前 `registered` 身份返回 `{current: {...}}`；其余返回 `409 chief-not-current`。委派与报告接收消费者在实际授权点重新判断，不缓存先前的成功回执，不以工具存在或 Task 类型代替当前资格。
+- 已有 `POST /api/sessions/events` 的 register / unregister 与维护扫描共同维护资格。离线但仍保留的登记继续占位；超过在线与离线窗口并被扫描清除，或明确 unregister，才释放其授权。旧进程不被强制终止，迟到 register 不会恢复已撤销的 chief 身份；可由用户显式 Resume 重新竞争空位。
+- `POST /api/chief/release` 接受当前 `{claimId}`，明确注销该授权，返回 `{current:null, released:{...}}`；陈旧 claim 返回 `409 chief-not-current`。这也用于用户检查不确定的外部现场后明确解除尚未绑定的占位。不会终止进程、删除原生 Chat 或把不确定效果改称未发生；已解除的事实仍保存在权威记录中。
+
+冲突的发起／恢复／登记返回 `409 chief-occupied`，不排队或自动重试。明确的外部启动拒绝释放未绑定占位；超时、不可理解响应或无法观察外部命令结束保留占位与不确定事实。权威存储失败返回 `chief-storage-failed`，不当作空状态继续启动。
+
+权威记录位于 `sessions.history_file` 同目录、以 `chief.json` 替换其扩展名的独立文件（如 `history.json` → `history.chief.json`），使用既有原子持久化。后端重启仍按 ADR-0006 清空会话登记，原当前 chief 可重新登记竞争；已被其他 chief 取代的旧身份不会因重启复权。尚未完成登记的发起／恢复占位跨重启保留，避免把外部结果不明当作未创建。这里只约束后端认可的有效职责，不承诺唯一存活进程，也不迁移对话上下文。
+
 ## Task 类型与固定角色扩展
 
 在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）、流程管理者（`manager`）或需求分流者（`chief`）。三种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及 Suite 选择。普通 Task 既可从 zone 或 Task 列表独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行；chief 不可作为节点执行目标或 Run 管理者，角色不由名称推断。

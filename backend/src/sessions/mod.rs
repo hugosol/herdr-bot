@@ -225,6 +225,7 @@ pub struct SessionsState {
     clock: Arc<dyn Clock>,
     inner: Mutex<Inner>,
     hub: Arc<Hub>,
+    chief: std::sync::OnceLock<Arc<crate::chief::Authority>>,
 }
 
 struct Inner {
@@ -275,10 +276,15 @@ impl SessionsState {
                 rows: HashMap::new(),
             }),
             hub: Arc::new(Hub::new()),
+            chief: std::sync::OnceLock::new(),
         }
     }
 
     /// 本实例生效的窗口策略。
+    pub(crate) fn attach_chief(&self, chief: Arc<crate::chief::Authority>) {
+        assert!(self.chief.set(chief).is_ok(), "session table belongs to one backend authority");
+    }
+
     pub fn policy(&self) -> SessionPolicy {
         self.policy
     }
@@ -323,6 +329,8 @@ impl SessionsState {
     /// 清除是**唯一**的自动移除路径（超过两个窗口之和），显式 `unregister` 则立即移除；离线行本身在保留期
     /// 内不老化、不移除。
     pub async fn scan_expired(&self) {
+        let chief = self.chief.get();
+        let _membership = match chief { Some(chief) => Some(chief.membership.lock().await), None => None };
         let policy = self.policy;
         let now = self.now();
         // 整次扫描在一把锁内完成：map 读写与广播发送都不跨 `.await`，广播顺序与可见变化的发生顺序一致。
@@ -332,6 +340,12 @@ impl SessionsState {
         for (session_id, row) in inner.rows.iter_mut() {
             if policy.is_expired(row.last_seen, now) {
                 // 超过两个窗口之和：登记被清除，只发布移除（不先发一帧「离线」再发移除）。
+                if let Some(chief) = chief {
+                    if let Err(error) = chief.remove(session_id) {
+                        eprintln!("chief expiry persistence failed session={session_id}: {error:?}");
+                        continue; // Keep membership and authority together on storage failure.
+                    }
+                }
                 expired.push(session_id.clone());
                 continue;
             }
@@ -667,6 +681,19 @@ pub(crate) async fn post_session_event(
             "会话事件无法解析：请发送 {sessionId, kind, data} 形式的合法事件。",
         );
     };
+
+    let _membership = state.chief.membership.lock().await;
+    match &event {
+        SessionEvent::Register { session_id, .. } => {
+            if let Err(error) = state.chief.register(session_id) { return error.response(); }
+        }
+        SessionEvent::Unregister { session_id } => {
+            if state.sessions.snapshot().await.iter().any(|session|&session.session_id==session_id) {
+                if let Err(error) = state.chief.remove(session_id) { return error.response(); }
+            }
+        }
+        _ => {}
+    }
 
     // Keep registration acceptance and history persistence independent. All protocol and
     // source validation has completed before this explicit register can reach history.
