@@ -8,7 +8,7 @@ const suite: Suite = {
 }
 const catalog = {
   suites: [suite], mcp: ['search'],
-  fixedExtensions: [{ id: 'pi-connect-bot', label: '连接 Bot', agent: 'pi', kind: 'fixed', entrypoint: '/fixed/connect.ts', roles: ['standalone', 'manager', 'node', 'chief'] }],
+  fixedExtensions: [{ id: 'pi-connect-bot', label: '连接 Bot', agent: 'pi', kind: 'fixed', entrypoint: '/fixed/connect.ts', roles: ['standalone', 'manager', 'node', 'chief', 'chief-delegated'] }],
 }
 
 afterEach(() => vi.unstubAllGlobals())

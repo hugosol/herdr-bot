@@ -4,7 +4,7 @@
 
 ## Chief 报告保存与通知
 
-两宿主的 `omp-chief-report`／`pi-chief-report` 固定入口只装配到 chief 实际委派的独立普通 Chat；普通 Task 的其他独立 Chat 不因此获得报告角色。预览、批准后启动及新进程恢复均沿用该真实关联，不把独立发送者伪装成 workflow node。直接 Map manager 由 manager-chat 提供同名 `chief_report`；内部 node 继续使用自己的 `report`。原生工具每次展示完整报告并单独确认，固定入口存在不授予后端报告资格。
+两宿主的 `omp-chief-report`／`pi-chief-report` 固定入口只装配到 chief 实际委派的独立普通 Chat；普通 Task 的其他独立 Chat 不因此获得报告角色。预览、批准后启动及新进程恢复均沿用该真实关联，不把独立发送者伪装成 workflow node。直接 Map manager 由 manager-chat 提供同名 `chief_report`；内部 node 继续使用自己的 `report`。原生工具每次展示完整报告并单独确认，固定入口存在不授予后端报告资格。Suite 固定扩展区将该适用角色显示为“chief委派独立Chat”，它不是新的 Task 类型。
 
 `POST /api/chief/reports` 是同机工具的报告提交入口。请求只接受 `sessionId` 和 `body`；后端按真实委派记录授权独立 Chat 或直接 Map manager，不按 Task 名称、扩展是否加载或调用者提供的 Bot／Run／收件人参数授权。Map 内部节点仍用 `/api/workflow/node/report` 向自己的 manager 报告。
 
