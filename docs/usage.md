@@ -2,6 +2,16 @@
 
 本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
 
+## Chief 报告保存与通知
+
+`POST /api/chief/reports` 是同机工具的报告提交入口。请求只接受 `sessionId` 和 `body`；后端按真实委派记录授权独立 Chat 或直接 Map manager，不按 Task 名称、扩展是否加载或调用者提供的 Bot／Run／收件人参数授权。Map 内部节点仍用 `/api/workflow/node/report` 向自己的 manager 报告。
+
+`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存内容，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+
+后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才查询当前有效 chief 的真实原生身份并尝试一次通知；没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
+
+`GET /api/chief/reports` 返回全部已存报告；`?sessionId=<发送方原生身份>` 过滤发送方。`GET /api/chief/reports/{id}` 读取同一稳定报告，包括新 chief 没有原始委派上下文时。原报告只读；没有更新／删除入口。初始化、后端重启、会话恢复和时间流逝均不扫描或补投；本入口没有后台重试。后续接收确认与用户明确批准的人工重发使用原报告 ID／内容，不应重新提交业务报告。
+
 ## 界面外观
 
 全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的 `report_policy` 标识中，手动报告使用蓝色，自动报告使用琥珀色；`auto_close` 配色不受此互换影响。

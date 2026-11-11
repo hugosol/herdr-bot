@@ -204,7 +204,7 @@ pub async fn node_report(
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
         let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to});
-        Ok(SavedReport { target: report.to.agent_name.clone(), report, text, diagnostic })
+        Ok(SavedReport { target: Ok(report.to.agent_name.clone()), report, text, diagnostic })
     }).await;
     match work {
         Ok(submitted) => Json(serde_json::json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"})).into_response(),

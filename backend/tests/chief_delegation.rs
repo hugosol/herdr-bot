@@ -6,6 +6,8 @@ use common::{HerdrFixture, HttpResponse, TempDir, get_over_tcp, post_json_over_t
 mod process;
 #[path = "chief_delegation/map.rs"]
 mod map;
+#[path = "chief_delegation/reports.rs"]
+mod reports;
 use process::TestServer;
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
