@@ -80,6 +80,14 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 完成检查使用当前 worktree 构建的静态页面和独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另运行 `npm --prefix frontend run test:browser:build`。报告持久化仍在后端 `files` authority；chief 和 node 共享 `report_delivery` 的单次保存后通知，但各自持有身份、正文和收件策略。`submitted`／`failed`／`uncertain`／`not-attempted` 是通知事实，不是可靠接收、已呈现或用户验收。
 
+## Chief 持久接收与人工恢复回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation receipts:: -- --nocapture` 经批准的 S2 HTTP seam、实际独占后端进程及生产 Herdr CLI adapter 覆盖 17 的开发回归：并发 `receive` 只有一个 `process:true`、接收记录实际重启后读回；人工重发不改变报告 ID／正文、不另建报告，通知只到替换后的当前 chief；重复／并发重发已接收报告不再通知；丢失接收响应并在呈现前终止后端后不重播，当前 chief 可明确 `view` 原报告；只读接收 journal 的真实保存失败不授予处理；外部 inventory 门闩期间接收／撤销会使旧通知授权失效，而已进入外部输入提交的效果不被虚构撤回；独立执行者与直接 Map manager 实际 Resume 保留原报告／委派关联且没有新增 Run 或初始输入重放，同 Task 的另一真实 Chat 仍被拒绝。重复认领临时变异为 `process:true` 时并发用例必须在“两个处理胜者”断言失败，正确实现恢复后确认通过。
+
+每例复用本文件前述独占定义／历史／journal／HOME／APPDATA／XDG、数值回环动态端口、持续消费日志和终止后 wait 所属进程规则；不访问用户 Chat 或凭据。后端启动预算 30 秒、Chat 完成 20 秒、门闩进入／接收事实观察 5 秒、外部阻塞 10 秒、释放后操作完成 15 秒。接收后崩溃专项在实际后端重启／重新登记后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒扫描完整上界，核对没有新通知／业务报告；没有增加产品等待／重试策略。真实 TCP caller 只在公开 receipt 确认提交后丢弃未读取的响应，避免把尚未被 HTTP 接受的请求取消当成回执丢失。受控 CLI 仅证明传输、持久化、竞态和故障，不证明原生模型已呈现或用户已读；没有实际模型调用，不替代 19 的双宿主恢复矩阵或 20 的原生交接验收。
+
+完成检查仍使用本 worktree 构建的静态页面、独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另执行 `npm --prefix frontend run test:browser:build`。新增公开 API 的精确请求／响应和接收取舍见[使用说明](../usage.md#持久接收人工重发与查看)。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。

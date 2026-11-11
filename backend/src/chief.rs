@@ -160,7 +160,16 @@ impl Authority {
     /// Consumers must call this at the actual dispatch/receipt authorization
     /// point, not cache a previous success or infer authority from Task type.
     pub fn qualify(&self, session_id: &str) -> Result<Claim,Error> {
-        self.with(|ledger|ledger.current.as_ref().filter(|claim|claim.session_id.as_deref()==Some(session_id) && claim.phase=="registered").cloned().ok_or(Error::NotCurrent))
+        self.authorize(session_id, |claim| Ok(claim.clone()))
+    }
+    /// Serialize a local authorization commit with replacement/revocation. The
+    /// operation must not await or perform external effects: an authorization
+    /// already committed here is not a promise to retract external input.
+    pub fn authorize<T>(&self, session_id: &str, operation: impl FnOnce(&Claim) -> Result<T, Error>) -> Result<T, Error> {
+        self.with(|ledger| {
+            let claim = ledger.current.as_ref().filter(|claim| claim.session_id.as_deref()==Some(session_id) && claim.phase=="registered").ok_or(Error::NotCurrent)?;
+            operation(claim)
+        })
     }
 }
 pub(crate) async fn is_chief(state:&AppState,selected:&crate::chats::history::HistorySelection) -> Result<bool,Response> {

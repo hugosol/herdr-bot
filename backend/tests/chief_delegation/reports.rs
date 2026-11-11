@@ -1,18 +1,18 @@
 use super::*;
 
-fn content(result: &str) -> Value {
+pub(super) fn content(result: &str) -> Value {
     json!({"background":"User requested a private brief summary; publishing was forbidden.","execution":"Brief analyst, supplied brief 731, work-zone","result":result,"summary":"The brief was analyzed; publication remains blocked pending user decision.","deliverables":["C:/isolated-delivery/summary.txt"],"pendingDecisions":["Does the summary meet the request?"]})
 }
-async fn delegated(f: &Fixture) -> Value {
+pub(super) async fn delegated(f: &Fixture) -> Value {
     let preview = f.preview().await;
     let accepted = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 202);
     assert_eq!(terminal(&f.server, accepted["id"].as_str().unwrap()).await["stage"], "succeeded");
     accepted
 }
-fn prompts(f: &Fixture) -> usize {
+pub(super) fn prompts(f: &Fixture) -> usize {
     f.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count()
 }
-fn notification_behavior(f: &Fixture, mut behavior: Value) {
+pub(super) fn notification_behavior(f: &Fixture, mut behavior: Value) {
     let mut chief = common::read_json_lines(&f.herdr.path().join("started.jsonl"))[0].clone();
     chief["agent"] = json!("pi");
     chief["agent_session"] = json!({"source":"herdr:pi","agent":"pi","kind":"path","value":f.root.path().join("chief-a.jsonl")});
