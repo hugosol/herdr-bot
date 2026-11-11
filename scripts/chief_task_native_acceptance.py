@@ -101,7 +101,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         body = json.loads(record['response'])
         if body['previewId'] in self.used_previews:
             return None
-        terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--lines', '1000', '--format', 'text'])
+        terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--source', 'visible', '--format', 'text'])
         if '确认 Bot 委派启动' not in terminal or 'Yes' not in terminal or 'No' not in terminal:
             return None
         history = self.native(self.chief)
@@ -123,18 +123,19 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         return preview
 
     def decide(self, preview, condition):
-        # Native UI must visibly select the requested action before Enter.
+        # Select the user's decision explicitly; no promise fixes the host's default.
         terminal = preview['terminal']
-        require('→ Yes' in terminal or '❯ Yes' in terminal, 'Native UI default choice is not visibly Yes')
-        if condition == 'denied':
-            self.herdr('agent', 'send-keys', self.chief['paneId'], 'down')
-            terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--format', 'text'])
-            require('→ No' in terminal or '❯ No' in terminal, 'Native denial choice not visibly selected')
+        if condition not in ['cancelled', 'timeout']:
+            choice = 'No' if condition == 'denied' else 'Yes'
+            def selected(screen):
+                return any(arrow + ' ' + choice in screen for arrow in ['→', '❯'])
+            if not selected(terminal):
+                self.herdr('agent', 'send-keys', self.chief['paneId'], 'down' if choice == 'No' else 'up')
+                terminal = self.command([self.args.herdr, 'pane', 'read', self.chief['paneId'], '--source', 'visible', '--format', 'text'])
+            require(selected(terminal), 'Requested native ' + choice + ' choice is not visibly selected')
             self.herdr('agent', 'send-keys', self.chief['paneId'], 'enter')
         elif condition == 'cancelled':
             self.herdr('agent', 'send-keys', self.chief['paneId'], 'esc')
-        elif condition != 'timeout':
-            self.herdr('agent', 'send-keys', self.chief['paneId'], 'enter')
         self.used_previews.add(preview['response']['previewId'])
         preview['decision'] = {'condition': condition, 'terminal': terminal, 'at': time.monotonic()}
         result = self.settled(preview['branchStart'], preview['label'])
