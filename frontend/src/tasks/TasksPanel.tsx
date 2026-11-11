@@ -497,7 +497,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
                       disabled={saving || deleting !== null}
                       onSave={name => renameTask(task.id, name)}
                     />
-                    <p className="task-item__meta"><span className="task-item__agent">{task.agent}</span><span>{task.taskType === 'manager' ? '流程管理者' : '普通 Task'}</span></p>
+                    <p className="task-item__meta"><span className="task-item__agent">{task.agent}</span><span>{task.taskType === 'manager' ? '流程管理者' : task.taskType === 'chief' ? '需求分流者' : '普通 Task'}</span></p>
                   </div>
                   <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>
                   <div className="task-item__suite"><span className="task-item__label">Suite</span><p>{suiteLabel(task, data.options)}</p></div>
@@ -664,8 +664,9 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
                   value={draft.taskType} onChange={(event) => changeType(event.target.value as TaskInput['taskType'])} disabled={saving}>
                   <option value="normal">普通（normal）</option>
                   <option value="manager">流程管理者（manager）</option>
+                  <option value="chief">需求分流者（chief）</option>
                 </select>
-                <p className="task-hint">普通 Task 支持独立启动和 Bot 节点绑定；manager 专用于流程管理。两种类型均支持 omp 和 pi，节点角色仅在实际流程执行时加载。</p>
+                <p className="task-hint">普通 Task 支持独立启动和 Bot 节点绑定；manager 专用于流程管理；chief 用于需求分流，不可作为节点或 Run 管理者。三种类型均支持 omp 和 pi，节点角色仅在实际流程执行时加载。</p>
 
                 <label className="zone-form__label" htmlFor="task-agent">
                   agent

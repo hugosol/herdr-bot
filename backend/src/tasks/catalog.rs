@@ -75,11 +75,11 @@ pub(crate) struct FixedExtensionOption {
 
 /// Runtime context is supplied by the launch owner, never by extension metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionRole { Standalone, Manager, Node, NestedManager }
+pub enum ExecutionRole { Standalone, Manager, Node, NestedManager, Chief }
 
 impl From<TaskType> for ExecutionRole {
     fn from(task_type: TaskType) -> Self {
-        match task_type { TaskType::Normal => Self::Standalone, TaskType::Manager => Self::Manager }
+        match task_type { TaskType::Normal => Self::Standalone, TaskType::Manager => Self::Manager, TaskType::Chief => Self::Chief }
     }
 }
 
@@ -98,7 +98,7 @@ impl Catalog {
             }
             extension.entrypoint = roots.resolve(&extension.entrypoint, path.parent().unwrap_or_else(|| Path::new(".")))
                 .map_err(|error| TaskError::Metadata(format!("扩展 {} 路径：{error:#}", extension.id)))?;
-            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node")]
+            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node"), (ExecutionRole::Chief, "chief")]
                 .into_iter().filter_map(|(role, name)| extension.applies_to(extension.agent, role).then_some(name)).collect();
             options.push(FixedExtensionOption { extension, roles });
         }
@@ -376,7 +376,7 @@ impl Catalog {
     /// become invalid since the Task was saved and are deliberately not consulted.
     pub fn resolve_env(&self, agent: Agent, role: ExecutionRole) -> Result<ResolvedEnvConfig, TaskError> {
         let required: &[ExecutionRole] = match role {
-            ExecutionRole::Standalone => &[],
+            ExecutionRole::Standalone | ExecutionRole::Chief => &[],
             ExecutionRole::NestedManager => &[ExecutionRole::Manager, ExecutionRole::Node],
             ExecutionRole::Manager => &[ExecutionRole::Manager],
             ExecutionRole::Node => &[ExecutionRole::Node],

@@ -15,7 +15,7 @@ export type SuiteFixedExtension = {
   agent: 'omp' | 'pi'
   kind: 'fixed'
   entrypoint: string
-  roles: ('standalone' | 'manager' | 'node')[]
+  roles: ('standalone' | 'manager' | 'node' | 'chief')[]
 }
 export type SuiteList = { suites: Suite[]; mcp: string[]; fixedExtensions: SuiteFixedExtension[] }
 
@@ -41,7 +41,7 @@ export async function suiteRequest(method = 'GET', id?: string, suite?: Suite): 
       return typeof option.id === 'string' && typeof option.label === 'string'
         && (option.agent === 'omp' || option.agent === 'pi')
         && option.kind === 'fixed' && typeof option.entrypoint === 'string'
-        && Array.isArray(option.roles) && option.roles.every(role => role === 'standalone' || role === 'manager' || role === 'node')
+        && Array.isArray(option.roles) && option.roles.every(role => role === 'standalone' || role === 'manager' || role === 'node' || role === 'chief')
     })) throw new Error('Suite 响应无效，未确认保存。')
   return result as SuiteList
 }

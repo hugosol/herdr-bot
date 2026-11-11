@@ -187,7 +187,7 @@ mod degradation {
         pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole) -> crate::tasks::catalog::ResolvedEnvConfig {
             use crate::tasks::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
             let role_names: &[&str] = match role {
-                ExecutionRole::Standalone => &[],
+                ExecutionRole::Standalone | ExecutionRole::Chief => &[],
                 ExecutionRole::Manager => &["manager"],
                 ExecutionRole::Node => &["node"],
                 ExecutionRole::NestedManager => &["manager", "node"],

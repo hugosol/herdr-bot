@@ -92,6 +92,40 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     (data, herdr, config, server, zone, ids)
 }
 
+// Chief P3 / S2: normal remains the node target, manager the Run target.
+// A broad "not normal means manager" (or "not manager means normal") check
+// would accept chief. Observe rejection at both public preflight and start;
+// the controlled Herdr boundary must never be called for these invalid roles.
+#[tokio::test]
+async fn chief_is_neither_a_node_target_nor_a_run_manager() {
+    let (_data, herdr, _config, server, zone, ids) = fixture().await;
+    let input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Explicit role separation"});
+    let valid = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/preflight", &input.to_string()).await;
+    assert_eq!(valid.status, 200, "normal node and manager must remain valid: {}", valid.body);
+    for (index, original, invalid, target) in [
+        (0, "manager", "normal", "manager"),
+        (0, "manager", "chief", "manager"),
+        (1, "normal", "manager", "task"),
+        (1, "normal", "chief", "task"),
+    ] {
+        let route = format!("/api/tasks/{}", ids[index]);
+        let mut task = json!({"name":"chief-bot", "taskType":invalid, "agent":"omp",
+            "chatName":"{chat.id}", "model":"default", "thinking":"default", "skill":null,"prompt":""});
+        let changed = common::request_json_over_tcp(server.addr(), "PUT", &route, Some(&task.to_string())).await;
+        assert_eq!(changed.status, 200, "{}", changed.body);
+        for action in ["preflight", "runs"] {
+            let rejected = post_json_over_tcp(server.addr(), &format!("/api/scheduler/maps/work.json/{action}"), &input.to_string()).await;
+            assert_eq!(rejected.status, 400, "{target} {invalid}: {}", rejected.body);
+            let body: Value = serde_json::from_str(&rejected.body).unwrap();
+            assert!(body["issues"].as_array().unwrap().iter().any(|issue| issue["code"] == "task-role-invalid" && issue["target"] == target && issue["taskId"] == ids[index]), "{body}");
+        }
+        task["taskType"] = json!(original);
+        let restored = common::request_json_over_tcp(server.addr(), "PUT", &route, Some(&task.to_string())).await;
+        assert_eq!(restored.status, 200, "{}", restored.body);
+    }
+    assert!(herdr.calls().is_empty());
+}
+
 // S2, nesting P08: descriptions roundtrip literally and empty descriptions stay
 // omitted. Invalid descriptions and duplicate IDs reject before publication;
 // a second Map distinguishes local uniqueness from global uniqueness.
