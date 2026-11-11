@@ -273,6 +273,8 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 默认 zone 未登记时，显示“请选择已登记 zone”，创建按钮保持禁用；必须手动选择有效登记，不自动选用唯一项，也不创建目录或绑定。Herdr Workspace、初始 input 与成功／失败反馈继续使用同一窗口。启动与其他浏览器竞争时以服务端接受／拒绝为准，不自动重试。
 
+交付选项目录为两宿主声明 `omp-chief-chat`／`pi-chief-chat` 固定入口，按 chief 执行角色装配；普通与 manager Task 不加载该角色。chief 未选 Suite 时也适用，公开发起及新进程恢复都从当前来源 Task 和选项目录取得环境；固定加载本身不授予当前 chief 权限。原生只读 `chief_definitions` 查询及角色指引是否实际消费，由跨仓入口专项分别验证，不由扩展清单或启动成功推断。
+
 ## 当前 chief 的后端权威
 
 chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/resume` 定位或恢复；所有入口共享同一占位，不按浏览器、zone 或 Task 分区。占位先持久保存再调用 Herdr；chief 启动须在提交初始输入前确认真实原生身份并保存来源。普通会话的名称、客户端声明角色或同名 Task 不授予 chief 资格。

@@ -46,6 +46,20 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 附件 `chief-entry-evidence` 记录源码、锁文件、当前 worktree 二进制与页面哈希、Chrome channel／实际版本、外部调用与诊断；专项另保留默认窗口／缺 zone 截图及公开定义／提交读回。Herdr 响应受控、原生文件是测试独占协议输入，没有实际模型请求，不证明真实 Herdr／OMP／Pi 消费或 GPT-6-luna 角色行为；这些仍由其具名跨仓验收拥有。不得把本专项通过外推为 S3 通过。
 
+## Chief 跨仓入口与生命周期专项
+
+`python scripts/accept-chief-entry.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 是 P7/P29/P30 的独立验收入口。从显式 Herdr worktree 根运行，所有路径须为绝对路径，证据目录必须不存在；Python 3.11+。使用本 worktree 构建的页面、生产后端及旁置 `herdr-paths`、`herdr-fixture`，独立绝对 `CARGO_TARGET_DIR`。两仓依赖按各自 frozen lock 安装，Bun 1.4.4。入口不安装宿主、不读用户认证、不回退模型、不重试业务决策。
+
+隔离 paths TOML 使用已有 Rust 路径解析器，声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`（后两项是具体官方扩展文件）、`chrome`（含 chrome.exe 的安装目录），以及交付固定扩展所需根。模型配置使用既有真实模型设施的 `provider/model/baseUrl/apiKeyEnv` JSON，model 严格为 `gpt-6-luna`，密钥仅来自显式授权的环境变量；返回 model 身份必须同为 `gpt-6-luna`。缺授权、依赖或任一宿主证据均非零，不允许使用用户 auth store 或受控响应替代真实模型。
+
+P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model-cost 存储配置（副本中禁用指向正常服务的 Codex proxy），经公开发起和新进程恢复，各自让真实模型查询新发布的独立字面 Bot.when。原生 SessionManager 历史、chief 工具输入/真实结果、模型请求中的角色指引和最终回答共同作为消费证据；恢复前持有 OS 进程句柄确认退出，恢复后要求不同 PID 及相同原生会话身份。没有 Suite，不把配置文件或 argv 当作已加载。查询没有原生批准操作，因此不伪造确认；只读用户输入和 HTTP/原生历史保留在证据。
+
+`frontend/browser-tests/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
+
+定向反馈：`npm --prefix frontend run test:browser:build -- chiefEntryAcceptance.spec.ts --workers=1`；CLI 安全回归：设置 `CHIEF_ENTRY_TOOLKIT` 为参与 toolkit worktree 后运行 `python scripts/accept-chief-entry.test.py`。后者只证明缺依赖 fail-closed、拒绝相对路径及不覆盖旧证据，不证明业务通过。完整专项逐项记录原始错误/清理错误、源码与锁文件/安装身份、HTTP、配置阈值与实际观察；退出并确认所属进程结束后才清理。
+
+完成检查仍分别运行本仓 `npm --prefix frontend run build`、`cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell`、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`；toolkit 顺序运行 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和 `bun test tests/harness-dock/chief-role.test.ts`。配对 dock 的 `HERDR_BOT_BINARY` 必须是本次 `safe_shutdown_shell.exe`、`HERDR_BOT_METADATA` 为本次 worktree 元数据，不能以生产后端执行关机回归。全局回归、单宿主或 CLI fail-closed 通过均不代替双宿主专项成功。
+
 ## Chief 权威的进程与失败回归
 
 `cargo test --manifest-path backend/Cargo.toml --test chief_authority -- --nocapture` 经公开 HTTP、真实独占后端进程及生产 CLI adapter 验证 P32/P33。`p32_real_restart_serializes_live_registration_and_resume_before_external_completion` 正常发起两份不同 zone／Task 的 chief 历史、注销、实际终止并重启后端，在外部 Herdr 查询门闩处保持 Resume 未完成，让存活登记与另一恢复调用竞争，核对当前权威与 qualify 的胜负；再次实际重启验证被替代身份不能复权。附带 S2 开发回归以实际默认 10 秒在线／30 秒保留策略和受控时刻验证离线占位、扫描移除及消费者失权，不替代 07 的浏览器 P29/P30 或 20 的原生交接 P31 全验收。
