@@ -358,6 +358,12 @@ impl HerdrClient {
         self.read_native_session(target, kind, deadline, false, true).await
     }
 
+    /// A delegated launch must independently verify its approved working
+    /// directory even when the agent reuses an existing native session file.
+    pub(crate) async fn started_session_with_live_cwd(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        self.read_native_session(target, kind, deadline, true, true).await
+    }
+
     /// Restoration must observe the process cwd, not merely the old file header.
     pub(crate) async fn restored_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
         self.read_native_session(target, kind, deadline, true, false).await

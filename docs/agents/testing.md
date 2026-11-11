@@ -54,6 +54,12 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 每例独占原子临时目录、定义、历史、权威存储、HOME／APPDATA／XDG 和数值回环动态端口。后端 stdout 持续消费，stderr 落在该例独占目录；Drop 终止并 wait 所属后端，确认结束再删除临时目录，不接触正常服务或用户 Chat。进程启动预算 30 秒，创建完成 20 秒，外部查询进入 5 秒、门闩 10 秒、释放后 Resume 完成 15 秒；不新增产品等待／重试策略。本专项是 S2 进程与公开操作证据，不以受控 CLI 充当 S3 原生宿主证据。完成检查仍需本 worktree 独立绝对 `CARGO_TARGET_DIR`、本 worktree 构建静态页及 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另按入口要求运行 `npm --prefix frontend run test:browser:build`。
 
+## chief 独立 Task Chat 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture` 经过 S2 公开 HTTP、真实后端进程、独占临时 Bot／Task／zone／历史／委派存储及生产 Herdr CLI adapter，验证明确业务输入与材料地址、完整预览载荷、Task 目标／zone 改绑后的拒绝、旧 chief 失权、启动／投递失败和不确定反馈。外部 prompt 门闩在接受输入前读回真实 sender 关联；实际同 Task 的另一普通 Chat 不获关联；实际终止后端并启动新进程，再由公开 Resume 读回原关联且不重放业务输入。它不创建虚构 Run／node／execution。每个后端进程隔离 HOME／APPDATA／XDG，数值回环动态端口和 Herdr CLI 副本均独占；stdout 持续消费、stderr 保留日志，退出时终止并 wait 所属进程后才删除临时目录，清理失败不覆盖原失败。
+
+门闩仅控制测试拥有的外部 CLI，进入预算 5 秒、阻塞预算 10 秒，释放后创建完成预算 20 秒；生产沿用 Chat 就绪／身份获取预算，具体身份失败不新增命令重试。专项没有真实模型请求，受控 Herdr 只证明协议／故障及持久事实，不代替 12 的 OMP／Pi 原生批准、GPT-6-luna 路由或实际模型业务完成前返回的 S3 证据；报告资格完整负例与跨进程恢复分别由 14／19／20 维护。本票完成检查使用本 worktree 构建静态页面及独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。

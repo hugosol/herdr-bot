@@ -791,6 +791,22 @@ fn read_bots(access: &FileAccess, directory: &Path) -> Result<BotCatalog, Direct
     Ok(BotCatalog { bots, problems: conflicts })
 }
 
+/// Resolve the shared identity with the same conflict and directory checks as
+/// the public catalog; a Bot ID is never a filename or a Task name.
+pub(crate) fn delegation_bot(directory: &Path, id: &str) -> Result<(serde_json::Value, String), Response> {
+    with_definitions(&[directory.to_owned()], "bot-directory-read-failed", |access| {
+        let catalog = read_bots(access, directory)?;
+        if let Some(problem) = catalog.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(id) || problem.bot_id.is_none()) {
+            return Err(edit_error("bot-invalid", problem.message.clone()));
+        }
+        let bot = catalog.bots.into_iter().find(|bot| bot.id == id)
+            .ok_or_else(|| edit_error("bot-not-found", "目标 Bot 不存在。"))?;
+        let task_id = bot.task_id.clone().filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| edit_error("bot-task-required", "本操作只委派具有明确 Task 目标的 Bot。"))?;
+        Ok((serde_json::to_value(bot).expect("Bot serialization"), task_id))
+    }).map_err(DirectoryError::into_response)
+}
+
 pub async fn list_bots(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
     if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
