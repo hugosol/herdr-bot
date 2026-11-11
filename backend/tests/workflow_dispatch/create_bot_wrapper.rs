@@ -12,7 +12,10 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     let path = root.join("meta-data/workflow-maps/create-bot-wrapper.json");
     assert!(path.is_file(), "publish the existing-target wrapper Map");
     let definition: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-    assert_eq!(definition["input_files"], json!([{"id":"request","required":true},{"id":"materials","required":false}]));
+    // Material guidance is editable; this contract fixes identities and requiredness.
+    let inputs: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+        .map(|input| json!({"id":input["id"],"required":input["required"]})).collect();
+    assert_eq!(inputs, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 8);
     assert_eq!(definition["nodes"]["create_blank"]["input_rule"], json!([
         {"id":"request","type":"run","input_id":"request"},

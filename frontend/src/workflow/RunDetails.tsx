@@ -74,7 +74,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
     </header>}
     <div className="workflow-refresh-info"><p role="status" aria-label="workflow 更新">最后成功时间：{snapshot && snapshot.id === id ? <time dateTime={new Date(snapshot.at).toISOString()}>{new Date(snapshot.at).toLocaleString()}</time> : '尚无成功查询。'}</p><button type="button" onClick={refresh}>刷新 Run</button></div>
     {error && <p className="workflow-alert" role="alert">更新失败：{error} 保留上次成功现场；可见时继续按配置查询，也可手动刷新。查询不改写 Run，不重试任何运行操作。</p>}
-    <div hidden={id !== null}><RunList entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
+    <div hidden={id !== null}><RunList active={active && id === null} entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
     {id && <>
       {!detail && !error && <p>正在加载 Run 详情…</p>}
       {detail && !detail.managed && <p className="workflow-alert">历史现场 / 未接管：执行现场只读取已保存事实，Run 名称仍可重命名。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。</p>}
