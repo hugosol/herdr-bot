@@ -38,6 +38,8 @@
 
 pub mod chats;
 mod chief;
+mod chief_delegation;
+mod chief_reports;
 pub mod clock;
 pub mod config;
 pub mod paths;
@@ -124,6 +126,8 @@ pub struct AppState {
     /// 持久历史目录，与当前会话登记和临时关机意图独立。
     pub history: Arc<history::History>,
     pub(crate) chief: Arc<chief::Authority>,
+    pub(crate) delegations: Arc<chief_delegation::Delegations>,
+    pub(crate) chief_reports: Arc<chief_reports::Reports>,
     /// 后端权威的关机倒计时：手动开始意图建立安排，到期由后端自己调用 [`PowerOff`]。
     ///
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
@@ -247,6 +251,8 @@ pub fn app_with_state(
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
         chief,
+        delegations: Arc::new(chief_delegation::Delegations::new(config.sessions.history_file.with_extension("delegations.json"))),
+        chief_reports: Arc::new(chief_reports::Reports::new(config.sessions.history_file.with_extension("chief-reports.jsonl"))),
         sessions,
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
@@ -362,6 +368,11 @@ pub fn app_with_state(
         .route("/api/chief", get(chief::get_current))
         .route("/api/chief/qualify", post(chief::qualify))
         .route("/api/chief/release", post(chief::release))
+        .route("/api/chief/delegations/preview", post(chief_delegation::preview))
+        .route("/api/chief/delegations", get(chief_delegation::list).post(chief_delegation::commit))
+        .route("/api/chief/delegations/{id}", get(chief_delegation::get))
+        .route("/api/chief/reports", get(chief_reports::list).post(chief_reports::submit))
+        .route("/api/chief/reports/{id}", get(chief_reports::get))
         .route("/api/chats/resume", post(resume::post_resume))
         .route("/api/chats/preview", post(preview_chat))
         .route("/api/chats", post(create_chat))
@@ -1256,6 +1267,7 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             input.input,
             workspace_name,
             chief.map(|chief|(chief,Arc::clone(&state.sessions))),
+            None,
         )
         .await;
     });

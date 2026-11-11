@@ -55,7 +55,8 @@ function failureOutcomeText(creation: ChatCreation): string {
  * 从 zone 或 Task 发起 Chat 的共享弹窗；选择只影响本次启动。
  *
  * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Task。确认后页面轮询同一次创建：只有后端确认目标
- * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
+ * 就绪且有内容的初始指示提交成功，才显示“创建成功，初始指示已提交”；无初始内容则显示等待用户输入。
+ * 成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
 export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 'default/bot-playground' : '', initialTaskId = chief ? 'chief-bot' : '', onClose }: { chief?: boolean; zone?: string; initialTaskId?: string; onClose: () => void }) {
@@ -451,7 +452,7 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
             data-kind="success"
             role="status"
           >
-            创建成功，初始指示已提交
+            {creation.inputSubmitted ? '创建成功，初始指示已提交' : '创建成功，等待用户输入'}
           </p>
         )}
 

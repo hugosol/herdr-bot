@@ -31,6 +31,31 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
     Ok(inputs)
 }
 
+fn manager_input(state: &AppState, run: &Run) -> String {
+    let paths = Runs::paths(state, &run.id);
+    let materials = std::path::Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id);
+    let mut input = format!(
+        "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}",
+        run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
+        paths[0].display(), paths[1].display(), paths[2].display(), materials.display());
+    if !run.user_input.is_empty() {
+        input.push_str("\n\n");
+        input.push_str(&run.user_input);
+    }
+    input
+}
+
+pub(crate) fn manager_prompt(
+    state: &AppState,
+    run: &Run,
+    task: &crate::tasks::Task,
+    preset: &crate::tasks::catalog::ResolvedPreset,
+) -> Result<String, String> {
+    let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
+    let fixed = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
+    Ok(crate::chats::compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &manager_input(state, run), &prompts.instructions(&task.trigger.prompt)))
+}
+
 pub(super) async fn manager_interrupted(
     state: &AppState,
     id: &str,
@@ -58,6 +83,7 @@ pub(super) async fn manager(
     mut run: Run,
     task: crate::tasks::Task,
     preset: crate::tasks::catalog::ResolvedPreset,
+    delegation: Option<crate::chief_delegation::Launch>,
 ) -> Result<(), ()> {
     let mut effects = Effects::default();
     let mut stage = "initialize";
@@ -77,9 +103,15 @@ pub(super) async fn manager(
             })).await.map_err(|e| e.to_string())??;
         }
         effects.records_initialized = true;
-        protocol(state, &mut run, &task, &preset, Role::Manager, None, &mut effects, &mut stage).await
+        protocol(state, &mut run, &task, &preset, Role::Manager, None, delegation.as_ref(), &mut effects, &mut stage).await
     }
     .await;
+    let result = if let Some(launch) = &delegation {
+        match launch.finish_run(&run, &effects, result.as_ref().err().map(String::as_str)) {
+            Ok(()) => result,
+            Err(error) => Err(format!("最终委派状态无法保存：{error}；先前失败：{result:?}。现场保留，不自动重试。")),
+        }
+    } else { result };
     if let Err(message) = result {
         eprintln!(
             "[workflow] run={} manager-start stage={} effects={} error={}；已发生的外部效果未回滚，不自动重试。",
@@ -131,7 +163,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             None => None,
         };
         let result = protocol(state, &mut candidate, &target.task, &preset,
-            Role::Node { id, target: &target, committed: run }, child.as_mut(), &mut effects, &mut stage).await;
+            Role::Node { id, target: &target, committed: run }, child.as_mut(), None, &mut effects, &mut stage).await;
         if let (Some(child), Err(message)) = (child, &result) {
             state.runs.active.lock().await.insert(child.id, Some(StartupFailure { stage: stage.into(), message: message.clone(), effects: Some(effects.clone()) }));
         }
@@ -237,6 +269,7 @@ async fn protocol(
     preset: &crate::tasks::catalog::ResolvedPreset,
     mut role: Role<'_>,
     mut child: Option<&mut Run>,
+    delegation: Option<&crate::chief_delegation::Launch>,
     effects: &mut Effects,
     stage: &mut &'static str,
 ) -> Result<(), String> {
@@ -255,7 +288,7 @@ async fn protocol(
         Role::Node { target, .. } => &target.zone,
     };
     crate::zones::browse::checked_root(zone).map_err(|e| e.message())?;
-    let name = crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id());
+    let name = delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id()));
     *stage = "tab";
     let tab = state.herdr.create_tab(&workspace.id, Some(zone), &name).await.map_err(|e| e.message())?;
     effects.tab_id = Some(tab.tab_id.clone());
@@ -281,6 +314,9 @@ async fn protocol(
         if !crate::zones::same_path(&identity.cwd, &target.zone) {
             return Err(format!("原生 Chat cwd 与定义 zone 不一致：{}", identity.cwd));
         }
+    }
+    if delegation.is_some() && !crate::zones::same_path(&identity.cwd, &run.zone) {
+        return Err("原生 manager Chat cwd 与确认的 zone 不一致".into());
     }
     let chat = ChatReference {
         session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(),
@@ -319,29 +355,24 @@ async fn protocol(
         }
     }
     effects.association_saved = true;
+    if let Some(launch) = delegation {
+        *stage = "delegation-association";
+        launch.store.bind(&launch.id, &identity.session_id).map_err(|error| error.to_string())?;
+    }
     *stage = "history";
     state.history.record_zone(&identity.session_id, &name, task.agent.label(), &identity.cwd,
         identity.session_file.as_deref(), Some(&workspace.id), &task.id,
         identity.startup_identity_path.as_deref()).await.map_err(|e| e.to_string())?;
     *stage = "submit";
+    let text = if let Some(launch) = delegation {
+        std::borrow::Cow::Borrowed(launch.prompt.as_str())
+    } else {
     let paths = Runs::paths(state, &run.id);
     let materials = std::path::Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id);
     let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
     let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
     let mut input = match &role {
-        Role::Manager => {
-            let mut input = format!(
-                "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}",
-                run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
-                paths[0].display(), paths[1].display(), paths[2].display());
-            use std::fmt::Write;
-            write!(input, "\n中间资料位置: {}", materials.display()).unwrap();
-            if !run.user_input.is_empty() {
-                input.push_str("\n\n");
-                input.push_str(&run.user_input);
-            }
-            input
-        }
+        Role::Manager => manager_input(state, run),
         Role::Node { id, target, .. } => {
             use std::fmt::Write;
             let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
@@ -362,6 +393,8 @@ async fn protocol(
         write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".manager-zone").join(".workflow").join(&child.id).display()).unwrap();
     }
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
+    std::borrow::Cow::Owned(text)
+    };
     effects.input_attempted = true;
     effects.input_outcome = Some(InputOutcome::Unknown);
     if let Err(error) = state.herdr.prompt(&agent, &text).await {

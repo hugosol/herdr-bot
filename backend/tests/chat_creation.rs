@@ -1888,6 +1888,21 @@ async fn without_a_skill_the_body_keeps_prompt_and_input_without_a_prefix() {
     }
 }
 
+/// Empty initial settings open an interactive Chat without an invented turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt() {
+    let inputs = input_fixture("empty interactive chat").await;
+    for agent in ["omp", "pi"] {
+        let mut task = input_task(None, "");
+        task["agent"] = json!(agent);
+        let finished = create_with(&inputs, task, "", "succeeded").await;
+        assert_eq!(finished["inputSubmitted"], false, "no input was sent: {finished}");
+        assert!(finished["agentName"].as_str().is_some(), "agent must be ready");
+        assert!(calls_of_kind(&inputs.herdr, "agent_prompt").is_empty());
+    }
+    assert_eq!(calls_of_kind(&inputs.herdr, "agent_start").len(), 2);
+}
+
 /// P31：Skill-only 仍从公开入口进入既定提交，正文是单独的 Skill 调用；不补造 prompt 或 input。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_skill_only_task_submits_the_bare_skill_call() {

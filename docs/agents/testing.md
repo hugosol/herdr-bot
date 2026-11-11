@@ -40,7 +40,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ## Chief 入口与单次设置浏览器回归
 
-`frontend/browser-tests/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次合法发起／登记／注销，核对当前 chief 定位目标以及每次公开 Task 的身份和数量不变；不重复认领 07 的并发／时间阈值案例。
+`frontend/browser-tests/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次以空 input 合法发起／登记／注销，核对真实默认 chief 的空 prompt／无 Skill 可启动、公开结果 `inputSubmitted: false`、页面等待用户输入且外部无空消息或补造指令，以及当前 chief 定位目标和每次公开 Task 的身份、数量不变；不重复认领 07 的并发／时间阈值案例。`backend/tests/chat_creation.rs` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 通过公开 HTTP 分别覆盖 OMP/Pi 的普通空指示启动，已有非空正文和 Skill-only 用例继续约束真实提交。
 
 定向反馈：设置本 worktree 独立绝对 `CARGO_TARGET_DIR` 后运行 `npm --prefix frontend run test:browser:build -- chiefEntry.spec.ts --workers=1`。完成检查仍为不带过滤的 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser:build`。各用例独占 HOME／APPDATA／XDG／原生会话引用、定义、登记、动态回环服务及记录型 Herdr 副本；使用共享清理设施终止并确认所属进程结束后才删测试目录。启动预算 30 秒、页面断言预算 10 秒；不新增产品等待或重试策略，不承担无自动行为时间承诺。
 
@@ -68,6 +68,32 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 
 每例独占原子临时目录、定义、历史、权威存储、HOME／APPDATA／XDG 和数值回环动态端口。后端 stdout 持续消费，stderr 落在该例独占目录；Drop 终止并 wait 所属后端，确认结束再删除临时目录，不接触正常服务或用户 Chat。进程启动预算 30 秒，创建完成 20 秒，外部查询进入 5 秒、门闩 10 秒、释放后 Resume 完成 15 秒；不新增产品等待／重试策略。本专项是 S2 进程与公开操作证据，不以受控 CLI 充当 S3 原生宿主证据。完成检查仍需本 worktree 独立绝对 `CARGO_TARGET_DIR`、本 worktree 构建静态页及 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另按入口要求运行 `npm --prefix frontend run test:browser:build`。
 
+## chief 独立 Task Chat 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture` 经过 S2 公开 HTTP、真实后端进程、独占临时 Bot／Task／zone／历史／委派存储及生产 Herdr CLI adapter，验证明确业务输入与材料地址、完整预览载荷、Task 目标／zone 改绑后的拒绝、旧 chief 失权、启动／投递失败和不确定反馈。外部 prompt 门闩在接受输入前读回真实 sender 关联；实际同 Task 的另一普通 Chat 不获关联；实际终止后端并启动新进程，再由公开 Resume 读回原关联且不重放业务输入。它不创建虚构 Run／node／execution。每个后端进程隔离 HOME／APPDATA／XDG，数值回环动态端口和 Herdr CLI 副本均独占；stdout 持续消费、stderr 保留日志，退出时终止并 wait 所属进程后才删除临时目录，清理失败不覆盖原失败。
+
+门闩仅控制测试拥有的外部 CLI，进入预算 5 秒、阻塞预算 10 秒，释放后创建完成预算 20 秒；生产沿用 Chat 就绪／身份获取预算，具体身份失败不新增命令重试。专项没有真实模型请求，受控 Herdr 只证明协议／故障及持久事实，不代替 12 的 OMP／Pi 原生批准、GPT-6-luna 路由或实际模型业务完成前返回的 S3 证据；报告资格完整负例与跨进程恢复分别由 14／19／20 维护。本票完成检查使用本 worktree 构建静态页面及独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
+## chief Map Run 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation map_ -- --nocapture` 拥有 09 的 S2 Map 发起与来源关联开发回归，复用独占真实后端进程、HTTP 和生产 Herdr CLI adapter：
+
+- `map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zones` 读回实际根 Run／manager／委派关联及完整预览投递正文；不虚构父执行，不把启动当业务完成。
+- `map_confirmation_rejects_changed_map_manager_node_binding_and_material_meaning` 分别改变根／嵌套 Map、Bot、manager／node Task、仅内部 node 的 zone 绑定、命名／直接材料字节及材料删除；旧预览必须要求重新确认，且没有外部启动或 Run。
+- `map_sender_is_saved_before_input_and_internal_node_keeps_workflow_gates` 在外部 prompt 门闩处公开读回已保存的真实 manager 关联；显式准备输入后实际派发 node，独立观察 node cwd、原生身份、管理归属和未报告时的完成拒绝。内部 node 无 chief 委派关联。
+- `map_preview_requires_explicit_manager_and_all_required_named_materials` 拒绝缺 manager、错误用途、缺必需材料及未声明材料。
+- `map_startup_failure_retains_run_provenance_and_real_submission_outcome` 覆盖 Run 初始化失败（无 manager）、agent 启动失败、明确投递拒绝和投递结果不确定，公开读取真实阶段／外部效果及持久启动状态。
+
+专项沿用本文件上节的独占资源／进程退出规则；门闩进入预算 5 秒、外部阻塞预算 10 秒、创建完成预算 20 秒，后端启动预算 30 秒，没有新增产品等待或重试策略。外部 CLI 和原生文件是受控协议输入，没有模型请求；不能替代 13 的两宿主原生确认／GPT-6-luna／真实创建阶段审批、14 的报告资格或 19 的恢复验收。完成检查使用本 worktree 构建的静态页面及独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
+## Chief 报告持久化与资格回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 通过 S2 HTTP 提交／列表／单份读取、真实独占后端进程和生产 Herdr CLI adapter 验证 P17／P21。报告夹具复用真实 Task Chat／Map Run 的公开委派入口；合法独立 Chat、直接 manager 与无关联身份、同 Task 另一实际 Chat、普通 node 和伪造归属／收件人参数作对比，不通过内部 helper 授权。外部 prompt 门闩进入后先从公开接口读取报告，确认保存先于通知；无 chief 与明确通知失败后均实际终止并重启后端，核对稳定 ID 和完整内容。真实只读 journal 制造保存失败，保存失败无外部通知；接受输入后返回无效回执的 CLI 验证 `uncertain`，不冒充未提交。
+
+所有定义、原生引用、报告 journal、HOME／APPDATA／XDG、动态数值回环端口及 Herdr 副本由当前用例独占。后端 stdout 持续消费、stderr 落在独占目录；Drop 终止并 wait 所属进程，确认退出后才删除临时目录，清理错误不覆盖原始错误。启动预算 30 秒，Chat 完成预算 20 秒，外部门闩进入 5 秒、阻塞 10 秒；实际生产在线 10 秒＋保留 30 秒、维护扫描 5 秒。失败后实际重启并重新登记 chief，再观察 46 秒（超过完整 45 秒维护上界），无新增通知或报告；该有界初始化回归不替代 19 的全部恢复／人工重发矩阵。受控 CLI 仅证明协议／故障，无真实模型请求，不认领 S3／GPT-6-luna 职责证据或 16／19 的独占验收。
+
+完成检查使用当前 worktree 构建的静态页面和独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另运行 `npm --prefix frontend run test:browser:build`。报告持久化仍在后端 `files` authority；chief 和 node 共享 `report_delivery` 的单次保存后通知，但各自持有身份、正文和收件策略。`submitted`／`failed`／`uncertain`／`not-attempted` 是通知事实，不是可靠接收、已呈现或用户验收。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。
@@ -77,7 +103,7 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 - 浏览器调度见 [playwright.config.ts](../../frontend/playwright.config.ts)。文件内并行场景保持每个用例独占服务、可变存储和 Herdr 副本；浏览器由 Playwright 按 worker 复用。
 - 资源受限或诊断并发问题时，给浏览器入口追加 `-- --workers=1`；Vitest 可追加 `-- --maxWorkers=4` 等覆盖参数。
 - 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
-- scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存预期包含默认 `input_requirements`，前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
+- scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存／删除检查保留标题、说明、节点集合与公开读回／落盘一致性，不固定空 `input_requirements` 是否序列化；最后节点删除须单独断言节点集合为空。前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
 - Chat 预览应在重新选择同一 Task 时保留已生成身份；模型／思考级别失败夹具须使实际提交的单次选择失效，不能仅损坏已被合法覆盖的 Task 默认值。当前／历史 Chat 的切换同时保留可见状态与不同背景的浏览器断言。
 - 工作流状态浏览器夹具若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点报告策略回归分别核对自动报告与原生逐次确认，不恢复已移除的自然语言同意替代门禁。
 - 常驻但隐藏的 Run 列表不读取 Map 分组目录；仅在列表可见时刷新，保留筛选状态。全局前端回归中的关机／恢复用例同时约束默认 Chat 页不发出这类无关读取；应用品牌保留可访问标题语义。
