@@ -13,6 +13,7 @@
 // core module rejects modify BEFORE invoking the refresh callback (resolve.js).
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, dirname } from 'node:path';
+import { findPackageJSON } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 let failure = 'invalid-arguments';
@@ -176,7 +177,8 @@ try {
   if (credential.expires <= validUntil) throw new Error();
 
   failure = 'dependency-missing';
-  const ai = join(dirname(pi), 'pi-ai');
+  // Resolve the dependency from this installation, including nested npm layouts.
+  const ai = dirname(findPackageJSON('@earendil-works/pi-ai', pathToFileURL(join(pi, 'package.json'))));
   const load = path => import(pathToFileURL(path).href);
   const { createModels } = await load(join(ai, 'dist/models.js'));
   const { openaiCodexProvider } = await load(join(ai, 'dist/providers/openai-codex.js'));

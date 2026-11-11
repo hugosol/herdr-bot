@@ -433,6 +433,8 @@ impl ExtensionOption {
             "pi-manager-chat" => Some((Agent::Pi, ExecutionRole::Manager)),
             "omp-node-chat" => Some((Agent::Omp, ExecutionRole::Node)),
             "pi-node-chat" => Some((Agent::Pi, ExecutionRole::Node)),
+            "omp-chief-chat" => Some((Agent::Omp, ExecutionRole::Chief)),
+            "pi-chief-chat" => Some((Agent::Pi, ExecutionRole::Chief)),
             _ => None,
         }
     }
