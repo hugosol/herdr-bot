@@ -1123,6 +1123,53 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     println!("P26.01/P68.02 external calls after 300ms: {}", json!(calls));
 }
 
+// Chief ticket 01, approved S2: after the external gate observes notification,
+// the literal report must already be readable. A file/operation lock spanning
+// delivery would block the read/pause; disconnect rollback would remove it.
+// Only the external Herdr process is controlled, never report persistence.
+#[tokio::test]
+async fn disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery() {
+    use tokio::io::AsyncWriteExt;
+    let s = Scenario::new().await;
+    let started = s.start("disconnect-report-manager").await;
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"disconnect-report-node"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("disconnect-report-manager", &["A"]).await;
+    let release = s.data.path().join("disconnect-report-release");
+    struct Release(std::path::PathBuf);
+    impl Drop for Release {
+        fn drop(&mut self) { fs::write(&self.0, b"release").expect("release owned prompt gate"); }
+    }
+    let gate = Release(release.clone());
+    s.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let body = json!({"sessionId":"disconnect-report-node","body":"Saved despite disconnected caller","canComplete":false,"outputs":[{"id":"result","path":"C:\\disconnect\\result.txt"}]}).to_string();
+    let mut caller = tokio::net::TcpStream::connect(s.server.addr()).await.unwrap();
+    caller.write_all(format!("POST /api/workflow/node/report HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", s.server.addr(), body.len()).as_bytes()).await.unwrap();
+    common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count() == 3).await;
+    drop(caller);
+    let route = format!("/api/workflow/runs/{}", started["id"].as_str().unwrap());
+    let response = tokio::time::timeout(Duration::from_secs(2), get_over_tcp(s.server.addr(), &route)).await.expect("notification must not hold file coordination");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let saved: Value = serde_json::from_str(&response.body).unwrap();
+    let report = &saved["reports"][0];
+    assert_eq!(saved["reports"].as_array().unwrap().len(), 1);
+    assert_eq!(report["body"], "Saved despite disconnected caller");
+    assert_eq!(report["outputs"], json!([{"id":"result","path":"C:\\disconnect\\result.txt"}]));
+    assert_eq!(report["to"], started["run"]["manager"]);
+    assert_eq!(saved["pendingReports"], json!({"A":report["id"]}));
+    let paused = tokio::time::timeout(Duration::from_secs(2), post_json_over_tcp(s.server.addr(), "/api/workflow/manager/pause", r#"{"sessionId":"disconnect-report-manager"}"#)).await.expect("notification must not hold Run operation lock");
+    assert_eq!(paused.status, 200, "{}", paused.body);
+    drop(gate);
+    // This is a bounded development regression, not P23/P36 cross-host proof.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let response = get_over_tcp(s.server.addr(), &route).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let after: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(after["reports"], saved["reports"]);
+    assert_eq!(after["pendingReports"], saved["pendingReports"]);
+    assert_eq!(after["run"]["nodes"]["A"]["status"], "running");
+    assert_eq!(s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count(), 3);
+}
+
 // P24.01: neither a manager/unknown session nor forged ownership fields may
 // produce a report or manager input. Business declarations are not ownership;
 // sessionId belongs to the trusted public Session transport adapter.

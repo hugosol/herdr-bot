@@ -32,6 +32,12 @@
 
 Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。
 
+### 节点报告共享保存／通知回归
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
+
+`disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery` 使用真实 TCP 和受控外部 Herdr 门闩：通知阻塞预算 10 秒，进入预算 5 秒，已保存事实读取与同 Run 暂停分别须在 2 秒内完成；断开调用者后仍读回同一报告，释放通知后观察 300 毫秒无新增报告或通知。它只证明该有界开发回归，不替代 chief 报告或 OMP/Pi 原生确认的跨仓验收。后端共享代码完成检查仍为 `node scripts/test-backend.mjs`，使用本 worktree 构建的静态页面与独立绝对 `CARGO_TARGET_DIR`。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。
