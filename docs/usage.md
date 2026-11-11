@@ -53,6 +53,19 @@ Zone 列表显示目录名、稳定 ID 和服务器完整路径，可按名称�
 
 配置提示词用 `${key}` 引用[本机提示词词典](../README.md#本机提示词词典)。保存与编辑保留占位符；系统发送配置字段时替换一次；仅当替换前的 Task 固定 prompt 含未转义且完整闭合的 `${key}` 时，才追加词典读取说明，便于 agent 直接阅读原始 Map/Bot 文件。用户输入、其他消息段、替换值、`$${key}` 和未闭合写法不触发说明注入。用户临时输入和 agent 产物中的同形字符串不替换。
 
+### chief 委派独立 Task Chat
+
+Task 型 Bot 委派使用公开 HTTP：
+
+1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
+2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
+3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
+4. `202` 回执沿用普通 Chat 创建的形状与 `id`，通过 `GET /api/chats/{id}` 观察启动。只有 Herdr 就绪、真实原生身份及来源历史／委派关联保存、批准文本投递已确认后才是 `succeeded`；它只表示发起成功，**不表示业务完成**，不等待模型完成业务。失败保留现有阶段、类别、Tab／Pane／agent 与投递结果不确定说明，不自动清理或重试。
+
+`GET /api/chief/delegations/{id}` 读取独立于 chief 上下文保存的委派事实、实际 `sessionId` 和最后观察到的创建状态；`GET /api/chief/delegations?sessionId=<真实原生身份>` 精确查询发送方关联。委派记录保存在历史文件旁的 `.delegations.json` 文件，经过统一文件持久化边界。业务完成情况不由启动回执判断；后端意外中断时最后记录的 `starting` 也不是确定未启动，须核查外部现场，不要重新派发冒充恢复。来源 chief、Bot、Task、cwd、业务输入、材料及执行 Chat 不依靠 Task 名称推断，不产生父 Run／node／execution。材料只绑定地址，不复制或冻结文件内容；之后更改内容由实际执行者观察。
+
+实际原生身份与批准目录在提交业务输入前核对并保存，`Resume` 原 Chat 继续使用原关联与既有来源 Task 环境恢复规则，不重放初始业务输入。其他使用相同 Task 发起的 Chat 不获得该关联。当前 chief 已更替时，旧进程即使还在线或握有旧预览，也不能再委派；已经提交外部的输入则不能声称被物理撤回。
+
 ### Task、Bot 与 Map 分组
 
 三类定义各自使用可选 `group` 字符串归类，没有独立 Group 文件或 ID。同类型对象的分组名称相同即属于同组；名称区分大小写，不允许空字符串或首尾空白。省略 `group` 或使用 `null` 表示未分组。新建对象默认未分组；分组不改变用途、引用、执行或权限，也不会随 Map 引用自动更新。
