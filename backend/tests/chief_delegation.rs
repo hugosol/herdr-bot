@@ -8,6 +8,8 @@ mod process;
 mod map;
 #[path = "chief_delegation/reports.rs"]
 mod reports;
+#[path = "chief_delegation/receipts.rs"]
+mod receipts;
 use process::TestServer;
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

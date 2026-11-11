@@ -10,7 +10,24 @@
 
 后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才查询当前有效 chief 的真实原生身份并尝试一次通知；没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
 
-`GET /api/chief/reports` 返回全部已存报告；`?sessionId=<发送方原生身份>` 过滤发送方。`GET /api/chief/reports/{id}` 读取同一稳定报告，包括新 chief 没有原始委派上下文时。原报告只读；没有更新／删除入口。初始化、后端重启、会话恢复和时间流逝均不扫描或补投；本入口没有后台重试。后续接收确认与用户明确批准的人工重发使用原报告 ID／内容，不应重新提交业务报告。
+`GET /api/chief/reports` 返回全部已存报告；`?sessionId=<发送方原生身份>` 过滤发送方。`GET /api/chief/reports/{id}` 读取同一稳定报告，包括新 chief 没有原始委派上下文时。原报告只读；没有更新／删除入口。初始化、后端重启、会话恢复和时间流逝均不扫描或补投；本入口没有后台重试。接收确认与用户明确批准的人工重发使用原报告 ID／内容，不应重新提交业务报告。
+
+### 持久接收、人工重发与查看
+
+以下 POST 只接受同机工具来源，JSON **仅**为 `{ "sessionId": "当前调用者的原生 Chat 身份" }`；未知字段（包括 `body`、`from`、指定收件人）拒绝。原生扩展仍负责绑定真实 Session、向用户取得明确的本次请求／重发内容批准，不能把这些接口当作自然语言同意的替代。
+
+| 操作 | 资格与公开结果 |
+| --- | --- |
+| `GET /api/chief/reports/{id}/receipt` | 读取 `{received: boolean, receipt: null或记录}`。不存在的报告返回 404；通知 `submitted` 本身不会创建接收记录。 |
+| `POST /api/chief/reports/{id}/receive` | 仅当前 `registered` chief 可可靠接收；返回 `{received:true, process:boolean, receipt, report, guidance}`。只有首次持久提交返回 `process:true`；重复／并发调用、更换 chief、回执丢失或后端重启后均返回 `process:false`，不得据此再次触发模型处理／呈现。 |
+| `POST /api/chief/reports/{id}/resend` | 仅原被委派 Chat 可在用户明确要求并再次确认后发送。返回 `{saved:true, report, received, receipt, notification, diagnostic, guidance}`；不新建报告或接受替换内容。已经可靠接收则 `received:true`、`notification.status:"not-attempted"`，不再次通知。否则只尝试通知当前 chief；无 chief／失败／不确定仍保留原报告，不补投。 |
+| `POST /api/chief/reports/{id}/view` | 当前 chief 在用户明确要求查看时读取原报告；返回 `{report, received, receipt, process:false, guidance}`，不会创建／修改接收记录、自动通知或重新派发业务。未接收的报告也可明确查看，但查看本身不是接收授权。 |
+
+接收记录为 `{reportId, sessionId, claimId, at}`，其中 `at` 为 Unix 毫秒；保存在原报告 journal 旁的 `*.chief-reports.receipts.jsonl`，原报告内容不变。认领及去重持久提交与 chief 授权／撤销串行化；旧 chief 失权后不能取得新接收授权。外部定位等待后再次核实当前 claim 与接收事实；已经授权并进入外部提交的输入不会被 chief 更换物理撤回，返回值保留真实 `submitted`／`failed`／`uncertain`。
+
+可靠接收不是模型已呈现、用户已读或业务验收。接收后、呈现前崩溃仍保留接收事实，不自动重播；重复 `receive` 的 `process:false` 不是新呈现授权，人工恢复须由用户在当前 chief 明确要求 `view`。存储不可确认返回非成功状态，不能把失败解释为已获处理授权或安全地重新提交业务报告。
+
+实际恢复独立执行者或直接 Map manager 沿用原生 Chat 和持久委派／原报告关联；恢复不新增委派、Run 或重放初始输入，同 Task 的其他 Chat 不获得重发资格。只有修订内容经新的明确批准后，才可通过原提交入口建立新报告 ID。以上 HTTP 行为不代替 OMP／Pi 原生确认与真实模型呈现验收。
 
 ## 界面外观
 
