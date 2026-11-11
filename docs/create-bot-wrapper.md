@@ -4,7 +4,7 @@
 
 ## 调用接口
 
-输入要求的唯一权威来源为 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) 的 `input_requirements`；scheduler 详情与发起页直接展示，Bot 指南与调用者不另存完整要求。文件接口仍为必需 `request` 与可选 `materials`。
+输入要求的唯一权威来源为 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) 的 `input_requirements` 与各项 `input_files[].description`；scheduler 发起页分别展示非空总体要求与对应文件标签，Bot 指南与调用者不另存完整要求。文件接口仍为必需 `request` 与可选 `materials`。
 
 启动管理者时可暂不提供 request，用户可先在本次要求或管理者对话中说明委托、提供文件。管理者读取共同输入要求和已有材料，澄清语义与授权，必要时在获准范围内整理为 request 文件，以 `prepare_inputs` 全量绑定并确认后才能派发任何业务节点；确认时 request 必须齐全、可读且语义满足要求，不能以文件存在代替核实。嵌套子管理者同样先完成输入准备；父节点通过 `input_rule` 将已有 request／materials 以同名输入显式绑定，作为子 Run 的准备初值，并填写本调用的 `manager_task_id`、zone 和自包含业务 input；发起前通过公开接口核实所选 Task 真实存在且为 manager 类型、zone 真实可用，不默认继承父层配置。管理者配置不是 Bot 属性。父节点还应声明 `saved` 和 `handoff` 输出，要求子管理者在完成整个子 Run 后将 `save_bot` 的同名交付直接报告给父层；地址登记不是业务验收，父管理者仍须显式接受交接。Map 不声明不存在的全图输出接口。
 

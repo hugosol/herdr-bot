@@ -72,7 +72,12 @@ impl InputRule {
 pub struct OutputRule { pub id: String }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct MapFileInput { pub id: String, pub required: bool }
+pub struct MapFileInput {
+    pub id: String,
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedFile { pub id: String, pub path: String }

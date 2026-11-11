@@ -1,13 +1,13 @@
 {
   "description": "将用户需求经概要规划与明确确认，转换为新业务 Map 定义，再进行整图提示词优化；能力缺口由用户人工衔接补齐，不启动生成的业务。管理者验收规划、转换与优化交接前，读取 ${herdr-bot-path}/docs/planning-deliverables.md「创建 Map 的整图交接」，据此核实业务确认、可翻译性及保存校验结果；依赖、材料与报告策略以本图结构化字段为准。",
-  "input_requirements": "通过本次 userInput 提供需要规划的新业务需求，供概要规划者形成方案并与用户确认；本流程只规划、生成和优化定义，不启动生成的业务。管理者先通过对话核实输入语义，确认就绪后再派发。",
+  "input_requirements": "无需文件输入；通过“本次要求”提供需要规划的业务需求。",
   "nodes": {
     "generate_map": {
       "blocked_by": [
         "outline"
       ],
       "bot_id": "plan-to-map",
-      "input": "将命名输入 outline 作为本次已确认的概要方案，忠实转换为新业务 Map，并交付完整 JSON 文件。本次仅授权在核实的服务 Map 目录新增，不覆盖既有 Map；当前 plan_workflow 保持不变。按 Task 核实、保存并验收，业务缺口交回概要规划者，不启动生成的业务 Run。",
+      "input": "将已确认的 outline 忠实转换为新业务 Map，并交付完整 JSON 文件。本次仅授权在核实的服务 Map 目录新增，不覆盖既有 Map；当前 plan_workflow 保持不变。按 Task 核实、保存并验收，业务缺口交回概要规划者，不启动生成的业务 Run。",
       "input_rule": [
         {
           "id": "outline",
@@ -30,7 +30,7 @@
         "generate_map"
       ],
       "bot_id": "bot-task-18e65aed740825f8-0",
-      "input": "优化命名输入 map 指定的刚生成业务 Map；outline 为已确认概要方案，提供本次业务语义与授权依据。修改目标为生成者交付的服务配置，允许原位保存目标 Map 及相关 Task、Bot、子 Map 内部文本和共同文档的提示词优化。修改多处引用的对象前，向用户说明受影响调用方及拟改范围，由用户在本 Chat 中把控具体边界。授权在本次运行提供的材料位置保存交付文件：map 为优化后完整 Map JSON，handoff 为 Task 要求的优化交付说明，并记录用户在本 Chat 中确定的边界。",
+      "input": "依据已确认的 outline 优化 map 指定的新业务 Map。修改目标为生成者交付的服务配置，允许原位保存目标 Map 及相关 Task、Bot、子 Map 内部文本和共同文档的提示词优化。修改多处引用的对象前，向用户说明受影响调用方及拟改范围，由用户在本 Chat 中把控具体边界。授权在本次运行提供的材料位置保存交付文件：map 为优化后完整 Map JSON，handoff 为 Task 要求的优化交付说明，并记录用户在本 Chat 中确定的边界。",
       "input_rule": [
         {
           "id": "map",

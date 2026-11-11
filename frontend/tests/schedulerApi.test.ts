@@ -15,7 +15,7 @@ function responseWith(fields: Record<string, unknown>) {
 describe('Map input preparation contract', () => {
   const revision = { file: 'map.json', original: '{"title":"Map"}' }
   const input_requirements = '# 材料\n\n保留 **完整** Markdown 和尾随空白。  \n'
-  const input_files = [{ id: 'brief', required: true }]
+  const input_files = [{ id: 'brief', required: true, description: '业务委托及约束。' }]
 
   it('loads and saves prose separately from file declarations without losing either', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ input_requirements, input_files, revision })))

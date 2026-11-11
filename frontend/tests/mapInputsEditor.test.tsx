@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('preserves Markdown and file declarations in the same revisioned save', async () => {
   const input_requirements = '# 原材料\n\n保留 **格式**。  \n'
-  const input_files = [{ id: 'brief', required: true }]
+  const input_files = [{ id: 'brief', required: true, description: '业务委托及约束。' }]
   const revision = { file: 'map.json', original: '{"title":"Map"}' }
   const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ input_requirements, input_files, revision })))
     .mockResolvedValueOnce(new Response(JSON.stringify({ title: 'Map', description: '', nodes: {}, input_requirements, input_files })))

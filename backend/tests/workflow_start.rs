@@ -92,9 +92,9 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     (data, herdr, config, server, zone, ids)
 }
 
-// S2, nesting P08: the interface owns IDs, not a global registry. A duplicate
-// save must reject before publication; independent literal declarations and a
-// second Map distinguish local uniqueness from accidental global uniqueness.
+// S2, nesting P08: descriptions roundtrip literally and empty descriptions stay
+// omitted. Invalid descriptions and duplicate IDs reject before publication;
+// a second Map distinguishes local uniqueness from global uniqueness.
 #[tokio::test]
 async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let (_data, herdr, config, server, _zone, _ids) = fixture().await;
@@ -102,15 +102,35 @@ async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let draft = get_over_tcp(server.addr(), route).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
-    let declarations = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
-    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":declarations,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
+    let original: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body).unwrap();
+    let declarations = json!([{"id":"brief","required":true,"description":"Invoice **source** <plain text>\nKeep the original date."},{"id":"appendix","required":false}]);
+    let mut submitted = declarations.clone();
+    submitted[1]["description"] = json!("");
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":submitted,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
+    assert_eq!(read.status, 200, "{}", read.body);
     let map: Value = serde_json::from_str(&read.body).unwrap();
-    assert_eq!(map["input_files"], declarations);
-    assert_eq!(map["input_requirements"], "Review the invoice date and obtain explicit scope approval.");
-    assert_eq!(serde_json::from_str::<Value>(&get_over_tcp(server.addr(), route).await.body).unwrap()["input_requirements"], "Review the invoice date and obtain explicit scope approval.");
-    let draft: Value = serde_json::from_str(&get_over_tcp(server.addr(), route).await.body).unwrap();
+    let mut expected = original;
+    expected["input_files"] = declarations.clone();
+    expected["input_requirements"] = json!("Review the invoice date and obtain explicit scope approval.");
+    assert_eq!(map, expected);
+    assert_eq!(serde_json::from_str::<Value>(&saved.body).unwrap(), expected);
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(config.scheduler.map_directory.join("work.json")).unwrap()).unwrap(), expected);
+    let edited = get_over_tcp(server.addr(), route).await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    let draft: Value = serde_json::from_str(&edited.body).unwrap();
+    assert_eq!(draft["input_files"], declarations);
+    assert_eq!(draft["input_requirements"], expected["input_requirements"]);
+    let persisted = fs::read(config.scheduler.map_directory.join("work.json")).unwrap();
+    for description in [Value::Null, json!(42), json!(true), json!([]), json!({})] {
+        let mut invalid = declarations.clone();
+        invalid[0]["description"] = description.clone();
+        let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":invalid,"input_requirements":"Must not replace general requirements.","revision":draft["revision"]}).to_string()).await;
+        assert_eq!(rejected.status, 422, "description {description}: {}", rejected.body);
+        assert_eq!(fs::read(config.scheduler.map_directory.join("work.json")).unwrap(), persisted);
+        assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
+    }
     let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("brief"));

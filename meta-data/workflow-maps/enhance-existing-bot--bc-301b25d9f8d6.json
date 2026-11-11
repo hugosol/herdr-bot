@@ -1,14 +1,16 @@
 {
   "title": "独立修订既有 Bot 三指南",
   "description": "核实既有 Task 型或 Map 型 Bot 与真实目标，生成共同基线；三路独立修订、整理并确认，再汇合一次合法保存且完整读回。不先修改 Task.prompt、不新建或修改执行目标，不新增表达优化阶段。业务确认、保存授权和报告发送确认独立。配置交付不证明业务能力已验证。",
-  "input_requirements": "request 为本次既有 Bot 三指南修订委托；materials 为可选参考材料，提供时说明用途。管理者先读取委托与参考材料、通过对话澄清并核实业务语义，再绑定 request 并确认输入就绪。业务确认、保存授权与报告发送确认互不替代。",
+  "input_requirements": "",
   "input_files": [
     {
       "id": "request",
+      "description": "三指南修订委托：包含目标 Bot ID、修订需求及需保留的业务约束。",
       "required": true
     },
     {
       "id": "materials",
+      "description": "参考材料：注明用途。",
       "required": false
     }
   ],
@@ -16,7 +18,7 @@
     "w1": {
       "title": "W1 核实既有 Bot 与目标并交付共同基线",
       "bot_id": "prepare-bot-revision",
-      "input": "request 是本次既有 Bot 三指南修订委托；materials（若提供）是参考材料，按委托说明的用途使用。本次要求以文件交付 baseline 与 handoff，作为各编写者及保存者的共同核实依据。",
+      "input": "按 request 核实既有 Bot、目标及修订范围，交付 baseline 与 handoff 文件，供各编写者及保存者共同核实。",
       "input_rule": [
         {
           "id": "request",

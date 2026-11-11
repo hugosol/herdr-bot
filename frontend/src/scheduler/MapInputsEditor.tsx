@@ -31,8 +31,8 @@ export function MapInputsEditor({ file, onClose, onSaved }: { file: string; onCl
   }
   return <form className="scheduler-run-form" aria-label="Map 文件输入声明" onSubmit={event => { event.preventDefault(); void save() }}>
     <h3>Map 文件输入声明</h3>
-    <p>输入要求使用 Markdown 描述材料含义、所需信息和澄清条件，与下方文件接口声明分别保存。管理者会在派发业务节点前确认材料并完成文件绑定。</p>
-    <p>声明数组使用 {`{ "id": "brief", "required": true }`}；可选项设 required 为 false，无输入使用 []。ID 仅在本 Map 接口内唯一。这里只约定材料，不填写本次文件地址。</p>
+    <p>整体输入要求仅填写非文件要求；每个文件的说明填写在 description，将显示在对应输入框上方。</p>
+    <p>声明数组使用 {`{ "id": "brief", "required": true, "description": "业务委托及约束" }`}；可选项设 required 为 false，无输入使用 []。ID 仅在本 Map 接口内唯一。这里只约定材料，不填写本次文件地址。</p>
     <label>Map 输入要求 Markdown<textarea value={requirements} disabled={!revision || busy} onChange={event => setRequirements(event.target.value)} /></label>
     <label>Map 文件输入声明 JSON<textarea spellCheck={false} value={content} disabled={!revision || busy} onChange={event => setContent(event.target.value)} /></label>
     {error && <p role="alert">{error}</p>}

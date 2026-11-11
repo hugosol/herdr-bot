@@ -309,7 +309,7 @@ status 除 `snapshot`（包含 `inputsReady` 与当前 `fileInputs`）外返回�
 
 ### 管理者输入准备：prepare_inputs
 
-Map 的 `input_requirements` 是用户与管理者共用的 Markdown 输入指引，scheduler 详情与发起页均展示。管理者先读取该字段、本次要求与已有材料，接收用户继续提供的自然语言或文件，核实目标、业务语义、材料用途及授权，缺项或歧义先澄清。可在用户授权范围内将口头需求整理成所需文件，不能凭文件存在或字段非空就认定满足要求。即使没有命名文件声明，也必须先完成语义核实再确认，不以派发业务节点代替此阶段。
+Map 的 `input_requirements` 只承载非文件的总体要求，非空时才在发起 Run 表单的“本次文件输入”上方以 Markdown 展示；逐文件要求由各项 `input_files[].description` 承载。文件描述是可选纯文本字符串，可省略或为空，显式 `null` 及其他非字符串均拒绝；它在对应文件输入框上方作为标签显示，缺省或为空时回退为 ID，必需／可选状态由 `required` 单独渲染，不解析描述中的 Markdown。管理者先读取总体要求、每项文件描述、本次要求与已有材料，接收用户继续提供的自然语言或文件，核实目标、业务语义、材料用途及授权，缺项或歧义先澄清。可在用户授权范围内将口头需求整理成所需文件，不能凭文件存在或字段非空就认定满足要求。即使没有命名文件声明，也必须先完成语义核实再确认，不以派发业务节点代替此阶段。
 
 `POST /api/workflow/manager/prepare_inputs` 接收公共 Session 取得的 `sessionId`，以及模型业务参数 `fileInputs: [{id,path}]`、`confirmed: boolean`、`reason: string`。fileInputs 是本 Run 全量绑定的替换，不是增量 patch；未列出的绑定移除，空数组表示清空。后端校验当前 Map 的声明、唯一 ID 及所供绝对路径的真实可读性；未知／重复 ID、无效或不可读文件拒绝，不能降级成缺席。`confirmed=false` 可保存尚缺必需项的准备状态，保持 `inputsReady=false`；`confirmed=true` 仅在管理者完成全部语义核实后使用，后端此时强制必需文件齐全，并保存 `inputsReady=true`。reason 记录本次准备／确认依据，不是业务内容校验的替代。返回后的已提交事实与部分生效错误应按既有动作协议处理。
 

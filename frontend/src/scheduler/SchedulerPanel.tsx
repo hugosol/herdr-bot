@@ -9,7 +9,6 @@ import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
-import { MapInputRequirements } from './MapInputRequirements'
 import { MapInputsEditor } from './MapInputsEditor'
 import { MapTitleEditor } from './MapTitleEditor'
 import { fetchTasks, type TaskResult } from '../tasks/taskApi'
@@ -297,7 +296,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <p className="scheduler-text scheduler-map-description">{map.description}</p>
             <span className="scheduler-badge">静态定义</span>
           </header>
-          <MapInputRequirements content={map.input_requirements ?? ''} />
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">

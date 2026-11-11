@@ -9,7 +9,7 @@ export type Bot = {
   map_file?: string
 }
 
-export type MapFileInput = { id: string; required: boolean }
+export type MapFileInput = { id: string; required: boolean; description?: string }
 export type RunFileInput = { id: string; path: string }
 export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
@@ -115,7 +115,7 @@ function isOutputRule(value: unknown): value is OutputRule[] {
 
 function isMapFileInputs(value: unknown): value is MapFileInput[] {
   return Array.isArray(value) && new Set(value.map(input => input?.id)).size === value.length && value.every(input =>
-    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && Object.keys(input).every(key => ['id', 'required'].includes(key)))
+    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && (!('description' in input) || typeof input.description === 'string') && Object.keys(input).every(key => ['id', 'required', 'description'].includes(key)))
 }
 
 function isMap(value: unknown): value is WorkflowMap {
