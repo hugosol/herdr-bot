@@ -38,6 +38,14 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 `disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery` 使用真实 TCP 和受控外部 Herdr 门闩：通知阻塞预算 10 秒，进入预算 5 秒，已保存事实读取与同 Run 暂停分别须在 2 秒内完成；断开调用者后仍读回同一报告，释放通知后观察 300 毫秒无新增报告或通知。它只证明该有界开发回归，不替代 chief 报告或 OMP/Pi 原生确认的跨仓验收。后端共享代码完成检查仍为 `node scripts/test-backend.mjs`，使用本 worktree 构建的静态页面与独立绝对 `CARGO_TARGET_DIR`。
 
+## Chief 权威的进程与失败回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_authority -- --nocapture` 经公开 HTTP、真实独占后端进程及生产 CLI adapter 验证 P32/P33。`p32_real_restart_serializes_live_registration_and_resume_before_external_completion` 正常发起两份不同 zone／Task 的 chief 历史、注销、实际终止并重启后端，在外部 Herdr 查询门闩处保持 Resume 未完成，让存活登记与另一恢复调用竞争，核对当前权威与 qualify 的胜负；再次实际重启验证被替代身份不能复权。附带 S2 开发回归以实际默认 10 秒在线／30 秒保留策略和受控时刻验证离线占位、扫描移除及消费者失权，不替代 07 的浏览器 P29/P30 或 20 的原生交接 P31 全验收。
+
+`p33_definite_start_failure_frees_slot_but_uncertain_external_start_survives_restart` 验证明确启动拒绝后能重试；受控 Herdr 已接受启动却返回 readiness timeout 时，保留 `uncertain`，实际重启后仍拒绝第二次外部启动；陈旧注销拒绝，明确解除当前 claim 返回原不确定事实并允许下一次合法发起。这些外部响应只证明协议与故障处理，不证明真实 Herdr／OMP／Pi 加载或 GPT-6-luna 的业务职责；本专项没有真实模型请求。
+
+每例独占原子临时目录、定义、历史、权威存储、HOME／APPDATA／XDG 和数值回环动态端口。后端 stdout 持续消费，stderr 落在该例独占目录；Drop 终止并 wait 所属后端，确认结束再删除临时目录，不接触正常服务或用户 Chat。进程启动预算 30 秒，创建完成 20 秒，外部查询进入 5 秒、门闩 10 秒、释放后 Resume 完成 15 秒；不新增产品等待／重试策略。本专项是 S2 进程与公开操作证据，不以受控 CLI 充当 S3 原生宿主证据。完成检查仍需本 worktree 独立绝对 `CARGO_TARGET_DIR`、本 worktree 构建静态页及 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另按入口要求运行 `npm --prefix frontend run test:browser:build`。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。

@@ -37,6 +37,7 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod chats;
+mod chief;
 pub mod clock;
 pub mod config;
 pub mod paths;
@@ -122,6 +123,7 @@ pub struct AppState {
     pub sessions: Arc<sessions::SessionsState>,
     /// 持久历史目录，与当前会话登记和临时关机意图独立。
     pub history: Arc<history::History>,
+    pub(crate) chief: Arc<chief::Authority>,
     /// 后端权威的关机倒计时：手动开始意图建立安排，到期由后端自己调用 [`PowerOff`]。
     ///
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
@@ -231,6 +233,8 @@ pub fn app_with_state(
         config.git.status_cache_ttl_seconds.duration(),
     ));
     let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
+    let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
+    sessions.attach_chief(Arc::clone(&chief));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -242,6 +246,7 @@ pub fn app_with_state(
         ),
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
+        chief,
         sessions,
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
@@ -354,6 +359,9 @@ pub fn app_with_state(
         )
         // 从已登记 zone 创建 Chat：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
         // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
+        .route("/api/chief", get(chief::get_current))
+        .route("/api/chief/qualify", post(chief::qualify))
+        .route("/api/chief/release", post(chief::release))
         .route("/api/chats/resume", post(resume::post_resume))
         .route("/api/chats/preview", post(preview_chat))
         .route("/api/chats", post(create_chat))
@@ -1227,6 +1235,10 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         );
     }
     let creation_id = chats::new_creation_id();
+    let chief = (task.task_type == tasks::TaskType::Chief).then(|| Arc::clone(&state.chief));
+    if let Some(chief) = &chief {
+        if let Err(error) = chief.reserve_creation(&creation_id) { return error.response(); }
+    }
     let view = chats::ChatCreationView::starting(creation_id, name, zone.clone(), task.id.clone());
     let job = state.chat_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
@@ -1237,12 +1249,13 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             herdr,
             history,
             prompts,
-            job,
+            Arc::clone(&job),
             task,
             preset,
             zone,
             input.input,
             workspace_name,
+            chief.map(|chief|(chief,Arc::clone(&state.sessions))),
         )
         .await;
     });

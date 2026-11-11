@@ -271,7 +271,7 @@ pub fn agent_launch_args(
 ///
 /// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
 /// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
-pub async fn run_creation(
+pub(crate) async fn run_creation(
     herdr: Arc<HerdrClient>,
     history: Arc<crate::chats::history::History>,
     prompts: crate::prompts::PromptDictionary,
@@ -281,11 +281,13 @@ pub async fn run_creation(
     zone: String,
     input: String,
     workspace_name: String,
+    chief: Option<(Arc<crate::chief::Authority>, Arc<crate::sessions::SessionsState>)>,
 ) {
+    let authority = chief.as_ref().map(|(authority,_)|authority.as_ref());
     let workspace = match herdr.workspace(&workspace_name).await {
         Ok(workspace) => workspace,
         Err(error) => {
-            fail(&job, FailureStage::Workspace, &error).await;
+            fail(&job, FailureStage::Workspace, &error, authority).await;
             return;
         }
     };
@@ -294,7 +296,7 @@ pub async fn run_creation(
     let created = match herdr.create_tab(&workspace.id, Some(&zone), &name).await {
         Ok(created) => created,
         Err(error) => {
-            fail(&job, FailureStage::Tab, &error).await;
+            fail(&job, FailureStage::Tab, &error, authority).await;
             return;
         }
     };
@@ -313,10 +315,37 @@ pub async fn run_creation(
     let kind = task.agent.label();
     let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
     if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
-        fail(&job, FailureStage::Start, &error).await;
+        fail(&job, FailureStage::Start, &error, authority).await;
         return;
     }
 
+    if let Some((chief,sessions)) = &chief {
+        let creation_id = job.lock().await.id.clone();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        let identity = loop {
+            match tokio::time::timeout_at(deadline,herdr.started_session(&agent_name,kind,deadline)).await {
+                Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
+                _ if tokio::time::Instant::now() >= deadline => {
+                    fail(&job,FailureStage::Submit,&HerdrError::Timeout("chief native identity"),authority).await;
+                    return;
+                }
+                _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+            }
+        };
+        let saved = history.record_zone(&identity.session_id,&name,kind,&identity.cwd,identity.session_file.as_deref(),Some(&workspace.id),&task.id,identity.startup_identity_path.as_deref()).await;
+        let bound = {
+            let _membership = chief.membership.lock().await;
+            let registered = sessions.snapshot().await.iter().any(|row|row.session_id==identity.session_id);
+            chief.bind(&creation_id,&identity.session_id,registered)
+        };
+        if saved.is_err() || bound.is_err() {
+            let mut view = job.lock().await;
+            if let Err(error) = chief.creation_failed(&creation_id,false) { eprintln!("chief binding failure persistence failed: {error:?}"); }
+            view.stage=Stage::Failed;
+            view.failure=Some(Failure { stage:FailureStage::Submit,code:"chief-binding-failed".into(),message:format!("chief 身份保存或绑定失败：history={saved:?}, authority={bound:?}；agent 已启动，未提交初始输入，保留占位。") });
+            return;
+        }
+    }
     {
         let mut view = job.lock().await;
         view.stage = Stage::Submitting;
@@ -328,6 +357,9 @@ pub async fn run_creation(
         Ok(text) => text,
         Err(error) => {
             let mut view = job.lock().await;
+            if let Some(chief) = authority {
+                if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
+            }
             view.stage = Stage::Failed;
             view.failure = Some(Failure {
                 stage: FailureStage::Submit,
@@ -338,7 +370,7 @@ pub async fn run_creation(
         }
     };
     if let Err(error) = herdr.prompt(&agent_name, &text).await {
-        fail(&job, FailureStage::Submit, &error).await;
+        fail(&job, FailureStage::Submit, &error, authority).await;
         return;
     }
 
@@ -350,9 +382,11 @@ pub async fn run_creation(
     };
     // The page and the creation result do not own this task. Never hold a creation,
     // current-registration or history lock while waiting for external identity.
-    tokio::spawn(async move {
-        collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, task.id).await;
-    });
+    if chief.is_none() {
+        tokio::spawn(async move {
+            collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, task.id).await;
+        });
+    }
 }
 
 async fn collect_native_history(
@@ -398,8 +432,16 @@ async fn collect_native_history(
 }
 
 /// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。
-async fn fail(job: &Arc<Mutex<ChatCreationView>>, stage: FailureStage, error: &HerdrError) {
+async fn fail(job: &Arc<Mutex<ChatCreationView>>, stage: FailureStage, error: &HerdrError, chief: Option<&crate::chief::Authority>) {
     let mut view = job.lock().await;
+    if let Some(chief) = chief {
+        let definite = matches!(stage,FailureStage::Workspace)
+            || (matches!(stage,FailureStage::Tab | FailureStage::Start)
+                && matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)));
+        if let Err(error) = chief.creation_failed(&view.id,definite) {
+            eprintln!("chief failure persistence failed: {error:?}");
+        }
+    }
     if view.stage.is_terminal() {
         return;
     }
