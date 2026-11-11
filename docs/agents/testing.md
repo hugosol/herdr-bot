@@ -60,6 +60,18 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 门闩仅控制测试拥有的外部 CLI，进入预算 5 秒、阻塞预算 10 秒，释放后创建完成预算 20 秒；生产沿用 Chat 就绪／身份获取预算，具体身份失败不新增命令重试。专项没有真实模型请求，受控 Herdr 只证明协议／故障及持久事实，不代替 12 的 OMP／Pi 原生批准、GPT-6-luna 路由或实际模型业务完成前返回的 S3 证据；报告资格完整负例与跨进程恢复分别由 14／19／20 维护。本票完成检查使用本 worktree 构建静态页面及独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
 
+## chief Map Run 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation map_ -- --nocapture` 拥有 09 的 S2 Map 发起与来源关联开发回归，复用独占真实后端进程、HTTP 和生产 Herdr CLI adapter：
+
+- `map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zones` 读回实际根 Run／manager／委派关联及完整预览投递正文；不虚构父执行，不把启动当业务完成。
+- `map_confirmation_rejects_changed_map_manager_node_binding_and_material_meaning` 分别改变根／嵌套 Map、Bot、manager／node Task、仅内部 node 的 zone 绑定、命名／直接材料字节及材料删除；旧预览必须要求重新确认，且没有外部启动或 Run。
+- `map_sender_is_saved_before_input_and_internal_node_keeps_workflow_gates` 在外部 prompt 门闩处公开读回已保存的真实 manager 关联；显式准备输入后实际派发 node，独立观察 node cwd、原生身份、管理归属和未报告时的完成拒绝。内部 node 无 chief 委派关联。
+- `map_preview_requires_explicit_manager_and_all_required_named_materials` 拒绝缺 manager、错误用途、缺必需材料及未声明材料。
+- `map_startup_failure_retains_run_provenance_and_real_submission_outcome` 覆盖 Run 初始化失败（无 manager）、agent 启动失败、明确投递拒绝和投递结果不确定，公开读取真实阶段／外部效果及持久启动状态。
+
+专项沿用本文件上节的独占资源／进程退出规则；门闩进入预算 5 秒、外部阻塞预算 10 秒、创建完成预算 20 秒，后端启动预算 30 秒，没有新增产品等待或重试策略。外部 CLI 和原生文件是受控协议输入，没有模型请求；不能替代 13 的两宿主原生确认／GPT-6-luna／真实创建阶段审批、14 的报告资格或 19 的恢复验收。完成检查使用本 worktree 构建的静态页面及独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。
