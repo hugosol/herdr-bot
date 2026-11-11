@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+import re
 import time
 import urllib.request
 
@@ -32,6 +33,12 @@ def calls(history, start=0):
 def text(message):
     content = message.get('content', [])
     return content if isinstance(content, str) else '\n'.join(part.get('text', '') for part in content if isinstance(part, dict))
+
+
+def corrected_business(value):
+    # Preserve the business meaning, not the model's choice of Chinese synonyms.
+    return '内部' in value and 'RELEASE' in value and bool(re.search(
+        r'(?:禁止|严禁|不得|不可|不要|不能|不).{0,8}(?:公开|发布|对外)', value))
 
 
 class ChiefTaskAcceptance(ChiefEntryAcceptance):
@@ -229,7 +236,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
                 '用户明确发起一份新的同要求委派（不是自动重试）：仍用审计简报能力、task/corrected、brief 材料，仅供内部审计、禁止公开发布，RELEASE 前未完成。请重新请求本次原生确认。', 'TASK-' + condition.upper())
             facts = pending['response']['facts']
             require(facts['request']['botId'] == 'audit-capability' and facts['request']['zoneId'] == 'task/corrected', 'Model chose name decoy or ignored corrected zone')
-            require(all(word in facts['request']['input'] for word in ['内部', '禁止', 'RELEASE']), 'Corrected business requirements missing')
+            require(corrected_business(facts['request']['input']), 'Corrected business requirements missing')
             require(facts['request']['materials'] == [{'id': 'brief', 'zoneId': 'task/source', 'path': 'brief.txt'}], 'Material binding differs from user request')
             if condition == 'target-change':
                 self.http('/api/scheduler/bots/save', {'id': 'audit-capability', 'content': json.dumps(dict(self.bot, task_id=other)),
@@ -248,7 +255,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         facts = approved['response']['facts']
         require(facts['request']['botId'] == 'audit-capability' and facts['task']['id'] == self.worker_task and
             facts['request']['zoneId'] == 'task/corrected' and Path(facts['cwd']).resolve() == zones['corrected'].resolve(), 'Final approved target/location differ')
-        require(all(word in facts['request']['input'] for word in ['内部', '禁止', 'RELEASE']), 'Final approved business corrections differ')
+        require(corrected_business(facts['request']['input']), 'Final approved business corrections differ')
         require(facts['request']['materials'] == [{'id': 'brief', 'zoneId': 'task/source', 'path': 'brief.txt'}], 'Final approved material differs')
         final = self.decide(approved, 'approved')
         commits = self.wire('/api/chief/delegations')[approved['commitsBefore']:]
