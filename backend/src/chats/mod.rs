@@ -270,7 +270,8 @@ pub fn agent_launch_args(
 /// 执行一次已接受的创建；调用方已经固定了 Task 与 zone 的当时取值。
 ///
 /// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
-/// `agent prompt` 被确认后才进入成功；不等待模型轮次、Skill 执行或 connect-bot 接入。
+/// 有初始指示时须等 `agent prompt` 被确认后才进入成功；无指示时就绪即成功，保留未提交事实。
+/// 不等待模型轮次、Skill 执行或 connect-bot 接入。
 pub(crate) async fn run_creation(
     herdr: Arc<HerdrClient>,
     history: Arc<crate::chats::history::History>,
@@ -388,14 +389,18 @@ pub(crate) async fn run_creation(
             return;
         }
     }; &composed };
-    if let Err(error) = herdr.prompt(&agent_name, text).await {
-        fail(&job, FailureStage::Submit, &error, authority).await;
-        return;
+    // An empty trigger starts an interactive Chat without inventing a user
+    // turn. Herdr rejects empty prompts; readiness already confirms startup.
+    if !text.is_empty() {
+        if let Err(error) = herdr.prompt(&agent_name, text).await {
+            fail(&job, FailureStage::Submit, &error, authority).await;
+            return;
+        }
     }
 
     let creation_id = {
         let mut view = job.lock().await;
-        view.input_submitted = true;
+        view.input_submitted = !text.is_empty();
         view.stage = Stage::Succeeded;
         view.id.clone()
     };
