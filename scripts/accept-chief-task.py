@@ -40,7 +40,7 @@ def main():
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     evidence = {'passed': False, 'coverage': {host: {key: {'verified': False} for key in ITEMS}
         for host in ['omp', 'pi']}, 'commands': [], 'cleanupErrors': [], 'selectedHosts': args.hosts.split(','),
-        'modelPolicy': 'Only GPT-6-luna; actual returned identity required; no business retries'}
+        'modelPolicy': 'Only GPT-6-luna; actual returned identity required; no business retries', 'nativeExits': {}}
     try:
         def require(condition, message):
             if not condition:
@@ -85,19 +85,30 @@ def main():
                 'scope': 'Existing native headless protocol case; controlled provider, not model behavior'}
             evidence['commands'].append(record)
             passed = result.returncode == 0 and '1 pass' in result.stderr and '0 fail' in result.stderr
-            evidence['coverage'][host]['P10/unavailable'] = {'verified': passed, 'command': record}
+            retained = args.evidence_dir / 'protocol' / host
+            histories = [path for path in retained.rglob('*.jsonl') if path.stat().st_size and
+                'chief_delegate' in path.read_text(encoding='utf-8')]
+            raw = list(retained.rglob('headless-native.json')) if host == 'pi' else []
+            if host == 'pi':
+                passed = passed and bool(raw) and all(json.loads(path.read_text(encoding='utf-8')).get('exit') == 0 for path in raw)
+            passed = passed and bool(histories)
+            evidence['coverage'][host]['P10/unavailable'] = {'verified': passed, 'command': record,
+                'nativeHistories': [{'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()} for path in histories],
+                'headlessOutputs': [str(path) for path in raw]}
         native = runpy.run_path(str(REPO / 'scripts/chief_task_native_acceptance.py'))['ChiefTaskAcceptance']
         for host in args.hosts.split(','):
             host_args = copy.copy(args)
             host_args.host = host
             run = native(host_args)
             status = run.run()
+            evidence['nativeExits'][host] = status
             for key in ITEMS:
                 evidence['coverage'][host][key].update(run.evidence['coverage'].get(key, {}),
                     evidence=str(run.root / 'evidence.json'), exit=status)
             evidence['cleanupErrors'].extend(run.evidence['cleanupErrors'])
         evidence['passed'] = all(item['verified'] for host in evidence['coverage'].values()
-            for item in host.values()) and not evidence['cleanupErrors']
+            for item in host.values()) and all(evidence['nativeExits'].get(host) == 0
+                for host in ['omp', 'pi']) and not evidence['cleanupErrors']
     except BaseException:
         evidence['error'] = traceback.format_exc()
     evidence['entrypoint'] = {'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
