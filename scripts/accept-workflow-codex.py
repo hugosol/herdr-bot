@@ -22,7 +22,7 @@ MODEL = 'gpt-6-luna'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles', 'revise'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task'], required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi', 'omp', 'pi'], required=True)
     for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
     parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
+    if args.scenario == 'chief-task' and args.hosts == 'declared':
+        parser.error('chief-task requires explicit omp,pi or one host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
         parser.error('Single-host selection is only supported for the roles scenario')
     if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
@@ -132,9 +134,17 @@ def main():
                         '--paths-file', str(args.paths_file), '--model-config', str(config),
                         '--evidence-dir', str(args.evidence_dir / 'business'), '--pi-package', str(args.pi_package),
                         '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
+                    if args.scenario == 'chief-task':
+                        command = [sys.executable, str(REPO / 'scripts/accept-chief-task.py'),
+                            '--herdr-bot-worktree', str(REPO), '--toolkit-worktree', str(args.toolkit),
+                            '--backend', str(args.backend), '--hosts', args.hosts,
+                            '--paths-file', str(args.paths_file), '--model-config', str(config),
+                            '--evidence-dir', str(args.evidence_dir / 'business'), '--node', args.node,
+                            '--bun', args.bun, '--timeout', str(args.timeout)]
                     if args.scenario == 'revise':
                         command.extend(['--cases', args.cases])
-                    for name in ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']:
+                    for name in (['shell_path'] if args.scenario == 'chief-task' else
+                                 ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):
                         value = getattr(args, name)
                         if value:
                             command.extend(['--' + name.replace('_', '-'), str(value)])
