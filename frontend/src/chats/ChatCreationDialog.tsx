@@ -256,7 +256,12 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
 
         <label className="zone-form__label" htmlFor="chat-zone">zone</label>
         <select id="chat-zone" className="zone-form__input zone-form__select" data-testid="chat-zone"
-          value={validZone ? zone : ''} onChange={event => { previewSequence.current++; setPreview(null); setZone(event.target.value) }}
+          value={validZone ? zone : ''} onChange={event => {
+            if (event.target.value === zone) return
+            previewSequence.current++
+            setPreview(null)
+            setZone(event.target.value)
+          }}
           disabled={zones === null || submitting || running || finished}>
           <option value="">请选择已登记 zone</option>
           {(zones ?? []).map(entry => <option key={entry.id} value={entry.id}>{entry.id} · {entry.path}</option>)}

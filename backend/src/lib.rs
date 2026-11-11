@@ -1192,18 +1192,21 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
+    let catalog = match state.tasks.catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
+    if let Err(error) = catalog.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref()) {
+        return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。");
+    }
     if let Some(model) = input.model {
         task.trigger.model = model;
     }
     if let Some(thinking) = input.thinking {
         task.trigger.thinking = thinking;
     }
-    // Resolve through Task validation before preparing any launch resources.
-    let mut preset = match state
-        .tasks
-        .catalog()
-        .and_then(|catalog| catalog.resolve(&task))
-    {
+    // Validate both the saved preset and this launch's explicit overrides.
+    let mut preset = match catalog.resolve(&task) {
         Ok(preset) => preset,
         Err(error) => {
             return task_error_with_context(

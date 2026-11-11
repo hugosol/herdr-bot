@@ -49,7 +49,7 @@ test('bot list sorts by descending mtime, breaks ties by filename, and reorders 
   }
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-bot').click()
-  const buttons = page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button')
+  const buttons = page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('listitem').getByRole('button')
   await expect(buttons).toHaveCount(3)
   for (const [index, name] of ['最新文件 · middle', '第一个同时间文件 · zulu', '第二个同时间文件 · alpha'].entries()) {
     await expect(buttons.nth(index)).toHaveAccessibleName(name)

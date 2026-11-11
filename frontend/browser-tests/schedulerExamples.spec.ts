@@ -41,7 +41,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await server.restart()
     await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByTestId('tab-scheduler').click()
-    await expect(page.getByTestId('scheduler-map-list').getByRole('button')).toHaveText(['另一张出行计划（人工示例）', '出行准备核对（人工示例）'])
+    await expect(page.getByTestId('scheduler-map-list').locator('[data-map-file]')).toHaveText(['另一张出行计划（人工示例）', '出行准备核对（人工示例）'])
     await page.getByRole('button', { name: '出行准备核对（人工示例）', exact: true }).click()
     const nodes = page.getByRole('region', { name: '节点列表', exact: true })
     const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
