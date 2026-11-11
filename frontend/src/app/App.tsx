@@ -8,6 +8,7 @@ import { TasksPanel } from '../tasks/TasksPanel'
 import { SuitesPanel } from '../suites/SuitesPanel'
 import { ZonesPanel } from '../zones/ZonesPanel'
 import { ChatPanel } from '../chats/ChatPanel'
+import { ChiefEntry } from '../chats/ChiefEntry'
 import { SchedulerPanel } from '../scheduler/SchedulerPanel'
 import { RunDetails, selectedRunId } from '../workflow/RunDetails'
 import { EMPTY_SESSION_FEED, type SessionFeed } from '../chats/sessionFeed'
@@ -252,7 +253,10 @@ export default function App({
           </button>
           <h1 className="layout-brand">herdr-bot</h1>
         </div>
+        <div className="layout-header-actions">
+        <ChiefEntry />
         <button type="button" data-action="server" data-testid={serverOpen ? 'server-back' : 'server-button'} ref={serverBackRef} onClick={() => { if (serverOpen) setServerOpen(false); else if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>{serverOpen ? '返回' : 'server'}</button>
+        </div>
       </header>
       <div className="layout-shell">
         <nav className="layout-nav" hidden={serverOpen} aria-label="主导航"

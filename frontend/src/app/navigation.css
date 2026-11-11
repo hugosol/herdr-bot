@@ -37,6 +37,23 @@
   border-bottom: 1px solid var(--layout-line);
 }
 
+.layout-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chief-entry-feedback {
+  position: absolute;
+  z-index: 20;
+  top: 60px;
+  right: 20px;
+  max-width: min(440px, calc(100vw - 40px));
+  padding: 12px;
+  background: var(--layout-surface);
+  border: 1px solid var(--layout-line);
+}
+
 .layout-header-start {
   display: flex;
   align-items: center;

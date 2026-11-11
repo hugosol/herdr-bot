@@ -265,6 +265,14 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 只切换 zone 不重置 model、thinking 或初始 input。重复选择当前 Task 或 zone 不会清除已有名称预览。发起时先校验已保存 Task 的选项，再校验本次覆盖值；损坏的预设须先修正，不能通过本次覆盖值绕过。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
 
+## chief bot 入口
+
+页头 `server` 左侧的 `chief bot` 按钮每次点击都读取后端当前 chief，不使用浏览器本地选择。有当前 chief 的原生身份时，经现有 Resume 路径定位或恢复该 Chat；仍在启动、结果不确定或查询失败时显示反馈，不另建 Chat。
+
+后端没有当前 chief 时，打开既有 Chat 发起窗口，只列出 chief 类型 Task。初始选择为 `chief-bot`、`default/bot-playground`，本次名称为 `chat with chief bot`；不因默认 Task 的命名规则被编辑而更改该入口的默认名称。可以改选 chief Task、已登记 zone、模型、思考级别及本次名称，修改仅用于本次启动，不保存 Task，也不为每次 Chat 复制 chief-bot 定义。Task 与 zone 的原有发起入口保持不变。
+
+默认 zone 未登记时，显示“请选择已登记 zone”，创建按钮保持禁用；必须手动选择有效登记，不自动选用唯一项，也不创建目录或绑定。Herdr Workspace、初始 input 与成功／失败反馈继续使用同一窗口。启动与其他浏览器竞争时以服务端接受／拒绝为准，不自动重试。
+
 ## 当前 chief 的后端权威
 
 chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/resume` 定位或恢复；所有入口共享同一占位，不按浏览器、zone 或 Task 分区。占位先持久保存再调用 Herdr；chief 启动须在提交初始输入前确认真实原生身份并保存来源。普通会话的名称、客户端声明角色或同名 Task 不授予 chief 资格。
