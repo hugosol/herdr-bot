@@ -70,6 +70,17 @@
 .scheduler-details li button { width: 100%; text-align: left; color: var(--nier-ink); background: var(--nier-surface); }
 .scheduler-details li, .scheduler-details h3 { overflow-wrap: anywhere; }
 .scheduler-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.scheduler-input-markdown { white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.scheduler-input-markdown > :first-child { margin-top: .5rem; }
+.scheduler-input-markdown > :last-child { margin-bottom: 0; }
+.scheduler-input-markdown :is(p, ul, ol, blockquote, pre) { margin-block: .65rem; }
+.scheduler-input-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 1rem 0 .5rem; font-size: 1em; line-height: 1.5; }
+.scheduler-input-markdown ul { padding-inline-start: 1.5rem; list-style: disc; }
+.scheduler-input-markdown ol { padding-inline-start: 1.5rem; list-style: decimal; }
+.scheduler-input-markdown li + li { margin-top: .25rem; }
+.scheduler-input-markdown li > :is(ul, ol) { margin-block: .25rem; }
+.scheduler-input-markdown pre { white-space: pre-wrap; }
+.scheduler-input-markdown blockquote { margin-inline: 0; padding-inline-start: 1rem; border-inline-start: 2px solid var(--nier-border); }
 .scheduler-details pre.scheduler-prose { font-family: inherit; font-size: 14px; line-height: 1.8; }
 .scheduler-details .scheduler-help { color: var(--nier-description); font-size: 13px; line-height: 1.7; }
 .scheduler :is([role="alert"], .scheduler-node-content-error), .scheduler .scheduler-editor :is([role="alert"], .scheduler-node-content-error) { color: var(--nier-negative); }

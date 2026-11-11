@@ -104,6 +104,7 @@ for (const agent of ['omp', 'pi'] as const) {
     fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: task.id }))
     identity('shared-manager')
     const run = await post('/api/scheduler/maps/shared.json/runs', { managerTaskId: manager.id, zone, userInput: 'MANAGER INPUT' }, 201)
+    await post('/api/workflow/manager/prepare_inputs', { sessionId: 'shared-manager', fileInputs: [], confirmed: true, reason: 'Reviewed shared task fixture inputs' })
     identity('shared-node')
     expect((await post('/api/workflow/manager/dispatch', { sessionId: 'shared-manager', nodes: ['A'] })).results[0].status).toBe('running')
     expect(host.herdrCalls().filter(call => call.kind === 'agent_start').at(-1)!.args).toEqual(['--no-extensions', ...nativeBuiltins, ...[...entries.slice(0, -1), `${agent}-node-chat`, `${agent}-connect-bot`].flatMap(id => ['--extension', path.join(root, 'extensions', `${id}.ts`)])])

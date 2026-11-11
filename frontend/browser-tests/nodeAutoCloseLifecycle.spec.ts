@@ -62,6 +62,7 @@ async function setup(page: Page, a = false, b = true) {
   fs.writeFileSync(path.join(mapRoot, 'lifecycle.json'), JSON.stringify({ title: 'Lifecycle', description: 'Isolated auto-close lifecycle', nodes: { A: { ...node, auto_close: a }, B: { ...node, auto_close: b } } }))
   host(manager, zone)
   const started = await post(page, '/api/scheduler/maps/lifecycle.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: 'LIFECYCLE-MANAGER-INPUT' }, 201)
+  await post(page, '/api/workflow/manager/prepare_inputs', { sessionId: manager, fileInputs: [], confirmed: true, reason: 'Reviewed empty lifecycle fixture requirements' })
   return { zone, runId: started.id as string }
 }
 async function dispatch(page: Page, nodeId: string, sessionId: string, zone: string) {

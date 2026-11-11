@@ -167,7 +167,7 @@ run_instructions = '{(REPO / 'docs/workflow-runtime.md').as_posix()}'
         dump(self.root / 'maps' / self.map, {'title': 'File consumption', 'description': '', 'nodes': {}})
         route = f'/api/scheduler/maps/{self.map}'
         self.route = route
-        self.http(route + '/inputs', {'input_files': [{'id': 'brief', 'required': False}],
+        self.http(route + '/inputs', {'input_requirements': '', 'input_files': [{'id': 'brief', 'required': False}],
                                     'revision': self.http(route + '/inputs')['revision']})
         for node in ['A', 'B', 'C']:
             draft = self.http(route + '/nodes/new')
@@ -184,8 +184,13 @@ run_instructions = '{(REPO / 'docs/workflow-runtime.md').as_posix()}'
 
     def start(self, name, files):
         self.identity(name)
-        return self.http(self.route + '/runs', {'managerTaskId': self.tasks['manager'], 'zone': 'manager',
-                                               'userInput': 'Public process smoke', 'fileInputs': files}, status=201)['run']
+        run = self.http(self.route + '/runs', {'managerTaskId': self.tasks['manager'], 'zone': 'manager',
+                                             'userInput': 'Public process smoke', 'fileInputs': files}, status=201)['run']
+        prepared = self.http('/api/workflow/manager/prepare_inputs', {'sessionId': name, 'fileInputs': files,
+                            'confirmed': True, 'reason': 'Mechanism fixture: known text and owned readable files reviewed'})
+        require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
+        return run
 
     def dispatch(self, manager, node, name):
         self.identity(name, node=True)

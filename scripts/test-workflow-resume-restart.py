@@ -103,6 +103,10 @@ def main():
         http('/api/scheduler/maps/outer.json/nodes/save', {'id': 'A', 'revision': draft['revision'], 'create': True, 'content': json.dumps({'title': 'Call', 'bot_id': 'nested', 'manager_task_id': manager, 'input': 'BUSINESS-TRIGGER-829', 'zone': 'zone', 'blocked_by': []})})
         native('resume-root')
         parent = http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'ROOT-TRIGGER-905'}, 201)['id']
+        prepared = action('resume-root', 'prepare_inputs', fileInputs=[], confirmed=True,
+                          reason='Controlled resume fixture text reviewed; no file inputs')
+        require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         native('resume-old')
         old = action('resume-root', 'dispatch', nodes=['A'])['snapshot']['nodes']['A']['execution']
         action('resume-root', 'fail', nodeId='A', reason='Original failure independently confirmed')

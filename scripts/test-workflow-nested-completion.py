@@ -119,12 +119,20 @@ def main():
             http('/api/scheduler/maps/outer.json/nodes/save', {'id': identity, 'content': json.dumps(content), 'revision': draft['revision'], 'create': True})
         started = http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': tasks['manager'], 'zone': 'owned', 'userInput': 'Owned nested smoke'}, 201)
         root_id = started['id']
+        prepared = action('smoke-manager', 'prepare_inputs', fileInputs=[], confirmed=True,
+                          reason='Controlled outer fixture text reviewed; no file inputs')
+        require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         native('smoke-child')
         launched = action('smoke-manager', 'dispatch', nodes=['call'])
         execution = launched['snapshot']['nodes']['call']['execution']
         child_id = execution['childRunId']
         report = {'sessionId': 'smoke-child', 'body': 'Not yet finished', 'canComplete': True}
         require(http('/api/workflow/node/report', report, 400)['code'] == 'child-run-not-finished', 'unfinished child accepted')
+        prepared = action('smoke-child', 'prepare_inputs', fileInputs=[], confirmed=True,
+                          reason='Controlled inner fixture text reviewed; no file inputs')
+        require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         native('smoke-inside')
         action('smoke-child', 'dispatch', nodes=['inside'])
         http('/api/workflow/node/report', {'sessionId': 'smoke-inside', 'body': 'Internal done', 'canComplete': True})

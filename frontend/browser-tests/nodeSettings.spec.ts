@@ -181,6 +181,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: '验证节点策略派发' })
   expect(started.status(), await started.text()).toBe(201)
   const { id: runId } = await started.json()
+  expect((await post('/api/workflow/manager/prepare_inputs', { sessionId: 'settings-manager', fileInputs: [], confirmed: true, reason: 'Reviewed empty settings fixture inputs' })).status()).toBe(200)
   const prompts: Record<string, string> = {}
   for (const id of ['A', 'B']) {
     server!.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: `settings-node-${id}` } })

@@ -195,15 +195,19 @@ async fn optional_absence_passes_nested_interface_but_cannot_bypass_required_chi
     assert_eq!(work["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([]));
     inner["input_files"][0]["required"] = json!(true);
     fs::write(maps.join("inner.json"), inner.to_string()).unwrap();
+    native(&s, "omp", "required-child", "node-zone");
+    let started = s.dispatch("optional-root", &["B"]).await;
+    assert_eq!(started["results"][0]["status"], "running");
+    let child_id = started["snapshot"]["nodes"]["B"]["execution"]["childRunId"].as_str().unwrap();
+    assert_eq!(detail(&s, child_id).await["run"]["inputsReady"], false);
     let calls = s.herdr.calls();
-    let rejected = s.dispatch("optional-root", &["B"]).await;
-    assert_eq!(rejected["results"][0]["status"], "failed");
-    assert_eq!(rejected["results"][0]["failure"]["stage"], "child-preflight");
-    assert!(rejected["results"][0]["failure"]["message"].as_str().unwrap().contains("material"));
-    assert!(rejected["snapshot"]["nodes"]["B"]["execution"].get("childRunId").is_none());
+    let rejected = role_request(&s, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"required-child","fileInputs":[],"confirmed":true,"reason":"Review cannot supply the absent material"}), 409).await;
+    assert!(rejected.to_string().contains("material"));
+    let rejected = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":"required-child","nodes":["A"]}), 200).await;
+    assert_eq!(rejected["results"][0]["status"], "rejected");
     assert_eq!(s.herdr.calls(), calls);
     let runs = get_over_tcp(s.server.addr(), "/api/workflow/runs").await;
-    assert_eq!(serde_json::from_str::<Value>(&runs.body).unwrap()["runs"].as_array().unwrap().len(), 2);
+    assert_eq!(serde_json::from_str::<Value>(&runs.body).unwrap()["runs"].as_array().unwrap().len(), 3);
 }
 
 // P12: output source IDs and child interface IDs are deliberately different.
@@ -262,6 +266,12 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         let child_id = parent["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
         let child = detail(&s, child_id).await;
         assert_eq!(child["run"]["fileInputs"], json!([{"id":"shared","path":path}]));
+        assert_eq!(child["run"]["inputsReady"], false, "parent preparation does not attest the child's business scope");
+        let calls = s.herdr.calls();
+        let rejected = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":child_session,"nodes":["A"]}), 200).await;
+        assert_eq!(rejected["results"][0]["status"], "rejected");
+        assert_eq!(s.herdr.calls(), calls);
+        let _ = s.prepare_fixture(child_session).await;
         native(&s, "omp", grand_session, "");
         let middle = s.dispatch(child_session, &["A"]).await;
         let grand_id = middle["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();

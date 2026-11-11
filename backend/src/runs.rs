@@ -23,6 +23,8 @@ pub use retry::manager_retry;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
 mod operation;
+mod preparation;
+pub use preparation::manager_prepare_inputs;
 mod collect;
 pub use collect::manager_collect;
 pub use reports::{node_context, node_report};
@@ -120,6 +122,8 @@ pub struct Run {
     pub user_input: String,
     #[serde(default)]
     pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    #[serde(default)]
+    pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
     pub status: String,
     pub finished: Option<Finished>,
@@ -529,6 +533,7 @@ pub async fn start_run(
         workspace_name: checked.workspace_name,
         user_input: input.user_input,
         file_inputs: input.file_inputs,
+        inputs_ready: false,
         manager: None,
         status: "running".into(),
         finished: None,
@@ -691,6 +696,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
 fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) -> Vec<String> {
     let mut reasons = Vec::new();
     if run.status != "running" { reasons.push(format!("Run 状态为 {}", run.status)); }
+    if !run.inputs_ready { reasons.push("Run 输入尚未由管理者检查并确认；请先 prepare_inputs。".into()); }
     match run.nodes.get(id) {
         None => reasons.push("node 不在本次 Run 中".into()),
         Some(node) if node.status != "pending" => reasons.push(format!("node 状态为 {}，仅 pending 可派发", node.status)),

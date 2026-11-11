@@ -51,8 +51,8 @@ async fn auto_close_old_execution_defaults_false_without_read_compensation_or_hi
     run["nodes"]["A"]["execution"].as_object_mut().unwrap().remove("autoClose");
     fs::write(root.join("run.json"), run.to_string()).unwrap();
     let mut history = common::read_json_lines(&root.join("history.jsonl"));
-    history[0]["execution"].as_object_mut().unwrap().remove("autoClose");
-    fs::write(root.join("history.jsonl"), format!("{}\n", history[0])).unwrap();
+    history[1]["execution"].as_object_mut().unwrap().remove("autoClose");
+    fs::write(root.join("history.jsonl"), history.iter().map(|event| format!("{event}\n")).collect::<String>()).unwrap();
     let old_run = fs::read(root.join("run.json")).unwrap();
     let old_history = fs::read(root.join("history.jsonl")).unwrap();
     submit_report(&s, "close-legacy-A", "Legacy execution handoff ready", true).await;

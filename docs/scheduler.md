@@ -10,7 +10,7 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 
 | 对象 | 字段与职责 |
 | --- | --- |
-| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_files: [{id,required}]` 声明调用方文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
+| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明输入要求；可选 `input_files: [{id,required}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）或 `map_file`（目录内确切 Map JSON 文件名），二者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
@@ -80,7 +80,7 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 
 ### Map 命名文件输入与根 Run 绑定
 
-在 Map 页面点击“编辑文件输入声明”，编辑声明数组并保存，例如：
+Map 详情与发起 Run 页面展示 `input_requirements` 的 Markdown 原文；它是用户准备和管理者核实输入的共同权威指引，不是自动业务校验器。点击“编辑文件输入声明”，一并编辑输入要求与声明数组并保存，例如：
 
 ```json
 [{"id":"brief","required":true},{"id":"appendix","required":false}]
@@ -88,9 +88,11 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 
 `input_files` 只声明材料 ID 与布尔 `required`，不保存每次实际文件地址。ID 必须非空且在本接口内唯一；其他 Map 与其他 Run 可重复使用同名 ID，各自解析。缺省或 `[]` 表示无文件接口。重复 ID 保存被拒绝且不改变原 Map；编辑带原文 revision，文件已被其他操作修改时拒绝覆盖。
 
-“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。可选项留空表示本次未提供，持久 `fileInputs` 不生成该项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。更换文件只改变新 Run 的绑定，不需要重写 Map，也不改变已启动 Run 的地址。地址绑定不是文件内容快照，不复制或锁定源文件。
+“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。所有文件项（包括必需项）均可在启动时留空，交由管理者对话补齐；持久 `fileInputs` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
 
-公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。必需缺失、未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读均在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_requirements`、`input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_requirements,input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+
+新 Run 的 `inputsReady=false`。管理者须先阅读 Map 输入要求及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认时强制齐全；直接与嵌套调用遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
 
 根输入可读性与普通节点解析使用 `workflow_dispatch file_consumption::` 专项核对真实文件和 Windows 实际访问拒绝；原生 Chat 真正消费材料仍由原生专项负责，不能从页面成功或记录存在推断原生消费已经通过。
 
@@ -226,6 +228,8 @@ Map 文件加载、结构或依赖失败时清除当前图和详情，不把上�
 | `PATCH /api/scheduler/maps/{filename}/group` | `{group: 字符串或null}` → 更新后的 Map 字段与 `revision` |
 | `PATCH /api/scheduler/bots/{id}/group` | `{group: 字符串或null}` → 更新后的 Bot 字段与 `revision` |
 | `GET /api/scheduler/maps/{filename}` | 完整校验后的 Map |
+| `GET /api/scheduler/maps/{filename}/inputs` | `input_requirements`、`input_files` 与 revision |
+| `POST /api/scheduler/maps/{filename}/inputs` | `{input_requirements,input_files,revision}` → 更新后 Map |
 | `GET /api/scheduler/bots` | Bot 目录和局部问题 |
 | `GET /api/scheduler/bots/new` | 打包草稿，不含 id |
 | `POST /api/scheduler/bots/edit` | `{id}` → content、revision |

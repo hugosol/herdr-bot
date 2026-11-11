@@ -103,13 +103,15 @@ async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
     let declarations = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
-    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":declarations,"revision":draft["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":declarations,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
     let map: Value = serde_json::from_str(&read.body).unwrap();
     assert_eq!(map["input_files"], declarations);
+    assert_eq!(map["input_requirements"], "Review the invoice date and obtain explicit scope approval.");
+    assert_eq!(serde_json::from_str::<Value>(&get_over_tcp(server.addr(), route).await.body).unwrap()["input_requirements"], "Review the invoice date and obtain explicit scope approval.");
     let draft: Value = serde_json::from_str(&get_over_tcp(server.addr(), route).await.body).unwrap();
-    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"revision":draft["revision"]}).to_string()).await;
+    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("brief"));
     assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
@@ -153,11 +155,12 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
         assert_eq!(detail.status, 200, "{}", detail.body);
         let detail: Value = serde_json::from_str(&detail.body).unwrap();
         assert_eq!(detail["run"]["fileInputs"], bindings);
+        assert_eq!(detail["run"]["inputsReady"], false, "readable startup bindings are not semantic confirmation, including after reload");
         assert_eq!(detail["run"]["userInput"], business);
     }
 }
 
-// S2, nesting P11: missing required and undeclared IDs must be rejected by
+// S2, nesting P11: duplicate and undeclared IDs must be rejected by
 // both public entries before any external effect or Run allocation. Business
 // text containing an ID/path must not fill a missing binding.
 #[tokio::test]
@@ -170,7 +173,6 @@ async fn invalid_root_input_ids_reject_preflight_and_start_without_host_effects(
     let file = data.path().join("brief.txt");
     fs::write(&file, "material").unwrap();
     for (bindings, code, input_id) in [
-        (json!([]), "run-input-required", "brief"),
         (json!([{"id":"brief","path":file},{"id":"alien","path":file}]), "run-input-undeclared", "alien"),
         (json!([{"id":"brief","path":file},{"id":"brief","path":file}]), "run-input-duplicate", "brief"),
     ] {
@@ -382,6 +384,8 @@ async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_ins
     assert_eq!(status.status, 200, "{}", status.body);
     assert_eq!(serde_json::from_str::<Value>(&status.body).unwrap()["snapshot"]["id"], committed["id"]);
 
+    let prepared = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":"01a18564-c4a1-700b-81b2-4ffb35f043ed","fileInputs":[],"confirmed":true,"reason":"Reviewed fixture inputs before native identity checks"}).to_string()).await;
+    assert_eq!(prepared.status, 200, "{}", prepared.body);
     let node_release = data.path().join("missing-native-node-prompt-release");
     herdr.set_behavior(json!({
         "native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":node_file},
@@ -433,6 +437,8 @@ async fn missing_pi_node_file_still_submits_initial_instructions_after_associati
         &json!({"managerTaskId":ids[0],"zone":zone,"userInput":""}).to_string()).await;
     assert_eq!(started.status, 201, "{}", started.body);
     let run: Value = serde_json::from_str(&started.body).unwrap();
+    let prepared = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":"pi-manager","fileInputs":[],"confirmed":true,"reason":"Reviewed fixture inputs before native identity checks"}).to_string()).await;
+    assert_eq!(prepared.status, 200, "{}", prepared.body);
     let file = data.path().join("2026-10-29T06-31-42-214Z_01a1865b-7185-74a2-af0e-9d7eb972c0ee.jsonl");
     let release = data.path().join("pi-node-input-release");
     herdr.set_behavior(json!({

@@ -49,6 +49,9 @@ pub async fn manager_retry(
         if !input.confirmed || input.reason.trim().is_empty() {
             return rejection(&state, &run, "retry-confirmation-required", "请先由人工核实原 Chat 与副作用，确认需要独立新执行并说明依据；retry 不撤销旧副作用。").await;
         }
+        if !run.inputs_ready {
+            return rejection(&state, &run, "run-inputs-not-ready", "Run 输入尚未检查并确认；请先 prepare_inputs。").await;
+        }
         let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason)).await;
         let mut response = snapshot(&state, &run, true).await?;
         response["result"] = result;

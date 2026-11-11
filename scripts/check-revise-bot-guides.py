@@ -35,7 +35,7 @@ class RevisionSmoke(Smoke):
             require(self.http('/api/scheduler/bots/edit', {'id': id})['content'] == bot, id)
         dump(self.root / 'maps' / file, {'title': 'Revision', 'description': '', 'nodes': {}})
         route = '/api/scheduler/maps/' + file
-        self.http(route + '/inputs', {'input_files': definition['input_files'], 'revision': self.http(route + '/inputs')['revision']})
+        self.http(route + '/inputs', {'input_requirements': definition.get('input_requirements', ''), 'input_files': definition['input_files'], 'revision': self.http(route + '/inputs')['revision']})
         for id, source in definition['nodes'].items():
             node = dict(source, zone='node')
             draft = self.http(route + '/nodes/new')
@@ -51,7 +51,7 @@ class RevisionSmoke(Smoke):
         def preflight(inputs, status=200):
             return self.http(route + '/preflight', {'managerTaskId': self.tasks['manager'], 'zone': 'manager', 'userInput': 'Revise guides only', 'fileInputs': inputs}, status=status)
         bound = [{'id': 'request', 'path': str(request)}]
-        preflight([], 400)
+        preflight([])
         preflight(bound)
         preflight(bound + [{'id': 'materials', 'path': str(reference)}])
         preflight(bound + [{'id': 'materials', 'path': str(self.root / 'missing.md')}], 400)
@@ -61,7 +61,7 @@ class RevisionSmoke(Smoke):
         require(self.http(route) == before, 'rejected preflight mutated definition')
         require(not self.calls(), 'publication or preflight started host')
         require(not list((self.root / 'runs').glob('*/run.json')), 'publication created Run')
-        self.evidence['scenarios'].append({'definitionRoundtrip': True, 'dedicatedTaskRoundtrip': True, 'optionalAbsent': True, 'optionalPresent': True, 'missingRequiredRejected': True, 'missingOptionalFileRejected': True, 'realUnreadableRejected': True, 'noHostOrRun': True})
+        self.evidence['scenarios'].append({'definitionRoundtrip': True, 'dedicatedTaskRoundtrip': True, 'optionalAbsent': True, 'optionalPresent': True, 'missingRequiredDeferredToPreparation': True, 'missingOptionalFileRejected': True, 'realUnreadableRejected': True, 'noHostOrRun': True})
 
 
 def main():

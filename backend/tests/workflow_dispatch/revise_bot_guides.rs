@@ -65,7 +65,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let endpoint = format!("/api/scheduler/maps/{file}");
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"revision":interface["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     for id in ["w1","w2","w3","w4","w5"] {
         let mut node = definition["nodes"][id].clone();
@@ -81,7 +81,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let material = s.data.path().join("reference.md");
     fs::write(&request, "Revise existing Bot worker only. Keep its Task unchanged. No reference material required.").unwrap();
     fs::write(&material, "Preserve the original authorization boundary.").unwrap();
-    for (inputs, status) in [(json!([]),400), (json!([{"id":"request","path":request}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":material}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("missing.md")}]),400)] {
+    for (inputs, status) in [(json!([]),200), (json!([{"id":"request","path":request}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":material}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("missing.md")}]),400)] {
         let response = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/preflight"), &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Revise guides, not the target","fileInputs":inputs}).to_string()).await;
         assert_eq!(response.status, status, "{}", response.body);
     }

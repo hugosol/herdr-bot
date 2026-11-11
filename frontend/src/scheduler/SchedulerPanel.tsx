@@ -9,6 +9,7 @@ import { MapNodeDetails } from './MapNodeDetails'
 import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
+import { MapInputRequirements } from './MapInputRequirements'
 import { MapInputsEditor } from './MapInputsEditor'
 import { MapTitleEditor } from './MapTitleEditor'
 import { fetchTasks, type TaskResult } from '../tasks/taskApi'
@@ -279,7 +280,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
           </>}
         </div>}
         {inputsOpen && file && !botView && !draft && <MapInputsEditor key={file} file={file} onClose={() => setInputsOpen(false)} onSaved={() => { setInputsOpen(false); refreshAll() }} />}
-        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} declarations={map?.input_files} active={active && !botView && !draft}
+        {launchOpen && file && <div hidden={botView || draft !== null}><RunLaunchForm key={file} file={file} declarations={map?.input_files} requirements={map?.input_requirements} active={active && !botView && !draft}
           onClose={() => { setLaunchOpen(false); void returnToMap() }}
           onNode={(id) => { selectNode(id); void beginEdit(id, 'node') }}
           onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
@@ -296,6 +297,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <p className="scheduler-text scheduler-map-description">{map.description}</p>
             <span className="scheduler-badge">静态定义</span>
           </header>
+          <MapInputRequirements content={map.input_requirements ?? ''} />
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
             <div className="scheduler-outline">

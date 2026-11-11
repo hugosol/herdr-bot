@@ -668,6 +668,10 @@ export default function(pi) {
             started = self.http('/api/scheduler/maps/lifecycle.json/runs', {'managerTaskId': manager['task']['id'], 'zone': manager['case'], 'userInput': 'CASE:' + manager['case']}, 201)
             manager['chat'] = started['run']['manager']
             self.wait_case(manager, creation=False)
+            prepared = self.http('/api/workflow/manager/prepare_inputs', {'sessionId': manager['history']['id'], 'fileInputs': [],
+                                 'confirmed': True, 'reason': 'Controlled lifecycle fixture text reviewed; no file inputs'})
+            require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
             dispatched = self.http('/api/workflow/manager/dispatch', {'sessionId': manager['history']['id'], 'nodes': ['A']})
             execution = dispatched['snapshot']['nodes']['A']['execution']
             worker['chat'] = execution['chat']

@@ -45,7 +45,7 @@
 .workflow-status-running { color:var(--nier-info); }
 .workflow-status-completed { color:var(--nier-positive); }
 .workflow-status-failed { color:var(--nier-negative); }
-.workflow-status-pending,.workflow-status-paused,.workflow-status-blocked { color:var(--nier-warning); }
+.workflow-status-pending,.workflow-status-preparing,.workflow-status-paused,.workflow-status-blocked { color:var(--nier-warning); }
 .workflow-status-ready { color:var(--nier-info); }
 .workflow-node-running-arrow[data-animate="true"] { animation:workflow-running-arrow 1.15s ease-in-out infinite; }
 @keyframes workflow-running-arrow { 0%,100% { transform:translateX(-2px); opacity:.55; } 50% { transform:translateX(3px); opacity:1; } }

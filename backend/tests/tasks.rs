@@ -105,7 +105,7 @@ async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() 
         let response = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":revisions[0]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
-        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"brief","required":true}], "revision":revisions[1]}).to_string()).await;
+        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"brief","required":true}], "input_requirements":"", "revision":revisions[1]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
         let maps: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps").await.body).unwrap();

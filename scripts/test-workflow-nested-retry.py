@@ -79,6 +79,11 @@ def main():
                 return value
         def action(session, name, status=200, **fields):
             return http('/api/workflow/manager/' + name, {'sessionId': session, **fields}, status)
+        def prepare_inputs(session):
+            prepared = action(session, 'prepare_inputs', fileInputs=[], confirmed=True,
+                              reason='Controlled retry fixture text reviewed; no file inputs')
+            require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         def records(name):
             path = host / name
             return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
@@ -102,7 +107,9 @@ def main():
             http('/api/scheduler/maps/outer.json/nodes/save', {'id': id, 'content': json.dumps(content), 'revision': draft['revision'], 'create': True})
         def start(session):
             native(session)
-            return http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'RETRY-SMOKE'}, 201)['id']
+            started = http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'RETRY-SMOKE'}, 201)
+            prepare_inputs(session)
+            return started['id']
         def report(session, ready, outputs):
             value = http('/api/workflow/node/report', {'sessionId': session, 'body': session, 'canComplete': ready, 'outputs': outputs})
             require(value['saved'] and value['notification']['status'] == 'submitted', value)
@@ -110,6 +117,7 @@ def main():
             require(delivered['target'] == value['report']['to']['agentName'] and value['report']['id'] in delivered['text'], 'Report notification reached wrong host')
             return value['report']
         def finish(session, inside):
+            prepare_inputs(session)
             native(inside)
             action(session, 'dispatch', nodes=['A'])
             report(inside, True, [])

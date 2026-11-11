@@ -1,7 +1,8 @@
 {
   "group": "meta-map",
   "title": "创建task",
-  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 三指南并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。需求来自本次 Run.userInput，可选 materials 为参考材料。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
+  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 三指南并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。输入准备见本 Map 的 input_requirements。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
+  "input_requirements": "提供本次 normal Task 创建的业务需求（Run.userInput）；materials 为可选参考材料，提供时说明用途。管理者先通过对话澄清并核实输入就绪；配置全文确认、后续 Bot 包装委托与各阶段保存授权仍由对应工作核实，不替用户补齐授权。",
   "input_files": [
     {
       "id": "materials",
@@ -33,7 +34,7 @@
     "w2": {
       "title": "W2 保义优化 Task.prompt",
       "bot_id": "optimize-prompt",
-      "input": "完整读取 task_created：其中 Task.prompt 是原文，需求、确认及硬约束是保义依据。优化并保存该真实 normal Task 的 prompt，保持其余配置不变。\n保存前读取 ${herdr-bot-path}/docs/usage.md 的“仅修改 Task.prompt”，使用服务 ${herdr-bot-api-url}，按上游记录的授权执行。\n交付 saved 为完整读回的最新 Task 配置；handoff 按 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“调用接口”整理为包装 request，保留上游需求、委托、授权来源／范围及限制，补充真实 Task ID、保存与保义核对结论、未验证项。handoff 不复制配置或 prompt。包装必需项缺失时明确阻塞。",
+      "input": "完整读取 task_created：其中 Task.prompt 是原文，需求、确认及硬约束是保义依据。优化并保存该真实 normal Task 的 prompt，保持其余配置不变。\n保存前读取 ${herdr-bot-path}/docs/usage.md 的“仅修改 Task.prompt”，使用服务 ${herdr-bot-api-url}，按上游记录的授权执行。\n交付 saved 为完整读回的最新 Task 配置；handoff 按 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-wrapper.json 的 input_requirements 整理为包装 request，保留上游需求、委托、授权来源／范围及限制，补充真实 Task ID、保存与保义核对结论、未验证项。handoff 不复制配置或 prompt。包装必需项缺失时明确阻塞。",
       "input_rule": [
         {
           "type": "node",

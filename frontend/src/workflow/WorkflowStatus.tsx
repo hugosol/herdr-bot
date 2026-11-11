@@ -1,6 +1,7 @@
 const statuses: Record<string, { label: string; icon: string }> = {
   pending: { label: '待执行', icon: '…' },
   ready: { label: '可派发', icon: '○' },
+  preparing: { label: '等待输入准备', icon: '…' },
   blocked: { label: '等待依赖', icon: '⊘' },
   running: { label: '运行中', icon: '' },
   paused: { label: '已暂停', icon: 'Ⅱ' },

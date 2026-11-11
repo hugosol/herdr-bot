@@ -313,6 +313,7 @@ pub fn app_with_state(
         .route("/api/workflow/runs", get(runs::list_runs))
         .route("/api/workflow/runs/{id}", get(runs::get_run).patch(runs::rename_run))
         .route("/api/workflow/manager/status", post(runs::manager_status))
+        .route("/api/workflow/manager/prepare_inputs", post(runs::manager_prepare_inputs))
         .route("/api/workflow/manager/collect", post(runs::manager_collect))
         .route("/api/workflow/manager/dispatch", post(runs::manager_dispatch))
         .route("/api/workflow/manager/complete", post(runs::manager_complete))

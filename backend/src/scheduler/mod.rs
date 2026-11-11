@@ -13,6 +13,8 @@ struct WorkflowMap {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
     description: String,
+    #[serde(default)]
+    input_requirements: String,
     #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
     input_files: Vec<MapFileInput>,
     nodes: BTreeMap<String, JsonObject<MapNode>>,
@@ -324,7 +326,7 @@ pub async fn edit_map_inputs(
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
-        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "revision": {"file": name, "original": original}}))
+        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "input_requirements": map.input_requirements, "revision": {"file": name, "original": original}}))
     })).await {
         Ok(Ok(value)) => Json(value).into_response(),
         Ok(Err(error)) => error.into_response(),
@@ -335,6 +337,7 @@ pub async fn edit_map_inputs(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapInputsSave {
+    input_requirements: String,
     #[serde(deserialize_with = "object_array")]
     input_files: Vec<MapFileInput>,
     revision: BotRevision,
@@ -356,6 +359,7 @@ pub async fn save_map_inputs(
         check()?;
         let mut map = parse_map(&draft.revision.original)?;
         map.input_files = draft.input_files;
+        map.input_requirements = draft.input_requirements;
         validate_map(&map).map_err(|error| edit_error("map-input-invalid", error.message))?;
         let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
         let root = prepare_directory(access, &state.map_directory)?;
@@ -571,6 +575,43 @@ fn check_map_calls(
     }
 }
 
+fn input_issues(map_name: &str, declarations: &[MapFileInput], files: &[ResolvedFile], require_complete: bool) -> Vec<PreflightIssue> {
+    let mut issues = Vec::new();
+    let mut provided = std::collections::BTreeSet::new();
+    for binding in files {
+        let failure = if !provided.insert(&binding.id) {
+            Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
+        } else if !declarations.iter().any(|declaration| declaration.id == binding.id) {
+            Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
+        } else if let Err(error) = check_input_file(&binding.path) {
+            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
+        } else { None };
+        if let Some((code, message)) = failure {
+            let mut issue = PreflightIssue::new(code, "run-input", message);
+            issue.input_id = Some(binding.id.clone());
+            issues.push(issue);
+        }
+    }
+    if require_complete {
+        for declaration in declarations {
+            if declaration.required && !provided.contains(&declaration.id) {
+                let mut issue = PreflightIssue::new("run-input-required", "run-input", format!("Map {map_name} 缺少必需文件输入：{}", declaration.id));
+                issue.input_id = Some(declaration.id.clone());
+                issues.push(issue);
+            }
+        }
+    }
+    issues
+}
+
+pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[ResolvedFile], confirmed: bool) -> Result<Option<String>, String> {
+    with_definitions(&[directory.to_path_buf()], "map-read-failed", |access| {
+        let map = read_map(access, directory, name)?;
+        let issues = input_issues(name, &map.input_files, files, confirmed);
+        Ok((!issues.is_empty()).then(|| PreflightFailure(issues).message()))
+    }).map_err(|error| error.message)
+}
+
 /// Shared by the read-only form and the real launch operation. Every call reads
 /// current definitions, Task roles and registered roots; it never allocates a
 /// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
@@ -593,28 +634,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
     let mut issues = Vec::new();
-    let mut provided = std::collections::BTreeSet::new();
-    for binding in &input.file_inputs {
-        let failure = if !provided.insert(&binding.id) {
-            Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
-        } else if !map.input_files.iter().any(|declaration| declaration.id == binding.id) {
-            Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
-        } else if let Err(error) = check_input_file(&binding.path) {
-            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
-        } else { None };
-        if let Some((code, message)) = failure {
-            let mut issue = PreflightIssue::new(code, "run-input", message);
-            issue.input_id = Some(binding.id.clone());
-            issues.push(issue);
-        }
-    }
-    for declaration in &map.input_files {
-        if declaration.required && !provided.contains(&declaration.id) {
-            let mut issue = PreflightIssue::new("run-input-required", "run-input", format!("Map {map_name} 缺少必需文件输入：{}", declaration.id));
-            issue.input_id = Some(declaration.id.clone());
-            issues.push(issue);
-        }
-    }
+    issues.extend(input_issues(&map_name, &map.input_files, &input.file_inputs, false));
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),

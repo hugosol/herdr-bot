@@ -68,7 +68,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     let endpoint = "/api/scheduler/maps/create-bot-wrapper.json";
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let declared = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"revision":interface["revision"]}).to_string()).await;
+    let declared = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
     assert_eq!(declared.status, 200, "{}", declared.body);
     for id in ["create_blank", "write_when", "write_plan_guide", "write_node_guide", "optimize_when", "optimize_plan_guide", "optimize_node_guide", "save_bot"] {
         let mut node = definition["nodes"][id].clone();
@@ -90,7 +90,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     fs::write(&request, "Target: normal Task invoice-review. Create a wrapper, not a Task. No reference materials.").unwrap();
     let addr = s.server.addr();
     let preflight = |inputs: Value| { let request = json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Create only the authorized Bot","fileInputs":inputs}); async move { post_json_over_tcp(addr, &format!("{endpoint}/preflight"), &request.to_string()).await } };
-    assert_eq!(preflight(json!([])).await.status, 400);
+    assert_eq!(preflight(json!([])).await.status, 200);
     let valid = preflight(json!([{"id":"request","path":request}])).await;
     assert_eq!(valid.status, 200, "{}", valid.body);
     let missing = preflight(json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("absent.md")}])).await;

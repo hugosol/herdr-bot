@@ -99,7 +99,7 @@ async fn partial_child_association_reconciliation_preserves_the_original_chat_wi
     assert_eq!(after.iter().filter(|call| call["kind"] == "agent_prompt").count(), 1, "only root input was submitted");
 }
 
-// P31: child preflight rejects a newly required interface before registration.
+// P31: child preflight rejects an unavailable business zone before registration.
 // Unlike a registered child with no Chat, this confirmed absence may restore
 // pending, but reconciliation itself still performs no dispatch or input.
 #[tokio::test]
@@ -107,7 +107,7 @@ async fn partial_child_not_created_is_distinct_from_registered_without_chat() {
     let (s, root) = setup("absent-root").await;
     let map = s.config.scheduler.map_directory.join("inner.json");
     let mut definition: Value = serde_json::from_slice(&fs::read(&map).unwrap()).unwrap();
-    definition["input_files"] = json!([{"id":"missing-material","required":true}]);
+    definition["nodes"]["A"]["zone"] = json!("missing-child-zone");
     fs::write(&map, definition.to_string()).unwrap();
     let calls = s.herdr.calls();
     let failed = s.dispatch("absent-root", &["A"]).await;

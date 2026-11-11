@@ -44,7 +44,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
     let endpoint = format!("/api/scheduler/maps/{file}");
     let read = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let read: Value = serde_json::from_str(&read.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"revision":read["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":read["revision"]}).to_string()).await;
     assert_eq!(saved.status,200,"{}",saved.body);
     for id in ["w1","w2","wrap_bot","optimize_bot"] {
         let mut node = nodes[id].clone();

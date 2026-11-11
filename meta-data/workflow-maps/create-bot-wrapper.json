@@ -1,7 +1,8 @@
 {
   "group": "meta-map",
   "title": "创建bot",
-  "description": "为真实既有 normal Task／Map 创建完整 Bot：request 提供创建委托与业务需求，materials 为可选参考材料；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "description": "为真实既有 normal Task／Map 创建完整 Bot：输入准备以本 Map 的 input_requirements 为准；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "input_requirements": "## 本次输入\n提供既有 normal Task 或 Map 的 Bot 包装委托；管理者先核实业务语义、材料与授权，缺项先通过对话澄清，可将用户文字在获准材料位置整理为 request 文件，确认就绪后再派发全部业务节点。\n\n- **request（必需）**：UTF-8 业务委托，含真实 normal Task ID 或 Map 文件名（二选一）、明确 Bot 创建要求、业务需求、资源与权限、非目标及材料写入范围。可选指定 Bot 名称／ID、正式交付位置及额外验收条件；无需抄写完整目标配置，由流程经真实服务核实。\n- **materials（可选）**：参考材料及其用途；无材料时不绑定，不制造空路径；提供却不可读须解决。\n- 区分材料写入、三指南全文确认及最终 Bot 保存授权，记录已有依据与范围；不能替用户批准。本次只包装既有目标，不创建、修改或执行业务目标。\n\n本次要求与管理者对话可提供业务信息，但确认输入就绪时仍须将完整委托绑定为 request。",
   "input_files": [
     {
       "id": "request",
@@ -16,7 +17,7 @@
     "create_blank": {
       "title": "核实既有目标并创建空白 Bot",
       "bot_id": "create-blank-bot",
-      "input": "request 是本次既有 normal Task／Map 的定位、创建委托、业务需求、资源权限、非目标与材料写入范围；materials 为可选参考材料，提供时按其用途消费，不可读不能当作缺席。\n本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
+      "input": "request 是已按本 Map input_requirements 准备并确认的完整委托；materials 为可选参考材料，按已确认用途消费，不可读不能当作缺席。\n本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
       "input_rule": [
         {
           "type": "run",

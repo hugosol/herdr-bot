@@ -73,7 +73,11 @@ async fn manager_authorization_rejects_cross_run_current_and_old_node_identity_c
             s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"collision-replacement"},"native_cwd":s.data.path().join("node-zone")}));
             manager(&s, "retry", json!({"sessionId":"collision-original-manager","nodeId":"A","confirmed":true,"reason":"Human approved independent attempt"}), 200).await;
         }
-        let conflicting = s.start("collision-node").await;
+        // This deliberately ambiguous identity must not call manager preparation.
+        s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"collision-node"},"native_cwd":s.data.path()}));
+        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"MANAGER-USER-SECRET"}).to_string()).await;
+        assert_eq!(response.status, 201, "{}", response.body);
+        let conflicting: Value = serde_json::from_str(&response.body).unwrap();
         let before = [detail(&s, &original["id"]).await, detail(&s, &conflicting["id"]).await];
         let calls = s.herdr.calls();
         for (name, body) in manager_requests("collision-node") {
