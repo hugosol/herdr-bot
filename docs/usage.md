@@ -23,7 +23,7 @@ Chat、Zone、Workflow、Task、Suite、Bot、Scheduler 保留原有标题偏移
 
 布局按钮只改变外侧导航，不重新加载页面，不清空当前编辑或筛选状态。地址中的 `?layout=expanded` 指定展开布局，`?layout=compact` 或无参数指定紧凑布局；切换会原地更新地址，不增加浏览器历史记录。返回紧凑布局时显示当前页面所属组；同一页面期间切换分组会记住每组上次访问的入口。
 
-整页刷新保留 URL 指定的布局，但内容回到 `chat`，即使刷新前正在查看 Run。首次打开显式 `#workflow/<Run ID>` 链接仍可读取对应 Run 详情，不重新启动。scheduler 发起与角色 Task 前提、三份记录及启动失败处置见[Map Run 运行说明](workflow-runtime.md)。
+整页刷新保留 URL 指定的布局，但内容回到 `chat`，即使刷新前正在查看 Run。首次打开显式 `#workflow/<Run ID>` 链接仍可读取对应 Run 详情，不重新启动。Run 列表的 Map 分组目录仅在 workflow 列表可见时读取，停留在其他入口或 Run 详情时不预读；切回列表仍保留已有筛选。scheduler 发起与角色 Task 前提、三份记录及启动失败处置见[Map Run 运行说明](workflow-runtime.md)。
 
 `bot` 是共享 Bot 管理功能的独立入口。Task 列表右侧与 Scheduler 的 Map 明细标题下方显示关联 Bot：唯一关联时点击即切换到 Bot 入口并打开明细；无关联时显示不可点击的“无关联 Bot”，多个关联时显示不可点击的“关联冲突”，不任意选择，也不新增保存限制。Map 此处只查找执行目标为该 Map 的封装 Bot，不列出其节点使用的 Bot。
 
@@ -66,6 +66,8 @@ Bot 页面沿用公共导航样式，不覆盖外侧 Tab 的字号、选中标�
 ### 删除 Map
 
 在 scheduler 选中 Map 后点击“删除 Map”，在同一个弹窗中选择“删除历史”“保留历史”或“取消”。被任意 Bot 的 `map_file` 引用时，两种删除均拒绝并定位引用，不会自动解绑；Bot 定义损坏、不可读或越过链接安全边界时也拒绝，不能视为没有引用。没有 Bot 引用且检查完整时，“保留历史”可只删除 Map 定义；“删除历史”还会检查 Run 父子执行引用，任一方向（含旧 execution 或单向残留）仍有关联就拒绝并定位父 Run／node／execution／child Run，不级联删除或自动解绑。无此关联且检查可靠时，“删除历史”才同时删除 Map 定义和关联 Run 记录，不受 Run 状态或 Chat 在线状态限制，也不会停止 Chat 或删除对话与工作文件。保留的 Run 仍可在 workflow 查看。完整边界与失败处理见[删除 Map 与历史 Run](scheduler.md#删除-map-与历史-run)。
+
+Map 的空 `input_requirements` 与缺省值等价；节点编辑或删除不会为了空输入要求新增该字段，有内容时仍保留。输入声明编辑接口始终返回可编辑的输入要求文本。
 
 ### 节点报告策略的显示
 
@@ -261,7 +263,7 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 首次选择和每次切换 Task 都将 model、thinking 刷新为该 Task 的设置，之后仍可手动修改。选项及联动与新增 Task 共用：切换模型时保留兼容的思考级别，不兼容则重置为“沿用 Agent 默认值”并提示。未指定的参数沿用 Agent 默认值；agent 类型由 Task 决定。
 
-只切换 zone 不重置 model、thinking 或初始 input。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
+只切换 zone 不重置 model、thinking 或初始 input。重复选择当前 Task 或 zone 不会清除已有名称预览。发起时先校验已保存 Task 的选项，再校验本次覆盖值；损坏的预设须先修正，不能通过本次覆盖值绕过。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
 
 ## Task 类型与固定角色扩展
 

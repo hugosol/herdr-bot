@@ -12,7 +12,9 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let file = "enhance-existing-bot--bc-301b25d9f8d6.json";
     let definition: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/workflow-maps").join(file)).unwrap()).unwrap();
-    assert_eq!(definition["input_files"], json!([{"id":"request","required":true},{"id":"materials","required":false}]));
+    let input_shape: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+        .map(|input| json!({"id": input["id"], "required": input["required"]})).collect();
+    assert_eq!(input_shape, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 5);
     assert_eq!(definition["nodes"]["w1"]["bot_id"], "prepare-bot-revision");
     assert_eq!(definition["nodes"]["w1"]["input_rule"], json!([

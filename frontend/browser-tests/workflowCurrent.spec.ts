@@ -49,6 +49,8 @@ async function currentFixture() {
   const runPath = path.join(root, 'new-run/run.json')
   const run = JSON.parse(fs.readFileSync(runPath, 'utf8'))
   run.status = 'running'
+  // This fixture models already-reviewed inputs, not the preparation stage.
+  run.inputsReady = true
   run.nodes = {
     A: { ...node('completed'), execution: { agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
     B: { ...node('failed'), execution: { agent: 'omp', id: 'exec-B', taskId: 'deleted-task', zone: 'C:/failed-zone', chat: { ...chat, sessionId: 'failed-chat' } }, failure: { stage: 'execution', message: '缺少已核实的源文件' } },

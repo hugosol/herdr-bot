@@ -93,7 +93,7 @@ h1 {
   background: var(--nier-surface);
 }
 .panel:has(.chat-views--history) { width: min(100%, 72rem); }
-.chat-views--history { background: var(--nier-surface); }
+.chat-views--history { background: var(--nier-raised); }
 .chat-views__header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
 .chat-views__header h2 { margin: 0; font-size: 1rem; }
 .chat-views__toggle { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.75rem; padding: 0.4rem 0.65rem; background: var(--nier-control); color: var(--nier-ink); border: 1px solid var(--nier-info); border-radius: 0; cursor: pointer; }

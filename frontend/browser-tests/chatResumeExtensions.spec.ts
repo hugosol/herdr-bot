@@ -36,7 +36,11 @@ for (const agent of ['pi', 'omp']) {
     const launch = await post('/api/chats', { zone: 'test/zone', taskId: taskId, chatId: preview.chatId, input: 'seed' })
     expect(launch.status).toBe(202)
     const job = await launch.json()
-    await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()).stage).toBe('succeeded')
+    await expect.poll(async () => {
+      const state = await (await fetch(`${server!.baseURL}/api/chats/${job.id}`)).json()
+      expect(state.stage, JSON.stringify({ state, diagnostics: server!.diagnostics() })).not.toBe('failed')
+      return state.stage
+    }).toBe('succeeded')
     await expect.poll(async () => (await (await fetch(`${server!.baseURL}/api/sessions/history`)).json()).total).toBe(1)
     fs.unlinkSync(selected)
     const before = server.herdrCalls().length

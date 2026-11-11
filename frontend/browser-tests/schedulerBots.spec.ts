@@ -125,6 +125,7 @@ test('P6 P16 configured config-relative bots are independent and reusable across
   expect({ ...mapCatalog, files: mapCatalog.files.sort() }).toEqual({
     files: ['first.json', 'second.json', 'template-decoy.json'],
     titles: { 'first.json': '第一张计划', 'second.json': '第二张计划' },
+    groups: {},
   })
   for (const [filename, node, city] of [['first.json', '上海天气 A', '上海'], ['first.json', '北京天气 B', '北京'], ['second.json', '广州天气 C', '广州']]) {
     await page.locator(`[data-map-file="${filename}"]`).click()

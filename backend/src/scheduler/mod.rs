@@ -13,7 +13,7 @@ struct WorkflowMap {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
     description: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     input_requirements: String,
     #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
     input_files: Vec<MapFileInput>,
