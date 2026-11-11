@@ -59,14 +59,14 @@ test('Maps list newest modifications first with filename ties and refresh after 
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['beta', 'zeta', 'alpha'])
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(initial.status()).toBe(200)
-  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' }, groups: {} })
+  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'], groups: {}, titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
 
   fs.utimesSync(path.join(maps, 'alpha.json'), newest, newest)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha', 'beta', 'zeta'])
   const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(refreshed.status()).toBe(200)
-  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' }, groups: {} })
+  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'], groups: {}, titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
   for (const [name, bytes] of originals) expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)
 })
 
@@ -95,8 +95,7 @@ test('Map titles display and filter independently of filenames with duplicate se
   expect(response.status()).toBe(200)
   expect(await response.json()).toEqual({
     files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
-    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Shared itinerary' },
-    groups: {},
+    groups: {}, titles: { 'first.json': 'Shared itinerary', 'second.json': 'Shared itinerary' },
   })
   const filter = page.getByLabel('筛选 Map', { exact: true })
   await filter.fill('SHARED ITINERARY')
@@ -131,8 +130,7 @@ test('Map titles display and filter independently of filenames with duplicate se
   const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(await refreshed.json()).toEqual({
     files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
-    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Updated itinerary' },
-    groups: {},
+    groups: {}, titles: { 'first.json': 'Shared itinerary', 'second.json': 'Updated itinerary' },
   })
   for (const [name, bytes] of originals) {
     expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(name === 'second.json' ? updated : bytes)

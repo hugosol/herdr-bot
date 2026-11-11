@@ -14,8 +14,8 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`P31 P32 delivered examples follow the guide at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
-    const openBotDirectory = async () => {
-      await page.getByRole('tab', { name: 'bot', exact: true }).click()
+    async function openBotDirectory() {
+      await page.getByTestId('tab-bot').click()
       const back = page.getByRole('button', { name: '← 返回 Bot 列表', exact: true })
       if (viewport.width <= 1100 && await back.isVisible()) await back.click()
     }
@@ -61,14 +61,16 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await expect(details).toContainText('example/travel')
       const prerequisites = details.getByRole('region', { name: 'blocked_by', exact: true })
       if (name === '汇总出行准备 C') {
-        await expect(prerequisites.getByRole('listitem').locator('strong')).toHaveText(['上海出行天气', '北京出行天气'])
-        await expect(prerequisites.getByRole('listitem').locator('.scheduler-identifier')).toHaveText(['A', 'B'])
-      } else await expect(prerequisites).toContainText('无前置依赖')
+        await expect(prerequisites.getByRole('button')).toHaveCount(2)
+        await expect(prerequisites.getByRole('button').nth(0)).toHaveAccessibleName('查看前置节点 上海出行天气 A')
+        await expect(prerequisites.getByRole('button').nth(1)).toHaveAccessibleName('查看前置节点 北京出行天气 B')
+      }
+      else await expect(prerequisites).toContainText('无前置依赖')
       await openBotDirectory()
       await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: `${botName} · ${botId}`, exact: true }).click()
       const bot = page.getByRole('region', { name: 'Bot 预览', exact: true })
       await expect(bot.getByRole('heading', { name: botName, exact: true })).toBeVisible()
-      await expect(bot.getByText('执行目标：未绑定', { exact: true })).toBeVisible()
+      await expect(bot).toContainText('执行目标：未绑定')
       await page.getByTestId('tab-scheduler').click()
     }
     await page.screenshot({ path: testInfo.outputPath('graph.png'), fullPage: true })

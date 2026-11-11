@@ -49,7 +49,8 @@ async function currentFixture() {
   const runPath = path.join(root, 'new-run/run.json')
   const run = JSON.parse(fs.readFileSync(runPath, 'utf8'))
   run.status = 'running'
-  // This fixture models already-reviewed inputs, not the preparation stage.
+  // This fixture isolates dependency readiness after the manager has confirmed
+  // inputs; missing historical confirmation must remain non-dispatchable.
   run.inputsReady = true
   run.nodes = {
     A: { ...node('completed'), execution: { agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },

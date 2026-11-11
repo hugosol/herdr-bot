@@ -153,8 +153,11 @@ test('P1 auto_close accepts only booleans through existing definition interfaces
 
 // P6 uses S1 delivered page, S2 real workflow interfaces and S3 external Herdr
 // recorder. Only the host is controlled, not policy composition/dispatch/report/
-// complete. Violation: wrong prompt, new approval gate, or node completing itself.
-// Prompt delivery is evidence of instructions, never of model compliance.
+// complete. Manual sending requires toolkit-native payload confirmation, not a
+// browser approval gate or natural-language agreement (docs/workflow-runtime.md).
+// Violation: wrong prompt, new browser approval gate, or node completing itself.
+// Prompt delivery is evidence of instructions, never of model compliance or of
+// native confirmation; direct report HTTP below exercises persistence/authority.
 test('P6 saved report policies reach node dispatch without approval gates or changed manager authority', async ({ page }, info) => {
   await setup(page)
   const zone = path.join(server!.cwd, 'bot-playground')
@@ -200,6 +203,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect(prompts.B).toContain('Every report, including supplements, corrections and changed payloads, requires its own native confirmation')
   expect(prompts.B).toContain('If confirmation is refused, times out or no confirmation UI is available, do not send and stop')
   expect(prompts.B).toContain('wait for a renewed user request before invoking report again')
+  expect(prompts.B).toContain('Separate business approval requirements still apply')
   for (const text of Object.values(prompts)) expect(text).toContain('the manager still decides complete')
   for (const [node, body] of [['A', '自动结果 result-a.md'], ['B', '人工策略结果 result-b.md'], ['B', '补充 result-b-extra.md'], ['B', '更正 result-b-corrected.md']]) {
     const report = await post('/api/workflow/node/report', { sessionId: `settings-node-${node}`, body, canComplete: !body.includes('补充') })

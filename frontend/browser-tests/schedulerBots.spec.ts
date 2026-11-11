@@ -124,6 +124,7 @@ test('P6 P16 configured config-relative bots are independent and reusable across
   const mapCatalog = await listing.json()
   expect({ ...mapCatalog, files: mapCatalog.files.sort() }).toEqual({
     files: ['first.json', 'second.json', 'template-decoy.json'],
+    groups: {},
     titles: { 'first.json': '第一张计划', 'second.json': '第二张计划' },
     groups: {},
   })
