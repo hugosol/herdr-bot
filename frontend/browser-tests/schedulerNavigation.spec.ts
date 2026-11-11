@@ -13,6 +13,8 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: '收起导航' })).toBeFocused()
   await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'chief bot', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'server', exact: true })).toBeFocused()
   // Traverse the visible native controls rather than assuming an old tab count.
   const scheduler = page.getByRole('tab', { name: 'scheduler', exact: true })

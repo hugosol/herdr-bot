@@ -58,7 +58,7 @@ function failureOutcomeText(creation: ChatCreation): string {
  * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
-export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '', onClose }: { zone?: string; initialTaskId?: string; onClose: () => void }) {
+export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 'default/bot-playground' : '', initialTaskId = chief ? 'chief-bot' : '', onClose }: { chief?: boolean; zone?: string; initialTaskId?: string; onClose: () => void }) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [taskId, setTaskId] = useState(initialTaskId)
@@ -71,7 +71,7 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
   const [notice, setNotice] = useState<string | null>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
-  const [chatNameRule, setChatNameRule] = useState('')
+  const [chatNameRule, setChatNameRule] = useState(chief ? 'chat with chief bot' : '')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<ChatPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
@@ -89,9 +89,10 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
     void fetchTasks().then((result) => {
       if (cancelled) return
       if (result.kind === 'ok') {
-        setTasks(result.tasks)
+        const available = chief ? result.tasks.filter(task => task.taskType === 'chief') : result.tasks
+        setTasks(available)
         setOptions(result.options)
-        setTaskId(current => current === '' ? (result.tasks[0]?.id ?? '') : (result.tasks.some(task => task.id === current) ? current : ''))
+        setTaskId(current => current === '' ? (available[0]?.id ?? '') : (available.some(task => task.id === current) ? current : ''))
         setLoadError(null)
       } else {
         setTasks(null)
@@ -105,7 +106,7 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
     return () => {
       cancelled = true
     }
-  }, [groupRevision])
+  }, [groupRevision, chief])
 
   useEffect(() => {
     let cancelled = false
