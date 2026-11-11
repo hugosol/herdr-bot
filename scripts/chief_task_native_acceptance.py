@@ -49,6 +49,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
             budgets={'requestSeconds': 30, 'confirmationSeconds': 20, 'choiceObservationSeconds': 5, 'onlineSeconds': 10,
                      'retentionSeconds': 30, 'maintenanceScanSeconds': 5,
                      'negativeObservationSeconds': 61, 'nativeRoundSeconds': args.timeout,
+                     'inputReadinessSeconds': 10, 'inputActivitySeconds': 10,
                      'startup': {'querySeconds': 15, 'tabSeconds': 20, 'agentSeconds': 40,
                                  'readinessSeconds': 30, 'nativeIdentitySeconds': 30, 'inputSeconds': 30}},
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
@@ -62,6 +63,16 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
             self.evidence['terminalConfiguration'] = {'columns': 200, 'rows': 220,
                 'config': str(config), 'scope': 'Invocation-owned headless Herdr only'}
         return super().start(argv, label)
+
+    def send(self, chat, message, kind):
+        ready = self.herdr('agent', 'wait', chat['paneId'], '--until', 'idle', '--until', 'done', '--timeout', '10000')
+        record = {'kind': kind, 'sessionId': chat['sessionId'], 'input': message,
+            'at': time.monotonic(), 'ready': ready}
+        self.evidence.setdefault('userInputs', []).append(record)
+        output = self.command([self.args.herdr, 'agent', 'prompt', chat['paneId'], message,
+            '--wait', '--until', 'working', '--until', 'blocked', '--timeout', '10000'], seconds=15)
+        record['admission'] = json.loads(output)['result']
+        return record['admission']
 
     def mutate(self, route, body):
         request = urllib.request.Request(self.base + route, data=json.dumps(body).encode(), method='PUT',
@@ -187,6 +198,18 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
             'history': self.http('/api/sessions/history'), 'runs': self.http('/api/workflow/runs'), 'tabs': self.tabs(self.workspace)}
 
     def exercise(self):
+        try:
+            self.exercise_task()
+        except BaseException:
+            if hasattr(self, 'chief'):
+                try:
+                    self.evidence['failureTerminal'] = self.command([self.args.herdr, 'pane', 'read',
+                        self.chief['paneId'], '--source', 'visible', '--format', 'text'], seconds=10)
+                except BaseException as error:
+                    self.evidence['failureTerminalError'] = repr(error)
+            raise
+
+    def exercise_task(self):
         zones = {'chief': self.root / 'zone', 'first': self.root / 'first',
                  'corrected': self.root / 'corrected', 'source': self.root / 'source', 'changed': self.root / 'changed'}
         self.sentinels = {}
@@ -204,7 +227,8 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         brief.write_bytes(brief_bytes)
         self.sentinels[brief] = brief_bytes
         self.worker_task = self.task('misleading-general-name', 'normal',
-            '此为独占验收业务执行者。收到委派后先保持业务未完成，等待用户在本 Chat 明确发来 RELEASE。'
+            '你负责审计简报的内部摘要准备：读取用户提供的 brief 材料，逐项核对，交付 summary.md；禁止公开发布。'
+            '收到委派后先保持业务未完成，等待用户在本 Chat 明确发来 RELEASE。'
             'RELEASE 前不要编辑哨兵，不发送报告、不宣布业务完成，只回答 WORKER-PENDING-482 并等待。', self.host)
         other = self.task('alternate-target', 'normal', 'Different business; never approved.', self.host)
         self.bot = {'name': 'unrelated-name', 'when': '仅适用于审计简报的内部摘要准备；支持材料保密与逐项核对。WHEN-ROUTING-731',
