@@ -4,6 +4,7 @@ import { ChatNameRuleEditor } from './ChatNameRuleEditor'
 import { TaskModelControls, changeTaskModel, modelCompatibility } from './TaskModelControls'
 import { ChatCreationDialog } from '../chats/ChatCreationDialog'
 import { NierTitleText } from '../app/NierTitleText'
+import { EditableTitle } from '../app/EditableTitle'
 import {
   createTask,
   deleteTask,
@@ -138,6 +139,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
     return links
   }, [bots])
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [renameContext, setRenameContext] = useState(0)
   const targetDetail = useRef<HTMLDetailsElement>(null)
   const revealDetail = useRef(false)
   const editorRequest = useRef(0)
@@ -157,6 +159,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
 
   useEffect(() => {
     if (!detailRequest) return
+    setRenameContext(value => value + 1)
     discardDraft()
     setDetailId(null)
     setQuery('')
@@ -328,6 +331,23 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
     }
   }
 
+  async function renameTask(id: string, name: string) {
+    setSaving(true)
+    try {
+      // Task 没有名称专用接口；先读取最新定义，避免覆盖列表读取后改动的其他字段。
+      const latest = await fetchTasks()
+      if (latest.kind !== 'ok') throw new Error(describeFailure(latest, '名称读取'))
+      const current = latest.tasks.find(task => task.id === id)
+      if (!current) throw new Error('目标 Task 不存在：可能已被删除。')
+      const result = await updateTask(id, { ...draftFrom(current), name })
+      if (result.kind !== 'ok') throw new Error(describeFailure(result, '名称保存'))
+      setData({ tasks: result.tasks, options: result.options })
+      setListFailure(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (dialog === null) return
@@ -467,7 +487,16 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
               >
                 <div className="task-item__overview">
                   <div className="task-item__identity">
-                    <h2 className="task-item__name">{task.name}</h2>
+                    <EditableTitle
+                      key={`${task.id}:${renameContext}`}
+                      value={task.name}
+                      label="Task 名称"
+                      heading="h2"
+                      className="task-item__name"
+                      active={active && !loading && dialog === null && deleteTarget === null && launchTaskId === null}
+                      disabled={saving || deleting !== null}
+                      onSave={name => renameTask(task.id, name)}
+                    />
                     <p className="task-item__meta"><span className="task-item__agent">{task.agent}</span><span>{task.taskType === 'manager' ? '流程管理者' : '普通 Task'}</span></p>
                   </div>
                   <div className="task-item__model"><span className="task-item__label">模型 / 思考</span><p>{modelLabel(task)}</p><small>思考：{thinkingLabel(task)}</small></div>

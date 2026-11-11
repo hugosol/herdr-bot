@@ -10,9 +10,9 @@ import { BotPreview } from './BotPreview'
 import { BotTaskSelect } from './BotTaskSelect'
 import { RunLaunchForm } from './RunLaunchForm'
 import { MapInputsEditor } from './MapInputsEditor'
-import { MapTitleEditor } from './MapTitleEditor'
+import { EditableTitle } from '../app/EditableTitle'
 import { fetchTasks, type TaskResult } from '../tasks/taskApi'
-import type { Bot } from './schedulerApi'
+import { loadBotDraft, saveBot, loadMapTitle, saveMapTitle, type Bot } from './schedulerApi'
 import './scheduler.css'
 import './scheduler-workspace.css'
 
@@ -21,9 +21,37 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   const editorState = useSchedulerEditor({ active, view, onViewChange })
   const { listing, bots, file, preview, selectedId, botId, draft, editingBusy, editError, returnProblem, deleteMapTarget, deletingMap, deleteMapError,
     changeGroup, abandonDraft, discardForNavigation, navigateDefinition, selectNode, openBot, beginEdit, editDraft, submitDefinition, removeSelectedNode, removeBot, requestMapDeletion, closeMapDeletion, removeMap, refreshAll, returnToMap } = editorState
+  const renameContext = useRef({ active, view, file, botId, draft, editingBusy })
+  const context = renameContext.current
+  if (context.active !== active || context.view !== view || context.file !== file || context.botId !== botId || context.draft !== draft || context.editingBusy !== editingBusy) {
+    renameContext.current = { active, view, file, botId, draft, editingBusy }
+  }
+
+  async function renameBot(item: Bot, name: string) {
+    const owner = renameContext.current
+    const current = () => renameContext.current === owner && owner.active && owner.view === 'bot' && owner.botId === item.id && !owner.draft && !owner.editingBusy
+    const loaded = await loadBotDraft(item.id)
+    if (!current()) return
+    const content = JSON.parse(loaded.content)
+    if (content.name !== item.name) throw new Error('Bot 名称已变化；请刷新后重新编辑。')
+    await saveBot({ ...loaded, content: JSON.stringify({ ...content, name }, null, 2) })
+    if (current()) refreshAll()
+  }
+
+  async function renameMap(name: string) {
+    if (!file || preview?.kind !== 'ready') return
+    const originalTitle = preview.map.title
+    const owner = renameContext.current
+    const current = () => renameContext.current === owner && owner.active && owner.view === 'map' && owner.file === file && !owner.draft && !owner.editingBusy
+    const loaded = await loadMapTitle(file)
+    if (!current()) return
+    if (loaded.title !== originalTitle) throw new Error('Map 名称已变化；请刷新后重新编辑。')
+    await saveMapTitle(file, { title: name, revision: loaded.revision })
+    if (current()) refreshAll()
+  }
+
   const [launchOpen, setLaunchOpen] = useState(false)
   const [inputsOpen, setInputsOpen] = useState(false)
-  const [titleOpen, setTitleOpen] = useState(false)
   const [taskLookup, setTaskLookup] = useState<TaskResult | null>(null)
   const handledNavigation = useRef<typeof navigationRequest>(null)
   const focusDestination = useRef(false)
@@ -120,12 +148,12 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
   }
 
   function selectFile(name: string) {
-    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); setDirectoryOpen(false) }
+    if (editorState.selectFile(name)) { setLaunchOpen(false); setInputsOpen(false); setDirectoryOpen(false) }
   }
 
   function followDefinition(target: { kind: 'bot' | 'map'; id: string }) {
     if (!discardForNavigation()) return
-    setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); setDirectoryOpen(false)
+    setLaunchOpen(false); setInputsOpen(false); setDirectoryOpen(false)
     if (target.kind === 'bot') { setBotFilter(''); setBotGroup('all') }
     else { setFilter(''); setMapGroup('all') }
     focusDestination.current = true
@@ -145,7 +173,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
     const destination = `${mapTarget ? 'Scheduler / Map' : 'Task'}：${label}`
     return <button type="button" className="scheduler-target" title={`打开 ${destination}`} aria-label={`打开 ${destination}`} disabled={editingBusy || !ready || name == null || (!mapTarget && !onNavigateTask)} onClick={() => {
       if (mapTarget) followDefinition({ kind: 'map', id })
-      else if (discardForNavigation()) { setLaunchOpen(false); setInputsOpen(false); setTitleOpen(false); onNavigateTask?.(id) }
+      else if (discardForNavigation()) { setLaunchOpen(false); setInputsOpen(false); onNavigateTask?.(id) }
     }}><EntityLinkLabel kind={mapTarget ? 'map' : 'task'} name={label} /></button>
   }
 
@@ -235,7 +263,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <section aria-label="Bot 预览" className="scheduler-details">
               {bots.kind === 'ready' && (botProblem
                 ? <p role="alert">共享 Bot {botId}：{botProblem.message}</p>
-                : bot ? <BotPreview key={bot.id} bot={bot} target={targetLink(bot)} /> : <p role="alert">缺失共享 Bot：{botId}</p>)}
+                : bot ? <BotPreview key={bot.id} bot={bot} target={targetLink(bot)} active={active && botView && !draft} disabled={editingBusy} onRename={name => renameBot(bot, name)} /> : <p role="alert">缺失共享 Bot：{botId}</p>)}
             </section>
           </>}
         </div>
@@ -289,10 +317,8 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
           <header className="scheduler-map-heading">
-            <div className="scheduler-map-identity"><p className="scheduler-filename">{file}</p><h3 className="scheduler-text">{map.title}</h3></div>
-            <button className="scheduler-map-rename" type="button" disabled={editingBusy || draft !== null || titleOpen} onClick={() => setTitleOpen(true)}>修改显示名称</button>
+            <div className="scheduler-map-identity"><p className="scheduler-filename">{file}</p><EditableTitle key={file} value={map.title} label="Map 显示名称" heading="h3" className="scheduler-text" active={active && !botView && !draft} disabled={editingBusy || draft !== null} onSave={renameMap} /></div>
             {file && <div className="scheduler-map-association">{associatedBot(file)}</div>}
-            {titleOpen && file && <div className="scheduler-map-title-editor"><MapTitleEditor key={file} file={file} title={map.title} onClose={() => setTitleOpen(false)} onSaved={() => { setTitleOpen(false); refreshAll() }} /></div>}
             <p className="scheduler-text scheduler-map-description">{map.description}</p>
             <span className="scheduler-badge">静态定义</span>
           </header>
