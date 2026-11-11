@@ -54,6 +54,15 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
         self.used_previews = set()
 
+    def start(self, argv, label):
+        if label == 'herdr':
+            config = self.root / 'herdr.toml'
+            config.write_text(config.read_text(encoding='utf-8') +
+                '\n[server]\nheadless_cols = 200\nheadless_rows = 220\n', encoding='utf-8')
+            self.evidence['terminalConfiguration'] = {'columns': 200, 'rows': 220,
+                'config': str(config), 'scope': 'Invocation-owned headless Herdr only'}
+        return super().start(argv, label)
+
     def mutate(self, route, body):
         request = urllib.request.Request(self.base + route, data=json.dumps(body).encode(), method='PUT',
             headers={'Content-Type': 'application/json'})
@@ -79,7 +88,10 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
             replies = [m for m in messages(history, start) if m.get('role') == 'assistant']
             if not replies or any(p.get('type') == 'toolCall' for p in replies[-1].get('content', []) if isinstance(p, dict)):
                 return None
-            return history if marker in text(replies[-1]) else None
+            # A tracking token is not a business criterion. The real host's
+            # completed assistant message is the observation boundary; callers
+            # independently assert the required clarification/dispatch behavior.
+            return history if replies[-1].get('stopReason') == 'stop' else None
         history = until('actual model final answer ' + marker, complete, self.args.timeout)
         self.no_business_effect()
         return history
@@ -88,7 +100,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         previous = self.native(self.chief)
         start = len(previous['branch']) if previous else 0
         wire_start = len(self.model_wire.records)
-        self.send(self.chief, content + '\n本轮答复末尾保留验收追踪标记：' + marker, marker)
+        self.send(self.chief, content, marker)
         history = self.settled(start, marker)
         self.check_model_identity(wire_start)
         return history, start
@@ -113,7 +125,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         start = len(history['branch'])
         model_start = len(self.model_wire.records)
         before = len(self.wire('/api/chief/delegations'))
-        self.send(self.chief, content + '\n工具返回后不要重试或改派，说明真实结果，答复末尾保留标记：' + label, label)
+        self.send(self.chief, content + '\n工具返回后不要重试或改派，说明真实结果。', label)
         preview = until('real full native confirmation ' + label, self.preview, self.args.timeout)
         require(len(self.wire('/api/chief/delegations')) == before, 'Dispatch HTTP preceded native approval')
         self.no_business_effect()
@@ -199,7 +211,7 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         chief_task = self.task('task-acceptance-chief', 'chief', '', self.host)
         preview = self.http('/api/chats/preview', {'zone': 'task/chief', 'taskId': chief_task})
         created = self.http('/api/chats', {'zone': 'task/chief', 'taskId': chief_task, 'chatId': preview['chatId'],
-            'input': '我需要处理一份材料，但还没决定目标、位置和具体要求。先向我澄清，不要执行或请求执行确认。答复末尾保留标记 AMBIGUOUS-731。'}, 202)
+            'input': '我需要处理一份材料，但还没决定目标、位置和具体要求。先向我澄清，不要执行或请求执行确认。'}, 202)
         def ready():
             state = self.http('/api/chats/' + created['id'])
             require(state['stage'] != 'failed', state)
@@ -296,7 +308,11 @@ class ChiefTaskAcceptance(ChiefEntryAcceptance):
         self.evidence['coverage']['P11'] = {'verified': True, 'sessionId': worker['sessionId']}
         answer = text([m for m in messages(final, approved['branchStart']) if m.get('role') == 'assistant'][-1])
         require(not any(word in answer for word in ['业务已完成', '任务已完成', '摘要已完成']), 'Chief confused startup with business completion')
-        next_history, _ = self.user_turn('先不释放执行者。这是独立的下一条输入：只告诉我当前是否能继续与你澄清另一个需求，不启动新工作。', 'NEXT-INPUT-731')
+        next_history, next_start = self.user_turn('先不释放执行者。这是独立的下一条输入：只告诉我当前是否能继续与你澄清另一个需求，不启动新工作。', 'NEXT-INPUT-731')
+        next_answer = text([m for m in messages(next_history, next_start) if m.get('role') == 'assistant'][-1])
+        require(any(cue in next_answer for cue in ['可以', '能继续', '当然', '没问题', '继续澄清', '是的']) and
+            not any(cue in next_answer for cue in ['不可以', '不能继续', '无法继续']),
+            'Chief did not accept the next clarification while executor business remained pending')
         require(not self.wire('/api/chief/reports'), 'Executor completed/reported before RELEASE')
         require(len(self.http('/api/chief/delegations?sessionId=' + worker['sessionId'])['delegations']) == 1 and
             len(self.wire('/api/chief/delegations')) == approved['commitsBefore'] + 1, 'Next user input caused extra dispatch')
