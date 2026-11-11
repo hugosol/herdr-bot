@@ -273,7 +273,13 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
           className="zone-form__input zone-form__select"
           data-testid="task"
           value={taskId}
-          onChange={event => { previewSequence.current++; setPreview(null); setChatNameRule(''); setTaskId(event.target.value) }}
+          onChange={event => {
+            if (event.target.value === taskId) return
+            previewSequence.current++
+            setPreview(null)
+            setChatNameRule('')
+            setTaskId(event.target.value)
+          }}
           disabled={tasks === null || submitting || running || finished}
         >
           {tasks === null && <option value="">正在读取 Task……</option>}
