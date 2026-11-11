@@ -251,8 +251,8 @@ describe('Task tab：读取与展示', () => {
     await openTasks(user)
     await user.click(await screen.findByTestId('task-edit'))
     const dialog = screen.getByTestId('task-dialog')
-    expect(within(within(dialog).getByTestId('task-type')).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['normal', 'manager'])
-    for (const role of ['manager', 'normal', 'manager']) {
+    expect(within(within(dialog).getByTestId('task-type')).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['normal', 'manager', 'chief'])
+    for (const role of ['manager', 'normal', 'chief']) {
       await user.selectOptions(within(dialog).getByTestId('task-type'), role)
       expect(within(dialog).getByTestId('task-agent')).toHaveValue(agent)
       expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
@@ -264,7 +264,7 @@ describe('Task tab：读取与展示', () => {
       await user.click(within(dialog).getByTestId('task-back'))
     }
     await saveTask(user, dialog)
-    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'manager', suite: null })
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'chief', suite: null })
     expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   })
 

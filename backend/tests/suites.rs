@@ -30,6 +30,9 @@ fn shared_metadata(root: &TempDir, config: &mut herdr_bot::Config) -> String {
     raw
 }
 
+// Chief P3: shared fixed entries apply to chief too, while manager/node entries
+// remain exclusive. Omitting chief from the public catalog would hide actual
+// applicability; listing never claims that a native host consumed the extension.
 #[tokio::test]
 async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() {
     let root = TempDir::new("suite shared extension declarations");
@@ -42,7 +45,7 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     assert!(listing.get("extensions").is_none());
     let fixed = listing["fixedExtensions"].as_array().unwrap();
     for host in ["omp", "pi"] {
-        for (suffix, roles) in [("connect-bot", json!(["standalone","manager","node"])), ("manager-chat", json!(["manager"])), ("node-chat", json!(["node"]))] {
+        for (suffix, roles) in [("connect-bot", json!(["standalone","manager","node","chief"])), ("manager-chat", json!(["manager"])), ("node-chat", json!(["node"]))] {
             let id = format!("{host}-{suffix}");
             let option = fixed.iter().find(|option| option["id"] == id).unwrap();
             assert_eq!(option["agent"], host);

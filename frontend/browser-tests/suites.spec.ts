@@ -25,15 +25,15 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await expect(fixed.getByRole('checkbox')).toHaveCount(0)
   const catalog = await (await page.request.get(`${server.baseURL}/api/suites`)).json()
   expect(catalog.fixedExtensions).toEqual(expect.arrayContaining([
-    expect.objectContaining({ id: 'omp-connect-bot', kind: 'fixed', roles: ['standalone', 'manager', 'node'] }),
-    expect.objectContaining({ id: 'pi-connect-bot', kind: 'fixed', roles: ['standalone', 'manager', 'node'] }),
+    expect.objectContaining({ id: 'omp-connect-bot', kind: 'fixed', roles: ['standalone', 'manager', 'node', 'chief'] }),
+    expect.objectContaining({ id: 'pi-connect-bot', kind: 'fixed', roles: ['standalone', 'manager', 'node', 'chief'] }),
   ]))
-  for (const extension of catalog.fixedExtensions as { id: string; label: string; agent: string; entrypoint: string; roles: ('standalone' | 'manager' | 'node')[] }[]) {
+  for (const extension of catalog.fixedExtensions as { id: string; label: string; agent: string; entrypoint: string; roles: ('standalone' | 'manager' | 'node' | 'chief')[] }[]) {
     const group = fixed.getByRole('region', { name: `${extension.agent.toUpperCase()} 固定扩展`, exact: true })
     const row = group.getByRole('listitem').filter({ hasText: extension.id })
     await expect(row).toContainText(extension.label)
     await expect(row).toContainText(extension.entrypoint)
-    await expect(row).toContainText(`适用：${extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点' })[role]).join('、')}`)
+    await expect(row).toContainText(`适用：${extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点', chief: '需求分流者' })[role]).join('、')}`)
   }
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await fixed.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)

@@ -201,6 +201,40 @@ async fn task_types_are_enforced_through_direct_http() {
     }
 }
 
+// P3 / S2: a chief is an explicit reusable definition, not a name-derived role.
+// A parser that rejects chief or an editor that resets it to normal must fail
+// at the real HTTP save/read boundary; the literal name intentionally says normal.
+#[tokio::test]
+async fn chief_definition_saves_reads_and_edits_without_changing_identity() {
+    let dir = TempDir::new("chief definition HTTP");
+    let server = TestServer::start(&config_with_tasks(&dir.path().join("tasks.json"))).await;
+    let mut input = json!({"name":"normal in name is not a role", "taskType":"chief",
+        "chatName":"chat with chief bot", "agent":"omp", "model":"gpt-6-luna",
+        "thinking":"medium", "skill":null, "suite":null, "prompt":"Clarify before delegating."});
+    let saved = tasks_of(&post_json_over_tcp(server.addr(), "/api/tasks", &input.to_string()).await)[0].clone();
+    let id = saved["id"].as_str().unwrap();
+    assert_eq!(saved["taskType"], "chief");
+    for agent in ["pi", "omp"] {
+        input["agent"] = json!(agent);
+        let updated = tasks_of(&common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&input.to_string())).await);
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0]["id"], id);
+        for (field, value) in input.as_object().unwrap() {
+            assert_eq!(&updated[0][field], value, "chief field {field}");
+        }
+        assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), updated);
+        let selected = get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await;
+        assert_eq!(selected.status, 200, "{}", selected.body);
+        assert_eq!(serde_json::from_str::<Value>(&selected.body).unwrap()["task"], updated[0]);
+        let mut invalid = input.clone();
+        invalid["model"] = json!("not-in-catalog");
+        let rejected = common::request_json_over_tcp(server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&invalid.to_string())).await;
+        assert_eq!(rejected.status, 400, "{}", rejected.body);
+        assert!(rejected.body.contains("task-model-invalid"));
+        assert_eq!(tasks_of(&get_over_tcp(server.addr(), "/api/tasks").await), updated);
+    }
+}
+
 #[tokio::test]
 async fn saves_a_complete_literal_task_and_independent_clients_read_it() {
     let dir = TempDir::new("task task literal");
@@ -829,6 +863,48 @@ fn write_process_config(dir: &TempDir, storage: &Path) -> std::path::PathBuf {
     )
     .expect("写临时配置");
     config_path
+}
+
+// P3 / S2: the shipped definition is the preset, not a startup-generated Task.
+// Copy it into owned storage, edit through HTTP, then read it after process exit.
+// Missing/duplicate presets or a name-derived role disagree with these literals.
+#[tokio::test]
+async fn delivered_chief_preset_keeps_identity_when_edited_and_restarted() {
+    let dir = TempDir::new("reusable chief preset restart");
+    let storage = dir.path().join("tasks.json");
+    std::fs::write(&storage, include_str!("../../meta-data/tasks.json")).unwrap();
+    let config_path = write_process_config(&dir, &storage);
+    let saved = {
+        let panel = Panel::start(&config_path);
+        let tasks = tasks_of(&get_over_tcp(panel.addr(), "/api/tasks").await);
+        let chiefs: Vec<_> = tasks.iter().filter(|task| task["taskType"] == "chief").collect();
+        assert_eq!(chiefs.len(), 1, "one shipped chief preset: {chiefs:?}");
+        let chief = chiefs[0];
+        assert_eq!(chief["id"], "chief-bot");
+        assert_eq!(chief["name"], "chief-bot");
+        assert_eq!(chief["chatName"], "chat with chief bot");
+        assert_eq!(chief["model"], "gpt-6-luna");
+        assert!(chief["suite"].is_null());
+        let mut input = chief.clone();
+        input.as_object_mut().unwrap().remove("id");
+        input["name"] = json!("Renamed reusable preset");
+        input["agent"] = json!("pi");
+        let updated = tasks_of(&common::request_json_over_tcp(panel.addr(), "PUT", "/api/tasks/chief-bot", Some(&input.to_string())).await);
+        assert_eq!(updated.len(), tasks.len());
+        for original in tasks.iter().filter(|task| task["id"] != "chief-bot") {
+            assert!(updated.contains(original), "unrelated preset changed: {original}");
+        }
+        updated
+    };
+    let restarted = Panel::start(&config_path);
+    assert_eq!(tasks_of(&get_over_tcp(restarted.addr(), "/api/tasks").await), saved);
+    let selected = get_over_tcp(restarted.addr(), "/api/tasks/chief-bot").await;
+    assert_eq!(selected.status, 200, "{}", selected.body);
+    let chief = &serde_json::from_str::<Value>(&selected.body).unwrap()["task"];
+    assert_eq!(chief["id"], "chief-bot");
+    assert_eq!(chief["taskType"], "chief");
+    assert_eq!(chief["name"], "Renamed reusable preset");
+    assert_eq!(chief["agent"], "pi");
 }
 
 /// 改一个文件的只读属性；用来构造「读取仍成功、写入失败」的真实存储条件。

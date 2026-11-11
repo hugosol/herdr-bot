@@ -7,7 +7,7 @@
 
 import type { Suite } from '../suites/suiteApi'
 
-export type TaskType = 'normal' | 'manager'
+export type TaskType = 'normal' | 'manager' | 'chief'
 export type TaskAgent = 'omp' | 'pi'
 export type TaskModel = string
 export type TaskThinking = string
@@ -72,7 +72,7 @@ function isTask(value: unknown): value is Task {
     typeof task.name === 'string' &&
     typeof task.chatName === 'string' &&
     typeof task.agent === 'string' &&
-    ['normal', 'manager'].includes(task.taskType as string) &&
+    ['normal', 'manager', 'chief'].includes(task.taskType as string) &&
     typeof task.model === 'string' &&
     typeof task.thinking === 'string' &&
     (task.skill === null || typeof task.skill === 'string') &&

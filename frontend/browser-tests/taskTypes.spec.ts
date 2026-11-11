@@ -13,7 +13,7 @@ test('P5.01 Pi Task types preserve agent without repeating global extensions', a
   await page.getByTestId('tab-tasks').click()
   await page.getByTestId('task-create-open').click()
   await expect(page.getByTestId('task-type')).toHaveValue('normal')
-  expect(await page.getByTestId('task-type').locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value))).toEqual(['normal', 'manager'])
+  expect(await page.getByTestId('task-type').locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value))).toEqual(['normal', 'manager', 'chief'])
   await page.getByTestId('task-name').fill('类型切换')
   await page.getByTestId('task-agent').selectOption('pi')
   await page.getByTestId('task-type').selectOption('manager')
@@ -31,8 +31,8 @@ test('P5.01 Pi Task types preserve agent without repeating global extensions', a
   expect(saved).toMatchObject({ taskType: 'manager', agent: 'pi' })
   await expect(page.getByTestId('task-item')).not.toContainText('manager-chat')
   await expect(page.getByTestId('task-item')).not.toContainText('node-chat')
-  for (const role of ['normal']) {
-    await page.getByTestId('task-edit').click()
+  for (const role of ['normal', 'chief']) {
+    await page.getByTestId('task-edit').click();
     await page.getByTestId('task-type').selectOption(role)
     await expect(page.getByTestId('task-agent')).toHaveValue('pi')
     await expect(page.getByTestId('task-agent').locator('option[value=pi]')).toBeEnabled()
@@ -44,7 +44,14 @@ test('P5.01 Pi Task types preserve agent without repeating global extensions', a
     await expect(page.getByTestId('task-dialog')).toBeHidden()
     saved = (await server.getTasks()).tasks[0]
     expect(saved).toMatchObject({ taskType: role, agent: 'pi' })
+    expect((await server.getTasks()).tasks).toHaveLength(1)
   }
+  await page.reload()
+  await page.getByTestId('tab-tasks').click()
+  await expect(page.getByTestId('task-item')).toContainText('需求分流者')
+  await page.getByTestId('task-edit').click()
+  await expect(page.getByTestId('task-type')).toHaveValue('chief')
+  await expect(page.getByTestId('task-agent')).toHaveValue('pi')
   await page.screenshot({ path: info.outputPath('task-types.png'), fullPage: true })
   fs.writeFileSync(info.outputPath('task-types.json'), JSON.stringify(await server.getTasks(), null, 2))
 })

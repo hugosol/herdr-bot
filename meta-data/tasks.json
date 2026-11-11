@@ -1,6 +1,18 @@
 {
   "tasks": [
     {
+      "id": "chief-bot",
+      "name": "chief-bot",
+      "chatName": "chat with chief bot",
+      "agent": "omp",
+      "taskType": "chief",
+      "model": "gpt-6-luna",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": "",
+      "suite": null
+    },
+    {
       "id": "task-revise-bot-baseline-v1",
       "name": "既有 Bot 修订基线核实者",
       "chatName": "[Bot 修订核实] {zone.name} · {chat.id}",
