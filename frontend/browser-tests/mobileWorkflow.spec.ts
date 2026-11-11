@@ -295,8 +295,12 @@ for (const profile of PROFILES) {
       await expectDialogInsideViewport(dialog)
       if (profile.isMobile) await expectTouchTargets(dialog)
 
-      await dialog.getByTestId('task').selectOption({ label: '创建用（omp）' })
       const preview = dialog.getByTestId('chat-name-preview')
+      await expect(preview).toHaveAttribute('data-state', 'ready')
+      const automaticName = await preview.textContent()
+      // 唯一 Task 已自动选中；再次选择同一项不能作废预览或生成另一身份。
+      await dialog.getByTestId('task').selectOption({ label: '创建用（omp）' })
+      await expect(preview).toHaveText(automaticName ?? '')
       await expect(preview).toHaveText(/^alpha · 创建用 · [0-9a-f]{6}$/)
       const previewName = (await preview.textContent()) ?? ''
       expect(previewName.length).toBeGreaterThan(0)

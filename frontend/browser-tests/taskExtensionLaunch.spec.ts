@@ -192,7 +192,8 @@ for (const entry of ['omp-model-cost']) {
 for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax', 'metadata-duplicate', 'metadata-relation', 'task-model', 'task-thinking', 'task-skill', 'task-agent']) {
   test(`前置配置检查 ${fault} 的公开创建和实际页面无外部副作用`, async ({ page }) => {
     const { root, zone, original } = await setup()
-    const saved = await save({ ...task })
+    const triggerFault = fault === 'task-model' || fault === 'task-thinking'
+    const saved = await save({ ...task, ...(triggerFault ? { model: 'gpt-6.1-sol', thinking: 'high' } : {}) })
     const form = await dialog(page, zone)
     let unlock: (() => Promise<void>) | undefined
     if (fault === 'metadata-missing') fs.unlinkSync(server!.metadataFile)
@@ -200,11 +201,14 @@ for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax
     if (fault === 'metadata-syntax') fs.writeFileSync(server!.metadataFile, '[[extensions')
     if (fault === 'metadata-duplicate') fs.writeFileSync(server!.metadataFile, original + "\n[[agents]]\nid='omp'\nlabel='duplicate'\n")
     if (fault === 'metadata-relation') fs.writeFileSync(server!.metadataFile, original.replace('omp = [', 'unknown = ['))
-    if (fault.startsWith('task-')) {
+    // Chat 提交自己的 model/thinking 覆盖；使已加载的实际选择在当前目录失效，
+    // 而不是只损坏会被合法临时覆盖替代的 Task 默认值。
+    if (fault === 'task-model') fs.writeFileSync(server!.metadataFile, original.replace("id = 'gpt-6.1-sol'", "id = 'replacement-model'"))
+    if (fault === 'task-thinking') fs.writeFileSync(server!.metadataFile, original.replaceAll("'high', ", ''))
+    if (fault.startsWith('task-') && !triggerFault) {
       const persisted = JSON.parse(fs.readFileSync(server!.storageFile, 'utf8'))
       const field = fault.slice('task-'.length)
       persisted.tasks[0][field] = 'removed-choice'
-      if (field === 'thinking') persisted.tasks[0].model = 'gpt-6.1-sol'
       fs.writeFileSync(server!.storageFile, JSON.stringify(persisted))
     }
     try {

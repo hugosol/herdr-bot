@@ -22,14 +22,14 @@ test('P7 Map default directory is created empty and preserves user files', async
   expect(fs.readdirSync(maps)).toEqual([])
   const firstRead = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(firstRead.status()).toBe(200)
-  expect(await firstRead.json()).toEqual({ files: [] })
+  expect(await firstRead.json()).toEqual({ files: [], groups: {} })
   const bytes = '{"user":"keep this exact content"}\n'
   fs.writeFileSync(path.join(maps, 'personal.json'), bytes)
   await page.getByRole('button', { name: '刷新全部' }).click()
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['personal.json'])
   const response = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual({ files: ['personal.json'] })
+  expect(await response.json()).toEqual({ files: ['personal.json'], groups: {} })
   expect(fs.readFileSync(path.join(maps, 'personal.json'), 'utf8')).toBe(bytes)
 })
 
@@ -59,14 +59,14 @@ test('Maps list newest modifications first with filename ties and refresh after 
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['beta', 'zeta', 'alpha'])
   const initial = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(initial.status()).toBe(200)
-  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
+  expect(await initial.json()).toEqual({ files: ['beta.JSON', 'zeta.json', 'alpha.json'], groups: {}, titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
 
   fs.utimesSync(path.join(maps, 'alpha.json'), newest, newest)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha', 'beta', 'zeta'])
   const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(refreshed.status()).toBe(200)
-  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'], titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
+  expect(await refreshed.json()).toEqual({ files: ['alpha.json', 'beta.JSON', 'zeta.json'], groups: {}, titles: { 'alpha.json': 'alpha', 'beta.JSON': 'beta', 'zeta.json': 'zeta' } })
   for (const [name, bytes] of originals) expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(bytes)
 })
 
@@ -95,7 +95,7 @@ test('Map titles display and filter independently of filenames with duplicate se
   expect(response.status()).toBe(200)
   expect(await response.json()).toEqual({
     files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
-    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Shared itinerary' },
+    groups: {}, titles: { 'first.json': 'Shared itinerary', 'second.json': 'Shared itinerary' },
   })
   const filter = page.getByLabel('筛选 Map', { exact: true })
   await filter.fill('SHARED ITINERARY')
@@ -130,7 +130,7 @@ test('Map titles display and filter independently of filenames with duplicate se
   const refreshed = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(await refreshed.json()).toEqual({
     files: ['empty.json', 'first.json', 'invalid.json', 'second.json', 'whitespace.json'],
-    titles: { 'first.json': 'Shared itinerary', 'second.json': 'Updated itinerary' },
+    groups: {}, titles: { 'first.json': 'Shared itinerary', 'second.json': 'Updated itinerary' },
   })
   for (const [name, bytes] of originals) {
     expect(fs.readFileSync(path.join(maps, name), 'utf8')).toBe(name === 'second.json' ? updated : bytes)
@@ -171,7 +171,7 @@ test('P5 P6 P9 two browsers share only configured top-level Maps regardless of z
       await page.getByTestId('tab-scheduler').click()
       await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['alpha.json', 'beta.JSON'])
       const response = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
-      expect(await response.json()).toEqual({ files: ['alpha.json', 'beta.JSON'] })
+      expect(await response.json()).toEqual({ files: ['alpha.json', 'beta.JSON'], groups: {} })
     }
     for (const name of ['zone-one', 'zone-two']) {
       const zone = path.join(server.cwd, name)
@@ -223,7 +223,7 @@ test('P7 P8 missing parents are created and an obstructing file produces a visib
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
   const empty = await page.request.get(`${server.baseURL}/api/scheduler/maps`)
   expect(empty.status()).toBe(200)
-  expect(await empty.json()).toEqual({ files: [] })
+  expect(await empty.json()).toEqual({ files: [], groups: {} })
 })
 
 // P8: deny the actual Windows list-directory permission, leaving the production
@@ -237,7 +237,7 @@ test('P8 actual unreadable directory reports a read error and can recover', asyn
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
   fs.writeFileSync(path.join(maps, 'before-denial.json'), '{}')
   await page.getByRole('button', { name: '刷新全部' }).click()
-  await expect(page.getByTestId('scheduler-map-list')).toHaveText('before-denial.json')
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['before-denial.json'])
   const user = execFileSync('whoami.exe', [], { encoding: 'utf8' }).trim()
   try {
     execFileSync('icacls.exe', [maps, '/deny', `${user}:(RD)`])
@@ -253,7 +253,7 @@ test('P8 actual unreadable directory reports a read error and can recover', asyn
     execFileSync('icacls.exe', [maps, '/remove:d', user])
   }
   await page.getByRole('button', { name: '刷新全部' }).click()
-  await expect(page.getByTestId('scheduler-map-list')).toHaveText('before-denial.json')
+  await expect(page.getByTestId('scheduler-map-list').getByRole('listitem')).toHaveText(['before-denial.json'])
 })
 
 // Required production boundary, complementary to ticket 08's full security suite:
