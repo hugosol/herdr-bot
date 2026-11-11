@@ -13,43 +13,43 @@ Coverage 中所有检查均由 agent 承担。实际模型调用统一使用 **G
 
 |#|Promise (one observable result)|Coverage|Source|Seam|Delivering work|
 |---|---|---|---|---|---|
-|P1|主界面 chief bot 按钮位于 server 左侧。|真实浏览器检查可见位置与点击命中，不只断言元素存在。|story 1|S1|—|
-|P2|chief 入口按后端权威状态打开当前 chief 或发起窗口。|分别观察有当前 chief、无当前 chief；多浏览器看到一致选择，不由本地缓存另建 chief。|stories 2–3|S1, S2|—|
-|P3|chief-bot 是可复用 chief 类型 Task，不随 Chat 发起重复创建。|通过公开定义读写及多次合法发起后的读回验证身份和数量；normal、manager 仍保持用途区别。|stories 4,10；Implementation Decisions|S2|—|
-|P4|chief 发起窗口具有已约定的三个默认值。|独立字面断言 chief-bot、default/bot-playground、chat with chief bot，实际提交与界面一致。|story 5|S1, S2|—|
-|P5|chief 发起窗口只选择 chief Task，并保留约定的单次启动修改能力。|选择不同 chief Task，修改 zone、模型、思考级别、名称后观察实际启动；normal/manager 不可被该窗口选择，不改写 Task 预设。|stories 6–7|S1, S2|—|
-|P6|缺失默认 zone 时要求选择已登记的有效 zone，不隐式创建目录或绑定。|真实界面负例及公开登记读回；选择有效项后能发起。|story 8|S1, S2|—|
-|P7|OMP 与 Pi 的 chief 固定扩展不依赖 Suite 即可被实际加载使用。|两宿主分别通过交付入口启动及恢复，观察真实原生工具、角色指引和调用结果；配置存在与 argv 不代替消费证据。|stories 9–10|S3|—|
-|P8|chief 澄清需求并按 Bot.when 优先寻找可复用能力，而不亲自执行业务。|GPT-6-luna 在已知匹配、含糊需求、无匹配三个案例中的原生历史与工具轨迹；预置业务哨兵不被 chief 自行修改。|stories 11–13|S3|—|
-|P9|chief 提出显式委派参数，并把用户对话中的修正反映到最终确认内容。|GPT-6-luna 根据独立需求案例填写 Bot、业务输入、zone、必要 manager/材料；用户修正至少 zone 与业务要求，确认内容及实际派发一致。|stories 14–15,21|S3, S2|—|
-|P10|派发仅能发送用户原生确认批准的实际载荷。|两宿主覆盖批准、拒绝、取消、超时、确认不可用；批准前无派发，批准后载荷与完整预览一致。确认期间目标或位置含义变化不得执行不同工作，须重新确认受影响参数。|stories 16–18；inferred：履行已批准内容一致性所必需|S3, S2|—|
-|P11|Task 型 Bot 以确认的业务输入和 zone 发起独立 Chat。|实际 Chat、原生 cwd/输入与来源关联独立核对；不产生虚构父 Run/node。|stories 19,21|S2, S3|—|
-|P12|Map 型 Bot 发起真实 Run 与明确指定的 manager，内部节点保留各自 zone。|使用 manager zone 与内部节点 zone 不同的独立 Map 案例，观察真实 Run/Chat 关联及各执行目录。|stories 20–22|S2, S3|—|
-|P13|chief 的派发完成不等待被委派业务完成。|执行者保持未完成状态，chief 已收到启动结果并能处理下一条用户输入；启动成功不被表述为业务完成。|story 23|S3|—|
-|P14|能力缺口通过已批准的既有创建能力 Bot 处理。|GPT-6-luna 单执行者/多步骤案例分别选择完整创建 Task/创建 Map 能力；核对实际目标，不以裸 Task 保存替代；无批准不启动。|stories 24–25|S3, S2|—|
-|P15|用户否决复用后，chief 等待明确的后续指示。|GPT-6-luna 覆盖仅否决、要求创建 Task、要求创建 Map、放弃四种输入；仅否决时不自选替代路线，放弃后无执行。|stories 26–27|S3|—|
-|P16|能力创建授权不扩大为执行业务或代替后续阶段审批。|观察创建流程既有审批仍生效；创建结果返回后没有自动启动新业务的工具请求或运行事实。|stories 28–29|S3, S2|—|
-|P17|仅 chief 实际委派的独立 Chat 或直接 Map manager 具有 chief 报告资格。|对比合法身份、无关联身份、同 Task 的其他 Chat、普通节点及伪造归属参数；不凭工具存在或 Task 名称授予资格。|stories 30–31|S2, S3|—|
-|P18|Map 内部节点报告继续到其自己的 manager，不被 chief 截取。|真实嵌套 manager 内外角色及非 chief 工作流案例，核对报告收件对象和实际原生工具行为。|stories 32,51|S2, S3|—|
-|P19|chief 报告在没有原派发上下文时仍足以解释本次结果。|成功、失败、受阻三份独立报告包含需求背景、执行对象、结果、交付物及待用户判断事项；GPT-6-luna 在新 chief Chat 中据此准确呈现，不猜测缺失结果。|stories 33,41|S3|—|
-|P20|chief 报告发送须获得对本次报告内容的原生批准。|两宿主批准/拒绝/取消/超时/无确认能力；批准前不发送，发送内容与确认一致。业务完成或聊天中的同意不充当工具批准。|story 34|S3, S2|—|
-|P21|chief 报告在通知前持久保存，即使没有当前 chief。|实际后端与隔离存储：通知触发前报告已可核实；无 chief 和通知失败后重启仍可读取同一报告，保存失败不宣称成功。|story 35|S2|—|
-|P22|发送方分别得到保存、通知及结果不确定的真实反馈。|注入真实存储失败、明确投递失败、提交后的响应丢失；原生工具与公开结果不把不确定解释成未发生或回滚，通知成功不声称用户已读。|stories 36,43|S2, S3|—|
-|P23|失败、时间流逝及 chief/后端启动或恢复均不导致自动重发。|分别观察失败后、创建 chief、恢复 chief、重新登记及后端重启；跨越相关启动/确认/会话维护周期的明确观察窗口，无重复通知和新增业务报告。|stories 37,50|S2, S3|—|
-|P24|只有用户在发送方 Bot Chat 明确要求并再次确认，才重发原报告。|GPT-6-luna 收到明确重发请求，原生再次确认后向当前 chief 投递；拒绝不投递；同一报告 ID/内容不变，不另建业务报告。|stories 38–39|S2, S3|—|
-|P25|已可靠接收的报告不会因同 ID 人工重发而重复触发处理。|重复/并发重发、丢失发送回执、替换 chief 及后端重启，核对持久接收状态与无重复处理；重发反馈已接收，而非虚构再次呈现。|story 40；获批约束审查|S2, S3|—|
-|P26|接收确认不代表模型已呈现、用户已读或业务验收。|在可靠接收后、模型呈现前终止进程；保留接收事实但不报告完成呈现或用户验收，不自动重播。|story 43；获批约束审查|S2, S3|—|
-|P27|呈现中断后，用户可在当前 chief 明确要求查看已接收报告。|接收后中断、建立当前 chief、用户明确请求查看；真实读取原报告并呈现，不要求迁移旧上下文，也不重新派发业务。|inferred：新增人工恢复方式，已在约束审查批准|S2, S3|—|
-|P28|chief 展示结果并询问是否满足要求后等待用户。|GPT-6-luna 成功/失败/受阻/能力创建结果案例，观察真实答复及后续工具轨迹；不自动提出下一次执行确认、不启动新任务。|story 42|S3|—|
-|P29|同一后端在创建、恢复及注册竞争中最多认可一个有效 chief。|多个浏览器和并发调用覆盖注册前占位、普通 Chat 入口与 chief 入口、不同 zone/Task；公开状态和有效操作只有一个胜者。|stories 44–45|S2, S1|—|
-|P30|离线保留期内 chief 继续占位，登记移除后才可重新取得身份。|通过公开生命周期操作与可控时间核对阈值前后、保留期恢复、明确注销；真实浏览器反馈不可创建/可创建状态，不等同于证明旧进程退出。|stories 46–47|S2, S1|—|
-|P31|新 chief 取得身份后，旧 chief 的迟到上报不能抢占或继续承担 chief 职责。|旧进程保留、迟到登记、旧派发调用、并发报告交接：旧身份不获新操作授权、不成为当前收件人；不把已提交外部输入声称为可物理撤销。|story 48；inferred：已授予外部效果与后续资格区分|S2, S3|—|
-|P32|后端重启与并发重新登记仍保持唯一有效 chief。|实际进程重启后多个存活/恢复调用者竞争，核对唯一权威及失败反馈；不以进程内测试替代重启。|story 49|S2|—|
-|P33|已被明确判定失败的 chief 启动不会留下永久无主占位。|明确创建失败后可再次合法发起；外部创建结果不确定时保留不确定事实，不当作未创建直接启动第二个。|inferred：stories 2–3,44–47 的可用性与唯一性所必需|S2|—|
-|P34|恢复被委派 Chat 保留实际报告关联而不重新派发业务。|独立执行者与 Map manager 分别恢复，原报告可人工重发、未关联同 Task Chat 仍拒绝；没有新增委派、Run 或初始输入重放。|inferred：stories 30–31,38–40；既有恢复语义|S2, S3|—|
-|P35|同一报告身份不能被重发操作替换为不同内容。|保存后修改内容再使用原 ID 必须拒绝或明确作为新报告取得新 ID；已存报告保持不变，新内容重新确认。|inferred：stories 39–40 的身份与去重语义所必需|S2, S3|—|
-|P36|原 node report 的保存、通知及失败语义保持兼容。|既有公开节点报告及两宿主原生确认回归；通知失败不撤销已保存报告，不新增自动重投，已有归属与完成门禁不变。|story 51|S2, S3|—|
-|P37|后端仍是报告持久化的唯一权威，跨宿主复用遵守既定分层。|公开行为与实际两宿主调用证明同一报告事实；现有架构检查及针对性源码审查核对共享实现和依赖方向，不以接线/复制逻辑的永久测试代替行为。|story 52；已确认 Implementation Decisions|S2, S3|—|
+|P1|主界面 chief bot 按钮位于 server 左侧。|真实浏览器检查可见位置与点击命中，不只断言元素存在。|story 1|S1|[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P2|chief 入口按后端权威状态打开当前 chief 或发起窗口。|分别观察有当前 chief、无当前 chief；多浏览器看到一致选择，不由本地缓存另建 chief。|stories 2–3|S1, S2|[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P3|chief-bot 是可复用 chief 类型 Task，不随 Chat 发起重复创建。|通过公开定义读写及多次合法发起后的读回验证身份和数量；normal、manager 仍保持用途区别。|stories 4,10；Implementation Decisions|S2|[03：交付可复用 chief Task 定义](implementation/03-reusable-chief-task.md)；[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P4|chief 发起窗口具有已约定的三个默认值。|独立字面断言 chief-bot、default/bot-playground、chat with chief bot，实际提交与界面一致。|story 5|S1, S2|[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P5|chief 发起窗口只选择 chief Task，并保留约定的单次启动修改能力。|选择不同 chief Task，修改 zone、模型、思考级别、名称后观察实际启动；normal/manager 不可被该窗口选择，不改写 Task 预设。|stories 6–7|S1, S2|[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P6|缺失默认 zone 时要求选择已登记的有效 zone，不隐式创建目录或绑定。|真实界面负例及公开登记读回；选择有效项后能发起。|story 8|S1, S2|[05：交付 chief 入口与单次发起设置](implementation/05-chief-entry-dialog.md)|
+|P7|OMP 与 Pi 的 chief 固定扩展不依赖 Suite 即可被实际加载使用。|两宿主分别通过交付入口启动及恢复，观察真实原生工具、角色指引和调用结果；配置存在与 argv 不代替消费证据。|stories 9–10|S3|[07：跨仓验收 chief 入口与生命周期](implementation/07-accept-chief-entry.md)|
+|P8|chief 澄清需求并按 Bot.when 优先寻找可复用能力，而不亲自执行业务。|GPT-6-luna 在已知匹配、含糊需求、无匹配三个案例中的原生历史与工具轨迹；预置业务哨兵不被 chief 自行修改。|stories 11–13|S3|[12：跨仓验收澄清与独立 Chat 委派](implementation/12-accept-task-delegation.md)|
+|P9|chief 提出显式委派参数，并把用户对话中的修正反映到最终确认内容。|GPT-6-luna 根据独立需求案例填写 Bot、业务输入、zone、必要 manager/材料；用户修正至少 zone 与业务要求，确认内容及实际派发一致。|stories 14–15,21|S3, S2|[12：跨仓验收澄清与独立 Chat 委派](implementation/12-accept-task-delegation.md)；[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P10|派发仅能发送用户原生确认批准的实际载荷。|两宿主覆盖批准、拒绝、取消、超时、确认不可用；批准前无派发，批准后载荷与完整预览一致。确认期间目标或位置含义变化不得执行不同工作，须重新确认受影响参数。|stories 16–18；inferred：履行已批准内容一致性所必需|S3, S2|[12：跨仓验收澄清与独立 Chat 委派](implementation/12-accept-task-delegation.md)；[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P11|Task 型 Bot 以确认的业务输入和 zone 发起独立 Chat。|实际 Chat、原生 cwd/输入与来源关联独立核对；不产生虚构父 Run/node。|stories 19,21|S2, S3|[12：跨仓验收澄清与独立 Chat 委派](implementation/12-accept-task-delegation.md)|
+|P12|Map 型 Bot 发起真实 Run 与明确指定的 manager，内部节点保留各自 zone。|使用 manager zone 与内部节点 zone 不同的独立 Map 案例，观察真实 Run/Chat 关联及各执行目录。|stories 20–22|S2, S3|[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P13|chief 的派发完成不等待被委派业务完成。|执行者保持未完成状态，chief 已收到启动结果并能处理下一条用户输入；启动成功不被表述为业务完成。|story 23|S3|[12：跨仓验收澄清与独立 Chat 委派](implementation/12-accept-task-delegation.md)|
+|P14|能力缺口通过已批准的既有创建能力 Bot 处理。|GPT-6-luna 单执行者/多步骤案例分别选择完整创建 Task/创建 Map 能力；核对实际目标，不以裸 Task 保存替代；无批准不启动。|stories 24–25|S3, S2|[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P15|用户否决复用后，chief 等待明确的后续指示。|GPT-6-luna 覆盖仅否决、要求创建 Task、要求创建 Map、放弃四种输入；仅否决时不自选替代路线，放弃后无执行。|stories 26–27|S3|[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P16|能力创建授权不扩大为执行业务或代替后续阶段审批。|观察创建流程既有审批仍生效；创建结果返回后没有自动启动新业务的工具请求或运行事实。|stories 28–29|S3, S2|[13：跨仓验收 Map 与能力创建授权](implementation/13-accept-map-and-capability.md)|
+|P17|仅 chief 实际委派的独立 Chat 或直接 Map manager 具有 chief 报告资格。|对比合法身份、无关联身份、同 Task 的其他 Chat、普通节点及伪造归属参数；不凭工具存在或 Task 名称授予资格。|stories 30–31|S2, S3|[14：保存合法 chief 报告后通知当前 chief](implementation/14-chief-report-storage.md)|
+|P18|Map 内部节点报告继续到其自己的 manager，不被 chief 截取。|真实嵌套 manager 内外角色及非 chief 工作流案例，核对报告收件对象和实际原生工具行为。|stories 32,51|S2, S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P19|chief 报告在没有原派发上下文时仍足以解释本次结果。|成功、失败、受阻三份独立报告包含需求背景、执行对象、结果、交付物及待用户判断事项；GPT-6-luna 在新 chief Chat 中据此准确呈现，不猜测缺失结果。|stories 33,41|S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P20|chief 报告发送须获得对本次报告内容的原生批准。|两宿主批准/拒绝/取消/超时/无确认能力；批准前不发送，发送内容与确认一致。业务完成或聊天中的同意不充当工具批准。|story 34|S3, S2|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P21|chief 报告在通知前持久保存，即使没有当前 chief。|实际后端与隔离存储：通知触发前报告已可核实；无 chief 和通知失败后重启仍可读取同一报告，保存失败不宣称成功。|story 35|S2|[14：保存合法 chief 报告后通知当前 chief](implementation/14-chief-report-storage.md)|
+|P22|发送方分别得到保存、通知及结果不确定的真实反馈。|注入真实存储失败、明确投递失败、提交后的响应丢失；原生工具与公开结果不把不确定解释成未发生或回滚，通知成功不声称用户已读。|stories 36,43|S2, S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P23|失败、时间流逝及 chief/后端启动或恢复均不导致自动重发。|分别观察失败后、创建 chief、恢复 chief、重新登记及后端重启；跨越相关启动/确认/会话维护周期的明确观察窗口，无重复通知和新增业务报告。|stories 37,50|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P24|只有用户在发送方 Bot Chat 明确要求并再次确认，才重发原报告。|GPT-6-luna 收到明确重发请求，原生再次确认后向当前 chief 投递；拒绝不投递；同一报告 ID/内容不变，不另建业务报告。|stories 38–39|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P25|已可靠接收的报告不会因同 ID 人工重发而重复触发处理。|重复/并发重发、丢失发送回执、替换 chief 及后端重启，核对持久接收状态与无重复处理；重发反馈已接收，而非虚构再次呈现。|story 40；获批约束审查|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P26|接收确认不代表模型已呈现、用户已读或业务验收。|在可靠接收后、模型呈现前终止进程；保留接收事实但不报告完成呈现或用户验收，不自动重播。|story 43；获批约束审查|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P27|呈现中断后，用户可在当前 chief 明确要求查看已接收报告。|接收后中断、建立当前 chief、用户明确请求查看；真实读取原报告并呈现，不要求迁移旧上下文，也不重新派发业务。|inferred：新增人工恢复方式，已在约束审查批准|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P28|chief 展示结果并询问是否满足要求后等待用户。|GPT-6-luna 成功/失败/受阻/能力创建结果案例，观察真实答复及后续工具轨迹；不自动提出下一次执行确认、不启动新任务。|story 42|S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P29|同一后端在创建、恢复及注册竞争中最多认可一个有效 chief。|多个浏览器和并发调用覆盖注册前占位、普通 Chat 入口与 chief 入口、不同 zone/Task；公开状态和有效操作只有一个胜者。|stories 44–45|S2, S1|[07：跨仓验收 chief 入口与生命周期](implementation/07-accept-chief-entry.md)|
+|P30|离线保留期内 chief 继续占位，登记移除后才可重新取得身份。|通过公开生命周期操作与可控时间核对阈值前后、保留期恢复、明确注销；真实浏览器反馈不可创建/可创建状态，不等同于证明旧进程退出。|stories 46–47|S2, S1|[07：跨仓验收 chief 入口与生命周期](implementation/07-accept-chief-entry.md)|
+|P31|新 chief 取得身份后，旧 chief 的迟到上报不能抢占或继续承担 chief 职责。|旧进程保留、迟到登记、旧派发调用、并发报告交接：旧身份不获新操作授权、不成为当前收件人；不把已提交外部输入声称为可物理撤销。|story 48；inferred：已授予外部效果与后续资格区分|S2, S3|[20：跨仓验收旧 chief 失权与并发交接](implementation/20-accept-chief-revocation.md)|
+|P32|后端重启与并发重新登记仍保持唯一有效 chief。|实际进程重启后多个存活/恢复调用者竞争，核对唯一权威及失败反馈；不以进程内测试替代重启。|story 49|S2|[04：约束唯一 chief 的创建恢复与登记](implementation/04-exclusive-chief-authority.md)|
+|P33|已被明确判定失败的 chief 启动不会留下永久无主占位。|明确创建失败后可再次合法发起；外部创建结果不确定时保留不确定事实，不当作未创建直接启动第二个。|inferred：stories 2–3,44–47 的可用性与唯一性所必需|S2|[04：约束唯一 chief 的创建恢复与登记](implementation/04-exclusive-chief-authority.md)|
+|P34|恢复被委派 Chat 保留实际报告关联而不重新派发业务。|独立执行者与 Map manager 分别恢复，原报告可人工重发、未关联同 Task Chat 仍拒绝；没有新增委派、Run 或初始输入重放。|inferred：stories 30–31,38–40；既有恢复语义|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P35|同一报告身份不能被重发操作替换为不同内容。|保存后修改内容再使用原 ID 必须拒绝或明确作为新报告取得新 ID；已存报告保持不变，新内容重新确认。|inferred：stories 39–40 的身份与去重语义所必需|S2, S3|[19：跨仓验收人工重发去重与崩溃恢复](implementation/19-accept-report-recovery.md)|
+|P36|原 node report 的保存、通知及失败语义保持兼容。|既有公开节点报告及两宿主原生确认回归；通知失败不撤销已保存报告，不新增自动重投，已有归属与完成门禁不变。|story 51|S2, S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
+|P37|后端仍是报告持久化的唯一权威，跨宿主复用遵守既定分层。|公开行为与实际两宿主调用证明同一报告事实；现有架构检查及针对性源码审查核对共享实现和依赖方向，不以接线/复制逻辑的永久测试代替行为。|story 52；已确认 Implementation Decisions|S2, S3|[16：跨仓验收报告确认呈现与节点兼容](implementation/16-accept-chief-reports.md)|
 
 ### Coverage rules
 
@@ -59,6 +59,25 @@ Coverage 中所有检查均由 agent 承担。实际模型调用统一使用 **G
 - 无自动行为需要有界观察证据，窗口覆盖案例涉及的既有维护/启动/确认预算；具体数值由票据引用实际配置声明，不新增产品等待策略，不以无限等待或即时断言证明“永不”。
 - 存储失败、传输失败与崩溃使用隔离资源；保持原始错误及清理错误，不操作用户的 Chat、凭据、目录、关机或正常服务实例。真实依赖缺失、GPT-6-luna 不可用、原生能力不支持或证据不足必须报告阻塞，不能转为通过。
 - agent 完成实现、TDD、必要回归和全部约定验收；没有计划内人工验收例外。自动化失败不得用“用户自行检查”替代尚可执行的工作。
+
+## Ticket ownership and coverage partition
+
+以下只登记交付工作与测试归属，不改变已批准承诺、seam、证据要求或范围。编号全局唯一；仓库清单见 [repositories.json](repositories.json)，每张独立票的 Blocked by 是调度权威。全部票初始为 ready-for-agent，不表示实现或验收已通过。跨仓验收票按普通 first-merge 依赖调度，不增加统一最终闸门。
+
+跨票 promise 的覆盖分区如下；每一行仅有一个测试作者/维护票，整体 promise 必须等待全部分区通过，不因单个交付链接出现而完成。
+
+|Promise|Coverage item|交付票|测试所有者|
+|---|---|---|---|
+|P3|chief 定义公开读写、类型区别与默认预设身份|03|03|
+|P3|多次合法发起后读回 chief-bot 身份和数量不变|05|05|
+|P9|Task Bot、业务输入、显式 zone、必要材料；用户修正 zone/业务要求与实际派发一致|12|12|
+|P9|Map Bot、业务输入、显式 zone/manager/必要材料；用户修正后与实际派发一致|13|13|
+|P10|Task：OMP/Pi 各自批准/拒绝/取消/超时/不可用；批准期间目标或位置变化|12|12|
+|P10|Map：OMP/Pi 各自批准/拒绝/取消/超时/不可用；批准期间目标或位置变化|13|13|
+
+其余 promise 均有一个完整验收所有者，见 Promises 的 Delivering work 对应票。enabling 票在自己的公开消费者面维护开发回归，不能重复认领跨仓真实模型/原生案例；其最终闭合票在 Coverage ownership 中具名。每个跨仓票列出自己的 coverage item、独立可复跑专项命令、两仓分别通过标准和证据要求；新专项命令是实现交付要求，不代表当前已存在或执行通过。
+
+报告恢复与去重案例由 19 独占，旧 chief 失权和接收交接竞争由 20 独占；20 必须使用实际可靠接收路径，不以 19 的去重结论代替交接证据。无自动行为观察窗口引用实际维护/启动/确认配置预算，禁止添加新的产品等待或重试策略。
 
 ## Seam decisions
 
