@@ -530,7 +530,7 @@ def preflight(args, evidence):
             'diff': command(['git', '-C', root, 'diff', '--', '.', ':!.scratch'], root),
             'sha256': {name: digest(root / name) for name in tracked if (root / name).is_file() and not name.startswith('.scratch/')}}
     frontend_sources = [p for p in (args.repo / 'frontend/src').rglob('*') if p.is_file()]
-    frontend_sources += [args.repo / 'frontend/package.json', args.repo / 'frontend/package-lock.json', args.repo / 'frontend/vite.config.ts']
+    frontend_sources += [args.repo / 'frontend/package.json', args.repo / 'frontend/bun.lock', args.repo / 'frontend/vite.config.ts']
     require(all(p.stat().st_mtime <= (args.repo / 'backend/static/index.html').stat().st_mtime for p in frontend_sources),
             'Frontend output predates current source; build the supplied worktree')
     evidence['frontend'] = {str(p.relative_to(args.repo)): digest(p) for p in (args.repo / 'backend/static').rglob('*') if p.is_file()}

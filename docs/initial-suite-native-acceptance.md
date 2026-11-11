@@ -23,7 +23,7 @@ Do not substitute another worktree's binary or static assets.
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
 Set-Location $HERDR_BOT_WT
-npm --prefix frontend ci
+bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
 python scripts/accept-initial-suites.test.py

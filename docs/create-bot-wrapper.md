@@ -118,7 +118,7 @@ CLI fail-closed 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT`，运行 
 
 ## 验证入口与证据边界
 
-使用本 worktree 独立 `CARGO_TARGET_DIR`，先执行 `npm --prefix frontend ci`、`npm --prefix frontend run build`；定向入口为：
+使用本 worktree 独立 `CARGO_TARGET_DIR`，先执行 `bun install --cwd=frontend --frozen-lockfile`、`npm --prefix frontend run build`；定向入口为：
 
 ```powershell
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch outer_create -- --nocapture

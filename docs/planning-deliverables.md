@@ -88,7 +88,7 @@ Map 型 Bot 只复用 Map 引用，不保存 manager 或每次业务要求。调
 
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target/planning-acceptance'
-npm --prefix frontend ci
+bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths --bin herdr-fixture --example safe_shutdown_shell
 bun install --frozen-lockfile --cwd $TOOLKIT_WT

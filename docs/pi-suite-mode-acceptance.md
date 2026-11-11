@@ -20,7 +20,7 @@ $TOOLKIT_WT = 'D:/worktrees/toolkit'
 $ISOLATED_PATHS = 'D:/acceptance/isolated-paths.toml'
 $EVIDENCE_DIR = 'D:/acceptance/pi-mode-run-unique'
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
-npm --prefix frontend ci
+bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
 $BACKEND_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
