@@ -3,10 +3,17 @@
     {
       "id": "web-access",
       "name": "网页访问",
-      "agents": ["pi"],
-      "skills": {"omp": [], "pi": []},
+      "agents": [
+        "pi"
+      ],
+      "skills": {
+        "omp": [],
+        "pi": []
+      },
       "extensions": {
-        "pi": ["${roots.pi_extensions}/pi-web-access/index.ts"]
+        "pi": [
+          "${roots.pi_extensions}/pi-web-access/index.ts"
+        ]
       },
       "prompts": [],
       "lsp": {},
@@ -28,66 +35,41 @@
           "${roots.wayfinder}/dependent-skills/codebase-exploration"
         ],
         "pi": [
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
-        "${roots.wayfinder_skills}/code-review",
-        "${roots.wayfinder_skills}/wayfinder",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
-        "${roots.wayfinder_skills}/prototype",
-        "${roots.wayfinder_skills}/lighthouse",
-        "${roots.wayfinder_skills}/backtracer",
-        "${roots.wayfinder_skills}/setup-matt-pocock-skills",
-        "${roots.wayfinder_skills}/to-contract",
-        "${roots.wayfinder_skills}/to-spec",
-        "${roots.wayfinder_skills}/to-tickets",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration/retro"
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
+          "${roots.wayfinder_skills}/code-review",
+          "${roots.wayfinder_skills}/wayfinder",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
+          "${roots.wayfinder_skills}/prototype",
+          "${roots.wayfinder_skills}/lighthouse",
+          "${roots.wayfinder_skills}/backtracer",
+          "${roots.wayfinder_skills}/setup-matt-pocock-skills",
+          "${roots.wayfinder_skills}/to-contract",
+          "${roots.wayfinder_skills}/to-spec",
+          "${roots.wayfinder_skills}/to-tickets",
+          "${roots.wayfinder}/dependent-skills/codebase-exploration/retro"
         ]
       },
       "extensions": {
-        "omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"],
-        "pi": ["${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts", "${roots.pi_extensions}/pi-web-access/index.ts"]
+        "omp": [
+          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
+        ],
+        "pi": [
+          "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
+          "${roots.pi_extensions}/pi-web-access/index.ts"
+        ]
       },
       "prompts": [],
       "lsp": {
-        "rust-analyzer": {
-          "command": "rust-analyzer",
-          "args": [],
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "command": "typescript-language-server",
-          "args": [
-            "--stdio"
-          ],
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        },
         "jdtls": {
-          "command": "jdtls",
           "args": [],
+          "command": "jdtls",
           "fileTypes": [
             ".java"
           ],
@@ -100,10 +82,10 @@
           ]
         },
         "pyright": {
-          "command": "pyright-langserver",
           "args": [
             "--stdio"
           ],
+          "command": "pyright-langserver",
           "fileTypes": [
             ".py",
             ".pyi"
@@ -115,6 +97,36 @@
             "setup.cfg",
             "requirements.txt",
             "Pipfile"
+          ]
+        },
+        "rust-analyzer": {
+          "args": [],
+          "command": "rust-analyzer",
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "typescript-language-server",
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
           ]
         }
       },
@@ -139,13 +151,48 @@
         "pi": []
       },
       "extensions": {
-        "omp": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts", "${roots.wayfinder}/extensions"]
+        "omp": [
+          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
+          "${roots.wayfinder}/extensions"
+        ]
       },
       "prompts": [],
       "lsp": {
-        "rust-analyzer": {
-          "command": "rust-analyzer",
+        "jdtls": {
           "args": [],
+          "command": "jdtls",
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "pyright-langserver",
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        },
+        "rust-analyzer": {
+          "args": [],
+          "command": "rust-analyzer",
           "fileTypes": [
             ".rs"
           ],
@@ -155,10 +202,10 @@
           ]
         },
         "typescript-language-server": {
-          "command": "typescript-language-server",
           "args": [
             "--stdio"
           ],
+          "command": "typescript-language-server",
           "fileTypes": [
             ".ts",
             ".tsx",
@@ -172,43 +219,29 @@
             "tsconfig.json",
             "jsconfig.json"
           ]
-        },
-        "jdtls": {
-          "command": "jdtls",
-          "args": [],
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "command": "pyright-langserver",
-          "args": [
-            "--stdio"
-          ],
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
         }
       },
       "mcp": [
         "codebase-memory-mcp"
       ]
+    },
+    {
+      "id": "pi-codemode",
+      "name": "codemode",
+      "agents": [
+        "pi"
+      ],
+      "skills": {
+        "omp": [],
+        "pi": []
+      },
+      "extensions": {},
+      "prompts": [],
+      "lsp": {},
+      "mcp": [],
+      "pi": {
+        "codemode": "only"
+      }
     }
   ]
 }

@@ -169,8 +169,12 @@ _Avoid_: 运行实例, Chat, 执行路由
 _Avoid_: 执行实例, Task, 运行中的任务
 
 **Bot**:
-面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，分别提供选用说明（when）、规划指引（plan_guide）与节点指引（node_guide）；执行目标为普通 Task 或 Map，二者互斥，node 是具体流程中对该能力的工作安排。关联 Map 的 Bot 使流程可作为另一流程的节点复用，每次执行产生独立 Run；Bot 不是 Task、运行中的 agent 或 Chat，能力文档不是运行校验规则，也不是已实现执行能力的证明。
+面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，分别提供选用说明（when）、规划指引（plan_guide）与节点指引（node_guide）；执行目标为普通 Task、Map 或固定脚本，三者互斥，node 是具体流程中对该能力的工作安排。关联 Map 的 Bot 使流程可作为另一流程的节点复用，每次执行产生独立 Run；Bot 不是 Task、运行中的 agent 或 Chat，能力文档不是运行校验规则，也不是已实现执行能力的证明。
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
+
+**脚本型 Bot**:
+以预先固定、可复用的脚本为执行目标，直接完成相对固定业务工作的 Bot；执行不创建 Chat，也不临时生成脚本，任务需要时包含真实写入而非仅生成执行方案。
+_Avoid_: Task 类型, 脚本生成器, 节点 Chat
 
 **业务输入（node.input）**:
 某个 node 本次工作的业务指示，说明目标、材料用途、权限边界、交付内容与验收条件；不是文件来源规则、运行背景或通用流转协议。
