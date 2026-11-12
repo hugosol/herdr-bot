@@ -270,7 +270,7 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
         result = json.loads(commit['response'])
         if manager:
             detail = self.detail(result['id'])
-            require(detail['run']['parent'] is None and detail['run']['managerTaskId'] == manager, 'New valid Map dispatch did not create the actual independent Run')
+            require(detail['run'].get('parent') is None and detail['run']['managerTaskId'] == manager, 'New valid Map dispatch did not create the actual independent Run')
         else:
             result = self.creation({**result, 'delegated': True})
         self.authoritative(chief)
