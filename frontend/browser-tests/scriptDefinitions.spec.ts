@@ -90,7 +90,8 @@ test('P30 fixed Rust target is maintained and reloaded without copying Task or M
   await expect(preview).toContainText('create_blank_bot')
   for (const section of ['when', 'plan_guide', 'node_guide']) {
     await preview.getByRole('button', { name: section, exact: true }).click()
-    await expect(preview.getByRole('region', { name: section, exact: true })).toContainText('空文本')
+    await expect(preview.getByRole('region', { name: section, exact: true })).toBeEmpty()
+    await expect(preview.getByRole('status')).toHaveText(`当前 ${section}：空文本`)
   }
   const first = await readBot(page)
   expect(first.content).toEqual({ ...guides, rust_script: 'create_blank_bot' })
