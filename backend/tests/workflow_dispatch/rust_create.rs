@@ -112,6 +112,131 @@ async fn rust_create_dispatch_writes_blank_bot_and_delivers_real_baseline_before
 }
 
 
+// P11, approved S1 HTTP/files and the existing external-host diagnostic seam.
+// Oracle: real successful creation survives a rejected notification unchanged.
+// Plausible violations: notify-before-save, rollback, lost outputs, or a hidden
+// retry. Hold only Herdr's prompt, read the real fact/files before releasing it,
+// then sample identities, effects and host calls for a full one-second window.
+#[tokio::test]
+async fn rust_create_saved_report_survives_immediate_and_delayed_notification_rejection() {
+    const MODE: &str = "HERDR_SCRIPT_NOTIFICATION_ISOLATION_MODE";
+    if let Ok(mode) = std::env::var(MODE) {
+        use std::os::windows::fs::OpenOptionsExt;
+        let s = Scenario::new().await;
+        creator(&s).await;
+        let target = target_task(&s).await;
+        let input = business_request(json!({"type":"task","task_id":target["id"]}));
+        fs::write(s.data.path().join("request.json"), input.to_string()).unwrap();
+        map_for_request(&s, "").await;
+        let run = s.start("notification-isolation-manager").await;
+        let before_calls = s.herdr.calls();
+        let release = s.data.path().join("release-script-notification");
+        let delayed = mode == "delayed";
+        let mut behavior = json!({"fail_prompt":true});
+        if delayed {
+            behavior["prompt_gate"] = json!({"wait_for_file":release,"timeout_ms":10000});
+        }
+        s.herdr.set_behavior(behavior);
+        let dispatched = s.dispatch("notification-isolation-manager", &["create"]).await;
+        let entered = common::wait_until(Duration::from_secs(5), || {
+            s.herdr.calls()[before_calls.len()..].iter().any(|call| call["kind"] == "agent_prompt")
+        }).await;
+        // Collect observations without panicking while the owned CLI is held;
+        // always release and confirm its exit before checking the observations.
+        let during = tokio::time::timeout(Duration::from_secs(2), detail(&s, &run)).await;
+        let during_files = during.as_ref().ok().and_then(|read| read["reports"][0]["outputs"].as_array()).map(|outputs| {
+            outputs.iter().map(|output| fs::read(output["path"].as_str().unwrap())).collect::<Vec<_>>()
+        });
+        let host_held = fs::OpenOptions::new().read(true).write(true).share_mode(0).open(s.herdr.executable()).is_err();
+        fs::write(&release, b"release owned notification").unwrap();
+        let after = ended(&s, &run).await;
+        assert!(entered, "notification must enter the external host within 5 seconds");
+        assert_eq!(dispatched["results"][0]["status"], "running");
+        let during = during.expect("saved report must be readable while delivery is pending");
+        if delayed {
+            assert!(host_held, "the real external notification must still be held during readback");
+        }
+        assert_eq!(during["reports"].as_array().unwrap().len(), 1);
+        assert_eq!(after["reports"], during["reports"]);
+        let report = after["reports"][0].clone();
+        assert!(!report["id"].as_str().unwrap().is_empty());
+        assert!(!report["body"].as_str().unwrap().is_empty());
+        assert_eq!(report["canComplete"], true);
+        assert_eq!(report["to"], run["run"]["manager"]);
+        let execution = after["run"]["nodes"]["create"]["execution"].clone();
+        assert_eq!(execution["id"], dispatched["snapshot"]["nodes"]["create"]["execution"]["id"]);
+        assert_eq!(execution["lifecycle"]["status"], "succeeded");
+        assert_eq!(report["executionId"], execution["id"]);
+        assert_eq!(report["source"], json!({"kind":"rust_script","rustScript":"create_blank_bot"}));
+        let outputs = report["outputs"].as_array().unwrap();
+        assert_eq!(outputs.iter().map(|output| output["id"].as_str().unwrap()).collect::<Vec<_>>(), vec!["baseline", "handoff"]);
+        let bytes = during_files.expect("both output bindings must be readable before notification ends").into_iter().map(Result::unwrap).collect::<Vec<_>>();
+        for (output, original) in outputs.iter().zip(&bytes) {
+            assert_eq!(fs::read(output["path"].as_str().unwrap()).unwrap(), *original);
+        }
+        let edit = request(&s, "/api/scheduler/bots/edit", json!({"id":"invoice-review"}), 200).await;
+        let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","plan_guide":"","node_guide":"","task_id":target["id"]});
+        assert_eq!(serde_json::from_str::<Value>(edit["revision"]["original"].as_str().unwrap()).unwrap(), expected);
+        let baseline: Value = serde_json::from_slice(&bytes[0]).unwrap();
+        assert_eq!(baseline, json!({"schema_version":1,"kind":"baseline","bot":expected,"revision":edit["revision"],"target":{"type":"task","task_id":target["id"],"configuration":target},"request":input}));
+        let handoff: Value = serde_json::from_slice(&bytes[1]).unwrap();
+        assert_eq!(handoff["stage"], "created");
+        assert_eq!(handoff["checks"], json!({"bot_read_back":true,"target_unchanged":true}));
+        let calls = s.herdr.calls();
+        assert_eq!(calls.len(), before_calls.len() + 1, "one notification, no script Chat or repeated business dispatch");
+        let notification = calls.last().unwrap();
+        assert_eq!(notification["kind"], "agent_prompt");
+        assert_eq!(notification["target"], report["to"]["agentName"]);
+        assert_eq!(notification["text"], format!("Workflow report\nRun: {}\nnode: create\nReport: {}\n\n{}", run["id"].as_str().unwrap(), report["id"].as_str().unwrap(), report["body"].as_str().unwrap()));
+        let observed_at = tokio::time::Instant::now();
+        let mut samples = 0;
+        while observed_at.elapsed() < Duration::from_secs(1) {
+            let read = detail(&s, &run).await;
+            assert_eq!(read["reports"], after["reports"], "no report retry or rollback");
+            assert_eq!(read["run"], after["run"], "no new execution or automatic lifecycle change");
+            assert_eq!(s.herdr.calls(), calls, "no notification retry or external business dispatch");
+            assert_eq!(request(&s, "/api/scheduler/bots/edit", json!({"id":"invoice-review"}), 200).await, edit, "no business rewrite");
+            for (output, original) in outputs.iter().zip(&bytes) {
+                assert_eq!(fs::read(output["path"].as_str().unwrap()).unwrap(), *original);
+            }
+            samples += 1;
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let observed_ms = observed_at.elapsed().as_millis();
+        assert!(observed_ms >= 1000 && samples > 1);
+        assert_eq!(after["run"]["nodes"]["create"]["status"], "running");
+        assert!(after["run"]["nodes"]["create"]["previousExecutions"].as_array().is_none_or(|facts| facts.is_empty()));
+        let dispatches = common::read_json_lines(&s.config.scheduler.run_directory.join(run["id"].as_str().unwrap()).join("history.jsonl"));
+        assert_eq!(dispatches.iter().filter(|event| event["action"] == "dispatch").count(), 1);
+        assert!(fs::OpenOptions::new().read(true).write(true).share_mode(0).open(s.herdr.executable()).is_ok(), "owned notification CLI has exited before cleanup");
+        println!("SCRIPT-NOTIFICATION-EVIDENCE {}", json!({"mode":mode,"runId":run["id"],"reportId":report["id"],"executionId":execution["id"],"targetChat":report["to"],"saved":true,"report":report,"baseline":baseline,"handoff":handoff,"dispatches":1,"observationMs":observed_ms,"samples":samples,"externalCalls":calls,"notificationProcessExited":true}));
+        return;
+    }
+    // Reuse the existing report diagnostic child-process fixture. Capturing the
+    // real stderr sink proves failure feedback independently of the saved fact.
+    for mode in ["immediate", "delayed"] {
+        let cwd = TempDir::new("script notification diagnostic child");
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "rust_create::rust_create_saved_report_survives_immediate_and_delayed_notification_rejection", "--nocapture"])
+            .env(MODE, mode).current_dir(cwd.path()).output().unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "{mode}\n{stdout}\n{stderr}");
+        let evidence: Value = serde_json::from_str(stdout.lines().find_map(|line| line.strip_prefix("SCRIPT-NOTIFICATION-EVIDENCE ")).unwrap()).unwrap();
+        let diagnostics = stderr.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).filter(|entry| entry["event"] == "workflow-report-delivery").collect::<Vec<_>>();
+        assert_eq!(diagnostics.len(), 1, "one result for the single saved report");
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic["runId"], evidence["runId"]);
+        assert_eq!(diagnostic["reportId"], evidence["reportId"]);
+        assert_eq!(diagnostic["targetChat"], evidence["targetChat"]);
+        assert_eq!(diagnostic["result"], "failed", "business success must not imply notification submission or receipt");
+        assert_eq!(diagnostic["reason"], "herdr-command-failed");
+        assert_eq!(evidence["saved"], true);
+        assert_eq!(evidence["notificationProcessExited"], true);
+        println!("P11 childExited=true diagnostic={diagnostic} evidence={evidence}");
+    }
+}
+
 // P3/P6/P12: a real Windows file-open gate holds the business target read,
 // not notification or a mocked Rust collaborator. The HTTP dispatch response,
 // current running lifecycle and complete rejection are observed BEFORE release.

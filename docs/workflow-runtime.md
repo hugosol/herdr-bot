@@ -23,6 +23,14 @@
 
 S1 自动化：`workflow_dispatch::rust_create::rust_retry` 经公开 manager HTTP、真实 Map、部分材料失败与两个真实子进程消费者核对合法 fail/retry、确认拒绝、recover 拒绝、旧效果和新材料；`runs::report_isolation_tests::script_reports_isolate_late_old_true_latest_false_and_material_scope` 在受控脚本报告提交边界制造交错，保存、读取、collect、complete 与材料解析仍走真实实现，不开放任意 execution 报告工具、不编辑 Run 记录。后者先 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture`，再 `cargo test --manifest-path backend/Cargo.toml --lib script_reports_isolate -- --nocapture`；完整入口仍为先构建静态页、独立绝对 `CARGO_TARGET_DIR` 下 `node scripts/test-backend.mjs`。这些受控结果不证明真实 manager／原生工具行为；P13/P14 的 H2 仍由真实专项与用户确认负责。
 
+### 脚本报告已保存但通知失败
+
+通知不是业务提交或交接完成的依据。外部 Herdr 等待期间，manager 已可从原 Run 详情或 status 读回报告 ID、body、canComplete 和全部 outputs，并按登记地址读取真实材料；通知拒绝后继续读取同一份事实，不重派脚本、不重做业务、不重报或回滚已保存配置／材料。成功业务的 `lifecycle.status=succeeded` 与通知 `failed` 可以同时成立，仍须 manager 核对并显式 complete。
+
+后台脚本没有等待报告结果的节点 Chat；通知状态沿既有 `workflow-report-delivery` stderr 诊断按 Run／report／目标 Chat 定位，`result=failed` 与类型化 `reason` 保留可用故障类别，不把业务成功解释成已通知。`submitted` 仅表示 Herdr 确认输入提交，不证明可靠接收、已呈现或用户已阅读。诊断不是第四份持久运行权威，也不是通知队列；没有自动业务重投、报告／通知重试或新增接收工具。服务日志应由部署环境保留。
+
+P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障设施：真实创建／保存后由测试独占 Herdr 制造立即拒绝和受控等待后拒绝，等待中与结束后分别经公开 HTTP 读回同一报告并读取两份实际输出；失败后连续观察至少 **1 秒**，核对配置 revision、Run／execution、报告、材料字节与全部外部调用不变，并确认通知 CLI 和诊断测试子进程退出。有限窗口不证明无限期无动作，受控宿主也不替代真实 manager 接收验收。
+
 ### 报告来源与兼容读取
 
 脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
