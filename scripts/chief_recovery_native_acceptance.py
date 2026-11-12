@@ -287,6 +287,9 @@ class ChiefRecoveryAcceptance(Base):
         require(report['body']['result'] == 'blocked' and 'RECOVERY-731' in report['body']['summary'], 'Sender changed independent business outcome')
         submit = until('real notification failure result', lambda: next((record for record in self.backend_wire.records if record['path'] == '/api/chief/reports' and record.get('ended')), None), self.args.timeout)
         require(json.loads(submit['response'])['notification']['status'] == 'failed', ('Expected definite external notification failure', submit))
+        report_calls = [part['name'] for message in self.messages(answer['history']) for part in message.get('content', [])
+            if isinstance(part, dict) and part.get('type') == 'toolCall' and part.get('name') in ['chief_report', 'chief_resend_report']]
+        require(report_calls == ['chief_report'], ('Sender automatically retried or opened recovery before explicit user input', report_calls))
         self.evidence['initialFailure'] = {'report': report, 'http': submit, 'senderHistory': answer['history']}
         self.quiet('after-notification-failure', [sender, chief])
         reject.unlink()
