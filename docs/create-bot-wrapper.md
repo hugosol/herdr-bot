@@ -2,6 +2,10 @@
 
 公开能力为 `create-bot-wrapper` Bot，唯一目标是 `create-bot-wrapper.json` Map。使用现有 scheduler 的定义读取、Run 预检与发起入口，或由外层 Map 的节点引用这个 Bot；不增加产品入口。它与旧的“创建 Task＋Bot”流程不同：目标必须已经存在，不能由本流程新建、修改或执行。仅选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 已改为调用此能力，其他 Map 不自动替换；独立 `create-bot-task` 和 `create-bot` Bot 的职责及 Task 绑定保持原样。本文件不表示用户部署已迁移。
 
+## 创建分支表示的交付边界
+
+固定 Rust 创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示业务尚未交付)及[可机读 Schema](contracts/rust-script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与现有接线不变；纯正文不包装，来源索引不负责寻址。创建分支采用该严格格式时，生产者与消费者须一起迁移；本次仅交付表示，**不切换发布 Map／Bot／Task，不宣称两个 Rust 能力已可运行**。下文现有外层 W2.handoff 作为 request 的生产要求也须在迁移票中落实，不能把旧 Markdown 当作已符合 JSON request。修订分支和通用 replace-text 保持原契约。
+
 ## 调用接口
 
 输入要求的唯一权威来源为 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) 的 `input_requirements` 与各项 `input_files[].description`；scheduler 发起页分别展示非空总体要求与对应文件标签，Bot 指南与调用者不另存完整要求。文件接口仍为必需 `request` 与可选 `materials`。
