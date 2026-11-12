@@ -94,6 +94,11 @@ class ChiefRecoveryAcceptance(Base):
 
     def close_chat(self, chat):
         self.native(chat)
+        # Auto-title requests are independent of the completed business Round.
+        # Let existing requests finish before intentionally terminating their owner;
+        # never retry or suppress an actual completion/transport failure.
+        until('owned in-flight model requests settle before native termination',
+            lambda: all(record.get('ended') for record in self.model_wire.records), 30)
         self.herdr('pane', 'close', chat['paneId'])
         owned = self.chat_pids[chat['sessionId']]
         for pid, handle in self.handles:
