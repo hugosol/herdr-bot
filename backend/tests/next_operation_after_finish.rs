@@ -194,8 +194,25 @@ async fn consecutive_starts_invoke_the_start_script_twice() {
         tree.records()
     );
 
-    // 第二次“启动”发生在前一次响应返回之后（上一次脚本已经结束），仍然是脚本调用。
-    let second = submit_ended(addr, START, "completed").await;
+    // Hold only this invocation until its real process handle is captured. A
+    // post-response PID lookup can observe an unrelated process after PID reuse.
+    let script = tree.script("success.bat");
+    let content = std::fs::read_to_string(&script).expect("读取独占夹具");
+    std::fs::write(&script, content.replace("-Fixture success", "-Fixture success -HoldUntilStop -TrackPid"))
+        .expect("设置独占进程观察门闩");
+    let pending = tokio::spawn(submit_ended(addr, START, "completed"));
+    assert!(common::wait_until(std::time::Duration::from_secs(10), || invokes(&tree, "success").len() == 2).await,
+        "第二次启动必须到达真实夹具记录");
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+    let pid = invokes(&tree, "success")[1].pid;
+    let handle = unsafe { OpenProcess(0x00100000, 0, pid) }; // SYNCHRONIZE
+    assert!(!handle.is_null(), "必须取得仍在门闩中原进程的句柄");
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    std::fs::write(tree.runtime().join("stop/success.stop"), "release owned invocation")
+        .expect("释放独占进程门闩");
+    // 第二次“启动”仍发生在第一次响应之后；释放门闩后等待真实结束响应。
+    let second = pending.await.expect("第二次操作任务结束");
     assert_eq!(
         second["started"], true,
         "第二次启动必须真的执行脚本：{second}"
@@ -220,9 +237,10 @@ async fn consecutive_starts_invoke_the_start_script_twice() {
         runs[0].seq, runs[1].seq,
         "两次启动必须是两条记录行：{runs:#?}"
     );
-    assert!(
-        !common::process_is_alive(runs[1].pid),
-        "第二次启动返回时它的脚本进程应当已经结束（PID {}）",
+    assert_eq!(
+        unsafe { WaitForSingleObject(handle.as_raw_handle(), 0) },
+        windows_sys::Win32::Foundation::WAIT_OBJECT_0,
+        "第二次启动返回时原脚本进程句柄必须已结束（PID {}）",
         runs[1].pid
     );
 }
