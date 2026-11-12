@@ -151,6 +151,17 @@ P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 M
 可用两个独占证据目录分别运行 `--hosts omp` 与 `--hosts pi` 并行诊断；每次仍保持单宿主内的重启／接收因果顺序，单宿主入口退出非零且不能称整体通过。聚合必须核对两份宿主 `evidence.json` 全部七项 verified、各自 passed/cleanupErrors、实际模型身份与机械检查退出状态及同一源码／产物身份；不能仅看过滤后的进程退出码。`business-stderr.log` 按时间、host、阶段 started/completed 与已验证 coverage 实时 flush，最终 JSON 仍独立输出；宿主根证据记录准确失败。外部 CLI 记录在 `external-cli/calls/*.json` 以独占临时文件写完后 rename 发布，避免并发进程交错 JSONL 或读到半条记录。
 
 CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-recovery.test.py`、`python scripts/chief_recovery_faults.test.py`；前者只证明 fail-closed／绝对路径／不覆盖旧证据，后者只证明原响应提交后的门闩和丢失行为。另设置 `CHIEF_RECOVERY_PROXY` 为本次 `recovery_herdr_proxy.exe`、`HERDR_FIXTURE` 为本次 `herdr-fixture.exe`，运行 `python scripts/chief_recovery_cli.test.py`，检查初始业务输入逐字透传、只拒绝 chief 报告通知、解除显式故障后原通知逐字透传。完成仍分别运行两仓要求的完整构建、后端／前端／浏览器及 Bun 1.4.4 typecheck／test／check:integrations；配对 dock 只使用本次安全关机壳与本次元数据，生产 `--backend` 不替代安全壳执行关机回归。全局套件不替代专项。
+## Chief 存活旧进程与交接专项
+
+从参与的 Herdr worktree 根运行 `python scripts/accept-chief-authority.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。显式绝对路径、独占新证据目录、当前源码构建产物及隔离 roots 的要求与入口专项相同。模型严格使用 GPT-6-luna 并核对实际返回身份；授权只读 Codex provider 可沿用 `accept-workflow-codex.py --scenario authority`（先单独 `--smoke`），不发现用户凭据、不刷新认证、不回退或重试业务决策。
+
+`chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
+
+旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run；只读 Map 夹具显式使用 `report_policy: manual`，允许 manager 按正常流程管理节点并保留阶段审批，但不自动向 chief 报告；不把“禁止全部节点执行”与执行 Map 的有效请求混用。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
+
+静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-authority.test.py` 的CLI安全检查不算P31通过。
+
+两仓完成检查仍分别执行票据要求的完整 frontend build、当前后端/fixture/paths/安全壳构建、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`，以及Bun 1.4.4的 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和受影响 `native-chief-receipt-backend`／`native-chief-reception` dock。独立绝对 `CARGO_TARGET_DIR`；dock 的 `HERDR_BOT_BINARY` 只能指向本次 `safe_shutdown_shell.exe`、元数据指向参与源码，真实专项则使用生产后端。完整回归或受控dock仅证明其实际范围，不替代双宿主真实模型专项。
 
 ## 前端与浏览器
 
