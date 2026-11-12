@@ -156,17 +156,28 @@ class ChiefRecoveryAcceptance(Base):
                                 for session in sessions},
                 'runs': self.http('/api/workflow/runs')['runs']}
 
+    def business_request_count(self):
+        count = 0
+        for record in self.model_wire.records:
+            request = json.loads(record['request'])
+            messages = request.get('messages', [])
+            system = messages[0] if messages else {}
+            if system.get('role') == 'system' and str(system.get('content', '')).startswith('You name coding-agent sessions.'):
+                continue
+            count += 1
+        return count
+
     def quiet(self, label, chats=()):
         baseline = {'reports': self.http('/api/chief/reports'), 'business': self.business(),
                     'notifications': len([call for call in self.calls() if call['notification']]),
                     'messages': {chat['sessionId']: self.messages(self.native(chat)) for chat in chats},
-                    'requests': len(self.model_wire.records)}
+                    'requests': self.business_request_count()}
         start = time.monotonic()
         while time.monotonic() - start < 46:
             require(self.http('/api/chief/reports') == baseline['reports'], ('Automatic new report', label))
             require(self.business() == baseline['business'], ('Automatic business dispatch', label))
             require(len([call for call in self.calls() if call['notification']]) == baseline['notifications'], ('Automatic notification', label))
-            require(len(self.model_wire.records) == baseline['requests'], ('Automatic model invocation', label))
+            require(self.business_request_count() == baseline['requests'], ('Automatic business model invocation', label))
             for chat in chats:
                 require(self.messages(self.native(chat)) == baseline['messages'][chat['sessionId']], ('Automatic conversation replay', label))
             time.sleep(.5)
@@ -212,7 +223,10 @@ class ChiefRecoveryAcceptance(Base):
         self.send(sender, '请重发已保存的原chief报告 ' + report['id'] + '，原ID和完整内容不变；不是提交新报告。本次必须再次原生确认，未批准不发送。', 'explicit-original-resend')
         confirmation = self.confirmation(sender, 'chief_resend_report', ids)
         require(confirmation['call']['arguments'] == {'id': report['id']}, 'Real model did not select original-only resend')
-        require(json.dumps(report, ensure_ascii=False, indent=2) in confirmation['ui']['message'], 'Native preview omitted original ID/content')
+        preview_text = confirmation['ui']['message'].split('原报告：\n', 1)
+        require(len(preview_text) == 2, 'Native preview omitted original report')
+        preview_report, _ = json.JSONDecoder().raw_decode(preview_text[1])
+        require(preview_report == report, 'Native preview omitted or changed original ID/content')
         route = '/api/chief/reports/' + report['id'] + '/resend'
         require(not any(record['path'] == route for record in self.backend_wire.records[before:]), 'Resent before native approval')
         if before_decision:
