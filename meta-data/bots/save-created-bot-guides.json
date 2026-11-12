@@ -1,0 +1,9 @@
+{
+  "group": "meta-bot",
+  "id": "save-created-bot-guides",
+  "name": "创建流程三指南保存者",
+  "when": "",
+  "plan_guide": "",
+  "node_guide": "",
+  "rust_script": "save_bot_guides"
+}

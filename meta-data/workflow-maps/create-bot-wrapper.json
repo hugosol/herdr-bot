@@ -2,11 +2,11 @@
   "group": "meta-map",
   "title": "创建bot",
   "description": "为真实既有 normal Task／Map 创建完整 Bot：输入准备以本 Map 的 input_requirements 与 input_files[].description 为准；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
-  "input_requirements": "",
+  "input_requirements": "创建专用 v1 材料契约见 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」。request 必须为单个 UTF-8 JSON 对象，禁止重复 key、未知字段或版本、缺项；授权与确认必须显式可校验。管理者可在获准材料目录整理已确认委托，但不得推断自然语言授权或代批准。参考 materials 不补 request 参数；缺项或歧义先澄清，不派发。",
   "input_files": [
     {
       "id": "request",
-      "description": "Bot 创建委托：包含目标 normal Task ID 或 Map 文件名、业务需求及约束。",
+      "description": "必需的创建分支 v1 request JSON（schema_version=1、kind=request）：target 精确二选一 normal Task ID 或目录内 Map 文件名；requirements、constraints、non_goals、resource_limits、authorization（create_blank、write_materials、save_guides）和 confirmation（evidence、scope=create_blank）均必填；bot 的 id/name/group 可选。完整格式见 docs/business-materials.md 和 docs/contracts/rust-script-bots.schema.json；不接受旧 Markdown。",
       "required": true
     },
     {
@@ -19,7 +19,7 @@
     "create_blank": {
       "title": "核实既有目标并创建空白 Bot",
       "bot_id": "create-blank-bot",
-      "input": "本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
+      "input": "固定 Rust create_blank_bot 只消费显式命名 request 与可选 materials，不解析本段自然语言。按创建分支 v1 交付完整 baseline JSON 与 created handoff；材料和确认格式见 docs/business-materials.md。",
       "input_rule": [
         {
           "type": "run",
@@ -41,14 +41,14 @@
         }
       ],
       "report_policy": "auto",
-      "auto_close": true,
+      "auto_close": false,
       "zone": "hugosol/herdr-bot",
       "blocked_by": []
     },
     "optimize_node_guide": {
       "title": "优化 Bot.node_guide 表达",
       "bot_id": "optimize-prompt",
-      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.node_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.node_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=node_guide，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。 记录 baseline、收到的 text/handoff 输入及新 text 输出；保义不成立或确认不覆盖最终 bytes 时先取得新的全文确认。",
       "input_rule": [
         {
           "type": "node",
@@ -87,7 +87,7 @@
     "optimize_plan_guide": {
       "title": "优化 Bot.plan_guide 表达",
       "bot_id": "optimize-prompt",
-      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.plan_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.plan_guide 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=plan_guide，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。 记录 baseline、收到的 text/handoff 输入及新 text 输出；保义不成立或确认不覆盖最终 bytes 时先取得新的全文确认。",
       "input_rule": [
         {
           "type": "node",
@@ -126,7 +126,7 @@
     "optimize_when": {
       "title": "优化 Bot.when 表达",
       "bot_id": "optimize-prompt",
-      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.when 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。",
+      "input": "使用服务 ${herdr-bot-api-url}，本次只优化 Bot.when 的表达。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「共同基线消费」「表达优化」「文件与独立 Chat」，分别用于材料分工、真实配置与共同基线核实、保义及有效确认、文件交付。\n直接消费 baseline（同一创建后 Bot、真实 revision、完整 normal Task／Map 目标及需求授权）、text（所属字段已确认完整正文）、handoff（确认依据与语义限制）。只授权在本次材料写入范围内保存本分支的新 text／handoff 文件，不授权保存 Bot、目标或运行记录；交付唯一最终纯正文与必要交接说明，供最终保存者直接消费。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=when，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。 记录 baseline、收到的 text/handoff 输入及新 text 输出；保义不成立或确认不覆盖最终 bytes 时先取得新的全文确认。",
       "input_rule": [
         {
           "type": "node",
@@ -164,8 +164,8 @@
     },
     "save_bot": {
       "title": "一次保存并完整读回 Bot 三指南",
-      "bot_id": "replace-text",
-      "input": "使用服务 ${herdr-bot-api-url}。执行前读取 ${herdr-bot-path}/docs/business-materials.md「三种材料，直接交给消费者」「一次合法保存与失败核实」「文件与独立 Chat」，用于本次材料分工、整批授权与基线核实、一次保存读回及失败核实、安全文件交付。\n直接消费 baseline 和三组最终材料：when_text／when_handoff → when，plan_guide_text／plan_guide_handoff → plan_guide，node_guide_text／node_guide_handoff → node_guide。以各 text 为唯一完整正文、各 handoff 为确认与限制依据，仅按有效授权一次替换同一 Bot 的三个字段，保持全部非目标和关联 normal Task／Map 配置。\n交付 saved 文件，内容为公开接口完整读回的真实 Bot；另交付 handoff 文件，记录真实身份、唯一绑定、确认／授权依据、三字段来源、保存及非目标保持核对结论、已发生效果和未验证项，不复制配置或正文。",
+      "bot_id": "save-created-bot-guides",
+      "input": "固定 Rust save_bot_guides 只消费直接命名 baseline 与三组最终 text/handoff。使用创建分支 v1 baseline、guide handoff（最终原样 UTF-8 SHA-256、有效全文确认、保义及明确保存授权），拒绝缺项和冲突；不沿来源索引寻址，不解释自然语言授权。一次保存三字段并完整读回，交付 v1 saved（完整 Bot、真实 revision、完整目标）与 saved handoff；不自动 complete、重试或回滚。",
       "input_rule": [
         {
           "type": "node",
@@ -219,7 +219,7 @@
         }
       ],
       "report_policy": "auto",
-      "auto_close": true,
+      "auto_close": false,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
         "optimize_when",
@@ -230,7 +230,7 @@
     "write_node_guide": {
       "title": "编写并确认 Bot.node_guide",
       "bot_id": "write-bot-node-guide",
-      "input": "依据 baseline，按创建分支只编写并确认 node_guide，供规划者填写本次业务输入责任，包括 Task／Map 所需材料、选择和授权；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 node_guide，供规划者填写本次业务输入责任，包括 Task／Map 所需材料、选择和授权；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=node_guide，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。",
       "input_rule": [
         {
           "type": "node",
@@ -257,7 +257,7 @@
     "write_plan_guide": {
       "title": "编写并确认 Bot.plan_guide",
       "bot_id": "write-bot-plan-guide",
-      "input": "依据 baseline，按创建分支只编写并确认 plan_guide，供规划者安排工作；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 plan_guide，供规划者安排工作；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=plan_guide，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。",
       "input_rule": [
         {
           "type": "node",
@@ -284,7 +284,7 @@
     "write_when": {
       "title": "编写并确认 Bot.when",
       "bot_id": "write-bot-when",
-      "input": "依据 baseline，按创建分支只编写并确认 when，供能力发现与选用；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 when，供能力发现与选用；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。\n本调用明确选择创建分支 v1：先读取 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」及 Schema 的 baseline/guide_handoff。baseline.target.configuration 是完整目标，baseline.request 承载需求与授权。text 仍为唯一原样 UTF-8 纯正文；handoff 必须为 schema_version=1、kind=handoff、stage=guide 的严格 JSON，field=when，与 baseline 的 bot_id/target 一致，记录本节点显式 inputs/outputs 来源、最终 text 原样 bytes 的 SHA-256、真实全文确认 evidence、full_text、save_authorized、semantics_preserved、constraints、unverified。保存授权缺失如实为 false，不推断自然语言授权；来源只追踪、不寻址。",
       "input_rule": [
         {
           "type": "node",
