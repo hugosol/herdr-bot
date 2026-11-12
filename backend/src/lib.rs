@@ -879,7 +879,15 @@ fn zone_create_error_response(error: zones::create::CreateZoneError) -> Response
 
 /// “列出 Task 与固定选项”：读取后端持久保存的同一份列表。
 async fn list_tasks(State(state): State<AppState>) -> Response {
-    task_list_response(&state, state.tasks.list().await)
+    // A real script can hold the same Task file in a blocking OS read. Keep
+    // catalog reads and their file coordination off the async HTTP workers.
+    let runtime = tokio::runtime::Handle::current();
+    match tokio::task::spawn_blocking(move || {
+        task_list_response(&state, runtime.block_on(state.tasks.list()))
+    }).await {
+        Ok(response) => response,
+        Err(error) => task_error_response(tasks::TaskError::Unreadable(std::io::Error::other(error))),
+    }
 }
 
 /// “读取单个 Task”：删除后由独立客户端按标识选择时得到明确的不存在。
