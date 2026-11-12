@@ -41,6 +41,7 @@ function TaskPrompt({ bot, botProblem }: { bot?: Bot; botProblem?: string }) {
   const task = result?.kind === 'ok' ? result.tasks.find(task => task.id === bot?.task_id) : undefined
   const taskProblem = botProblem ? 'Bot 无效，无法读取绑定 Task 的 prompt。'
     : !bot ? '尚未取得关联 Bot。'
+      : bot.rust_script != null ? `固定 Rust 能力：${bot.rust_script}。不使用 Task.prompt 或 manager Task；使用命名文件材料，不消费 node.input。`
       : bot.map_file != null ? 'Map 型 Bot；使用调用节点指定的 manager Task，不绑定普通 Task。'
       : bot.task_id == null ? '尚未绑定 Task。'
         : result == null ? '正在读取 Task prompt…'
@@ -108,7 +109,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
       <div><label htmlFor={`${id}-node-id`}>node_id</label>{edit ? <input id={`${id}-node-id`} value={nodeId} readOnly={!edit.create} disabled={edit.disabled} onChange={event => edit.onIdChange(event.target.value)} /> : <p className="scheduler-node-value scheduler-identifier">{nodeId}</p>}</div>
       <div><label htmlFor={`${id}-title`}>节点标题</label>{edit && !showJson ? <input id={`${id}-title`} value={title} disabled={edit.disabled} onChange={event => changeField('title', event.target.value)} /> : <h3 className="scheduler-node-value">{title || (showJson ? '由下方 JSON 编辑' : '未命名节点')}</h3>}</div>
     </div>
-    {edit ? <NodeSettings value={settings} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} readOnly />}
+    {edit ? <NodeSettings value={settings} script={bot?.rust_script != null} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} script={bot?.rust_script != null} readOnly />}
     <div className="scheduler-node-bot"><label htmlFor={`${id}-bot`}>Bot ID</label>
       {edit && !showJson ? <><input id={`${id}-bot`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><select aria-label="选择已有 Bot" value={catalog?.bots.some(item => item.id === botId) ? botId : ''} disabled={edit.disabled} onChange={event => { if (event.target.value) changeField('bot_id', event.target.value) }}><option value="">选择已有 Bot</option><GroupOptions items={catalog?.bots ?? []} groupOf={item => item.group}>{item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>}</GroupOptions></select></> : <p className="scheduler-node-value scheduler-identifier">{botId || '尚未填写 Bot ID'}</p>}
       {botProblem && <p role="alert">{botProblem}</p>}
@@ -116,7 +117,9 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
     {(bot?.map_file != null || definition?.manager_task_id != null) && <section aria-label="Map 调用配置">
       <p className="scheduler-path">Map：{bot?.map_file ?? '当前 Bot 不是 Map 型；请修正 manager_task_id'}</p>
       <label htmlFor={`${id}-manager`}>manager Task</label>
-      {edit && !showJson ? <select id={`${id}-manager`} value={typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : ''} disabled={edit.disabled || managerLookup?.kind !== 'ok'} onChange={event => changeField('manager_task_id', event.target.value || undefined)}>
+      {bot?.rust_script != null ? <><p className="scheduler-identifier">脚本节点不能指定 manager_task_id：{String(definition?.manager_task_id)}</p>
+        {edit && <button type="button" disabled={edit.disabled} onClick={() => changeField('manager_task_id', undefined)}>移除 manager_task_id</button>}
+      </> : edit && !showJson ? <select id={`${id}-manager`} value={typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : ''} disabled={edit.disabled || managerLookup?.kind !== 'ok'} onChange={event => changeField('manager_task_id', event.target.value || undefined)}>
         <option value="">未指定</option>
         {typeof definition?.manager_task_id === 'string' && !(managerLookup?.kind === 'ok' && managerLookup.tasks.some(task => task.id === definition.manager_task_id && task.taskType === 'manager')) && <option value={definition.manager_task_id} disabled>{definition.manager_task_id}（不存在、类型无效或尚未核实）</option>}
         {managerLookup?.kind === 'ok' && <GroupOptions items={managerLookup.tasks.filter(task => task.taskType === 'manager')} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>}</GroupOptions>}

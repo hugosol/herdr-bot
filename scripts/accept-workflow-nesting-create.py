@@ -23,8 +23,8 @@ from developer_paths import REPO, backend_suffix, resolve_arguments
 shared = runpy.run_path(str(Path(__file__).with_name('test-workflow-file-handoff.py')))
 Acceptance, RolesAcceptance = shared['Acceptance'], shared['RolesAcceptance']
 WireProxy, require, until = shared['WireProxy'], shared['require'], shared['until']
-PROMISES = ['P39', 'P40', 'P41', 'P43', 'P44', 'P45']
-TASK_IDS = ['task-18e33fdc55177d1c-1', 'task-18e3404478db1ef8-2',
+PROMISES = ['P28']
+TASK_IDS = ['task-18e3404478db1ef8-2',
     'task-18e340545eb481bc-3', 'task-18e340f5287462ec-4',
     'task-18e31d34797f1464-3', 'task-18e3415003d8cd00-5']
 FIELDS = ['when', 'plan_guide', 'node_guide']
@@ -180,6 +180,10 @@ class CreateAcceptance(Acceptance):
             messages = self.messages(history)
             if after and not any(m.get('role') == 'user' and after in RolesAcceptance.message_text(m) for m in messages):
                 return None
+            terminal = self.command([self.args.herdr, 'pane', 'read', chat['paneId']])
+            if '发送报告？（仅批准本次报告发送）' in terminal and 'Yes' in terminal and 'No' in terminal:
+                self.evidence.setdefault('reportConfirmationPreviews', {})[chat['sessionId']] = terminal
+                return history
             if not messages or messages[-1].get('role') != 'assistant':
                 return None
             last = messages[-1]

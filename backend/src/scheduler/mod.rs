@@ -536,7 +536,11 @@ fn check_map_calls(
         let node = &node.0;
         let first_issue = issues.len();
         match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
-            None => issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请修正引用或文件。", node.bot_id))),
+            None => {
+                let reason = bots.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(node.bot_id.as_str()))
+                    .map_or("共享 Bot 缺失或无效；请修正引用或文件。", |problem| problem.message.as_str());
+                issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {}：{reason}", node.bot_id)));
+            }
             Some(bot) if bot.rust_script.is_some() => {
                 if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
                     issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
@@ -725,7 +729,7 @@ impl Bot {
         if [self.task_id.is_some(), self.map_file.is_some(), self.rust_script.is_some()].into_iter().filter(|present| *present).count() > 1 {
             return Err(edit_error("bot-invalid", "Bot 的 task_id、map_file 与 rust_script 互斥；请只选择一个执行目标。"));
         }
-        if self.rust_script.as_deref().is_some_and(|capability| capability != "create_blank_bot") {
+        if self.rust_script.as_deref().is_some_and(|capability| !matches!(capability, "create_blank_bot" | "save_bot_guides")) {
             return Err(edit_error("bot-invalid", "未知或尚未实现的固定 Rust 能力。"));
         }
         Ok(())
@@ -1114,7 +1118,7 @@ fn save_bot_definition(state: &crate::AppState, draft: BotSave, unique_binding: 
             if unique_binding {
                 let catalog = read_bots(access, &root)?;
                 if !catalog.problems.is_empty() { return Err(edit_error("ambiguous-request", "Bot 目录包含无法排除身份或绑定冲突的定义。")); }
-                if catalog.bots.iter().any(|existing| (bot.task_id.is_some() && bot.task_id == existing.task_id) || (bot.map_file.is_some() && bot.map_file == existing.map_file)) {
+                if catalog.bots.iter().any(|existing| (draft.revision.is_none() || existing.id != bot.id) && ((bot.task_id.is_some() && bot.task_id == existing.task_id) || (bot.map_file.is_some() && bot.map_file == existing.map_file))) {
                     return Err(edit_error("target-conflict", "该目标已有 Bot 绑定；不复用或覆盖。"));
                 }
             }
@@ -1259,7 +1263,7 @@ pub async fn save_node(
     axum::extract::Path(name): axum::extract::Path<String>,
     Json(draft): Json<NodeSave>,
 ) -> Response {
-    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "node-write-failed", |access| {
+    match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "node-write-failed", |access| {
         if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
         let content: serde_json::Value = serde_json::from_str(&draft.content)
             .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
@@ -1267,6 +1271,12 @@ pub async fn save_node(
         if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
         let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
             .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
+        if node.0.manager_task_id.is_some() || node.0.report_policy != ReportPolicy::Auto || node.0.auto_close {
+            let bots = read_bots(access, &state.bot_directory)?;
+            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.rust_script.is_some()) {
+                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+            }
+        }
         let check = || -> Result<(), DirectoryError> {
             let current = read_map_source(access, &state.map_directory, &name)
                 .map_err(|error| edit_error("node-conflict", format!("Map 文件已变化或移除：{}；请重新加载。", error.message)))?;
@@ -1332,7 +1342,7 @@ impl IntoResponse for DirectoryError {
     fn into_response(self) -> Response {
         let status = match self.code {
             "map-input-invalid" | "group-invalid" => StatusCode::BAD_REQUEST,
-            "map-conflict" | "bot-conflict" => StatusCode::CONFLICT,
+            "map-conflict" | "bot-conflict" | "script-policy-invalid" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(serde_json::json!({

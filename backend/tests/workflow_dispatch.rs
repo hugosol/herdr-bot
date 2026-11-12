@@ -30,6 +30,10 @@ mod map_title;
 mod history_integrity;
 #[path = "workflow_dispatch/rust_create.rs"]
 mod rust_create;
+#[path = "workflow_dispatch/rust_save.rs"]
+mod rust_save;
+#[path = "workflow_dispatch/rust_lifecycle.rs"]
+mod rust_lifecycle;
 #[path = "workflow_dispatch/bot_targets.rs"]
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]
@@ -50,6 +54,8 @@ mod plan_workflow;
 mod shared_business;
 #[path = "workflow_dispatch/create_bot_wrapper.rs"]
 mod create_bot_wrapper;
+#[path = "workflow_dispatch/create_migration.rs"]
+mod create_migration;
 #[path = "workflow_dispatch/revise_bot_guides.rs"]
 mod revise_bot_guides;
 #[path = "workflow_dispatch/outer_create.rs"]

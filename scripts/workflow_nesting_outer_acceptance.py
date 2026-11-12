@@ -672,7 +672,7 @@ export default function(pi) {
         for run in [parent, child['run']]:
             require(run.get('finished'), 'Missing explicit manager finish')
             for node in run['nodes'].values():
-                require(node['execution']['taskId'] != target['id'], 'New target business was automatically executed')
+                require(node['execution'].get('taskId') != target['id'], 'New target business was automatically executed')
         w2 = self.output_files(outer, 'w2')
         require(child['run']['fileInputs'] == [{'id': 'request', 'path': w2['handoff']['path']}], 'Business request not explicitly passed to child')
         saved = self.output_files(child, 'save_bot')
@@ -692,6 +692,9 @@ export default function(pi) {
                     ('Actual manager role tools were not exercised', manager))
             for node_id, node in run['nodes'].items():
                 execution = node['execution']
+                if not execution.get('chat'):
+                    require(execution.get('rustScript') in ['create_blank_bot', 'save_bot_guides'], ('Missing real Rust execution target', execution))
+                    continue
                 chat = self.native_chat({**execution['chat'], 'agent': execution['agent']})
                 native = self.observe_turn(chat)
                 histories[chat['sessionId']] = native
@@ -732,19 +735,18 @@ export default function(pi) {
             'approval': 'All final modified text matches the explicitly confirmed complete candidate; no business change or permission is invented.',
             'delivery': 'saved contains the complete final Bot and Task configurations matching service readback; handoff records changes, confirmation, checks and unverified behavior without claiming runtime quality.'})
         require(bot['name'] == self.marker + '-outer', 'Wrapper changed the explicitly requested Bot name')
-        require(json.loads(saved['saved']['bytes']) == bot, 'Saved output is not the complete public Bot readback')
+        require(json.loads(saved['saved']['bytes'])['bot'] == bot, 'Saved output is not the complete public Bot readback')
         saves = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/save'
                  and (roles['decode'](item, 'request') or {}).get('id') == bot['id']]
-        require(len(saves) == 2 and all(item.get('status') == 200 for item in saves), 'Wrapper retried/split Bot creation or final three-field save')
-        blank = json.loads(roles['decode'](saves[0], 'request')['content'])
-        final = json.loads(roles['decode'](saves[1], 'request')['content'])
+        require(not saves, 'Native writer/optimizer bypassed the fixed Rust save capability')
+        initial = json.loads(baseline['bytes'])
+        delivered = json.loads(saved['saved']['bytes'])
+        blank, final = initial['bot'], delivered['bot']
+        initial_edit = {'content': blank, 'revision': initial['revision']}
+        require(initial['target']['configuration'] == target, 'Rust baseline lost complete latest Task configuration')
+        require(initial['revision'] != delivered['revision'], 'Saved result did not carry a real new revision')
         require({key: value for key, value in blank.items() if key not in ['when', 'plan_guide', 'node_guide']} ==
                 {key: value for key, value in final.items() if key not in ['when', 'plan_guide', 'node_guide']}, 'Final saver changed a non-guide field')
-        edits = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/edit'
-                 and saves[0]['index'] < item['index'] < saves[1]['index'] and item.get('status') == 200
-                 and (roles['decode'](item, 'request') or {}).get('id') == bot['id']]
-        require(edits, 'No real initial Bot edit/revision readback')
-        initial_edit = roles['decode'](edits[0], 'response')
         fields = ['when', 'plan_guide', 'node_guide']
         require(all(blank[field] == '' and isinstance(final[field], str) and bool(final[field].strip()) for field in fields), 'Wrapper blank/final guides were not real complete batch saves')
         approved, optimized = {}, {}
@@ -755,7 +757,7 @@ export default function(pi) {
             require(written['text']['bytes'] == approved[field] and bot[field] == optimized[field], ('Approved/optimized/final guide source was lost', field))
         self.evaluate('outer-final-handoff', {'createdTask': self.outer_created_target, 'optimizedTask': target,
             'w1Handoff': self.output_files(outer, 'w1'), 'w2Request': w2, 'baseline': baseline,
-            'approvedGuides': approved, 'optimizedGuides': optimized, 'blankSaveReadback': {'bot': roles['decode'](saves[0], 'response'), 'edit': initial_edit},
+            'approvedGuides': approved, 'optimizedGuides': optimized, 'blankSaveReadback': {'bot': blank, 'edit': initial_edit},
             'savedBot': bot, 'parentHandoff': exported['handoff']}, {
             'business_transfer': 'The original caller requirements, permissions, missing-material behavior, actual target identity and real authorization sources are explicitly preserved from creator through optimizer request/common baseline to the delivered Bot/handoff.',
             'prompt_optimization': 'The optimized Task changes expression/organization only, preserving the entire original Task business meaning and every non-prompt configuration field.',
