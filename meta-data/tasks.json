@@ -6,11 +6,10 @@
       "chatName": "chat with chief bot",
       "agent": "omp",
       "taskType": "chief",
-      "model": "gpt-6-luna",
+      "model": "gpt-6.1-sol",
       "thinking": "medium",
       "skill": null,
-      "prompt": "",
-      "suite": null
+      "prompt": ""
     },
     {
       "id": "task-revise-bot-baseline-v1",
