@@ -37,10 +37,13 @@ pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, Str
     })).await.map_err(|e| e.to_string())??;
     for report in &reports {
         if report.run_id != run.id { return Err("报告 Run 归属不一致。".into()); }
-        let execution = run.nodes.get(&report.node_id).and_then(|node| node.executions().find(|execution| execution.id == report.execution_id)).ok_or("报告缺少所属 execution。")?;
-        match &execution.target {
-            ExecutionTarget::Script(script) if report.from.is_none() && report.source.as_ref().is_some_and(|source| source.rust_script == script.rust_script) => {},
-            ExecutionTarget::Chat(_) if report.source.is_none() && report.from.is_some() && report.from.as_ref() == execution.chat() => {},
+        let execution = run.nodes.get(&report.node_id).and_then(|node| node.executions().find(|execution| execution.id == report.execution_id));
+        match execution.map(|execution| &execution.target) {
+            Some(ExecutionTarget::Script(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| source.rust_script == script.rust_script) => {},
+            // Legacy Chat reports remain readable even when retained execution or
+            // Chat associations are incomplete. New submissions authenticate the
+            // actual sender before saving; script provenance is never inferred.
+            Some(ExecutionTarget::Chat(_)) | None if report.source.is_none() && report.from.is_some() => {},
             _ => return Err("报告来源与所属 execution 类型、能力或真实 Chat 不一致。".into()),
         }
     }
