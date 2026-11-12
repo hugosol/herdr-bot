@@ -39,6 +39,12 @@
 
 每例独占临时定义、zone、Run、文件和数值回环服务；外部 Herdr 为记录型测试宿主，非真实 manager／模型。门闩进入预算 5 秒、业务在途派发返回预算 2 秒、自动报告观察预算 10 秒；结束前等待所属通知 CLI 退出再清理独占根。stdout 保留实际成功 Run／execution／report、baseline／revision、消费者读取对象和拒绝分类，完整入口日志归自身输出目录。通过不证明 S2 原生工具／S3 页面或 H1 人工验收；这些仍按各自分区交付。
 
+### 脚本报告通知失败隔离（P11）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture` 复用上述真实 Rust 创建、S1 HTTP／实际文件和既有报告诊断子进程／Herdr prompt gate。两种外部明确拒绝分别立即返回或在最多 10 秒门闩后返回；通知进入预算 5 秒，等待中公开读回预算 2 秒。报告保存及业务写入不使用替身。等待中／结束后核对同一完整报告与全部 outputs，并真实读取 baseline／handoff；失败后至少 1 秒持续取样配置 revision、Run／execution、报告与材料及完整宿主调用，确认一次业务派发、一次报告、一次外部通知，无自动重投。stdout 输出实际窗口、样本数、配置／报告身份、真实材料、调用记录与进程退出确认；stderr 保留共享通知分类诊断。它不声称真实 manager 已接收或用户已阅读，也不认领 11 的原生会话覆盖。
+
+完成检查先构建本 worktree 页面，设置独立绝对 `CARGO_TARGET_DIR`，再运行 `node scripts/test-backend.mjs`。日志不是第二份报告存储，不为此引入自动恢复或消息队列。
+
 ## Rust 三路合并保存公开 HTTP／文件回归
 
 先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow_dispatch/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／自动报告和实际下游进程读取命名 saved／handoff；正文、非目标字段及确认 digest 使用独立字面值，不调用业务内部函数。
@@ -203,7 +209,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
 - scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存／删除检查保留标题、说明、节点集合与公开读回／落盘一致性，不固定空 `input_requirements` 是否序列化；最后节点删除须单独断言节点集合为空。前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
 - Chat 预览应在重新选择同一 Task 时保留已生成身份；模型／思考级别失败夹具须使实际提交的单次选择失效，不能仅损坏已被合法覆盖的 Task 默认值。当前／历史 Chat 的切换同时保留可见状态与不同背景的浏览器断言。
-- 工作流状态浏览器夹具若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点报告策略回归分别核对自动报告与原生逐次确认，不恢复已移除的自然语言同意替代门禁。
+- 工作流状态浏览器夹具中的跨节点报告须同时使用所属节点的真实 execution ID 与 Chat 来源，不仅改 `nodeId`；否则违反报告归属校验，不能证明输出隔离。若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点报告策略回归分别核对自动报告与原生逐次确认，不恢复已移除的自然语言同意替代门禁。
 - 常驻但隐藏的 Run 列表不读取 Map 分组目录；仅在列表可见时刷新，保留筛选状态。全局前端回归中的关机／恢复用例同时约束默认 Chat 页不发出这类无关读取；应用品牌保留可访问标题语义。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。
 - `@time-contract` 标记真实预算、确认超时、迟到结果及无自主刷新／重试／重放的观察窗口，不按文件名或断言 timeout 分类。新增真实时间承诺时同步审查标签。
@@ -219,10 +225,11 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - **并发历史持久化诊断**：跨来源并发 register 验收的 `historySaved` 断言保留完整回执及所属后端 diagnostics，区分事件接受与历史保存失败；后续通过不能抹去先前失败，也不能据此宣称已修复无法定位的间歇故障。`crossSourceConcurrency.spec.ts` 的独立客户端并发登记与进程重启同时回归原子替换期间的文件 scope 身份：协调资格取得前的 canonicalize 观察可能已过期，必须在持有资格后重核，不能把旧临时文件身份当作最终文件的授权边界。
 - **Git 超时夹具**：`zone_sync` 的派生进程终止场景使用 5 秒命令预算和 30 秒阻塞的 pre-push hook（父 shell 等待唯一后台子任务，避免两个 sleep 同时自然退出与 taskkill 竞争；超时后观察 31 秒确认无迟到 marker），给 Windows 本地 fetch／pull 留出正常执行时间；仍须核对 push 超时、已完成 pull 不回滚、派生进程终止及后续同步恢复，不能将更早的 fetch 超时视为该场景通过。
 - **Windows 进程身份**：结束后的 PID 可能被系统复用，不能以迟到的 `tasklist` 命中证明原进程仍存活。`next_operation_after_finish` 的连续启动回归先在测试独占夹具门闩中取得原进程句柄，再释放门闩，收到 ended 响应后直接核对该句柄已 signaled；不移除进程结束断言。
-- **Windows 清理**：`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
+- **Windows 清理**：原生可见性 Chrome 夹具在浏览器操作前持有原进程的 Windows handle，并在清理时以该 handle 的退出确认区分 Node 延迟事件与仍存活的进程；不以迟到 PID 查询或 `taskkill` 部分子进程错误推断原进程存活。`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
 - **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
 - **Map 文件接口**：创建 Bot／修订指南的发布回归固定核对 `input_files` 的数量、顺序、ID 与 required，不以整个对象相等禁止合法的材料 `description`；实际保存仍传递完整声明，保留文件预检行为断言。
 - **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。交付 chief 预设的模型变更须同步更新 `backend/tests/tasks.rs` 的独立字面预期；预设重启回归验证当前交付定义，不等同于要求固定模型的原生专项验收。
+- **Bot 保存与导航**：保存后的 Map／目录刷新仍属于本次维护操作；刷新结束后才发布退出编辑的成功预览，避免用户看到成功后立即切换页签却被尚在途的操作静默拒绝。`schedulerBotEditing.spec.ts` 的共享能力回归保留保存后立即切换和原节点选中态检查。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
 ## Suite 配置与 Task API 格式

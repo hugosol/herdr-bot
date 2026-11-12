@@ -159,6 +159,8 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       if (draft.kind === 'Bot') {
         const saved = await saveBot(payload)
         if (!valid()) return
+        await refresh(false, true)
+        if (!valid()) return
         const catalog = current.current.bots
         update({
           draft: null,
@@ -170,7 +172,6 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
               ? { problems: catalog.problems.filter(problem => problem.bot_id !== saved.id) } : {}),
           },
         })
-        await refresh(false, true)
       } else {
         const map = await saveNode(draft.file!, { ...payload, create: draft.create })
         if (!valid()) return

@@ -13,11 +13,19 @@
 - 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
 - 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
 
+### 脚本报告已保存但通知失败
+
+通知不是业务提交或交接完成的依据。外部 Herdr 等待期间，manager 已可从原 Run 详情或 status 读回报告 ID、body、canComplete 和全部 outputs，并按登记地址读取真实材料；通知拒绝后继续读取同一份事实，不重派脚本、不重做业务、不重报或回滚已保存配置／材料。成功业务的 `lifecycle.status=succeeded` 与通知 `failed` 可以同时成立，仍须 manager 核对并显式 complete。
+
+后台脚本没有等待报告结果的节点 Chat；通知状态沿既有 `workflow-report-delivery` stderr 诊断按 Run／report／目标 Chat 定位，`result=failed` 与类型化 `reason` 保留可用故障类别，不把业务成功解释成已通知。`submitted` 仅表示 Herdr 确认输入提交，不证明可靠接收、已呈现或用户已阅读。诊断不是第四份持久运行权威，也不是通知队列；没有自动业务重投、报告／通知重试或新增接收工具。服务日志应由部署环境保留。
+
+P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障设施：真实创建／保存后由测试独占 Herdr 制造立即拒绝和受控等待后拒绝，等待中与结束后分别经公开 HTTP 读回同一报告并读取两份实际输出；失败后连续观察至少 **1 秒**，核对配置 revision、Run／execution、报告、材料字节与全部外部调用不变，并确认通知 CLI 和诊断测试子进程退出。有限窗口不证明无限期无动作，受控宿主也不替代真实 manager 接收验收。
+
 ### 报告来源与兼容读取
 
 脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
 
-原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
 
 ### 结构化失败与实际效果
 

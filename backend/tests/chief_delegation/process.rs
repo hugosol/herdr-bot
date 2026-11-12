@@ -100,11 +100,30 @@ impl Drop for TestServer {
                 let result = std::process::Command::new("taskkill")
                     .args(["/PID", &self.child.id().to_string(), "/T", "/F"])
                     .output();
-                if !result.as_ref().is_ok_and(|output| output.status.success()) {
-                    errors.push(format!("owned process tree termination: {result:?}"));
+                // taskkill can report a short-lived descendant disappearing
+                // while still terminating our backend successfully. Confirm the
+                // owned Child handle, never a later lookup of its reusable PID.
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let exited = loop {
+                    match self.child.try_wait() {
+                        Ok(Some(_)) => break true,
+                        Ok(None) if std::time::Instant::now() < deadline => {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Ok(None) => break false,
+                        Err(error) => {
+                            errors.push(format!("backend exit confirmation: {error}"));
+                            break false;
+                        }
+                    }
+                };
+                if !exited {
+                    errors.push(format!("owned backend did not exit after process tree termination: {result:?}"));
                     if let Err(error) = self.child.kill() {
                         errors.push(format!("backend kill: {error}"));
                     }
+                } else if !result.as_ref().is_ok_and(|output| output.status.success()) {
+                    eprintln!("owned backend exit confirmed after taskkill diagnostic: {result:?}");
                 }
             }
             #[cfg(not(windows))]
