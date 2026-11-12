@@ -1,0 +1,104 @@
+﻿{
+    "root":  55648,
+    "processes":  [
+                      {
+                          "name":  "node.exe",
+                          "exitConfirmed":  true,
+                          "pid":  55648,
+                          "command":  "node \"C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pe756W\\frontend\\node_modules\\@playwright\\test\\cli.js\" test --workers=1",
+                          "parent":  56188,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "node.exe",
+                          "exitConfirmed":  true,
+                          "pid":  5796,
+                          "command":  "D:\\nvm4w\\nodejs\\node.exe C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pe756W\\frontend\\node_modules\\playwright\\lib\\worker\\workerProcessEntry.js",
+                          "parent":  55648,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  83276,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AvoidCorsURLLoaderRestartOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn --remote-debugging-pipe --no-startup-window",
+                          "parent":  5796,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  65580,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=crashpad-handler --user-data-dir=C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn /prefetch:4 --monitor-self-annotation=ptype=crashpad-handler --user-stream-region=228,65568 --database=C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\\Crashpad --metrics-dir=C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=plat=Win64 --annotation=prod=Chrome --annotation=ver=157.0.8103.40 --initial-client-data=0x128,0x12c,0x130,0x104,0x134,0x7ff8498c60c0,0x7ff8498c60d0,0x7ff8498c60e0",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  32484,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-breakpad --headless --enable-unsafe-swiftshader --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --gpu-preferences=WAAAAAAAAABgAAACAAAAAAAAAAAAAGAAQAAAAAAAAAADAAAAAAAAADgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAoAAAAAAAAAAgAAAAAAAAAEAAAAAIAAAABAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1824 /prefetch:2",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  35072,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=zh-CN --service-sandbox-type=none --no-sandbox --mute-audio --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=2076 /prefetch:11",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  11312,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=zh-CN --service-sandbox-type=service --no-sandbox --mute-audio --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=2296 /prefetch:13",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  51520,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=renderer --top-chrome-webui --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --no-sandbox --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --video-capture-use-gpu-memory-buffer --lang=zh-CN --device-scale-factor=1.5 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=976 --launch-time-ticks=132928933681 --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190709900864716118 --mojo-platform-channel-handle=5888 /prefetch:1",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  43976,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=renderer --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --no-sandbox --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --video-capture-use-gpu-memory-buffer --lang=zh-CN --device-scale-factor=1.5 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=978 --launch-time-ticks=132928943022 --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190709902738799816 --mojo-platform-channel-handle=4396 /prefetch:1",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "chrome.exe",
+                          "exitConfirmed":  true,
+                          "pid":  60592,
+                          "command":  "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --type=renderer --noerrdialogs --user-data-dir=\"C:\\Users\\hugos\\AppData\\Local\\Temp\\playwright_chromiumdev_profile-OnRNOn\" --no-pre-read-main-dll --no-sandbox --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --video-capture-use-gpu-memory-buffer --lang=zh-CN --device-scale-factor=1.5 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=977 --launch-time-ticks=132928954879 --field-trial-handle=1844,i,639752194573737265,14686736466675347111,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=1860,i,10690488857552180448,2394123527432417193,4 --trace-process-track-uuid=3190709901801757967 --mojo-platform-channel-handle=4620 /prefetch:1",
+                          "parent":  83276,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "herdr-bot.exe",
+                          "exitConfirmed":  true,
+                          "pid":  73076,
+                          "command":  "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Pe756W\\.scratch\\cargo-target\\debug\\herdr-bot.exe --config \"C:\\Users\\hugos\\AppData\\Local\\Temp\\herdr-bot browser lesyUb\\herdr-bot.toml\"",
+                          "parent":  5796,
+                          "handleOpened":  true
+                      },
+                      {
+                          "name":  "conhost.exe",
+                          "exitConfirmed":  true,
+                          "pid":  81932,
+                          "command":  "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+                          "parent":  73076,
+                          "handleOpened":  true
+                      }
+                  ],
+    "allExitConfirmed":  true,
+    "reason":  "Explicit user request to interrupt serial browser suite and restart at project default concurrency",
+    "taskkill":  "成功: 已终止 PID 65580 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 32484 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 35072 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 11312 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 51520 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 43976 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 60592 (属于 PID 83276 子进程)的进程。\r\n成功: 已终止 PID 81932 (属于 PID 73076 子进程)的进程。\r\n成功: 已终止 PID 83276 (属于 PID 5796 子进程)的进程。\r\n成功: 已终止 PID 73076 (属于 PID 5796 子进程)的进程。\r\n成功: 已终止 PID 5796 (属于 PID 55648 子进程)的进程。\r\n成功: 已终止 PID 55648 (属于 PID 56188 子进程)的进程。\r\n"
+}
