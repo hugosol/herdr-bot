@@ -13,6 +13,8 @@ struct WorkflowMap {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
     description: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    input_requirements: String,
     #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
     input_files: Vec<MapFileInput>,
     nodes: BTreeMap<String, JsonObject<MapNode>>,
@@ -70,7 +72,12 @@ impl InputRule {
 pub struct OutputRule { pub id: String }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct MapFileInput { pub id: String, pub required: bool }
+pub struct MapFileInput {
+    pub id: String,
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedFile { pub id: String, pub path: String }
@@ -324,7 +331,7 @@ pub async fn edit_map_inputs(
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
-        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "revision": {"file": name, "original": original}}))
+        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "input_requirements": map.input_requirements, "revision": {"file": name, "original": original}}))
     })).await {
         Ok(Ok(value)) => Json(value).into_response(),
         Ok(Err(error)) => error.into_response(),
@@ -335,6 +342,7 @@ pub async fn edit_map_inputs(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapInputsSave {
+    input_requirements: String,
     #[serde(deserialize_with = "object_array")]
     input_files: Vec<MapFileInput>,
     revision: BotRevision,
@@ -356,6 +364,7 @@ pub async fn save_map_inputs(
         check()?;
         let mut map = parse_map(&draft.revision.original)?;
         map.input_files = draft.input_files;
+        map.input_requirements = draft.input_requirements;
         validate_map(&map).map_err(|error| edit_error("map-input-invalid", error.message))?;
         let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
         let root = prepare_directory(access, &state.map_directory)?;
@@ -571,6 +580,43 @@ fn check_map_calls(
     }
 }
 
+fn input_issues(map_name: &str, declarations: &[MapFileInput], files: &[ResolvedFile], require_complete: bool) -> Vec<PreflightIssue> {
+    let mut issues = Vec::new();
+    let mut provided = std::collections::BTreeSet::new();
+    for binding in files {
+        let failure = if !provided.insert(&binding.id) {
+            Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
+        } else if !declarations.iter().any(|declaration| declaration.id == binding.id) {
+            Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
+        } else if let Err(error) = check_input_file(&binding.path) {
+            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
+        } else { None };
+        if let Some((code, message)) = failure {
+            let mut issue = PreflightIssue::new(code, "run-input", message);
+            issue.input_id = Some(binding.id.clone());
+            issues.push(issue);
+        }
+    }
+    if require_complete {
+        for declaration in declarations {
+            if declaration.required && !provided.contains(&declaration.id) {
+                let mut issue = PreflightIssue::new("run-input-required", "run-input", format!("Map {map_name} 缺少必需文件输入：{}", declaration.id));
+                issue.input_id = Some(declaration.id.clone());
+                issues.push(issue);
+            }
+        }
+    }
+    issues
+}
+
+pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[ResolvedFile], confirmed: bool) -> Result<Option<String>, String> {
+    with_definitions(&[directory.to_path_buf()], "map-read-failed", |access| {
+        let map = read_map(access, directory, name)?;
+        let issues = input_issues(name, &map.input_files, files, confirmed);
+        Ok((!issues.is_empty()).then(|| PreflightFailure(issues).message()))
+    }).map_err(|error| error.message)
+}
+
 /// Shared by the read-only form and the real launch operation. Every call reads
 /// current definitions, Task roles and registered roots; it never allocates a
 /// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
@@ -593,28 +639,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
     let mut issues = Vec::new();
-    let mut provided = std::collections::BTreeSet::new();
-    for binding in &input.file_inputs {
-        let failure = if !provided.insert(&binding.id) {
-            Some(("run-input-duplicate", format!("Run 文件输入 ID 重复：{}", binding.id)))
-        } else if !map.input_files.iter().any(|declaration| declaration.id == binding.id) {
-            Some(("run-input-undeclared", format!("Map {map_name} 未声明文件输入：{}", binding.id)))
-        } else if let Err(error) = check_input_file(&binding.path) {
-            Some(("run-input-unreadable", format!("Run 文件输入 {}：{error}", binding.id)))
-        } else { None };
-        if let Some((code, message)) = failure {
-            let mut issue = PreflightIssue::new(code, "run-input", message);
-            issue.input_id = Some(binding.id.clone());
-            issues.push(issue);
-        }
-    }
-    for declaration in &map.input_files {
-        if declaration.required && !provided.contains(&declaration.id) {
-            let mut issue = PreflightIssue::new("run-input-required", "run-input", format!("Map {map_name} 缺少必需文件输入：{}", declaration.id));
-            issue.input_id = Some(declaration.id.clone());
-            issues.push(issue);
-        }
-    }
+    issues.extend(input_issues(&map_name, &map.input_files, &input.file_inputs, false));
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),
@@ -764,6 +789,99 @@ fn read_bots(access: &FileAccess, directory: &Path) -> Result<BotCatalog, Direct
     }
     conflicts.extend(problems);
     Ok(BotCatalog { bots, problems: conflicts })
+}
+
+/// Resolve the shared identity with the same conflict and directory checks as
+/// the public catalog; a Bot ID is never a filename or a Task name.
+pub(crate) enum DelegationTarget {
+    Task(String),
+    Map(String),
+}
+
+pub(crate) fn delegation_bot(directory: &Path, id: &str) -> Result<(serde_json::Value, DelegationTarget), Response> {
+    with_definitions(&[directory.to_owned()], "bot-directory-read-failed", |access| {
+        let catalog = read_bots(access, directory)?;
+        if let Some(problem) = catalog.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(id) || problem.bot_id.is_none()) {
+            return Err(edit_error("bot-invalid", problem.message.clone()));
+        }
+        let bot = catalog.bots.into_iter().find(|bot| bot.id == id)
+            .ok_or_else(|| edit_error("bot-not-found", "目标 Bot 不存在。"))?;
+        let target = match (&bot.task_id, &bot.map_file) {
+            (Some(id), None) if !id.trim().is_empty() => DelegationTarget::Task(id.clone()),
+            (None, Some(file)) if !file.trim().is_empty() => DelegationTarget::Map(file.clone()),
+            _ => return Err(edit_error("bot-target-required", "Bot 必须具有明确的 Task 或 Map 目标。")),
+        };
+        Ok((serde_json::to_value(bot).expect("Bot serialization"), target))
+    }).map_err(DirectoryError::into_response)
+}
+
+/// Selected definition closure for chief confirmation; unrelated catalog edits
+/// must not invalidate approval. Preflight owns cycle/role/binding validation.
+pub(crate) struct DelegationMapDefinition {
+    pub definitions: serde_json::Value,
+    pub task_ids: std::collections::BTreeSet<String>,
+    pub zone_ids: std::collections::BTreeSet<String>,
+    pub files: Vec<(String, String)>,
+}
+
+pub(crate) fn delegation_map_definition(
+    state: &crate::AppState, file: &str, manager_zone: &str,
+) -> Result<DelegationMapDefinition, Response> {
+    let prompts = state.prompts.snapshot().map_err(|error| crate::rejected_owned(
+        StatusCode::CONFLICT, "prompt-dictionary-invalid", error.to_string()))?;
+    with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
+        let catalog = read_bots(access, &state.bot_directory)?;
+        let mut maps = BTreeMap::new();
+        let mut bots = BTreeMap::new();
+        let mut rendered = BTreeMap::new();
+        let mut task_ids = std::collections::BTreeSet::new();
+        let mut zone_ids = std::collections::BTreeSet::from([manager_zone.to_owned()]);
+        let mut files = Vec::new();
+        let mut pending = vec![(file.to_owned(), manager_zone.to_owned())];
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some((file, manager_zone)) = pending.pop() {
+            if !visited.insert((file.clone(), manager_zone.clone())) { continue; }
+            let map = read_map(access, &state.map_directory, &file)?;
+            let mut node_inputs = BTreeMap::new();
+            for (id, node) in &map.nodes {
+                node_inputs.insert(id.clone(), prompts.render(crate::prompts::Field::NodeInput, &node.0.input)
+                    .map_err(|error| edit_error("prompt-dictionary-invalid", error.to_string()))?);
+            }
+            rendered.insert(file.clone(), serde_json::json!({
+                "description":prompts.render(crate::prompts::Field::MapDescription, &map.description)
+                    .map_err(|error| edit_error("prompt-dictionary-invalid", error.to_string()))?,
+                "nodeInputs":node_inputs
+            }));
+            for node in map.nodes.values().map(|node| &node.0) {
+                zone_ids.insert(node.zone.clone());
+                let bot = catalog.bots.iter().find(|bot| bot.id == node.bot_id)
+                    .ok_or_else(|| edit_error("bot-not-found", "Map 的 Bot 已变化；请重新预览并确认。"))?;
+                let mut value = serde_json::to_value(bot).expect("Bot serialization");
+                let mut meanings = BTreeMap::new();
+                for (key, field, source) in [
+                    ("when", crate::prompts::Field::BotWhen, &bot.when),
+                    ("plan_guide", crate::prompts::Field::BotPlanGuide, &bot.plan_guide),
+                    ("node_guide", crate::prompts::Field::BotNodeGuide, &bot.node_guide),
+                ] {
+                    meanings.insert(key, prompts.render(field, source).map_err(|error| edit_error("prompt-dictionary-invalid", error.to_string()))?);
+                }
+                value["rendered"] = serde_json::to_value(meanings).expect("rendered Bot serialization");
+                bots.insert(bot.id.clone(), value);
+                if let Some(task) = &bot.task_id { task_ids.insert(task.clone()); }
+                if let Some(task) = &node.manager_task_id { task_ids.insert(task.clone()); }
+                if let Some(child) = &bot.map_file { pending.push((child.clone(), node.zone.clone())); }
+                for rule in &node.input_rule {
+                    if let InputRule::File { path, zone_id, .. } = rule {
+                        let zone = zone_id.as_deref().unwrap_or(&manager_zone).to_owned();
+                        zone_ids.insert(zone.clone());
+                        files.push((zone, path.clone()));
+                    }
+                }
+            }
+            maps.insert(file, serde_json::to_value(map).expect("Map serialization"));
+        }
+        Ok(DelegationMapDefinition { definitions: serde_json::json!({"maps":maps,"bots":bots,"renderedMaps":rendered}), task_ids, zone_ids, files })
+    }).map_err(DirectoryError::into_response)
 }
 
 pub async fn list_bots(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {

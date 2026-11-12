@@ -39,7 +39,7 @@
 使用本 worktree 的独立 `CARGO_TARGET_DIR`，先生成当前静态页面并构建安全宿主：
 
 ```powershell
-npm --prefix frontend ci
+bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides -- --nocapture
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business -- --nocapture

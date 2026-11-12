@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import type { Bot } from './schedulerApi'
+import { EditableTitle } from '../app/EditableTitle'
 
 const documents = [
   { key: 'when', title: 'when' },
@@ -7,12 +8,12 @@ const documents = [
   { key: 'node_guide', title: 'node_guide' },
 ] as const
 
-export function BotPreview({ bot, target }: { bot: Bot; target: ReactNode }) {
+export function BotPreview({ bot, target, active, disabled, onRename }: { bot: Bot; target: ReactNode; active: boolean; disabled?: boolean; onRename: (name: string) => Promise<void> }) {
   const [section, setSection] = useState('when')
 
   return <>
     <p className="scheduler-filename scheduler-reference">{bot.id}</p>
-    <h3 className="scheduler-text">{bot.name}</h3>
+    <EditableTitle key={bot.id} value={bot.name} label="Bot 名称" heading="h3" className="scheduler-text" active={active} disabled={disabled} onSave={onRename} />
     {target}
     <nav className="scheduler-bot-sections" aria-label="Bot 内容分区">
       {documents.map(({ key, title }) => <button type="button" key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{title}</button>)}

@@ -97,7 +97,7 @@ class NativeAcceptance(Acceptance):
         for name, root, lock in [('herdr-bot', REPO, 'backend/Cargo.lock'), ('toolkit', self.args.toolkit, 'bun.lock')]:
             source = {'root': str(root), 'lockSha256': hashlib.sha256((root / lock).read_bytes()).hexdigest()}
             if name == 'herdr-bot':
-                source['frontendLockSha256'] = hashlib.sha256((root / 'frontend/package-lock.json').read_bytes()).hexdigest()
+                source['frontendLockSha256'] = hashlib.sha256((root / 'frontend/bun.lock').read_bytes()).hexdigest()
             for label, argv in [('revision', ['rev-parse', 'HEAD']), ('status', ['status', '--porcelain']), ('diff', ['diff', '--binary', 'HEAD'])]:
                 source[label] = subprocess.run(['git', *argv], cwd=root, capture_output=True, text=True, check=True, encoding='utf-8').stdout
             self.evidence.setdefault('sources', {})[name] = source

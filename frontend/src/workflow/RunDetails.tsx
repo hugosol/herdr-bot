@@ -74,7 +74,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
     </header>}
     <div className="workflow-refresh-info"><p role="status" aria-label="workflow 更新">最后成功时间：{snapshot && snapshot.id === id ? <time dateTime={new Date(snapshot.at).toISOString()}>{new Date(snapshot.at).toLocaleString()}</time> : '尚无成功查询。'}</p><button type="button" onClick={refresh}>刷新 Run</button></div>
     {error && <p className="workflow-alert" role="alert">更新失败：{error} 保留上次成功现场；可见时继续按配置查询，也可手动刷新。查询不改写 Run，不重试任何运行操作。</p>}
-    <div hidden={id !== null}><RunList entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
+    <div hidden={id !== null}><RunList active={active && id === null} entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
     {id && <>
       {!detail && !error && <p>正在加载 Run 详情…</p>}
       {detail && !detail.managed && <p className="workflow-alert">历史现场 / 未接管：执行现场只读取已保存事实，Run 名称仍可重命名。重启前的 Run 不能修改状态、report 或 collect；不提供自动或手动接管。普通 Chat Resume 不恢复 Run 管理。</p>}
@@ -85,13 +85,14 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
       </section>}
       {detail?.readError && <p className="workflow-alert" role="alert">运行记录读取失败：{detail.readError}</p>}
       {run && detail && <>
+        <section aria-label="输入准备状态"><h3>输入准备</h3><p>{run.inputsReady === true ? '管理者已确认输入就绪。' : run.inputsReady === false ? '输入尚未确认就绪；管理者需澄清材料并确认绑定后才能派发业务节点。' : '此历史记录未保存输入准备状态，不能据此判断输入已就绪。'}</p></section>
         {snapshot?.current && <RunCurrentView key={run.id} run={run} managed={detail.managed} reports={detail.reports} current={snapshot.current} />}
         <details className="workflow-run-background">
           <summary>运行背景 · 本次要求与管理者</summary>
           <dl><dt>managerTaskId</dt><dd>{run.managerTaskId}</dd><dt>zone</dt><dd>{run.zone}</dd><dt>workspaceName</dt><dd>{run.workspaceName}</dd></dl>
           <h3>userInput</h3><pre className="workflow-prose" data-testid="run-user-input">{run.userInput}</pre>
           <section aria-label="Run 文件输入"><h3>fileInputs</h3>
-            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未提供文件输入（可选缺席）；没有默认地址或自动发现。</p>}
+            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未保存文件输入绑定；是否就绪请查看输入准备状态。没有默认地址或自动发现。</p>}
           </section>
           <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>

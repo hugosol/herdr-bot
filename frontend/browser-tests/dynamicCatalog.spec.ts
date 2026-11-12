@@ -33,7 +33,12 @@ label = '新增实验模型'
 provider_model = 'example/new-model'
 thinking = { omp = ['low', 'high'], pi = ['off'] }
 `)
+  const refreshedCatalog = page.waitForResponse(response => response.url().endsWith('/api/tasks') && response.request().method() === 'GET')
   await page.getByTestId('task-edit').click()
+  const catalogResponse = await refreshedCatalog
+  const catalogBody = await catalogResponse.text()
+  expect(catalogResponse.status(), catalogBody).toBe(200)
+  expect(JSON.parse(catalogBody).options.models).toContain('lab-model')
   await expect(page.getByTestId('task-model').locator('option[value="lab-model"]')).toHaveText('新增实验模型')
   await expect(page.getByTestId('task-model').locator('option[value="gpt-6.1-sol"]')).toHaveText('当前 GPT 显示名')
   await page.getByTestId('task-model').selectOption('lab-model')

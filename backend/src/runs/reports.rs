@@ -1,6 +1,6 @@
 //! Reports are append-only facts. Delivery and diagnostics cannot undo a save.
 use super::*;
-use std::io::Write;
+use crate::report_delivery::{SavedReport, SubmitError, save_and_notify};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -178,7 +178,7 @@ pub async fn node_report(
     }
     // Once accepted, persist and attempt notification exactly once even if the
     // HTTP caller disconnects. No file/business lock spans host delivery.
-    let work = tokio::spawn(async move {
+    let work = save_and_notify(state.herdr.clone(), async move {
         let report = {
             let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
             let _operation = lock.lock().await;
@@ -203,22 +203,12 @@ pub async fn node_report(
             })).await.map_err(|e| e.to_string())??
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
-        let delivery = state.herdr.prompt(&report.to.agent_name, &text).await;
-        let (status, reason, diagnostic_reason) = match delivery {
-            Ok(()) => ("submitted", "Herdr 已确认输入提交；不代表已阅读。".to_owned(), "input-submission-confirmed"),
-            // Host error details may echo input; only the typed failure category
-            // is safe for body-free diagnostics. The caller still gets detail.
-            Err(error) => ("failed", error.message(), error.code()),
-        };
-        // Fallible stderr writes, not eprintln!: a broken diagnostic sink must
-        // not panic, roll back the report or trigger another delivery attempt.
-        let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to,"result":status,"reason":diagnostic_reason});
-        let diagnostic_status = if writeln!(std::io::stderr().lock(), "{diagnostic}").is_ok() { "written" } else { "failed" };
-        Ok::<_, String>(serde_json::json!({"saved":true,"report":report,"notification":{"status":status,"reason":reason},"diagnostic":{"status":diagnostic_status},"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"}))
+        let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to});
+        Ok(SavedReport { target: Ok(report.to.agent_name.clone()), report, text, diagnostic })
     }).await;
     match work {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(message)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"code":"report-save-failed","message":message,"saved":false,"notification":{"status":"not-attempted"}}))).into_response(),
-        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, "report-internal", &join.to_string()),
+        Ok(submitted) => Json(serde_json::json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"})).into_response(),
+        Err(SubmitError::Save(message)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"code":"report-save-failed","message":message,"saved":false,"notification":{"status":"not-attempted"}}))).into_response(),
+        Err(SubmitError::Internal(join)) => error(StatusCode::INTERNAL_SERVER_ERROR, "report-internal", &join.to_string()),
     }
 }

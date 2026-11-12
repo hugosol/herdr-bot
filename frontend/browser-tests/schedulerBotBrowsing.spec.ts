@@ -49,7 +49,7 @@ test('bot list sorts by descending mtime, breaks ties by filename, and reorders 
   }
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-bot').click()
-  const buttons = page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button')
+  const buttons = page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('listitem').getByRole('button')
   await expect(buttons).toHaveCount(3)
   for (const [index, name] of ['最新文件 · middle', '第一个同时间文件 · zulu', '第二个同时间文件 · alpha'].entries()) {
     await expect(buttons.nth(index)).toHaveAccessibleName(name)
@@ -115,7 +115,9 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('no-matching-capability')
-  await expect(listing.getByRole('button')).toHaveCount(0)
+  await expect(listing.getByRole('listitem')).toHaveCount(0)
+  await expect(listing.getByRole('status')).toHaveText('显示 0 / 2 个 Bot')
+  await expect(listing.getByRole('button', { name: '清除筛选', exact: true })).toBeVisible()
   await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('')

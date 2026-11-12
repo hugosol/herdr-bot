@@ -153,8 +153,11 @@ test('P1 auto_close accepts only booleans through existing definition interfaces
 
 // P6 uses S1 delivered page, S2 real workflow interfaces and S3 external Herdr
 // recorder. Only the host is controlled, not policy composition/dispatch/report/
-// complete. Violation: wrong prompt, new approval gate, or node completing itself.
-// Prompt delivery is evidence of instructions, never of model compliance.
+// complete. Manual sending requires toolkit-native payload confirmation, not a
+// browser approval gate or natural-language agreement (docs/workflow-runtime.md).
+// Violation: wrong prompt, new browser approval gate, or node completing itself.
+// Prompt delivery is evidence of instructions, never of model compliance or of
+// native confirmation; direct report HTTP below exercises persistence/authority.
 test('P6 saved report policies reach node dispatch without approval gates or changed manager authority', async ({ page }, info) => {
   await setup(page)
   const zone = path.join(server!.cwd, 'bot-playground')
@@ -181,6 +184,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   const started = await post('/api/scheduler/maps/settings.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: '验证节点策略派发' })
   expect(started.status(), await started.text()).toBe(201)
   const { id: runId } = await started.json()
+  expect((await post('/api/workflow/manager/prepare_inputs', { sessionId: 'settings-manager', fileInputs: [], confirmed: true, reason: 'Reviewed empty settings fixture inputs' })).status()).toBe(200)
   const prompts: Record<string, string> = {}
   for (const id of ['A', 'B']) {
     server!.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: `settings-node-${id}` } })
@@ -194,11 +198,12 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect(prompts.A).toContain('report_policy: auto')
   expect(prompts.A).toContain('Report handoff-ready results without waiting for user confirmation')
   expect(prompts.B).toContain('report_policy: manual')
-  expect(prompts.B).toContain('show the user a summary, result locations and limitations in this node Chat')
-  expect(prompts.B).toContain('If changes are requested, make them first, show the revised result and ask again')
-  expect(prompts.B).toContain('stop the turn and wait')
-  expect(prompts.B).toContain('only after the user confirms in natural language here')
-  expect(prompts.B).toContain('Supplements and corrections also require this confirmation')
+  expect(prompts.B).toContain('Invoke report with the full intended payload to display it for explicit native user confirmation before sending')
+  expect(prompts.B).toContain('Natural-language agreement is not report authorization')
+  expect(prompts.B).toContain('Every report, including supplements, corrections and changed payloads, requires its own native confirmation')
+  expect(prompts.B).toContain('If confirmation is refused, times out or no confirmation UI is available, do not send and stop')
+  expect(prompts.B).toContain('wait for a renewed user request before invoking report again')
+  expect(prompts.B).toContain('Separate business approval requirements still apply')
   for (const text of Object.values(prompts)) expect(text).toContain('the manager still decides complete')
   for (const [node, body] of [['A', '自动结果 result-a.md'], ['B', '人工策略结果 result-b.md'], ['B', '补充 result-b-extra.md'], ['B', '更正 result-b-corrected.md']]) {
     const report = await post('/api/workflow/node/report', { sessionId: `settings-node-${node}`, body, canComplete: !body.includes('补充') })

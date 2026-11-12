@@ -3,6 +3,7 @@ use super::*;
 use std::borrow::Cow;
 
 pub(super) enum Action {
+    PrepareInputs { files: Vec<crate::scheduler::ResolvedFile>, confirmed: bool, reason: String },
     Complete { node_id: String, reason: String },
     Finish,
     Pause,
@@ -15,6 +16,7 @@ pub(super) enum Action {
 impl Action {
     fn name(&self) -> &'static str {
         match self {
+            Self::PrepareInputs { .. } => "prepare_inputs",
             Self::Complete { .. } => "complete",
             Self::Finish => "finish",
             Self::Pause => "pause",
@@ -27,6 +29,7 @@ impl Action {
 
     async fn apply(self, state: &AppState, run: &mut Run) -> Result<Decision, String> {
         match self {
+            Self::PrepareInputs { files, confirmed, reason } => preparation::prepare(state, run, files, confirmed, reason),
             Self::Complete { node_id, reason } => completion::complete(state, run, node_id, reason).await,
             Self::Finish => completion::finish(run),
             Self::Pause => completion::eligibility(run, "pause", "paused"),

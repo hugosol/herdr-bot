@@ -12,7 +12,10 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let file = "enhance-existing-bot--bc-301b25d9f8d6.json";
     let definition: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/workflow-maps").join(file)).unwrap()).unwrap();
-    assert_eq!(definition["input_files"], json!([{"id":"request","required":true},{"id":"materials","required":false}]));
+    // Material guidance is editable; this contract fixes identities and requiredness.
+    let inputs: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+        .map(|input| json!({"id":input["id"],"required":input["required"]})).collect();
+    assert_eq!(inputs, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 5);
     assert_eq!(definition["nodes"]["w1"]["bot_id"], "prepare-bot-revision");
     assert_eq!(definition["nodes"]["w1"]["input_rule"], json!([
@@ -65,7 +68,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let endpoint = format!("/api/scheduler/maps/{file}");
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"revision":interface["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     for id in ["w1","w2","w3","w4","w5"] {
         let mut node = definition["nodes"][id].clone();
@@ -81,7 +84,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     let material = s.data.path().join("reference.md");
     fs::write(&request, "Revise existing Bot worker only. Keep its Task unchanged. No reference material required.").unwrap();
     fs::write(&material, "Preserve the original authorization boundary.").unwrap();
-    for (inputs, status) in [(json!([]),400), (json!([{"id":"request","path":request}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":material}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("missing.md")}]),400)] {
+    for (inputs, status) in [(json!([]),200), (json!([{"id":"request","path":request}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":material}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("missing.md")}]),400)] {
         let response = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/preflight"), &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Revise guides, not the target","fileInputs":inputs}).to_string()).await;
         assert_eq!(response.status, status, "{}", response.body);
     }

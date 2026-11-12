@@ -13,6 +13,8 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: '收起导航' })).toBeFocused()
   await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'chief bot', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'server', exact: true })).toBeFocused()
   // Traverse the visible native controls rather than assuming an old tab count.
   const scheduler = page.getByRole('tab', { name: 'scheduler', exact: true })
@@ -29,7 +31,7 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
     for (let i = 0; i <= index; i++) await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('button', { name: 'server', exact: true })).toBeFocused()
     await page.keyboard.press(index % 2 === 0 ? 'Enter' : 'Space')
-    await expect(page.getByRole('region', { name: 'server', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Server', exact: true })).toBeVisible()
     await expect(page.getByRole('tablist')).toHaveCount(0)
     await expect(page.getByRole('tabpanel')).toHaveCount(0)
     await expect(page.getByTestId('server-back')).toHaveAccessibleName('返回')
@@ -43,7 +45,7 @@ test('P2/P4: keyboard opens a same-page server view and returns to each originat
     await page.keyboard.press('Enter')
     await expect(page.getByRole('tab', { name: label, exact: true })).toBeFocused()
     await expect(page.getByRole('tab', { selected: true })).toHaveText(label)
-    await expect(page.getByRole('region', { name: 'server', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Server', exact: true })).toHaveCount(0)
   }
   await page.getByRole('button', { name: 'server', exact: true }).click()
   await page.reload()

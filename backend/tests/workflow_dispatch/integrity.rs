@@ -127,8 +127,9 @@ async fn integrity_concurrent_reads_observe_complete_records_during_replacements
     tokio::time::timeout(Duration::from_secs(10), readers).await.unwrap().unwrap();
     let root = s.config.scheduler.run_directory.join(id);
     let history = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(history.len(), 40);
-    assert!(history.chunks_exact(2).all(|pair| pair[0]["action"] == "pause" && pair[1]["action"] == "resume"));
+    assert_eq!(history.len(), 41);
+    assert_eq!(history[0]["action"], "prepare_inputs");
+    assert!(history[1..].chunks_exact(2).all(|pair| pair[0]["action"] == "pause" && pair[1]["action"] == "resume"));
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap()["status"], "running");
     println!("P48.01 concurrentReads=80 replacements=40 finalStatus=running history={history:?}");
 }

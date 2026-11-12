@@ -1,0 +1,85 @@
+# implement
+
+```json
+{
+  "role": "implement",
+  "agent": "tdd",
+  "agent_id": "15-native-chief-reportmd-92e07a18-c85f-4eb5-ad6a",
+  "heads": {
+    "my-agent-toolkit": "b17db0beb9cd796f5fb8ff8af69959aa31f8037d"
+  },
+  "exitCode": 0,
+  "aborted": false,
+  "truncated": false
+}
+```
+
+{
+  "status": "implemented-and-committed",
+  "commit": "b17db0b",
+  "branch": "hyper/chief-bot/15-native-chief-report-6e61ff-72787c9f5da7",
+  "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-2c0yO5",
+  "handoffReady": true,
+  "delivered": [
+    "独立执行者新增 entrypoints/omp-auto/chief-report.ts、entrypoints/pi-auto/chief-report.ts；manager-chat 复用同一个 common 静态 chief_report。node-chat 原 report、归属与门禁保持不变，无 chief_manager_report 别名。",
+    "chief_report 严格完整 body、真实活动 Session、完整载荷本次原生批准；拒绝/关闭/取消/超时/无能力不发送。保留后端资格拒绝，客户端不按 Task/模型授权。",
+    "新增只读 chief_read_report {id}；新 chief 获取完整原报告。更新角色指引：准确呈现成功/失败/受阻/能力创建结果，说明未知，询问是否满足要求后等待，不自动执行。",
+    "保存、通知提交、结果不确定与可靠接收/呈现/已读分开；不提供假接收、自动补投或兼容重发分支。更新现有 README。"
+  ],
+  "acceptanceEvidence": {
+    "活动Session与真实资格": "native-chief-report：准确 Session 请求、伪造字段/不完整报告拒绝、后端403保留；后端真实委派资格继续由依赖14负责。",
+    "完整原生批准": "OMP/Pi：批准前无POST、批准后JSON与完整预览相同；拒绝、关闭、取消、超时、迟到批准、Session结束、真实headless均无发送。",
+    "无原上下文读取与呈现": "chief-read-report：两宿主读取成功/失败/受阻/能力创建原报告不改写，确认原生指引消费；真实GPT-6-luna呈现质量由16验收。",
+    "保存通知不确定事实": "native-chief-report：四种通知状态、保存失败、缺失saved、非法JSON、已发送后响应丢失均保留相应事实；500ms确认预算后600ms有界观察无额外提交。",
+    "节点与嵌套兼容": "完整suite中的原节点确认/报告及nested-role-completion通过；新增工具清单断言独立执行者不加载run/collect/report、nested仍有原工具且chief_report仅一份。",
+    "共同实现与分层": "common/chief-report.ts复用既有确认/Session请求/结果解释；import-boundary 16通过、check:integrations完成、完整共享消费者suite通过。"
+  },
+  "verification": [
+    {
+      "command": "bun run typecheck",
+      "exit": 0,
+      "result": "92 files / 8 declarations / 0 diagnostics"
+    },
+    {
+      "command": "bun run check:integrations",
+      "exit": 0,
+      "result": "静态接入完成；不替代原生行为"
+    },
+    {
+      "command": "bun test tests/harness-dock/native-chief-report.test.ts tests/harness-dock/chief-read-report.test.ts",
+      "exit": 0,
+      "result": "12 pass / 0 fail / 152 assertions；OMP18.5.0、Pi1.5.2，退出均0"
+    },
+    {
+      "command": "bun test tests/harness-dock",
+      "exit": 1,
+      "result": "206 pass / 1环境失败：connect-bot辅助fixture未指定HERDR_BOT_BINARY；随后单例暴露还需HERDR_BOT_METADATA。保留两次失败，不宣称该命令全绿。"
+    },
+    {
+      "command": "bun run test",
+      "exit": 0,
+      "result": "设置本票隔离HERDR_BOT_BINARY及HERDR_BOT_METADATA后，canonical四worker完整1879 pass / 0 fail，237 files，268.50s；包括全部dock与共享消费者。"
+    },
+    {
+      "command": "cargo build --locked --manifest-path <readonly-snapshot>/backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture -j 1",
+      "exit": 0,
+      "result": "H cac02017只读快照，本票独占target构建；未修改H共享工作区。"
+    }
+  ],
+  "preservedFailures": [
+    "初始chief_report/chief_read_report缺接口红灯。",
+    "原生错误包装与静态声明检查失败已修正，原始记录保留。",
+    "最初自动安装的OMP缺embedded-client.generated.txt；复制原仓完整冻结18.5.0安装字节后双宿主12例通过，未修改宿主源码或锁文件。",
+    "dock/单例环境失败保留于证据目录；最终完整suite在显式隔离依赖配置下通过。"
+  ],
+  "evidenceDirectory": ".scratch/chief-bot/evidence/15-native-chief-report/",
+  "consumerContract": {
+    "ticket16": "H固定登记并在真实chief委派的独立Task启动/恢复装配对应宿主chief-report auto入口；不得伪造Node。直接Map manager沿用manager-chat；nested仅manager+node，不另载chief-report。恢复保留真实委派关联，不新建委派、不重播业务输入。Main明确该跨仓闭合归16。",
+    "ticket18": "chief_read_report {id}目前仅GET /api/chief/reports/{id}；chief_report仅POST /api/chief/reports {sessionId,body}。没有任何持久接收确认/人工重发兼容实现，可直接对真实17/18协议clean cutover。"
+  },
+  "limitations": [
+    "没有真实模型调用或读取用户凭据。P18/P19/P20/P22/P28/P36/P37完整双宿主真实模型与跨仓装配验收归16，本票不把受控provider结果当作该证据。",
+    "本票未操作集成分支、未修改其他票据/工作流报告、未调用retro。"
+  ],
+  "nativeWindow": "已直接交接 integrate-10-confirmed-delegation-toolsmd-c88b30；测试所属进程已退出。"
+}

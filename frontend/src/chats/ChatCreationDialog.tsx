@@ -55,10 +55,11 @@ function failureOutcomeText(creation: ChatCreation): string {
  * 从 zone 或 Task 发起 Chat 的共享弹窗；选择只影响本次启动。
  *
  * 后端提供真实命名上下文；本次规则可在本地编辑预览，不修改 Task。确认后页面轮询同一次创建：只有后端确认目标
- * 就绪且初始指示提交成功，才显示“创建成功，初始指示已提交”；成功与失败都留在弹窗里，由用户关闭，
+ * 就绪且有内容的初始指示提交成功，才显示“创建成功，初始指示已提交”；无初始内容则显示等待用户输入。
+ * 成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
-export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '', onClose }: { zone?: string; initialTaskId?: string; onClose: () => void }) {
+export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 'default/bot-playground' : '', initialTaskId = chief ? 'chief-bot' : '', onClose }: { chief?: boolean; zone?: string; initialTaskId?: string; onClose: () => void }) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [taskId, setTaskId] = useState(initialTaskId)
@@ -71,7 +72,7 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
   const [notice, setNotice] = useState<string | null>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
   const [input, setInput] = useState('')
-  const [chatNameRule, setChatNameRule] = useState('')
+  const [chatNameRule, setChatNameRule] = useState(chief ? 'chat with chief bot' : '')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<ChatPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
@@ -89,9 +90,10 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
     void fetchTasks().then((result) => {
       if (cancelled) return
       if (result.kind === 'ok') {
-        setTasks(result.tasks)
+        const available = chief ? result.tasks.filter(task => task.taskType === 'chief') : result.tasks
+        setTasks(available)
         setOptions(result.options)
-        setTaskId(current => current === '' ? (result.tasks[0]?.id ?? '') : (result.tasks.some(task => task.id === current) ? current : ''))
+        setTaskId(current => current === '' ? (available[0]?.id ?? '') : (available.some(task => task.id === current) ? current : ''))
         setLoadError(null)
       } else {
         setTasks(null)
@@ -105,7 +107,7 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
     return () => {
       cancelled = true
     }
-  }, [groupRevision])
+  }, [groupRevision, chief])
 
   useEffect(() => {
     let cancelled = false
@@ -256,7 +258,12 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
 
         <label className="zone-form__label" htmlFor="chat-zone">zone</label>
         <select id="chat-zone" className="zone-form__input zone-form__select" data-testid="chat-zone"
-          value={validZone ? zone : ''} onChange={event => { previewSequence.current++; setPreview(null); setZone(event.target.value) }}
+          value={validZone ? zone : ''} onChange={event => {
+            if (event.target.value === zone) return
+            previewSequence.current++
+            setPreview(null)
+            setZone(event.target.value)
+          }}
           disabled={zones === null || submitting || running || finished}>
           <option value="">请选择已登记 zone</option>
           {(zones ?? []).map(entry => <option key={entry.id} value={entry.id}>{entry.id} · {entry.path}</option>)}
@@ -273,7 +280,13 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
           className="zone-form__input zone-form__select"
           data-testid="task"
           value={taskId}
-          onChange={event => { previewSequence.current++; setPreview(null); setChatNameRule(''); setTaskId(event.target.value) }}
+          onChange={event => {
+            if (event.target.value === taskId) return
+            previewSequence.current++
+            setPreview(null)
+            setChatNameRule('')
+            setTaskId(event.target.value)
+          }}
           disabled={tasks === null || submitting || running || finished}
         >
           {tasks === null && <option value="">正在读取 Task……</option>}
@@ -439,7 +452,7 @@ export function ChatCreationDialog({ zone: initialZone = '', initialTaskId = '',
             data-kind="success"
             role="status"
           >
-            创建成功，初始指示已提交
+            {creation.inputSubmitted ? '创建成功，初始指示已提交' : '创建成功，等待用户输入'}
           </p>
         )}
 

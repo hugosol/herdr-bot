@@ -8,6 +8,7 @@ import { TasksPanel } from '../tasks/TasksPanel'
 import { SuitesPanel } from '../suites/SuitesPanel'
 import { ZonesPanel } from '../zones/ZonesPanel'
 import { ChatPanel } from '../chats/ChatPanel'
+import { ChiefEntry } from '../chats/ChiefEntry'
 import { SchedulerPanel } from '../scheduler/SchedulerPanel'
 import { RunDetails, selectedRunId } from '../workflow/RunDetails'
 import { EMPTY_SESSION_FEED, type SessionFeed } from '../chats/sessionFeed'
@@ -250,9 +251,12 @@ export default function App({
           <button type="button" data-action="layout" aria-label={layout === 'compact' ? '展开导航' : '收起导航'} aria-expanded={layout === 'expanded'} onClick={() => { setNavigationFade(true); setLayout(layout === 'compact' ? 'expanded' : 'compact') }}>
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 6h16M4 12h16M4 18h16" /></svg><span className="layout-toggle-label">{layout === 'compact' ? '展开' : '收起'}</span>
           </button>
-          <p className="layout-brand">herdr-bot</p>
+          <h1 className="layout-brand">herdr-bot</h1>
         </div>
+        <div className="layout-header-actions">
+        <ChiefEntry />
         <button type="button" data-action="server" data-testid={serverOpen ? 'server-back' : 'server-button'} ref={serverBackRef} onClick={() => { if (serverOpen) setServerOpen(false); else if (!schedulerTab || schedulerNavigationGuard.current?.() !== false) setServerOpen(true) }}>{serverOpen ? '返回' : 'server'}</button>
+        </div>
       </header>
       <div className="layout-shell">
         <nav className="layout-nav" hidden={serverOpen} aria-label="主导航"

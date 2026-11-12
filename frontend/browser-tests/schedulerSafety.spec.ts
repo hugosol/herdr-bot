@@ -233,7 +233,7 @@ test('P28 preparing Map and bot parents only creates empty directories and prese
   await openScheduler(page)
   await expect(page.getByTestId('scheduler-empty')).toBeVisible()
   await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
-  for (const [endpoint, expected] of [['maps', { files: [] }], ['bots', { bots: [] }]] as const) {
+  for (const [endpoint, expected] of [['maps', { files: [], groups: {} }], ['bots', { bots: [] }]] as const) {
     const response = await page.request.get(`${server.baseURL}/api/scheduler/${endpoint}`)
     expect(response.status()).toBe(200)
     expect(await response.json()).toEqual(expected)

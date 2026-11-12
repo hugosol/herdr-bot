@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MapInputRequirements } from './MapInputRequirements'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { fetchTasks, type Task } from '../tasks/taskApi'
 import { fetchZones, type ZoneRegistration } from '../zones/zoneApi'
@@ -7,6 +8,7 @@ import { preflightRun, startRun, type MapFileInput, type PreflightIssue, type Ru
 type Props = {
   file: string
   declarations?: MapFileInput[]
+  requirements?: string
   active: boolean
   onClose: () => void
   onNode: (id: string) => void
@@ -16,7 +18,7 @@ type Props = {
 }
 
 /** Preflight and launch share the backend's whole-Map admission check. */
-export function RunLaunchForm({ file, declarations = [], active, onClose, onNode, onBot, onTask, onZones }: Props) {
+export function RunLaunchForm({ file, declarations = [], requirements = '', active, onClose, onNode, onBot, onTask, onZones }: Props) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[]>([])
   const [zones, setZones] = useState<ZoneRegistration[]>([])
@@ -109,10 +111,10 @@ export function RunLaunchForm({ file, declarations = [], active, onClose, onNode
     <label>Workspace<input value={workspaceName} readOnly /></label>
     <p>Workspace 从管理者 zone 目录名推导；不选择当前或默认 Workspace。实际目标可用性在启动时确认。</p>
     <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>
+    {requirements.trim() && <MapInputRequirements content={requirements} />}
     <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
-      <p>填写服务器上已有文件的绝对地址，与本次要求分别保存。可选项留空表示未提供；不自动找文件，不生成默认地址，换文件不修改 Map。</p>
       {declarations.length === 0 && <p>此 Map 无文件输入声明，无需绑定文件。</p>}
-      {declarations.map(declaration => <label key={declaration.id}>文件输入 {declaration.id}（{declaration.required ? '必需' : '可选'}）<input
+      {declarations.map(declaration => <label key={declaration.id}>{declaration.description?.trim() || `文件输入 ${declaration.id}`}（{declaration.required ? '必需' : '可选'}）<input
         id={`run-file-input-${declaration.id}`} value={input.fileInputs?.find(binding => binding.id === declaration.id)?.path ?? ''}
         onChange={event => change({ fileInputs: [
           ...(input.fileInputs ?? []).filter(binding => binding.id !== declaration.id),

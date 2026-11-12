@@ -49,6 +49,7 @@ async function nestedFixture(page: Page) {
   await page.getByRole('button', { name: '启动 Run', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Run 详情', exact: true })).toBeVisible()
   const rootId = page.url().split('#workflow/')[1]
+  await post('/api/workflow/manager/prepare_inputs', { sessionId: 'navigation-root', fileInputs: [], confirmed: true, reason: 'Reviewed navigation fixture inputs' })
   native('navigation-old-child')
   const dispatch = await post('/api/workflow/manager/dispatch', { sessionId: 'navigation-root', nodes: ['A'] })
   expect(dispatch.results[0].status).toBe('running')

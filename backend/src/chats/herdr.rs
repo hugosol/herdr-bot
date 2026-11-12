@@ -59,7 +59,9 @@ pub struct NativeSession {
 /// Herdr 控制失败：每个类别都说明失败发生在哪个控制步骤，不把未知说成确定。
 #[derive(Debug)]
 pub enum HerdrError {
-    /// 无法启动 herdr CLI 或无法与运行中的 Herdr 通信。
+    /// CLI 未能生成进程，确认该次命令没有外部效果。
+    NotStarted(String),
+    /// CLI 已生成，但无法可靠观察通信或结束；外部效果不确定。
     Unavailable(String),
     /// 命令在时限内没有返回；不能据此断言操作没有发生。
     Timeout(&'static str),
@@ -83,7 +85,7 @@ impl HerdrError {
     /// 机器可读的稳定类别。
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Unavailable(_) => "herdr-unavailable",
+            Self::NotStarted(_) | Self::Unavailable(_) => "herdr-unavailable",
             Self::Timeout(_) => "herdr-timeout",
             Self::WorkspaceNotFound { .. } => "workspace-not-found",
             Self::WorkspaceAmbiguous { .. } => "workspace-ambiguous",
@@ -95,8 +97,11 @@ impl HerdrError {
     /// 面向使用者的说明。
     pub fn message(&self) -> String {
         match self {
-            Self::Unavailable(reason) => {
+            Self::NotStarted(reason) => {
                 format!("无法运行或连接 Herdr：{reason}。本次没有继续创建。")
+            }
+            Self::Unavailable(reason) => {
+                format!("无法确认 Herdr 命令结果：{reason}。外部效果不确定，本次没有继续创建。")
             }
             Self::Timeout(command) => {
                 format!("Herdr 的 {command} 在时限内没有返回；无法确认这一步是否已经产生效果。")
@@ -353,6 +358,12 @@ impl HerdrClient {
         self.read_native_session(target, kind, deadline, false, true).await
     }
 
+    /// A delegated launch must independently verify its approved working
+    /// directory even when the agent reuses an existing native session file.
+    pub(crate) async fn started_session_with_live_cwd(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
+        self.read_native_session(target, kind, deadline, true, true).await
+    }
+
     /// Restoration must observe the process cwd, not merely the old file header.
     pub(crate) async fn restored_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
         self.read_native_session(target, kind, deadline, true, false).await
@@ -485,7 +496,7 @@ impl HerdrClient {
         command.creation_flags(CREATE_NO_WINDOW);
 
         let child = command.spawn().map_err(|error| {
-            HerdrError::Unavailable(format!(
+            HerdrError::NotStarted(format!(
                 "无法启动 {}（{}）：{error}",
                 self.executable.display(),
                 command_name

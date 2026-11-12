@@ -1,0 +1,108 @@
+{
+  "feature": "chief-bot",
+  "ticket": "18-native-report-recovery.md",
+  "run_id": "53de8658-f09d-4846-a4c5-af1aaab3f876",
+  "parent_session_id": "01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "36925e09-96c4-489e-a5b2-ba2d36b7f656",
+  "started_at": "2026-11-11T20:04:24.381Z",
+  "tdd_status": "failed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-11T21:52:24.396Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "18-native-report-recoverymd-36925e09-96c4-489e-a",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\implementation\\18-native-report-recovery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"my-agent-toolkit\",\n    \"branch\": \"hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-RGYC82\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\implementation\\18-native-report-recovery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"my-agent-toolkit\",\n    \"branch\": \"hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-RGYC82\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement native report recovery ticket",
+    "lastIntent": "Committing tested recovery integration evidence",
+    "exitCode": 0,
+    "output": "{\n  \"ticket\": \"18-native-report-recovery\",\n  \"status\": \"已实现、验收并提交，待独立集成\",\n  \"commits\": [\n    \"c366745\",\n    \"bf00523\",\n    \"ab91188\"\n  ],\n  \"prerequisite\": {\n    \"local\": \"e3d6f20\",\n    \"equivalentUpstream16\": \"9397037\",\n    \"note\": \"若已集成16，不要重复应用此启动指引补丁。\"\n  },\n  \"delivered\": [\n    \"OMP/Pi 原生输入先取得后端完整持久接收授权，重复或无效确认不触发模型。\",\n    \"原发送方人工重发完整预览原 ID/内容，再次原生确认；取消仍保留原保存事实。\",\n    \"当前 chief 显式查看原报告，真实身份拒绝及提交后不确定事实保持不变；无自动补投机制。\"\n  ],\n  \"verification\": {\n    \"nativeFocused\": \"12 passed，0 failed；含真实配对后端持久 receipt\",\n    \"dock\": \"237 passed，0 failed\",\n    \"canonicalFull\": \"1922 passed，0 failed\",\n    \"typecheck\": \"exit 0\",\n    \"integrations\": \"exit 0\"\n  },\n  \"criteriaEvidence\": \"逐项 AC1–AC6、TDD 原始失败、命令、源码/锁文件/产物身份及日志索引见 .scratch/chief-bot/evidence/18-native-report-recovery/verification.json。\",\n  \"pairedBackend\": \"a9c28664d1c0d63cc2c7a4cf5a51fd13f0dd5f92，只读快照与独占构建目录\",\n  \"limitations\": [\n    \"本票仅使用受控 provider；不声称真实模型恢复行为通过。19 的真实模型恢复/无自动行为及20的跨宿主失权覆盖保持独立。\",\n    \"17的持久重启、恢复关联及维护窗口证据按依赖引用，未复制认领。\"\n  ],\n  \"unresolvedOwnedScope\": [],\n  \"handoff\": \"全部运行已结束；独占窗口已交12，之后由其交13。\"\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 6479882,
+    "tokens": 515984,
+    "requests": 211,
+    "contextTokens": 264564,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 437121,
+      "output": 78863,
+      "cacheRead": 36971648,
+      "cacheWrite": 0,
+      "totalTokens": 37487632,
+      "reasoningTokens": 40103,
+      "cost": {
+        "input": 0.8742419999999997,
+        "output": 0.7886300000000004,
+        "cacheRead": 3.6971648,
+        "cacheWrite": 0,
+        "total": 5.360036799999999
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6\\18-native-report-recoverymd-36925e09-96c4-489e-a.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "ticket": "18-native-report-recovery",
+            "status": "已实现、验收并提交，待独立集成",
+            "commits": [
+              "c366745",
+              "bf00523",
+              "ab91188"
+            ],
+            "prerequisite": {
+              "local": "e3d6f20",
+              "equivalentUpstream16": "9397037",
+              "note": "若已集成16，不要重复应用此启动指引补丁。"
+            },
+            "delivered": [
+              "OMP/Pi 原生输入先取得后端完整持久接收授权，重复或无效确认不触发模型。",
+              "原发送方人工重发完整预览原 ID/内容，再次原生确认；取消仍保留原保存事实。",
+              "当前 chief 显式查看原报告，真实身份拒绝及提交后不确定事实保持不变；无自动补投机制。"
+            ],
+            "verification": {
+              "nativeFocused": "12 passed，0 failed；含真实配对后端持久 receipt",
+              "dock": "237 passed，0 failed",
+              "canonicalFull": "1922 passed，0 failed",
+              "typecheck": "exit 0",
+              "integrations": "exit 0"
+            },
+            "criteriaEvidence": "逐项 AC1–AC6、TDD 原始失败、命令、源码/锁文件/产物身份及日志索引见 .scratch/chief-bot/evidence/18-native-report-recovery/verification.json。",
+            "pairedBackend": "a9c28664d1c0d63cc2c7a4cf5a51fd13f0dd5f92，只读快照与独占构建目录",
+            "limitations": [
+              "本票仅使用受控 provider；不声称真实模型恢复行为通过。19 的真实模型恢复/无自动行为及20的跨宿主失权覆盖保持独立。",
+              "17的持久重启、恢复关联及维护窗口证据按依赖引用，未复制认领。"
+            ],
+            "unresolvedOwnedScope": [],
+            "handoff": "全部运行已结束；独占窗口已交12，之后由其交13。"
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 34,
+      "charCount": 1069
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "18-native-report-recoverymd-36925e09-96c4-489e-a",
+  "tdd_error": "票据工作树不干净（hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7）：\n M framework/docs/pi-acceptance.json\n?? .scratch/chief-bot/paired-backend-16/\n?? .scratch/chief-bot/paired-backend-final/\n?? .scratch/chief-bot/paired-backend/\n?? .scratch/chief-bot/paired-target/",
+  "session_id": "01a1cc36-2ae0-73d5-8d31-670dde1c5f85",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6\\18-native-report-recoverymd-36925e09-96c4-489e-a.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RGYC82",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-11T21:52:33.356Z"
+}

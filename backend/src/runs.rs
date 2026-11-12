@@ -23,6 +23,8 @@ pub use retry::manager_retry;
 pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
 mod completion;
 mod operation;
+mod preparation;
+pub use preparation::manager_prepare_inputs;
 mod collect;
 pub use collect::manager_collect;
 pub use reports::{node_context, node_report};
@@ -120,6 +122,8 @@ pub struct Run {
     pub user_input: String,
     #[serde(default)]
     pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    #[serde(default)]
+    pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
     pub status: String,
     pub finished: Option<Finished>,
@@ -512,8 +516,22 @@ pub async fn start_run(
             &message,
         );
     }
-    let id = crate::chats::new_creation_id();
-    let run = Run {
+    let run = root_run(map, input, checked, &task, crate::chats::new_creation_id());
+    register_root(&state, &run).await;
+    drop(map_operation);
+    launch_root(state, run, task, preset, None).await
+}
+
+/// Construct a root Run from the same preflight for UI and chief delegation.
+/// Previewing allocates no records and never invents a parent execution.
+pub(crate) fn root_run(
+    map: String,
+    input: crate::scheduler::RunPreflightRequest,
+    checked: crate::scheduler::RunPreflight,
+    task: &crate::tasks::Task,
+    id: String,
+) -> Run {
+    Run {
         id: id.clone(),
         name: None,
         map,
@@ -529,6 +547,7 @@ pub async fn start_run(
         workspace_name: checked.workspace_name,
         user_input: input.user_input,
         file_inputs: input.file_inputs,
+        inputs_ready: false,
         manager: None,
         status: "running".into(),
         finished: None,
@@ -548,14 +567,28 @@ pub async fn start_run(
                 )
             })
             .collect(),
-    };
-    state.runs.registered_maps.lock().await.insert(id.clone(), run.map.clone());
-    state.runs.active.lock().await.insert(id.clone(), None);
-    drop(map_operation);
+    }
+}
+
+pub(crate) use startup::manager_prompt;
+
+pub(crate) async fn register_root(state: &AppState, run: &Run) {
+    state.runs.registered_maps.lock().await.insert(run.id.clone(), run.map.clone());
+    state.runs.active.lock().await.insert(run.id.clone(), None);
+}
+
+pub(crate) async fn launch_root(
+    state: AppState,
+    run: Run,
+    task: crate::tasks::Task,
+    preset: crate::tasks::catalog::ResolvedPreset,
+    delegation: Option<crate::chief_delegation::Launch>,
+) -> Response {
+    let id = run.id.clone();
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
     let owned = state.clone();
-    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset).await }).await;
+    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset, delegation).await }).await;
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
         if let Err(message) = startup::manager_interrupted(&state, &id, join).await {
@@ -691,6 +724,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
 fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) -> Vec<String> {
     let mut reasons = Vec::new();
     if run.status != "running" { reasons.push(format!("Run 状态为 {}", run.status)); }
+    if !run.inputs_ready { reasons.push("Run 输入尚未由管理者检查并确认；请先 prepare_inputs。".into()); }
     match run.nodes.get(id) {
         None => reasons.push("node 不在本次 Run 中".into()),
         Some(node) if node.status != "pending" => reasons.push(format!("node 状态为 {}，仅 pending 可派发", node.status)),

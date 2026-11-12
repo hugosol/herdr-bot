@@ -53,8 +53,11 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
   const blockers = definition?.blocked_by.filter(id => run.nodes[id]?.status !== 'completed') ?? []
   const states = Object.fromEntries(ids.map(id => {
     let status = run.nodes[id].status
-    if (status === 'pending' && map) status = run.status === 'running' && map.nodes[id].blocked_by.every(source => run.nodes[source]?.status === 'completed') ? 'ready' : 'blocked'
-    const labels: Record<string, string> = { pending: '待执行', ready: '可派发', blocked: '等待依赖', running: '运行中', completed: '已完成', failed: '失败' }
+    if (status === 'pending') {
+      if (run.inputsReady !== true) status = 'preparing'
+      else if (map) status = run.status === 'running' && map.nodes[id].blocked_by.every(source => run.nodes[source]?.status === 'completed') ? 'ready' : 'blocked'
+    }
+    const labels: Record<string, string> = { pending: '待执行', preparing: '等待输入准备', ready: '可派发', blocked: '等待依赖', running: '运行中', completed: '已完成', failed: '失败' }
     return [id, { status, label: labels[status] ?? status }]
   }))
   const applicable = node?.execution ? reports.filter(report => report.nodeId === nodeId && report.executionId === node.execution!.id) : []
@@ -86,7 +89,7 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
         </section>
         {catalogErrors.map((message, index) => <p role="alert" key={index}>{message}</p>)}
         {node && <section aria-label="当前节点详情" className="workflow-node-details">
-          <header className="workflow-node-detail-heading"><div><p className="workflow-eyebrow">NODE / {nodeId}</p><h2>{map?.nodes[nodeId]?.title ?? nodeId}</h2><p className="workflow-detail-task">Task · {nodeTasks[nodeId]} {nodeTaskIds[nodeId] && <code>{nodeTaskIds[nodeId]}</code>}<small>{node.execution ? '已保存执行' : '当前配置'}</small></p></div><WorkflowStatus status={node.status} saved={!managed} animate={animateRunning} /></header>
+          <header className="workflow-node-detail-heading"><div><p className="workflow-eyebrow">NODE / {nodeId}</p><h2>{map?.nodes[nodeId]?.title ?? nodeId}</h2><p className="workflow-detail-task">Task · {nodeTasks[nodeId]} {nodeTaskIds[nodeId] && <code>{nodeTaskIds[nodeId]}</code>}<small>{node.execution ? '已保存执行' : '当前配置'}</small></p></div><WorkflowStatus status={states[nodeId].status} saved={!managed} animate={animateRunning} /></header>
           <p className="workflow-muted">{node.execution ? 'reportPolicy（已保存执行）' : 'report_policy（当前配置）'}: {nodeReportPolicies[nodeId] ?? 'auto'}</p>
           <section aria-label="当前执行交接事实"><h3>当前执行交接事实</h3><p>最新 canComplete: {!latestReport ? '无报告' : latestReport.canComplete === undefined ? '缺失（最新报告未声明）' : String(latestReport.canComplete)}</p><p className="workflow-muted">仅最新适用报告的严格 true 表示可交接声明；报告不等于管理者已完成节点。</p><h4>当前执行累计 outputs</h4><OutputAddresses outputs={outputs} empty="当前执行尚无已登记输出地址。" /><p className="workflow-muted">按报告追加顺序累计；同名后报覆盖，省略保留，不继承其他执行。这里只显示地址，不读取或验证文件。</p></section>
           <section aria-label="当前执行适用报告" className="workflow-current-reports"><h3 className="workflow-eyebrow">当前执行适用报告</h3>{applicable.length ? applicable.map(report => <article key={report.id}><p className="workflow-report-meta">id: <code>{report.id}</code> · at: <FactTime at={report.at} /></p><h4>body</h4><pre className="workflow-prose">{report.body}</pre><ReportHandoff report={report} /></article>) : <p className="workflow-muted">尚无当前执行适用报告。</p>}</section>
@@ -101,7 +104,7 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
           <details className="workflow-node-definition" key={`definition-${nodeId}`} aria-label="当前节点定义"><summary>当前定义（非执行快照）</summary>
             {definition ? <>
               <dl><dt>bot_id</dt><dd className="workflow-reference">{bot?.name ? `${bot.name} · ${bot.id}` : definition.bot_id}</dd><dt>task_id</dt><dd className="workflow-reference">{bot?.task_id ? taskName(bot.task_id) : '当前 Bot 无可读 Task 绑定。'}</dd><dt>zone</dt><dd className="workflow-path">{definition.zone || '未绑定 zone'}</dd><dt>report_policy</dt><dd>{definition.report_policy ?? 'auto'}</dd><dt>auto_close</dt><dd>{String(definition.auto_close ?? false)}</dd><dt>input</dt><dd><pre className="workflow-prose">{definition.input}</pre></dd><dt>input_rule</dt><dd><pre>{JSON.stringify(definition.input_rule ?? [], null, 2)}</pre></dd><dt>output_rule</dt><dd><pre>{JSON.stringify(definition.output_rule ?? [], null, 2)}</pre></dd><dt>blocked_by</dt><dd>{definition.blocked_by.length ? definition.blocked_by.map(id => nodeNames[id] ?? id).join('、') : '无前置依赖。'}</dd></dl>
-              {node.status === 'pending' && <p>{blockers.length ? `前置未完成：${blockers.join('、')}` : '前置依赖已满足。'}{run.status !== 'running' && ` Run 状态为 ${run.status}，不可派发。`}</p>}
+              {node.status === 'pending' && <p>{run.inputsReady !== true && (run.inputsReady === false ? '输入尚未确认就绪，不可派发。' : '未保存输入准备确认，按未就绪处理，不可派发。')}{blockers.length ? `前置未完成：${blockers.join('、')}` : '前置依赖已满足。'}{run.status !== 'running' && ` Run 状态为 ${run.status}，不可派发。`}</p>}
             </> : <p>当前定义不可用；仅显示保存事实。</p>}
           </details>
           <details key={`history-${nodeId}`} aria-label="已保存旧执行事实"><summary>旧执行历史（{node.previousExecutions.length} 次已保存执行）</summary>

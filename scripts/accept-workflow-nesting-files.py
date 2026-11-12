@@ -54,7 +54,7 @@ class FilesAcceptance(RolesAcceptance):
             REPO / 'scripts/test-real-herdr-close.py', self.args.toolkit / 'entrypoints/pi-auto/manager-chat.ts',
             self.args.toolkit / 'entrypoints/pi-auto/node-chat.ts']}
         self.evidence['backend'] = {'path': str(self.args.backend), 'sha256': hashlib.sha256(self.args.backend.read_bytes()).hexdigest()}
-        artifact_paths = [REPO / 'frontend/package-lock.json', *sorted((REPO / 'backend/static').rglob('*'))]
+        artifact_paths = [REPO / 'frontend/bun.lock', *sorted((REPO / 'backend/static').rglob('*'))]
         self.evidence['pageAndLockIdentity'] = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in artifact_paths if path.is_file()}
         require((REPO / 'backend/static/index.html').is_file(), 'Build this worktree delivered static page first')

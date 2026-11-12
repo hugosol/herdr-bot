@@ -100,7 +100,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
             {data.fixedExtensions.filter(extension => extension.agent === agent).map(extension => <li key={extension.id}>
               <span className="suites-fixed-name">{extension.label}{extension.label !== extension.id && <> · <span className="suites-resource-id">{extension.id}</span></>}</span>
               <span className="suites-extension-path">{extension.entrypoint}</span>
-              <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点' })[role]).join('、') || '无适用角色'}</span>
+              <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点', chief: '需求分流者', 'chief-delegated': 'chief委派独立Chat' })[role]).join('、') || '无适用角色'}</span>
             </li>)}
           </ul> : <p className="scope-note">此宿主暂无固定扩展。</p>}
         </section>)}

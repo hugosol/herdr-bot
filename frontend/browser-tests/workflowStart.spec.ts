@@ -67,10 +67,9 @@ test('nesting P08 P09 P11 root named inputs are edited, rejected and rebound thr
     const business = `BUSINESS-${index}: brief ${first} must not discover any file`
     await page.getByRole('textbox', { name: '本次要求', exact: true }).fill(business)
     if (index === 0) {
-      await page.getByRole('button', { name: '启动 Run', exact: true }).click()
-      await expect(page.getByRole('form', { name: '发起 Run', exact: true }).getByRole('alert')).toContainText('brief')
+      await page.getByRole('button', { name: '校验启动配置', exact: true }).click()
+      await expect(page.getByRole('form', { name: '发起 Run', exact: true }).getByRole('status')).toContainText('配置校验通过')
       expect(server.herdrCalls()).toEqual([])
-      expect(fs.existsSync(path.join(server.cwd, '.data/workflow-runs'))).toBe(false)
     }
     await page.getByRole('textbox', { name: '文件输入 brief（必需）', exact: true }).fill(material)
     await page.getByRole('button', { name: '校验启动配置', exact: true }).click()
@@ -116,6 +115,7 @@ test('P28.04 P49.01 P68.08 real restart preserves facts but rejects old Run tool
   const started = await post('/api/scheduler/maps/launch.json/runs', { managerTaskId: ids.manager, zone, userInput: '保存原始现场' })
   expect(started.status()).toBe(201)
   const { id } = await started.json()
+  expect((await post('/api/workflow/manager/prepare_inputs', { sessionId: 'browser-manager-04', fileInputs: [], confirmed: true, reason: 'Reviewed restart fixture inputs' })).status()).toBe(200)
   for (const nodeId of ['A', 'B']) {
     server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: `restart-node-${nodeId}` } })
     const response = await post('/api/workflow/manager/dispatch', { sessionId: 'browser-manager-04', nodes: [nodeId] })

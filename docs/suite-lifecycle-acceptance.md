@@ -69,7 +69,7 @@ there is no optional TOML catalog or extension ID lookup.
 
 ## Build, repository checks and invocation
 
-Prepare frontend dependencies with `npm --prefix frontend ci` and toolkit
+Prepare frontend dependencies with `bun install --cwd=frontend --frozen-lockfile` and toolkit
 dependencies with `bun install --frozen-lockfile` using its declared Bun version.
 Use a Cargo target directory inside this herdr-bot worktree. Build frontend
 assets before process-level backend checks; the backend embeds source identity.
@@ -81,7 +81,7 @@ provenance, not a reproducible-build attestation.
 ```powershell
 Set-Location $HERDR_BOT_WT
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
-npm --prefix frontend ci
+bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_shell
 node scripts/test-backend.mjs

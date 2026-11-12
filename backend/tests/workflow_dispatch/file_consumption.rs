@@ -3,12 +3,12 @@
 use super::*;
 use super::input_resolution::{save_node, identity, report, initial_input, named_input};
 
-async fn declare_inputs(s: &Scenario, inputs: Value) {
+pub(super) async fn declare_inputs(s: &Scenario, inputs: Value) {
     let route = "/api/scheduler/maps/work.json/inputs";
     let draft = get_over_tcp(s.server.addr(), route).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), route, &json!({"input_files":inputs,"revision":draft["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), route, &json!({"input_files":inputs,"input_requirements":"","revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
 }
 
@@ -16,7 +16,9 @@ async fn start_inputs(s: &Scenario, manager: &str, files: Value) -> Value {
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":manager},"native_cwd":s.data.path()}));
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"business only","fileInputs":files}).to_string()).await;
     assert_eq!(response.status, 201, "{}", response.body);
-    serde_json::from_str(&response.body).unwrap()
+    let started = serde_json::from_str(&response.body).unwrap();
+    let _ = s.prepare_fixture(manager).await;
+    started
 }
 
 // P10/P12: Map declarations are the independent source of scope; the local

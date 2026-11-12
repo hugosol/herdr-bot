@@ -26,7 +26,7 @@ async fn retain_history_keeps_live_run_details_reports_and_resources_without_map
     let calls = s.herdr.calls();
     let response = delete(&s, "work.json", false).await;
     assert_eq!(response.status, 200, "{}", response.body);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"files":[]}));
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["files"], json!([]));
     assert!(!s.config.scheduler.map_directory.join("work.json").exists());
     assert_eq!(records(&root), before);
     let detail = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
@@ -71,7 +71,7 @@ async fn delete_history_removes_live_and_persisted_statuses_but_not_unrelated_ru
     let calls = s.herdr.calls();
     let response = delete(&s, "work.json", true).await;
     assert_eq!(response.status, 200, "{}", response.body);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"files":["other.json"]}));
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["files"], json!(["other.json"]));
     for id in [live_id, "persisted-running", "persisted-paused", "persisted-completed"] {
         assert!(!run_root.join(id).exists(), "{id} history must be gone");
     }

@@ -1,14 +1,17 @@
 {
   "group": "meta-map",
   "title": "创建bot",
-  "description": "为真实既有 normal Task／Map 创建完整 Bot：request 提供创建委托与业务需求，materials 为可选参考材料；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "description": "为真实既有 normal Task／Map 创建完整 Bot：输入准备以本 Map 的 input_requirements 与 input_files[].description 为准；核实目标后创建空白 Bot，三路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "input_requirements": "",
   "input_files": [
     {
       "id": "request",
+      "description": "Bot 创建委托：包含目标 normal Task ID 或 Map 文件名、业务需求及约束。",
       "required": true
     },
     {
       "id": "materials",
+      "description": "参考材料：注明用途。",
       "required": false
     }
   ],
@@ -16,7 +19,7 @@
     "create_blank": {
       "title": "核实既有目标并创建空白 Bot",
       "bot_id": "create-blank-bot",
-      "input": "request 是本次既有 normal Task／Map 的定位、创建委托、业务需求、资源权限、非目标与材料写入范围；materials 为可选参考材料，提供时按其用途消费，不可读不能当作缺席。\n本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
+      "input": "本次选择空白创建分支，交付创建后完整 Bot／真实 revision、完整目标及需求授权约束的单份 baseline 文件，供所有后续消费者直接使用；另交付必要 handoff 文件，记录依据、来源、核对结论及未验证项。",
       "input_rule": [
         {
           "type": "run",
@@ -227,7 +230,7 @@
     "write_node_guide": {
       "title": "编写并确认 Bot.node_guide",
       "bot_id": "write-bot-node-guide",
-      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 node_guide，供规划者填写本次业务输入责任，包括 Task／Map 所需材料、选择和授权；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 node_guide，供规划者填写本次业务输入责任，包括 Task／Map 所需材料、选择和授权；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
       "input_rule": [
         {
           "type": "node",
@@ -254,7 +257,7 @@
     "write_plan_guide": {
       "title": "编写并确认 Bot.plan_guide",
       "bot_id": "write-bot-plan-guide",
-      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 plan_guide，供规划者安排工作；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 plan_guide，供规划者安排工作；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
       "input_rule": [
         {
           "type": "node",
@@ -281,7 +284,7 @@
     "write_when": {
       "title": "编写并确认 Bot.when",
       "bot_id": "write-bot-when",
-      "input": "baseline 是本次创建后 Bot、既有 normal Task／Map 目标及需求授权的共同依据。选择创建分支，只编写并确认 when，供能力发现与选用；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
+      "input": "依据 baseline，按创建分支只编写并确认 when，供能力发现与选用；后续另有表达优化。交付所属完整纯正文 text 文件与确认依据、语义限制及未验证项的 handoff 文件；本节点只写本分支材料。",
       "input_rule": [
         {
           "type": "node",

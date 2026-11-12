@@ -1,0 +1,106 @@
+{
+  "feature": "chief-bot",
+  "ticket": "18-native-report-recovery.md",
+  "run_id": "1f118153-7096-4978-87b5-fed03842f440",
+  "parent_session_id": "01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "cb5ba3bb-6d3a-4e78-8cbd-a24f283d4028",
+  "started_at": "2026-11-11T21:52:24.411Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-11T21:53:54.551Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "18-native-report-recoverymd-cb5ba3bb-6d3a-4e78-8",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n上次执行未被工作流接收，原因如下：\n票据工作树不干净（hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7）：\n M framework/docs/pi-acceptance.json\n?? .scratch/chief-bot/paired-backend-16/\n?? .scratch/chief-bot/paired-backend-final/\n?? .scratch/chief-bot/paired-backend/\n?? .scratch/chief-bot/paired-target/\n请先处理上述原因，再完成本票交付；保留已有工作，不要重复已完成且无需重跑的工作。\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\implementation\\18-native-report-recovery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"my-agent-toolkit\",\n    \"branch\": \"hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-RGYC82\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\contract.md\n接手此前实现进度，不丢弃已有修改。上次报告：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-auto-coding-uG84nF\\implement-7d870c14-fb15-4a18-b2a6-d7d0e74ac440.md\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "上次执行未被工作流接收，原因如下：\n票据工作树不干净（hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7）：\n M framework/docs/pi-acceptance.json\n?? .scratch/chief-bot/paired-backend-16/\n?? .scratch/chief-bot/paired-backend-final/\n?? .scratch/chief-bot/paired-backend/\n?? .scratch/chief-bot/paired-target/\n请先处理上述原因，再完成本票交付；保留已有工作，不要重复已完成且无需重跑的工作。\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\implementation\\18-native-report-recovery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"my-agent-toolkit\",\n    \"branch\": \"hyper/chief-bot/18-native-report-recovery-c5a4f9-72787c9f5da7\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-RGYC82\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\chief-bot\\contract.md\n接手此前实现进度，不丢弃已有修改。上次报告：C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-auto-coding-uG84nF\\implement-7d870c14-fb15-4a18-b2a6-d7d0e74ac440.md\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Clean worktree and implement ticket 18",
+    "lastIntent": "Reading retained integration results",
+    "exitCode": 0,
+    "output": "{\n  \"ticket\": \"18-native-report-recovery\",\n  \"status\": \"已完成，工作树干净，可交独立集成\",\n  \"head\": \"ab91188826645224533f7f8ee154f378e466b237\",\n  \"commits\": [\n    \"c366745\",\n    \"bf00523\",\n    \"ab91188\"\n  ],\n  \"recovery\": {\n    \"action\": \"完整移出四个配对后端/构建目录；备份生成的 pi-acceptance.json 后恢复其已提交版本。未丢弃既有实现、日志或产物。\",\n    \"archive\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RGYC82-preserved-18-recovery\",\n    \"manifest\": \"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RGYC82-preserved-18-recovery/preservation.json\",\n    \"handoffCheck\": \"git status --porcelain=v1 输出为空；HEAD 保持 ab91188。\"\n  },\n  \"verification\": {\n    \"reuse\": \"本次无源码修改；已核对既有源码、锁文件、产物和日志 SHA-256，全部匹配，未重复运行已完成验收。\",\n    \"priorActualResults\": {\n      \"nativeFocused\": \"12 passed / 0 failed\",\n      \"bun test tests/harness-dock\": \"237 passed / 0 failed\",\n      \"bun run test\": \"1922 passed / 0 failed\",\n      \"bun run typecheck\": \"exit 0\",\n      \"bun run check:integrations --json\": \"exit 0\"\n    },\n    \"criteriaEvidence\": \".scratch/chief-bot/evidence/18-native-report-recovery/verification.json 中 criteria 逐项对应 AC1–AC6：持久接收、重复抑制、原身份人工重发确认、无自动补投、显式读取及恢复/撤权语义。\"\n  },\n  \"integrationNote\": \"e3d6f20 是启动指引依赖补丁，对应上游16的9397037；已集成等价补丁时勿重复应用。\",\n  \"limitations\": [\n    \"受控原生协议验收不证明真实模型行为；真实模型恢复/无自动行为及跨宿主旧 chief 失权仍分别由19、20覆盖。\",\n    \"原证据中的配对后端/产物路径已整体迁入上述归档，原内容保留。\"\n  ],\n  \"unresolvedOwnedScope\": []\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 89972,
+    "tokens": 33300,
+    "requests": 7,
+    "contextTokens": 32491,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 29930,
+      "output": 3370,
+      "cacheRead": 138112,
+      "cacheWrite": 0,
+      "totalTokens": 171412,
+      "reasoningTokens": 949,
+      "cost": {
+        "input": 0.05985999999999999,
+        "output": 0.03370000000000001,
+        "cacheRead": 0.0138112,
+        "cacheWrite": 0,
+        "total": 0.1073712
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6\\18-native-report-recoverymd-cb5ba3bb-6d3a-4e78-8.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "ticket": "18-native-report-recovery",
+            "status": "已完成，工作树干净，可交独立集成",
+            "head": "ab91188826645224533f7f8ee154f378e466b237",
+            "commits": [
+              "c366745",
+              "bf00523",
+              "ab91188"
+            ],
+            "recovery": {
+              "action": "完整移出四个配对后端/构建目录；备份生成的 pi-acceptance.json 后恢复其已提交版本。未丢弃既有实现、日志或产物。",
+              "archive": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RGYC82-preserved-18-recovery",
+              "manifest": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-RGYC82-preserved-18-recovery/preservation.json",
+              "handoffCheck": "git status --porcelain=v1 输出为空；HEAD 保持 ab91188。"
+            },
+            "verification": {
+              "reuse": "本次无源码修改；已核对既有源码、锁文件、产物和日志 SHA-256，全部匹配，未重复运行已完成验收。",
+              "priorActualResults": {
+                "nativeFocused": "12 passed / 0 failed",
+                "bun test tests/harness-dock": "237 passed / 0 failed",
+                "bun run test": "1922 passed / 0 failed",
+                "bun run typecheck": "exit 0",
+                "bun run check:integrations --json": "exit 0"
+              },
+              "criteriaEvidence": ".scratch/chief-bot/evidence/18-native-report-recovery/verification.json 中 criteria 逐项对应 AC1–AC6：持久接收、重复抑制、原身份人工重发确认、无自动补投、显式读取及恢复/撤权语义。"
+            },
+            "integrationNote": "e3d6f20 是启动指引依赖补丁，对应上游16的9397037；已集成等价补丁时勿重复应用。",
+            "limitations": [
+              "受控原生协议验收不证明真实模型行为；真实模型恢复/无自动行为及跨宿主旧 chief 失权仍分别由19、20覆盖。",
+              "原证据中的配对后端/产物路径已整体迁入上述归档，原内容保留。"
+            ],
+            "unresolvedOwnedScope": []
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 33,
+      "charCount": 1336
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "18-native-report-recoverymd-cb5ba3bb-6d3a-4e78-8",
+  "session_id": "01a1cc99-0bb0-7163-851b-a5ccec055c8c",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-11T15-16-10-927Z_01a1cb2e-4a2f-70fd-b863-ca5ea3e0a5b6\\18-native-report-recoverymd-cb5ba3bb-6d3a-4e78-8.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-RGYC82",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-11T21:53:59.983Z"
+}

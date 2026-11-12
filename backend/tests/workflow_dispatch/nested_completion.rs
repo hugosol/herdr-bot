@@ -58,7 +58,19 @@ async fn nested_completion_requires_explicit_child_finish_before_ready_report() 
     assert_eq!(rejected["code"], "report-not-completable");
     native(&s, "finish-inside");
     s.dispatch("finish-child", &["inside"]).await;
-    submit_report(&s, "finish-inside", "Internal done", true).await;
+    // Chief ticket 01: the internal node still notifies its own manager,
+    // never the outer manager, and does not complete the internal work itself.
+    let internal = submit_report(&s, "finish-inside", "Internal done", true).await;
+    assert_eq!(internal["runId"], child);
+    assert_eq!(internal["to"]["sessionId"], "finish-child");
+    let child_detail = read_run(&s, &child).await;
+    assert_eq!(child_detail["reports"], json!([internal]));
+    assert_eq!(child_detail["run"]["nodes"]["inside"]["status"], "running");
+    let calls = s.herdr.calls();
+    let notification = calls.iter().rev().find(|call| call["kind"] == "agent_prompt").unwrap();
+    assert_eq!(notification["target"], child_detail["run"]["manager"]["agentName"]);
+    assert!(notification["text"].as_str().unwrap().contains("Internal done"));
+    assert_eq!(read_run(&s, &root["id"]).await["reports"], json!([progress["report"]]));
     action(&s, "finish-child", "complete", json!({"nodeId":"inside","reason":"Internal accepted"}), 200).await;
     let before = read_run(&s, &root["id"]).await;
     let calls = s.herdr.calls();

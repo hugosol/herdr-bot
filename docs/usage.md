@@ -2,6 +2,35 @@
 
 本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
 
+## Chief 报告保存与通知
+
+两宿主的 `omp-chief-report`／`pi-chief-report` 固定入口只装配到 chief 实际委派的独立普通 Chat；普通 Task 的其他独立 Chat 不因此获得报告角色。预览、批准后启动及新进程恢复均沿用该真实关联，不把独立发送者伪装成 workflow node。直接 Map manager 由 manager-chat 提供同名 `chief_report`；内部 node 继续使用自己的 `report`。原生工具每次展示完整报告并单独确认，固定入口存在不授予后端报告资格。Suite 固定扩展区将该适用角色显示为“chief委派独立Chat”，它不是新的 Task 类型。
+
+`POST /api/chief/reports` 是同机工具的报告提交入口。请求只接受 `sessionId` 和 `body`；后端按真实委派记录授权独立 Chat 或直接 Map manager，不按 Task 名称、扩展是否加载或调用者提供的 Bot／Run／收件人参数授权。Map 内部节点仍用 `/api/workflow/node/report` 向自己的 manager 报告。
+
+`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存内容，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+
+后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才查询当前有效 chief 的真实原生身份并尝试一次通知；没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
+
+`GET /api/chief/reports` 返回全部已存报告；`?sessionId=<发送方原生身份>` 过滤发送方。`GET /api/chief/reports/{id}` 读取同一稳定报告，包括新 chief 没有原始委派上下文时。原报告只读；没有更新／删除入口。初始化、后端重启、会话恢复和时间流逝均不扫描或补投；本入口没有后台重试。接收确认与用户明确批准的人工重发使用原报告 ID／内容，不应重新提交业务报告。
+
+### 持久接收、人工重发与查看
+
+以下 POST 只接受同机工具来源，JSON **仅**为 `{ "sessionId": "当前调用者的原生 Chat 身份" }`；未知字段（包括 `body`、`from`、指定收件人）拒绝。原生扩展仍负责绑定真实 Session、向用户取得明确的本次请求／重发内容批准，不能把这些接口当作自然语言同意的替代。
+
+| 操作 | 资格与公开结果 |
+| --- | --- |
+| `GET /api/chief/reports/{id}/receipt` | 读取 `{received: boolean, receipt: null或记录}`。不存在的报告返回 404；通知 `submitted` 本身不会创建接收记录。 |
+| `POST /api/chief/reports/{id}/receive` | 仅当前 `registered` chief 可可靠接收；返回 `{received:true, process:boolean, receipt, report, guidance}`。只有首次持久提交返回 `process:true`；重复／并发调用、更换 chief、回执丢失或后端重启后均返回 `process:false`，不得据此再次触发模型处理／呈现。 |
+| `POST /api/chief/reports/{id}/resend` | 仅原被委派 Chat 可在用户明确要求并再次确认后发送。返回 `{saved:true, report, received, receipt, notification, diagnostic, guidance}`；不新建报告或接受替换内容。已经可靠接收则 `received:true`、`notification.status:"not-attempted"`，不再次通知。否则只尝试通知当前 chief；无 chief／失败／不确定仍保留原报告，不补投。 |
+| `POST /api/chief/reports/{id}/view` | 当前 chief 在用户明确要求查看时读取原报告；返回 `{report, received, receipt, process:false, guidance}`，不会创建／修改接收记录、自动通知或重新派发业务。未接收的报告也可明确查看，但查看本身不是接收授权。 |
+
+接收记录为 `{reportId, sessionId, claimId, at}`，其中 `at` 为 Unix 毫秒；保存在原报告 journal 旁的 `*.chief-reports.receipts.jsonl`，原报告内容不变。认领及去重持久提交与 chief 授权／撤销串行化；旧 chief 失权后不能取得新接收授权。外部定位等待后再次核实当前 claim 与接收事实；已经授权并进入外部提交的输入不会被 chief 更换物理撤回，返回值保留真实 `submitted`／`failed`／`uncertain`。
+
+可靠接收不是模型已呈现、用户已读或业务验收。接收后、呈现前崩溃仍保留接收事实，不自动重播；重复 `receive` 的 `process:false` 不是新呈现授权，人工恢复须由用户在当前 chief 明确要求 `view`。存储不可确认返回非成功状态，不能把失败解释为已获处理授权或安全地重新提交业务报告。
+
+实际恢复独立执行者或直接 Map manager 沿用原生 Chat 和持久委派／原报告关联；恢复不新增委派、Run 或重放初始输入，同 Task 的其他 Chat 不获得重发资格。只有修订内容经新的明确批准后，才可通过原提交入口建立新报告 ID。以上 HTTP 行为不代替 OMP／Pi 原生确认与真实模型呈现验收。
+
 ## 界面外观
 
 全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的 `report_policy` 标识中，手动报告使用蓝色，自动报告使用琥珀色；`auto_close` 配色不受此互换影响。
@@ -23,13 +52,15 @@ Chat、Zone、Workflow、Task、Suite、Bot、Scheduler 保留原有标题偏移
 
 布局按钮只改变外侧导航，不重新加载页面，不清空当前编辑或筛选状态。地址中的 `?layout=expanded` 指定展开布局，`?layout=compact` 或无参数指定紧凑布局；切换会原地更新地址，不增加浏览器历史记录。返回紧凑布局时显示当前页面所属组；同一页面期间切换分组会记住每组上次访问的入口。
 
-整页刷新保留 URL 指定的布局，但内容回到 `chat`，即使刷新前正在查看 Run。首次打开显式 `#workflow/<Run ID>` 链接仍可读取对应 Run 详情，不重新启动。scheduler 发起与角色 Task 前提、三份记录及启动失败处置见[Map Run 运行说明](workflow-runtime.md)。
+整页刷新保留 URL 指定的布局，但内容回到 `chat`，即使刷新前正在查看 Run。首次打开显式 `#workflow/<Run ID>` 链接仍可读取对应 Run 详情，不重新启动。Run 列表的 Map 分组目录仅在 workflow 列表可见时读取，停留在其他入口或 Run 详情时不预读；切回列表仍保留已有筛选。scheduler 发起与角色 Task 前提、三份记录及启动失败处置见[Map Run 运行说明](workflow-runtime.md)。
 
 `bot` 是共享 Bot 管理功能的独立入口。Task 列表右侧与 Scheduler 的 Map 明细标题下方显示关联 Bot：唯一关联时点击即切换到 Bot 入口并打开明细；无关联时显示不可点击的“无关联 Bot”，多个关联时显示不可点击的“关联冲突”，不任意选择，也不新增保存限制。Map 此处只查找执行目标为该 Map 的封装 Bot，不列出其节点使用的 Bot。
 
 Bot 与 Scheduler 列表只保留打开明细的入口，不显示分组操作或关联跳转按钮；分组标题与筛选保持不变，分组操作移至明细页。Task、Bot 与 Scheduler 的关联按钮统一显示“目标类型图标＋目标名称”，不再显示“Bot：”或“执行目标：Task / Map”前缀。图标复用对应 Tab：Bot 为机器人、Task 为带播放键的执行模块、Map 为 Scheduler 节点流程图；悬停提示与无障碍名称明确类型和名称。Bot 明细点击目标按钮即切换到对应入口并打开已保存明细；目标未绑定、不存在或读取失败时不能跳转。关联跳转直接丢弃受影响的未保存修改，不自动保存、不弹离开确认；其他原有离开确认保持不变，单纯切换紧凑／展开布局也不会离开编辑页。
 
-Map 明细标题区右上角的“修改显示名称”仅修改该 Map 的 `title`，点击“保存名称”后生效。名称去除首尾空白、不能为空，允许重名；保存后刷新列表与明细，Bot 的目标名称也从 Map 读取，不另外存储名称副本。文件名、引用关系、Bot 自身名称与既有 Run 名称均不改变。并发修改造成版本冲突时需重新加载后编辑，不覆盖他人的修改。Bot 与 Scheduler 保留各自的刷新操作。
+Task 列表名称、Bot 明细名称和 Scheduler 的 Map 明细标题旁均提供铅笔按钮，可直接修改对应 Task 名称、Bot 名称或 Map 的 `title`。点击后在原位输入，只有按 Enter 才保存去除首尾空白后的名称；输入法选词时的 Enter 不保存。失焦、Escape、切换页面／明细或打开其他编辑／操作弹窗均取消未提交的修改；空名称或与原名相同不发送请求。保存失败会显示错误并退出输入，保留原名称；只有后端成功后才更新显示。Task 原有“编辑”三步流程和 Bot 原有完整编辑入口保留，Scheduler 原“修改显示名称／保存名称”入口移除，统一使用标题旁铅笔。
+
+改名允许重名，不改变稳定 ID、文件名、引用关系或既有 Chat／Run 名称；修改 Map 标题也不修改 Bot 自身名称，Bot 的目标名称从 Map 读取，不另存副本。保存后以服务端返回值更新列表与明细。Map 并发修改造成版本冲突时需重新加载后编辑，不覆盖他人的修改。Bot 与 Scheduler 保留各自的刷新操作。
 
 右上角的 `server` 按钮在同一页面打开独立内容页，不打开新窗口；右上角原按钮变为“返回”，点击后回到进入前的入口并恢复为 `server`，内容区不另设返回按钮。键盘可用 Tab／Shift+Tab 聚焦可见入口，Enter／Space 激活，方向键及 Home／End 在可见入口之间导航。进入 server 后焦点移到返回按钮，返回后恢复到此前入口。紧凑导航切组使用横向滑动及回弹过渡，布局展开／收起保留淡入效果；减少动态效果的系统设置会关闭自动过渡，但保留手指直接拖动反馈。
 
@@ -51,6 +82,31 @@ Zone 列表显示目录名、稳定 ID 和服务器完整路径，可按名称�
 
 配置提示词用 `${key}` 引用[本机提示词词典](../README.md#本机提示词词典)。保存与编辑保留占位符；系统发送配置字段时替换一次；仅当替换前的 Task 固定 prompt 含未转义且完整闭合的 `${key}` 时，才追加词典读取说明，便于 agent 直接阅读原始 Map/Bot 文件。用户输入、其他消息段、替换值、`$${key}` 和未闭合写法不触发说明注入。用户临时输入和 agent 产物中的同形字符串不替换。
 
+### chief 委派独立 Task Chat
+
+Task 型 Bot 委派使用公开 HTTP：
+
+1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
+2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
+3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
+4. `202` 回执沿用普通 Chat 创建的形状与 `id`，通过 `GET /api/chats/{id}` 观察启动。只有 Herdr 就绪、真实原生身份及来源历史／委派关联保存、批准文本投递已确认后才是 `succeeded`；它只表示发起成功，**不表示业务完成**，不等待模型完成业务。失败保留现有阶段、类别、Tab／Pane／agent 与投递结果不确定说明，不自动清理或重试。
+
+`GET /api/chief/delegations/{id}` 读取独立于 chief 上下文保存的委派事实、实际 `sessionId` 和最后观察到的创建状态；`GET /api/chief/delegations?sessionId=<真实原生身份>` 精确查询发送方关联。委派记录保存在历史文件旁的 `.delegations.json` 文件，经过统一文件持久化边界。业务完成情况不由启动回执判断；后端意外中断时最后记录的 `starting` 也不是确定未启动，须核查外部现场，不要重新派发冒充恢复。来源 chief、Bot、Task、cwd、业务输入、材料及执行 Chat 不依靠 Task 名称推断，不产生父 Run／node／execution。材料只绑定地址，不复制或冻结文件内容；之后更改内容由实际执行者观察。
+
+实际原生身份与批准目录在提交业务输入前核对并保存，`Resume` 原 Chat 继续使用原关联与既有来源 Task 环境恢复规则，不重放初始业务输入。其他使用相同 Task 发起的 Chat 不获得该关联。当前 chief 已更替时，旧进程即使还在线或握有旧预览，也不能再委派；已经提交外部的输入则不能声称被物理撤回。
+
+### chief 按 Bot 委派 Map Run
+
+Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
+
+- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `input_files`，必需项必须齐备，可选项可以不提供，不接受未声明的材料 ID。文件解析及预检复用既有 zone／Run 输入规则。
+- `facts.task` 是明确选择的 manager，`facts.map.file` 是 Bot 实际引用的 Map，`facts.map.definitions` 包含所选 Map／嵌套 Map／Bot 定义，`tasks`、`zoneBindings`、`directMaterials` 展示内部执行预设、位置和直接材料。`facts.prompt` 是完整、已组装的 manager 初始输入。预览不创建 Run 或 Chat；必须完整展示后取得本次原生批准。
+- 批准后提交仍只含 `{sessionId, previewId}`。重新检查所选定义闭包及提示词词典解析后的业务含义、manager、内部 Task／zone、材料绑定及材料当前字节；变化或失效返回 `409 delegation-preview-stale`，保留原因并要求重新预览确认，既不悄悄执行更新后的工作，也不重试启动。未关联的定义改动不要求重新确认。这个检查不冻结执行后的文件，之后的改动仍由实际执行者观察。
+- Map 提交复用既有 Run 发起协议，完成启动返回 `201` 的 Run detail（`id`、`run` 等），不是 Task 的 `202` Chat 轮询回执。通过 `GET /api/workflow/runs/{id}` 读取运行事实；启动失败保持既有 `500`、`startupError`／`readError` 和真实外部效果，不声称回滚。Run 记录初始化失败时不启动 manager。
+- 委派记录增加 `runId`，实际 manager 原生身份在业务输入投递前保存为 `sessionId`；`creation` 是最后可靠保存的启动结果，Run detail 保留具体阶段与投递结果。记录、Run manager 和原生 Chat 可互相核对，报告／恢复消费者使用真实 `sessionId` 查询关联。内部 node 不因此获得 chief 委派关联。
+
+该 Run 是根 Run，没有虚构的父 Run／node／execution；manager zone 不覆盖内部 node 各自的 zone。业务输入保持原文，材料作为命名 `fileInputs` 保存。发起成功不代表业务完成，不会替 manager 确认 `inputsReady`、派发内部节点、通过节点完成门禁或代替既有创建流程的阶段审批。恢复与后续报告仍使用原本的管理链；独立原生宿主／模型效果由对应跨仓验收证明。
+
 ### Task、Bot 与 Map 分组
 
 三类定义各自使用可选 `group` 字符串归类，没有独立 Group 文件或 ID。同类型对象的分组名称相同即属于同组；名称区分大小写，不允许空字符串或首尾空白。省略 `group` 或使用 `null` 表示未分组。新建对象默认未分组；分组不改变用途、引用、执行或权限，也不会随 Map 引用自动更新。
@@ -65,9 +121,13 @@ Bot 页面沿用公共导航样式，不覆盖外侧 Tab 的字号、选中标�
 
 在 scheduler 选中 Map 后点击“删除 Map”，在同一个弹窗中选择“删除历史”“保留历史”或“取消”。被任意 Bot 的 `map_file` 引用时，两种删除均拒绝并定位引用，不会自动解绑；Bot 定义损坏、不可读或越过链接安全边界时也拒绝，不能视为没有引用。没有 Bot 引用且检查完整时，“保留历史”可只删除 Map 定义；“删除历史”还会检查 Run 父子执行引用，任一方向（含旧 execution 或单向残留）仍有关联就拒绝并定位父 Run／node／execution／child Run，不级联删除或自动解绑。无此关联且检查可靠时，“删除历史”才同时删除 Map 定义和关联 Run 记录，不受 Run 状态或 Chat 在线状态限制，也不会停止 Chat 或删除对话与工作文件。保留的 Run 仍可在 workflow 查看。完整边界与失败处理见[删除 Map 与历史 Run](scheduler.md#删除-map-与历史-run)。
 
+Map 的空 `input_requirements` 与缺省值等价；节点编辑或删除不会为了空输入要求新增该字段，有内容时仍保留。输入声明编辑接口始终返回可编辑的输入要求文本。
+
 ### 节点报告策略的显示
 
 scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto` 为圆角矩形，`manual` 为四角切角矩形；图内不增加策略文字，选择节点后在详情查看 `report_policy: auto/manual`。Map JSON 的可选 `report_policy` 默认 `auto`。Run 中已有执行的节点使用该执行保存的策略，旧执行未保存策略时按 `auto` 显示；尚未派发的节点使用当前 Map 配置。编辑 Map 不会改变已有执行的策略。`manual` 调用 report 后在宿主原生确认界面展示完整待发送 payload，用户须明确批准该次 payload，自然语言同意不授权发送。拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无确认 UI 均不发送；等待用户重新请求，不自行重试。业务批准与管理者交接验收仍是独立要求，不增加后端审批状态或授权令牌。
+
+节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
 
 ### 完成后的 Tab 清理与诊断
 
@@ -257,11 +317,39 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 首次选择和每次切换 Task 都将 model、thinking 刷新为该 Task 的设置，之后仍可手动修改。选项及联动与新增 Task 共用：切换模型时保留兼容的思考级别，不兼容则重置为“沿用 Agent 默认值”并提示。未指定的参数沿用 Agent 默认值；agent 类型由 Task 决定。
 
-只切换 zone 不重置 model、thinking 或初始 input。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
+只切换 zone 不重置 model、thinking 或初始 input。重复选择当前 Task 或 zone 不会清除已有名称预览。发起时先校验已保存 Task 的选项，再校验本次覆盖值；损坏的预设须先修正，不能通过本次覆盖值绕过。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
+
+## chief bot 入口
+
+页头 `server` 左侧的 `chief bot` 按钮每次点击都读取后端当前 chief，不使用浏览器本地选择。有当前 chief 的原生身份时，经现有 Resume 路径定位或恢复该 Chat；仍在启动、结果不确定或查询失败时显示反馈，不另建 Chat。
+
+后端没有当前 chief 时，打开既有 Chat 发起窗口，只列出 chief 类型 Task。初始选择为 `chief-bot`、`default/bot-playground`，本次名称为 `chat with chief bot`；不因默认 Task 的命名规则被编辑而更改该入口的默认名称。可以改选 chief Task、已登记 zone、模型、思考级别及本次名称，修改仅用于本次启动，不保存 Task，也不为每次 Chat 复制 chief-bot 定义。Task 与 zone 的原有发起入口保持不变。
+
+默认 zone 未登记时，显示“请选择已登记 zone”，创建按钮保持禁用；必须手动选择有效登记，不自动选用唯一项，也不创建目录或绑定。Herdr Workspace、初始 input 与成功／失败反馈继续使用同一窗口。启动与其他浏览器竞争时以服务端接受／拒绝为准，不自动重试。
+
+交付选项目录为两宿主声明 `omp-chief-chat`／`pi-chief-chat` 固定入口，按 chief 执行角色装配；普通与 manager Task 不加载该角色。chief 未选 Suite 时也适用，公开发起及新进程恢复都从当前来源 Task 和选项目录取得环境；固定加载本身不授予当前 chief 权限。原生只读 `chief_definitions` 查询及角色指引是否实际消费，由跨仓入口专项分别验证，不由扩展清单或启动成功推断。
+
+默认 chief-bot 没有固定 prompt 或初始 Skill，可直接留空 input 发起。对任何 Task，最终初始指示为空时，agent 就绪后显示“创建成功，等待用户输入”，公开创建结果为 `inputSubmitted: false`；不向 Herdr 提交空消息、不补造用户指令。存在固定 prompt、Skill 或本次 input 时仍按原规则提交并确认，之后才显示初始指示已提交。
+
+## 当前 chief 的后端权威
+
+chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/resume` 定位或恢复；所有入口共享同一占位，不按浏览器、zone 或 Task 分区。占位先持久保存再调用 Herdr；chief 启动须在提交初始输入前确认真实原生身份并保存来源。普通会话的名称、客户端声明角色或同名 Task 不授予 chief 资格。
+
+- `GET /api/chief` 返回 `{current: null}` 或 `{current: {claimId, creationId?, sessionId?, phase}}`。`claimId` 是本次授权身份，不是密码；`creationId` 对应既有创建进度，`sessionId` 仅在原生身份已确认或用户明确恢复该历史 Chat 时出现。
+- `phase` 为 `starting`（新发起）、`resuming`（恢复占位）、`awaiting-registration`（身份已确认，等待登记）、`registered`（当前登记保留）或 `uncertain`（已尝试的外部效果未确认）。不能把无 `sessionId` 的占位或 `uncertain` 当作“没有 chief”再次发起。
+- `POST /api/chief/qualify` 接受 `{sessionId}`，只有当前 `registered` 身份返回 `{current: {...}}`；其余返回 `409 chief-not-current`。委派与报告接收消费者在实际授权点重新判断，不缓存先前的成功回执，不以工具存在或 Task 类型代替当前资格。
+- 已有 `POST /api/sessions/events` 的 register / unregister 与维护扫描共同维护资格。离线但仍保留的登记继续占位；超过在线与离线窗口并被扫描清除，或明确 unregister，才释放其授权。旧进程不被强制终止，迟到 register 不会恢复已撤销的 chief 身份；可由用户显式 Resume 重新竞争空位。
+- `POST /api/chief/release` 接受当前 `{claimId}`，明确注销该授权，返回 `{current:null, released:{...}}`；陈旧 claim 返回 `409 chief-not-current`。这也用于用户检查不确定的外部现场后明确解除尚未绑定的占位。不会终止进程、删除原生 Chat 或把不确定效果改称未发生；已解除的事实仍保存在权威记录中。
+
+冲突的发起／恢复／登记返回 `409 chief-occupied`，不排队或自动重试。明确的外部启动拒绝释放未绑定占位；超时、不可理解响应或无法观察外部命令结束保留占位与不确定事实。权威存储失败返回 `chief-storage-failed`，不当作空状态继续启动。
+
+权威记录位于 `sessions.history_file` 同目录、以 `chief.json` 替换其扩展名的独立文件（如 `history.json` → `history.chief.json`），使用既有原子持久化。后端重启仍按 ADR-0006 清空会话登记，原当前 chief 可重新登记竞争；已被其他 chief 取代的旧身份不会因重启复权。尚未完成登记的发起／恢复占位跨重启保留，避免把外部结果不明当作未创建。这里只约束后端认可的有效职责，不承诺唯一存活进程，也不迁移对话上下文。
 
 ## Task 类型与固定角色扩展
 
-在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）或流程管理者（`manager`）。两种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及 Suite 选择。普通 Task 既可从 zone 或 Task 列表独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行。
+在 task 入口新增或编辑 Task 时，第一步选择普通（`normal`，新建默认）、流程管理者（`manager`）或需求分流者（`chief`）。三种用途均可选择 omp 或 pi；切换用途不改变已选择的合法 agent、模型、思考级别及 Suite 选择。普通 Task 既可从 zone 或 Task 列表独立发起 Chat，也可经 node → Bot → Task 用于节点执行，无需复制成节点专用 Task。manager Task 仍专用于管理者配置，不能绑定给节点执行；chief 不可作为节点执行目标或 Run 管理者，角色不由名称推断。
+
+随仓 `meta-data/tasks.json` 提供唯一默认预设：稳定 ID 与初始名称均为 `chief-bot`，`taskType: "chief"`，Chat 名称规则为 `chat with chief bot`，默认 omp / GPT-6-luna / medium，不选择 Suite 或初始 Skill，固定 prompt 为空。通过既有 `GET /api/tasks`、`GET /api/tasks/{id}`、`POST /api/tasks` 和 `PUT /api/tasks/{id}` 管理，沿用当前模型、思考级别、Suite 与持久化校验。编辑名称不改变其 ID 或用途。该预设是可编辑的定义数据，不是在发起 Chat 时生成的新 Task；自定义或空的存储文件也不会被运行时隐式补入默认预设。定义保存成功不表示 chief 原生扩展、唯一会话权威或模型职责已验收。
 
 角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
 
@@ -277,7 +365,7 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 ### 数据格式要求
 
-Suite 专项离线迁移不会补齐更早的数据类型升级；请先使用当前 Task 类型格式。Task 必须显式包含 `taskType: "normal"` 或 `"manager"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
+Suite 专项离线迁移不会补齐更早的数据类型升级；请先使用当前 Task 类型格式。Task 必须显式包含 `taskType: "normal"`、`"manager"` 或 `"chief"`；不接受旧 `node` 类型，也不在运行时自动转换或补类型，缺少类型的 Task 文件会报 `tasks-corrupt`。
 
 使用自定义 `tasks.metadata_file` 时，扩展条目不应包含 `taskType` 适用配置；固定角色保留上述稳定角色 ID、对应 agent、`kind = 'fixed'` 及真实入口路径。节点执行身份与既有 Chat 的恢复语义不因 Task 分类而改变。
 

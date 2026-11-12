@@ -86,6 +86,11 @@ def main():
                 return value
         def action(session, name, status=200, **fields):
             return http('/api/workflow/manager/' + name, {'sessionId': session, **fields}, status)
+        def prepare_inputs(session):
+            prepared = action(session, 'prepare_inputs', fileInputs=[], confirmed=True,
+                              reason='Controlled lifecycle fixture text reviewed; no file inputs')
+            require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         def report(session, body):
             return http('/api/workflow/node/report', {'sessionId': session, 'body': body, 'canComplete': True})
         def records(name):
@@ -111,7 +116,9 @@ def main():
             http('/api/scheduler/maps/outer.json/nodes/save', {'id': identity, 'content': json.dumps(content), 'revision': draft['revision'], 'create': True})
         def start(session):
             native(session)
-            return http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'Owned lifecycle smoke'}, 201)['id']
+            started = http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'Owned lifecycle smoke'}, 201)
+            prepare_inputs(session)
+            return started['id']
         root_id = start('local-root')
         independent_id = start('local-independent')
         native('local-child')
@@ -126,6 +133,7 @@ def main():
         require(rejected['results'] == [{'nodeId': 'later', 'status': 'rejected', 'reasons': ['Run 状态为 paused']}], rejected)
         require(action('local-root', 'retry', status=409, nodeId='branch', confirmed=True, reason='Paused retry')['code'] == 'run-paused', 'Paused retry accepted')
         require(detail(root_id) == before and records('calls.jsonl') == calls, 'Paused rejection changed facts or host')
+        prepare_inputs('local-child')
         native('local-inside')
         require(action('local-child', 'dispatch', nodes=['inside'])['results'][0]['status'] == 'running', 'Child blocked by parent pause')
         report('local-inside', 'Inside completed while parent paused')
@@ -144,6 +152,7 @@ def main():
         failure_root = start('failure-root')
         native('failure-child')
         failed_child = action('failure-root', 'dispatch', nodes=['call'])['snapshot']['nodes']['call']['execution']['childRunId']
+        prepare_inputs('failure-child')
         before = detail(failure_root)
         native('failure-inside', fail_prompt=True)
         failed = action('failure-child', 'dispatch', nodes=['inside'])
@@ -168,6 +177,7 @@ def main():
         accepted.append(parent)
         until('parent initial-input gate', lambda: any(item['kind'] == 'agent_prompt' for item in records('calls.jsonl')[count:]), 10)
         concurrent_child = detail(concurrent_id)['run']['nodes']['call']['execution']['childRunId']
+        prepare_inputs('concurrent-child')
         native('concurrent-inside')
         require(action('concurrent-child', 'dispatch', nodes=['inside'])['results'][0]['status'] == 'running', 'Child operation waits for parent')
         native('concurrent-inside', prompt_gate={'match': 'INNER-SLOW', 'wait_for_file': str(gates[1]), 'timeout_ms': 30000})

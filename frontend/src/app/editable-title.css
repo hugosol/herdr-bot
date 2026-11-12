@@ -1,0 +1,22 @@
+.editable-title { min-width: 0; max-width: 100%; }
+.editable-title__row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.editable-title__row > :is(h2, h3) { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+:is(.tasks, .scheduler) .editable-title__pencil {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px;
+  width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0;
+  border: 0; border-radius: 0; background: transparent; color: var(--nier-muted); cursor: pointer;
+}
+:is(.tasks, .scheduler) .editable-title__pencil:hover:not(:disabled) { background: var(--nier-ink); color: var(--nier-ground); }
+:is(.tasks, .scheduler) .editable-title__pencil:focus-visible { outline: 2px solid var(--nier-info); outline-offset: 2px; }
+:is(.tasks, .scheduler) .editable-title__pencil:disabled { cursor: not-allowed; }
+:is(.tasks, .scheduler) input.editable-title__input {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; margin: 0; padding: 2px 4px;
+  border: 1px solid var(--nier-border); border-radius: 0; background: var(--nier-surface); color: var(--nier-ink);
+  font: inherit; letter-spacing: inherit;
+}
+.editable-title__row:has(input) > :is(h2, h3) { flex: 1; }
+.editable-title__error { margin: 4px 0 0; color: var(--nier-negative); font-size: 14px; font-weight: 400; }
+@media (max-width: 640px) {
+  :is(.tasks, .scheduler) .editable-title__pencil { flex-basis: 44px; width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  :is(.tasks, .scheduler) input.editable-title__input { min-height: 44px; font-size: 16px; }
+}

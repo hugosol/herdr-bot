@@ -54,7 +54,7 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
     let interface = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/inputs").await;
     assert_eq!(interface.status, 200, "{}", interface.body);
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let declared = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"source","required":true}],"revision":interface["revision"]}).to_string()).await;
+    let declared = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"source","required":true}],"input_requirements":"","revision":interface["revision"]}).to_string()).await;
     assert_eq!(declared.status, 200, "{}", declared.body);
     let child_declared = fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap();
     assert_ne!(child_declared, child_before);

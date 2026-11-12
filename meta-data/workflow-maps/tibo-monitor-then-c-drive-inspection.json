@@ -1,6 +1,7 @@
 {
   "title": "Tibo监测后排查C盘",
   "description": "先查询 Tibo 额度重置情况，待该节点完成后再只读排查 C 盘临时文件及 worktree 来源。不自动执行删除或清理。",
+  "input_requirements": "无需文件输入。",
   "nodes": {
     "c-drive-inspection": {
       "title": "C盘清理排查",

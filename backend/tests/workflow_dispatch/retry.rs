@@ -128,9 +128,9 @@ async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
         else { assert!(node["execution"]["chat"].is_null()); }
         assert_eq!(common::read_json_lines(&s.herdr.path().join("started.jsonl")).len(), 3);
         let events = common::read_json_lines(&root.join("history.jsonl"));
-        assert_eq!(events[2]["action"], "retry");
-        assert_eq!(events[2]["failure"], node["failure"]);
-        assert_eq!(events[2]["previousExecution"], old);
+        assert_eq!(events[3]["action"], "retry");
+        assert_eq!(events[3]["failure"], node["failure"]);
+        assert_eq!(events[3]["previousExecution"], old);
         assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap(), retried["snapshot"]);
         let calls = s.herdr.calls();
         assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), if stage == "submit" { 3 } else { 2 });
@@ -282,7 +282,7 @@ async fn uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled() {
     assert_eq!(retry["result"]["status"], "running");
     assert_ne!(retry["snapshot"]["nodes"]["A"]["execution"]["id"], original["id"]);
     assert_eq!(retry["snapshot"]["nodes"]["A"]["previousExecutions"][0]["execution"], reconciled["snapshot"]["nodes"]["A"]["execution"]);
-    assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[0]["failure"]["stage"], "identity");
+    assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[1]["failure"]["stage"], "identity");
 }
 
 // P14.02/P41.01: unavailable actual Workspace or definition zone cannot
@@ -306,7 +306,7 @@ async fn unavailable_retry_targets_fail_without_fallback_or_reusing_old_executio
         assert!(node["execution"]["chat"].is_null());
         assert_eq!(node["previousExecutions"][0]["execution"], old);
         assert_eq!(node["previousExecutions"][0]["failure"]["stage"], "execution");
-        assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[2]["execution"], node["execution"]);
+        assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[3]["execution"], node["execution"]);
         assert_eq!(s.herdr.tabs(), before_tabs);
         assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(), 2);
         let calls = s.herdr.calls();
@@ -361,11 +361,11 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     assert_eq!(retried["snapshot"]["nodes"]["A"]["status"], "running");
     assert!(retried["snapshot"]["nodes"]["A"]["failure"].is_null());
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 3);
-    assert_eq!(events[2]["action"], "retry");
-    assert_eq!(events[2]["reason"], "User checked old Chat and partial output; start independent work");
-    assert_eq!(events[2]["previousExecution"], old);
-    assert_eq!(events[2]["previousFailure"]["message"], "Original execution left partial output");
+    assert_eq!(events.len(), 4);
+    assert_eq!(events[3]["action"], "retry");
+    assert_eq!(events[3]["reason"], "User checked old Chat and partial output; start independent work");
+    assert_eq!(events[3]["previousExecution"], old);
+    assert_eq!(events[3]["previousFailure"]["message"], "Original execution left partial output");
     assert_eq!(s.herdr.tabs().len(), 3);
     assert_eq!(fs::read_to_string(artifact).unwrap(), "OLD SIDE EFFECT: retain exactly\n");
     let calls = s.herdr.calls();

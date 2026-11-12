@@ -45,7 +45,7 @@ impl Agent {
 /// Task 用途；历史存储必须显式迁移，不提供读取缺省值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum TaskType { Normal, Manager }
+pub enum TaskType { Normal, Manager, Chief }
 
 /// 一个已保存的 Task。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,7 +160,7 @@ impl TaskInput {
             .ok_or_else(|| TaskError::UnknownAgent(agent.to_string()))?;
 
         let task_type = match self.task_type.as_deref().unwrap_or("normal") {
-            "normal" => TaskType::Normal, "manager" => TaskType::Manager,
+            "normal" => TaskType::Normal, "manager" => TaskType::Manager, "chief" => TaskType::Chief,
             _ => return Err(TaskError::InvalidTaskType),
         };
 
@@ -267,7 +267,7 @@ impl TaskError {
                 "chat-name 必须是单行规则：固定文字与占位符不能包含换行。".to_string()
             }
             Self::AgentRequired => "请选择当前选项目录中的 agent。".to_string(),
-            Self::InvalidTaskType => "Task 类型必须为 normal 或 manager。".to_string(),
+            Self::InvalidTaskType => "Task 类型必须为 normal、manager 或 chief。".to_string(),
             Self::UnknownAgent(value) => {
                 format!("agent 不在当前选项目录中，收到：{value}。")
             }

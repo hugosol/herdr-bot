@@ -32,6 +32,137 @@
 
 Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。
 
+### 节点报告共享保存／通知回归
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
+
+`disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery` 使用真实 TCP 和受控外部 Herdr 门闩：通知阻塞预算 10 秒，进入预算 5 秒，已保存事实读取与同 Run 暂停分别须在 2 秒内完成；断开调用者后仍读回同一报告，释放通知后观察 300 毫秒无新增报告或通知。它只证明该有界开发回归，不替代 chief 报告或 OMP/Pi 原生确认的跨仓验收。后端共享代码完成检查仍为 `node scripts/test-backend.mjs`，使用本 worktree 构建的静态页面与独立绝对 `CARGO_TARGET_DIR`。
+
+## Chief 入口与单次设置浏览器回归
+
+`frontend/browser-tests/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次以空 input 合法发起／登记／注销，核对真实默认 chief 的空 prompt／无 Skill 可启动、公开结果 `inputSubmitted: false`、页面等待用户输入且外部无空消息或补造指令，以及当前 chief 定位目标和每次公开 Task 的身份、数量不变；不重复认领 07 的并发／时间阈值案例。`backend/tests/chat_creation.rs` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 通过公开 HTTP 分别覆盖 OMP/Pi 的普通空指示启动，已有非空正文和 Skill-only 用例继续约束真实提交。
+
+定向反馈：设置本 worktree 独立绝对 `CARGO_TARGET_DIR` 后运行 `npm --prefix frontend run test:browser:build -- chiefEntry.spec.ts --workers=1`。完成检查仍为不带过滤的 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser:build`。各用例独占 HOME／APPDATA／XDG／原生会话引用、定义、登记、动态回环服务及记录型 Herdr 副本；使用共享清理设施终止并确认所属进程结束后才删测试目录。启动预算 30 秒、页面断言预算 10 秒；不新增产品等待或重试策略，不承担无自动行为时间承诺。
+
+附件 `chief-entry-evidence` 记录源码、锁文件、当前 worktree 二进制与页面哈希、Chrome channel／实际版本、外部调用与诊断；专项另保留默认窗口／缺 zone 截图及公开定义／提交读回。Herdr 响应受控、原生文件是测试独占协议输入，没有实际模型请求，不证明真实 Herdr／OMP／Pi 消费或 GPT-6-luna 角色行为；这些仍由其具名跨仓验收拥有。不得把本专项通过外推为 S3 通过。
+
+## Chief 跨仓入口与生命周期专项
+
+`python scripts/accept-chief-entry.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 是 P7/P29/P30 的独立验收入口。从显式 Herdr worktree 根运行，所有路径须为绝对路径，证据目录必须不存在；Python 3.11+。使用本 worktree 构建的页面、生产后端及旁置 `herdr-paths`、`herdr-fixture`，独立绝对 `CARGO_TARGET_DIR`。两仓依赖按各自 frozen lock 安装，Bun 1.4.4。入口不安装宿主、不读用户认证、不回退模型、不重试业务决策。
+
+隔离 paths TOML 使用已有 Rust 路径解析器，声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`（后两项是具体官方扩展文件）、`chrome`（含 chrome.exe 的安装目录），以及交付固定扩展所需根。模型配置使用既有真实模型设施的 `provider/model/baseUrl/apiKeyEnv` JSON，model 严格为 `gpt-6-luna`，密钥仅来自显式授权的环境变量；返回 model 身份必须同为 `gpt-6-luna`。也可沿用下文 `NativeCompletionTransport` 与 `workflow-codex-completion.mjs`：仅在用户明确授权某个 auth 文件后，以已安装 Pi 原生 Codex provider 只读消费，不复制、刷新或修改认证文件；回环配置中的 apiKeyEnv 仅是独占传输标记。先独立烟测并检查真实 `serverModel`，再将真实决策送入本入口，由原生 OMP/Pi 执行工具；不证明两宿主直接使用 Codex provider 的 wire 合规性。adapter 通过 Node 的安装包解析定位该 Pi 声明的 pi-ai（含嵌套 npm 布局），使用 Node 22.19.0 或满足宿主要求的更新版本。缺授权、依赖或任一宿主证据均非零，不自动发现用户 auth store，不以受控响应替代真实模型。
+
+P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model-cost 存储配置（副本中禁用指向正常服务的 Codex proxy），经公开发起和新进程恢复，各自让真实模型查询新发布的独立字面 Bot.when。原生 SessionManager 历史、chief 工具输入/真实结果、模型请求中的角色指引和最终回答共同作为消费证据；恢复前持有 OS 进程句柄确认退出，恢复后要求不同 PID 及相同原生会话身份。没有 Suite，不把配置文件或 argv 当作已加载；角色消费断言检查解码后的实际模型消息中的角色与禁止亲自执行业务边界，不要求只存在于原生历史中的 message marker 被传给 provider。查询没有原生批准操作，因此不伪造确认；只读用户输入和 HTTP/原生历史保留在证据。
+
+`frontend/browser-tests/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
+
+定向反馈：`npm --prefix frontend run test:browser:build -- chiefEntryAcceptance.spec.ts --workers=1`；CLI 安全回归：设置 `CHIEF_ENTRY_TOOLKIT` 为参与 toolkit worktree 后运行 `python scripts/accept-chief-entry.test.py`。后者只证明缺依赖 fail-closed、拒绝相对路径及不覆盖旧证据，不证明业务通过。完整专项逐项记录原始错误/清理错误、源码与锁文件/安装身份、HTTP、配置阈值与实际观察；退出并确认所属进程结束后才清理。
+
+完成检查仍分别运行本仓 `npm --prefix frontend run build`、`cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell`、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`；toolkit 顺序运行 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和 `bun test tests/harness-dock/chief-role.test.ts`。配对 dock 的 `HERDR_BOT_BINARY` 必须是本次 `safe_shutdown_shell.exe`、`HERDR_BOT_METADATA` 为本次 worktree 元数据，不能以生产后端执行关机回归。全局回归、单宿主或 CLI fail-closed 通过均不代替双宿主专项成功。
+
+## Chief 权威的进程与失败回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_authority -- --nocapture` 经公开 HTTP、真实独占后端进程及生产 CLI adapter 验证 P32/P33。`p32_real_restart_serializes_live_registration_and_resume_before_external_completion` 正常发起两份不同 zone／Task 的 chief 历史、注销、实际终止并重启后端，在外部 Herdr 查询门闩处保持 Resume 未完成，让存活登记与另一恢复调用竞争，核对当前权威与 qualify 的胜负；再次实际重启验证被替代身份不能复权。附带 S2 开发回归以实际默认 10 秒在线／30 秒保留策略和受控时刻验证离线占位、扫描移除及消费者失权，不替代 07 的浏览器 P29/P30 或 20 的原生交接 P31 全验收。
+
+`p33_definite_start_failure_frees_slot_but_uncertain_external_start_survives_restart` 验证明确启动拒绝后能重试；受控 Herdr 已接受启动却返回 readiness timeout 时，保留 `uncertain`，实际重启后仍拒绝第二次外部启动；陈旧注销拒绝，明确解除当前 claim 返回原不确定事实并允许下一次合法发起。这些外部响应只证明协议与故障处理，不证明真实 Herdr／OMP／Pi 加载或 GPT-6-luna 的业务职责；本专项没有真实模型请求。
+
+每例独占原子临时目录、定义、历史、权威存储、HOME／APPDATA／XDG 和数值回环动态端口。后端 stdout 持续消费，stderr 落在该例独占目录；Drop 终止并 wait 所属后端，确认结束再删除临时目录，不接触正常服务或用户 Chat。进程启动预算 30 秒，创建完成 20 秒，外部查询进入 5 秒、门闩 10 秒、释放后 Resume 完成 15 秒；不新增产品等待／重试策略。本专项是 S2 进程与公开操作证据，不以受控 CLI 充当 S3 原生宿主证据。完成检查仍需本 worktree 独立绝对 `CARGO_TARGET_DIR`、本 worktree 构建静态页及 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另按入口要求运行 `npm --prefix frontend run test:browser:build`。
+
+## chief 独立 Task Chat 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture` 经过 S2 公开 HTTP、真实后端进程、独占临时 Bot／Task／zone／历史／委派存储及生产 Herdr CLI adapter，验证明确业务输入与材料地址、完整预览载荷、Task 目标／zone 改绑后的拒绝、旧 chief 失权、启动／投递失败和不确定反馈。外部 prompt 门闩在接受输入前读回真实 sender 关联；实际同 Task 的另一普通 Chat 不获关联；实际终止后端并启动新进程，再由公开 Resume 读回原关联且不重放业务输入。它不创建虚构 Run／node／execution。每个后端进程隔离 HOME／APPDATA／XDG，数值回环动态端口和 Herdr CLI 副本均独占；stdout 持续消费、stderr 保留日志，退出时终止并 wait 所属进程后才删除临时目录，清理失败不覆盖原失败。
+
+门闩仅控制测试拥有的外部 CLI，进入预算 5 秒、阻塞预算 10 秒，释放后创建完成预算 20 秒；生产沿用 Chat 就绪／身份获取预算，具体身份失败不新增命令重试。专项没有真实模型请求，受控 Herdr 只证明协议／故障及持久事实，不代替 12 的 OMP／Pi 原生批准、GPT-6-luna 路由或实际模型业务完成前返回的 S3 证据；报告资格完整负例与跨进程恢复分别由 14／19／20 维护。本票完成检查使用本 worktree 构建静态页面及独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
+## Chief Task 双宿主原生验收
+
+`python scripts/accept-chief-task.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 拥有 P8、P9(Task)、P10(Task)、P11、P13。Python 3.11+，从显式 Herdr worktree 根运行；路径均绝对、证据目录不存在。复用入口专项的 paths、实际模型配置、Cargo provenance 与 installed-host 检查；不安装宿主、不读用户 Chat、不发现凭据、不回退或重试业务决策。两仓 frozen 依赖须已存在，toolkit 的既有隔离 OMP 18.5.0 dock 安装也须已准备好。
+
+独占 Herdr 使用 `headless_cols=200`、`headless_rows=220`，使完整事实与 Yes/No 同时可见；这只改变测试拥有的虚拟终端尺寸，不改变产品 20 秒确认预算。终轮按原生 assistant `stopReason=stop` 观察，再独立断言业务行为，不把模型复述测试标记当作验收条件。含糊需求可由真实原生 Ask 表单或普通回答澄清：先保留实际目标／要求问题，再由用户 Esc 放弃尚未知晓字段的表单并转向另一需求；不代填未知业务信息，也不把等待表单误判为模型未响应。后续用户输入先以 10 秒预算观察 chief 原生 ready，再只提交一次并用 `prompt --wait --until working --until blocked --timeout 10000` 证明本次活动；Herdr 写入成功不是模型已接纳，stalled 不补发或补 Enter，失败前保留屏幕。一次方向键只发送一次，再以 5 秒观察预算等实际选项重绘，不把写入按键成功当作已选中；不延长产品确认时限。启动结果按句检查是否存在未经否定的业务完成声明，保留“不表示业务已完成”等正确边界表述。真实 GPT-6-luna 自行决定工具：独立字面 Bot.when 与名称误导候选区分按适用范围选择；含糊、无匹配、已知匹配三轮均保留原生历史及工具结果。先提出初稿，用户修正 zone 与内部审计/禁止发布要求，再经实际原生 UI 核对最终完整预览。拒绝、Esc 取消、真实 20 秒超时、批准期间 Bot 改目标及 zone 改绑分别观察没有委派/新 Tab；每次工具结束后的 61 秒窗口覆盖 20 秒确认＋30 秒 HTTP 预算、10 秒在线＋30 秒保留＋5 秒维护扫描。用户明确请求新操作后才再预览，不自动重试。批准案例核对单次 preview ID 提交、公开委派事实、原生独立 Chat/cwd/完整输入、真实 Task 来源及无新增 Run；执行者未收到 RELEASE，chief 已返回启动结果并处理下一输入。业务哨兵逐阶段保持不变。
+
+不可用确认复用 `tests/harness-dock/chief-delegation.test.ts` 的两个既有 Task headless case，明确标注为受控 provider 的原生协议证据，不重复认领模型职责；设置 `WORKFLOW_PROMPT_EVIDENCE_DIR` 保留原生输出和历史。CLI 安全检查：`CHIEF_TASK_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-task.test.py`，仅证明缺依赖/错误模型 fail-closed、绝对路径与旧证据保护，不算专项业务通过。
+
+明确授权某个 auth 文件时，可用现有 `scripts/accept-workflow-codex.py --scenario chief-task --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR" --node "$NODE" --bun "$BUN"`。它只读指定凭据，不刷新/复制/写入证据；实际返回 `serverModel` 必须为 `gpt-6-luna`。独立 `--smoke` 先核对身份。传输保留真实模型决策与原生工具，不证明宿主直接使用 Codex wire。
+
+完成检查仍分别顺序执行本仓 frontend build、当前 worktree 的 `herdr-bot`/`herdr-fixture`/`herdr-paths`/`safe_shutdown_shell` build、`node scripts/test-backend.mjs`、frontend test 和完整 `test:browser:build`；toolkit 使用 Bun 1.4.4 的 typecheck/test/check:integrations 及受影响 chief dock。配对 dock 的 `HERDR_BOT_BINARY` 必须指向本次安全壳，metadata 指向本 worktree。单宿主、清理失败、缺任何真实依赖或 coverage 项均非零且保持未验证。原始失败与进程退出确认独立保留，不以删除目录代替清理，也不沿用源码变更前的证据。
+
+## chief Map Run 委派回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation map_ -- --nocapture` 拥有 09 的 S2 Map 发起与来源关联开发回归，复用独占真实后端进程、HTTP 和生产 Herdr CLI adapter：
+
+- `map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zones` 读回实际根 Run／manager／委派关联及完整预览投递正文；不虚构父执行，不把启动当业务完成。
+- `map_confirmation_rejects_changed_map_manager_node_binding_and_material_meaning` 分别改变根／嵌套 Map、Bot、manager／node Task、仅内部 node 的 zone 绑定、命名／直接材料字节及材料删除；旧预览必须要求重新确认，且没有外部启动或 Run。
+- `map_sender_is_saved_before_input_and_internal_node_keeps_workflow_gates` 在外部 prompt 门闩处公开读回已保存的真实 manager 关联；显式准备输入后实际派发 node，独立观察 node cwd、原生身份、管理归属和未报告时的完成拒绝。内部 node 无 chief 委派关联。
+- `map_preview_requires_explicit_manager_and_all_required_named_materials` 拒绝缺 manager、错误用途、缺必需材料及未声明材料。
+- `map_startup_failure_retains_run_provenance_and_real_submission_outcome` 覆盖 Run 初始化失败（无 manager）、agent 启动失败、明确投递拒绝和投递结果不确定，公开读取真实阶段／外部效果及持久启动状态。
+
+专项沿用本文件上节的独占资源／进程退出规则；门闩进入预算 5 秒、外部阻塞预算 10 秒、创建完成预算 20 秒，后端启动预算 30 秒，没有新增产品等待或重试策略。外部 CLI 和原生文件是受控协议输入，没有模型请求；不能替代 13 的两宿主原生确认／GPT-6-luna／真实创建阶段审批、14 的报告资格或 19 的恢复验收。完成检查使用本 worktree 构建的静态页面及独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs` 和 `npm --prefix frontend run test:browser:build`。
+
+## Chief Map 与能力创建跨仓专项
+
+从显式 Herdr worktree 根运行 `python scripts/accept-chief-map.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。所有路径必须绝对，证据目录必须不存在。模型配置、只读授权 Codex adapter／`NativeCompletionTransport` 和返回身份要求沿用上文入口专项；只允许 GPT-6-luna，不自动发现认证或重试模型决策。后端旁置当前 worktree 的 `herdr-paths`，页面与后端均须由参与源码构建。
+
+`chief_map_native_acceptance.py` 独占 P9 的 Map 修正、P10 的 Map 原生确认、P12 的 manager／node 位置与内部管理关系、P14/P15 的完整创建能力选择与否决后授权、P16 的创建阶段批准和结果后无新业务。每个宿主／场景独占 Herdr、HOME／APPDATA／XDG、定义、存储、动态回环端口和原生会话；复用进程句柄退出确认与原始错误／清理错误分别保留。创建目标使用交付的完整 Task＋Bot／Map 创建定义，保留节点 Task 的真实 Suite／Skill／宿主和原有审批，只将物理位置、模型传输和存储移至独占根；原生 MCP 必须支持既有隔离 selectors，不能接入账户 daemon。
+
+测试独占部署还加载 `scripts/chief-ui-observer.mjs` 的副本：仅透传观察安装宿主公开 `ui.confirm` 的原始参数、原始返回／异常与真实 abort 时刻，不选择工具、不修改确认内容或结果、不代用户批准。每条观察原子发布；专项把实际原生消息内的完整 JSON 与 HTTP 预览及提交载荷分别比较，观察缺失不能通过。观察器按公开 UI 自有方法 descriptor 保留真实函数，避免 OMP scoped Proxy 的转发闭包递归；`node --test scripts/chief-ui-observer.test.mjs` 只证明透传机制，不代替原生验收。专项通过公开 `terminal session control --cols 2048 --rows 2000` 调整本例独占 terminal，让完整 Map 原生确认与 Yes/No 按钮可见，不裁剪实际载荷。原生键选择和真实历史仍独立保留。
+
+P15 的四种输入均先取得真实匹配复用建议，再分别仅否决、明确创建 Task、明确创建 Map、放弃；不能用本来没有复用候选的场景冒充否决边界。P16 分别保留实际阶段候选的拒绝／受阻返回，以及真实成功创建后无新业务的场景。成功案例只走所选既有创建流程需要的真实逐阶段正文／保存批准、独立原生报告批准和交接；核对实际新 Task＋完整 Bot 或多节点 Map，不追加创建产品的完整质量验收。创建观察预算为 `20 × --timeout` 秒（默认 3600 秒），与生产等待策略无关；拒绝／受阻不能冲抵成功创建后的授权边界。
+
+原生确认预算 20 秒、请求预算 30 秒；拒绝／取消／超时／陈旧批准及创建结果后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒维护上界。实际生产预算不改写为测试重试策略。`tests/harness-dock/chief-map-unavailable.test.ts` 是明确标注的受控 provider／peer、真实安装宿主无 UI 机械故障用例，不证明真实模型业务选择；其原生 2 秒预算使用真实进程时钟。其它业务场景须有 GPT-6-luna 返回身份、实际历史、完整工具／HTTP 及公开 Run 事实，不能用 dock 或全局套件结果冲抵。
+
+`CHIEF_MAP_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-map.test.py` 仅验证 CLI 的缺依赖／错误模型 fail-closed、拒绝相对路径与不覆盖旧证据。过滤单宿主不能通过整体双宿主覆盖。两仓仍分别完成票据要求的完整构建／后端／前端／浏览器及 Bun typecheck／test／check:integrations，配对 dock 必须使用本次安全关机壳与 worktree 元数据，不能用生产后端运行关机回归。
+
+## Chief 报告持久化与资格回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 通过 S2 HTTP 提交／列表／单份读取、真实独占后端进程和生产 Herdr CLI adapter 验证 P17／P21。报告夹具复用真实 Task Chat／Map Run 的公开委派入口；合法独立 Chat、直接 manager 与无关联身份、同 Task 另一实际 Chat、普通 node 和伪造归属／收件人参数作对比，不通过内部 helper 授权。外部 prompt 门闩进入后先从公开接口读取报告，确认保存先于通知；无 chief 与明确通知失败后均实际终止并重启后端，核对稳定 ID 和完整内容。真实只读 journal 制造保存失败，保存失败无外部通知；接受输入后返回无效回执的 CLI 验证 `uncertain`，不冒充未提交。
+
+所有定义、原生引用、报告 journal、HOME／APPDATA／XDG、动态数值回环端口及 Herdr 副本由当前用例独占。后端 stdout 持续消费、stderr 落在独占目录；Drop 终止并 wait 所属进程，确认退出后才删除临时目录，清理错误不覆盖原始错误。启动预算 30 秒，Chat 完成预算 20 秒，外部门闩进入 5 秒、阻塞 10 秒；实际生产在线 10 秒＋保留 30 秒、维护扫描 5 秒。失败后实际重启并重新登记 chief，再观察 46 秒（超过完整 45 秒维护上界），无新增通知或报告；该有界初始化回归不替代 19 的全部恢复／人工重发矩阵。受控 CLI 仅证明协议／故障，无真实模型请求，不认领 S3／GPT-6-luna 职责证据或 16／19 的独占验收。
+
+完成检查使用当前 worktree 构建的静态页面和独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另运行 `npm --prefix frontend run test:browser:build`。报告持久化仍在后端 `files` authority；chief 和 node 共享 `report_delivery` 的单次保存后通知，但各自持有身份、正文和收件策略。`submitted`／`failed`／`uncertain`／`not-attempted` 是通知事实，不是可靠接收、已呈现或用户验收。
+
+## Chief 持久接收与人工恢复回归
+
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation receipts:: -- --nocapture` 经批准的 S2 HTTP seam、实际独占后端进程及生产 Herdr CLI adapter 覆盖 17 的开发回归：并发 `receive` 只有一个 `process:true`、接收记录实际重启后读回；人工重发不改变报告 ID／正文、不另建报告，通知只到替换后的当前 chief；重复／并发重发已接收报告不再通知；丢失接收响应并在呈现前终止后端后不重播，当前 chief 可明确 `view` 原报告；只读接收 journal 的真实保存失败不授予处理；外部 inventory 门闩期间接收／撤销会使旧通知授权失效，而已进入外部输入提交的效果不被虚构撤回；独立执行者与直接 Map manager 实际 Resume 保留原报告／委派关联且没有新增 Run 或初始输入重放，同 Task 的另一真实 Chat 仍被拒绝。重复认领临时变异为 `process:true` 时并发用例必须在“两个处理胜者”断言失败，正确实现恢复后确认通过。
+
+每例复用本文件前述独占定义／历史／journal／HOME／APPDATA／XDG、数值回环动态端口、持续消费日志和终止后 wait 所属进程规则；不访问用户 Chat 或凭据。后端启动预算 30 秒、Chat 完成 20 秒、门闩进入／接收事实观察 5 秒、外部阻塞 10 秒、释放后操作完成 15 秒。接收后崩溃专项在实际后端重启／重新登记后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒扫描完整上界，核对没有新通知／业务报告；没有增加产品等待／重试策略。真实 TCP caller 只在公开 receipt 确认提交后丢弃未读取的响应，避免把尚未被 HTTP 接受的请求取消当成回执丢失。受控 CLI 仅证明传输、持久化、竞态和故障，不证明原生模型已呈现或用户已读；没有实际模型调用，不替代 19 的双宿主恢复矩阵或 20 的原生交接验收。
+
+完成检查仍使用本 worktree 构建的静态页面、独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另执行 `npm --prefix frontend run test:browser:build`。新增公开 API 的精确请求／响应和接收取舍见[使用说明](../usage.md#持久接收人工重发与查看)。
+
+## Chief 双宿主报告专项
+
+从参与的 Herdr worktree 运行 `python scripts/accept-chief-reports.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。全部依赖使用显式绝对路径；证据目录必须不存在。先 frozen-lock 安装两仓依赖，以独立绝对 `CARGO_TARGET_DIR` 构建当前页面、生产后端、`herdr-fixture`、`herdr-paths` 与 `safe_shutdown_shell`。Bun 为 1.4.4；已有 baseline 依赖可用 `OMP_BASELINE_RECORD_ROOT` 定位，Pi 可显式设置 `PI_CLI`／`PI_NODE`。入口不安装宿主、不发现用户认证、不回退模型或重试业务决策。经单独授权的只读 Codex 传输可复用 `accept-workflow-codex.py --scenario reports`，沿用其显式 `--auth-file` 安全边界；先 `--smoke` 核对实际 `serverModel=gpt-6-luna`，不得把回环传输称为两宿主直接 Codex wire 合规。
+
+P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 Map，真实双角色工具继续向父 manager 报告，内部报告继续向自己的 manager 报告。P20 引用并实际执行既有 `native-chief-report` 的双宿主批准／拒绝／取消／超时／不可用及完整预览用例。新增 `chief-report-backend-faults` 用真实隔离 journal 目的地目录造成保存失败、受控外部 Herdr 明确拒绝，以及代理在实际后端响应后断开 TCP，核对原生结果及公开不可变事实；不是伪造后端成功响应。P36 执行既有 node 原生确认与公开报告门禁，双宿主真实通知拒绝后保存不撤销，观察46秒不新增报告／通知。P37 执行现有集成声明和 import-boundary 检查，并保留源码／锁文件／产物／安装宿主身份；源码审查仍需确认后端 files/report_delivery 唯一持久权威、扩展 common 共享确认与请求，不新增接线快照测试。
+
+`chief_reports_native_acceptance.py` 的 P19/P28 使用真实 GPT-6-luna：独占子进程成功产物、退出7的部分产物、缺输入受阻及公开保存读回的能力定义作为独立业务证据，发送者实际读取并选择原生报告工具，驱动只提供用户输入／原生批准。批准期间替换为无原始对话的新 chief，逐字核对预览、实际请求、保存及读取事实；另对实际发送者进行新进程恢复后提交新的失败结果（不是重发原报告）。真实模型按预先固定的背景／执行对象、结果／限制、交付物／判断项、仅询问满足要求并等待、各类交付事实区分五项 rubric 评价真实呈现；背景与执行对象还必须提供实际 chief 答复中的非空逐字引文，驱动核对引文确实存在，不能引用原报告冒充已呈现；引文由评价器从原始 Markdown 字符串抽取，必须保持连续原文及其中格式符、标点和空白，不能以渲染后的去格式文本冒充逐字引文；程序仍逐字检查子串，不要求 chief 以引文格式回答。独立事实还保留实际产物读回；chief 准确转述权威报告即可，不要求重新执行业务或独立证明结果。缺项、虚构引文或混合结果失败，不重试。每种结果停轮后观察46秒，核对没有新增业务对话消息／工具、报告或 Chat；OMP 自身的标题／model-usage 元数据不是下一项业务。报告专项仅在独占 OMP `agent/config.yml` 中设置既有 `recap.enabled: false`，避免与报告无关的 idle recap 模型请求在清理时被进程退出取消；不改变业务确认、静默窗口或正常安装配置。窗口覆盖45秒隔离 Herdr／后端就绪观察、30秒原生启动／请求、20秒确认、10秒在线＋30秒保留＋5秒扫描预算，不以即时断言或新产品等待策略证明无自动工作。
+
+所有原生历史、确认、工具结果、HTTP、公开读回、模型请求及实际身份、配置预算、原始失败与清理失败均归本次独占证据。HOME／APPDATA／XDG、原生目录、定义、持久化、数值回环端口和 Herdr 实例隔离；退出并确认所属进程结束后才清理。受控用例仅证明机制／故障；缺任何宿主、真实模型、能力或清理证据均非零，不能把 CLI fail-closed 或全局回归当作专项通过。完成检查仍分别运行票据要求的两仓全局入口；配对 dock 必须指向本次安全壳，真实专项 `--backend` 指向生产后端。
+
+## Chief 双宿主人工恢复专项
+
+从参与的 Herdr worktree 根运行 `python scripts/accept-chief-recovery.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。路径必须绝对，证据目录必须不存在；依赖、页面、生产后端与 Cargo depfile 均核对参与 worktree。另以同一独立绝对 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell --example recovery_herdr_proxy`。后者是验收专用外部 CLI 记录／故障代理，正常时透传到显式安装的 Herdr，仅由独占标记文件制造通知明确拒绝；不进入产品或正常部署。
+
+`chief_recovery_native_acceptance.py` 独占 P23/P24/P25/P26/P27/P34/P35：分别观察通知失败、chief 创建／新进程恢复／重新登记、真实后端重启和时间流逝；真实 GPT-6-luna 在原发送方明确请求后选择原报告重发，完整原生预览、再次批准／拒绝和原 ID／正文逐项核对。故障代理只在实际后端提交之后持有／丢弃原响应，不伪造保存或接收成功；持久接收已可公开读回后、模型 admission 前终止所属原生进程。新 chief 不迁移旧上下文、不自动重播；用户明确查看才实际读取和呈现。重复／并发重发、丢失回执、更换 chief 和真实后端重启后核对原接收记录、最多一次处理授权及无新通知。独立 Chat 与直接 Map manager 分别新进程恢复原关联，恢复前后核对历史／模型请求，观察无初始输入重放、新委派或 Run；同 Task 的另一实际 Chat 恢复后仍无资格。改内容的原 ID 重发须拒绝，新内容的独立原生确认被拒绝时不保存／发送，旧记录保持原样。
+
+每个新 chief 先接收一次无业务内容的用户就绪请求，等待原生历史实际持久化后才开始生命周期观察；新会话仍不包含旧报告 ID、正文或原委派上下文。无自动行为观察通过公开历史枚举实际 Session，逐个以 `GET /api/chief/delegations?sessionId=...` 读取关联，同时比较 Chat 身份集合与 Run；不使用不存在的无身份全局委派列表。原生 OMP 的字符串 `i` 仅作为宿主 intent 元数据记录，重发业务参数仍严格只含原 `id`，实际 HTTP 另行严格核对；已终止进程的 unregister 允许明确 `404 unknown-session`（后端重启后的内存登记可已不存在），其它错误仍失败。原报告预览按完整 JSON 对象比较，不把键顺序当内容差异；恢复前后和静默窗口的无业务模型调用观察使用同一计数边界，仅排除安装 OMP 无工具的独立标题／标题卡请求（其系统指引分别以 `You name coding-agent sessions.`／`You head coding-agent session titles with a small card.` 开始）；带业务工具、普通系统指引或 Pi 请求仍全部计入，仍保存并检查所有请求的实际模型身份；正常终止所属原生进程前，以既有30秒请求预算等待已在途请求完成，避免测试自身取消独立标题请求，不重试或忽略失败，所有用户／assistant／tool 业务消息必须保持不变。每个无自动行为窗口实际观察46秒，覆盖45秒隔离服务启动、30秒原生启动／请求、20秒确认，以及10秒在线＋30秒离线保留＋5秒维护完整上界；这些是测试观察预算，不是产品等待／重试策略。所有原生历史、确认原始参数／决定、HTTP、外部 CLI 调用、真实模型返回身份、源码／锁文件／产物／安装宿主身份及原始错误／清理错误保留在本次独占证据。HOME／APPDATA／XDG、定义、存储、原生会话、数值回环端口和 Herdr 均独占；持有进程句柄确认结束后才交还资源，删除目录不能替代退出。
+
+模型配置沿用上文公开真实模型传输。用户单独授权的只读 Codex provider 可使用 `python scripts/accept-workflow-codex.py --scenario recovery --hosts omp,pi ... --auth-file "$AUTHORIZED_AUTH"`，先 `--smoke` 核对实际 `serverModel=gpt-6-luna`；不发现、复制、改写或自动刷新用户认证，不回退或重试业务决策。它是实际工具决策的传输适配，不是两宿主直接 Codex wire 合规证据。入口实际执行依赖拥有的四份原生协议 dock，但受控 provider／HTTP／Herdr 只证明机制，不能冲抵本专项真实模型及双宿主矩阵。单宿主诊断、缺任一依赖／能力／证据或清理失败均不能整体通过。
+
+可用两个独占证据目录分别运行 `--hosts omp` 与 `--hosts pi` 并行诊断；每次仍保持单宿主内的重启／接收因果顺序，单宿主入口退出非零且不能称整体通过。聚合必须核对两份宿主 `evidence.json` 全部七项 verified、各自 passed/cleanupErrors、实际模型身份与机械检查退出状态及同一源码／产物身份；不能仅看过滤后的进程退出码。`business-stderr.log` 按时间、host、阶段 started/completed 与已验证 coverage 实时 flush，最终 JSON 仍独立输出；宿主根证据记录准确失败。外部 CLI 记录在 `external-cli/calls/*.json` 以独占临时文件写完后 rename 发布，避免并发进程交错 JSONL 或读到半条记录。
+
+CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-recovery.test.py`、`python scripts/chief_recovery_faults.test.py`；前者只证明 fail-closed／绝对路径／不覆盖旧证据，后者只证明原响应提交后的门闩和丢失行为。另设置 `CHIEF_RECOVERY_PROXY` 为本次 `recovery_herdr_proxy.exe`、`HERDR_FIXTURE` 为本次 `herdr-fixture.exe`，运行 `python scripts/chief_recovery_cli.test.py`，检查初始业务输入逐字透传、只拒绝 chief 报告通知、解除显式故障后原通知逐字透传。完成仍分别运行两仓要求的完整构建、后端／前端／浏览器及 Bun 1.4.4 typecheck／test／check:integrations；配对 dock 只使用本次安全关机壳与本次元数据，生产 `--backend` 不替代安全壳执行关机回归。全局套件不替代专项。
+## Chief 存活旧进程与交接专项
+
+从参与的 Herdr worktree 根运行 `python scripts/accept-chief-authority.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。显式绝对路径、独占新证据目录、当前源码构建产物及隔离 roots 的要求与入口专项相同。模型严格使用 GPT-6-luna 并核对实际返回身份；授权只读 Codex provider 可沿用 `accept-workflow-codex.py --scenario authority`（先单独 `--smoke`），不发现用户凭据、不刷新认证、不回退或重试业务决策。
+
+`chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
+
+旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run；只读 Map 夹具显式使用 `report_policy: manual`，允许 manager 按正常流程管理节点并保留阶段审批，但不自动向 chief 报告；不把“禁止全部节点执行”与执行 Map 的有效请求混用。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
+
+静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-authority.test.py` 的CLI安全检查不算P31通过。
+
+两仓完成检查仍分别执行票据要求的完整 frontend build、当前后端/fixture/paths/安全壳构建、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`，以及Bun 1.4.4的 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和受影响 `native-chief-receipt-backend`／`native-chief-reception` dock。独立绝对 `CARGO_TARGET_DIR`；dock 的 `HERDR_BOT_BINARY` 只能指向本次 `safe_shutdown_shell.exe`、元数据指向参与源码，真实专项则使用生产后端。完整回归或受控dock仅证明其实际范围，不替代双宿主真实模型专项。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。
@@ -41,6 +172,10 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - 浏览器调度见 [playwright.config.ts](../../frontend/playwright.config.ts)。文件内并行场景保持每个用例独占服务、可变存储和 Herdr 副本；浏览器由 Playwright 按 worker 复用。
 - 资源受限或诊断并发问题时，给浏览器入口追加 `-- --workers=1`；Vitest 可追加 `-- --maxWorkers=4` 等覆盖参数。
 - 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
+- scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存／删除检查保留标题、说明、节点集合与公开读回／落盘一致性，不固定空 `input_requirements` 是否序列化；最后节点删除须单独断言节点集合为空。前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
+- Chat 预览应在重新选择同一 Task 时保留已生成身份；模型／思考级别失败夹具须使实际提交的单次选择失效，不能仅损坏已被合法覆盖的 Task 默认值。当前／历史 Chat 的切换同时保留可见状态与不同背景的浏览器断言。
+- 工作流状态浏览器夹具若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点报告策略回归分别核对自动报告与原生逐次确认，不恢复已移除的自然语言同意替代门禁。
+- 常驻但隐藏的 Run 列表不读取 Map 分组目录；仅在列表可见时刷新，保留筛选状态。全局前端回归中的关机／恢复用例同时约束默认 Chat 页不发出这类无关读取；应用品牌保留可访问标题语义。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。
 - `@time-contract` 标记真实预算、确认超时、迟到结果及无自主刷新／重试／重放的观察窗口，不按文件名或断言 timeout 分类。新增真实时间承诺时同步审查标签。
 - OMP 历史身份超时验收检查创建关联、agent 类型及 `identity-timeout` 类别，并验证创建成功、页面不泄露内部诊断、身份恢复后不重读／补写历史及初始化仅提交一次；诊断原因的自然语言措辞不作为契约。
@@ -54,8 +189,10 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
 - **并发历史持久化诊断**：跨来源并发 register 验收的 `historySaved` 断言保留完整回执及所属后端 diagnostics，区分事件接受与历史保存失败；后续通过不能抹去先前失败，也不能据此宣称已修复无法定位的间歇故障。`crossSourceConcurrency.spec.ts` 的独立客户端并发登记与进程重启同时回归原子替换期间的文件 scope 身份：协调资格取得前的 canonicalize 观察可能已过期，必须在持有资格后重核，不能把旧临时文件身份当作最终文件的授权边界。
 - **Git 超时夹具**：`zone_sync` 的派生进程终止场景使用 5 秒命令预算和 30 秒阻塞的 pre-push hook（父 shell 等待唯一后台子任务，避免两个 sleep 同时自然退出与 taskkill 竞争；超时后观察 31 秒确认无迟到 marker），给 Windows 本地 fetch／pull 留出正常执行时间；仍须核对 push 超时、已完成 pull 不回滚、派生进程终止及后续同步恢复，不能将更早的 fetch 超时视为该场景通过。
+- **Windows 进程身份**：结束后的 PID 可能被系统复用，不能以迟到的 `tasklist` 命中证明原进程仍存活。`next_operation_after_finish` 的连续启动回归先在测试独占夹具门闩中取得原进程句柄，再释放门闩，收到 ended 响应后直接核对该句柄已 signaled；不移除进程结束断言。
 - **Windows 清理**：`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
 - **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
+- **Map 文件接口**：创建 Bot／修订指南的发布回归固定核对 `input_files` 的数量、顺序、ID 与 required，不以整个对象相等禁止合法的材料 `description`；实际保存仍传递完整声明，保留文件预检行为断言。
 - **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
@@ -230,7 +367,7 @@ python scripts/accept-workflow-nesting-files.py `
 
 `python scripts/test-workflow-file-handoff.py --scenario roles` 是独立的跨仓入口，加载指定 toolkit worktree 的实际角色源码及当前 herdr-bot worktree 构建的后端。它不使用确定响应服务替代真实业务模型，也不修改用户部署。当前真实模型链路仅支持 Windows / Herdr / **Pi** 和 OpenAI-compatible chat-completions 服务；结果不外推为 OMP 真实模型通过。参数保真、严格 report 校验和真实后端落盘另由入口内调用的 `tests/harness-dock/node-report-contract.test.ts` 同时覆盖 OMP/Pi；该 dock 使用受控 provider/Herdr，不能充当模型职责遵从证据。
 
-先在两个参与源码根安装/构建依赖：toolkit 使用 Bun 1.4.4 与 `bun install --frozen-lockfile`；herdr-bot 执行 `npm --prefix frontend ci`、`npm --prefix frontend run build` 生成本 worktree 的 `backend/static`（全后端进程检查必需）；后端使用独立的 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot`。临时 toolkit worktree 的 frozen baseline 依赖定位可显式设置 `OMP_BASELINE_RECORD_ROOT` 为原 toolkit 根，不能因此替换实际被测源码。按 toolkit 的测试规范协调重型运行窗口。
+先在两个参与源码根安装/构建依赖：toolkit 使用 Bun 1.4.4 与 `bun install --frozen-lockfile`；herdr-bot 执行 `bun install --cwd=frontend --frozen-lockfile`、`npm --prefix frontend run build` 生成本 worktree 的 `backend/static`（全后端进程检查必需）；后端使用独立的 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot`。临时 toolkit worktree 的 frozen baseline 依赖定位可显式设置 `OMP_BASELINE_RECORD_ROOT` 为原 toolkit 根，不能因此替换实际被测源码。按 toolkit 的测试规范协调重型运行窗口。
 
 提供**专用验收配置** `isolated-paths.toml`，不得指向用户业务、现有 Session 或用户 agent 配置。路径根仍经 `herdr-paths` 解析；例如：
 

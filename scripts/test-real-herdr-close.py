@@ -272,6 +272,10 @@ class Acceptance:
         started = self.http('/api/scheduler/maps/close.json/runs',
                             {'managerTaskId': ids['manager'], 'zone': 'acceptance/close', 'userInput': 'Acknowledge only.'}, 201)
         manager = started['run']['manager']['sessionId']
+        prepared = self.http('/api/workflow/manager/prepare_inputs', {'sessionId': manager, 'fileInputs': [],
+                             'confirmed': True, 'reason': 'Controlled close fixture text reviewed; no file inputs'})
+        require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
         dispatched = self.http('/api/workflow/manager/dispatch', {'sessionId': manager, 'nodes': ['A']})
         node = dispatched['snapshot']['nodes']['A']
         require(node['status'] == 'running', node)

@@ -45,8 +45,7 @@
 .scheduler-workspace .scheduler-map-actions > .entity-group-button { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scheduler-workspace .scheduler-map-actions > .scheduler-map-delete { color: var(--nier-negative); }
 .scheduler-workspace .scheduler-map-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-.scheduler-map-rename { grid-column: 2; grid-row: 1; align-self: start; }
-.scheduler-map-association, .scheduler-map-title-editor { grid-column: 1 / -1; min-width: 0; }
+.scheduler-map-association { grid-column: 1 / -1; min-width: 0; }
 .scheduler-map-description { min-width: 0; margin: 0; }
 .scheduler-map-heading > .scheduler-badge { align-self: start; justify-self: end; }
 .scheduler-workspace .scheduler-map-heading > .scheduler-badge { white-space: nowrap; }
@@ -163,7 +162,6 @@
   .scheduler-workspace .scheduler-map-actions { padding: 12px 16px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .scheduler-workspace .scheduler-map-actions > button { min-width: 0; max-width: none; min-height: 44px; }
   .scheduler-workspace .scheduler-map-actions > .entity-group-button { grid-column: 1 / -1; max-width: none; text-align: left; }
-  .scheduler-workspace .scheduler-map-rename { max-width: 7rem; padding-inline: 8px; }
   .scheduler-workspace .scheduler-map-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .scheduler-workspace .scheduler-filter :is(input, select) { font-size: 16px; }
   .scheduler-workspace .scheduler-map-list { max-height: none; }

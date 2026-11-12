@@ -9,11 +9,16 @@ function creationTime(entry: RunEntry): number | null {
   return typeof value === 'number' && Number.isFinite(value) && !Number.isNaN(new Date(value).getTime()) ? value : null
 }
 
-export function RunList({ entries, error = null, onOpen }: { entries: RunEntry[] | null; error?: string | null; onOpen?: () => void }) {
+export function RunList({ entries, active = true, error = null, onOpen }: { entries: RunEntry[] | null; active?: boolean; error?: string | null; onOpen?: () => void }) {
   const groupRevision = useGroupRefresh()
   const [catalog, setCatalog] = useState<MapCatalog | null>(null)
   const [groupError, setGroupError] = useState<string | null>(null)
-  useEffect(() => { let cancelled = false; void listMaps().then(value => { if (!cancelled) { setCatalog(value); setGroupError(null) } }, error => { if (!cancelled) setGroupError(error instanceof Error ? error.message : 'Map 分组读取失败。') }); return () => { cancelled = true } }, [groupRevision])
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    void listMaps().then(value => { if (!cancelled) { setCatalog(value); setGroupError(null) } }, error => { if (!cancelled) setGroupError(error instanceof Error ? error.message : 'Map 分组读取失败。') })
+    return () => { cancelled = true }
+  }, [active, groupRevision])
   const [search, setSearch] = useState('')
   const [map, setMap] = useState('')
   const [status, setStatus] = useState('')

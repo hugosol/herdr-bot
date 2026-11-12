@@ -92,9 +92,43 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     (data, herdr, config, server, zone, ids)
 }
 
-// S2, nesting P08: the interface owns IDs, not a global registry. A duplicate
-// save must reject before publication; independent literal declarations and a
-// second Map distinguish local uniqueness from accidental global uniqueness.
+// Chief P3 / S2: normal remains the node target, manager the Run target.
+// A broad "not normal means manager" (or "not manager means normal") check
+// would accept chief. Observe rejection at both public preflight and start;
+// the controlled Herdr boundary must never be called for these invalid roles.
+#[tokio::test]
+async fn chief_is_neither_a_node_target_nor_a_run_manager() {
+    let (_data, herdr, _config, server, zone, ids) = fixture().await;
+    let input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Explicit role separation"});
+    let valid = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/preflight", &input.to_string()).await;
+    assert_eq!(valid.status, 200, "normal node and manager must remain valid: {}", valid.body);
+    for (index, original, invalid, target) in [
+        (0, "manager", "normal", "manager"),
+        (0, "manager", "chief", "manager"),
+        (1, "normal", "manager", "task"),
+        (1, "normal", "chief", "task"),
+    ] {
+        let route = format!("/api/tasks/{}", ids[index]);
+        let mut task = json!({"name":"chief-bot", "taskType":invalid, "agent":"omp",
+            "chatName":"{chat.id}", "model":"default", "thinking":"default", "skill":null,"prompt":""});
+        let changed = common::request_json_over_tcp(server.addr(), "PUT", &route, Some(&task.to_string())).await;
+        assert_eq!(changed.status, 200, "{}", changed.body);
+        for action in ["preflight", "runs"] {
+            let rejected = post_json_over_tcp(server.addr(), &format!("/api/scheduler/maps/work.json/{action}"), &input.to_string()).await;
+            assert_eq!(rejected.status, 400, "{target} {invalid}: {}", rejected.body);
+            let body: Value = serde_json::from_str(&rejected.body).unwrap();
+            assert!(body["issues"].as_array().unwrap().iter().any(|issue| issue["code"] == "task-role-invalid" && issue["target"] == target && issue["taskId"] == ids[index]), "{body}");
+        }
+        task["taskType"] = json!(original);
+        let restored = common::request_json_over_tcp(server.addr(), "PUT", &route, Some(&task.to_string())).await;
+        assert_eq!(restored.status, 200, "{}", restored.body);
+    }
+    assert!(herdr.calls().is_empty());
+}
+
+// S2, nesting P08: descriptions roundtrip literally and empty descriptions stay
+// omitted. Invalid descriptions and duplicate IDs reject before publication;
+// a second Map distinguishes local uniqueness from global uniqueness.
 #[tokio::test]
 async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let (_data, herdr, config, server, _zone, _ids) = fixture().await;
@@ -102,14 +136,36 @@ async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let draft = get_over_tcp(server.addr(), route).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
-    let declarations = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
-    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":declarations,"revision":draft["revision"]}).to_string()).await;
+    let original: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body).unwrap();
+    let declarations = json!([{"id":"brief","required":true,"description":"Invoice **source** <plain text>\nKeep the original date."},{"id":"appendix","required":false}]);
+    let mut submitted = declarations.clone();
+    submitted[1]["description"] = json!("");
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":submitted,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
+    assert_eq!(read.status, 200, "{}", read.body);
     let map: Value = serde_json::from_str(&read.body).unwrap();
-    assert_eq!(map["input_files"], declarations);
-    let draft: Value = serde_json::from_str(&get_over_tcp(server.addr(), route).await.body).unwrap();
-    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"revision":draft["revision"]}).to_string()).await;
+    let mut expected = original;
+    expected["input_files"] = declarations.clone();
+    expected["input_requirements"] = json!("Review the invoice date and obtain explicit scope approval.");
+    assert_eq!(map, expected);
+    assert_eq!(serde_json::from_str::<Value>(&saved.body).unwrap(), expected);
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(config.scheduler.map_directory.join("work.json")).unwrap()).unwrap(), expected);
+    let edited = get_over_tcp(server.addr(), route).await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    let draft: Value = serde_json::from_str(&edited.body).unwrap();
+    assert_eq!(draft["input_files"], declarations);
+    assert_eq!(draft["input_requirements"], expected["input_requirements"]);
+    let persisted = fs::read(config.scheduler.map_directory.join("work.json")).unwrap();
+    for description in [Value::Null, json!(42), json!(true), json!([]), json!({})] {
+        let mut invalid = declarations.clone();
+        invalid[0]["description"] = description.clone();
+        let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":invalid,"input_requirements":"Must not replace general requirements.","revision":draft["revision"]}).to_string()).await;
+        assert_eq!(rejected.status, 422, "description {description}: {}", rejected.body);
+        assert_eq!(fs::read(config.scheduler.map_directory.join("work.json")).unwrap(), persisted);
+        assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
+    }
+    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("brief"));
     assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
@@ -153,11 +209,12 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
         assert_eq!(detail.status, 200, "{}", detail.body);
         let detail: Value = serde_json::from_str(&detail.body).unwrap();
         assert_eq!(detail["run"]["fileInputs"], bindings);
+        assert_eq!(detail["run"]["inputsReady"], false, "readable startup bindings are not semantic confirmation, including after reload");
         assert_eq!(detail["run"]["userInput"], business);
     }
 }
 
-// S2, nesting P11: missing required and undeclared IDs must be rejected by
+// S2, nesting P11: duplicate and undeclared IDs must be rejected by
 // both public entries before any external effect or Run allocation. Business
 // text containing an ID/path must not fill a missing binding.
 #[tokio::test]
@@ -170,7 +227,6 @@ async fn invalid_root_input_ids_reject_preflight_and_start_without_host_effects(
     let file = data.path().join("brief.txt");
     fs::write(&file, "material").unwrap();
     for (bindings, code, input_id) in [
-        (json!([]), "run-input-required", "brief"),
         (json!([{"id":"brief","path":file},{"id":"alien","path":file}]), "run-input-undeclared", "alien"),
         (json!([{"id":"brief","path":file},{"id":"brief","path":file}]), "run-input-duplicate", "brief"),
     ] {
@@ -382,6 +438,8 @@ async fn missing_canonical_omp_files_commit_manager_and_node_identity_before_ins
     assert_eq!(status.status, 200, "{}", status.body);
     assert_eq!(serde_json::from_str::<Value>(&status.body).unwrap()["snapshot"]["id"], committed["id"]);
 
+    let prepared = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":"01a18564-c4a1-700b-81b2-4ffb35f043ed","fileInputs":[],"confirmed":true,"reason":"Reviewed fixture inputs before native identity checks"}).to_string()).await;
+    assert_eq!(prepared.status, 200, "{}", prepared.body);
     let node_release = data.path().join("missing-native-node-prompt-release");
     herdr.set_behavior(json!({
         "native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":node_file},
@@ -433,6 +491,8 @@ async fn missing_pi_node_file_still_submits_initial_instructions_after_associati
         &json!({"managerTaskId":ids[0],"zone":zone,"userInput":""}).to_string()).await;
     assert_eq!(started.status, 201, "{}", started.body);
     let run: Value = serde_json::from_str(&started.body).unwrap();
+    let prepared = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":"pi-manager","fileInputs":[],"confirmed":true,"reason":"Reviewed fixture inputs before native identity checks"}).to_string()).await;
+    assert_eq!(prepared.status, 200, "{}", prepared.body);
     let file = data.path().join("2026-10-29T06-31-42-214Z_01a1865b-7185-74a2-af0e-9d7eb972c0ee.jsonl");
     let release = data.path().join("pi-node-input-release");
     herdr.set_behavior(json!({

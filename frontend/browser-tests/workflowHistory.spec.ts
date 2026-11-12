@@ -144,6 +144,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   }
   native('real-dispatch-manager')
   const { id } = await post('/api/scheduler/maps/resume.json/runs', { managerTaskId: managerTask.id, zone, userInput: 'RUN INPUT ONLY' }, 201)
+  await post('/api/workflow/manager/prepare_inputs', { sessionId: 'real-dispatch-manager', fileInputs: [], confirmed: true, reason: 'Reviewed history fixture inputs' })
   const sessionFile = native('real-dispatch-node')
   expect((await post('/api/workflow/manager/dispatch', { sessionId: 'real-dispatch-manager', nodes: ['A'] })).results[0].status).toBe('running')
   const initialCalls = host.herdrCalls()

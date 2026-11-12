@@ -45,11 +45,22 @@ pub(crate) async fn post_resume(State(state): State<AppState>, Json(request): Js
         return crate::rejected_owned(StatusCode::CONFLICT, "resume-in-progress",
             "同一 Chat 已有 Resume 正在执行；本次请求未执行，也不会排队。请等待完成后由用户重新发起。".into());
     };
+    let chief_claim = match crate::chief::is_chief(&state,&selected).await {
+        Ok(true) => match state.chief.reserve_resume(&selected.session_id) {
+            Ok(claim) => Some(claim), Err(error) => return error.response(),
+        },
+        Ok(false) => None,
+        Err(error) => return error,
+    };
     // The accepted operation owns its permit, not the HTTP connection. Dropping
     // the request detaches this task rather than releasing a still-active Resume.
     match tokio::spawn(async move {
         let _permit = permit;
-        resume_selected(&state, &selected).await
+        let response = resume_selected(&state, &selected).await;
+        if let Some(claim) = chief_claim {
+            if let Err(error) = state.chief.resume_finished(&claim,response.status().is_success()) { return error.response(); }
+        }
+        response
     }).await {
         Ok(response) => response,
         Err(_) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "resume-result-unavailable",
@@ -99,10 +110,16 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         Ok(workspace) => workspace,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
     };
+    if let Err(error) = state.chief.restoring_effect(&selected.session_id,false) { return error.response(); }
     let tab = match state.herdr.create_tab(&workspace.id, cwd.as_deref(), selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
         Ok(tab) => tab,
         Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
-        Err(error) => return restore_failure(feedback, label, "tab", error.code(), &error.message(), None),
+        Err(error) => {
+            if matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)) {
+                if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return error.response(); }
+            }
+            return restore_failure(feedback, label, "tab", error.code(), &error.message(), None);
+        }
     };
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
     let name = crate::chats::new_agent_name();
@@ -110,6 +127,9 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
     if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
         if matches!(error, HerdrError::Timeout(_)) {
             return startup_unconfirmed(feedback, label, "start", &error.message(), json!(target), Some(&name));
+        }
+        if matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)) {
+            if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return error.response(); }
         }
         return restore_failure(feedback, label, "start", error.code(), &error.message(), Some(&target));
     }
@@ -176,9 +196,14 @@ mod degradation {
             }
             let suite_args = state.tasks.prepare_environment(&task).map_err(|error| (error.code(), error.message()))?;
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
-                .map_err(|message| ("execution-association-invalid", message))?
-                .unwrap_or_else(|| task.task_type.into());
+            let role = match state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
+                .map_err(|message| ("execution-association-invalid", message))? {
+                Some(role) => role,
+                None => state.delegations.sender(&selected.session_id)
+                    .map_err(|error| ("chief-delegation-storage", error.to_string()))?
+                    .filter(|record| record.run_id.is_none())
+                    .map_or_else(|| task.task_type.into(), |_| crate::tasks::catalog::ExecutionRole::ChiefDelegated),
+            };
             let mut env = self.environment(&catalog, agent, role);
             env.suite_args = suite_args;
             Ok(crate::chats::agent_launch_args(&env, None))
@@ -187,13 +212,16 @@ mod degradation {
         pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole) -> crate::tasks::catalog::ResolvedEnvConfig {
             use crate::tasks::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
             let role_names: &[&str] = match role {
-                ExecutionRole::Standalone => &[],
+                ExecutionRole::Standalone | ExecutionRole::Chief => &[],
                 ExecutionRole::Manager => &["manager"],
                 ExecutionRole::Node => &["node"],
                 ExecutionRole::NestedManager => &["manager", "node"],
+                ExecutionRole::ChiefDelegated => &["chief-report"],
             };
             for role_name in role_names {
-                let id = format!("{}-{role_name}-chat", agent.label());
+                let id = if *role_name == "chief-report" {
+                    format!("{}-chief-report", agent.label())
+                } else { format!("{}-{role_name}-chat", agent.label()) };
                 if !catalog.extensions.iter().any(|extension| extension.id == id) {
                     self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
                 }
@@ -289,6 +317,10 @@ fn startup_unconfirmed(feedback: &degradation::Feedback, label: &str, stage: &st
 fn restore_failure(feedback: &degradation::Feedback, label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::chats::herdr::NavigationTarget>) -> Response {
     feedback.response(StatusCode::BAD_GATEWAY, json!({"outcome":"failed","stage":stage,"code":code,"target":target,
         "message":format!("{label} 恢复在 {stage} 阶段失败：{message} 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。") }))
+}
+
+pub(crate) fn settings_failure(kind:Option<&str>,error:&crate::tasks::TaskError) -> Response {
+    restore_failure(&degradation::Feedback::default(),if kind==Some("omp") {"OMP"} else {"Pi"},"settings",error.code(),&error.message(),None)
 }
 
 fn failure(stage: &str, error: &HerdrError) -> Response {

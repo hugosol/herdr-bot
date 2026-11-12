@@ -38,6 +38,7 @@ async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
     expected["name"] = json!("历史 Run");
     expected["zoneBindings"] = json!({});
     expected["fileInputs"] = json!([]); // Absent historical root inputs have no bindings.
+    expected["inputsReady"] = json!(false);
     assert_eq!(renamed["run"], expected);
     assert_eq!(renamed["managed"], false);
     assert_eq!(renamed["reports"], json!([]));
@@ -225,11 +226,11 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     assert_eq!(detail["pendingReports"], json!({}));
     assert_eq!(action(&s, "collect", json!({}), 200).await["reason"], "notification");
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.iter().map(|event| event["action"].as_str().unwrap()).collect::<Vec<_>>(), vec!["dispatch", "fail", "recover", "fail", "retry", "complete"]);
-    assert_eq!(events[1]["reason"], "First failure: missing dependency");
-    assert_eq!(events[2]["reason"], "User repaired dependency; continue original Chat");
-    assert_eq!(events[4]["previousExecution"], old);
-    assert_eq!(events[5]["reason"], "User verified NEW results/A.md; old cleanup is not handed off");
+    assert_eq!(events.iter().map(|event| event["action"].as_str().unwrap()).collect::<Vec<_>>(), vec!["prepare_inputs", "dispatch", "fail", "recover", "fail", "retry", "complete"]);
+    assert_eq!(events[2]["reason"], "First failure: missing dependency");
+    assert_eq!(events[3]["reason"], "User repaired dependency; continue original Chat");
+    assert_eq!(events[5]["previousExecution"], old);
+    assert_eq!(events[6]["reason"], "User verified NEW results/A.md; old cleanup is not handed off");
     assert_eq!(common::read_json_lines(&root.join("messages.jsonl")), reports);
     assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
     let mut names = fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>();
@@ -325,7 +326,7 @@ async fn history_failure_reports_committed_completion_and_allows_next_action() {
     assert_eq!(paused["changed"], true);
     assert_eq!(paused["snapshot"]["status"], "paused");
     let events = common::read_json_lines(&path);
-    assert_eq!(events.iter().map(|event| event["action"].as_str().unwrap()).collect::<Vec<_>>(), vec!["dispatch", "pause"]);
+    assert_eq!(events.iter().map(|event| event["action"].as_str().unwrap()).collect::<Vec<_>>(), vec!["prepare_inputs", "dispatch", "pause"]);
     println!("P44.01 completion={completed} query={queried} repeated={repeated} next={paused} history={events:?}");
 }
 
@@ -338,6 +339,7 @@ async fn batch_history_failure_explains_each_committed_target_without_stopping_b
     let started = s.start("records-manager").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("history.jsonl");
+    let baseline_history = fs::read(&path).unwrap();
     let original = fs::metadata(&path).unwrap().permissions();
     let mut readonly = original.clone();
     readonly.set_readonly(true);
@@ -365,7 +367,7 @@ async fn batch_history_failure_explains_each_committed_target_without_stopping_b
     assert_eq!(batch["results"][1]["status"], "running");
     assert_eq!(failed["result"]["status"], "failed");
     assert_eq!(failed["snapshot"]["nodes"]["A"]["failure"]["stage"], "start");
-    assert_eq!(fs::read(&path).unwrap(), b"");
+    assert_eq!(fs::read(&path).unwrap(), baseline_history);
     let queried = action(&s, "status", json!({}), 200).await;
     assert_eq!(queried["snapshot"], failed["snapshot"]);
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap(), failed["snapshot"]);

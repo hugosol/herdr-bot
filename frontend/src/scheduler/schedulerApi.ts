@@ -9,7 +9,7 @@ export type Bot = {
   map_file?: string
 }
 
-export type MapFileInput = { id: string; required: boolean }
+export type MapFileInput = { id: string; required: boolean; description?: string }
 export type RunFileInput = { id: string; path: string }
 export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
@@ -115,12 +115,13 @@ function isOutputRule(value: unknown): value is OutputRule[] {
 
 function isMapFileInputs(value: unknown): value is MapFileInput[] {
   return Array.isArray(value) && new Set(value.map(input => input?.id)).size === value.length && value.every(input =>
-    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && Object.keys(input).every(key => ['id', 'required'].includes(key)))
+    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && (!('description' in input) || typeof input.description === 'string') && Object.keys(input).every(key => ['id', 'required', 'description'].includes(key)))
 }
 
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && (!('group' in value) || value.group == null || (typeof value.group === 'string' && value.group.length > 0 && value.group.trim() === value.group)) && 'title' in value && typeof value.title === 'string' &&
     (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
+    (!('input_requirements' in value) || typeof value.input_requirements === 'string') &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
     Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && typeof node.zone === 'string' && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
@@ -198,15 +199,16 @@ export async function deleteNode(file: string, target: { id: string; revision: B
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/delete`, target, isMap, 'node 删除') as WorkflowMap
 }
 
-export async function loadMapInputs(file: string): Promise<{ input_files: MapFileInput[]; revision: BotRevision }> {
+export async function loadMapInputs(file: string): Promise<{ input_requirements: string; input_files: MapFileInput[]; revision: BotRevision }> {
   const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`)
   const value = await response.json()
   if (!response.ok) throw new Error(value.message ?? `Map 输入声明读取失败：HTTP ${response.status}`)
-  if (!isMapFileInputs(value.input_files) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 输入声明响应无效。')
+  if (typeof value.input_requirements !== 'string' || !isMapFileInputs(value.input_files) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 输入声明响应无效。')
   return value
 }
 
-export async function saveMapInputs(file: string, draft: { input_files: unknown; revision: BotRevision }): Promise<WorkflowMap> {
+export async function saveMapInputs(file: string, draft: { input_requirements: string; input_files: unknown; revision: BotRevision }): Promise<WorkflowMap> {
+  if (typeof draft.input_requirements !== 'string') throw new Error('Map 输入要求必须是 Markdown 文本。')
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 输入声明保存') as WorkflowMap
 }
 
@@ -226,6 +228,7 @@ export type WorkflowMap = {
   group?: string | null
   title: string
   description: string
+  input_requirements?: string
   input_files?: MapFileInput[]
   nodes: Record<string, MapNode>
 }

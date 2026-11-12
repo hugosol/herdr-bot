@@ -37,6 +37,9 @@
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
 pub mod chats;
+mod chief;
+mod chief_delegation;
+mod chief_reports;
 pub mod clock;
 pub mod config;
 pub mod paths;
@@ -45,6 +48,7 @@ pub mod operations;
 pub mod sessions;
 pub mod scheduler;
 pub mod runs;
+mod report_delivery;
 pub mod files;
 pub mod prompts;
 pub mod shutdown;
@@ -121,6 +125,9 @@ pub struct AppState {
     pub sessions: Arc<sessions::SessionsState>,
     /// 持久历史目录，与当前会话登记和临时关机意图独立。
     pub history: Arc<history::History>,
+    pub(crate) chief: Arc<chief::Authority>,
+    pub(crate) delegations: Arc<chief_delegation::Delegations>,
+    pub(crate) chief_reports: Arc<chief_reports::Reports>,
     /// 后端权威的关机倒计时：手动开始意图建立安排，到期由后端自己调用 [`PowerOff`]。
     ///
     /// 与执行资格完全解耦：既有脚本操作在执行，关机安排照样能被建立，也不执行“停止”脚本。
@@ -230,6 +237,8 @@ pub fn app_with_state(
         config.git.status_cache_ttl_seconds.duration(),
     ));
     let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
+    let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
+    sessions.attach_chief(Arc::clone(&chief));
     let state = AppState {
         start_operation: ScriptOperation::new(
             config.operations.start.script.clone(),
@@ -241,6 +250,9 @@ pub fn app_with_state(
         ),
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
+        chief,
+        delegations: Arc::new(chief_delegation::Delegations::new(config.sessions.history_file.with_extension("delegations.json"))),
+        chief_reports: Arc::new(chief_reports::Reports::new(config.sessions.history_file.with_extension("chief-reports.jsonl"))),
         sessions,
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
@@ -313,6 +325,7 @@ pub fn app_with_state(
         .route("/api/workflow/runs", get(runs::list_runs))
         .route("/api/workflow/runs/{id}", get(runs::get_run).patch(runs::rename_run))
         .route("/api/workflow/manager/status", post(runs::manager_status))
+        .route("/api/workflow/manager/prepare_inputs", post(runs::manager_prepare_inputs))
         .route("/api/workflow/manager/collect", post(runs::manager_collect))
         .route("/api/workflow/manager/dispatch", post(runs::manager_dispatch))
         .route("/api/workflow/manager/complete", post(runs::manager_complete))
@@ -352,6 +365,18 @@ pub fn app_with_state(
         )
         // 从已登记 zone 创建 Chat：预览只生成名称与实例标识；创建请求返回后端拥有的生命周期，
         // 之后由页面轮询同一次创建。请求只选择默认目标或按 zone 目录名匹配，不能指定任意名称。
+        .route("/api/chief", get(chief::get_current))
+        .route("/api/chief/qualify", post(chief::qualify))
+        .route("/api/chief/release", post(chief::release))
+        .route("/api/chief/delegations/preview", post(chief_delegation::preview))
+        .route("/api/chief/delegations", get(chief_delegation::list).post(chief_delegation::commit))
+        .route("/api/chief/delegations/{id}", get(chief_delegation::get))
+        .route("/api/chief/reports", get(chief_reports::list).post(chief_reports::submit))
+        .route("/api/chief/reports/{id}", get(chief_reports::get))
+        .route("/api/chief/reports/{id}/receipt", get(chief_reports::receipt))
+        .route("/api/chief/reports/{id}/receive", post(chief_reports::receive))
+        .route("/api/chief/reports/{id}/resend", post(chief_reports::resend))
+        .route("/api/chief/reports/{id}/view", post(chief_reports::view))
         .route("/api/chats/resume", post(resume::post_resume))
         .route("/api/chats/preview", post(preview_chat))
         .route("/api/chats", post(create_chat))
@@ -1190,18 +1215,21 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         }
     }
 
+    let catalog = match state.tasks.catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+    };
+    if let Err(error) = catalog.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref()) {
+        return task_error_with_context(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。");
+    }
     if let Some(model) = input.model {
         task.trigger.model = model;
     }
     if let Some(thinking) = input.thinking {
         task.trigger.thinking = thinking;
     }
-    // Resolve through Task validation before preparing any launch resources.
-    let mut preset = match state
-        .tasks
-        .catalog()
-        .and_then(|catalog| catalog.resolve(&task))
-    {
+    // Validate both the saved preset and this launch's explicit overrides.
+    let mut preset = match catalog.resolve(&task) {
         Ok(preset) => preset,
         Err(error) => {
             return task_error_with_context(
@@ -1222,6 +1250,10 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
         );
     }
     let creation_id = chats::new_creation_id();
+    let chief = (task.task_type == tasks::TaskType::Chief).then(|| Arc::clone(&state.chief));
+    if let Some(chief) = &chief {
+        if let Err(error) = chief.reserve_creation(&creation_id) { return error.response(); }
+    }
     let view = chats::ChatCreationView::starting(creation_id, name, zone.clone(), task.id.clone());
     let job = state.chat_creations.insert(view.clone()).await;
     let herdr = Arc::clone(&state.herdr);
@@ -1232,12 +1264,14 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             herdr,
             history,
             prompts,
-            job,
+            Arc::clone(&job),
             task,
             preset,
             zone,
             input.input,
             workspace_name,
+            chief.map(|chief|(chief,Arc::clone(&state.sessions))),
+            None,
         )
         .await;
     });

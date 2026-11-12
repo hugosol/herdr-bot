@@ -37,13 +37,31 @@ function renameRequests(patch: (id: string, name: string) => Promise<Response>) 
   return fetcher
 }
 
+describe('Run input preparation', () => {
+  it.each([true, false, undefined])('shows saved readiness honestly: %s', async inputsReady => {
+    const detail = savedDetail('prepared-run')
+    detail.run!.inputsReady = inputsReady
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/workflow/runs') return new Response(JSON.stringify({ pollIntervalSeconds: 86400, runs: [detail] }))
+      if (url === '/api/workflow/runs/prepared-run') return new Response(JSON.stringify(detail))
+      if (url.startsWith('/api/scheduler/maps/')) return new Response(JSON.stringify({ title: 'Map title', description: '', nodes: {} }))
+      return new Response(JSON.stringify({ message: 'Unavailable' }), { status: 500 })
+    }))
+    render(<RunDetails id="prepared-run" active />)
+    const preparation = await screen.findByRole('region', { name: '输入准备状态' })
+    expect(preparation).toHaveTextContent(inputsReady === true ? '管理者已确认输入就绪' : inputsReady === false ? '输入尚未确认就绪' : '此历史记录未保存输入准备状态')
+  })
+})
+
 describe('Run rename', () => {
   it('cancels without a write, rejects blank names and retains a failed draft before saving a trimmed duplicate name', async () => {
     const patch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Disk unavailable' }), { status: 500 }))
       .mockImplementation(async (id: string, name: string) => new Response(JSON.stringify(savedDetail(id, name))))
     renameRequests(patch)
     const { rerender } = render(<RunDetails id="first" active />)
-    await screen.findByRole('heading', { level: 1, name: 'Map title' })
+    await screen.findByRole('button', { name: '重命名' })
     fireEvent.click(screen.getByRole('button', { name: '重命名' }))
     expect(screen.getByRole('textbox', { name: 'name' })).toHaveValue('Map title')
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Discard me' } })
@@ -59,7 +77,7 @@ describe('Run rename', () => {
     expect(await screen.findByText('Disk unavailable')).toHaveAttribute('role', 'alert')
     expect(screen.getByRole('textbox')).toHaveValue('  Second name  ')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await screen.findByRole('heading', { level: 1, name: 'Second name' })
+    await screen.findByRole('heading', { name: 'Second name' })
     expect(patch).toHaveBeenLastCalledWith('first', 'Second name')
     rerender(<RunDetails id={null} active />)
     await screen.findByRole('link', { name: /Second name.*first/ })
@@ -77,11 +95,11 @@ describe('Run rename', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(patch).toHaveBeenCalledOnce())
     rerender(<RunDetails id="second" active />)
-    await screen.findByRole('heading', { level: 1, name: 'Second name' })
+    await screen.findByRole('heading', { name: 'Second name' })
     fireEvent.click(screen.getByRole('button', { name: '重命名' }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Second draft' } })
     await act(async () => { resolve(new Response(JSON.stringify(savedDetail('first', 'Late first name')))) })
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Second name')
+    expect(screen.getByRole('heading', { name: 'Second name' })).toHaveTextContent('Second name')
     expect(screen.getByRole('textbox')).toHaveValue('Second draft')
   })
 })

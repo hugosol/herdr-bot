@@ -54,6 +54,8 @@ mod revise_bot_guides;
 mod outer_create;
 #[path = "workflow_dispatch/input_resolution.rs"]
 mod input_resolution;
+#[path = "workflow_dispatch/input_preparation.rs"]
+mod input_preparation;
 #[path = "workflow_dispatch/file_consumption.rs"]
 mod file_consumption;
 #[path = "workflow_dispatch/report_outputs.rs"]
@@ -84,6 +86,7 @@ struct Scenario {
     app: axum::Router,
     zone: String,
     manager_task: String,
+    prepared_fixtures: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
 impl Scenario {
     async fn new() -> Self {
@@ -136,15 +139,35 @@ impl Scenario {
             "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
             "C":{"title":"Worker C","bot_id":"worker","input":"C-INPUT","zone":"node","blocked_by":["A","B"],"output_rule":[{"id":"summary"}]}
         }}).to_string()).unwrap();
-        Self { data, herdr, config, server, app, zone, manager_task:ids.remove(0) }
+        Self { data, herdr, config, server, app, zone, manager_task:ids.remove(0), prepared_fixtures: std::sync::Mutex::new(std::collections::BTreeSet::new()) }
     }
     async fn start(&self, identity: &str) -> Value {
         self.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":identity},"native_cwd":self.data.path()}));
         let response = post_json_over_tcp(self.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":self.manager_task,"zone":self.zone,"userInput":"MANAGER-USER-SECRET"}).to_string()).await;
         assert_eq!(response.status, 201, "{}", response.body);
-        serde_json::from_str(&response.body).unwrap()
+        let mut started: Value = serde_json::from_str(&response.body).unwrap();
+        started["run"] = self.prepare_fixture(identity).await.expect("new fixture run is not prepared yet");
+        started
+    }
+    // Unrelated dispatch scenarios attest the fixture's actual bindings through
+    // the same public API as managers, including independently prepared children.
+    async fn prepare_fixture(&self, identity: &str) -> Option<Value> {
+        if self.prepared_fixtures.lock().unwrap().contains(identity) { return None; }
+        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":identity}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let status: Value = serde_json::from_str(&response.body).unwrap();
+        if status["snapshot"]["inputsReady"] == true {
+            self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());
+            return Some(status["snapshot"].clone());
+        }
+        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":identity,"fileInputs":status["snapshot"]["fileInputs"],"confirmed":true,"reason":"Fixture bindings reviewed against this scenario's requirements"}).to_string()).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let snapshot = serde_json::from_str::<Value>(&response.body).unwrap()["snapshot"].clone();
+        self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());
+        Some(snapshot)
     }
     async fn dispatch(&self, identity: &str, nodes: &[&str]) -> Value {
+        let _ = self.prepare_fixture(identity).await;
         let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/dispatch", &json!({"sessionId":identity,"nodes":nodes}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         serde_json::from_str(&response.body).unwrap()
@@ -254,9 +277,10 @@ async fn serialized_batch_finishes_before_pause_without_blocking_other_run_or_ch
     assert_eq!(during_b["snapshot"]["nodes"]["B"]["status"], "pending");
     assert_eq!(during_b["snapshot"]["nodes"]["B"]["execution"]["chat"]["sessionId"], "batch-node-B");
     let before_b = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(before_b.len(), 1);
-    assert_eq!(before_b[0]["action"], "dispatch");
-    assert_eq!(before_b[0]["nodeId"], "A");
+    assert_eq!(before_b.len(), 2);
+    assert_eq!(before_b[0]["action"], "prepare_inputs");
+    assert_eq!(before_b[1]["action"], "dispatch");
+    assert_eq!(before_b[1]["nodeId"], "A");
     fs::write(&release_b, b"release").unwrap();
     let batch = tokio::time::timeout(Duration::from_secs(5), batch.response()).await.unwrap();
     assert_eq!(batch.status, 200, "{}", batch.body);
@@ -273,7 +297,7 @@ async fn serialized_batch_finishes_before_pause_without_blocking_other_run_or_ch
     assert_eq!(paused["snapshot"]["nodes"], batch["snapshot"]["nodes"], "pause must recheck and preserve both newly committed executions");
     assert_eq!(paused["ready"], json!([]));
     let history = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(history.iter().map(|e| (e["action"].as_str().unwrap(), e["nodeId"].as_str())).collect::<Vec<_>>(), vec![("dispatch", Some("A")), ("dispatch", Some("B")), ("pause", None)]);
+    assert_eq!(history.iter().map(|e| (e["action"].as_str().unwrap(), e["nodeId"].as_str())).collect::<Vec<_>>(), vec![("prepare_inputs", None), ("dispatch", Some("A")), ("dispatch", Some("B")), ("pause", None)]);
     let disk: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
     assert_eq!(disk, paused["snapshot"]);
     let calls = s.herdr.calls();
@@ -551,13 +575,13 @@ async fn pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_f
     let first = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 2);
-    assert_eq!(events[1]["action"], "pause");
-    assert_eq!(events[1]["before"], "running");
-    assert_eq!(events[1]["after"], "paused");
-    assert_eq!(events[1]["actor"], started["run"]["manager"]);
-    assert!(events[1]["id"].as_str().is_some_and(|id| !id.is_empty()));
-    assert!(events[1]["at"].as_u64().is_some());
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[2]["action"], "pause");
+    assert_eq!(events[2]["before"], "running");
+    assert_eq!(events[2]["after"], "paused");
+    assert_eq!(events[2]["actor"], started["run"]["manager"]);
+    assert!(events[2]["id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert!(events[2]["at"].as_u64().is_some());
     let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/pause", &json!({"sessionId":"manager-pause"}).to_string()).await;
     assert_eq!(repeated.status, 200, "{}", repeated.body);
     let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
@@ -612,13 +636,13 @@ async fn resume_restores_only_eligibility_until_explicit_dispatch_and_preserves_
     let first = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 2);
-    assert_eq!(events[1]["action"], "resume");
-    assert_eq!(events[1]["before"], "paused");
-    assert_eq!(events[1]["after"], "running");
-    assert_eq!(events[1]["actor"], started["run"]["manager"]);
-    assert!(events[1]["id"].as_str().is_some_and(|id| !id.is_empty()));
-    assert!(events[1]["at"].as_u64().is_some());
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[2]["action"], "resume");
+    assert_eq!(events[2]["before"], "paused");
+    assert_eq!(events[2]["after"], "running");
+    assert_eq!(events[2]["actor"], started["run"]["manager"]);
+    assert!(events[2]["id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert!(events[2]["at"].as_u64().is_some());
     let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/resume", &body).await;
     assert_eq!(repeated.status, 200, "{}", repeated.body);
     let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
@@ -683,10 +707,10 @@ async fn paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_a
     let first = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 8);
-    assert_eq!(events[7]["action"], "finish");
-    assert_eq!(events[7]["before"], "paused");
-    assert_eq!(events[7]["after"], "completed");
+    assert_eq!(events.len(), 9);
+    assert_eq!(events[8]["action"], "finish");
+    assert_eq!(events[8]["before"], "paused");
+    assert_eq!(events[8]["after"], "completed");
     for action in ["pause", "resume"] {
         let response = post_json_over_tcp(s.server.addr(), &format!("/api/workflow/manager/{action}"), &body).await;
         assert_eq!(response.status, 409, "{}", response.body);
@@ -758,7 +782,9 @@ async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_fir
     let pending = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"not started"}).to_string()).await;
     assert_eq!(pending.status, 409, "{}", pending.body);
     assert_eq!(fs::read(root.join("run.json")).unwrap(), initial);
-    assert!(common::read_json_lines(&root.join("history.jsonl")).is_empty());
+    let events = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["action"], "prepare_inputs");
     assert_eq!(s.herdr.calls(), initial_calls);
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-complete-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-complete", &["A"]).await;
@@ -777,11 +803,11 @@ async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_fir
     let first = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 2);
-    assert_eq!(events[1]["action"], "complete");
-    assert_eq!(events[1]["before"], "running");
-    assert_eq!(events[1]["after"], "completed");
-    assert_eq!(events[1]["actor"], started["run"]["manager"]);
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[2]["action"], "complete");
+    assert_eq!(events[2]["before"], "running");
+    assert_eq!(events[2]["after"], "completed");
+    assert_eq!(events[2]["actor"], started["run"]["manager"]);
     let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"MUST NOT OVERWRITE"}).to_string()).await;
     assert_eq!(repeated.status, 200, "{}", repeated.body);
     let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
@@ -810,7 +836,9 @@ async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let unfinished = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
     assert_eq!(unfinished.status, 409, "{}", unfinished.body);
-    assert!(common::read_json_lines(&root.join("history.jsonl")).is_empty());
+    let events = common::read_json_lines(&root.join("history.jsonl"));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["action"], "prepare_inputs");
     for node in ["A", "B", "C"] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-finish-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         let dispatched = s.dispatch("manager-finish", &[node]).await;
@@ -838,10 +866,10 @@ async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
     let first = fs::read(root.join("run.json")).unwrap();
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let events = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(events.len(), 7);
-    assert_eq!(events[6]["action"], "finish");
-    assert_eq!(events[6]["before"], "running");
-    assert_eq!(events[6]["after"], "completed");
+    assert_eq!(events.len(), 8);
+    assert_eq!(events[7]["action"], "finish");
+    assert_eq!(events[7]["before"], "running");
+    assert_eq!(events[7]["after"], "completed");
     let repeated = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
     assert_eq!(repeated.status, 200, "{}", repeated.body);
     let repeated: Value = serde_json::from_str(&repeated.body).unwrap();
@@ -1095,6 +1123,53 @@ async fn delayed_failed_notification_preserves_saved_report_and_pending_handoff(
     println!("P26.01/P68.02 external calls after 300ms: {}", json!(calls));
 }
 
+// Chief ticket 01, approved S2: after the external gate observes notification,
+// the literal report must already be readable. A file/operation lock spanning
+// delivery would block the read/pause; disconnect rollback would remove it.
+// Only the external Herdr process is controlled, never report persistence.
+#[tokio::test]
+async fn disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery() {
+    use tokio::io::AsyncWriteExt;
+    let s = Scenario::new().await;
+    let started = s.start("disconnect-report-manager").await;
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"disconnect-report-node"},"native_cwd":s.data.path().join("node-zone")}));
+    s.dispatch("disconnect-report-manager", &["A"]).await;
+    let release = s.data.path().join("disconnect-report-release");
+    struct Release(std::path::PathBuf);
+    impl Drop for Release {
+        fn drop(&mut self) { fs::write(&self.0, b"release").expect("release owned prompt gate"); }
+    }
+    let gate = Release(release.clone());
+    s.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let body = json!({"sessionId":"disconnect-report-node","body":"Saved despite disconnected caller","canComplete":false,"outputs":[{"id":"result","path":"C:\\disconnect\\result.txt"}]}).to_string();
+    let mut caller = tokio::net::TcpStream::connect(s.server.addr()).await.unwrap();
+    caller.write_all(format!("POST /api/workflow/node/report HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", s.server.addr(), body.len()).as_bytes()).await.unwrap();
+    common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count() == 3).await;
+    drop(caller);
+    let route = format!("/api/workflow/runs/{}", started["id"].as_str().unwrap());
+    let response = tokio::time::timeout(Duration::from_secs(2), get_over_tcp(s.server.addr(), &route)).await.expect("notification must not hold file coordination");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let saved: Value = serde_json::from_str(&response.body).unwrap();
+    let report = &saved["reports"][0];
+    assert_eq!(saved["reports"].as_array().unwrap().len(), 1);
+    assert_eq!(report["body"], "Saved despite disconnected caller");
+    assert_eq!(report["outputs"], json!([{"id":"result","path":"C:\\disconnect\\result.txt"}]));
+    assert_eq!(report["to"], started["run"]["manager"]);
+    assert_eq!(saved["pendingReports"], json!({"A":report["id"]}));
+    let paused = tokio::time::timeout(Duration::from_secs(2), post_json_over_tcp(s.server.addr(), "/api/workflow/manager/pause", r#"{"sessionId":"disconnect-report-manager"}"#)).await.expect("notification must not hold Run operation lock");
+    assert_eq!(paused.status, 200, "{}", paused.body);
+    drop(gate);
+    // This is a bounded development regression, not P23/P36 cross-host proof.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let response = get_over_tcp(s.server.addr(), &route).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let after: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(after["reports"], saved["reports"]);
+    assert_eq!(after["pendingReports"], saved["pendingReports"]);
+    assert_eq!(after["run"]["nodes"]["A"]["status"], "running");
+    assert_eq!(s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count(), 3);
+}
+
 // P24.01: neither a manager/unknown session nor forged ownership fields may
 // produce a report or manager input. Business declarations are not ownership;
 // sessionId belongs to the trusted public Session transport adapter.
@@ -1245,11 +1320,12 @@ async fn mixed_batch_preserves_failures_success_and_other_run_without_automatic_
     assert_eq!(disk["nodes"]["A"]["failure"],batch["results"][1]["failure"]);
     assert!(disk["nodes"]["A"]["failure"]["message"].as_str().unwrap().contains("受控夹具拒绝启动"));
     let history = common::read_json_lines(&root.join("history.jsonl"));
-    assert_eq!(history.len(),2);
-    assert_eq!(history[0]["nodeId"],"A");
-    assert_eq!(history[0]["status"],"failed");
-    assert_eq!(history[1]["nodeId"],"B");
-    assert_eq!(history[1]["status"],"running");
+    assert_eq!(history.len(),3);
+    assert_eq!(history[0]["action"],"prepare_inputs");
+    assert_eq!(history[1]["nodeId"],"A");
+    assert_eq!(history[1]["status"],"failed");
+    assert_eq!(history[2]["nodeId"],"B");
+    assert_eq!(history[2]["status"],"running");
     let calls = s.herdr.calls();
     let repeated = s.dispatch("manager-first", &["A","B"]).await;
     assert_eq!(repeated["results"][0]["status"],"rejected");
@@ -1264,7 +1340,7 @@ async fn mixed_batch_preserves_failures_success_and_other_run_without_automatic_
     // during requests plus the following 100ms; not an infinite-time claim.
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(s.herdr.calls(),calls);
-    assert_eq!(fs::read_to_string(root.join("history.jsonl")).unwrap().lines().count(),2);
+    assert_eq!(fs::read_to_string(root.join("history.jsonl")).unwrap().lines().count(),3);
 }
 
 // P13.02/P45.02: identity and submit failures leave the external Chat intact;
@@ -1365,7 +1441,7 @@ async fn node_history_failure_retains_saved_identity_without_initial_prompt() {
     assert_eq!(saved, batch["snapshot"]);
     assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "node-history-failed");
     assert_eq!(saved["nodes"]["A"]["failure"], result["failure"]);
-    assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[0]["failure"], result["failure"]);
+    assert_eq!(common::read_json_lines(&root.join("history.jsonl"))[1]["failure"], result["failure"]);
     assert!(s.config.sessions.history_file.is_dir());
     let calls = s.herdr.calls();
     assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 2);

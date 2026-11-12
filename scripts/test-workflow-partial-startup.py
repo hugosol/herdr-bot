@@ -97,6 +97,10 @@ def main():
             session = f'p31-root-{name}'
             behavior(session)
             root_run = http('/api/scheduler/maps/outer.json/runs', {'managerTaskId': manager, 'zone': 'zone', 'userInput': 'ROOT-418'}, 201)
+            prepared = http('/api/workflow/manager/prepare_inputs', {'sessionId': session, 'fileInputs': [],
+                            'confirmed': True, 'reason': 'Controlled startup fixture text reviewed; no file inputs'})
+            require((prepared.get('changed') or prepared.get('stateCommitted')) and prepared['snapshot']['inputsReady']
+                    and not prepared.get('error') and not prepared.get('historyError'), prepared)
             behavior(f'p31-child-{name}', **flags)
             before = len(records('submitted.jsonl'))
             dispatched = http('/api/workflow/manager/dispatch', {'sessionId': session, 'nodes': ['A']})

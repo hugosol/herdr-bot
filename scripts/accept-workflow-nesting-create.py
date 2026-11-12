@@ -90,7 +90,7 @@ class CreateAcceptance(Acceptance):
             *sorted((REPO / 'meta-data/bots').glob('*.json'))]}
         self.evidence['backend'] = {'path': str(self.args.backend), 'sha256': digest(self.args.backend)}
         self.evidence['pathsFile'] = {'path': str(self.args.paths_file), 'sha256': digest(self.args.paths_file)}
-        self.evidence['pageAndLockIdentity'] = {str(path): digest(path) for path in [REPO / 'frontend/package-lock.json',
+        self.evidence['pageAndLockIdentity'] = {str(path): digest(path) for path in [REPO / 'frontend/bun.lock',
             *sorted((REPO / 'backend/static').rglob('*'))] if path.is_file()}
         require((REPO / 'backend/static/index.html').is_file(), 'Build current worktree static page first')
         require(self.command([self.args.bun, '--version']).strip() == '1.4.4', 'Bun 1.4.4 is required')
