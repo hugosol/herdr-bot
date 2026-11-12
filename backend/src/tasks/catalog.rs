@@ -75,7 +75,7 @@ pub(crate) struct FixedExtensionOption {
 
 /// Runtime context is supplied by the launch owner, never by extension metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionRole { Standalone, Manager, Node, NestedManager, Chief }
+pub enum ExecutionRole { Standalone, Manager, Node, NestedManager, Chief, ChiefDelegated }
 
 impl From<TaskType> for ExecutionRole {
     fn from(task_type: TaskType) -> Self {
@@ -98,7 +98,7 @@ impl Catalog {
             }
             extension.entrypoint = roots.resolve(&extension.entrypoint, path.parent().unwrap_or_else(|| Path::new(".")))
                 .map_err(|error| TaskError::Metadata(format!("扩展 {} 路径：{error:#}", extension.id)))?;
-            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node"), (ExecutionRole::Chief, "chief")]
+            let roles = [(ExecutionRole::Standalone, "standalone"), (ExecutionRole::Manager, "manager"), (ExecutionRole::Node, "node"), (ExecutionRole::Chief, "chief"), (ExecutionRole::ChiefDelegated, "chief-delegated")]
                 .into_iter().filter_map(|(role, name)| extension.applies_to(extension.agent, role).then_some(name)).collect();
             options.push(FixedExtensionOption { extension, roles });
         }
@@ -380,6 +380,7 @@ impl Catalog {
             ExecutionRole::NestedManager => &[ExecutionRole::Manager, ExecutionRole::Node],
             ExecutionRole::Manager => &[ExecutionRole::Manager],
             ExecutionRole::Node => &[ExecutionRole::Node],
+            ExecutionRole::ChiefDelegated => &[ExecutionRole::ChiefDelegated],
         };
         for required in required {
             if !self.extensions.iter().any(|extension| extension.role() == Some((agent, *required))) {
@@ -435,6 +436,8 @@ impl ExtensionOption {
             "pi-node-chat" => Some((Agent::Pi, ExecutionRole::Node)),
             "omp-chief-chat" => Some((Agent::Omp, ExecutionRole::Chief)),
             "pi-chief-chat" => Some((Agent::Pi, ExecutionRole::Chief)),
+            "omp-chief-report" => Some((Agent::Omp, ExecutionRole::ChiefDelegated)),
+            "pi-chief-report" => Some((Agent::Pi, ExecutionRole::ChiefDelegated)),
             _ => None,
         }
     }

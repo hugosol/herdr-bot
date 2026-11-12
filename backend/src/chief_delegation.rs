@@ -70,7 +70,7 @@ pub(crate) struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    run_id: Option<String>,
+    pub(crate) run_id: Option<String>,
 }
 
 pub(crate) struct Delegations {
@@ -238,7 +238,11 @@ async fn resolve(
     let preset = state
         .tasks
         .catalog()
-        .and_then(|catalog| catalog.resolve(&task))
+        .and_then(|catalog| catalog.resolve_for_role(&task, if map_file.is_some() {
+            crate::tasks::catalog::ExecutionRole::Manager
+        } else {
+            crate::tasks::catalog::ExecutionRole::ChiefDelegated
+        }))
         .map_err(crate::task_error_response)?;
     preset
         .env

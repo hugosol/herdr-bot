@@ -45,7 +45,7 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     assert!(listing.get("extensions").is_none());
     let fixed = listing["fixedExtensions"].as_array().unwrap();
     for host in ["omp", "pi"] {
-        for (suffix, roles) in [("connect-bot", json!(["standalone","manager","node","chief"])), ("manager-chat", json!(["manager"])), ("node-chat", json!(["node"]))] {
+        for (suffix, roles) in [("connect-bot", json!(["standalone","manager","node","chief","chief-delegated"])), ("manager-chat", json!(["manager"])), ("node-chat", json!(["node"])), ("chief-report", json!(["chief-delegated"]))] {
             let id = format!("{host}-{suffix}");
             let option = fixed.iter().find(|option| option["id"] == id).unwrap();
             assert_eq!(option["agent"], host);
