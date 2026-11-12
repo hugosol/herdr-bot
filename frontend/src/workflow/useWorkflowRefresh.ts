@@ -5,7 +5,7 @@ import type { RunDetail } from './workflowApi'
 
 export type RunEntry = { id: string; managed: boolean; readError: string | null; run: { name?: string; map: string; createdAt: number; status: string; nodes: Record<string, { status: string }> } | null }
 export type CurrentDefinition = { map: WorkflowMap | null; mapError: string | null; bots: Bot[]; tasks: Task[]; catalogErrors: string[] }
-type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number; definitionsPending?: boolean }
+type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number | null; definitionsPending?: boolean }
 
 async function readJSON<T>(url: string): Promise<T> {
   const response = await fetch(url)
@@ -76,7 +76,7 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
           // A script may be reading a real definition file while its execution
           // facts are already available. Do not hide those facts behind catalogs.
           if (detail && requestRevision === revision.current) {
-            setSnapshot(previous => ({ id, entries: listing.runs, detail, at: Date.now(), definitionsPending: true,
+            setSnapshot(previous => ({ id, entries: listing.runs, detail, at: previous?.id === id ? previous.at : null, definitionsPending: true,
               current: previous?.id === id && previous.current ? previous.current : { map: null, mapError: null, bots: [], tasks: [], catalogErrors: [] },
             }))
           }
