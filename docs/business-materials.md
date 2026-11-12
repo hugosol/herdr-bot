@@ -4,9 +4,9 @@
 
 指南面向规划者，不会自动注入执行 Chat；执行所需章节由 Task 或本次 input 明确指向，独立 Chat 同样适用。
 
-## 创建分支 v1：可校验表示（业务尚未交付）
+## 创建分支 v1：可校验表示与空白创建
 
-本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为后续 Rust 创建／合并保存提供公开数据表示，**不表示两个 Rust 能力或定义迁移已经完成**。创建分支采用 [Draft 2020-12 JSON Schema](contracts/rust-script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
+本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为 Rust 创建／合并保存提供公开数据表示。空白创建 `create_blank_bot` 已使用该契约通过命名文件运行；合并保存及正式定义迁移不由此声明完成。创建分支采用 [Draft 2020-12 JSON Schema](contracts/rust-script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
 
 结构化文件是单个无围栏 UTF-8 JSON 对象；拒绝重复 key、未知字段、未知 schema_version、错类型、缺项、歧义，不从 Markdown 猜字段。创建材料根对象均必填 `schema_version:1` 和对应 `kind`；这**不是**为 Bot／Map 定义新增 schema_version。text 仍是原样 UTF-8 纯正文，不添加 JSON、标题、身份、BOM 或代码围栏，不 trim／改换行／替换词典／重新生成。空正文合法，必要时仍须明确确认空稿。可选参考 `materials` 仍是参考，不提取其中指令作为隐含参数、权限或第二份 request。
 
@@ -29,6 +29,14 @@
 Task configuration 为 GET task 的完整对象：id、name、chatName、agent、taskType（必须 normal）、model、thinking、skill（可 null）、prompt，以及实际存在的 group／suite；不使用创建请求扁平片段代替读回。Map configuration 为 GET Map 的完整定义：title、description、nodes，及实际存在的 group、input_requirements、input_files；所有 node 字段与规则完整保留，不删成空图或仅复制文件名。其字段类型见 Schema 的 task_configuration／map_configuration；引用对象调查、Map 环与预检仍用既有接口，不要求将全部传递闭包嵌进 baseline。
 
 创建前目标必须真实存在且类型正确；合法空白创建只新增 Bot 一次，唯一绑定与三空指南不能由流程到达推断。创建后完整重读 Bot、真实 revision 与目标，核对后才交付 baseline。配置或材料失败时保存可得真实效果，不自动删除已创建对象。
+
+### Rust 空白创建的材料落点与隔离实例
+
+`create_blank_bot` 只接受命名 `request` 和可选参考 `materials` 输入；不沿参考内容寻找隐藏参数，也不从 node.input 补项。输出必须声明 `baseline` 和 `handoff`。材料实际新建在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/baseline.json` 与 `handoff.json`，沿用现有文件协调、祖先／junction 检查及 create-only 发布；不覆盖已有文件。仅完整读回成功的文件进入所属 execution 的报告 outputs，没有第二份输出登记表。
+
+隔离 HTTP／真实文件回归使用 `invoice-review`／`Invoice reviewer`：真实 normal Task 的完整读取对象和服务 edit.revision 与 baseline 逐项相等，三个指南均严格为空；实际派发的下游受控进程按命名地址读取 baseline 与 handoff，再独立核对完整配置／revision。另一例绑定真实 `exact.target.json`，保留其全部节点、输入输出规则、manual 策略及声明，产生默认 `bot-map-exact.target`，不执行目标 Map。
+
+拒绝实例包括根／嵌套重复 JSON key（`ambiguous-request`）、缺 requirements（`missing-field`）、不存在目标或已有目标绑定（`target-conflict`）、已有 `worker` 身份（`identity-conflict`）、缺创建授权（`authorization-required`）、真实活动 Run 使用中的 Map（`definition-in-use`）。独立完整目录／对象和原文件读回均保持不变，不生成成功材料。真实 Bot 目录写入失败为 write-failed；保存后目标读回失败仍保留 write=succeeded；材料目录不可写或已有同名产物为 material-write-failed，已创建 Bot 不回滚，也不能报告 true。回归实际命令与证据限制见[测试指引](agents/testing.md#rust-空白创建公开-http文件回归)。
 
 ### 三路 text、必要 handoff 与 saved
 

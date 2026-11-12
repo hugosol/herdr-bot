@@ -106,25 +106,25 @@ pub(super) async fn reconcile(state: &AppState, run: &mut Run, node_id: String, 
                 return Decision::reject("dispatch-chat-unverified", "缺少原派发现实目标，无法关联真实 Chat；保持 failed，不猜测身份。");
             };
             let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-            let identity = match tokio::time::timeout_at(deadline, state.herdr.native_session(agent, execution.agent.label(), deadline)).await {
+            let identity = match tokio::time::timeout_at(deadline, state.herdr.native_session(agent, execution.agent().ok_or("脚本没有 agent 身份")?.label(), deadline)).await {
                 Ok(Ok(identity)) => identity,
                 Ok(Err(error)) => return Decision::reject("dispatch-chat-unverified", format!("未确认原 Chat：{}；保持 failed。", error.message())),
                 Err(_) => return Decision::reject("dispatch-chat-unverified", "读取原 Chat 身份超时；保持 failed。"),
             };
             if !crate::zones::same_path(&identity.cwd, &execution.zone)
                 || effects.session_id.as_ref().is_some_and(|session| session != &identity.session_id)
-                || execution.chat.as_ref().is_some_and(|chat| chat.session_id != identity.session_id)
+                || execution.chat().is_some_and(|chat| chat.session_id != identity.session_id)
                 || run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id)
-                || run.nodes.values().any(|node| node.executions().any(|other| other.id != execution.id && other.chat.as_ref().is_some_and(|chat| chat.session_id == identity.session_id))) {
+                || run.nodes.values().any(|node| node.executions().any(|other| other.id != execution.id && other.chat().is_some_and(|chat| chat.session_id == identity.session_id))) {
                 return Decision::reject("dispatch-chat-mismatch", "原 Chat 的身份或 zone 不一致，或已属于其他执行；保持 failed，不替换执行。");
             }
             let chat = ChatReference { session_id: identity.session_id, workspace_id: workspace.clone(), tab_id: tab.clone(), pane_id: pane.clone(), agent_name: agent.clone() };
-            if let Some(child_id) = &execution.child_run_id {
+            if let Some(child_id) = execution.child_run_id() {
                 let lock = state.runs.operations.lock().await.entry(child_id.clone()).or_default().clone();
                 let _child_operation = lock.lock().await;
                 let mut child = state.runs.read(state, child_id).await?;
                 if !child.parent.as_ref().is_some_and(|parent| parent.run_id == run.id && parent.node_id == node_id && parent.execution_id == execution.id)
-                    || child.manager_task_id != execution.task_id
+                    || Some(child.manager_task_id.as_str()) != execution.task_id()
                     || !crate::zones::same_path(&child.zone, &execution.zone)
                     || child.manager.as_ref().is_some_and(|known| known != &chat) {
                     return Decision::reject("dispatch-child-mismatch", "子 Run 与原父执行或 Chat 不一致；保留失败现场，不替换关联。");
@@ -135,7 +135,7 @@ pub(super) async fn reconcile(state: &AppState, run: &mut Run, node_id: String, 
                 }
             }
             let node = run.nodes.get_mut(&node_id).unwrap();
-            node.execution.as_mut().unwrap().chat = Some(chat);
+            *node.execution.as_mut().unwrap().chat_mut() = Some(chat);
             // Seeing a Chat proves neither delivery nor rejection of its
             // trigger. Preserve the original failure and retry barrier until
             // the input effect itself is known; never replay it here.
@@ -146,11 +146,11 @@ pub(super) async fn reconcile(state: &AppState, run: &mut Run, node_id: String, 
             true
         }
         DispatchFinding::NotCreated => {
-            if execution.as_ref().and_then(|execution| execution.child_run_id.as_ref()).is_some()
+            if execution.as_ref().and_then(|execution| execution.child_run_id()).is_some()
                 || failure.as_ref().and_then(|failure| failure.effects.as_ref()).is_some_and(|effects| effects.child_run_id.is_some()) {
                 return Decision::reject("dispatch-child-already-known", "子 Run 已登记；Chat 缺席不代表子 Run 未创建。保留父执行和已有子 Run，不自动重建或重派。");
             }
-            if execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_some() || failure.as_ref().and_then(|failure| failure.effects.as_ref()).is_some_and(|effects| effects.session_id.is_some()) {
+            if execution.as_ref().and_then(|execution| execution.chat()).is_some() || failure.as_ref().and_then(|failure| failure.effects.as_ref()).is_some_and(|effects| effects.session_id.is_some()) {
                 return Decision::reject("dispatch-chat-already-known", "已取得真实 Chat 身份，不能核实为未创建；不要抹除已发生事实。");
             }
             let node = run.nodes.get_mut(&node_id).unwrap();
@@ -171,7 +171,7 @@ pub(super) fn recover(run: &mut Run, node_id: String, confirmed: bool, reason: S
     let Some(node) = run.nodes.get(&node_id) else {
         return Decision::reject("node-unknown", "node 不在本次 Run 中。");
     };
-    if node.status != "failed" || !node.failure.as_ref().is_some_and(|failure| failure.stage == "execution") || node.execution.as_ref().and_then(|execution| execution.chat.as_ref()).is_none() {
+    if node.status != "failed" || !node.failure.as_ref().is_some_and(|failure| failure.stage == "execution") || node.execution.as_ref().and_then(|execution| execution.chat()).is_none() {
         return Decision::reject("node-not-recoverable", "仅有关联原 Chat 的执行阶段 failed 可 recover；派发失败请先核实。");
     }
     if !confirmed || reason.trim().is_empty() {
@@ -200,7 +200,7 @@ pub(super) fn fail(run: &mut Run, node_id: String, reason: String) -> Result<Dec
     if reason.trim().is_empty() {
         return Decision::reject("failure-reason-required", "请记录已核实的执行失败原因。");
     }
-    node.execution.as_ref().and_then(|execution| execution.chat.as_ref()).ok_or("执行缺少原 Chat 关联。")?;
+    node.execution.as_ref().and_then(|execution| execution.chat()).ok_or("执行缺少原 Chat 关联。")?;
     let failure = StartupFailure { stage: "execution".into(), message: reason.clone(), effects: None };
     let node = run.nodes.get_mut(&node_id).unwrap();
     node.status = "failed".into();

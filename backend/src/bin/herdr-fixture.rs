@@ -416,6 +416,19 @@ fn agent_prompt(args: &[String]) {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
     }
 
+    if flag(&behavior, "consume_named_json") {
+        if let Some((_, tail)) = text.split_once("[Named file inputs]\n") {
+            let section = tail.split_once("[/Named file inputs]").map(|(section, _)| section).unwrap_or(tail);
+            let mut files = serde_json::Map::new();
+            for line in section.lines() {
+                let Some((id, path)) = line.split_once(": ") else { fail("consumer-binding-invalid", "named JSON consumer requires id: path"); };
+                let bytes = fs::read(path).unwrap_or_else(|error| fail("consumer-read-failed", &error.to_string()));
+                let document: Value = serde_json::from_slice(&bytes).unwrap_or_else(|error| fail("consumer-json-invalid", &error.to_string()));
+                files.insert(id.into(), document);
+            }
+            record("consumed.jsonl", json!({"target":target,"files":files}));
+        }
+    }
     record("submitted.jsonl", json!({"target":target,"text":text}));
     // The host consumed the input, but its acknowledgement is unusable. This
     // exercises the real adapter's unknown-result path, not a mocked error.

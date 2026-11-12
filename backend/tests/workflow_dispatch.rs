@@ -28,6 +28,8 @@ mod map_deletion;
 mod map_title;
 #[path = "workflow_dispatch/history_integrity.rs"]
 mod history_integrity;
+#[path = "workflow_dispatch/rust_create.rs"]
+mod rust_create;
 #[path = "workflow_dispatch/bot_targets.rs"]
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]

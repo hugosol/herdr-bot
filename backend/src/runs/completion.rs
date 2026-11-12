@@ -117,7 +117,7 @@ pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, r
 // Run operation guard or file coordination; host latency cannot hold up business.
 pub(super) fn close_completed_tab(state: &AppState, run: &Run, node_id: &str) {
     let Some(execution) = run.nodes[node_id].execution.as_ref().filter(|execution| execution.auto_close) else { return; };
-    let Some(chat) = execution.chat.as_ref().filter(|chat| !chat.tab_id.trim().is_empty()) else {
+    let Some(chat) = execution.chat().filter(|chat| !chat.tab_id.trim().is_empty()) else {
         eprintln!("[workflow] run={} node={} execution={} auto-close=skipped reason=missing-tab-association", run.id, node_id, execution.id);
         return;
     };

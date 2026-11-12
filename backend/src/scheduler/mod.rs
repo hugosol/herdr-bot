@@ -1,5 +1,6 @@
 //! Service-level static definitions and shared bot editing; no client-supplied filesystem paths.
 use crate::files::{FileAccess, FileStore, PublishMode};
+pub(crate) mod script_bots;
 use std::path::{Path, PathBuf};
 
 use axum::{Json, extract::Request, http::StatusCode, response::{IntoResponse, Response}};
@@ -191,8 +192,9 @@ pub(crate) struct DispatchTarget {
     pub auto_close: bool,
     pub zone: String,
     pub zone_id: String,
-    pub task: crate::tasks::Task,
+    pub task: Option<crate::tasks::Task>,
     pub map: Option<String>,
+    pub rust_script: Option<String>,
 }
 
 pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str) -> Result<DispatchTarget, String> {
@@ -204,6 +206,12 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
         },
     ).map_err(|e| e.message)?;
     let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
+    if let Some(script) = &bot.rust_script {
+        if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
+            return Err("脚本节点仅允许自动报告、无自动关闭且不指定 manager Task。".into());
+        }
+        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, zone_id: node.zone.clone(), zone: node.zone, task: None, map: None, rust_script: Some(script.clone()) });
+    }
     let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
         (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
         (None, Some(_)) => (node.manager_task_id.as_deref().ok_or("Map 型 node 缺少 manager_task_id")?, crate::tasks::TaskType::Manager),
@@ -214,7 +222,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
         return Err("node 的执行 Task 类型与目标不一致".into());
     }
     let zone = node.zone;
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task, map: bot.map_file.clone() })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task: Some(task), map: bot.map_file.clone(), rust_script: None })
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -529,6 +537,11 @@ fn check_map_calls(
         let first_issue = issues.len();
         match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
             None => issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {} 缺失或无效；请修正引用或文件。", node.bot_id))),
+            Some(bot) if bot.rust_script.is_some() => {
+                if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
+                    issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+                }
+            }
             Some(bot) => match (&bot.task_id, &bot.map_file) {
                 (Some(task), None) => {
                     if task.trim().is_empty() {
@@ -700,6 +713,8 @@ struct Bot {
     task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     map_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rust_script: Option<String>,
 }
 
 impl Bot {
@@ -707,8 +722,11 @@ impl Bot {
         if !crate::tasks::valid_group(self.group.as_deref()) {
             return Err(edit_error("group-invalid", "分组名称不能为空或包含首尾空白。"));
         }
-        if self.task_id.is_some() && self.map_file.is_some() {
-            return Err(edit_error("bot-invalid", "Bot 的 task_id 与 map_file 互斥；请只选择一个执行目标。"));
+        if [self.task_id.is_some(), self.map_file.is_some(), self.rust_script.is_some()].into_iter().filter(|present| *present).count() > 1 {
+            return Err(edit_error("bot-invalid", "Bot 的 task_id、map_file 与 rust_script 互斥；请只选择一个执行目标。"));
+        }
+        if self.rust_script.as_deref().is_some_and(|capability| capability != "create_blank_bot") {
+            return Err(edit_error("bot-invalid", "未知或尚未实现的固定 Rust 能力。"));
         }
         Ok(())
     }
@@ -1063,7 +1081,15 @@ pub async fn save_bot(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     Json(draft): Json<BotSave>,
 ) -> Response {
-    match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone()], "bot-write-failed", |access| {
+    match tokio::task::spawn_blocking(move || save_bot_definition(&state, draft, false)).await {
+        Ok(Ok(bot)) => Json(bot).into_response(),
+        Ok(Err(error)) => error.into_response(),
+        Err(error) => edit_error("bot-write-failed", error.to_string()).into_response(),
+    }
+}
+
+fn save_bot_definition(state: &crate::AppState, draft: BotSave, unique_binding: bool) -> Result<Bot, DirectoryError> {
+    with_definitions(&[state.bot_directory.clone()], "bot-write-failed", |access| {
         if draft.id.is_empty() { return Err(edit_error("bot-invalid", "Bot ID 不能为空。")); }
         let mut content: serde_json::Value = serde_json::from_str(&draft.content)
             .map_err(|e| edit_error("bot-invalid", format!("Bot JSON 无效：{e}")))?;
@@ -1085,6 +1111,13 @@ pub async fn save_bot(
         let check = || -> Result<(), DirectoryError> {
             prepare_directory(access, &root).map_err(bot_directory_error)?;
             let current = bot_target(access, &root, &draft.id)?;
+            if unique_binding {
+                let catalog = read_bots(access, &root)?;
+                if !catalog.problems.is_empty() { return Err(edit_error("ambiguous-request", "Bot 目录包含无法排除身份或绑定冲突的定义。")); }
+                if catalog.bots.iter().any(|existing| (bot.task_id.is_some() && bot.task_id == existing.task_id) || (bot.map_file.is_some() && bot.map_file == existing.map_file)) {
+                    return Err(edit_error("target-conflict", "该目标已有 Bot 绑定；不复用或覆盖。"));
+                }
+            }
             if draft.revision.is_none() && current.is_some() {
                 return Err(edit_error("bot-conflict", "Bot ID 已存在；请使用不同 ID 或重新加载。"));
             }
@@ -1100,11 +1133,7 @@ pub async fn save_bot(
         access.publish_checked(&target, &bytes, mode, |_| check(),
             |error| edit_error("bot-write-failed", format!("Bot 写入失败：{error}")))?;
         Ok(bot)
-    })).await {
-        Ok(Ok(bot)) => Json(bot).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-write-failed", error.to_string()).into_response(),
-    }
+    })
 }
 
 // Both preflight and final deletion validate the entire owning Map. A failed
