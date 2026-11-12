@@ -272,10 +272,19 @@ class ChiefRecoveryAcceptance(Base):
             sender = self.creation({**started, 'delegated': True})
         return sender
 
+    def fresh_chief(self, task):
+        chat = self.launch(task, '这是一个全新 chief 会话。请仅回复已就绪，然后等待用户；不调用工具、不查报告、不派发业务。')
+        answer = self.final_answer(chat)
+        require(not any(part.get('type') == 'toolCall'
+                        for message in self.messages(answer['history'])
+                        for part in message.get('content', []) if isinstance(part, dict)),
+                'Fresh chief performed work before a user recovery request')
+        return chat
+
     def exercise(self):
         self.http('/api/zones', {'id': 'reports/owned', 'path': str(self.root / 'zone')})
         chief_task = self.task('Recovery chief', 'chief', '', self.host)
-        chief = self.launch(chief_task)
+        chief = self.fresh_chief(chief_task)
         original = {'background': '用户需要私有导出，未授权发布或重跑。', 'execution': '隔离导出 recovery-731', 'result': 'blocked',
             'summary': 'RECOVERY-731：缺少发布许可，已停止，没有导出或业务重跑。', 'deliverables': [], 'pendingDecisions': ['判断本次受阻说明是否满足要求。']}
         reject = self.root / 'external-cli/reject-notification'
@@ -297,7 +306,7 @@ class ChiefRecoveryAcceptance(Base):
         self.quiet('after-notification-failure', [sender, chief])
         reject.unlink()
         self.close_chat(chief)
-        chief = self.launch(chief_task)
+        chief = self.fresh_chief(chief_task)
         self.quiet('after-chief-created', [sender, chief])
         chief = self.restore(chief)
         self.quiet('after-chief-new-process-resume', [sender, chief])
@@ -345,10 +354,10 @@ class ChiefRecoveryAcceptance(Base):
         require(set(receipt) == {'received', 'receipt'} and set(receipt['receipt']) == {'reportId', 'sessionId', 'claimId', 'at'}, 'Receipt invented presentation/read/acceptance state')
         self.evidence['interruption'] = {'chiefBefore': chief_before, 'receive': gate.record, 'lostSenderResponse': lost.record, 'receipt': receipt}
         self.evidence['coverage']['P24'] = {'verified': True, 'explicitNativeApproveAndDeny': True, 'original': report}
-        chief = self.launch(chief_task)
+        chief = self.fresh_chief(chief_task)
         fresh = self.native(chief)
-        require(not fresh or (not any(message.get('role') == 'user' for message in self.messages(fresh))
-            and report['id'] not in json.dumps(fresh, ensure_ascii=False)), 'Fresh chief inherited old delegation context')
+        require(fresh and report['id'] not in json.dumps(fresh, ensure_ascii=False)
+            and 'RECOVERY-731' not in json.dumps(fresh, ensure_ascii=False), 'Fresh chief inherited old delegation context')
         self.quiet('received-before-presentation-fresh-chief-no-replay', [sender, chief])
         self.evidence['coverage']['P26'] = {'verified': True, 'interruption': 'held original postcommit receive response, terminated native process before model admission'}
         view_start = len((self.native(chief) or {'branch': []})['branch'])
