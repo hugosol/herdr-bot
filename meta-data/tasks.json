@@ -3,6 +3,7 @@
     {
       "id": "chief-bot",
       "name": "chief-bot",
+      "group": "meta-task",
       "chatName": "chat with chief bot",
       "agent": "omp",
       "taskType": "chief",
@@ -321,10 +322,11 @@
       "suite": "codebase-exploration"
     },
     {
-      "id": "task-18e7437ce8c73924-0",
+      "id": "task-retro",
       "name": "retro",
+      "group": "meta-task",
       "chatName": "{task.name} · {chat.id}",
-      "agent": "pi",
+      "agent": "omp",
       "taskType": "normal",
       "model": "gpt-6.1-sol",
       "thinking": "medium",

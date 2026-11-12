@@ -396,7 +396,7 @@ Task 配置分为两组：
 
 ## 历史 Chat Retro
 
-历史会话操作栏的 `Retro` 打开既有发起 Chat 弹窗，不恢复原会话，也不自动提交。Task 默认选择 ID 为 `retro` 的预设；缺失时留空提示，允许改选，不自动创建。zone 仅在历史 cwd 与当前登记目录唯一匹配时默认选择；缺失或多个 zone 共用该目录时由用户选择。
+历史会话操作栏的 `Retro` 打开既有发起 Chat 弹窗，不恢复原会话，也不自动提交。Task 默认选择 ID 为 `task-retro` 的预设；缺失时留空提示，允许改选，不自动创建。zone 仅在历史 cwd 与当前登记目录唯一匹配时默认选择；缺失或多个 zone 共用该目录时由用户选择。
 
 初始 input 预填历史 agent 类型、session ID、cwd 与默认 session 根目录，均可编辑。根目录取启动期 `paths_file` 中的 `roots.pi_agent` 或 `roots.omp_agent` 并拼接 `sessions`，按会话保存在默认位置的约定供 Retro 查找；不扫描或读取聊天正文，不要求具体文件地址，不经过提示词词典替换。对应根未配置或 agent 类型未知时，输入标注需补充。修改根配置后需重启后端；本次选择和 input 不修改 Task 预设或历史记录。
 

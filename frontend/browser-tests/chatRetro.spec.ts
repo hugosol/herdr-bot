@@ -23,7 +23,7 @@ for (const [agent, width] of [['pi', 1280], ['omp', 390]] as const) {
     const ompRoot = path.join(root, 'omp-agent')
     fs.appendFileSync(path.join(root, 'paths.toml'), `pi_agent = '${piRoot}'\nomp_agent = '${ompRoot}'\n`)
     fs.writeFileSync(server.storageFile, JSON.stringify({ tasks: [{
-      id: 'retro', name: 'Retro review', chatName: 'Retro {chat.id}', taskType: 'normal',
+      id: 'task-retro', name: 'Retro review', chatName: 'Retro {chat.id}', taskType: 'normal',
       agent: 'omp', model: 'default', thinking: 'default', skill: null, prompt: '', suite: null,
     }] }))
     await server.restart()
@@ -40,7 +40,7 @@ for (const [agent, width] of [['pi', 1280], ['omp', 390]] as const) {
     await page.getByRole('row').filter({ hasText: `History ${agent}` }).getByRole('button', { name: 'Retro', exact: true }).click()
     const dialog = page.getByTestId('chat-creation-dialog')
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByTestId('task')).toHaveValue('retro')
+    await expect(dialog.getByTestId('task')).toHaveValue('task-retro')
     await expect(dialog.getByTestId('chat-zone')).toHaveValue('test/history')
     await expect(dialog.getByTestId('chat-input')).toHaveValue(expected)
     expect(server.herdrTabs()).toEqual([])
@@ -71,7 +71,7 @@ test('Retro leaves missing Task and missing or ambiguous zone unselected', async
   const retro = page.getByRole('row').filter({ hasText: 'Missing defaults' }).getByRole('button', { name: 'Retro', exact: true })
   await retro.click()
   const dialog = page.getByTestId('chat-creation-dialog')
-  await expect(dialog.getByText('默认 Task「retro」不存在，请选择。')).toBeVisible()
+  await expect(dialog.getByText('默认 Task「task-retro」不存在，请选择。')).toBeVisible()
   await expect(dialog.getByTestId('task')).toHaveValue('')
   await expect(dialog.getByTestId('chat-zone')).toHaveValue('')
   await expect(dialog.getByTestId('chat-input')).toHaveValue(/session 根目录：未配置，请补充/)

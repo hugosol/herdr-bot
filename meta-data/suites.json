@@ -46,7 +46,7 @@
         "${roots.wayfinder_skills}/to-contract",
         "${roots.wayfinder_skills}/to-spec",
         "${roots.wayfinder_skills}/to-tickets",
-        "${roots.matt_pocock_skills}/engineering/retro"
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/retro"
         ]
       },
       "extensions": {

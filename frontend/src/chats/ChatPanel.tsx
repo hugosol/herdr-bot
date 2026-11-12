@@ -88,7 +88,7 @@ function HistoryPanel() {
 
   return <section aria-label="历史会话" className="history-panel">
     {retro !== null && <ChatCreationDialog
-      initialTaskId="retro"
+      initialTaskId="task-retro"
       initialCwd={retro.cwd}
       initialInput={`agent 类型：${retro.agentType ?? '未记录'}\nsession ID：${retro.sessionId}\n历史 cwd：${retro.cwd ?? '未记录'}\nsession 根目录：${retro.sessionDirectory ?? '未配置，请补充'}`}
       onClose={() => setRetro(null)}
