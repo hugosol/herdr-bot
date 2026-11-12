@@ -288,7 +288,7 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
                 'name': identity, 'when': 'User explicitly requests ' + identity, 'plan_guide': 'Only the explicit one-shot user input.',
                 'node_guide': 'Wait for user.', **target})})
         (self.root / 'maps/authority.json').write_text(json.dumps({'title': 'Authority check Map', 'description': 'One explicit marker only', 'nodes': {
-            'check': {'title': 'Check', 'bot_id': 'authority-task', 'input': 'Acknowledge marker only', 'zone': 'reports/owned', 'blocked_by': []}}}), encoding='utf-8')
+            'check': {'title': 'Check', 'bot_id': 'authority-task', 'input': 'Acknowledge marker only', 'zone': 'reports/owned', 'blocked_by': [], 'report_policy': 'manual'}}}), encoding='utf-8')
         self.http('/api/scheduler/maps/authority.json')
         self.http('/api/scheduler/bots/save', {'id': 'authority-map', 'revision': None, 'content': json.dumps({
             'name': 'authority-map', 'when': 'User explicitly requests authority-map managed marker check',

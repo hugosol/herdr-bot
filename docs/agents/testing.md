@@ -144,7 +144,7 @@ P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 M
 
 `chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
 
-旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
+旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run；只读 Map 夹具显式使用 `report_policy: manual`，与本次不派发内部节点、不自动报告的用户要求一致。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
 
 静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-authority.test.py` 的CLI安全检查不算P31通过。
 
