@@ -13,6 +13,16 @@
 - 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
 - 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
 
+### 脚本在途工作、断连与暂停
+
+派发被后端接受并保存 execution 后，业务由后端持有，不依赖派发 HTTP 连接继续存活。调用方断连不能撤销它；不要为取得结果再次 dispatch。通过原 Run 详情独立读取原 execution 的 lifecycle、报告与真实材料。脚本的文件读写不长期占用 Run 操作资格：业务仍在途时，同 Run 的合法 status 与 pause 可以完成；这不改变完整派发批次本身的串行规则。
+
+pause 只拒绝新的 dispatch／retry，不取消已开始的 Rust 工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
+
+实际终止后端进程会终止它持有的在途 Rust 工作，但不回滚已经发生的文件效果。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
+
+专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和编入后端的能力，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
+
 ### 报告来源与兼容读取
 
 脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
