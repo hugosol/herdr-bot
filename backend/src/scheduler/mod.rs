@@ -725,7 +725,7 @@ impl Bot {
         if [self.task_id.is_some(), self.map_file.is_some(), self.rust_script.is_some()].into_iter().filter(|present| *present).count() > 1 {
             return Err(edit_error("bot-invalid", "Bot 的 task_id、map_file 与 rust_script 互斥；请只选择一个执行目标。"));
         }
-        if self.rust_script.as_deref().is_some_and(|capability| capability != "create_blank_bot") {
+        if self.rust_script.as_deref().is_some_and(|capability| !matches!(capability, "create_blank_bot" | "save_bot_guides")) {
             return Err(edit_error("bot-invalid", "未知或尚未实现的固定 Rust 能力。"));
         }
         Ok(())
@@ -1114,7 +1114,7 @@ fn save_bot_definition(state: &crate::AppState, draft: BotSave, unique_binding: 
             if unique_binding {
                 let catalog = read_bots(access, &root)?;
                 if !catalog.problems.is_empty() { return Err(edit_error("ambiguous-request", "Bot 目录包含无法排除身份或绑定冲突的定义。")); }
-                if catalog.bots.iter().any(|existing| (bot.task_id.is_some() && bot.task_id == existing.task_id) || (bot.map_file.is_some() && bot.map_file == existing.map_file)) {
+                if catalog.bots.iter().any(|existing| (draft.revision.is_none() || existing.id != bot.id) && ((bot.task_id.is_some() && bot.task_id == existing.task_id) || (bot.map_file.is_some() && bot.map_file == existing.map_file))) {
                     return Err(edit_error("target-conflict", "该目标已有 Bot 绑定；不复用或覆盖。"));
                 }
             }

@@ -1,5 +1,5 @@
-//! Fixed creation business. Named files are the only parameters; definition
-//! publication uses the same revision/path checks as the public Bot save.
+//! Fixed blank-creation and exact three-guide merge businesses. Named files
+//! are the only parameters; both use the public Bot save's revision/path checks.
 use super::*;
 use serde_json::{Value, json};
 
@@ -149,6 +149,157 @@ async fn create(state: &crate::AppState, run: &crate::runs::Run, execution: &cra
     }
     Ok(())
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TargetSnapshot {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default, deserialize_with = "present")]
+    task_id: Option<String>,
+    #[serde(default, deserialize_with = "present")]
+    map_file: Option<String>,
+    configuration: Value,
+}
+impl TargetSnapshot {
+    fn locator(&self) -> Result<CreateTarget, &'static str> {
+        match (self.kind.as_str(), &self.task_id, &self.map_file) {
+            ("task", Some(id), None) if !id.trim().is_empty() => Ok(CreateTarget::Task { task_id: id.clone() }),
+            ("map", None, Some(file)) if !file.is_empty() && file.ends_with(".json") && !file.contains(['/', '\\', ':', '\0']) => Ok(CreateTarget::Map { map_file: file.clone() }),
+            _ => Err("target-conflict"),
+        }
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Baseline {
+    schema_version: u32, kind: String, bot: Bot, revision: BotRevision,
+    target: TargetSnapshot, request: CreateRequest,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Source { binding_id: String, direction: String, role: String }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TextConfirmation {
+    evidence: String, text_sha256: String, full_text: bool,
+    save_authorized: bool, semantics_preserved: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GuideHandoff {
+    schema_version: u32, kind: String, stage: String, bot_id: String,
+    target: CreateTarget, field: String, sources: Vec<Source>,
+    confirmation: TextConfirmation, constraints: Vec<String>, unverified: Vec<String>,
+}
+fn document<T: for<'de> Deserialize<'de>>(inputs: &[ResolvedFile], id: &str, work: &Work) -> Result<T, Value> {
+    let input = inputs.iter().find(|file| file.id == id).ok_or_else(|| work.failure("validate", "missing-field", format!("缺少 {id} 命名输入。")))?;
+    let bytes = FileStore::default().read(&input.path).map_err(|error| work.failure("parse", "invalid-format", error))?;
+    let value = strict_json(&bytes).map_err(|error| work.failure("parse", if error.contains("duplicate") { "ambiguous-request" } else { "invalid-format" }, error))?;
+    if !value.is_object() { return Err(work.failure("parse", "invalid-format", "材料必须是单个 JSON 对象。")); }
+    T::deserialize(value).map_err(|error| work.failure("validate", if error.to_string().contains("missing field") { "missing-field" } else { "invalid-format" }, error))
+}
+
+pub(crate) async fn save_guides(state: &crate::AppState, run: &crate::runs::Run, execution: &crate::runs::NodeExecution) -> Outcome {
+    let mut work = Work { write: "not_attempted", read_back: "not_attempted", materials: Vec::new(), outputs: Vec::new() };
+    let result = merge_save(state, run, execution, &mut work).await;
+    Outcome { failure: result.err(), outputs: work.outputs }
+}
+async fn merge_save(state: &crate::AppState, run: &crate::runs::Run, execution: &crate::runs::NodeExecution, work: &mut Work) -> Result<(), Value> {
+    use sha2::{Digest, Sha256};
+    const IDS: [&str; 7] = ["baseline", "when_text", "when_handoff", "plan_guide_text", "plan_guide_handoff", "node_guide_text", "node_guide_handoff"];
+    let inputs = execution.inputs.as_deref().ok_or_else(|| work.failure("validate", "missing-field", "缺少冻结 inputs。"))?;
+    let mut ids = std::collections::BTreeSet::new();
+    if inputs.iter().any(|file| !IDS.contains(&file.id.as_str()) || !ids.insert(file.id.as_str())) {
+        return Err(work.failure("validate", "ambiguous-request", "保存只消费唯一 baseline 和三组 text/handoff。"));
+    }
+    if IDS.iter().any(|id| !ids.contains(id)) { return Err(work.failure("validate", "missing-field", "缺少 baseline 或三组 text/handoff。")); }
+    let rules = execution.output_rule.as_deref().ok_or_else(|| work.failure("validate", "missing-field", "缺少冻结输出声明。"))?;
+    let mut outputs = std::collections::BTreeSet::new();
+    if rules.iter().any(|rule| !outputs.insert(rule.id.as_str())) || ["saved", "handoff"].iter().any(|id| !outputs.contains(id)) {
+        return Err(work.failure("validate", "ambiguous-request", "输出必须唯一声明 saved 和 handoff。"));
+    }
+    let baseline: Baseline = document(inputs, "baseline", work)?;
+    baseline.request.validate().map_err(|code| work.failure("validate", code, "baseline.request 无效。"))?;
+    if baseline.schema_version != 1 || baseline.kind != "baseline" || baseline.revision.file.is_empty() || baseline.revision.original.is_empty()
+        || !baseline.bot.when.is_empty() || !baseline.bot.plan_guide.is_empty() || !baseline.bot.node_guide.is_empty() {
+        return Err(work.failure("validate", "invalid-format", "创建 baseline 必须是三空指南的完整 v1 对象和真实 revision。"));
+    }
+    let locator = baseline.target.locator().map_err(|code| work.failure("validate", code, "baseline 目标不唯一。"))?;
+    let locator_value = serde_json::to_value(&locator).map_err(|error| work.failure("validate", "invalid-format", error))?;
+    let bot_value = serde_json::to_value(&baseline.bot).map_err(|error| work.failure("validate", "invalid-format", error))?;
+    let original = strict_json(baseline.revision.original.as_bytes()).map_err(|error| work.failure("validate", "invalid-format", error))?;
+    if original.get("id") != Some(&json!(baseline.bot.id)) || baseline.request.bot.as_ref().and_then(|bot| bot.id.as_ref()).is_some_and(|id| id != &baseline.bot.id) {
+        return Err(work.failure("validate", "identity-conflict", "baseline Bot、request 与 revision 身份不一致。"));
+    }
+    if original != bot_value { return Err(work.failure("validate", "revision-conflict", "baseline 完整 Bot 与 revision.original 不一致。")); }
+    if baseline.bot.rust_script.is_some() || baseline.bot.task_id != baseline.target.task_id || baseline.bot.map_file != baseline.target.map_file
+        || serde_json::to_value(&baseline.request.target).unwrap() != locator_value {
+        return Err(work.failure("validate", "target-conflict", "baseline/request/唯一 Bot 绑定不一致。"));
+    }
+    let mut candidate = bot_value;
+    let mut evidence = Vec::with_capacity(3);
+    let mut unverified = Vec::new();
+    for (field, text_id, handoff_id) in [("when", "when_text", "when_handoff"), ("plan_guide", "plan_guide_text", "plan_guide_handoff"), ("node_guide", "node_guide_text", "node_guide_handoff")] {
+        let input = inputs.iter().find(|file| file.id == text_id).unwrap();
+        let bytes = FileStore::default().read(&input.path).map_err(|error| work.failure("parse", "invalid-format", error))?;
+        let text = String::from_utf8(bytes).map_err(|error| work.failure("parse", "invalid-format", error))?;
+        let handoff: GuideHandoff = document(inputs, handoff_id, work)?;
+        if handoff.schema_version != 1 || handoff.kind != "handoff" || handoff.stage != "guide" { return Err(work.failure("validate", "invalid-format", "指南 handoff 格式无效。")); }
+        if handoff.bot_id != baseline.bot.id { return Err(work.failure("validate", "identity-conflict", "指南不属于共同 Bot。")); }
+        if handoff.field != field || serde_json::to_value(&handoff.target).unwrap() != locator_value { return Err(work.failure("validate", "target-conflict", "指南字段或目标不对应；不交换材料。")); }
+        let mut sources = std::collections::BTreeSet::new();
+        if handoff.sources.is_empty() || handoff.sources.iter().any(|source| source.binding_id.is_empty() || !matches!(source.direction.as_str(), "input" | "output") || !matches!(source.role.as_str(), "request" | "materials" | "baseline" | "text" | "handoff") || !sources.insert((source.direction.as_str(), source.binding_id.as_str())))
+            || !handoff.sources.iter().any(|source| source.direction == "input" && source.role == "baseline") || !handoff.sources.iter().any(|source| source.direction == "output" && source.role == "text")
+            || handoff.constraints.iter().chain(&handoff.unverified).any(String::is_empty) {
+            return Err(work.failure("validate", "invalid-format", "指南来源或限制格式无效；不沿来源索引寻址。"));
+        }
+        let confirmation = handoff.confirmation;
+        let digest = format!("{:x}", Sha256::digest(text.as_bytes()));
+        if confirmation.evidence.is_empty() || !confirmation.full_text || !confirmation.semantics_preserved || confirmation.text_sha256 != digest
+            || (!baseline.request.authorization.save_guides && !confirmation.save_authorized) {
+            return Err(work.failure("validate", "authorization-required", "确认必须覆盖本字段最终原样 bytes、保义及保存授权。"));
+        }
+        candidate[field] = json!(text);
+        evidence.push(confirmation.evidence);
+        unverified.extend(handoff.unverified);
+    }
+    let current = with_definitions(&[state.bot_directory.clone()], "bot-read-failed", |access| {
+        bot_target(access, &state.bot_directory, &baseline.bot.id)?.ok_or_else(|| edit_error("identity-conflict", "Bot 缺失。"))
+    }).map_err(|error| work.failure("read_current", "identity-conflict", error.message))?;
+    if current != baseline.revision { return Err(work.failure("read_current", "revision-conflict", "真实 revision 已变化；不按相同正文认定成功。")); }
+    let (configuration, _, _) = target(state, &locator).await.map_err(|error| work.failure("read_current", "target-conflict", error))?;
+    if configuration != baseline.target.configuration { return Err(work.failure("read_current", "target-conflict", "完整目标配置与 baseline 不一致。")); }
+    if crate::runs::definition_in_use(state, baseline.bot.task_id.as_deref(), baseline.bot.map_file.as_deref()).await.map_err(|error| work.failure("save", "execution-failed", error))? {
+        return Err(work.failure("save", "definition-in-use", "目标定义正被活动 Run 使用，禁止保存。"));
+    }
+    // The public save takes content without id. Temporarily remove only that
+    // scalar rather than duplicating all three potentially large guide bodies.
+    let identity = candidate.as_object_mut().unwrap().remove("id").unwrap();
+    let content = candidate.to_string();
+    candidate["id"] = identity;
+    work.write = "failed";
+    save_bot_definition(state, BotSave { id: baseline.bot.id.clone(), content, revision: Some(baseline.revision) }, true).map_err(|error| {
+        work.failure("save", match error.code { "bot-conflict" => "revision-conflict", "target-conflict" => "target-conflict", "ambiguous-request" => "ambiguous-request", _ => "write-failed" }, error.message)
+    })?;
+    work.write = "succeeded";
+    work.read_back = "failed";
+    let revision = with_definitions(&[state.bot_directory.clone()], "bot-read-failed", |access| {
+        bot_target(access, &state.bot_directory, &baseline.bot.id)?.ok_or_else(|| edit_error("bot-read-failed", "保存后 Bot 缺失。"))
+    }).map_err(|error| work.failure("read_back", "read-back-failed", error.message))?;
+    let bot = strict_json(revision.original.as_bytes()).map_err(|error| work.failure("read_back", "read-back-failed", error))?;
+    if bot != candidate { return Err(work.failure("read_back", "read-back-failed", "写后完整 Bot 与三字段候选不一致。")); }
+    let (after_target, _, _) = target(state, &locator).await.map_err(|error| work.failure("read_back", "read-back-failed", error))?;
+    if after_target != configuration { return Err(work.failure("read_back", "target-conflict", "保存期间目标变化；保留实际效果，不回滚。")); }
+    work.read_back = "succeeded";
+    let mut snapshot = locator_value.clone();
+    snapshot["configuration"] = after_target;
+    let saved = json!({"schema_version":1,"kind":"saved","bot":bot,"revision":revision,"target":snapshot});
+    let sources: Vec<_> = inputs.iter().map(|input| json!({"binding_id":input.id,"direction":"input","role":if input.id == "baseline" { "baseline" } else if input.id.ends_with("_text") { "text" } else { "handoff" }})).collect();
+    let handoff = json!({"schema_version":1,"kind":"handoff","stage":"saved","bot_id":baseline.bot.id,"target":locator_value,"sources":sources,"confirmation_evidence":evidence,"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":unverified});
+    for (id, document) in [("saved", saved), ("handoff", handoff)] { material(run, execution, work, id, &document)?; }
+    Ok(())
+}
+
 fn material(run: &crate::runs::Run, execution: &crate::runs::NodeExecution, work: &mut Work, id: &str, document: &Value) -> Result<(), Value> {
     let directory = Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id).join(&execution.id);
     let path = directory.join(format!("{id}.json"));
