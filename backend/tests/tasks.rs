@@ -883,7 +883,7 @@ async fn delivered_chief_preset_keeps_identity_when_edited_and_restarted() {
         assert_eq!(chief["id"], "chief-bot");
         assert_eq!(chief["name"], "chief-bot");
         assert_eq!(chief["chatName"], "chat with chief bot");
-        assert_eq!(chief["model"], "gpt-6-luna");
+        assert_eq!(chief["model"], "gpt-6.1-sol");
         assert!(chief["suite"].is_null());
         let mut input = chief.clone();
         input.as_object_mut().unwrap().remove("id");
