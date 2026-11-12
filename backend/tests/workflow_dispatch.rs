@@ -32,6 +32,8 @@ mod history_integrity;
 mod rust_create;
 #[path = "workflow_dispatch/rust_save.rs"]
 mod rust_save;
+#[path = "workflow_dispatch/rust_lifecycle.rs"]
+mod rust_lifecycle;
 #[path = "workflow_dispatch/bot_targets.rs"]
 mod bot_targets;
 #[path = "workflow_dispatch/nesting.rs"]

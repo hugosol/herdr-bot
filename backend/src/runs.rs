@@ -16,6 +16,8 @@ use std::{
 };
 use tokio::sync::Mutex;
 mod reports;
+#[cfg(test)]
+mod report_isolation_tests;
 mod recovery;
 mod retry;
 mod startup;
