@@ -39,6 +39,12 @@
 
 每例独占临时定义、zone、Run、文件和数值回环服务；外部 Herdr 为记录型测试宿主，非真实 manager／模型。门闩进入预算 5 秒、业务在途派发返回预算 2 秒、自动报告观察预算 10 秒；结束前等待所属通知 CLI 退出再清理独占根。stdout 保留实际成功 Run／execution／report、baseline／revision、消费者读取对象和拒绝分类，完整入口日志归自身输出目录。通过不证明 S2 原生工具／S3 页面或 H1 人工验收；这些仍按各自分区交付。
 
+### 脚本报告通知失败隔离（P11）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture` 复用上述真实 Rust 创建、S1 HTTP／实际文件和既有报告诊断子进程／Herdr prompt gate。两种外部明确拒绝分别立即返回或在最多 10 秒门闩后返回；通知进入预算 5 秒，等待中公开读回预算 2 秒。报告保存及业务写入不使用替身。等待中／结束后核对同一完整报告与全部 outputs，并真实读取 baseline／handoff；失败后至少 1 秒持续取样配置 revision、Run／execution、报告与材料及完整宿主调用，确认一次业务派发、一次报告、一次外部通知，无自动重投。stdout 输出实际窗口、样本数、配置／报告身份、真实材料、调用记录与进程退出确认；stderr 保留共享通知分类诊断。它不声称真实 manager 已接收或用户已阅读，也不认领 11 的原生会话覆盖。
+
+完成检查先构建本 worktree 页面，设置独立绝对 `CARGO_TARGET_DIR`，再运行 `node scripts/test-backend.mjs`。日志不是第二份报告存储，不为此引入自动恢复或消息队列。
+
 ## 后端并行与诊断
 
 `node scripts/test-backend.mjs` 不带参数即可并行。Cargo 自动发现测试目标，普通新增 case 或集成测试文件无需登记；保留默认 ignored 状态、example 编译检查及 doctest。
