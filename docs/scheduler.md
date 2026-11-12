@@ -12,7 +12,7 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 
 这两个字符串仅选择编入后端的固定 Rust 业务，不是路径、命令、解释器、可上传代码或独立业务 exe。脚本 node 的 `manager_task_id` 不适用；`input` 仍为现有必填字符串，可为 `""`，不解析为业务参数。执行时冻结命名文件规则；脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`（含默认值），不把 manual 静默改成 auto。
 
-可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表。当前后端已实现 `create_blank_bot` 的定义保存／读回、预检及异步派发；`save_bot_guides` 的表示已约定但尚未注册为可执行能力，保存会拒绝，不能保存没有业务实现的占位目标。现有 Bot 维护页提供两个约定标识的选择与 JSON 编辑；选中不等于该部署已实现能力，后端真实保存／预检仍有最终拒绝权，不将未实现项伪装为可运行。正式创建流程定义迁移及真实 manager 原生工具验收不由页面或后端 HTTP 回归推断。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
+可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表。当前后端已实现 `create_blank_bot` 和 `save_bot_guides` 的定义保存／读回、预检及异步派发。现有 Bot 维护页提供两个固定标识的选择与 JSON 编辑；后端真实保存／预检仍有最终拒绝权，不接受未知能力。页面回归分别覆盖两种能力的保存、离开后重载及真实材料预检；预检只验证文件可用性，不代表结构化业务检查或实际写入已成功。正式创建流程定义迁移及真实 manager 原生工具验收不由页面或后端 HTTP 回归推断。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
 
 ## 定义职责与唯一格式
 

@@ -65,7 +65,8 @@ async function reopenBot(page: Page) {
 // guides. Plausible violation: JSON saves a target but picker/preview omits it,
 // or changing back to Task/Map leaves rust_script bound. Literal objects below
 // are independent expectations; the real backend remains in the exercised path.
-test('P30 fixed Rust target is maintained and reloaded without copying Task or Map configuration', async ({ page }, info) => {
+for (const capability of ['create_blank_bot', 'save_bot_guides'] as const) {
+test(`P30 ${capability} is maintained and reloaded without copying Task or Map configuration`, async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
   const taskResponse = await page.request.post(`${server.baseURL}/api/tasks`, { data: { name: '页面普通 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' } })
   expect(taskResponse.status()).toBe(200)
@@ -83,28 +84,28 @@ test('P30 fixed Rust target is maintained and reloaded without copying Task or M
   await json.fill(JSON.stringify(guides))
   await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption('save_bot_guides')
   expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, rust_script: 'save_bot_guides' })
-  await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption('create_blank_bot')
-  expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, rust_script: 'create_blank_bot' })
+  await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption(capability)
+  expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, rust_script: capability })
   await page.getByRole('button', { name: 'save', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  await expect(preview).toContainText('create_blank_bot')
+  await expect(preview).toContainText(capability)
   for (const section of ['when', 'plan_guide', 'node_guide']) {
     await preview.getByRole('button', { name: section, exact: true }).click()
     await expect(preview.getByRole('region', { name: section, exact: true })).toBeEmpty()
     await expect(preview.getByRole('status')).toHaveText(`当前 ${section}：空文本`)
   }
   const first = await readBot(page)
-  expect(first.content).toEqual({ ...guides, rust_script: 'create_blank_bot' })
+  expect(first.content).toEqual({ ...guides, rust_script: capability })
   await evidence(page, info, 'created-empty-guides', first)
   await page.getByTestId('tab-sessions').click()
   await reopenBot(page)
-  await expect(page.getByRole('combobox', { name: '固定 Rust 能力', exact: true })).toHaveValue('create_blank_bot')
+  await expect(page.getByRole('combobox', { name: '固定 Rust 能力', exact: true })).toHaveValue(capability)
   expect(JSON.parse(await json.inputValue())).toEqual(first.content)
 
   for (const invalid of [
     { ...guides, rust_script: 'unknown_capability' },
-    { ...guides, rust_script: 'create_blank_bot', task_id: task.id },
-    { ...guides, rust_script: 'create_blank_bot', map_file: 'page-child.json' },
+    { ...guides, rust_script: capability, task_id: task.id },
+    { ...guides, rust_script: capability, map_file: 'page-child.json' },
     { ...guides, rust_script: { command: 'anything' } },
   ]) {
     const raw = JSON.stringify(invalid, null, 2)
@@ -119,8 +120,8 @@ test('P30 fixed Rust target is maintained and reloaded without copying Task or M
   for (const target of ['task', 'script', 'map', 'script'] as const) {
     if (target === 'task') await page.getByRole('combobox', { name: 'Task', exact: true }).selectOption(`task:${task.id}`)
     if (target === 'map') await page.getByRole('combobox', { name: 'Map', exact: true }).selectOption('page-child.json')
-    if (target === 'script') await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption('create_blank_bot')
-    const expected = { ...guides, ...(target === 'task' ? { task_id: task.id } : target === 'map' ? { map_file: 'page-child.json' } : { rust_script: 'create_blank_bot' }) }
+    if (target === 'script') await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption(capability)
+    const expected = { ...guides, ...(target === 'task' ? { task_id: task.id } : target === 'map' ? { map_file: 'page-child.json' } : { rust_script: capability }) }
     expect(JSON.parse(await json.inputValue())).toEqual(expected)
     await page.getByRole('button', { name: 'save', exact: true }).click()
     await expect(preview).toBeVisible()
@@ -135,6 +136,8 @@ test('P30 fixed Rust target is maintained and reloaded without copying Task or M
   expect(server.herdrCalls()).toEqual([])
   await evidence(page, info, 'reloaded-rust-target', { definition: await readBot(page), hostCalls: server.herdrCalls() })
 })
+
+}
 
 // P30/P32 definition partition. A script node has no ordinary Task/manager
 // binding, consumes named materials rather than input, and cannot be configured
@@ -193,7 +196,8 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
 // treating every non-Task target as unbound, or collapsing an invalid capability
 // into an unexplained missing Bot. Change actual definition/material files
 // between explicit browser checks; never stub the preflight response.
-test('P30 real preflight accepts script materials and explicitly rejects unknown conflicting or unavailable inputs without starting', async ({ page }, info) => {
+for (const capability of ['create_blank_bot', 'save_bot_guides'] as const) {
+test(`P30 ${capability} preflight accepts available materials and explicitly rejects unknown conflicting or unavailable inputs without starting`, async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
   const root = path.dirname(server.configPath), zonePath = path.join(root, 'script-preflight-zone')
   fs.mkdirSync(zonePath)
@@ -205,14 +209,31 @@ test('P30 real preflight accepts script materials and explicitly rejects unknown
   const manager = tasks.tasks[0].id
   const bots = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  const bot = { id: 'script-page-only', ...guides, rust_script: 'create_blank_bot' }, botFile = path.join(bots, 'preflight-script.json')
+  const bot = { id: 'script-page-only', ...guides, rust_script: capability }, botFile = path.join(bots, 'preflight-script.json')
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.writeFileSync(path.join(maps, 'material-target.json'), JSON.stringify({ title: '不执行的材料目标', description: '', nodes: {} }))
-  const map = { title: '脚本真实预检', description: '', input_files: [{ id: 'request', required: true }], nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: [{ id: 'request', type: 'run', input_id: 'request' }], output_rule: [{ id: 'baseline' }, { id: 'handoff' }] } } }
+  const inputIds = capability === 'create_blank_bot' ? ['request'] : ['baseline', 'when_text', 'when_handoff', 'plan_guide_text', 'plan_guide_handoff', 'node_guide_text', 'node_guide_handoff']
+  const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create_blank_bot' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
-  const material = path.join(zonePath, 'request.json')
-  fs.writeFileSync(material, JSON.stringify({ schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { evidence: '独占验收授权', scope: 'create_blank' } }))
+  const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { evidence: '独占验收授权', scope: 'create_blank' } }
+  const materials = Object.fromEntries(inputIds.map(id => [id, path.join(zonePath, `${id}.json`)]))
+  if (capability === 'create_blank_bot') {
+    fs.writeFileSync(materials.request, JSON.stringify(request))
+  } else {
+    const target = { name: '预检保存目标', when: '', plan_guide: '', node_guide: '', map_file: 'material-target.json' }
+    expect((await page.request.post(`${server.baseURL}/api/scheduler/bots/save`, { data: { id: 'preflight-target', revision: null, content: JSON.stringify(target) } })).status()).toBe(200)
+    const editResponse = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id: 'preflight-target' } })
+    expect(editResponse.status()).toBe(200)
+    const edit = await editResponse.json()
+    fs.writeFileSync(materials.baseline, JSON.stringify({ schema_version: 1, kind: 'baseline', bot: JSON.parse(edit.revision.original), revision: edit.revision, target: { ...request.target, configuration: { title: '不执行的材料目标', description: '', nodes: {} } }, request }))
+    for (const field of ['when', 'plan_guide', 'node_guide']) {
+      const text = `预检独占 ${field} 正文\n`
+      fs.writeFileSync(materials[`${field}_text`], text)
+      fs.writeFileSync(materials[`${field}_handoff`], JSON.stringify({ schema_version: 1, kind: 'handoff', stage: 'guide', bot_id: 'preflight-target', target: request.target, field, sources: [{ binding_id: 'baseline', direction: 'input', role: 'baseline' }, { binding_id: 'text', direction: 'output', role: 'text' }], confirmation: { evidence: '独占正文确认与保存授权', text_sha256: createHash('sha256').update(text).digest('hex'), full_text: true, save_authorized: true, semantics_preserved: true }, constraints: [], unverified: ['不执行目标'] }))
+    }
+  }
+  const missingId = inputIds[0], material = materials[missingId]
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '脚本真实预检', exact: true }).click()
@@ -220,7 +241,7 @@ test('P30 real preflight accepts script materials and explicitly rejects unknown
   const form = page.getByRole('form', { name: '发起 Run', exact: true })
   await form.getByRole('combobox', { name: '管理者 Task', exact: true }).selectOption(manager)
   await form.getByRole('combobox', { name: '管理者 zone', exact: true }).selectOption('test/script')
-  await form.getByLabel('文件输入 request（必需）', { exact: true }).fill(material)
+  for (const id of inputIds) await form.getByLabel(`文件输入 ${id}（必需）`, { exact: true }).fill(materials[id])
   const observations: unknown[] = []
   async function check(status: number, message: string) {
     const response = page.waitForResponse(response => response.url().endsWith('/script-preflight.json/preflight') && response.request().method() === 'POST')
@@ -244,12 +265,14 @@ test('P30 real preflight accepts script materials and explicitly rejects unknown
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.unlinkSync(material)
   await check(400, '文件')
-  await expect(form.getByRole('alert')).toContainText('request')
-  await expect(form.getByLabel('文件输入 request（必需）', { exact: true })).toHaveValue(material)
+  await expect(form.getByRole('alert')).toContainText(missingId)
+  await expect(form.getByLabel(`文件输入 ${missingId}（必需）`, { exact: true })).toHaveValue(material)
   expect(fs.readFileSync(mapFile, 'utf8')).toBe(JSON.stringify(map))
   expect(await (await page.request.get(`${server.baseURL}/api/tasks`)).json()).toEqual(tasks)
   await evidence(page, info, 'script-preflight-missing-material', { observations, hostCalls: server.herdrCalls(), runs: (await (await page.request.get(`${server.baseURL}/api/workflow/runs`)).json()).runs })
 })
+
+}
 
 // P32: switching an existing definition to a script must not silently coerce
 // manual/close/manager values, nor trap the user with uneditable bad settings.
