@@ -23,10 +23,14 @@ export default function observeNativeConfirmation(api) {
   };
   const install = ctx => {
     const ui = ctx.ui;
-    if (!ctx.hasUI || !ui || typeof ui.confirm !== 'function' || observed.has(ui)) return;
-    const original = ui.confirm;
+    if (!ctx.hasUI || !ui) return;
+    // OMP's scoped handler UI is a Proxy: reading confirm returns a forwarding
+    // closure, while assigning it changes the underlying UI. Capture the own
+    // method descriptor instead, or that closure recurses into this observer.
+    const original = Object.getOwnPropertyDescriptor(ui, 'confirm')?.value;
+    if (typeof original !== 'function' || observed.has(original)) return;
     try {
-      ui.confirm = async (...args) => {
+      const wrapped = async (...args) => {
         const id = randomUUID();
         const started = performance.now();
         const common = { id, sessionId: ctx.sessionManager.getSessionId(), pid: process.pid, hasUI: ctx.hasUI };
@@ -44,7 +48,8 @@ export default function observeNativeConfirmation(api) {
           throw error;
         }
       };
-      observed.add(ui);
+      observed.add(wrapped);
+      ui.confirm = wrapped;
     } catch (error) {
       console.error('Cannot observe public native confirmation interface', error);
     }
