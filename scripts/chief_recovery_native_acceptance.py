@@ -353,6 +353,10 @@ class ChiefRecoveryAcceptance(Base):
         presentation = self.final_answer(chief, view_start)
         views = [record for record in self.backend_wire.records if record['path'] == '/api/chief/reports/' + report['id'] + '/view']
         require(len(views) == 1 and json.loads(views[0]['response'])['report'] == report, 'Fresh chief did not actually read unchanged original')
+        receiver_calls = [part for message in self.messages(presentation['history'], view_start) for part in message.get('content', [])
+            if isinstance(part, dict) and part.get('type') == 'toolCall']
+        require(all(call.get('name') == 'chief_read_report' for call in receiver_calls),
+            ('Manual recovery presented the report by performing other business work', receiver_calls))
         self.evaluate('recovery-blocked', report, presentation['answer'], original)
         self.quiet('after-explicit-view-no-business', [sender, chief])
         self.evidence['manualView'] = {'http': views[0], 'history': presentation['history'], 'answer': presentation['answer']}
