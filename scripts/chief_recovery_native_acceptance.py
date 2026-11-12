@@ -100,7 +100,18 @@ class ChiefRecoveryAcceptance(Base):
             if pid in owned:
                 until('actual native process exit ' + str(pid), lambda: not handle.alive(), 15)
                 self.evidence.setdefault('terminatedNativeProcesses', []).append({'sessionId': chat['sessionId'], 'pid': pid, 'exited': True})
-        self.http('/api/sessions/events', {'sessionId': chat['sessionId'], 'kind': 'unregister'})
+        request = urllib.request.Request(self.base + '/api/sessions/events',
+            data=json.dumps({'sessionId': chat['sessionId'], 'kind': 'unregister'}).encode(),
+            headers={'Content-Type': 'application/json'})
+        try:
+            response = urllib.request.urlopen(request, timeout=30)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            body = json.load(response)
+            self.evidence.setdefault('closedRegistrations', []).append({'sessionId': chat['sessionId'], 'status': response.status, 'body': body})
+            require(response.status == 200 or (response.status == 404 and body.get('code') == 'unknown-session'),
+                ('Could not unregister terminated native Chat', response.status, body))
 
     def restore(self, chat):
         previous = self.native(chat)
@@ -222,7 +233,10 @@ class ChiefRecoveryAcceptance(Base):
         before = len(self.backend_wire.records)
         self.send(sender, '请重发已保存的原chief报告 ' + report['id'] + '，原ID和完整内容不变；不是提交新报告。本次必须再次原生确认，未批准不发送。', 'explicit-original-resend')
         confirmation = self.confirmation(sender, 'chief_resend_report', ids)
-        require(confirmation['call']['arguments'] == {'id': report['id']}, 'Real model did not select original-only resend')
+        arguments = dict(confirmation['call']['arguments'])
+        if self.host == 'omp' and isinstance(arguments.get('i'), str):
+            arguments.pop('i')  # Installed OMP's tool intent metadata is not an HTTP/business parameter.
+        require(arguments == {'id': report['id']}, 'Real model did not select original-only resend')
         preview_text = confirmation['ui']['message'].split('原报告：\n', 1)
         require(len(preview_text) == 2, 'Native preview omitted original report')
         preview_report, _ = json.JSONDecoder().raw_decode(preview_text[1])
