@@ -150,7 +150,10 @@ class ChiefRecoveryAcceptance(Base):
         return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()] if path.exists() else []
 
     def business(self):
-        return {'delegations': self.http('/api/chief/delegations')['delegations'],
+        sessions = sorted(item['sessionId'] for item in self.http('/api/sessions/history')['sessions'])
+        return {'sessions': sessions,
+                'delegations': {session: self.http('/api/chief/delegations?sessionId=' + session)['delegations']
+                                for session in sessions},
                 'runs': self.http('/api/workflow/runs')['runs']}
 
     def quiet(self, label, chats=()):
