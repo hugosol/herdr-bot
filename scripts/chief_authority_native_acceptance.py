@@ -99,6 +99,12 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
     def __init__(self, args):
         super().__init__(args)
         self.barrier = None
+        # Herdr owns native child environments: publish observation paths before
+        # prepare starts that service, not later while starting the backend.
+        self.confirmation_directory = self.root / 'confirmations'
+        self.confirmation_directory.mkdir()
+        self.env['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmation_directory)
+        self.evidence['isolation']['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmation_directory)
         self.evidence.update(scenario='chief-authority', promises=['P31'], coverage={'P31': {'verified': False}},
             order=[], timing={'nativeReceiveBudgetSeconds': 20, 'transportBarrierSeconds': 18,
                 'nativeConfirmationSeconds': 20, 'requestSeconds': 30, 'startupObservationSeconds': args.timeout,
@@ -126,8 +132,6 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
         observer = self.root / 'confirmation-observer.mjs'
         source = self.args.repo / 'scripts/chief-ui-observer.mjs'
         shutil.copy2(source, observer)
-        self.confirmation_directory = self.root / 'confirmations'
-        self.env['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmation_directory)
         with (self.root / 'options.toml').open('a', encoding='utf-8') as options:
             options.write('\n[[extensions]]\nid = "authority-ui-observer"\nlabel = "Acceptance UI observation"\nagent = '
                 + json.dumps(self.host) + '\nkind = "fixed"\nentrypoint = ' + json.dumps(str(observer)) + '\n')
