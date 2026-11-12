@@ -19,6 +19,7 @@
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
 - 浏览器验收需要本机 Chrome。源码更新后使用 `test:browser:build`，由它先构建前后端和安全关机壳再执行验收；仅调试已构建产物时使用 `npm --prefix frontend run test:browser`。
 - 不同源码副本使用独立 `CARGO_TARGET_DIR`；测试程序会内嵌源码路径。性能比较顺序运行，避免多轮检查争抢同一资源。
+- 原生可见性浏览器清理通过独占 Chrome 的 Node `exit` 事件或独立 Windows 进程句柄确认退出；任一确认后回收句柄观察进程。`taskkill` 返回码或输出不能代替退出确认。
 
 ## 固定 Rust 表示验证
 
@@ -54,6 +55,12 @@
 - P15：真实文件阻塞 saved 或 handoff 生成，保存已生效时保留 write/readBack=succeeded 和已读回 outputs，不自动回滚或刷新 baseline。解除故障后由另一个隔离真实 Run 的 manager 显式派发，原 baseline 仍以 revision-conflict 拒绝。该场景不依赖同节点 fail/retry，后者由独立生命周期覆盖拥有。
 
 门闩只控制测试拥有的真实文件 open／外部宿主；进入预算 5 秒，自动报告观察预算 10 秒，所属通知 CLI 退出确认预算 5 秒，确认后再清理独占根。stdout 记录实际 Run、saved、报告、下游文件读回及拒绝／失败分类；完整入口保留日志。受控外部消费者证明命名文件传递，不证明原生模型／manager 行为或 H1/H2；本入口不迁移正式定义，也不改通用替换者或修订流程。
+
+## 发布创建图迁移回归（P22／P23／P27／P28）
+
+先构建本 worktree 静态页，以独立绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`；交付检查运行 `node scripts/test-backend.mjs`。`create_migration.rs` 经真实隔离后端、发布八节点 Map、两种 Rust 能力、实际文件和公开报告／complete／finish 完成闭环。迁移前完整发布定义为 `fixtures/rust-create-migration/before.json`；用例保留独占副本及真实无关 Run／Chat，完整比较原通用替换者 Bot／Task／修订 Map 和无关定义。三个固定独立字面稿为 `abc`、`hello`、空串，确认 digest 独立固定；记录型外部进程真实读取三路 baseline 与各 text/handoff，最终真实保存和 revision／完整目标读回不使用替身。严格 request 缺项／Markdown、guide handoff Markdown、缺显式 when_text 绑定均拒绝，不从邻居文件、自然语言或来源索引寻址。stdout 保留真实 Run、报告、baseline／saved／revision 及拒绝；所属通知 CLI 退出确认后才清理。
+
+这不证明模型遵从指引。P28 的共享三编写者创建 v1 消费／确认由更新的 `accept-workflow-nesting-create.py` 实际原生 workflow 场景覆盖，原非 v1 独立材料／通用替换与真实普通文件安全场景也保留；创建入口在独立／创建图／通用文件安全场景后，还实际组合调用修订入口既有 task-no-materials 业务场景，只有原格式三路消费与通用保存也成功才标 P28；可用 `accept-workflow-nesting-revise.py --cases task-no-materials`（或完整 all）独立复跑定位。两入口沿用本页授权模型、完整 Suite、独占依赖、动态回环、原生历史／HTTP／字节及进程退出要求；三编写者保持原宿主，脚本节点不虚构 Task、Chat 或模型 read。须实际执行对应场景；缺授权／依赖保留未验证，不转交 H1/H2，不以 CLI fail-closed 或定义相等补足行为证据。
 
 ## 后端并行与诊断
 
@@ -543,7 +550,7 @@ python scripts/accept-workflow-nesting-roles.py `
 
 该烟测观察原生真实 read／write、两份材料完整落盘读回、原文与未授权文件保持，以及 handoff 不含重复正文；保留完整模型请求、native JSONL、错误及真实材料。进程退出零不是充分条件，原生 `stopReason: error`、缺文件或未完整读回均失败。工具必须真实执行，不可由模型或传输伪造结果；传输用完关闭并等待，移除隔离凭据配置。它只证明一个独立原生调用能处理其实际材料，不是六 Task 配对覆盖、公开 Chat 发起或两案例完整 P40–P45 证据。
 
-Map 目标的最小创建烟测使用同一安装版 Pi `--print --mode json` 入口（空白创建 Task 没有初始 Skill，因此不传 `--skill`），加载 `task-18e33fdc55177d1c-1` 的实际 prompt 和显式 Map 创建委托。当前 worktree 的 `debug/examples/safe_shutdown_shell.exe --config <隔离backend.toml>` 提供同一生产 HTTP interface；只配置数值回环动态端口、独占定义／运行／zone 文件并关闭 mDNS。先经公开接口准备 normal Task 和已有工作 Bot、放置测试拥有的真实 Map，再授权只新建指定 Map 型 Bot 和 baseline／handoff 文件。原生模型自行读取公开完整定义与真实 edit.revision、新建空白 Bot、写材料并完整读回；独立 HTTP 读回比较 Map 绑定、三空字段、真实 revision、完整共同基线、原有 Task／Map／Bot 不变及无 Run。保留原始 HTTP、native JSONL 和文件，失败及清理错误分开记录；受控的未加载 catalogue 资源只满足后端夹具结构，不作为目标工具或角色原生加载证据。完成后终止并等待所属安全后端与原生进程、关闭模型传输、移除隔离凭据。该调用是轻量启用证据，不认领 21／22 的完整真实案例或六 Task 配对覆盖。
+以下是迁移前历史烟测边界，不再是当前可运行入口：原 Map 目标最小创建烟测曾使用已删除 `task-18e33fdc55177d1c-1` 的 Pi prompt。当前请用上文发布创建图迁移回归和真实原生创建入口，不恢复旧 Task 或加别名。历史流程中，当前 worktree 的 `debug/examples/safe_shutdown_shell.exe --config <隔离backend.toml>` 提供同一生产 HTTP interface；只配置数值回环动态端口、独占定义／运行／zone 文件并关闭 mDNS。先经公开接口准备 normal Task 和已有工作 Bot、放置测试拥有的真实 Map，再授权只新建指定 Map 型 Bot 和 baseline／handoff 文件。原生模型自行读取公开完整定义与真实 edit.revision、新建空白 Bot、写材料并完整读回；独立 HTTP 读回比较 Map 绑定、三空字段、真实 revision、完整共同基线、原有 Task／Map／Bot 不变及无 Run。保留原始 HTTP、native JSONL 和文件，失败及清理错误分开记录；受控的未加载 catalogue 资源只满足后端夹具结构，不作为目标工具或角色原生加载证据。完成后终止并等待所属安全后端与原生进程、关闭模型传输、移除隔离凭据。该调用是轻量启用证据，不认领 21／22 的完整真实案例或六 Task 配对覆盖。
 
 ## 创建 Task＋Bot 外层真实兼容验收
 
