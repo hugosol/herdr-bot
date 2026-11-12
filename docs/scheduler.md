@@ -6,6 +6,14 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分组／未分组／指定分组”筛选；“清除筛选”同时重置两项条件。分组标题可折叠并显示当前筛选结果数量，行尾“分组”可直接调整归属。详情页的 group 按钮与新增 node、发起 Run、编辑文件输入声明及删除 Map 集中在顶部操作区；手机端分组按钮独占一行，其余操作按两列排列，避免挤压标题与说明。分组保存仍即时生效，不改变 Map 或 node 的编辑与删除确认规则。
 
+## 固定 Rust 目标的表示契约（尚未交付执行）
+
+[ADR 0019](adr/0019-rust-script-bots.md) 的新目标字段定为 `rust_script`，只接受 `create_blank_bot`（空白 Bot 创建）和 `save_bot_guides`（创建分支三指南合并保存）。与 `task_id`、`map_file` 按**非 null 值**两两互斥；三者均无值仍是不可运行草稿。null 规范化为省略。未知能力、空字符串或错类型不得作为可运行目标，定义保存／预检须拒绝并保留原定义；建议保存错误沿用 `bot-invalid`，预检定位对应 node／Bot。普通 Task／Map 的缺失外部引用仍沿用下文保存与预检的分工，不借此收紧历史规则。
+
+这两个字符串仅选择编入后端的固定 Rust 业务，不是路径、命令、解释器、可上传代码或独立业务 exe。脚本 node 的 `manager_task_id` 不适用；`input` 仍为现有必填字符串，可为 `""`，不解析为业务参数。执行时冻结命名文件规则；脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`（含默认值），不把 manual 静默改成 auto。
+
+可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表；本阶段**不修改定义写入／预检／页面的运行能力，不允许先保存一个没有业务实现的占位目标**。以下章节继续描述既有 Task／Map 产品行为；两个能力的保存、运行及页面支持由后续交付验证，不能以本节或 Schema 验证通过宣称已经可用。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
+
 ## 定义职责与唯一格式
 
 | 对象 | 字段与职责 |

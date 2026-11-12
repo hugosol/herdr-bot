@@ -2,6 +2,38 @@
 
 需求、职责、批准承诺、排除项及验收责任见[长期需求与契约](workflow-contract.md)。本文是用户、管理者/节点及接入维护者的操作与协议参考；文中的检查命令不表示本次部署已通过，真实环境和人工验收状态见[证据边界](workflow-contract.md#验证边界与验收责任)。
 
+## 无 Chat 的执行与报告表示契约
+
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)，**只交付表示，不表示脚本派发、业务实现、工具或页面已经交付**。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
+
+### execution 与节点交接分别表达
+
+- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "rust_script"` 和 camelCase `rustScript` 固定能力值。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`reportPolicy: "auto"`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
+- `lifecycle` 只描述本次 Rust 工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求业务检查、合法真实写入、完整读回及必要输出材料生成／读回全部成功；正常函数返回不构成成功。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
+- 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
+- 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
+
+### 报告来源与兼容读取
+
+脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
+
+原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+
+### 结构化失败与实际效果
+
+`failure` 为 `{stage,code,message,effects}`；精确字段类型与闭集见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
+
+| stage | code 与判定 |
+| --- | --- |
+| parse | `invalid-format`：非 UTF-8、非法 JSON、非对象；`ambiguous-request`：重复 JSON key，不能 last-wins |
+| validate | `missing-field`：缺必填字段；`invalid-format`：错类型、未知字段／版本／枚举；`ambiguous-request`：重复／多字段来源；`authorization-required`：必要批准未覆盖本次正文／保存；`identity-conflict`：Bot 身份冲突；`target-conflict`：目标或字段归属冲突 |
+| read_current | `identity-conflict`：目标 Bot 缺失／不唯一；`target-conflict`：normal 类型、绑定或完整目标配置变化；`revision-conflict`：真实 revision／基线不一致；`read-back-failed`：当前完整配置不可读取 |
+| save | `definition-in-use`：既有运行禁写拒绝；`write-failed`：合法保存失败；竞争冲突仍为 `identity-conflict`／`target-conflict`／`revision-conflict`，不降级为成功 |
+| read_back | `read-back-failed`：写后完整读回失败或不符；目标变化为 `target-conflict` |
+| materials | `material-write-failed`／`material-read-back-failed`：baseline、saved 或必要 handoff 无法生成／完整读回 |
+
+意外执行异常用当前阶段的 `execution-failed`，保留可得效果；不新增重试／恢复机制。业务错误在已派发 execution 的不可完成报告和失败事实中表达，不能伪装派发未发生。派发前定义错误仍按既有 HTTP 拒绝面，不把本表错误码当新增路由。报告保存失败仍 `report-save-failed`／`saved:false`，保存后通知失败仍保留报告和 outputs，不自动重投业务。`execution-failure-effects` 字面例明确 Bot 已写入而 saved 文件失败；原 baseline 重跑须仍因 revision 冲突拒绝，禁止回滚、刷新基线或按正文相同认定成功。
+
 ## 公开接口与持久字段参考
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。

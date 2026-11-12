@@ -1,0 +1,2 @@
+# Offline schema validation only; not a backend runtime dependency.
+jsonschema==4.26.0
