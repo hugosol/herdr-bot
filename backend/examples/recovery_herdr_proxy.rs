@@ -11,8 +11,16 @@ fn main() {
         && args.get(1).is_some_and(|s| s == "prompt")
         && args.get(3).is_some_and(|s| s.starts_with("Chief report\nReport: "));
     let rejected = notification && root.join("reject-notification").exists();
-    let mut journal = OpenOptions::new().create(true).append(true).open(root.join("calls.jsonl")).unwrap();
-    writeln!(journal, "{}", json!({"argv": args, "notification": notification, "rejected": rejected})).unwrap();
+    let calls = root.join("calls");
+    fs::create_dir_all(&calls).unwrap();
+    let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let name = format!("{at}-{}", std::process::id());
+    let temporary = calls.join(format!("{name}.tmp"));
+    let mut record = OpenOptions::new().create_new(true).write(true).open(&temporary).unwrap();
+    let bytes = serde_json::to_vec(&json!({"argv": args, "notification": notification, "rejected": rejected})).unwrap();
+    record.write_all(&bytes).unwrap();
+    drop(record);
+    fs::rename(temporary, calls.join(format!("{name}.json"))).unwrap();
     if rejected {
         println!("{}", json!({"error":{"code":"acceptance-notification-rejected","message":"Explicit isolated external CLI fault before accepting input"}}));
         std::process::exit(1);

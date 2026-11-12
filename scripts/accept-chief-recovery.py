@@ -61,7 +61,9 @@ def main():
         resources = runpy.run_path(str(REPO / 'scripts/accept-suite-pi-resources.py'))
         resources['preflight'](args, evidence)
         args.path_roots = evidence['paths']['roots']
-        for host in args.hosts.split(','):
+        # The inherited isolated deployment prepares both installed host entries,
+        # even when this invocation exercises one host for parallel aggregation.
+        for host in ['omp', 'pi']:
             name = host + '_state_extension'
             require(name in args.path_roots and Path(args.path_roots[name]).is_file(), 'Missing readonly roots.' + name)
             setattr(args, name, Path(args.path_roots[name]).resolve())
@@ -88,6 +90,7 @@ def main():
             selected.host = host
             run = native(selected)
             status = run.run()
+            run.phase('host-result', 'passed' if status == 0 else 'failed')
             for key, observed in run.evidence['coverage'].items():
                 evidence['coverage'][host][key].update(observed, evidence=str(run.root / 'evidence.json'))
             evidence['cleanupErrors'].extend(run.evidence['cleanupErrors'])

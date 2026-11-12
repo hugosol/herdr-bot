@@ -15,6 +15,7 @@ from pathlib import Path
 import runpy
 import shutil
 import subprocess
+import sys
 import time
 import traceback
 import urllib.request
@@ -37,6 +38,12 @@ class ChiefRecoveryAcceptance(Base):
         self.env['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmations)
         self.known_pids = set()
         self.chat_pids = {}
+
+    def phase(self, stage, state):
+        print(json.dumps({'at': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'host': self.host,
+            'stage': stage, 'state': state,
+            'verifiedCoverage': [key for key, value in self.evidence['coverage'].items() if value['verified']]},
+            ensure_ascii=False), file=sys.stderr, flush=True)
 
     def start_backend(self, role_config):
         proxy = self.root / 'external-cli'
@@ -65,11 +72,14 @@ class ChiefRecoveryAcceptance(Base):
             'binarySha256': hashlib.sha256(executable.read_bytes()).hexdigest()}
 
     def prepare(self):
+        self.phase('prepare', 'started')
         super().prepare()
         self.backend_wire.close()
         self.backend_wire = RecoveryFaultProxy(self.base, self.root / 'recovery-http')
         self.role_config = self.root / 'toolkit/extensions/workflow-chat/config.yaml'
         self.role_config.write_text(f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+
+        self.phase('prepare', 'completed')
 
     def track(self, chat):
         pids = self.native_pids()
@@ -162,8 +172,8 @@ class ChiefRecoveryAcceptance(Base):
             operation['ended'] = time.monotonic()
 
     def calls(self):
-        path = self.root / 'external-cli/calls.jsonl'
-        return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()] if path.exists() else []
+        path = self.root / 'external-cli/calls'
+        return [json.loads(file.read_text(encoding='utf-8')) for file in sorted(path.glob('*.json'))]
 
     def business(self):
         sessions = sorted(item['sessionId'] for item in self.http('/api/sessions/history')['sessions'])
@@ -184,6 +194,7 @@ class ChiefRecoveryAcceptance(Base):
         return count
 
     def quiet(self, label, chats=()):
+        self.phase(label, 'started')
         baseline = {'reports': self.http('/api/chief/reports'), 'business': self.business(),
                     'notifications': len([call for call in self.calls() if call['notification']]),
                     'messages': {chat['sessionId']: self.messages(self.native(chat)) for chat in chats},
@@ -200,6 +211,7 @@ class ChiefRecoveryAcceptance(Base):
         self.evidence['windows'].append({'label': label, 'start': start, 'end': time.monotonic(), 'minimumSeconds': 46,
             'budgets': {'serviceStartup': 45, 'nativeStartup': 30, 'request': 30, 'nativeApproval': 20,
                         'online': 10, 'retention': 30, 'maintenanceScan': 5}, 'baseline': baseline})
+        self.phase(label, 'completed')
 
     def confirmation(self, chat, tool, prior_ids):
         def visible():
@@ -232,6 +244,7 @@ class ChiefRecoveryAcceptance(Base):
         self.evidence.setdefault('nativeConfirmations', []).append(confirmation)
 
     def explicit_resend(self, sender, report, approved=True, before_decision=None):
+        self.phase('explicit-resend-approved' if approved else 'explicit-resend-denied', 'started')
         previous = self.native(sender)
         start = len(previous['branch'])
         ids = self.confirmation_ids()
@@ -257,6 +270,7 @@ class ChiefRecoveryAcceptance(Base):
         if posts:
             require(json.loads(posts[0]['request']) == {'sessionId': sender['sessionId']} and posts[0]['started'] >= confirmation['approvedAt'], 'Resend changed body/identity or preceded approval')
         require(self.http('/api/chief/reports/' + report['id']) == report, 'Original report was mutated')
+        self.phase('explicit-resend-approved' if approved else 'explicit-resend-denied', 'completed')
         return result, posts
 
     def register(self, chat):

@@ -148,6 +148,8 @@ P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 M
 
 模型配置沿用上文公开真实模型传输。用户单独授权的只读 Codex provider 可使用 `python scripts/accept-workflow-codex.py --scenario recovery --hosts omp,pi ... --auth-file "$AUTHORIZED_AUTH"`，先 `--smoke` 核对实际 `serverModel=gpt-6-luna`；不发现、复制、改写或自动刷新用户认证，不回退或重试业务决策。它是实际工具决策的传输适配，不是两宿主直接 Codex wire 合规证据。入口实际执行依赖拥有的四份原生协议 dock，但受控 provider／HTTP／Herdr 只证明机制，不能冲抵本专项真实模型及双宿主矩阵。单宿主诊断、缺任一依赖／能力／证据或清理失败均不能整体通过。
 
+可用两个独占证据目录分别运行 `--hosts omp` 与 `--hosts pi` 并行诊断；每次仍保持单宿主内的重启／接收因果顺序，单宿主入口退出非零且不能称整体通过。聚合必须核对两份宿主 `evidence.json` 全部七项 verified、各自 passed/cleanupErrors、实际模型身份与机械检查退出状态及同一源码／产物身份；不能仅看过滤后的进程退出码。`business-stderr.log` 按时间、host、阶段 started/completed 与已验证 coverage 实时 flush，最终 JSON 仍独立输出；宿主根证据记录准确失败。外部 CLI 记录在 `external-cli/calls/*.json` 以独占临时文件写完后 rename 发布，避免并发进程交错 JSONL 或读到半条记录。
+
 CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-recovery.test.py`、`python scripts/chief_recovery_faults.test.py`；前者只证明 fail-closed／绝对路径／不覆盖旧证据，后者只证明原响应提交后的门闩和丢失行为。另设置 `CHIEF_RECOVERY_PROXY` 为本次 `recovery_herdr_proxy.exe`、`HERDR_FIXTURE` 为本次 `herdr-fixture.exe`，运行 `python scripts/chief_recovery_cli.test.py`，检查初始业务输入逐字透传、只拒绝 chief 报告通知、解除显式故障后原通知逐字透传。完成仍分别运行两仓要求的完整构建、后端／前端／浏览器及 Bun 1.4.4 typecheck／test／check:integrations；配对 dock 只使用本次安全关机壳与本次元数据，生产 `--backend` 不替代安全壳执行关机回归。全局套件不替代专项。
 
 ## 前端与浏览器

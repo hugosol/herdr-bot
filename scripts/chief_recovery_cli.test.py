@@ -4,6 +4,7 @@ A broad agent-prompt fault would prevent the real sender's initial input and
 never reach report recovery. Use the installed test-owned CLI fixture downstream,
 not a fake product result; this does not prove native/model recovery acceptance.
 """
+import concurrent.futures
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,26 @@ import unittest
 
 
 class RecoveryCLIProxy(unittest.TestCase):
+    def test_concurrent_calls_publish_complete_independent_records(self):
+        with tempfile.TemporaryDirectory(prefix='recovery-cli-concurrent-') as temporary:
+            root = Path(temporary)
+            proxy = root / 'recovery_herdr_proxy.exe'
+            shutil.copy2(os.environ['CHIEF_RECOVERY_PROXY'], proxy)
+            (root / 'recovery-proxy.json').write_text(json.dumps({'herdr': 'not-invoked.exe'}), encoding='utf-8')
+            (root / 'reject-notification').write_text('owned fault', encoding='utf-8')
+            def invoke(index):
+                return subprocess.run([proxy, 'agent', 'prompt', 'owned-chief',
+                    'Chief report\nReport: concurrent-' + str(index)], cwd=root, capture_output=True, timeout=10)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                outcomes = list(pool.map(invoke, range(32)))
+            self.assertTrue(all(outcome.returncode == 1 for outcome in outcomes))
+            records = [json.loads(file.read_text(encoding='utf-8')) for file in (root / 'calls').glob('*.json')]
+            self.assertEqual(len(records), 32)
+            self.assertEqual({record['argv'][3] for record in records},
+                {'Chief report\nReport: concurrent-' + str(index) for index in range(32)})
+            self.assertTrue(all(record['notification'] and record['rejected'] for record in records))
+            self.assertEqual(list((root / 'calls').glob('*.tmp')), [])
+
     def test_rejection_does_not_change_or_block_initial_input(self):
         with tempfile.TemporaryDirectory(prefix='recovery-cli-fault-') as temporary:
             root = Path(temporary)
