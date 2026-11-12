@@ -3,7 +3,7 @@ use super::*;
 
 // An actual Windows filesystem boundary: a level-1 oplock pauses a competing
 // open until the owning handle is closed. No product hooks or lock introspection.
-mod file_gate {
+pub(super) mod file_gate {
     use std::{ffi::c_void, fs, os::windows::{fs::OpenOptionsExt, io::AsRawHandle}};
     #[repr(C)]
     struct Overlapped { internal: usize, internal_high: usize, offset: u32, offset_high: u32, event: *mut c_void }

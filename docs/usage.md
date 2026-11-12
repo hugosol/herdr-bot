@@ -2,6 +2,14 @@
 
 本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
 
+## Rust 空白 Bot 创建
+
+后端内置 `create_blank_bot`；定义保存使用原 `POST /api/scheduler/bots/save`，内容示例为 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}`，独立传入新 Bot ID 和 `revision:null`。不填假 Task／Map，也不上传代码。未知能力或混合目标拒绝，原定义保留。正式创建流程不会因新增该能力自动迁移。
+
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，报告策略只能 auto，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+
+真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
+
 ## Chief 报告保存与通知
 
 两宿主的 `omp-chief-report`／`pi-chief-report` 固定入口只装配到 chief 实际委派的独立普通 Chat；普通 Task 的其他独立 Chat 不因此获得报告角色。预览、批准后启动及新进程恢复均沿用该真实关联，不把独立发送者伪装成 workflow node。直接 Map manager 由 manager-chat 提供同名 `chief_report`；内部 node 继续使用自己的 `report`。原生工具每次展示完整报告并单独确认，固定入口存在不授予后端报告资格。Suite 固定扩展区将该适用角色显示为“chief委派独立Chat”，它不是新的 Task 类型。

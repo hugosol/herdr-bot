@@ -67,12 +67,16 @@ pub struct Completion {
     pub actor: ChatReference,
     pub reason: String,
 }
+mod execution;
+use execution::{ChatExecution, ExecutionTarget, Lifecycle, ScriptExecution, ScriptKind};
+mod scripts;
+
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeExecution {
     pub id: String,
-    pub task_id: String,
-    pub agent: crate::tasks::Agent,
+    #[serde(flatten)]
+    pub target: ExecutionTarget,
     pub zone: String,
     #[serde(default)]
     pub input_rule: Option<Vec<crate::scheduler::InputRule>>,
@@ -84,9 +88,6 @@ pub struct NodeExecution {
     pub report_policy: crate::scheduler::ReportPolicy,
     #[serde(default)]
     pub auto_close: bool,
-    pub chat: Option<ChatReference>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub child_run_id: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -243,7 +244,7 @@ impl Runs {
             }
             for (node_id, node) in &run.nodes {
                 for execution in node.executions() {
-                    if let Some(child) = &execution.child_run_id {
+                    if let Some(child) = execution.child_run_id() {
                         if ids.contains(&run.id) || ids.contains(child) {
                             return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", run.id, node_id, execution.id, child));
                         }
@@ -310,8 +311,8 @@ impl Runs {
                 None => self.read(state, &id).await?,
             };
             for (node_id, node) in &run.nodes {
-                for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
-                    if execution.task_id != task_id || execution.agent != agent {
+                for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
+                    if execution.task_id() != Some(task_id) || execution.agent() != Some(agent) {
                         return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
                     }
                     nodes.push((run.clone(), node_id.clone(), execution.clone()));
@@ -326,7 +327,7 @@ impl Runs {
         match (managers.as_slice(), nodes.as_slice()) {
             ([], []) => Ok(None),
             ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
-            ([], [(_, _, execution)]) if execution.child_run_id.is_none() => Ok(Some(ExecutionRole::Node)),
+            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(ExecutionRole::Node)),
             ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
             _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
         }
@@ -645,14 +646,14 @@ pub async fn manager_status(
 fn nested_pair(child: &Run, parent: &Run, node_id: &str, execution: &NodeExecution) -> bool {
     child.id != parent.id && child.parent.as_ref().is_some_and(|link|
         link.run_id == parent.id && link.node_id == node_id && link.execution_id == execution.id)
-        && execution.child_run_id.as_deref() == Some(child.id.as_str())
-        && execution.task_id == child.manager_task_id
-        && child.manager.is_some() && child.manager == execution.chat
+        && execution.child_run_id().map(String::as_str) == Some(child.id.as_str())
+        && execution.task_id() == Some(child.manager_task_id.as_str())
+        && child.manager.is_some() && child.manager.as_ref() == execution.chat()
 }
 
 async fn nested_source(state: &AppState, child: &Run, execution: &NodeExecution) -> bool {
     state.tasks.get(&child.manager_task_id).await.is_ok_and(|task|
-        task.id == execution.task_id && task.agent == execution.agent && task.task_type == crate::tasks::TaskType::Manager)
+        Some(task.id.as_str()) == execution.task_id() && Some(task.agent) == execution.agent() && task.task_type == crate::tasks::TaskType::Manager)
 }
 
 async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response> {
@@ -676,7 +677,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
             }
         };
         for (node_id, node) in &run.nodes {
-            for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
+            for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
                 node_associations.push((run.clone(), node_id.clone(), execution.clone()));
             }
         }
@@ -799,6 +800,19 @@ pub async fn manager_dispatch(
         Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-failed", &message),
         Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-internal", &join.to_string()),
     }
+}
+
+pub(crate) async fn definition_in_use(state: &AppState, task_id: Option<&str>, map_file: Option<&str>) -> Result<bool, String> {
+    let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
+    for id in ids {
+        let run = state.runs.read(state, &id).await?;
+        if run.status == "completed" { continue; }
+        if map_file == Some(run.map.as_str()) || task_id == Some(run.manager_task_id.as_str())
+            || run.nodes.values().any(|node| node.executions().any(|execution| task_id.is_some() && execution.task_id() == task_id)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {

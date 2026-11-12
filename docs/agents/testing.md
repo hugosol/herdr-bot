@@ -26,6 +26,19 @@
 
 表示票不提前注册可保存但不能运行的能力，不改现有 Task／Map 运行代码；回归仍先构建本 worktree 静态页，再用独立绝对 `CARGO_TARGET_DIR` 执行 `node scripts/test-backend.mjs`。实例与长期文档只是新表示，不代表两种 Rust 业务或 S2／S3 已交付。
 
+## Rust 空白创建公开 HTTP／文件回归
+
+先构建本 worktree 静态页面，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow_dispatch/rust_create.rs` 通过公开 S1 HTTP／文件 interface 测定义、真实 Run、manager dispatch、完整配置／revision、自动报告、collect、完成门禁及真实临时材料；Map 在独占临时定义目录经文件 seam 发布并以 HTTP 读回／预检，不声称存在 HTTP 新建 Map 接口。正式创建流程定义未迁移。
+
+- `target_round_trips`：固定目标互斥、未知能力拒绝及拒绝后原定义不变。
+- `dispatch_writes`／`map_target`：normal Task 与完整真实 Map 目标、新 Bot 三空指南、真实 revision／baseline、独立 handoff、报告归属；实际派发下游受控宿主进程读取两份命名 JSON，内容和完整公开对象交叉核对。
+- `returns_while`：真实 Windows oplock 暂挂业务目标读取，门闩仍持有时独立取得 HTTP dispatch 返回、running lifecycle、无报告和首次 complete 拒绝；改写 node.input／当前规则后仍用已冻结 inputs／inputRule／outputRule。
+- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、授权、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。
+- `write_readback_and_material_failures`／`refuses_binding`：真实文件阻塞合法 Bot 保存、两个实际文件门闩制造保存后目标读回失败、材料父目录阻塞／同名文件碰撞，以及真实运行 Map 的禁写；核对部分效果，不回滚或提交 true。
+- `report_provenance`／`enforces_automatic_policy`：报告来源／execution／Run 一致性，拒绝伪造来源、manual／关闭／manager Task 策略及未声明交付 ID。原 `report_outputs` 回归继续通过同一报告保存实现覆盖未声明／重复 ID、执行级更新与隔离。
+
+每例独占临时定义、zone、Run、文件和数值回环服务；外部 Herdr 为记录型测试宿主，非真实 manager／模型。门闩进入预算 5 秒、业务在途派发返回预算 2 秒、自动报告观察预算 10 秒；结束前等待所属通知 CLI 退出再清理独占根。stdout 保留实际成功 Run／execution／report、baseline／revision、消费者读取对象和拒绝分类，完整入口日志归自身输出目录。通过不证明 S2 原生工具／S3 页面或 H1 人工验收；这些仍按各自分区交付。
+
 ## 后端并行与诊断
 
 `node scripts/test-backend.mjs` 不带参数即可并行。Cargo 自动发现测试目标，普通新增 case 或集成测试文件无需登记；保留默认 ignored 状态、example 编译检查及 doctest。

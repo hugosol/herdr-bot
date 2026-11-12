@@ -6,13 +6,13 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分组／未分组／指定分组”筛选；“清除筛选”同时重置两项条件。分组标题可折叠并显示当前筛选结果数量，行尾“分组”可直接调整归属。详情页的 group 按钮与新增 node、发起 Run、编辑文件输入声明及删除 Map 集中在顶部操作区；手机端分组按钮独占一行，其余操作按两列排列，避免挤压标题与说明。分组保存仍即时生效，不改变 Map 或 node 的编辑与删除确认规则。
 
-## 固定 Rust 目标的表示契约（尚未交付执行）
+## 固定 Rust 目标的表示契约
 
 [ADR 0019](adr/0019-rust-script-bots.md) 的新目标字段定为 `rust_script`，只接受 `create_blank_bot`（空白 Bot 创建）和 `save_bot_guides`（创建分支三指南合并保存）。与 `task_id`、`map_file` 按**非 null 值**两两互斥；三者均无值仍是不可运行草稿。null 规范化为省略。未知能力、空字符串或错类型不得作为可运行目标，定义保存／预检须拒绝并保留原定义；建议保存错误沿用 `bot-invalid`，预检定位对应 node／Bot。普通 Task／Map 的缺失外部引用仍沿用下文保存与预检的分工，不借此收紧历史规则。
 
 这两个字符串仅选择编入后端的固定 Rust 业务，不是路径、命令、解释器、可上传代码或独立业务 exe。脚本 node 的 `manager_task_id` 不适用；`input` 仍为现有必填字符串，可为 `""`，不解析为业务参数。执行时冻结命名文件规则；脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`（含默认值），不把 manual 静默改成 auto。
 
-可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表；本阶段**不修改定义写入／预检／页面的运行能力，不允许先保存一个没有业务实现的占位目标**。以下章节继续描述既有 Task／Map 产品行为；两个能力的保存、运行及页面支持由后续交付验证，不能以本节或 Schema 验证通过宣称已经可用。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
+可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表。当前后端已实现 `create_blank_bot` 的定义保存／读回、预检及异步派发；`save_bot_guides` 的表示已约定但尚未注册为可执行能力，保存会拒绝，不能保存没有业务实现的占位目标。页面支持、正式创建流程定义迁移及真实 manager 原生工具验收不由后端 HTTP 回归推断。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
 
 ## 定义职责与唯一格式
 
@@ -20,7 +20,7 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明非文件的总体输入要求；可选 `input_files: [{id,required,description?}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
-| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）或 `map_file`（目录内确切 Map JSON 文件名），二者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
+| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `rust_script`（已实现的固定 Rust 能力），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 

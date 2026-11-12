@@ -4,7 +4,7 @@
 
 ## 创建分支表示的交付边界
 
-固定 Rust 创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示业务尚未交付)及[可机读 Schema](contracts/rust-script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与现有接线不变；纯正文不包装，来源索引不负责寻址。创建分支采用该严格格式时，生产者与消费者须一起迁移；本次仅交付表示，**不切换发布 Map／Bot／Task，不宣称两个 Rust 能力已可运行**。下文现有外层 W2.handoff 作为 request 的生产要求也须在迁移票中落实，不能把旧 Markdown 当作已符合 JSON request。修订分支和通用 replace-text 保持原契约。
+固定 Rust 创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/rust-script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与现有接线不变；纯正文不包装，来源索引不负责寻址。创建分支采用该严格格式时，生产者与消费者须一起迁移；本次仅交付表示，**不切换发布 Map／Bot／Task，不宣称两个 Rust 能力已可运行**。下文现有外层 W2.handoff 作为 request 的生产要求也须在迁移票中落实，不能把旧 Markdown 当作已符合 JSON request。修订分支和通用 replace-text 保持原契约。
 
 ## 调用接口
 

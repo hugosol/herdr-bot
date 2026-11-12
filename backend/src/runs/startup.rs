@@ -149,20 +149,35 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         let mut target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
         target.zone = run.zone_bindings.get(&target.zone).cloned().ok_or_else(|| format!("zone {} 不在本次 Run 启动快照中；请启动新 Run（旧历史仍可查看）", target.zone))?;
         crate::zones::browse::checked_root(&target.zone).map_err(|e| e.message())?;
+        let identity = match &target.rust_script {
+            Some(capability) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::RustScript, rust_script: capability.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }),
+            None => {
+                let task = target.task.as_ref().ok_or("缺少 Chat 执行 Task")?;
+                ExecutionTarget::Chat(ChatExecution { task_id: task.id.clone(), agent: task.agent, chat: None, child_run_id: None })
+            }
+        };
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), task_id: target.task.id.clone(), agent: target.task.agent, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, chat: None, child_run_id: None });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
-        let suite_args = state.tasks.prepare_environment(&target.task).map_err(|error| error.message())?;
+        if target.rust_script.is_some() {
+            candidate.nodes.get_mut(id).unwrap().status = "running".into();
+            save_run(state, &candidate).await?;
+            *run = candidate.clone();
+            scripts::launch(state.clone(), candidate.clone(), id.to_owned());
+            return Ok(());
+        }
+        let task = target.task.as_ref().ok_or("缺少 Chat 执行 Task")?;
+        let suite_args = state.tasks.prepare_environment(task).map_err(|error| error.message())?;
         let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else { crate::tasks::catalog::ExecutionRole::Node };
-        let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(&target.task, role)).map_err(|e| e.message())?;
+        let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(task, role)).map_err(|e| e.message())?;
         preset.env.suite_args = suite_args;
         preset.env.check_entrypoints()?;
         let mut child = match &target.map {
             Some(map) => Some(prepare_child(state, &mut candidate, id, map, &target, &mut effects, &mut stage).await?),
             None => None,
         };
-        let result = protocol(state, &mut candidate, &target.task, &preset,
+        let result = protocol(state, &mut candidate, task, &preset,
             Role::Node { id, target: &target, committed: run }, child.as_mut(), None, &mut effects, &mut stage).await;
         if let (Some(child), Err(message)) = (child, &result) {
             state.runs.active.lock().await.insert(child.id, Some(StartupFailure { stage: stage.into(), message: message.clone(), effects: Some(effects.clone()) }));
@@ -176,7 +191,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), task_id: previous.task_id.clone(), agent: previous.agent, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, chat: None, child_run_id: None,
+                id: crate::chats::new_creation_id(), target: match &previous.target { ExecutionTarget::Chat(chat) => ExecutionTarget::Chat(ChatExecution { task_id: chat.task_id.clone(), agent: chat.agent, chat: None, child_run_id: None }), ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::RustScript, rust_script: script.rust_script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }) }, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false,
             });
         }
         node.status = "failed".into();
@@ -207,7 +222,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     let zone_id = target.zone_id.clone();
     let execution = parent.nodes[node_id].execution.as_ref().ok_or("缺少父 execution")?;
     let input = crate::scheduler::RunPreflightRequest {
-        manager_task_id: target.task.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
+        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
         file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
     };
     let gate = state.runs.map_lock(map).await;
@@ -219,7 +234,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     let child = Run {
         id: crate::chats::new_creation_id(), name: None, map: map.to_owned(),
         created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
-        manager_task_id: target.task.id.clone(),
+        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(),
         parent: Some(ParentExecution { run_id: parent.id.clone(), node_id: node_id.to_owned(), execution_id: execution.id.clone() }),
         manager_zone_id: Some(zone_id.clone()), zone: target.zone.clone(),
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
@@ -228,7 +243,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, previous_executions: Vec::new() })).collect(),
     };
     *stage = "child-register";
-    parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id = Some(child.id.clone());
+    *parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id_mut() = Some(child.id.clone());
     save_run(state, parent).await?;
     effects.child_run_id = Some(child.id.clone());
     state.runs.registered_maps.lock().await.insert(child.id.clone(), child.map.clone());
@@ -329,7 +344,7 @@ async fn protocol(
     }
     match &role {
         Role::Manager => run.manager = Some(chat),
-        Role::Node { id, .. } => run.nodes.get_mut(*id).unwrap().execution.as_mut().unwrap().chat = Some(chat),
+        Role::Node { id, .. } => *run.nodes.get_mut(*id).unwrap().execution.as_mut().unwrap().chat_mut() = Some(chat),
     }
     *stage = "association";
     match &mut role {

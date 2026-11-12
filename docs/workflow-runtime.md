@@ -4,7 +4,7 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)，**只交付表示，不表示脚本派发、业务实现、工具或页面已经交付**。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。`create_blank_bot` 已由后端直接实现：原 manager dispatch 接受并保存独立 execution 后返回，真实文件读取和业务写入在后台进行；完整读回及材料交付成功后自动保存报告并尝试一次原 manager 通知。它不创建节点 Chat／Tab、不等待 manual 报告、不调用关闭，也不 complete 或派发下游。`save_bot_guides`、页面、正式定义迁移及真实 manager 原生工具证据仍由各自交付验证；表示本身不证明这些已完成。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
 
 ### execution 与节点交接分别表达
 
