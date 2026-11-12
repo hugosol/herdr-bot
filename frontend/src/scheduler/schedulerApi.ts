@@ -7,6 +7,7 @@ export type Bot = {
   node_guide: string
   task_id?: string
   map_file?: string
+  rust_script?: string
 }
 
 export type MapFileInput = { id: string; required: boolean; description?: string }
