@@ -196,9 +196,14 @@ mod degradation {
             }
             let suite_args = state.tasks.prepare_environment(&task).map_err(|error| (error.code(), error.message()))?;
             let catalog = state.tasks.catalog().map_err(|error| ("invalid-agent-settings", error.message()))?;
-            let role = state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
-                .map_err(|message| ("execution-association-invalid", message))?
-                .unwrap_or_else(|| task.task_type.into());
+            let role = match state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
+                .map_err(|message| ("execution-association-invalid", message))? {
+                Some(role) => role,
+                None => state.delegations.sender(&selected.session_id)
+                    .map_err(|error| ("chief-delegation-storage", error.to_string()))?
+                    .filter(|record| record.run_id.is_none())
+                    .map_or_else(|| task.task_type.into(), |_| crate::tasks::catalog::ExecutionRole::ChiefDelegated),
+            };
             let mut env = self.environment(&catalog, agent, role);
             env.suite_args = suite_args;
             Ok(crate::chats::agent_launch_args(&env, None))
@@ -211,9 +216,12 @@ mod degradation {
                 ExecutionRole::Manager => &["manager"],
                 ExecutionRole::Node => &["node"],
                 ExecutionRole::NestedManager => &["manager", "node"],
+                ExecutionRole::ChiefDelegated => &["chief-report"],
             };
             for role_name in role_names {
-                let id = format!("{}-{role_name}-chat", agent.label());
+                let id = if *role_name == "chief-report" {
+                    format!("{}-chief-report", agent.label())
+                } else { format!("{}-{role_name}-chat", agent.label()) };
                 if !catalog.extensions.iter().any(|extension| extension.id == id) {
                     self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
                 }
