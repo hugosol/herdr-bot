@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import runpy
+from types import SimpleNamespace
 import sys
 import tempfile
 import unittest
@@ -69,6 +71,30 @@ class RecoveryCLI(unittest.TestCase):
             (root / 'evidence/evidence.json').write_bytes(original)
             self.assertNotEqual(self.invoke(root).returncode, 0)
             self.assertEqual((root / 'evidence/evidence.json').read_bytes(), original)
+
+
+class RecoveryObservation(unittest.TestCase):
+    def test_title_metadata_does_not_hide_business_requests_or_tool_catalogs(self):
+        scenario = runpy.run_path(str(ROOT / 'scripts/chief_recovery_native_acceptance.py'))
+        acceptance = object.__new__(scenario['ChiefRecoveryAcceptance'])
+        acceptance.host = 'omp'
+        def record(system, tools=()):
+            return {'request': json.dumps({'messages': [{'role': 'system', 'content': system}],
+                                         'tools': list(tools)})}
+        acceptance.model_wire = SimpleNamespace(records=[
+            record('Business recovery: wait for explicit user input.')])
+        baseline = acceptance.business_request_count()
+        acceptance.model_wire.records.extend([
+            record('You name coding-agent sessions. Write a title.'),
+            record('You head coding-agent session titles with a small card. Pick the card.')])
+        self.assertEqual(acceptance.business_request_count(), baseline)
+        # A metadata-looking prompt with executable tools must not be ignored.
+        acceptance.model_wire.records.append(record('You name coding-agent sessions.', [{'name': 'chief_report'}]))
+        self.assertEqual(acceptance.business_request_count(), baseline + 1)
+        acceptance.model_wire.records.append(record('Business recovery: replay initial input.'))
+        self.assertEqual(acceptance.business_request_count(), baseline + 2)
+        acceptance.host = 'pi'
+        self.assertEqual(acceptance.business_request_count(), len(acceptance.model_wire.records))
 
 
 if __name__ == '__main__':

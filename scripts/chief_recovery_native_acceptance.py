@@ -132,7 +132,7 @@ class ChiefRecoveryAcceptance(Base):
         previous = self.native(chat)
         messages = [message for message in self.messages(previous) if message.get('role') in ['user', 'assistant', 'toolResult']]
         reports = self.http('/api/chief/reports')
-        requests = len(self.model_wire.records)
+        requests = self.business_request_count()
         self.close_chat(chat)
         outcome = self.http('/api/chats/resume', {'sessionId': chat['sessionId']})
         require(outcome['outcome'] == 'restored', ('Expected actual new process', outcome))
@@ -140,7 +140,7 @@ class ChiefRecoveryAcceptance(Base):
         actual = self.native(restored)
         require([message for message in self.messages(actual) if message.get('role') in ['user', 'assistant', 'toolResult']] == messages,
             'New-process recovery replayed initial input or changed native business history')
-        require(len(self.model_wire.records) == requests and self.http('/api/chief/reports') == reports,
+        require(self.business_request_count() == requests and self.http('/api/chief/reports') == reports,
             'Recovery invoked a model or created a business report before observation began')
         self.evidence.setdefault('restores', []).append({'original': chat, 'restored': restored, 'historyBefore': previous, 'historyAfter': actual})
         return restored
@@ -188,7 +188,10 @@ class ChiefRecoveryAcceptance(Base):
             request = json.loads(record['request'])
             messages = request.get('messages', [])
             system = messages[0] if messages else {}
-            if system.get('role') == 'system' and str(system.get('content', '')).startswith('You name coding-agent sessions.'):
+            if (self.host == 'omp' and not request.get('tools') and system.get('role') == 'system'
+                    and str(system.get('content', '')).startswith((
+                        'You name coding-agent sessions.',
+                        'You head coding-agent session titles with a small card.'))):
                 continue
             count += 1
         return count
