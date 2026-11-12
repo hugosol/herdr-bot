@@ -1059,13 +1059,13 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     write_hook(
         &root,
         "pre-commit",
-        "#!/bin/sh\necho 'hook started' >&2\n( sleep 8; echo child-alive > child-marker.txt ) &\nsleep 8\n",
+        "#!/bin/sh\necho 'hook started' >&2\n( sleep 30; echo child-alive > child-marker.txt ) &\nwait\n",
     );
 
     let registry = dir.path().join("zones.json");
     let mut config = config_with_registry(&registry);
     config.git.command_timeout_seconds =
-        herdr_bot::CommandTimeoutSeconds::new(1).expect("测试时限必须合法");
+        herdr_bot::CommandTimeoutSeconds::new(5).expect("测试时限必须合法");
     let server = TestServer::start(&config).await;
     register(&server, &root).await;
     let status = git_status(&server, &root).await;
@@ -1108,7 +1108,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     assert_eq!(payload["code"], json!("git-timeout"));
     let message = payload["message"].as_str().expect("message 字符串");
     assert!(
-        message.contains("1 秒执行上限") && message.contains("本功能配置"),
+        message.contains("5 秒执行上限") && message.contains("本功能配置"),
         "页面必须标明本功能超时，而不是伪造 Git 退出消息：{message}"
     );
 
@@ -1117,7 +1117,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
         git_stdout(&root, &["diff", "--cached", "--name-only"]).contains("file.txt"),
         "暂存成功后发生超时，不能自动回滚已成功的暂存"
     );
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(31)).await;
     assert!(
         !root.join("child-marker.txt").exists(),
         "超时必须终止 Git 的派生执行，背景子进程不应继续写出标记"
