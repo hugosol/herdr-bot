@@ -17,7 +17,7 @@
 
 脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
 
-原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
 
 ### 结构化失败与实际效果
 
