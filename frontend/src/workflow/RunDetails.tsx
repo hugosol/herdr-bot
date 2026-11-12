@@ -73,6 +73,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
       {run && <div><WorkflowStatus status={run.status} saved={!detail?.managed} /><p className="workflow-muted">{Number.isFinite(run.createdAt) && !Number.isNaN(new Date(run.createdAt).getTime()) && <><time dateTime={new Date(run.createdAt).toISOString()}>{new Date(run.createdAt).toLocaleString()}</time> · </>}{Object.values(run.nodes).filter(node => node.status === 'completed').length} / {Object.keys(run.nodes).length} 已交接</p></div>}
     </header>}
     <div className="workflow-refresh-info"><p role="status" aria-label="workflow 更新">最后成功时间：{snapshot && snapshot.id === id ? <time dateTime={new Date(snapshot.at).toISOString()}>{new Date(snapshot.at).toLocaleString()}</time> : '尚无成功查询。'}</p><button type="button" onClick={refresh}>刷新 Run</button></div>
+    {snapshot?.definitionsPending && <p role="status">运行事实已读回；当前定义仍在读取，暂沿用上次目录（若有），不是历史执行快照。</p>}
     {error && <p className="workflow-alert" role="alert">更新失败：{error} 保留上次成功现场；可见时继续按配置查询，也可手动刷新。查询不改写 Run，不重试任何运行操作。</p>}
     <div hidden={id !== null}><RunList active={active && id === null} entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
     {id && <>

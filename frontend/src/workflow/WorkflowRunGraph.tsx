@@ -7,12 +7,12 @@ import './workflow-run-graph.css'
 type Edge = { source: string; target: string; path: string }
 type GraphGeometry = { width: number; height: number; edges: Edge[] }
 
-export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTasks, nodeBots, nodeReportPolicies, animateRunning }: {
+export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTargets, nodeBots, nodeReportPolicies, animateRunning }: {
   map: WorkflowMap
   selectedId: string | null
   onSelect: (id: string) => void
   nodeStates: Record<string, { status: string; label: string }>
-  nodeTasks: Record<string, string>
+  nodeTargets: Record<string, { label: string; name: string }>
   nodeBots: Record<string, string>
   nodeReportPolicies: Record<string, 'auto' | 'manual'>
   animateRunning: boolean
@@ -63,7 +63,7 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
       observer?.disconnect()
       window.removeEventListener('resize', measure)
     }
-  }, [map, nodeStates, nodeTasks, nodeBots])
+  }, [map, nodeStates, nodeTargets, nodeBots])
 
   return <div className="workflow-run-graph" role="group" aria-label="Map 依赖图" tabIndex={0}>
     <div className="workflow-run-graph-body" ref={bodyRef} style={{ '--workflow-graph-levels': Math.max(1, levels.length) } as CSSProperties}>
@@ -89,7 +89,7 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
             </svg>}
             <span className="workflow-run-graph-node-top"><code>{id}</code><WorkflowStatus status={status} saved={!animateRunning} animate={animateRunning} /></span>
             <strong>{node.title}</strong>
-            <span className="workflow-run-graph-task"><span>Task</span>{nodeTasks[id] ?? '—'}</span>
+            <span className="workflow-run-graph-task"><span>{nodeTargets[id]?.label ?? '执行目标'}</span>{nodeTargets[id]?.name ?? '—'}</span>
             <span className="workflow-run-graph-bot">Bot · {nodeBots[id] ?? node.bot_id}</span>
           </button>
         })}

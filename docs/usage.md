@@ -137,6 +137,14 @@ scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto
 
 节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
 
+### workflow 中的脚本执行
+
+脚本节点从已保存 execution 显示 `kind: rust_script`、固定能力 `rustScript`、执行 ID、业务生命周期、冻结的 `inputRule`／`outputRule` 与实际文件 `inputs`，不从当前 Bot 重建历史身份。当前定义仍单独标注，不是执行快照；脚本不消费 `node.input` 自然语言。
+
+业务在途、业务成功／失败结束、报告 `canComplete`、节点状态与下游依赖资格分别显示。自动报告的严格 `canComplete: true` 只表示可交接；manager 仍须显式 `complete`，此前节点仍为 `running`、依赖仍阻塞。失败保留原错误及可得实际效果，不回滚、不自动 retry。manager 核实后显式 fail／retry 产生新的 execution；旧报告与 outputs 只属于旧 execution，不授予新执行完成资格。
+
+当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不是等待启动 Chat 或 manual 报告确认。
+
 ### 完成后的 Tab 清理与诊断
 
 Map node 可选择“完成后自动关闭”；关闭会终止该 Tab 内的终端及相关进程，不删除 Chat 历史。此设置固定在每次派发的执行中，只有管理者合法完成该节点后才尽力清理。workflow 仍显示既有的 `completed` 状态，不显示关闭成功或失败，也不会为关闭弹出通知。

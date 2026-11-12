@@ -45,6 +45,16 @@
 
 完成检查先构建本 worktree 页面，设置独立绝对 `CARGO_TARGET_DIR`，再运行 `node scripts/test-backend.mjs`。日志不是第二份报告存储，不为此引入自动恢复或消息队列。
 
+## 脚本 workflow 页面（P31／P5／P32 运行分区）
+
+`frontend/browser-tests/workflowScripts.spec.ts` 使用实际 Map、公开发起／准备输入／dispatch／fail／retry／complete、独占生产后端与本次构建页面。成功与部分材料失败均运行编入后端的真实 Rust 创建能力，不写运行记录或替换组件。受控 Herdr 仅记录真实 manager／Task 的 CLI，不证明真实模型消费。
+
+门闩由 Python 3 标准库调用 Windows oplock，实际暂停目标 Task／Map 文件读取；退出时释放并等待所属 Python 进程结束。Task 文件门闩叠加两个真实 `/api/tasks` 请求，在两个独占 Tokio HTTP worker 下仍须读回业务在途事实，防止目录同步磁盘读取饿死运行接口。门闩进入预算 5 秒，独立运行事实读回预算 2 秒；脚本生命周期与报告资格、节点状态和依赖资格分开核对。Map 目录门闩期间仅读取公开运行事实，不为截图解除门闩；释放后另保留公开当前定义，所有已登记材料均实际读取。
+
+截图和同刻 S1 JSON（execution／reports、公开配置、实际材料与外部调用）保留在 Playwright `test-results` 及附件。检查当前／旧脚本和脚本报告没有 Resume／关闭动作，真实 manager／Task／Map Chat 仍沿用原入口；页面观察不产生业务操作或外部调用。没有用户 Run／Chat，也没有真实模型请求。
+
+本 worktree 使用独立绝对 `CARGO_TARGET_DIR`，资源受限时设 `CARGO_BUILD_JOBS=1`。定向反馈为 `npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1`；完成检查运行 `npm --prefix frontend test`、完整 `npm --prefix frontend run test:browser:build`，含后端阻塞 IO 修复时另运行 `node scripts/test-backend.mjs`。常规回归不代替 H1／原生宿主验收。
+
 ## 后端并行与诊断
 
 `node scripts/test-backend.mjs` 不带参数即可并行。Cargo 自动发现测试目标，普通新增 case 或集成测试文件无需登记；保留默认 ignored 状态、example 编译检查及 doctest。
