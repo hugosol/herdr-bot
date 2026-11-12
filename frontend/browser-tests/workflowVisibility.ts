@@ -26,7 +26,12 @@ export async function nativeVisibilityBrowser() {
   child.stdout.on('data', consume)
   child.stderr.on('data', consume)
   child.once('error', error => { clearTimeout(timeout); endpoint.reject(error) })
-  child.once('exit', code => { clearTimeout(timeout); endpoint.reject(new Error(`Chrome exited (${code}): ${diagnostics}`)) })
+  const childExited = Promise.withResolvers<void>()
+  child.once('exit', code => {
+    clearTimeout(timeout)
+    childExited.resolve()
+    endpoint.reject(new Error(`Chrome exited (${code}): ${diagnostics}`))
+  })
   // Keep an independent Windows process handle: Chrome can terminate while
   // Node has not delivered its ChildProcess exit event yet.
   const handleReady = Promise.withResolvers<void>()
@@ -57,8 +62,9 @@ export async function nativeVisibilityBrowser() {
     }
     const grace = Promise.withResolvers<void>()
     const graceTimer = setTimeout(grace.resolve, 5000)
-    try { await Promise.race([handleExited.promise, grace.promise]) } finally { clearTimeout(graceTimer) }
-    if (child.pid && !confirmedExit) {
+    const hasExited = () => confirmedExit || child.exitCode !== null || child.signalCode !== null
+    try { await Promise.race([handleExited.promise, childExited.promise, grace.promise]) } finally { clearTimeout(graceTimer) }
+    if (child.pid && !hasExited()) {
       const killed = Promise.withResolvers<number | null>()
       let terminationDiagnostics = ''
       const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -69,13 +75,17 @@ export async function nativeVisibilityBrowser() {
       const code = await killed.promise
       const confirmed = Promise.withResolvers<void>()
       const deadline = setTimeout(confirmed.resolve, 5000)
-      try { await Promise.race([handleExited.promise, confirmed.promise]) } finally { clearTimeout(deadline) }
-      if (!confirmedExit) {
+      try { await Promise.race([handleExited.promise, childExited.promise, confirmed.promise]) } finally { clearTimeout(deadline) }
+      if (!hasExited()) {
         watcher.kill()
         await handleExited.promise
         throw new Error(`Owned Chrome process ${child.pid} did not exit (taskkill ${code}): ${terminationDiagnostics}; handle: ${handleDiagnostics}; Chrome: ${diagnostics}`)
       }
     }
+    // Either observer confirms the same owned process; do not leave the
+    // independent handle watcher alive when Node delivers exit first.
+    if (hasExited() && watcher.exitCode === null && watcher.signalCode === null) watcher.kill()
+    await handleExited.promise
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     if (failure) throw failure
   }
