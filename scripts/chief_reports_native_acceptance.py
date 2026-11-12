@@ -32,6 +32,18 @@ class ChiefReportsAcceptance(ChiefEntryAcceptance):
                     'quietWindowSeconds': 46, 'turnBudgetSeconds': args.timeout},
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
 
+    def configure_model(self):
+        super().configure_model()
+        if self.host == 'omp':
+            # Idle recaps are unrelated host metadata, not report presentation.
+            # Disable the installed host's existing recap policy only in this
+            # invocation-owned config so shutdown cannot cancel an extra model
+            # request after all report turns and quiet windows have finished.
+            config = self.root / 'agent/config.yml'
+            with config.open('a', encoding='utf-8') as stream:
+                stream.write('recap:\n  enabled: false\n')
+            self.evidence['idleRecap'] = {'enabled': False, 'scope': 'owned OMP acceptance config only'}
+
     def launch(self, task, user=''):
         preview = self.http('/api/chats/preview', {'zone': 'reports/owned', 'taskId': task})
         started = self.http('/api/chats', {'zone': 'reports/owned', 'taskId': task, 'chatId': preview['chatId'], 'input': user}, 202)
