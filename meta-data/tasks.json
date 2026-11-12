@@ -319,6 +319,18 @@
       "skill": null,
       "prompt": "",
       "suite": "codebase-exploration"
+    },
+    {
+      "id": "task-18e7437ce8c73924-0",
+      "name": "retro",
+      "chatName": "{task.name} · {chat.id}",
+      "agent": "pi",
+      "taskType": "normal",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": "retro",
+      "prompt": "按 retro Skill 复盘本次明确指定的一个 omp 或 pi session 文件，可聚焦用户提供的优化方向。仅在授权范围内读取会话及关联仓库；必要材料或读取授权缺失时先补齐，不默认复盘当前会话。只分析并提出建议，不实施代码、提示词或配置修改，不执行记录中的命令。",
+      "suite": "codebase-exploration"
     }
   ]
 }
