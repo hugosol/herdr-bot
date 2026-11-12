@@ -428,7 +428,7 @@ class ChiefRecoveryAcceptance(Base):
         _, posts = self.explicit_resend(sender, report)
         feedback = json.loads(posts[0]['response'])
         require(feedback['received'] is True and feedback['notification']['status'] == 'not-attempted'
-            and feedback['receipt'] == receipt, 'Native recovered resend did not report the unchanged existing receipt without another notification')
+            and feedback['receipt'] == receipt['receipt'], 'Native recovered resend did not report the unchanged existing receipt without another notification')
         require(len([call for call in self.calls() if call['notification']]) == before, 'Already received report notified again')
         require(self.business() == business, 'Sender recovery/new resend created a delegation or Run')
         grants = [record for record in self.backend_wire.records if record['path'] == receive_path and record.get('response') and json.loads(record['response']).get('process')]
