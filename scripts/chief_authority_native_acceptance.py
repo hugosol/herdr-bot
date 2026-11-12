@@ -245,7 +245,8 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
         start = len(history['branch']) if history else 0
         self.send(chief, '请把一次只读交接标记核对委派给能力 ' + bot + '，工作位置reports/owned，'
             + (('指定manager Task ID为' + manager + '，') if manager else '')
-            + '业务要求：只确认收到 AUTHORITY-NEW-VALID 后等待，不派发内部节点、不自动报告；不需要材料。等待本次原生批准，发起后返回，不等待业务完成。', 'new-chief-' + bot)
+            + ('业务要求：按本Map既有流程完成只读 AUTHORITY-NEW-VALID 标记核对，允许manager管理check节点并保留各阶段原生审批；不要自动向chief报告。' if manager else '业务要求：只确认收到 AUTHORITY-NEW-VALID 后等待，不自动报告。')
+            + '不需要材料。等待本次原生批准，发起后返回，不等待业务完成。', 'new-chief-' + bot)
         def pending():
             candidates = [record for record in self.backend_wire.records[before:] if record['path'] == '/api/chief/delegations/preview' and record.get('ended')]
             if not candidates:
@@ -282,7 +283,7 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
         chief_task = self.task('authority-chief', 'chief', '', self.host)
         worker = self.task('authority-worker', 'normal', '只确认收到本次标记，然后等待。不要自动报告、创建或执行业务。', self.host)
         sender_task = self.task('authority-reporter', 'normal', '你是独立报告员，只在用户明确要求时向当前chief报告新的已结束结果，每次等待原生发送批准；不重发、不重新执行业务。', self.host)
-        manager = self.task('authority-manager', 'manager', '只确认收到本Run本次要求，然后等待。不准备输入、不派发节点、不自动报告。', self.host)
+        manager = self.task('authority-manager', 'manager', '按本Run用户要求管理只读标记核对，保留既有节点审批和报告门禁。不要自动向chief报告，不创建额外业务。', self.host)
         for identity, target in [('authority-task', {'task_id': worker}), ('authority-reporter', {'task_id': sender_task})]:
             self.http('/api/scheduler/bots/save', {'id': identity, 'revision': None, 'content': json.dumps({
                 'name': identity, 'when': 'User explicitly requests ' + identity, 'plan_guide': 'Only the explicit one-shot user input.',
@@ -292,7 +293,7 @@ class ChiefAuthorityAcceptance(ChiefReportsAcceptance):
         self.http('/api/scheduler/maps/authority.json')
         self.http('/api/scheduler/bots/save', {'id': 'authority-map', 'revision': None, 'content': json.dumps({
             'name': 'authority-map', 'when': 'User explicitly requests authority-map managed marker check',
-            'plan_guide': 'Use explicit manager Task and zone. No node dispatch authorized.', 'node_guide': 'Wait.', 'map_file': 'authority.json'})})
+            'plan_guide': 'Use explicit manager Task and zone for the check node. Preserve normal node approval gates; no automatic chief report.', 'node_guide': 'Wait.', 'map_file': 'authority.json'})})
         old = self.launch(chief_task)
         self.old_pids = self.native_pids()
         require(self.old_pids, 'Old native process was not observed')
