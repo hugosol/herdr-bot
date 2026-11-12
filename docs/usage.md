@@ -431,3 +431,54 @@ Task 配置分为两组：
 历史记录支持多行纯文本备忘，电脑与手机共享；备忘不会发送给 agent 或修改原生聊天记录。
 
 若页面显示“启动结果未确认”，外部目标仍可能已经启动。先检查页面提供的目标信息，不要把超时当作未执行；服务不会自动清理或重试。
+
+## Rust script cross repository acceptance
+
+从显式参与 herdr-bot worktree 根运行；这是普通实施票的专项，不增加全局最终 gate，不改变全局票序或 first-merge 依赖调度。两仓的完整检查仍分别执行，不能用专项或人工项冲抵失败回归。
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT '.scratch/cargo-target'
+$env:CARGO_BUILD_JOBS = '1'
+# 依赖先各自在所属根按 frozen lock 安装；Bun 1.4.4。
+npm --prefix frontend run build
+cargo build --locked --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell
+python scripts/accept-rust-script-bots.py `
+  --herdr-bot-worktree $HERDR_BOT_WT --toolkit-worktree $TOOLKIT_WT `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --static-dir (Join-Path $HERDR_BOT_WT 'backend/static') `
+  --native-entry (Join-Path $TOOLKIT_WT 'scripts/rust-script-acceptance.ts') `
+  --isolation-config $ISOLATION_JSON --evidence-dir $NEW_EVIDENCE_DIR
+```
+
+所有参数为绝对路径；证据目录必须不存在。`ISOLATION_JSON` 必须包含 `externalMode:"controlled-protocol-only"`，以及绝对安装路径 `bun`、`node`、`piCli`、`piNode`、`ompBaselineRecordRoot`、`chrome`。`piCli` 指实际安装 Pi 的 CLI JS，不是自动发现认证的启动器；`piNode` 为满足该安装 engines 的已安装 Node（Windows 已有 Node 22.19.0 可用于规避高版本退出竞态）。`ompBaselineRecordRoot` 只解析既有 baseline 的只读源码锚点，不替换本 worktree 扩展源码。先为本 toolkit worktree 准备其既有精确 OMP dock 安装，不能使用另一 worktree 的遗留产物。配置不含模型密钥，不发现用户认证、不联系正常服务；受控 provider 不是实际模型理解证据。
+
+入口拒绝错误 worktree、原生入口、静态页、缺失或过期产物及 Cargo depfile 来源不匹配；保留源码／锁文件、页面、后端／fixture／安全壳／resolver、安装宿主身份和完整参数。依次执行原 owner 03 的 P15、P23 真实页面专项、10 的 `bun test tests/harness-dock/manager-script-protocol.test.ts`，再执行两宿主生产后端业务组合。每阶段独立记录命令、cwd、stdout、stderr、退出码，不因前一阶段失败略去其余可运行阶段；旧证据不覆盖。`RUST_SCRIPT_TOOLKIT=$TOOLKIT_WT python scripts/accept-rust-script-bots.test.py` 只验证入口安全，不证明业务。
+
+业务组合保持交付八节点 Map 的节点、依赖和材料规则，只隔离 zone 和外部编写者的 Task 绑定。实际 Rust 创建和保存均由生产 `herdr-bot` 执行；没有运行时业务解释器或独立业务 exe。manager 使用正常 OMP/Pi auto 入口、实际 run／collect／read，外部编写者只提供明确标记的受控 `abc`／`hello`／空串材料；真实 Rust 保存、完整 Bot／目标、revision、baseline／saved／handoff、execution、报告、完成记录和原生读取结果均独立读回。它不证明三编写者真实模型遵从，不能替代其既有原生验收。
+
+部分失败组合先真实保存成功，再用独占文件碰撞阻止 handoff，观察 saved 仍可读、false 报告、write/readBack=succeeded、complete 拒绝。只解除碰撞，实际 manager 原生工具显式 fail 和 confirmed retry；新 execution 仍使用原 baseline，必须 revision-conflict，旧报告、旧 outputs、原保存效果保持。此为 05 通路上的组合演示，不复制 03 或 05 的业务／通用门禁测试。原 owner 03 的 P15 另行直接运行。
+
+每例独占 HOME/APPDATA/XDG、原生目录、定义、Run、文件和数值回环服务，日志持续消费。保留原始错误与 cleanupErrors，先等待原生宿主和后端／fixture 的退出确认再清理；证据副本保留，临时活目录删除。脚本没有关机调用，生产后端不运行关机回归；两仓全局 dock 的 `HERDR_BOT_BINARY` 始终指本次 `safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 指本次 `meta-data/task-options.toml`。
+
+### H1／H2：只由用户确认
+
+自动化全部完成后才能开始最终人工判断；缺少真实宿主／模型授权不妨碍实现、机械验收及证据准备，但 H1/P34、H2/P35 始终保持 unverified。自动化入口返回 0 只表示 automatedPassed，不表示这两项通过。不要把 Rust 确定性检查转成模型重新审核三段文本的任务。
+
+授权前准备独占真实 Herdr Workspace、manager Task／会话、隔离后端配置、文件根、HOME/APPDATA/XDG 和数字回环 endpoint；用户明确提供真实 Herdr 安装、只读 paths、manager 的模型配置与许可边界。不得沿用自动化的 `herdr-fixture`、controlled provider 或删除过的临时路径；不得自动发现用户凭据／正常 Chat。使用参与 worktree 的生产后端和完整交付定义，按既有配置将所有可写路径放入新根，`static_directory` 指本次静态页，manager-chat 配置只指该 endpoint。保存实际配置／文件和构建哈希；工具预算沿用交付配置，记录观察预算，不延长产品门禁。没有明确授权时，将这些具体缺项写入人工记录，不伪造会话已建立。
+
+H1 操作顺序：
+
+1. 用户在真实 manager 中授权只在隔离定义创建一个既有 normal Task／Map 的 Bot，不授权执行目标业务；由交付创建 Map 正常发起真实 Run。保留完整 request、目标、manager 身份及真实原生工具入参与结果。
+2. 真实 manager 调用原 `run action=dispatch nodes=["create_blank"]`。观察返回只表示派发，未把脚本成功说成已 complete。保存派发返回、执行在途／结束读回、Herdr Tab 清单；无脚本 Chat／Tab，manager Chat 正常存在。
+3. 观察该 execution 的后端真实报告到达 manager；保留原消息、报告 ID／来源／canComplete／outputs、collect 返回以及原生 read 对命名 baseline／handoff 的读取。缺通知时 collect 读回事实不能冒充已收到通知。
+4. 对当前 true 报告显式 complete；按原流程完成真实三路正文确认和表达优化，最终显式派发 save_bot。对第二能力重复派发返回、报告接收、collect、命名 saved／handoff 读取和显式 complete。以公开完整 Bot／revision／目标和 Run 完成记录交叉核对；不运行创建的目标业务、不新增脚本接收工具。
+5. 用户评价真实 manager 是否准确解释派发、报告、部分限制和交接；保留原生历史、截图、工具结果和用户结论。自动化机械事实不要求模型二次语义验收。
+
+H2 操作顺序：
+
+1. 在另一个独占 Run 重复创建和三路材料准备。用已有 `scriptFileGate` 的真实文件门闩暂停保存前读取；取得当前 save_bot execution ID 后，在 `<run.zone>/.manager-zone/.workflow/<run.id>/<execution.id>/handoff.json` 写入本例拥有的碰撞文件，然后释放门闩。不得损坏用户文件。自动化同名 partial-save-retry 场景提供可重复机制、完整请求和结果对照。
+2. 真实 manager 接收 false 报告，公开完整读回确认 Bot 已保存、revision 已变化、saved output 可消费；材料失败不是未写入，也不能 complete。保存真实工具拒绝，观察没有自动 fail、retry、回滚或刷新 baseline。
+3. 用户只删除本例碰撞文件；真实 manager 显式 `run action=fail nodeId="save_bot" reason=...`，再经用户确认 `run action=retry nodeId="save_bot" confirmed=true reason=...`。保留新旧 execution、报告、outputs、完整 Bot 和 baseline 字节。相同正文不豁免旧 baseline：新执行必须 revision-conflict，旧报告不能完成新执行。
+4. 若要继续真正修复，在用户另行授权的新流程建立新的有效基线，不覆盖原失败证据、不自动推断回滚许可；保留真实修复后的独立执行与报告、显式 complete 结果。用户最终确认真实 manager 对失败及重跑的理解。
+
+人工证据最少包含：实际宿主／模型／构建身份、完整隔离配置与授权边界、原始工具输入／结果和通知、完整公开定义及 revision、真实文件内容／绑定、当前和旧 execution／报告／outputs、完成／拒绝记录、无脚本 Chat／Tab 的实际观察、截图、预算、所属进程退出确认与独立清理错误。不能以受控原生协议或全局回归代签 H1／H2。
