@@ -394,6 +394,12 @@ Task 配置分为两组：
 
 适用于独立 Chat 与 workflow 中获准的 Task.prompt 修改；只读核实与保存读回不能证明实际模型或业务效果。
 
+## 历史 Chat Retro
+
+历史会话操作栏的 `Retro` 打开既有发起 Chat 弹窗，不恢复原会话，也不自动提交。Task 默认选择 ID 为 `retro` 的预设；缺失时留空提示，允许改选，不自动创建。zone 仅在历史 cwd 与当前登记目录唯一匹配时默认选择；缺失或多个 zone 共用该目录时由用户选择。
+
+初始 input 预填历史 agent 类型、session ID、cwd 与默认 session 根目录，均可编辑。根目录取启动期 `paths_file` 中的 `roots.pi_agent` 或 `roots.omp_agent` 并拼接 `sessions`，按会话保存在默认位置的约定供 Retro 查找；不扫描或读取聊天正文，不要求具体文件地址，不经过提示词词典替换。对应根未配置或 agent 类型未知时，输入标注需补充。修改根配置后需重启后端；本次选择和 input 不修改 Task 预设或历史记录。
+
 ## 历史 Chat Resume
 
 在 `chat` 的历史视图中使用 `Resume` 返回 Pi／OMP 原生对话，不要求该 Chat 仍在当前登记中。已有目标只做 Herdr 内部导航；需要新进程时，加载同一原生对话，不自动继续中断任务，也不重放 Task 的发起配置或发送新 prompt。Herdr 内部导航不保证 Windows 窗口置前。

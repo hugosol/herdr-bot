@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SessionsPanel } from './SessionsPanel'
 import { ResumeChat } from './ResumeChat'
+import { ChatCreationDialog } from './ChatCreationDialog'
 import type { SessionFeed } from './sessionFeed'
 
 type HistorySession = {
@@ -8,6 +9,7 @@ type HistorySession = {
   sessionName: string | null
   agentType: string | null
   cwd: string | null
+  sessionDirectory?: string
   originalWorkspaceId?: string
   originalWorkspaceName?: string
   memo?: string
@@ -65,6 +67,7 @@ function HistoryMemo({ session }: { session: HistorySession }) {
 }
 
 function HistoryPanel() {
+  const [retro, setRetro] = useState<HistorySession | null>(null)
   const [page, setPage] = useState(1)
   const [state, setState] = useState<HistoryState>({ kind: 'loading' })
   const navigate = (target: number) => {
@@ -84,6 +87,12 @@ function HistoryPanel() {
   }, [page])
 
   return <section aria-label="历史会话" className="history-panel">
+    {retro !== null && <ChatCreationDialog
+      initialTaskId="retro"
+      initialCwd={retro.cwd}
+      initialInput={`agent 类型：${retro.agentType ?? '未记录'}\nsession ID：${retro.sessionId}\n历史 cwd：${retro.cwd ?? '未记录'}\nsession 根目录：${retro.sessionDirectory ?? '未配置，请补充'}`}
+      onClose={() => setRetro(null)}
+    />}
     {state.kind === 'loading' ? <p role="status">正在读取历史会话…</p> : null}
     {state.kind === 'error' ? <p role="alert">读取历史会话失败，未确认历史数据。请退出后重新进入历史视图。</p> : null}
     {state.kind === 'loaded' && state.sessions.length === 0 ? <p>尚无历史会话。成功接入的对话会收录在这里。</p> : null}
@@ -95,7 +104,7 @@ function HistoryPanel() {
         <td data-label="Workspace"><div>{session.originalWorkspaceId ? <>{session.originalWorkspaceName ? <span className="history-workspace-name">{session.originalWorkspaceName}</span> : null}<span>{session.originalWorkspaceId}</span></> : '未记录'}</div></td>
         <td data-label="首次收录时间"><time dateTime={new Date(session.firstRecordedAt).toISOString()}>{new Date(session.firstRecordedAt).toLocaleString('zh-CN')}</time></td>
         <td data-label="备忘"><HistoryMemo session={session} /></td>
-        <td data-label="操作"><ResumeChat sessionId={session.sessionId} /></td>
+        <td data-label="操作"><div><ResumeChat sessionId={session.sessionId} />{' '}<button type="button" className="history-resume" onClick={() => setRetro(session)}>Retro</button></div></td>
       </tr>)}</tbody>
     </table> : null}
     {state.kind === 'loaded' ? <nav className="history-pagination" aria-label="历史分页">

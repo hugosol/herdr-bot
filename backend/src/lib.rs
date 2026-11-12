@@ -125,6 +125,8 @@ pub struct AppState {
     pub sessions: Arc<sessions::SessionsState>,
     /// 持久历史目录，与当前会话登记和临时关机意图独立。
     pub history: Arc<history::History>,
+    /// Default native history roots for Retro reference text (Pi, OMP).
+    pub(crate) native_session_directories: [Option<PathBuf>; 2],
     pub(crate) chief: Arc<chief::Authority>,
     pub(crate) delegations: Arc<chief_delegation::Delegations>,
     pub(crate) chief_reports: Arc<chief_reports::Reports>,
@@ -250,6 +252,8 @@ pub fn app_with_state(
         ),
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
+        native_session_directories: ["${roots.pi_agent}/sessions", "${roots.omp_agent}/sessions"]
+            .map(|path| config.roots.resolve(Path::new(path), Path::new(".")).ok()),
         chief,
         delegations: Arc::new(chief_delegation::Delegations::new(config.sessions.history_file.with_extension("delegations.json"))),
         chief_reports: Arc::new(chief_reports::Reports::new(config.sessions.history_file.with_extension("chief-reports.jsonl"))),

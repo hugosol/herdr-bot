@@ -56,6 +56,8 @@ fn reject_legacy_source_association<'de, D: serde::Deserializer<'de>>(
 #[serde(rename_all = "camelCase")]
 struct HistoryView<'a> {
     session_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_directory: Option<&'a Path>,
     session_name: Option<&'a str>,
     agent_type: Option<&'a str>,
     cwd: Option<&'a str>,
@@ -302,6 +304,11 @@ pub(crate) async fn get_history(
             };
             let sessions = records.iter().skip((page - 1) * PAGE_SIZE).take(PAGE_SIZE).map(|record| HistoryView {
                 session_id: &record.session_id,
+                session_directory: match record.agent_type.as_deref() {
+                    Some("pi") => state.native_session_directories[0].as_deref(),
+                    Some("omp") => state.native_session_directories[1].as_deref(),
+                    _ => None,
+                },
                 session_name: record.session_name.as_deref(),
                 agent_type: record.agent_type.as_deref(),
                 cwd: record.cwd.as_deref(),
