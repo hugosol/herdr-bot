@@ -93,7 +93,7 @@ def main():
             evidence['cleanupErrors'].extend(run.evidence['cleanupErrors'])
             if status:
                 evidence.setdefault('hostFailures', []).append(host)
-        evidence['passed'] = result.returncode == 0 and not evidence['cleanupErrors'] and all(
+        evidence['passed'] = result.returncode == 0 and not evidence.get('hostFailures') and not evidence['cleanupErrors'] and all(
             item['verified'] for host in evidence['coverage'].values() for item in host.values())
     except BaseException:
         evidence['error'] = traceback.format_exc()
