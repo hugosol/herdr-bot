@@ -22,7 +22,7 @@ MODEL = 'gpt-6-luna'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles', 'revise', 'reports'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports'], required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi', 'omp', 'pi'], required=True)
     for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
     parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
+    if args.scenario == 'chief-task' and args.hosts == 'declared':
+        parser.error('chief-task requires explicit omp,pi or one host')
     if args.scenario == 'reports' and args.hosts == 'declared':
         parser.error('Reports requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
@@ -129,8 +131,9 @@ def main():
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)
-                    if args.scenario == 'reports':
-                        command = [sys.executable, str(REPO / 'scripts/accept-chief-reports.py'),
+                    if args.scenario in ['chief-task', 'reports']:
+                        script = 'accept-chief-task.py' if args.scenario == 'chief-task' else 'accept-chief-reports.py'
+                        command = [sys.executable, str(REPO / 'scripts' / script),
                             '--herdr-bot-worktree', str(REPO), '--toolkit-worktree', str(args.toolkit),
                             '--backend', str(args.backend), '--hosts', args.hosts,
                             '--paths-file', str(args.paths_file), '--model-config', str(config),
@@ -144,7 +147,8 @@ def main():
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
                     if args.scenario == 'revise':
                         command.extend(['--cases', args.cases])
-                    for name in ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']:
+                    for name in (['shell_path'] if args.scenario == 'chief-task' else
+                                 ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):
                         value = getattr(args, name)
                         if value and (args.scenario != 'reports' or name == 'shell_path'):
                             command.extend(['--' + name.replace('_', '-'), str(value)])
