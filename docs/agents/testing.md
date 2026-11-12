@@ -126,6 +126,18 @@ P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 M
 
 所有原生历史、确认、工具结果、HTTP、公开读回、模型请求及实际身份、配置预算、原始失败与清理失败均归本次独占证据。HOME／APPDATA／XDG、原生目录、定义、持久化、数值回环端口和 Herdr 实例隔离；退出并确认所属进程结束后才清理。受控用例仅证明机制／故障；缺任何宿主、真实模型、能力或清理证据均非零，不能把 CLI fail-closed 或全局回归当作专项通过。完成检查仍分别运行票据要求的两仓全局入口；配对 dock 必须指向本次安全壳，真实专项 `--backend` 指向生产后端。
 
+## Chief 存活旧进程与交接专项
+
+从参与的 Herdr worktree 根运行 `python scripts/accept-chief-authority.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。显式绝对路径、独占新证据目录、当前源码构建产物及隔离 roots 的要求与入口专项相同。模型严格使用 GPT-6-luna 并核对实际返回身份；授权只读 Codex provider 可沿用 `accept-workflow-codex.py --scenario authority`（先单独 `--smoke`），不发现用户凭据、不刷新认证、不回退或重试业务决策。
+
+`chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
+
+旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
+
+静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-authority.test.py` 的CLI安全检查不算P31通过。
+
+两仓完成检查仍分别执行票据要求的完整 frontend build、当前后端/fixture/paths/安全壳构建、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`，以及Bun 1.4.4的 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和受影响 `native-chief-receipt-backend`／`native-chief-reception` dock。独立绝对 `CARGO_TARGET_DIR`；dock 的 `HERDR_BOT_BINARY` 只能指向本次 `safe_shutdown_shell.exe`、元数据指向参与源码，真实专项则使用生产后端。完整回归或受控dock仅证明其实际范围，不替代双宿主真实模型专项。
+
 ## 前端与浏览器
 
 通过 npm 脚本运行，保留网络护栏；直接调用 Vitest／Playwright 会绕过 npm hook。脚本定义以 [package.json](../../frontend/package.json) 为准。
