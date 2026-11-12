@@ -22,6 +22,7 @@ export function BotPreview({ bot, target, active, disabled, onRename }: { bot: B
     {documents.map(({ key, title }) => <section key={key} aria-label={title} hidden={section !== key}>
       <pre className="scheduler-text scheduler-prose">{bot[key]}</pre>
     </section>)}
+    {documents.some(({ key }) => section === key && bot[key] === '') && <p role="status">当前 {section}：空文本</p>}
     <div hidden={section !== 'raw'}><pre aria-label="Bot 原始定义">{JSON.stringify(bot, null, 2)}</pre></div>
     <p className="scheduler-help">三份文档可独立阅读、允许空文本；Markdown 是指引，不是输入校验规则。仅保存定义，不启动 Chat。</p>
   </>

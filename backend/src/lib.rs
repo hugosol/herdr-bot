@@ -36,6 +36,9 @@
 //! 执行资格由**执行本身**持有，而不是由提交请求的那条连接持有：客户端中途断开既不取消已接受的操作，
 //! 也不提前释放资格，脚本继续执行到它自己的结束；断线只意味着这一次的结果没有接收者（不恢复、不重放、不留操作历史）。
 
+#[cfg(test)]
+extern crate self as herdr_bot;
+
 pub mod chats;
 mod chief;
 mod chief_delegation;

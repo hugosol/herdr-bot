@@ -23,6 +23,16 @@ pause 只拒绝新的 dispatch／retry，不取消已开始的 Rust 工作；原
 
 专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和编入后端的能力，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
 
+### 失败、显式重跑与旧执行隔离
+
+脚本失败报告不是 manager 的 fail 动作：先读取 `lifecycle.failure`、报告正文及实际文件，区分已保存的定义、已读回的配置、已生成的部分材料与尚未完成的步骤。业务结束后 node 仍为 running；直接 retry 返回 `node-not-retryable`，false 报告也不能首次 complete。manager 核实效果后以非空 reason 显式 fail，才记录节点执行阶段失败；fail 不更改脚本 lifecycle、不取消业务，也不回滚已发生效果。重复 fail 保留首次原因。
+
+随后须明确 `confirmed=true` 和非空 reason，原 retry 门禁（Run running、输入已准备、非派发失败）继续适用。缺确认／空依据返回 `retry-confirmation-required`；缺必填参数拒绝解析，不新增 execution 或业务效果。合法 retry 重新解析当前定义与真实输入，创建独立 execution 和独占材料位置，`previousExecutions` 保留原 execution、manager failure、脚本结构化失败；旧文件与追加报告不删除。已创建的 Bot 不因材料失败变成“未保存”，不能靠重跑撤销它；修改请求须有对应授权，不能为求成功删除旧 Bot 或刷新旧 baseline。
+
+脚本没有原 Chat：recover 返回 `node-not-recoverable`，不会启动新业务或转为待继续会话；Task／Map 有真实原 Chat 时仍按原 recover 规则处理。新执行从无报告、无 outputs 开始；旧 true 迟到仍归原 execution，不能成为当前 pendingReports 或 collect 待办。首次 complete 只看当前执行最后追加的报告，较早 true 后有 false 时仍拒绝；当前输出缺项不会从旧执行、其他 node 或其他 Run 补齐。同名输出 ID 在不同 execution 中可以对应不同真实文件，已派发消费者的地址不会随重跑改绑。
+
+S1 自动化：`workflow_dispatch::rust_create::rust_retry` 经公开 manager HTTP、真实 Map、部分材料失败与两个真实子进程消费者核对合法 fail/retry、确认拒绝、recover 拒绝、旧效果和新材料；`runs::report_isolation_tests::script_reports_isolate_late_old_true_latest_false_and_material_scope` 在受控脚本报告提交边界制造交错，保存、读取、collect、complete 与材料解析仍走真实实现，不开放任意 execution 报告工具、不编辑 Run 记录。后者先 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture`，再 `cargo test --manifest-path backend/Cargo.toml --lib script_reports_isolate -- --nocapture`；完整入口仍为先构建静态页、独立绝对 `CARGO_TARGET_DIR` 下 `node scripts/test-backend.mjs`。这些受控结果不证明真实 manager／原生工具行为；P13/P14 的 H2 仍由真实专项与用户确认负责。
+
 ### 脚本报告已保存但通知失败
 
 通知不是业务提交或交接完成的依据。外部 Herdr 等待期间，manager 已可从原 Run 详情或 status 读回报告 ID、body、canComplete 和全部 outputs，并按登记地址读取真实材料；通知拒绝后继续读取同一份事实，不重派脚本、不重做业务、不重报或回滚已保存配置／材料。成功业务的 `lifecycle.status=succeeded` 与通知 `failed` 可以同时成立，仍须 manager 核对并显式 complete。
@@ -596,7 +606,7 @@ Prompt 证据须捕获两种角色**实际收到**的公共 `first-enabled-run` 
 {"sessionId":"<公共 Session 能力取得的当前管理者身份>","nodeId":"A","reason":"已核实：缺少上游源文件，原 Chat 暂不能继续"}
 ```
 
-只有 running node 可首次 fail；`reason` 必须非空。成功保存 `status=failed`、`failure.stage=execution`、`failure.message` 和原执行 ID、Task、zone、真实 Chat，不改变 Run 派发资格。执行失败不凭空生成启动效果字段；派发失败的 `failure.effects` 仍保留启动时观察到的实际效果。history 的 `action=fail` 包含首次原因、前后状态、执行引用、管理者 actor、操作 ID 与时间。重复 failed 的 fail 返回 `changed=false`，不覆盖首次失败、当前文件或历史，不调用宿主；它也不能把派发失败改成执行失败。pending/completed 首次 fail 返回 `node-not-failable`，空原因返回 `failure-reason-required`。
+只有 running node 可首次 fail；`reason` 必须非空。成功保存 `status=failed`、`failure.stage=execution`、`failure.message` 并保留原 execution，不改变 Run 派发资格。Task／Map 保留原 Task、zone 与真实 Chat；脚本保留固定能力、zone、lifecycle 及真实输入，不要求或制造 Chat。执行失败不凭空生成启动效果字段；派发失败的 `failure.effects` 仍保留启动时观察到的实际效果。history 的 `action=fail` 包含首次原因、前后状态、执行引用、管理者 actor、操作 ID 与时间。重复 failed 的 fail 返回 `changed=false`，不覆盖首次失败、当前文件或历史，不调用宿主；它也不能把派发失败改成执行失败。pending/completed 首次 fail 返回 `node-not-failable`，空原因返回 `failure-reason-required`。
 
 ### 只核实派发失败：reconcile_dispatch
 
