@@ -207,7 +207,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   const reports = [
     { ...report, id: 'first', at: 9000, canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/v1.txt' }, { id: 'notes', path: 'C:/outputs/notes.txt' }] },
     { ...report, id: 'old-late', executionId: 'old-E', canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/old.txt' }, { id: 'leak', path: 'C:/outputs/leak.txt' }] },
-    { ...report, id: 'other-node', nodeId: 'A', canComplete: true, outputs: [{ id: 'foreign', path: 'C:/outputs/foreign.txt' }] },
+    { ...report, id: 'other-node', nodeId: 'A', executionId: 'exec-A', from: run.nodes.A.execution.chat, canComplete: true, outputs: [{ id: 'foreign', path: 'C:/outputs/foreign.txt' }] },
     { ...report, id: 'second', at: 1000, canComplete: false, outputs: [{ id: 'result', path: 'C:/outputs/v2.txt' }] },
     { ...report, id: 'latest-missing', at: 500 },
   ]
