@@ -16,6 +16,7 @@ import runpy
 import shutil
 import subprocess
 import time
+import traceback
 import urllib.request
 
 from chief_recovery_faults import RecoveryFaultProxy
@@ -330,6 +331,9 @@ class ChiefRecoveryAcceptance(Base):
             lost.release.set()
             if hasattr(self, 'crash_pool'):
                 self.crash_pool.shutdown(wait=True)
+                error = self.crash_future.exception()
+                if error:
+                    self.evidence.setdefault('faultWorkerErrors', []).append(''.join(traceback.format_exception(error)))
         receipt = self.http('/api/chief/reports/' + report['id'] + '/receipt')
         require(receipt['received'] is True and receipt['receipt']['sessionId'] == chief['sessionId'], 'Lost real persistent receipt')
         require(set(receipt) == {'received', 'receipt'} and set(receipt['receipt']) == {'reportId', 'sessionId', 'claimId', 'at'}, 'Receipt invented presentation/read/acceptance state')
