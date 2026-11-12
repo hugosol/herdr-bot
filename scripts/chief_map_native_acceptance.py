@@ -110,6 +110,10 @@ class ChiefMapAcceptance(ChiefEntryAcceptance):
             directory = self.root / ('zone-' + name)
             directory.mkdir()
             self.http('/api/zones', {'id': 'accept/' + name, 'path': str(directory)})
+            if name in ['manager-a', 'manager-b', 'node']:
+                workspace = self.herdr('workspace', 'create', '--cwd', str(directory),
+                    '--label', directory.name, '--no-focus')
+                self.evidence.setdefault('ownedWorkspaces', []).append(workspace)
         for name, content in [('draft.csv', 'id,amount\nA,10\n'), ('corrected.csv', 'id,amount\nB,-7\nB,9\n')]:
             (self.root / 'zone-materials' / name).write_text(content, encoding='utf-8')
         self.sentinel = self.root / 'zone-chief/business-sentinel.txt'
@@ -222,12 +226,32 @@ class ChiefMapAcceptance(ChiefEntryAcceptance):
         self.chat_hosts[chat['sessionId']] = self.host
         self.native_pids()
         self.evidence['chief'] = chat
+        self.size_terminal(chat)
         return chat
+
+    def size_terminal(self, chat):
+        if chat['paneId'] in getattr(self, 'sized_panes', set()):
+            return
+        # Complete creator Map facts exceed the unattached 120x40 default, and
+        # Herdr 0.9.5 caps snapshots at 1000 rows. Widen long JSON string rows
+        # rather than discarding facts or requesting an ineffective larger read.
+        # Resize only this owned terminal through the public control interface;
+        # do not shorten the product's actual confirmation or hide its buttons.
+        import subprocess
+        argv = [str(self.args.herdr), 'terminal', 'session', 'control', chat['paneId'],
+                '--cols', '2048', '--rows', '2000']
+        resized = subprocess.run(argv, cwd=self.root, env=self.env, input='', capture_output=True,
+            text=True, encoding='utf-8', errors='replace', timeout=15)
+        self.evidence.setdefault('nativeViewport', []).append({'argv': argv, 'exit': resized.returncode,
+            'stdout': resized.stdout, 'stderr': resized.stderr})
+        require(resized.returncode == 0, 'Could not size owned terminal for the complete native confirmation')
+        self.sized_panes = getattr(self, 'sized_panes', set()) | {chat['paneId']}
 
     def messages(self, history, start=0):
         return [entry['message'] for entry in history['branch'][start:] if entry.get('type') == 'message']
 
     def turn(self, chat, start=0):
+        self.size_terminal(chat)
         def complete():
             history = self.native(chat)
             if not history:
@@ -446,9 +470,10 @@ class ChiefMapAcceptance(ChiefEntryAcceptance):
         multi = self.scenario in ['gap-map', 'reject-map', 'stage-reject-map']
         business = ('需要一个完整可复用的多步骤业务流程，两个独立执行者协作：第一个在本地只读输入CSV，逐行检查amount_cents是否整数并列出错误行；第二个独立复核这些错误行，人工确认后交接Markdown。禁止上传、改源文件或执行任意外部命令；业务能力名为本地账单双人核验。验收为列明真实行号和错误，不猜测缺失数据。' if multi else
             '需要一个可复用的单Chat业务能力，做本地UTF-8词条分类：用户在聊天中提供一词一行的文本，ASCII字母开头归Latin，其余归Other，保持原词与原顺序，在聊天中按两组展示；无文件写入、外部命令或网络。业务能力名为只读词条分类。验收样例alpha和苹果分别归Latin和Other。')
-        setup = (business + '现有审核不满足此新能力，不允许运行原业务。创建配置工作位置accept/manager-b，manager Task ID ' + self.manager_b
+        stages = '概要规划、生成Map、整图提示词优化' if multi else '创建Task、优化prompt、包装Bot、联合优化'
+        setup = (business + '现有审核不满足此新能力，不允许运行原业务。创建能力本身须走既有分阶段Map（' + stages + '），不要使用单Chat快捷创建者；保留该流程原有审批，不新增阶段或审批门槛，也不提前批准未知正文或保存。创建配置工作位置accept/manager-b，manager Task ID ' + self.manager_b
             + '；内部创建步骤在accept/node；无额外材料。创建能力之外的任何业务运行均未授权。'
-            + '创建流程执行者可在本测试服务实例新建本次Task/Bot/Map定义，未知正文与保存仍在对应阶段分别批准；chief不得自行保存。'
+            + '创建流程执行者可在本测试服务实例新建本次Task/Bot/Map定义，本次委派不批准未知正文或保存，各阶段继续按原定义请求用户决定；chief不得自行保存。'
             + 'accept/node是本次独占工作目录，允许本次候选与工作文档；正式材料与交接保存到 ' + str(self.root / 'zone-node/deliveries')
             + '，各阶段自行使用run-id/node-id/output-id组合命名并在真实报告中登记地址。真实源码与依赖只读，不改既有共享定义，不读取用户凭据或历史会话。')
         if self.scenario.startswith(('gap-', 'stage-reject-')):
