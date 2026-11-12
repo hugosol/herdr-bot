@@ -6,7 +6,7 @@
 
 ## 创建分支 v1：可校验表示与空白创建
 
-本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为 Rust 创建／合并保存提供公开数据表示。空白创建 `create_blank_bot` 和三路合并保存 `save_bot_guides` 均使用该契约通过命名文件运行；正式定义迁移不由此声明完成。创建分支采用 [Draft 2020-12 JSON Schema](contracts/rust-script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
+本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为 Rust 创建／合并保存提供公开数据表示。空白创建 `create_blank_bot` 和三路合并保存 `save_bot_guides` 均使用该契约通过命名文件运行；发布 `create-bot-wrapper.json` 已迁移两脚本节点，实际模型遵从与部署仍须独立验证。创建分支采用 [Draft 2020-12 JSON Schema](contracts/rust-script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
 
 结构化文件是单个无围栏 UTF-8 JSON 对象；拒绝重复 key、未知字段、未知 schema_version、错类型、缺项、歧义，不从 Markdown 猜字段。创建材料根对象均必填 `schema_version:1` 和对应 `kind`；这**不是**为 Bot／Map 定义新增 schema_version。text 仍是原样 UTF-8 纯正文，不添加 JSON、标题、身份、BOM 或代码围栏，不 trim／改换行／替换词典／重新生成。空正文合法，必要时仍须明确确认空稿。可选参考 `materials` 仍是参考，不提取其中指令作为隐含参数、权限或第二份 request。
 
@@ -154,14 +154,18 @@ when 解决能力发现与选用；plan_guide 解决工作安排；node_guide �
 
 | 稳定 Task ID | 能力 | 独立 Chat／workflow 配对测试唯一 owner |
 | --- | --- | --- |
-| `task-18e33fdc55177d1c-1` | 空白 Bot 创建者 | 21 |
 | `task-18e3404478db1ef8-2` | Bot.when 编写者 | 21 |
 | `task-18e340545eb481bc-3` | Bot.plan_guide 编写者 | 21 |
 | `task-18e340f5287462ec-4` | Bot.node_guide 编写者 | 21 |
 | `task-18e31d34797f1464-3` | 通用提示词优化者 | 21 |
 | `task-18e3415003d8cd00-5` | 通用文本替换者 | 21 |
 
-本表只列本契约统一维护的既有共享 Task；创建专属新增项归 21、修订专属新增项归 22、外层 Task 修改项归 24，各自交付时在所属长期清单记录实际稳定 ID。旧独立 create-bot／create-bot-task 不改职责，也不自动迁移用户部署。
+| 稳定 Bot ID | 固定 Rust 能力 | 发布用途 |
+| --- | --- | --- |
+| `create-blank-bot` | `create_blank_bot` | 保留原身份和 Map 引用；创建完整共同基线 |
+| `save-created-bot-guides` | `save_bot_guides` | 三空指南；仅创建图 save_bot 引用，不限制未来合法复用 |
+
+已删除原空白创建 Task `task-18e33fdc55177d1c-1`，不兼容其历史来源恢复，不删除历史。上表五个共享 Task 中，三编写者按本次显式分支选择格式；通用优化者由 node.input 指向适用协议；原通用文本替换者定义与能力保持不变。创建 v1 与修订旧格式的可复跑原生场景分别在创建／修订验收入口，缺真实授权或依赖必须保留未验证，不能以提示词相等或受控正文证明遵从。原创建专属新增项归 21、修订专属新增项归 22、外层 Task 修改项归 24，各自清单仍记录其稳定 ID。旧独立 create-bot／create-bot-task 不改职责，也不自动迁移用户部署。
 
 公开定义读写、预检、真实临时文件材料绑定及真实 revision 冲突的启用检查入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business`。全后端回归入口为 `node scripts/test-backend.mjs`，先生成当前 worktree 静态页面并使用独立 CARGO_TARGET_DIR。该检查只证明公开接线与持久边界，不以提示词全文快照、配置非空或受控宿主响应证明模型使用材料。
 

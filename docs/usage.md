@@ -4,7 +4,7 @@
 
 ## Rust 空白 Bot 创建
 
-后端内置 `create_blank_bot`；定义保存使用原 `POST /api/scheduler/bots/save`，内容示例为 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}`，独立传入新 Bot ID 和 `revision:null`。不填假 Task／Map，也不上传代码。未知能力或混合目标拒绝，原定义保留。正式创建流程不会因新增该能力自动迁移。
+后端内置 `create_blank_bot`；定义保存使用原 `POST /api/scheduler/bots/save`，内容示例为 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}`，独立传入新 Bot ID 和 `revision:null`。不填假 Task／Map，也不上传代码。未知能力或混合目标拒绝，原定义保留。仓库发布的创建图已迁移：create-blank-bot 保留身份并改绑 Rust，save_bot 引用新三空指南共享 Bot save-created-bot-guides；原空白创建 Task 已删除，不改无关历史或修订 replace-text。仓库更新不自动部署用户配置；材料格式与验证边界见[创建指南](create-bot-wrapper.md)。
 
 在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，报告策略只能 auto，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
