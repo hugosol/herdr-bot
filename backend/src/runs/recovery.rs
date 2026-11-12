@@ -200,7 +200,10 @@ pub(super) fn fail(run: &mut Run, node_id: String, reason: String) -> Result<Dec
     if reason.trim().is_empty() {
         return Decision::reject("failure-reason-required", "请记录已核实的执行失败原因。");
     }
-    node.execution.as_ref().and_then(|execution| execution.chat()).ok_or("执行缺少原 Chat 关联。")?;
+    let execution = node.execution.as_ref().ok_or("缺少原 execution 关联。")?;
+    if execution.script().is_none() && execution.chat().is_none() {
+        return Err("执行缺少原 Chat 关联。".into());
+    }
     let failure = StartupFailure { stage: "execution".into(), message: reason.clone(), effects: None };
     let node = run.nodes.get_mut(&node_id).unwrap();
     node.status = "failed".into();
