@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "rust_retry.rs"]
+mod rust_retry;
+
 async fn request(s: &Scenario, path: &str, body: Value, status: u16) -> Value {
     let response = post_json_over_tcp(s.server.addr(), path, &body.to_string()).await;
     assert_eq!(response.status, status, "{}", response.body);
