@@ -8,7 +8,7 @@ import type {
   SessionFeed,
   SessionFeedSnapshot,
   SessionView,
-} from '../../src/chats/sessionFeed'
+} from '../../src/sessions/sessionFeed'
 import type { ShutdownView } from '../../src/server/shutdown/shutdownView'
 
 const ZONE = 'C:\\work\\project'

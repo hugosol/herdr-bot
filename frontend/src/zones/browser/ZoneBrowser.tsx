@@ -33,7 +33,7 @@ import {
   type GitChange,
   type GitStatus,
 } from '../../controllers/zoneGitController'
-import type { ConnectionStatus } from '../../chats/sessionFeed'
+import type { ConnectionStatus } from '../../sessions/sessionFeed'
 import {
   describeWatchProblem,
   type ZoneWatchEntry,

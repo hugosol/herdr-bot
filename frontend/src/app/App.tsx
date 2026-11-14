@@ -11,9 +11,9 @@ import { ChatPanel } from '../chats/ChatPanel'
 import { ChiefEntry } from '../chats/ChiefEntry'
 import { SchedulerPanel } from '../scheduler/SchedulerPanel'
 import { RunDetails, selectedRunId } from '../workflow/RunDetails'
-import { EMPTY_SESSION_FEED, type SessionFeed } from '../chats/sessionFeed'
+import { EMPTY_SESSION_FEED, type SessionFeed } from '../sessions/sessionFeed'
 import { ShutdownControl } from '../server/shutdown/ShutdownControl'
-import { useSessionFeedSnapshot } from '../chats/useSessionFeed'
+import { useSessionFeedSnapshot } from '../sessions/useSessionFeed'
 import type { ZoneWatchFeed } from '../zones/zoneWatch'
 
 type PanelState =

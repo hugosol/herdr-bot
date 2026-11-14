@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { SessionsPanel } from './SessionsPanel'
+import { SessionsPanel } from '../sessions/SessionsPanel'
 import { ResumeChat } from './ResumeChat'
 import { ChatCreationDialog } from './ChatCreationDialog'
-import type { SessionFeed } from './sessionFeed'
+import type { SessionFeed } from '../sessions/sessionFeed'
 import { fetchChatHistory, saveChatMemo, type HistoryPage, type HistorySession } from '../controllers/chatController'
 
 type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createSseSessionFeed } from '../../src/chats/sseSessionFeed'
+import { createSseSessionFeed } from '../../src/sessions/sseSessionFeed'
 import { FakeSessionEventSource, resetFakeEventSources } from '../support/fakeSessionEventSource'
 
 /** 各字段齐全的在线会话视图（wire 形状）。 */

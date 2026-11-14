@@ -3,7 +3,7 @@ import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../../src/app/App'
-import { createSseSessionFeed } from '../../src/chats/sseSessionFeed'
+import { createSseSessionFeed } from '../../src/sessions/sseSessionFeed'
 import { FakeSessionEventSource, resetFakeEventSources } from '../support/fakeSessionEventSource'
 
 /**

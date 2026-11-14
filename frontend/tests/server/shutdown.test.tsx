@@ -4,7 +4,7 @@ import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../../src/app/App'
-import type { ConnectionStatus, SessionFeed, SessionFeedSnapshot } from '../../src/chats/sessionFeed'
+import type { ConnectionStatus, SessionFeed, SessionFeedSnapshot } from '../../src/sessions/sessionFeed'
 import { NO_SHUTDOWN, remainingSeconds, type ShutdownView } from '../../src/server/shutdown/shutdownView'
 
 /** 服务端时钟的一个固定取值：用例不依赖真实时间，也不断言实现里的计算公式。 */

@@ -4,7 +4,7 @@ import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../../src/app/App'
-import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../../src/chats/sessionFeed'
+import type { SessionFeed, SessionFeedSnapshot, SessionView } from '../../src/sessions/sessionFeed'
 import { NO_SHUTDOWN, type ShutdownView } from '../../src/server/shutdown/shutdownView'
 
 /** 服务端时钟的一个固定取值：用例不依赖真实时间。 */

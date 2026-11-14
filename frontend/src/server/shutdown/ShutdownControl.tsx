@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { SHUTDOWN_BUTTON_VISIBLE } from './config'
-import type { ConnectionStatus } from '../../chats/sessionFeed'
+import type { ConnectionStatus } from '../../sessions/sessionFeed'
 import { NOT_CANCELLABLE, cancelShutdown, startShutdown } from '../../controllers/shutdownController'
 import { remainingSeconds, type ShutdownView } from './shutdownView'
 
