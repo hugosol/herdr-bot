@@ -6,7 +6,7 @@
  * 创建请求返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
  */
 
-import type { TaskModel, TaskThinking } from '../tasks/controller'
+import type { TaskModel, TaskThinking } from './taskController'
 
 export type ChatCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
 export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'

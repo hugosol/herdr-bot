@@ -13,7 +13,7 @@ import {
   type BrowseEntry,
   type BrowseResult,
   type FileView,
-} from './controller'
+} from '../../controllers/zoneBrowserController'
 import { HtmlReaderView } from '../reader/HtmlReaderView'
 import { NierTitleText } from '../../app/NierTitleText'
 import { zoneDisplayName } from '../zoneDisplay'
@@ -32,7 +32,7 @@ import {
   type ChangeKind,
   type GitChange,
   type GitStatus,
-} from '../git/controller'
+} from '../../controllers/zoneGitController'
 import type { ConnectionStatus } from '../../chats/sessionFeed'
 import {
   describeWatchProblem,

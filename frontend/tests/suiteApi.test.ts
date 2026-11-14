@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { suiteRequest, type Suite } from '../src/suites/controller'
+import { suiteRequest, type Suite } from '../src/controllers/suiteController'
 
 const suite: Suite = {
   id: 'source-tools', name: '源入口工具', agents: ['omp', 'pi'], skills: { omp: ['../skill collections'], pi: ['../skills/review'] },

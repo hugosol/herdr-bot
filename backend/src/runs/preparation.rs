@@ -4,26 +4,15 @@ use super::operation::{Action, Decision};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PrepareInputsRequest {
-    session_id: String,
+pub(crate) struct PrepareInputsRequest {
+    pub(crate) session_id: String,
     #[serde(deserialize_with = "crate::scheduler::object_array")]
-    file_inputs: Vec<crate::scheduler::ResolvedFile>,
-    confirmed: bool,
-    reason: String,
+    pub(crate) file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    pub(crate) confirmed: bool,
+    pub(crate) reason: String,
 }
 
-pub async fn manager_prepare_inputs(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: PrepareInputsRequest = match crate::chat_command_body(request, "准备 Run 输入").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_prepare_inputs(state: AppState, input: PrepareInputsRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::PrepareInputs {
         files: input.file_inputs, confirmed: input.confirmed, reason: input.reason,
     }).await

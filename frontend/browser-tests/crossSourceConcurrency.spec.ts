@@ -46,10 +46,22 @@ async function task(agent: string, name: string) {
 async function create(zone: string, taskId: string) {
   const preview = await post('/api/chats/preview', { zone, taskId: taskId })
   const accepted = await post('/api/chats', { zone, taskId: taskId, chatId: preview.chatId, input: '/settings' })
-  await expect.poll(async () => {
-    const response = await fetch(`${server!.baseURL}/api/chats/${accepted.id}`)
-    return (await response.json()).stage
-  }).toBe('succeeded')
+  const started = Date.now()
+  let lastCreation: unknown
+  try {
+    await expect.poll(async () => {
+      const response = await fetch(`${server!.baseURL}/api/chats/${accepted.id}`)
+      const creation = await response.json()
+      lastCreation = creation
+      return creation.stage
+    }).toBe('succeeded')
+  } catch (error) {
+    await evidence(test.info(), `chat-creation-${accepted.id}`, {
+      elapsedMs: Date.now() - started, creation: lastCreation,
+      calls: server!.herdrCalls(), diagnostics: server!.diagnostics(),
+    })
+    throw error
+  }
 }
 // P29 design: clients synchronize at one release barrier. Concurrent fields of
 // the shared ID commute (name-only and type-only, identical cwd); two ordered

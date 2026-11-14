@@ -8,7 +8,7 @@ import {
   UNKNOWN_SESSION,
   cancelShutdown,
   setMonitoring,
-} from '../server/shutdown/controller'
+} from '../controllers/shutdownController'
 import { useSessionFeedSnapshot } from './useSessionFeed'
 
 /** agent 状态在界面上的中文名。 */

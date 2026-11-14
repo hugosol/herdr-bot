@@ -17,7 +17,7 @@
  * （P42、P43）——独立通道的迟到回执无法覆盖较新的观察结果。
  */
 
-import { SHUTDOWN_RESPONSE_TIMEOUT_MS } from './config'
+import { SHUTDOWN_RESPONSE_TIMEOUT_MS } from '../server/shutdown/config'
 
 /** 开始意图的请求路径。 */
 export const START_SHUTDOWN_URL = '/api/shutdown/start'

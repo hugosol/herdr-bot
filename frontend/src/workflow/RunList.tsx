@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
-import { listMaps, type MapCatalog } from '../scheduler/controller'
-import type { RunEntry } from './controller'
+import { listMaps, type MapCatalog } from '../controllers/schedulerController'
+import type { RunEntry } from '../controllers/workflowController'
 import { WorkflowStatus } from './WorkflowStatus'
 
 function creationTime(entry: RunEntry): number | null {

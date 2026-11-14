@@ -1,4 +1,4 @@
-import type { WorkflowMap } from './controller'
+import type { WorkflowMap } from '../controllers/schedulerController'
 
 // Display dependency levels, not an execution schedule. The API validates the DAG;
 // preserving definition order within each level keeps parallel nodes predictable.

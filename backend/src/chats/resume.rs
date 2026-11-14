@@ -1,7 +1,8 @@
 //! Resume first locates a native conversation. Only a successful empty query
 //! permits a new process. Restoration loads the latest trusted Task environment,
 //! but never submits input or replays launch-only trigger configuration.
-use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Response}};
+use super::Error;
+use serde_json::Value;
 use serde::Deserialize;
 use serde_json::json;
 use crate::{AppState, herdr::HerdrError};
@@ -33,24 +34,25 @@ impl ResumeExecutions {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ResumeRequest { session_id: String }
+pub(crate) struct ResumeRequest { pub(crate) session_id: String }
 
-pub(crate) async fn post_resume(State(state): State<AppState>, Json(request): Json<ResumeRequest>) -> Response {
+pub(crate) async fn post_resume(state: AppState, request: ResumeRequest) -> Result<Value, Error> {
     let selected = match state.history.selection(&request.session_id).await {
         Ok(Some(selected)) => selected,
-        Ok(None) => return crate::rejected_owned(StatusCode::NOT_FOUND, "unknown-chat", "找不到所选历史 Chat。".into()),
-        Err(error) => return crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "history-unreadable", format!("读取历史会话失败：{error}")),
+        Ok(None) => return Err(Error::NotFound( "unknown-chat", "找不到所选历史 Chat。".into())),
+        Err(error) => return Err(Error::Internal( "history-unreadable", format!("读取历史会话失败：{error}"))),
     };
     let Some(permit) = state.resume_executions.try_qualify(&selected.session_id) else {
-        return crate::rejected_owned(StatusCode::CONFLICT, "resume-in-progress",
-            "同一 Chat 已有 Resume 正在执行；本次请求未执行，也不会排队。请等待完成后由用户重新发起。".into());
+        return Err(Error::Conflict( "resume-in-progress",
+            "同一 Chat 已有 Resume 正在执行；本次请求未执行，也不会排队。请等待完成后由用户重新发起。".into()));
     };
     let chief_claim = match crate::chief::is_chief(&state,&selected).await {
         Ok(true) => match state.chief.reserve_resume(&selected.session_id) {
-            Ok(claim) => Some(claim), Err(error) => return error.response(),
+            Ok(claim) => Some(claim), Err(error) => return Err(Error::Chief(error)),
         },
         Ok(false) => None,
-        Err(error) => return error,
+        Err(crate::chief::Error::Settings(error)) => return settings_failure(selected.agent_type.as_deref(), &error),
+        Err(error) => return Err(Error::Chief(error)),
     };
     // The accepted operation owns its permit, not the HTTP connection. Dropping
     // the request detaches this task rather than releasing a still-active Resume.
@@ -58,20 +60,20 @@ pub(crate) async fn post_resume(State(state): State<AppState>, Json(request): Js
         let _permit = permit;
         let response = resume_selected(&state, &selected).await;
         if let Some(claim) = chief_claim {
-            if let Err(error) = state.chief.resume_finished(&claim,response.status().is_success()) { return error.response(); }
+            if let Err(error) = state.chief.resume_finished(&claim,response.is_ok()) { return Err(Error::Chief(error)); }
         }
         response
     }).await {
         Ok(response) => response,
-        Err(_) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "resume-result-unavailable",
-            "无法确认 Resume 执行结果；请检查 Herdr 后再重试。".into()),
+        Err(_) => Err(Error::Internal( "resume-result-unavailable",
+            "无法确认 Resume 执行结果；请检查 Herdr 后再重试。".into())),
     }
 }
 
-async fn resume_selected(state: &AppState, selected: &crate::chats::history::HistorySelection) -> Response {
+async fn resume_selected(state: &AppState, selected: &crate::chats::history::HistorySelection) -> Result<Value, Error> {
     let kind = match selected.agent_type.as_deref() {
         Some(kind @ ("pi" | "omp")) => kind,
-        _ => return crate::rejected_owned(StatusCode::BAD_REQUEST, "unsupported-agent", "无法确定受支持的 agent 类型；尚未恢复。".into()),
+        _ => return Err(Error::Invalid( "unsupported-agent", "无法确定受支持的 agent 类型；尚未恢复。".into())),
     };
     let targets = match state.herdr.matching_targets(kind, selected).await {
         Ok(targets) => targets,
@@ -82,15 +84,15 @@ async fn resume_selected(state: &AppState, selected: &crate::chats::history::His
     };
     if let Err(error) = state.herdr.focus_target(target).await { return failure("focus", &error); }
     let message = "已切换到当前herdr焦点";
-    Json(json!({"outcome":"located","target":target,"matchCount":targets.len(),"message":message})).into_response()
+    Ok(json!({"outcome":"located","target":target,"matchCount":targets.len(),"message":message}))
 }
 
-async fn restore_history(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str) -> Response {
+async fn restore_history(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str) -> Result<Value, Error> {
     let mut feedback = degradation::Feedback::default();
     restore_with_feedback(state, selected, kind, &mut feedback).await
 }
 
-async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
+async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Result<Value, Error> {
     use crate::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
     let scenario = crate::herdr::placement::Scenario::Resume {
@@ -123,13 +125,13 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         feedback.record(item.element, item.reason, item.strategy);
     }
     let workspace = mapped.workspace;
-    if let Err(error) = state.chief.restoring_effect(&selected.session_id,false) { return error.response(); }
+    if let Err(error) = state.chief.restoring_effect(&selected.session_id,false) { return Err(Error::Chief(error)); }
     let tab = match state.herdr.create_tab(&workspace.id, cwd, selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
         Ok(tab) => tab,
         Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
         Err(error) => {
             if matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)) {
-                if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return error.response(); }
+                if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return Err(Error::Chief(error)); }
             }
             return restore_failure(feedback, label, "tab", error.code(), &error.message(), None);
         }
@@ -142,7 +144,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
             return startup_unconfirmed(feedback, label, "start", &error.message(), json!(target), Some(&name));
         }
         if matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)) {
-            if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return error.response(); }
+            if let Err(error) = state.chief.restoring_effect(&selected.session_id,true) { return Err(Error::Chief(error)); }
         }
         return restore_failure(feedback, label, "start", error.code(), &error.message(), Some(&target));
     }
@@ -159,7 +161,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         }
     };
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(feedback, label, "focus", error.code(), &error.message(), Some(&target)); }
-    feedback.response(StatusCode::OK, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"actualCwd":actual_cwd,
+    feedback.response(true, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"actualCwd":actual_cwd,
         "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，实际工作目录：{actual_cwd}。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。")}))
 }
 
@@ -272,7 +274,7 @@ mod degradation {
             Ok((id.clone(), id))
         }
 
-        pub(super) fn response(&self, status: StatusCode, mut value: serde_json::Value) -> Response {
+        pub(super) fn response(&self, success: bool, mut value: serde_json::Value) -> Result<Value, Error> {
             value["fallback"] = json!(self.items.iter().any(|item| matches!(item.element, "workspace" | "cwd")));
             value["degradations"] = json!(self.items);
             if value["outcome"] == "restored" && !self.items.iter().any(|item| item.element == "workspace") {
@@ -289,32 +291,32 @@ mod degradation {
                 message.push_str(value["message"].as_str().unwrap_or_default());
                 value["message"] = json!(message);
             }
-            (status, Json(value)).into_response()
+            if success { Ok(value) } else { Err(Error::ResumeFailure(value)) }
         }
     }
 }
 
-fn startup_unconfirmed(feedback: &degradation::Feedback, label: &str, stage: &str, detail: &str, target: serde_json::Value, agent_name: Option<&str>) -> Response {
-    feedback.response(StatusCode::BAD_GATEWAY, json!({"outcome":"unconfirmed","stage":stage,"code":"restore-unconfirmed",
+fn startup_unconfirmed(feedback: &degradation::Feedback, label: &str, stage: &str, detail: &str, target: serde_json::Value, agent_name: Option<&str>) -> Result<Value, Error> {
+    feedback.response(false, json!({"outcome":"unconfirmed","stage":stage,"code":"restore-unconfirmed",
         "target":target,"agentName":agent_name,
         "progress":{"tabCreated":(stage != "tab").then_some(true),"startSubmitted":stage != "tab","conversationConfirmed":false,"focused":false},
         "message":format!("{label} 启动结果未确认（{stage} 阶段等待超时）：{detail} 创建 Tab 或提交启动命令不等于已确认加载正确对话并完成聚焦，不能据此判断未启动。已取得的目标保留供检查，不自动关闭、终止、再次创建、启动或提交输入。请检查 Herdr；用户再次 Resume 时会重新查找，不重放上次启动。")
     }))
 }
 
-fn restore_failure(feedback: &degradation::Feedback, label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::herdr::NavigationTarget>) -> Response {
-    feedback.response(StatusCode::BAD_GATEWAY, json!({"outcome":"failed","stage":stage,"code":code,"target":target,
+fn restore_failure(feedback: &degradation::Feedback, label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::herdr::NavigationTarget>) -> Result<Value, Error> {
+    feedback.response(false, json!({"outcome":"failed","stage":stage,"code":code,"target":target,
         "message":format!("{label} 恢复在 {stage} 阶段失败：{message} 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。") }))
 }
 
-pub(crate) fn settings_failure(kind:Option<&str>,error:&crate::tasks::TaskError) -> Response {
+pub(crate) fn settings_failure(kind:Option<&str>,error:&crate::tasks::TaskError) -> Result<Value, Error> {
     restore_failure(&degradation::Feedback::default(),if kind==Some("omp") {"OMP"} else {"Pi"},"settings",error.code(),&error.message(),None)
 }
 
-fn failure(stage: &str, error: &HerdrError) -> Response {
+fn failure(stage: &str, error: &HerdrError) -> Result<Value, Error> {
     let code = if stage == "lookup" && matches!(error, HerdrError::UnexpectedResponse { command: "agent get native identity", .. }) {
         "identity-verification-failed"
     } else { error.code() };
-    (StatusCode::BAD_GATEWAY, Json(json!({"outcome":"failed","stage":stage,"code":code,
-        "message":format!("{}失败：{} 尚未恢复；没有创建 Tab、启动 agent 或提交输入。", if stage == "focus" { "Herdr 聚焦" } else { "Herdr 查找／身份核实" }, error.message())}))).into_response()
+    Err(Error::ResumeFailure(json!({"outcome":"failed","stage":stage,"code":code,
+        "message":format!("{}失败：{} 尚未恢复；没有创建 Tab、启动 agent 或提交输入。", if stage == "focus" { "Herdr 聚焦" } else { "Herdr 查找／身份核实" }, error.message())})))
 }

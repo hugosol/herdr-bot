@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { suiteRequest, type Suite, type SuiteList } from './controller'
+import { suiteRequest, type Suite, type SuiteList } from '../controllers/suiteController'
 import './suites.css'
 import { NierTitleText } from '../app/NierTitleText'
 

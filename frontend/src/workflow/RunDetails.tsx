@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { renameRun, type RunDetail } from './controller'
+import { renameRun, type RunDetail } from '../controllers/workflowController'
 import { RunList } from './RunList'
 import { NierTitleText } from '../app/NierTitleText'
 import { RunCurrentView } from './RunCurrentView'

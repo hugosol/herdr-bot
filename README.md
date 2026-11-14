@@ -126,27 +126,30 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 ## 源码归属
 
-源码按功能模块组织，不按视图、请求、hook 等技术类型分散目录：
+请求 controller 集中放置并按业务模块命名，便于查找全部请求；页面、hook 与业务实现仍按功能模块组织。前端 controller 发出 HTTP 请求，后端 controller 接收 HTTP 请求，两者分别位于各自的 `controllers/`，不共用实现：
 
 | 功能 | 前端 `frontend/src/` | 后端 `backend/src/` |
 | --- | --- | --- |
 | 应用装配 | `main.tsx`、`app/` | `lib.rs`、`main.rs` 及启动配置文件 |
+| HTTP 请求入口 | `controllers/*Controller.ts` | `controllers/*_controller.rs` |
 | Task 与选项目录 | `tasks/` | `tasks/`（含 `catalog.rs`） |
 | Chat 发起、恢复与历史 | `chats/` | `chats/` |
 | Herdr 宿主集成与位置映射 | — | `herdr/`（私有 `client.rs` CLI adapter、`identity.rs` 原生身份实现与 `placement.rs` 位置映射） |
 | 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
-| Bot 静态定义请求 | `bots/controller.ts`；展示仍由 scheduler 组合 | `scheduler/` |
+| Bot 静态定义请求 | `controllers/botController.ts`；展示仍由 scheduler 组合 | `scheduler/` |
 | Map 静态定义与发起预检 | `scheduler/` | `scheduler/` |
 | Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
 | 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
-| 固定操作与关机 | `server/controller.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
+| 固定操作与关机 | `controllers/serverController.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
 
-前端普通请求由各业务的 `controller.ts` 作为 HTTP adapter 拥有：`chats`、`bots`、`tasks`、`scheduler`、`workflow`、`suites`、`zones` 与 `server` 分别收拢请求地址、序列化、响应解析和错误分类。文件浏览、Git（含 diff）和关机使用 `zones/browser/controller.ts`、`zones/git/controller.ts`、`server/shutdown/controller.ts`；HTML 阅读的资源地址由 `zones/reader/controller.ts` 构造，净化与链接安全规则仍归 reader 实现。跨分区直接调用能力拥有方的 interface，不复制请求，也不保留旧 `*Api.ts` 转发层。controller 不形成全局万能请求封装，保留各业务的拒绝、不可达和结果未确认语义，不新增自动重试。
+前端普通请求集中在 `frontend/src/controllers/`，按业务命名为 `chatController.ts`、`botController.ts`、`taskController.ts`、`schedulerController.ts`、`workflowController.ts`、`suiteController.ts`、`zoneController.ts` 与 `serverController.ts`。文件浏览、Git（含 diff）、HTML 阅读资源地址和关机分别由 `zoneBrowserController.ts`、`zoneGitController.ts`、`zoneReaderController.ts`、`shutdownController.ts` 拥有；HTML 净化与链接安全规则仍归 reader 实现。这些 HTTP adapter 收拢请求地址、序列化、响应解析和错误分类，跨分区调用同一个业务 interface，不复制请求，也不保留旧目录或 `*Api.ts` 转发层。不增加全局万能请求封装或自动重试，保留各业务的拒绝、不可达和结果未确认语义。
+
+后端 `controllers/*_controller.rs` 只负责 HTTP 输入提取、格式解析、调用业务操作、响应与错误映射，以及 SSE 传输编码。权限判定、业务校验、锁、状态转换、持久化及外部执行仍由 `tasks`、`chats`、`chief`、`scheduler`、`runs`、`sessions`、`suites`、`zones`、`operations` 与 `shutdown` 等业务 module 拥有；业务 interface 返回领域结果与错误，不返回 Axum `Response` 或 `StatusCode`。路由注册沿用 `lib.rs` 的装配位置，不新增 `routes.rs`、Controller 类、万能调度器或旧 handler 转发层。请求入口易于发现，业务约束仍在同一 module 内保持 locality，HTTP adapter 通过业务 interface 所在的 seam 调用，不承担业务操作顺序。
 
 页面与 hook 保留加载／草稿状态、取消与竞态控制、刷新及导航协调。会话与 zone 的 SSE 分别保留 `chats/sseSessionFeed.ts`、`zones/zoneWatch.ts` 专门 adapter，不并入普通请求。测试沿用 fetch、事件源注入及真实浏览器 HTTP／SSE seam，不 mock controller；路径迁移不改变行为断言。
 
-Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `scheduler/controller.ts`，Bot 请求使用 `bots/controller.ts`。
+Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `controllers/schedulerController.ts`，Bot 请求使用 `controllers/botController.ts`。
 
 Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
 

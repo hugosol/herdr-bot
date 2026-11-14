@@ -68,16 +68,16 @@ pub(super) async fn summary(state: &AppState, run: &Run, include_reports: bool) 
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ReportRequest {
-    session_id: String,
-    body: String,
-    can_complete: bool,
+pub(crate) struct ReportRequest {
+    pub(crate) session_id: String,
+    pub(crate) body: String,
+    pub(crate) can_complete: bool,
     #[serde(default, deserialize_with = "crate::scheduler::object_array")]
-    outputs: Vec<crate::scheduler::ResolvedFile>,
+    pub(crate) outputs: Vec<crate::scheduler::ResolvedFile>,
 }
 
 // Retained execution identities may append history, never control current work.
-async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, String), Response> {
+async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, String), RunError> {
     let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
     let mut matched = None;
     let mut managers = Vec::new();
@@ -97,7 +97,7 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
             for execution in node.executions() {
                 if execution.chat().is_some_and(|chat| chat.session_id == session_id) {
                     if matched.is_some() {
-                        return Err(error(StatusCode::FORBIDDEN, "node-ambiguous", "原生身份关联不唯一。"));
+                        return Err(error(FailureKind::Forbidden, "node-ambiguous", "原生身份关联不唯一。"));
                     }
                     matched = Some((run.clone(), node_id.clone(), execution.id.clone()));
                 }
@@ -107,7 +107,7 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
     let child_execution = matched.as_ref().is_some_and(|(parent, node_id, execution_id)|
         parent.nodes[node_id].executions().any(|execution| execution.id == *execution_id && execution.child_run_id().is_some()));
     if child_execution && managers.is_empty() {
-        return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "子 Run 缺少对应管理者真实 Chat 关联。"));
+        return Err(error(FailureKind::Forbidden, "node-role-invalid", "子 Run 缺少对应管理者真实 Chat 关联。"));
     }
     if !managers.is_empty() {
         let authorized = managers.len() == 1 && matched.as_ref().is_some_and(|(parent, node_id, execution_id)| {
@@ -119,82 +119,60 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
                 nested_source(state, &managers[0], execution).await
             } else { false }
         } else { false };
-        if !authorized || !source_valid { return Err(error(StatusCode::FORBIDDEN, "node-role-invalid", "管理者身份没有唯一合法的父执行关联。")); }
+        if !authorized || !source_valid { return Err(error(FailureKind::Forbidden, "node-role-invalid", "管理者身份没有唯一合法的父执行关联。")); }
     }
     matched.ok_or_else(|| match read_error {
-        Some(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
-        None => error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的当前节点执行归属。"),
+        Some(message) => error(FailureKind::Failed, "run-read-failed", &message),
+        None => error(FailureKind::Forbidden, "node-unassociated", "当前原生身份没有唯一的当前节点执行归属。"),
     })
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ContextRequest {
-    session_id: String,
+pub(crate) struct ContextRequest {
+    pub(crate) session_id: String,
 }
 
-pub async fn node_context(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: ContextRequest = match crate::chat_command_body::<crate::scheduler::JsonObject<ContextRequest>>(request, "节点上下文").await {
-        Ok(input) => input.0,
-        Err(response) => return response,
-    };
+pub(crate) async fn node_context(state: AppState, input: ContextRequest) -> RunResult {
     let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
         Ok(binding) => binding,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     let Some(execution) = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id) else {
-        return error(StatusCode::FORBIDDEN, "node-unassociated", "当前原生身份没有唯一的节点执行归属。");
+        return Err(error(FailureKind::Forbidden, "node-unassociated", "当前原生身份没有唯一的节点执行归属。"));
     };
-    Json(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})).into_response()
+    Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})))
 }
 
-pub async fn node_report(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: ReportRequest = match crate::chat_command_body(request, "节点报告").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn node_report(state: AppState, input: ReportRequest) -> RunResult {
     let mut ids = std::collections::BTreeSet::new();
     for file in &input.outputs {
         if file.id.trim().is_empty() || !ids.insert(&file.id) {
-            return error(StatusCode::BAD_REQUEST, "invalid-output-id", "输出 ID 必须非空且不得重复。");
+            return Err(error(FailureKind::Invalid, "invalid-output-id", "输出 ID 必须非空且不得重复。"));
         }
         if file.path.contains('\0') || !std::path::Path::new(&file.path).is_absolute() {
-            return error(StatusCode::BAD_REQUEST, "invalid-output-path", &format!("输出 {} 必须使用本机绝对文件地址。", file.id));
+            return Err(error(FailureKind::Invalid, "invalid-output-path", &format!("输出 {} 必须使用本机绝对文件地址。", file.id)));
         }
     }
     let (run, node_id, execution_id) = match node_run(&state, &input.session_id).await {
         Ok(binding) => binding,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     let execution = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id).unwrap();
     let Some(output_rule) = execution.output_rule.as_ref() else {
-        return error(StatusCode::BAD_REQUEST, "output-rule-unknown", "历史执行没有已知的冻结 outputRule，不能提交新报告。");
+        return Err(error(FailureKind::Invalid, "output-rule-unknown", "历史执行没有已知的冻结 outputRule，不能提交新报告。"));
     };
     if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
-        return error(StatusCode::BAD_REQUEST, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。");
+        return Err(error(FailureKind::Invalid, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。"));
     }
     if input.can_complete {
         if let Some(child_id) = execution.child_run_id() {
             let child = match state.runs.read(&state, child_id).await {
                 Ok(child) => child,
-                Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "child-run-read-failed", &message),
+                Err(message) => return Err(error(FailureKind::Failed, "child-run-read-failed", &message)),
             };
             if child.status != "completed" || child.finished.is_none() {
-                return error(StatusCode::BAD_REQUEST, "child-run-not-finished", "子 Run 必须显式 finish 后才能提交 canComplete=true；进展报告请使用 false。");
+                return Err(error(FailureKind::Invalid, "child-run-not-finished", "子 Run 必须显式 finish 后才能提交 canComplete=true；进展报告请使用 false。"));
             }
         }
     }
@@ -202,9 +180,9 @@ pub async fn node_report(
         origin: ReportOrigin::Chat(input.session_id), body: input.body, can_complete: input.can_complete, outputs: input.outputs,
     }).await;
     match work {
-        Ok(submitted) => Json(serde_json::json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"})).into_response(),
-        Err(SubmitError::Save(message)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"code":"report-save-failed","message":message,"saved":false,"notification":{"status":"not-attempted"}}))).into_response(),
-        Err(SubmitError::Internal(join)) => error(StatusCode::INTERNAL_SERVER_ERROR, "report-internal", &join.to_string()),
+        Ok(submitted) => Ok(RunOutcome::Value(serde_json::json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"}))),
+        Err(SubmitError::Save(message)) => Err(RunError::Failed(serde_json::json!({"code":"report-save-failed","message":message,"saved":false,"notification":{"status":"not-attempted"}}))),
+        Err(SubmitError::Internal(join)) => Err(error(FailureKind::Failed, "report-internal", &join.to_string())),
     }
 }
 

@@ -56,10 +56,10 @@ impl Decision {
     }
 }
 
-pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -> Response {
+pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -> RunResult {
     let run = match manager_run(&state, session_id).await {
         Ok(run) => run,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     let name = action.name();
     // Keep accepted work alive if its HTTP caller disconnects. The operation
@@ -91,17 +91,17 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
         outcome(&state, &run, changed, history_error).await
     }).await;
     match work {
-        Ok(Ok(response)) => response,
-        Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{name}-failed"), &message),
-        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{name}-internal"), &join.to_string()),
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(message)) => Err(error(FailureKind::Failed, &format!("{name}-failed"), &message)),
+        Err(join) => Err(error(FailureKind::Failed, &format!("{name}-internal"), &join.to_string())),
     }
 }
 
-async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<Response, String> {
+async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<RunOutcome, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(changed);
     history_feedback(&mut value, history_error);
-    Ok(Json(value).into_response())
+    Ok(RunOutcome::Value(value))
 }
 
 // Preserve the public feedback for both single-stage actions and multi-stage
@@ -115,12 +115,12 @@ pub(super) fn history_feedback(value: &mut serde_json::Value, history_error: Opt
     value["historyError"] = serde_json::json!(history_error);
 }
 
-pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<Response, String> {
+pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<RunOutcome, String> {
     let mut value = snapshot(state, run, true).await?;
     value["changed"] = serde_json::json!(false);
     value["code"] = serde_json::json!(code);
     value["message"] = serde_json::json!(message);
-    Ok((StatusCode::CONFLICT, Json(value)).into_response())
+    Ok(RunOutcome::Rejected(value))
 }
 
 async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {

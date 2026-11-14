@@ -3,8 +3,8 @@ import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/app/App'
-import type { BrowseEntry } from '../src/zones/browser/controller'
-import type { GitChange, GitStatus, ZoneSummary } from '../src/zones/git/controller'
+import type { BrowseEntry } from '../src/controllers/zoneBrowserController'
+import type { GitChange, GitStatus, ZoneSummary } from '../src/controllers/zoneGitController'
 import { treeResponse } from './treeResponse'
 
 const ZONE = 'C:\\work\\repository'

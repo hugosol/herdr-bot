@@ -3,7 +3,7 @@ import './navigation.css'
 import { ENTITY_ICON_PATHS } from './EntityLinkLabel'
 import { NierTitleText } from './NierTitleText'
 
-import { runOperation, type FailureKind, type OperationName, type OperationResult } from '../server/controller'
+import { runOperation, type FailureKind, type OperationName, type OperationResult } from '../controllers/serverController'
 import { TasksPanel } from '../tasks/TasksPanel'
 import { SuitesPanel } from '../suites/SuitesPanel'
 import { ZonesPanel } from '../zones/ZonesPanel'

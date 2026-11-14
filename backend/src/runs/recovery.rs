@@ -4,15 +4,15 @@ use super::operation::{Action, Decision};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct FailRequest {
-    session_id: String,
-    node_id: String,
-    reason: String,
+pub(crate) struct FailRequest {
+    pub(crate) session_id: String,
+    pub(crate) node_id: String,
+    pub(crate) reason: String,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum DispatchFinding {
+pub(crate) enum DispatchFinding {
     Uncertain,
     NotCreated,
     Created,
@@ -20,64 +20,31 @@ pub(super) enum DispatchFinding {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ReconcileRequest {
-    session_id: String,
-    node_id: String,
-    finding: DispatchFinding,
-    reason: String,
+pub(crate) struct ReconcileRequest {
+    pub(crate) session_id: String,
+    pub(crate) node_id: String,
+    pub(crate) finding: DispatchFinding,
+    pub(crate) reason: String,
 }
 
-pub async fn manager_reconcile_dispatch(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: ReconcileRequest = match crate::chat_command_body(request, "核实派发事实").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_reconcile_dispatch(state: AppState, input: ReconcileRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::Reconcile { node_id: input.node_id, finding: input.finding, reason: input.reason }).await
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RecoverRequest {
-    session_id: String,
-    node_id: String,
-    confirmed: bool,
-    reason: String,
+pub(crate) struct RecoverRequest {
+    pub(crate) session_id: String,
+    pub(crate) node_id: String,
+    pub(crate) confirmed: bool,
+    pub(crate) reason: String,
 }
 
-pub async fn manager_recover(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: RecoverRequest = match crate::chat_command_body(request, "恢复原执行跟踪").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_recover(state: AppState, input: RecoverRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::Recover { node_id: input.node_id, confirmed: input.confirmed, reason: input.reason }).await
 }
 
-pub async fn manager_fail(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: FailRequest = match crate::chat_command_body(request, "记录执行失败").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_fail(state: AppState, input: FailRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::Fail { node_id: input.node_id, reason: input.reason }).await
 }
 

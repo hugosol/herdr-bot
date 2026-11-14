@@ -16,8 +16,8 @@ import {
   type TaskList,
   type TaskOptions,
   type TaskResult,
-} from './controller'
-import { listBots, type Bot } from '../bots/controller'
+} from '../controllers/taskController'
+import { listBots, type Bot } from '../controllers/botController'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
 import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'

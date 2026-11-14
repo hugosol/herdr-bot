@@ -5,7 +5,7 @@
  * 能力事实（agent / model / thinking / skill）由后端公开，保存失败时页面不能表示已保存。
  */
 
-import type { Suite } from '../suites/controller'
+import type { Suite } from './suiteController'
 
 export type TaskType = 'normal' | 'manager' | 'chief'
 export type TaskAgent = 'omp' | 'pi'

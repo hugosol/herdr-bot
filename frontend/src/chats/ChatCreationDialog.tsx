@@ -6,10 +6,10 @@ import {
   previewChat,
   type ChatCreation,
   type ChatPreview,
-} from './controller'
-import { fetchTasks, type Task, type TaskOptions } from '../tasks/controller'
+} from '../controllers/chatController'
+import { fetchTasks, type Task, type TaskOptions } from '../controllers/taskController'
 import { TaskModelControls, changeTaskModel, modelCompatibility } from '../tasks/TaskModelControls'
-import { fetchZones, type ZoneRegistration } from '../zones/controller'
+import { fetchZones, type ZoneRegistration } from '../controllers/zoneController'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 

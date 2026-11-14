@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { resumeChat } from './controller'
+import { resumeChat } from '../controllers/chatController'
 
 export function ResumeChat({ sessionId }: { sessionId: string }) {
   const [pending, setPending] = useState(false)

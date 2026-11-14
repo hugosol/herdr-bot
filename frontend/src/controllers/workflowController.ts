@@ -1,4 +1,4 @@
-import type { InputRule, OutputRule } from '../scheduler/controller'
+import type { InputRule, OutputRule } from './schedulerController'
 
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
 export type FileAddress = { id: string; path: string }

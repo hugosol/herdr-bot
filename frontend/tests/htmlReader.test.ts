@@ -5,7 +5,7 @@ import {
   classifyHtmlReaderLink,
   isHtmlPath,
 } from '../src/zones/reader/htmlReader'
-import { readerAssetUrl } from '../src/zones/reader/controller'
+import { readerAssetUrl } from '../src/controllers/zoneReaderController'
 
 const ZONE = 'C:\\work\\project'
 const ORIGIN = 'http://localhost:8787'

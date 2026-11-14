@@ -1,5 +1,5 @@
 import { ResumeChat } from '../chats/ResumeChat'
-import type { ChatReference } from './controller'
+import type { ChatReference } from '../controllers/workflowController'
 
 export function RunChatReference({ chat, label }: { chat: ChatReference | null; label: string }) {
   return <section aria-label={label} className="workflow-saved-chat">

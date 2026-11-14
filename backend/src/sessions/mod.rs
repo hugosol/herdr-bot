@@ -30,28 +30,24 @@
 //! 两个方向共用那把锁（写侧在锁内发布可见变化），因此读连接既不需要版本位，也不需要游标或事件日志——
 //! 重连即收敛。订阅者落后太多时丢弃错过的增量、重发一帧快照。
 //!
-//! 本模块只负责会话状态与「会话变化 → 共享观察流」的发布；帧的组装、命名事件与读连接都在
-//! [`crate::sessions::observation`]，关机安排则在 [`crate::shutdown`]。
+//! 本模块负责会话接入、历史记录、membership 原子性与「会话变化 → 共享观察流」的发布。
+//! [`crate::sessions::observation`] 提供类型化快照与变化，controllers/sessions_controller.rs
+//! 负责 HTTP 解析、响应映射与 SSE 帧；关机安排仍在 [`crate::shutdown`]。
 
 pub mod observation;
 
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::Json;
-use axum::body::to_bytes;
-use axum::extract::{ConnectInfo, Request, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::clock::{Clock, SystemClock};
 use crate::sessions::observation::{Hub, Observation};
-use crate::{AppState, MAX_REQUEST_BODY_BYTES, rejected};
+use crate::AppState;
 
 /// 缺省在线有效期（秒）：最后一次写入起 10 秒内视为在线。
 pub const DEFAULT_ONLINE_SECONDS: u32 = 10;
@@ -514,7 +510,7 @@ enum Applied {
 /// 没有版本位、没有时间戳，未知字段一律忽略（将来加字段不破坏旧扩展）。
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-enum SessionEvent {
+pub(crate) enum SessionEvent {
     /// 注册（或幂等重注册）一个会话；唯一的建行入口。
     Register {
         /// 会话身份。
@@ -551,7 +547,7 @@ enum SessionEvent {
 /// `register` 的请求字段。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RegisterData {
+pub(crate) struct RegisterData {
     /// 会话的工作目录，必填。
     cwd: String,
     /// 会话名；缺省即省略。
@@ -570,14 +566,14 @@ struct RegisterData {
 
 /// `heartbeat` 的请求字段。
 #[derive(Debug, Default, Deserialize)]
-struct HeartbeatData {
+pub(crate) struct HeartbeatData {
     /// 当前状态；缺省表示只刷心跳、不改状态。
     value: Option<StateValue>,
 }
 
 /// `state` 的请求字段。
 #[derive(Debug, Deserialize)]
-struct StateData {
+pub(crate) struct StateData {
     /// 新状态，必填。
     value: StateValue,
 }
@@ -591,7 +587,7 @@ const ACCEPTED: &'static str = "accepted";
 /// `register` 的成功回执：回带当前在线会话数，于是扩展 arm 时一次往返就能显示「当前 N 个在线会话」。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RegisterAccepted {
+pub(crate) struct RegisterAccepted {
     /// 结果类别：`registered`。
     outcome: &'static str,
     /// 当前在线会话数（含本会话）。
@@ -609,7 +605,7 @@ struct HistoryWarning {
 
 /// 其余 kind 的成功回执：只说明「事件已被接受」。
 #[derive(Debug, Serialize)]
-struct EventAccepted {
+pub(crate) struct EventAccepted {
     /// 结果类别：`accepted`。
     outcome: &'static str,
 }
@@ -628,68 +624,36 @@ pub(crate) fn is_local_source(ip: IpAddr) -> bool {
             .is_ok_and(|interfaces| interfaces.iter().any(|interface| interface.addr.ip() == ip))
 }
 
-/// `POST /api/sessions/events`：会话事件的唯一写入入口。
-///
-/// 请求面是封闭的：只接受本机来源，不接受查询参数，请求体必须是 `{sessionId, kind, data}` 形式的
-/// 事件。成功回执只说明「事件已被接受」——`register` 回带在线会话数，其余 kind 只回 `accepted`；
-/// 被拒绝的请求不建行、不改动任何会话。
-///
-/// 拒绝类别（复用服务既有的 `{code, message}` 形状，kebab-case code、中文 message）：
-/// `403 forbidden`（来源不是本机）、`413 payload-too-large`（请求体超过 8KB）、
-/// `400 unexpected-parameters`（带查询串）、`400 invalid-event`（解析失败 / 缺字段 / 非法 kind /
-/// 非法状态值）、`404 unknown-session`（非 register 事件引用未知会话）。
-pub(crate) async fn post_session_event(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    // 来源校验先于一切：局域网设备不能伪造或刷会话行。它发生在读请求体、建行或改动任何会话之前。
-    if !is_local_source(peer.ip()) {
-        return rejected(
-            StatusCode::FORBIDDEN,
-            "forbidden",
-            "会话事件写入只接受本机来源：局域网设备不能伪造或刷面板。",
-        );
-    }
+/// Accepted session event, independent of HTTP response construction.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum SessionEventAccepted {
+    Registered(RegisterAccepted),
+    Accepted(EventAccepted),
+}
 
-    // 事件内容只来自请求体：带查询串的调用一律按越界请求拒绝。
-    if request.uri().query().is_some_and(|query| !query.is_empty()) {
-        return rejected(
-            StatusCode::BAD_REQUEST,
-            "unexpected-parameters",
-            "会话事件请求不接受查询参数：事件内容只来自请求体。",
-        );
-    }
+#[derive(Debug)]
+pub(crate) enum SessionEventError {
+    Forbidden,
+    UnknownSession,
+    Chief(crate::chief::Error),
+}
 
-    let (_, body) = request.into_parts();
-    let bytes = match to_bytes(body, MAX_REQUEST_BODY_BYTES).await {
-        Ok(bytes) => bytes,
-        // 读不完请求体只可能是超过上限：不为越界的请求缓冲任意大的内容。
-        Err(_) => {
-            return rejected(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "payload-too-large",
-                "会话事件请求体超过 8KB 上限。",
-            );
-        }
-    };
+/// Authorize before reading or parsing the event body.
+pub(crate) fn authorize_source(ip: IpAddr) -> Result<(), SessionEventError> {
+    if is_local_source(ip) { Ok(()) } else { Err(SessionEventError::Forbidden) }
+}
 
-    let Ok(event) = serde_json::from_slice::<SessionEvent>(&bytes) else {
-        return rejected(
-            StatusCode::BAD_REQUEST,
-            "invalid-event",
-            "会话事件无法解析：请发送 {sessionId, kind, data} 形式的合法事件。",
-        );
-    };
-
+/// Accept registration, membership, history and lifecycle changes under the original membership lock.
+pub(crate) async fn accept_event(state: &AppState, event: SessionEvent) -> Result<SessionEventAccepted, SessionEventError> {
     let _membership = state.chief.membership.lock().await;
     match &event {
         SessionEvent::Register { session_id, .. } => {
-            if let Err(error) = state.chief.register(session_id) { return error.response(); }
+            state.chief.register(session_id).map_err(SessionEventError::Chief)?;
         }
         SessionEvent::Unregister { session_id } => {
             if state.sessions.snapshot().await.iter().any(|session|&session.session_id==session_id) {
-                if let Err(error) = state.chief.remove(session_id) { return error.response(); }
+                state.chief.remove(session_id).map_err(SessionEventError::Chief)?;
             }
         }
         _ => {}
@@ -722,23 +686,13 @@ pub(crate) async fn post_session_event(
     }
 
     match applied {
-        Some(Applied::Registered { online_count }) => (
-            StatusCode::OK,
-            Json(RegisterAccepted {
-                outcome: REGISTERED,
-                online_count,
-                history_saved: history_warning.is_none(),
-                history_warning,
-            }),
-        )
-            .into_response(),
-        Some(Applied::Accepted) => {
-            (StatusCode::OK, Json(EventAccepted { outcome: ACCEPTED })).into_response()
-        }
-        None => rejected(
-            StatusCode::NOT_FOUND,
-            "unknown-session",
-            "该会话尚未注册：非 register 事件不能为未知会话建行。",
-        ),
+        Some(Applied::Registered { online_count }) => Ok(SessionEventAccepted::Registered(RegisterAccepted {
+            outcome: REGISTERED,
+            online_count,
+            history_saved: history_warning.is_none(),
+            history_warning,
+        })),
+        Some(Applied::Accepted) => Ok(SessionEventAccepted::Accepted(EventAccepted { outcome: ACCEPTED })),
+        None => Err(SessionEventError::UnknownSession),
     }
 }

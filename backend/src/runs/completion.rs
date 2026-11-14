@@ -4,69 +4,28 @@ use super::operation::{Action, Decision};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CompleteRequest {
-    session_id: String,
-    node_id: String,
-    reason: String,
+pub(crate) struct CompleteRequest {
+    pub(crate) session_id: String,
+    pub(crate) node_id: String,
+    pub(crate) reason: String,
 }
 
-pub async fn manager_complete(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: CompleteRequest = match crate::chat_command_body(request, "交接完成").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_complete(state: AppState, input: CompleteRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::Complete { node_id: input.node_id, reason: input.reason }).await
 }
 
-pub async fn manager_finish(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: StatusRequest = match crate::chat_command_body(request, "结束 Run").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_finish(state: AppState, input: StatusRequest) -> RunResult {
     operation::execute(state, &input.session_id, Action::Finish).await
 }
 
-pub async fn manager_pause(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    dispatch_eligibility(state, peer, request, Action::Pause).await
+pub(crate) async fn manager_pause(state: AppState, input: StatusRequest) -> RunResult {
+
+    operation::execute(state, &input.session_id, Action::Pause).await
 }
 
-pub async fn manager_resume(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    dispatch_eligibility(state, peer, request, Action::Resume).await
-}
+pub(crate) async fn manager_resume(state: AppState, input: StatusRequest) -> RunResult {
 
-// Eligibility transitions never call the host: existing Chat activity and node
-// facts are independent, and restoring eligibility is not a dispatch request.
-async fn dispatch_eligibility(state: AppState, peer: SocketAddr, request: Request, action: Action) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: StatusRequest = match crate::chat_command_body(request, "暂停或恢复派发资格").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
-    operation::execute(state, &input.session_id, action).await
+    operation::execute(state, &input.session_id, Action::Resume).await
 }
 
 pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, reason: String) -> Result<Decision, String> {

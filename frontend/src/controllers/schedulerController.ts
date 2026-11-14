@@ -1,4 +1,4 @@
-import type { BotRevision } from '../bots/controller'
+import type { BotRevision } from './botController'
 
 export type MapFileInput = { id: string; required: boolean; description?: string }
 export type RunFileInput = { id: string; path: string }

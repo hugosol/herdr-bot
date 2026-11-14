@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { RunDetail } from '../src/workflow/controller'
+import type { RunDetail } from '../src/controllers/workflowController'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RunDetails, selectedRunId } from '../src/workflow/RunDetails'
 

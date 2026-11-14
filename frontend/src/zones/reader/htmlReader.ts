@@ -6,7 +6,7 @@
  * 仍是 zone 本身。
  */
 
-import { READER_ROUTE } from './controller'
+import { READER_ROUTE } from '../../controllers/zoneReaderController'
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",

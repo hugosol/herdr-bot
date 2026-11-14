@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { MapGraph } from '../src/scheduler/MapGraph'
 import { WorkflowRunGraph } from '../src/workflow/WorkflowRunGraph'
-import type { MapNode, WorkflowMap } from '../src/scheduler/controller'
+import type { MapNode, WorkflowMap } from '../src/controllers/schedulerController'
 
 const node = (title: string, blocked_by: string[] = []): MapNode => ({ title, blocked_by, bot_id: 'shared', input: '', zone: 'workspace' })
 const map: WorkflowMap = {

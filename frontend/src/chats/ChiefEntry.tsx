@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChatCreationDialog } from './ChatCreationDialog'
-import { openChiefChat } from './controller'
+import { openChiefChat } from '../controllers/chatController'
 
 /** Resolve on every click: another browser can acquire or remove the chief. */
 export function ChiefEntry() {

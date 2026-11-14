@@ -552,3 +552,41 @@ fn next_id(tasks: &[Task]) -> String {
         }
     }
 }
+
+/// Task 列表的响应：当前完整列表与固定选项。
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskListResponse {
+    tasks: Vec<Task>,
+    options: TaskOptionsResponse,
+}
+
+#[derive(Debug, Serialize)]
+struct TaskOptionsResponse {
+    #[serde(flatten)]
+    catalog: catalog::TaskOptions,
+    suites: Vec<crate::suites::Suite>,
+    mcp: Vec<String>,
+}
+
+
+pub(crate) enum CatalogError { Task(TaskError), Suite(crate::suites::SuiteError) }
+
+impl Tasks {
+    pub(crate) fn catalog_result(&self, result: Result<Vec<Task>, TaskError>) -> Result<TaskListResponse, CatalogError> {
+        let catalog = self.catalog().map_err(CatalogError::Task)?;
+        let suites = self.suites.list().map_err(CatalogError::Suite)?;
+        let mcp = self.suites.mcp_catalog().map_err(CatalogError::Suite)?.into_keys().collect();
+        let tasks = result.map_err(CatalogError::Task)?;
+        Ok(TaskListResponse { tasks, options: TaskOptionsResponse { catalog: catalog.options(), suites, mcp } })
+    }
+    pub(crate) async fn list_catalog(self: &std::sync::Arc<Self>) -> Result<TaskListResponse, CatalogError> {
+        let tasks = std::sync::Arc::clone(self);
+        let runtime = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || tasks.catalog_result(runtime.block_on(tasks.list())))
+            .await.map_err(|error| CatalogError::Task(TaskError::Unreadable(std::io::Error::other(error))))?
+    }
+    pub(crate) async fn get_validated(&self, id: &str) -> Result<Task, TaskError> {
+        self.catalog()?;
+        self.get(id).await
+    }
+}

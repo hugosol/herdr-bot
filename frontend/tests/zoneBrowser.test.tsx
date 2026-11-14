@@ -3,7 +3,7 @@ import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/app/App'
-import type { BrowseEntry, DirectoryListing, FileView } from '../src/zones/browser/controller'
+import type { BrowseEntry, DirectoryListing, FileView } from '../src/controllers/zoneBrowserController'
 import { treeResponse } from './treeResponse'
 
 const ZONE = 'C:\\work\\project'

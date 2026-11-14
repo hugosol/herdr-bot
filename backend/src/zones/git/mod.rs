@@ -14,6 +14,7 @@
 //! 的未合并文件条目，普通命令失败与单纯 ahead/behind 不会被标记为冲突。
 
 pub mod commit;
+pub(crate) mod operations;
 pub(crate) mod status_cache;
 pub mod sync;
 

@@ -3,13 +3,12 @@ use crate::files::{FileAccess, FileStore, PublishMode};
 pub(crate) mod script_bots;
 use std::path::{Path, PathBuf};
 
-use axum::{Json, extract::Request, http::StatusCode, response::{IntoResponse, Response}};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct WorkflowMap {
+pub(crate) struct WorkflowMap {
     title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
@@ -310,40 +309,29 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     Ok(())
 }
 
-pub async fn get_map(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
-) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "invalid-request", "message": "Map 读取不接受查询参数或请求体。",
-        }))).into_response();
-    }
+pub(crate) async fn get_map(state: crate::AppState, name: String) -> Result<WorkflowMap, DirectoryError> {
+
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         read_map(access, &state.map_directory, &name).map_err(|mut error| {
             error.message = format!("Map 文件 {name}：{}", error.message);
             error
         })
     })).await {
-        Ok(Ok(map)) => Json(map).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => map_error(format!("Map 文件读取失败：{error}")).into_response(),
+        Ok(Ok(map)) => Ok(map),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(map_error(format!("Map 文件读取失败：{error}"))),
     }
 }
 
-pub async fn edit_map_inputs(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-) -> Response {
+pub(crate) async fn edit_map_inputs(state: crate::AppState, name: String) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
         Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "input_requirements": map.input_requirements, "revision": {"file": name, "original": original}}))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => map_error(error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(map_error(error.to_string())),
     }
 }
 
@@ -356,11 +344,7 @@ pub struct MapInputsSave {
     revision: BotRevision,
 }
 
-pub async fn save_map_inputs(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(draft): Json<MapInputsSave>,
-) -> Response {
+pub(crate) async fn save_map_inputs(state: crate::AppState, name: String, draft: MapInputsSave) -> Result<WorkflowMap, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
         let check = || -> Result<(), DirectoryError> {
             let current = read_map_source(access, &state.map_directory, &name)?;
@@ -380,24 +364,21 @@ pub async fn save_map_inputs(
             |_| check(), |error| edit_error("map-write-failed", format!("Map 输入声明写入失败：{error}")))?;
         Ok(map)
     })).await {
-        Ok(Ok(map)) => Json(map).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+        Ok(Ok(map)) => Ok(map),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("map-write-failed", error.to_string())),
     }
 }
 
-pub async fn edit_map_title(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-) -> Response {
+pub(crate) async fn edit_map_title(state: crate::AppState, name: String) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
         Ok::<_, DirectoryError>(serde_json::json!({"title": map.title, "revision": {"file": name, "original": original}}))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => map_error(error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(map_error(error.to_string())),
     }
 }
 
@@ -408,16 +389,10 @@ pub struct MapTitleSave {
     revision: BotRevision,
 }
 
-pub async fn save_map_title(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(draft): Json<MapTitleSave>,
-) -> Response {
+pub(crate) async fn save_map_title(state: crate::AppState, name: String, draft: MapTitleSave) -> Result<serde_json::Value, DirectoryError> {
     let title = draft.title.trim().to_owned();
     if title.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "map-title-invalid", "message": "Map 显示名称不能为空。",
-        }))).into_response();
+        return Err(edit_error("map-title-invalid", "Map 显示名称不能为空。"));
     }
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
         let check = || -> Result<(), DirectoryError> {
@@ -439,9 +414,9 @@ pub async fn save_map_title(
             |_| check(), |error| edit_error("map-write-failed", format!("Map 名称写入失败：{error}")))?;
         Ok(map)
     })).await {
-        Ok(Ok(map)) => Json(map).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+        Ok(Ok(map)) => Ok(map),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("map-write-failed", error.to_string())),
     }
 }
 
@@ -496,12 +471,12 @@ impl PreflightFailure {
         self.0.iter().map(|issue| issue.message.as_str()).collect::<Vec<_>>().join("；")
     }
 }
-impl IntoResponse for PreflightFailure {
-    fn into_response(self) -> Response {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+impl PreflightFailure {
+    pub(crate) fn into_payload(self) -> serde_json::Value {
+        serde_json::json!({
             "code": "run-preflight-rejected", "message": "启动预检未通过；请返回对应原配置修正后重新校验。",
             "issues": self.0,
-        }))).into_response()
+        })
     }
 }
 
@@ -688,24 +663,11 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect(), zone_bindings })
 }
 
-pub async fn preflight_run(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
-) -> Response {
-    let input = match crate::chat_command_body(request, "Run 启动预检").await {
-        Ok(input) => input,
-        Err(error) => return error,
-    };
-    match check_run_preflight(&state, &name, &input).await {
-        Ok(checked) => Json(checked).into_response(),
-        Err(error) => error.into_response(),
-    }
-}
+
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Bot {
+pub(crate) struct Bot {
     id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
@@ -746,7 +708,7 @@ struct BotProblem {
 }
 
 #[derive(Serialize)]
-struct BotCatalog {
+pub(crate) struct BotCatalog {
     bots: Vec<Bot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     problems: Vec<BotProblem>,
@@ -820,7 +782,7 @@ pub(crate) enum DelegationTarget {
     Map(String),
 }
 
-pub(crate) fn delegation_bot(directory: &Path, id: &str) -> Result<(serde_json::Value, DelegationTarget), Response> {
+pub(crate) fn delegation_bot(directory: &Path, id: &str) -> Result<(serde_json::Value, DelegationTarget), DirectoryError> {
     with_definitions(&[directory.to_owned()], "bot-directory-read-failed", |access| {
         let catalog = read_bots(access, directory)?;
         if let Some(problem) = catalog.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(id) || problem.bot_id.is_none()) {
@@ -834,7 +796,7 @@ pub(crate) fn delegation_bot(directory: &Path, id: &str) -> Result<(serde_json::
             _ => return Err(edit_error("bot-target-required", "Bot 必须具有明确的 Task 或 Map 目标。")),
         };
         Ok((serde_json::to_value(bot).expect("Bot serialization"), target))
-    }).map_err(DirectoryError::into_response)
+    })
 }
 
 /// Selected definition closure for chief confirmation; unrelated catalog edits
@@ -846,11 +808,15 @@ pub(crate) struct DelegationMapDefinition {
     pub files: Vec<(String, String)>,
 }
 
+pub(crate) enum DelegationDefinitionError {
+    Directory(DirectoryError),
+    Prompt(String),
+}
+
 pub(crate) fn delegation_map_definition(
     state: &crate::AppState, file: &str, manager_zone: &str,
-) -> Result<DelegationMapDefinition, Response> {
-    let prompts = state.prompts.snapshot().map_err(|error| crate::rejected_owned(
-        StatusCode::CONFLICT, "prompt-dictionary-invalid", error.to_string()))?;
+) -> Result<DelegationMapDefinition, DelegationDefinitionError> {
+    let prompts = state.prompts.snapshot().map_err(|error| DelegationDefinitionError::Prompt(error.to_string()))?;
     with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
         let catalog = read_bots(access, &state.bot_directory)?;
         let mut maps = BTreeMap::new();
@@ -903,19 +869,15 @@ pub(crate) fn delegation_map_definition(
             maps.insert(file, serde_json::to_value(map).expect("Map serialization"));
         }
         Ok(DelegationMapDefinition { definitions: serde_json::json!({"maps":maps,"bots":bots,"renderedMaps":rendered}), task_ids, zone_ids, files })
-    }).map_err(DirectoryError::into_response)
+    }).map_err(DelegationDefinitionError::Directory)
 }
 
-pub async fn list_bots(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "invalid-request", "message": "共享 Bot 读取不接受路径、查询参数或请求体。",
-        }))).into_response();
-    }
+pub(crate) async fn list_bots(state: crate::AppState) -> Result<BotCatalog, DirectoryError> {
+
     match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone()], "bot-directory-read-failed", |access| read_bots(access, &state.bot_directory))).await {
-        Ok(Ok(catalog)) => Json(catalog).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => DirectoryError { code: "bot-directory-read-failed", message: format!("共享 Bot 目录读取失败：{error}") }.into_response(),
+        Ok(Ok(catalog)) => Ok(catalog),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(DirectoryError { code: "bot-directory-read-failed", message: format!("共享 Bot 目录读取失败：{error}") }),
     }
 }
 
@@ -1010,26 +972,20 @@ fn check_bot_references(access: &FileAccess, directory: &Path, id: &str) -> Resu
     Ok(())
 }
 
-pub async fn check_bot_delete(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    Json(identity): Json<BotIdentity>,
-) -> Response {
+pub(crate) async fn check_bot_delete(state: crate::AppState, identity: BotIdentity) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone(), state.map_directory.clone()], "bot-delete-failed", |access| {
         let revision = bot_target(access, &state.bot_directory, &identity.id)?
             .ok_or_else(|| edit_error("bot-conflict", "Bot 已移除；请重新加载。"))?;
         check_bot_references(access, &state.map_directory, &identity.id)?;
         Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "revision": revision }))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-delete-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("bot-delete-failed", error.to_string())),
     }
 }
 
-pub async fn delete_bot(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    Json(target): Json<BotDelete>,
-) -> Response {
+pub(crate) async fn delete_bot(state: crate::AppState, target: BotDelete) -> Result<BotCatalog, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone(), state.map_directory.clone()], "bot-delete-failed", |access| {
         // Both directory scopes protect references against node/bot saves and deletions.
         // Never carry the pre-confirmation reference result into this request.
@@ -1047,26 +1003,20 @@ pub async fn delete_bot(
             .map_err(|error| edit_error("bot-delete-failed", format!("Bot {} 删除失败：{error}", target.revision.file)))?;
         read_bots(access, &root)
     })).await {
-        Ok(Ok(catalog)) => Json(catalog).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-delete-failed", error.to_string()).into_response(),
+        Ok(Ok(catalog)) => Ok(catalog),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("bot-delete-failed", error.to_string())),
     }
 }
 
-pub async fn new_bot(request: Request) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return edit_error("invalid-request", "新增草稿不接受查询参数或请求体。").into_response();
-    }
+pub(crate) fn new_bot() -> serde_json::Value {
     // Compile the documentation example into the application; no runtime repo access.
     let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../docs/example/bots/weather-capability.json")).expect("bundled weather example");
     example.as_object_mut().expect("example object").remove("id");
-    Json(example).into_response()
+    example
 }
 
-pub async fn edit_bot(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    Json(identity): Json<BotIdentity>,
-) -> Response {
+pub(crate) async fn edit_bot(state: crate::AppState, identity: BotIdentity) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone()], "bot-write-failed", |access| {
         let revision = bot_target(access, &state.bot_directory, &identity.id)?
             .ok_or_else(|| edit_error("bot-conflict", "Bot 已移除；请重新加载。"))?;
@@ -1075,20 +1025,17 @@ pub async fn edit_bot(
         content.as_object_mut().ok_or_else(|| edit_error("bot-invalid", "Bot 必须为 JSON 对象。"))?.remove("id");
         Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "content": content, "revision": revision }))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-read-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("bot-read-failed", error.to_string())),
     }
 }
 
-pub async fn save_bot(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    Json(draft): Json<BotSave>,
-) -> Response {
+pub(crate) async fn save_bot(state: crate::AppState, draft: BotSave) -> Result<Bot, DirectoryError> {
     match tokio::task::spawn_blocking(move || save_bot_definition(&state, draft, false)).await {
-        Ok(Ok(bot)) => Json(bot).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-write-failed", error.to_string()).into_response(),
+        Ok(Ok(bot)) => Ok(bot),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("bot-write-failed", error.to_string())),
     }
 }
 
@@ -1156,19 +1103,15 @@ fn deletable_node(map: &WorkflowMap, id: &str) -> Result<(), DirectoryError> {
     Ok(())
 }
 
-pub async fn check_delete_node(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(identity): Json<BotIdentity>,
-) -> Response {
+pub(crate) async fn check_delete_node(state: crate::AppState, name: String, identity: BotIdentity) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "node-write-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         deletable_node(&parse_map(&original)?, &identity.id)?;
         Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "revision": { "file": name, "original": original } }))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("node-read-failed", error.to_string())),
     }
 }
 
@@ -1179,11 +1122,7 @@ pub struct NodeDelete {
     revision: BotRevision,
 }
 
-pub async fn delete_node(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(target): Json<NodeDelete>,
-) -> Response {
+pub(crate) async fn delete_node(state: crate::AppState, name: String, target: NodeDelete) -> Result<WorkflowMap, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "node-write-failed", |access| {
         let check = || -> Result<WorkflowMap, DirectoryError> {
             let original = read_map_source(access, &state.map_directory, &name)?;
@@ -1203,9 +1142,9 @@ pub async fn delete_node(
             |error| edit_error("node-write-failed", format!("node 删除写入失败：{error}")))?;
         Ok(map)
     })).await {
-        Ok(Ok(map)) => Json(map).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("node-write-failed", error.to_string()).into_response(),
+        Ok(Ok(map)) => Ok(map),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("node-write-failed", error.to_string())),
     }
 }
 
@@ -1218,14 +1157,8 @@ pub struct NodeSave {
     create: bool,
 }
 
-pub async fn new_node(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
-) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return edit_error("invalid-request", "新增草稿不接受查询参数或请求体。").into_response();
-    }
+pub(crate) async fn new_node(state: crate::AppState, name: String) -> Result<serde_json::Value, DirectoryError> {
+
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "node-write-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         parse_map(&original)?;
@@ -1235,34 +1168,26 @@ pub async fn new_node(
         content["auto_close"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("node-read-failed", error.to_string())),
     }
 }
 
-pub async fn edit_node(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(identity): Json<BotIdentity>,
-) -> Response {
+pub(crate) async fn edit_node(state: crate::AppState, name: String, identity: BotIdentity) -> Result<serde_json::Value, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "node-write-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
         let node = map.nodes.get(&identity.id).ok_or_else(|| edit_error("node-conflict", "node 已移除；请重新加载。"))?;
         Ok::<_, DirectoryError>(serde_json::json!({ "id": identity.id, "content": node, "revision": { "file": name, "original": original }, "create": false }))
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("node-read-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("node-read-failed", error.to_string())),
     }
 }
 
-pub async fn save_node(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(draft): Json<NodeSave>,
-) -> Response {
+pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeSave) -> Result<WorkflowMap, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "node-write-failed", |access| {
         if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
         let content: serde_json::Value = serde_json::from_str(&draft.content)
@@ -1302,9 +1227,9 @@ pub async fn save_node(
             |error| edit_error("node-write-failed", format!("node 写入失败：{error}")))?;
         Ok(map)
     })).await {
-        Ok(Ok(map)) => Json(map).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("node-write-failed", error.to_string()).into_response(),
+        Ok(Ok(map)) => Ok(map),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("node-write-failed", error.to_string())),
     }
 }
 
@@ -1312,7 +1237,7 @@ pub async fn save_node(
 struct MapFiles { files: Vec<String> }
 
 #[derive(Serialize)]
-struct MapCatalog {
+pub(crate) struct MapCatalog {
     files: Vec<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     titles: BTreeMap<String, String>,
@@ -1332,24 +1257,13 @@ fn read_map_catalog(access: &FileAccess, directory: &Path) -> Result<MapCatalog,
     Ok(MapCatalog { files, titles, groups })
 }
 
-struct DirectoryError { code: &'static str, message: String }
+pub(crate) struct DirectoryError { pub(crate) code: &'static str, pub(crate) message: String }
 impl DirectoryError {
     fn io(code: &'static str, action: &str, error: std::io::Error) -> Self {
         Self { code, message: format!("Map 目录{action}失败：{error}") }
     }
 }
-impl IntoResponse for DirectoryError {
-    fn into_response(self) -> Response {
-        let status = match self.code {
-            "map-input-invalid" | "group-invalid" => StatusCode::BAD_REQUEST,
-            "map-conflict" | "bot-conflict" | "script-policy-invalid" => StatusCode::CONFLICT,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (status, Json(serde_json::json!({
-            "code": self.code, "message": self.message,
-        }))).into_response()
-    }
-}
+
 
 // Inspect every existing ancestor before creating any missing component. Never
 // follow symlinks, junctions or other reparse points, even above the configured root.
@@ -1436,19 +1350,11 @@ fn check_map_references(access: &FileAccess, directory: &Path, target: &str) -> 
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct MapDelete {
+pub(crate) struct MapDelete {
     delete_history: bool,
 }
 
-pub async fn delete_map(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
-) -> Response {
-    let input: MapDelete = match crate::chat_command_body(request, "删除 Map").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn delete_map(state: crate::AppState, name: String, input: MapDelete) -> Result<MapCatalog, DirectoryError> {
     let lock = state.runs.map_lock(&name).await;
     let _operation = lock.lock().await;
     // Validate the file boundary without parsing its definition: broken JSON is
@@ -1462,10 +1368,10 @@ pub async fn delete_map(
         }
         Ok(())
     });
-    if let Err(error) = validation { return error.into_response(); }
+    validation?;
     if input.delete_history {
         if let Err(message) = state.runs.delete_map_history(&state, &name).await {
-            return edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")).into_response();
+            return Err(edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")));
         }
     }
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-delete-failed", |access| {
@@ -1474,19 +1380,15 @@ pub async fn delete_map(
         access.remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
         read_map_catalog(access, &state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
     })).await {
-        Ok(Ok(files)) => Json(files).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" )).into_response(),
+        Ok(Ok(files)) => Ok(files),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" ))),
     }
 }
 
-pub(crate) async fn set_map_group(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(name): axum::extract::Path<String>,
-    Json(input): Json<crate::tasks::GroupInput>,
-) -> Response {
+pub(crate) async fn set_map_group(state: crate::AppState, name: String, input: crate::tasks::GroupInput) -> Result<serde_json::Value, DirectoryError> {
     if !crate::tasks::valid_group(input.group.as_deref()) {
-        return edit_error("group-invalid", "分组名称不能为空或包含首尾空白。").into_response();
+        return Err(edit_error("group-invalid", "分组名称不能为空或包含首尾空白。"));
     }
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
@@ -1504,19 +1406,15 @@ pub(crate) async fn set_map_group(
         value["revision"] = serde_json::json!({"file":name,"original":String::from_utf8(bytes).expect("JSON is UTF-8")});
         Ok(value)
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("map-write-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("map-write-failed", error.to_string())),
     }
 }
 
-pub(crate) async fn set_bot_group(
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
-    axum::extract::Path(id): axum::extract::Path<String>,
-    Json(input): Json<crate::tasks::GroupInput>,
-) -> Response {
+pub(crate) async fn set_bot_group(state: crate::AppState, id: String, input: crate::tasks::GroupInput) -> Result<serde_json::Value, DirectoryError> {
     if !crate::tasks::valid_group(input.group.as_deref()) {
-        return edit_error("group-invalid", "分组名称不能为空或包含首尾空白。").into_response();
+        return Err(edit_error("group-invalid", "分组名称不能为空或包含首尾空白。"));
     }
     match tokio::task::spawn_blocking(move || with_definitions(&[state.bot_directory.clone()], "bot-write-failed", |access| {
         let revision = bot_target(access, &state.bot_directory, &id)?
@@ -1537,21 +1435,17 @@ pub(crate) async fn set_bot_group(
         value["revision"] = serde_json::json!({"file":revision.file,"original":String::from_utf8(bytes).expect("JSON is UTF-8")});
         Ok(value)
     })).await {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => edit_error("bot-write-failed", error.to_string()).into_response(),
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(edit_error("bot-write-failed", error.to_string())),
     }
 }
 
-pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "invalid-request", "message": "Map 列表不接受路径、查询参数或请求体。",
-        }))).into_response();
-    }
+pub(crate) async fn list_maps(state: crate::AppState) -> Result<MapCatalog, DirectoryError> {
+
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-directory-read-failed", |access| read_map_catalog(access, &state.map_directory))).await {
-        Ok(Ok(files)) => Json(files).into_response(),
-        Ok(Err(error)) => error.into_response(),
-        Err(error) => DirectoryError { code: "map-directory-read-failed", message: format!("Map 目录读取失败：{error}") }.into_response(),
+        Ok(Ok(files)) => Ok(files),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(DirectoryError { code: "map-directory-read-failed", message: format!("Map 目录读取失败：{error}") }),
     }
 }

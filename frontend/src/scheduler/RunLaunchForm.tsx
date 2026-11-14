@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { MapInputRequirements } from './MapInputRequirements'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
-import { fetchTasks, type Task } from '../tasks/controller'
-import { fetchZones, type ZoneRegistration } from '../zones/controller'
-import { preflightRun, startRun, type MapFileInput, type PreflightIssue, type RunPreflightInput, type RunPreflightResult } from './controller'
+import { fetchTasks, type Task } from '../controllers/taskController'
+import { fetchZones, type ZoneRegistration } from '../controllers/zoneController'
+import { preflightRun, startRun, type MapFileInput, type PreflightIssue, type RunPreflightInput, type RunPreflightResult } from '../controllers/schedulerController'
 
 type Props = {
   file: string

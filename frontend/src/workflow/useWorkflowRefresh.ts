@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { listBots, type Bot } from '../bots/controller'
-import { loadMap, type WorkflowMap } from '../scheduler/controller'
-import { fetchTasks, type Task } from '../tasks/controller'
-import { listRuns, loadRun, type RunDetail, type RunEntry } from './controller'
+import { listBots, type Bot } from '../controllers/botController'
+import { loadMap, type WorkflowMap } from '../controllers/schedulerController'
+import { fetchTasks, type Task } from '../controllers/taskController'
+import { listRuns, loadRun, type RunDetail, type RunEntry } from '../controllers/workflowController'
 
 export type CurrentDefinition = { map: WorkflowMap | null; mapError: string | null; bots: Bot[]; tasks: Task[]; catalogErrors: string[] }
 type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number | null; definitionsPending?: boolean }

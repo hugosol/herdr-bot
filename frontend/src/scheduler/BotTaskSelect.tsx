@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
-import { fetchTasks, type Task } from '../tasks/controller'
-import { listMaps, type MapCatalog } from './controller'
+import { fetchTasks, type Task } from '../controllers/taskController'
+import { listMaps, type MapCatalog } from '../controllers/schedulerController'
 
 type Props = { content: string; disabled: boolean; onChange: (content: string) => void }
 

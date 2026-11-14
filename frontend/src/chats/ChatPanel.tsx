@@ -3,7 +3,7 @@ import { SessionsPanel } from './SessionsPanel'
 import { ResumeChat } from './ResumeChat'
 import { ChatCreationDialog } from './ChatCreationDialog'
 import type { SessionFeed } from './sessionFeed'
-import { fetchChatHistory, saveChatMemo, type HistoryPage, type HistorySession } from './controller'
+import { fetchChatHistory, saveChatMemo, type HistoryPage, type HistorySession } from '../controllers/chatController'
 
 type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }
 

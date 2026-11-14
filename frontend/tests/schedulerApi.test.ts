@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadMap, loadMapInputs, saveMapInputs, saveNode } from '../src/scheduler/controller'
+import { loadMap, loadMapInputs, saveMapInputs, saveNode } from '../src/controllers/schedulerController'
 
 afterEach(() => vi.unstubAllGlobals())
 
