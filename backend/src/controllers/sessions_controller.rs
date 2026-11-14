@@ -1,34 +1,14 @@
-use std::{convert::Infallible, net::SocketAddr};
-use axum::{Json, body::to_bytes, extract::{ConnectInfo, Request, State}, http::StatusCode, response::{IntoResponse, Response, sse::{Event, KeepAlive, Sse}}};
+use std::convert::Infallible;
+use axum::{Json, extract::State, response::{IntoResponse, Response, sse::{Event, KeepAlive, Sse}}};
 use futures_util::StreamExt;
 use serde::Serialize;
-use super::MAX_REQUEST_BODY_BYTES;
-use crate::{AppState, sessions::{self, SessionEvent, SessionEventError, SessionView, observation::{Observation, ObservationEvent}}, shutdown::ShutdownView};
-use crate::controllers::rejected;
+use super::{extractors::system::{LocalSessionSource, SessionEventBody}, responses::HttpError};
+use crate::{AppState, sessions::{self, SessionView, observation::{Observation, ObservationEvent}}, shutdown::ShutdownView};
 
-fn error_response(error: SessionEventError) -> Response {
-    match error {
-        SessionEventError::Forbidden => rejected(StatusCode::FORBIDDEN, "forbidden", "会话事件写入只接受本机来源：局域网设备不能伪造或刷面板。"),
-        SessionEventError::UnknownSession => rejected(StatusCode::NOT_FOUND, "unknown-session", "该会话尚未注册：非 register 事件不能为未知会话建行。"),
-        SessionEventError::Chief(error) => crate::controllers::chief_controller::error_response(error),
-    }
-}
-
-pub(crate) async fn post_session_event(State(state): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request) -> Response {
-    if let Err(error) = sessions::authorize_source(peer.ip()) { return error_response(error); }
-    if request.uri().query().is_some_and(|query| !query.is_empty()) {
-        return rejected(StatusCode::BAD_REQUEST, "unexpected-parameters", "会话事件请求不接受查询参数：事件内容只来自请求体。");
-    }
-    let bytes = match to_bytes(request.into_body(), MAX_REQUEST_BODY_BYTES).await {
-        Ok(bytes) => bytes,
-        Err(_) => return rejected(StatusCode::PAYLOAD_TOO_LARGE, "payload-too-large", "会话事件请求体超过 8KB 上限。"),
-    };
-    let Ok(event) = serde_json::from_slice::<SessionEvent>(&bytes) else {
-        return rejected(StatusCode::BAD_REQUEST, "invalid-event", "会话事件无法解析：请发送 {sessionId, kind, data} 形式的合法事件。");
-    };
+pub(crate) async fn post_session_event(State(state): State<AppState>, _: LocalSessionSource, SessionEventBody(event): SessionEventBody) -> Response {
     match sessions::accept_event(&state, event).await {
         Ok(accepted) => Json(accepted).into_response(),
-        Err(error) => error_response(error),
+        Err(error) => HttpError(error).into_response(),
     }
 }
 

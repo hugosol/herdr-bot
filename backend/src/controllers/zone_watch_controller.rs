@@ -10,12 +10,12 @@ use serde::Serialize;
 
 use crate::AppState;
 use crate::zones::watch::{self, ZoneWatchFrame, ZoneWatchSnapshot};
-use super::zones_controller::zone_error_response;
+use super::responses::HttpError;
 
 pub(crate) async fn watch_zones(State(state): State<AppState>) -> Response {
     let observations = match watch::observe(&state).await {
         Ok(observations) => observations,
-        Err(error) => return zone_error_response(error),
+        Err(error) => return HttpError(error).into_response(),
     };
     let stream = observations.map(|observation| Ok::<Event, Infallible>(match observation {
         watch::Observation::Snapshot(snapshot) => snapshot_event(snapshot),

@@ -1,33 +1,21 @@
 //! HTTP adapters for shared definitions; business operations remain in scheduler.
-use axum::{Json, extract::Request, http::StatusCode, response::{IntoResponse, Response}};
+use axum::{Json, response::{IntoResponse, Response}};
 use crate::scheduler::{self, BotIdentity, MapInputsSave, MapTitleSave, NodeDelete, NodeSave};
 
-pub(crate) fn definition_error(error: scheduler::DirectoryError) -> Response {
-    let status = match error.code {
-        "map-input-invalid" | "map-title-invalid" | "group-invalid" => StatusCode::BAD_REQUEST,
-        "map-conflict" | "bot-conflict" | "script-policy-invalid" => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (status, Json(serde_json::json!({"code": error.code, "message": error.message}))).into_response()
-}
+use super::{extractors::{CommandJson, catalog::{DeleteMap, MapList, MapRead, NewDraft, PreflightRun}}, responses::HttpError};
 
 fn result<T: serde::Serialize>(value: Result<T, scheduler::DirectoryError>) -> Response {
     match value {
         Ok(value) => Json(value).into_response(),
-        Err(error) => definition_error(error),
+        Err(error) => HttpError(error).into_response(),
     }
 }
 
 pub async fn get_map(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
+    _: MapRead,
 ) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "invalid-request", "message": "Map 读取不接受查询参数或请求体。",
-        }))).into_response();
-    }
     result(scheduler::get_map(state, name).await)
 }
 
@@ -80,11 +68,8 @@ pub async fn delete_node(
 pub async fn new_node(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
+    _: NewDraft,
 ) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return definition_error(scheduler::DirectoryError { code: "invalid-request", message: "新增草稿不接受查询参数或请求体。".into() });
-    }
     result(scheduler::new_node(state, name).await)
 }
 
@@ -107,13 +92,9 @@ pub async fn save_node(
 pub async fn delete_map(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
+    input: CommandJson<scheduler::MapDelete, DeleteMap>,
 ) -> Response {
-    let input: scheduler::MapDelete = match crate::controllers::chat_command_body(request, "删除 Map").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
-    result(scheduler::delete_map(state, name, input).await)
+    result(scheduler::delete_map(state, name, input.value).await)
 }
 
 pub(crate) async fn set_map_group(
@@ -124,27 +105,18 @@ pub(crate) async fn set_map_group(
     result(scheduler::set_map_group(state, name, input).await)
 }
 
-pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, request: Request) -> Response {
-    if request.uri().query().is_some() || axum::body::to_bytes(request.into_body(), 0).await.is_err() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "code": "invalid-request", "message": "Map 列表不接受路径、查询参数或请求体。",
-        }))).into_response();
-    }
+pub async fn list_maps(axum::extract::State(state): axum::extract::State<crate::AppState>, _: MapList) -> Response {
     result(scheduler::list_maps(state).await)
 }
 
 pub async fn preflight_run(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    request: Request,
+    input: CommandJson<scheduler::RunPreflightRequest, PreflightRun>,
 ) -> Response {
-    let input = match crate::controllers::chat_command_body(request, "Run 启动预检").await {
-        Ok(input) => input,
-        Err(error) => return error,
-    };
-    match scheduler::check_run_preflight(&state, &name, &input).await {
+    match scheduler::check_run_preflight(&state, &name, &input.value).await {
         Ok(checked) => Json(checked).into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, Json(error.into_payload())).into_response(),
+        Err(error) => HttpError(error).into_response(),
     }
 }
 

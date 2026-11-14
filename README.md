@@ -145,7 +145,9 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 前端普通请求集中在 `frontend/src/controllers/`，按业务命名为 `chatController.ts`、`botController.ts`、`taskController.ts`、`schedulerController.ts`、`workflowController.ts`、`suiteController.ts`、`zoneController.ts` 与 `serverController.ts`。文件浏览、Git（含 diff）、HTML 阅读资源地址和关机分别由 `zoneBrowserController.ts`、`zoneGitController.ts`、`zoneReaderController.ts`、`shutdownController.ts` 拥有；HTML 净化与链接安全规则仍归 reader 实现。这些 HTTP adapter 收拢请求地址、序列化、响应解析和错误分类，跨分区调用同一个业务 interface，不复制请求，也不保留旧目录或 `*Api.ts` 转发层。不增加全局万能请求封装或自动重试，保留各业务的拒绝、不可达和结果未确认语义。
 
-后端 `controllers/*_controller.rs` 只负责 HTTP 输入提取、格式解析、调用业务操作、响应与错误映射，以及 SSE 传输编码。权限判定、业务校验、锁、状态转换、持久化及外部执行仍由 `tasks`、`chats`、`chief`、`scheduler`、`runs`、`sessions`、`suites`、`zones`、`operations` 与 `shutdown` 等业务 module 拥有；业务 interface 返回领域结果与错误，不返回 Axum `Response` 或 `StatusCode`。路由注册沿用 `lib.rs` 的装配位置，不新增 `routes.rs`、Controller 类、万能调度器或旧 handler 转发层。请求入口易于发现，业务约束仍在同一 module 内保持 locality，HTTP adapter 通过业务 interface 所在的 seam 调用，不承担业务操作顺序。
+后端 `controllers/*_controller.rs` 声明 HTTP 输入、调用业务操作，并保留必要的响应编排及 SSE 传输编码。重复请求契约位于 `controllers/extractors/`，通过 Axum `FromRequestParts`／`FromRequest` 提取；相同契约共享实现，不合并不同的查询串规则、body 上限、Content-Type 接受范围或拒绝顺序。已有原生 `Json`／`Query`／`Path` 契约继续保留，来源检查先于受保护请求的 body 解析，Run 重命名仍先检查路径身份。
+
+领域结果与错误的 HTTP 转换位于 `controllers/responses/`，按领域实现 `IntoResponse`；`HttpError<E>` 只承载原领域错误，不引入全局错误枚举或统一响应信封，controller 不互相调用错误转换。chief 委派的陈旧预览错误需要异步读取原始错误响应，保留专用异步转换；SSE、文件及 Run collect 流式响应不转成普通 JSON。权限判定、业务校验、锁、状态转换、持久化及外部执行仍由 `tasks`、`chats`、`chief`、`scheduler`、`runs`、`sessions`、`suites`、`zones`、`operations` 与 `shutdown` 等业务 module 拥有；业务 interface 返回领域结果与错误，不依赖 Axum。路由注册沿用 `lib.rs` 的装配位置，`AppState` 不变，不新增 Controller 类、万能调度器或旧 handler 转发层。HTTP interface 仍是测试面，业务约束在原 module 内保持 locality。
 
 页面与 hook 保留加载／草稿状态、取消与竞态控制、刷新及导航协调。会话与 zone 的 SSE 分别保留 `chats/sseSessionFeed.ts`、`zones/zoneWatch.ts` 专门 adapter，不并入普通请求。测试沿用 fetch、事件源注入及真实浏览器 HTTP／SSE seam，不 mock controller；路径迁移不改变行为断言。
 

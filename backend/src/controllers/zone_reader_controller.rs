@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use crate::AppState;
 use crate::zones::browse;
 use super::rejected_owned;
-use super::zone_browser_controller::read_error_response;
+use super::responses::HttpError;
 
 pub(crate) async fn read_zone_reader_resource(
     State(state): State<AppState>,
@@ -22,7 +22,7 @@ pub(crate) async fn read_zone_reader_resource(
     let content_type = resource_content_type(&path);
     match browse::resource(&state, &requested, path).await {
         Ok(bytes) => resource_response(bytes, content_type),
-        Err(error) => read_error_response(error),
+        Err(error) => HttpError(error).into_response(),
     }
 }
 
