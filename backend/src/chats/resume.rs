@@ -93,10 +93,19 @@ async fn restore_history(state: &AppState, selected: &crate::chats::history::His
 async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
     use crate::chats::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
-    let cwd = match feedback.directory(&state.herdr, selected.cwd.as_deref(), state.git_timeout).await {
-        Ok(cwd) => cwd,
+    let scenario = crate::chats::placement::Scenario::Resume {
+        historical_cwd: selected.cwd.as_deref(),
+        original_workspace_id: selected.original_workspace_id.as_deref(),
+        git_timeout: state.git_timeout,
+    };
+    let mut placement = match scenario.directory(&state.herdr).await {
+        Ok(placement) => placement,
         Err(error) => return restore_failure(feedback, label, "cwd", error.code(), &error.message(), None),
     };
+    if let Some(item) = placement.degradation.take() {
+        feedback.record(item.element, item.reason, item.strategy);
+    }
+    let cwd = placement.directory.as_deref();
     let (id, load) = match feedback.native_load(selected, kind).await {
         Ok(identity) => identity,
         Err((code, message)) => return restore_failure(feedback, label, "session", code, &message, None),
@@ -106,12 +115,16 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         Err((code, message)) => return restore_failure(feedback, label, "settings", code, &message, None),
     };
 
-    let workspace = match feedback.workspace(&state.herdr, selected.original_workspace_id.as_deref(), cwd.is_none()).await {
-        Ok(workspace) => workspace,
+    let mapped = match placement.workspace(&state.herdr).await {
+        Ok(mapped) => mapped,
         Err(error) => return restore_failure(feedback, label, "workspace", error.code(), &error.message(), None),
     };
+    if let Some(item) = mapped.degradation {
+        feedback.record(item.element, item.reason, item.strategy);
+    }
+    let workspace = mapped.workspace;
     if let Err(error) = state.chief.restoring_effect(&selected.session_id,false) { return error.response(); }
-    let tab = match state.herdr.create_tab(&workspace.id, cwd.as_deref(), selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
+    let tab = match state.herdr.create_tab(&workspace.id, cwd, selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
         Ok(tab) => tab,
         Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
         Err(error) => {
@@ -139,7 +152,7 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
             Ok(native) if native.session_id == id
                 && std::path::Path::new(&native.cwd).is_absolute()
                 && std::path::Path::new(&native.cwd).is_dir()
-                && cwd.as_deref().is_none_or(|cwd| crate::zones::same_path(&crate::zones::display_path(std::path::Path::new(&native.cwd)), &crate::zones::display_path(std::path::Path::new(cwd)))) => break native.cwd,
+                && cwd.is_none_or(|cwd| crate::zones::same_path(&crate::zones::display_path(std::path::Path::new(&native.cwd)), &crate::zones::display_path(std::path::Path::new(cwd)))) => break native.cwd,
             Ok(_) => return restore_failure(feedback, label, "confirm", "native-session-mismatch", &format!("{label} 加载的原生对话或实际工作目录与历史不符。"), Some(&target)),
             Err(error) if tokio::time::Instant::now() >= deadline => return startup_unconfirmed(feedback, label, "confirm", &error.message(), json!(target), Some(&name)),
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
@@ -257,31 +270,6 @@ mod degradation {
             } else { "历史记录未提供会话文件。".into() };
             self.record("session-file", reason, format!("仅使用精确原生 ID {id} 加载同一对话；不扫描、改写或修复原生文件。"));
             Ok((id.clone(), id))
-        }
-
-        pub(super) async fn directory(&mut self, herdr: &crate::chats::herdr::HerdrClient, historical: Option<&str>, timeout: std::time::Duration) -> Result<Option<String>, HerdrError> {
-            if let Some(cwd) = historical.filter(|cwd| std::path::Path::new(cwd).is_absolute()) {
-                if std::path::Path::new(cwd).is_dir() { return Ok(Some(cwd.to_owned())); }
-                if let Some(root) = herdr.main_worktree_for(cwd, timeout).await? {
-                    self.record("cwd", format!("历史工作目录 {cwd} 不可用。"), format!("已依据准确工作树归属回退到主工作树 {root}；不修改历史会话元数据。"));
-                    return Ok(Some(root));
-                }
-            }
-            self.record("cwd", format!("历史工作目录 {} 缺失或不可用，无法确认可用的主工作树。", historical.unwrap_or("（未记录）")),
-                "在默认 Workspace 恢复，不指定 --cwd，由 Herdr 选择实际目录；不修改历史会话元数据。".into());
-            Ok(None)
-        }
-
-        pub(super) async fn workspace(&mut self, herdr: &crate::chats::herdr::HerdrClient, original_id: Option<&str>, default_for_directory: bool) -> Result<crate::chats::herdr::Workspace, HerdrError> {
-            let reason = if default_for_directory {
-                "历史目录不可用且无可靠主工作树，本次使用默认 Workspace。".into()
-            } else if let Some(id) = original_id {
-                if let Some(workspace) = herdr.workspace_by_id(id).await? { return Ok(workspace); }
-                format!("原 Workspace 已删除（ID {id}，成功查询确认）。")
-            } else { "缺少原 Workspace 信息。".into() };
-            let workspace = herdr.workspace(herdr.workspace_name()).await?;
-            self.record("workspace", reason, format!("已回退到配置的唯一默认 Workspace {}（{}）；保留历史原位置。", workspace.label, workspace.id));
-            Ok(workspace)
         }
 
         pub(super) fn response(&self, status: StatusCode, mut value: serde_json::Value) -> Response {

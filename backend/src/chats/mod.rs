@@ -10,6 +10,7 @@
 
 pub mod herdr;
 pub mod history;
+pub(crate) mod placement;
 pub mod resume;
 
 use std::collections::HashMap;
@@ -279,23 +280,47 @@ pub(crate) async fn run_creation(
     job: Arc<Mutex<ChatCreationView>>,
     task: Task,
     preset: crate::tasks::catalog::ResolvedPreset,
-    zone: String,
+    scenario: placement::Scenario<'_>,
     input: String,
-    workspace_name: String,
     chief: Option<(Arc<crate::chief::Authority>, Arc<crate::sessions::SessionsState>)>,
     delegation: Option<crate::chief_delegation::Launch>,
 ) {
     let authority = chief.as_ref().map(|(authority,_)|authority.as_ref());
-    let workspace = match herdr.workspace(&workspace_name).await {
-        Ok(workspace) => workspace,
+    let mapping = match scenario.directory(&herdr).await {
+        Ok(mapping) => mapping,
         Err(error) => {
             fail(&job, FailureStage::Workspace, &error, authority).await;
             return;
         }
     };
+    let workspace = match mapping.workspace(&herdr).await {
+        Ok(mapping) => mapping.workspace,
+        Err(placement::PlacementError::Herdr(error)) => {
+            fail(&job, FailureStage::Workspace, &error, authority).await;
+            return;
+        }
+        Err(error) => {
+            let mut view = job.lock().await;
+            if let Some(chief) = authority {
+                if let Err(error) = chief.creation_failed(&view.id, true) {
+                    eprintln!("chief failure persistence failed: {error:?}");
+                }
+            }
+            if !view.stage.is_terminal() {
+                view.stage = Stage::Failed;
+                view.failure = Some(Failure {
+                    stage: FailureStage::Workspace,
+                    code: error.code().to_string(),
+                    message: format!("{} 本次没有新建 Tab，也没有启动 agent。", error.message()),
+                });
+            }
+            return;
+        }
+    };
 
+    let zone = mapping.directory.as_deref().expect("Chat launch always specifies an execution directory");
     let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, Some(&zone), &name).await {
+    let created = match herdr.create_tab(&workspace.id, Some(zone), &name).await {
         Ok(created) => created,
         Err(error) => {
             fail(&job, FailureStage::Tab, &error, authority).await;

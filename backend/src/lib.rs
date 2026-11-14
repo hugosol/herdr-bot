@@ -85,6 +85,7 @@ pub use config::{
     StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
 use chats::{herdr, history, resume};
+use chats::placement::WorkspaceTarget;
 use sessions::observation;
 use tasks::catalog;
 use zones::{browse, watch};
@@ -1068,15 +1069,6 @@ struct ChatPreviewRequest {
     task_id: String,
 }
 
-/// 本次创建的目标选择；客户端不能指定任意 Workspace 名称。
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum WorkspaceTarget {
-    #[default]
-    Default,
-    Current,
-}
-
 /// 创建 Chat 的请求：实例标识与预览名称沿用预览结果；input 可为空。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1184,16 +1176,13 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             );
         }
     };
-    let workspace_name = match input.workspace_target {
-        WorkspaceTarget::Default => state.herdr.workspace_name().to_string(),
-        WorkspaceTarget::Current => match std::path::Path::new(&zone).file_name().and_then(|name| name.to_str()) {
-            Some(name) if !name.is_empty() => name.to_string(),
-            _ => return rejected_owned(
-                StatusCode::BAD_REQUEST,
-                "workspace-name-unavailable",
-                "该 zone 无可用目录名，请选择默认 Workspace。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
-            ),
-        },
+    let workspace_name = match input.workspace_target.name(&zone, state.herdr.workspace_name()) {
+        Some(name) => name,
+        None => return rejected_owned(
+            StatusCode::BAD_REQUEST,
+            "workspace-name-unavailable",
+            "该 zone 无可用目录名，请选择默认 Workspace。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        ),
     };
     let rule = input.chat_name_rule.as_deref().unwrap_or(&task.chat_name);
     if rule.trim().is_empty() {
@@ -1275,6 +1264,10 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
     let history = Arc::clone(&state.history);
     let prompts = state.prompts.clone();
     tokio::spawn(async move {
+        let scenario = match &chief {
+            Some(_) => chats::placement::Scenario::Chief { cwd: &zone, workspace_name: &workspace_name },
+            None => chats::placement::Scenario::Chat { cwd: &zone, workspace_name: &workspace_name },
+        };
         chats::run_creation(
             herdr,
             history,
@@ -1282,9 +1275,8 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
             Arc::clone(&job),
             task,
             preset,
-            zone,
+            scenario,
             input.input,
-            workspace_name,
             chief.map(|chief|(chief,Arc::clone(&state.sessions))),
             None,
         )

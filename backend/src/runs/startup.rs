@@ -289,23 +289,33 @@ async fn protocol(
     stage: &mut &'static str,
 ) -> Result<(), String> {
     *stage = "workspace";
-    let workspace = match &role {
-        Role::Manager => state.herdr.workspace(&run.workspace_name).await.map_err(|e| e.message())?,
-        Role::Node { committed, .. } => {
-            let workspace_id = &committed.manager.as_ref().ok_or("管理者没有真实 Chat 关联")?.workspace_id;
-            state.herdr.workspace_by_id(workspace_id).await.map_err(|e| e.message())?
-                .ok_or("管理者实际 Workspace 不可用；不回退默认 Workspace")?
-        }
+    let (workspace, directory) = {
+        use crate::chats::placement::Scenario;
+        let scenario = match &role {
+            Role::Manager => match delegation {
+                None => Scenario::RootMap { cwd: &run.zone, workspace_name: &run.workspace_name },
+                Some(_) => Scenario::ChiefDelegatedMap { cwd: &run.zone, workspace_name: &run.workspace_name },
+            },
+            Role::Node { target, committed, .. } => {
+                let manager_workspace_id = committed.manager.as_ref().map(|chat| chat.workspace_id.as_str());
+                if child.is_some() {
+                    Scenario::NestedMap { cwd: &target.zone, manager_workspace_id }
+                } else {
+                    Scenario::Node { cwd: &target.zone, manager_workspace_id }
+                }
+            }
+        };
+        let mapping = scenario.directory(&state.herdr).await.map_err(|e| e.message())?;
+        let workspace = mapping.workspace(&state.herdr).await.map_err(|e| e.message())?.workspace;
+        (workspace, mapping.directory)
     };
     effects.workspace_id = Some(workspace.id.clone());
-    let zone = match &role {
-        Role::Manager => &run.zone,
-        Role::Node { target, .. } => &target.zone,
-    };
+    let zone = directory.as_deref().expect("Run launch always specifies an execution directory");
     crate::zones::browse::checked_root(zone).map_err(|e| e.message())?;
     let name = delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id()));
     *stage = "tab";
     let tab = state.herdr.create_tab(&workspace.id, Some(zone), &name).await.map_err(|e| e.message())?;
+    drop(directory);
     effects.tab_id = Some(tab.tab_id.clone());
     effects.pane_id = Some(tab.pane_id.clone());
     let agent = crate::chats::new_agent_name();

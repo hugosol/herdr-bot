@@ -668,7 +668,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     }).map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }
     let zone = manager_zone.expect("valid manager zone when no issues");
-    let workspace_name = Path::new(&zone).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let workspace_name = crate::chats::placement::root_map_workspace_name(&zone).unwrap_or_default();
     if workspace_name.is_empty() {
         return Err(PreflightFailure(vec![PreflightIssue::new("workspace-name-unavailable", "manager", "管理者 zone 没有可推导的目录名称；请选择有目录名的 zone。")]));
     }
