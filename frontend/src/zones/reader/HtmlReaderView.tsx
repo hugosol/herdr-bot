@@ -4,13 +4,13 @@ import {
   fetchFile,
   type BrowseResult,
   type FileView,
-} from '../browser/browseApi'
+} from '../browser/controller'
 import {
   buildHtmlReaderDocument,
   classifyHtmlReaderLink,
   isHtmlPath,
-  readerAssetUrl,
 } from './htmlReader'
+import { readerAssetUrl } from './controller'
 
 /** 阅读模式内的 HTML 文件读取；只有 HTML 文本能替换当前文档。 */
 function readFailure(result: BrowseResult<FileView>, path: string): string {

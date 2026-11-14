@@ -1,14 +1,4 @@
-export type Bot = {
-  group?: string | null
-  id: string
-  name: string
-  when: string
-  plan_guide: string
-  node_guide: string
-  task_id?: string
-  map_file?: string
-  rust_script?: string
-}
+import type { BotRevision } from '../bots/controller'
 
 export type MapFileInput = { id: string; required: boolean; description?: string }
 export type RunFileInput = { id: string; path: string }
@@ -39,25 +29,6 @@ export async function startRun(file: string, input: RunPreflightInput): Promise<
   throw new Error(value?.message ?? `启动未取得有效响应：HTTP ${response.status}；不会自动重试，请先核实现场。`)
 }
 
-export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }
-export type BotCatalog = { bots: Bot[]; problems?: BotProblem[] }
-
-function isBotCatalog(value: unknown): value is BotCatalog {
-  if (typeof value !== 'object' || value === null || !('bots' in value) || !Array.isArray(value.bots)) return false
-  if (!value.bots.every(bot => bot && (bot.group == null || (typeof bot.group === 'string' && bot.group.length > 0 && bot.group.trim() === bot.group)) && ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof bot[key] === 'string'))) return false
-  return !('problems' in value) || (Array.isArray(value.problems) && value.problems.every(problem => problem && typeof problem.code === 'string' && typeof problem.message === 'string' && Array.isArray(problem.files)))
-}
-
-export async function listBots(signal?: AbortSignal): Promise<BotCatalog> {
-  const response = await fetch('/api/scheduler/bots', { signal })
-  const value = await response.json()
-  if (!response.ok) throw new Error(typeof value?.message === 'string' ? value.message : `共享 Bot 目录读取失败：HTTP ${response.status}`)
-  if (!isBotCatalog(value)) throw new Error('共享 Bot 目录响应无效。')
-  return value
-}
-
-export type BotRevision = { file: string; original: string }
-
 /** Only a membership-only write may advance an open draft's optimistic revision. */
 export function groupOnlyRevision(previous: BotRevision | null, next: BotRevision): boolean {
   if (!previous || previous.file !== next.file) return false
@@ -71,17 +42,6 @@ export function groupOnlyRevision(previous: BotRevision | null, next: BotRevisio
     const before = withoutGroup(previous.original)
     return before !== null && before === withoutGroup(next.original)
   } catch { return false }
-}
-
-export async function loadBotDraft(id: string | null): Promise<{ id: string; content: string; revision: BotRevision | null }> {
-  const response = await fetch(id === null ? '/api/scheduler/bots/new' : '/api/scheduler/bots/edit', id === null ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
-  })
-  const value = await response.json()
-  if (!response.ok) throw new Error(value.message ?? `Bot 读取失败：HTTP ${response.status}`)
-  const content = id === null ? value : value.content
-  const { group: _group, ...fields } = content
-  return { id: id === null ? '' : value.id, content: JSON.stringify(fields, null, 2), revision: id === null ? null : value.revision }
 }
 
 async function writeDefinition(url: string, payload: unknown, valid: (value: unknown) => boolean, label: string): Promise<unknown> {
@@ -135,26 +95,6 @@ function isCatalog(value: unknown): value is MapCatalog {
 
 export async function deleteMap(file: string, deleteHistory: boolean): Promise<MapCatalog> {
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, { deleteHistory }, isCatalog, 'Map 删除') as MapCatalog
-}
-
-export async function saveBot(draft: { id: string; content: string; revision: BotRevision | null }): Promise<Bot> {
-  return await writeDefinition('/api/scheduler/bots/save', draft, value => {
-    if (typeof value !== 'object' || value === null) return false
-    return ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof (value as Record<string, unknown>)[key] === 'string')
-  }, 'Bot 保存') as Bot
-}
-
-export async function checkBotDelete(id: string): Promise<{ id: string; revision: BotRevision }> {
-  const response = await fetch('/api/scheduler/bots/check-delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
-  })
-  const value = await response.json()
-  if (!response.ok) throw new Error(value.message ?? `Bot 引用检查失败：HTTP ${response.status}`)
-  return value
-}
-
-export async function deleteBot(target: { id: string; revision: BotRevision }): Promise<BotCatalog> {
-  return await writeDefinition('/api/scheduler/bots/delete', target, isBotCatalog, 'Bot 删除') as BotCatalog
 }
 
 export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
@@ -244,8 +184,8 @@ export async function loadMap(name: string, signal?: AbortSignal): Promise<Workf
 
 export type MapCatalog = { files: string[]; titles?: Record<string, string>; groups?: Record<string, string> }
 
-export async function updateEntityGroup(kind: 'bots' | 'maps', id: string, group: string | null): Promise<BotRevision> {
-  const response = await fetch(`/api/scheduler/${kind}/${encodeURIComponent(id)}/group`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group }) })
+export async function updateMapGroup(id: string, group: string | null): Promise<BotRevision> {
+  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(id)}/group`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group }) })
   const value = await response.json()
   if (!response.ok) throw new Error(value?.message ?? `分组保存失败：HTTP ${response.status}`)
   if (typeof value !== 'object' || value === null || (value.group ?? null) !== group || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('无法确认分组保存结果：响应无效。请刷新核实。')

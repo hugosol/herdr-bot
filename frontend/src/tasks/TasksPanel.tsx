@@ -16,8 +16,8 @@ import {
   type TaskList,
   type TaskOptions,
   type TaskResult,
-} from './taskApi'
-import { listBots, type Bot } from '../scheduler/schedulerApi'
+} from './controller'
+import { listBots, type Bot } from '../bots/controller'
 import { EntityGroups, GroupButton } from '../app/entityGroups'
 import { EntityLinkLabel } from '../app/EntityLinkLabel'
 import { INITIAL_CHAT_NAME, renderChatNameExample } from './chatNaming'

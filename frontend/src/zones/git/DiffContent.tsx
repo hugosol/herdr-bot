@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { diffRows, sideBySideRows, type DiffRow } from './diff'
-import type { ChangeDiff } from './diffApi'
+import type { ChangeDiff } from './controller'
 
 /** 同一份行分段同时用于宽屏对照和窄屏统一展示，行号始终来自完整 diff。 */
 export function DiffContent({ diff, narrow }: { diff: ChangeDiff; narrow: boolean }) {

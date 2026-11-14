@@ -22,7 +22,7 @@ test.beforeEach(async ({ browser }) => {
 test.afterEach(async ({ browser }, info) => {
   const root = path.resolve(import.meta.dirname, '../..')
   const target = process.env.CARGO_TARGET_DIR ?? path.join(root, 'backend/target')
-  const files = ['frontend/bun.lock', 'backend/Cargo.lock', 'backend/src/scheduler/mod.rs', 'frontend/src/scheduler/BotTaskSelect.tsx', 'frontend/src/scheduler/MapNodeDetails.tsx', 'frontend/src/scheduler/NodeSettings.tsx', 'frontend/src/scheduler/SchedulerPanel.tsx', 'frontend/src/scheduler/schedulerApi.ts', 'frontend/browser-tests/scriptDefinitions.spec.ts', 'backend/static/index.html', ...fs.readdirSync(path.join(root, 'backend/static/assets')).map(file => `backend/static/assets/${file}`), path.join(target, 'debug/herdr-bot.exe')]
+  const files = ['frontend/bun.lock', 'backend/Cargo.lock', 'backend/src/scheduler/mod.rs', 'frontend/src/scheduler/BotTaskSelect.tsx', 'frontend/src/scheduler/MapNodeDetails.tsx', 'frontend/src/scheduler/NodeSettings.tsx', 'frontend/src/scheduler/SchedulerPanel.tsx', 'frontend/src/scheduler/controller.ts', 'frontend/src/bots/controller.ts', 'frontend/browser-tests/scriptDefinitions.spec.ts', 'backend/static/index.html', ...fs.readdirSync(path.join(root, 'backend/static/assets')).map(file => `backend/static/assets/${file}`), path.join(target, 'debug/herdr-bot.exe')]
   const record = { browser: { channel: 'chrome', version: browser.version() }, files: files.map(file => ({ file, sha256: createHash('sha256').update(fs.readFileSync(path.resolve(root, file))).digest('hex') })), isolatedHome, baseURL: server?.baseURL, calls: server?.herdrCalls(), tabs: server?.herdrTabs(), diagnostics: server?.diagnostics(), processesExited: false }
   try {
     await server?.cleanup()

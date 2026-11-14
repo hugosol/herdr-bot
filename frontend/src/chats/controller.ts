@@ -1,11 +1,12 @@
 /**
- * 从 zone 发起 Chat 的接口客户端：页面与接口同源，请求地址直接使用相对路径。
+ * Chat controller：拥有创建、历史、备忘与恢复请求；页面保留状态、竞态和展示。
+ * 页面与接口同源，请求地址直接使用相对路径。
  *
  * 后端预览提供 Task 命名规则与真实上下文，页面本地预览本次规则编辑，创建时由后端再次校验名称。
  * 创建请求返回后端拥有的生命周期，页面只轮询同一次创建，不把“请求已发出”或“启动已排队”当成成功。
  */
 
-import type { TaskModel, TaskThinking } from '../tasks/taskApi'
+import type { TaskModel, TaskThinking } from '../tasks/controller'
 
 export type ChatCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
 export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'
@@ -170,4 +171,100 @@ export function createChat(input: {
 /** 读取同一次创建当前阶段；成功只在后端确认就绪与提交之后出现。 */
 export function fetchChatCreation(id: string): Promise<ChatResult<ChatCreation>> {
   return request(`/api/chats/${encodeURIComponent(id)}`, undefined, isCreation)
+}
+
+export type HistorySession = {
+  sessionId: string
+  sessionName: string | null
+  agentType: string | null
+  cwd: string | null
+  sessionDirectory?: string
+  originalWorkspaceId?: string
+  originalWorkspaceName?: string
+  memo?: string
+  firstRecordedAt: number
+}
+
+export type HistoryPage = { sessions: HistorySession[]; page: number; total: number; totalPages: number }
+
+export async function fetchChatHistory(page: number, signal: AbortSignal): Promise<HistoryPage> {
+  const response = await fetch(`/api/sessions/history?page=${page}`, { signal, cache: 'no-store' })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return await response.json() as HistoryPage
+}
+
+export async function saveChatMemo(sessionId: string, memo: string): Promise<string> {
+  const response = await fetch('/api/sessions/history/memo', {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, memo }),
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const body: unknown = await response.json()
+  if (typeof body !== 'object' || body === null || !('sessionId' in body) || body.sessionId !== sessionId || !('memo' in body) || typeof body.memo !== 'string') {
+    throw new Error('unconfirmed memo response')
+  }
+  return body.memo
+}
+
+// Both callers share transport, but retain their existing response acceptance rules.
+async function requestChatResume(sessionId: string): Promise<{ ok: boolean; body: unknown }> {
+  const response = await fetch('/api/chats/resume', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId }),
+  })
+  return { ok: response.ok, body: await response.json() }
+}
+
+export type ChatResumeResult = {
+  failed: boolean
+  message: string
+  located: boolean
+  target: Partial<Record<'workspaceId' | 'tabId' | 'paneId', string>>
+  agentName?: string
+}
+
+export async function resumeChat(sessionId: string): Promise<ChatResumeResult> {
+  const { ok, body } = await requestChatResume(sessionId)
+  if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
+    throw new Error('unconfirmed response')
+  }
+  if (ok && (!('outcome' in body) || !['located', 'restored'].includes(String(body.outcome)))) {
+    throw new Error('unconfirmed outcome')
+  }
+  const located = ok && 'outcome' in body && body.outcome === 'located'
+  const target: ChatResumeResult['target'] = {}
+  if (!located && 'target' in body && typeof body.target === 'object' && body.target !== null) {
+    for (const key of ['workspaceId', 'tabId', 'paneId'] as const) {
+      if (key in body.target) {
+        const value = (body.target as Record<string, unknown>)[key]
+        if (typeof value === 'string' && value.length > 0) target[key] = value
+      }
+    }
+  }
+  const agentName = !located && 'agentName' in body && typeof body.agentName === 'string' && body.agentName.length > 0
+    ? body.agentName : undefined
+  return { failed: !ok, message: body.message, located, target, agentName }
+}
+
+export type ChiefOpenResult =
+  | { kind: 'absent' }
+  | { kind: 'starting' }
+  | { kind: 'resumed'; failed: boolean; message: string }
+
+/** Resolve on every click; a different browser may have changed chief authority. */
+export async function openChiefChat(): Promise<ChiefOpenResult> {
+  const response = await fetch('/api/chief', { cache: 'no-store' })
+  if (!response.ok) throw new Error('unconfirmed authority')
+  const body = await response.json()
+  if (!body || !Object.hasOwn(body, 'current')) throw new Error('unconfirmed authority')
+  if (body.current === null) return { kind: 'absent' }
+  if (typeof body.current.sessionId === 'string') {
+    const { ok, body: result } = await requestChatResume(body.current.sessionId)
+    if (typeof result !== 'object' || result === null || !('message' in result) || typeof result.message !== 'string' || (ok && (!('outcome' in result) || !['located', 'restored'].includes(result.outcome as string)))) {
+      throw new Error('unconfirmed navigation')
+    }
+    return { kind: 'resumed', failed: !ok, message: result.message }
+  }
+  if (typeof body.current.phase === 'string') return { kind: 'starting' }
+  throw new Error('unconfirmed authority')
 }

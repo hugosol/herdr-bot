@@ -3,20 +3,8 @@ import { SessionsPanel } from './SessionsPanel'
 import { ResumeChat } from './ResumeChat'
 import { ChatCreationDialog } from './ChatCreationDialog'
 import type { SessionFeed } from './sessionFeed'
+import { fetchChatHistory, saveChatMemo, type HistoryPage, type HistorySession } from './controller'
 
-type HistorySession = {
-  sessionId: string
-  sessionName: string | null
-  agentType: string | null
-  cwd: string | null
-  sessionDirectory?: string
-  originalWorkspaceId?: string
-  originalWorkspaceName?: string
-  memo?: string
-  firstRecordedAt: number
-}
-
-type HistoryPage = { sessions: HistorySession[]; page: number; total: number; totalPages: number }
 type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }
 
 function HistoryMemo({ session }: { session: HistorySession }) {
@@ -31,17 +19,9 @@ function HistoryMemo({ session }: { session: HistorySession }) {
     setPending(true)
     setError(false)
     try {
-      const response = await fetch('/api/sessions/history/memo', {
-        method: 'PUT', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.sessionId, memo: draft }),
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const body: unknown = await response.json()
-      if (typeof body !== 'object' || body === null || !('sessionId' in body) || body.sessionId !== session.sessionId || !('memo' in body) || typeof body.memo !== 'string') {
-        throw new Error('unconfirmed memo response')
-      }
-      setMemo(body.memo)
-      setDraft(body.memo)
+      const savedMemo = await saveChatMemo(session.sessionId, draft)
+      setMemo(savedMemo)
+      setDraft(savedMemo)
       setEditing(false)
     } catch {
       setError(true)
@@ -76,10 +56,8 @@ function HistoryPanel() {
   }
   useEffect(() => {
     const controller = new AbortController()
-    void fetch(`/api/sessions/history?page=${page}`, { signal: controller.signal, cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const body = await response.json() as HistoryPage
+    void fetchChatHistory(page, controller.signal)
+      .then((body) => {
         if (!controller.signal.aborted) setState({ kind: 'loaded', ...body })
       })
       .catch(() => { if (!controller.signal.aborted) setState({ kind: 'error' }) })

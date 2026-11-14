@@ -3,7 +3,7 @@ import { WorkflowRunGraph } from './WorkflowRunGraph'
 import { orderedMapNodeIds } from '../scheduler/mapNodeOrder'
 import { WorkflowStatus } from './WorkflowStatus'
 import type { CurrentDefinition } from './useWorkflowRefresh'
-import type { Execution, FileAddress, Report, Run } from './workflowApi'
+import type { Execution, FileAddress, Report, Run } from './controller'
 import { RunChatReference } from './RunChatReference'
 import './workflow.css'
 

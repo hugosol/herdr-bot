@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NodeSettingsValue } from './NodeSettings'
-import { groupOnlyRevision, updateEntityGroup, listMaps, loadMap, listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type BotRevision, type BotCatalog, type WorkflowMap, type MapCatalog } from './schedulerApi'
+import { listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, updateBotGroup, type BotRevision, type BotCatalog } from '../bots/controller'
+import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type WorkflowMap, type MapCatalog } from './controller'
 
 type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
@@ -216,7 +217,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
   async function changeGroup(kind: 'bots' | 'maps', id: string, group: string | null) {
     if (inFlight.current) throw new Error('请等待当前保存完成。')
     await operation(async valid => {
-      const revision = await updateEntityGroup(kind, id, group)
+      const revision = await (kind === 'bots' ? updateBotGroup(id, group) : updateMapGroup(id, group))
       if (!valid()) return
       const { bots, listing, preview, file, draft } = current.current
       if (draft && groupOnlyRevision(draft.revision, revision) && (kind === 'bots' ? draft.kind === 'Bot' && draft.initialId === id : draft.kind === 'node' && draft.file === id)) update({ draft: { ...draft, revision } })

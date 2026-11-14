@@ -241,6 +241,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - **并发历史持久化诊断**：跨来源并发 register 验收的 `historySaved` 断言保留完整回执及所属后端 diagnostics，区分事件接受与历史保存失败；后续通过不能抹去先前失败，也不能据此宣称已修复无法定位的间歇故障。`crossSourceConcurrency.spec.ts` 的独立客户端并发登记与进程重启同时回归原子替换期间的文件 scope 身份：协调资格取得前的 canonicalize 观察可能已过期，必须在持有资格后重核，不能把旧临时文件身份当作最终文件的授权边界。
 - **Git 超时夹具**：`zone_sync`／`zone_commit` 的派生进程终止场景使用 5 秒命令预算和 30 秒阻塞的 pre-push／pre-commit hook（父 shell 等待唯一后台子任务，避免两个 sleep 同时自然退出与 taskkill 竞争；超时后观察 31 秒确认无迟到 marker），给 Windows 本地 fetch／pull 留出正常执行时间；仍须核对 push 超时、已完成 pull 不回滚、派生进程终止及后续同步恢复，不能将更早的 fetch 超时视为该场景通过。
 - **Windows 进程身份**：结束后的 PID 可能被系统复用，不能以迟到的 `tasklist` 命中证明原进程仍存活。`next_operation_after_finish` 的连续启动回归先在测试独占夹具门闩中取得原进程句柄，再释放门闩，收到 ended 响应后直接核对该句柄已 signaled；不移除进程结束断言。
+- **Windows 原生可见性**：`workflowVisibility.ts` 为测试专用 Chrome 设置 `--disable-backgrounding-occluded-windows`，避免其他桌面窗口遮挡导致页面持续报告 `hidden`；`bringToFront()` 或获得焦点不保证页面可见。保留 `noDefaults: true`，不启用始终可见模拟；真实最小化仍须触发 `hidden`，恢复后须触发 `visible`，由 `workflowRefresh.spec.ts` 的 P55.01 用例核对隐藏期间停止轮询与恢复后立即刷新，不放宽断言或超时。
 - **Windows 清理**：原生可见性 Chrome 夹具在浏览器操作前持有原进程的 Windows handle，并在清理时以该 handle 的退出确认区分 Node 延迟事件与仍存活的进程；不以迟到 PID 查询或 `taskkill` 部分子进程错误推断原进程存活。`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
 - **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
 - **Map 文件接口**：创建 Bot／修订指南的发布回归固定核对 `input_files` 的数量、顺序、ID 与 required，不以整个对象相等禁止合法的材料 `description`；实际保存仍传递完整声明，保留文件预检行为断言。

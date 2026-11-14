@@ -136,12 +136,17 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 | Herdr 宿主集成与位置映射 | — | `herdr/`（私有 `client.rs` CLI adapter、`identity.rs` 原生身份实现与 `placement.rs` 位置映射） |
 | 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
-| Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
+| Bot 静态定义请求 | `bots/controller.ts`；展示仍由 scheduler 组合 | `scheduler/` |
+| Map 静态定义与发起预检 | `scheduler/` | `scheduler/` |
 | Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
 | 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
-| 固定操作与关机 | `server/operationsApi.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
+| 固定操作与关机 | `server/controller.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
 
-Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航，`schedulerApi.ts` 作为 HTTP adapter。
+前端普通请求由各业务的 `controller.ts` 作为 HTTP adapter 拥有：`chats`、`bots`、`tasks`、`scheduler`、`workflow`、`suites`、`zones` 与 `server` 分别收拢请求地址、序列化、响应解析和错误分类。文件浏览、Git（含 diff）和关机使用 `zones/browser/controller.ts`、`zones/git/controller.ts`、`server/shutdown/controller.ts`；HTML 阅读的资源地址由 `zones/reader/controller.ts` 构造，净化与链接安全规则仍归 reader 实现。跨分区直接调用能力拥有方的 interface，不复制请求，也不保留旧 `*Api.ts` 转发层。controller 不形成全局万能请求封装，保留各业务的拒绝、不可达和结果未确认语义，不新增自动重试。
+
+页面与 hook 保留加载／草稿状态、取消与竞态控制、刷新及导航协调。会话与 zone 的 SSE 分别保留 `chats/sseSessionFeed.ts`、`zones/zoneWatch.ts` 专门 adapter，不并入普通请求。测试沿用 fetch、事件源注入及真实浏览器 HTTP／SSE seam，不 mock controller；路径迁移不改变行为断言。
+
+Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `scheduler/controller.ts`，Bot 请求使用 `bots/controller.ts`。
 
 Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { groupOnlyRevision, loadMapInputs, saveMapInputs, type BotRevision } from './schedulerApi'
+import type { BotRevision } from '../bots/controller'
+import { groupOnlyRevision, loadMapInputs, saveMapInputs } from './controller'
 
 export function MapInputsEditor({ file, onClose, onSaved }: { file: string; onClose: () => void; onSaved: () => void }) {
   const [content, setContent] = useState('')

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/app/App'
 import { createZoneWatchFeed } from '../src/zones/zoneWatch'
 import { FakeZoneEventSource, resetFakeZoneEventSources } from './fakeZoneEventSource'
-import type { BrowseEntry } from '../src/zones/browser/browseApi'
+import type { BrowseEntry } from '../src/zones/browser/controller'
 import { treeResponse } from './treeResponse'
 import type {
   GitChange,
@@ -13,7 +13,7 @@ import type {
   SyncAccepted,
   UpstreamRef,
   ZoneSummary,
-} from '../src/zones/git/gitApi'
+} from '../src/zones/git/controller'
 
 const ZONE = 'C:\\work\\repository'
 

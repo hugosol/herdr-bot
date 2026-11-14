@@ -16,7 +16,8 @@ export async function nativeVisibilityBrowser() {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-workflow-visibility-'))
   const endpoint = Promise.withResolvers<string>()
   let diagnostics = ''
-  const child = spawn(executable, ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false })
+  // Ignore other desktop windows covering Chrome; real minimization must still hide the page.
+  const child = spawn(executable, ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-backgrounding-occluded-windows', 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false })
   const timeout = setTimeout(() => endpoint.reject(new Error(`Chrome startup timed out: ${diagnostics}`)), 15000)
   const consume = (chunk: Buffer) => {
     diagnostics += chunk.toString()

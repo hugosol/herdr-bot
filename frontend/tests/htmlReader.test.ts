@@ -4,8 +4,8 @@ import {
   buildHtmlReaderDocument,
   classifyHtmlReaderLink,
   isHtmlPath,
-  readerAssetUrl,
 } from '../src/zones/reader/htmlReader'
+import { readerAssetUrl } from '../src/zones/reader/controller'
 
 const ZONE = 'C:\\work\\project'
 const ORIGIN = 'http://localhost:8787'
