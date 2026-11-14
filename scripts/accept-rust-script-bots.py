@@ -94,7 +94,7 @@ def main():
             return result.returncode == 0
         # Existing owner 03's P15 test is executed, not copied or reassigned.
         evidence['coverage']['P15/existing-owner-03'] = run('P15-existing', ['cargo', 'test', '--locked', '--manifest-path', 'backend/Cargo.toml', '--test', 'workflow_dispatch', 'rust_save_material_failure_preserves_saved_effect_and_original_baseline_conflicts_in_another_run', '--', '--nocapture', '--test-threads=1'], ROOT)
-        evidence['coverage']['P23/page'] = run('P23-browser', ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'scriptMigrationAcceptance.spec.ts', '--workers=1', '--output', str(args.evidence_dir / 'browser-results')], ROOT)
+        evidence['coverage']['P23/page'] = run('P23-browser', ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'scheduler/scriptMigrationAcceptance.spec.ts', '--workers=1', '--output', str(args.evidence_dir / 'browser-results')], ROOT)
         evidence['coverage']['native-protocol/enabling-10'] = run('manager-native-protocol', [config['bun'], 'test', 'tests/harness-dock/manager-script-protocol.test.ts'], args.toolkit_worktree)
         evidence['coverage']['P2/P27/P29/H2-mechanics'] = run('cross-repository-business', [config['bun'], str(args.native_entry), '--herdr-bot-worktree', str(ROOT), '--isolation-config', str(args.isolation_config), '--evidence-dir', str(args.evidence_dir / 'business')], args.toolkit_worktree)
         business = args.evidence_dir / 'business/evidence.json'

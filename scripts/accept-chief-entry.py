@@ -69,7 +69,7 @@ def main():
         # Browser S1/S2 owns its controlled external CLI, not the native P7 claim.
         environment = dict(os.environ, CHIEF_ENTRY_EVIDENCE_DIR=str(args.evidence_dir / 'browser'),
             CHIEF_ENTRY_HOSTS=args.hosts, CHIEF_ENTRY_CHROME=str(Path(roots['chrome']) / 'chrome.exe'))
-        command = ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'chiefEntryAcceptance.spec.ts', '--workers=1']
+        command = ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'chief/chiefEntryAcceptance.spec.ts', '--workers=1']
         result = subprocess.run(command, cwd=REPO, env=environment, capture_output=True, text=True,
             encoding='utf-8', errors='replace', timeout=600, shell=os.name == 'nt')
         record = {'argv': command, 'exit': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}

@@ -11,6 +11,12 @@
 - 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归继续经过原命令路径，不替代真实模型／双宿主验收。
 - 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
 
+## 测试归属
+
+保留后端集成测试、前端交互测试和真实浏览器验收三个运行层级，各层内部按业务所有者归组，而非按测试文件的历史前缀归组。Chat 历史归 `chats`，当前会话登记与观察归 `sessions`；Map／Bot 静态定义归 `scheduler`，Run 运行事实归 `workflow`；固定操作、关机与完成后关机监听归 `server`。真正跨入口的契约归 `app`，夹具自身行为归 `infrastructure`。
+
+专用夹具留在所属测试 module，只有跨业务使用的设施放入共享 support／common。`workflow_dispatch` 的组合入口为 `backend/tests/workflow/dispatch.rs`：用例按派发、材料、报告、生命周期等归组，静态定义用例位于 `scheduler`；其中保留 crate-scope `include!` 以维持既有 libtest 名称及子进程 `--exact` 选择。目录归属不要求每个目录对应独立 target。测试继续通过已有 interface；拆分文件不降低断言、改变故障预算或把受控 adapter 证据外推为真实宿主／模型验收。Vitest 与 Playwright 递归发现各自目录中的测试；`@time-contract` 与手动网络授权是独立于领域目录的运行分区。迁移路径时同时更新 import、源码／产物定位、证据清单、具名网络例外及命令选择器。
+
 ## 选择入口
 
 | 场景 | 入口 |
@@ -19,7 +25,7 @@
 | 前端组件与逻辑检查 | `npm --prefix frontend test` |
 | 交付页面、真实 HTTP／SSE 与进程行为的浏览器验收 | `npm --prefix frontend run test:browser:build` |
 | 单个后端目标的开发反馈 | 例如 `cargo test --manifest-path backend/Cargo.toml --test zone_commit` |
-| 单个前端文件或当前改动的开发反馈 | `npm --prefix frontend test -- tests/diff.test.ts` 或 `npm --prefix frontend test -- --changed` |
+| 单个前端文件或当前改动的开发反馈 | `npm --prefix frontend test -- tests/zones/git/diff.test.ts` 或 `npm --prefix frontend test -- --changed` |
 
 完整后端回归优先使用并行入口，一次执行即可；原生 Cargo 全量入口保留作对照和回退。定向检查和浏览器分层检查用于开发反馈，交付验收使用对应的完整入口。
 
@@ -38,7 +44,7 @@
 
 ## Rust 空白创建公开 HTTP／文件回归
 
-先构建本 worktree 静态页面，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow_dispatch/rust_create.rs` 通过公开 S1 HTTP／文件 interface 测定义、真实 Run、manager dispatch、完整配置／revision、自动报告、collect、完成门禁及真实临时材料；Map 在独占临时定义目录经文件 seam 发布并以 HTTP 读回／预检，不声称存在 HTTP 新建 Map 接口。正式创建流程定义未迁移。
+先构建本 worktree 静态页面，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_create.rs` 通过公开 S1 HTTP／文件 interface 测定义、真实 Run、manager dispatch、完整配置／revision、自动报告、collect、完成门禁及真实临时材料；Map 在独占临时定义目录经文件 seam 发布并以 HTTP 读回／预检，不声称存在 HTTP 新建 Map 接口。正式创建流程定义未迁移。
 
 - `target_round_trips`：固定目标互斥、未知能力拒绝及拒绝后原定义不变。
 - `dispatch_writes`／`map_target`：normal Task 与完整真实 Map 目标、新 Bot 三空指南、真实 revision／baseline、独立 handoff、报告归属；实际派发下游受控宿主进程读取两份命名 JSON，内容和完整公开对象交叉核对。
@@ -57,7 +63,7 @@
 
 ## 脚本 workflow 页面（P31／P5／P32 运行分区）
 
-`frontend/browser-tests/workflowScripts.spec.ts` 使用实际 Map、公开发起／准备输入／dispatch／fail／retry／complete、独占生产后端与本次构建页面。成功与部分材料失败均运行编入后端的真实 Rust 创建能力，不写运行记录或替换组件。受控 Herdr 仅记录真实 manager／Task 的 CLI，不证明真实模型消费。
+`frontend/browser-tests/workflow/workflowScripts.spec.ts` 使用实际 Map、公开发起／准备输入／dispatch／fail／retry／complete、独占生产后端与本次构建页面。成功与部分材料失败均运行编入后端的真实 Rust 创建能力，不写运行记录或替换组件。受控 Herdr 仅记录真实 manager／Task 的 CLI，不证明真实模型消费。
 
 门闩由 Python 3 标准库调用 Windows oplock，实际暂停目标 Task／Map 文件读取；退出时释放并等待所属 Python 进程结束。Task 文件门闩叠加两个真实 `/api/tasks` 请求，在两个独占 Tokio HTTP worker 下仍须读回业务在途事实，防止目录同步磁盘读取饿死运行接口。门闩进入预算 5 秒，独立运行事实读回预算 2 秒；脚本生命周期与报告资格、节点状态和依赖资格分开核对。Map 目录门闩期间仅读取公开运行事实，不为截图解除门闩；释放后另保留公开当前定义，所有已登记材料均实际读取。
 
@@ -66,7 +72,7 @@
 本 worktree 使用独立绝对 `CARGO_TARGET_DIR`，资源受限时设 `CARGO_BUILD_JOBS=1`。定向反馈为 `npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1`；完成检查运行 `npm --prefix frontend test`、完整 `npm --prefix frontend run test:browser:build`，含后端阻塞 IO 修复时另运行 `node scripts/test-backend.mjs`。常规回归不代替 H1／原生宿主验收。
 ## Rust 三路合并保存公开 HTTP／文件回归
 
-先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow_dispatch/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／自动报告和实际下游进程读取命名 saved／handoff；正文、非目标字段及确认 digest 使用独立字面值，不调用业务内部函数。
+先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／自动报告和实际下游进程读取命名 saved／handoff；正文、非目标字段及确认 digest 使用独立字面值，不调用业务内部函数。
 
 - P24/P25/P26：三段互异正文含 CRLF、LF、空行、tab 和首尾空格；完整 Bot／真实新 revision／完整目标及实际 saved 逐项比较。下游只从显式 outputs ID 消费，handoff 不含正文／完整配置。
 - P7/P8/P33：非法格式、缺项、重复 key、错字段／身份／目标／digest／授权、真实并发 Bot 修改、旧 revision、完整目标配置变化及活动 Run 禁写均拒绝；读回完整对象，不能因 HTTP 成功或正文相同宣称业务成功。
@@ -82,7 +88,7 @@
 
 ## 后端并行与诊断
 
-`node scripts/test-backend.mjs` 不带参数即可并行。Cargo 自动发现测试目标，普通新增 case 或集成测试文件无需登记；保留默认 ignored 状态、example 编译检查及 doctest。
+`node scripts/test-backend.mjs` 不带参数即可并行。后端集成测试按领域放在 `backend/tests/` 子目录，由 `backend/Cargo.toml` 的 `[[test]]` 显式登记，`autotests = false`。新增独立 target 时登记唯一的 `name` 与 `path`；现有 target 内新增 case 文件时由该 target 的 module 声明纳入。目录移动不改变 target 名称、二进制执行粒度、默认 ignored 状态、example 编译检查或 doctest。
 
 - 资源紧张时用 `--binary-jobs 2` 降低外层并发。
 - 排查跨二进制并发问题时用 `--binary-jobs 1`，并与 `cargo test --manifest-path backend/Cargo.toml` 对照；需要内部也串行时再加 `--test-threads 1`。
@@ -100,7 +106,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ## Chief 入口与单次设置浏览器回归
 
-`frontend/browser-tests/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次以空 input 合法发起／登记／注销，核对真实默认 chief 的空 prompt／无 Skill 可启动、公开结果 `inputSubmitted: false`、页面等待用户输入且外部无空消息或补造指令，以及当前 chief 定位目标和每次公开 Task 的身份、数量不变；不重复认领 07 的并发／时间阈值案例。`backend/tests/chat_creation.rs` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 通过公开 HTTP 分别覆盖 OMP/Pi 的普通空指示启动，已有非空正文和 Skill-only 用例继续约束真实提交。
+`frontend/browser-tests/chief/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次以空 input 合法发起／登记／注销，核对真实默认 chief 的空 prompt／无 Skill 可启动、公开结果 `inputSubmitted: false`、页面等待用户输入且外部无空消息或补造指令，以及当前 chief 定位目标和每次公开 Task 的身份、数量不变；不重复认领 07 的并发／时间阈值案例。`backend/tests/chats/chat_creation.rs` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 通过公开 HTTP 分别覆盖 OMP/Pi 的普通空指示启动，已有非空正文和 Skill-only 用例继续约束真实提交。
 
 定向反馈：设置本 worktree 独立绝对 `CARGO_TARGET_DIR` 后运行 `npm --prefix frontend run test:browser:build -- chiefEntry.spec.ts --workers=1`。完成检查仍为不带过滤的 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser:build`。各用例独占 HOME／APPDATA／XDG／原生会话引用、定义、登记、动态回环服务及记录型 Herdr 副本；使用共享清理设施终止并确认所属进程结束后才删测试目录。启动预算 30 秒、页面断言预算 10 秒；不新增产品等待或重试策略，不承担无自动行为时间承诺。
 
@@ -114,7 +120,7 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model-cost 存储配置（副本中禁用指向正常服务的 Codex proxy），经公开发起和新进程恢复，各自让真实模型查询新发布的独立字面 Bot.when。原生 SessionManager 历史、chief 工具输入/真实结果、模型请求中的角色指引和最终回答共同作为消费证据；恢复前持有 OS 进程句柄确认退出，恢复后要求不同 PID 及相同原生会话身份。没有 Suite，不把配置文件或 argv 当作已加载；角色消费断言检查解码后的实际模型消息中的角色与禁止亲自执行业务边界，不要求只存在于原生历史中的 message marker 被传给 provider。查询没有原生批准操作，因此不伪造确认；只读用户输入和 HTTP/原生历史保留在证据。
 
-`frontend/browser-tests/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
+`frontend/browser-tests/chief/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
 
 定向反馈：`npm --prefix frontend run test:browser:build -- chiefEntryAcceptance.spec.ts --workers=1`；CLI 安全回归：设置 `CHIEF_ENTRY_TOOLKIT` 为参与 toolkit worktree 后运行 `python scripts/accept-chief-entry.test.py`。后者只证明缺依赖 fail-closed、拒绝相对路径及不覆盖旧证据，不证明业务通过。完整专项逐项记录原始错误/清理错误、源码与锁文件/安装身份、HTTP、配置阈值与实际观察；退出并确认所属进程结束后才清理。
 
@@ -255,7 +261,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - **Windows 清理**：原生可见性 Chrome 夹具在浏览器操作前持有原进程的 Windows handle，并在清理时以该 handle 的退出确认区分 Node 延迟事件与仍存活的进程；不以迟到 PID 查询或 `taskkill` 部分子进程错误推断原进程存活。`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
 - **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
 - **Map 文件接口**：创建 Bot／修订指南的发布回归固定核对 `input_files` 的数量、顺序、ID 与 required，不以整个对象相等禁止合法的材料 `description`；实际保存仍传递完整声明，保留文件预检行为断言。
-- **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。交付 chief 预设的模型变更须同步更新 `backend/tests/tasks.rs` 的独立字面预期；预设重启回归验证当前交付定义，不等同于要求固定模型的原生专项验收。
+- **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。交付 chief 预设的模型变更须同步更新 `backend/tests/tasks/tasks.rs` 的独立字面预期；预设重启回归验证当前交付定义，不等同于要求固定模型的原生专项验收。
 - **Bot 保存与导航**：保存后的 Map／目录刷新仍属于本次维护操作；刷新结束后才发布退出编辑的成功预览，避免用户看到成功后立即切换页签却被尚在途的操作静默拒绝。`schedulerBotEditing.spec.ts` 的共享能力回归保留保存后立即切换和原节点选中态检查。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
@@ -271,7 +277,7 @@ Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩
 
 ## OMP Suite 四语言 LSP 真实验收
 
-`python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
+`python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suites/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suites/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
@@ -292,7 +298,7 @@ python scripts/test-real-herdr-suite-lsp.py `
 
 ## Suite 装配发布与链接安全验收
 
-`backend/tests/suite_assembly.rs` 拥有 P34/P36 和 P35 的装配发布部分，入口仅为既有公开 Task／Chat HTTP 与独占部署目录（S2/S3），不增加测试专用产品 API。常规 `cargo test --manifest-path backend/Cargo.toml --test suite_assembly` 检查资源消失、Windows 独占读锁造成的真实不可读失败、未拥有文件保留，以及同 Suite／不同 Suite 的两套独立 LSP 与 MCP 配置哨兵；核对 MCP 原生资源包与技能配置、LSP 共属本次装配树，技能源路径保持在原位置，返回的 `--extension` 指向该包。外部 Herdr 夹具在启动效果处受控阻塞；第二个启动必须仍能取得完整产物，随后重读两套最终清单、释放门闩并等待公开完成状态，确保文件协调不跨外部效果。观察失败也先释放门闩并等待已接受的所属命令，原始错误与清理错误分开保留。这些夹具不是原生 agent 消费证据；P35 并发真实启动消费由独立专项负责。
+`backend/tests/suites/suite_assembly.rs` 拥有 P34/P36 和 P35 的装配发布部分，入口仅为既有公开 Task／Chat HTTP 与独占部署目录（S2/S3），不增加测试专用产品 API。常规 `cargo test --manifest-path backend/Cargo.toml --test suite_assembly` 检查资源消失、Windows 独占读锁造成的真实不可读失败、未拥有文件保留，以及同 Suite／不同 Suite 的两套独立 LSP 与 MCP 配置哨兵；核对 MCP 原生资源包与技能配置、LSP 共属本次装配树，技能源路径保持在原位置，返回的 `--extension` 指向该包。外部 Herdr 夹具在启动效果处受控阻塞；第二个启动必须仍能取得完整产物，随后重读两套最终清单、释放门闩并等待公开完成状态，确保文件协调不跨外部效果。观察失败也先释放门闩并等待已接受的所属命令，原始错误与清理错误分开保留。这些夹具不是原生 agent 消费证据；P35 并发真实启动消费由独立专项负责。
 
 非空技能的原路径成功发布属于默认回归，不依赖 `HERDR_BOT_MANUAL_SYMLINKS`、第二盘或 Windows 链接权限，也不能标为 ignored 后宣称完整通过。验证同 Suite／不同 Suite 并发启动中的独立源技能正文、相对资产和配置，失败只清理本次拥有的配置产物，保留源资源、旧产物及未拥有文件。
 

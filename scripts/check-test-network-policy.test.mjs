@@ -20,7 +20,7 @@ test('registered infrastructure exception does not cover another function', () =
 })
 
 test('manual LAN tests cannot silently lose their ignore attribute', () => {
-  const file = 'backend/tests/session_write_boundary.rs'
+  const file = 'backend/tests/sessions/session_write_boundary.rs'
   const body = 'async fn same_host_access_via_local_nic_address_is_accepted() { TestServer::start_manual_app_on(address, app).await; }'
   assert.match(inspect(file, '#[tokio::test]\n' + body).join('\n'), /must remain ignored/)
   assert.deepEqual(inspect(file, '#[tokio::test]\n#[ignore = "manual"]\n' + body), [])
@@ -32,7 +32,7 @@ test('ordinary cases cannot call manual helpers', () => {
 })
 
 test('mDNS cases stay opt-in and comments do not count as listeners', () => {
-  const file = 'backend/tests/mdns_failure.rs'
+  const file = 'backend/tests/server/mdns_failure.rs'
   assert.match(inspect(file, '#[test]\nfn case() {}').join('\n'), /must be ignored/)
   assert.deepEqual(inspect(file, '#[test]\n#[ignore]\nfn case() { /* TcpListener::bind(address) */ }'), [])
 })

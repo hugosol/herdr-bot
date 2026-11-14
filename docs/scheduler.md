@@ -254,8 +254,8 @@ revision 为 `{file, original}`，绑定服务端目录内文件名与原始全�
 
 目录及各级父路径不跟随符号链接、目录联接或重解析点，目录项也不能越界读取。全部标题、文档、input、zone 仅作文本显示，不按 HTML、CSS、脚本或 Agent 指令执行；文中路径不触发文件读取或 Chat。浏览、筛选、预览、恢复、刷新不改写现存定义；只有显式保存／确认删除才修改目标。
 
-可重复契约检查在 `frontend/browser-tests/schedulerDefinitionCutover.spec.ts`：真实隔离 scheduler 保存未绑定定义、分别读三份文档、提交非法依赖并核对原文件。node 读取／保存会显式补全省略的 `report_policy` 与 `auto_close`；CRUD 检查保护节点 ID 集合、业务输入、依赖与非目标内容，不要求返回对象逐字等于省略默认字段的输入。失败与取消仍按原始文件字节检查未写入。`frontend/browser-tests/nodeSettings.spec.ts` 经交付页面、真实 HTTP 和独占 Herdr 记录夹具验证节点独立设置、新旧草稿默认值、独立控件与原格式内容 JSON 合并保存、非法草稿保留与独立设置放弃、关闭后果说明，以及实际派发的报告策略指示与既有 report／manager complete 权限；不把提示词送达当作模型遵从证据。执行期间的报告策略保持另由 `backend/tests/workflow_dispatch/report_policy.rs` 专门验证。
+可重复契约检查在 `frontend/browser-tests/scheduler/maps/schedulerDefinitionCutover.spec.ts`：真实隔离 scheduler 保存未绑定定义、分别读三份文档、提交非法依赖并核对原文件。node 读取／保存会显式补全省略的 `report_policy` 与 `auto_close`；CRUD 检查保护节点 ID 集合、业务输入、依赖与非目标内容，不要求返回对象逐字等于省略默认字段的输入。失败与取消仍按原始文件字节检查未写入。`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 经交付页面、真实 HTTP 和独占 Herdr 记录夹具验证节点独立设置、新旧草稿默认值、独立控件与原格式内容 JSON 合并保存、非法草稿保留与独立设置放弃、关闭后果说明，以及实际派发的报告策略指示与既有 report／manager complete 权限；不把提示词送达当作模型遵从证据。静态策略保存由 `backend/tests/scheduler/maps/report_policy.rs` 验证；执行期间的报告策略保持另由 `backend/tests/workflow/reports/report_policy.rs` 验证。
 
-`frontend/browser-tests/scriptDefinitions.spec.ts` 通过本 worktree 打包页面、独占真实后端和公开 HTTP 验证固定 Rust 目标维护、空指南、空 node.input、预检及脚本策略约束；`frontend/test-results` 中保留实际页面截图、对应 HTTP 定义／预检读回、宿主调用和所属进程退出证据。仅组件检查或静态 HTML 不能替代这些页面证据。使用独立绝对 `CARGO_TARGET_DIR`，定向反馈可运行 `npm --prefix frontend run test:browser:build -- scriptDefinitions.spec.ts --workers=1`。
+`frontend/browser-tests/scheduler/scriptDefinitions.spec.ts` 通过本 worktree 打包页面、独占真实后端和公开 HTTP 验证固定 Rust 目标维护、空指南、空 node.input、预检及脚本策略约束；`frontend/test-results` 中保留实际页面截图、对应 HTTP 定义／预检读回、宿主调用和所属进程退出证据。仅组件检查或静态 HTML 不能替代这些页面证据。使用独立绝对 `CARGO_TARGET_DIR`，定向反馈可运行 `npm --prefix frontend run test:browser:build -- scriptDefinitions.spec.ts --workers=1`。
 
 完整浏览器回归使用 `npm --prefix frontend run test:browser:build`，同时覆盖既有 scheduler 编辑／删除与 workflow Resume；前端单元测试或图形专项冒烟不能替代此入口。完整入口、安全约束和人工网络／链接规则见 [测试指引](agents/testing.md)。这些定义检查不证明真实 Herdr／omp 启动或业务执行质量。
