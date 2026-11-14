@@ -15,7 +15,7 @@ import traceback
 shared = runpy.run_path(str(Path(__file__).with_name('chief_entry_native_acceptance.py')))
 ChiefEntryAcceptance = shared['ChiefEntryAcceptance']
 require, until = shared['require'], shared['until']
-LiveProcess = runpy.run_path(str(Path(__file__).with_name('test-real-herdr-close.py')))['LiveProcess']
+from acceptance.host.processes import LiveProcess
 
 SCENARIOS = {
     'map-correct-approve': ['P9', 'P10', 'P12'],

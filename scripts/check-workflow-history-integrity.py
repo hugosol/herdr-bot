@@ -7,11 +7,10 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
-import runpy
 import time
 
-support = runpy.run_path(str(Path(__file__).with_name('check-workflow-file-consumption.py')))
-Smoke, require, dump, deny_read = (support[name] for name in ['Smoke', 'require', 'dump', 'deny_read'])
+from acceptance.host.smoke_support import deny_read, dump, require
+from acceptance.workflow.smoke import Smoke
 
 
 class HistorySmoke(Smoke):

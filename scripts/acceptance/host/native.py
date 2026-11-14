@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import subprocess
 import time
@@ -18,10 +17,11 @@ import traceback
 
 from developer_paths import REPO
 
-shared = runpy.run_path(str(Path(__file__).with_name('test-workflow-file-handoff.py')))
-Acceptance, RolesAcceptance = shared['Acceptance'], shared['RolesAcceptance']
-WireProxy = shared['WireProxy']
-require, until, decode = shared['require'], shared['until'], shared['decode']
+from .isolation import Acceptance
+from .processes import require, until, LiveProcess
+from .wire import WireProxy, decode
+from .model import configure_model, message_text
+from .evidence import copy_evidence
 
 
 def process_arguments(command_line):
@@ -45,7 +45,7 @@ class NativeAcceptance(Acceptance):
     def __init__(self, args):
         native_args = copy.copy(args)
         native_args.evidence_dir = None
-        super().__init__(native_args, prefix='nested-' + args.host + '-')
+        super().__init__(native_args, prefix='nested-' + args.host + '-', promise='P22', session_prefix='p22-')
         self.args = args
         self.evidence.update(nativeRoot=str(self.root), retainedEvidenceRoot=str(args.evidence_dir / args.host))
         self.env = {key: value for key, value in self.env.items() if not any(term in key.upper() for term in ['SECRET', 'PASSWORD', 'CREDENTIAL', 'PROXY'])}
@@ -64,7 +64,7 @@ class NativeAcceptance(Acceptance):
         try:
             # Herdr IPC needs a short native path. Base.run first finishes its
             # cleanup/exit checks and writes evidence; cleanup errors stay failed.
-            shared['copy_evidence'](self.root, target)
+            copy_evidence(self.root, target)
         except BaseException:
             self.evidence['cleanupErrors'].append('Evidence retention failed: ' + traceback.format_exc())
             self.evidence['passed'] = False
@@ -74,7 +74,7 @@ class NativeAcceptance(Acceptance):
         return result
 
     def configure_model(self):
-        RolesAcceptance.configure_model(self)
+        configure_model(self)
         agent = self.root / 'agent'
         if 'omp' in self.hosts:
             shutil.copy2(agent / 'models.json', agent / 'models.yml')
@@ -160,7 +160,7 @@ class NativeAcceptance(Acceptance):
                 return None
             entries = [entry['message'] for entry in history['branch'] if entry.get('type') == 'message']
             assistant = [message for message in entries if message.get('role') == 'assistant']
-            return history if assistant and marker in RolesAcceptance.message_text(assistant[-1]) and not any(
+            return history if assistant and marker in message_text(assistant[-1]) and not any(
                 part.get('type') == 'toolCall' for part in assistant[-1].get('content', []) if isinstance(part, dict)) else None
         return until('native assistant approval boundary ' + marker, probe, self.args.timeout)
 
@@ -188,7 +188,7 @@ class NativeAcceptance(Acceptance):
                 continue
             if process['ProcessId'] in {pid for pid, _ in self.handles}:
                 continue
-            self.handles.append((process['ProcessId'], shared['shared']['LiveProcess'](process['ProcessId'])))
+            self.handles.append((process['ProcessId'], LiveProcess(process['ProcessId'])))
         return processes
 
     def task(self, name, kind, prompt, host):

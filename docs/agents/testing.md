@@ -2,6 +2,15 @@
 
 命令均从仓库根目录执行。本文记录入口选择与安全约束；测试结果和性能记录留在运行日志中。
 
+## 验收脚本的共享设施
+
+原 `accept-*.py`、`test-real-*.py` 和 `check-*.py` 命令路径、参数及退出语义保持不变。入口不作为其他场景的共享库；已有 implementation 使用正常 Python import。
+
+- `scripts/acceptance/host/` 持有进程句柄与输出消费、独占环境与清理、来源检查、原生观察、透明流量记录、模型传输和证据归档。受控 provider 不代表真实模型验收。
+- `scripts/acceptance/workflow/`、`scripts/acceptance/suites/`、`scripts/acceptance/native/` 及 `acceptance.suite_resources`／`acceptance.suite_lifecycle` 保留已被复用的场景 implementation。P22 默认模型、业务判据、覆盖清单和各场景的通过条件不移入通用设施。
+- 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归继续经过原命令路径，不替代真实模型／双宿主验收。
+- 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
+
 ## 选择入口
 
 | 场景 | 入口 |
@@ -464,18 +473,18 @@ Windows 验收可显式追加 `--shell-path 'D:/Program Files/Git/bin/bash.exe'`
 
 验收重定位 `extensions/workflow-chat/config.yaml` 时须保留全部必填配置，包括 `reportConfirmationTimeoutMs`；遗漏会使角色扩展无法加载。模型开始请求不等于角色已就绪，须核对实际模型请求中的 `run`／`collect`／`report` 与当前角色匹配，再归因于模型职责理解。
 
-入口沿用 `test-real-herdr-close.py` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 所需输出已登记的 consumer 启动并完成；所需输出缺失的拒绝派发边界由后端隔离回归覆盖，不再把 unresolved 地址注入 Chat。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
+入口复用 `scripts/acceptance/host/` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 所需输出已登记的 consumer 启动并完成；所需输出缺失的拒绝派发边界由后端隔离回归覆盖，不再把 unresolved 地址注入 Chat。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
 
 证据保留在输出的独占 Temp 根：源码根/revision/diff、锁文件与后端哈希、依赖版本、模型服务身份（仅密钥指纹）、实际模型请求/响应、工具参数/结果、HTTP 起止、原生 Session 历史、实际文件、只读运行记录副本及每项覆盖关联。独立背景、业务 input、当前地址和正文/聊天敏感标记核对原生初始化；manager 工具轨迹限定为 run/collect，不默认读输出正文。报告只允许简短编排结论，不复制详细行。观察窗口默认每阶段 300 秒（`--timeout 1..900`），外部业务等待 240 秒，保留报告后 collect 至少观察 1.25 秒仍未返回，再释放新报告；runner 不重试业务/模型选择，不延时掩盖失败。
 
-若宿主只公开真实文本 `completion(prompt, model='default').wait()`，可用测试专属 `scripts/workflow_completion_transport.py` 的 `CompletionTransport` 将完整实际原生历史和可用工具定义送给该真实模型；模型自主返回下一条文本/工具参数，薄传输只序列化为 Pi provider 响应，由 Pi 真正执行工具并写原生历史。它不读取验收预期、不选择业务动作、不模拟工具结果、不重试模型决策，也不修改产品 adapter；这类结果只证明该模型传输下的真实角色行为，不证明原生 OpenAI provider 的 wire 合规性。传输保留每次实际请求、发给 completion 的完整 prompt、原始输出和映射结果；错误非零返回且不生成替代动作。
+若宿主只公开真实文本 `completion(prompt, model='default').wait()`，可用测试专属 `scripts/acceptance/host/completion_transport.py` 的 `CompletionTransport` 将完整实际原生历史和可用工具定义送给该真实模型；模型自主返回下一条文本/工具参数，薄传输只序列化为 Pi provider 响应，由 Pi 真正执行工具并写原生历史。它不读取验收预期、不选择业务动作、不模拟工具结果、不重试模型决策，也不修改产品 adapter；这类结果只证明该模型传输下的真实角色行为，不证明原生 OpenAI provider 的 wire 合规性。传输保留每次实际请求、发给 completion 的完整 prompt、原始输出和映射结果；错误非零返回且不生成替代动作。
 
 以下代码在提供上述公开 `completion` 的 Python 宿主执行（不是普通 Python CLI）；`HERDR_BOT_WT`、`TOOLKIT_WT`、`PATHS_FILE`、`EVIDENCE_DIR` 均为显式绝对路径，backend 和依赖须先按上文准备。`copy_context` 将宿主授权调用上下文传入 HTTP 工作线程，不读取私有 token：
 
 ```python
 import contextvars, json, os, pathlib, subprocess, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(HERDR_BOT_WT) / 'scripts'))
-from workflow_completion_transport import CompletionTransport
+from acceptance.host.completion_transport import CompletionTransport
 context = contextvars.copy_context()
 def actual_completion(prompt):
     return context.copy().run(lambda: completion(prompt, model='default').wait())

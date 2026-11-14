@@ -56,8 +56,8 @@ def main():
         require(config.get('model') == 'gpt-6-luna', 'Actual model must be gpt-6-luna; no fallback')
         require(config.get('apiKeyEnv') and os.environ.get(config['apiKeyEnv']), 'Missing explicitly authorized model credential environment')
         args.repo, args.toolkit = args.herdr_bot_worktree, args.toolkit_worktree
-        resources = runpy.run_path(str(REPO / 'scripts/accept-suite-pi-resources.py'))
-        resources['preflight'](args, evidence)
+        from acceptance.host.provenance import preflight
+        preflight(args, evidence)
         roots = evidence['paths']['roots']
         args.path_roots = roots
         for host in hosts:

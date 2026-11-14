@@ -17,7 +17,10 @@ import traceback
 import urllib.request
 
 from developer_paths import REPO
-from workflow_nesting_planning_acceptance import NativePlanningAcceptance, roles, resources, require, until, digest, body_text
+from workflow_nesting_planning_acceptance import NativePlanningAcceptance, require, until, digest, body_text
+from acceptance.workflow.handoff import RolesAcceptance
+from acceptance.host.wire import decode
+from acceptance.host.provenance import preflight
 
 OUTER = 'create-bot-task-workflow--bc-61ce48b80a4c.json'
 WRAPPER = 'create-bot-wrapper.json'
@@ -131,7 +134,7 @@ class OuterAcceptance(NativePlanningAcceptance):
                     self.evidence['cleanupErrors'].append(traceback.format_exc())
 
     def configure_model(self):
-        roles['RolesAcceptance'].configure_model(self)
+        RolesAcceptance.configure_model(self)
         agent = self.root / 'agent'
         (agent / 'models.yml').write_text((agent / 'models.json').read_text(encoding='utf-8'), encoding='utf-8')
         settings = load(agent / 'settings.json')
@@ -500,14 +503,14 @@ export default function(pi) {
         route = '/api/tasks' if method == 'POST' else '/api/tasks/' + target['id']
         saves = [item for item in traffic if item['method'] == method and item['path'] == route]
         require(len(saves) == 1 and saves[0].get('status') == 200, ('Task save was missing/failed/retried', route, saves))
-        request = roles['decode'](saves[0], 'request')
+        request = decode(saves[0], 'request')
         fields = {'name', 'chatName', 'agent', 'taskType', 'model', 'thinking', 'skill', 'prompt', 'suite'}
         require(set(request) == fields and request == {key: target.get(key) for key in fields}, ('Task request lost current field contract', request, target))
-        result = roles['decode'](saves[0], 'response')
+        result = decode(saves[0], 'response')
         require(any(item == target for item in result['tasks']) and 'options' in result, 'Task response was not a real tasks/options list')
         reads = [item for item in traffic if item['method'] == 'GET' and item['path'] == '/api/tasks/' + target['id']
                  and item['index'] > saves[0]['index'] and item.get('status') == 200]
-        require(any((roles['decode'](item, 'response') or {}).get('task') == target for item in reads),
+        require(any((decode(item, 'response') or {}).get('task') == target for item in reads),
                 ('Executor omitted public complete post-save readback', target['id']))
         self.evidence.setdefault('taskApiEvidence', []).append({'taskId': target['id'], 'save': saves[0]['index'],
             'readbacks': [item['index'] for item in reads], 'method': method})
@@ -737,7 +740,7 @@ export default function(pi) {
         require(bot['name'] == self.marker + '-outer', 'Wrapper changed the explicitly requested Bot name')
         require(json.loads(saved['saved']['bytes'])['bot'] == bot, 'Saved output is not the complete public Bot readback')
         saves = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/save'
-                 and (roles['decode'](item, 'request') or {}).get('id') == bot['id']]
+                 and (decode(item, 'request') or {}).get('id') == bot['id']]
         require(not saves, 'Native writer/optimizer bypassed the fixed Rust save capability')
         initial = json.loads(baseline['bytes'])
         delivered = json.loads(saved['saved']['bytes'])
@@ -820,7 +823,7 @@ export default function(pi) {
         writes = [item for item in self.backend_wire.records if item['method'] in ['POST', 'PUT', 'PATCH', 'DELETE']]
         for item in writes:
             if item['path'].startswith('/api/tasks'):
-                body = roles['decode'](item, 'request') or {}
+                body = decode(item, 'request') or {}
                 require('extensions' not in body and 'extensionOptions' not in body, ('Retired Task field sent', item))
         require(self.baseline_maps == {path.name: digest(path) for path in (self.root / 'maps').glob('*.json')}, 'An unmigrated Map was changed')
         tasks = {item['id']: item for item in self.http('/api/tasks')['tasks']}
@@ -870,7 +873,7 @@ export default function(pi) {
 
 def run_scenarios(args, record):
     args.repo, args.node, args.bun = REPO, 'node', 'bun'
-    resources['preflight'](args, record)
+    preflight(args, record)
     roots = record['paths']['roots']
     for host, filename in [('pi', 'herdr-agent-state.ts'), ('omp', 'herdr-omp-agent-state.ts')]:
         key = host + '_state_extension'

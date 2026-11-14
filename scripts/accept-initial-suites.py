@@ -8,19 +8,18 @@ import subprocess
 import threading
 import json
 from pathlib import Path
-import runpy
 import sys
 import traceback
 
-REPO = Path(__file__).resolve().parent.parent
-resources = runpy.run_path(str(REPO / 'scripts/accept-suite-pi-resources.py'))
-require = resources['require']
+from developer_paths import REPO
+from acceptance.workflow.close import Acceptance as CloseAcceptance
+from acceptance.host import native_observation
+from acceptance.host.isolation import require, until
+from acceptance.host.provenance import digest, command, preflight
+from acceptance.suite_resources import Mcp
 COVERAGE = ('P11/exploration-omp', 'P11/exploration-pi', 'P11/implementation-omp', 'P42', 'P44')
 
 
-support = resources['support']
-digest, command, until = resources['digest'], resources['command'], resources['until']
-lifecycle = runpy.run_path(str(REPO / 'scripts/accept-suite-lifecycle.py'))
 # Independent Pi sources and required baseline names. OMP discovers complete
 # immediate-child collections: Wayfinder-owned skills and scenario-local copies.
 # expert-translate keeps its native name; to-ticket is never an alias.
@@ -110,9 +109,9 @@ class NoTaskModel(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b'Native command acceptance must not run a model task')
 
 
-class Acceptance(support['Acceptance']):
-    remember_process = lifecycle['Acceptance'].remember_process
-    capture = lifecycle['Acceptance'].capture
+class Acceptance(CloseAcceptance):
+    remember_process = native_observation.remember_process
+    capture = native_observation.capture
 
     def __init__(self, args, scenario, roots):
         super().__init__(args, prefix=str(args.evidence_dir / (scenario + '-')))
@@ -135,7 +134,7 @@ class Acceptance(support['Acceptance']):
         threading.Thread(target=self.model.serve_forever, daemon=True).start()
         # Only the remote MCP service is controlled. The delivered definition
         # still selects codebase-memory-mcp, and native loading remains real.
-        self.mcp = http.server.ThreadingHTTPServer(('127.0.0.1', 0), resources['Mcp'])
+        self.mcp = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Mcp)
         self.mcp.wire, self.mcp.files = [], self.root
         (self.root / 'native.txt').write_text('INITIAL-SUITE-MCP-OWNED-417', encoding='utf-8')
         threading.Thread(target=self.mcp.serve_forever, daemon=True).start()
@@ -383,7 +382,7 @@ def main():
                 'startedProcesses': [], 'runs': [], 'cleanupErrors': [], 'argv': sys.argv[1:]}
     try:
         require(args.backend.is_relative_to(args.repo), 'backend provenance: backend must belong to the supplied worktree')
-        resources['preflight'](args, evidence)
+        preflight(args, evidence)
         delivery_manifest(args, evidence)
         roots = evidence['paths']['roots']
         required = ['wayfinder', 'wayfinder_skills',
