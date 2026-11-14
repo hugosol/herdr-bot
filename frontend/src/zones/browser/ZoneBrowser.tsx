@@ -13,7 +13,7 @@ import {
   type BrowseEntry,
   type BrowseResult,
   type FileView,
-} from './browseApi'
+} from '../../controllers/zoneBrowserController'
 import { HtmlReaderView } from '../reader/HtmlReaderView'
 import { NierTitleText } from '../../app/NierTitleText'
 import { zoneDisplayName } from '../zoneDisplay'
@@ -25,8 +25,6 @@ import {
   fetchChangeDiff,
   type ChangeDiff,
   type DiffSide,
-} from '../git/diffApi'
-import {
   checkZoneRemote,
   commitZone,
   fetchGitStatus,
@@ -34,8 +32,8 @@ import {
   type ChangeKind,
   type GitChange,
   type GitStatus,
-} from '../git/gitApi'
-import type { ConnectionStatus } from '../../chats/sessionFeed'
+} from '../../controllers/zoneGitController'
+import type { ConnectionStatus } from '../../sessions/sessionFeed'
 import {
   describeWatchProblem,
   type ZoneWatchEntry,

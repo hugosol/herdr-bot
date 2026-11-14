@@ -13,7 +13,7 @@
 //! cargo run --example safe_shutdown_shell -- --config <path> [--outcome ok|failed]
 //! ```
 //!
-//! 它也是自动化真实进程验证启动的进程：`backend/tests/manual_shutdown_process.rs` 用同一个安全壳
+//! 它也是自动化真实进程验证启动的进程：`backend/tests/server/manual_shutdown_process.rs` 用同一个安全壳
 //! 证明「登记、监听意图与安排都不跨进程恢复」，因此那里同样只驱动这个记录型替身，绝不调用真实关机。
 //! 它不是生产开关：真实二进制不认识这些参数，也不会因为这里的存在而改变行为。
 

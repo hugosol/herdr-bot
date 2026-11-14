@@ -3,7 +3,7 @@
 //! The save future uses the existing `files` authority and returns only after
 //! releasing its file/business guards. No external effect runs before it succeeds.
 //! An accepted submission outlives its HTTP caller, but creates no retry or queue.
-use crate::chats::herdr::HerdrClient;
+use crate::herdr::HerdrClient;
 use serde::Serialize;
 use std::{future::Future, io::Write, sync::Arc};
 
@@ -58,7 +58,7 @@ pub(crate) async fn save_and_notify<T: Send + 'static>(
                 // Host details may echo the input. Only the typed category
                 // belongs in diagnostics; the caller receives the full failure.
                 Err(error) => {
-                    use crate::chats::herdr::HerdrError;
+                    use crate::herdr::HerdrError;
                     let status = match &error {
                         HerdrError::NotStarted(_) | HerdrError::CommandFailed { .. } => "failed",
                         _ => "uncertain",

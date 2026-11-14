@@ -7,14 +7,13 @@ import argparse
 import json
 import os
 from pathlib import Path
-import runpy
 import sys
 import traceback
 
 from developer_paths import REPO, backend_suffix
 
-identity = runpy.run_path(str(REPO / 'scripts/accept-workflow-nesting-planning.py'))
-source_identity, digest, require = (identity[name] for name in ['source_identity', 'digest', 'require'])
+from acceptance.host.provenance import source_identity, digest
+from acceptance.host.processes import require
 COVERAGE = ['P45/creator', 'P45/optimizer', 'P46/outer', 'P46/legacy', 'P46/scope']
 
 

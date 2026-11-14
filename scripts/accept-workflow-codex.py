@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 
-from workflow_completion_transport import NativeCompletionTransport
+from acceptance.host.completion_transport import NativeCompletionTransport
 
 REPO = Path(__file__).resolve().parents[1]
 MODEL = 'gpt-6-luna'
@@ -112,7 +112,7 @@ def main():
     try:
         result['adapterSha256'] = hashlib.sha256(adapter.read_bytes()).hexdigest()
         result['wrapperSha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-        result['transportSha256'] = hashlib.sha256((REPO / 'scripts/workflow_completion_transport.py').read_bytes()).hexdigest()
+        result['transportSha256'] = hashlib.sha256((REPO / 'scripts/acceptance/host/completion_transport.py').read_bytes()).hexdigest()
         result['installedPiPackage'] = str(args.pi_package)
         if args.smoke:
             prompt = 'Reply with exactly LUNA-ACCEPTANCE-READY and no other text.'

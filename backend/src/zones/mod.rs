@@ -2,7 +2,7 @@
 //!
 //! 登记列表是**服务器**状态，不是浏览器的收藏夹：读取、登记与取消登记都经后端完成，取消登记只移除
 //! 登记项，不删除目录或文件。登记项将稳定的用户 ID 绑定到服务器上的绝对目录路径；它可以是普通目录，也可以是一个
-//! Git 工作树的根目录——本模块不初始化 Git，也不扫描、聚合任何嵌套仓库。
+//! Git 工作树的根目录。新建操作按目录、Git 初始化、登记顺序保留部分效果；不扫描、聚合嵌套仓库。
 //!
 //! 持久化语义（P50）：
 //! - 只有登记文件成功写入后才返回成功；写入先写同目录的临时文件并 `sync_all`，再原子替换登记文件。
@@ -290,4 +290,50 @@ pub(crate) fn path_key(path: &str) -> String {
 
 pub(crate) fn same_path(left: &str, right: &str) -> bool {
     path_key(left) == path_key(right)
+}
+
+#[derive(Debug)]
+pub(crate) enum LookupError { Registry(ZoneError), Browse(browse::BrowseError) }
+
+pub(crate) async fn registered_zone(state: &crate::AppState, requested: &str) -> Result<String, LookupError> {
+    let zones = state.zones.list().await.map_err(LookupError::Registry)?;
+    state.zone_watch.reconcile(&zones).await;
+    browse::registered_root(&zones, requested).map(str::to_owned).map_err(LookupError::Browse)
+}
+
+pub(crate) enum CreationError {
+    Registry(ZoneError), NotConfigured, Create(create::CreateZoneError), TaskFailed,
+    Registration { path: String, error: ZoneError },
+}
+
+pub(crate) async fn create_zone(state: &crate::AppState, id: String, name: String) -> Result<Vec<RegisteredZone>, CreationError> {
+    if id.trim().is_empty() { return Err(CreationError::Registry(ZoneError::IdRequired)); }
+    let zones = state.zones.list().await.map_err(CreationError::Registry)?;
+    if zones.iter().any(|zone| zone.id == id.trim()) { return Err(CreationError::Registry(ZoneError::AlreadyRegistered)); }
+    let parent = state.create_parent_directory.clone().ok_or(CreationError::NotConfigured)?;
+    let timeout = state.git_timeout;
+    let created = tokio::task::spawn_blocking(move || create::create_and_init(&parent, &name, timeout)).await
+        .map_err(|_| CreationError::TaskFailed)?.map_err(CreationError::Create)?;
+    let path = display_path(&created);
+    let zones = state.zones.register(&id, &path).await.map_err(|error| CreationError::Registration { path, error })?;
+    state.zone_watch.reconcile(&zones).await;
+    Ok(zones)
+}
+
+pub(crate) async fn register_zone(state: &crate::AppState, id: &str, path: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+    let zones = state.zones.register(id, path).await?;
+    state.zone_watch.reconcile(&zones).await;
+    Ok(zones)
+}
+
+pub(crate) async fn rebind_zone(state: &crate::AppState, id: &str, path: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+    let zones = state.zones.rebind(id, path).await?;
+    state.zone_watch.reconcile(&zones).await;
+    Ok(zones)
+}
+
+pub(crate) async fn unregister_zone(state: &crate::AppState, id: &str) -> Result<Vec<RegisteredZone>, ZoneError> {
+    let zones = state.zones.unregister(id).await?;
+    state.zone_watch.reconcile(&zones).await;
+    Ok(zones)
 }

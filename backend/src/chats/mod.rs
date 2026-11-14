@@ -8,9 +8,220 @@
 //! （提交合成后的初始指示）、`succeeded`（就绪与提交都已确认）、`failed`。失败保留已经取得的
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
-pub mod herdr;
 pub mod history;
 pub mod resume;
+
+use crate::{AppState, tasks, herdr};
+use crate::herdr::placement::WorkspaceTarget;
+
+#[derive(Debug)]
+pub(crate) enum Error {
+    Invalid(&'static str, String), Conflict(&'static str, String), NotFound(&'static str, String), Internal(&'static str, String),
+    Task(crate::tasks::TaskError, &'static str), Zone(crate::zones::ZoneError), Browse(crate::zones::browse::BrowseError), Chief(crate::chief::Error),
+    ResumeFailure(serde_json::Value),
+}
+/// Chat 名称预览请求：只指定已登记 zone 与 Task，不携带名称、Workspace 或其他覆盖字段。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ChatPreviewRequest {
+    zone: String,
+    task_id: String,
+}
+
+/// 创建 Chat 的请求：实例标识与预览名称沿用预览结果；input 可为空。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CreateChatRequest {
+    zone: String,
+    task_id: String,
+    chat_id: String,
+    #[serde(default)]
+    workspace_target: WorkspaceTarget,
+    #[serde(default)]
+    input: String,
+    /// Launch-only overrides; omitted fields retain the saved Task values.
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    thinking: Option<String>,
+    /// 仅用于本次创建的命名规则；省略时使用 Task 规则，不写回 Task。
+    #[serde(default)]
+    chat_name_rule: Option<String>,
+    /// 预览时看到的名称；若有效规则渲染出的名称变化，明确拒绝而不是悄悄改名。
+    #[serde(default)]
+    expected_name: Option<String>,
+}
+
+/// Chat 名称预览的成功响应：本次创建实际会使用的名称与短实例标识。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChatPreviewResponse {
+    chat_id: String,
+    name: String,
+    zone: String,
+    zone_name: String,
+    task_id: String,
+    task_name: String,
+    chat_name_rule: String,
+    agent: &'static str,
+}
+
+pub(crate) async fn preview_chat(state: &AppState, input: ChatPreviewRequest) -> Result<ChatPreviewResponse, Error> {
+    let zone = chat_zone(state, &input.zone).await?;
+    let task = match state.tasks.get(&input.task_id).await {
+        Ok(task) => task,
+        Err(error) => return Err(Error::Task(error, "")),
+    };
+
+    if let Err(error) = state.tasks.validate_suite(&task) {
+        return Err(Error::Task(error, ""));
+    }
+    let chat_id = new_chat_id();
+    let name = render_chat_name(&task.chat_name, &zone, &task, &chat_id);
+    let agent = task.agent.label();
+    Ok(ChatPreviewResponse {
+            chat_id,
+            name,
+            zone_name: std::path::Path::new(&zone)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            zone,
+            task_id: task.id,
+            task_name: task.name,
+            chat_name_rule: task.chat_name,
+            agent,
+    })
+}
+
+pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Result<ChatCreationView, Error> {
+    if !is_valid_chat_id(&input.chat_id) {
+        return Err(Error::Invalid(
+            "chat-id-invalid",
+            "Chat 短实例标识必须来自名称预览（6 个小写十六进制字符）。".to_string(),
+        ));
+    }
+    let zone = chat_zone(&state, &input.zone).await?;
+    let mut task = match state.tasks.get(&input.task_id).await {
+        Ok(task) => task,
+        Err(error) => {
+            return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"));
+        }
+    };
+    let workspace_name = match input.workspace_target.name(&zone, state.herdr.workspace_name()) {
+        Some(name) => name,
+        None => return Err(Error::Invalid(
+            "workspace-name-unavailable",
+            "该 zone 无可用目录名，请选择默认 Workspace。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        )),
+    };
+    let rule = input.chat_name_rule.as_deref().unwrap_or(&task.chat_name);
+    if rule.trim().is_empty() {
+        return Err(Error::Invalid(
+            "chat-name-rule-required",
+            "本次 chat-name 命名规则不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+                .to_string(),
+        ));
+    }
+    if rule.contains(|c| c == '\n' || c == '\r') {
+        return Err(Error::Invalid(
+            "chat-name-rule-not-single-line",
+            "本次 chat-name 必须是单行规则，不能包含换行。未创建 Herdr Tab、未启动 agent、未提交输入。".to_string(),
+        ));
+    }
+    let name = render_chat_name(rule, &zone, &task, &input.chat_id);
+    if name.trim().is_empty() {
+        return Err(Error::Invalid(
+            "chat-name-required",
+            "命名规则生成的 Chat 名称不能为空。未创建 Herdr Tab、未启动 agent、未提交输入。"
+                .to_string(),
+        ));
+    }
+    if let Some(expected) = input.expected_name {
+        if expected != name {
+            return Err(Error::Conflict(
+                "name-preview-stale",
+                "Task在预览之后发生了变化，本次名称已不同；请重新预览后再创建。".to_string(),
+            ));
+        }
+    }
+
+    let catalog = match state.tasks.catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
+    };
+    if let Err(error) = catalog.validate_selection(task.agent, &task.trigger.model, &task.trigger.thinking, task.trigger.skill.as_deref()) {
+        return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"));
+    }
+    if let Some(model) = input.model {
+        task.trigger.model = model;
+    }
+    if let Some(thinking) = input.thinking {
+        task.trigger.thinking = thinking;
+    }
+    // Validate both the saved preset and this launch's explicit overrides.
+    let mut preset = match catalog.resolve(&task) {
+        Ok(preset) => preset,
+        Err(error) => {
+            return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。"));
+        }
+    };
+    preset.env.suite_args = match state.tasks.prepare_environment(&task) {
+        Ok(args) => args,
+        Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
+    };
+    if let Err(message) = preset.env.check_entrypoints() {
+        return Err(Error::Internal(
+            "extension-entrypoint-invalid",
+            format!("{message} 未创建 Herdr Tab、未启动 agent、未提交输入。"),
+        ));
+    }
+    let creation_id = new_creation_id();
+    let chief = (task.task_type == tasks::TaskType::Chief).then(|| Arc::clone(&state.chief));
+    if let Some(chief) = &chief {
+        if let Err(error) = chief.reserve_creation(&creation_id) { return Err(Error::Chief(error)); }
+    }
+    let view = ChatCreationView::starting(creation_id, name, zone.clone(), task.id.clone());
+    let job = state.chat_creations.insert(view.clone()).await;
+    let herdr = Arc::clone(&state.herdr);
+    let history = Arc::clone(&state.history);
+    let prompts = state.prompts.clone();
+    tokio::spawn(async move {
+        let scenario = match &chief {
+            Some(_) => herdr::placement::Scenario::Chief { cwd: &zone, workspace_name: &workspace_name },
+            None => herdr::placement::Scenario::Chat { cwd: &zone, workspace_name: &workspace_name },
+        };
+        run_creation(
+            herdr,
+            history,
+            prompts,
+            Arc::clone(&job),
+            task,
+            preset,
+            scenario,
+            input.input,
+            chief.map(|chief|(chief,Arc::clone(&state.sessions))),
+            None,
+        )
+        .await;
+    });
+    Ok(view)
+}
+
+pub(crate) async fn chat_zone(state: &AppState, requested: &str) -> Result<String, Error> {
+    let trimmed = requested.trim();
+    if trimmed.is_empty() {
+        return Err(Error::Invalid(
+            "zone-required",
+            "请选择已登记的 zone。".to_string(),
+        ));
+    }
+    let path = state.zones.resolve(trimmed).await.map_err(Error::Zone)?;
+    crate::zones::browse::checked_root(&path).map_err(Error::Browse)?;
+    Ok(path)
+}
+
+
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -22,7 +233,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::chats::herdr::{HerdrClient, HerdrError};
+use crate::herdr::{HerdrClient, HerdrError, placement};
 use crate::tasks::Task;
 
 /// Chat 短实例标识的长度（小写十六进制字符数）。
@@ -279,23 +490,47 @@ pub(crate) async fn run_creation(
     job: Arc<Mutex<ChatCreationView>>,
     task: Task,
     preset: crate::tasks::catalog::ResolvedPreset,
-    zone: String,
+    scenario: placement::Scenario<'_>,
     input: String,
-    workspace_name: String,
     chief: Option<(Arc<crate::chief::Authority>, Arc<crate::sessions::SessionsState>)>,
     delegation: Option<crate::chief_delegation::Launch>,
 ) {
     let authority = chief.as_ref().map(|(authority,_)|authority.as_ref());
-    let workspace = match herdr.workspace(&workspace_name).await {
-        Ok(workspace) => workspace,
+    let mapping = match scenario.directory(&herdr).await {
+        Ok(mapping) => mapping,
         Err(error) => {
             fail(&job, FailureStage::Workspace, &error, authority).await;
             return;
         }
     };
+    let workspace = match mapping.workspace(&herdr).await {
+        Ok(mapping) => mapping.workspace,
+        Err(placement::PlacementError::Herdr(error)) => {
+            fail(&job, FailureStage::Workspace, &error, authority).await;
+            return;
+        }
+        Err(error) => {
+            let mut view = job.lock().await;
+            if let Some(chief) = authority {
+                if let Err(error) = chief.creation_failed(&view.id, true) {
+                    eprintln!("chief failure persistence failed: {error:?}");
+                }
+            }
+            if !view.stage.is_terminal() {
+                view.stage = Stage::Failed;
+                view.failure = Some(Failure {
+                    stage: FailureStage::Workspace,
+                    code: error.code().to_string(),
+                    message: format!("{} 本次没有新建 Tab，也没有启动 agent。", error.message()),
+                });
+            }
+            return;
+        }
+    };
 
+    let zone = mapping.directory.as_deref().expect("Chat launch always specifies an execution directory");
     let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, Some(&zone), &name).await {
+    let created = match herdr.create_tab(&workspace.id, Some(zone), &name).await {
         Ok(created) => created,
         Err(error) => {
             fail(&job, FailureStage::Tab, &error, authority).await;

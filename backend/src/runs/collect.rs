@@ -45,47 +45,50 @@ async fn check(state: &AppState, id: &str, signals: &Signals, expired: bool) -> 
     Ok(Some(value))
 }
 
-pub async fn manager_collect(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: StatusRequest = match crate::chat_command_body(request, "收取报告").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_collect(state: AppState, input: StatusRequest) -> Result<CollectOutcome, RunError> {
     let run = match manager_run(&state, &input.session_id).await {
         Ok(run) => run,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     let signals = state.runs.signals(&run.id).await;
     // Subscribe before checking, so a save between the check and wait is seen.
-    let mut changed = signals.changed.subscribe();
+    let changed = signals.changed.subscribe();
     match check(&state, &run.id, &signals, false).await {
-        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(Some(value)) => return Ok(CollectOutcome::Ready(value)),
         Ok(None) => {},
-        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "collect-read-failed", &message),
+        Err(message) => return Err(error(FailureKind::Failed, "collect-read-failed", &message)),
     }
     let deadline = tokio::time::Instant::now() + state.collect_wait;
-    // The response body owns the wait, not a spawned worker. Hyper drops it on
-    // disconnect; the watch receiver and any operation acquisition go with it.
-    // No snapshot is fabricated if a late read fails: the body fails instead.
-    let body = futures_util::stream::once(async move {
+    Ok(CollectOutcome::Waiting(CollectWait { state, run_id: run.id, signals, changed, deadline }))
+}
+
+pub(crate) struct CollectWait {
+    state: AppState,
+    run_id: String,
+    signals: Arc<Signals>,
+    changed: watch::Receiver<u64>,
+    deadline: tokio::time::Instant,
+}
+impl CollectWait {
+    // The caller owns this wait. Dropping it cancels any operation acquisition
+    // and releases the receiver; no detached work or fabricated snapshot.
+    pub(crate) async fn wait(mut self) -> Result<serde_json::Value, String> {
         loop {
             let expired = tokio::select! {
-                _ = tokio::time::sleep_until(deadline) => true,
-                result = changed.changed() => {
-                    result.map_err(std::io::Error::other)?;
+                _ = tokio::time::sleep_until(self.deadline) => true,
+                result = self.changed.changed() => {
+                    result.map_err(|error| error.to_string())?;
                     false
                 },
             };
-            if let Some(value) = check(&state, &run.id, &signals, expired).await.map_err(std::io::Error::other)? {
-                return serde_json::to_vec(&value).map_err(std::io::Error::other);
+            if let Some(value) = check(&self.state, &self.run_id, &self.signals, expired).await? {
+                return Ok(value);
             }
         }
-    });
-    ([(axum::http::header::CONTENT_TYPE, "application/json")], axum::body::Body::from_stream(body)).into_response()
+    }
+}
+
+pub(crate) enum CollectOutcome {
+    Ready(serde_json::Value),
+    Waiting(CollectWait),
 }

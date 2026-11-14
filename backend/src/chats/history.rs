@@ -7,10 +7,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::clock::Clock;
 
-use axum::Json;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
@@ -56,6 +52,8 @@ fn reject_legacy_source_association<'de, D: serde::Deserializer<'de>>(
 #[serde(rename_all = "camelCase")]
 struct HistoryView<'a> {
     session_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_directory: Option<&'a Path>,
     session_name: Option<&'a str>,
     agent_type: Option<&'a str>,
     cwd: Option<&'a str>,
@@ -265,25 +263,22 @@ fn update(target: &mut Option<String>, value: Option<&str>) {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct MemoRequest {
-    session_id: String,
-    memo: String,
+    pub(crate) session_id: String,
+    pub(crate) memo: String,
 }
 
-pub(crate) async fn put_memo(
-    State(state): State<AppState>,
-    Json(request): Json<MemoRequest>,
-) -> Response {
+pub(crate) async fn put_memo(state: &AppState, request: &MemoRequest) -> Result<(), super::Error> {
     match state.history.set_memo(&request.session_id, &request.memo).await {
-        Ok(true) => Json(request).into_response(),
-        Ok(false) => crate::rejected_owned(StatusCode::NOT_FOUND, "unknown-chat", "找不到所选历史 Chat。".into()),
-        Err(error) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "history-save-failed", format!("保存备忘失败：{error}")),
+        Ok(true) => Ok(()),
+        Ok(false) => Err(super::Error::NotFound("unknown-chat", "找不到所选历史 Chat。".into())),
+        Err(error) => Err(super::Error::Internal("history-save-failed", format!("保存备忘失败：{error}"))),
     }
 }
 
 pub(crate) async fn get_history(
-    State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
-) -> Response {
+    state: &AppState,
+    query: HistoryQuery,
+) -> Result<serde_json::Value, super::Error> {
     let snapshot = state.history.read();
     match snapshot {
         Ok(mut records) => {
@@ -302,6 +297,11 @@ pub(crate) async fn get_history(
             };
             let sessions = records.iter().skip((page - 1) * PAGE_SIZE).take(PAGE_SIZE).map(|record| HistoryView {
                 session_id: &record.session_id,
+                session_directory: match record.agent_type.as_deref() {
+                    Some("pi") => state.native_session_directories[0].as_deref(),
+                    Some("omp") => state.native_session_directories[1].as_deref(),
+                    _ => None,
+                },
                 session_name: record.session_name.as_deref(),
                 agent_type: record.agent_type.as_deref(),
                 cwd: record.cwd.as_deref(),
@@ -312,12 +312,11 @@ pub(crate) async fn get_history(
                     .map(|workspace| workspace.label.as_str()),
                 memo: record.memo.as_deref(),
             }).collect();
-            Json(HistoryList { sessions, page, page_size: PAGE_SIZE, total, total_pages }).into_response()
+            Ok(serde_json::to_value(HistoryList { sessions, page, page_size: PAGE_SIZE, total, total_pages }).expect("history serialization"))
         }
-        Err(error) => crate::rejected_owned(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        Err(error) => Err(super::Error::Internal(
             "history-unreadable",
             format!("读取历史会话失败：{error}"),
-        ),
+        )),
     }
 }

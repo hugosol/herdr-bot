@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { resumeChat } from '../controllers/chatController'
 
 export function ResumeChat({ sessionId }: { sessionId: string }) {
   const [pending, setPending] = useState(false)
@@ -8,34 +9,20 @@ export function ResumeChat({ sessionId }: { sessionId: string }) {
     setPending(true)
     setResult(null)
     try {
-      const response = await fetch('/api/chats/resume', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      })
-      const body: unknown = await response.json()
-      if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
-        throw new Error('unconfirmed response')
-      }
-      if (response.ok && (!('outcome' in body) || !['located', 'restored'].includes(String(body.outcome)))) {
-        throw new Error('unconfirmed outcome')
-      }
-      if (response.ok && 'outcome' in body && body.outcome === 'located') {
+      const result = await resumeChat(sessionId)
+      if (result.located) {
         setResult({ failed: false, message: '已切换到当前herdr焦点', targets: [] })
         return
       }
       const targets: { label: string; value: string }[] = []
-      if ('target' in body && typeof body.target === 'object' && body.target !== null) {
-        for (const [key, label] of [['workspaceId', 'Workspace'], ['tabId', 'Tab'], ['paneId', 'Pane']] as const) {
-          if (key in body.target) {
-            const value = (body.target as Record<string, unknown>)[key]
-            if (typeof value === 'string' && value.length > 0) targets.push({ label, value })
-          }
-        }
+      for (const [key, label] of [['workspaceId', 'Workspace'], ['tabId', 'Tab'], ['paneId', 'Pane']] as const) {
+        const value = result.target[key]
+        if (value !== undefined) targets.push({ label, value })
       }
-      if ('agentName' in body && typeof body.agentName === 'string' && body.agentName.length > 0) {
-        targets.push({ label: 'agent 启动名称（不代表已确认加载）', value: body.agentName })
+      if (result.agentName !== undefined) {
+        targets.push({ label: 'agent 启动名称（不代表已确认加载）', value: result.agentName })
       }
-      setResult({ failed: !response.ok, message: body.message, targets })
+      setResult({ failed: result.failed, message: result.message, targets })
     } catch {
       setResult({ failed: true, message: '无法确认 Resume 结果（网络或响应异常）；尚未确认定位或恢复。请检查 Herdr 后再重试。', targets: [] })
     } finally { setPending(false) }

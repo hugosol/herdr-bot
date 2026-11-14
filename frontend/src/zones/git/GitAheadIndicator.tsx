@@ -1,4 +1,4 @@
-import type { SyncFacts } from './gitApi'
+import type { SyncFacts } from '../../controllers/zoneGitController'
 
 /** 本地已知 upstream 引用的领先提交数；不代表已经检查远端或工作树干净。 */
 export function GitAheadIndicator({ sync }: { sync?: SyncFacts }) {

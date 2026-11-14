@@ -1,0 +1,103 @@
+{
+  "feature": "rust-script-bots",
+  "ticket": "06-report-notification-isolation.md",
+  "run_id": "0ff7d627-0b8f-45cd-b4b4-cbd2e52b7d73",
+  "parent_session_id": "01a1d069-f424-750f-9d40-995d4025042a",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-12T15-39-27-140Z_01a1d069-f424-750f-9d40-995d4025042a.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "256f6b3f-f4ab-4cfc-bfde-25cfc2ff4bda",
+  "started_at": "2026-11-12T16:38:15.988Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-12T16:47:40.788Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "06-report-notification-isolationmd-256f6b3f-f4ab",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\implementation\\06-report-notification-isolation.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/rust-script-bots/06-report-notification-isolation-a14b99-d2c39b731408\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-oVE7QB\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\implementation\\06-report-notification-isolation.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/rust-script-bots/06-report-notification-isolation-a14b99-d2c39b731408\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-oVE7QB\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\rust-script-bots\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement report notification isolation ticket",
+    "lastIntent": "Recording notification feedback decision",
+    "exitCode": 0,
+    "output": "{\n  \"commit\": \"92dd72f\",\n  \"behavior\": \"补齐 P11 自动化与运行说明；既有 save-before-notify 编排和唯一持久权威已满足隔离，无需修改产品实现。未人为制造 red。\",\n  \"acceptance\": {\n    \"外部通知故障\": \"rust_create_saved_report_survives_immediate_and_delayed_notification_rejection：真实 Rust 创建／保存，独占 Herdr 分别立即拒绝、门闩等待后拒绝。\",\n    \"原事实与输出保留\": \"等待中和结束后独立 HTTP 读取同一完整报告；核对 ID、body、canComplete、全部 outputs，实际读取 baseline／handoff 并比较字节及完整配置 revision。\",\n    \"无自动重投\": \"真实观察 immediate=1010ms/26 次取样、delayed=1014ms/27 次取样；配置、Run／execution、报告、材料和完整宿主调用不变，一次业务派发、一次报告、一次通知。\",\n    \"结果区分\": \"公开保存事实与 succeeded lifecycle 独立于实际 stderr failed/herdr-command-failed；验证通知 CLI 与测试子进程退出。不把 submitted 当可靠接收或已阅读。\",\n    \"运行说明\": \"更新 docs/workflow-runtime.md、docs/agents/testing.md：读取原事实，不重派、重做、重报或回滚；无新接收工具、队列或恢复策略。\"\n  },\n  \"verification\": [\n    {\n      \"command\": \"npm --prefix frontend run build\",\n      \"result\": \"通过；仅 bundle 大小警告。\"\n    },\n    {\n      \"command\": \"cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture\",\n      \"result\": \"1 passed；原始证据 artifact://135。\"\n    },\n    {\n      \"command\": \"node scripts/test-backend.mjs\",\n      \"result\": \"完整通过，244.9 秒；build、全部 binaries、doctest 通过，0 binaries 未派发。日志 C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-9cfj5b/summary.json。\"\n    }\n  ],\n  \"limitations\": [\n    \"有限观察窗口不证明无限期无动作；受控 Herdr 不替代票 11 的真实 manager 接收。\",\n    \"沿用既有 body-free 类型化错误分类；不声称后台脚本存在同步 HTTP 完整宿主错误回执，未增加可能泄漏正文的详细错误日志。\"\n  ],\n  \"handoff\": \"实现已提交，worktree 可交独立集成代理；未修改票据／工作流报告，未操作或合入集成分支。\"\n}",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 564682,
+    "tokens": 119258,
+    "requests": 28,
+    "contextTokens": 115742,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.1-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.1-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.1-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 109029,
+      "output": 10229,
+      "cacheRead": 2375680,
+      "cacheWrite": 0,
+      "totalTokens": 2494938,
+      "reasoningTokens": 2638,
+      "cost": {
+        "input": 0.218058,
+        "output": 0.10229000000000003,
+        "cacheRead": 0.237568,
+        "cacheWrite": 0,
+        "total": 0.5579160000000002
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-12T15-39-27-140Z_01a1d069-f424-750f-9d40-995d4025042a\\06-report-notification-isolationmd-256f6b3f-f4ab.md",
+    "extractedToolData": {
+      "yield": [
+        {
+          "data": {
+            "commit": "92dd72f",
+            "behavior": "补齐 P11 自动化与运行说明；既有 save-before-notify 编排和唯一持久权威已满足隔离，无需修改产品实现。未人为制造 red。",
+            "acceptance": {
+              "外部通知故障": "rust_create_saved_report_survives_immediate_and_delayed_notification_rejection：真实 Rust 创建／保存，独占 Herdr 分别立即拒绝、门闩等待后拒绝。",
+              "原事实与输出保留": "等待中和结束后独立 HTTP 读取同一完整报告；核对 ID、body、canComplete、全部 outputs，实际读取 baseline／handoff 并比较字节及完整配置 revision。",
+              "无自动重投": "真实观察 immediate=1010ms/26 次取样、delayed=1014ms/27 次取样；配置、Run／execution、报告、材料和完整宿主调用不变，一次业务派发、一次报告、一次通知。",
+              "结果区分": "公开保存事实与 succeeded lifecycle 独立于实际 stderr failed/herdr-command-failed；验证通知 CLI 与测试子进程退出。不把 submitted 当可靠接收或已阅读。",
+              "运行说明": "更新 docs/workflow-runtime.md、docs/agents/testing.md：读取原事实，不重派、重做、重报或回滚；无新接收工具、队列或恢复策略。"
+            },
+            "verification": [
+              {
+                "command": "npm --prefix frontend run build",
+                "result": "通过；仅 bundle 大小警告。"
+              },
+              {
+                "command": "cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture",
+                "result": "1 passed；原始证据 artifact://135。"
+              },
+              {
+                "command": "node scripts/test-backend.mjs",
+                "result": "完整通过，244.9 秒；build、全部 binaries、doctest 通过，0 binaries 未派发。日志 C:/Users/hugos/AppData/Local/Temp/herdr-backend-tests-9cfj5b/summary.json。"
+              }
+            ],
+            "limitations": [
+              "有限观察窗口不证明无限期无动作；受控 Herdr 不替代票 11 的真实 manager 接收。",
+              "沿用既有 body-free 类型化错误分类；不声称后台脚本存在同步 HTTP 完整宿主错误回执，未增加可能泄漏正文的详细错误日志。"
+            ],
+            "handoff": "实现已提交，worktree 可交独立集成代理；未修改票据／工作流报告，未操作或合入集成分支。"
+          },
+          "status": "success"
+        }
+      ]
+    },
+    "outputMeta": {
+      "lineCount": 30,
+      "charCount": 1495
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "06-report-notification-isolationmd-256f6b3f-f4ab",
+  "session_id": "01a1d09f-ccd3-76e9-94c7-84c342197c1b",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-12T15-39-27-140Z_01a1d069-f424-750f-9d40-995d4025042a\\06-report-notification-isolationmd-256f6b3f-f4ab.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-oVE7QB",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-12T16:47:46.765Z"
+}

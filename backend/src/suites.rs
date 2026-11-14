@@ -10,7 +10,6 @@ mod mcp_paths;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
-use axum::{Json, extract::{Path, Request, State}, http::StatusCode, response::{IntoResponse, Response}};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -74,25 +73,23 @@ pub struct Suites {
 }
 
 #[derive(Debug)]
+pub enum SuiteErrorKind { Invalid, Storage, NotFound, Conflict }
+
+#[derive(Debug)]
 pub struct SuiteError {
-    pub status: StatusCode,
+    pub kind: SuiteErrorKind,
     pub code: &'static str,
     pub message: String,
 }
 impl SuiteError {
-    fn invalid(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::BAD_REQUEST, code: "invalid-suite", message: message.into() }
+    pub(crate) fn invalid(message: impl Into<String>) -> Self {
+        Self { kind: SuiteErrorKind::Invalid, code: "invalid-suite", message: message.into() }
     }
     fn storage(error: impl std::fmt::Display) -> Self {
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, code: "suite-storage-failed", message: format!("Suite 权威文件操作失败：{error}；没有回退到其他副本。") }
+        Self { kind: SuiteErrorKind::Storage, code: "suite-storage-failed", message: format!("Suite 权威文件操作失败：{error}；没有回退到其他副本。") }
     }
     fn not_found() -> Self {
-        Self { status: StatusCode::NOT_FOUND, code: "suite-not-found", message: "目标 Suite 不存在，可能已被删除。".into() }
-    }
-}
-impl IntoResponse for SuiteError {
-    fn into_response(self) -> Response {
-        crate::rejected_owned(self.status, self.code, self.message)
+        Self { kind: SuiteErrorKind::NotFound, code: "suite-not-found", message: "目标 Suite 不存在，可能已被删除。".into() }
     }
 }
 
@@ -222,7 +219,7 @@ impl Suites {
                 *suites.iter_mut().find(|suite| suite.id == id).ok_or_else(SuiteError::not_found)? = suite;
             } else {
                 if suites.iter().any(|current| current.id == suite.id) {
-                    return Err(SuiteError { status: StatusCode::CONFLICT, code: "suite-exists", message: "Suite ID 已存在。".into() });
+                    return Err(SuiteError { kind: SuiteErrorKind::Conflict, code: "suite-exists", message: "Suite ID 已存在。".into() });
                 }
                 suites.push(suite);
             }
@@ -236,7 +233,7 @@ impl Suites {
             let references: Vec<_> = tasks.iter().filter(|task| task.env.suite.as_deref() == Some(id))
                 .map(|task| format!("{}（{}）", task.name, task.id)).collect();
             if !references.is_empty() {
-                return Err(SuiteError { status: StatusCode::CONFLICT, code: "suite-in-use", message: format!("Suite「{id}」仍被 Task 引用，不能删除：{}。请先显式修改这些 Task 的 Suite 选择。", references.join("、")) });
+                return Err(SuiteError { kind: SuiteErrorKind::Conflict, code: "suite-in-use", message: format!("Suite「{id}」仍被 Task 引用，不能删除：{}。请先显式修改这些 Task 的 Suite 选择。", references.join("、")) });
             }
             suites.remove(index);
             Ok(())
@@ -246,7 +243,7 @@ impl Suites {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SuiteList {
+pub(crate) struct SuiteList {
     suites: Vec<Suite>,
     mcp: Vec<String>,
     fixed_extensions: Vec<crate::tasks::catalog::FixedExtensionOption>,
@@ -261,45 +258,27 @@ impl SuiteCatalogs {
     fn load(state: &AppState) -> Result<Self, SuiteError> {
         let mcp = state.suites.mcp_catalog()?.into_keys().collect();
         let extensions = state.tasks.suite_extensions().map_err(|error| SuiteError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+            kind: SuiteErrorKind::Storage,
             code: error.code(),
             message: error.message(),
         })?;
         Ok(Self { mcp, fixed_extensions: extensions })
     }
-    fn listing(self, suites: Vec<Suite>) -> Json<SuiteList> {
-        Json(SuiteList { suites, mcp: self.mcp, fixed_extensions: self.fixed_extensions })
+    fn listing(self, suites: Vec<Suite>) -> SuiteList {
+        SuiteList { suites, mcp: self.mcp, fixed_extensions: self.fixed_extensions }
     }
 }
-pub async fn list(State(state): State<AppState>) -> Result<impl IntoResponse, SuiteError> {
-    let catalogs = SuiteCatalogs::load(&state)?;
+pub(crate) fn listing(state: &AppState) -> Result<SuiteList, SuiteError> {
+    let catalogs = SuiteCatalogs::load(state)?;
     Ok(catalogs.listing(state.suites.list()?))
 }
-pub async fn get(State(state): State<AppState>, Path(id): Path<String>) -> Result<impl IntoResponse, SuiteError> {
-    Ok(Json(serde_json::json!({ "suite": state.suites.get(&id)? })))
+
+pub(crate) fn save(state: &AppState, id: Option<&str>, suite: Suite) -> Result<SuiteList, SuiteError> {
+    let catalogs = SuiteCatalogs::load(state)?;
+    Ok(catalogs.listing(state.suites.save(id, suite)?))
 }
-async fn input(request: Request) -> Result<Suite, SuiteError> {
-    if request.uri().query().is_some() { return Err(SuiteError::invalid("Suite 命令不接受查询参数。")); }
-    let bytes = axum::body::to_bytes(request.into_body(), 1024 * 1024).await.map_err(|error| SuiteError::invalid(error.to_string()))?;
-    serde_json::from_slice(&bytes).map_err(|error| SuiteError::invalid(error.to_string()))
-}
-pub async fn create(State(state): State<AppState>, request: Request) -> Result<impl IntoResponse, SuiteError> {
-    let suite = input(request).await?;
-    let catalogs = SuiteCatalogs::load(&state)?;
-    let suites = state.suites.save(None, suite)?;
-    Ok(catalogs.listing(suites))
-}
-pub async fn update(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
-    let suite = input(request).await?;
-    let catalogs = SuiteCatalogs::load(&state)?;
-    let suites = state.suites.save(Some(&id), suite)?;
-    Ok(catalogs.listing(suites))
-}
-pub async fn delete(State(state): State<AppState>, Path(id): Path<String>, request: Request) -> Result<impl IntoResponse, SuiteError> {
-    if request.uri().query().is_some() { return Err(SuiteError::invalid("删除 Suite 不接受查询参数。")); }
-    let bytes = axum::body::to_bytes(request.into_body(), 1024 * 1024).await.map_err(|error| SuiteError::invalid(error.to_string()))?;
-    if !bytes.is_empty() { return Err(SuiteError::invalid("删除 Suite 不接受请求体。")); }
-    let catalogs = SuiteCatalogs::load(&state)?;
-    let suites = state.suites.delete(&id, &state.tasks)?;
-    Ok(catalogs.listing(suites))
+
+pub(crate) fn remove(state: &AppState, id: &str) -> Result<SuiteList, SuiteError> {
+    let catalogs = SuiteCatalogs::load(state)?;
+    Ok(catalogs.listing(state.suites.delete(id, &state.tasks)?))
 }

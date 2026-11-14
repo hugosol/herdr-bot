@@ -15,7 +15,9 @@ import time
 import traceback
 
 from developer_paths import REPO, backend_suffix, resolve_arguments
-from workflow_native_acceptance import NativeAcceptance, WireProxy, decode, require, until
+from acceptance.host.native import NativeAcceptance
+from acceptance.host.wire import WireProxy, decode
+from acceptance.host.processes import require, until
 
 # Actual business fixture declarations, retained verbatim in declared mode.
 DECLARED = {'parent': 'omp', 'child': 'pi'}

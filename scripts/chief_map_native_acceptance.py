@@ -15,7 +15,7 @@ import traceback
 shared = runpy.run_path(str(Path(__file__).with_name('chief_entry_native_acceptance.py')))
 ChiefEntryAcceptance = shared['ChiefEntryAcceptance']
 require, until = shared['require'], shared['until']
-LiveProcess = runpy.run_path(str(Path(__file__).with_name('test-real-herdr-close.py')))['LiveProcess']
+from acceptance.host.processes import LiveProcess
 
 SCENARIOS = {
     'map-correct-approve': ['P9', 'P10', 'P12'],
@@ -40,7 +40,7 @@ class ChiefMapAcceptance(ChiefEntryAcceptance):
             budgets={'requestMs': 30000, 'confirmationMs': 20000,
                      'herdrReadinessMs': 30000, 'initialPromptMs': 30000,
                      'driverNativeStartupSeconds': args.timeout,
-                     'startupBudgetSource': 'backend/src/chats/herdr.rs:START_READY_TIMEOUT_MS/PROMPT_TIMEOUT',
+                     'startupBudgetSource': 'backend/src/herdr/client.rs:START_READY_TIMEOUT_MS/PROMPT_TIMEOUT',
                      'onlineSeconds': 10, 'retentionSeconds': 30, 'maintenanceSeconds': 5,
                      'noAutomaticActionObservationSeconds': 46})
         self.capability = self.scenario.startswith(('gap-', 'reject-', 'stage-reject-')) or self.scenario == 'abandon'

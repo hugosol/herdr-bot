@@ -7,18 +7,21 @@ revision coverage. Missing dependencies and cleanup failures are never skipped.
 import argparse
 import json
 from pathlib import Path
-import runpy
 import sys
 
 from developer_paths import REPO
 from workflow_revise_acceptance import CASE_NAMES, select_cases
 
-runtime = runpy.run_path(str(Path(__file__).with_name('accept-workflow-nesting-create.py')))
+from acceptance.workflow.create import CreateAcceptance, digest
+from acceptance.host.model import message_text
+from acceptance.host.processes import require, until
+import subprocess
+import traceback
 PROMISES = ['P40', 'P42', 'P43', 'P44', 'P45']
 DEDICATED = 'task-revise-bot-baseline-v1'
 
 
-class ReviseAcceptance(runtime['CreateAcceptance']):
+class ReviseAcceptance(CreateAcceptance):
     def __init__(self, args):
         super().__init__(args)
         self.evidence.update(scenario='workflow-nesting-revise', promises=PROMISES,
@@ -42,18 +45,18 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
     def prepare(self):
         # Even an unavailable real dependency must leave attributable evidence.
         for name, root, lock in [('herdr-bot', REPO, 'backend/Cargo.lock'), ('toolkit', self.args.toolkit, 'bun.lock')]:
-            identity = {'root': str(root), 'lockSha256': runtime['digest'](root / lock)}
+            identity = {'root': str(root), 'lockSha256': digest(root / lock)}
             for label, argv in [('revision', ['rev-parse', 'HEAD']), ('status', ['status', '--porcelain']), ('diff', ['diff', '--binary', 'HEAD'])]:
-                identity[label] = runtime['subprocess'].run(['git', *argv], cwd=root, capture_output=True,
+                identity[label] = subprocess.run(['git', *argv], cwd=root, capture_output=True,
                     text=True, encoding='utf-8', check=True).stdout
             self.evidence.setdefault('sources', {})[name] = identity
         super().prepare()
         for name in ['accept-workflow-nesting-revise.py', 'workflow_revise_acceptance.py', 'workflow_revise_safety.py']:
             path = REPO / 'scripts' / name
-            self.evidence['runnerSources'][str(path)] = runtime['digest'](path)
+            self.evidence['runnerSources'][str(path)] = digest(path)
         for relative in ['workflow-maps/enhance-existing-bot--bc-301b25d9f8d6.json', 'bots/prepare-bot-revision.json']:
             path = REPO / 'meta-data' / relative
-            self.evidence['businessSourceIdentity'][str(path)] = runtime['digest'](path)
+            self.evidence['businessSourceIdentity'][str(path)] = digest(path)
         self.evidence.pop('creationSpecificTasks', None)
 
     def await_chat(self, chat, after=None):
@@ -62,7 +65,7 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
             if not history:
                 return None
             messages = self.messages(history)
-            if after and not any(m.get('role') == 'user' and after in runtime['RolesAcceptance'].message_text(m) for m in messages):
+            if after and not any(m.get('role') == 'user' and after in message_text(m) for m in messages):
                 return None
             terminal = self.command([self.args.herdr, 'pane', 'read', chat['paneId']])
             if '发送报告？（仅批准本次报告发送）' in terminal and 'Yes' in terminal and 'No' in terminal:
@@ -71,12 +74,12 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
             if not messages or messages[-1].get('role') != 'assistant':
                 return None
             last = messages[-1]
-            runtime['require'](last.get('stopReason') not in ['error', 'aborted'], ('Native model error', last))
+            require(last.get('stopReason') not in ['error', 'aborted'], ('Native model error', last))
             return history if not any(p.get('type') == 'toolCall' for p in last.get('content', []) if isinstance(p, dict)) else None
-        history = runtime['until']('real Chat reaches user or report UI boundary', ready, self.args.timeout)
-        runtime['require'](not any(message.get('stopReason') in ['error', 'aborted']
+        history = until('real Chat reaches user or report UI boundary', ready, self.args.timeout)
+        require(not any(message.get('stopReason') in ['error', 'aborted']
             for message in self.messages(history)), 'A real native model failure cannot be hidden by continuation')
-        runtime['require'](all(record.get('status') == 200 and not record.get('error') for record in self.model_wire.records if 'ended' in record),
+        require(all(record.get('status') == 200 and not record.get('error') for record in self.model_wire.records if 'ended' in record),
             'Actual model transport failed; no retry or later response can erase it')
         return history
 
@@ -88,7 +91,7 @@ class ReviseAcceptance(runtime['CreateAcceptance']):
             try:
                 self.observe_processes()
             except BaseException:
-                error = runtime['traceback'].format_exc()
+                error = traceback.format_exc()
                 self.evidence.setdefault('processObservationErrors', []).append(error)
                 self.evidence['cleanupErrors'].append(error)
                 self.evidence['passed'] = False
@@ -108,7 +111,7 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--timeout', type=int, default=300)
     args = parser.parse_args()
-    runtime['require'](1 <= args.timeout <= 900, '--timeout must be 1..900 seconds')
+    require(1 <= args.timeout <= 900, '--timeout must be 1..900 seconds')
     args.repo = REPO
     if args.hosts == 'declared':
         case = ReviseAcceptance(args)

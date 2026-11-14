@@ -5,13 +5,11 @@ real tool results and SessionManager history. Only the external model and MCP
 endpoint are controlled. No agent monkey patch or alternate tool manager.
 """
 import argparse
-import hashlib
 import http.server
 import json
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import subprocess
 import sys
@@ -20,8 +18,10 @@ import traceback
 
 from developer_paths import REPO
 
-support = runpy.run_path(str(REPO / 'scripts/test-real-herdr-close.py'))
-require, until = support['require'], support['until']
+from acceptance.workflow.close import Acceptance as CloseAcceptance
+from acceptance.host import processes
+from acceptance.host.isolation import require, until
+from acceptance.host.provenance import digest
 PROMISES = {
     'P14': 'Declared LSP command is never started; Pi still consumes template, file and native MCP.',
     'P16': 'Template body absent before invocation; quoted positional arguments expand into one native user message.',
@@ -34,10 +34,6 @@ FILE_BODY = 'PI-ONLY-REAL-FILE-731\n'
 MCP_BODY = 'PI-NATIVE-MCP-FILE-619\n'
 TEMPLATE_BODY = 'PI-TEMPLATE-BODY-827 $1|$2|$@\n'
 TEMPLATE_EXPECTED = 'PI-TEMPLATE-BODY-827 red fox|blue|red fox blue'
-
-
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def message_text(content):
@@ -137,16 +133,10 @@ class Mcp(http.server.BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
 
-class Acceptance(support['Acceptance']):
+class Acceptance(CloseAcceptance):
     def __init__(self, args):
         super().__init__(args, prefix='pi-mode-owned-')
-        # The caller owns the evidence directory; never reuse another invocation's data.
-        old = self.root
-        require(not args.evidence_dir.exists(), ('Evidence directory must not exist', str(args.evidence_dir)))
-        args.evidence_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(old), str(args.evidence_dir))
-        self.root = args.evidence_dir
-        self.env = {key: value.replace(str(old), str(self.root)) for key, value in self.env.items()}
+        # The shared lifecycle exclusively creates the requested evidence directory.
         self.evidence.update(root=str(self.root), promise=list(PROMISES), cases=[],
             coverage={key: {'expected': value, 'verified': False, 'cases': []} for key, value in PROMISES.items()})
         self.evidence['isolation'] = {key: self.env[key] for key in self.evidence['isolation']}
@@ -340,7 +330,7 @@ class Acceptance(support['Acceptance']):
             case['ownedProcesses'] = owned
             case_handles = []
             for proc in owned:
-                handle = support['LiveProcess'](proc['ProcessId'])
+                handle = processes.LiveProcess(proc['ProcessId'])
                 case_handles.append(handle)
                 self.handles.append(handle)
             require(not any('owned-lsp.py' in (p.get('CommandLine') or '') for p in snapshot), 'Pi started Suite LSP')
@@ -377,7 +367,7 @@ class Acceptance(support['Acceptance']):
                         case['failureProcessSnapshot'] = failed_snapshot
                         for proc in failed_snapshot:
                             if proc['ProcessId'] != self.processes[0].child.pid:
-                                self.handles.append(support['LiveProcess'](proc['ProcessId']))
+                                self.handles.append(processes.LiveProcess(proc['ProcessId']))
                 except BaseException:
                     self.evidence['cleanupErrors'].append(traceback.format_exc())
                 try:

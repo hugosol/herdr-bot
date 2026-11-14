@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import App from './app/App'
-import { createSseSessionFeed } from './chats/sseSessionFeed'
+import { createSseSessionFeed } from './sessions/sseSessionFeed'
 import { createZoneWatchFeed } from './zones/zoneWatch'
 import './app/styles.css'
 import './tasks/tasks.css'

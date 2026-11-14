@@ -8,16 +8,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // enforce addresses; this check catches accidental new listener implementations.
 const infrastructure = new Map([
   ['backend/tests/common/mod.rs', new Set(['bind_app_on'])],
-  ['backend/tests/mdns_conflict.rs', new Set(['start', 'local_publishable_ipv4', 'hostname_is_answered', 'browse_http_instances'])],
-  ['backend/tests/mdns_failure.rs', new Set(['local_publishable_ipv4', 'resolved_addresses', 'browse_http_instances'])],
-  ['frontend/browser-tests/support.ts', new Set(['browserListenAddress'])],
+  ['backend/tests/server/mdns_conflict.rs', new Set(['start', 'local_publishable_ipv4', 'hostname_is_answered', 'browse_http_instances'])],
+  ['backend/tests/server/mdns_failure.rs', new Set(['local_publishable_ipv4', 'resolved_addresses', 'browse_http_instances'])],
+  ['frontend/browser-tests/support/support.ts', new Set(['browserListenAddress'])],
 ])
 const manualRustTests = new Map([
-  ['backend/tests/session_write_boundary.rs', new Set(['same_host_access_via_local_nic_address_is_accepted'])],
-  ['backend/tests/monitoring.rs', new Set(['a_non_loopback_source_may_monitor_and_clear_but_not_write_session_events'])],
+  ['backend/tests/sessions/session_write_boundary.rs', new Set(['same_host_access_via_local_nic_address_is_accepted'])],
+  ['backend/tests/server/monitoring.rs', new Set(['a_non_loopback_source_may_monitor_and_clear_but_not_write_session_events'])],
 ])
-const mdnsFiles = new Set(['backend/tests/mdns_conflict.rs', 'backend/tests/mdns_failure.rs'])
-const manualBrowserFile = 'frontend/browser-tests/lanAccess.manual.spec.ts'
+const mdnsFiles = new Set(['backend/tests/server/mdns_conflict.rs', 'backend/tests/server/mdns_failure.rs'])
+const manualBrowserFile = 'frontend/browser-tests/app/lanAccess.manual.spec.ts'
 
 function files(directory) {
   if (!fs.existsSync(directory)) return []
@@ -41,7 +41,7 @@ export function inspect(relative, source) {
   const enclosing = offset => functions.findLast(item => item.index < offset)
   const report = (offset, message) => errors.push(`${relative}:${source.slice(0, offset).split('\n').length}: ${message}`)
   const allowed = offset => infrastructure.get(relative)?.has(enclosing(offset)?.[1])
-  if (relative !== 'frontend/browser-tests/support.ts') {
+  if (relative !== 'frontend/browser-tests/support/support.ts') {
     for (const match of source.matchAll(/(?:from\s*|require\s*\(|import\s*\()\s*['"](?:node:)?(?:net|dgram|http|https|http2|tls)['"]/g)) {
       report(match.index, 'Network modules must stay in the controlled server infrastructure (aliases are not an escape).')
     }

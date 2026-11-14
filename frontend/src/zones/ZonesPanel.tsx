@@ -7,7 +7,7 @@ import { ZoneBrowser } from './browser/ZoneBrowser'
 import {
   fetchZoneOverview,
   type ZoneSummary,
-} from './git/gitApi'
+} from '../controllers/zoneGitController'
 import { useZoneWatch } from './useZoneWatch'
 import {
   createZone,
@@ -17,7 +17,7 @@ import {
   type ZoneCreation,
   type ZoneRegistration,
   type ZoneResult,
-} from './zoneApi'
+} from '../controllers/zoneController'
 import { zoneDisplayName } from './zoneDisplay'
 import './zones.css'
 import {

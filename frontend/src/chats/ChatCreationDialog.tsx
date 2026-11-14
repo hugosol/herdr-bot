@@ -6,10 +6,10 @@ import {
   previewChat,
   type ChatCreation,
   type ChatPreview,
-} from './chatCreationApi'
-import { fetchTasks, type Task, type TaskOptions } from '../tasks/taskApi'
+} from '../controllers/chatController'
+import { fetchTasks, type Task, type TaskOptions } from '../controllers/taskController'
 import { TaskModelControls, changeTaskModel, modelCompatibility } from '../tasks/TaskModelControls'
-import { fetchZones, type ZoneRegistration } from '../zones/zoneApi'
+import { fetchZones, type ZoneRegistration } from '../controllers/zoneController'
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 
@@ -59,7 +59,7 @@ function failureOutcomeText(creation: ChatCreation): string {
  * 成功与失败都留在弹窗里，由用户关闭，
  * 不自动切换会话列表。
  */
-export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 'default/bot-playground' : '', initialTaskId = chief ? 'chief-bot' : '', onClose }: { chief?: boolean; zone?: string; initialTaskId?: string; onClose: () => void }) {
+export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 'default/bot-playground' : '', initialTaskId = chief ? 'chief-bot' : '', initialInput = '', initialCwd, onClose }: { chief?: boolean; zone?: string; initialTaskId?: string; initialInput?: string; initialCwd?: string | null; onClose: () => void }) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [taskId, setTaskId] = useState(initialTaskId)
@@ -71,7 +71,8 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
   const [thinking, setThinking] = useState('default')
   const [notice, setNotice] = useState<string | null>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<'default' | 'current'>('current')
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(initialInput)
+  const zoneInitialized = useRef(false)
   const [chatNameRule, setChatNameRule] = useState(chief ? 'chat with chief bot' : '')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [preview, setPreview] = useState<ChatPreview | null>(null)
@@ -93,7 +94,7 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
         const available = chief ? result.tasks.filter(task => task.taskType === 'chief') : result.tasks
         setTasks(available)
         setOptions(result.options)
-        setTaskId(current => current === '' ? (available[0]?.id ?? '') : (available.some(task => task.id === current) ? current : ''))
+        setTaskId(current => current === '' && initialTaskId === '' ? (available[0]?.id ?? '') : (available.some(task => task.id === current) ? current : ''))
         setLoadError(null)
       } else {
         setTasks(null)
@@ -115,7 +116,18 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
     setZoneError(null)
     void fetchZones().then(result => {
       if (cancelled) return
-      if (result.kind === 'ok') setZones(result.zones)
+      if (result.kind === 'ok') {
+        setZones(result.zones)
+        if (!zoneInitialized.current) {
+          zoneInitialized.current = true
+          if (initialCwd) {
+            // Windows directory spelling may differ in case, separators or trailing slash.
+            const directoryKey = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+            const matches = result.zones.filter(entry => directoryKey(entry.path) === directoryKey(initialCwd))
+            setZone(matches.length === 1 ? matches[0].id : '')
+          }
+        }
+      }
       else setZoneError(result.kind === 'rejected' ? result.message : '无法读取已登记 zone：请求没有得到可用响应。')
     })
     return () => { cancelled = true }
@@ -270,6 +282,7 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
         </select>
         {zones === null && zoneError === null && <p role="status">正在读取已登记 zone……</p>}
         {zones?.length === 0 && <p>尚未登记 zone。</p>}
+        {initialCwd !== undefined && zones !== null && !validZone && <p role="status">历史目录未唯一匹配已登记 zone，请选择。</p>}
         {zoneError !== null && <p className="zone-feedback" role="alert">{zoneError}</p>}
 
         <label className="zone-form__label" htmlFor="task">
@@ -297,6 +310,8 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
             </option>
           )}</GroupOptions>}
         </select>
+
+        {initialTaskId && tasks !== null && !tasks.some(task => task.id === initialTaskId) && !selectedTask && <p role="status">默认 Task「{initialTaskId}」不存在，请选择。</p>}
 
         {selectedTask && options && <>
           <p>agent：{selectedTask.agent}（来自 Task）</p>

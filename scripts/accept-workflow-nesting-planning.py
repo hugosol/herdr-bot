@@ -15,31 +15,8 @@ import traceback
 from developer_paths import REPO, backend_suffix
 
 
-def require(condition, message):
-    if not condition:
-        raise AssertionError(message)
-
-
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def source_identity(root, lock, evidence_dir):
-    outputs = [evidence_dir]
-    if os.environ.get('CARGO_TARGET_DIR'):
-        outputs.append(Path(os.environ['CARGO_TARGET_DIR']).resolve())
-    result = {'root': str(root), 'lockSha256': digest(root / lock),
-              'excludedOwnedOutputs': [str(path) for path in outputs]}
-    for key, argv in [('revision', ['git', 'rev-parse', 'HEAD']), ('status', ['git', 'status', '--porcelain']),
-                      ('diff', ['git', 'diff', '--binary', 'HEAD'])]:
-        command = subprocess.run(argv, cwd=root, capture_output=True, text=True, encoding='utf-8', errors='replace', check=True)
-        result[key] = command.stdout
-    listed = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], cwd=root,
-                            capture_output=True, text=True, encoding='utf-8', errors='replace', check=True)
-    result['fileSha256'] = {name: digest(root / name) for name in listed.stdout.splitlines()
-                            if not name.startswith('.scratch/') and (root / name).is_file()
-                            and not any((root / name).is_relative_to(path) for path in outputs)}
-    return result
+from acceptance.host.processes import require
+from acceptance.host.provenance import digest, source_identity
 
 
 def main():

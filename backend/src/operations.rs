@@ -1,7 +1,7 @@
 //! 固定脚本操作的执行：启动配置的执行目标并等待它结束。
 //!
-//! 这里只负责两个原始事实：执行目标**能否启动**，以及启动后**如何结束**。它不判断脚本成功或
-//! 失败，也不做后台 Python 进程的生命周期推断——脚本另开的长期进程不属于本次调用。
+//! 记录执行目标能否启动及如何结束，并据此给出固定操作结果。接受后的独立任务持有执行资格，
+//! 不随 HTTP 连接断开取消；不推断后台 Python 进程的生命周期——脚本另开的长期进程不属于本次调用。
 
 use std::fmt;
 use std::io::{self, IsTerminal};
@@ -148,3 +148,126 @@ impl fmt::Display for NotStartedReason {
 
 /// `CREATE_NO_WINDOW`：以无控制台窗口方式启动子进程。
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+use std::sync::Arc;
+use serde::Serialize;
+use tokio::sync::{Mutex, oneshot};
+/// 一次已结束的固定操作调用的结果：本次调用已结束的事实、脚本进程的原始观测结果，
+/// 以及由它得出的结果类别。
+///
+/// 结果类别只看脚本进程本身能否启动及其退出结果，不看脚本打印了什么，也不推断后台 Python 进程的
+/// 状态：脚本结束不等于后台服务已就绪。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OperationResponse {
+    /// 本次调用的固定操作名：`start` 或 `stop`。
+    operation: &'static str,
+    /// 本次调用是否已经结束（HTTP 响应返回时必然为 true）。
+    ended: bool,
+    /// 脚本进程是否成功创建。
+    started: bool,
+    /// 脚本进程退出码；未创建或非正常退出结束时为 null。
+    exit_code: Option<i32>,
+    /// 结果类别：脚本成功退出为 `completed`，无法启动或失败退出为 `failed`。
+    outcome: OperationOutcome,
+    /// 失败的子类别；仅当 `outcome` 为 `failed` 时出现。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure: Option<FailureKind>,
+}
+
+/// 一次调用的结果类别。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum OperationOutcome {
+    /// 脚本以成功退出码结束：本次脚本执行完成。
+    Completed,
+    /// 脚本无法启动，或运行后没有以成功退出码结束。
+    Failed,
+}
+
+/// 失败结果的子类别；“无法启动”与“运行后失败退出”因此可互相区分。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum FailureKind {
+    /// 脚本无法启动：目标不存在、目标不可执行或工作目录不存在。
+    NotStarted,
+    /// 脚本进程已创建，但没有以成功退出码结束（非零退出码、没有退出码，或结束结果无法观测）。
+    FailedExit,
+}
+
+/// 把一次调用的原始观测结果转成结果类别，并写一条诊断输出。
+fn operation_response(
+    name: &'static str,
+    operation: &ScriptOperation,
+    invocation: Invocation,
+) -> OperationResponse {
+    match invocation {
+        // 脚本进程已创建并结束：只有成功退出码算“执行完成”，其余都是“执行失败”。
+        Invocation::Ended(status) => {
+            eprintln!(
+                "[herdr-bot] {name} 调用已结束：{}，{status}",
+                operation.script().display()
+            );
+            let exit_code = status.code();
+            let succeeded = exit_code == Some(0);
+            OperationResponse {
+                operation: name,
+                ended: true,
+                started: true,
+                exit_code,
+                outcome: if succeeded {
+                    OperationOutcome::Completed
+                } else {
+                    OperationOutcome::Failed
+                },
+                failure: (!succeeded).then_some(FailureKind::FailedExit),
+            }
+        }
+        // 进程已创建，但结束结果无法观测：不能当作成功退出。
+        Invocation::EndUnobserved(error) => {
+            eprintln!(
+                "[herdr-bot] {name} 调用已结束：无法观测脚本进程的结束结果（{}）：{error}",
+                operation.script().display()
+            );
+            OperationResponse {
+                operation: name,
+                ended: true,
+                started: true,
+                exit_code: None,
+                outcome: OperationOutcome::Failed,
+                failure: Some(FailureKind::FailedExit),
+            }
+        }
+        // 目标没能启动：没有脚本进程，属于“执行失败”里的“无法启动”。
+        Invocation::NotStarted(reason) => {
+            eprintln!(
+                "[herdr-bot] {name} 调用已结束：脚本无法启动（{}，工作目录 {}）：{reason}",
+                operation.script().display(),
+                operation.working_directory().display()
+            );
+            OperationResponse {
+                operation: name,
+                ended: true,
+                started: false,
+                exit_code: None,
+                outcome: OperationOutcome::Failed,
+                failure: Some(FailureKind::NotStarted),
+            }
+        }
+    }
+}
+
+
+pub(crate) enum ExecutionError { Busy, ResultUnavailable }
+
+pub(crate) async fn execute(name: &'static str, operation: &ScriptOperation, execution: &Arc<Mutex<()>>) -> Result<OperationResponse, ExecutionError> {
+    let permit = Arc::clone(execution).try_lock_owned().map_err(|_| ExecutionError::Busy)?;
+    let operation = operation.clone();
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let _permit = permit;
+        let result = operation_response(name, &operation, operation.invoke().await);
+        let _ = sender.send(result);
+    });
+    receiver.await.map_err(|_| ExecutionError::ResultUnavailable)
+}

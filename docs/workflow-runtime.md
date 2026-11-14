@@ -2,6 +2,66 @@
 
 需求、职责、批准承诺、排除项及验收责任见[长期需求与契约](workflow-contract.md)。本文是用户、管理者/节点及接入维护者的操作与协议参考；文中的检查命令不表示本次部署已通过，真实环境和人工验收状态见[证据边界](workflow-contract.md#验证边界与验收责任)。
 
+## 无 Chat 的执行与报告表示契约
+
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。`create_blank_bot` 已由后端直接实现：原 manager dispatch 接受并保存独立 execution 后返回，真实文件读取和业务写入在后台进行；完整读回及材料交付成功后自动保存报告并尝试一次原 manager 通知。它不创建节点 Chat／Tab、不等待 manual 报告、不调用关闭，也不 complete 或派发下游。`save_bot_guides` 同样编入后端并经原 dispatch 自动报告：只读冻结的 baseline 和三组显式 text/handoff，检查真实 revision、完整目标和全文 bytes 确认，汇总一次合法保存，再完整读回 Bot／新 revision／目标并交付 saved 与独立 handoff。发布创建图已切换这两个真实能力，原创建身份／材料接线保留，专用保存 Bot 不取代修订通用替换者；详见[迁移范围](create-bot-wrapper.md#创建分支表示的交付边界)。页面与真实 manager／编写者原生遵从证据仍独立验证；表示及受控材料闭环不证明这些已完成。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
+
+### execution 与节点交接分别表达
+
+- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "rust_script"` 和 camelCase `rustScript` 固定能力值。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`reportPolicy: "auto"`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
+- `lifecycle` 只描述本次 Rust 工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求业务检查、合法真实写入、完整读回及必要输出材料生成／读回全部成功；正常函数返回不构成成功。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
+- 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
+- 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
+
+### 脚本在途工作、断连与暂停
+
+派发被后端接受并保存 execution 后，业务由后端持有，不依赖派发 HTTP 连接继续存活。调用方断连不能撤销它；不要为取得结果再次 dispatch。通过原 Run 详情独立读取原 execution 的 lifecycle、报告与真实材料。脚本的文件读写不长期占用 Run 操作资格：业务仍在途时，同 Run 的合法 status 与 pause 可以完成；这不改变完整派发批次本身的串行规则。
+
+pause 只拒绝新的 dispatch／retry，不取消已开始的 Rust 工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
+
+实际终止后端进程会终止它持有的在途 Rust 工作，但不回滚已经发生的文件效果。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
+
+专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和编入后端的能力，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
+
+### 失败、显式重跑与旧执行隔离
+
+脚本失败报告不是 manager 的 fail 动作：先读取 `lifecycle.failure`、报告正文及实际文件，区分已保存的定义、已读回的配置、已生成的部分材料与尚未完成的步骤。业务结束后 node 仍为 running；直接 retry 返回 `node-not-retryable`，false 报告也不能首次 complete。manager 核实效果后以非空 reason 显式 fail，才记录节点执行阶段失败；fail 不更改脚本 lifecycle、不取消业务，也不回滚已发生效果。重复 fail 保留首次原因。
+
+随后须明确 `confirmed=true` 和非空 reason，原 retry 门禁（Run running、输入已准备、非派发失败）继续适用。缺确认／空依据返回 `retry-confirmation-required`；缺必填参数拒绝解析，不新增 execution 或业务效果。合法 retry 重新解析当前定义与真实输入，创建独立 execution 和独占材料位置，`previousExecutions` 保留原 execution、manager failure、脚本结构化失败；旧文件与追加报告不删除。已创建的 Bot 不因材料失败变成“未保存”，不能靠重跑撤销它；修改请求须有对应授权，不能为求成功删除旧 Bot 或刷新旧 baseline。
+
+脚本没有原 Chat：recover 返回 `node-not-recoverable`，不会启动新业务或转为待继续会话；Task／Map 有真实原 Chat 时仍按原 recover 规则处理。新执行从无报告、无 outputs 开始；旧 true 迟到仍归原 execution，不能成为当前 pendingReports 或 collect 待办。首次 complete 只看当前执行最后追加的报告，较早 true 后有 false 时仍拒绝；当前输出缺项不会从旧执行、其他 node 或其他 Run 补齐。同名输出 ID 在不同 execution 中可以对应不同真实文件，已派发消费者的地址不会随重跑改绑。
+
+S1 自动化：`workflow_dispatch::rust_create::rust_retry` 经公开 manager HTTP、真实 Map、部分材料失败与两个真实子进程消费者核对合法 fail/retry、确认拒绝、recover 拒绝、旧效果和新材料；`runs::report_isolation_tests::script_reports_isolate_late_old_true_latest_false_and_material_scope` 在受控脚本报告提交边界制造交错，保存、读取、collect、complete 与材料解析仍走真实实现，不开放任意 execution 报告工具、不编辑 Run 记录。后者先 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture`，再 `cargo test --manifest-path backend/Cargo.toml --lib script_reports_isolate -- --nocapture`；完整入口仍为先构建静态页、独立绝对 `CARGO_TARGET_DIR` 下 `node scripts/test-backend.mjs`。这些受控结果不证明真实 manager／原生工具行为；P13/P14 的 H2 仍由真实专项与用户确认负责。
+
+### 脚本报告已保存但通知失败
+
+通知不是业务提交或交接完成的依据。外部 Herdr 等待期间，manager 已可从原 Run 详情或 status 读回报告 ID、body、canComplete 和全部 outputs，并按登记地址读取真实材料；通知拒绝后继续读取同一份事实，不重派脚本、不重做业务、不重报或回滚已保存配置／材料。成功业务的 `lifecycle.status=succeeded` 与通知 `failed` 可以同时成立，仍须 manager 核对并显式 complete。
+
+后台脚本没有等待报告结果的节点 Chat；通知状态沿既有 `workflow-report-delivery` stderr 诊断按 Run／report／目标 Chat 定位，`result=failed` 与类型化 `reason` 保留可用故障类别，不把业务成功解释成已通知。`submitted` 仅表示 Herdr 确认输入提交，不证明可靠接收、已呈现或用户已阅读。诊断不是第四份持久运行权威，也不是通知队列；没有自动业务重投、报告／通知重试或新增接收工具。服务日志应由部署环境保留。
+
+P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障设施：真实创建／保存后由测试独占 Herdr 制造立即拒绝和受控等待后拒绝，等待中与结束后分别经公开 HTTP 读回同一报告并读取两份实际输出；失败后连续观察至少 **1 秒**，核对配置 revision、Run／execution、报告、材料字节与全部外部调用不变，并确认通知 CLI 和诊断测试子进程退出。有限窗口不证明无限期无动作，受控宿主也不替代真实 manager 接收验收。
+
+### 报告来源与兼容读取
+
+脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
+
+原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+
+### 结构化失败与实际效果
+
+`failure` 为 `{stage,code,message,effects}`；精确字段类型与闭集见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
+
+| stage | code 与判定 |
+| --- | --- |
+| parse | `invalid-format`：非 UTF-8、非法 JSON、非对象；`ambiguous-request`：重复 JSON key，不能 last-wins |
+| validate | `missing-field`：缺必填字段；`invalid-format`：错类型、未知字段／版本／枚举；`ambiguous-request`：重复／多字段来源；`authorization-required`：必要批准未覆盖本次正文／保存；`identity-conflict`：Bot 身份冲突；`target-conflict`：目标或字段归属冲突 |
+| read_current | `identity-conflict`：目标 Bot 缺失／不唯一；`target-conflict`：normal 类型、绑定或完整目标配置变化；`revision-conflict`：真实 revision／基线不一致；`read-back-failed`：当前完整配置不可读取 |
+| save | `definition-in-use`：既有运行禁写拒绝；`write-failed`：合法保存失败；竞争冲突仍为 `identity-conflict`／`target-conflict`／`revision-conflict`，不降级为成功 |
+| read_back | `read-back-failed`：写后完整读回失败或不符；目标变化为 `target-conflict` |
+| materials | `material-write-failed`／`material-read-back-failed`：baseline、saved 或必要 handoff 无法生成／完整读回 |
+
+意外执行异常用当前阶段的 `execution-failed`，保留可得效果；不新增重试／恢复机制。业务错误在已派发 execution 的不可完成报告和失败事实中表达，不能伪装派发未发生。派发前定义错误仍按既有 HTTP 拒绝面，不把本表错误码当新增路由。报告保存失败仍 `report-save-failed`／`saved:false`，保存后通知失败仍保留报告和 outputs，不自动重投业务。`execution-failure-effects` 字面例明确 Bot 已写入而 saved 文件失败；原 baseline 重跑须仍因 revision 冲突拒绝，禁止回滚、刷新基线或按正文相同认定成功。
+
 ## 公开接口与持久字段参考
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
@@ -57,7 +117,7 @@ workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、M
 
 执行未保存 `childRunId` 时明确显示未保存关联，不从当前 Bot 的 `map_file`、名称或 Chat 猜测子 Run。目标记录缺失或不可读时，详情查询显示公开读取错误，不跳转到同名 Run、不修复记录，也不重新发起 Run／dispatch。查看、刷新和浏览器导航只读取保存事实，不恢复 Run 管理资格。
 
-长期真实页面回归由 `frontend/browser-tests/workflowChildNavigation.spec.ts` 拥有 P36，入口 `npm --prefix frontend run test:browser:build`；开发定向入口可追加 `-- workflowChildNavigation.spec.ts --workers=1`。场景从实际 scheduler 表单启动，通过公开 HTTP 派发、失败并明确 retry，核对当前／旧链接各自打开的实际详情与 `parent` 持久关联、同名干扰下的并列列表，以及刷新前后的三份 Run 文件和受控宿主调用不变。拒绝路径使用测试独占目录内真正缺失／不可读记录，不以组件 mock 或静态 href 文本代替导航结果。页面连接真实公开 SSE；宿主只使用记录型安全 Herdr 夹具，证据只证明页面／HTTP／持久化导航和无重派副作用，不证明原生 agent 工作质量或真实外部宿主生命周期。命令本身不是当前部署已通过的证据。
+长期真实页面回归由 `frontend/browser-tests/workflow/workflowChildNavigation.spec.ts` 拥有 P36，入口 `npm --prefix frontend run test:browser:build`；开发定向入口可追加 `-- workflowChildNavigation.spec.ts --workers=1`。场景从实际 scheduler 表单启动，通过公开 HTTP 派发、失败并明确 retry，核对当前／旧链接各自打开的实际详情与 `parent` 持久关联、同名干扰下的并列列表，以及刷新前后的三份 Run 文件和受控宿主调用不变。拒绝路径使用测试独占目录内真正缺失／不可读记录，不以组件 mock 或静态 href 文本代替导航结果。页面连接真实公开 SSE；宿主只使用记录型安全 Herdr 夹具，证据只证明页面／HTTP／持久化导航和无重派副作用，不证明原生 agent 工作质量或真实外部宿主生命周期。命令本身不是当前部署已通过的证据。
 
 ### 局部暂停、失败与并发推进
 
@@ -408,7 +468,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch security:
 node scripts/check-test-network-policy.mjs
 ```
 
-`backend/tests/workflow_dispatch/security.rs` 通过既有 S2/S3/S4 interface 检查：
+`backend/tests/workflow/security/security.rs` 通过既有 S2/S3/S4 interface 检查：
 
 - `two_run_role_and_retained_execution_matrix_rejects_scope_forgery`：同 Map/Task 的两个 Run，分别关联管理者、当前节点与保留旧执行；报告接收者/适用待办隔离；全部管理者路由拒绝节点及无关联调用；两个方向的 Run/role/execution/source 冒充和节点报告的自报归属均被拒绝。拒绝前后对照公开详情、三份记录字节及 150ms 窗口内实际外部调用。
 - `manager_authorization_rejects_cross_run_current_and_old_node_identity_collisions`：受控外部宿主返回跨 Run 重复身份，分别覆盖当前及保留旧节点执行与管理者角色冲突；全部管理者路由拒绝，不改两个 Run、不产生新外部调用。
@@ -441,7 +501,7 @@ Run running 或 paused 时，running node 可以完成；人工已处理并确�
 
 报告保存与首次完成共用既有同 Run 操作边界：false 先保存则首次 complete 拒绝；完成先生效，后续 false 不追溯撤销。门禁判断在后端操作边界内进行，不由 toolkit 预检替代，也不新增跨文件事务。Run 尚未结束时重复 complete 返回 `changed=false`，不再重审完成声明，不覆盖首次说明、时间、操作 ID、身份或成功历史，不重复自动关闭；完成后补 false 仍保持此幂等结果。拒绝返回 HTTP 409，并附 `code`、原因、`changed=false` 和当前查询字段；例如 `node-not-completable`、`completion-reason-required`、`node-unknown` 或 `run-terminal`。声明门禁拒绝使用 `report-not-completable`，原因明确给出当前适用最新报告 ID 与 false／缺失声明；没有当前报告时明确说明不存在，不伪造引用。拒绝不写当前事实、历史或报告，不发新通知或宿主命令。无关联身份仍按管理者权限拒绝，不接受额外 Run/归属字段。
 
-`backend/tests/workflow_dispatch/completion_gate.rs` 沿既有真实 HTTP、持久记录与受控宿主 seam 覆盖最新 true／false、无报告、历史缺字段、旧执行 true 与新执行 false、true 后 false、拒绝不变及通知等待。受控并发分别在报告已提交而通知未返回、完成已提交而自动关闭未返回时继续请求，按提交记录与公开响应核对两种先后，不以私有锁或任意 sleep 证明顺序。`recovery::manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports` 同时覆盖人工完成无当前 true 时拒绝、无 force 绕过及原 Chat 的实际声明；既有 workflow 回归仍从同一 Run 读取完成与报告，没有新页面动作或状态来源。
+`backend/tests/workflow/lifecycle/completion_gate.rs` 沿既有真实 HTTP、持久记录与受控宿主 seam 覆盖最新 true／false、无报告、历史缺字段、旧执行 true 与新执行 false、true 后 false、拒绝不变及通知等待。受控并发分别在报告已提交而通知未返回、完成已提交而自动关闭未返回时继续请求，按提交记录与公开响应核对两种先后，不以私有锁或任意 sleep 证明顺序。`recovery::manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports` 同时覆盖人工完成无当前 true 时拒绝、无 force 绕过及原 Chat 的实际声明；既有 workflow 回归仍从同一 Run 读取完成与报告，没有新页面动作或状态来源。
 
 ### 节点完成后自动关闭关联 Tab
 
@@ -453,11 +513,11 @@ Map node 的 `auto_close` 缺省为 `false`；dispatch/retry 读取派发时的�
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 通过真实 HTTP 和隔离 Herdr 命令副本核对 Map 双向修改、旧记录、权限及完成资格、当前执行精确目标、重复调用、工作中完成及非阻塞顺序。关闭 gate 在释放前保持命令未返回，测试先观察 complete 响应与同 Run 依赖节点真实派发，再释放并确认返回；10 秒有界等待仅防挂死，不是业务速度承诺。负向检查窗口为 150 ms；受控命令记录不证明真实 Herdr 的 Tab 移除或进程终止，真实外部效果需另行专属资源验收。
 
-P14/P17/P20/P21 的浏览器与诊断覆盖位于 `frontend/browser-tests/autoCloseIsolation.spec.ts`，通过 npm 浏览器入口运行。场景分别提供成功、命令拒绝、结构化 `confirmation_required`、派发后移走测试专属执行文件，以及缺少 Chat/空白 Tab 的有效历史执行。生产输出保留 Herdr 的机器错误码与说明，日志区分尝试、成功、失败和缺少目标跳过；不可用时有一次后端执行尝试，但没有外部 CLI 进程启动。测试读取外部 `invocations.jsonl`（含不支持命令），不只数 adapter 的已知关闭记录，以检查无强制确认或其他绕过。所有场景经合法 complete、同 Run 下游真实派发及重复 complete，比较公开结果、三份持久事实与真实 workflow DOM；750 ms 有界窗口只用于观察未重试/未显示关闭结果，不承诺无限未来。该替身覆盖不证明真实 Tab 已移除或终端已结束（P22）。
+P14/P17/P20/P21 的浏览器与诊断覆盖位于 `frontend/browser-tests/workflow/autoCloseIsolation.spec.ts`，通过 npm 浏览器入口运行。场景分别提供成功、命令拒绝、结构化 `confirmation_required`、派发后移走测试专属执行文件，以及缺少 Chat/空白 Tab 的有效历史执行。生产输出保留 Herdr 的机器错误码与说明，日志区分尝试、成功、失败和缺少目标跳过；不可用时有一次后端执行尝试，但没有外部 CLI 进程启动。测试读取外部 `invocations.jsonl`（含不支持命令），不只数 adapter 的已知关闭记录，以检查无强制确认或其他绕过。所有场景经合法 complete、同 Run 下游真实派发及重复 complete，比较公开结果、三份持久事实与真实 workflow DOM；750 ms 有界窗口只用于观察未重试/未显示关闭结果，不承诺无限未来。该替身覆盖不证明真实 Tab 已移除或终端已结束（P22）。
 
 P11/P12 的保存边界与去重检查位于 `auto_close::completion_commit`：使用独占临时数据和真实 Windows 文件访问限制，分别阻止当前事实替换与历史追加；从 complete 响应、独立详情读取、原始文件及实际 `tab close` 命令记录联合核对未提交不关闭、历史失败仍关闭并保留部分生效反馈。顺序重复应保留首次完成 ID、说明和历史；并发场景先用同 Run 真实派发的外部 gate 占住业务操作边界，再同时提交两个 complete 并确认两者均未返回，释放派发后核对只提交一份完成事实、只尝试一次关闭。关闭自身也可被 gate 挂起，不能阻止重复请求返回。负向命令观察窗口为 200 ms，不代表跨崩溃 exactly-once、持久投递或真实 Herdr 效果保证。
 
-`frontend/browser-tests/nodeAutoCloseLifecycle.spec.ts` 通过交付页面、真实 HTTP、隔离服务进程及 Herdr 命令记录覆盖后续生命周期：Run 创建后双向修改 Map，再新派发；失败后显式独立 retry，保留旧执行关联但使用当前设置；未完成 Chat 经 `/api/chats/resume` 打开新 Tab，保留原执行设置、Run/node 身份和 node-chat 角色，不重放发起输入；已完成 Chat 主动恢复后，新 Tab 不因旧完成事实再次关闭。恢复不等于重新派发，完成后的恢复也不会重建执行或完成事实。
+`frontend/browser-tests/workflow/nodeAutoCloseLifecycle.spec.ts` 通过交付页面、真实 HTTP、隔离服务进程及 Herdr 命令记录覆盖后续生命周期：Run 创建后双向修改 Map，再新派发；失败后显式独立 retry，保留旧执行关联但使用当前设置；未完成 Chat 经 `/api/chats/resume` 打开新 Tab，保留原执行设置、Run/node 身份和 node-chat 角色，不重放发起输入；已完成 Chat 主动恢复后，新 Tab 不因旧完成事实再次关闭。恢复不等于重新派发，完成后的恢复也不会重建执行或完成事实。
 
 该浏览器文件同时核对完成后的公开读取、真实 `page.reload()` 和服务进程重启不重放关闭；另在关闭 CLI 已记录尝试但被 gate 阻塞、尚未写出结果时终止测试独占进程树，再加载原 completed 事实，确认不补发。没有新增持久关闭结果字段，Run／历史／报告文件保持原字节。每个负向阶段检查命令记录的明确观察窗口为 300 ms，场景均标记 `@time-contract`；这是有界无重放证据，不是无限未来保证或跨崩溃 exactly-once 承诺。开发反馈入口为 `npm --prefix frontend run test:browser:build -- nodeAutoCloseLifecycle.spec.ts --workers=1`，时间分区校验沿用 `npm --prefix frontend run test:browser:partition`。这些受控命令场景不替代真实 Herdr 外部关闭效果验收。
 
@@ -546,7 +606,7 @@ Prompt 证据须捕获两种角色**实际收到**的公共 `first-enabled-run` 
 {"sessionId":"<公共 Session 能力取得的当前管理者身份>","nodeId":"A","reason":"已核实：缺少上游源文件，原 Chat 暂不能继续"}
 ```
 
-只有 running node 可首次 fail；`reason` 必须非空。成功保存 `status=failed`、`failure.stage=execution`、`failure.message` 和原执行 ID、Task、zone、真实 Chat，不改变 Run 派发资格。执行失败不凭空生成启动效果字段；派发失败的 `failure.effects` 仍保留启动时观察到的实际效果。history 的 `action=fail` 包含首次原因、前后状态、执行引用、管理者 actor、操作 ID 与时间。重复 failed 的 fail 返回 `changed=false`，不覆盖首次失败、当前文件或历史，不调用宿主；它也不能把派发失败改成执行失败。pending/completed 首次 fail 返回 `node-not-failable`，空原因返回 `failure-reason-required`。
+只有 running node 可首次 fail；`reason` 必须非空。成功保存 `status=failed`、`failure.stage=execution`、`failure.message` 并保留原 execution，不改变 Run 派发资格。Task／Map 保留原 Task、zone 与真实 Chat；脚本保留固定能力、zone、lifecycle 及真实输入，不要求或制造 Chat。执行失败不凭空生成启动效果字段；派发失败的 `failure.effects` 仍保留启动时观察到的实际效果。history 的 `action=fail` 包含首次原因、前后状态、执行引用、管理者 actor、操作 ID 与时间。重复 failed 的 fail 返回 `changed=false`，不覆盖首次失败、当前文件或历史，不调用宿主；它也不能把派发失败改成执行失败。pending/completed 首次 fail 返回 `node-not-failable`，空原因返回 `failure-reason-required`。
 
 ### 只核实派发失败：reconcile_dispatch
 
@@ -605,7 +665,7 @@ retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → 普�
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -- --nocapture
 ```
 
-`backend/tests/workflow_dispatch/retry.rs` 使用真实 HTTP TestServer、独占磁盘和外部记录型 Herdr 副本：
+`backend/tests/workflow/lifecycle/retry.rs` 使用真实 HTTP TestServer、独占磁盘和外部记录型 Herdr 副本：
 
 - `retry_saves_new_identity_before_full_trigger_and_retains_original_facts`：P13.03/P14.02/P15.03/P41.01/P68.07，初始指示门前的新身份落盘、独立字面完整触发配置、实际夹具 cwd/Workspace 和预留产物保留。
 - `late_old_reports_remain_history_without_controlling_new_execution`：P27.02/P41.01/P68.07，旧新报告交错、collect 仅当前适用 ID、旧身份不能变更当前执行、显式交接。
@@ -638,7 +698,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch recovery:
 node scripts/test-backend.mjs
 ```
 
-`backend/tests/workflow_dispatch/recovery.rs` 通过真实 HTTP TestServer、独占磁盘及外部记录型 Herdr 副本检验：
+`backend/tests/workflow/recovery/recovery.rs` 通过真实 HTTP TestServer、独占磁盘及外部记录型 Herdr 副本检验：
 
 - `execution_fail_preserves_original_chat_first_reason_and_history_without_host_actions`：P20.04、P38.02，首次原因/原身份/查询/磁盘一致、重复 fail 不生效。
 - `dispatch_reconciliation_keeps_uncertain_failed_then_confirmed_absence_pending` 和 `created_dispatch_reconciliation_observes_original_host_identity_without_start_or_input`：P39.01 的不确定/未创建/已创建三分支，原失败历史可读，不伪造提交效果。

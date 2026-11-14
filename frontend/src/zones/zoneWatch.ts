@@ -8,7 +8,7 @@
  * 「可能已过期」，恢复实况的唯一证据是又一份完整 `snapshot`；`refresh`/`health` 增量不构成恢复证据。
  */
 
-import type { ConnectionStatus } from '../chats/sessionFeed'
+import type { ConnectionStatus } from '../sessions/sessionFeed'
 
 export type ZoneWatchHealth = 'live' | 'error'
 

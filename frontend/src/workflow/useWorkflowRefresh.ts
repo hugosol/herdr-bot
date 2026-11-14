@@ -1,18 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { listBots, loadMap, type Bot, type WorkflowMap } from '../scheduler/schedulerApi'
-import { fetchTasks, type Task } from '../tasks/taskApi'
-import type { RunDetail } from './workflowApi'
+import { listBots, type Bot } from '../controllers/botController'
+import { loadMap, type WorkflowMap } from '../controllers/schedulerController'
+import { fetchTasks, type Task } from '../controllers/taskController'
+import { listRuns, loadRun, type RunDetail, type RunEntry } from '../controllers/workflowController'
 
-export type RunEntry = { id: string; managed: boolean; readError: string | null; run: { name?: string; map: string; createdAt: number; status: string; nodes: Record<string, { status: string }> } | null }
 export type CurrentDefinition = { map: WorkflowMap | null; mapError: string | null; bots: Bot[]; tasks: Task[]; catalogErrors: string[] }
-type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number }
-
-async function readJSON<T>(url: string): Promise<T> {
-  const response = await fetch(url)
-  const value = await response.json()
-  if (!response.ok) throw new Error(value.message ?? `查询失败：HTTP ${response.status}`)
-  return value
-}
+type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number | null; definitionsPending?: boolean }
 
 // These reads belong to the same refresh cycle as the Run facts. Keeping them
 // here prevents a slow definition/catalog read overlapping the next poll.
@@ -68,11 +61,18 @@ export function useWorkflowRefresh(id: string | null, active: boolean) {
       const requestRevision = revision.current
       const request = async () => {
         try {
-          const listing = await readJSON<{ runs: RunEntry[]; pollIntervalSeconds: number }>('/api/workflow/runs')
+          const listing = await listRuns()
           interval.current = listing.pollIntervalSeconds * 1000
           if (!visible()) return
-          const detail = id ? await readJSON<RunDetail>(`/api/workflow/runs/${encodeURIComponent(id)}`) : null
+          const detail = id ? await loadRun(id) : null
           if (!visible()) return
+          // A script may be reading a real definition file while its execution
+          // facts are already available. Do not hide those facts behind catalogs.
+          if (detail && requestRevision === revision.current) {
+            setSnapshot(previous => ({ id, entries: listing.runs, detail, at: previous?.id === id ? previous.at : null, definitionsPending: true,
+              current: previous?.id === id && previous.current ? previous.current : { map: null, mapError: null, bots: [], tasks: [], catalogErrors: [] },
+            }))
+          }
           const current = detail ? await currentDefinition(detail, visible) : null
           if (visible() && requestRevision === revision.current) {
             setSnapshot({ id, entries: listing.runs, detail, current, at: Date.now() })

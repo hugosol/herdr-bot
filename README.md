@@ -6,7 +6,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 
 - **chat**：查看当前与历史会话，恢复原生对话，以及监听会话完成后关机。
 - **task**：管理可复用的 Task 配置，用于发起 Chat；Task 本身不是实际对话。场景资源只选择一个 Suite 或不选，不再编辑 Task 可选扩展。
-- **suite**：维护场景工具集与按宿主声明的资源。探索／实现及 Pi 网页访问定义、旧部署的显式离线迁移见[使用说明](docs/usage.md#首批定义与显式离线迁移)；发布不自动操作用户生产 Task。
+- **suite**：维护场景工具集与按宿主声明的资源。探索／实现及 Pi 网页访问定义、旧部署的显式离线迁移见[使用说明](docs/usage.md#当前交付定义与旧格式更新)；发布不自动操作用户生产 Task。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **bot**：独立访问共享 Bot 能力定义，复用 scheduler 的原有管理功能。
 - **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。node 可配置 `report_policy: auto/manual`；Map 与 Run 图用圆角／切角节点区分策略，详情显示具体值。
@@ -126,26 +126,46 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 ## 源码归属
 
-源码按功能模块组织，不按视图、请求、hook 等技术类型分散目录：
+请求 controller 集中放置并按业务模块命名，便于查找全部请求；页面、hook 与业务实现仍按功能模块组织。前端 controller 发出 HTTP 请求，后端 controller 接收 HTTP 请求，两者分别位于各自的 `controllers/`，不共用实现：
 
 | 功能 | 前端 `frontend/src/` | 后端 `backend/src/` |
 | --- | --- | --- |
 | 应用装配 | `main.tsx`、`app/` | `lib.rs`、`main.rs` 及启动配置文件 |
+| HTTP 请求入口 | `controllers/*Controller.ts` | `controllers/*_controller.rs` |
 | Task 与选项目录 | `tasks/` | `tasks/`（含 `catalog.rs`） |
-| Chat 发起、恢复与历史 | `chats/` | `chats/`（含 Herdr adapter） |
-| 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
+| Chat 发起、恢复与历史 | `chats/` | `chats/` |
+| Herdr 宿主集成与位置映射 | — | `herdr/`（私有 `client.rs` CLI adapter、`identity.rs` 原生身份实现与 `placement.rs` 位置映射） |
+| 当前会话登记与观察 | `sessions/`（session feed、SSE adapter、观察 hook 与会话视图） | `sessions/`（含共享观察流） |
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
-| Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
-| Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
+| Bot 静态定义与编辑 | `scheduler/bots/`、`controllers/botController.ts`；展示仍由 scheduler 组合 | `scheduler/bots/`（含固定 Rust 能力） |
+| Map／node 静态定义与编辑 | `scheduler/maps/`、`controllers/schedulerController.ts` | `scheduler/maps/`；跨定义协调留在 `scheduler/mod.rs` |
+| Run 发起与预检 | `workflow/launch/`、`controllers/workflowController.ts` | `runs/preflight.rs` 与现有 Run 启动逻辑 |
+| Run 运行事实 | `workflow/`、`controllers/workflowController.ts` | `runs.rs` 与 `runs/` |
 | 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
-| 固定操作与关机 | `server/operationsApi.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
+| 固定操作与关机 | `controllers/serverController.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
 
-Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航，`schedulerApi.ts` 作为 HTTP adapter。
+前端普通请求集中在 `frontend/src/controllers/`，按业务命名为 `chatController.ts`、`botController.ts`、`taskController.ts`、`schedulerController.ts`、`workflowController.ts`、`suiteController.ts`、`zoneController.ts` 与 `serverController.ts`。文件浏览、Git（含 diff）、HTML 阅读资源地址和关机分别由 `zoneBrowserController.ts`、`zoneGitController.ts`、`zoneReaderController.ts`、`shutdownController.ts` 拥有；HTML 净化与链接安全规则仍归 reader 实现。这些 HTTP adapter 收拢请求地址、序列化、响应解析和错误分类，跨分区调用同一个业务 interface，不复制请求，也不保留旧目录或 `*Api.ts` 转发层。不增加全局万能请求封装或自动重试，保留各业务的拒绝、不可达和结果未确认语义。
 
-Run 专用 Chat 启动集中在 `backend/src/runs/startup.rs`：管理者启动、node 派发与显式 retry 共用启动、真实身份确认、关联保存、Chat 历史记录和首次指示提交协议，并由该 module 完成成功状态与失败收尾。管理者／node 的 Workspace、身份校验和关联写入差异在内部明确处理，不通过阶段回调拼装。调用者保留授权、预检、批次顺序及 node 的 Run 操作锁；独立 Chat 发起、会话恢复和人工恢复事实不进入此协议。
+后端 `controllers/*_controller.rs` 声明 HTTP 输入、调用业务操作，并保留必要的响应编排及 SSE 传输编码。重复请求契约位于 `controllers/extractors/`，通过 Axum `FromRequestParts`／`FromRequest` 提取；相同契约共享实现，不合并不同的查询串规则、body 上限、Content-Type 接受范围或拒绝顺序。已有原生 `Json`／`Query`／`Path` 契约继续保留，来源检查先于受保护请求的 body 解析，Run 重命名仍先检查路径身份。
+
+领域结果与错误的 HTTP 转换位于 `controllers/responses/`，按领域实现 `IntoResponse`；`HttpError<E>` 只承载原领域错误，不引入全局错误枚举或统一响应信封，controller 不互相调用错误转换。chief 委派的陈旧预览错误需要异步读取原始错误响应，保留专用异步转换；SSE、文件及 Run collect 流式响应不转成普通 JSON。权限判定、业务校验、锁、状态转换、持久化及外部执行仍由 `tasks`、`chats`、`chief`、`scheduler`、`runs`、`sessions`、`suites`、`zones`、`operations` 与 `shutdown` 等业务 module 拥有；业务 interface 返回领域结果与错误，不依赖 Axum。路由注册沿用 `lib.rs` 的装配位置，`AppState` 不变，不新增 Controller 类、万能调度器或旧 handler 转发层。HTTP interface 仍是测试面，业务约束在原 module 内保持 locality。
+
+页面与 hook 保留加载／草稿状态、取消与竞态控制、刷新及导航协调。会话与 zone 的 SSE 分别保留 `sessions/sseSessionFeed.ts`、`zones/zoneWatch.ts` 专门 adapter，不并入普通请求。`chats/ChatPanel.tsx` 组合当前会话登记与 Chat 历史；会话与关机继续共享应用级唯一的 SessionFeed，不随 tab 切换重建。测试沿用 fetch、事件源注入及真实浏览器 HTTP／SSE seam，不 mock controller；路径迁移不改变行为断言。
+
+Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `controllers/schedulerController.ts`，Bot 请求使用 `controllers/botController.ts`。Bot／Map 专属展示分别归 `scheduler/bots/` 与 `scheduler/maps/`；`BotTargetSelect.tsx` 表达 Task、Map、固定 Rust 能力三种互斥目标。Run 发起表单归 `workflow/launch/`，预检与发起请求归既有 `controllers/workflowController.ts`，HTTP 路径不变。共同草稿、刷新所有权及共享样式不随目录拆散。
+
+后端 `scheduler/bots/` 与 `scheduler/maps/` 分别拥有 Bot 和 Map／node 定义行为，Run 预检归 `runs/preflight.rs`。跨定义引用、协调范围及 chief 委派所需定义核对仍由 scheduler 持有；chief 授权与实际委派不移入 scheduler。归属调整不改变 revision／引用检查顺序、文件协调与 Run 操作锁范围、部分失败语义或数据格式，也不保留旧路径转发。
+
+Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
+
+位置映射集中在 `backend/src/herdr/placement.rs`：`Scenario` 枚举显式区分普通 Chat、chief、chief 委派 Task、根 Map 管理者、chief 委派 Map、node、嵌套 Map 管理者和历史 Chat 恢复，共用按名称放置、跟随管理者、恢复历史位置三套规则。interface 只接收位置依据，不接收整个 Task／Run／AppState；zone 仍是稳定逻辑工作位置，执行目录要求与宿主 Workspace 选择分开表达。映射只进行必要的只读查询，不创建 Tab、启动 agent 或修改历史。
+
+Resume 先解析目录，完成原生加载目标与环境检查后再查询 Workspace；映射结果区分明确 cwd 与交给 Herdr 选择目录，后者仍须在启动后确认实际 cwd。位置降级事实交回 `resume.rs` 的 `degradation::Feedback`，与环境、原生文件降级统一呈现；查询失败不当作不存在，不新增重试或缓存。CLI adapter 与独立进程 Herdr fixture 的测试 seam 保持不变。
+
+Run 专用 Chat 启动集中在 `backend/src/runs/startup.rs`：管理者启动、node 派发与显式 retry 共用启动、真实身份确认、关联保存、Chat 历史记录和首次指示提交协议，并由该 module 完成成功状态与失败收尾。位置选择交给上述映射 module，身份校验和关联写入差异仍在启动协议内部明确处理，不通过阶段回调拼装。调用者保留授权、预检、批次顺序及 node 的 Run 操作锁；独立 Chat 发起、会话恢复和人工恢复事实不进入此协议。
 
 跨模块引用指向实际所属文件，不通过旧路径兼容转发。前端全局样式暂集中在 `app/styles.css`；后端 `runs.rs` 与同名目录共同构成一个 Rust 模块。目录归类不改变 Task、Chat、Map、Run 的含义或执行时序。
 
 系统持久数据的读写、枚举、删除，以及产品代码直接执行的文件变更统一经过 `files.rs`。普通 JSON 读改存与条件发布使用常用操作；复合操作通过 `FileStore::with`／`with_async` 的受限访问对象完成，不能嵌套取得协调范围，也不能在范围内调用 Herdr／Git 等外部操作。目录与后代文件重叠协调，不相关的数据仍独立推进；调用者保留业务规则及 Run 操作锁，不持有原生文件锁。统一文件入口不改变文件格式及部分生效语义，定义路径按上文单独切换，不提供跨文件事务或自动修复；适用范围和取舍见 [ADR 0016](docs/adr/0016-unified-file-persistence.md)。
 
-测试继续位于 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/`，不随源码迁移；执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。
+测试保留 `frontend/tests/`、`frontend/browser-tests/` 和 `backend/tests/` 三个运行层级，内部按领域与行为归组。后端通过 `backend/Cargo.toml` 的 `[[test]]` 显式登记入口，目录迁移保留原 target 名称与执行粒度；新增 target 需要登记。共享夹具与业务用例分开，跨入口契约归 `app`，夹具自身回归归 `infrastructure`。执行入口与安全约束见[测试指引](docs/agents/testing.md)。历史 ADR 和研究记录保留当时的路径语境。
