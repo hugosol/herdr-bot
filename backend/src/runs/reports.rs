@@ -20,7 +20,7 @@ pub struct Report {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub can_complete: Option<bool>,
     #[serde(default, deserialize_with = "crate::scheduler::object_array")]
-    pub outputs: Vec<crate::scheduler::ResolvedFile>,
+    pub outputs: Vec<crate::scheduler::maps::ResolvedFile>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -73,7 +73,7 @@ pub(crate) struct ReportRequest {
     pub(crate) body: String,
     pub(crate) can_complete: bool,
     #[serde(default, deserialize_with = "crate::scheduler::object_array")]
-    pub(crate) outputs: Vec<crate::scheduler::ResolvedFile>,
+    pub(crate) outputs: Vec<crate::scheduler::maps::ResolvedFile>,
 }
 
 // Retained execution identities may append history, never control current work.
@@ -191,7 +191,7 @@ pub(super) struct ReportSubmission {
     pub origin: ReportOrigin,
     pub body: String,
     pub can_complete: bool,
-    pub outputs: Vec<crate::scheduler::ResolvedFile>,
+    pub outputs: Vec<crate::scheduler::maps::ResolvedFile>,
 }
 
 // Both real origins use one report authority, output validation and delivery.

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
-import { fetchTasks, type Task } from '../controllers/taskController'
-import { listMaps, type MapCatalog } from '../controllers/schedulerController'
+import { GroupOptions, useGroupRefresh } from '../../app/entityGroups'
+import { fetchTasks, type Task } from '../../controllers/taskController'
+import { listMaps, type MapCatalog } from '../../controllers/schedulerController'
 
 type Props = { content: string; disabled: boolean; onChange: (content: string) => void }
 
-export function BotTaskSelect({ content, disabled, onChange }: Props) {
+export function BotTargetSelect({ content, disabled, onChange }: Props) {
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)

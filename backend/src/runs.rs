@@ -9,6 +9,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 pub(crate) mod reports;
+pub(crate) mod preflight;
 #[cfg(test)]
 mod report_isolation_tests;
 pub(crate) mod recovery;
@@ -68,13 +69,13 @@ pub struct NodeExecution {
     pub target: ExecutionTarget,
     pub zone: String,
     #[serde(default)]
-    pub input_rule: Option<Vec<crate::scheduler::InputRule>>,
+    pub input_rule: Option<Vec<crate::scheduler::maps::InputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
-    pub output_rule: Option<Vec<crate::scheduler::OutputRule>>,
+    pub output_rule: Option<Vec<crate::scheduler::maps::OutputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
-    pub inputs: Option<Vec<crate::scheduler::ResolvedFile>>,
+    pub inputs: Option<Vec<crate::scheduler::maps::ResolvedFile>>,
     #[serde(default)]
-    pub report_policy: crate::scheduler::ReportPolicy,
+    pub report_policy: crate::scheduler::maps::ReportPolicy,
     #[serde(default)]
     pub auto_close: bool,
 }
@@ -111,7 +112,7 @@ pub struct Run {
     pub workspace_name: String,
     pub user_input: String,
     #[serde(default)]
-    pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    pub file_inputs: Vec<crate::scheduler::maps::ResolvedFile>,
     #[serde(default)]
     pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
@@ -360,7 +361,7 @@ pub(crate) enum RunError {
     Invalid(serde_json::Value),
     Forbidden(serde_json::Value),
     Failed(serde_json::Value),
-    Preflight(crate::scheduler::PreflightFailure),
+    Preflight(crate::runs::preflight::PreflightFailure),
     Task(crate::tasks::TaskError),
 }
 pub(crate) type RunResult = Result<RunOutcome, RunError>;
@@ -474,10 +475,10 @@ pub(crate) async fn rename_run(state: AppState, id: String, input: RenameRequest
     }
 }
 
-pub(crate) async fn start_run(state: AppState, map: String, input: crate::scheduler::RunPreflightRequest) -> RunResult {
+pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::preflight::RunPreflightRequest) -> RunResult {
     let map_lock = state.runs.map_lock(&map).await;
     let map_operation = map_lock.lock().await;
-    let checked = match crate::scheduler::check_run_preflight(&state, &map, &input).await {
+    let checked = match crate::runs::preflight::check_run_preflight(&state, &map, &input).await {
         Ok(v) => v,
         Err(e) => return Err(RunError::Preflight(e)),
     };
@@ -515,8 +516,8 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::schedu
 /// Previewing allocates no records and never invents a parent execution.
 pub(crate) fn root_run(
     map: String,
-    input: crate::scheduler::RunPreflightRequest,
-    checked: crate::scheduler::RunPreflight,
+    input: crate::runs::preflight::RunPreflightRequest,
+    checked: crate::runs::preflight::RunPreflight,
     task: &crate::tasks::Task,
     id: String,
 ) -> Run {
@@ -707,7 +708,7 @@ fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) ->
     reasons
 }
 async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
-    let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+    let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
     let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
     let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
     let mut value = reports::summary(state, run, include_reports).await?;
@@ -737,7 +738,7 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         let mut run = state.runs.read(&state, &run.id).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
         for id in input.nodes {
-            let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+            let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
             let reasons = blocked(&run, &id, &dependencies);
             if !reasons.is_empty() {
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));

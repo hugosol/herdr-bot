@@ -17,8 +17,8 @@ pub(super) fn launch(state: AppState, run: Run, node_id: String) {
         let execution_id = execution.id.clone();
         let outcome = tokio::task::spawn_blocking(move || runtime.block_on(async {
             match execution.script().expect("accepted script").rust_script.as_str() {
-                "create_blank_bot" => crate::scheduler::script_bots::create_blank(&owned, &run, &execution).await,
-                "save_bot_guides" => crate::scheduler::script_bots::save_guides(&owned, &run, &execution).await,
+                "create_blank_bot" => crate::scheduler::bots::script_bots::create_blank(&owned, &run, &execution).await,
+                "save_bot_guides" => crate::scheduler::bots::script_bots::save_guides(&owned, &run, &execution).await,
                 _ => unreachable!("validated fixed capability"),
             }
         })).await;

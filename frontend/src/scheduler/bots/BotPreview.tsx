@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import type { Bot } from '../controllers/botController'
-import { EditableTitle } from '../app/EditableTitle'
+import type { Bot } from '../../controllers/botController'
+import { EditableTitle } from '../../app/EditableTitle'
 
 const documents = [
   { key: 'when', title: 'when' },

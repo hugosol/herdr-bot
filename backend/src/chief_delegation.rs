@@ -179,7 +179,7 @@ impl Launch {
 pub(crate) enum Error {
     Conflict(&'static str, String), Storage(io::Error), Chief(crate::chief::Error), Chat(chats::Error),
     Task(crate::tasks::TaskError), Directory(crate::scheduler::DirectoryError), Definition(crate::scheduler::DelegationDefinitionError),
-    Preflight(crate::scheduler::PreflightFailure), Stale(Box<Error>), Run(crate::runs::RunError), NotFound,
+    Preflight(crate::runs::preflight::PreflightFailure), Stale(Box<Error>), Run(crate::runs::RunError), NotFound,
 }
 pub(crate) enum Outcome { Created(ChatCreationView), Run(crate::runs::RunOutcome) }
 fn rejected(code: &'static str, message: impl Into<String>) -> Error { Error::Conflict(code, message.into()) }
@@ -196,15 +196,15 @@ async fn resolve(
         ));
     }
     let cwd = chats::chat_zone(state, &request.zone_id).await.map_err(Error::Chat)?;
-    let (bot, target) = crate::scheduler::delegation_bot(&state.bot_directory, &request.bot_id).map_err(Error::Directory)?;
+    let (bot, target) = crate::scheduler::bots::delegation_bot(&state.bot_directory, &request.bot_id).map_err(Error::Directory)?;
     let (task_id, map_file) = match target {
-        crate::scheduler::DelegationTarget::Task(id) => {
+        crate::scheduler::bots::DelegationTarget::Task(id) => {
             if request.manager_task_id.is_some() {
                 return Err(rejected("delegation-manager-unexpected", "Task 型 Bot 不接受 manager Task。"));
             }
             (id, None)
         }
-        crate::scheduler::DelegationTarget::Map(file) => {
+        crate::scheduler::bots::DelegationTarget::Map(file) => {
             let manager = request.manager_task_id.as_ref().filter(|id| !id.trim().is_empty())
                 .ok_or_else(|| rejected("delegation-manager-required", "Map 型 Bot 必须明确指定 manager Task。"))?;
             (manager.clone(), Some(file))
@@ -250,7 +250,7 @@ async fn resolve(
         let root = chats::chat_zone(state, &material.zone_id).await.map_err(Error::Chat)?;
         let path = crate::zones::browse::checked_file(&root, &material.path)
             .map_err(|error| Error::Chat(chats::Error::Browse(error)))?;
-        crate::scheduler::check_input_file(&path)
+        crate::runs::preflight::check_input_file(&path)
             .map_err(|error| rejected("delegation-material-invalid", error))?;
         materials.push(Material {
             id: material.id.clone(),
@@ -266,12 +266,12 @@ async fn resolve(
         ));
     }
     let run = if let Some(file) = &map_file {
-        let input = crate::scheduler::RunPreflightRequest {
+        let input = crate::runs::preflight::RunPreflightRequest {
             manager_task_id: task.id.clone(), zone: request.zone_id.clone(), user_input: request.input.clone(),
-            file_inputs: materials.iter().map(|m| crate::scheduler::ResolvedFile { id: m.id.clone(), path: m.path.clone() }).collect(),
+            file_inputs: materials.iter().map(|m| crate::scheduler::maps::ResolvedFile { id: m.id.clone(), path: m.path.clone() }).collect(),
         };
-        let checked = crate::scheduler::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
-        if let Some(message) = crate::scheduler::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
+        let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
+        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
             .map_err(|message| rejected("delegation-material-invalid", message))? {
             return Err(rejected("delegation-material-invalid", message));
         }

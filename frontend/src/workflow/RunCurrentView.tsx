@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { WorkflowRunGraph } from './WorkflowRunGraph'
-import { orderedMapNodeIds } from '../scheduler/mapNodeOrder'
+import { orderedMapNodeIds } from '../scheduler/maps/mapNodeOrder'
 import { WorkflowStatus } from './WorkflowStatus'
 import type { CurrentDefinition } from './useWorkflowRefresh'
 import type { Execution, FileAddress, Report, Run } from '../controllers/workflowController'

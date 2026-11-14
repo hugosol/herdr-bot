@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { MapInputsEditor } from '../../src/scheduler/MapInputsEditor'
+import { MapInputsEditor } from '../../src/scheduler/maps/MapInputsEditor'
 
 afterEach(() => vi.unstubAllGlobals())
 

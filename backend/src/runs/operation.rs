@@ -3,7 +3,7 @@ use super::*;
 use std::borrow::Cow;
 
 pub(super) enum Action {
-    PrepareInputs { files: Vec<crate::scheduler::ResolvedFile>, confirmed: bool, reason: String },
+    PrepareInputs { files: Vec<crate::scheduler::maps::ResolvedFile>, confirmed: bool, reason: String },
     Complete { node_id: String, reason: String },
     Finish,
     Pause,

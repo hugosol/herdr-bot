@@ -7,7 +7,7 @@ use super::operation::{Action, Decision};
 pub(crate) struct PrepareInputsRequest {
     pub(crate) session_id: String,
     #[serde(deserialize_with = "crate::scheduler::object_array")]
-    pub(crate) file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    pub(crate) file_inputs: Vec<crate::scheduler::maps::ResolvedFile>,
     pub(crate) confirmed: bool,
     pub(crate) reason: String,
 }
@@ -19,7 +19,7 @@ pub(crate) async fn manager_prepare_inputs(state: AppState, input: PrepareInputs
 }
 
 pub(super) fn prepare(
-    state: &AppState, run: &mut Run, files: Vec<crate::scheduler::ResolvedFile>,
+    state: &AppState, run: &mut Run, files: Vec<crate::scheduler::maps::ResolvedFile>,
     confirmed: bool, reason: String,
 ) -> Result<Decision, String> {
     if !matches!(run.status.as_str(), "running" | "paused") {
@@ -28,7 +28,7 @@ pub(super) fn prepare(
     if confirmed && reason.trim().is_empty() {
         return Decision::reject("input-confirmation-required", "确认输入前请按 Map 输入要求检查业务内容，并说明满足要求的依据。");
     }
-    if let Some(message) = crate::scheduler::check_prepared_inputs(&state.map_directory, &run.map, &files, confirmed)? {
+    if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, &run.map, &files, confirmed)? {
         return Decision::reject("run-inputs-invalid", message);
     }
     let before = serde_json::json!({"inputsReady":run.inputs_ready,"fileInputs":run.file_inputs});

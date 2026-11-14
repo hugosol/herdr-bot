@@ -1,5 +1,5 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { WorkflowMap } from '../controllers/schedulerController'
+import type { WorkflowMap } from '../../controllers/schedulerController'
 import { orderedMapNodeIds } from './mapNodeOrder'
 import './map-graph.css'
 

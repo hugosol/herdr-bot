@@ -1,8 +1,8 @@
 import { useEffect, useId, useState } from 'react'
-import type { Bot, BotCatalog } from '../controllers/botController'
-import type { WorkflowMap } from '../controllers/schedulerController'
-import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
-import { fetchTasks, type TaskResult } from '../controllers/taskController'
+import type { Bot, BotCatalog } from '../../controllers/botController'
+import type { WorkflowMap } from '../../controllers/schedulerController'
+import { GroupOptions, useGroupRefresh } from '../../app/entityGroups'
+import { fetchTasks, type TaskResult } from '../../controllers/taskController'
 import { NodeSettings, type NodeSettingsValue } from './NodeSettings'
 
 type NodeEdit = {

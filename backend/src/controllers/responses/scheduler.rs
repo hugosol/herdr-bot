@@ -1,5 +1,6 @@
 use axum::{Json, http::StatusCode, response::{IntoResponse, Response}};
-use crate::scheduler::{DirectoryError, PreflightFailure};
+use crate::scheduler::DirectoryError;
+use crate::runs::preflight::PreflightFailure;
 use super::HttpError;
 
 impl IntoResponse for HttpError<DirectoryError> {

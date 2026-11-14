@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import { MapGraph } from '../../src/scheduler/MapGraph'
+import { MapGraph } from '../../src/scheduler/maps/MapGraph'
 
 import { map } from '../support/unorderedMap'
 

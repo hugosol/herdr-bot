@@ -1,23 +1,23 @@
 //! Run-only Chat preparation, startup protocol and failure finalization.
 use super::*;
 
-async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::InputRule]) -> Result<Vec<crate::scheduler::ResolvedFile>, String> {
-    let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
+async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::maps::InputRule]) -> Result<Vec<crate::scheduler::maps::ResolvedFile>, String> {
+    let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::maps::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
     let mut inputs = Vec::with_capacity(rules.len());
     for rule in rules {
         let (id, path) = match rule {
-            crate::scheduler::InputRule::File { id, path, zone_id } => {
-                if !crate::scheduler::valid_relative_file(path) { return Err(format!("输入 {id} 必须是 zone 内相对路径；请迁移 Map 后启动新 Run。")); }
+            crate::scheduler::maps::InputRule::File { id, path, zone_id } => {
+                if !crate::scheduler::maps::valid_relative_file(path) { return Err(format!("输入 {id} 必须是 zone 内相对路径；请迁移 Map 后启动新 Run。")); }
                 let zone_id = zone_id.as_deref().or(run.manager_zone_id.as_deref()).ok_or("旧 Run 缺少 zone 绑定快照；请迁移 Map 后启动新 Run")?;
                 let root = run.zone_bindings.get(zone_id).ok_or_else(|| format!("zone {zone_id} 不在本次 Run 启动快照中；请启动新 Run"))?;
                 let absolute = crate::zones::browse::checked_file(root, path).map_err(|e| e.message())?;
                 (id, absolute)
             },
-            crate::scheduler::InputRule::Run { id, input_id } => {
+            crate::scheduler::maps::InputRule::Run { id, input_id } => {
                 let Some(file) = run.file_inputs.iter().find(|file| file.id == *input_id) else { continue; };
                 (id, file.path.clone())
             }
-            crate::scheduler::InputRule::Node { id, node_id, output_id } => {
+            crate::scheduler::maps::InputRule::Node { id, node_id, output_id } => {
                 let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
                 let path = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
                     .find_map(|report| report.outputs.iter().find(|file| file.id == *output_id)).map(|file| file.path.clone())
@@ -25,8 +25,8 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
                 (id, path)
             }
         };
-        crate::scheduler::check_input_file(&path).map_err(|error| format!("输入 {id}：{error}"))?;
-        inputs.push(crate::scheduler::ResolvedFile { id: id.clone(), path });
+        crate::runs::preflight::check_input_file(&path).map_err(|error| format!("输入 {id}：{error}"))?;
+        inputs.push(crate::scheduler::maps::ResolvedFile { id: id.clone(), path });
     }
     Ok(inputs)
 }
@@ -191,7 +191,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).map(|previous| NodeExecution {
-                id: crate::chats::new_creation_id(), target: match &previous.target { ExecutionTarget::Chat(chat) => ExecutionTarget::Chat(ChatExecution { task_id: chat.task_id.clone(), agent: chat.agent, chat: None, child_run_id: None }), ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::RustScript, rust_script: script.rust_script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }) }, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false,
+                id: crate::chats::new_creation_id(), target: match &previous.target { ExecutionTarget::Chat(chat) => ExecutionTarget::Chat(ChatExecution { task_id: chat.task_id.clone(), agent: chat.agent, chat: None, child_run_id: None }), ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::RustScript, rust_script: script.rust_script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }) }, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false,
             });
         }
         node.status = "failed".into();
@@ -221,7 +221,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     *stage = "child-preflight";
     let zone_id = target.zone_id.clone();
     let execution = parent.nodes[node_id].execution.as_ref().ok_or("缺少父 execution")?;
-    let input = crate::scheduler::RunPreflightRequest {
+    let input = crate::runs::preflight::RunPreflightRequest {
         manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
         file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
     };
@@ -230,7 +230,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     // Keep parent reference + child initialization indivisible to deletion,
     // but release both gates before any Herdr call or association wait.
     let _references = state.runs.history_references.lock().await;
-    let checked = crate::scheduler::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
+    let checked = crate::runs::preflight::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
     let child = Run {
         id: crate::chats::new_creation_id(), name: None, map: map.to_owned(),
         created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,

@@ -137,9 +137,10 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 | Herdr 宿主集成与位置映射 | — | `herdr/`（私有 `client.rs` CLI adapter、`identity.rs` 原生身份实现与 `placement.rs` 位置映射） |
 | 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
-| Bot 静态定义请求 | `controllers/botController.ts`；展示仍由 scheduler 组合 | `scheduler/` |
-| Map 静态定义与发起预检 | `scheduler/` | `scheduler/` |
-| Run 运行事实 | `workflow/` | `runs.rs` 与 `runs/` |
+| Bot 静态定义与编辑 | `scheduler/bots/`、`controllers/botController.ts`；展示仍由 scheduler 组合 | `scheduler/bots/`（含固定 Rust 能力） |
+| Map／node 静态定义与编辑 | `scheduler/maps/`、`controllers/schedulerController.ts` | `scheduler/maps/`；跨定义协调留在 `scheduler/mod.rs` |
+| Run 发起与预检 | `workflow/launch/`、`controllers/workflowController.ts` | `runs/preflight.rs` 与现有 Run 启动逻辑 |
+| Run 运行事实 | `workflow/`、`controllers/workflowController.ts` | `runs.rs` 与 `runs/` |
 | 系统文件持久化与协调 | — | `files.rs`（常用操作与受限协调范围） |
 | 固定操作与关机 | `controllers/serverController.ts`、`server/shutdown/` | `operations.rs`、`shutdown/`（实际关机动作在 `power_off.rs`） |
 
@@ -151,7 +152,9 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 页面与 hook 保留加载／草稿状态、取消与竞态控制、刷新及导航协调。会话与 zone 的 SSE 分别保留 `chats/sseSessionFeed.ts`、`zones/zoneWatch.ts` 专门 adapter，不并入普通请求。测试沿用 fetch、事件源注入及真实浏览器 HTTP／SSE seam，不 mock controller；路径迁移不改变行为断言。
 
-Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `controllers/schedulerController.ts`，Bot 请求使用 `controllers/botController.ts`。
+Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航；Map 请求使用 `controllers/schedulerController.ts`，Bot 请求使用 `controllers/botController.ts`。Bot／Map 专属展示分别归 `scheduler/bots/` 与 `scheduler/maps/`；`BotTargetSelect.tsx` 表达 Task、Map、固定 Rust 能力三种互斥目标。Run 发起表单归 `workflow/launch/`，预检与发起请求归既有 `controllers/workflowController.ts`，HTTP 路径不变。共同草稿、刷新所有权及共享样式不随目录拆散。
+
+后端 `scheduler/bots/` 与 `scheduler/maps/` 分别拥有 Bot 和 Map／node 定义行为，Run 预检归 `runs/preflight.rs`。跨定义引用、协调范围及 chief 委派所需定义核对仍由 scheduler 持有；chief 授权与实际委派不移入 scheduler。归属调整不改变 revision／引用检查顺序、文件协调与 Run 操作锁范围、部分失败语义或数据格式，也不保留旧路径转发。
 
 Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
 

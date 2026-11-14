@@ -147,7 +147,7 @@ pub(crate) async fn rename_run(
 pub(crate) async fn start_run(
     State(state): State<AppState>,
     Path(map): Path<String>,
-    input: CommandJson<crate::scheduler::RunPreflightRequest, input::Start>,
+    input: CommandJson<crate::runs::preflight::RunPreflightRequest, input::Start>,
 ) -> RunHttpResult {
     runs::start_run(state, map, input.value).await.map(RunResponse).map_err(HttpError)
 }

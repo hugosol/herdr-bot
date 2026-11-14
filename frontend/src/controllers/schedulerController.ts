@@ -1,33 +1,6 @@
 import type { BotRevision } from './botController'
 
 export type MapFileInput = { id: string; required: boolean; description?: string }
-export type RunFileInput = { id: string; path: string }
-export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
-export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
-export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
-
-export async function preflightRun(file: string, input: RunPreflightInput): Promise<RunPreflightResult> {
-  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/preflight`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
-  })
-  const value = await response.json()
-  if (response.ok && typeof value?.workspaceName === 'string') return { kind: 'valid', workspaceName: value.workspaceName }
-  if (!response.ok && value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) {
-    return { kind: 'rejected', message: value.message, issues: value.issues }
-  }
-  throw new Error(value?.message ?? `启动预检未取得有效响应：HTTP ${response.status}`)
-}
-
-export async function startRun(file: string, input: RunPreflightInput): Promise<{ id: string } | Extract<RunPreflightResult, { kind: 'rejected' }>> {
-  const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/runs`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
-  })
-  const value = await response.json()
-  // Startup failures also carry a Run ID and belong on its refreshable detail.
-  if (typeof value?.id === 'string') return { id: value.id }
-  if (value?.code === 'run-preflight-rejected' && Array.isArray(value.issues)) return { kind: 'rejected', message: value.message, issues: value.issues }
-  throw new Error(value?.message ?? `启动未取得有效响应：HTTP ${response.status}；不会自动重试，请先核实现场。`)
-}
 
 /** Only a membership-only write may advance an open draft's optimistic revision. */
 export function groupOnlyRevision(previous: BotRevision | null, next: BotRevision): boolean {

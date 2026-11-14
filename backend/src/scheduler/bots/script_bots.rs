@@ -1,6 +1,11 @@
 //! Fixed blank-creation and exact three-guide merge businesses. Named files
 //! are the only parameters; both use the public Bot save's revision/path checks.
-use super::*;
+use super::{Bot, BotSave, bot_target, save_bot_definition};
+use crate::scheduler::{DefinitionRevision, edit_error, prepare_directory, with_definitions};
+use crate::scheduler::maps::{ResolvedFile, map_error, read_map};
+use crate::files::{FileStore, PublishMode};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 pub(crate) struct Outcome {
@@ -172,7 +177,7 @@ impl TargetSnapshot {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Baseline {
-    schema_version: u32, kind: String, bot: Bot, revision: BotRevision,
+    schema_version: u32, kind: String, bot: Bot, revision: DefinitionRevision,
     target: TargetSnapshot, request: CreateRequest,
 }
 #[derive(Deserialize)]

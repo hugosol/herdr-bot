@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { NodeSettingsValue } from './NodeSettings'
+import type { NodeSettingsValue } from './maps/NodeSettings'
 import { listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, updateBotGroup, type BotRevision, type BotCatalog } from '../controllers/botController'
 import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type WorkflowMap, type MapCatalog } from '../controllers/schedulerController'
 
