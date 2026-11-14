@@ -40,7 +40,7 @@ class ChiefMapAcceptance(ChiefEntryAcceptance):
             budgets={'requestMs': 30000, 'confirmationMs': 20000,
                      'herdrReadinessMs': 30000, 'initialPromptMs': 30000,
                      'driverNativeStartupSeconds': args.timeout,
-                     'startupBudgetSource': 'backend/src/chats/herdr.rs:START_READY_TIMEOUT_MS/PROMPT_TIMEOUT',
+                     'startupBudgetSource': 'backend/src/herdr/client.rs:START_READY_TIMEOUT_MS/PROMPT_TIMEOUT',
                      'onlineSeconds': 10, 'retentionSeconds': 30, 'maintenanceSeconds': 5,
                      'noAutomaticActionObservationSeconds': 46})
         self.capability = self.scenario.startswith(('gap-', 'reject-', 'stage-reject-')) or self.scenario == 'abandon'

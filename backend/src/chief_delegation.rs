@@ -480,7 +480,7 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
             Arc::clone(&job),
             prepared.facts.task,
             prepared.preset,
-            chats::placement::Scenario::ChiefDelegatedTask { cwd: &prepared.facts.cwd },
+            crate::herdr::placement::Scenario::ChiefDelegatedTask { cwd: &prepared.facts.cwd },
             String::new(),
             None,
             Some(launch),

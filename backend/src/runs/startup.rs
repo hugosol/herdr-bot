@@ -290,7 +290,7 @@ async fn protocol(
 ) -> Result<(), String> {
     *stage = "workspace";
     let (workspace, directory) = {
-        use crate::chats::placement::Scenario;
+        use crate::herdr::placement::Scenario;
         let scenario = match &role {
             Role::Manager => match delegation {
                 None => Scenario::RootMap { cwd: &run.zone, workspace_name: &run.workspace_name },
@@ -423,7 +423,7 @@ async fn protocol(
     effects.input_attempted = true;
     effects.input_outcome = Some(InputOutcome::Unknown);
     if let Err(error) = state.herdr.prompt(&agent, &text).await {
-        if matches!(error, crate::chats::herdr::HerdrError::CommandFailed { .. }) {
+        if matches!(error, crate::herdr::HerdrError::CommandFailed { .. }) {
             effects.input_outcome = Some(InputOutcome::Rejected);
         }
         return Err(error.message());

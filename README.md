@@ -132,7 +132,8 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 | --- | --- | --- |
 | 应用装配 | `main.tsx`、`app/` | `lib.rs`、`main.rs` 及启动配置文件 |
 | Task 与选项目录 | `tasks/` | `tasks/`（含 `catalog.rs`） |
-| Chat 发起、恢复与历史 | `chats/` | `chats/`（`placement.rs` 位置映射、`herdr.rs` CLI adapter） |
+| Chat 发起、恢复与历史 | `chats/` | `chats/` |
+| Herdr 宿主集成与位置映射 | — | `herdr/`（私有 `client.rs` CLI adapter、`identity.rs` 原生身份实现与 `placement.rs` 位置映射） |
 | 当前会话登记与观察 | `chats/` 中的 session feed 与会话视图 | `sessions/`（含共享观察流） |
 | zone、文件浏览与 Git | `zones/`，内部按 `browser/`、`git/`、`reader/` 归类 | `zones/`，Git 操作位于 `zones/git/` |
 | Map、Bot 静态定义与发起预检 | `scheduler/` | `scheduler/` |
@@ -142,7 +143,9 @@ connect-bot 会话写入另有限制：只接受同机来源，见 [ADR 0004](do
 
 Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`：草稿归属、离开许可、读取结果归属、保存结果与删除后的状态由同一 module 拥有，interface 提供可展示状态与用户动作，不暴露原始 setter。`SchedulerPanel.tsx` 保留渲染、确认框展示与焦点，App 保留主导航，`schedulerApi.ts` 作为 HTTP adapter。
 
-位置映射集中在 `backend/src/chats/placement.rs`：`Scenario` 枚举显式区分普通 Chat、chief、chief 委派 Task、根 Map 管理者、chief 委派 Map、node、嵌套 Map 管理者和历史 Chat 恢复，共用按名称放置、跟随管理者、恢复历史位置三套规则。interface 只接收位置依据，不接收整个 Task／Run／AppState；zone 仍是稳定逻辑工作位置，执行目录要求与宿主 Workspace 选择分开表达。映射只进行必要的只读查询，不创建 Tab、启动 agent 或修改历史。
+Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
+
+位置映射集中在 `backend/src/herdr/placement.rs`：`Scenario` 枚举显式区分普通 Chat、chief、chief 委派 Task、根 Map 管理者、chief 委派 Map、node、嵌套 Map 管理者和历史 Chat 恢复，共用按名称放置、跟随管理者、恢复历史位置三套规则。interface 只接收位置依据，不接收整个 Task／Run／AppState；zone 仍是稳定逻辑工作位置，执行目录要求与宿主 Workspace 选择分开表达。映射只进行必要的只读查询，不创建 Tab、启动 agent 或修改历史。
 
 Resume 先解析目录，完成原生加载目标与环境检查后再查询 Workspace；映射结果区分明确 cwd 与交给 Herdr 选择目录，后者仍须在启动后确认实际 cwd。位置降级事实交回 `resume.rs` 的 `degradation::Feedback`，与环境、原生文件降级统一呈现；查询失败不当作不存在，不新增重试或缓存。CLI adapter 与独立进程 Herdr fixture 的测试 seam 保持不变。
 

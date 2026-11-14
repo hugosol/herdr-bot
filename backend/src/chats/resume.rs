@@ -4,7 +4,7 @@
 use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Response}};
 use serde::Deserialize;
 use serde_json::json;
-use crate::{AppState, chats::herdr::HerdrError};
+use crate::{AppState, herdr::HerdrError};
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 /// Exact saved Chat identities share a non-waiting permit within one app instance.
@@ -91,9 +91,9 @@ async fn restore_history(state: &AppState, selected: &crate::chats::history::His
 }
 
 async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Response {
-    use crate::chats::herdr::NavigationTarget;
+    use crate::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
-    let scenario = crate::chats::placement::Scenario::Resume {
+    let scenario = crate::herdr::placement::Scenario::Resume {
         historical_cwd: selected.cwd.as_deref(),
         original_workspace_id: selected.original_workspace_id.as_deref(),
         git_timeout: state.git_timeout,
@@ -256,11 +256,11 @@ mod degradation {
         pub(super) async fn native_load(&mut self, selected: &crate::chats::history::HistorySelection, kind: &str) -> Result<(String, String), (&'static str, String)> {
             let is_path = std::path::Path::new(&selected.session_id).is_absolute();
             let id = if is_path {
-                crate::chats::herdr::read_native_id(&selected.session_id, kind).await
+                crate::herdr::read_native_id(&selected.session_id, kind).await
                     .map_err(|error| (error.code(), error.message()))?
             } else { selected.session_id.clone() };
             let reason = if let Some(file) = selected.session_file.as_deref() {
-                match crate::chats::herdr::read_native_id(file, kind).await {
+                match crate::herdr::read_native_id(file, kind).await {
                     Ok(file_id) if file_id == id => return Ok((id, file.to_owned())),
                     Ok(_) => return Err(("native-session-mismatch", "历史会话文件属于另一原生对话。".into())),
                     Err(error) => format!("会话文件 {file} 不可用：{}", error.message()),
@@ -302,7 +302,7 @@ fn startup_unconfirmed(feedback: &degradation::Feedback, label: &str, stage: &st
     }))
 }
 
-fn restore_failure(feedback: &degradation::Feedback, label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::chats::herdr::NavigationTarget>) -> Response {
+fn restore_failure(feedback: &degradation::Feedback, label: &str, stage: &str, code: &str, message: &str, target: Option<&crate::herdr::NavigationTarget>) -> Response {
     feedback.response(StatusCode::BAD_GATEWAY, json!({"outcome":"failed","stage":stage,"code":code,"target":target,
         "message":format!("{label} 恢复在 {stage} 阶段失败：{message} 尚未确认恢复成功；已创建的目标保留供检查，不自动另开或提交输入。") }))
 }

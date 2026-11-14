@@ -8,9 +8,7 @@
 //! （提交合成后的初始指示）、`succeeded`（就绪与提交都已确认）、`failed`。失败保留已经取得的
 //! 对象标识，不删除、不重建、不重发；没有取得的标识不会被补造。
 
-pub mod herdr;
 pub mod history;
-pub(crate) mod placement;
 pub mod resume;
 
 use std::collections::HashMap;
@@ -23,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::chats::herdr::{HerdrClient, HerdrError};
+use crate::herdr::{HerdrClient, HerdrError, placement};
 use crate::tasks::Task;
 
 /// Chat 短实例标识的长度（小写十六进制字符数）。

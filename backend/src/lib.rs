@@ -40,6 +40,7 @@
 extern crate self as herdr_bot;
 
 pub mod chats;
+pub mod herdr;
 mod chief;
 mod chief_delegation;
 mod chief_reports;
@@ -84,8 +85,8 @@ pub use config::{
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
-use chats::{herdr, history, resume};
-use chats::placement::WorkspaceTarget;
+use chats::{history, resume};
+use herdr::placement::WorkspaceTarget;
 use sessions::observation;
 use tasks::catalog;
 use zones::{browse, watch};
@@ -1265,8 +1266,8 @@ async fn create_chat(State(state): State<AppState>, request: Request) -> Respons
     let prompts = state.prompts.clone();
     tokio::spawn(async move {
         let scenario = match &chief {
-            Some(_) => chats::placement::Scenario::Chief { cwd: &zone, workspace_name: &workspace_name },
-            None => chats::placement::Scenario::Chat { cwd: &zone, workspace_name: &workspace_name },
+            Some(_) => herdr::placement::Scenario::Chief { cwd: &zone, workspace_name: &workspace_name },
+            None => herdr::placement::Scenario::Chat { cwd: &zone, workspace_name: &workspace_name },
         };
         chats::run_creation(
             herdr,

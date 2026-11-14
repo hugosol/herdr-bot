@@ -9,7 +9,7 @@ use std::{borrow::Cow, path::Path, time::Duration};
 
 use serde::Deserialize;
 
-use super::herdr::{HerdrClient, HerdrError, Workspace};
+use super::{HerdrClient, HerdrError, Workspace};
 
 /// The existing public Chat request's choice, not a Herdr object identity.
 #[derive(Debug, Default, Deserialize)]
