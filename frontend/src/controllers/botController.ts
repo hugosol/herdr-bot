@@ -7,7 +7,7 @@ export type Bot = {
   node_guide: string
   task_id?: string
   map_file?: string
-  rust_script?: string
+  script?: string
 }
 
 export type BotProblem = { code: string; message: string; files: string[]; bot_id?: string }

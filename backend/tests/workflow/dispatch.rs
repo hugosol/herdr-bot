@@ -29,6 +29,8 @@ mod map_deletion;
 mod map_title;
 #[path = "history/history_integrity.rs"]
 mod history_integrity;
+#[path = "scripts/typescript.rs"]
+mod typescript;
 #[path = "scripts/rust_create.rs"]
 mod rust_create;
 #[path = "scripts/rust_save.rs"]

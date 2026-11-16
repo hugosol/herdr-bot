@@ -59,7 +59,7 @@ pub struct Completion {
 }
 mod execution;
 use execution::{ChatExecution, ExecutionTarget, Lifecycle, ScriptExecution, ScriptKind};
-mod scripts;
+pub(crate) mod scripts;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

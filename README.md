@@ -15,7 +15,7 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 
 ## 构建与运行
 
-需要 Rust 1.98+、Node.js 24+（含 npm）及 Bun 1.4.4；发起 Chat 还需要已运行的 herdr 及已安装的目标 agent。
+构建需要 Rust 1.98+、Node.js 24+（含 npm）及 Bun 1.4.4；发起 Chat 还需要已运行的 herdr 及已安装的目标 agent。动态脚本运行同样要求后端 PATH 中已有 Bun，不随产品打包或自动安装。用户可在 `meta-data/scripts` 添加可信 TS，并通过 Bot 的 `script` 字段绑定；见[编写与返回约定](docs/usage.md#动态-typescript-脚本)。
 
 前端依赖由 Bun 安装，`frontend/bun.lock` 是唯一依赖锁文件；构建和测试仍通过 npm 脚本运行，保留 Node.js 运行时及 `pretest` 网络护栏。`frontend/bunfig.toml` 启用 isolated linker 和 Global Virtual Store，新建 worktree 自动继承配置，但 Git 不会自动安装依赖：在各 worktree 根执行下面的冻结安装命令即可链接共享包，不需要复制 `node_modules`。
 

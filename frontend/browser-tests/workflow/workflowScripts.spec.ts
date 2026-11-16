@@ -25,6 +25,7 @@ async function setup(page: Page) {
   process.env.TOKIO_WORKER_THREADS = '2'
   try { server = await startServer({ separateCwd: true, herdr: {} }) }
   finally { if (workers === undefined) delete process.env.TOKIO_WORKER_THREADS; else process.env.TOKIO_WORKER_THREADS = workers }
+  fs.cpSync(path.resolve('../meta-data/scripts'), path.join(server.cwd, 'meta-data/scripts'), { recursive: true })
   const zone = path.join(server.cwd, 'bot-playground')
   fs.mkdirSync(zone)
   await post(page, '/api/zones', { id: 'script-zone', path: zone })
@@ -37,7 +38,7 @@ async function setup(page: Page) {
   const targetId = target.tasks.find((task: { name: string }) => task.name === 'Unbound target').id
   const request = { schema_version: 1, kind: 'request', target: { type: 'task', task_id: targetId }, bot: { id: 'page-product', name: 'Page product' }, requirements: 'Read only', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { scope: 'create_blank', evidence: 'Explicit isolated authorization' } }
   fs.writeFileSync(path.join(zone, 'request.json'), JSON.stringify(request))
-  await post(page, '/api/scheduler/bots/save', { id: 'script', revision: null, content: JSON.stringify({ name: 'Script', when: '', plan_guide: '', node_guide: '', rust_script: 'create_blank_bot' }) })
+  await post(page, '/api/scheduler/bots/save', { id: 'script', revision: null, content: JSON.stringify({ name: 'Script', when: '', plan_guide: '', node_guide: '', script: 'create-blank-bot.ts' }) })
   await post(page, '/api/scheduler/bots/save', { id: 'worker', revision: null, content: JSON.stringify({ name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })
   const map = { title: 'Script workflow', description: '', nodes: {
     create: { title: 'Create blank', bot_id: 'script', input: 'Not script parameters', input_rule: [{ id: 'request', type: 'file', zone_id: 'script-zone', path: 'request.json' }], output_rule: [{ id: 'baseline' }, { id: 'handoff' }], zone: 'script-zone', blocked_by: [] },
@@ -105,8 +106,8 @@ test('P31 script result remains pending handoff until explicit complete @time-co
   expect(saved.reports[0].canComplete).toBe(true)
   await page.goto(`${server!.baseURL}/#workflow/${s.id}`)
   const execution = page.getByRole('region', { name: '当前执行事实', exact: true })
-  await expect(execution).toContainText('rust_script')
-  await expect(execution).toContainText('create_blank_bot')
+  await expect(execution).toContainText('typescript')
+  await expect(execution).toContainText('create-blank-bot.ts')
   await expect(execution).toContainText('业务执行已成功结束')
   await expect(execution).not.toContainText('taskId')
   await expect(execution.getByRole('button', { name: /恢复|Resume/ })).toHaveCount(0)
@@ -202,7 +203,7 @@ test('P31 retained success never grants retry eligibility or invents a Chat @tim
     await expect(execution).toContainText('baseline')
     await expect(page.getByRole('region', { name: '当前执行交接事实', exact: true })).toContainText('最新 canComplete: 无报告')
     await expect(page.getByRole('region', { name: '当前执行交接事实', exact: true })).not.toContainText(first.reports[0].outputs[0].path)
-    await expect(page.getByRole('navigation', { name: '已保存节点状态' }).getByRole('button', { name: /Create blank/ })).toContainText('脚本 · create_blank_bot')
+    await expect(page.getByRole('navigation', { name: '已保存节点状态' }).getByRole('button', { name: /Create blank/ })).toContainText('脚本 · create-blank-bot.ts')
     await evidence(page, info, s.id, 'retry-in-flight', false)
   } finally { await gate.release() }
   await expect.poll(async () => (await read(page, s.id)).reports.length).toBe(2)
@@ -218,7 +219,7 @@ test('P31 retained success never grants retry eligibility or invents a Chat @tim
   await expect(execution).toContainText('material-write-failed')
   await expect(execution).toContainText('succeeded')
   const reports = page.getByRole('region', { name: '当前执行适用报告', exact: true })
-  await expect(reports).toContainText('create_blank_bot')
+  await expect(reports).toContainText('create-blank-bot.ts')
   await expect(reports.getByRole('button', { name: 'Resume', exact: true })).toHaveCount(0)
   const history = page.getByRole('group', { name: '已保存旧执行事实', exact: true })
   await history.getByText(/旧执行历史/, { exact: false }).click()

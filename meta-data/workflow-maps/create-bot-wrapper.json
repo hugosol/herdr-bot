@@ -6,7 +6,7 @@
   "input_files": [
     {
       "id": "request",
-      "description": "必需的创建分支 v1 request JSON（schema_version=1、kind=request）：target 精确二选一 normal Task ID 或目录内 Map 文件名；requirements、constraints、non_goals、resource_limits、authorization（create_blank、write_materials、save_guides）和 confirmation（evidence、scope=create_blank）均必填；bot 的 id/name/group 可选。完整格式见 docs/business-materials.md 和 docs/contracts/rust-script-bots.schema.json；不接受旧 Markdown。",
+      "description": "必需的创建分支 v1 request JSON（schema_version=1、kind=request）：target 精确二选一 normal Task ID 或目录内 Map 文件名；requirements、constraints、non_goals、resource_limits、authorization（create_blank、write_materials、save_guides）和 confirmation（evidence、scope=create_blank）均必填；bot 的 id/name/group 可选。完整格式见 docs/business-materials.md 和 docs/contracts/script-bots.schema.json；不接受旧 Markdown。",
       "required": true
     },
     {
@@ -19,7 +19,7 @@
     "create_blank": {
       "title": "核实既有目标并创建空白 Bot",
       "bot_id": "create-blank-bot",
-      "input": "固定 Rust create_blank_bot 只消费显式命名 request 与可选 materials，不解析本段自然语言。按创建分支 v1 交付完整 baseline JSON 与 created handoff；材料和确认格式见 docs/business-materials.md。",
+      "input": "TypeScript create-blank-bot.ts 只消费显式命名 request 与可选 materials，不解析本段自然语言。按创建分支 v1 交付完整 baseline JSON 与 created handoff；材料和确认格式见 docs/business-materials.md。",
       "input_rule": [
         {
           "type": "run",
@@ -165,7 +165,7 @@
     "save_bot": {
       "title": "一次保存并完整读回 Bot 三指南",
       "bot_id": "save-created-bot-guides",
-      "input": "固定 Rust save_bot_guides 只消费直接命名 baseline 与三组最终 text/handoff。使用创建分支 v1 baseline、guide handoff（最终原样 UTF-8 SHA-256、有效全文确认、保义及明确保存授权），拒绝缺项和冲突；不沿来源索引寻址，不解释自然语言授权。一次保存三字段并完整读回，交付 v1 saved（完整 Bot、真实 revision、完整目标）与 saved handoff；不自动 complete、重试或回滚。",
+      "input": "TypeScript save-bot-guides.ts 只消费直接命名 baseline 与三组最终 text/handoff。使用创建分支 v1 baseline、guide handoff（最终原样 UTF-8 SHA-256、有效全文确认、保义及明确保存授权），拒绝缺项和冲突；不沿来源索引寻址，不解释自然语言授权。一次保存三字段并完整读回，交付 v1 saved（完整 Bot、真实 revision、完整目标）与 saved handoff；不自动 complete、重试或回滚。",
       "input_rule": [
         {
           "type": "node",

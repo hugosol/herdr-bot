@@ -102,7 +102,7 @@ fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, ta
 }
 
 fn check_map_calls(
-    access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
+    state: &crate::AppState, access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
     tasks: &[crate::tasks::Task], zones: &[crate::zones::RegisteredZone],
     manager_zone: &str, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
 ) {
@@ -115,7 +115,10 @@ fn check_map_calls(
                     .map_or("共享 Bot 缺失或无效；请修正引用或文件。", |problem| problem.message.as_str());
                 issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {}：{reason}", node.bot_id)));
             }
-            Some(bot) if bot.rust_script.is_some() => {
+            Some(bot) if bot.script.is_some() => {
+                if let Err(error) = super::scripts::validate_binding(state, bot.script.as_deref().expect("script binding")) {
+                    issues.push(PreflightIssue::new("script-invalid", "bot", error));
+                }
                 if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
                     issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
                 }
@@ -145,7 +148,7 @@ fn check_map_calls(
                             Ok(child) if child.nodes.is_empty() => issues.push(PreflightIssue::new("map-empty", "map", format!("目标 Map {target} 为空，不能启动。"))),
                             Ok(child) => {
                                 path.push(target.clone());
-                                check_map_calls(access, directory, &child, bots, tasks, zones, &node.zone, path, issues);
+                                check_map_calls(state, access, directory, &child, bots, tasks, zones, &node.zone, path, issues);
                                 path.pop();
                             }
                             Err(error) => issues.push(PreflightIssue::new(error.code, "map", format!("目标 Map {target} 无法读取：{}", error.message))),
@@ -237,7 +240,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
         Err(issue) => { issues.push(issue); None },
     };
     with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
-        check_map_calls(access, &state.map_directory, &map, &bots, &tasks, &zones, &input.zone, &mut vec![root_name], &mut issues);
+        check_map_calls(state, access, &state.map_directory, &map, &bots, &tasks, &zones, &input.zone, &mut vec![root_name], &mut issues);
         Ok(())
     }).map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }

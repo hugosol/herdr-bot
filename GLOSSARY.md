@@ -173,7 +173,7 @@ _Avoid_: 执行实例, Task, 运行中的任务
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
 
 **脚本型 Bot**:
-以预先固定、可复用的脚本为执行目标，直接完成相对固定业务工作的 Bot；执行不创建 Chat，也不临时生成脚本，任务需要时包含真实写入而非仅生成执行方案。
+以预先编写、可由用户维护的可复用脚本为执行目标，直接完成相对固定业务工作的 Bot；执行不创建 Chat，也不临时生成脚本，任务需要时包含真实写入而非仅生成执行方案。
 _Avoid_: Task 类型, 脚本生成器, 节点 Chat
 
 **业务输入（node.input）**:

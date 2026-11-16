@@ -6,7 +6,7 @@
 
 ## 创建分支 v1：可校验表示与空白创建
 
-本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为 Rust 创建／合并保存提供公开数据表示。空白创建 `create_blank_bot` 和三路合并保存 `save_bot_guides` 均使用该契约通过命名文件运行；发布 `create-bot-wrapper.json` 已迁移两脚本节点，实际模型遵从与部署仍须独立验证。创建分支采用 [Draft 2020-12 JSON Schema](contracts/rust-script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
+本节仅细化创建分支，不改变修订、通用替换者或独立 Chat 的既有材料格式。它为 TS 创建／合并保存提供公开数据表示。空白创建 `create-blank-bot.ts` 和三路合并保存 `save-bot-guides.ts` 均使用该契约通过命名文件运行；发布 `create-bot-wrapper.json` 已迁移两脚本节点，实际模型遵从与部署仍须独立验证。创建分支采用 [Draft 2020-12 JSON Schema](contracts/script-bots.schema.json) 中具名 `$defs`；[JSONL 字面实例](contracts/script-bots.examples.jsonl) 每行 `{id,definition,valid,value}` 的 value 是独立手写合法／非法输入，不是实现生成的预期。实例中配置／revision 是假设隔离服务的字面响应，仅供格式验收，绝不可作为真实服务的 revision 使用。
 
 结构化文件是单个无围栏 UTF-8 JSON 对象；拒绝重复 key、未知字段、未知 schema_version、错类型、缺项、歧义，不从 Markdown 猜字段。创建材料根对象均必填 `schema_version:1` 和对应 `kind`；这**不是**为 Bot／Map 定义新增 schema_version。text 仍是原样 UTF-8 纯正文，不添加 JSON、标题、身份、BOM 或代码围栏，不 trim／改换行／替换词典／重新生成。空正文合法，必要时仍须明确确认空稿。可选参考 `materials` 仍是参考，不提取其中指令作为隐含参数、权限或第二份 request。
 
@@ -15,7 +15,7 @@
 | 对象／字段 | 类型、必填及含义 |
 | --- | --- |
 | request | `$defs.request`；kind 为 `request`。以下除 bot 外均必填 |
-| target | 精确二选一 `{type:"task",task_id:<非空字符串>}` 或 `{type:"map",map_file:<目录内确切.json文件名>}`；不接受同时两类、Rust 目标、路径、另建目标或从自然语言推断 |
+| target | 精确二选一 `{type:"task",task_id:<非空字符串>}` 或 `{type:"map",map_file:<目录内确切.json文件名>}`；不接受同时两类、脚本目标、路径、另建目标或从自然语言推断 |
 | bot | 可选对象，独立可选非空 `id`／`name`／合法 `group`；缺省 ID 为 `bot-`＋Task ID，或 `bot-map-`＋Map 文件名去最后 `.json`；缺省 name 为读取目标的 name／title，缺省无 group。ID 是身份不是路径，保存仍用服务生成文件名；冲突停止，不追加随机后缀、复用或覆盖 |
 | requirements | 必填非空字符串，本次已澄清需求；不是脚本可解释的自然语言程序 |
 | constraints／non_goals／resource_limits | 必填字符串数组，明确没有条目为 `[]`；只传递已决定约束，不做模型式意图推断 |
@@ -30,9 +30,9 @@ Task configuration 为 GET task 的完整对象：id、name、chatName、agent�
 
 创建前目标必须真实存在且类型正确；合法空白创建只新增 Bot 一次，唯一绑定与三空指南不能由流程到达推断。创建后完整重读 Bot、真实 revision 与目标，核对后才交付 baseline。配置或材料失败时保存可得真实效果，不自动删除已创建对象。
 
-### Rust 空白创建的材料落点与隔离实例
+### 脚本空白创建的材料落点与隔离实例
 
-`create_blank_bot` 只接受命名 `request` 和可选参考 `materials` 输入；不沿参考内容寻找隐藏参数，也不从 node.input 补项。输出必须声明 `baseline` 和 `handoff`。材料实际新建在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/baseline.json` 与 `handoff.json`，沿用现有文件协调、祖先／junction 检查及 create-only 发布；不覆盖已有文件。仅完整读回成功的文件进入所属 execution 的报告 outputs，没有第二份输出登记表。
+`create-blank-bot.ts` 只接受命名 `request` 和可选参考 `materials` 输入；不沿参考内容寻找隐藏参数，也不从 node.input 补项。输出必须声明 `baseline` 和 `handoff`。材料实际新建在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/baseline.json` 与 `handoff.json`，沿用现有文件协调、祖先／junction 检查及 create-only 发布；不覆盖已有文件。仅完整读回成功的文件进入所属 execution 的报告 outputs，没有第二份输出登记表。
 
 隔离 HTTP／真实文件回归使用 `invoice-review`／`Invoice reviewer`：真实 normal Task 的完整读取对象和服务 edit.revision 与 baseline 逐项相等，三个指南均严格为空；实际派发的下游受控进程按命名地址读取 baseline 与 handoff，再独立核对完整配置／revision。另一例绑定真实 `exact.target.json`，保留其全部节点、输入输出规则、manual 策略及声明，产生默认 `bot-map-exact.target`，不执行目标 Map。
 
@@ -50,7 +50,7 @@ Task configuration 为 GET task 的完整对象：id、name、chatName、agent�
 
 ### 合并保存的运行与部分生效边界
 
-`save_bot_guides` 是第二个编入后端的固定能力，不创建 Chat，也不调用通用替换者。材料在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/saved.json` 和 `handoff.json` 安全新建，使用与空白创建相同的文件协调、祖先／链接检查、create-only 发布和完整读回；仅实际可读文件登记到当前 execution 的 outputs。request 的保存授权或三个最终 handoff 的各字段保存授权必须明确成立，SHA-256 只绑定原样 bytes；不执行自然语言语义判断。
+`save-bot-guides.ts` 是用户可维护的 TS 业务脚本，不创建 Chat，也不调用通用替换者。材料在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/saved.json` 和 `handoff.json` 安全新建，使用与空白创建相同的文件协调、祖先／链接检查、create-only 发布和完整读回；仅实际可读文件登记到当前 execution 的 outputs。request 的保存授权或三个最终 handoff 的各字段保存授权必须明确成立，SHA-256 只绑定原样 bytes；不执行自然语言语义判断。
 
 配置合法保存成功后，如果 saved 或 handoff 的新建／读回失败，报告 `canComplete=false`，保留 write／readBack 的实际结果、原错误和已成功的命名输出；不删除已保存配置、不覆盖碰撞材料，也不更新原 baseline。manager 修复文件故障后可在**另一个隔离真实 Run** 显式派发同一能力并直接提供原 baseline；由于真实 revision 已变化，仍报告 `revision-conflict`，即使当前三段正文完全相同也不认定成功。这是业务重跑冲突，不绕过同节点 fail/retry 的独立门禁。成功报告也只表示可交接，仍由 manager 经原工具 complete，再从显式 saved／handoff 输出 ID 安排下游。
 
@@ -60,7 +60,7 @@ JSON Schema 负责字段形状，不会访问服务、核实授权、验证 revi
 
 | 独立输入／现场 | 必须结果 |
 | --- | --- |
-| target-unknown 的 `rust_script:"execute_code"`；request-script-forbidden | 分别拒绝未知能力／创建脚本目标，不写定义 |
+| target-unknown 的 `script:"execute_code"`；request-script-forbidden | 分别拒绝非 .ts 路径／创建脚本目标，不写定义 |
 | baseline-task 中 target.task_id=`normal-2`，其 configuration.id 与 bot.task_id 仍为 `normal-1` | target-conflict，无写入 |
 | baseline-task 中 bot.id=`other-bot`，其真实 revision.original 仍写 `review-bot` | identity-conflict，无写入 |
 | 真实服务 Bot revision.original 为 saved-task 的 original，而输入仍为 baseline-task 的 original | revision-conflict；即使三段 text 已与当前正文相同也不得成功 |
@@ -160,10 +160,10 @@ when 解决能力发现与选用；plan_guide 解决工作安排；node_guide �
 | `task-18e31d34797f1464-3` | 通用提示词优化者 | 21 |
 | `task-18e3415003d8cd00-5` | 通用文本替换者 | 21 |
 
-| 稳定 Bot ID | 固定 Rust 能力 | 发布用途 |
+| 稳定 Bot ID | TS 脚本 | 发布用途 |
 | --- | --- | --- |
-| `create-blank-bot` | `create_blank_bot` | 保留原身份和 Map 引用；创建完整共同基线 |
-| `save-created-bot-guides` | `save_bot_guides` | 三空指南；仅创建图 save_bot 引用，不限制未来合法复用 |
+| `create-blank-bot` | `create-blank-bot.ts` | 保留原身份和 Map 引用；创建完整共同基线 |
+| `save-created-bot-guides` | `save-bot-guides.ts` | 三空指南；仅创建图 save_bot 引用，不限制未来合法复用 |
 
 已删除原空白创建 Task `task-18e33fdc55177d1c-1`，不兼容其历史来源恢复，不删除历史。上表五个共享 Task 中，三编写者按本次显式分支选择格式；通用优化者由 node.input 指向适用协议；原通用文本替换者定义与能力保持不变。创建 v1 与修订旧格式的可复跑原生场景分别在创建／修订验收入口，缺真实授权或依赖必须保留未验证，不能以提示词相等或受控正文证明遵从。原创建专属新增项归 21、修订专属新增项归 22、外层 Task 修改项归 24，各自清单仍记录其稳定 ID。旧独立 create-bot／create-bot-task 不改职责，也不自动迁移用户部署。
 

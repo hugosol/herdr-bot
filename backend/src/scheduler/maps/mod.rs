@@ -449,7 +449,7 @@ pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeS
             .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
         if node.0.manager_task_id.is_some() || node.0.report_policy != ReportPolicy::Auto || node.0.auto_close {
             let bots = read_bots(access, &state.bot_directory)?;
-            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.rust_script.is_some()) {
+            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.script.is_some()) {
                 return Err(edit_error("script-policy-invalid", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
             }
         }

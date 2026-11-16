@@ -6,13 +6,13 @@ scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保�
 
 Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分组／未分组／指定分组”筛选；“清除筛选”同时重置两项条件。分组标题可折叠并显示当前筛选结果数量，行尾“分组”可直接调整归属。详情页的 group 按钮与新增 node、发起 Run、编辑文件输入声明及删除 Map 集中在顶部操作区；手机端分组按钮独占一行，其余操作按两列排列，避免挤压标题与说明。分组保存仍即时生效，不改变 Map 或 node 的编辑与删除确认规则。
 
-## 固定 Rust 目标的表示契约
+## TypeScript 脚本目标的表示契约
 
-[ADR 0019](adr/0019-rust-script-bots.md) 的新目标字段定为 `rust_script`，只接受 `create_blank_bot`（空白 Bot 创建）和 `save_bot_guides`（创建分支三指南合并保存）。与 `task_id`、`map_file` 按**非 null 值**两两互斥；三者均无值仍是不可运行草稿。null 规范化为省略。未知能力、空字符串或错类型不得作为可运行目标，定义保存／预检须拒绝并保留原定义；建议保存错误沿用 `bot-invalid`，预检定位对应 node／Bot。普通 Task／Map 的缺失外部引用仍沿用下文保存与预检的分工，不借此收紧历史规则。
+[ADR 0019](adr/0019-rust-script-bots.md) 的脚本目标字段为 `script`，例如 `create-blank-bot.ts`、`save-bot-guides.ts` 或用户自己的 `tools/export.ts`。路径相对配置 Bot 目录旁的 `scripts`（默认 `meta-data/scripts`），使用 `/` 分隔，不允许绝对路径、空段、`.`、`..`、反斜杠或冒号，扩展名为 `.ts`。与 `task_id`、`map_file` 按非 null 值两两互斥；均无值是不可运行草稿。定义保存检查形状，预检／派发检查实际脚本文件。
 
-这两个字符串仅选择编入后端的固定 Rust 业务，不是路径、命令、解释器、可上传代码或独立业务 exe。脚本 node 的 `manager_task_id` 不适用；`input` 仍为现有必填字符串，可为 `""`，不解析为业务参数。执行时冻结命名文件规则；脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`（含默认值），不把 manual 静默改成 auto。
+脚本由已有 Bun 动态加载，不再限制为两个能力标识。部署者须提前准备 Bun 和脚本依赖；不自动安装、不提供沙箱、不新增脚本编辑器。脚本 node 的 `manager_task_id` 不适用；`input` 是传给脚本的原文字符串。脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`，不把 manual 静默改成 auto。
 
-可机读的表示为 [JSON Schema](contracts/rust-script-bots.schema.json) 的 `$defs.bot`，两个独立合法实例、未知能力和混合目标反例见 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl)。Schema 是公开数据契约，不是能力注册表。当前后端已实现 `create_blank_bot` 与 `save_bot_guides` 的真实定义保存／读回、预检、异步派发和业务材料保存，不注册没有业务实现的占位目标。发布创建图保留 create-blank-bot 身份，并只将最终保存节点改用三空指南的 save-created-bot-guides；修订图仍用原 replace-text。现有 Bot 维护页提供两个固定标识的选择与 JSON 编辑；后端真实保存／预检仍有最终拒绝权，不接受未知能力。页面回归分别覆盖两种能力的保存、离开后重载及真实材料预检；预检只验证文件可用性，不代表结构化业务检查或实际写入已成功。正式创建流程定义迁移及真实 manager 原生工具验收不由页面或后端 HTTP 回归推断。无 Chat 的运行与报告表示见[运行参考](workflow-runtime.md#无-chat-的执行与报告表示契约)。
+可机读表示见 [JSON Schema](contracts/script-bots.schema.json) 与 [JSONL 实例](contracts/script-bots.examples.jsonl)。用户手工添加脚本，通过现有 Bot JSON 的 `script` 字段绑定；不新增脚本管理 UI。发布创建图保留原 Bot 身份、输入输出接线与修订 replace-text。脚本最小返回状态和可选输出地址；完整编写示例见[使用说明](usage.md#动态-typescript-脚本)。预检不代表脚本业务已经执行成功。
 
 ## 定义职责与唯一格式
 
@@ -20,7 +20,7 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明非文件的总体输入要求；可选 `input_files: [{id,required,description?}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input`、`zone` 字符串及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
-| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `rust_script`（已实现的固定 Rust 能力），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
+| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
@@ -161,9 +161,9 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 ## 保存与校验边界
 
-内部结构合法即可保存：Bot 可没有执行目标，也可引用不存在或用途已失效的 Task／Map，但不能同时绑定多类执行目标，脚本还必须是已实现的固定能力；node 可引用不存在的 Bot 或尚未绑定／失效的 zone ID。不会制造默认绑定或复制默认 Task。`zone` 必须显式存在且为字符串，但可为空表示尚未填写；它是跨 server 的稳定 zone ID，不是目录路径，也不是 Bot 文档里的业务键。保存不证明启动前外部资源检查通过。
+内部结构合法即可保存：Bot 可没有执行目标，也可引用暂不存在的 Task／Map／脚本，但不能同时绑定多类目标；script 必须为合法相对 .ts 路径。node 可引用不存在的 Bot 或尚未绑定／失效的 zone ID。保存不证明启动前外部资源检查通过。
 
-必需字段不可漏填，不用 `null`、对象、数组代替字符串；Map/node/Bot 都必须是 JSON 命名对象，不能用位置数组代替。未知字段明确拒绝，不静默丢弃。显式 `nodes: {}`、`blocked_by: []`、文本 `""` 合法。`task_id`、`map_file`、`rust_script`、node 的 `manager_task_id` 可缺省或为 null（读取／保存结果省略无绑定字段）；有值必须是字符串，`rust_script` 还必须为已实现的固定能力标识。Bot 编辑页的 Task／Map／固定 Rust 能力控件与原始 JSON 同步；主动选择一类目标会移除另外两类引用，原始冲突绑定草稿则明确拒绝，不能按隐含优先级运行。不额外限制文档长度。
+必需字段不可漏填，不用 null、对象、数组代替必填字符串；Map/node/Bot 必须为 JSON 命名对象，未知字段拒绝。`task_id`、`map_file`、`script`、node 的 `manager_task_id` 可缺省或为 null，有值必须是字符串。Task／Map 选择与原始 JSON 同步，选择它们会移除 script；脚本路径通过现有 JSON 编辑，原始冲突草稿仍拒绝，不按优先级运行。
 
 `blocked_by` 只引用同图 node ID。未知前置、自依赖或环拒绝整个保存，不能通过删边／删节点生成成功图。依赖错误指出相关 node；结构错误提供可用字段路径，例如 `nodes.work.input`。**非法保存不覆盖原定义**，失败保留独立 ID 与原始草稿；保存失败和冲突都不是成功预览。
 
@@ -207,7 +207,7 @@ Map 列表显示定义中的 `title`，不以 JSON 文件名作为正常名称�
 
 Bot 列表（含空态）可新增，预览可修改；当前 Map 可新增 node，选中 node 可修改。ID 独立输入，新增初始为空，修改时只读，JSON 不含顶层 `id`。node 编辑器的 `node_id` 表示 `nodes` 的 key，不在 node 内容中新增字段；Bot ID 由服务端补回。ID 不是文件路径。新草稿使用打包的 [天气 Bot](example/bots/weather-capability.json)／[上海 A](example/maps/trip-readiness.json)，部署不依赖开发仓库；打开、修改草稿或放弃不写定义，也不自动安装依赖。
 
-Bot 的 `new`／`edit` 页面使用 `save`／`cancel` 按钮，node 编辑页按钮不变。Task、Map 和“固定 Rust 能力”选择与 JSON 中的 `task_id`、`map_file`、`rust_script` 双向同步；主动绑定一种目标会移除另外两种，不复制 Task、Map 或 manager 配置。选择“未绑定”只移除对应字段，仍允许保存。Rust 能力不是可编辑命令或脚本路径；未知标识、错类型或冲突目标保存失败，原定义和可修正的原始草稿均保留。Task 下拉框显示普通（normal）Task 的名称与 ID。已有不存在或非 normal 的 Task 引用会明确标注并保留，不静默清除或替换；不提供 manager 作为新绑定选项。Task 列表读取失败或 JSON 尚未合法时停用下拉框，保留原始草稿；读取失败不妨碍按原定义保存。选择只修改草稿，点击 `save` 才提交，`cancel` 沿用未保存修改确认。
+Bot 的 `new`／`edit` 页面使用 `save`／`cancel`，node 编辑页按钮不变。Task／Map 选择与 JSON 中的 `task_id`／`map_file` 同步；脚本通过 JSON 的 `script` 字段手工绑定，页面只显示当前路径，不提供固定能力下拉框或脚本管理器。保存前均是草稿，取消沿用未保存确认；非法路径、错类型或冲突不覆盖原定义。Task 列表仍只提供普通 Task，失效引用保留并提示。
 
 显式保存 Bot 使用服务端安全文件名，修改保留原文件名与全局唯一身份；保存 node 只改目标 node，保留 Map 标题、说明、其他 node 和其他文件（当前 Map 排版可变化）。确认保存成功后结束草稿；node 直接使用保存响应中的 Map 更新内容与依赖图，不再额外读取确认同一次保存。Bot 保存不改 Map，所有引用者仍读取同一共享能力。Bot 已保存但后续目录刷新失败时，保留已确认保存的 Bot 内容，明确提示“已保存，但刷新失败”，由用户显式刷新，不重新提交保存。未收到有效保存响应时不能确定是否已写入：保留原始草稿并提示先核实，不宣称未保存，也不自动重试；显式刷新仍须确认放弃未保存改动。
 

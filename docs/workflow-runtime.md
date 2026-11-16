@@ -4,12 +4,12 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。`create_blank_bot` 已由后端直接实现：原 manager dispatch 接受并保存独立 execution 后返回，真实文件读取和业务写入在后台进行；完整读回及材料交付成功后自动保存报告并尝试一次原 manager 通知。它不创建节点 Chat／Tab、不等待 manual 报告、不调用关闭，也不 complete 或派发下游。`save_bot_guides` 同样编入后端并经原 dispatch 自动报告：只读冻结的 baseline 和三组显式 text/handoff，检查真实 revision、完整目标和全文 bytes 确认，汇总一次合法保存，再完整读回 Bot／新 revision／目标并交付 saved 与独立 handoff。发布创建图已切换这两个真实能力，原创建身份／材料接线保留，专用保存 Bot 不取代修订通用替换者；详见[迁移范围](create-bot-wrapper.md#创建分支表示的交付边界)。页面与真实 manager／编写者原生遵从证据仍独立验证；表示及受控材料闭环不证明这些已完成。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。输入输出 ID 与创建流程材料保持不变；通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
 
 ### execution 与节点交接分别表达
 
-- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "rust_script"` 和 camelCase `rustScript` 固定能力值。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`reportPolicy: "auto"`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
-- `lifecycle` 只描述本次 Rust 工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求业务检查、合法真实写入、完整读回及必要输出材料生成／读回全部成功；正常函数返回不构成成功。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
+- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "typescript"` 和 `script` 相对路径。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`reportPolicy: "auto"`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
+- `lifecycle` 只描述本次脚本工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求脚本明确返回 success、正常退出且全部声明输出真实可读；正常函数返回本身不构成成功。创建／三指南业务仍自行执行合法保存与完整读回检查。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
 - 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
 - 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
 
@@ -17,11 +17,11 @@
 
 派发被后端接受并保存 execution 后，业务由后端持有，不依赖派发 HTTP 连接继续存活。调用方断连不能撤销它；不要为取得结果再次 dispatch。通过原 Run 详情独立读取原 execution 的 lifecycle、报告与真实材料。脚本的文件读写不长期占用 Run 操作资格：业务仍在途时，同 Run 的合法 status 与 pause 可以完成；这不改变完整派发批次本身的串行规则。
 
-pause 只拒绝新的 dispatch／retry，不取消已开始的 Rust 工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
+pause 只拒绝新的 dispatch／retry，不取消已开始的脚本工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
 
-实际终止后端进程会终止它持有的在途 Rust 工作，但不回滚已经发生的文件效果。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
+脚本独立进程不提供业务回滚或重启恢复；后端退出后须核实原执行和可能仍在运行的外部效果，不能假定所有派生进程均已结束。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
 
-专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和编入后端的能力，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
+专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和发布的 TS 脚本，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
 
 ### 失败、显式重跑与旧执行隔离
 
@@ -43,13 +43,13 @@ P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障�
 
 ### 报告来源与兼容读取
 
-脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
+脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"typescript",script:"相对脚本路径.ts"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
 
-原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+旧 Rust execution／报告按原 kind 与 rustScript 只读展示，不反写记录或保留执行分派。原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
 
 ### 结构化失败与实际效果
 
-`failure` 为 `{stage,code,message,effects}`；精确字段类型与闭集见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
+通用脚本 failure 是可选诊断，不强制业务结构。以下 `{stage,code,message,effects}` 是两个发布业务脚本保留的具体诊断契约，精确字段见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
 
 | stage | code 与判定 |
 | --- | --- |

@@ -50,6 +50,7 @@ impl Scenario {
         herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"manager-05"},"native_cwd":data.path()}));
         fs::create_dir_all(&config.scheduler.map_directory).unwrap();
         fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
+        common::install_bot_scripts(&config.scheduler.bot_directory);
         let app = herdr_bot::app(&config);
         let server = TestServer::start_app(app.clone()).await;
         let node_zone = data.path().join("node-zone");

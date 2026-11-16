@@ -36,9 +36,13 @@
 - 不同源码副本使用独立 `CARGO_TARGET_DIR`；测试程序会内嵌源码路径。性能比较顺序运行，避免多轮检查争抢同一资源。
 - 原生可见性浏览器清理通过独占 Chrome 的 Node `exit` 事件或独立 Windows 进程句柄确认退出；任一确认后回收句柄观察进程。`taskkill` 返回码或输出不能代替退出确认。
 
-## 固定 Rust 表示验证
+## 动态 TypeScript 脚本验证
 
-`python -m pip install -r scripts/requirements-contracts.txt` 安装单独的 Schema 验证依赖后，`python scripts/test-script-contracts.py` 从公开文件 seam 消费 `docs/contracts/rust-script-bots.schema.json` 和独立 JSONL 字面实例。离线检查类型、必填、互斥、已知能力、完整配置形状、无 Chat 来源与失败效果表达；不启动宿主／服务、不写业务配置，不以源码快照验证接线。跨材料身份／revision／正文确认及真实保存仍是业务实现的公开 HTTP／文件验收，不能由 Schema 通过推断。
+运行环境须已有 Bun；隔离夹具复制实际 `meta-data/scripts` 到临时 Bot 目录旁。`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch typescript_ -- --nocapture` 通过真实 HTTP、Bun 子进程和实际文件验证任意用户脚本、相对 import、日志、最小状态、异常退出、缺输出／文件、目录假输出、重复／未声明 ID 和失败部分效果。原 `rust_create_`／`rust_save_` 测试名保留，但执行的是迁移后的真实 TS 业务，检查严格材料、revision、并发保护、完整读回和交接。沿用既有独占静态页、绝对 CARGO_TARGET_DIR 与宿主进程清理规则；这些测试不调用真实模型。
+
+## 脚本表示验证
+
+`python -m pip install -r scripts/requirements-contracts.txt` 安装单独的 Schema 验证依赖后，`python scripts/test-script-contracts.py` 从公开文件 seam 消费 `docs/contracts/script-bots.schema.json` 和独立 JSONL 字面实例。离线检查类型、必填、互斥、相对 TS 路径、完整配置形状、无 Chat 来源与失败效果表达；不启动宿主／服务、不写业务配置，不以源码快照验证接线。跨材料身份／revision／正文确认及真实保存仍是业务实现的公开 HTTP／文件验收，不能由 Schema 通过推断。
 
 表示票不提前注册可保存但不能运行的能力，不改现有 Task／Map 运行代码；回归仍先构建本 worktree 静态页，再用独立绝对 `CARGO_TARGET_DIR` 执行 `node scripts/test-backend.mjs`。实例与长期文档只是新表示，不代表两种 Rust 业务或 S2／S3 已交付。
 

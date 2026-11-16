@@ -2,9 +2,35 @@
 
 本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
 
-## Rust 空白 Bot 创建
+## 动态 TypeScript 脚本
 
-后端内置 `create_blank_bot`；定义保存使用原 `POST /api/scheduler/bots/save`，内容示例为 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}`，独立传入新 Bot ID 和 `revision:null`。不填假 Task／Map，也不上传代码。未知能力或混合目标拒绝，原定义保留。仓库发布的创建图已迁移：create-blank-bot 保留身份并改绑 Rust，save_bot 引用新三空指南共享 Bot save-created-bot-guides；原空白创建 Task 已删除，不改无关历史或修订 replace-text。仓库更新不自动部署用户配置；材料格式与验证边界见[创建指南](create-bot-wrapper.md)。
+脚本功能要求后端进程的 PATH 中已有 Bun（开发验证版本 1.4.4）；不下载、不安装、不捆绑运行时。脚本放在配置 Bot 目录的同级 scripts 目录，默认是 meta-data/scripts。用户手工编辑文件和 Bot 的 script 字段，不新增脚本管理 UI。
+
+例如在 meta-data/scripts/export-result.ts 中写入：
+
+```ts
+import { join } from "node:path";
+
+export default async function (context) {
+  const path = join(context.zone, `result-${context.executionId}.txt`);
+  await Bun.write(path, context.input);
+  return { status: "success", outputs: [{ id: "result", path }] };
+}
+```
+
+Bot 绑定 `"script": "export-result.ts"`，node 声明 `"output_rule": [{"id":"result"}]`。脚本默认导出函数，可同步或异步返回；最小结果是 `{status:"success"}` 或 `{status:"failure"}`。有文件交付时返回 `outputs:[{id,path}]`；path 为本机绝对路径。Rust 校验状态、ID 唯一且已声明、文件实际可读；成功必须交齐 output_rule，失败可以登记有效的部分输出。非零退出、异常或结果格式错误均不能报告成功。handoff、说明正文和 canComplete 不是通用脚本必填字段。
+
+context 提供 runId、executionId、zone（节点工作目录）、input（node.input 原文）、inputs（已解析命名地址）、outputRule 和 outputDirectory（本次 Run/execution 的材料目录）。输入绑定冻结不等于文件内容冻结。每次派发新建 Bun 进程，入口源码按接受时读取的内容执行；相对 import 仍从脚本原目录解析，依赖文件不作历史快照。修改用于之后的派发，不提供恢复旧脚本进程。
+
+脚本是可信代码，不是沙箱：可以使用 Bun 的文件、网络和进程能力，拥有后端账户权限；外部程序和 npm 依赖需预先准备，执行时禁止 Bun 自动安装包。console 日志与结果协议分离。修改 herdr-bot 系统定义应通过 context.host，而不是直接覆盖内部 JSON。
+
+两个发布业务脚本通过 host(operation,args) 复用宿主持久化：read_json({path})／parse_json({text}) 严格拒绝重复 JSON key，read_text({path}) 严格读取 UTF-8，target(唯一 Task／Map 定位) 读取完整目标，bot_read({id}) 返回 bot 与 revision，bot_save({id,content,revision}) 执行唯一绑定、活动定义保护和 revision 检查，material({id,document}) 安全新建并完整读回 JSON 材料。此处 content 不含顶层 id，revision 创建时为 null、修改时使用真实读回值。宿主操作失败会抛出带 code/message 的错误；它不是权限限制，也不是通用脚本的必经步骤。
+
+成功报告仍需 manager 显式 complete；失败不回滚、不自动重试。不要在脚本返回后继续后台写入，返回值应代表本次业务已结束。
+
+## 脚本空白 Bot 创建
+
+发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，原 Bot 身份、命名输入输出和修订 replace-text 保留。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
 
 在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，报告策略只能 auto，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
@@ -139,7 +165,7 @@ scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto
 
 ### workflow 中的脚本执行
 
-脚本节点从已保存 execution 显示 `kind: rust_script`、固定能力 `rustScript`、执行 ID、业务生命周期、冻结的 `inputRule`／`outputRule` 与实际文件 `inputs`，不从当前 Bot 重建历史身份。当前定义仍单独标注，不是执行快照；脚本不消费 `node.input` 自然语言。
+脚本节点从已保存 execution 显示 `kind: typescript`、脚本路径 `script`、执行 ID、业务生命周期、冻结规则与实际文件 inputs，不从当前 Bot 重建历史身份。旧 `rust_script` 执行与来源只供历史读取；不能重新执行旧固定能力。node.input 是否消费由用户脚本决定。
 
 业务在途、业务成功／失败结束、报告 `canComplete`、节点状态与下游依赖资格分别显示。自动报告的严格 `canComplete: true` 只表示可交接；manager 仍须显式 `complete`，此前节点仍为 `running`、依赖仍阻塞。失败保留原错误及可得实际效果，不回滚、不自动 retry。manager 核实后显式 fail／retry 产生新的 execution；旧报告与 outputs 只属于旧 execution，不授予新执行完成资格。
 

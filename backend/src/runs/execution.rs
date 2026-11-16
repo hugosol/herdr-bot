@@ -1,10 +1,11 @@
-//! Chat identities remain required for old executions; Rust work has no Chat.
+//! Chat identities remain required for old executions; scripts have no Chat.
 use super::*;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ExecutionTarget {
     Script(ScriptExecution),
+    LegacyScript(LegacyScriptExecution),
     Chat(ChatExecution),
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -18,12 +19,22 @@ pub struct ChatExecution {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ScriptKind { RustScript }
+pub enum ScriptKind { Typescript }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyScriptKind { RustScript }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LegacyScriptExecution {
+    pub kind: LegacyScriptKind,
+    pub rust_script: String,
+    pub lifecycle: Lifecycle,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScriptExecution {
     pub kind: ScriptKind,
-    pub rust_script: String,
+    pub script: String,
     pub lifecycle: Lifecycle,
 }
 #[derive(Clone, Serialize, Deserialize)]

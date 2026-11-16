@@ -25,6 +25,19 @@ use tower::ServiceExt;
 /// 记录文件相对夹具根目录的位置。
 pub const RECORD_FILE: &str = "runtime/calls.tsv";
 
+/// Install the shipped script modules beside an isolated Bot directory.
+pub fn install_bot_scripts(bot_directory: &Path) {
+    let target = bot_directory.parent().unwrap().join("scripts");
+    fs::create_dir_all(&target).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("meta-data/scripts");
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        if entry.path().extension().is_some_and(|extension| extension == "ts") {
+            fs::copy(entry.path(), target.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
 /// 独立临时目录；路径中带空格，覆盖 Windows 命令行引号处理的真实情况。
 pub struct TempDir(PathBuf);
 

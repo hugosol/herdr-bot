@@ -9,7 +9,7 @@ const TEXTS: [&str; 3] = ["  WHEN\r\n选择能力。 \n", "PLAN\n\n  保留权�
 const FIELDS: [&str; 3] = ["when", "plan_guide", "node_guide"];
 
 async fn setup(s: &Scenario) -> Value {
-    api(s, "/api/scheduler/bots/save", json!({"id":"rust-save","revision":null,"content":json!({"name":"Rust merge","when":"","plan_guide":"","node_guide":"","rust_script":"save_bot_guides"}).to_string()}), 200).await;
+    api(s, "/api/scheduler/bots/save", json!({"id":"rust-save","revision":null,"content":json!({"name":"Rust merge","when":"","plan_guide":"","node_guide":"","script":"save-bot-guides.ts"}).to_string()}), 200).await;
     let tasks = api(s, "/api/tasks", json!({"name":"Only read invoices","taskType":"normal","agent":"pi","chatName":"Invoice {chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":"只读，不修改。"}), 200).await;
     let task = tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Only read invoices").unwrap().clone();
     api(s, "/api/scheduler/bots/save", json!({"id":"invoice-review","revision":null,"content":json!({"name":"Invoice reviewer — immutable","group":"literal-isolated","when":"","plan_guide":"","node_guide":"","task_id":task["id"]}).to_string()}), 200).await;
@@ -340,7 +340,7 @@ async fn rust_save_merges_exact_bytes_once_and_delivers_named_complete_saved() {
     let read = ended(&s, &run).await;
     let report = &read["reports"][0];
     assert_eq!(report["canComplete"], true, "{read}");
-    assert_eq!(report["source"], json!({"kind":"rust_script","rustScript":"save_bot_guides"}));
+    assert_eq!(report["source"], json!({"kind":"typescript","script":"save-bot-guides.ts"}));
     let actual = edit(&s).await;
     let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","plan_guide":"PLAN\n\n  保留权限\t\n","node_guide":"\tNODE\r\n原样。  ","task_id":baseline["target"]["task_id"]});
     assert_eq!(serde_json::from_str::<Value>(actual["revision"]["original"].as_str().unwrap()).unwrap(), expected);

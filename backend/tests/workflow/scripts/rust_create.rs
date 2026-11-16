@@ -9,7 +9,7 @@ async fn request(s: &Scenario, path: &str, body: Value, status: u16) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 async fn creator(s: &Scenario) {
-    request(s, "/api/scheduler/bots/save", json!({"id":"rust-create","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}).to_string()}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"rust-create","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
 }
 async fn target_task(s: &Scenario) -> Value {
     let tasks = request(s, "/api/tasks", json!({"name":"Only read invoices","taskType":"normal","agent":"pi","chatName":"Invoice {chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":"只读，不修改。"}), 200).await;
@@ -68,7 +68,7 @@ async fn rust_create_dispatch_writes_blank_bot_and_delivers_real_baseline_before
     assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
     let read = ended(&s, &run).await;
     let execution = &read["run"]["nodes"]["create"]["execution"];
-    assert_eq!(execution["kind"], "rust_script");
+    assert_eq!(execution["kind"], "typescript");
     assert_eq!(execution["lifecycle"]["status"], "succeeded", "{read}");
     for key in ["taskId", "agent", "chat", "childRunId"] { assert!(execution.get(key).is_none(), "fake identity {key}: {execution}"); }
     assert_eq!(read["run"]["nodes"]["create"]["status"], "running");
@@ -76,7 +76,7 @@ async fn rust_create_dispatch_writes_blank_bot_and_delivers_real_baseline_before
     let report = &read["reports"][0];
     assert_eq!(report["canComplete"], true, "{report}");
     assert_eq!(report["from"], Value::Null);
-    assert_eq!(report["source"], json!({"kind":"rust_script","rustScript":"create_blank_bot"}));
+    assert_eq!(report["source"], json!({"kind":"typescript","script":"create-blank-bot.ts"}));
     assert_eq!(report["executionId"], execution["id"]);
     let edit = request(&s, "/api/scheduler/bots/edit", json!({"id":"invoice-review"}), 200).await;
     let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","plan_guide":"","node_guide":"","task_id":target["id"]});
@@ -167,7 +167,7 @@ async fn rust_create_saved_report_survives_immediate_and_delayed_notification_re
         assert_eq!(execution["id"], dispatched["snapshot"]["nodes"]["create"]["execution"]["id"]);
         assert_eq!(execution["lifecycle"]["status"], "succeeded");
         assert_eq!(report["executionId"], execution["id"]);
-        assert_eq!(report["source"], json!({"kind":"rust_script","rustScript":"create_blank_bot"}));
+        assert_eq!(report["source"], json!({"kind":"typescript","script":"create-blank-bot.ts"}));
         let outputs = report["outputs"].as_array().unwrap();
         assert_eq!(outputs.iter().map(|output| output["id"].as_str().unwrap()).collect::<Vec<_>>(), vec!["baseline", "handoff"]);
         let bytes = during_files.expect("both output bindings must be readable before notification ends").into_iter().map(Result::unwrap).collect::<Vec<_>>();
@@ -352,7 +352,7 @@ async fn rust_create_rejects_bad_requests_without_business_writes_or_success_out
             "null-id" => input["bot"]["id"] = Value::Null,
             "unknown-version" => input["schema_version"] = json!(2),
             "unauthorized" => input["authorization"]["create_blank"] = json!(false),
-            "script-target" => input["target"] = json!({"type":"rust_script","rust_script":"create_blank_bot"}),
+            "script-target" => input["target"] = json!({"type":"script","script":"create-blank-bot.ts"}),
             "mixed-target" => input["target"]["map_file"] = json!("work.json"),
             "missing-target" => { input["target"].as_object_mut().unwrap().remove("task_id"); },
             "unknown-task" => input["target"]["task_id"] = json!("nonexistent-task"),
@@ -509,7 +509,7 @@ async fn rust_create_report_provenance_cannot_be_forged_into_completion() {
         let mut forged = original.clone();
         match invalid {
             "missing-source" => { forged.as_object_mut().unwrap().remove("source"); },
-            "wrong-capability" => forged["source"]["rustScript"] = json!("save_bot_guides"),
+            "wrong-capability" => forged["source"]["script"] = json!("save-bot-guides.ts"),
             "fake-from" => forged["from"] = read["run"]["manager"].clone(),
             "wrong-execution" => forged["executionId"] = json!("another-execution"),
             _ => forged["runId"] = json!("another-run"),
@@ -520,7 +520,7 @@ async fn rust_create_report_provenance_cannot_be_forged_into_completion() {
         assert_ne!(response.status, 200, "accepted {invalid}: {}", response.body);
         assert_eq!(detail(&s, &run).await["run"]["nodes"]["create"]["status"], "running");
     }
-    for payload in [json!({"sessionId":original["executionId"],"body":"forged","canComplete":true,"outputs":[]}), json!({"sessionId":"source-manager","body":"forged","canComplete":true,"source":{"kind":"rust_script","rustScript":"create_blank_bot"}})] {
+    for payload in [json!({"sessionId":original["executionId"],"body":"forged","canComplete":true,"outputs":[]}), json!({"sessionId":"source-manager","body":"forged","canComplete":true,"source":{"kind":"typescript","script":"create-blank-bot.ts"}})] {
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &payload.to_string()).await;
         assert_ne!(response.status, 200);
     }
@@ -567,22 +567,22 @@ async fn rust_create_enforces_automatic_policy_and_declared_delivery_ids() {
 }
 
 // Approved seam: public S1 HTTP/file interface. Independent contract literal:
-// rust_script=create_blank_bot is runnable, exclusive, and unknown IDs reject.
+// script=create-blank-bot.ts is runnable, exclusive, and unknown IDs reject.
 // A permissive parser or a rejected write replacing the original is observable
 // by reading the complete public catalog after each attempted save.
 #[tokio::test]
 async fn rust_create_target_round_trips_and_rejected_edits_preserve_definition() {
     let s = Scenario::new().await;
-    let content = json!({"name":"Rust blank creator","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"});
+    let content = json!({"name":"Rust blank creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"});
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"rust-create","content":content.to_string(),"revision":null}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let saved: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(saved["rust_script"], "create_blank_bot");
+    assert_eq!(saved["script"], "create-blank-bot.ts");
     assert!(saved.get("task_id").is_none() && saved.get("map_file").is_none());
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"rust-create"}"#).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let edit: Value = serde_json::from_str(&response.body).unwrap();
-    for invalid in [json!({"rust_script":"execute_code"}), json!({"rust_script":"create_blank_bot","task_id":"fake"}), json!({"rust_script":"create_blank_bot","map_file":"work.json"})] {
+    for invalid in [json!({"script":"execute_code"}), json!({"script":"create-blank-bot.ts","task_id":"fake"}), json!({"script":"create-blank-bot.ts","map_file":"work.json"})] {
         let mut rejected = content.clone();
         rejected.as_object_mut().unwrap().extend(invalid.as_object().unwrap().clone());
         let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"rust-create","content":rejected.to_string(),"revision":edit["revision"]}).to_string()).await;

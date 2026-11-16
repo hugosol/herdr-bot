@@ -4,7 +4,7 @@
 
 ## 创建分支表示的交付边界
 
-固定 Rust 创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/rust-script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与原接线不变；纯正文不包装，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create_blank_bot`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save_bot_guides`，三指南严格为空）。两脚本节点均为 auto 报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
+TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与原接线不变；纯正文不包装，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create-blank-bot.ts`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save-bot-guides.ts`，三指南严格为空）。两脚本节点均为 auto 报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
 
 删除范围仅原 Task `task-18e33fdc55177d1c-1`，不保留兼容别名，不保证该 Task 的旧来源恢复；不删除无关 Task、Chat 或 Run。原通用 replace-text Bot、Task 全部配置与修订 Map 保持原样，不按 Bot ID 全量替换消费者，也不建立 Map 私有 Bot。迁移前完整发布定义归档在 `fixtures/rust-create-migration/before.json`；这不是自动部署工具，用户服务与正式历史不受仓库更新影响。修订及独立非 v1 调用仍按原协议，无须补创建授权／digest。实际验证边界见末节。
 

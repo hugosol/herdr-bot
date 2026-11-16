@@ -66,12 +66,12 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
         let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":id,"content":bot.to_string(),"revision":null}).to_string()).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
     }
-    for (file, id, capability) in [("bot-1793348060748020300-25960-2.json", "create-blank-bot", "create_blank_bot"), ("save-created-bot-guides.json", "save-created-bot-guides", "save_bot_guides")] {
+    for (file, id, capability) in [("bot-1793348060748020300-25960-2.json", "create-blank-bot", "create-blank-bot.ts"), ("save-created-bot-guides.json", "save-created-bot-guides", "save-bot-guides.ts")] {
         let mut bot: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/bots").join(file)).unwrap()).unwrap();
         assert_eq!(bot["id"], id);
-        assert_eq!(bot["rust_script"], capability);
+        assert_eq!(bot["script"], capability);
         assert!(bot.get("task_id").is_none());
-        if capability == "save_bot_guides" { for field in ["when", "plan_guide", "node_guide"] { assert_eq!(bot[field], ""); } }
+        if capability == "save-bot-guides.ts" { for field in ["when", "plan_guide", "node_guide"] { assert_eq!(bot[field], ""); } }
         bot.as_object_mut().unwrap().remove("id");
         let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":id,"content":bot.to_string(),"revision":null}).to_string()).await;
         assert_eq!(saved.status, 200, "{}", saved.body);

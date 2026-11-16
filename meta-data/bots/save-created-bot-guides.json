@@ -5,5 +5,5 @@
   "when": "",
   "plan_guide": "",
   "node_guide": "",
-  "rust_script": "save_bot_guides"
+  "script": "save-bot-guides.ts"
 }

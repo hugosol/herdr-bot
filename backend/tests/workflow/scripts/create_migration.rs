@@ -116,10 +116,10 @@ async fn migrated_workflow(fault: Option<&str>) {
     let task_before = get_over_tcp(s.server.addr(), &format!("/api/tasks/{generic}")).await;
     assert_eq!(task_before.status, 200);
     let creator = api(&s, "/api/scheduler/bots/edit", json!({"id":"create-blank-bot"}), 200).await;
-    assert_eq!(creator["content"]["rust_script"], "create_blank_bot");
+    assert_eq!(creator["content"]["script"], "create-blank-bot.ts");
     assert!(creator["content"].get("task_id").is_none());
     let saver = api(&s, "/api/scheduler/bots/edit", json!({"id":"save-created-bot-guides"}), 200).await;
-    assert_eq!(saver["content"], json!({"group":"meta-bot","name":"创建流程三指南保存者","when":"","plan_guide":"","node_guide":"","rust_script":"save_bot_guides"}));
+    assert_eq!(saver["content"], json!({"group":"meta-bot","name":"创建流程三指南保存者","when":"","plan_guide":"","node_guide":"","script":"save-bot-guides.ts"}));
     let mut definition = source("meta-data/workflow-maps/create-bot-wrapper.json");
     for node in definition["nodes"].as_object_mut().unwrap().values_mut() { node["zone"] = json!("node"); }
     if fault == Some("missing-binding") { definition["nodes"]["save_bot"]["input_rule"].as_array_mut().unwrap().retain(|r| r["id"] != "when_text"); }

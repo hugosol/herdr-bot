@@ -1,5 +1,5 @@
 //! Shared Bot identities, catalog and revision-checked editing.
-pub(crate) mod script_bots;
+pub(crate) mod script_host;
 use super::{DirectoryError, DefinitionRevision, JsonObject, edit_error, prepare_directory, read_files, with_definitions, check_bot_references};
 use crate::files::{FileAccess, PublishMode};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub(crate) struct Bot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) map_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) rust_script: Option<String>,
+    pub(crate) script: Option<String>,
 }
 
 impl Bot {
@@ -29,11 +29,15 @@ impl Bot {
         if !crate::tasks::valid_group(self.group.as_deref()) {
             return Err(edit_error("group-invalid", "分组名称不能为空或包含首尾空白。"));
         }
-        if [self.task_id.is_some(), self.map_file.is_some(), self.rust_script.is_some()].into_iter().filter(|present| *present).count() > 1 {
-            return Err(edit_error("bot-invalid", "Bot 的 task_id、map_file 与 rust_script 互斥；请只选择一个执行目标。"));
+        if [self.task_id.is_some(), self.map_file.is_some(), self.script.is_some()].into_iter().filter(|present| *present).count() > 1 {
+            return Err(edit_error("bot-invalid", "Bot 的 task_id、map_file 与 script 互斥；请只选择一个执行目标。"));
         }
-        if self.rust_script.as_deref().is_some_and(|capability| !matches!(capability, "create_blank_bot" | "save_bot_guides")) {
-            return Err(edit_error("bot-invalid", "未知或尚未实现的固定 Rust 能力。"));
+        if self.script.as_deref().is_some_and(|script| {
+            script.is_empty() || script.contains(['\\', ':', '\0']) || !script.ends_with(".ts")
+                || script.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+                || !Path::new(script).is_relative()
+        }) {
+            return Err(edit_error("bot-invalid", "script 必须是 scripts 目录内的相对 .ts 路径，不允许绝对路径或目录穿越。"));
         }
         Ok(())
     }

@@ -3,7 +3,7 @@
   "$comment": "Representation contract only; does not register executable capabilities. Cross-file and live-state checks are specified in ../business-materials.md.",
   "$defs": {
     "nonempty": {"type": "string", "minLength": 1},
-    "capability": {"enum": ["create_blank_bot", "save_bot_guides"]},
+    "script_path": {"type":"string","pattern":"^(?!.*(?:^|\\/)\\.{1,2}(?:\\/|$))(?:[^/\\\\:\\0]+\\/)*[^/\\\\:\\0]+\\.ts$"},
     "effect_status": {"enum": ["not_attempted", "succeeded", "failed", "unknown"]},
     "business_failure": {
       "type": "object", "additionalProperties": false, "required": ["stage", "code", "message", "effects"],
@@ -24,15 +24,16 @@
       "oneOf": [
         {"type": "object", "additionalProperties": false, "required": ["status", "startedAt"], "properties": {"status": {"const": "running"}, "startedAt": {"type": "integer", "minimum": 0}}},
         {"type": "object", "additionalProperties": false, "required": ["status", "startedAt", "endedAt"], "properties": {"status": {"const": "succeeded"}, "startedAt": {"type": "integer", "minimum": 0}, "endedAt": {"type": "integer", "minimum": 0}}},
-        {"type": "object", "additionalProperties": false, "required": ["status", "startedAt", "endedAt", "failure"], "properties": {"status": {"const": "failed"}, "startedAt": {"type": "integer", "minimum": 0}, "endedAt": {"type": "integer", "minimum": 0}, "failure": {"$ref": "#/$defs/business_failure"}}}
+        {"type": "object", "additionalProperties": false, "required": ["status", "startedAt", "endedAt", "failure"], "properties": {"status": {"const": "failed"}, "startedAt": {"type": "integer", "minimum": 0}, "endedAt": {"type": "integer", "minimum": 0}, "failure": {}}}
       ]
     },
     "resolved_file": {"type": "object", "additionalProperties": false, "required": ["id", "path"], "properties": {"id": {"$ref": "#/$defs/nonempty"}, "path": {"$ref": "#/$defs/nonempty"}}},
+    "script_result": {"type":"object","additionalProperties":false,"required":["status"],"properties":{"status":{"enum":["success","failure"]},"outputs":{"type":"array","items":{"$ref":"#/$defs/resolved_file"}},"failure":{}}},
     "script_execution": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "kind", "rustScript", "zone", "inputRule", "outputRule", "inputs", "reportPolicy", "autoClose", "lifecycle"],
+      "required": ["id", "kind", "script", "zone", "inputRule", "outputRule", "inputs", "reportPolicy", "autoClose", "lifecycle"],
       "properties": {
-        "id": {"$ref": "#/$defs/nonempty"}, "kind": {"const": "rust_script"}, "rustScript": {"$ref": "#/$defs/capability"}, "zone": {"$ref": "#/$defs/nonempty"},
+        "id": {"$ref": "#/$defs/nonempty"}, "kind": {"const": "typescript"}, "script": {"$ref": "#/$defs/script_path"}, "zone": {"$ref": "#/$defs/nonempty"},
         "inputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "outputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}}, "inputs": {"type": "array", "items": {"$ref": "#/$defs/resolved_file"}},
         "reportPolicy": {"const": "auto"}, "autoClose": {"const": false}, "lifecycle": {"$ref": "#/$defs/lifecycle"}
       }
@@ -41,7 +42,7 @@
       "type": "object", "additionalProperties": false, "required": ["sessionId", "workspaceId", "tabId", "paneId", "agentName"],
       "properties": {"sessionId": {"$ref": "#/$defs/nonempty"}, "workspaceId": {"$ref": "#/$defs/nonempty"}, "tabId": {"$ref": "#/$defs/nonempty"}, "paneId": {"$ref": "#/$defs/nonempty"}, "agentName": {"$ref": "#/$defs/nonempty"}}
     },
-    "script_source": {"type": "object", "additionalProperties": false, "required": ["kind", "rustScript"], "properties": {"kind": {"const": "rust_script"}, "rustScript": {"$ref": "#/$defs/capability"}}},
+    "script_source": {"type": "object", "additionalProperties": false, "required": ["kind", "script"], "properties": {"kind": {"const": "typescript"}, "script": {"$ref": "#/$defs/script_path"}}},
     "script_report": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "type", "at", "runId", "nodeId", "executionId", "from", "source", "to", "body", "canComplete", "outputs"],
@@ -164,7 +165,7 @@
         "revision": {"$ref": "#/$defs/revision"}, "target": {"$ref": "#/$defs/target_snapshot"}, "request": {"$ref": "#/$defs/request"}
       }
     },
-    "created_bot": {"allOf": [{"$ref": "#/$defs/bot"}, {"not": {"required": ["rust_script"], "properties": {"rust_script": {"type": "string"}}}}, {"oneOf": [{"required": ["task_id"], "properties": {"task_id": {"$ref": "#/$defs/nonempty"}}}, {"required": ["map_file"], "properties": {"map_file": {"$ref": "#/$defs/nonempty"}}}]}]},
+    "created_bot": {"allOf": [{"$ref": "#/$defs/bot"}, {"not": {"required": ["script"], "properties": {"script": {"type": "string"}}}}, {"oneOf": [{"required": ["task_id"], "properties": {"task_id": {"$ref": "#/$defs/nonempty"}}}, {"required": ["map_file"], "properties": {"map_file": {"$ref": "#/$defs/nonempty"}}}]}]},
     "bot": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "when", "plan_guide", "node_guide"],
@@ -173,12 +174,12 @@
         "group": {"type": ["string", "null"], "pattern": "^\\S(?:[\\s\\S]*\\S)?$"},
         "when": {"type": "string"}, "plan_guide": {"type": "string"}, "node_guide": {"type": "string"},
         "task_id": {"type": ["string", "null"]}, "map_file": {"type": ["string", "null"]},
-        "rust_script": {"anyOf": [{"$ref": "#/$defs/capability"}, {"type": "null"}]}
+        "script": {"anyOf": [{"$ref": "#/$defs/script_path"}, {"type": "null"}]}
       },
       "allOf": [
         {"not": {"required": ["task_id", "map_file"], "properties": {"task_id": {"type": "string"}, "map_file": {"type": "string"}}}},
-        {"not": {"required": ["task_id", "rust_script"], "properties": {"task_id": {"type": "string"}, "rust_script": {"type": "string"}}}},
-        {"not": {"required": ["map_file", "rust_script"], "properties": {"map_file": {"type": "string"}, "rust_script": {"type": "string"}}}}
+        {"not": {"required": ["task_id", "script"], "properties": {"task_id": {"type": "string"}, "script": {"type": "string"}}}},
+        {"not": {"required": ["map_file", "script"], "properties": {"map_file": {"type": "string"}, "script": {"type": "string"}}}}
       ]
     }
   }

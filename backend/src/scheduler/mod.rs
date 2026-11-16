@@ -47,7 +47,7 @@ pub(crate) struct DispatchTarget {
     pub zone_id: String,
     pub task: Option<crate::tasks::Task>,
     pub map: Option<String>,
-    pub rust_script: Option<String>,
+    pub script: Option<String>,
 }
 
 pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str) -> Result<DispatchTarget, String> {
@@ -59,11 +59,11 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
         },
     ).map_err(|e| e.message)?;
     let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
-    if let Some(script) = &bot.rust_script {
+    if let Some(script) = &bot.script {
         if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
             return Err("脚本节点仅允许自动报告、无自动关闭且不指定 manager Task。".into());
         }
-        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, zone_id: node.zone.clone(), zone: node.zone, task: None, map: None, rust_script: Some(script.clone()) });
+        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, zone_id: node.zone.clone(), zone: node.zone, task: None, map: None, script: Some(script.clone()) });
     }
     let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
         (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
@@ -75,7 +75,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
         return Err("node 的执行 Task 类型与目标不一致".into());
     }
     let zone = node.zone;
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task: Some(task), map: bot.map_file.clone(), rust_script: None })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task: Some(task), map: bot.map_file.clone(), script: None })
 }
 /// Selected definition closure for chief confirmation; unrelated catalog edits
 /// must not invalidate approval. Preflight owns cycle/role/binding validation.

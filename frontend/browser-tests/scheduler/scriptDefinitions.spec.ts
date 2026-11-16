@@ -29,7 +29,7 @@ test.afterEach(async ({ browser }, info) => {
     })
     const root = path.resolve(import.meta.dirname, '../../..')
     const target = process.env.CARGO_TARGET_DIR ?? path.join(root, 'backend/target')
-    const files = ['frontend/bun.lock', 'backend/Cargo.lock', 'backend/src/scheduler/mod.rs', 'backend/src/scheduler/maps/mod.rs', 'backend/src/scheduler/bots/mod.rs', 'backend/src/scheduler/bots/script_bots.rs', 'backend/src/runs/preflight.rs', 'frontend/src/scheduler/bots/BotTargetSelect.tsx', 'frontend/src/scheduler/maps/MapNodeDetails.tsx', 'frontend/src/scheduler/maps/NodeSettings.tsx', 'frontend/src/scheduler/SchedulerPanel.tsx', 'frontend/src/controllers/schedulerController.ts', 'backend/src/controllers/scheduler_controller.rs', 'frontend/src/controllers/botController.ts', 'backend/src/controllers/bots_controller.rs', 'frontend/browser-tests/scheduler/scriptDefinitions.spec.ts', 'backend/static/index.html', ...fs.readdirSync(path.join(root, 'backend/static/assets')).map(file => `backend/static/assets/${file}`), path.join(target, 'debug/herdr-bot.exe')]
+    const files = ['frontend/bun.lock', 'backend/Cargo.lock', 'backend/src/scheduler/mod.rs', 'backend/src/scheduler/maps/mod.rs', 'backend/src/scheduler/bots/mod.rs', 'backend/src/runs/scripts.rs', 'backend/src/runs/preflight.rs', 'frontend/src/scheduler/bots/BotTargetSelect.tsx', 'frontend/src/scheduler/maps/MapNodeDetails.tsx', 'frontend/src/scheduler/maps/NodeSettings.tsx', 'frontend/src/scheduler/SchedulerPanel.tsx', 'frontend/src/controllers/schedulerController.ts', 'backend/src/controllers/scheduler_controller.rs', 'frontend/src/controllers/botController.ts', 'backend/src/controllers/bots_controller.rs', 'frontend/browser-tests/scheduler/scriptDefinitions.spec.ts', 'backend/static/index.html', ...fs.readdirSync(path.join(root, 'backend/static/assets')).map(file => `backend/static/assets/${file}`), path.join(target, 'debug/herdr-bot.exe')]
     record.files = files.map(file => ({ file, sha256: createHash('sha256').update(fs.readFileSync(path.resolve(root, file))).digest('hex') }))
   } finally {
     try {
@@ -73,13 +73,14 @@ async function reopenBot(page: Page) {
 }
 
 // Approved S3 actual bundled Bot/scheduler page + S1 HTTP/file interface.
-// P30: fixed Rust target must survive create/edit/save/leave/reload with empty
+// P30: JSON-bound script must survive create/edit/save/leave/reload with empty
 // guides. Plausible violation: JSON saves a target but picker/preview omits it,
-// or changing back to Task/Map leaves rust_script bound. Literal objects below
+// or changing back to Task/Map leaves script bound. Literal objects below
 // are independent expectations; the real backend remains in the exercised path.
-for (const capability of ['create_blank_bot', 'save_bot_guides'] as const) {
+for (const capability of ['create-blank-bot.ts', 'save-bot-guides.ts', 'custom/delegated.ts'] as const) {
 test(`P30 ${capability} is maintained and reloaded without copying Task or Map configuration`, async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
+  fs.cpSync(path.resolve('../meta-data/scripts'), path.join(server.cwd, 'meta-data/scripts'), { recursive: true })
   const taskResponse = await page.request.post(`${server.baseURL}/api/tasks`, { data: { name: '页面普通 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' } })
   expect(taskResponse.status()).toBe(200)
   const tasksBefore = await taskResponse.json()
@@ -93,11 +94,8 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
   await page.getByRole('button', { name: 'new', exact: true }).click()
   await page.getByLabel('Bot ID', { exact: true }).fill('script-page-only')
   const json = page.getByLabel('Bot 内容 JSON', { exact: true })
-  await json.fill(JSON.stringify(guides))
-  await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption('save_bot_guides')
-  expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, rust_script: 'save_bot_guides' })
-  await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption(capability)
-  expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, rust_script: capability })
+  await json.fill(JSON.stringify({ ...guides, script: capability }))
+  expect(JSON.parse(await json.inputValue())).toEqual({ ...guides, script: capability })
   await page.getByRole('button', { name: 'save', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(preview).toContainText(capability)
@@ -107,18 +105,19 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
     await expect(preview.getByRole('status')).toHaveText(`当前 ${section}：空文本`)
   }
   const first = await readBot(page)
-  expect(first.content).toEqual({ ...guides, rust_script: capability })
+  expect(first.content).toEqual({ ...guides, script: capability })
   await evidence(page, info, 'created-empty-guides', first)
   await page.getByTestId('tab-sessions').click()
   await reopenBot(page)
-  await expect(page.getByRole('combobox', { name: '固定 Rust 能力', exact: true })).toHaveValue(capability)
   expect(JSON.parse(await json.inputValue())).toEqual(first.content)
 
   for (const invalid of [
-    { ...guides, rust_script: 'unknown_capability' },
-    { ...guides, rust_script: capability, task_id: task.id },
-    { ...guides, rust_script: capability, map_file: 'page-child.json' },
-    { ...guides, rust_script: { command: 'anything' } },
+    { ...guides, script: '../escape.ts' },
+    { ...guides, script: '/absolute.ts' },
+    { ...guides, script: 'wrong.js' },
+    { ...guides, script: capability, task_id: task.id },
+    { ...guides, script: capability, map_file: 'page-child.json' },
+    { ...guides, script: { command: 'anything' } },
   ]) {
     const raw = JSON.stringify(invalid, null, 2)
     await json.fill(raw)
@@ -132,8 +131,8 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
   for (const target of ['task', 'script', 'map', 'script'] as const) {
     if (target === 'task') await page.getByRole('combobox', { name: 'Task', exact: true }).selectOption(`task:${task.id}`)
     if (target === 'map') await page.getByRole('combobox', { name: 'Map', exact: true }).selectOption('page-child.json')
-    if (target === 'script') await page.getByRole('combobox', { name: '固定 Rust 能力', exact: true }).selectOption(capability)
-    const expected = { ...guides, ...(target === 'task' ? { task_id: task.id } : target === 'map' ? { map_file: 'page-child.json' } : { rust_script: capability }) }
+    if (target === 'script') await json.fill(JSON.stringify({ ...guides, script: capability }))
+    const expected = { ...guides, ...(target === 'task' ? { task_id: task.id } : target === 'map' ? { map_file: 'page-child.json' } : { script: capability }) }
     expect(JSON.parse(await json.inputValue())).toEqual(expected)
     await page.getByRole('button', { name: 'save', exact: true }).click()
     await expect(preview).toBeVisible()
@@ -158,9 +157,10 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
 // the public definition plus original file bytes after every refusal.
 test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only policy through HTTP', async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
+  fs.cpSync(path.resolve('../meta-data/scripts'), path.join(server.cwd, 'meta-data/scripts'), { recursive: true })
   const bots = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'only-script.json'), JSON.stringify({ id: 'script-page-only', ...guides, rust_script: 'create_blank_bot' }))
+  fs.writeFileSync(path.join(bots, 'only-script.json'), JSON.stringify({ id: 'script-page-only', ...guides, script: 'create-blank-bot.ts' }))
   const mapFile = path.join(maps, 'script-page.json')
   fs.writeFileSync(mapFile, JSON.stringify({ title: '独占脚本 Map', description: '', nodes: { script: { title: '文件业务', bot_id: 'draft-unbound', input: '', zone: 'test/script', blocked_by: [] } } }))
   await page.goto(`${server.baseURL}?layout=expanded`)
@@ -170,13 +170,12 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await page.getByRole('combobox', { name: '选择已有 Bot', exact: true }).selectOption('script-page-only')
   const detail = page.getByRole('region', { name: 'node 详情', exact: true })
-  await expect(detail).toContainText('create_blank_bot')
+  await expect(detail).toContainText('create-blank-bot.ts')
   await expect(detail.getByRole('region', { name: 'Task.prompt', exact: true })).not.toContainText('尚未绑定 Task')
   await expect(detail.getByRole('radio', { name: 'manual', exact: true })).toHaveCount(0)
   await expect(detail.getByRole('checkbox', { name: 'auto_close', exact: true })).toHaveCount(0)
   await expect(detail.getByRole('combobox', { name: 'manager Task', exact: true })).toHaveCount(0)
   await expect(detail.getByLabel('输入内容', { exact: true })).toHaveValue('')
-  await expect(detail).toContainText('不消费 node.input')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const before = await (await page.request.get(`${server.baseURL}/api/scheduler/maps/script-page.json`)).json()
@@ -185,7 +184,7 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '独占脚本 Map', exact: true }).click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '文件业务 script', exact: true }).click()
-  await expect(detail).toContainText('create_blank_bot')
+  await expect(detail).toContainText('create-blank-bot.ts')
   await evidence(page, info, 'scheduler-script-reloaded', before)
   const bytes = fs.readFileSync(mapFile, 'utf8')
   const edit = await (await page.request.post(`${server.baseURL}/api/scheduler/maps/script-page.json/nodes/edit`, { data: { id: 'script' } })).json()
@@ -208,9 +207,10 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
 // treating every non-Task target as unbound, or collapsing an invalid capability
 // into an unexplained missing Bot. Change actual definition/material files
 // between explicit browser checks; never stub the preflight response.
-for (const capability of ['create_blank_bot', 'save_bot_guides'] as const) {
+for (const capability of ['create-blank-bot.ts', 'save-bot-guides.ts'] as const) {
 test(`P30 ${capability} preflight accepts available materials and explicitly rejects unknown conflicting or unavailable inputs without starting`, async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
+  fs.cpSync(path.resolve('../meta-data/scripts'), path.join(server.cwd, 'meta-data/scripts'), { recursive: true })
   const root = path.dirname(server.configPath), zonePath = path.join(root, 'script-preflight-zone')
   fs.mkdirSync(zonePath)
   expect((await page.request.post(`${server.baseURL}/api/zones`, { data: { id: 'test/script', path: zonePath } })).status()).toBe(200)
@@ -221,16 +221,16 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   const manager = tasks.tasks[0].id
   const bots = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  const bot = { id: 'script-page-only', ...guides, rust_script: capability }, botFile = path.join(bots, 'preflight-script.json')
+  const bot = { id: 'script-page-only', ...guides, script: capability }, botFile = path.join(bots, 'preflight-script.json')
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.writeFileSync(path.join(maps, 'material-target.json'), JSON.stringify({ title: '不执行的材料目标', description: '', nodes: {} }))
-  const inputIds = capability === 'create_blank_bot' ? ['request'] : ['baseline', 'when_text', 'when_handoff', 'plan_guide_text', 'plan_guide_handoff', 'node_guide_text', 'node_guide_handoff']
-  const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create_blank_bot' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
+  const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'when_handoff', 'plan_guide_text', 'plan_guide_handoff', 'node_guide_text', 'node_guide_handoff']
+  const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
   const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { evidence: '独占验收授权', scope: 'create_blank' } }
   const materials = Object.fromEntries(inputIds.map(id => [id, path.join(zonePath, `${id}.json`)]))
-  if (capability === 'create_blank_bot') {
+  if (capability === 'create-blank-bot.ts') {
     fs.writeFileSync(materials.request, JSON.stringify(request))
   } else {
     const target = { name: '预检保存目标', when: '', plan_guide: '', node_guide: '', map_file: 'material-target.json' }
@@ -268,8 +268,8 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   }
   await check(200, '配置校验通过')
   await evidence(page, info, 'script-preflight-valid', { observations, bot, map })
-  fs.writeFileSync(botFile, JSON.stringify({ ...bot, rust_script: 'unknown-capability' }))
-  await check(400, '未知')
+  fs.writeFileSync(botFile, JSON.stringify({ ...bot, script: 'missing-script.ts' }))
+  await check(400, '脚本')
   await evidence(page, info, 'script-preflight-unknown', observations)
   fs.writeFileSync(botFile, JSON.stringify({ ...bot, map_file: 'material-target.json' }))
   await check(400, '互斥')
@@ -292,9 +292,10 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
 // using page actions and independently read the saved definition.
 test('P32 existing script policy conflict retains original values until the user explicitly corrects the draft', async ({ page }, info) => {
   server = await startServer({ separateCwd: true, herdr: {} })
+  fs.cpSync(path.resolve('../meta-data/scripts'), path.join(server.cwd, 'meta-data/scripts'), { recursive: true })
   const bots = path.join(server.cwd, 'meta-data/bots'), maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'repair-script.json'), JSON.stringify({ id: 'repair-script', ...guides, rust_script: 'create_blank_bot' }))
+  fs.writeFileSync(path.join(bots, 'repair-script.json'), JSON.stringify({ id: 'repair-script', ...guides, script: 'create-blank-bot.ts' }))
   const node = { title: '修正策略', bot_id: 'repair-script', input: '', zone: 'test/script', blocked_by: [], report_policy: 'manual', auto_close: true, manager_task_id: 'old-manager' }
   const mapFile = path.join(maps, 'repair-script.json'), original = JSON.stringify({ title: '显式修正脚本策略', description: '', nodes: { script: node } })
   fs.writeFileSync(mapFile, original)

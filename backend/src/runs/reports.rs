@@ -24,10 +24,12 @@ pub struct Report {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ScriptSource {
-    kind: ScriptKind,
-    rust_script: String,
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum ScriptSource {
+    #[serde(rename = "typescript")]
+    Typescript { script: String },
+    #[serde(rename = "rust_script")]
+    RustScript { #[serde(rename = "rustScript")] rust_script: String },
 }
 
 pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, String> {
@@ -39,7 +41,8 @@ pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, Str
         if report.run_id != run.id { return Err("报告 Run 归属不一致。".into()); }
         let execution = run.nodes.get(&report.node_id).and_then(|node| node.executions().find(|execution| execution.id == report.execution_id));
         match execution.map(|execution| &execution.target) {
-            Some(ExecutionTarget::Script(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| source.rust_script == script.rust_script) => {},
+            Some(ExecutionTarget::Script(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| matches!(source, ScriptSource::Typescript { script: path } if path == &script.script)) => {},
+            Some(ExecutionTarget::LegacyScript(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| matches!(source, ScriptSource::RustScript { rust_script } if rust_script == &script.rust_script)) => {},
             // Legacy Chat reports remain readable even when retained execution or
             // Chat associations are incomplete. New submissions authenticate the
             // actual sender before saving; script provenance is never inferred.
@@ -217,7 +220,7 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
                 ReportOrigin::Script(lifecycle) => {
                     let ExecutionTarget::Script(script) = &mut execution.target else { return Err("脚本报告不能归属 Chat 执行。".into()); };
                     script.lifecycle = lifecycle;
-                    (None, Some(ScriptSource { kind: ScriptKind::RustScript, rust_script: script.rust_script.clone() }), true)
+                    (None, Some(ScriptSource::Typescript { script: script.script.clone() }), true)
                 }
             };
             if lifecycle_changed { save_run(&state, &run).await?; }

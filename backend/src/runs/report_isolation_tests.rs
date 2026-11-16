@@ -40,6 +40,7 @@ impl Fixture {
         config.scheduler.map_directory = data.path().join("maps");
         config.scheduler.bot_directory = data.path().join("bots");
         config.scheduler.run_directory = data.path().join("runs");
+        common::install_bot_scripts(&config.scheduler.bot_directory);
         config.scheduler.run_instructions = std::path::absolute(fixtures.parent().unwrap().join("docs/workflow-runtime.md")).unwrap();
         config.herdr.executable = herdr.executable().to_owned();
         for dir in [&config.scheduler.map_directory, &config.scheduler.bot_directory] { fs::create_dir_all(dir).unwrap(); }
@@ -55,7 +56,7 @@ impl Fixture {
         }
         fixture.manager = tasks[0]["id"].clone();
         fixture.targets = tasks[2..].to_vec();
-        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}).to_string()).unwrap();
+        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()).unwrap();
         fs::write(fixture.config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
@@ -126,7 +127,8 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     f.action("isolation-manager", "dispatch", json!({"nodes":["create"]}), 200).await;
     let first = f.count(&run, 1).await;
     let old = first["run"]["nodes"]["create"]["execution"].clone();
-    assert_eq!(first["reports"][0]["canComplete"], true);
+    // The declared legacy output is intentionally absent: the new script contract rejects incomplete success.
+    assert_eq!(first["reports"][0]["canComplete"], false);
     f.host_exited().await;
     let legacy = f.data.path().join("old-only.json");
     fs::write(&legacy, b"{\"scope\":\"OLD-413\"}").unwrap();
@@ -153,8 +155,10 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     assert_eq!(f.detail(&run).await, before);
     drop(gate);
     let done = f.count(&run, 7).await;
-    let ready = &done["reports"][6];
-    assert_eq!(ready["canComplete"], true);
+    let automatic = &done["reports"][6];
+    assert_eq!(automatic["canComplete"], false);
+    // This test owns the report-submission seam, independently of script result validation.
+    let ready = f.submit(&run, &current, true, automatic["outputs"].clone()).await;
     assert_eq!(ready["executionId"], current["id"]);
     let last = f.submit(&run, &old, true, old_outputs).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], ready["id"]);
@@ -179,7 +183,7 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     assert_eq!(actual.last().unwrap()["files"]["baseline"]["bot"]["id"], "created-1");
     assert_eq!(actual.last().unwrap()["files"]["handoff"]["bot_id"], "created-1");
     let all = f.detail(&run).await;
-    assert_eq!(&all["reports"].as_array().unwrap()[..8], &[first["reports"][0].clone(), late, progress, later, earlier_true, latest_false, ready.clone(), last]);
+    assert_eq!(&all["reports"].as_array().unwrap()[..9], &[first["reports"][0].clone(), late, progress, later, earlier_true, latest_false, automatic.clone(), ready.clone(), last]);
     assert_eq!(fs::read(legacy).unwrap(), b"{\"scope\":\"OLD-413\"}");
     f.host_exited().await;
     println!("P19 actual Run={} old={} current={} orderedReports={} consumer={}", run["id"], old["id"], current["id"], all["reports"], json!(actual));

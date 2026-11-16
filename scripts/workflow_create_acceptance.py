@@ -434,7 +434,7 @@ def standalone(case, context):
 def protected_configuration(case):
     paths = [case.root / 'data/tasks.json', case.root / 'options.toml', case.root / 'paths.local.toml',
         *sorted((case.root / 'maps').glob('*.json')), *sorted((case.root / 'bots').glob('*.json')),
-        *sorted((case.root / 'meta-data').glob('*.json'))]
+        *sorted((case.root / 'meta-data').glob('*.json')), *sorted((case.root / 'scripts').glob('*.ts'))]
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -457,6 +457,7 @@ def observed_saves(case, identity):
 def workflow(case, context):
     repo = Path(__file__).resolve().parents[1]
     definition = json.loads((repo / 'meta-data/workflow-maps/create-bot-wrapper.json').read_text(encoding='utf-8'))
+    shutil.copytree(repo / 'meta-data/scripts', case.root / 'scripts', dirs_exist_ok=True)
     for identity in ['create-blank-bot', 'save-created-bot-guides', 'write-bot-when',
         'write-bot-plan-guide', 'write-bot-node-guide', 'optimize-prompt']:
         matches = [p for p in (repo / 'meta-data/bots').glob('*.json')
@@ -570,7 +571,7 @@ def workflow(case, context):
             if history:
                 read_evidence(case, history, path)
         if not history:
-            check(execution.get('rustScript') in ['create_blank_bot', 'save_bot_guides'], ('Expected real Rust execution without Chat', execution))
+            check(execution.get('kind') == 'typescript' and execution.get('script') in ['create-blank-bot.ts', 'save-bot-guides.ts'], ('Expected real TypeScript execution without Chat', execution))
             continue
         expected_id = TASK_IDS[3] if node_id.startswith('optimize_') else TASK_IDS[FIELDS.index(node_id[6:])]
         case.evidence['taskPairs'][expected_id]['workflow'] = True

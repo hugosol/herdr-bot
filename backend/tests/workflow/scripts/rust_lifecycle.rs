@@ -96,6 +96,7 @@ impl Lifecycle {
         let herdr = HerdrFixture::new("Rust lifecycle external");
         for name in ["maps", "bots", "node", "home"] { fs::create_dir(root.path().join(name)).unwrap(); }
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        common::install_bot_scripts(&root.path().join("bots"));
         let config = json!({
             "listen_addr":"127.0.0.1:0", "data_directory":root.path().join("data"),
             "static_directory":repo.join("backend/static"), "prompts_file":root.path().join("prompts.toml"),
@@ -125,7 +126,7 @@ impl Lifecycle {
             let task = saved["tasks"].as_array().unwrap().iter().find(|task|task["name"] == name).unwrap().clone();
             if name == "manager" { manager = task; } else { s.target = task; }
         }
-        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}).to_string()}), 200).await;
+        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
         let mut nodes = serde_json::Map::new();
         for (node, bot) in [("create", "first-result"), ("later", "second-result")] {
             let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"evidence":"User authorized this isolated blank Bot","scope":"create_blank"}});
@@ -283,7 +284,7 @@ async fn script_lifecycle_disconnect_and_pause_preserve_accepted_business_withou
         caller.abort();
         let during = s.detail().await;
         let execution = during["run"]["nodes"]["create"]["execution"].clone();
-        assert_eq!(execution["kind"], "rust_script");
+        assert_eq!(execution["kind"], "typescript");
         assert_eq!(execution["lifecycle"]["status"], "running");
         assert_eq!(during["reports"], json!([]));
         assert!(!s.root.path().join("bots/first-result.json").exists());
@@ -345,7 +346,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "second compiled business must actually enter external file gate");
         let before = s.detail().await;
         assert_eq!(before["managed"], true);
-        assert_eq!(before["run"]["nodes"]["later"]["execution"]["kind"], "rust_script");
+        assert_eq!(before["run"]["nodes"]["later"]["execution"]["kind"], "typescript");
         assert_eq!(before["run"]["nodes"]["later"]["execution"]["lifecycle"]["status"], "running");
         assert_eq!(before["reports"], finished["reports"]);
         assert!(!s.root.path().join("bots/second-result.json").exists());
