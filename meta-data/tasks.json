@@ -325,6 +325,7 @@
     {
       "id": "task-18e892cb6456b0d0-0",
       "name": "Bot 需求对齐者",
+      "group": "meta-task",
       "chatName": "[Bot 需求对齐] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
@@ -337,6 +338,7 @@
     {
       "id": "task-18e89651aa593290-1",
       "name": "Bot 整体分层设计与创建者",
+      "group": "meta-task",
       "chatName": "[Bot 分层创建] {zone.name} · {chat.id}",
       "agent": "omp",
       "taskType": "normal",
