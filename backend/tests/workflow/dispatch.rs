@@ -79,6 +79,8 @@ mod report_restart;
 mod resume_restart;
 #[path = "lifecycle/completion_gate.rs"]
 mod completion_gate;
+#[path = "lifecycle/end_node.rs"]
+mod end_node;
 
 // Crate-scope includes retain libtest names, including --exact child selectors.
 include!("support/dispatch.rs");

@@ -38,6 +38,7 @@ fn manager_input(state: &AppState, run: &Run) -> String {
         "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}",
         run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
         paths[0].display(), paths[1].display(), paths[2].display(), materials.display());
+    input.push_str("\n\n[End node contract] Map may explicitly mark one end_node. It must wait for every other node to be completed. After successful dispatch, that Chat is handed to the user and remains running/open: do not request reports or complete it. Explicitly finish the Run when canFinish is true; this records handed-to-user, not completion of that Chat. Never finish after a failed dispatch. [/End node contract]");
     if !run.user_input.is_empty() {
         input.push_str("\n\n");
         input.push_str(&run.user_input);
@@ -163,7 +164,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             }
         };
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, end_node: target.end_node });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         if let Some(prepared) = prepared {
@@ -175,7 +176,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         }
         let task = target.task.as_ref().ok_or("缺少 Chat 执行 Task")?;
         let suite_args = state.tasks.prepare_environment(task).map_err(|error| error.message())?;
-        let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else { crate::tasks::catalog::ExecutionRole::Node };
+        let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else if target.end_node { crate::tasks::catalog::ExecutionRole::Standalone } else { crate::tasks::catalog::ExecutionRole::Node };
         let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(task, role)).map_err(|e| e.message())?;
         preset.env.suite_args = suite_args;
         preset.env.check_entrypoints()?;
@@ -202,7 +203,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
                     ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::Typescript, script: script.script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }),
                     ExecutionTarget::LegacyScript(_) => return None,
                 };
-                Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: target.as_ref().ok().map(|target| target.zone_id.clone()).or_else(|| previous.zone_id.clone()), zone: target.as_ref().map(|target| target.zone.clone()).unwrap_or_else(|_| previous.zone.clone()), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false })
+                Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: target.as_ref().ok().map(|target| target.zone_id.clone()).or_else(|| previous.zone_id.clone()), zone: target.as_ref().map(|target| target.zone.clone()).unwrap_or_else(|_| previous.zone.clone()), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, end_node: target.as_ref().map_or(previous.end_node, |target| target.end_node) })
             });
         }
         node.status = "failed".into();
@@ -412,6 +413,12 @@ async fn protocol(
         Role::Node { id, target, .. } => {
             use std::fmt::Write;
             let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
+            if execution.end_node {
+                let mut input = format!("[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n", run.user_input);
+                for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
+                write!(input, "[/Named file inputs]\n\n[Business input]\n{}", prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
+                input
+            } else {
             let mut input = format!(
                 "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n中间资料位置: {}\n\n[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n",
                 target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
@@ -421,12 +428,13 @@ async fn protocol(
             write!(input, "\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
                 target.report_policy.control_section(), prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
             input
+            }
         }
     };
     if let Some(child) = child {
         use std::fmt::Write;
         let paths = Runs::paths(state, &child.id);
-        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".manager-zone").join(".workflow").join(&child.id).display()).unwrap();
+        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]\n\n[End node contract] An explicit end_node waits for all other nodes completed. Successful dispatch hands its open Chat to the user without report or complete; explicitly finish this child Run when canFinish=true, then report normally to the parent manager. Failed dispatch cannot finish. [/End node contract]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".manager-zone").join(".workflow").join(&child.id).display()).unwrap();
     }
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     std::borrow::Cow::Owned(text)

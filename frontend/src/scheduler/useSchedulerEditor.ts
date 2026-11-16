@@ -130,8 +130,8 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       let content = loaded.content
       let settings: NodeSettingsValue | null = null
       if (kind === 'node') {
-        const { zone, report_policy = 'auto', auto_close = false, node_id: _nodeId, ...definition } = JSON.parse(content)
-        settings = { zone, report_policy, auto_close }
+        const { zone, report_policy = 'auto', auto_close = false, end_node, node_id: _nodeId, ...definition } = JSON.parse(content)
+        settings = { zone, report_policy, auto_close, ...(end_node === undefined ? {} : { end_node }) }
         content = JSON.stringify(definition, null, 2)
       }
       update({ draft: { ...loaded, content, kind, create: id === null, initialId: loaded.id, initialContent: content, file, settings, initialSettings: settings } })
@@ -151,7 +151,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       let content = draft.content
       if (draft.kind === 'node') {
         if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('node 内容 JSON 必须是对象。')
-        for (const field of ['node_id', 'zone', 'report_policy', 'auto_close']) {
+        for (const field of ['node_id', 'zone', 'report_policy', 'auto_close', 'end_node']) {
           if (Object.hasOwn(value, field)) throw new Error(`请移除 node 内容 JSON 中的顶层 ${field}；使用独立控件。`)
         }
         content = JSON.stringify({ ...value, ...draft.settings })

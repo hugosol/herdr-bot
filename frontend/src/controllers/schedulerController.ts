@@ -57,7 +57,7 @@ function isMap(value: unknown): value is WorkflowMap {
     (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
     (!('input_requirements' in value) || typeof value.input_requirements === 'string') &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
-    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && (typeof node.zone === 'string' || (typeof node.zone === 'object' && node.zone !== null && !Array.isArray(node.zone) && node.zone.type === 'dynamic' && Object.keys(node.zone).length === 1)) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
+    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && (typeof node.zone === 'string' || (typeof node.zone === 'object' && node.zone !== null && !Array.isArray(node.zone) && node.zone.type === 'dynamic' && Object.keys(node.zone).length === 1)) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
 
 function isCatalog(value: unknown): value is MapCatalog {
@@ -86,6 +86,7 @@ export type MapNode = {
   blocked_by: string[]
   report_policy?: 'auto' | 'manual'
   auto_close?: boolean
+  end_node?: boolean
 }
 
 export async function loadNodeDraft(file: string, id: string | null): Promise<{ id: string; content: string; revision: BotRevision; create: boolean }> {

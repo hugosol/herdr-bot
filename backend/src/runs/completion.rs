@@ -35,6 +35,9 @@ pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, r
     let Some(node) = run.nodes.get(&node_id) else {
         return Decision::reject("node-unknown", "node 不在本次 Run 中。");
     };
+    if node.execution.as_ref().is_some_and(|execution| execution.end_node) {
+        return Decision::reject("end-node-not-completable", "end Chat 不接受 complete；成功派发后请显式 finish Run。");
+    }
     if node.status == "completed" {
         return Ok(Decision::Unchanged);
     }
@@ -94,6 +97,14 @@ pub(super) fn close_completed_tab(state: &AppState, run: &Run, node_id: &str) {
     });
 }
 
+pub(super) fn can_finish(run: &Run) -> bool {
+    matches!(run.status.as_str(), "running" | "paused") && run.nodes.values().all(|node| node.status == "completed" || handed_to_user(node))
+}
+
+fn handed_to_user(node: &NodeState) -> bool {
+    node.status == "running" && node.failure.is_none() && node.execution.as_ref().is_some_and(|execution| execution.end_node && execution.chat().is_some())
+}
+
 pub(super) fn finish(run: &mut Run) -> Result<Decision, String> {
     if run.status == "completed" {
         return Ok(Decision::Unchanged);
@@ -101,10 +112,12 @@ pub(super) fn finish(run: &mut Run) -> Result<Decision, String> {
     if !matches!(run.status.as_str(), "running" | "paused") {
         return Decision::reject("run-not-finishable", "仅 running 或 paused 的 Run 可结束。");
     }
-    if run.nodes.values().any(|node| node.status != "completed") {
+    let handed_to_user = run.nodes.values().any(handed_to_user);
+    if !can_finish(run) {
         return Decision::reject("nodes-incomplete", "仍有 node 未 completed；请显式完成交接后再 finish。");
     }
     let finished = Finished {
+        reason: handed_to_user.then(|| "handed-to-user".into()),
         id: crate::chats::new_creation_id(),
         at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
         actor: run.manager.clone().ok_or("缺少管理者真实关联。")?,
@@ -112,7 +125,8 @@ pub(super) fn finish(run: &mut Run) -> Result<Decision, String> {
     let before = std::mem::replace(&mut run.status, "completed".into());
     run.finished = Some(finished);
     let finished = run.finished.as_ref().unwrap();
-    let event = serde_json::json!({"id":finished.id,"at":finished.at,"actor":finished.actor,"action":"finish","before":before,"after":"completed"});
+    let mut event = serde_json::json!({"id":finished.id,"at":finished.at,"actor":finished.actor,"action":"finish","before":before,"after":"completed"});
+    if let Some(reason) = &finished.reason { event["reason"] = serde_json::json!(reason); }
     Ok(Decision::Commit(event))
 }
 

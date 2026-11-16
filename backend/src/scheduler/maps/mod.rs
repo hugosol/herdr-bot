@@ -122,6 +122,8 @@ pub(crate) struct MapNode {
     pub(crate) report_policy: ReportPolicy,
     #[serde(default)]
     pub(crate) auto_close: bool,
+    #[serde(default)]
+    pub(crate) end_node: bool,
     pub(crate) zone: NodeZone,
     pub(super) blocked_by: Vec<String>,
 }
@@ -155,7 +157,11 @@ pub(crate) fn read_map(access: &FileAccess, directory: &Path, name: &str) -> Res
 }
 
 pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
-    let map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
+    let mut map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
+    if let Some(id) = map.nodes.iter().find_map(|(id, node)| node.0.end_node.then(|| id.clone())) {
+        let dependencies = map.nodes.keys().filter(|other| **other != id).cloned().collect();
+        map.nodes.get_mut(&id).expect("end node belongs to Map").0.blocked_by = dependencies;
+    }
     Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
 }
 
@@ -182,6 +188,14 @@ pub(crate) fn valid_relative_file(path: &str) -> bool {
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     if !crate::tasks::valid_group(map.group.as_deref()) {
         return Err(map_error("分组名称不能为空或包含首尾空白。"));
+    }
+    let mut ends = map.nodes.iter().filter(|(_, node)| node.0.end_node);
+    let end = ends.next();
+    if ends.next().is_some() { return Err(map_error("Map 最多允许一个 end_node。")); }
+    if let Some((id, _)) = end {
+        if map.nodes.values().any(|node| node.0.blocked_by.contains(id) || node.0.input_rule.iter().any(|rule| matches!(rule, InputRule::Node { node_id, .. } if node_id == id))) {
+            return Err(map_error("end_node 不允许下游节点或输出引用。"));
+        }
     }
     let mut input_ids = std::collections::BTreeSet::new();
     for input in &map.input_files {
@@ -438,6 +452,7 @@ pub(crate) async fn new_node(state: crate::AppState, name: String) -> Result<ser
         let mut content = example["nodes"]["A"].take();
         content["report_policy"] = serde_json::json!(ReportPolicy::default());
         content["auto_close"] = serde_json::json!(false);
+        content["end_node"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
         Ok(Ok(value)) => Ok(value),
@@ -460,14 +475,25 @@ pub(crate) async fn edit_node(state: crate::AppState, name: String, identity: No
 }
 
 pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeSave) -> Result<WorkflowMap, DirectoryError> {
+    if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
+    let content: serde_json::Value = serde_json::from_str(&draft.content)
+        .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
+    let object = content.as_object().ok_or_else(|| edit_error("node-invalid", "node 内容必须为 JSON 对象。"))?;
+    if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
+    let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
+        .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
+    let tasks = if node.0.end_node {
+        state.tasks.list().await.map_err(|e| edit_error("end-node-target-invalid", e.message()))?
+    } else { Vec::new() };
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "node-write-failed", |access| {
-        if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
-        let content: serde_json::Value = serde_json::from_str(&draft.content)
-            .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
-        let object = content.as_object().ok_or_else(|| edit_error("node-invalid", "node 内容必须为 JSON 对象。"))?;
-        if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
-        let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
-            .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
+        if node.0.end_node {
+            let bots = read_bots(access, &state.bot_directory)?;
+            let bot = bots.bots.iter().find(|bot| bot.id == node.0.bot_id).ok_or_else(|| edit_error("end-node-target-invalid", "end_node 的 Bot 缺失。"))?;
+            if bot.script.is_some() || bot.map_file.is_some() || node.0.manager_task_id.is_some()
+                || !tasks.iter().any(|task| bot.task_id.as_deref() == Some(task.id.as_str()) && task.task_type == crate::tasks::TaskType::Normal) {
+                return Err(edit_error("end-node-target-invalid", "end_node 仅允许普通 Task Bot。"));
+            }
+        }
         if node.0.manager_task_id.is_some() || node.0.report_policy != ReportPolicy::Auto || node.0.auto_close {
             let bots = read_bots(access, &state.bot_directory)?;
             if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.script.is_some()) {

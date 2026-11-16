@@ -271,3 +271,32 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
     assert_eq!(final_read["reports"][2], newest["report"]);
     assert_eq!(read_run(&s, &execution["childRunId"]).await, child_before);
 }
+
+#[tokio::test]
+async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report_and_acceptance() {
+    let s = Scenario::new().await;
+    setup(&s).await;
+    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner end","description":"","nodes":{"inside":{"title":"End conversation","bot_id":"worker","input":"USER HANDOFF","zone":"node","blocked_by":[],"end_node":true,"auto_close":true}}}).to_string()).unwrap();
+    s.start("end-root").await;
+    native(&s, "end-child");
+    let dispatched = s.dispatch("end-root", &["call"]).await;
+    let child_id = dispatched["snapshot"]["nodes"]["call"]["execution"]["childRunId"].clone();
+    native(&s, "end-inside");
+    let dispatched = s.dispatch("end-child", &["inside"]).await;
+    assert_eq!(dispatched["canFinish"], true);
+    request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Before explicit finish","canComplete":true}), 400).await;
+    let finished = action(&s, "end-child", "finish", json!({}), 200).await;
+    assert_eq!(finished["snapshot"]["finished"]["reason"], "handed-to-user");
+    assert_eq!(finished["snapshot"]["nodes"]["inside"]["status"], "running");
+    action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No report yet"}), 409).await;
+    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true}), 200).await;
+    assert_eq!(report["report"]["nodeId"], "call");
+    let accepted = action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"Accepted child handoff"}), 200).await;
+    assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");
+    assert_eq!(read_run(&s, &child_id).await["run"], finished["snapshot"]);
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|call| call["kind"] == "tab_close")).await);
+    let calls = s.herdr.calls();
+    let closes: Vec<_> = calls.iter().filter(|call| call["kind"] == "tab_close").collect();
+    assert_eq!(closes.len(), 1, "only the parent Map node auto-closes; never its end Chat");
+    assert_eq!(closes[0]["argv"], json!(["tab", "close", dispatched["snapshot"]["manager"]["tabId"]]));
+}

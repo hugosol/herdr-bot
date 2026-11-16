@@ -19,7 +19,7 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 | 对象 | 字段与职责 |
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明非文件的总体输入要求；可选 `input_files: [{id,required,description?}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 为布尔值（省略按 `false`）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
+| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 与 `end_node` 为布尔值（省略按 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
@@ -141,15 +141,22 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 `report_policy` 独立于业务 `input`：`auto` 在结果可交接时自行发送 report；`manual` 调用 report 后由工具展示完整待发送 payload，只有用户在宿主原生确认界面明确批准该次 payload 才发送，自然语言同意不构成发送授权。修改、补充和更正均须重新确认；拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无可用确认 UI 均不发送，停止并等待用户重新提出请求，不自行重试。它不新增后端审批状态、授权令牌或 report/complete 门禁；业务批准要求独立保留，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
 
+### 结束节点
+
+Map 可为一个 node 设置 `end_node: true`（省略为 `false`）。该节点必须引用普通 Task 型 Bot，不能引用脚本或 Map，也不能有后继节点；其他节点全部 completed 后才可派发，不能只满足部分 `blocked_by` 就提前交给用户。
+
+结束节点成功发起后，manager 可显式 `finish`；不会自动结束 Run。发起失败或其他节点未完成时不能结束。它的 Chat 保留业务输入与已解析材料，但启动与恢复均不加载 node-chat，不要求 report／complete，不自动关闭。Run 的完成表示“已交给用户”，并非 Chat 已完成业务。包含结束节点的 Map 仍可嵌套使用，子 Run 结束后的上报与父层验收沿用原流程。
+
 ### node 策略编辑
 
 在 scheduler 选中节点后点“修改 node”，或从“新增 node”开始：
 
+- `end_node` 为独立复选设置；仅普通 Task 型末端节点可启用，每张 Map 至多一个。结束节点不承担节点报告职责，也不自动关闭 Chat，相关报告与关闭控件不再作为其工作要求。
 - `auto_close` 默认关闭；关闭 Tab 会终止 Tab 内终端及相关进程，请按节点分别选择。`auto_close` 只接受 JSON 布尔值，不能填字符串或 `null`。
 - Task／Map 节点的 `report_policy` 用 `auto`／`manual` 互斥单选圆点选择，省略按 `auto`。脚本节点固定自动报告且无 Chat 可关闭，不提供 manual 或自动关闭选择。若已有草稿带有这类冲突设置，页面保留并标出原值，须显式修正后才能保存；后端节点保存与启动预检同样拒绝非法脚本策略，不会静默改写。
-- `node_id` 继续使用独立身份输入（已有节点只读）；`zone` 固定／动态类型及固定 ID、`report_policy`、`auto_close` 分别由独立控件读取和编辑；动态类型不保留固定 ID 预设。只读、新增与修改共用同一明细布局：身份与标题之后先显示 report_policy、auto_close 和 zone，再显示 Bot ID、左右对称的前置／后继依赖，最后显示输入内容、Task.prompt、input_rule、output_rule。策略和自动关闭状态用带文字及原始值的状态标识展示，不仅依赖颜色。默认表单可编辑节点标题、Bot ID、输入内容和前置依赖；在前置栏展开“选择前置节点”勾选依赖，后继栏由其他节点的 blocked_by 计算，只读展示。Bot ID 支持已有目录建议，也保留尚未登记的引用；Task.prompt 随当前草稿关联的 Bot 更新，但不在 node 中编辑。通过“JSON 编辑”切换高级模式，完整编辑 `input_rule`／`output_rule` 等内容字段；“表单编辑”切回常用字段。两种模式共享同一草稿，表单只改目标字段，不丢弃其他属性；原始 JSON 无效或不是对象时保留全文并停留在 JSON 模式。“node 内容 JSON”排除顶层 `node_id`、`zone`、`report_policy`、`auto_close`，其余字段保持既有 JSON 数据形状。字段格式与保存约束可展开查看。
+- `node_id` 继续使用独立身份输入（已有节点只读）；`zone` 固定／动态类型及固定 ID、`report_policy`、`auto_close` 分别由独立控件读取和编辑；动态类型不保留固定 ID 预设。只读、新增与修改共用同一明细布局：身份与标题之后先显示 report_policy、auto_close 和 zone，再显示 Bot ID、左右对称的前置／后继依赖，最后显示输入内容、Task.prompt、input_rule、output_rule。策略和自动关闭状态用带文字及原始值的状态标识展示，不仅依赖颜色。默认表单可编辑节点标题、Bot ID、输入内容和前置依赖；在前置栏展开“选择前置节点”勾选依赖，后继栏由其他节点的 blocked_by 计算，只读展示。Bot ID 支持已有目录建议，也保留尚未登记的引用；Task.prompt 随当前草稿关联的 Bot 更新，但不在 node 中编辑。通过“JSON 编辑”切换高级模式，完整编辑 `input_rule`／`output_rule` 等内容字段；“表单编辑”切回常用字段。两种模式共享同一草稿，表单只改目标字段，不丢弃其他属性；原始 JSON 无效或不是对象时保留全文并停留在 JSON 模式。“node 内容 JSON”排除顶层 `node_id`、`zone`、`report_policy`、`auto_close`、`end_node`，其余字段保持既有 JSON 数据形状。字段格式与保存约束可展开查看。
 - 保存时合并最新内容对象与独立设置，再提交既有 node 保存接口，不丢弃内容字段；JSON 中手动加入独立字段会明确拒绝，避免双重来源。无效 JSON／非对象草稿保存失败且原文保留；独立控件仍可编辑，不会格式化或覆盖 JSON。内容或独立设置的未保存修改均受既有离开确认保护；取消／放弃不会写入定义。Task 的 `prompt` 编辑与展示职责不变。
-- 保存后可重新打开核对；Map 读取、编辑及保存按既有默认值约定显式返回 `auto_close: false` 与 `report_policy: "auto"`。不改变报告接口、审批权限或 manager 的完成权限。策略指示是发给 agent 的约束，不保证模型必然遵从。
+- 保存后可重新打开核对；Map 读取、编辑及保存按既有默认值约定显式返回 `auto_close: false`、`end_node: false` 与 `report_policy: "auto"`。普通工作节点不改变报告接口、审批权限或 manager 的完成权限。策略指示是发给 agent 的约束，不保证模型必然遵从。
 
 ## 删除 Map 与历史 Run
 

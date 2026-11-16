@@ -73,7 +73,11 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
     assert_eq!(read.status, 200, "{}", read.body);
     let read: Value = serde_json::from_str(&read.body).unwrap();
     assert_eq!(read["nodes"].as_object().unwrap().len(), 2, "child nodes stay in their own Map");
-    for (id, expected) in &nodes { assert_eq!(&read["nodes"][id], expected); }
+    for (id, expected) in &nodes {
+        let mut expected = expected.clone();
+        expected["end_node"] = json!(false);
+        assert_eq!(read["nodes"][id], expected);
+    }
     assert_eq!(read["nodes"]["review"]["input_rule"][0]["id"], "source");
     assert_eq!(read["nodes"]["check"]["input_rule"][0]["output_id"], "review_result");
     let preflight = || async { post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/planned.json/preflight", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Root-only business request"}).to_string()).await };

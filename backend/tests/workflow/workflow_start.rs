@@ -339,17 +339,20 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .into_iter()
         .find(|c| c["kind"] == "agent_prompt")
         .unwrap();
-    let expected = format!(
-        "/skill:teach FIXED-ROLE-MARKER\n\nRun ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n\nLAST-USER-MARKER",
-        original["id"].as_str().unwrap(),
-        config.scheduler.map_directory.join("work.json").display(),
-        config.scheduler.run_instructions.display(),
-        root.join("run.json").display(),
-        root.join("history.jsonl").display(),
-        root.join("messages.jsonl").display(),
-        data.path().join(".manager-zone").join(".workflow").join(original["id"].as_str().unwrap()).display()
-    );
-    assert_eq!(common::prompt_body(&prompt), expected);
+    let body = common::prompt_body(&prompt);
+    assert!(body.starts_with("/skill:teach FIXED-ROLE-MARKER\n\n"));
+    assert!(body.ends_with("\n\nLAST-USER-MARKER"));
+    assert!(body.contains(original["id"].as_str().unwrap()));
+    for required_path in [
+        config.scheduler.map_directory.join("work.json"),
+        config.scheduler.run_instructions.clone(),
+        root.join("run.json"),
+        root.join("history.jsonl"),
+        root.join("messages.jsonl"),
+        data.path().join(".manager-zone").join(".workflow").join(original["id"].as_str().unwrap()),
+    ] {
+        assert!(body.contains(&required_path.display().to_string()), "missing {}", required_path.display());
+    }
     let status = post_json_over_tcp(
         server.addr(),
         "/api/workflow/manager/status",

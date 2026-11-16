@@ -80,6 +80,8 @@ pub struct NodeExecution {
     pub report_policy: crate::scheduler::maps::ReportPolicy,
     #[serde(default)]
     pub auto_close: bool,
+    #[serde(default)]
+    pub end_node: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -91,6 +93,8 @@ pub struct ParentExecution {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Finished {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     pub id: String,
     pub at: u64,
     pub actor: ChatReference,
@@ -319,7 +323,7 @@ impl Runs {
         match (managers.as_slice(), nodes.as_slice()) {
             ([], []) => Ok(None),
             ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
-            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(ExecutionRole::Node)),
+            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(if execution.end_node { ExecutionRole::Standalone } else { ExecutionRole::Node })),
             ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
             _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
         }
@@ -717,7 +721,7 @@ async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<
     value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
     value["ready"] = serde_json::json!(ready);
     value["blocked"] = serde_json::json!(blocked_by);
-    value["canFinish"] = serde_json::json!(matches!(run.status.as_str(), "running" | "paused") && run.nodes.values().all(|node| node.status == "completed"));
+    value["canFinish"] = serde_json::json!(completion::can_finish(run));
     Ok(value)
 }
 

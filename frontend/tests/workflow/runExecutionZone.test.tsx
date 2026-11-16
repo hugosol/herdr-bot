@@ -38,6 +38,30 @@ describe('frozen execution zone display', () => {
     expect(history.getByText('C:/old-directory')).toBeInTheDocument()
   })
 
+  it('shows dispatched end-node handoff without a false completion or report obligation', () => {
+    const chat = { sessionId: 'end-chat', workspaceId: 'workspace', tabId: 'tab', paneId: 'pane', agentName: 'worker' }
+    const run = runWith({ ...files, taskId: 'task', agent: 'omp', chat, endNode: true, reportPolicy: 'manual', autoClose: true })
+    run.status = 'completed'
+    run.finished = { reason: 'handed-to-user' }
+    render(<RunCurrentView run={run} reports={[]} current={current} managed />)
+    const facts = within(screen.getByRole('region', { name: '当前执行事实' }))
+    expect(facts.queryByText('autoClose')).not.toBeInTheDocument()
+    expect(facts.queryByText('reportPolicy')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '当前执行交接事实' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '交接完成说明' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '当前节点详情' })).toHaveTextContent('保存状态仍为 running；不是业务已完成')
+    expect(screen.getByText(/Run 结束原因/)).toHaveTextContent('handed-to-user')
+    expect(screen.getAllByText('已交给用户').length).toBeGreaterThan(0)
+  })
+
+  it('does not infer handoff from the current Map or a failed launch', () => {
+    const map = { ...current, map: { ...current.map!, nodes: { A: { ...current.map!.nodes.A, end_node: true } } } }
+    const run = runWith({ ...files, taskId: 'task', agent: 'omp', chat: null, endNode: true })
+    run.nodes.A.failure = { stage: 'launch', message: 'rejected' }
+    render(<RunCurrentView run={run} reports={[]} current={map} managed />)
+    expect(screen.queryByText('已交给用户')).not.toBeInTheDocument()
+  })
+
   it('does not infer a missing historical zone ID from the current definition', () => {
     const execution = { ...executions[0], zoneId: undefined }
     render(<RunCurrentView run={runWith(execution)} reports={[]} current={current} managed />)

@@ -109,6 +109,9 @@ fn check_map_calls(
     for (id, node) in &map.nodes {
         let node = &node.0;
         let first_issue = issues.len();
+        if node.end_node && bots.bots.iter().find(|bot| bot.id == node.bot_id).is_some_and(|bot| bot.script.is_some() || bot.map_file.is_some() || bot.task_id.is_none() || node.manager_task_id.is_some()) {
+            issues.push(PreflightIssue::new("end-node-target-invalid", "node", "end_node 仅允许普通 Task Bot。"));
+        }
         match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
             None => {
                 let reason = bots.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(node.bot_id.as_str()))

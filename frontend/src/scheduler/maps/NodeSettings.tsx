@@ -1,8 +1,8 @@
 import { useId } from 'react'
 import type { NodeZone } from '../../controllers/schedulerController'
 
-export type NodeSettingsValue = { zone: NodeZone; report_policy: 'auto' | 'manual'; auto_close: boolean }
-type Props = { value: NodeSettingsValue; script?: boolean } & (
+export type NodeSettingsValue = { zone: NodeZone; report_policy: 'auto' | 'manual'; auto_close: boolean; end_node?: boolean }
+type Props = { value: NodeSettingsValue; script?: boolean; endNodeProblem?: string } & (
   { readOnly: true; disabled?: never; onChange?: never } |
   { readOnly?: false; disabled: boolean; onChange: (patch: Partial<NodeSettingsValue>) => void }
 )
@@ -12,7 +12,14 @@ export function NodeSettings(props: Props) {
   const id = useId()
   const { value } = props
   return <section aria-label="node 配置概览" className="scheduler-node-settings">
-    <div className="scheduler-status-grid">
+    <div className="scheduler-status-setting">
+      <span className="scheduler-setting-label">end_node</span>
+      {props.readOnly ? <strong>{value.end_node ? '结束节点 · 交给用户' : '普通节点'}</strong> : <label className="scheduler-setting-choice"><input type="checkbox" aria-label="end_node" checked={value.end_node === true} disabled={props.disabled || (!value.end_node && !!props.endNodeProblem)} aria-describedby={`${id}-end-help`} onChange={event => props.onChange({ end_node: event.target.checked })} />结束节点 · 交给用户</label>}
+      <p id={`${id}-end-help`} className="scheduler-help">每个 Map 最多一个结束节点，只能绑定普通 normal Task 的 Bot（非 Map／脚本），且不能有后继。其他所有节点完成后才可派发；派发成功后由管理者显式结束 Run，不表示业务完成。无需节点报告或 complete，Chat 保持开放且可 Resume，不自动关闭。后端最终校验。</p>
+      {props.endNodeProblem && <p role="status">{props.endNodeProblem}；原配置保留，请显式修正。</p>}
+      {value.end_node && <p className="scheduler-help">report_policy／auto_close 对结束节点不适用；原值保留，取消结束节点后恢复显示。</p>}
+    </div>
+    {!value.end_node && <div className="scheduler-status-grid">
       <div className="scheduler-status-setting" data-policy={value.report_policy}>
         <span className="scheduler-setting-label">report_policy</span>
         <strong className="scheduler-state-mark">{value.report_policy === 'manual' ? '手动报告' : '自动报告'}<small>{value.report_policy}</small></strong>
@@ -25,7 +32,7 @@ export function NodeSettings(props: Props) {
         <strong className="scheduler-state-mark">{value.auto_close ? '已开启' : '已关闭'}<small>{String(value.auto_close)}</small></strong>
         {!props.readOnly && !props.script && <label className="scheduler-setting-choice"><input type="checkbox" aria-label="auto_close" checked={value.auto_close} disabled={props.disabled} aria-describedby={`${id}-close-help`} onChange={event => props.onChange({ auto_close: event.target.checked })} />启用自动关闭</label>}
       </div>
-    </div>
+    </div>}
     {props.script && <div className="scheduler-help"><p>脚本节点固定自动报告（auto），无 Chat 或 Tab 可关闭（auto_close:false）。</p>
       {(value.report_policy !== 'auto' || value.auto_close) && <><p role="status">当前策略与脚本冲突；原值已保留，请显式修正后保存。</p>
         {!props.readOnly && <button type="button" disabled={props.disabled} onClick={() => props.onChange({ report_policy: 'auto', auto_close: false })}>改为自动报告且不关闭会话</button>}

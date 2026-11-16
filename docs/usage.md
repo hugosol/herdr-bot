@@ -163,6 +163,14 @@ scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto
 
 节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
 
+### 结束节点：交给用户继续
+
+在 scheduler 的 node 设置中标记 `end_node`，可将一个普通 Task 型末端节点设为结束节点。每张 Map 至多一个，不能是脚本型或 Map 型节点，也不能有后继。其余节点全部完成后才可发起；发起成功后，由 manager 显式结束 Run，不等待该 Chat 工作结束。
+
+workflow 显示“已交给用户”，而非把结束节点伪标为 completed。用户可打开或恢复该 Chat 继续任务；启动与恢复均不加载 node-chat，无需向 manager 报告，也不会因 Run 完成而自动关闭。节点业务输入和实际文件材料仍会传入。Run 的完成不是最终业务交付完成的证明。
+
+该 Map 作为子 Run 时仍遵守原有嵌套上报和父节点验收规则，不自动完成父节点。未标记结束节点的 Map 保持全部节点交接完成后才能 finish 的原规则。
+
 ### workflow 中的脚本执行
 
 脚本节点从已保存 execution 显示 `kind: typescript`、脚本路径 `script`、执行 ID、业务生命周期、冻结规则与实际文件 inputs，不从当前 Bot 重建历史身份。旧 `rust_script` 执行与来源只供历史读取；不能重新执行旧固定能力。node.input 是否消费由用户脚本决定。
@@ -179,7 +187,7 @@ Tab 仍存在不代表工作未完成。缺少可靠 Tab 关联时系统直接�
 
 ### 暂停或恢复 Map Run
 
-workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发，请进入当前 Run 已关联的管理者 Chat 表达意图，由管理者的 pause 工具落实；暂停不退出已有节点 Chat，它们仍可报告及完成交接。处理后由管理者显式 resume 恢复派发资格，再单独选择 dispatch；resume 本身不启动工作。全部节点 completed 时 paused Run 也可直接 finish。普通 Chat 的 **Resume** 仅定位/恢复原生对话，不等于恢复 Run 派发或接管重启前的 Run。
+workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发，请进入当前 Run 已关联的管理者 Chat 表达意图，由管理者的 pause 工具落实；暂停不退出已有节点 Chat，它们仍可报告及完成交接。处理后由管理者显式 resume 恢复派发资格，再单独选择 dispatch；resume 本身不启动工作。满足完成条件（普通工作节点全部 completed，结束节点如有则已成功发起）时，paused Run 也可直接 finish。普通 Chat 的 **Resume** 仅定位/恢复原生对话，不等于恢复 Run 派发或接管重启前的 Run。
 
 角色工具须先实际部署；没有 manager-chat/node-chat 入口时不要手填身份或编辑运行记录冒充执行。拒绝、重复调用与部分生效的解释见[暂停新执行与恢复派发资格](workflow-runtime.md#暂停新执行与恢复派发资格)。
 
@@ -393,7 +401,7 @@ chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/re
 
 随仓 `meta-data/tasks.json` 提供唯一默认预设：稳定 ID 与初始名称均为 `chief-bot`，`taskType: "chief"`，Chat 名称规则为 `chat with chief bot`，默认 omp / GPT-6-luna / medium，不选择 Suite 或初始 Skill，固定 prompt 为空。通过既有 `GET /api/tasks`、`GET /api/tasks/{id}`、`POST /api/tasks` 和 `PUT /api/tasks/{id}` 管理，沿用当前模型、思考级别、Suite 与持久化校验。编辑名称不改变其 ID 或用途。该预设是可编辑的定义数据，不是在发起 Chat 时生成的新 Task；自定义或空的存储文件也不会被运行时隐式补入默认预设。定义保存成功不表示 chief 原生扩展、唯一会话权威或模型职责已验收。
 
-角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
+角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通工作节点时强制加载对应宿主的 node-chat；显式结束节点例外，启动和恢复均使用普通 Chat 环境，不加载 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
 
 扩展入口位置仍位于 `meta-data/task-options.toml`；代码按稳定 ID `omp-manager-chat`、`pi-manager-chat`、`omp-node-chat`、`pi-node-chat` 识别固定角色，元数据不再支持 `taskType` 适用规则。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 及宿主环境提供；配置保存或页面展示成功不代表原生加载已验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
 

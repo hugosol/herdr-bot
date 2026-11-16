@@ -87,7 +87,12 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
   const problem = catalog?.problems?.find(item => item.bot_id === botId)
   const botProblem = catalog && botId ? problem ? `共享 Bot ${botId}：${problem.message}` : !bot ? `缺失共享 Bot：${botId}` : undefined : undefined
   const node = map.nodes[nodeId]
-  const settings = edit?.settings ?? { zone: node.zone ?? '', report_policy: node.report_policy ?? 'auto', auto_close: node.auto_close ?? false }
+  const settings = edit?.settings ?? { zone: node.zone ?? '', report_policy: node.report_policy ?? 'auto', auto_close: node.auto_close ?? false, end_node: node.end_node ?? false }
+  const endTask = managerLookup?.kind === 'ok' ? managerLookup.tasks.find(task => task.id === bot?.task_id) : undefined
+  const endNodeProblem = !edit ? undefined
+    : !bot || botProblem || bot.script != null || bot.map_file != null || !endTask || endTask.taskType !== 'normal' ? '结束节点需要已核实的普通 normal Task Bot'
+      : dependents.length ? '当前节点有后继，不能设为结束节点'
+        : Object.entries(map.nodes).some(([key, value]) => key !== nodeId && value.end_node) ? 'Map 已有其他结束节点' : undefined
 
   function changeField(field: string, value: unknown) {
     if (!edit || edit.disabled || !definition) return
@@ -110,7 +115,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
       <div><label htmlFor={`${id}-node-id`}>node_id</label>{edit ? <input id={`${id}-node-id`} value={nodeId} readOnly={!edit.create} disabled={edit.disabled} onChange={event => edit.onIdChange(event.target.value)} /> : <p className="scheduler-node-value scheduler-identifier">{nodeId}</p>}</div>
       <div><label htmlFor={`${id}-title`}>节点标题</label>{edit && !showJson ? <input id={`${id}-title`} value={title} disabled={edit.disabled} onChange={event => changeField('title', event.target.value)} /> : <h3 className="scheduler-node-value">{title || (showJson ? '由下方 JSON 编辑' : '未命名节点')}</h3>}</div>
     </div>
-    {edit ? <NodeSettings value={settings} script={bot?.script != null} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} script={bot?.script != null} readOnly />}
+    {edit ? <NodeSettings value={settings} endNodeProblem={endNodeProblem} script={bot?.script != null} disabled={edit.disabled} onChange={edit.onSettingsChange} /> : <NodeSettings value={settings} script={bot?.script != null} readOnly />}
     <div className="scheduler-node-bot"><label htmlFor={`${id}-bot`}>Bot ID</label>
       {edit && !showJson ? <><input id={`${id}-bot`} value={botId} disabled={edit.disabled} onChange={event => changeField('bot_id', event.target.value)} /><select aria-label="选择已有 Bot" value={catalog?.bots.some(item => item.id === botId) ? botId : ''} disabled={edit.disabled} onChange={event => { if (event.target.value) changeField('bot_id', event.target.value) }}><option value="">选择已有 Bot</option><GroupOptions items={catalog?.bots ?? []} groupOf={item => item.group}>{item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>}</GroupOptions></select></> : <p className="scheduler-node-value scheduler-identifier">{botId || '尚未填写 Bot ID'}</p>}
       {botProblem && <p role="alert">{botProblem}</p>}

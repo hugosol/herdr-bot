@@ -90,6 +90,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
         let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/nodes/save"), &json!({"id":id,"content":node.to_string(),"revision":draft["revision"],"create":true}).to_string()).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
         let read = get_over_tcp(s.server.addr(), endpoint).await;
+        node["end_node"] = json!(false);
         assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap()["nodes"][id], node);
     }
     let mut wrapper_content = wrapper.clone();

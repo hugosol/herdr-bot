@@ -99,6 +99,9 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
         for (node_id, node) in &run.nodes {
             for execution in node.executions() {
                 if execution.chat().is_some_and(|chat| chat.session_id == session_id) {
+                    if execution.end_node {
+                        return Err(error(FailureKind::Forbidden, "end-node-no-authority", "end Chat 不具有节点报告权限。"));
+                    }
                     if matched.is_some() {
                         return Err(error(FailureKind::Forbidden, "node-ambiguous", "原生身份关联不唯一。"));
                     }

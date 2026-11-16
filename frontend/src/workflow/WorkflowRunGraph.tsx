@@ -7,7 +7,7 @@ import './workflow-run-graph.css'
 type Edge = { source: string; target: string; path: string }
 type GraphGeometry = { width: number; height: number; edges: Edge[] }
 
-export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTargets, nodeBots, nodeReportPolicies, animateRunning }: {
+export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTargets, nodeBots, nodeReportPolicies, nodeEndNodes = {}, animateRunning }: {
   map: WorkflowMap
   selectedId: string | null
   onSelect: (id: string) => void
@@ -15,6 +15,7 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
   nodeTargets: Record<string, { label: string; name: string }>
   nodeBots: Record<string, string>
   nodeReportPolicies: Record<string, 'auto' | 'manual'>
+  nodeEndNodes?: Record<string, boolean>
   animateRunning: boolean
 }) {
   const markerId = `${useId()}-workflow-arrow`
@@ -83,12 +84,13 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
           return <button key={id} type="button" className={`workflow-run-graph-node${selectedId === id ? ' is-selected' : ''}`}
             ref={element => { if (element) buttonsRef.current.set(id, element); else buttonsRef.current.delete(id) }}
             aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} data-node-id={id} data-node-state={status}
-            data-report-policy={nodeReportPolicies[id] ?? 'auto'} onClick={() => onSelect(id)}>
-            {nodeReportPolicies[id] === 'manual' && <svg className="workflow-run-graph-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+            data-end-node={String(nodeEndNodes[id] ?? node.end_node ?? false)} data-report-policy={nodeEndNodes[id] ? undefined : nodeReportPolicies[id] ?? 'auto'} onClick={() => onSelect(id)}>
+            {!nodeEndNodes[id] && nodeReportPolicies[id] === 'manual' && <svg className="workflow-run-graph-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
               <polygon points="7,1 93,1 99,9 99,91 93,99 7,99 1,91 1,9" vectorEffect="non-scaling-stroke" />
             </svg>}
             <span className="workflow-run-graph-node-top"><code>{id}</code><WorkflowStatus status={status} saved={!animateRunning} animate={animateRunning} /></span>
             <strong>{node.title}</strong>
+            {(nodeEndNodes[id] ?? node.end_node) && <span className="workflow-run-graph-task">结束节点 · 交给用户</span>}
             <span className="workflow-run-graph-task"><span>{nodeTargets[id]?.label ?? '执行目标'}</span>{nodeTargets[id]?.name ?? '—'}</span>
             <span className="workflow-run-graph-bot">Bot · {nodeBots[id] ?? node.bot_id}</span>
           </button>
