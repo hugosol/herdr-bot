@@ -33,6 +33,38 @@ async fn ended(s: &Scenario, run: &Value) -> Value {
 }
 
 #[tokio::test]
+async fn typescript_dynamic_zone_uses_selected_root_without_chat_or_binding_mutation() {
+    let s = Scenario::new().await;
+    bind(&s, r#"import {join, resolve} from 'node:path';
+export default async function(context) {
+    if (process.cwd() !== resolve(context.zone)) throw new Error('wrong dynamic cwd');
+    const path = join(context.zone, 'dynamic.txt');
+    await Bun.write(path, 'dynamic execution');
+    return {status:'success', outputs:[{id:'result',path}]};
+}"#, json!([{"id":"result"}])).await;
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    map["nodes"]["custom"]["zone"] = json!({"type":"dynamic"});
+    fs::write(path, map.to_string()).unwrap();
+    let run = s.start("typescript-dynamic-manager").await;
+    let root = s.data.path().join("dynamic-script-root");
+    fs::create_dir(&root).unwrap();
+    let registration = post_json_over_tcp(s.server.addr(), "/api/zones", &json!({"id":"script-root","path":root}).to_string()).await;
+    assert_eq!(registration.status, 200, "{}", registration.body);
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/dispatch", &json!({"sessionId":"typescript-dynamic-manager","nodes":["custom"],"zoneIds":{"custom":"script-root"}}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let result = ended(&s, &run).await;
+    let execution = &result["run"]["nodes"]["custom"]["execution"];
+    assert_eq!(execution["zoneId"], "script-root");
+    assert_eq!(execution["zone"], json!(root));
+    assert_eq!(execution["lifecycle"]["status"], "succeeded");
+    assert!(execution.get("chat").is_none());
+    assert!(result["run"]["zoneBindings"].get("script-root").is_none());
+    assert_eq!(fs::read_to_string(root.join("dynamic.txt")).unwrap(), "dynamic execution");
+    assert!(!s.data.path().join("node-zone/dynamic.txt").exists());
+}
+
+#[tokio::test]
 async fn typescript_user_file_imports_writes_and_hands_off_without_rebuilding_backend() {
     let s = Scenario::new().await;
     bind(&s, r#"import { join, resolve } from 'node:path';

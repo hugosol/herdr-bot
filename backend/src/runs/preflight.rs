@@ -104,7 +104,7 @@ fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, ta
 fn check_map_calls(
     state: &crate::AppState, access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
     tasks: &[crate::tasks::Task], zones: &[crate::zones::RegisteredZone],
-    manager_zone: &str, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
+    manager_zone: Option<&str>, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
 ) {
     for (id, node) in &map.nodes {
         let node = &node.0;
@@ -148,7 +148,7 @@ fn check_map_calls(
                             Ok(child) if child.nodes.is_empty() => issues.push(PreflightIssue::new("map-empty", "map", format!("目标 Map {target} 为空，不能启动。"))),
                             Ok(child) => {
                                 path.push(target.clone());
-                                check_map_calls(state, access, directory, &child, bots, tasks, zones, &node.zone, path, issues);
+                                check_map_calls(state, access, directory, &child, bots, tasks, zones, node.zone.fixed(), path, issues);
                                 path.pop();
                             }
                             Err(error) => issues.push(PreflightIssue::new(error.code, "map", format!("目标 Map {target} 无法读取：{}", error.message))),
@@ -158,10 +158,14 @@ fn check_map_calls(
                 _ => issues.push(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定唯一的 Task 或 Map 执行目标。", bot.id))),
             },
         }
-        if let Err(issue) = check_zone(zones, &node.zone, "node") { issues.push(issue); }
+        if let Some(zone) = node.zone.fixed() {
+            if let Err(issue) = check_zone(zones, zone, "node") { issues.push(issue); }
+        }
         for rule in &node.input_rule {
             if let InputRule::File { zone_id, .. } = rule {
-                if let Err(issue) = check_zone(zones, zone_id.as_deref().unwrap_or(manager_zone), "file") { issues.push(issue); }
+                if let Some(zone) = zone_id.as_deref().or(manager_zone) {
+                    if let Err(issue) = check_zone(zones, zone, "file") { issues.push(issue); }
+                }
             }
         }
         for issue in &mut issues[first_issue..] {
@@ -240,7 +244,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
         Err(issue) => { issues.push(issue); None },
     };
     with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
-        check_map_calls(state, access, &state.map_directory, &map, &bots, &tasks, &zones, &input.zone, &mut vec![root_name], &mut issues);
+        check_map_calls(state, access, &state.map_directory, &map, &bots, &tasks, &zones, Some(&input.zone), &mut vec![root_name], &mut issues);
         Ok(())
     }).map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }
@@ -255,7 +259,7 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let mut zone_bindings = BTreeMap::new();
     zone_bindings.insert(input.zone.clone(), zone.to_owned());
     for node in map.nodes.values() {
-        for id in std::iter::once(node.0.zone.as_str()).chain(node.0.input_rule.iter().filter_map(|rule| match rule {
+        for id in node.0.zone.fixed().into_iter().chain(node.0.input_rule.iter().filter_map(|rule| match rule {
             InputRule::File { zone_id: Some(id), .. } => Some(id.as_str()), _ => None,
         })) {
             let path = zones.iter().find(|zone| zone.id == id).expect("preflight checked binding").path.clone();

@@ -67,6 +67,8 @@ pub struct NodeExecution {
     pub id: String,
     #[serde(flatten)]
     pub target: ExecutionTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_id: Option<String>,
     pub zone: String,
     #[serde(default)]
     pub input_rule: Option<Vec<crate::scheduler::maps::InputRule>>,
@@ -724,6 +726,8 @@ async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<
 pub(crate) struct DispatchRequest {
     pub(crate) session_id: String,
     pub(crate) nodes: Vec<String>,
+    #[serde(default)]
+    pub(crate) zone_ids: BTreeMap<String, String>,
 }
 pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) -> RunResult {
     let run = match manager_run(&state, &input.session_id).await {
@@ -736,6 +740,8 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
+        // Validate every dynamic selection before starting any external execution.
+        let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &input.nodes, &input.zone_ids).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
         for id in input.nodes {
             let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
@@ -744,7 +750,8 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            results.push(startup::node(&state, &mut run, &id, None).await);
+            let target = crate::scheduler::dispatch_target(&state, &run, &id, zones.remove(&id)).await;
+            results.push(startup::node(&state, &mut run, &id, None, target).await);
         }
         let mut response = snapshot(&state, &run, true).await?;
         response["results"] = serde_json::Value::Array(results);

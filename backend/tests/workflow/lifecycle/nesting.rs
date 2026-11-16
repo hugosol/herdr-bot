@@ -27,6 +27,38 @@ async fn role_request(s: &Scenario, route: &str, body: Value, status: u16) -> Va
     serde_json::from_str(&response.body).unwrap()
 }
 
+#[tokio::test]
+async fn dynamic_zone_selects_only_nested_manager_and_preserves_internal_fixed_zones() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "DYNAMIC-CHILD");
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    map["nodes"]["A"]["zone"] = json!({"type":"dynamic"});
+    fs::write(path, map.to_string()).unwrap();
+    let started = s.start("dynamic-parent").await;
+    let root = s.data.path().join("dynamic-child-root");
+    fs::create_dir(&root).unwrap();
+    let registered = post_json_over_tcp(s.server.addr(), "/api/zones", &json!({"id":"child-root","path":root}).to_string()).await;
+    assert_eq!(registered.status, 200, "{}", registered.body);
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"dynamic-child"},"native_cwd":root}));
+    let dispatched = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":"dynamic-parent","nodes":["A"],"zoneIds":{"A":"child-root"}}), 200).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let execution = &dispatched["snapshot"]["nodes"]["A"]["execution"];
+    assert_eq!(execution["zoneId"], "child-root");
+    assert_eq!(execution["zone"], json!(root));
+    let child = detail(&s, execution["childRunId"].as_str().unwrap()).await;
+    assert_eq!(child["run"]["managerZoneId"], "child-root");
+    assert_eq!(child["run"]["zone"], json!(root));
+    assert_eq!(child["run"]["zoneBindings"]["manager"], json!(s.data.path()));
+    assert_eq!(child["run"]["parent"]["runId"], started["id"]);
+    assert!(dispatched["snapshot"]["zoneBindings"].get("child-root").is_none());
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"dynamic-internal-fixed"},"native_cwd":s.data.path()}));
+    let internal = s.dispatch("dynamic-child", &["A"]).await;
+    assert_eq!(internal["results"][0]["status"], "running", "{internal}");
+    assert_eq!(internal["snapshot"]["nodes"]["A"]["execution"]["zoneId"], "manager");
+    assert_eq!(internal["snapshot"]["nodes"]["A"]["execution"]["zone"], json!(s.data.path()));
+}
+
 // P21/P22: the same real Chat must address its child manager and exact parent
 // attempt without a caller-chosen Run. Rejecting every mixed role breaks report;
 // accepting all mixed roles would let a collision act on unrelated work.

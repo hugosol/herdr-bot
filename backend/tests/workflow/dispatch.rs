@@ -5,6 +5,8 @@
 mod common;
 #[path = "dispatch/portability.rs"]
 mod portability;
+#[path = "dispatch/dynamic_zones.rs"]
+mod dynamic_zones;
 #[path = "recovery/recovery.rs"]
 mod recovery;
 #[path = "lifecycle/retry.rs"]

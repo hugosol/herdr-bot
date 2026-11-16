@@ -43,6 +43,39 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
   return page.request.post(`${server!.baseURL}/api/scheduler/maps/${name}/nodes/save`, { data: { id, content: typeof content === 'string' ? content : JSON.stringify(content), revision, create } })
 }
 
+test('dynamic zone editor saves no preset and reloads all unrelated node fields', async ({ page }) => {
+  const configured = { ...audit, report_policy: 'manual', auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
+  const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
+  const before = inventory(root)
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
+  await page.getByRole('button', { name: '修改 node', exact: true }).click()
+  await expect(page.getByRole('radio', { name: '固定 zone', exact: true })).toBeChecked()
+  await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue(configured.zone)
+  await page.getByRole('radio', { name: '动态 zone', exact: true }).check()
+  await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
+  const savedRequest = page.waitForRequest(request => request.url().endsWith('/nodes/save') && request.method() === 'POST')
+  await page.getByRole('button', { name: '保存 node', exact: true }).click()
+  expect(JSON.parse((await savedRequest).postDataJSON().content)).toEqual({ ...configured, zone: { type: 'dynamic' } })
+  await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
+  const saved = await readMap(page)
+  expect(saved.nodes.A).toEqual({ ...configured, zone: { type: 'dynamic' } })
+  expect(saved.nodes.B).toMatchObject(original.nodes.B)
+  expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'work.JSON'), 'utf8')).nodes.A.zone).toEqual({ type: 'dynamic' })
+  await page.reload()
+  await page.getByTestId('tab-scheduler').click()
+  await page.locator('[data-map-file="work.JSON"]').click()
+  await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('dynamic · 每次执行时指定，尚未指定 zone')
+  await page.getByRole('button', { name: '修改 node', exact: true }).click()
+  await expect(page.getByRole('radio', { name: '动态 zone', exact: true })).toBeChecked()
+  await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
+  expect(JSON.parse(await (await openNodeJson(page)).inputValue())).toEqual(nodeContent(configured))
+  await page.getByRole('radio', { name: '固定 zone', exact: true }).check()
+  await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue('')
+  expect(server!.herdrCalls()).toEqual([])
+})
+
 // Approved seams: S1 delivered browser, S2 production HTTP. Plausible violations:
 // eager installation on opening, ignored edits, or updating only details not the graph.
 test('node creation starts with a disposable draft and saves changed content into the current Map immediately', async ({ page }) => {

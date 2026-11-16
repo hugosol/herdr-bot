@@ -33,7 +33,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "kind", "script", "zone", "inputRule", "outputRule", "inputs", "reportPolicy", "autoClose", "lifecycle"],
       "properties": {
-        "id": {"$ref": "#/$defs/nonempty"}, "kind": {"const": "typescript"}, "script": {"$ref": "#/$defs/script_path"}, "zone": {"$ref": "#/$defs/nonempty"},
+        "id": {"$ref": "#/$defs/nonempty"}, "kind": {"const": "typescript"}, "script": {"$ref": "#/$defs/script_path"}, "zone": {"$ref": "#/$defs/nonempty"}, "zoneId": {"$ref": "#/$defs/nonempty"},
         "inputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "outputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}}, "inputs": {"type": "array", "items": {"$ref": "#/$defs/resolved_file"}},
         "reportPolicy": {"const": "auto"}, "autoClose": {"const": false}, "lifecycle": {"$ref": "#/$defs/lifecycle"}
       }
@@ -137,7 +137,7 @@
     "map_node": {
       "type": "object", "additionalProperties": false, "required": ["title", "bot_id", "input", "zone", "blocked_by"],
       "properties": {
-        "title": {"type": "string"}, "bot_id": {"type": "string"}, "input": {"type": "string"}, "zone": {"type": "string"},
+        "title": {"type": "string"}, "bot_id": {"type": "string"}, "input": {"type": "string"}, "zone": {"oneOf": [{"type": "string"}, {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"const": "dynamic"}}}]},
         "manager_task_id": {"type": ["string", "null"]}, "blocked_by": {"type": "array", "items": {"type": "string"}},
         "input_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "output_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}},
         "report_policy": {"enum": ["auto", "manual"]}, "auto_close": {"type": "boolean"}

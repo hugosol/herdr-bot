@@ -136,7 +136,7 @@ pub(super) async fn manager(
     Ok(())
 }
 
-pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>) -> serde_json::Value {
+pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>, target: Result<crate::scheduler::DispatchTarget, String>) -> serde_json::Value {
     let mut effects = Effects { records_initialized: true, ..Effects::default() };
     let mut stage = "resolve";
     let mut candidate = run.clone();
@@ -146,9 +146,8 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         node.completion = None;
     }
     let result: Result<(), String> = async {
-        let mut target = crate::scheduler::dispatch_target(state, &run.map, id).await?;
-        target.zone = run.zone_bindings.get(&target.zone).cloned().ok_or_else(|| format!("zone {} 不在本次 Run 启动快照中；请启动新 Run（旧历史仍可查看）", target.zone))?;
-        crate::zones::browse::checked_root(&target.zone).map_err(|e| e.message())?;
+        let target = target.as_ref().map_err(Clone::clone)?;
+        crate::zones::browse::checked_root(&target.zone).map_err(|error| error.message())?;
         let prepared = match target.script.clone() {
             Some(script) => {
                 let owned = state.clone();
@@ -164,7 +163,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             }
         };
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         if let Some(prepared) = prepared {
@@ -198,12 +197,12 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             // Resolution failed before a target was usable. Retain a distinct
             // attempt referencing the failed source, never the old Chat.
             node.execution = node.previous_executions.last().and_then(|fact| fact.execution.as_ref()).and_then(|previous| {
-                let target = match &previous.target {
+                let identity = match &previous.target {
                     ExecutionTarget::Chat(chat) => ExecutionTarget::Chat(ChatExecution { task_id: chat.task_id.clone(), agent: chat.agent, chat: None, child_run_id: None }),
                     ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::Typescript, script: script.script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }),
                     ExecutionTarget::LegacyScript(_) => return None,
                 };
-                Some(NodeExecution { id: crate::chats::new_creation_id(), target, zone: previous.zone.clone(), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false })
+                Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: target.as_ref().ok().map(|target| target.zone_id.clone()).or_else(|| previous.zone_id.clone()), zone: target.as_ref().map(|target| target.zone.clone()).unwrap_or_else(|_| previous.zone.clone()), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false })
             });
         }
         node.status = "failed".into();

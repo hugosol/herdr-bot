@@ -1,6 +1,7 @@
 import { useId } from 'react'
+import type { NodeZone } from '../../controllers/schedulerController'
 
-export type NodeSettingsValue = { zone: string; report_policy: 'auto' | 'manual'; auto_close: boolean }
+export type NodeSettingsValue = { zone: NodeZone; report_policy: 'auto' | 'manual'; auto_close: boolean }
 type Props = { value: NodeSettingsValue; script?: boolean } & (
   { readOnly: true; disabled?: never; onChange?: never } |
   { readOnly?: false; disabled: boolean; onChange: (patch: Partial<NodeSettingsValue>) => void }
@@ -31,11 +32,16 @@ export function NodeSettings(props: Props) {
       </>}
     </div>}
     <div className="scheduler-zone-setting">
-      <label htmlFor={`${id}-zone`}>zone</label>
-      {props.readOnly ? <p className="scheduler-node-value scheduler-identifier">{value.zone || '尚未绑定 zone'}</p> : <input id={`${id}-zone`} value={value.zone} placeholder="namespace/name" aria-describedby={`${id}-zone-help`} disabled={props.disabled} onChange={event => props.onChange({ zone: event.target.value })} />}
+      {props.readOnly ? <><span className="scheduler-setting-label">zone</span><p className="scheduler-node-value scheduler-identifier">{typeof value.zone === 'string' ? value.zone || '尚未绑定 zone' : 'dynamic · 每次执行时指定，尚未指定 zone'}</p></> : <>
+        <fieldset className="scheduler-policy-options" aria-label="zone 类型" disabled={props.disabled}>
+          <label className="scheduler-setting-choice"><input type="radio" name={`${id}-zone-type`} checked={typeof value.zone === 'string'} onChange={() => props.onChange({ zone: '' })} />固定 zone</label>
+          <label className="scheduler-setting-choice"><input type="radio" name={`${id}-zone-type`} checked={typeof value.zone !== 'string'} onChange={() => props.onChange({ zone: { type: 'dynamic' } })} />动态 zone</label>
+        </fieldset>
+        {typeof value.zone === 'string' ? <><label htmlFor={`${id}-zone`}>zone</label><input id={`${id}-zone`} value={value.zone} placeholder="namespace/name" aria-describedby={`${id}-zone-help`} disabled={props.disabled} onChange={event => props.onChange({ zone: event.target.value })} /></> : <p>dynamic · 不保存预设；每次执行必须显式指定已登记的 zone。</p>}
+      </>}
     </div>
     {!props.readOnly && <div className="scheduler-setting-help">
-      <p id={`${id}-zone-help`}>填写稳定 zone ID，不是本机目录；保存 Map 无需先登记，启动 Run 时校验绑定。</p>
+      <p id={`${id}-zone-help`}>固定 zone 填写稳定 ID，不是本机目录；保存 Map 无需先登记，启动 Run 时校验固定绑定。动态 zone 无预设，每次执行时校验显式选择。</p>
       <p id={`${id}-close-help`}>关闭 Tab 会终止 Tab 内终端及相关进程。</p>
     </div>}
   </section>

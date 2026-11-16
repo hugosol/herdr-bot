@@ -50,7 +50,8 @@ pub(crate) struct DispatchTarget {
     pub script: Option<String>,
 }
 
-pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str) -> Result<DispatchTarget, String> {
+pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::Run, id: &str, resolved_zone: Option<(String, String)>) -> Result<DispatchTarget, String> {
+    let map = &run.map;
     let (node, bots) = with_definitions(
         &[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
             let mut definition = read_map(access, &state.map_directory, map)?;
@@ -58,12 +59,16 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
             Ok((node, read_bots(access, &state.bot_directory)?))
         },
     ).map_err(|e| e.message)?;
+    let (zone_id, zone) = match resolved_zone {
+        Some(zone) => zone,
+        None => dispatch_zone(state, run, &node.zone, None).await?,
+    };
     let bot = bots.bots.iter().find(|b| b.id == node.bot_id).ok_or("node 的 Bot 缺失或不唯一")?;
     if let Some(script) = &bot.script {
         if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
             return Err("脚本节点仅允许自动报告、无自动关闭且不指定 manager Task。".into());
         }
-        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, zone_id: node.zone.clone(), zone: node.zone, task: None, map: None, script: Some(script.clone()) });
+        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, zone_id, zone, task: None, map: None, script: Some(script.clone()) });
     }
     let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
         (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
@@ -74,8 +79,46 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, map: &str, id: &str
     if task.task_type != required_role {
         return Err("node 的执行 Task 类型与目标不一致".into());
     }
-    let zone = node.zone;
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id: zone.clone(), zone, task: Some(task), map: bot.map_file.clone(), script: None })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close, zone_id, zone, task: Some(task), map: bot.map_file.clone(), script: None })
+}
+
+async fn dispatch_zone(state: &crate::AppState, run: &crate::runs::Run, declaration: &maps::NodeZone, selected_zone: Option<&str>) -> Result<(String, String), String> {
+    let (zone_id, zone) = match declaration.fixed() {
+        Some(id) => {
+            if selected_zone.is_some() { return Err(format!("固定 zone node {id} 不接受 zone 覆盖")); }
+            let root = run.zone_bindings.get(id).ok_or_else(|| format!("zone {id} 不在本次 Run 启动快照中；请启动新 Run"))?;
+            (id.to_owned(), root.clone())
+        }
+        None => {
+            let id = selected_zone.filter(|id| !id.trim().is_empty()).ok_or("动态 zone node 必须显式选择已登记的 zone ID")?;
+            let zones = state.zones.list().await.map_err(|error| error.message())?;
+            let root = zones.iter().find(|zone| zone.id == id).ok_or_else(|| format!("zone {id} 未登记"))?;
+            (id.to_owned(), root.path.clone())
+        }
+    };
+    if declaration.fixed().is_none() {
+        crate::zones::browse::checked_root(&zone).map_err(|error| error.message())?;
+    }
+    Ok((zone_id, zone))
+}
+
+pub(crate) async fn validate_zone_selections(state: &crate::AppState, run: &crate::runs::Run, selected: &[String], overrides: &BTreeMap<String, String>) -> Result<BTreeMap<String, (String, String)>, String> {
+    let map = with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| read_map(access, &state.map_directory, &run.map)).map_err(|error| error.message)?;
+    for id in overrides.keys() {
+        if !selected.contains(id) || !run.nodes.contains_key(id) || !map.nodes.contains_key(id) {
+            return Err(format!("zoneIds 的 node {id} 未选择或不在本次 Run 中"));
+        }
+    }
+    let mut resolved = BTreeMap::new();
+    for id in selected {
+        if let Some(node) = map.nodes.get(id) {
+            if overrides.contains_key(id) || node.0.zone.fixed().is_none() {
+                let zone = dispatch_zone(state, run, &node.0.zone, overrides.get(id).map(String::as_str)).await?;
+                resolved.insert(id.clone(), zone);
+            }
+        }
+    }
+    Ok(resolved)
 }
 /// Selected definition closure for chief confirmation; unrelated catalog edits
 /// must not invalidate approval. Preflight owns cycle/role/binding validation.
@@ -103,7 +146,7 @@ pub(crate) fn delegation_map_definition(
         let mut task_ids = std::collections::BTreeSet::new();
         let mut zone_ids = std::collections::BTreeSet::from([manager_zone.to_owned()]);
         let mut files = Vec::new();
-        let mut pending = vec![(file.to_owned(), manager_zone.to_owned())];
+        let mut pending = vec![(file.to_owned(), Some(manager_zone.to_owned()))];
         let mut visited = std::collections::BTreeSet::new();
         while let Some((file, manager_zone)) = pending.pop() {
             if !visited.insert((file.clone(), manager_zone.clone())) { continue; }
@@ -119,7 +162,7 @@ pub(crate) fn delegation_map_definition(
                 "nodeInputs":node_inputs
             }));
             for node in map.nodes.values().map(|node| &node.0) {
-                zone_ids.insert(node.zone.clone());
+                if let Some(zone) = node.zone.fixed() { zone_ids.insert(zone.to_owned()); }
                 let bot = catalog.bots.iter().find(|bot| bot.id == node.bot_id)
                     .ok_or_else(|| edit_error("bot-not-found", "Map 的 Bot 已变化；请重新预览并确认。"))?;
                 let mut value = serde_json::to_value(bot).expect("Bot serialization");
@@ -135,12 +178,13 @@ pub(crate) fn delegation_map_definition(
                 bots.insert(bot.id.clone(), value);
                 if let Some(task) = &bot.task_id { task_ids.insert(task.clone()); }
                 if let Some(task) = &node.manager_task_id { task_ids.insert(task.clone()); }
-                if let Some(child) = &bot.map_file { pending.push((child.clone(), node.zone.clone())); }
+                if let Some(child) = &bot.map_file { pending.push((child.clone(), node.zone.fixed().map(str::to_owned))); }
                 for rule in &node.input_rule {
                     if let InputRule::File { path, zone_id, .. } = rule {
-                        let zone = zone_id.as_deref().unwrap_or(&manager_zone).to_owned();
-                        zone_ids.insert(zone.clone());
-                        files.push((zone, path.clone()));
+                        if let Some(zone) = zone_id.as_deref().or(manager_zone.as_deref()) {
+                            zone_ids.insert(zone.to_owned());
+                            files.push((zone.to_owned(), path.clone()));
+                        }
                     }
                 }
             }

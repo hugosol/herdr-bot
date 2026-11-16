@@ -86,6 +86,27 @@ pub struct MapFileInput {
 pub struct ResolvedFile { pub id: String, pub path: String }
 
 #[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum NodeZone {
+    Fixed(String),
+    Dynamic(DynamicZone),
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DynamicZone {
+    #[serde(rename = "type")]
+    kind: DynamicZoneType,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum DynamicZoneType { Dynamic }
+impl NodeZone {
+    pub(crate) fn fixed(&self) -> Option<&str> {
+        match self { Self::Fixed(id) => Some(id), Self::Dynamic(_) => None }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapNode {
     pub(super) title: String,
@@ -101,7 +122,7 @@ pub(crate) struct MapNode {
     pub(crate) report_policy: ReportPolicy,
     #[serde(default)]
     pub(crate) auto_close: bool,
-    pub(crate) zone: String,
+    pub(crate) zone: NodeZone,
     pub(super) blocked_by: Vec<String>,
 }
 

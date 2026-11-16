@@ -31,7 +31,7 @@ export async function startRun(file: string, input: RunPreflightInput): Promise<
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
 export type FileAddress = { id: string; path: string }
 export type ScriptLifecycle = { status: 'running'; startedAt: number } | { status: 'succeeded'; startedAt: number; endedAt: number } | { status: 'failed'; startedAt: number; endedAt: number; failure: unknown }
-type ExecutionFiles = { id: string; zone: string; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
+type ExecutionFiles = { id: string; zone: string; zoneId?: string; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
 export type Execution = ExecutionFiles & ({ kind: 'typescript'; script: string; lifecycle: ScriptLifecycle; taskId?: never; agent?: never; chat?: never; childRunId?: never } | { kind: 'rust_script'; rustScript: string; lifecycle: ScriptLifecycle; taskId?: never; agent?: never; chat?: never; childRunId?: never } | { kind?: never; taskId: string; agent: 'omp' | 'pi'; chat: ChatReference | null; childRunId?: string })
 export type Failure = { stage: string; message: string; effects?: Record<string, unknown> }
 export type NodeState = {
