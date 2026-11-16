@@ -1,12 +1,11 @@
 """Owned evidence trees retain native history bytes beyond Windows MAX_PATH."""
 import os
 from pathlib import Path
-import runpy
 import shutil
 import tempfile
 import unittest
 
-runtime = runpy.run_path(str(Path(__file__).with_name('test-workflow-file-handoff.py')))
+from acceptance.host.evidence import copy_evidence
 
 
 class EvidenceRetention(unittest.TestCase):
@@ -21,12 +20,12 @@ class EvidenceRetention(unittest.TestCase):
             history = b'{"type":"session","id":"owned"}\n{"type":"message","text":"native"}\n'
             (source / 'native.jsonl').write_bytes(history)
             target = root.joinpath(*['archive-' + 'x' * 64] * 4)
-            runtime['copy_evidence'](source, target)
+            copy_evidence(source, target)
             self.assertEqual(Path(native(target / 'native.jsonl')).read_bytes(), history)
             self.assertEqual((source / 'native.jsonl').read_bytes(), history)
             (source / 'native.jsonl').write_bytes(b'NEW-RUN-MUST-NOT-OVERWRITE-OLD-EVIDENCE')
             with self.assertRaises(FileExistsError):
-                runtime['copy_evidence'](source, target)
+                copy_evidence(source, target)
             self.assertEqual(Path(native(target / 'native.jsonl')).read_bytes(), history)
         finally:
             shutil.rmtree(native(root))

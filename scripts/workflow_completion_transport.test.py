@@ -13,7 +13,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from workflow_completion_transport import CompletionTransport
+from acceptance.host.completion_transport import CompletionTransport
 
 
 class TransportContract(unittest.TestCase):

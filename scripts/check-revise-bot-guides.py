@@ -6,11 +6,11 @@ CARGO_TARGET_DIR. Uses numeric loopback, owned files and no real shutdown/daemon
 import argparse
 import json
 from pathlib import Path
-import runpy
+
+from acceptance.host.smoke_support import deny_read, dump, require
+from acceptance.workflow.smoke import Smoke
 
 REPO = Path(__file__).resolve().parents[1]
-shared = runpy.run_path(str(REPO / 'scripts/check-workflow-file-consumption.py'))
-Smoke, require, dump, deny_read = [shared[key] for key in ['Smoke', 'require', 'dump', 'deny_read']]
 
 
 class RevisionSmoke(Smoke):

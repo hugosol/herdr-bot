@@ -19,7 +19,7 @@ class NativeTaskUpdateTransport(unittest.TestCase):
         import http.server
         import threading
         import urllib.request
-        from workflow_nesting_outer_acceptance import roles
+        from acceptance.host.wire import WireProxy
         received = []
 
         class Upstream(http.server.BaseHTTPRequestHandler):
@@ -37,7 +37,7 @@ class NativeTaskUpdateTransport(unittest.TestCase):
         thread.start()
         try:
             with tempfile.TemporaryDirectory(prefix='outer-put-wire-') as directory:
-                proxy = roles['WireProxy'](f'http://127.0.0.1:{server.server_port}', Path(directory) / 'wire')
+                proxy = WireProxy(f'http://127.0.0.1:{server.server_port}', Path(directory) / 'wire')
                 try:
                     payload = b'{"prompt":"literal revised prompt","suite":"preserved-suite"}'
                     request = urllib.request.Request(proxy.base + '/api/tasks/owned-task', data=payload, method='PUT')

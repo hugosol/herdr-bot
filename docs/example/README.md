@@ -135,7 +135,7 @@ Bot 的 `when`、`plan_guide`、`node_guide` 分别指引能力选用、规划�
 
 ## 体验材料与保留项（P33）
 
-浏览器验收 `frontend/browser-tests/schedulerExamples.spec.ts` 直接复制本目录文件，经 S1 真实主界面核对上表、全部 Bot 明细、跨 Map 复用、重载、刷新和 server 返回；不使用专供文档的读取接口。项目完整回归入口见 [测试指引](../agents/testing.md)。
+浏览器验收 `frontend/browser-tests/scheduler/maps/schedulerExamples.spec.ts` 直接复制本目录文件，经 S1 真实主界面核对上表、全部 Bot 明细、跨 Map 复用、重载、刷新和 server 返回；不使用专供文档的读取接口。项目完整回归入口见 [测试指引](../agents/testing.md)。
 
 **P33 仍待用户确认**：在全部自动工作完成后，按上述可运行步骤检查并反馈：
 
@@ -162,7 +162,7 @@ npm --prefix frontend run test:browser:build -- schedulerUsability.spec.ts --wor
 npm --prefix frontend run test:browser:build -- --workers=1
 ```
 
-`frontend/browser-tests/schedulerUsability.spec.ts` 在 1280 × 900 与 390 × 844 下分别启动独占真实应用，使用本目录上海 Map 与天气 Bot 的副本，加一个独立损坏 Bot 以核对诊断。该自动场景故意不复制 C／D 的 Bot，因此截图同时显示 `trip-summary`／`quota-estimate` 缺失；上方人工启动步骤复制全部 Bot，不应显示这两条缺失。它通过实际 Tab／Enter、键盘输入、浏览器确认框、真实校验错误和外部文件冲突验证两类对象新增／修改、Bot 往返和草稿恢复；不模拟后端响应，不使用用户数据。截图保存在 Playwright 打印的 `frontend/test-results/schedulerUsability-*` 用例目录中（文件名以 `desktop-`／`narrow-` 开头）。
+`frontend/browser-tests/scheduler/maps/schedulerUsability.spec.ts` 在 1280 × 900 与 390 × 844 下分别启动独占真实应用，使用本目录上海 Map 与天气 Bot 的副本，加一个独立损坏 Bot 以核对诊断。该自动场景故意不复制 C／D 的 Bot，因此截图同时显示 `trip-summary`／`quota-estimate` 缺失；上方人工启动步骤复制全部 Bot，不应显示这两条缺失。它通过实际 Tab／Enter、键盘输入、浏览器确认框、真实校验错误和外部文件冲突验证两类对象新增／修改、Bot 往返和草稿恢复；不模拟后端响应，不使用用户数据。截图保存在 Playwright 打印的 `frontend/test-results/` 下对应 `scheduler/maps/schedulerUsability.spec.ts` 的用例目录中（文件名以 `desktop-`／`narrow-` 开头）。
 
 最终体验验收应重新生成与待验收构建一致的截图；单次定向通过不能声称全部浏览器回归通过。完整回归会重新生成测试输出目录，分享材料应取自最后一次成功执行，避免链接到旧截图。
 

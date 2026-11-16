@@ -17,7 +17,10 @@ import traceback
 import urllib.request
 
 from developer_paths import REPO
-from workflow_nesting_planning_acceptance import NativePlanningAcceptance, roles, resources, require, until, digest, body_text
+from workflow_nesting_planning_acceptance import NativePlanningAcceptance, require, until, digest, body_text
+from acceptance.workflow.handoff import RolesAcceptance
+from acceptance.host.wire import decode
+from acceptance.host.provenance import preflight
 
 OUTER = 'create-bot-task-workflow--bc-61ce48b80a4c.json'
 WRAPPER = 'create-bot-wrapper.json'
@@ -131,7 +134,7 @@ class OuterAcceptance(NativePlanningAcceptance):
                     self.evidence['cleanupErrors'].append(traceback.format_exc())
 
     def configure_model(self):
-        roles['RolesAcceptance'].configure_model(self)
+        RolesAcceptance.configure_model(self)
         agent = self.root / 'agent'
         (agent / 'models.yml').write_text((agent / 'models.json').read_text(encoding='utf-8'), encoding='utf-8')
         settings = load(agent / 'settings.json')
@@ -500,14 +503,14 @@ export default function(pi) {
         route = '/api/tasks' if method == 'POST' else '/api/tasks/' + target['id']
         saves = [item for item in traffic if item['method'] == method and item['path'] == route]
         require(len(saves) == 1 and saves[0].get('status') == 200, ('Task save was missing/failed/retried', route, saves))
-        request = roles['decode'](saves[0], 'request')
+        request = decode(saves[0], 'request')
         fields = {'name', 'chatName', 'agent', 'taskType', 'model', 'thinking', 'skill', 'prompt', 'suite'}
         require(set(request) == fields and request == {key: target.get(key) for key in fields}, ('Task request lost current field contract', request, target))
-        result = roles['decode'](saves[0], 'response')
+        result = decode(saves[0], 'response')
         require(any(item == target for item in result['tasks']) and 'options' in result, 'Task response was not a real tasks/options list')
         reads = [item for item in traffic if item['method'] == 'GET' and item['path'] == '/api/tasks/' + target['id']
                  and item['index'] > saves[0]['index'] and item.get('status') == 200]
-        require(any((roles['decode'](item, 'response') or {}).get('task') == target for item in reads),
+        require(any((decode(item, 'response') or {}).get('task') == target for item in reads),
                 ('Executor omitted public complete post-save readback', target['id']))
         self.evidence.setdefault('taskApiEvidence', []).append({'taskId': target['id'], 'save': saves[0]['index'],
             'readbacks': [item['index'] for item in reads], 'method': method})
@@ -672,7 +675,7 @@ export default function(pi) {
         for run in [parent, child['run']]:
             require(run.get('finished'), 'Missing explicit manager finish')
             for node in run['nodes'].values():
-                require(node['execution']['taskId'] != target['id'], 'New target business was automatically executed')
+                require(node['execution'].get('taskId') != target['id'], 'New target business was automatically executed')
         w2 = self.output_files(outer, 'w2')
         require(child['run']['fileInputs'] == [{'id': 'request', 'path': w2['handoff']['path']}], 'Business request not explicitly passed to child')
         saved = self.output_files(child, 'save_bot')
@@ -692,6 +695,9 @@ export default function(pi) {
                     ('Actual manager role tools were not exercised', manager))
             for node_id, node in run['nodes'].items():
                 execution = node['execution']
+                if not execution.get('chat'):
+                    require(execution.get('rustScript') in ['create_blank_bot', 'save_bot_guides'], ('Missing real Rust execution target', execution))
+                    continue
                 chat = self.native_chat({**execution['chat'], 'agent': execution['agent']})
                 native = self.observe_turn(chat)
                 histories[chat['sessionId']] = native
@@ -732,19 +738,18 @@ export default function(pi) {
             'approval': 'All final modified text matches the explicitly confirmed complete candidate; no business change or permission is invented.',
             'delivery': 'saved contains the complete final Bot and Task configurations matching service readback; handoff records changes, confirmation, checks and unverified behavior without claiming runtime quality.'})
         require(bot['name'] == self.marker + '-outer', 'Wrapper changed the explicitly requested Bot name')
-        require(json.loads(saved['saved']['bytes']) == bot, 'Saved output is not the complete public Bot readback')
+        require(json.loads(saved['saved']['bytes'])['bot'] == bot, 'Saved output is not the complete public Bot readback')
         saves = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/save'
-                 and (roles['decode'](item, 'request') or {}).get('id') == bot['id']]
-        require(len(saves) == 2 and all(item.get('status') == 200 for item in saves), 'Wrapper retried/split Bot creation or final three-field save')
-        blank = json.loads(roles['decode'](saves[0], 'request')['content'])
-        final = json.loads(roles['decode'](saves[1], 'request')['content'])
+                 and (decode(item, 'request') or {}).get('id') == bot['id']]
+        require(not saves, 'Native writer/optimizer bypassed the fixed Rust save capability')
+        initial = json.loads(baseline['bytes'])
+        delivered = json.loads(saved['saved']['bytes'])
+        blank, final = initial['bot'], delivered['bot']
+        initial_edit = {'content': blank, 'revision': initial['revision']}
+        require(initial['target']['configuration'] == target, 'Rust baseline lost complete latest Task configuration')
+        require(initial['revision'] != delivered['revision'], 'Saved result did not carry a real new revision')
         require({key: value for key, value in blank.items() if key not in ['when', 'plan_guide', 'node_guide']} ==
                 {key: value for key, value in final.items() if key not in ['when', 'plan_guide', 'node_guide']}, 'Final saver changed a non-guide field')
-        edits = [item for item in wrapper_traffic if item['path'] == '/api/scheduler/bots/edit'
-                 and saves[0]['index'] < item['index'] < saves[1]['index'] and item.get('status') == 200
-                 and (roles['decode'](item, 'request') or {}).get('id') == bot['id']]
-        require(edits, 'No real initial Bot edit/revision readback')
-        initial_edit = roles['decode'](edits[0], 'response')
         fields = ['when', 'plan_guide', 'node_guide']
         require(all(blank[field] == '' and isinstance(final[field], str) and bool(final[field].strip()) for field in fields), 'Wrapper blank/final guides were not real complete batch saves')
         approved, optimized = {}, {}
@@ -755,7 +760,7 @@ export default function(pi) {
             require(written['text']['bytes'] == approved[field] and bot[field] == optimized[field], ('Approved/optimized/final guide source was lost', field))
         self.evaluate('outer-final-handoff', {'createdTask': self.outer_created_target, 'optimizedTask': target,
             'w1Handoff': self.output_files(outer, 'w1'), 'w2Request': w2, 'baseline': baseline,
-            'approvedGuides': approved, 'optimizedGuides': optimized, 'blankSaveReadback': {'bot': roles['decode'](saves[0], 'response'), 'edit': initial_edit},
+            'approvedGuides': approved, 'optimizedGuides': optimized, 'blankSaveReadback': {'bot': blank, 'edit': initial_edit},
             'savedBot': bot, 'parentHandoff': exported['handoff']}, {
             'business_transfer': 'The original caller requirements, permissions, missing-material behavior, actual target identity and real authorization sources are explicitly preserved from creator through optimizer request/common baseline to the delivered Bot/handoff.',
             'prompt_optimization': 'The optimized Task changes expression/organization only, preserving the entire original Task business meaning and every non-prompt configuration field.',
@@ -818,7 +823,7 @@ export default function(pi) {
         writes = [item for item in self.backend_wire.records if item['method'] in ['POST', 'PUT', 'PATCH', 'DELETE']]
         for item in writes:
             if item['path'].startswith('/api/tasks'):
-                body = roles['decode'](item, 'request') or {}
+                body = decode(item, 'request') or {}
                 require('extensions' not in body and 'extensionOptions' not in body, ('Retired Task field sent', item))
         require(self.baseline_maps == {path.name: digest(path) for path in (self.root / 'maps').glob('*.json')}, 'An unmigrated Map was changed')
         tasks = {item['id']: item for item in self.http('/api/tasks')['tasks']}
@@ -868,7 +873,7 @@ export default function(pi) {
 
 def run_scenarios(args, record):
     args.repo, args.node, args.bun = REPO, 'node', 'bun'
-    resources['preflight'](args, record)
+    preflight(args, record)
     roots = record['paths']['roots']
     for host, filename in [('pi', 'herdr-agent-state.ts'), ('omp', 'herdr-omp-agent-state.ts')]:
         key = host + '_state_extension'

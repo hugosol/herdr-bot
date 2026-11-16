@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import subprocess
 import threading
@@ -17,11 +16,12 @@ import traceback
 
 from developer_paths import REPO
 
-roles = runpy.run_path(str(REPO / 'scripts/test-workflow-file-handoff.py'))
-lifecycle = runpy.run_path(str(REPO / 'scripts/accept-suite-lifecycle.py'))
-resources = lifecycle['resources']
-Base = roles['Acceptance']
-require, until, WireProxy = roles['require'], roles['until'], roles['WireProxy']
+from acceptance.workflow.close import Acceptance as Base
+from acceptance.workflow.handoff import RolesAcceptance
+from acceptance.host.processes import require, until
+from acceptance.host.wire import WireProxy
+from acceptance.host.provenance import preflight
+from acceptance.host.native_observation import capture, remember_process, history
 
 
 def digest(path):
@@ -39,9 +39,9 @@ def body_text(value):
 class NativePlanningAcceptance(Base):
     # Reuse the established OS handle and native public SessionManager observers,
     # not the lifecycle runner's controlled provider or case decisions.
-    capture = lifecycle['Acceptance'].capture
-    remember_process = lifecycle['Acceptance'].remember_process
-    history = lifecycle['Acceptance'].history
+    capture = capture
+    remember_process = remember_process
+    history = history
 
     def __init__(self, args, hosts):
         super().__init__(args, prefix=str(args.evidence_dir / 'native-'))
@@ -63,7 +63,7 @@ class NativePlanningAcceptance(Base):
     def configure_model(self):
         # Existing real-provider validation and transparent wire recording. No
         # default model, user authentication or response/decision retry is used.
-        roles['RolesAcceptance'].configure_model(self)
+        RolesAcceptance.configure_model(self)
         agent = self.root / 'agent'
         model = json.loads((agent / 'models.json').read_text(encoding='utf-8'))
         (agent / 'models.yml').write_text(json.dumps(model), encoding='utf-8')
@@ -523,7 +523,7 @@ export default function(pi) {
 
 def run_scenarios(args, record):
     args.repo, args.node, args.bun = REPO, 'node', 'bun'
-    resources['preflight'](args, record)
+    preflight(args, record)
     roots = record['paths']['roots']
     for key in ['pi_state_extension', 'omp_state_extension', 'wayfinder_skills']:
         require(key in roots, 'Explicit isolated dependencies must name roots.' + key)

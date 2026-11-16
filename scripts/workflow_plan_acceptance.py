@@ -77,7 +77,9 @@ class PlanWorkflowScenario:
         sources = self.root / 'source-evidence'
         sources.mkdir()
         for path in [Path(__file__), REPO / 'scripts/test-workflow-file-handoff.py',
-                REPO / 'meta-data/tasks.json', REPO / 'meta-data/workflow-maps/plan_workflow.json']:
+                REPO / 'meta-data/tasks.json', REPO / 'meta-data/workflow-maps/plan_workflow.json',
+                *[REPO / 'scripts/acceptance' / name for name in ['workflow/handoff.py', 'workflow/close.py',
+                    'host/processes.py', 'host/isolation.py', 'host/model.py', 'host/wire.py']]]:
             copied = sources / path.name
             shutil.copy2(path, copied)
             self.evidence.setdefault('exactSourceBytes', []).append({

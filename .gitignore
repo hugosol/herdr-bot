@@ -20,6 +20,8 @@ dist-ssr
 /.scratch/workflow-file-handoff/evidence/
 /.scratch/workflow-nesting/evidence/
 /.scratch/chief-bot/evidence/
+/.scratch/rust-script-bots/evidence/
+/.scratch/cargo-target/
 /.scratch/suite-cli-research/evidence/09-pi-resources/
 /.scratch/suite-cli-research/evidence/14-initial/
 

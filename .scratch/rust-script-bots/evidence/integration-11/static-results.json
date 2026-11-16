@@ -1,0 +1,13 @@
+{
+  "herdrBotWorktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W",
+  "toolkitWorktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-9Z2J1e",
+  "runtime": {"bun": "1.4.4"},
+  "commands": [
+    {"repository":"herdr-bot","command":"npm --prefix frontend run build","exit":0,"log":"frontend-build.log"},
+    {"repository":"herdr-bot","command":"npm --prefix frontend test -- --maxWorkers=1","exit":0,"filesPassed":34,"testsPassed":253,"log":"frontend-tests.log","diagnostic":"jsdom Window.scrollTo not implemented warnings retained"},
+    {"repository":"herdr-bot","command":"RUST_SCRIPT_TOOLKIT=C:/Users/hugos/AppData/Local/Temp/hyper-ticket-9Z2J1e python scripts/accept-rust-script-bots.test.py","exit":0,"testsPassed":5,"log":"cli-safety.log"},
+    {"repository":"toolkit","command":"bun run typecheck","exit":0,"log":"typecheck.log"},
+    {"repository":"toolkit","command":"bun run check:integrations","exit":0,"log":"integrations.log"}
+  ],
+  "human": {"H1":"unverified; explicit real host/model/manager authorization absent","H2":"unverified; controlled responses cannot establish real manager understanding"}
+}

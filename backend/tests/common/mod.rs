@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sse;
+pub mod file_gate;
 
 use std::fs;
 use std::net::SocketAddr;
@@ -259,10 +260,13 @@ pub struct HerdrFixture {
 
 impl HerdrFixture {
     pub fn new(label: &str) -> Self {
+        Self::from_executable(label, Path::new(option_env!("CARGO_BIN_EXE_herdr-fixture").expect("Cargo integration test fixture artifact")))
+    }
+
+    pub fn from_executable(label: &str, source: &Path) -> Self {
         let root = TempDir::new(label);
-        let source = PathBuf::from(env!("CARGO_BIN_EXE_herdr-fixture"));
         let executable = root.path().join("herdr-fixture.exe");
-        fs::copy(&source, &executable).expect("复制受控 Herdr 夹具");
+        fs::copy(source, &executable).expect("复制受控 Herdr 夹具");
         fs::write(
             root.path().join("workspaces.json"),
             r#"[

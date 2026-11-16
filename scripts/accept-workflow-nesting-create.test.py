@@ -1,7 +1,7 @@
 """Approved seam: the acceptance CLI, not a product-private implementation.
 
 Independent source: missing build/model/host prerequisites must be nonzero and
-must never become P39–P45 verification. A plausible violation calls preparation
+must never become P28 native-behavior verification. A plausible violation calls preparation
 success, starts a user host, or reuses someone else's evidence directory.
 """
 import json
@@ -38,7 +38,7 @@ class CreateAcceptancePrerequisites(unittest.TestCase):
             self.assertEqual(observed['verifiedHosts'], [])
             self.assertEqual(observed['commands'], [])
             self.assertEqual(observed['cleanupErrors'], [])
-            self.assertEqual(set(observed['coverage']), {'P39', 'P40', 'P41', 'P43', 'P44', 'P45'})
+            self.assertEqual(set(observed['coverage']), {'P28'})
             self.assertTrue(all(not value['verified'] for value in observed['coverage'].values()))
             self.assertFalse((evidence / 'backend-stdout.log').exists())
             sentinel = evidence / 'not-owned.txt'

@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use axum::response::sse::Event;
 use notify::{
     Event as NotifyEvent, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
     recommended_watcher,
@@ -128,27 +127,6 @@ pub struct ZoneWatchSnapshot {
     pub zones: Vec<ZoneWatchView>,
 }
 
-/// 一次自动刷新通知。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RefreshData {
-    zone: String,
-    at: u64,
-    generation: u64,
-}
-
-/// 一次监听健康变化。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HealthData {
-    zone: String,
-    health: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    message: Option<String>,
-    at: u64,
-    generation: u64,
-}
-
 /// 广播给所有观察者的增量帧。
 #[derive(Debug, Clone)]
 pub enum ZoneWatchFrame {
@@ -168,50 +146,35 @@ pub enum ZoneWatchFrame {
     },
 }
 
-/// 把广播帧组装成 SSE 命名事件。
-pub fn frame_event(frame: ZoneWatchFrame) -> Event {
-    match frame {
-        ZoneWatchFrame::Refresh {
-            zone,
-            at,
-            generation,
-        } => named_event(
-            "refresh",
-            &RefreshData {
-                zone,
-                at,
-                generation,
-            },
-        ),
-        ZoneWatchFrame::Health {
-            zone,
-            health,
-            message,
-            at,
-            generation,
-        } => named_event(
-            "health",
-            &HealthData {
-                zone,
-                health,
-                message,
-                at,
-                generation,
-            },
-        ),
-    }
+/// 观察者先取得完整快照，随后读取增量；落后时以新快照恢复当前事实。
+pub enum Observation {
+    Snapshot(ZoneWatchSnapshot),
+    Change(ZoneWatchFrame),
 }
 
-/// 把首帧（或落后太多后的新快照）组装成带重连提示的 `snapshot` 事件。
-pub fn snapshot_event(snapshot: ZoneWatchSnapshot) -> Event {
-    named_event("snapshot", &snapshot).retry(Duration::from_secs(2))
-}
-
-fn named_event(name: &'static str, data: &impl Serialize) -> Event {
-    Event::default()
-        .event(name)
-        .json_data(data)
-        .expect("监听帧只含字符串、数字与布尔，序列化不会失败")
+/// 开始观察前先订阅再对齐监听，保证对齐期间的健康变化与刷新不会丢失。
+pub async fn observe(
+    state: &crate::AppState,
+) -> Result<impl futures_util::Stream<Item = Observation> + use<>, super::ZoneError> {
+    let zones = state.zones.list().await?;
+    let receiver = state.zone_watch.subscribe();
+    state.zone_watch.reconcile(&zones).await;
+    let manager = Arc::clone(&state.zone_watch);
+    let first = manager.snapshot().await;
+    Ok(futures_util::stream::unfold((receiver, Some(first)), move |(mut receiver, pending)| {
+        let manager = Arc::clone(&manager);
+        async move {
+            let snapshot = match pending {
+                Some(snapshot) => snapshot,
+                None => match receiver.recv().await {
+                    Ok(frame) => return Some((Observation::Change(frame), (receiver, None))),
+                    Err(broadcast::error::RecvError::Lagged(_)) => manager.snapshot().await,
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                },
+            };
+            Some((Observation::Snapshot(snapshot), (receiver, None)))
+        }
+    }))
 }
 
 fn now_millis() -> u64 {

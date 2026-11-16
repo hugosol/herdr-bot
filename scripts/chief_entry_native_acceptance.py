@@ -9,12 +9,11 @@ or result is supplied by this driver. S3/native histories and S2 remain real.
 import hashlib
 import json
 from pathlib import Path
-import runpy
 import tomllib
 import time
 
-shared = runpy.run_path(str(Path(__file__).with_name('workflow_native_acceptance.py')))
-NativeAcceptance, require, until = shared['NativeAcceptance'], shared['require'], shared['until']
+from acceptance.host.native import NativeAcceptance
+from acceptance.host.processes import require, until
 
 
 class ChiefEntryAcceptance(NativeAcceptance):

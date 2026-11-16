@@ -1,4 +1,4 @@
-import type { TaskInput, TaskOptions } from './taskApi'
+import type { TaskInput, TaskOptions } from '../controllers/taskController'
 
 type Selection = Pick<TaskInput, 'agent' | 'model' | 'thinking'>
 

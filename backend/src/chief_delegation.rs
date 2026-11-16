@@ -6,13 +6,6 @@ use crate::{
     files::FileStore,
     tasks::{Task, TaskType, catalog::ResolvedPreset},
 };
-use axum::{
-    Json,
-    extract::Request,
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -183,38 +176,35 @@ impl Launch {
     }
 }
 
-fn rejected(code: &'static str, message: impl Into<String>) -> Response {
-    crate::rejected_owned(StatusCode::CONFLICT, code, message.into())
+pub(crate) enum Error {
+    Conflict(&'static str, String), Storage(io::Error), Chief(crate::chief::Error), Chat(chats::Error),
+    Task(crate::tasks::TaskError), Directory(crate::scheduler::DirectoryError), Definition(crate::scheduler::DelegationDefinitionError),
+    Preflight(crate::runs::preflight::PreflightFailure), Stale(Box<Error>), Run(crate::runs::RunError), NotFound,
 }
-fn storage(error: io::Error) -> Response {
-    crate::rejected_owned(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "delegation-storage-failed",
-        format!("委派记录无法可靠保存或读取：{error}"),
-    )
-}
+pub(crate) enum Outcome { Created(ChatCreationView), Run(crate::runs::RunOutcome) }
+fn rejected(code: &'static str, message: impl Into<String>) -> Error { Error::Conflict(code, message.into()) }
 async fn resolve(
     state: &AppState,
     request: DispatchRequest,
     id: &str,
     chat_id: &str,
-) -> Result<Prepared, Response> {
+) -> Result<Prepared, Error> {
     if request.input.trim().is_empty() {
         return Err(rejected(
             "delegation-input-required",
             "必须明确本次业务输入。",
         ));
     }
-    let cwd = crate::chat_zone(state, &request.zone_id).await?;
-    let (bot, target) = crate::scheduler::delegation_bot(&state.bot_directory, &request.bot_id)?;
+    let cwd = chats::chat_zone(state, &request.zone_id).await.map_err(Error::Chat)?;
+    let (bot, target) = crate::scheduler::bots::delegation_bot(&state.bot_directory, &request.bot_id).map_err(Error::Directory)?;
     let (task_id, map_file) = match target {
-        crate::scheduler::DelegationTarget::Task(id) => {
+        crate::scheduler::bots::DelegationTarget::Task(id) => {
             if request.manager_task_id.is_some() {
                 return Err(rejected("delegation-manager-unexpected", "Task 型 Bot 不接受 manager Task。"));
             }
             (id, None)
         }
-        crate::scheduler::DelegationTarget::Map(file) => {
+        crate::scheduler::bots::DelegationTarget::Map(file) => {
             let manager = request.manager_task_id.as_ref().filter(|id| !id.trim().is_empty())
                 .ok_or_else(|| rejected("delegation-manager-required", "Map 型 Bot 必须明确指定 manager Task。"))?;
             (manager.clone(), Some(file))
@@ -224,7 +214,7 @@ async fn resolve(
         .tasks
         .get(&task_id)
         .await
-        .map_err(crate::task_error_response)?;
+        .map_err(Error::Task)?;
     if task.task_type != if map_file.is_some() { TaskType::Manager } else { TaskType::Normal } {
         return Err(rejected(
             "delegation-task-role",
@@ -234,7 +224,7 @@ async fn resolve(
     state
         .tasks
         .validate_suite(&task)
-        .map_err(crate::task_error_response)?;
+        .map_err(Error::Task)?;
     let preset = state
         .tasks
         .catalog()
@@ -243,7 +233,7 @@ async fn resolve(
         } else {
             crate::tasks::catalog::ExecutionRole::ChiefDelegated
         }))
-        .map_err(crate::task_error_response)?;
+        .map_err(Error::Task)?;
     preset
         .env
         .check_entrypoints()
@@ -257,10 +247,10 @@ async fn resolve(
                 "材料 ID 必须非空且唯一。",
             ));
         }
-        let root = crate::chat_zone(state, &material.zone_id).await?;
+        let root = chats::chat_zone(state, &material.zone_id).await.map_err(Error::Chat)?;
         let path = crate::zones::browse::checked_file(&root, &material.path)
-            .map_err(crate::browse_error_response)?;
-        crate::scheduler::check_input_file(&path)
+            .map_err(|error| Error::Chat(chats::Error::Browse(error)))?;
+        crate::runs::preflight::check_input_file(&path)
             .map_err(|error| rejected("delegation-material-invalid", error))?;
         materials.push(Material {
             id: material.id.clone(),
@@ -276,12 +266,12 @@ async fn resolve(
         ));
     }
     let run = if let Some(file) = &map_file {
-        let input = crate::scheduler::RunPreflightRequest {
+        let input = crate::runs::preflight::RunPreflightRequest {
             manager_task_id: task.id.clone(), zone: request.zone_id.clone(), user_input: request.input.clone(),
-            file_inputs: materials.iter().map(|m| crate::scheduler::ResolvedFile { id: m.id.clone(), path: m.path.clone() }).collect(),
+            file_inputs: materials.iter().map(|m| crate::scheduler::maps::ResolvedFile { id: m.id.clone(), path: m.path.clone() }).collect(),
         };
-        let checked = crate::scheduler::check_run_preflight(state, file, &input).await.map_err(|error| error.into_response())?;
-        if let Some(message) = crate::scheduler::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
+        let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
+        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
             .map_err(|message| rejected("delegation-material-invalid", message))? {
             return Err(rejected("delegation-material-invalid", message));
         }
@@ -289,7 +279,7 @@ async fn resolve(
     } else { None };
     let mut material_contents = Vec::new();
     let map = if let Some(file) = &map_file {
-        let closure = crate::scheduler::delegation_map_definition(state, file, &request.zone_id)?;
+        let closure = crate::scheduler::delegation_map_definition(state, file, &request.zone_id).map_err(Error::Definition)?;
         let mut tasks = std::collections::BTreeMap::new();
         let prompts = state.prompts.snapshot().map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
         let mut bot_meaning = std::collections::BTreeMap::new();
@@ -298,19 +288,19 @@ async fn resolve(
                 .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?);
         }
         for id in closure.task_ids {
-            let task = state.tasks.get(&id).await.map_err(crate::task_error_response)?;
-            let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&task)).map_err(crate::task_error_response)?;
+            let task = state.tasks.get(&id).await.map_err(Error::Task)?;
+            let preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&task)).map_err(Error::Task)?;
             let fixed = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)
                 .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
             tasks.insert(id, json!({"task":task,"renderedPrompt":fixed,"promptInstructions":prompts.instructions(&task.trigger.prompt),"launchArgs":chats::agent_launch_args(&preset.env, Some(&preset.trigger))}));
         }
         let mut bindings = std::collections::BTreeMap::new();
         for id in closure.zone_ids {
-            bindings.insert(id.clone(), crate::chat_zone(state, &id).await?);
+            bindings.insert(id.clone(), chats::chat_zone(state, &id).await.map_err(Error::Chat)?);
         }
         let mut direct_materials = Vec::new();
         for (zone, relative) in closure.files {
-            let path = crate::zones::browse::checked_file(&bindings[&zone], &relative).map_err(crate::browse_error_response)?;
+            let path = crate::zones::browse::checked_file(&bindings[&zone], &relative).map_err(|error| Error::Chat(chats::Error::Browse(error)))?;
             direct_materials.push(json!({"zoneId":zone,"path":path}));
             material_contents.push(std::fs::read(&path).map_err(|e| rejected("delegation-material-invalid", e.to_string()))?);
         }
@@ -349,19 +339,14 @@ async fn resolve(
     })
 }
 
-pub(crate) async fn preview(State(state): State<AppState>, request: Request) -> Response {
-    let input: DispatchRequest = match crate::chat_command_body(request, "预览 Bot 委派").await
-    {
-        Ok(input) => input,
-        Err(error) => return error,
-    };
+pub(crate) async fn preview(state: &AppState, input: DispatchRequest) -> Result<Value, Error> {
     if let Err(error) = state.chief.qualify(&input.session_id) {
-        return error.response();
+        return Err(Error::Chief(error));
     }
     let id = chats::new_creation_id();
     let prepared = match resolve(&state, input, &id, &chats::new_chat_id()).await {
         Ok(prepared) => prepared,
-        Err(error) => return error,
+        Err(error) => return Err(error),
     };
     let response = json!({"previewId":id,"facts":prepared.facts});
     state
@@ -370,22 +355,17 @@ pub(crate) async fn preview(State(state): State<AppState>, request: Request) -> 
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(id, prepared);
-    Json(response).into_response()
+    Ok(response)
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CommitRequest {
+pub(crate) struct CommitRequest {
     session_id: String,
     preview_id: String,
 }
-pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> Response {
-    let input: CommitRequest = match crate::chat_command_body(request, "发起 Bot 委派").await
-    {
-        Ok(input) => input,
-        Err(error) => return error,
-    };
+pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outcome, Error> {
     if let Err(error) = state.chief.qualify(&input.session_id) {
-        return error.response();
+        return Err(Error::Chief(error));
     }
     let prepared = state
         .delegations
@@ -394,13 +374,13 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
         .unwrap_or_else(|e| e.into_inner())
         .remove(&input.preview_id);
     let Some(mut prepared) = prepared else {
-        return rejected(
+        return Err(rejected(
             "delegation-preview-missing",
             "预览不存在或已使用；请重新核实并确认。",
-        );
+        ));
     };
     if prepared.facts.request.session_id != input.session_id {
-        return rejected("chief-not-current", "预览不属于当前调用会话。");
+        return Err(rejected("chief-not-current", "预览不属于当前调用会话。"));
     }
     let map_operation = if let Some(run) = &prepared.run {
         Some(state.runs.map_lock(&run.map).await.lock_owned().await)
@@ -415,12 +395,7 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
     {
         Ok(fresh) => fresh,
         Err(error) => {
-            let status = error.status();
-            let cause = match axum::body::to_bytes(error.into_body(), 1024 * 1024).await {
-                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                Err(error) => format!("无法读取原始拒绝原因：{error}"),
-            };
-            return rejected("delegation-preview-stale", format!("已确认的 Bot、Map、manager、zone 或材料已失效；本次未发起，请重新预览并确认。原始错误 {status}：{cause}"));
+            return Err(Error::Stale(Box::new(error)));
         }
     };
     if fresh.facts != prepared.facts
@@ -428,18 +403,18 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
         || chats::agent_launch_args(&fresh.preset.env, Some(&fresh.preset.trigger))
             != chats::agent_launch_args(&prepared.preset.env, Some(&prepared.preset.trigger))
     {
-        return rejected(
+        return Err(rejected(
             "delegation-preview-stale",
             "目标、Task、zone、材料地址或完整输入已变化；本次未发起，请重新预览并确认。",
-        );
+        ));
     }
     // Approval pins these values. Later edits cannot silently redirect the job.
     if let Err(error) = state.chief.qualify(&input.session_id) {
-        return error.response();
+        return Err(Error::Chief(error));
     }
     prepared.preset.env.suite_args = match state.tasks.prepare_environment(&prepared.facts.task) {
         Ok(args) => args,
-        Err(error) => return crate::task_error_response(error),
+        Err(error) => return Err(Error::Task(error)),
     };
     let view = ChatCreationView::starting(
         input.preview_id.clone(),
@@ -454,7 +429,7 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
         session_id: None,
         run_id: prepared.run.as_ref().map(|run| run.id.clone()),
     }) {
-        return storage(error);
+        return Err(Error::Storage(error));
     }
     if let Some(run) = prepared.run {
         crate::runs::register_root(&state, &run).await;
@@ -462,7 +437,7 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
         return crate::runs::launch_root(state.clone(), run, prepared.facts.task, prepared.preset, Some(Launch {
             store: Arc::clone(&state.delegations), id: input.preview_id,
             prompt: prepared.facts.prompt, name: prepared.facts.name,
-        })).await;
+        })).await.map(Outcome::Run).map_err(Error::Run);
     }
     let job = state.chat_creations.insert(view.clone()).await;
     let store = Arc::clone(&state.delegations);
@@ -480,9 +455,8 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
             Arc::clone(&job),
             prepared.facts.task,
             prepared.preset,
-            prepared.facts.cwd,
+            crate::herdr::placement::Scenario::ChiefDelegatedTask { cwd: &prepared.facts.cwd },
             String::new(),
-            state.herdr.workspace_name().to_owned(),
             None,
             Some(launch),
         )
@@ -501,38 +475,18 @@ pub(crate) async fn commit(State(state): State<AppState>, request: Request) -> R
             });
         }
     });
-    (StatusCode::ACCEPTED, Json(view)).into_response()
+    Ok(Outcome::Created(view))
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SenderQuery {
-    session_id: String,
+pub(crate) struct SenderQuery { session_id: String }
+pub(crate) fn list(state: &AppState, query: SenderQuery) -> Result<Value, Error> {
+    let records = state.delegations.access(false, |records| {
+        Ok(records.iter().filter(|r| r.session_id.as_deref() == Some(&query.session_id)).cloned().collect::<Vec<_>>())
+    }).map_err(Error::Storage)?;
+    Ok(json!({"delegations":records}))
 }
-pub(crate) async fn list(
-    State(state): State<AppState>,
-    Query(query): Query<SenderQuery>,
-) -> Response {
-    match state.delegations.access(false, |records| {
-        Ok(records
-            .iter()
-            .filter(|r| r.session_id.as_deref() == Some(&query.session_id))
-            .cloned()
-            .collect::<Vec<_>>())
-    }) {
-        Ok(records) => Json(json!({"delegations":records})).into_response(),
-        Err(error) => storage(error),
-    }
-}
-pub(crate) async fn get(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.delegations.access(false, |records| {
-        Ok(records.iter().find(|r| r.id == id).cloned())
-    }) {
-        Ok(Some(record)) => Json(record).into_response(),
-        Ok(None) => crate::rejected_owned(
-            StatusCode::NOT_FOUND,
-            "delegation-not-found",
-            "委派记录不存在。".into(),
-        ),
-        Err(error) => storage(error),
-    }
+pub(crate) fn get(state: &AppState, id: &str) -> Result<Record, Error> {
+    state.delegations.access(false, |records| Ok(records.iter().find(|r| r.id == id).cloned()))
+        .map_err(Error::Storage)?.ok_or(Error::NotFound)
 }

@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import runpy
 import subprocess
 import sys
 import time
@@ -17,10 +16,13 @@ import traceback
 
 from developer_paths import REPO, backend_suffix, resolve_arguments
 
-roles = runpy.run_path(str(Path(__file__).with_name('test-workflow-file-handoff.py')))
-RolesAcceptance, Acceptance = roles['RolesAcceptance'], roles['Acceptance']
-require, until, WireProxy = roles['require'], roles['until'], roles['WireProxy']
-LiveProcess = runpy.run_path(str(Path(__file__).with_name('test-real-herdr-close.py')))['LiveProcess']
+from acceptance.workflow.close import Acceptance
+from acceptance.workflow.handoff import RolesAcceptance
+from acceptance.host.processes import require, until, LiveProcess
+from acceptance.host.wire import WireProxy, decode, messages
+from acceptance.host.evidence import copy_evidence
+from acceptance.workflow.handoff import FanInAcceptance
+
 PROMISES = ['P05', 'P09', 'P10', 'P12', 'P14', 'P16', 'P18']
 
 
@@ -51,7 +53,10 @@ class FilesAcceptance(RolesAcceptance):
                 'lockSha256': hashlib.sha256((root / lock).read_bytes()).hexdigest()}
         self.evidence['runnerSources'] = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in [
             Path(__file__), REPO / 'scripts/workflow-nesting-files-browser.mjs', REPO / 'scripts/test-workflow-file-handoff.py',
-            REPO / 'scripts/test-real-herdr-close.py', self.args.toolkit / 'entrypoints/pi-auto/manager-chat.ts',
+            REPO / 'scripts/test-real-herdr-close.py',
+            *[REPO / 'scripts/acceptance' / name for name in ['workflow/handoff.py', 'workflow/close.py',
+                'host/processes.py', 'host/isolation.py', 'host/model.py', 'host/wire.py']],
+            self.args.toolkit / 'entrypoints/pi-auto/manager-chat.ts',
             self.args.toolkit / 'entrypoints/pi-auto/node-chat.ts']}
         self.evidence['backend'] = {'path': str(self.args.backend), 'sha256': hashlib.sha256(self.args.backend.read_bytes()).hexdigest()}
         artifact_paths = [REPO / 'frontend/bun.lock', *sorted((REPO / 'backend/static').rglob('*'))]
@@ -284,7 +289,7 @@ class FilesAcceptance(RolesAcceptance):
         for role in ['manager', 'node']:
             guide = (self.args.toolkit / f'extensions/workflow-chat/{role}-chat/shared-logic/prompts/init.md').read_text(encoding='utf-8').strip()
             require(any(guide in '\n'.join(self.message_text(message).replace('\r\n', '\n')
-                for message in roles['messages'](record)) for record in self.model_wire.records), ('actual model did not receive declared role guide', role))
+                for message in messages(record)) for record in self.model_wire.records), ('actual model did not receive declared role guide', role))
         self.observe_processes()
         for promise in PROMISES:
             self.evidence['coverage'][promise] = {'verified': True, 'host': 'pi',
@@ -358,7 +363,7 @@ class FilesAcceptance(RolesAcceptance):
             history = self.preserve_native(execution['chat'], f'run-{index}-{zone}')
             require(Path(self.evidence['nativeHistories'][-1]['header']['cwd']).resolve() == self.zones[zone].resolve(), 'actual native executor cwd differs from declared zone')
             self.verify_read(history, Path(source), expected)
-            calls = roles['FanInAcceptance'].native_calls(history['branch'])
+            calls = FanInAcceptance.native_calls(history['branch'])
             require(all(call['name'] in ['read', 'write', 'report'] for call in calls), ('executor bypassed material read boundary', calls))
             allowed = {Path(source).resolve(), (self.zones[zone] / 'delivered.txt').resolve()}
             require(all(Path(call.get('arguments', {}).get('path', '')).resolve() in allowed for call in calls if call['name'] == 'read'), ('executor sought unbound/optional files', calls))
@@ -387,7 +392,7 @@ class FilesAcceptance(RolesAcceptance):
             else:
                 require(str(material) in self.message_text(initial), initial)
             require(not any(marker in json.dumps(initial) for marker in ['FILE-BYTES-ORIGINAL-ONE', 'FILE-BYTES-MUTATED-ONE', 'FILE-BYTES-INDEPENDENT-TWO']), 'file body was snapshotted into initial Chat')
-            require(any(text_marker in (body := '\n'.join(self.message_text(message) for message in roles['messages'](request))) and
+            require(any(text_marker in (body := '\n'.join(self.message_text(message) for message in messages(request))) and
                 str(material) in body.replace('\\\\', '\\') for request in self.model_wire.records), 'actual model provider never received independent text and binding')
         self.evidence.setdefault('trees', []).append({'index': index, 'root': final, 'middle': middle, 'leaf': leaf, 'second': second})
         for detail in [final, middle, leaf, second]:

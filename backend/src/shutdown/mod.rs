@@ -441,6 +441,13 @@ impl ShutdownState {
         outcome
     }
 
+    pub(crate) async fn cancel_with_snapshot(&self) -> Result<ShutdownView, CancelOutcome> {
+        match self.cancel().await {
+            CancelOutcome::Cancelled => Ok(self.snapshot().await),
+            CancelOutcome::NotCancellable => Err(CancelOutcome::NotCancellable),
+        }
+    }
+
     /// 到期执行：期限到点后由后端自己裁定并调用既有实际关机能力。
     ///
     /// 先等自己的截止时间，再在锁内把阶段推进到「执行已开始」：推进之后取消不再可能成功，因此

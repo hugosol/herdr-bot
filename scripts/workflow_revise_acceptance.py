@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEDICATED = 'task-revise-bot-baseline-v1'
 MAP = 'enhance-existing-bot--bc-301b25d9f8d6.json'
 NODE_TASKS = dict(zip(['w1', 'w2', 'w3', 'w4', 'w5'],
-    [DEDICATED, TASK_IDS[1], TASK_IDS[2], TASK_IDS[3], TASK_IDS[5]]))
+    [DEDICATED, TASK_IDS[0], TASK_IDS[1], TASK_IDS[2], TASK_IDS[4]]))
 OLD = {'when': '已有账单只读能力；扫描边界须明确，不付款。',
     'plan_guide': '先核实来源、只读授权和人民币分，再安排已有目标；不外网。',
     'node_guide': '提供账单 CSV、只读授权和差异报告位置；不修改账单。'}
@@ -41,7 +41,7 @@ def select_cases(value):
 
 def deploy(case):
     tasks = []
-    for identity in [case.manager['id'], DEDICATED, TASK_IDS[1], TASK_IDS[2], TASK_IDS[3], TASK_IDS[5]]:
+    for identity in [case.manager['id'], DEDICATED, TASK_IDS[0], TASK_IDS[1], TASK_IDS[2], TASK_IDS[4]]:
         original = case.original_tasks[identity]
         task = dict(original, model='probe', thinking='default')
         if case.host != 'declared':

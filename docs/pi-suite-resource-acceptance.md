@@ -92,7 +92,7 @@ manifest, an unrelated green suite, or a successful CLI configuration test are
 not S4 consumption evidence.
 
 Missing centralized MCP reference coverage is intentionally not duplicated: use
-`backend/tests/suite_references.rs` test
+`backend/tests/suites/suite_references.rs` test
 `missing_central_mcp_is_readable_but_save_and_launch_are_refused` (P18/P46, owner 02).
 
 ## Regression and complete delivery checks

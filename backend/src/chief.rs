@@ -3,9 +3,7 @@
 //! Registered membership is transient. Pending/uncertain external effects and
 //! revoked identities survive restart independently of process liveness.
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Mutex};
-use axum::{Json, extract::State, http::StatusCode, response::{IntoResponse, Response}};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use crate::{AppState, files::FileStore};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -172,46 +170,28 @@ impl Authority {
         })
     }
 }
-pub(crate) async fn is_chief(state:&AppState,selected:&crate::chats::history::HistorySelection) -> Result<bool,Response> {
-    if state.chief.is_known(&selected.session_id).map_err(Error::response)? { return Ok(true); }
+pub(crate) async fn is_chief(state: &AppState, selected: &crate::chats::history::HistorySelection) -> Result<bool, Error> {
+    if state.chief.is_known(&selected.session_id)? { return Ok(true); }
     let Some(source) = &selected.source_task_id else { return Ok(false); };
     match state.tasks.get(source).await {
-        Ok(task) => Ok(task.task_type==crate::tasks::TaskType::Chief),
+        Ok(task) => Ok(task.task_type == crate::tasks::TaskType::Chief),
         Err(crate::tasks::TaskError::NotFound) => Ok(false),
-        Err(error) => Err(crate::chats::resume::settings_failure(selected.agent_type.as_deref(),&error)),
+        Err(error) => Err(Error::Settings(error)),
     }
 }
 
 #[derive(Debug)]
-pub(crate) enum Error { Occupied, NotCurrent, Storage(io::Error) }
+pub(crate) enum Error { Occupied, NotCurrent, Storage(io::Error), Settings(crate::tasks::TaskError) }
 impl From<io::Error> for Error { fn from(error: io::Error) -> Self { Self::Storage(error) } }
-impl Error {
-    pub fn response(self) -> Response {
-        match self {
-            Self::Occupied => crate::rejected_owned(StatusCode::CONFLICT,"chief-occupied","当前 chief 或启动占位尚未移除；本次未发起。".into()),
-            Self::NotCurrent => crate::rejected_owned(StatusCode::CONFLICT,"chief-not-current","该会话不是当前有效 chief；旧进程仍存活不授予职责，请由用户明确恢复。".into()),
-            Self::Storage(error) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR,"chief-storage-failed",format!("无法确认 chief 权威状态：{error}")),
-        }
-    }
-}
-pub(crate) async fn get_current(State(state):State<AppState>) -> Response {
+pub(crate) async fn get_current(state: &AppState) -> Result<Option<Claim>, Error> {
     let _membership = state.chief.membership.lock().await;
-    match state.chief.current() { Ok(current)=>Json(json!({"current":current})).into_response(),Err(error)=>error.response() }
+    state.chief.current()
 }
-#[derive(Deserialize)]
-#[serde(rename_all="camelCase",deny_unknown_fields)]
-pub(crate) struct ReleaseRequest { claim_id:String }
-pub(crate) async fn release(State(state):State<AppState>,Json(request):Json<ReleaseRequest>) -> Response {
-    let _membership=state.chief.membership.lock().await;
-    match state.chief.release(&request.claim_id) {
-        Ok(released)=>Json(json!({"current":null,"released":released})).into_response(),
-        Err(error)=>error.response(),
-    }
-}
-#[derive(Deserialize)]
-#[serde(rename_all="camelCase",deny_unknown_fields)]
-pub(crate) struct QualifyRequest { session_id:String }
-pub(crate) async fn qualify(State(state):State<AppState>,Json(request):Json<QualifyRequest>) -> Response {
+pub(crate) async fn release(state: &AppState, claim_id: &str) -> Result<Claim, Error> {
     let _membership = state.chief.membership.lock().await;
-    match state.chief.qualify(&request.session_id) { Ok(current)=>Json(json!({"current":current})).into_response(),Err(error)=>error.response() }
+    state.chief.release(claim_id)
+}
+pub(crate) async fn qualify(state: &AppState, session_id: &str) -> Result<Claim, Error> {
+    let _membership = state.chief.membership.lock().await;
+    state.chief.qualify(session_id)
 }

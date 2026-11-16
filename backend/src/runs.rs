@@ -1,34 +1,24 @@
 //! Run startup, manager queries, explicit node dispatch and handoff/finish.
 //! Manager startup errors are process-local; node dispatch failures are persisted.
 use crate::{AppState, files::FileStore};
-use axum::{
-    Json,
-    extract::{ConnectInfo, Path, Request, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    net::SocketAddr,
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex;
-mod reports;
-mod recovery;
-mod retry;
+pub(crate) mod reports;
+pub(crate) mod preflight;
+#[cfg(test)]
+mod report_isolation_tests;
+pub(crate) mod recovery;
+pub(crate) mod retry;
 mod startup;
-pub use retry::manager_retry;
-pub use recovery::{manager_fail, manager_recover, manager_reconcile_dispatch};
-mod completion;
+pub(crate) mod completion;
 mod operation;
-mod preparation;
-pub use preparation::manager_prepare_inputs;
-mod collect;
-pub use collect::manager_collect;
-pub use reports::{node_context, node_report};
-pub use completion::{manager_complete, manager_finish, manager_pause, manager_resume};
+pub(crate) mod preparation;
+pub(crate) mod collect;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -67,26 +57,27 @@ pub struct Completion {
     pub actor: ChatReference,
     pub reason: String,
 }
+mod execution;
+use execution::{ChatExecution, ExecutionTarget, Lifecycle, ScriptExecution, ScriptKind};
+mod scripts;
+
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeExecution {
     pub id: String,
-    pub task_id: String,
-    pub agent: crate::tasks::Agent,
+    #[serde(flatten)]
+    pub target: ExecutionTarget,
     pub zone: String,
     #[serde(default)]
-    pub input_rule: Option<Vec<crate::scheduler::InputRule>>,
+    pub input_rule: Option<Vec<crate::scheduler::maps::InputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
-    pub output_rule: Option<Vec<crate::scheduler::OutputRule>>,
+    pub output_rule: Option<Vec<crate::scheduler::maps::OutputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
-    pub inputs: Option<Vec<crate::scheduler::ResolvedFile>>,
+    pub inputs: Option<Vec<crate::scheduler::maps::ResolvedFile>>,
     #[serde(default)]
-    pub report_policy: crate::scheduler::ReportPolicy,
+    pub report_policy: crate::scheduler::maps::ReportPolicy,
     #[serde(default)]
     pub auto_close: bool,
-    pub chat: Option<ChatReference>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub child_run_id: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -121,7 +112,7 @@ pub struct Run {
     pub workspace_name: String,
     pub user_input: String,
     #[serde(default)]
-    pub file_inputs: Vec<crate::scheduler::ResolvedFile>,
+    pub file_inputs: Vec<crate::scheduler::maps::ResolvedFile>,
     #[serde(default)]
     pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
@@ -243,7 +234,7 @@ impl Runs {
             }
             for (node_id, node) in &run.nodes {
                 for execution in node.executions() {
-                    if let Some(child) = &execution.child_run_id {
+                    if let Some(child) = execution.child_run_id() {
                         if ids.contains(&run.id) || ids.contains(child) {
                             return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", run.id, node_id, execution.id, child));
                         }
@@ -310,8 +301,8 @@ impl Runs {
                 None => self.read(state, &id).await?,
             };
             for (node_id, node) in &run.nodes {
-                for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
-                    if execution.task_id != task_id || execution.agent != agent {
+                for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
+                    if execution.task_id() != Some(task_id) || execution.agent() != Some(agent) {
                         return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
                     }
                     nodes.push((run.clone(), node_id.clone(), execution.clone()));
@@ -326,7 +317,7 @@ impl Runs {
         match (managers.as_slice(), nodes.as_slice()) {
             ([], []) => Ok(None),
             ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
-            ([], [(_, _, execution)]) if execution.child_run_id.is_none() => Ok(Some(ExecutionRole::Node)),
+            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(ExecutionRole::Node)),
             ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
             _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
         }
@@ -361,12 +352,32 @@ fn validate_history_tree(access: &crate::files::FileAccess, path: &std::path::Pa
     Ok(())
 }
 
-fn error(status: StatusCode, code: &str, message: &str) -> Response {
-    (
-        status,
-        Json(serde_json::json!({"code":code,"message":message})),
-    )
-        .into_response()
+pub(crate) enum RunOutcome {
+    Value(serde_json::Value),
+    Rejected(serde_json::Value),
+    Started { failed: bool, value: serde_json::Value },
+}
+pub(crate) enum RunError {
+    Invalid(serde_json::Value),
+    Forbidden(serde_json::Value),
+    Failed(serde_json::Value),
+    Preflight(crate::runs::preflight::PreflightFailure),
+    Task(crate::tasks::TaskError),
+}
+pub(crate) type RunResult = Result<RunOutcome, RunError>;
+#[derive(Clone, Copy)]
+enum FailureKind { Invalid, Forbidden, Failed }
+fn error(kind: FailureKind, code: &str, message: &str) -> RunError {
+    let value = serde_json::json!({"code":code,"message":message});
+    match kind {
+        FailureKind::Invalid => RunError::Invalid(value),
+        FailureKind::Forbidden => RunError::Forbidden(value),
+        FailureKind::Failed => RunError::Failed(value),
+    }
+}
+pub(crate) fn authorize_source(source: std::net::IpAddr) -> Result<(), RunError> {
+    if crate::sessions::is_local_source(source) { Ok(()) }
+    else { Err(error(FailureKind::Forbidden, "forbidden", "运行工具只接受同机来源。")) }
 }
 async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String> {
     let active = state.runs.active.lock().await;
@@ -390,7 +401,7 @@ async fn detail(state: &AppState, id: &str) -> Result<serde_json::Value, String>
     }
     Ok(value)
 }
-pub async fn list_runs(State(state): State<AppState>) -> Response {
+pub(crate) async fn list_runs(state: AppState) -> RunResult {
     let active = state.runs.active.lock().await.clone();
     let mut ids: std::collections::BTreeSet<String> = active.keys().cloned().collect();
     let root = state.run_directory.clone();
@@ -398,13 +409,13 @@ pub async fn list_runs(State(state): State<AppState>) -> Response {
     match entries {
         Ok(entries) => {
             for entry in entries {
-                let kind = match entry.file_type() { Ok(kind) => kind, Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()) };
+                let kind = match entry.file_type() { Ok(kind) => kind, Err(e) => return Err(error(FailureKind::Failed, "runs-read-failed", &e.to_string())) };
                 let Some(id) = entry.file_name().to_str().map(str::to_owned) else { continue };
                 if kind.is_dir() && !id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { ids.insert(id); }
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "runs-read-failed", &e.to_string()),
+        Err(e) => return Err(error(FailureKind::Failed, "runs-read-failed", &e.to_string())),
     }
     let mut runs = Vec::with_capacity(ids.len());
     for id in ids {
@@ -415,44 +426,32 @@ pub async fn list_runs(State(state): State<AppState>) -> Response {
         runs.push(serde_json::json!({"id":id,"run":run,"managed":active.contains_key(&id),"readError":read_error}));
     }
     runs.sort_by(|a, b| b["run"]["createdAt"].as_u64().unwrap_or(0).cmp(&a["run"]["createdAt"].as_u64().unwrap_or(0)).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
-    Json(serde_json::json!({"runs":runs,"pollIntervalSeconds":state.workflow_poll_interval_seconds})).into_response()
+    Ok(RunOutcome::Value(serde_json::json!({"runs":runs,"pollIntervalSeconds":state.workflow_poll_interval_seconds})))
 }
 
-pub async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
-        return error(StatusCode::BAD_REQUEST, "run-id-invalid", "Run 标识无效。");
-    }
+pub(crate) async fn get_run(state: AppState, id: String) -> RunResult {
+    validate_id(&id)?;
     match detail(&state, &id).await {
-        Ok(value) => Json(value).into_response(),
-        Err(message) => error(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        Ok(value) => Ok(RunOutcome::Value(value)),
+        Err(message) => Err(error(
+            FailureKind::Failed,
             "run-read-failed",
             &message,
-        ),
+        )),
     }
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RenameRequest {
-    name: String,
+pub(crate) struct RenameRequest {
+    pub(crate) name: String,
 }
 
-pub async fn rename_run(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    request: Request,
-) -> Response {
-    if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
-        return error(StatusCode::BAD_REQUEST, "run-id-invalid", "Run 标识无效。");
-    }
-    let input: RenameRequest = match crate::chat_command_body(request, "重命名 Run").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn rename_run(state: AppState, id: String, input: RenameRequest) -> RunResult {
+    validate_id(&id)?;
     let name = input.name.trim();
     if name.is_empty() {
-        return error(StatusCode::BAD_REQUEST, "run-name-required", "Run 名称不能为空。");
+        return Err(error(FailureKind::Invalid, "run-name-required", "Run 名称不能为空。"));
     }
     let lock = state.runs.operations.lock().await.entry(id.clone()).or_default().clone();
     let _operation = lock.lock().await;
@@ -460,45 +459,36 @@ pub async fn rename_run(
     // Never authorize from management status: saved historical Runs are editable.
     let mut run = match state.runs.read(&state, &id).await {
         Ok(run) => run,
-        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+        Err(message) => return Err(error(FailureKind::Failed, "run-read-failed", &message)),
     };
     // Validate the same independent records as GET before changing readable history.
     if let Err(message) = detail(&state, &id).await {
-        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message);
+        return Err(error(FailureKind::Failed, "run-read-failed", &message));
     }
     run.name = Some(name.to_owned());
     if let Err(message) = save_run(&state, &run).await {
-        return error(StatusCode::INTERNAL_SERVER_ERROR, "run-save-failed", &message);
+        return Err(error(FailureKind::Failed, "run-save-failed", &message));
     }
     match detail(&state, &id).await {
-        Ok(value) => Json(value).into_response(),
-        Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message),
+        Ok(value) => Ok(RunOutcome::Value(value)),
+        Err(message) => Err(error(FailureKind::Failed, "run-read-failed", &message)),
     }
 }
 
-pub async fn start_run(
-    State(state): State<AppState>,
-    Path(map): Path<String>,
-    request: Request,
-) -> Response {
-    let input: crate::scheduler::RunPreflightRequest =
-        match crate::chat_command_body(request, "发起 Run").await {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
+pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::preflight::RunPreflightRequest) -> RunResult {
     let map_lock = state.runs.map_lock(&map).await;
     let map_operation = map_lock.lock().await;
-    let checked = match crate::scheduler::check_run_preflight(&state, &map, &input).await {
+    let checked = match crate::runs::preflight::check_run_preflight(&state, &map, &input).await {
         Ok(v) => v,
-        Err(e) => return e.into_response(),
+        Err(e) => return Err(RunError::Preflight(e)),
     };
     let task = match state.tasks.get(&input.manager_task_id).await {
         Ok(v) => v,
-        Err(e) => return crate::task_error_response(e),
+        Err(e) => return Err(RunError::Task(e)),
     };
     let suite_args = match state.tasks.prepare_environment(&task) {
         Ok(args) => args,
-        Err(error) => return crate::task_error_response(error),
+        Err(error) => return Err(RunError::Task(error)),
     };
     let mut preset = match state
         .tasks
@@ -506,15 +496,15 @@ pub async fn start_run(
         .and_then(|catalog| catalog.resolve(&task))
     {
         Ok(v) => v,
-        Err(e) => return crate::task_error_response(e),
+        Err(e) => return Err(RunError::Task(e)),
     };
     preset.env.suite_args = suite_args;
     if let Err(message) = preset.env.check_entrypoints() {
-        return error(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        return Err(error(
+            FailureKind::Failed,
             "extension-entrypoint-invalid",
             &message,
-        );
+        ));
     }
     let run = root_run(map, input, checked, &task, crate::chats::new_creation_id());
     register_root(&state, &run).await;
@@ -526,8 +516,8 @@ pub async fn start_run(
 /// Previewing allocates no records and never invents a parent execution.
 pub(crate) fn root_run(
     map: String,
-    input: crate::scheduler::RunPreflightRequest,
-    checked: crate::scheduler::RunPreflight,
+    input: crate::runs::preflight::RunPreflightRequest,
+    checked: crate::runs::preflight::RunPreflight,
     task: &crate::tasks::Task,
     id: String,
 ) -> Run {
@@ -583,7 +573,7 @@ pub(crate) async fn launch_root(
     task: crate::tasks::Task,
     preset: crate::tasks::catalog::ResolvedPreset,
     delegation: Option<crate::chief_delegation::Launch>,
-) -> Response {
+) -> RunResult {
     let id = run.id.clone();
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
@@ -592,70 +582,47 @@ pub(crate) async fn launch_root(
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
         if let Err(message) = startup::manager_interrupted(&state, &id, join).await {
-            return error(StatusCode::INTERNAL_SERVER_ERROR, "run-read-failed", &message);
+            return Err(error(FailureKind::Failed, "run-read-failed", &message));
         }
     }
     match detail(&state, &id).await {
-        Ok(value) => (
-            if failed {
-                StatusCode::INTERNAL_SERVER_ERROR
-            } else {
-                StatusCode::CREATED
-            },
-            Json(value),
-        )
-            .into_response(),
-        Err(message) => error(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        Ok(value) => Ok(RunOutcome::Started { failed, value }),
+        Err(message) => Err(error(
+            FailureKind::Failed,
             "run-read-failed",
             &message,
-        ),
+        )),
     }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StatusRequest {
-    session_id: String,
+pub(crate) struct StatusRequest {
+    pub(crate) session_id: String,
 }
-pub async fn manager_status(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(
-            StatusCode::FORBIDDEN,
-            "forbidden",
-            "运行工具只接受同机来源。",
-        );
-    }
-    let input: StatusRequest = match crate::chat_command_body(request, "运行状态").await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
+pub(crate) async fn manager_status(state: AppState, input: StatusRequest) -> RunResult {
     match manager_run(&state, &input.session_id).await {
         Ok(run) => match snapshot(&state, &run, true).await {
-            Ok(value) => Json(value).into_response(),
-            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, "definition-read-failed", &message),
+            Ok(value) => Ok(RunOutcome::Value(value)),
+            Err(message) => Err(error(FailureKind::Failed, "definition-read-failed", &message)),
         },
-        Err(response) => response,
+        Err(response) => Err(response),
     }
 }
 
 fn nested_pair(child: &Run, parent: &Run, node_id: &str, execution: &NodeExecution) -> bool {
     child.id != parent.id && child.parent.as_ref().is_some_and(|link|
         link.run_id == parent.id && link.node_id == node_id && link.execution_id == execution.id)
-        && execution.child_run_id.as_deref() == Some(child.id.as_str())
-        && execution.task_id == child.manager_task_id
-        && child.manager.is_some() && child.manager == execution.chat
+        && execution.child_run_id().map(String::as_str) == Some(child.id.as_str())
+        && execution.task_id() == Some(child.manager_task_id.as_str())
+        && child.manager.is_some() && child.manager.as_ref() == execution.chat()
 }
 
 async fn nested_source(state: &AppState, child: &Run, execution: &NodeExecution) -> bool {
     state.tasks.get(&child.manager_task_id).await.is_ok_and(|task|
-        task.id == execution.task_id && task.agent == execution.agent && task.task_type == crate::tasks::TaskType::Manager)
+        Some(task.id.as_str()) == execution.task_id() && Some(task.agent) == execution.agent() && task.task_type == crate::tasks::TaskType::Manager)
 }
 
-async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response> {
+async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, RunError> {
     let ids = state
         .runs
         .active
@@ -676,7 +643,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
             }
         };
         for (node_id, node) in &run.nodes {
-            for execution in node.executions().filter(|execution| execution.chat.as_ref().is_some_and(|chat| chat.session_id == session_id)) {
+            for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
                 node_associations.push((run.clone(), node_id.clone(), execution.clone()));
             }
         }
@@ -687,7 +654,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
         {
             if matched.is_some() {
                 return Err(error(
-                    StatusCode::FORBIDDEN,
+                    FailureKind::Forbidden,
                     "manager-ambiguous",
                     "原生身份关联不唯一。",
                 ));
@@ -697,24 +664,24 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, Response
     }
     match matched {
         Some(run) if !node_associations.is_empty() && !(node_associations.len() == 1 && nested_pair(&run, &node_associations[0].0, &node_associations[0].1, &node_associations[0].2)) => Err(error(
-            StatusCode::FORBIDDEN,
+            FailureKind::Forbidden,
             "manager-ambiguous",
             "原生身份同时关联节点执行与管理者，归属不唯一。",
         )),
         Some(run) => {
             if run.parent.is_some() && node_associations.is_empty()
                 || !node_associations.is_empty() && !nested_source(state, &run, &node_associations[0].2).await {
-                return Err(error(StatusCode::FORBIDDEN, "manager-ambiguous", "父子执行来源 Task 或 agent 不一致。"));
+                return Err(error(FailureKind::Forbidden, "manager-ambiguous", "父子执行来源 Task 或 agent 不一致。"));
             }
             Ok(run)
         },
         None if read_error.is_some() => Err(error(
-            StatusCode::INTERNAL_SERVER_ERROR,
+            FailureKind::Failed,
             "run-read-failed",
             read_error.as_deref().unwrap(),
         )),
         None => Err(error(
-            StatusCode::FORBIDDEN,
+            FailureKind::Forbidden,
             "manager-unassociated",
             "当前原生身份没有唯一的管理者归属。",
         )),
@@ -741,7 +708,7 @@ fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) ->
     reasons
 }
 async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
-    let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+    let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
     let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
     let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
     let mut value = reports::summary(state, run, include_reports).await?;
@@ -754,25 +721,14 @@ async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DispatchRequest {
-    session_id: String,
-    nodes: Vec<String>,
+pub(crate) struct DispatchRequest {
+    pub(crate) session_id: String,
+    pub(crate) nodes: Vec<String>,
 }
-pub async fn manager_dispatch(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: DispatchRequest = match crate::chat_command_body(request, "派发节点").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) -> RunResult {
     let run = match manager_run(&state, &input.session_id).await {
         Ok(run) => run,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     // Accepted external work outlives a disconnected tool request. The business
     // lock spans the batch, while file locks never span host calls.
@@ -782,7 +738,7 @@ pub async fn manager_dispatch(
         let mut run = state.runs.read(&state, &run.id).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
         for id in input.nodes {
-            let dependencies = crate::scheduler::node_dependencies(&state.map_directory, &run.map)?;
+            let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
             let reasons = blocked(&run, &id, &dependencies);
             if !reasons.is_empty() {
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
@@ -795,10 +751,23 @@ pub async fn manager_dispatch(
         Ok::<_, String>(response)
     }).await;
     match work {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-failed", &message),
-        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, "dispatch-internal", &join.to_string()),
+        Ok(Ok(value)) => Ok(RunOutcome::Value(value)),
+        Ok(Err(message)) => Err(error(FailureKind::Failed, "dispatch-failed", &message)),
+        Err(join) => Err(error(FailureKind::Failed, "dispatch-internal", &join.to_string())),
     }
+}
+
+pub(crate) async fn definition_in_use(state: &AppState, task_id: Option<&str>, map_file: Option<&str>) -> Result<bool, String> {
+    let ids: Vec<_> = state.runs.active.lock().await.keys().cloned().collect();
+    for id in ids {
+        let run = state.runs.read(state, &id).await?;
+        if run.status == "completed" { continue; }
+        if map_file == Some(run.map.as_str()) || task_id == Some(run.manager_task_id.as_str())
+            || run.nodes.values().any(|node| node.executions().any(|execution| task_id.is_some() && execution.task_id() == task_id)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
@@ -813,3 +782,10 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     })).await.map_err(|e| e.to_string())?
 }
 
+
+pub(crate) fn validate_id(id: &str) -> Result<(), RunError> {
+    if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
+        return Err(error(FailureKind::Invalid, "run-id-invalid", "Run 标识无效。"));
+    }
+    Ok(())
+}

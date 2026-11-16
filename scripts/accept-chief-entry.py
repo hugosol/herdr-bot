@@ -56,8 +56,8 @@ def main():
         require(config.get('model') == 'gpt-6-luna', 'Actual model must be gpt-6-luna; no fallback')
         require(config.get('apiKeyEnv') and os.environ.get(config['apiKeyEnv']), 'Missing explicitly authorized model credential environment')
         args.repo, args.toolkit = args.herdr_bot_worktree, args.toolkit_worktree
-        resources = runpy.run_path(str(REPO / 'scripts/accept-suite-pi-resources.py'))
-        resources['preflight'](args, evidence)
+        from acceptance.host.provenance import preflight
+        preflight(args, evidence)
         roots = evidence['paths']['roots']
         args.path_roots = roots
         for host in hosts:
@@ -69,7 +69,7 @@ def main():
         # Browser S1/S2 owns its controlled external CLI, not the native P7 claim.
         environment = dict(os.environ, CHIEF_ENTRY_EVIDENCE_DIR=str(args.evidence_dir / 'browser'),
             CHIEF_ENTRY_HOSTS=args.hosts, CHIEF_ENTRY_CHROME=str(Path(roots['chrome']) / 'chrome.exe'))
-        command = ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'chiefEntryAcceptance.spec.ts', '--workers=1']
+        command = ['npm', '--prefix', 'frontend', 'run', 'test:browser', '--', 'chief/chiefEntryAcceptance.spec.ts', '--workers=1']
         result = subprocess.run(command, cwd=REPO, env=environment, capture_output=True, text=True,
             encoding='utf-8', errors='replace', timeout=600, shell=os.name == 'nt')
         record = {'argv': command, 'exit': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}

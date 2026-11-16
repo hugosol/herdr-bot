@@ -4,6 +4,6 @@
   "name": "空白 Bot 创建者",
   "when": "需要为既有 normal Task 或 Map 新建唯一绑定它、三指南均为空字符串的 Bot，并取得创建后的共同基线时使用。自行核实目标，只创建空白 Bot，不创建或修改执行目标，不编写指南或运行能力。",
   "plan_guide": "目标已存在且创建委托明确即可安排，名称／ID 可缺省按目标生成；未来三指南全文批准不阻塞空白创建。目标查询由本能力完成，不要求用户抄配置。后续编写、按需表达优化和最终指南保存另行安排，所有必要消费者使用同一份创建后 baseline。",
-  "node_guide": "提供真实 normal Task ID 或 Map 文件名、明确创建委托、业务需求、资源权限及材料写入范围；名称／ID 有指定要求时再给，可附参考材料并说明用途。交付为创建后的 baseline 与必要说明，额外业务验收或正式位置有要求时说明。",
-  "task_id": "task-18e33fdc55177d1c-1"
+  "node_guide": "通过命名 request 提供创建分支 v1 JSON：真实 normal Task 或 Map 唯一定位、需求、约束、明确创建及材料写入授权和确认依据；可选 materials 仅参考。交付共同 baseline 与 handoff，不创建或执行目标。精确格式见 docs/business-materials.md「创建分支 v1」。",
+  "rust_script": "create_blank_bot"
 }

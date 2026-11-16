@@ -14,7 +14,7 @@ import time
 import urllib.parse
 import urllib.request
 
-TASK_IDS = ['task-18e33fdc55177d1c-1', 'task-18e3404478db1ef8-2',
+TASK_IDS = ['task-18e3404478db1ef8-2',
     'task-18e340545eb481bc-3', 'task-18e340f5287462ec-4',
     'task-18e31d34797f1464-3', 'task-18e3415003d8cd00-5']
 FIELDS = ['when', 'plan_guide', 'node_guide']
@@ -355,30 +355,18 @@ def standalone(case, context):
     protected = protected_configuration(case)
     root = context['directory']
     paths = {name: root / name for name in ['baseline.md', 'create-handoff.md', 'saved.json', 'save-handoff.md']}
-    request = (context['requirements'] + f'\n本次为独立 Chat，无 node 角色。baseline 交付 {paths["baseline.md"]}，handoff 交付 {paths["create-handoff.md"]}。'
-        'baseline 文件使用完整 JSON 对象，键 bot（完整创建后对象）、revision（真实 edit 返回对象）、target（GET 返回的完整目标配置）、requirements、authorization；不包代码围栏。'
-        '两文件必须安全完整保存并 native read 完整读回。只创建空白 Bot 后停轮，不编写指南。')
-    request += '\n尚未决定的业务取舍：本月范围按交易日期还是入账日期。请集中澄清并等待用户决定，未解决前不得创建 Bot 或交付基线。'
-    before_wire = len(case.backend_wire.records)
-    chat = task_chat(case, TASK_IDS[0], request)
-    question = case.await_chat(chat)
-    check(not any(r['path'] == '/api/scheduler/bots/save' for r in case.backend_wire.records[before_wire:]),
-        'Created Bot before necessary business ambiguity was resolved')
-    visible = native_text(case, question)
-    check('交易' in visible and '入账' in visible and any(mark in visible for mark in ['?', '？']),
-        ('Necessary ambiguity was not actually clarified in native Chat', visible))
-    history = case.send(chat, '用户业务澄清 P21-SCOPE：本月按交易日期，不按入账日期；仅人民币分整数，不转换币种。其余创建委托和材料写入授权保持。请完成真实核实、空白 Bot 创建和完整基线交付。', 'actual unresolved scope decision')
-    baseline = record_bytes(case, paths['baseline.md'], 'standalone-baseline')
-    read_evidence(case, history, paths['baseline.md'])
+    # This standalone legacy-format regression exercises the retained shared
+    # writers/optimizer/generic saver, not the removed blank-creation Task.
+    # The real Rust creation path is exercised by the shipped workflow below.
+    save_bot(case, context['id'], {'name': '隔离账单能力 ' + context['label'],
+        **context['target'], **{field: '' for field in FIELDS}})
     blank, revision = bot(case, context['id'])
-    check(all(blank[field] == '' for field in FIELDS), ('Blank Bot is not empty', blank))
-    check(all(blank.get(key) == value for key, value in context['target'].items()), 'Wrong blank target binding')
-    baseline_value = json.loads(baseline)
-    check(baseline_value['bot'] == blank and baseline_value['revision'] == revision,
-        'Baseline omitted or changed complete created Bot/actual revision')
-    check(baseline_value['target'] == context['before'], 'Baseline omitted or changed complete target configuration')
+    baseline_value = {'bot': dict(id=context['id'], **blank), 'revision': revision,
+        'target': context['before'], 'requirements': context['requirements'],
+        'authorization': 'Explicit isolated material creation and later approved three-field save'}
+    write_json(paths['baseline.md'], baseline_value)
+    baseline = record_bytes(case, paths['baseline.md'], 'standalone-legacy-baseline')
     verify_target(case, context)
-    case.evidence['taskPairs'][TASK_IDS[0]]['standalone'] = True
     final_paths = {}
     approved = {}
     for index, field in enumerate(FIELDS):
@@ -388,7 +376,7 @@ def standalone(case, context):
             f'重读真实 Bot/目标。text={text}，handoff={handoff}，允许新建此两文件并完整读回，禁止写 Bot。'
             f'先展示全文，包在独立行 BEGIN_APPROVAL_{field} 和 END_APPROVAL_{field} 之间，等待用户明确全文确认。'
             '不猜报告授权，独立 Chat 没有 node 角色。')
-        writer = task_chat(case, TASK_IDS[index + 1], request)
+        writer = task_chat(case, TASK_IDS[index], request)
         approved[field], marker = field_approval(case, writer, field, context['label'])
         history = case.await_chat(writer)
         check(record_bytes(case, text, field + '-confirmed') == approved[field], 'Confirmed text differs from actual user-approved version')
@@ -397,10 +385,10 @@ def standalone(case, context):
         handoff_body = verify_handoff(case, handoff, [approved[field]], baseline)
         check(marker in handoff_body, ('Writer handoff lost actual user-approved version/source', field))
         check(bot(case, context['id'])[0] == blank, 'Writer directly overwrote Bot')
-        case.evidence['taskPairs'][TASK_IDS[index + 1]]['standalone'] = True
+        case.evidence['taskPairs'][TASK_IDS[index]]['standalone'] = True
         optimized = root / (field + '-final.txt')
         optimized_handoff = root / (field + '-final-handoff.md')
-        optimizer = task_chat(case, TASK_IDS[4], f'独立 Chat，仅优化表达，不改变已确认语义。baseline={paths["baseline.md"]}，text={text}，handoff={handoff} 均直接完整 native read。'
+        optimizer = task_chat(case, TASK_IDS[3], f'独立 Chat，仅优化表达，不改变已确认语义。baseline={paths["baseline.md"]}，text={text}，handoff={handoff} 均直接完整 native read。'
             f'只授权新建 {optimized}（唯一最终 text）和 {optimized_handoff}（handoff），安全保存并完整读回。'
             f'确认来源 {marker}。不得写 Bot，禁止复制完整正文到 handoff；如语义变化则停止重新确认，不自行批准。')
         history = case.await_chat(optimizer)
@@ -412,7 +400,7 @@ def standalone(case, context):
         check(marker in optimized_provenance, ('Optimizer handoff lost actual confirmation source', field))
         check(bot(case, context['id'])[0] == blank, 'Optimizer directly overwrote Bot')
         final_paths[field] = {'text': optimized, 'handoff': optimized_handoff}
-    case.evidence['taskPairs'][TASK_IDS[4]]['standalone'] = True
+    case.evidence['taskPairs'][TASK_IDS[3]]['standalone'] = True
     evaluate_guides(case, context, approved, {field: paths['text'].read_text(encoding='utf-8') for field, paths in final_paths.items()})
     save_request = (f'独立 Chat，Bot ID={context["id"]}，baseline={paths["baseline.md"]}。'
         '用户明确授权：基线/真实目标/完整确认范围全部一致时，将以下三份唯一 text 原样组成一个候选，通过合法接口一次保存三个字段，保持全部非目标。'
@@ -420,7 +408,7 @@ def standalone(case, context):
         f'最终完整读回对象 saved={paths["saved.json"]}，保存核实 handoff={paths["save-handoff.md"]}，只授权新建这两文件，完整读回。'
         '不运行能力，不重试失败或自动回滚。\n' + '\n'.join(f'{field}: text={value["text"]}; handoff={value["handoff"]}' for field, value in final_paths.items()))
     before_wire = len(case.backend_wire.records)
-    saver = task_chat(case, TASK_IDS[5], save_request)
+    saver = task_chat(case, TASK_IDS[4], save_request)
     history = case.await_chat(saver)
     for source in [paths['baseline.md'], *[path for group in final_paths.values() for path in group.values()]]:
         read_evidence(case, history, source)
@@ -437,7 +425,7 @@ def standalone(case, context):
     check(all('P21-APPROVE-' + context['label'] + '-' + field in final_provenance for field in FIELDS),
         'Saved handoff lost independent branch approval provenance')
     verify_target(case, context)
-    case.evidence['taskPairs'][TASK_IDS[5]]['standalone'] = True
+    case.evidence['taskPairs'][TASK_IDS[4]]['standalone'] = True
     verify_protected_configuration(case, protected, context['id'])
     context.update(blank=blank, baseline=paths['baseline.md'], finalPaths=final_paths, saved=saved)
     return context
@@ -469,24 +457,28 @@ def observed_saves(case, identity):
 def workflow(case, context):
     repo = Path(__file__).resolve().parents[1]
     definition = json.loads((repo / 'meta-data/workflow-maps/create-bot-wrapper.json').read_text(encoding='utf-8'))
-    for identity, filename in [('create-blank-bot', 'create-blank-bot'), ('write-bot-when', 'write-bot-when'),
-        ('write-bot-plan-guide', 'write-bot-plan-guide'), ('write-bot-node-guide', 'write-bot-node-guide'),
-        ('optimize-prompt', 'optimize-prompt'), ('replace-text', 'replace-text')]:
-        matches = [p for p in (repo / 'meta-data/bots').glob('*.json') if json.loads(p.read_text(encoding='utf-8')).get('task_id') in TASK_IDS]
-        source = next((p for p in matches if json.loads(p.read_text(encoding='utf-8')).get('id') == identity), None)
-        if source is None:
-            catalog = case.http('/api/scheduler/bots')
-            check(False, ('Shipped stable wrapper Bot source absent; cannot guess a binding', identity, catalog))
-        shutil.copy2(source, case.root / 'bots' / source.name)
+    for identity in ['create-blank-bot', 'save-created-bot-guides', 'write-bot-when',
+        'write-bot-plan-guide', 'write-bot-node-guide', 'optimize-prompt']:
+        matches = [p for p in (repo / 'meta-data/bots').glob('*.json')
+            if json.loads(p.read_text(encoding='utf-8')).get('id') == identity]
+        check(len(matches) == 1, ('Missing or ambiguous shipped capability', identity))
+        shutil.copy2(matches[0], case.root / 'bots' / matches[0].name)
     for node in definition['nodes'].values():
         node['zone'] = 'acceptance/create'
     write_json(case.root / 'maps/create-bot-wrapper.json', definition)
     # Business requirements/authorization are real input files, not instructions
     # appended to native history or injected implementation of the manager.
+    locator = dict(type=context['kind'], **context['target'])
+    write_json(context['request'], {'schema_version': 1, 'kind': 'request', 'target': locator,
+        'bot': {'id': context['id'], 'name': '隔离账单能力 ' + context['label']},
+        'requirements': context['requirements'].split('本次交付格式：')[0] + '创建分支 v1。三编写者先展示所属 BEGIN_APPROVAL_字段/END_APPROVAL_字段 间完整正文，等待真实全文批准；优化者沿用有效确认；材料严格遵守 v1 Schema。', 'constraints': ['只读、不付款、不连外网、不执行目标'],
+        'non_goals': [], 'resource_limits': [],
+        'authorization': {'create_blank': True, 'write_materials': True, 'save_guides': False},
+        'confirmation': {'scope': 'create_blank', 'evidence': 'Explicit isolated user creation request ' + context['label']}})
     optional = context['directory'] / 'reference.md'
     optional.write_text('扫描仅指读取本次用户明确提供的账单 CSV，不搜索硬盘、不连接外网、不付款。金额使用人民币分整数。', encoding='utf-8')
     files = [{'id': 'request', 'path': str(context['request'])}, {'id': 'materials', 'path': str(optional)}]
-    user = (context['requirements'] + '\n管理者自主使用 run/collect；dispatch 就绪工作，核实实际报告后显式 complete；'
+    user = (context['requirements'].split('本次交付格式：')[0] + '\n创建分支 v1；三编写者先展示所属 BEGIN_APPROVAL_字段/END_APPROVAL_字段 间完整正文，等待真实全文批准。管理者自主使用 run/collect；dispatch 就绪工作，核实实际报告后显式 complete；'
         '三路编写者将等待用户全文确认与另行 manual 报告发送同意，不可替用户确认；优化仅表达，保存者需合法一次保存。'
         '全部节点完成后显式 finish，仅交付新 Bot，不运行目标或新能力。必要消费者必须 native read 完整材料，不从 handoff 猜正文。')
     protected = protected_configuration(case)
@@ -501,13 +493,13 @@ def workflow(case, context):
     deadline = time.monotonic() + case.args.timeout * 8
     while True:
         detail = case.http('/api/workflow/runs/' + run_id)
-        create_saves = observed_saves(case, context['id'])
-        if blank_observation is None and len(create_saves) == 1 and create_saves[0].get('status') == 200 and 'ended' in create_saves[0]:
+        created_reports = [r for r in detail['reports'] if r['nodeId'] == 'create_blank' and r.get('canComplete')]
+        if blank_observation is None and created_reports:
             blank_observation = bot(case, context['id'])
             check(all(blank_observation[0][field] == '' for field in FIELDS), 'Actual independent initial Bot readback was not blank')
             case.evidence.setdefault('blankBotReadbacks', []).append({'case': context['label'], 'bot': blank_observation[0], 'revision': blank_observation[1]})
         if not detail['run']['nodes']['save_bot'].get('execution'):
-            check(len(observed_saves(case, context['id'])) <= 1,
+            check(not observed_saves(case, context['id']),
                 'Guide/optimizer branch directly overwrote Bot before final saver was dispatched')
         manager_chat = detail['run'].get('manager')
         if manager_chat:
@@ -517,7 +509,7 @@ def workflow(case, context):
             if not execution or not execution.get('chat'):
                 continue
             task_id = definition['nodes'][node_id]['bot_id']
-            expected_id = TASK_IDS[0] if node_id == 'create_blank' else TASK_IDS[5] if node_id == 'save_bot' else TASK_IDS[4] if node_id.startswith('optimize_') else TASK_IDS[FIELDS.index(node_id[6:]) + 1]
+            expected_id = TASK_IDS[3] if node_id.startswith('optimize_') else TASK_IDS[FIELDS.index(node_id[6:])]
             chat = execution['chat']
             check(execution['taskId'] == expected_id and execution['agent'] == case.deployed[expected_id]['agent'],
                 ('Workflow changed actual stable Task or declared execution host', node_id, execution))
@@ -527,7 +519,8 @@ def workflow(case, context):
                 approved_fields[field], _ = field_approval(case, chat, field, context['label'])
                 current = case.http('/api/workflow/runs/' + run_id)
                 check(not any(r['nodeId'] == node_id and r.get('canComplete') for r in current['reports']), 'Manual report sent before actual send approval')
-                case.send(chat, f'用户报告发送确认 P21-SEND-{context["label"]}-{field}：同意现在发送本分支已确认全文和真实材料位置的 manual 报告。仅报告实际完成，不运行能力。', 'separate manual send authorization')
+                from workflow_revise_acceptance import send_report
+                send_report(case, chat, context, node_id)
                 approved.add(node_id)
         if detail['run']['status'] == 'completed':
             break
@@ -536,7 +529,7 @@ def workflow(case, context):
         time.sleep(.25)
     check(len(approved) == 3, 'Workflow missed independent field confirmations')
     processes = case.observe_processes()
-    expected_hosts = [case.deployed[case.manager_id]['agent']] + [node['execution']['agent'] for node in detail['run']['nodes'].values()]
+    expected_hosts = [case.deployed[case.manager_id]['agent']] + [node['execution']['agent'] for node in detail['run']['nodes'].values() if node['execution'].get('chat')]
     actual_counts = {}
     for host in set(expected_hosts):
         entry = Path(case.evidence['installedHosts'][host]['entry']).resolve()
@@ -547,11 +540,13 @@ def workflow(case, context):
     case.evidence.setdefault('workflowHostInventory', []).append({'runId': run_id, 'declared': expected_hosts, 'actualProcessCounts': actual_counts})
     reports = {node_id: [r for r in detail['reports'] if r['nodeId'] == node_id and r.get('canComplete') and r.get('outputs')] for node_id in definition['nodes']}
     actual = {}
-    for node_id, items in reports.items():
+    ordered_nodes = ['create_blank', *['write_' + f for f in FIELDS], *['optimize_' + f for f in FIELDS], 'save_bot']
+    for node_id in ordered_nodes:
+        items = reports[node_id]
         check(len(items) == 1, ('Expected one actual successful material report per node', node_id, items))
         execution = detail['run']['nodes'][node_id]['execution']
         actual[node_id] = {item['id']: Path(item['path']) for item in items[0]['outputs']}
-        history = case.native(execution['chat'])
+        history = case.native(execution['chat']) if execution.get('chat') else None
         bindings = {item['id']: Path(item['path']) for item in execution['inputs']}
         if node_id == 'create_blank':
             expected_bindings = {'request': context['request'], 'materials': optional}
@@ -567,12 +562,17 @@ def workflow(case, context):
                 expected_bindings[field + '_text'] = actual['optimize_' + field]['text']
                 expected_bindings[field + '_handoff'] = actual['optimize_' + field]['handoff']
         check(bindings == expected_bindings, ('Necessary consumer did not directly receive exact single baseline/text/handoff', node_id, bindings, expected_bindings))
-        for item in execution['inputs']:
-            read_evidence(case, history, Path(item['path']))
+        if history:
+            for item in execution['inputs']:
+                read_evidence(case, history, Path(item['path']))
         for path in actual[node_id].values():
             record_bytes(case, path, node_id + '-actual-output')
-            read_evidence(case, history, path)
-        expected_id = TASK_IDS[0] if node_id == 'create_blank' else TASK_IDS[5] if node_id == 'save_bot' else TASK_IDS[4] if node_id.startswith('optimize_') else TASK_IDS[FIELDS.index(node_id[6:]) + 1]
+            if history:
+                read_evidence(case, history, path)
+        if not history:
+            check(execution.get('rustScript') in ['create_blank_bot', 'save_bot_guides'], ('Expected real Rust execution without Chat', execution))
+            continue
+        expected_id = TASK_IDS[3] if node_id.startswith('optimize_') else TASK_IDS[FIELDS.index(node_id[6:])]
         case.evidence['taskPairs'][expected_id]['workflow'] = True
     output_addresses = [path.resolve() for outputs in actual.values() for path in outputs.values()]
     check(len(output_addresses) == len(set(output_addresses)), 'An optimizer/writer overwrote another execution output instead of delivering a new unique text/handoff')
@@ -582,21 +582,15 @@ def workflow(case, context):
     baseline = record_bytes(case, actual['create_blank']['baseline'], 'workflow-baseline')
     baseline_value = json.loads(baseline)
     saved, _ = bot(case, context['id'])
-    saves = observed_saves(case, context['id'])
-    check(len(saves) == 2, ('Expected exactly one blank create and one complete three-field save', saves))
-    blank_request = json.loads(json.loads(saves[0]['request'])['content'])
-    check(all(blank_request[field] == '' for field in FIELDS), 'Actual initial create was not strictly blank')
-    check(all(blank_request.get(key) == value for key, value in context['target'].items()), 'Actual initial create bound the wrong target')
-    check(blank_observation is not None, 'Missing independent initial full Bot/revision observation')
-    check(baseline_value['bot'] == blank_observation[0] and baseline_value['revision'] == blank_observation[1],
-        'Single shared baseline differs from actual created Bot/real revision')
-    check(baseline_value['target'] == context['before'], 'Workflow baseline omitted complete real target')
-    check(baseline_value['revision'] == json.loads(saves[1]['request'])['revision'],
-        'Final saver did not use the actual common baseline revision')
+    check(not observed_saves(case, context['id']), 'Native writer/optimizer bypassed Rust with a direct Bot save')
+    check(blank_observation is not None, 'Missing independent initial complete blank readback')
+    check({k: v for k, v in baseline_value['bot'].items() if k != 'id'} == blank_observation[0]
+        and baseline_value['revision'] == blank_observation[1], 'Real Rust baseline differs from public blank readback')
+    check(baseline_value['target']['configuration'] == context['before'], 'Baseline omitted complete target configuration')
     check({key: value for key, value in saved.items() if key not in FIELDS} ==
-        {key: value for key, value in baseline_value['bot'].items() if key not in FIELDS}, 'Workflow changed non-target Bot content')
+        {key: value for key, value in baseline_value['bot'].items() if key not in FIELDS and key != 'id'}, 'Workflow changed non-target Bot content')
     final_artifact = record_bytes(case, actual['save_bot']['saved'], 'workflow-complete-saved-object')
-    check(json.loads(final_artifact) == saved, 'Workflow saved artifact differs from complete public readback')
+    check({k: v for k, v in json.loads(final_artifact)['bot'].items() if k != 'id'} == saved, 'Workflow saved artifact differs from complete public readback')
     for field in FIELDS:
         value = record_bytes(case, actual['optimize_' + field]['text'], field + '-final-workflow')
         check(saved[field] == value, ('Workflow save differs from final approved source', field))
@@ -653,11 +647,20 @@ def exercise(case):
         nested = fixture(case, host + '-map', 'map')
         workflow(case, nested)
         case.observe_processes()
-        check(all(all(pair.values()) for pair in case.evidence['taskPairs'].values()), 'Not every stable Task has both public deliveries')
     # Positive success never stands in for the independent P44 negative/safety
     # matrix. Its evidence is populated only by actual negative cases below.
     from workflow_create_safety import exercise_safety
     exercise_safety(case)
+    # P28 is not satisfied by an unchanged revision definition. Run the shipped
+    # original-format revision branch with the same shared writers and generic
+    # saver, retaining its independent old-text/full-approval/save assertions.
+    from workflow_revise_acceptance import deploy, revision_fixture, workflow as revision_workflow, DEDICATED
+    deploy(case)
+    case.evidence['taskPairs'][DEDICATED] = {'standalone': False, 'workflow': False}
+    revision_workflow(case, revision_fixture(case, 'p28-shared-revision', 'task', False))
+    case.evidence['taskPairs'][TASK_IDS[4]]['workflow'] = True
+    check(all(all(case.evidence['taskPairs'][identity].values()) for identity in TASK_IDS),
+        'A retained shared Task lacks actual independent and workflow material/save behavior')
     for promise in case.evidence['coverage']:
         case.evidence['coverage'][promise] = {'verified': True, 'evidence': ['cases', 'taskPairs', 'materialReads', 'fieldApprovals', 'safety']}
     case.evidence['verifiedHosts'] = list(case.hosts)

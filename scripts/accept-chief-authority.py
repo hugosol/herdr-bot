@@ -50,8 +50,8 @@ def main():
         require(model.get('model') == 'gpt-6-luna', 'Actual model must be gpt-6-luna; no fallback')
         require(model.get('apiKeyEnv') and os.environ.get(model['apiKeyEnv']), 'Missing explicitly authorized credential environment')
         args.repo, args.toolkit = args.herdr_bot_worktree, args.toolkit_worktree
-        resources = runpy.run_path(str(REPO / 'scripts/accept-suite-pi-resources.py'))
-        resources['preflight'](args, evidence)
+        from acceptance.host.provenance import preflight
+        preflight(args, evidence)
         args.path_roots = evidence['paths']['roots']
         # The shared installed-host fixture validates both official state files,
         # even for a deliberately incomplete single-host diagnostic invocation.

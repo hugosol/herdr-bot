@@ -1,0 +1,21 @@
+{
+  "ticket": "11-cross-repository-acceptance",
+  "repository": "herdr-bot",
+  "worktree": "C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W",
+  "testedSourceHead": "77f6bbb55fb014a84e0dec6c49f3c7bdf902a663",
+  "automatedPassed": true,
+  "environment": {"CARGO_TARGET_DIR":"C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W/.scratch/cargo-target","initialCARGO_BUILD_JOBS":"1","initialTOKIO_WORKER_THREADS":"2","defaultParallelBrowser":"CARGO_BUILD_JOBS and TOKIO_WORKER_THREADS unset; no workers override"},
+  "commands": [
+    {"command":"npm --prefix frontend run build","exit":0,"log":"frontend-build.log"},
+    {"command":"cargo build --locked --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell","exit":0,"log":"cargo-build.log"},
+    {"command":"node scripts/test-backend.mjs --binary-jobs 1 --test-threads 1 --output-dir .scratch/rust-script-bots/evidence/integration-11/backend-suite","exit":0,"targetsPassed":76,"undispatched":0,"doctest":"passed","log":"backend-suite.log"},
+    {"command":"npm --prefix frontend test -- --maxWorkers=1","exit":0,"filesPassed":34,"testsPassed":253,"log":"frontend-tests.log"},
+    {"command":"npm --prefix frontend run test:browser:build -- --workers=1","exit":1,"classification":"Interrupted at explicit user request to use normal parallelism; not a completed suite","durationSeconds":754.25,"log":"browser-suite.log","ownedProcessExitEvidence":"browser-serial-interruption.json","ownedProcessesExitConfirmed":12},
+    {"command":"npm --prefix frontend run test:browser:build","exit":0,"testsPassed":372,"testsSkipped":1,"durationSeconds":135.50,"log":"browser-default-suite.log","skip":"Existing manual-only symbolic-link case; not claimed passed"},
+    {"command":"RUST_SCRIPT_TOOLKIT=C:/Users/hugos/AppData/Local/Temp/hyper-ticket-9Z2J1e python scripts/accept-rust-script-bots.test.py","exit":0,"testsPassed":5,"log":"cli-safety.log"},
+    {"command":"python scripts/accept-rust-script-bots.py --herdr-bot-worktree C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W --toolkit-worktree C:/Users/hugos/AppData/Local/Temp/hyper-ticket-9Z2J1e --backend C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W/.scratch/cargo-target/debug/herdr-bot.exe --static-dir C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W/backend/static --native-entry C:/Users/hugos/AppData/Local/Temp/hyper-ticket-9Z2J1e/scripts/rust-script-acceptance.ts --isolation-config C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W/.scratch/rust-script-bots/evidence/11-initial/isolation.json --evidence-dir C:/Users/hugos/AppData/Local/Temp/hyper-ticket-Pe756W/.scratch/rust-script-bots/evidence/integration-11-cross-repository","exit":0,"log":"cross-repository.log","evidence":"../integration-11-cross-repository/evidence.json"}
+  ],
+  "crossRepository": {"P15-existing":0,"P23-browser":0,"manager-native-protocol":0,"cross-repository-business":0,"scenarios":[{"host":"omp","partial":false,"passed":true,"processesExited":true},{"host":"omp","partial":true,"passed":true,"processesExited":true},{"host":"pi","partial":false,"passed":true,"processesExited":true},{"host":"pi","partial":true,"passed":true,"processesExited":true}],"cleanupErrors":[]},
+  "human": {"H1/P34":"unverified; user confirmation requires explicitly authorized real Herdr Workspace/manager and model/paths configuration","H2/P35":"unverified; controlled protocol cannot establish real manager understanding","preparedEvidence":"../integration-11-cross-repository/human-checks.json","procedure":"docs/usage.md#rust-script-cross-repository-acceptance"},
+  "scope": "Both original ticket worktrees only. Production backend used for actual business; paired global dock uses worktree safe_shutdown_shell. No integration workspaces, branch switches, reset, new worktrees or retro."
+}

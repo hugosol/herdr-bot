@@ -191,6 +191,60 @@ impl BrowseError {
     }
 }
 
+/// 已登记内容读取的失败；调度失败不伪装成文件读取成功。
+#[derive(Debug)]
+pub(crate) enum ReadError {
+    Zone(super::LookupError),
+    Browse(BrowseError),
+    Interrupted(&'static str),
+}
+
+pub(crate) async fn tree(state: &crate::AppState, requested: &str) -> Result<ZoneTreeView, ReadError> {
+    let registered = super::registered_zone(state, requested).await.map_err(ReadError::Zone)?;
+    let timeout = state.git_timeout;
+    tokio::task::spawn_blocking(move || read_tree(&registered, timeout))
+        .await
+        .map_err(|_| ReadError::Interrupted("读取目录树的任务异常结束，无法确认目录内容。"))?
+        .map_err(ReadError::Browse)
+}
+
+pub(crate) async fn directory(
+    state: &crate::AppState,
+    requested: &str,
+    path: String,
+) -> Result<DirectoryView, ReadError> {
+    let registered = super::registered_zone(state, requested).await.map_err(ReadError::Zone)?;
+    tokio::task::spawn_blocking(move || list_directory(&registered, &path))
+        .await
+        .map_err(|_| ReadError::Interrupted("读取目录的任务异常结束，无法确认目录内容。"))?
+        .map_err(ReadError::Browse)
+}
+
+pub(crate) async fn file(
+    state: &crate::AppState,
+    requested: &str,
+    path: String,
+) -> Result<FileView, ReadError> {
+    let registered = super::registered_zone(state, requested).await.map_err(ReadError::Zone)?;
+    let limit = state.preview_limit_bytes;
+    tokio::task::spawn_blocking(move || read_file(&registered, &path, limit))
+        .await
+        .map_err(|_| ReadError::Interrupted("读取文件的任务异常结束，无法确认文件内容。"))?
+        .map_err(ReadError::Browse)
+}
+
+pub(crate) async fn resource(
+    state: &crate::AppState,
+    requested: &str,
+    path: String,
+) -> Result<Vec<u8>, ReadError> {
+    let registered = super::registered_zone(state, requested).await.map_err(ReadError::Zone)?;
+    tokio::task::spawn_blocking(move || read_resource(&registered, &path))
+        .await
+        .map_err(|_| ReadError::Interrupted("读取 zone 原始资源的任务异常结束，无法确认文件内容。"))?
+        .map_err(ReadError::Browse)
+}
+
 /// 在登记列表中查找请求的 zone，返回登记时的原始路径。
 ///
 /// 查找本身不读取文件系统；根的真实性在每次读取时重新核对。

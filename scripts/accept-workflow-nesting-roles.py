@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import subprocess
 import sys
@@ -19,12 +18,11 @@ import traceback
 
 from developer_paths import REPO, backend_suffix, resolve_arguments
 
-shared = runpy.run_path(str(Path(__file__).with_name('test-workflow-file-handoff.py')))
-Acceptance = shared['Acceptance']
-RolesAcceptance = shared['RolesAcceptance']
-WireProxy = shared['WireProxy']
-require, until, decode = shared['require'], shared['until'], shared['decode']
-
+from acceptance.workflow.close import Acceptance
+from acceptance.workflow.handoff import RolesAcceptance
+from acceptance.host.processes import require, until, LiveProcess
+from acceptance.host.wire import WireProxy, decode, messages
+from acceptance.host.evidence import copy_evidence
 
 # These are the business fixture's actual host declarations. Declared mode keeps
 # each role's host intact; the explicit omp,pi matrix runs homogeneous host cases.
@@ -226,7 +224,7 @@ class DualRoleAcceptance(Acceptance):
                 continue
             if process['ProcessId'] in {pid for pid, _ in self.handles}:
                 continue
-            self.handles.append((process['ProcessId'], shared['shared']['LiveProcess'](process['ProcessId'])))
+            self.handles.append((process['ProcessId'], LiveProcess(process['ProcessId'])))
         return processes
 
     def task(self, name, kind, prompt, host):
@@ -464,7 +462,7 @@ class DualRoleAcceptance(Acceptance):
         completes = [r for r in calls if r['path'].endswith('/complete')]
         require(refusals[0]['started'] < completes[0]['started'] < refusals[1]['started'] < finish['started'], 'Required lifecycle diagnostic ordering not observed')
         guides = [(self.args.toolkit / f'extensions/workflow-chat/{role}-chat/shared-logic/prompts/init.md').read_text(encoding='utf-8').strip() for role in ['manager', 'node']]
-        co_loaded = [r for r in self.model_wire.records if all(guide in '\n'.join(RolesAcceptance.message_text(m).replace('\r\n', '\n') for m in shared['messages'](r)) for guide in guides)]
+        co_loaded = [r for r in self.model_wire.records if all(guide in '\n'.join(RolesAcceptance.message_text(m).replace('\r\n', '\n') for m in messages(r)) for guide in guides)]
         require(co_loaded, 'Real model never received both role guides in one actual Session request')
         require(any({'run', 'collect', 'report'} <= {tool.get('function', {}).get('name') for tool in (decode(r, 'request') or {}).get('tools', [])} for r in co_loaded), 'Three real tools and both guides did not coexist in an actual provider request')
         user_messages = [RolesAcceptance.message_text(entry['message']) for entry in after['branch'] if entry.get('type') == 'message' and entry['message'].get('role') == 'user']
@@ -556,7 +554,7 @@ def main():
             case = DualRoleAcceptance(args)
             code = case.run()
             archived = args.evidence_dir / host
-            shared['copy_evidence'](case.root, archived)
+            copy_evidence(case.root, archived)
             evidence['processes'].extend(case.evidence.get('nativeProcesses', []))
             evidence['cleanupErrors'].extend({'host': host, 'error': error} for error in case.evidence.get('cleanupErrors', []))
             evidence.setdefault('hosts', {})[host] = {'exit': code, 'evidence': str(archived / 'evidence.json'), 'nativeRoot': str(case.root)}

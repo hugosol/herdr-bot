@@ -1,10 +1,9 @@
 //! Immutable chief reports. Delegation provenance grants sender eligibility;
 //! current chief authority chooses the recipient, independently of the report.
 use crate::{AppState, files::FileStore, report_delivery::{Notification, SavedReport, SubmitError, save_and_notify}};
-use axum::{Json, extract::{ConnectInfo, Path, Query, Request, State}, http::StatusCode, response::{IntoResponse, Response}};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{io, net::SocketAddr, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{io, net::IpAddr, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -87,23 +86,16 @@ impl Reports {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Submission { session_id: String, body: Content }
+pub(crate) struct Submission { session_id: String, body: Content }
 
-pub(crate) async fn submit(State(state): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return crate::rejected_owned(StatusCode::FORBIDDEN, "forbidden", "报告工具只接受同机来源。".into());
-    }
-    let input: Submission = match crate::chat_command_body(request, "提交 chief 报告").await {
-        Ok(input) => input,
-        Err(error) => return error,
-    };
+pub(crate) async fn submit(state: AppState, input: Submission) -> Result<serde_json::Value, Error> {
     if [&input.body.background, &input.body.execution, &input.body.summary].iter().any(|text| text.trim().is_empty()) {
-        return crate::rejected_owned(StatusCode::BAD_REQUEST, "invalid-report", "报告必须保留需求背景、执行对象及结果说明。".into());
+        return Err(Error::Invalid( "invalid-report", "报告必须保留需求背景、执行对象及结果说明。".into()));
     }
     let delegation = match state.delegations.sender(&input.session_id) {
         Ok(Some(delegation)) => delegation,
-        Ok(None) => return crate::rejected_owned(StatusCode::FORBIDDEN, "chief-report-unassociated", "只有 chief 实际委派的独立 Chat 或直接 Map manager 可以提交 chief 报告。".into()),
-        Err(error) => return storage(error),
+        Ok(None) => return Err(Error::Forbidden( "chief-report-unassociated", "只有 chief 实际委派的独立 Chat 或直接 Map manager 可以提交 chief 报告。".into())),
+        Err(error) => return Err(Error::Storage(error)),
     };
     let submitted = save_and_notify(state.herdr.clone(), async move {
         let report = Report {
@@ -120,10 +112,10 @@ pub(crate) async fn submit(State(state): State<AppState>, ConnectInfo(peer): Con
         Ok(SavedReport { report, target, text, diagnostic })
     }).await;
     match submitted {
-        Ok(submitted) => Json(json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,
-            "guidance":"报告已保存。通知不代表可靠接收、呈现、用户已读或业务验收；不要因失败或结果不确定重新提交报告，系统不会自动重投。"})).into_response(),
-        Err(SubmitError::Save(message)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"code":"report-save-failed","message":message,"saved":false,"notification":{"status":"not-attempted"}}))).into_response(),
-        Err(SubmitError::Internal(error)) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "report-result-uncertain", format!("无法确认报告操作结果；请先读取已保存报告，不要重新提交：{error}")),
+        Ok(submitted) => Ok(json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,
+            "guidance":"报告已保存。通知不代表可靠接收、呈现、用户已读或业务验收；不要因失败或结果不确定重新提交报告，系统不会自动重投。"})),
+        Err(SubmitError::Save(message)) => Err(Error::Save(message)),
+        Err(SubmitError::Internal(error)) => Err(Error::Internal( "report-result-uncertain", format!("无法确认报告操作结果；请先读取已保存报告，不要重新提交：{error}"))),
     }
 }
 
@@ -160,88 +152,70 @@ async fn recipient(state: &AppState, report_id: &str) -> Result<String, Notifica
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Filter { session_id: Option<String> }
-pub(crate) async fn list(State(state): State<AppState>, Query(filter): Query<Filter>) -> Response {
+pub(crate) async fn list(state: &AppState, filter: Filter) -> Result<serde_json::Value, Error> {
     match state.chief_reports.read() {
-        Ok(reports) => Json(json!({"reports":reports.into_iter().filter(|report| filter.session_id.as_ref().is_none_or(|id| id == &report.from)).collect::<Vec<_>>()})).into_response(),
-        Err(error) => storage(error),
+        Ok(reports) => Ok(json!({"reports":reports.into_iter().filter(|report| filter.session_id.as_ref().is_none_or(|id| id == &report.from)).collect::<Vec<_>>()})),
+        Err(error) => Err(Error::Storage(error)),
     }
 }
-pub(crate) async fn get(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+pub(crate) async fn get(state: &AppState, id: String) -> Result<serde_json::Value, Error> {
     match state.chief_reports.read() {
         Ok(reports) => match reports.into_iter().find(|report| report.id == id) {
-            Some(report) => Json(report).into_response(),
-            None => crate::rejected_owned(StatusCode::NOT_FOUND, "chief-report-not-found", "报告不存在。".into()),
+            Some(report) => Ok(serde_json::to_value(report).expect("report serialization")),
+            None => Err(Error::NotFound( "chief-report-not-found", "报告不存在。".into())),
         },
-        Err(error) => storage(error),
+        Err(error) => Err(Error::Storage(error)),
     }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Action { session_id: String }
+pub(crate) struct Action { session_id: String }
 
-fn find(state: &AppState, id: &str) -> Result<Report, Response> {
-    state.chief_reports.read().map_err(storage)?.into_iter().find(|report| report.id == id)
-        .ok_or_else(|| crate::rejected_owned(StatusCode::NOT_FOUND, "chief-report-not-found", "报告不存在。".into()))
+fn find(state: &AppState, id: &str) -> Result<Report, Error> {
+    state.chief_reports.read().map_err(Error::Storage)?.into_iter().find(|report| report.id == id)
+        .ok_or_else(|| Error::NotFound("chief-report-not-found", "报告不存在。".into()))
 }
 
-pub(crate) async fn receipt(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    if let Err(error) = find(&state, &id) { return error; }
+pub(crate) async fn receipt(state: &AppState, id: String) -> Result<serde_json::Value, Error> {
+    if let Err(error) = find(&state, &id) { return Err(error); }
     match state.chief_reports.receipt(&id) {
-        Ok(receipt) => Json(json!({"received":receipt.is_some(),"receipt":receipt})).into_response(),
-        Err(error) => storage(error),
+        Ok(receipt) => Ok(json!({"received":receipt.is_some(),"receipt":receipt})),
+        Err(error) => Err(Error::Storage(error)),
     }
 }
 
-pub(crate) async fn receive(State(state): State<AppState>, Path(id): Path<String>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return crate::rejected_owned(StatusCode::FORBIDDEN, "forbidden", "报告工具只接受同机来源。".into());
-    }
-    let input: Action = match crate::chat_command_body(request, "可靠接收 chief 报告").await {
-        Ok(input) => input, Err(error) => return error,
-    };
-    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return error };
+pub(crate) async fn receive(state: AppState, id: String, input: Action) -> Result<serde_json::Value, Error> {
+    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return Err(error) };
     // Chief replacement and receipt commit share this linearization point. A
     // response lost after commit does not authorize processing a second time.
     match state.chief.authorize(&input.session_id, |claim| {
         state.chief_reports.receive(&id, claim).map_err(crate::chief::Error::from)
     }) {
-        Ok((receipt, process)) => Json(json!({"received":true,"process":process,"receipt":receipt,"report":report,
-            "guidance":"接收已持久保存，不代表已呈现、用户已读或验收。仅 process=true 授权本次处理；重复接收不得自动呈现。呈现中断后由用户明确要求查看原报告。"})).into_response(),
-        Err(error) => error.response(),
+        Ok((receipt, process)) => Ok(json!({"received":true,"process":process,"receipt":receipt,"report":report,
+            "guidance":"接收已持久保存，不代表已呈现、用户已读或验收。仅 process=true 授权本次处理；重复接收不得自动呈现。呈现中断后由用户明确要求查看原报告。"})),
+        Err(error) => Err(Error::Chief(error)),
     }
 }
 
 /// Explicit user-requested recovery, never scheduled on start/resume. Reading
 /// is not another receive grant and cannot change an existing receipt.
-pub(crate) async fn view(State(state): State<AppState>, Path(id): Path<String>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return crate::rejected_owned(StatusCode::FORBIDDEN, "forbidden", "报告工具只接受同机来源。".into());
-    }
-    let input: Action = match crate::chat_command_body(request, "明确查看 chief 原报告").await {
-        Ok(input) => input, Err(error) => return error,
-    };
-    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return error };
+pub(crate) async fn view(state: AppState, id: String, input: Action) -> Result<serde_json::Value, Error> {
+    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return Err(error) };
     match state.chief.authorize(&input.session_id, |_| state.chief_reports.receipt(&id).map_err(crate::chief::Error::from)) {
-        Ok(receipt) => Json(json!({"report":report,"received":receipt.is_some(),"receipt":receipt,"process":false,
-            "guidance":"这是用户明确请求查看的原报告，不是自动补投或再次接收授权；接收记录不代表已呈现、已读或验收。"})).into_response(),
-        Err(error) => error.response(),
+        Ok(receipt) => Ok(json!({"report":report,"received":receipt.is_some(),"receipt":receipt,"process":false,
+            "guidance":"这是用户明确请求查看的原报告，不是自动补投或再次接收授权；接收记录不代表已呈现、已读或验收。"})),
+        Err(error) => Err(Error::Chief(error)),
     }
 }
 
-pub(crate) async fn resend(State(state): State<AppState>, Path(id): Path<String>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return crate::rejected_owned(StatusCode::FORBIDDEN, "forbidden", "报告工具只接受同机来源。".into());
-    }
+pub(crate) async fn resend(state: AppState, id: String, input: Action) -> Result<serde_json::Value, Error> {
     // No body, recipient or new identity is accepted: approval refers to this
     // exact saved report. Revised content requires a separate approved submit.
-    let input: Action = match crate::chat_command_body(request, "人工重发 chief 报告").await {
-        Ok(input) => input, Err(error) => return error,
-    };
-    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return error };
+    let report = match find(&state, &id) { Ok(report) => report, Err(error) => return Err(error) };
     match state.delegations.sender(&input.session_id) {
         Ok(Some(delegation)) if report.from == input.session_id && report.delegation_id == delegation.id => {},
-        Ok(_) => return crate::rejected_owned(StatusCode::FORBIDDEN, "chief-report-unassociated", "只能由原被委派 Chat 明确确认后重发原报告。".into()),
-        Err(error) => return storage(error),
+        Ok(_) => return Err(Error::Forbidden( "chief-report-unassociated", "只能由原被委派 Chat 明确确认后重发原报告。".into())),
+        Err(error) => return Err(Error::Storage(error)),
     }
     let delivery_state = state.clone();
     let submitted = save_and_notify(state.herdr.clone(), async move {
@@ -252,18 +226,24 @@ pub(crate) async fn resend(State(state): State<AppState>, Path(id): Path<String>
     }).await;
     match submitted {
         Ok(submitted) => match state.chief_reports.receipt(&id) {
-            Ok(receipt) => Json(json!({"saved":true,"report":submitted.report,"received":receipt.is_some(),"receipt":receipt,
+            Ok(receipt) => Ok(json!({"saved":true,"report":submitted.report,"received":receipt.is_some(),"receipt":receipt,
                 "notification":submitted.notification,"diagnostic":submitted.diagnostic,
-                "guidance":"原报告保持不变。已接收不代表已呈现、用户已读或验收；不会自动重投。呈现中断时请用户在当前 chief 明确要求查看。"})).into_response(),
-            Err(error) => storage(error),
+                "guidance":"原报告保持不变。已接收不代表已呈现、用户已读或验收；不会自动重投。呈现中断时请用户在当前 chief 明确要求查看。"})),
+            Err(error) => Err(Error::Storage(error)),
         },
-        Err(SubmitError::Save(message)) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "report-resend-failed", message),
-        Err(SubmitError::Internal(error)) => crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "report-result-uncertain", format!("无法确认重发结果；原报告仍保留，不要自动重试：{error}")),
+        Err(SubmitError::Save(message)) => Err(Error::Internal( "report-resend-failed", message)),
+        Err(SubmitError::Internal(error)) => Err(Error::Internal( "report-result-uncertain", format!("无法确认重发结果；原报告仍保留，不要自动重试：{error}"))),
     }
 }
 
 fn now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
 
-fn storage(error: io::Error) -> Response {
-    crate::rejected_owned(StatusCode::INTERNAL_SERVER_ERROR, "chief-report-storage-failed", format!("无法读取报告或其委派关联：{error}"))
+#[derive(Debug)]
+pub(crate) enum Error {
+    Invalid(&'static str, String), Forbidden(&'static str, String), NotFound(&'static str, String), Internal(&'static str, String),
+    Storage(io::Error), Chief(crate::chief::Error), Save(String),
+}
+pub(crate) fn authorize_source(peer: IpAddr) -> Result<(), Error> {
+    if crate::sessions::is_local_source(peer) { Ok(()) }
+    else { Err(Error::Forbidden("forbidden", "报告工具只接受同机来源。".into())) }
 }

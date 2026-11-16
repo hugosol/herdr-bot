@@ -3,6 +3,7 @@ name = "herdr-bot"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autotests = false
 description = "herdr-bot 主界面后端：Axum 服务，提供打包页面与固定脚本操作"
 
 [dependencies]
@@ -17,6 +18,8 @@ mdns-sd = "0.21"
 notify = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Bind full-text confirmations to exact UTF-8 bytes, not normalized prose.
+sha2 = "0.10"
 # Existing SKILL.md entities use YAML frontmatter, including quoted/folded values.
 serde_yaml_ng = "0.10"
 # Preserve the node/field location in strict Map format errors (already used by Axum).
@@ -40,3 +43,294 @@ windows-sys = { version = "0.61", features = [
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "io-util", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
+
+# Test source belongs to its domain; target names remain stable for focused runners.
+
+[[test]]
+name = "chat_creation"
+path = "tests/chats/chat_creation.rs"
+
+[[test]]
+name = "chat_creation_detached"
+path = "tests/chats/chat_creation_detached.rs"
+
+[[test]]
+name = "chat_identity"
+path = "tests/chats/chat_identity.rs"
+
+[[test]]
+name = "chat_resume"
+path = "tests/chats/chat_resume.rs"
+
+[[test]]
+name = "chat_resume_concurrency"
+path = "tests/chats/chat_resume_concurrency.rs"
+
+[[test]]
+name = "chat_resume_environment"
+path = "tests/chats/chat_resume_environment.rs"
+
+[[test]]
+name = "chat_resume_omp"
+path = "tests/chats/chat_resume_omp.rs"
+
+[[test]]
+name = "chat_resume_pi"
+path = "tests/chats/chat_resume_pi.rs"
+
+[[test]]
+name = "chat_resume_timeout"
+path = "tests/chats/chat_resume_timeout.rs"
+
+[[test]]
+name = "chat_source_boundary"
+path = "tests/chats/chat_source_boundary.rs"
+
+[[test]]
+name = "chief_authority"
+path = "tests/chief/chief_authority.rs"
+
+[[test]]
+name = "chief_delegation"
+path = "tests/chief/chief_delegation.rs"
+
+[[test]]
+name = "chief_entry"
+path = "tests/chief/chief_entry.rs"
+
+[[test]]
+name = "connect_history_failures"
+path = "tests/chats/connect_history_failures.rs"
+
+[[test]]
+name = "connection_drop"
+path = "tests/server/connection_drop.rs"
+
+[[test]]
+name = "countdown_independence"
+path = "tests/server/countdown_independence.rs"
+
+[[test]]
+name = "cross_source_concurrency"
+path = "tests/app/cross_source_concurrency.rs"
+
+[[test]]
+name = "dynamic_catalog"
+path = "tests/tasks/dynamic_catalog.rs"
+
+[[test]]
+name = "execution_result"
+path = "tests/server/execution_result.rs"
+
+[[test]]
+name = "fixed_operations"
+path = "tests/server/fixed_operations.rs"
+
+[[test]]
+name = "fixture_behavior"
+path = "tests/infrastructure/fixture_behavior.rs"
+
+[[test]]
+name = "fixture_directory_isolation"
+path = "tests/infrastructure/fixture_directory_isolation.rs"
+
+[[test]]
+name = "herdr_config"
+path = "tests/server/herdr_config.rs"
+
+[[test]]
+name = "history_memo"
+path = "tests/chats/history_memo.rs"
+
+[[test]]
+name = "history_pagination"
+path = "tests/chats/history_pagination.rs"
+
+[[test]]
+name = "history_workspace"
+path = "tests/chats/history_workspace.rs"
+
+[[test]]
+name = "manual_shutdown_process"
+path = "tests/server/manual_shutdown_process.rs"
+
+[[test]]
+name = "mdns_conflict"
+path = "tests/server/mdns_conflict.rs"
+
+[[test]]
+name = "mdns_failure"
+path = "tests/server/mdns_failure.rs"
+
+[[test]]
+name = "monitoring"
+path = "tests/server/monitoring.rs"
+
+[[test]]
+name = "monitoring_recovery"
+path = "tests/server/monitoring_recovery.rs"
+
+[[test]]
+name = "mutual_exclusion"
+path = "tests/server/mutual_exclusion.rs"
+
+[[test]]
+name = "network_policy"
+path = "tests/infrastructure/network_policy.rs"
+
+[[test]]
+name = "next_operation_after_finish"
+path = "tests/server/next_operation_after_finish.rs"
+
+[[test]]
+name = "no_auto_termination"
+path = "tests/server/no_auto_termination.rs"
+
+[[test]]
+name = "omp_zone_history"
+path = "tests/chats/omp_zone_history.rs"
+
+[[test]]
+name = "path_config"
+path = "tests/app/path_config.rs"
+
+[[test]]
+name = "persistence"
+path = "tests/app/persistence.rs"
+
+[[test]]
+name = "pi_zone_history"
+path = "tests/chats/pi_zone_history.rs"
+
+[[test]]
+name = "recovery"
+path = "tests/app/recovery.rs"
+
+[[test]]
+name = "runtime_data"
+path = "tests/app/runtime_data.rs"
+
+[[test]]
+name = "session_events"
+path = "tests/sessions/session_events.rs"
+
+[[test]]
+name = "session_events_stream"
+path = "tests/sessions/session_events_stream.rs"
+
+[[test]]
+name = "session_expiry"
+path = "tests/sessions/session_expiry.rs"
+
+[[test]]
+name = "session_history"
+path = "tests/chats/session_history.rs"
+
+[[test]]
+name = "session_report_recovery"
+path = "tests/sessions/session_report_recovery.rs"
+
+[[test]]
+name = "session_window_config"
+path = "tests/sessions/session_window_config.rs"
+
+[[test]]
+name = "session_write_boundary"
+path = "tests/sessions/session_write_boundary.rs"
+
+[[test]]
+name = "shared_observation"
+path = "tests/app/shared_observation.rs"
+
+[[test]]
+name = "shutdown"
+path = "tests/server/shutdown.rs"
+
+[[test]]
+name = "start_operation"
+path = "tests/server/start_operation.rs"
+
+[[test]]
+name = "suite_assembly"
+path = "tests/suites/suite_assembly.rs"
+
+[[test]]
+name = "suite_extension_references"
+path = "tests/suites/suite_extension_references.rs"
+
+[[test]]
+name = "suite_omp_extensions"
+path = "tests/suites/suite_omp_extensions.rs"
+
+[[test]]
+name = "suite_omp_lsp"
+path = "tests/suites/suite_omp_lsp.rs"
+
+[[test]]
+name = "suite_omp_skills"
+path = "tests/suites/suite_omp_skills.rs"
+
+[[test]]
+name = "suite_references"
+path = "tests/suites/suite_references.rs"
+
+[[test]]
+name = "suites"
+path = "tests/suites/suites.rs"
+
+[[test]]
+name = "tasks"
+path = "tests/tasks/tasks.rs"
+
+[[test]]
+name = "workflow_dispatch"
+path = "tests/workflow/dispatch.rs"
+
+[[test]]
+name = "workflow_start"
+path = "tests/workflow/workflow_start.rs"
+
+[[test]]
+name = "zone_browse"
+path = "tests/zones/zone_browse.rs"
+
+[[test]]
+name = "zone_commit"
+path = "tests/zones/git/zone_commit.rs"
+
+[[test]]
+name = "zone_create"
+path = "tests/zones/zone_create.rs"
+
+[[test]]
+name = "zone_diff"
+path = "tests/zones/git/zone_diff.rs"
+
+[[test]]
+name = "zone_git_status"
+path = "tests/zones/git/zone_git_status.rs"
+
+[[test]]
+name = "zone_integration"
+path = "tests/app/zone_integration.rs"
+
+[[test]]
+name = "zone_portability"
+path = "tests/zones/zone_portability.rs"
+
+[[test]]
+name = "zone_reader"
+path = "tests/zones/zone_reader.rs"
+
+[[test]]
+name = "zone_registry"
+path = "tests/zones/zone_registry.rs"
+
+[[test]]
+name = "zone_sync"
+path = "tests/zones/git/zone_sync.rs"
+
+[[test]]
+name = "zone_watch"
+path = "tests/zones/zone_watch.rs"
+

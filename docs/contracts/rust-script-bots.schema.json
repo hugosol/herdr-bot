@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Representation contract only; does not register executable capabilities. Cross-file and live-state checks are specified in ../business-materials.md.",
+  "$defs": {
+    "nonempty": {"type": "string", "minLength": 1},
+    "capability": {"enum": ["create_blank_bot", "save_bot_guides"]},
+    "effect_status": {"enum": ["not_attempted", "succeeded", "failed", "unknown"]},
+    "business_failure": {
+      "type": "object", "additionalProperties": false, "required": ["stage", "code", "message", "effects"],
+      "properties": {
+        "stage": {"enum": ["parse", "validate", "read_current", "save", "read_back", "materials"]},
+        "code": {"enum": ["invalid-format", "missing-field", "ambiguous-request", "identity-conflict", "target-conflict", "revision-conflict", "authorization-required", "definition-in-use", "write-failed", "read-back-failed", "material-write-failed", "material-read-back-failed", "execution-failed"]},
+        "message": {"$ref": "#/$defs/nonempty"},
+        "effects": {
+          "type": "object", "additionalProperties": false, "required": ["write", "readBack", "materials"],
+          "properties": {
+            "write": {"$ref": "#/$defs/effect_status"}, "readBack": {"$ref": "#/$defs/effect_status"},
+            "materials": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "path", "status"], "properties": {"id": {"$ref": "#/$defs/nonempty"}, "path": {"$ref": "#/$defs/nonempty"}, "status": {"$ref": "#/$defs/effect_status"}}}}
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "startedAt"], "properties": {"status": {"const": "running"}, "startedAt": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "additionalProperties": false, "required": ["status", "startedAt", "endedAt"], "properties": {"status": {"const": "succeeded"}, "startedAt": {"type": "integer", "minimum": 0}, "endedAt": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "additionalProperties": false, "required": ["status", "startedAt", "endedAt", "failure"], "properties": {"status": {"const": "failed"}, "startedAt": {"type": "integer", "minimum": 0}, "endedAt": {"type": "integer", "minimum": 0}, "failure": {"$ref": "#/$defs/business_failure"}}}
+      ]
+    },
+    "resolved_file": {"type": "object", "additionalProperties": false, "required": ["id", "path"], "properties": {"id": {"$ref": "#/$defs/nonempty"}, "path": {"$ref": "#/$defs/nonempty"}}},
+    "script_execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "rustScript", "zone", "inputRule", "outputRule", "inputs", "reportPolicy", "autoClose", "lifecycle"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"}, "kind": {"const": "rust_script"}, "rustScript": {"$ref": "#/$defs/capability"}, "zone": {"$ref": "#/$defs/nonempty"},
+        "inputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "outputRule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}}, "inputs": {"type": "array", "items": {"$ref": "#/$defs/resolved_file"}},
+        "reportPolicy": {"const": "auto"}, "autoClose": {"const": false}, "lifecycle": {"$ref": "#/$defs/lifecycle"}
+      }
+    },
+    "chat_reference": {
+      "type": "object", "additionalProperties": false, "required": ["sessionId", "workspaceId", "tabId", "paneId", "agentName"],
+      "properties": {"sessionId": {"$ref": "#/$defs/nonempty"}, "workspaceId": {"$ref": "#/$defs/nonempty"}, "tabId": {"$ref": "#/$defs/nonempty"}, "paneId": {"$ref": "#/$defs/nonempty"}, "agentName": {"$ref": "#/$defs/nonempty"}}
+    },
+    "script_source": {"type": "object", "additionalProperties": false, "required": ["kind", "rustScript"], "properties": {"kind": {"const": "rust_script"}, "rustScript": {"$ref": "#/$defs/capability"}}},
+    "script_report": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "at", "runId", "nodeId", "executionId", "from", "source", "to", "body", "canComplete", "outputs"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"}, "type": {"const": "report"}, "at": {"type": "integer", "minimum": 0},
+        "runId": {"$ref": "#/$defs/nonempty"}, "nodeId": {"$ref": "#/$defs/nonempty"}, "executionId": {"$ref": "#/$defs/nonempty"},
+        "from": {"type": "null"}, "source": {"$ref": "#/$defs/script_source"}, "to": {"$ref": "#/$defs/chat_reference"},
+        "body": {"type": "string"}, "canComplete": {"type": "boolean"}, "outputs": {"type": "array", "items": {"$ref": "#/$defs/resolved_file"}}
+      }
+    },
+    "strings": {"type": "array", "items": {"$ref": "#/$defs/nonempty"}},
+    "create_target": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "task_id"], "properties": {"type": {"const": "task"}, "task_id": {"$ref": "#/$defs/nonempty"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "map_file"], "properties": {"type": {"const": "map"}, "map_file": {"type": "string", "pattern": "^[^/\\\\]+\\.json$"}}}
+      ]
+    },
+    "authorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["create_blank", "write_materials", "save_guides"],
+      "properties": {"create_blank": {"const": true}, "write_materials": {"const": true}, "save_guides": {"type": "boolean"}}
+    },
+    "creation_confirmation": {
+      "type": "object", "additionalProperties": false, "required": ["evidence", "scope"],
+      "properties": {"evidence": {"$ref": "#/$defs/nonempty"}, "scope": {"const": "create_blank"}}
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "kind", "target", "requirements", "constraints", "non_goals", "resource_limits", "authorization", "confirmation"],
+      "properties": {
+        "schema_version": {"const": 1}, "kind": {"const": "request"}, "target": {"$ref": "#/$defs/create_target"},
+        "bot": {"type": "object", "additionalProperties": false, "properties": {"id": {"$ref": "#/$defs/nonempty"}, "name": {"$ref": "#/$defs/nonempty"}, "group": {"type": "string", "pattern": "^\\S(?:[\\s\\S]*\\S)?$"}}},
+        "requirements": {"$ref": "#/$defs/nonempty"}, "constraints": {"$ref": "#/$defs/strings"}, "non_goals": {"$ref": "#/$defs/strings"}, "resource_limits": {"$ref": "#/$defs/strings"},
+        "authorization": {"$ref": "#/$defs/authorization"}, "confirmation": {"$ref": "#/$defs/creation_confirmation"}
+      }
+    },
+    "field": {"enum": ["when", "plan_guide", "node_guide"]},
+    "sources": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "object", "additionalProperties": false, "required": ["binding_id", "direction", "role"], "properties": {"binding_id": {"$ref": "#/$defs/nonempty"}, "direction": {"enum": ["input", "output"]}, "role": {"enum": ["request", "materials", "baseline", "text", "handoff"]}}}
+    },
+    "guide_handoff": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "kind", "stage", "bot_id", "target", "field", "sources", "confirmation", "constraints", "unverified"],
+      "properties": {
+        "schema_version": {"const": 1}, "kind": {"const": "handoff"}, "stage": {"const": "guide"},
+        "bot_id": {"$ref": "#/$defs/nonempty"}, "target": {"$ref": "#/$defs/create_target"}, "field": {"$ref": "#/$defs/field"}, "sources": {"$ref": "#/$defs/sources"},
+        "confirmation": {
+          "type": "object", "additionalProperties": false, "required": ["evidence", "text_sha256", "full_text", "save_authorized", "semantics_preserved"],
+          "properties": {"evidence": {"$ref": "#/$defs/nonempty"}, "text_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "full_text": {"const": true}, "save_authorized": {"type": "boolean"}, "semantics_preserved": {"const": true}}
+        },
+        "constraints": {"$ref": "#/$defs/strings"}, "unverified": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "result_handoff": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "kind", "stage", "bot_id", "target", "sources", "confirmation_evidence", "checks", "unverified"],
+      "properties": {
+        "schema_version": {"const": 1}, "kind": {"const": "handoff"}, "stage": {"enum": ["created", "saved"]},
+        "bot_id": {"$ref": "#/$defs/nonempty"}, "target": {"$ref": "#/$defs/create_target"}, "sources": {"$ref": "#/$defs/sources"},
+        "confirmation_evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonempty"}},
+        "checks": {"type": "object", "additionalProperties": false, "required": ["bot_read_back", "target_unchanged"], "properties": {"bot_read_back": {"const": true}, "target_unchanged": {"const": true}}},
+        "unverified": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "saved": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "kind", "bot", "revision", "target"],
+      "properties": {"schema_version": {"const": 1}, "kind": {"const": "saved"}, "bot": {"$ref": "#/$defs/created_bot"}, "revision": {"$ref": "#/$defs/revision"}, "target": {"$ref": "#/$defs/target_snapshot"}}
+    },
+    "revision": {
+      "type": "object", "additionalProperties": false, "required": ["file", "original"],
+      "properties": {"file": {"$ref": "#/$defs/nonempty"}, "original": {"$ref": "#/$defs/nonempty"}}
+    },
+    "task_configuration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "chatName", "agent", "taskType", "model", "thinking", "skill", "prompt"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"}, "name": {"type": "string"}, "group": {"type": ["string", "null"]},
+        "chatName": {"type": "string"}, "agent": {"enum": ["omp", "pi"]}, "taskType": {"const": "normal"},
+        "model": {"type": "string"}, "thinking": {"type": "string"}, "skill": {"type": ["string", "null"]},
+        "prompt": {"type": "string"}, "suite": {"type": ["string", "null"]}
+      }
+    },
+    "input_rule": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "input_id"], "properties": {"type": {"const": "run"}, "id": {"$ref": "#/$defs/nonempty"}, "input_id": {"$ref": "#/$defs/nonempty"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "node_id", "output_id"], "properties": {"type": {"const": "node"}, "id": {"$ref": "#/$defs/nonempty"}, "node_id": {"$ref": "#/$defs/nonempty"}, "output_id": {"$ref": "#/$defs/nonempty"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "path"], "properties": {"type": {"const": "file"}, "id": {"$ref": "#/$defs/nonempty"}, "zone_id": {"type": ["string", "null"]}, "path": {"$ref": "#/$defs/nonempty"}}}
+      ]
+    },
+    "output_rule": {"type": "object", "additionalProperties": false, "required": ["id"], "properties": {"id": {"$ref": "#/$defs/nonempty"}}},
+    "map_node": {
+      "type": "object", "additionalProperties": false, "required": ["title", "bot_id", "input", "zone", "blocked_by"],
+      "properties": {
+        "title": {"type": "string"}, "bot_id": {"type": "string"}, "input": {"type": "string"}, "zone": {"type": "string"},
+        "manager_task_id": {"type": ["string", "null"]}, "blocked_by": {"type": "array", "items": {"type": "string"}},
+        "input_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "output_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}},
+        "report_policy": {"enum": ["auto", "manual"]}, "auto_close": {"type": "boolean"}
+      }
+    },
+    "map_configuration": {
+      "type": "object", "additionalProperties": false, "required": ["title", "description", "nodes"],
+      "properties": {
+        "title": {"type": "string"}, "description": {"type": "string"}, "group": {"type": ["string", "null"]}, "input_requirements": {"type": "string"},
+        "input_files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "required"], "properties": {"id": {"$ref": "#/$defs/nonempty"}, "required": {"type": "boolean"}, "description": {"type": "string"}}}},
+        "nodes": {"type": "object", "additionalProperties": {"$ref": "#/$defs/map_node"}}
+      }
+    },
+    "target_snapshot": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "task_id", "configuration"], "properties": {"type": {"const": "task"}, "task_id": {"$ref": "#/$defs/nonempty"}, "configuration": {"$ref": "#/$defs/task_configuration"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "map_file", "configuration"], "properties": {"type": {"const": "map"}, "map_file": {"$ref": "#/$defs/nonempty"}, "configuration": {"$ref": "#/$defs/map_configuration"}}}
+      ]
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "kind", "bot", "revision", "target", "request"],
+      "properties": {
+        "schema_version": {"const": 1}, "kind": {"const": "baseline"},
+        "bot": {"allOf": [{"$ref": "#/$defs/created_bot"}, {"properties": {"when": {"const": ""}, "plan_guide": {"const": ""}, "node_guide": {"const": ""}}}]},
+        "revision": {"$ref": "#/$defs/revision"}, "target": {"$ref": "#/$defs/target_snapshot"}, "request": {"$ref": "#/$defs/request"}
+      }
+    },
+    "created_bot": {"allOf": [{"$ref": "#/$defs/bot"}, {"not": {"required": ["rust_script"], "properties": {"rust_script": {"type": "string"}}}}, {"oneOf": [{"required": ["task_id"], "properties": {"task_id": {"$ref": "#/$defs/nonempty"}}}, {"required": ["map_file"], "properties": {"map_file": {"$ref": "#/$defs/nonempty"}}}]}]},
+    "bot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "when", "plan_guide", "node_guide"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"}, "name": {"type": "string"},
+        "group": {"type": ["string", "null"], "pattern": "^\\S(?:[\\s\\S]*\\S)?$"},
+        "when": {"type": "string"}, "plan_guide": {"type": "string"}, "node_guide": {"type": "string"},
+        "task_id": {"type": ["string", "null"]}, "map_file": {"type": ["string", "null"]},
+        "rust_script": {"anyOf": [{"$ref": "#/$defs/capability"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"not": {"required": ["task_id", "map_file"], "properties": {"task_id": {"type": "string"}, "map_file": {"type": "string"}}}},
+        {"not": {"required": ["task_id", "rust_script"], "properties": {"task_id": {"type": "string"}, "rust_script": {"type": "string"}}}},
+        {"not": {"required": ["map_file", "rust_script"], "properties": {"map_file": {"type": "string"}, "rust_script": {"type": "string"}}}}
+      ]
+    }
+  }
+}

@@ -1,20 +1,10 @@
 import { useEffect, useState } from 'react'
-import { SessionsPanel } from './SessionsPanel'
+import { SessionsPanel } from '../sessions/SessionsPanel'
 import { ResumeChat } from './ResumeChat'
-import type { SessionFeed } from './sessionFeed'
+import { ChatCreationDialog } from './ChatCreationDialog'
+import type { SessionFeed } from '../sessions/sessionFeed'
+import { fetchChatHistory, saveChatMemo, type HistoryPage, type HistorySession } from '../controllers/chatController'
 
-type HistorySession = {
-  sessionId: string
-  sessionName: string | null
-  agentType: string | null
-  cwd: string | null
-  originalWorkspaceId?: string
-  originalWorkspaceName?: string
-  memo?: string
-  firstRecordedAt: number
-}
-
-type HistoryPage = { sessions: HistorySession[]; page: number; total: number; totalPages: number }
 type HistoryState = { kind: 'loading' } | ({ kind: 'loaded' } & HistoryPage) | { kind: 'error' }
 
 function HistoryMemo({ session }: { session: HistorySession }) {
@@ -29,17 +19,9 @@ function HistoryMemo({ session }: { session: HistorySession }) {
     setPending(true)
     setError(false)
     try {
-      const response = await fetch('/api/sessions/history/memo', {
-        method: 'PUT', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.sessionId, memo: draft }),
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const body: unknown = await response.json()
-      if (typeof body !== 'object' || body === null || !('sessionId' in body) || body.sessionId !== session.sessionId || !('memo' in body) || typeof body.memo !== 'string') {
-        throw new Error('unconfirmed memo response')
-      }
-      setMemo(body.memo)
-      setDraft(body.memo)
+      const savedMemo = await saveChatMemo(session.sessionId, draft)
+      setMemo(savedMemo)
+      setDraft(savedMemo)
       setEditing(false)
     } catch {
       setError(true)
@@ -65,6 +47,7 @@ function HistoryMemo({ session }: { session: HistorySession }) {
 }
 
 function HistoryPanel() {
+  const [retro, setRetro] = useState<HistorySession | null>(null)
   const [page, setPage] = useState(1)
   const [state, setState] = useState<HistoryState>({ kind: 'loading' })
   const navigate = (target: number) => {
@@ -73,10 +56,8 @@ function HistoryPanel() {
   }
   useEffect(() => {
     const controller = new AbortController()
-    void fetch(`/api/sessions/history?page=${page}`, { signal: controller.signal, cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const body = await response.json() as HistoryPage
+    void fetchChatHistory(page, controller.signal)
+      .then((body) => {
         if (!controller.signal.aborted) setState({ kind: 'loaded', ...body })
       })
       .catch(() => { if (!controller.signal.aborted) setState({ kind: 'error' }) })
@@ -84,6 +65,12 @@ function HistoryPanel() {
   }, [page])
 
   return <section aria-label="历史会话" className="history-panel">
+    {retro !== null && <ChatCreationDialog
+      initialTaskId="task-retro"
+      initialCwd={retro.cwd}
+      initialInput={`agent 类型：${retro.agentType ?? '未记录'}\nsession ID：${retro.sessionId}\n历史 cwd：${retro.cwd ?? '未记录'}\nsession 根目录：${retro.sessionDirectory ?? '未配置，请补充'}`}
+      onClose={() => setRetro(null)}
+    />}
     {state.kind === 'loading' ? <p role="status">正在读取历史会话…</p> : null}
     {state.kind === 'error' ? <p role="alert">读取历史会话失败，未确认历史数据。请退出后重新进入历史视图。</p> : null}
     {state.kind === 'loaded' && state.sessions.length === 0 ? <p>尚无历史会话。成功接入的对话会收录在这里。</p> : null}
@@ -95,7 +82,7 @@ function HistoryPanel() {
         <td data-label="Workspace"><div>{session.originalWorkspaceId ? <>{session.originalWorkspaceName ? <span className="history-workspace-name">{session.originalWorkspaceName}</span> : null}<span>{session.originalWorkspaceId}</span></> : '未记录'}</div></td>
         <td data-label="首次收录时间"><time dateTime={new Date(session.firstRecordedAt).toISOString()}>{new Date(session.firstRecordedAt).toLocaleString('zh-CN')}</time></td>
         <td data-label="备忘"><HistoryMemo session={session} /></td>
-        <td data-label="操作"><ResumeChat sessionId={session.sessionId} /></td>
+        <td data-label="操作"><div><ResumeChat sessionId={session.sessionId} />{' '}<button type="button" className="history-resume" onClick={() => setRetro(session)}>Retro</button></div></td>
       </tr>)}</tbody>
     </table> : null}
     {state.kind === 'loaded' ? <nav className="history-pagination" aria-label="历史分页">

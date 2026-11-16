@@ -9,15 +9,13 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import tempfile
 import traceback
 import urllib.error
 import urllib.request
 
-shared = runpy.run_path(str(Path(__file__).with_name('test-real-herdr-close.py')))
-Process, require, until = (shared[name] for name in ['Process', 'require', 'until'])
+from acceptance.host.processes import Process, require, until
 REPO = Path(__file__).resolve().parents[1]
 
 

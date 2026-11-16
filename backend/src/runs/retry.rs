@@ -4,28 +4,17 @@ use super::operation::rejection;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RetryRequest {
-    session_id: String,
-    node_id: String,
-    confirmed: bool,
-    reason: String,
+pub(crate) struct RetryRequest {
+    pub(crate) session_id: String,
+    pub(crate) node_id: String,
+    pub(crate) confirmed: bool,
+    pub(crate) reason: String,
 }
 
-pub async fn manager_retry(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    if !crate::sessions::is_local_source(peer.ip()) {
-        return error(StatusCode::FORBIDDEN, "forbidden", "运行工具只接受同机来源。");
-    }
-    let input: RetryRequest = match crate::chat_command_body(request, "重试独立新执行").await {
-        Ok(input) => input,
-        Err(response) => return response,
-    };
+pub(crate) async fn manager_retry(state: AppState, input: RetryRequest) -> RunResult {
     let run = match manager_run(&state, &input.session_id).await {
         Ok(run) => run,
-        Err(response) => return response,
+        Err(response) => return Err(response),
     };
     let work = tokio::spawn(async move {
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
@@ -55,11 +44,11 @@ pub async fn manager_retry(
         let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason)).await;
         let mut response = snapshot(&state, &run, true).await?;
         response["result"] = result;
-        Ok(Json(response).into_response())
+        Ok(RunOutcome::Value(response))
     }).await;
     match work {
-        Ok(Ok(response)) => response,
-        Ok(Err(message)) => error(StatusCode::INTERNAL_SERVER_ERROR, "retry-failed", &message),
-        Err(join) => error(StatusCode::INTERNAL_SERVER_ERROR, "retry-internal", &join.to_string()),
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(message)) => Err(error(FailureKind::Failed, "retry-failed", &message)),
+        Err(join) => Err(error(FailureKind::Failed, "retry-internal", &join.to_string())),
     }
 }

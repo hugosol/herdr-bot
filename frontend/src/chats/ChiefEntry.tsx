@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChatCreationDialog } from './ChatCreationDialog'
+import { openChiefChat } from '../controllers/chatController'
 
 /** Resolve on every click: another browser can acquire or remove the chief. */
 export function ChiefEntry() {
@@ -12,25 +13,14 @@ export function ChiefEntry() {
     setPending(true)
     setFeedback(null)
     try {
-      const response = await fetch('/api/chief', { cache: 'no-store' })
-      if (!response.ok) throw new Error('unconfirmed authority')
-      const body = await response.json()
-      if (!body || !Object.hasOwn(body, 'current')) throw new Error('unconfirmed authority')
-      if (body.current === null) {
+      const result = await openChiefChat()
+      if (result.kind === 'absent') {
         setCreating(true)
-      } else if (typeof body.current.sessionId === 'string') {
-        const resumed = await fetch('/api/chats/resume', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId: body.current.sessionId }),
-        })
-        const result = await resumed.json()
-        if (typeof result?.message !== 'string' || (resumed.ok && !['located', 'restored'].includes(result.outcome))) {
-          throw new Error('unconfirmed navigation')
-        }
-        setFeedback({ failed: !resumed.ok, message: result.message })
-      } else if (typeof body.current.phase === 'string') {
+      } else if (result.kind === 'resumed') {
+        setFeedback({ failed: result.failed, message: result.message })
+      } else {
         setFeedback({ failed: true, message: '当前 chief 正在启动或启动结果尚未确认；不会另建 Chat。' })
-      } else throw new Error('unconfirmed authority')
+      }
     } catch {
       setFeedback({ failed: true, message: '无法确认当前 chief 或打开结果；不会另建 Chat。请检查服务后重试。' })
     } finally { setPending(false) }
