@@ -1,0 +1,80 @@
+{
+  "title": "创建task-V2",
+  "group": "meta-map",
+  "description": "创建 normal Task 及绑定它的完整 Bot：先由 Task 创建者交付阶段配置，再独立调用创建bot-V2，在其既有分层设计阶段完成三指南及获准且必要的 Task.prompt 保义优化。依据 create-task-v2 r1，W1 对应 create_task，W2 对应 create_bot_v2；不展开子图，不另设 prompt 优化或末尾联合优化阶段。\n\n最终 Task 与 Bot 配置以 create_bot_v2 的 saved 为准，create_task 的配置仅供阶段验收。父管理者验收最终 saved／handoff 并完成两个普通工作节点的交接后，才可结束整体流程。\n\n仅交付配置，不启动生成能力；现有创建task、创建bot、创建bot-V2 及其调用方保持不变。文本／定义优化完成不代表工具加载或业务效果已验证。",
+  "input_requirements": "通过本次要求说明拟创建能力的业务需求、输入输出、验收、非目标、约束、资源与权限、执行配置偏好，以及 Task＋Bot 创建委托。该要求是未来本次业务能力的需求，不是创建本 Map 的规划需求。说明已有确认及范围、参考材料用途与读取授权、材料写入授权和正式交付要求；分别明确 Task 创建、Bot 创建及必要 Task.prompt 保义优化的授权范围。未知正文在对应阶段形成候选后确认，不提前批准。缺失业务选择或授权由用户补齐；不包含业务试运行。",
+  "input_files": [
+    {
+      "id": "materials",
+      "required": false,
+      "description": "可选业务需求、规范、输入输出样例或已有提示词参考文件；说明内容、格式、用途及读取授权。原样供 Task 创建与创建bot-V2 使用，缺席合法，已提供须可读。"
+    }
+  ],
+  "nodes": {
+    "create_task": {
+      "title": "创建 Task 并准备 V2 委托",
+      "bot_id": "create-task",
+      "input": "## 本次目标与材料\n执行 create-task-v2 r1 的 W1：依据本次新业务 Run 的 userInput，为所述业务创建一个 normal Task。materials 是可选参考，按本次说明的用途与读取授权使用；缺席合法。沿用有效需求确认，业务取舍与缺项由用户确认；创建配置不能替代缺失能力建设。本阶段不创建 Bot、不运行新 Task。\n\n## 为 V2 准备独立委托\nmaterial_contract 是 V2 request 的唯一格式依据。产出前读取其中“通用格式与目标定位”“request 与 materials”；采用 schema_version=2、kind=request，以本次真实新 Task ID 定位 target，不预造身份、不使用旧 create_blank 格式或增加未知字段。\nrequest 必须自包含后续 Bot 创建需要的已定需求、约束、非目标、资源限制、独立及共享用途、参考材料内容／格式／用途与读取授权、正式交付要求、已有确认及后续委托授权。requirements 非空；constraints、non_goals、resource_limits 为字符串数组；confirmation.scope=request，evidence 记录真实非空依据；可选 bot 仅承载已定命名要求。authorization 的 write_materials、create_bot、optimize_task_prompt 均如实填写 boolean；材料写入须有真实授权且 write_materials=true，其余未授权填 false，留待 V2 对具体候选补齐。初始委托不提前批准未来未知正文。\nrequest 不复制服务可查的完整 Task 配置，也不得要求下游从 handoff、其他 Chat 或未声明文件隐式补齐必要信息。\n\n## 两份交付及验收\nhandoff 为自包含 UTF-8 Markdown：真实 Task ID、完整读回配置、原始需求与澄清结论、确认来源及范围、输入输出与验收、权限、非目标、缺口、保存结果、未验证项、后续 Bot 委托及授权、参考材料用途和正式交付要求。它用于父层阶段验收，不传入子 Map。\nrequest 为独立无围栏 UTF-8 V2 JSON 单对象，供后续创建bot-V2 直接消费。仅在获准中间资料位置安全新增交接材料，保留用户指定的正式位置与命名。Task 已确认、创建且完整读回一致，两份材料完整读回、身份一致且 request 合规自包含后才可交接；未来三指南全文批准不是本阶段门槛。\nTask 创建结果仅是阶段产物，最终 Task 配置以 V2 的 saved 为准。部分成功保留真实效果，不自动回滚、删除或重复创建。",
+      "input_rule": [
+        {
+          "id": "materials",
+          "type": "run",
+          "input_id": "materials"
+        },
+        {
+          "id": "material_contract",
+          "type": "file",
+          "zone_id": "hugosol/herdr-bot",
+          "path": "docs/contracts/create-bot-v2-materials.md"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "handoff"
+        },
+        {
+          "id": "request"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    },
+    "create_bot_v2": {
+      "title": "调用创建bot-V2",
+      "bot_id": "bot-map-create-bot-v2",
+      "manager_task_id": "task-18e2c2827c484128-0",
+      "input": "## 本次委托\n执行 create-task-v2 r1 的 W2：按 request 为刚创建的真实 normal Task 新建唯一绑定该 Task 的完整 Bot，不新建替代 Task。request 是唯一创建委托；materials 是可选原始参考，沿用 request 中记录的内容、格式、用途与读取授权，不以参考内容作为隐藏参数。\n\n## 本次简化范围与权限\n沿用有效确认，需求对齐不重做完整访谈；新增冲突及业务取舍由用户确认。在 V2 既有整体分层阶段完成三指南设计及获准且必要的 Task.prompt 保义优化，保留独立 Chat 与共享用途，不另加独立 prompt 优化、末尾联合优化或材料转换节点。最终完整候选、身份绑定、共享影响及保存授权在对应阶段确认，初始委托不提前批准未知正文。\n仅按真实委托新建 Bot，并在必要且获准时修改该新 Task.prompt；其他 Task 字段、既有 Bot、Map、Skill、共享文档与运行记录保持不变。遵守 V2 固定职责、材料格式和运行保护。不得执行业务试运行、启动生成能力、建设缺失能力、安装、写凭据、扩权、停服、关机或删除资源。\n\n## 最终交付与验收\n交付 V2 协议的独立 saved、handoff JSON。saved 承载完整最终 Bot、服务真实 revision 和目标 Task 完整最终读回配置；handoff 承载真实确认及授权依据、分层归属、共享影响、保存检查与未验证项，不重复正文或承担隐式寻址。仅在获准中间资料位置新增材料，保留 request 中用户指定的正式交付位置、命名、格式及验收要求。\n子管理者验收内部最终结果并显式 finish 后，将真实 saved／handoff 登记给父执行的同名输出；父管理者独立验收并 complete。全部获准配置已保存、完整读回且材料符合 V2 契约，无未处理冲突或部分失败后才算完成。最终 Task 配置以本阶段 saved 为准，不能用 W1 阶段配置代替。部分成功保留真实效果，不自动回滚、删除或重复创建；成功注明“文本／定义优化完成，行为未验证”。",
+      "input_rule": [
+        {
+          "id": "request",
+          "type": "node",
+          "node_id": "create_task",
+          "output_id": "request"
+        },
+        {
+          "id": "materials",
+          "type": "run",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "report_policy": "manual",
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_task"
+      ]
+    }
+  }
+}
