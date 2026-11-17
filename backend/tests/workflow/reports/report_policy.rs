@@ -95,27 +95,24 @@ async fn auto_approval_is_fixed_per_execution_recovery_keeps_it_and_retry_reads_
 }
 
 #[tokio::test]
-async fn old_execution_records_default_to_auto_without_rewriting_or_reading_map_policy() {
+async fn current_execution_approval_is_frozen_without_read_rewrite_after_map_mode_changes() {
     let s = Scenario::without_output_contract().await;
     let started = s.start("policy-legacy-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-legacy-node"},"native_cwd":s.data.path().join("node-zone")}));
     let dispatched = s.dispatch("policy-legacy-manager", &["A"]).await;
     assert_eq!(dispatched["snapshot"]["nodes"]["A"]["execution"]["autoApproved"], true);
     let path = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap()).join("run.json");
+    approve_execution(&s, "policy-legacy-node").await;
     let mut legacy: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    for field in ["autoApproved", "approved", "approvalSource"] {
-        legacy["nodes"]["A"]["execution"].as_object_mut().unwrap().remove(field);
-    }
-    fs::write(&path, legacy.to_string()).unwrap();
     let original = fs::read(&path).unwrap();
     set_policy(&s, "A", json!(false));
     let status = action(&s, "status", json!({"sessionId":"policy-legacy-manager"})).await;
     assert_eq!(status["snapshot"]["nodes"]["A"]["execution"]["autoApproved"], true);
-    assert_eq!(status["snapshot"]["nodes"]["A"]["execution"]["approved"], false);
-    assert!(status["snapshot"]["nodes"]["A"]["execution"]["approvalSource"].is_null());
+    assert_eq!(status["snapshot"]["nodes"]["A"]["execution"]["approved"], true);
+    assert_eq!(status["snapshot"]["nodes"]["A"]["execution"]["approvalSource"], "auto");
     let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":"policy-legacy-node"}).to_string()).await;
     assert_eq!(context.status, 200, "{}", context.body);
-    assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap()["autoApproved"], true);
+    assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap(), json!({"runId":started["id"],"nodeId":"A","executionId":dispatched["snapshot"]["nodes"]["A"]["execution"]["id"],"autoApproved":true,"approved":true,"approvalSource":"auto"}));
     assert_eq!(fs::read(&path).unwrap(), original);
     legacy["nodes"]["A"]["execution"]["autoApproved"] = json!("invalid");
     fs::write(&path, legacy.to_string()).unwrap();

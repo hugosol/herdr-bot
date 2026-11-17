@@ -13,7 +13,7 @@ const original = { title: '保留 Map 标题', description: '保留 Map 说明',
   C: { title: '保留的后继', bot_id: 'summary', input: JSON.stringify({ untouched: [{ count: 9 }, null] }), zone: 'unregistered-zone', blocked_by: ['B'] },
   D: { title: '保留的独立工作', bot_id: 'independent', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] as string[] },
 } }
-const nodeContent = (node: Record<string, unknown>) => Object.fromEntries(Object.entries({ input_rule: [], output_rule: [], ...node }).filter(([key]) => !['zone', 'auto_approved', 'auto_close'].includes(key)))
+const nodeContent = (node: Record<string, unknown>) => Object.fromEntries(Object.entries({ input_rule: [], output_rule: [], ...node }).filter(([key]) => !['zone', 'auto_approved', 'auto_close', 'end_node'].includes(key)))
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
   server = await startServer({ herdr: {}, separateCwd: true })

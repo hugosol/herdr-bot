@@ -182,6 +182,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     node_host(&s, "close-eligibility-A");
     s.dispatch("close-eligibility-manager", &["A"]).await;
     manager_action(&s, "complete", json!({"sessionId":"close-eligibility-A","nodeId":"A","reason":"Node cannot accept own handoff"}), 403).await;
+    approve_execution(&s, "close-eligibility-A").await;
     let blank = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"A","reason":"  "}), 409).await;
     assert_eq!(blank["code"], "completion-reason-required");
     let unknown = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"unknown","reason":"No target"}), 409).await;
