@@ -5,8 +5,10 @@ NativeCompletionTransport accepts completion(request) -> SDK-native decision.
 Neither chooses business actions or executes tools: the real host owns those
 and its history. Request serialization is not direct-host wire compliance.
 """
+import errno
 import http.server
 import json
+import secrets
 from pathlib import Path
 import threading
 import time
@@ -114,7 +116,16 @@ class CompletionTransport:
                     (owner.directory / f"{record['index']:04d}.json").write_text(
                         json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
 
-        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        # Port zero follows machine-wide ephemeral settings, which may include
+        # ports rejected by installed hosts. Only retry pre-request collisions.
+        for attempt in range(32):
+            try:
+                self.server = http.server.ThreadingHTTPServer(
+                    ('127.0.0.1', 49152 + secrets.randbelow(16384)), Handler)
+                break
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE or attempt == 31:
+                    raise
         # server_close joins owned handlers; daemon handlers could leave the
         # provider subprocess running after evidence/context cleanup returned.
         self.server.daemon_threads = False

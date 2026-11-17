@@ -5,6 +5,7 @@ no controlled output is claimed as a real model's business decision. Native UI,
 sessions, tools, material edits, reports and backend executions remain real.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import hashlib
 import json
@@ -71,7 +72,7 @@ def main():
         safe = args.backend.parent / 'examples/safe_shutdown_shell.exe'
         require(safe.is_file(), 'Build this worktree safe_shutdown_shell for paired shutdown regression')
         environment = dict(os.environ, CARGO_TARGET_DIR=str(target), HERDR_BOT_REPO=str(args.repo),
-            HERDR_BOT_BINARY=str(safe), HERDR_BOT_METADATA=str(args.repo / 'meta-data'),
+            HERDR_BOT_BINARY=str(safe), HERDR_BOT_METADATA=str(args.repo / 'meta-data/task-options.toml'),
             PI_NODE=args.node, PI_CLI=str(args.pi_package / 'dist/bundle/cli.js'),
             OMP_CLI=str(args.omp_package / 'dist/cli.js'))
         commands = [(args.repo, ['npm', '--prefix', 'frontend', 'run', 'build']),
@@ -79,7 +80,7 @@ def main():
                         '--bin', 'herdr-fixture', '--bin', 'herdr-paths', '--example', 'safe_shutdown_shell']),
             (args.repo, ['node', 'scripts/test-backend.mjs']),
             (args.repo, ['npm', '--prefix', 'frontend', 'test']),
-            (args.repo, ['npm', '--prefix', 'frontend', 'run', 'test:browser:build', '--', '--workers=1']),
+            (args.repo, ['npm', '--prefix', 'frontend', 'run', 'test:browser:build']),
             (args.toolkit, [args.bun, 'run', 'typecheck']), (args.toolkit, [args.bun, 'run', 'test']),
             (args.toolkit, [args.bun, 'run', 'check:integrations']),
             (args.toolkit, [args.bun, 'test', 'tests/harness-dock/native-node-report.test.ts',
@@ -97,13 +98,25 @@ def main():
         from node_approval_failures_acceptance import ApprovalFailuresAcceptance
         evidence['nativeSources'] = {name: source_identity(root, lock, args.evidence_dir)
             for name, root, lock in [('herdr-bot', args.repo, 'backend/Cargo.lock'), ('toolkit', args.toolkit, 'bun.lock')]}
-        for host in args.hosts.split(','):
-            for condition in CONDITIONS:
-                scenario_args = copy.copy(args)
-                scenario_args.host, scenario_args.condition = host, condition
-                scenario_args.evidence_dir = args.evidence_dir / condition
-                run = ApprovalFailuresAcceptance(scenario_args)
-                status = run.run()
+        cases = [(host, condition) for host in args.hosts.split(',') for condition in CONDITIONS]
+        capacity = config.get('maxConcurrentRequests', os.cpu_count() or 1)
+        require(type(capacity) is int and capacity > 0, 'Model transport capacity must be a positive integer')
+        workers = min(len(cases), os.cpu_count() or 1, capacity)
+        evidence['nativeWorkers'] = workers
+        evidence['modelTransportCapacity'] = capacity
+
+        def exercise(case):
+            host, condition = case
+            scenario_args = copy.copy(args)
+            scenario_args.host, scenario_args.condition = host, condition
+            scenario_args.evidence_dir = args.evidence_dir / condition
+            run = ApprovalFailuresAcceptance(scenario_args)
+            return host, condition, run, run.run()
+
+        # Every case owns its backend, Herdr, native sessions and evidence root.
+        # Aggregate only on the calling thread; never share scenario state.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for host, condition, run, status in pool.map(exercise, cases):
                 evidence['nativeExits'][host + '/' + condition] = status
                 evidence['coverage'][host][condition].update(run.evidence['coverage'], exit=status,
                     evidence=str(run.root / 'evidence.json'))

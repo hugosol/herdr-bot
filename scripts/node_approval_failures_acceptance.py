@@ -270,6 +270,10 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         observation.update(ended=time.monotonic(), actualSeconds=time.monotonic() - started)
 
     def model_identity(self):
+        # Native session titles and manager responses can still be in flight
+        # after the worker finishes. Observe completion, never retry a request.
+        until('owned model requests finish within the existing request budget',
+            lambda: all(record.get('ended') for record in self.model_wire.records), 30)
         records = self.model_wire.records
         require(records, 'No actual authorized model request')
         identities = []
@@ -297,7 +301,6 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
             if pid in self.worker_pids:
                 until('owned node native process exits before headless resume', lambda: not handle.alive(), 20)
                 self.evidence.setdefault('preResumeExitConfirmations', []).append({'pid': pid, 'exited': True})
-        self.http('/api/sessions/events', {'sessionId': self.worker['sessionId'], 'kind': 'unregister'})
 
     def unavailable(self, start):
         # Keep the genuine node Session/execution; switch only its owned process
@@ -385,7 +388,7 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         bot = {'id': 'worker', 'name': 'failure worker', 'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': worker}
         (self.root / 'bots/worker.json').write_text(json.dumps(bot), encoding='utf-8')
         definition = {'title': 'Owned native approval failure', 'description': '', 'nodes': {'work': {
-            'title': 'Work', 'bot_id': 'worker', 'input': '仅写 material.txt，UTF-8 内容严格为 INITIAL-MATERIAL-731 后跟一个 LF，然后等待用户。不要请求批准或发送报告。',
+            'title': 'Work', 'bot_id': 'worker', 'input': f'仅写绝对路径 {self.material}，UTF-8 内容严格为 INITIAL-MATERIAL-731 后跟一个 LF，然后等待用户。不要请求批准或发送报告。',
             'zone': 'failure/worker', 'blocked_by': [], 'auto_approved': False, 'output_rule': [{'id': 'material'}]}}}
         (self.root / 'maps/failure.json').write_text(json.dumps(definition, ensure_ascii=False), encoding='utf-8')
         self.evidence['definition'] = self.http('/api/scheduler/maps/failure.json')
