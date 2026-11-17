@@ -20,14 +20,14 @@ ITEMS = {'P20/order', 'P20/progress-before-approval', 'P20/approval-source', 'P3
 
 
 class HandoffCLI(unittest.TestCase):
-    def invoke(self, root, **overrides):
+    def invoke(self, root, flags=(), **overrides):
         values = {'herdr-bot-worktree': str(ROOT), 'toolkit-worktree': str(TOOLKIT),
                   'backend': str(root / 'missing/herdr-bot.exe'), 'hosts': 'omp,pi',
                   'paths-file': str(root / 'paths.toml'), 'model-config': str(root / 'model.json'),
                   'evidence-dir': str(root / 'evidence')}
         values.update(overrides)
         return subprocess.run([sys.executable, str(ENTRY), *[part for key, value in values.items()
-            for part in ['--' + key, value]]], cwd=ROOT, capture_output=True,
+            for part in ['--' + key, value]], *flags], cwd=ROOT, capture_output=True,
             text=True, encoding='utf-8', errors='replace', timeout=30)
 
     def test_missing_authorization_preserves_all_four_unverified_cells(self):
@@ -44,6 +44,16 @@ class HandoffCLI(unittest.TestCase):
                 for mode in ['auto', 'manual']:
                     self.assertEqual(set(report['coverage'][host][mode]), ITEMS)
                     self.assertTrue(all(not item['verified'] for item in report['coverage'][host][mode].values()))
+            self.assertEqual(report['commands'], [])
+
+    def test_native_only_keeps_missing_authorization_unverified(self):
+        with tempfile.TemporaryDirectory(prefix='handoff-native-cli-') as directory:
+            root = Path(directory)
+            result = self.invoke(root, flags=['--native-only'])
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
+            self.assertTrue(report['diagnosticNativeOnly'])
+            self.assertFalse(report['passed'])
             self.assertEqual(report['commands'], [])
 
     def test_existing_evidence_is_never_overwritten(self):

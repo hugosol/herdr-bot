@@ -76,11 +76,13 @@ def main():
     parser.add_argument('--node', default='node')
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--shell-path', type=absolute)
+    parser.add_argument('--native-only', action='store_true',
+                        help='Diagnostic native matrix only; never certifies complete ticket checks')
     args = parser.parse_args()
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     evidence = {'passed': False, 'coverage': {host: {mode: {key: {'verified': False, 'expected': value}
         for key, value in EXPECTATIONS.items()} for mode in ['auto', 'manual']} for host in ['omp', 'pi']},
-        'selectedHosts': args.hosts.split(','), 'commands': [], 'cleanupErrors': [],
+        'selectedHosts': args.hosts.split(','), 'commands': [], 'cleanupErrors': [], 'diagnosticNativeOnly': args.native_only,
         'modelPolicy': 'Explicitly authorized actual model; record requested/returned identity; no product-specific model restriction, fallback or retry.'}
     try:
         from acceptance.host.processes import require
@@ -100,7 +102,7 @@ def main():
             require(name in args.path_roots and Path(args.path_roots[name]).is_file(), 'Missing isolated readonly roots.' + name)
             setattr(args, name, Path(args.path_roots[name]).resolve())
         from node_approval_handoff_acceptance import NodeApprovalHandoff
-        checks_passed = checks(args, evidence)
+        checks_passed = False if args.native_only else checks(args, evidence)
         for mode in ['auto', 'manual']:
             for host in args.hosts.split(','):
                 selected = copy.copy(args)
