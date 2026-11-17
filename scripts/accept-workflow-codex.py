@@ -70,8 +70,10 @@ def main():
         parser.error('--native-only requires a node-approval business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
-    if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
-        parser.error('--cases is only supported for revision business acceptance')
+    if args.cases != 'all' and (args.scenario not in ['revise', 'node-approval-handoff'] or args.smoke):
+        parser.error('--cases is only supported for revision or node handoff business acceptance')
+    if args.scenario == 'node-approval-handoff' and args.cases not in ['all', 'auto', 'manual']:
+        parser.error('Node handoff --cases must be all, auto or manual')
     if not 1 <= args.timeout <= 900:
         parser.error('--timeout must be 1..900')
     # Fail before creating any resources when a caller supplied missing inputs.
@@ -85,7 +87,7 @@ def main():
               'model': {'provider': 'openai-codex', 'id': MODEL, 'api': 'openai-codex-responses'},
               'scope': 'Native Codex conversation and tool calling; business hosts execute the returned tools. Not direct Codex configuration inside those hosts.',
               'modelRequests': 0, 'started': time.time(), 'smoke': args.smoke,
-              'caseSelection': args.cases, 'filtered': args.cases != 'all', 'subsetPassed': False}
+              'caseSelection': args.cases, 'filtered': args.cases != 'all' or (args.scenario == 'node-approval-handoff' and args.hosts != 'omp,pi'), 'subsetPassed': False}
     records = args.evidence_dir / 'codex-completions'
     records.mkdir()
 
@@ -182,7 +184,7 @@ def main():
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
                     if args.native_only:
                         command.append('--native-only')
-                    if args.scenario == 'revise':
+                    if args.scenario in ['revise', 'node-approval-handoff']:
                         command.extend(['--cases', args.cases])
                     for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):

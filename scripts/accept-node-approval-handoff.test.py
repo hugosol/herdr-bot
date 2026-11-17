@@ -38,6 +38,8 @@ class HandoffCLI(unittest.TestCase):
             report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
             self.assertFalse(report['passed'])
             self.assertIn('authorized', report['error'].lower())
+            self.assertEqual(report['selectedModes'], ['auto', 'manual'])
+            self.assertFalse(report['filtered'])
             self.assertEqual(set(report['coverage']), {'omp', 'pi'})
             for host in ['omp', 'pi']:
                 self.assertEqual(set(report['coverage'][host]), {'auto', 'manual'})
@@ -49,10 +51,12 @@ class HandoffCLI(unittest.TestCase):
     def test_native_only_keeps_missing_authorization_unverified(self):
         with tempfile.TemporaryDirectory(prefix='handoff-native-cli-') as directory:
             root = Path(directory)
-            result = self.invoke(root, flags=['--native-only'])
+            result = self.invoke(root, flags=['--native-only', '--cases', 'auto'])
             self.assertNotEqual(result.returncode, 0)
             report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
             self.assertTrue(report['diagnosticNativeOnly'])
+            self.assertTrue(report['filtered'])
+            self.assertEqual(report['selectedModes'], ['auto'])
             self.assertFalse(report['passed'])
             self.assertEqual(report['commands'], [])
 
@@ -97,7 +101,7 @@ class HandoffCLI(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='handoff-transport-cli-') as directory:
             root = Path(directory)
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/accept-workflow-codex.py'),
-                '--scenario', 'node-approval-handoff', '--hosts', 'omp,pi',
+                '--scenario', 'node-approval-handoff', '--hosts', 'omp', '--cases', 'auto', '--native-only',
                 '--backend', str(root / 'absent.exe'), '--toolkit', str(TOOLKIT),
                 '--paths-file', str(root / 'paths.toml'), '--evidence-dir', str(root / 'evidence'),
                 '--pi-package', str(root / 'pi'), '--auth-file', str(root / 'explicit-only.json')],
@@ -105,6 +109,45 @@ class HandoffCLI(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Missing explicit dependency', result.stderr)
             self.assertFalse((root / 'evidence').exists())
+
+
+class NativeBusinessBoundary(unittest.TestCase):
+    """Offline control-flow boundaries, not native/model acceptance."""
+
+    def ask(self, **changes):
+        value = {'id': 'native-ask-731', 'type': 'toolCall', 'name': 'ask',
+            'arguments': {'html': '<form><label>折扣百分比<input type="number" name="discountPercent"></label></form>'}}
+        value.update(changes)
+        return value
+
+    def history(self, content, stop='toolUse', after=()):
+        return {'branch': [{'type': 'message', 'message': {'role': 'assistant', 'stopReason': stop, 'content': content}},
+            *[{'type': 'message', 'message': message} for message in after]]}
+
+    def test_pending_native_ask_is_a_business_boundary_without_assistant_stop(self):
+        from node_approval_handoff_acceptance import discount_input_boundary
+        self.assertEqual(discount_input_boundary(self.history([self.ask()]))['kind'], 'form')
+        self.assertEqual(discount_input_boundary(self.history([{'type': 'text', 'text': 'Discount is missing.'}], 'stop'))['kind'], 'reply')
+
+    def test_answered_or_ambiguous_forms_are_never_resubmitted(self):
+        from node_approval_handoff_acceptance import discount_input_boundary
+        with self.assertRaisesRegex(AssertionError, 'already answered or failed'):
+            discount_input_boundary(self.history([self.ask()], after=[
+                {'role': 'toolResult', 'toolCallId': 'native-ask-731', 'content': []}]))
+        with self.assertRaisesRegex(AssertionError, 'Ambiguous native business forms'):
+            discount_input_boundary(self.history([self.ask(), self.ask(id='another-native-ask')]))
+        with self.assertRaisesRegex(AssertionError, 'Actual native turn failed'):
+            discount_input_boundary(self.history([], 'error'))
+
+    def test_only_the_single_known_discount_control_can_receive_25(self):
+        from node_approval_handoff_acceptance import require_discount_field
+        field = {'kind': 'text', 'type': 'number', 'name': 'discountPercent', 'question': '折扣百分比',
+            'multiline': False, 'value': ''}
+        self.assertEqual(require_discount_field({'fields': [field], 'hidden': []}), field)
+        for parsed in [{'fields': [field, field]}, {'fields': [dict(field, question='数量')]},
+                       {'fields': [dict(field, type='password')]}, {'fields': [field], 'hidden': ['unrelated']}]:
+            with self.subTest(parsed=parsed), self.assertRaises(AssertionError):
+                require_discount_field(parsed)
 
 
 class HandoffInputPreflight(unittest.TestCase):
