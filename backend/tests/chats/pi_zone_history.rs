@@ -111,8 +111,10 @@ async fn wait_get(herdr: &HerdrFixture) {
 }
 
 // P30: header not yet written is transient only inside the total budget.
-// Advance the production Tokio clock to 29s; a later exact header must still
-// collect, without requiring or repeating initial input/model completion.
+// Publish at 29 real seconds after creation begins, inside the production 30s
+// budget. Pausing Tokio while an external agent_get process is still in flight
+// can auto-advance its timeout before the native header is written.
+// Collection must not require or repeat initial input/model completion.
 #[tokio::test]
 async fn pi_exact_header_can_arrive_before_the_total_deadline() {
     let herdr = HerdrFixture::new("pi-late-header");
@@ -120,13 +122,12 @@ async fn pi_exact_header_can_arrive_before_the_total_deadline() {
     let native = root.path().join("exact-late.jsonl");
     herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":native}}));
     let (server, zone, task) = setup(&herdr, &root).await;
+    let creation_started = tokio::time::Instant::now();
     assert_eq!(create(&server, &zone, &task).await["stage"], "succeeded");
     wait_get(&herdr).await;
     assert_eq!(get(&server, "/api/sessions/history").await["total"], 0);
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(29)).await;
+    tokio::time::sleep_until(creation_started + Duration::from_secs(29)).await;
     fs::write(&native, b"{\"type\":\"session\",\"id\":\"pi-header-at-29s\",\"cwd\":\"C:/late/exact\"}\n").unwrap();
-    tokio::time::resume();
     assert_eq!(wait_history(&server, "pi-header-at-29s").await["cwd"], "C:/late/exact");
     assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 1);
 }
