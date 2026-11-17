@@ -867,7 +867,11 @@ if (@($checks | Where-Object { -not $_.isFile }).Count -gt 0) { exit 2 }
 
 Map node 的可选 `auto_approved` 只接受布尔，省略默认 true；派发时冻结为 `execution.autoApproved`，初始 `approved=false`、`approvalSource=null`。自动模式仍须执行者主动 approve，不能派发即批准；人工模式只有官方宿主原生确认中的显式 Yes 才提交 manual 来源。原生确认只询问“当前会话的成果是否已达到预期，可以交接并推进后续流程？”，不要求成果说明、报告或文件；普通聊天同意与报告声称批准均不能替代。拒绝、取消、超时或无 UI 不提交批准、不变 failed，也不自动重试。HTTP 的同机调用只能验证后端事实，不证明原生 Yes。
 
-恢复原 Chat、recover 和派发核实沿用已保存执行模式与批准事实，不从当前 Map 改写；retry 是新执行，读取当前定义并重新从未批准开始，不继承旧批准。正文与材料不冻结，批准后修改或报告不自动撤销批准。无旧 Run 字段适配、静默补批准或历史改写；不承诺继续或呈现旧 Run。
+恢复原 Chat、recover 和派发核实沿用已保存执行模式与批准事实，不从当前 Map 改写；retry 是新执行，读取当前定义并重新从未批准开始，不继承旧批准或旧报告的完成资格。旧 execution 的模式、批准及报告仍保留；在途旧提交即使 retry 后才结束，也不能批准新 execution。正文与材料不冻结，批准后修改或报告不自动撤销批准；最新报告为 false 时仍拒绝 complete。
+
+批准只在持久写入成功后返回成功。真实存储失败返回 `approval-save-failed` 并保留底层错误，公开读取仍未批准，不能以失败响应、日志或尚未保存的内存对象绕过 complete 门禁。同次重复／并发批准只有一次 `changed:true`，不产生额外报告、通知、完成或派发。确认发生在宿主，不占用后端 Run 操作资格；同 Run 查询、报告及无依赖分支不必等用户确认。
+
+后端进程退出后，公开 Run 详情仍可读取同次 execution 的冻结模式、批准及来源；重启不重放业务输入、不接管旧 Run，也不为旧 Chat 新增批准或管理权限。原 Chat 的合法恢复与后端重启后的只读历史是不同边界。无旧 Run 字段适配、静默补批准或历史改写；不承诺继续或呈现旧版本 Run。
 
 报告发送完全独立：批准前后都可 report，不需要原生发送确认，不改变批准；approve 不制造报告或通知 manager。正常成果交接由 node-chat 先 approve、后 report，后端不强制排序。manager complete 另行要求批准、当前最新 canComplete=true 和全部约定交付登记；批准本身不会 complete、dispatch 或 finish。结束节点无批准职责，不伪造 approved=true，成功派发后仍按原规则显式 finish；chief 的委派与报告确认不变。
 

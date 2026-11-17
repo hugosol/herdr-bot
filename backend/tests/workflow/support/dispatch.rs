@@ -48,6 +48,8 @@ impl Scenario {
         let herdr = HerdrFixture::new("dispatch external");
         let fixtures = common::repo_fixtures_dir();
         let mut config = common::config(&fixtures.join("operations/success.bat"), &fixtures.join("operations"));
+        config.data_directory = data.path().join("data");
+        config.sessions.history_file = data.path().join("session-history.json");
         config.tasks.storage_file = data.path().join("tasks.json");
         config.prompts_file = data.path().join("prompts.local.toml");
         let mut catalog: toml::Value = toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
