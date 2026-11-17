@@ -224,7 +224,7 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   const bot = { id: 'script-page-only', ...guides, script: capability }, botFile = path.join(bots, 'preflight-script.json')
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.writeFileSync(path.join(maps, 'material-target.json'), JSON.stringify({ title: '不执行的材料目标', description: '', nodes: {} }))
-  const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'when_handoff', 'plan_guide_text', 'plan_guide_handoff', 'node_guide_text', 'node_guide_handoff']
+  const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'plan_guide_text', 'node_guide_text']
   const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
@@ -242,7 +242,6 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
     for (const field of ['when', 'plan_guide', 'node_guide']) {
       const text = `预检独占 ${field} 正文\n`
       fs.writeFileSync(materials[`${field}_text`], text)
-      fs.writeFileSync(materials[`${field}_handoff`], JSON.stringify({ schema_version: 1, kind: 'handoff', stage: 'guide', bot_id: 'preflight-target', target: request.target, field, sources: [{ binding_id: 'baseline', direction: 'input', role: 'baseline' }, { binding_id: 'text', direction: 'output', role: 'text' }], confirmation: { evidence: '独占正文确认与保存授权', text_sha256: createHash('sha256').update(text).digest('hex'), full_text: true, save_authorized: true, semantics_preserved: true }, constraints: [], unverified: ['不执行目标'] }))
     }
   }
   const missingId = inputIds[0], material = materials[missingId]

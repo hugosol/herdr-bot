@@ -76,17 +76,17 @@
 本 worktree 使用独立绝对 `CARGO_TARGET_DIR`，资源受限时设 `CARGO_BUILD_JOBS=1`。定向反馈为 `npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1`；完成检查运行 `npm --prefix frontend test`、完整 `npm --prefix frontend run test:browser:build`，含后端阻塞 IO 修复时另运行 `node scripts/test-backend.mjs`。常规回归不代替 H1／原生宿主验收。
 ## Rust 三路合并保存公开 HTTP／文件回归
 
-先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／自动报告和实际下游进程读取命名 saved／handoff；正文、非目标字段及确认 digest 使用独立字面值，不调用业务内部函数。
+先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／Bun／自动报告和实际下游进程读取命名 saved／handoff；正文和非目标字段使用独立字面值，不调用业务内部函数。P31 保存分区及 P32 由 `rust_save_merges_exact_bytes_once_and_delivers_named_complete_saved` 以仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入验证，不生产批准凭据或三份指南 handoff；P33 保存分区由同组下列拒绝、冲突与真实故障场景拥有。发布接线和材料生产指引同步切换，09 仍独立拥有批准模式职责映射及 V1/V2 组合验收。
 
 - P24/P25/P26：三段互异正文含 CRLF、LF、空行、tab 和首尾空格；完整 Bot／真实新 revision／完整目标及实际 saved 逐项比较。下游只从显式 outputs ID 消费，handoff 不含正文／完整配置。
-- P7/P8/P33：非法格式、缺项、重复 key、错字段／身份／目标／digest／授权、真实并发 Bot 修改、旧 revision、完整目标配置变化及活动 Run 禁写均拒绝；读回完整对象，不能因 HTTP 成功或正文相同宣称业务成功。
+- P33：非法格式、缺项、根／嵌套重复 key、错字段归属／身份／目标／命名绑定、旧 authorization／confirmation／改名 approved 与多余指南 handoff、非法 UTF-8、真实并发 Bot 修改、旧 revision、完整目标配置变化及活动 Run 禁写均拒绝；读回完整对象与实际文件，不能因 HTTP 成功或正文相同宣称业务成功。字段归属由四个固定输入 ID 确定，不按正文语义或文件名猜字段。写入失败与写后完整目标读回失败使用真实 Windows 共享限制／文件门闩，不模拟业务结果。
 - P15：真实文件阻塞 saved 或 handoff 生成，保存已生效时保留 write/readBack=succeeded 和已读回 outputs，不自动回滚或刷新 baseline。解除故障后由另一个隔离真实 Run 的 manager 显式派发，原 baseline 仍以 revision-conflict 拒绝。该场景不依赖同节点 fail/retry，后者由独立生命周期覆盖拥有。
 
 门闩只控制测试拥有的真实文件 open／外部宿主；进入预算 5 秒，自动报告观察预算 10 秒，所属通知 CLI 退出确认预算 5 秒，确认后再清理独占根。stdout 记录实际 Run、saved、报告、下游文件读回及拒绝／失败分类；完整入口保留日志。受控外部消费者证明命名文件传递，不证明原生模型／manager 行为或 H1/H2；本入口不迁移正式定义，也不改通用替换者或修订流程。
 
 ## 发布创建图迁移回归（P22／P23／P27／P28）
 
-先构建本 worktree 静态页，以独立绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`；交付检查运行 `node scripts/test-backend.mjs`。`create_migration.rs` 经真实隔离后端、发布八节点 Map、两种 Rust 能力、实际文件和公开报告／complete／finish 完成闭环。迁移前完整发布定义为 `fixtures/rust-create-migration/before.json`；用例保留独占副本及真实无关 Run／Chat，完整比较原通用替换者 Bot／Task／修订 Map 和无关定义。三个固定独立字面稿为 `abc`、`hello`、空串，确认 digest 独立固定；记录型外部进程真实读取三路 baseline 与各 text/handoff，最终真实保存和 revision／完整目标读回不使用替身。严格 request 缺项／Markdown、guide handoff Markdown、缺显式 when_text 绑定均拒绝，不从邻居文件、自然语言或来源索引寻址。stdout 保留真实 Run、报告、baseline／saved／revision 及拒绝；所属通知 CLI 退出确认后才清理。
+先构建本 worktree 静态页，以独立绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`；交付检查运行 `node scripts/test-backend.mjs`。`create_migration.rs` 经真实隔离后端、发布八节点 Map、两种 Rust 能力、实际文件和公开报告／complete／finish 完成闭环。迁移前完整发布定义为 `fixtures/rust-create-migration/before.json`；用例保留独占副本及真实无关 Run／Chat，完整比较原通用替换者 Bot／Task／修订 Map 和无关定义。三个固定独立字面稿为 `abc`、`hello`、空串，不含批准凭据；记录型外部进程真实读取三路 baseline 与各 text/handoff，最终保存只直接绑定 baseline 和三份 text，真实保存和 revision／完整目标读回不使用替身。严格 request 缺项／Markdown、缺显式 when_text 绑定均拒绝，不从邻居文件、自然语言或来源索引寻址。stdout 保留真实 Run、报告、baseline／saved／revision 及拒绝；所属通知 CLI 退出确认后才清理。
 
 这不证明模型遵从指引。P28 的共享三编写者创建 v1 消费／确认由更新的 `accept-workflow-nesting-create.py` 实际原生 workflow 场景覆盖，原非 v1 独立材料／通用替换与真实普通文件安全场景也保留；创建入口在独立／创建图／通用文件安全场景后，还实际组合调用修订入口既有 task-no-materials 业务场景，只有原格式三路消费与通用保存也成功才标 P28；可用 `accept-workflow-nesting-revise.py --cases task-no-materials`（或完整 all）独立复跑定位。两入口沿用本页授权模型、完整 Suite、独占依赖、动态回环、原生历史／HTTP／字节及进程退出要求；三编写者保持原宿主，脚本节点不虚构 Task、Chat 或模型 read。须实际执行对应场景；缺授权／依赖保留未验证，不转交 H1/H2，不以 CLI fail-closed 或定义相等补足行为证据。
 

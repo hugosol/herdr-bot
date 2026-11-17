@@ -559,7 +559,6 @@ def workflow(case, context):
             expected_bindings = {'baseline': actual['create_blank']['baseline']}
             for field in FIELDS:
                 expected_bindings[field + '_text'] = actual['optimize_' + field]['text']
-                expected_bindings[field + '_handoff'] = actual['optimize_' + field]['handoff']
         check(bindings == expected_bindings, ('Necessary consumer did not directly receive exact single baseline/text/handoff', node_id, bindings, expected_bindings))
         if history:
             for item in execution['inputs']:
@@ -593,14 +592,21 @@ def workflow(case, context):
     for field in FIELDS:
         value = record_bytes(case, actual['optimize_' + field]['text'], field + '-final-workflow')
         check(saved[field] == value, ('Workflow save differs from final approved source', field))
-        marker = 'P21-APPROVE-' + context['label'] + '-' + field
-        writer_handoff = verify_handoff(case, actual['write_' + field]['handoff'], [approved_fields[field]], baseline)
-        optimized_handoff = verify_handoff(case, actual['optimize_' + field]['handoff'], [value, approved_fields[field]], baseline)
-        check(marker in writer_handoff and marker in optimized_handoff, ('Workflow branch lost actual approval source/version', field))
+        for stage in ['write_', 'optimize_']:
+            handoff = json.loads(verify_handoff(case, actual[stage + field]['handoff'], [value, approved_fields[field]], baseline))
+            check(handoff.get('field') == field and handoff.get('bot_id') == context['id']
+                and handoff.get('target') == locator, ('Workflow branch lost execution data ownership', field, handoff))
+            check(not {'confirmation', 'authorization', 'approved', 'text_sha256', 'save_authorized'} & handoff.keys(),
+                ('V1 guide handoff retained approval credentials', field, handoff))
     verify_handoff(case, actual['create_blank']['handoff'], [], baseline)
     saved_handoff = verify_handoff(case, actual['save_bot']['handoff'], [saved[field] for field in FIELDS], baseline)
-    check(all('P21-APPROVE-' + context['label'] + '-' + field in saved_handoff for field in FIELDS),
-        'Final workflow handoff lost one or more branch confirmation sources')
+    handoff_value = json.loads(saved_handoff)
+    check(not {'confirmation_evidence', 'authorization', 'confirmation', 'approved'} & handoff_value.keys(),
+        'Final V1 handoff retained approval credentials')
+    check(handoff_value.get('checks') == {'bot_read_back': True, 'target_unchanged': True}
+        and handoff_value.get('sources') == [{'binding_id': identity, 'direction': 'input', 'role': role}
+            for identity, role in [('baseline', 'baseline'), *[(field + '_text', 'text') for field in FIELDS]]],
+        ('Final workflow handoff lost actual checks or named execution sources', handoff_value))
     evaluate_guides(case, context, approved_fields, {field: actual['optimize_' + field]['text'].read_text(encoding='utf-8') for field in FIELDS})
     verify_target(case, context)
     verify_protected_configuration(case, protected, context['id'])

@@ -4,7 +4,7 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。输入输出 ID 与创建流程材料保持不变；通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。V1 创建消费 request／可选 materials；V1 保存仅消费 baseline 与 when_text／plan_guide_text／node_guide_text，不消费三份指南 handoff 或人类批准凭据；各自输出 baseline 或 saved 及事实 handoff。完整协议见[共同业务材料](business-materials.md#创建分支-v1可校验表示与空白创建)。通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
 
 ### execution 与节点交接分别表达
 

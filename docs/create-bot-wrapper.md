@@ -4,7 +4,7 @@
 
 ## 创建分支表示的交付边界
 
-TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与原接线不变；纯正文不包装，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create-blank-bot.ts`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save-bot-guides.ts`，三指南严格为空）。两脚本节点均为 auto 报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
+TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/script-bots.schema.json)。request／materials、编写与优化的 baseline／text／handoff、最终 saved／handoff 保持原身份；最终保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项，不再传三份指南 handoff 或批准凭据。纯正文不包装，字段归属由固定命名绑定确定，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create-blank-bot.ts`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save-bot-guides.ts`，三指南严格为空）。两脚本节点均为 auto 报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
 
 删除范围仅原 Task `task-18e33fdc55177d1c-1`，不保留兼容别名，不保证该 Task 的旧来源恢复；不删除无关 Task、Chat 或 Run。原通用 replace-text Bot、Task 全部配置与修订 Map 保持原样，不按 Bot ID 全量替换消费者，也不建立 Map 私有 Bot。迁移前完整发布定义归档在 `fixtures/rust-create-migration/before.json`；这不是自动部署工具，用户服务与正式历史不受仓库更新影响。修订及独立非 v1 调用仍按原协议，无须补创建授权／digest。实际验证边界见末节。
 
@@ -14,7 +14,7 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 
 启动管理者时可暂不提供 request，用户可先在本次要求或管理者对话中说明委托、提供文件。管理者读取共同输入要求和已有材料，澄清语义与授权，必要时在获准范围内整理为 request 文件，以 `prepare_inputs` 全量绑定并确认后才能派发任何业务节点；确认时 request 必须齐全、可读且语义满足要求，不能以文件存在代替核实。嵌套子管理者同样先完成输入准备；父节点通过 `input_rule` 将已有 request／materials 以同名输入显式绑定，作为子 Run 的准备初值，并填写本调用的 `manager_task_id`、zone 和自包含业务 input；发起前通过公开接口核实所选 Task 真实存在且为 manager 类型、zone 真实可用，不默认继承父层配置。管理者配置不是 Bot 属性。父节点还应声明 `saved` 和 `handoff` 输出，要求子管理者在完成整个子 Run 后将 `save_bot` 的同名交付直接报告给父层；地址登记不是业务验收，父管理者仍须显式接受交接。Map 不声明不存在的全图输出接口。
 
-最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、确认／授权依据、三字段来源、保存和非目标保持结论及未验证项。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
+最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、共同 baseline 与三份正文来源、保存和非目标保持结论及未验证项，不携带批准凭据。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
 
 ## 执行与授权
 
@@ -26,11 +26,11 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 | `create_blank` | 「目标核实与基线生产」承接目标调查、空白创建与单份 baseline 交付 |
 | 三个 `write_*` | 「共同基线消费」「三个编写者与表达优化者」承接真实配置比较、所属全文编写确认与 text／handoff 交付 |
 | 三个 `optimize_*` | 「共同基线消费」「表达优化」承接真实配置比较、保义与有效确认，仅交付新 text／handoff |
-| `save_bot` | 「一次合法保存与失败核实」承接整批授权、精确基线比较、一次合法保存与完整读回及失败效果核实 |
+| `save_bot` | 「创建分支 v1」承接四项必需材料、精确基线比较、一次合法保存、完整读回及失败效果核实；不消费三份指南 handoff 或批准凭据 |
 
-固定创建与最终保存由两个编入后端的 Rust 能力执行，其间三个编写者和通用优化者仍是真实共享 Task；没有新增专属 Task。原通用替换 Task 继续服务修订和普通文件，不参与本图最终保存。稳定 ID 与格式边界见共同契约。通用表达优化者与保存者不默认携带 Bot 业务，故各自 node.input 必须显式提供适用章节、真实服务、字段、材料用途和权限；空白创建与三个编写者的 input 只选择本次分支、材料用途及文件交付。包装 Bot 指南供规划者选用、安排与准备业务输入，不注入执行 Chat，也不重抄执行流程或框架路由语法；父子交接由上节「调用接口」承接。
+固定创建与最终保存由两份用户可维护的 TypeScript 脚本经已有 Bun 执行，其间三个编写者和通用优化者仍是真实共享 Task；没有新增专属 Task。原通用替换 Task 继续服务修订和普通文件，不参与本图最终保存。稳定 ID 与格式边界见共同契约。通用表达优化者与保存者不默认携带 Bot 业务，故各自 node.input 必须显式提供适用章节、真实服务、字段、材料用途和权限；空白创建与三个编写者的 input 只选择本次分支、材料用途及文件交付。包装 Bot 指南供规划者选用、安排与准备业务输入，不注入执行 Chat，也不重抄执行流程或框架路由语法；父子交接由上节「调用接口」承接。
 
-材料写入、字段全文确认、最终 Bot 保存授权分别核实；报告发送依实际 report_policy 和注入角色执行，manual 时另获原生 UI 对本次 payload 的批准。业务确认与报告批准互不替代，流程到达或 can_complete 不授予保存权限。创建目标、业务试运行、安装工具或扩权均不在本能力范围；配置交付不证明工具／Skill／扩展加载、模型遵从或业务效果。
+材料写入边界和字段业务意图仍须明确；V1 脚本不再要求材料内的人类授权、全文批准 digest 或三份验权交接书。成果批准由通用执行机制持有，报告与显式 complete 分别成立；不能把批准事实或 can_complete 当作 baseline／revision／目标正确性证据。普通节点实际批准模式及依据由发布节点职责映射另行维护。创建目标、业务试运行、安装工具或扩权均不在本能力范围；配置交付不证明工具／Skill／扩展加载、模型遵从或业务效果。
 
 ## 创建 Task＋Bot 的选定外层入口
 
