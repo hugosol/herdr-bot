@@ -140,6 +140,8 @@ python scripts/accept-node-approval-handoff.py --herdr-bot-worktree "$HERDR_BOT_
 
 已明确授权某个只读 auth 文件时，可用既有 `python scripts/accept-workflow-codex.py --scenario node-approval-handoff --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`。先用同一命令加 `--smoke`、不同的新证据目录独立核对 `serverModel=gpt-6-luna`。该既有传输仅支持 canonical `gpt-6-luna`，这是传输／本次授权边界，不是产品模型限制；不复制、刷新或修改认证，不将凭据正文写入证据。业务阶段保留真实 SDK 原生调用决策与安装宿主执行；不声称两宿主直接使用 Codex wire。专项不把烟测通过当作业务四格通过。
 
+交接专项的模型身份检查仅将 `POST /chat/completions` 计为真实 completion，并在现有 30 秒请求预算内观察在途请求完成；其他流量原样保留并单独计数，不按 HTTP 状态筛除失败。真实 completion 的错误、缺失／错误模型身份及零 completion 均拒绝通过。离线边界回归为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py ModelIdentityBoundary`，不代表真实模型业务通过。
+
 专项独占 OMP／Pi × auto／manual 四个环境，以真实模型自行决定成果交接。业务先缺折扣，观察真实问题报告在未批准时保存；用户只补充25%折扣，不指定工具或顺序。独立字面预期为7件、单价1200分、实付6300分，核对实际 `quote.json`、命名输出、原生 approve 先于正常 report、真实批准回执与公开来源。人工模式观察完整原生问题、可见选中 Yes、UI 实际 true 返回及公开 manual 事实；自动模式无确认，来源为 auto。原生结束 Chat 等待用户提供发票抬头，没有节点批准／报告职责；其他工作完成后，真实 manager 显式 finish，结束 Chat 仍 running、未批准且无报告。随后51秒单调观察覆盖现有20秒确认＋30秒HTTP预算及1秒余量，不改变产品策略。
 
 每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。

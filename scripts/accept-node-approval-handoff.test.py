@@ -97,5 +97,47 @@ class HandoffCLI(unittest.TestCase):
             self.assertFalse((root / 'evidence').exists())
 
 
+class ModelIdentityBoundary(unittest.TestCase):
+    """Offline identity classification, not real-model business evidence."""
+
+    def identity(self, records):
+        from types import SimpleNamespace
+        from node_approval_handoff_acceptance import NodeApprovalHandoff
+        with tempfile.TemporaryDirectory(prefix='handoff-identity-') as directory:
+            config = Path(directory) / 'model.json'
+            config.write_text(json.dumps({'model': 'gpt-6-luna'}), encoding='utf-8')
+            run = NodeApprovalHandoff.__new__(NodeApprovalHandoff)
+            run.args = SimpleNamespace(model_config=config)
+            run.model_wire = SimpleNamespace(records=records)
+            run.evidence = {}
+            run.check_model_identity()
+            return run.evidence
+
+    def completion(self, **changes):
+        record = {'index': 0, 'method': 'POST', 'path': '/chat/completions', 'ended': 1,
+                  'status': 200, 'request': json.dumps({'model': 'gpt-6-luna'}),
+                  'response': json.dumps({'model': 'gpt-6-luna'})}
+        record.update(changes)
+        return record
+
+    def test_unrelated_get_is_not_a_completion_or_pending_model_work(self):
+        evidence = self.identity([self.completion(),
+            {'index': 1, 'method': 'GET', 'path': '/?probe=1', 'status': 501}])
+        self.assertEqual(evidence['nonCompletionTrafficCount'], 1)
+        self.assertEqual(evidence['modelIdentities'], [
+            {'request': 0, 'requested': 'gpt-6-luna', 'returned': ['gpt-6-luna']}])
+
+    def test_zero_completions_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, 'No actual model completion traffic'):
+            self.identity([{'method': 'GET', 'path': '/chat/completions', 'ended': 1}])
+
+    def test_actual_completion_failures_or_wrong_identity_are_not_filtered(self):
+        for changes in [{'status': 501}, {'error': 'actual transport error'},
+                        {'response': '{}'}, {'response': json.dumps({'model': 'other-model'})},
+                        {'request': '{}'}]:
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                self.identity([self.completion(**changes)])
+
+
 if __name__ == '__main__':
     unittest.main()

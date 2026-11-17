@@ -127,9 +127,16 @@ class NodeApprovalHandoff(NativeAcceptance):
 
     def check_model_identity(self):
         configured = json.loads(self.args.model_config.read_text(encoding='utf-8'))['model']
-        require(self.model_wire.records, 'No actual model traffic')
+        def completion(record):
+            return record.get('method') == 'POST' and record.get('path') == '/chat/completions'
+        # Native title generation may still be finishing; observe, never resend.
+        until('owned model requests finish within the existing request budget',
+            lambda: all(record.get('ended') for record in self.model_wire.records if completion(record)), 30)
+        records = [record for record in self.model_wire.records if completion(record)]
+        self.evidence['nonCompletionTrafficCount'] = len(self.model_wire.records) - len(records)
+        require(records, 'No actual model completion traffic')
         identities = []
-        for record in self.model_wire.records:
+        for record in records:
             require(record.get('ended') and record.get('status') == 200 and not record.get('error'), ('Actual model request failed; no retry', record))
             request = decode(record, 'request')
             require(request.get('model') == configured, ('Requested model differs from authorization', request.get('model')))
@@ -137,7 +144,7 @@ class NodeApprovalHandoff(NativeAcceptance):
             packets = [json.loads(raw)] if raw.lstrip().startswith('{') else [json.loads(line[5:].strip()) for line in raw.splitlines()
                 if line.startswith('data:') and line[5:].strip() not in ['', '[DONE]']]
             actual = sorted({packet['model'] for packet in packets if packet.get('model')})
-            require(actual, ('No actual returned model identity', record['index']))
+            require(actual == [configured], ('Actual returned model identity differs from authorization', record['index'], actual))
             identities.append({'request': record['index'], 'requested': configured, 'returned': actual})
         self.evidence['modelIdentities'] = identities
 
