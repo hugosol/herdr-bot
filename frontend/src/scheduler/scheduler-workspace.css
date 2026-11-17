@@ -61,7 +61,7 @@
 .scheduler-workspace .scheduler-graph-viewport { height: 300px; border: 0; border-radius: 0; background: var(--scheduler-ground); }
 .scheduler-workspace .scheduler-node { background: var(--scheduler-surface); border-color: var(--scheduler-line); }
 .scheduler-workspace .scheduler-node[aria-pressed="true"] { background: var(--nier-info-bg); border-color: var(--scheduler-accent); }
-.scheduler-workspace .scheduler-node[data-report-policy="manual"] { background: transparent; border-color: transparent; }
+.scheduler-workspace .scheduler-node[data-approval-mode="manual"] { background: transparent; border-color: transparent; }
 .scheduler-workspace .scheduler-reading { display: contents; }
 .scheduler-workspace .scheduler-outline { grid-column: 1; padding: 20px 16px; border: 0; }
 .scheduler-workspace .scheduler-section-heading h4 { font-size: 14px; }

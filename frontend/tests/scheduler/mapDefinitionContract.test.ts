@@ -41,8 +41,8 @@ describe('Map input preparation contract', () => {
 
 describe('node zone schema boundary', () => {
   it.each(['team/work', { type: 'dynamic' }])('loads and confirms the exact zone representation: %j', async zone => {
-    responseWith({ zone, report_policy: 'manual', auto_close: true })
-    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, report_policy: 'manual', auto_close: true })
+    responseWith({ zone, auto_approved: false, auto_close: true })
+    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, auto_approved: false, auto_close: true })
     expect((await saveNode('map.json', { ...draft, content: JSON.stringify({ ...node, zone }) })).nodes.B.zone).toEqual(zone)
     const request = vi.mocked(fetch).mock.calls[1][1]!
     expect(JSON.parse(JSON.parse(request.body as string).content).zone).toEqual(zone)

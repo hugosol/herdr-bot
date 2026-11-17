@@ -108,6 +108,14 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立批准前提；不在 report 或 dispatch 夹具中静默补批准。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
 
+### 成果批准 Map／Run 页面（S3）
+
+`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 的 `P1 P3 P5` 场景经真实打包页面保存并重开省略默认、显式自动与人工模式，独立 HTTP 读回定义。`P3 P36` 场景从真实公开发起／派发、Map 页面改模式、批准、fail／retry 到再次批准与报告／complete，分别检查当前定义、冻结模式、旧／新执行及 auto／manual 来源；HTTP 人工提交只证明页面显示保存来源，不冒充原生 Yes。每阶段保存截图、公开 Map／Run JSON 与外部调用前后记录；刷新与观察不产生业务调用。
+
+`scriptDefinitions.spec.ts` 保留脚本只能自动、冲突草稿拒绝后显式修正、保存冲突与草稿保护；`workflowScripts.spec.ts` 检查实际 Bun 文件业务在途／成功／失败的批准事实与报告；`endNode.spec.ts` 检查批准不适用、不伪造 approved 与无节点批准等待。既有报告、累计输出、执行历史、自动关闭和隔离回归保留有效职责，不再测试旧报告发送确认开关。浏览器后端的 HOME／APPDATA／XDG 与原生状态目录位于各例独占根，清理须等待所属进程退出。
+
+定向选择器为 `npm --prefix frontend run test:browser:build -- nodeSettings.spec.ts scriptDefinitions.spec.ts workflowScripts.spec.ts endNode.spec.ts --workers=1`。完成检查仍为完整后端、前端及浏览器三个入口；保留 Playwright test-results 证据。受控 Herdr 只证明外部协议与页面机制，没有原生模型业务或确认授权证明。
+
 ### 批准持久化、失败与执行隔离（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。

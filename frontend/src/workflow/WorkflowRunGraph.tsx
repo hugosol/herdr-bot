@@ -7,14 +7,14 @@ import './workflow-run-graph.css'
 type Edge = { source: string; target: string; path: string }
 type GraphGeometry = { width: number; height: number; edges: Edge[] }
 
-export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTargets, nodeBots, nodeReportPolicies, nodeEndNodes = {}, animateRunning }: {
+export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTargets, nodeBots, nodeApprovalModes, nodeEndNodes = {}, animateRunning }: {
   map: WorkflowMap
   selectedId: string | null
   onSelect: (id: string) => void
   nodeStates: Record<string, { status: string; label: string }>
   nodeTargets: Record<string, { label: string; name: string }>
   nodeBots: Record<string, string>
-  nodeReportPolicies: Record<string, 'auto' | 'manual'>
+  nodeApprovalModes: Record<string, 'auto' | 'manual'>
   nodeEndNodes?: Record<string, boolean>
   animateRunning: boolean
 }) {
@@ -84,8 +84,8 @@ export function WorkflowRunGraph({ map, selectedId, onSelect, nodeStates, nodeTa
           return <button key={id} type="button" className={`workflow-run-graph-node${selectedId === id ? ' is-selected' : ''}`}
             ref={element => { if (element) buttonsRef.current.set(id, element); else buttonsRef.current.delete(id) }}
             aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} data-node-id={id} data-node-state={status}
-            data-end-node={String(nodeEndNodes[id] ?? node.end_node ?? false)} data-report-policy={nodeEndNodes[id] ? undefined : nodeReportPolicies[id] ?? 'auto'} onClick={() => onSelect(id)}>
-            {!nodeEndNodes[id] && nodeReportPolicies[id] === 'manual' && <svg className="workflow-run-graph-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+            data-end-node={String(nodeEndNodes[id] ?? node.end_node ?? false)} data-approval-mode={nodeEndNodes[id] ? undefined : nodeApprovalModes[id] ?? 'auto'} onClick={() => onSelect(id)}>
+            {!nodeEndNodes[id] && nodeApprovalModes[id] === 'manual' && <svg className="workflow-run-graph-node-shape" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
               <polygon points="7,1 93,1 99,9 99,91 93,99 7,99 1,91 1,9" vectorEffect="non-scaling-stroke" />
             </svg>}
             <span className="workflow-run-graph-node-top"><code>{id}</code><WorkflowStatus status={status} saved={!animateRunning} animate={animateRunning} /></span>

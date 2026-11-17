@@ -41,6 +41,8 @@ async function scenario(page: Page) {
   const dispatched = await post('/api/workflow/manager/dispatch', { sessionId: 'isolation-manager', nodes: ['A'] })
   expect(dispatched.results[0].status).toBe('running')
   const declaration = await post('/api/workflow/node/report', { sessionId: 'isolation-node-A', body: '隔离场景工作已可交接；关闭行为待验收', canComplete: true })
+  const approvalContext = await post('/api/workflow/node/context', { sessionId: 'isolation-node-A' })
+  await post('/api/workflow/node/approve', { sessionId: 'isolation-node-A', executionId: approvalContext.executionId, source: 'auto' })
   const root = path.join(host.cwd, '.data/workflow-runs', started.id)
   const readRun = () => JSON.parse(fs.readFileSync(path.join(root, 'run.json'), 'utf8'))
   const complete = () => post('/api/workflow/manager/complete', { sessionId: 'isolation-manager', nodeId: 'A', reason: '已核实交接结果' })
