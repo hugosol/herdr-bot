@@ -260,7 +260,8 @@ async fn finished_child_without_current_output_cannot_reuse_previous_delivery() 
     assert_eq!(denied["code"], "output-missing");
     let calls = s.herdr.calls();
     let rejected = s.dispatch("missing-root", &["consumer","missing-map"]).await;
-    for id in ["consumer","missing-map"] {
+    for (index, id) in ["consumer","missing-map"].iter().enumerate() {
+        assert_eq!(rejected["results"][index]["status"], "rejected");
         assert_eq!(rejected["snapshot"]["nodes"][id]["status"], "pending");
         assert!(rejected["snapshot"]["nodes"][id]["execution"].is_null());
     }

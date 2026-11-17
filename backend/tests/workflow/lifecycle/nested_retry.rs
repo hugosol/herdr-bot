@@ -146,6 +146,7 @@ async fn interleaved_nested_reports_isolate_pending_completion_and_actual_consum
     assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Foreign and old outputs cannot fill current requirements"}), 409).await["code"], "output-missing");
     let calls = s.herdr.calls();
     let denied = s.dispatch("p30-root", &["missing"]).await;
+    assert_eq!(denied["results"][0]["status"], "rejected");
     assert_eq!(denied["snapshot"]["nodes"]["missing"]["status"], "pending");
     assert!(denied["snapshot"]["nodes"]["missing"]["execution"].is_null());
     assert_eq!(s.herdr.calls(), calls);
