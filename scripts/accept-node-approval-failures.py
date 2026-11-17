@@ -79,7 +79,7 @@ def main():
                         '--bin', 'herdr-fixture', '--bin', 'herdr-paths', '--example', 'safe_shutdown_shell']),
             (args.repo, ['node', 'scripts/test-backend.mjs']),
             (args.repo, ['npm', '--prefix', 'frontend', 'test']),
-            (args.repo, ['npm', '--prefix', 'frontend', 'run', 'test:browser:build', '--', '--workers=1']),
+            (args.repo, ['npm', '--prefix', 'frontend', 'run', 'test:browser:build']),
             (args.toolkit, [args.bun, 'run', 'typecheck']), (args.toolkit, [args.bun, 'run', 'test']),
             (args.toolkit, [args.bun, 'run', 'check:integrations']),
             (args.toolkit, [args.bun, 'test', 'tests/harness-dock/native-node-report.test.ts',
