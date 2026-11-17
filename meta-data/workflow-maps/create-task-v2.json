@@ -37,7 +37,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "manual",
+      "report_policy": "auto",
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
@@ -70,7 +70,7 @@
           "id": "request"
         }
       ],
-      "report_policy": "manual",
+      "report_policy": "auto",
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
