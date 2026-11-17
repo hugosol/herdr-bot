@@ -292,11 +292,9 @@ class PublishedV2Acceptance(NativeAcceptance):
         require(all(Path(value).resolve() == temporary.resolve() for value in inherited.values()), ('Native shell temporary environment escaped owned root', inherited))
         self.evidence['nativeTemporaryProbe'] = {'inheritedByShellChild': inherited, 'expectedDirectory': str(temporary),
             'scope': 'Actual selected shell child environment; no OS sandbox claim and no shared /tmp access'}
-        # Copy the current documentation/source, never normal-service definitions
-        # or user histories. Published business prompts and Suite remain intact.
-        repository = self.root / 'repository'
-        shutil.copytree(self.args.repo / 'docs', repository / 'docs')
-        shutil.copytree(self.args.repo / 'backend/src', repository / 'backend/src')
+        # Match the existing native planning runner: one read-only repository
+        # root for Task document references and scheduler.run_instructions.
+        repository = self.args.repo
         dictionary = {'herdr-bot-path': str(repository).replace('\\', '/'), 'herdr-bot-api-url': self.backend_wire.base}
         (self.root / 'prompts.local.toml').write_text(''.join(key + ' = ' + json.dumps(value) + '\n' for key, value in dictionary.items()), encoding='utf-8')
         for relative, field, value in [('extensions/connect-bot/config.yaml', 'endpoint', self.backend_wire.base),
@@ -747,12 +745,12 @@ class PublishedV2Acceptance(NativeAcceptance):
         delivery.mkdir()
         name = 'V2-CSV只读摘要-' + self.host
         self.target_name, self.delivery_directory = name, delivery
-        self.environment_scope = ('环境事实：只读文档与源码根为' + (self.root / 'repository').as_posix()
+        self.environment_scope = ('环境事实：只读文档与源码根为' + self.args.repo.as_posix()
             + '；只读Skill根为' + self.args.wayfinder.as_posix() + '及' + self.args.wayfinder_skills.as_posix()
             + '。唯一可写业务材料目录为' + delivery.as_posix() + '，唯一可写临时目录为' + (self.root / 'temp').as_posix()
             + '；禁止共享Temp、/tmp或其他目录中的发现式查找和写入，不读取其他Chat/Run或认证；不安装、刷新凭据或修改Skill/文档。'
             + '当前服务由本次配置提供；不得因猜出的相对路径失败而扫描其他目录。')
-        self.evidence['filesystemAuthority'] = {'readOnlyRepository': (self.root / 'repository').as_posix(),
+        self.evidence['filesystemAuthority'] = {'readOnlyRepository': self.args.repo.as_posix(),
             'readOnlySkills': [self.args.wayfinder.as_posix(), self.args.wayfinder_skills.as_posix()],
             'writableMaterials': delivery.as_posix(), 'writableTemporary': (self.root / 'temp').as_posix(),
             'temporaryEnvironment': {key: self.env[key] for key in ['TMP', 'TEMP', 'TMPDIR']},
