@@ -88,7 +88,7 @@ async fn historical_absolute_input_rules_remain_readable_without_binding_snapsho
     let mut run: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     run.as_object_mut().unwrap().remove("managerZoneId");
     run.as_object_mut().unwrap().remove("zoneBindings");
-    run["nodes"]["A"]["execution"] = json!({"id":"historical-execution","taskId":"historical-task","agent":"omp","zone":s.data.path(),"inputRule":[{"type":"file","id":"old","path":s.data.path().join("historical.txt")}],"outputRule":[],"inputs":[],"reportPolicy":"auto","autoClose":false,"chat":null});
+    run["nodes"]["A"]["execution"] = json!({"id":"historical-execution","taskId":"historical-task","agent":"omp","zone":s.data.path(),"inputRule":[{"type":"file","id":"old","path":s.data.path().join("historical.txt")}],"outputRule":[],"inputs":[],"autoApproved":true,"approved":false,"approvalSource":null,"autoClose":false,"chat":null});
     fs::write(path, serde_json::to_vec_pretty(&run).unwrap()).unwrap();
     let response = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", started["id"].as_str().unwrap())).await;
     assert_eq!(response.status, 200, "{}", response.body);

@@ -58,7 +58,7 @@ async function setup(page: Page, a = false, b = true) {
   fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   const mapRoot = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(mapRoot, { recursive: true })
-  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', zone: 'test/zone', blocked_by: [] }
+  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', output_rule: [], zone: 'test/zone', blocked_by: [] }
   fs.writeFileSync(path.join(mapRoot, 'lifecycle.json'), JSON.stringify({ title: 'Lifecycle', description: 'Isolated auto-close lifecycle', nodes: { A: { ...node, auto_close: a }, B: { ...node, auto_close: b } } }))
   host(manager, zone)
   const started = await post(page, '/api/scheduler/maps/lifecycle.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: 'LIFECYCLE-MANAGER-INPUT' }, 201)
