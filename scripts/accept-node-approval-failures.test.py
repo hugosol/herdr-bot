@@ -4,6 +4,7 @@ Approved seam: the executable acceptance entry. Ticket 11 requires both hosts
 and all four outcomes; a missing dependency must not certify an empty matrix.
 """
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -138,6 +139,76 @@ class FailureAcceptanceCLI(unittest.TestCase):
             self.assertIn('authorized', report['error'].lower())
             self.assertEqual(report['nativeExits'], {})
             self.assertFalse(report['passed'])
+
+
+class NoUIRecoveryRegistry(unittest.TestCase):
+    """Actual installed Pi, literal local providers only; no external auth/model."""
+
+    def scene(self, root):
+        from node_approval_failures_acceptance import ApprovalFailuresAcceptance
+        run = ApprovalFailuresAcceptance.__new__(ApprovalFailuresAcceptance)
+        run.root = root
+        run.provider_model = 'owned-provider/gpt-6-luna'
+        (root / 'agent').mkdir()
+        return run
+
+    def registry(self, base):
+        return {'providers': {'owned-provider': {'baseUrl': base, 'api': 'openai-completions',
+            'apiKey': 'owned-offline-only', 'models': [{'id': 'gpt-6-luna', 'name': 'Literal offline model',
+                'reasoning': False, 'input': ['text'], 'contextWindow': 128000, 'maxTokens': 8192,
+                'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}]}}}
+
+    def test_native_resume_returns_to_original_provider_without_rewriting_session(self):
+        from acceptance.host.completion_transport import NativeCompletionTransport
+        package = Path(os.environ['WORKFLOW_PI_PACKAGE']).resolve()
+        node = os.environ.get('PI_NODE', 'node')
+        with tempfile.TemporaryDirectory(prefix='approval-native-registry-') as directory:
+            root = Path(directory)
+            run = self.scene(root)
+            reached = []
+
+            def decision(label):
+                def complete(request):
+                    reached.append((label, request['model']))
+                    return {'content': label, 'tool_calls': [],
+                        'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2}}
+                return complete
+
+            with NativeCompletionTransport(decision('authorized-restored'), root / 'actual') as actual:
+                original = json.dumps(self.registry(actual.base), indent=2).encode()
+                for name in ['models.json', 'models.yml']:
+                    (root / 'agent' / name).write_bytes(original)
+                env = dict(os.environ, PI_CODING_AGENT_DIR=str(root / 'agent'), HOME=str(root / 'home'),
+                    USERPROFILE=str(root / 'home'), APPDATA=str(root / 'appdata'),
+                    LOCALAPPDATA=str(root / 'localappdata'), XDG_CONFIG_HOME=str(root / 'config'))
+                argv = [node, str(package / 'dist/bundle/cli.js'), '--mode', 'json', '--print',
+                    '--no-extensions', '--no-mcp']
+                with NativeCompletionTransport(decision('mechanical-only'), root / 'mechanical') as mechanical:
+                    with run.no_ui_model(mechanical.base):
+                        first = subprocess.run(argv + ['--model', run.provider_model, 'Reply once.'],
+                            cwd=root, env=env, capture_output=True, text=True, encoding='utf-8', timeout=30)
+                        self.assertEqual(first.returncode, 0, first.stderr)
+                        self.assertIn('mechanical-only', first.stdout)
+                self.assertEqual((root / 'agent/models.json').read_bytes(), original)
+                session, = (root / 'agent').rglob('*.jsonl')
+                second = subprocess.run(argv + ['--session', str(session), 'Reply once after resume.'],
+                    cwd=root, env=env, capture_output=True, text=True, encoding='utf-8', timeout=30)
+                self.assertEqual(second.returncode, 0, second.stderr)
+                self.assertIn('authorized-restored', second.stdout)
+                self.assertEqual(reached, [('mechanical-only', 'gpt-6-luna'), ('authorized-restored', 'gpt-6-luna')])
+
+    def test_failed_headless_scope_restores_exact_registry_bytes(self):
+        with tempfile.TemporaryDirectory(prefix='approval-native-registry-error-') as directory:
+            root = Path(directory)
+            run = self.scene(root)
+            original = json.dumps(self.registry('http://127.0.0.1:49199/v1'), indent=2).encode()
+            paths = [root / 'agent' / name for name in ['models.json', 'models.yml']]
+            for path in paths:
+                path.write_bytes(original)
+            with self.assertRaisesRegex(RuntimeError, 'original native error'):
+                with run.no_ui_model('http://127.0.0.1:49200/v1'):
+                    raise RuntimeError('original native error')
+            self.assertTrue(all(path.read_bytes() == original for path in paths))
 
 
 class ModelIdentityBoundary(unittest.TestCase):
