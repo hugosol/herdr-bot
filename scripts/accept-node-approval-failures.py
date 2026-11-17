@@ -5,6 +5,7 @@ no controlled output is claimed as a real model's business decision. Native UI,
 sessions, tools, material edits, reports and backend executions remain real.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import hashlib
 import json
@@ -97,13 +98,22 @@ def main():
         from node_approval_failures_acceptance import ApprovalFailuresAcceptance
         evidence['nativeSources'] = {name: source_identity(root, lock, args.evidence_dir)
             for name, root, lock in [('herdr-bot', args.repo, 'backend/Cargo.lock'), ('toolkit', args.toolkit, 'bun.lock')]}
-        for host in args.hosts.split(','):
-            for condition in CONDITIONS:
-                scenario_args = copy.copy(args)
-                scenario_args.host, scenario_args.condition = host, condition
-                scenario_args.evidence_dir = args.evidence_dir / condition
-                run = ApprovalFailuresAcceptance(scenario_args)
-                status = run.run()
+        cases = [(host, condition) for host in args.hosts.split(',') for condition in CONDITIONS]
+        workers = min(len(cases), os.cpu_count() or 1)
+        evidence['nativeWorkers'] = workers
+
+        def exercise(case):
+            host, condition = case
+            scenario_args = copy.copy(args)
+            scenario_args.host, scenario_args.condition = host, condition
+            scenario_args.evidence_dir = args.evidence_dir / condition
+            run = ApprovalFailuresAcceptance(scenario_args)
+            return host, condition, run, run.run()
+
+        # Every case owns its backend, Herdr, native sessions and evidence root.
+        # Aggregate only on the calling thread; never share scenario state.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for host, condition, run, status in pool.map(exercise, cases):
                 evidence['nativeExits'][host + '/' + condition] = status
                 evidence['coverage'][host][condition].update(run.evidence['coverage'], exit=status,
                     evidence=str(run.root / 'evidence.json'))

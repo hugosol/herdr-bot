@@ -142,7 +142,7 @@ python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT
 
 路径均为显式绝对路径，证据目录必须不存在。使用本 worktree 生产后端及旁置的 `herdr-paths`、`herdr-fixture`、`examples/safe_shutdown_shell.exe`，本次页面及独立绝对 `CARGO_TARGET_DIR`；两仓预装 frozen-lock 依赖和 Bun 1.4.4。paths 声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`，不能指向用户会话数据。本专项机械路径可显式提供非秘密模型 JSON `{"mode":"controlled-native-failures"}`：受控 provider 仅提供工具指令，真实安装宿主执行原生确认、文件写入及报告；不要求外部模型凭据，也不声称真实模型选择。若使用真实模型，JSON 沿用 `provider/model/baseUrl/apiKeyEnv` 格式，只从显式授权变量读取凭据，不发现或刷新认证，实际请求及返回身份须匹配声明模型。不安装宿主、不回退模型、不重试业务决定。
 
-`node_approval_failures_acceptance.py` 每个宿主／No、Esc、真实 20 秒超时、无 UI 各建独占定义、Run、原生 Chat、HOME／APPDATA／XDG、Herdr、数值回环服务与材料。实际原生确认透传观察固定成果问题、选中值、真实返回或异常；按键成功不是批准。非 Yes 后核对实际工具反馈、公开 `approved=false`／`running`，随后连续观察原生调用、确认请求、HTTP 和公开事实 61 秒：超过既有 20 秒确认＋30 秒请求以及 10 秒在线＋30 秒保留＋5 秒扫描上界，记录单调时钟、每次样本与实际持续时间，不修改产品预算。
+原生矩阵按本机 CPU 数与所选场景数中的较小值并行，记录实际 worker 数；每例独占资源，聚合证据仅在主线程写入。`node_approval_failures_acceptance.py` 每个宿主／No、Esc、真实 20 秒超时、无 UI 各建独占定义、Run、原生 Chat、HOME／APPDATA／XDG、Herdr、数值回环服务与材料。实际原生确认透传观察固定成果问题、选中值、真实返回或异常；按键成功不是批准。非 Yes 后核对实际工具反馈、公开 `approved=false`／`running`，随后连续观察原生调用、确认请求、HTTP 和公开事实 61 秒：超过既有 20 秒确认＋30 秒请求以及 10 秒在线＋30 秒保留＋5 秒扫描上界，记录单调时钟、每次样本与实际持续时间，不修改产品预算。
 
 窗口结束后由新的显式用户输入要求原生宿主实际改写 `material.txt`、自由发送进度报告并从公开 Run 完整读回；此时仍未批准。再由另一条独立用户请求打开新确认并实际选择 Yes，核对批准成功、node 仍 running、报告不被改写。没有旧 report 发送审批预期，不把重新批准变成报告前提。
 
