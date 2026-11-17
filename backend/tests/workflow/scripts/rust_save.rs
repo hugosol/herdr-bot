@@ -16,7 +16,7 @@ async fn setup(s: &Scenario) -> Value {
     let edit = edit(s).await;
     let bot: Value = serde_json::from_str(edit["revision"]["original"].as_str().unwrap()).unwrap();
     let locator = json!({"type":"task","task_id":task["id"]});
-    let baseline = json!({"schema_version":1,"kind":"baseline","bot":bot,"revision":edit["revision"],"target":{"type":"task","task_id":task["id"],"configuration":task},"request":{"schema_version":1,"kind":"request","target":locator,"bot":{"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated"},"requirements":"只读审阅","constraints":["不执行目标"],"non_goals":["修复文件"],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"evidence":"User message 7 authorizes blank creation","scope":"create_blank"}}});
+    let baseline = json!({"schema_version":1,"kind":"baseline","bot":bot,"revision":edit["revision"],"target":{"type":"task","task_id":task["id"],"configuration":task},"request":{"schema_version":1,"kind":"request","target":locator,"bot":{"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated"},"requirements":"只读审阅","constraints":["不执行目标"],"non_goals":["修复文件"],"resource_limits":[]}});
     fs::write(s.data.path().join("baseline.json"), baseline.to_string()).unwrap();
     for (index, field) in FIELDS.iter().enumerate() {
         fs::write(s.data.path().join(format!("{field}_text")), TEXTS[index]).unwrap();
@@ -268,7 +268,7 @@ async fn rust_save_write_and_complete_readback_failures_preserve_actual_effects(
 
 // P24/P25/P33: a real Map target retains its complete nodes and rules. A Map
 // currently executing in a real Run is protected, not a synthetic flag. Empty
-// text and baseline-level save authorization are legal independent branches.
+// text remains legal with a credential-free request in the common baseline.
 #[tokio::test]
 async fn rust_save_map_target_keeps_complete_configuration_and_refuses_active_definition() {
     for protected in [false, true] {
@@ -292,10 +292,9 @@ async fn rust_save_map_target_keeps_complete_configuration_and_refuses_active_de
         baseline["revision"] = before["revision"].clone();
         baseline["target"] = json!({"type":"map","map_file":map_file,"configuration":map});
         baseline["request"]["target"] = json!({"type":"map","map_file":map_file});
-        baseline["request"]["authorization"]["save_guides"] = json!(true);
         fs::write(s.data.path().join("baseline.json"), baseline.to_string()).unwrap();
         for field in FIELDS {
-            rewrite(&s, &format!("{field}_handoff"), |v| { v["target"] = json!({"type":"map","map_file":map_file}); v["confirmation"]["save_authorized"] = json!(false); });
+            rewrite(&s, &format!("{field}_handoff"), |v| { v["target"] = json!({"type":"map","map_file":map_file}); });
         }
         fs::write(s.data.path().join("node_guide_text"), "").unwrap();
         rewrite(&s, "node_guide_handoff", |v| v["confirmation"]["text_sha256"] = json!("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));

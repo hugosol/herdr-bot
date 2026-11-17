@@ -10,8 +10,6 @@ export interface Request {
   schema_version: number; kind: string; target: Target;
   bot?: { id?: string; name?: string; group?: string };
   requirements: string; constraints: string[]; non_goals: string[]; resource_limits: string[];
-  authorization: { create_blank: boolean; write_materials: boolean; save_guides: boolean };
-  confirmation: { evidence: string; scope: string };
 }
 export interface Guide {
   schema_version: number; kind: string; stage: string; bot_id: string; target: Target; field: string;
@@ -75,21 +73,16 @@ export function locator(input: unknown): Target {
   return value as unknown as Target;
 }
 export function request(input: unknown): Request {
-  const value = object(input, ["schema_version", "kind", "target", "requirements", "constraints", "non_goals", "resource_limits", "authorization", "confirmation"], ["bot"]);
+  const value = object(input, ["schema_version", "kind", "target", "requirements", "constraints", "non_goals", "resource_limits"], ["bot"]);
   version(value.schema_version); string(value.kind); string(value.requirements);
   const collections = [value.constraints, value.non_goals, value.resource_limits].map(items => { strings(items); return items; });
-  const auth = object(value.authorization, ["create_blank", "write_materials", "save_guides"]);
-  Object.values(auth).forEach(boolean);
-  const confirmation = object(value.confirmation, ["evidence", "scope"]);
-  Object.values(confirmation).forEach(string);
   if (Object.hasOwn(value, "bot")) {
     const identity = object(value.bot, [], ["id", "name", "group"]);
     Object.values(identity).forEach(string);
     if (identity.group !== undefined) string(identity.group);
     if (["id", "name"].some(key => identity[key] === "") || (identity.group !== undefined && (!identity.group || identity.group.trim() !== identity.group))) fail("validate", "invalid-format", "Bot 身份或分组无效。");
   }
-  if (value.schema_version !== 1 || value.kind !== "request" || confirmation.scope !== "create_blank" || !value.requirements || !confirmation.evidence || collections.some(items => items.some(item => !item))) fail("validate", "invalid-format", "创建 request 格式或明确确认无效。");
-  if (!auth.create_blank || !auth.write_materials) fail("validate", "authorization-required", "创建与写材料需要明确授权。");
+  if (value.schema_version !== 1 || value.kind !== "request" || !value.requirements || collections.some(items => items.some(item => !item))) fail("validate", "invalid-format", "创建 request 格式无效。");
   locator(value.target);
   return value as unknown as Request;
 }
