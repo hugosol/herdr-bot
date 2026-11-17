@@ -40,7 +40,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": false,
       "zone": "hugosol/herdr-bot",
       "blocked_by": []
@@ -77,7 +77,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -116,7 +116,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -155,7 +155,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -200,7 +200,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": false,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -229,7 +229,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -256,7 +256,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [
@@ -283,7 +283,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": true,
       "zone": "hugosol/herdr-bot",
       "blocked_by": [

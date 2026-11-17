@@ -37,10 +37,10 @@ test('end-node edits round-trip and dispatch hands an open Chat to the user with
   await post(page, '/api/scheduler/bots/save', { id: 'end-worker', revision: null, content: JSON.stringify({ name: 'End worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })
   const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
-  const common = { bot_id: 'end-worker', input: 'Preserve business input', zone: 'end/zone', blocked_by: [] }
+  const common = { output_rule: [], bot_id: 'end-worker', input: 'Preserve business input', zone: 'end/zone', blocked_by: [] }
   fs.writeFileSync(path.join(maps, 'end-node.json'), JSON.stringify({ title: 'End node handoff', description: '', nodes: {
     A: { ...common, title: 'Other work' },
-    Z: { ...common, title: 'User conversation', report_policy: 'manual', auto_close: true, input_rule: [{ id: 'business', type: 'file', zone_id: 'end/zone', path: 'business.txt' }] },
+    Z: { ...common, title: 'User conversation', auto_approved: false, auto_close: true, input_rule: [{ id: 'business', type: 'file', zone_id: 'end/zone', path: 'business.txt' }] },
   } }))
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
@@ -51,17 +51,17 @@ test('end-node edits round-trip and dispatch hands an open Chat to the user with
   await expect(end).toBeEnabled()
   await end.check()
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('radio', { name: 'manual', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('radio', { name: '手动批准（false）', exact: true })).toHaveCount(0)
   await screenshot(page, info, 'end-node-settings')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const saved = await (await page.request.get(`${server.baseURL}/api/scheduler/maps/end-node.json`)).json()
-  expect(saved.nodes.Z).toMatchObject({ end_node: true, report_policy: 'manual', auto_close: true, input: 'Preserve business input' })
+  expect(saved.nodes.Z).toMatchObject({ end_node: true, auto_approved: false, auto_close: true, input: 'Preserve business input' })
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(end).toBeChecked()
   await end.uncheck()
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).toBeChecked()
-  await expect(page.getByRole('radio', { name: 'manual', exact: true })).toBeChecked()
+  await expect(page.getByRole('radio', { name: '手动批准（false）', exact: true })).toBeChecked()
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
 
   server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: manager }, native_cwd: zone })
@@ -73,13 +73,16 @@ test('end-node edits round-trip and dispatch hands an open Chat to the user with
   server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'end-node-other' }, native_cwd: zone })
   await post(page, '/api/workflow/manager/dispatch', { sessionId: manager, nodes: ['A'] })
   await post(page, '/api/workflow/node/report', { sessionId: 'end-node-other', body: 'Other work ready', canComplete: true })
+  const approval = await post(page, '/api/workflow/node/context', { sessionId: 'end-node-other' })
+  expect(approval).toMatchObject({ autoApproved: true, approved: false, approvalSource: null })
+  await post(page, '/api/workflow/node/approve', { sessionId: 'end-node-other', executionId: approval.executionId, source: 'auto' })
   await post(page, '/api/workflow/manager/complete', { sessionId: manager, nodeId: 'A', reason: 'Other work accepted' })
   server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'end-node-chat' }, native_cwd: zone })
   const dispatched = await post(page, '/api/workflow/manager/dispatch', { sessionId: manager, nodes: ['Z'] })
   expect(dispatched.results[0].status).toBe('running')
   const launched = await read(page, started.id)
   expect(launched.run.status).toBe('running')
-  expect(launched.run.nodes.Z).toMatchObject({ status: 'running', completion: null, execution: { endNode: true, autoClose: false, chat: { sessionId: 'end-node-chat' }, inputs: [{ id: 'business', path: path.join(zone, 'business.txt') }] } })
+  expect(launched.run.nodes.Z).toMatchObject({ status: 'running', completion: null, execution: { endNode: true, autoApproved: false, approved: false, approvalSource: null, autoClose: false, chat: { sessionId: 'end-node-chat' }, inputs: [{ id: 'business', path: path.join(zone, 'business.txt') }] } })
   expect(launched.reports.filter((report: { nodeId: string }) => report.nodeId === 'Z')).toEqual([])
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
   await graph.locator('[data-node-id="Z"]').click()

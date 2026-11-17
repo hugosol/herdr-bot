@@ -61,7 +61,7 @@
 .workflow-run-graph-edge { fill: none; stroke: currentColor; stroke-width: 1; pointer-events: stroke; }
 .workflow-run-graph-empty { position: relative; margin: 0; color: var(--nier-description); font-size: 12px; }
 /* The SVG is decoration only: the native button outline stays unclipped. */
-.workflow-run-graph-node[data-report-policy="manual"] {
+.workflow-run-graph-node[data-auto-approved="false"] {
   position: relative;
   isolation: isolate;
   border-color: transparent;
@@ -86,7 +86,7 @@
 @media (forced-colors: active) {
   .workflow-run-graph-node { border-color: CanvasText; background: Canvas; color: CanvasText; }
   .workflow-run-graph-node.is-selected { outline-color: Highlight; }
-  .workflow-run-graph-node[data-report-policy="manual"] { border-color: transparent; background: transparent; }
+  .workflow-run-graph-node[data-auto-approved="false"] { border-color: transparent; background: transparent; }
   .workflow-run-graph-node .workflow-run-graph-node-shape polygon { fill: Canvas; stroke: CanvasText; }
   .workflow-run-graph-edge { stroke: CanvasText; }
   .workflow-run-graph-edges { color: CanvasText; }

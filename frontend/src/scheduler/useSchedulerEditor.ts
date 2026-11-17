@@ -7,7 +7,7 @@ type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string; file: string | null; settings: NodeSettingsValue | null; initialSettings: NodeSettingsValue | null }
-const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || (typeof draft.settings?.zone === 'string' || typeof draft.initialSettings?.zone === 'string' ? draft.settings?.zone !== draft.initialSettings?.zone : draft.settings?.zone?.type !== draft.initialSettings?.zone?.type) || draft.settings?.report_policy !== draft.initialSettings?.report_policy || draft.settings?.auto_close !== draft.initialSettings?.auto_close
+const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || (typeof draft.settings?.zone === 'string' || typeof draft.initialSettings?.zone === 'string' ? draft.settings?.zone !== draft.initialSettings?.zone : draft.settings?.zone?.type !== draft.initialSettings?.zone?.type) || draft.settings?.auto_approved !== draft.initialSettings?.auto_approved || draft.settings?.auto_close !== draft.initialSettings?.auto_close || draft.settings?.end_node !== draft.initialSettings?.end_node
 type State = { listing: Listing; bots: Bots; file: string | null; preview: Preview | null; selectedId: string | null; botId: string | null; draft: Draft | null; editingBusy: boolean; editError: string | null; returnProblem: string | null; deleteMapTarget: string | null; deletingMap: boolean; deleteMapError: string | null }
 const message = (error: unknown) => error instanceof Error ? error.message : '读取或修改失败。'
 
@@ -130,8 +130,8 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       let content = loaded.content
       let settings: NodeSettingsValue | null = null
       if (kind === 'node') {
-        const { zone, report_policy = 'auto', auto_close = false, end_node, node_id: _nodeId, ...definition } = JSON.parse(content)
-        settings = { zone, report_policy, auto_close, ...(end_node === undefined ? {} : { end_node }) }
+        const { zone, auto_approved = true, auto_close = false, end_node, node_id: _nodeId, ...definition } = JSON.parse(content)
+        settings = { zone, auto_approved, auto_close, ...(end_node === undefined ? {} : { end_node }) }
         content = JSON.stringify(definition, null, 2)
       }
       update({ draft: { ...loaded, content, kind, create: id === null, initialId: loaded.id, initialContent: content, file, settings, initialSettings: settings } })
@@ -151,7 +151,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
       let content = draft.content
       if (draft.kind === 'node') {
         if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('node 内容 JSON 必须是对象。')
-        for (const field of ['node_id', 'zone', 'report_policy', 'auto_close', 'end_node']) {
+        for (const field of ['node_id', 'zone', 'auto_approved', 'auto_close', 'end_node']) {
           if (Object.hasOwn(value, field)) throw new Error(`请移除 node 内容 JSON 中的顶层 ${field}；使用独立控件。`)
         }
         content = JSON.stringify({ ...value, ...draft.settings })

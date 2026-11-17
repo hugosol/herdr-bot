@@ -19,6 +19,13 @@ pub(super) async fn save_node(s: &Scenario, id: &str, inputs: Value, blocked_by:
     assert_eq!(saved.status, 200, "{}", saved.body);
 }
 
+pub(super) fn output_contract(s: &Scenario, node: &str, ids: &[&str]) {
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    map["nodes"][node]["output_rule"] = json!(ids.iter().map(|id| json!({"id":id})).collect::<Vec<_>>());
+    fs::write(path, map.to_string()).unwrap();
+}
+
 pub(super) fn identity(s: &Scenario, session: &str) {
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":session},"native_cwd":s.data.path().join("node-zone")}));
 }
@@ -54,6 +61,8 @@ pub(super) fn named_input(text: &str) -> &str {
 #[tokio::test]
 async fn saved_named_inputs_resolve_per_run_and_accumulate_report_deltas() {
     let s = Scenario::new().await;
+    output_contract(&s, "A", &["A", "B"]);
+    output_contract(&s, "B", &["A", "B"]);
     let business = materials(&["old-a.csv", "old-b.csv", "run-one-a1.csv", "run-one-b1.csv", "run-two-a.csv", "run-two-b.csv", "run-one-a2.csv", "late-old-a.csv", "late-old-b.csv", "wrong-node-a.csv", "wrong-node-b.csv"]);
     save_node(&s, "C", json!([{"id":"primary","type":"node","node_id":"A","output_id":"A"}, {"id":"retained","type":"node","node_id":"A","output_id":"B"}]), json!(["A","B"])).await;
     let first = s.start("resolve-manager-one").await;
@@ -78,10 +87,12 @@ async fn saved_named_inputs_resolve_per_run_and_accumulate_report_deltas() {
         ("resolve-manager-one", &first, "resolve-ready-one", format!("primary: {}\nretained: {}\n", business.path().join("run-one-a2.csv").display(), business.path().join("run-one-b1.csv").display()), vec![old_report["report"].clone(), first_report["report"].clone(), update["report"].clone(), omitted["report"].clone(), late_old["report"].clone()]),
         ("resolve-manager-two", &second, "resolve-ready-two", format!("primary: {}\nretained: {}\n", business.path().join("run-two-a.csv").display(), business.path().join("run-two-b.csv").display()), vec![other_report["report"].clone()]),
     ] {
+        approve_execution(&s, if manager == "resolve-manager-one" {"resolve-source-one"} else {"resolve-source-two"}).await;
         action(&s, "complete", manager, "A").await;
         identity(&s, source);
         s.dispatch(manager, &["B"]).await;
         report(&s, source, Some(json!([{"id":"A","path":business.path().join("wrong-node-a.csv")}, {"id":"B","path":business.path().join("wrong-node-b.csv")}]))).await;
+        approve_execution(&s, source).await;
         let completed = action(&s, "complete", manager, "B").await;
         assert_eq!(completed["snapshot"]["nodes"]["C"]["status"], "pending");
         identity(&s, &format!("{source}-consumer"));
@@ -122,6 +133,8 @@ async fn saved_named_inputs_resolve_per_run_and_accumulate_report_deltas() {
 #[tokio::test]
 async fn retry_never_falls_back_and_missing_outputs_fail_before_host_start() {
     let s = Scenario::new().await;
+    output_contract(&s, "A", &["A", "B"]);
+    output_contract(&s, "B", &[]);
     let business = materials(&["old-a.csv", "old-b.csv", "new-a.csv", "late-old-a.csv", "late-old-b.csv"]);
     let inputs = json!([{"id":"primary","type":"node","node_id":"A","output_id":"A"}, {"id":"retained","type":"node","node_id":"A","output_id":"B"}]);
     save_node(&s, "B", inputs.clone(), json!([])).await;
@@ -135,6 +148,7 @@ async fn retry_never_falls_back_and_missing_outputs_fail_before_host_start() {
     let before = initial_input(&s);
     assert_eq!(named_input(&before), format!("primary: {}\nretained: {}\n", business.path().join("old-a.csv").display(), business.path().join("old-b.csv").display()));
     report(&s, "retry-input-before", None).await;
+    approve_execution(&s, "retry-input-before").await;
     action(&s, "complete", "retry-input-manager", "B").await;
     action(&s, "fail", "retry-input-manager", "A").await;
     identity(&s, "retry-input-new");
@@ -146,18 +160,20 @@ async fn retry_never_falls_back_and_missing_outputs_fail_before_host_start() {
     assert_eq!(new_report["report"]["executionId"], current["id"]);
     assert_eq!(late["report"]["executionId"], old["id"]);
     let calls = s.herdr.calls();
-    let completed = action(&s, "complete", "retry-input-manager", "A").await;
-    assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
-    assert_eq!(completed["snapshot"]["nodes"]["C"]["status"], "pending");
-    assert_eq!(completed["ready"], json!(["C"]));
+    approve_execution(&s, "retry-input-new").await;
+    let denied = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"retry-input-manager","nodeId":"A","reason":"Old outputs cannot satisfy current execution"}).to_string()).await;
+    assert_eq!(denied.status, 409, "{}", denied.body);
+    let denied: Value = serde_json::from_str(&denied.body).unwrap();
+    assert_eq!(denied["code"], "output-missing");
+    assert_eq!(denied["snapshot"]["nodes"]["A"]["status"], "running");
+    assert_eq!(denied["snapshot"]["nodes"]["C"]["status"], "pending");
+    assert_eq!(denied["ready"], json!([]));
     assert_eq!(s.herdr.calls(), calls, "no implicit downstream launch");
     identity(&s, "retry-input-after");
     let launched = s.dispatch("retry-input-manager", &["C"]).await;
-    assert_eq!(launched["results"][0]["status"], "failed");
-    assert_eq!(launched["snapshot"]["nodes"]["C"]["failure"]["stage"], "resolve");
-    let failed = &launched["snapshot"]["nodes"]["C"]["execution"];
-    assert_eq!(failed["inputRule"].as_array().unwrap().len(), 2);
-    assert_eq!(failed["inputs"], json!([]));
+    assert_eq!(launched["results"][0]["status"], "rejected");
+    assert_eq!(launched["snapshot"]["nodes"]["C"]["status"], "pending");
+    assert!(launched["snapshot"]["nodes"]["C"]["execution"].is_null());
     assert_eq!(s.herdr.calls(), calls, "missing current output must fail before any host operation");
     let map = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
     let map: Value = serde_json::from_str(&map.body).unwrap();
@@ -176,6 +192,7 @@ async fn retry_never_falls_back_and_missing_outputs_fail_before_host_start() {
 #[tokio::test]
 async fn downstream_resolves_saved_outputs_while_notification_is_pending_and_then_fails() {
     let s = Scenario::new().await;
+    output_contract(&s, "A", &["result"]);
     let business = materials(&["saved-before-failure.csv"]);
     save_node(&s, "B", json!([{"id":"available","type":"node","node_id":"A","output_id":"result"}]), json!(["A"])).await;
     let run = s.start("notify-input-manager").await;
@@ -193,6 +210,7 @@ async fn downstream_resolves_saved_outputs_while_notification_is_pending_and_the
     let root = s.config.scheduler.run_directory.join(run["id"].as_str().unwrap());
     let persisted = common::read_json_lines(&root.join("messages.jsonl"));
     assert_eq!(persisted.len(), 1);
+    approve_execution(&s, "notify-input-source").await;
     let completed = action(&s, "complete", "notify-input-manager", "A").await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
     assert_eq!(completed["snapshot"]["nodes"]["B"]["status"], "pending");
@@ -230,6 +248,8 @@ async fn downstream_resolves_saved_outputs_while_notification_is_pending_and_the
 #[tokio::test]
 async fn shared_consumers_and_business_summary_receive_original_external_addresses_only() {
     let s = Scenario::new().await;
+    output_contract(&s, "A", &["shared"]);
+    output_contract(&s, "B", &["summary"]);
     let business = TempDir::new("external business products");
     let shared = business.path().join("shared.bin");
     let summary = business.path().join("business-summary.csv");
@@ -245,6 +265,7 @@ async fn shared_consumers_and_business_summary_receive_original_external_address
     let producer = s.dispatch("shared-input-manager", &["A"]).await;
     assert_eq!(producer["snapshot"]["nodes"]["A"]["execution"]["chat"]["sessionId"], "shared-input-source");
     let source_report = report(&s, "shared-input-source", Some(json!([{"id":"shared","path":shared}]))).await;
+    approve_execution(&s, "shared-input-source").await;
     action(&s, "complete", "shared-input-manager", "A").await;
     identity(&s, "shared-input-business");
     let consumer = s.dispatch("shared-input-manager", &["B"]).await;
@@ -253,6 +274,7 @@ async fn shared_consumers_and_business_summary_receive_original_external_address
     assert_eq!(named_input(&business_input), format!("shared: {}\n", shared.display()));
     fs::write(&summary, b"independently authored summary").unwrap();
     let summary_report = report(&s, "shared-input-business", Some(json!([{"id":"summary","path":summary}]))).await;
+    approve_execution(&s, "shared-input-business").await;
     action(&s, "complete", "shared-input-manager", "B").await;
     identity(&s, "shared-input-aggregate");
     let aggregator = s.dispatch("shared-input-manager", &["C"]).await;

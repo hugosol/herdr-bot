@@ -39,10 +39,24 @@ describe('Map input preparation contract', () => {
   })
 })
 
+describe('node approval schema boundary', () => {
+  it.each([true, false])('retains a strict boolean approval mode: %j', async auto_approved => {
+    responseWith({ auto_approved })
+    expect((await loadMap('map.json')).nodes.B.auto_approved).toBe(auto_approved)
+    expect((await saveNode('map.json', draft)).nodes.B.auto_approved).toBe(auto_approved)
+  })
+
+  it.each([null, 'true', 'false', 'auto', 'manual', 0, 1, [], {}])('rejects a non-boolean approval mode: %j', async auto_approved => {
+    responseWith({ auto_approved })
+    await expect(loadMap('map.json')).rejects.toThrow()
+    await expect(saveNode('map.json', draft)).rejects.toThrow()
+  })
+})
+
 describe('node zone schema boundary', () => {
   it.each(['team/work', { type: 'dynamic' }])('loads and confirms the exact zone representation: %j', async zone => {
-    responseWith({ zone, report_policy: 'manual', auto_close: true })
-    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, report_policy: 'manual', auto_close: true })
+    responseWith({ zone, auto_approved: false, auto_close: true })
+    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, auto_approved: false, auto_close: true })
     expect((await saveNode('map.json', { ...draft, content: JSON.stringify({ ...node, zone }) })).nodes.B.zone).toEqual(zone)
     const request = vi.mocked(fetch).mock.calls[1][1]!
     expect(JSON.parse(JSON.parse(request.body as string).content).zone).toEqual(zone)
