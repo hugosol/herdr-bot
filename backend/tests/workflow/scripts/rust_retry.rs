@@ -57,6 +57,8 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     assert_eq!(failed["run"]["nodes"]["create"]["status"], "running");
     assert!(failed["run"]["nodes"]["create"]["failure"].is_null());
     assert_eq!(old["lifecycle"]["status"], "failed");
+    assert_eq!(old["approved"], false);
+    assert!(old["approvalSource"].is_null());
     assert_eq!(old["lifecycle"]["failure"]["code"], "material-write-failed");
     assert_eq!(old["lifecycle"]["failure"]["effects"]["write"], "succeeded");
     assert_eq!(old["lifecycle"]["failure"]["effects"]["readBack"], "succeeded");
@@ -109,7 +111,9 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     assert_eq!(retry["snapshot"]["nodes"]["create"]["previousExecutions"][0]["execution"], old);
     assert_eq!(retry["snapshot"]["nodes"]["create"]["previousExecutions"][0]["failure"], marked["snapshot"]["nodes"]["create"]["failure"]);
     assert!(retry["pendingReports"].get("create").is_none());
-    assert_eq!(action(&s, "complete", json!({"reason":"No current report"}), 409).await["code"], "report-not-completable");
+    assert_eq!(current["approved"], false);
+    assert!(current["approvalSource"].is_null());
+    assert_eq!(action(&s, "complete", json!({"reason":"No current report or approval"}), 409).await["code"], "node-not-approved");
     assert_eq!(detail(&s, &run).await["reports"], failed["reports"]);
     drop(gate);
     let done = reports(&s, &run, 2).await;
@@ -118,6 +122,8 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     assert_eq!(new_report["canComplete"], true, "{done}");
     assert_eq!(done["reports"][0], *report);
     assert_eq!(done["run"]["nodes"]["create"]["status"], "running");
+    assert_eq!(done["run"]["nodes"]["create"]["execution"]["approved"], true);
+    assert_eq!(done["run"]["nodes"]["create"]["execution"]["approvalSource"], "auto");
     assert_ne!(new_report["outputs"][0]["path"], report["outputs"][0]["path"]);
     assert_eq!(fs::read(old_path).unwrap(), old_bytes);
     assert_eq!(fs::read(&collision).unwrap(), b"UNOWNED HANDOFF");

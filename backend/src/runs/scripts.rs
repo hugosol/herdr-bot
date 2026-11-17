@@ -143,7 +143,11 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
     let mut failure = work.err();
     if let Some(value) = result {
         let status = value.get("status").and_then(Value::as_str);
-        let mut validation = None;
+        let mut validation = if value.as_object().is_some_and(|object| object.keys().all(|key| matches!(key.as_str(), "status" | "outputs" | "failure"))) {
+            None
+        } else {
+            Some(diagnostic("invalid-result", "脚本结果必须是仅含 status、outputs、failure 的对象"))
+        };
         if let Some(files) = value.get("outputs") {
             if let Some(files) = files.as_array() {
                 let mut seen = std::collections::BTreeSet::new();

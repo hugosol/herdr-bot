@@ -61,8 +61,8 @@ impl Fixture {
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
             "decoy":{"title":"Other node","bot_id":"worker","input":"Other scope","output_rule":[{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
-            "missing":{"title":"No inherited material","bot_id":"worker","input":"Read legacy","input_rule":[{"id":"legacy","type":"node","node_id":"create","output_id":"legacy"}],"zone":"isolation","blocked_by":["create"]},
-            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"isolation","blocked_by":["create"]}
+            "missing":{"title":"No inherited material","bot_id":"worker","input":"Read legacy","input_rule":[{"id":"legacy","type":"node","node_id":"create","output_id":"legacy"}],"zone":"isolation","blocked_by":[]},
+            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"isolation","blocked_by":[]}
         }}).to_string()).unwrap();
         let read = get_over_tcp(fixture.server.addr(), "/api/scheduler/maps/isolation.json").await;
         assert_eq!(read.status, 200, "{}", read.body);
@@ -142,11 +142,11 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     let late = f.submit(&run, &old, true, old_outputs.clone()).await;
     let status = f.action("isolation-manager", "status", json!({}), 200).await;
     assert!(status["pendingReports"].get("create").is_none());
-    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true is not current"}), 409).await["code"], "report-not-completable");
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true is not current"}), 409).await["code"], "node-not-approved");
     let progress = f.submit(&run, &current, false, json!([])).await;
     let later = f.submit(&run, &old, true, old_outputs.clone()).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], progress["id"]);
-    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true cannot override new false"}), 409).await["code"], "report-not-completable");
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true cannot override new false"}), 409).await["code"], "node-not-approved");
     let earlier_true = f.submit(&run, &current, true, json!([])).await;
     let latest_false = f.submit(&run, &current, false, json!([])).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], latest_false["id"]);
@@ -162,7 +162,10 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     assert_eq!(ready["executionId"], current["id"]);
     let last = f.submit(&run, &old, true, old_outputs).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], ready["id"]);
-    f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Accept real current business result"}), 200).await;
+    // Even a controlled ready report/approval cannot waive the missing legacy
+    // delivery. Independent consumers below test material scope without making
+    // dependency completion mask resolution (real complete is covered at S1).
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Ready report cannot waive declared legacy"}), 409).await["code"], "output-missing");
     // Same ID from another node and another actual Run cannot fill legacy.
     for (manager, session) in [("isolation-manager", "decoy-same-run"), ("other-manager", "decoy-other-run")] {
         if manager == "other-manager" { f.start(manager).await; }
