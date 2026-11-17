@@ -1,20 +1,19 @@
 // Ticket 14 S3: read the actual published configurations and native Run facts.
 // No synthetic execution, HTTP approval, component replacement or save action.
 import fs from 'node:fs';
-import { once } from 'node:events';
-import { chromium, expect } from '../frontend/node_modules/@playwright/test/index.mjs';
+import { expect } from '../frontend/node_modules/@playwright/test/index.mjs';
+import { nativeVisibilityBrowser } from '../frontend/browser-tests/workflow/workflowVisibility.ts';
 
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const evidence = { passed: false, nodes: {}, http: [], cleanupErrors: [] };
-let server, browser, child, exited;
+let owned;
 try {
-  server = await chromium.launchServer({ executablePath: input.chrome, headless: true });
-  child = server.process();
-  evidence.pid = child.pid;
-  exited = once(child, 'exit');
-  browser = await chromium.connect(server.wsEndpoint());
-  evidence.browser = browser.version();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+  owned = await nativeVisibilityBrowser(input.chrome);
+  evidence.pid = owned.processId;
+  evidence.profile = owned.profile;
+  evidence.browser = owned.context.browser().version();
+  const page = owned.page;
+  await page.setViewportSize({ width: 1440, height: 1100 });
   page.on('request', request => evidence.http.push({ method: request.method(), url: request.url(), body: request.postData() }));
   for (const item of input.nodes) {
     const key = item.map + '/' + item.node;
@@ -54,16 +53,11 @@ try {
 } catch (error) {
   evidence.error = error.stack || String(error);
 } finally {
-  if (browser) try { await browser.close(); } catch (error) { evidence.cleanupErrors.push(String(error)); }
-  if (server) {
-    try {
-      await server.close();
-      let timer;
-      try { await Promise.race([exited, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Owned Chrome did not exit')), 15000); })]); }
-      finally { clearTimeout(timer); }
-      evidence.processExited = child.exitCode !== null || child.signalCode !== null;
-      if (!evidence.processExited) throw new Error('No owned Chrome exit confirmation');
-    } catch (error) { evidence.cleanupErrors.push(String(error)); }
+  if (owned) {
+    try { await owned.cleanup(); }
+    catch (error) { evidence.cleanupErrors.push(error.stack || String(error)); }
+    evidence.processOwnership = owned.diagnostics();
+    evidence.processExited = evidence.processOwnership.confirmedExit;
   }
   if (evidence.cleanupErrors.length || !evidence.processExited) evidence.passed = false;
   fs.writeFileSync(input.output + '/evidence.json', JSON.stringify(evidence, null, 2));
