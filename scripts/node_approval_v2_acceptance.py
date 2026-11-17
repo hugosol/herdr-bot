@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import sys
 import time
 import tomllib
 import urllib.parse
@@ -48,6 +49,68 @@ def material_json(text, required, optional=()):
     return value
 
 
+def authorize_candidate(stage, action, candidate, expected):
+    """Acceptance-driver authorization, never a product approval fact."""
+    allowed = {'create_task': {'confirm-task', 'confirm-request'},
+        'align_requirements': {'confirm-requirements', 'confirm-target-materials'},
+        'design_and_create': {'confirm-bot'}}
+    decision = {'authorized': False, 'stage': stage, 'action': action, 'reason': 'stage-forbidden'}
+    if action not in allowed.get(stage, set()):
+        return decision
+    decision['reason'] = 'candidate-not-displayed'
+    if not isinstance(candidate, dict):
+        return decision
+    decision['reason'] = 'candidate-mismatch'
+    task = expected['task']
+    if action == 'confirm-task':
+        valid = 'id' not in candidate and all(key in candidate and candidate[key] == value for key, value in task.items())
+    elif action == 'confirm-bot':
+        valid = (candidate.get('id') == expected['botId'] and candidate.get('name') == task['name']
+            and expected.get('taskId') and candidate.get('task_id') == expected['taskId']
+            and not any(key in candidate for key in ['map_file', 'script'])
+            and all(isinstance(candidate.get(key), str) and candidate[key].strip() for key in ['when', 'plan_guide', 'node_guide']))
+    elif action == 'confirm-request':
+        valid = (candidate.get('schema_version') == 2 and candidate.get('kind') == 'request'
+            and expected.get('taskId') and candidate.get('target') == {'type': 'task', 'task_id': expected['taskId']}
+            and candidate.get('authorization') == {'write_materials': True, 'create_bot': True, 'optimize_task_prompt': False})
+    elif action == 'confirm-target-materials':
+        target = candidate.get('target', {})
+        configuration = target.get('configuration', {})
+        valid = (candidate.get('schema_version') == 2 and candidate.get('kind') == 'target_materials'
+            and target.get('type') == 'task' and expected.get('taskId') and target.get('task_id') == expected['taskId']
+            and all(configuration.get(key) == value for key, value in task.items()))
+    else:
+        text = candidate.get('requirements', '')
+        valid = isinstance(text, str) and all(fact in text for fact in expected['requiredFacts'])
+    decision.update(authorized=bool(valid), reason='authorized-current-candidate' if valid else 'candidate-mismatch')
+    return decision
+
+
+def displayed_candidates(text):
+    """Only explicit structured blocks; prose is not a complete configuration."""
+    blocks = re.findall(r'```([^\n`]*)\n(.*?)```', text, re.S)
+    result = []
+    for language, block in blocks:
+        if language.strip().lower() in ['markdown', 'md']:
+            result.append(('confirm-requirements', {'requirements': block}))
+            continue
+        if language.strip().lower() not in ['', 'json']:
+            continue
+        try:
+            value = json.loads(block)
+        except ValueError:
+            continue
+        if not isinstance(value, dict):
+            continue
+        if 'taskType' in value:
+            result.append(('confirm-task', value))
+        elif all(key in value for key in ['when', 'plan_guide', 'node_guide']):
+            result.append(('confirm-bot', value))
+        elif value.get('kind') in ['request', 'target_materials']:
+            result.append(('confirm-request' if value['kind'] == 'request' else 'confirm-target-materials', value))
+    return result
+
+
 def tool_calls(history):
     return [part for entry in history['branch'] if entry.get('type') == 'message'
         and entry['message'].get('role') == 'assistant' for part in entry['message'].get('content', [])
@@ -59,6 +122,8 @@ class BusinessForm(HTMLParser):
     def __init__(self, source):
         super().__init__()
         self.fields = []
+        self.blocks = []
+        self.pre = None
         self.label = None
         self.textarea = None
         self.select = None
@@ -71,6 +136,8 @@ class BusinessForm(HTMLParser):
 
     def handle_starttag(self, tag, attributes):
         attributes = dict(attributes)
+        if tag == 'pre':
+            self.pre = ''
         if tag == 'label':
             self.label = {'text': '', 'fields': [], 'for': attributes.get('for')}
         if tag == 'input' and attributes.get('type', 'text') not in ['hidden', 'submit', 'button']:
@@ -93,6 +160,8 @@ class BusinessForm(HTMLParser):
             self.select['options'].append(self.option)
 
     def handle_data(self, data):
+        if self.pre is not None:
+            self.pre += data
         if self.label is not None:
             self.label['text'] += data
         if self.textarea is not None:
@@ -101,6 +170,9 @@ class BusinessForm(HTMLParser):
             self.option['label'] += data
 
     def handle_endtag(self, tag):
+        if tag == 'pre' and self.pre is not None:
+            self.blocks.append(self.pre)
+            self.pre = None
         if tag == 'label' and self.label is not None:
             for field in self.label['fields']:
                 field['label'] = self.label['text'].strip()
@@ -124,7 +196,7 @@ class PublishedV2Acceptance(NativeAcceptance):
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': digest(Path(__file__))},
             budgets={'confirmationMs': 20000, 'requestMs': 30000, 'observationSeconds': 51,
                 'reason': 'Existing 20s native confirmation + 30s HTTP budget + 1s margin; no product policy changes.'})
-        for key, name in [('OMP_CODING_AGENT_DIR', 'agent'), ('XDG_DATA_HOME', 'state'), ('XDG_CACHE_HOME', 'cache'), ('TEMP', 'temp'), ('TMP', 'temp')]:
+        for key, name in [('OMP_CODING_AGENT_DIR', 'agent'), ('XDG_DATA_HOME', 'state'), ('XDG_CACHE_HOME', 'cache'), ('TEMP', 'temp'), ('TMP', 'temp'), ('TMPDIR', 'temp')]:
             directory = self.root / name
             directory.mkdir(exist_ok=True)
             self.env[key] = str(directory)
@@ -136,6 +208,8 @@ class PublishedV2Acceptance(NativeAcceptance):
         self.chats = {}
         self.answered = set()
         self.yes = {}
+        self.stages = {}
+        self.pending_scope = {}
 
     def configure_model(self):
         super().configure_model()
@@ -201,6 +275,13 @@ class PublishedV2Acceptance(NativeAcceptance):
         self.evidence['nativeShellProbe'] = {'shell': str(self.args.shell_path), 'sha256': digest(self.args.shell_path),
             'file': str(shell_probe), 'backend': self.base, 'taskIds': sorted(task['id'] for task in tasks['tasks']),
             'scope': 'Real dependency namespace check before model launch, not V2 business success'}
+        temporary = self.root / 'temp'
+        temp_code = 'import os,json;print(json.dumps({key:os.environ[key] for key in ["TMP","TEMP","TMPDIR"]}))'
+        temp_command = shlex.quote(Path(sys.executable).as_posix()) + ' -c ' + shlex.quote(temp_code)
+        inherited = json.loads(self.command([self.args.shell_path, '-lc', temp_command], seconds=20))
+        require(all(Path(value).resolve() == temporary.resolve() for value in inherited.values()), ('Native shell temporary environment escaped owned root', inherited))
+        self.evidence['nativeTemporaryProbe'] = {'inheritedByShellChild': inherited, 'expectedDirectory': str(temporary),
+            'scope': 'Actual selected shell child environment; no OS sandbox claim and no shared /tmp access'}
         # Copy the current documentation/source, never normal-service definitions
         # or user histories. Published business prompts and Suite remain intact.
         repository = self.root / 'repository'
@@ -302,6 +383,37 @@ class PublishedV2Acceptance(NativeAcceptance):
                 self.evidence['approvedWithoutReadyReport'] = {'before': actual, 'refusal': refused, 'after': after,
                     'scope': 'Public HTTP consumer probe in the real V2 Run; not a fabricated native manager tool call', 'at': time.monotonic()}
 
+    def authorization(self, chat, text):
+        stage = self.stages.get(chat['sessionId'])
+        expected_task = {'name': self.target_name, 'chatName': '{chat.id}', 'taskType': 'normal',
+            'agent': self.host, 'model': 'probe', 'thinking': 'default', 'skill': None, 'suite': None, 'prompt': PROMPT}
+        targets = [task for task in self.http('/api/tasks')['tasks']
+            if all(task.get(key) == value for key, value in expected_task.items())]
+        expected = {'task': expected_task, 'taskId': targets[0]['id'] if len(targets) == 1 else None,
+            'botId': 'v2-csv-' + self.host, 'requiredFacts': ['CSV', '只读', '不上传', '不写']}
+        candidates = displayed_candidates(text)
+        if len(candidates) != 1:
+            decision = authorize_candidate(stage, 'unknown-action', None, expected)
+            decision['reason'] = 'missing-or-ambiguous-displayed-candidate'
+        else:
+            action, candidate = candidates[0]
+            decision = authorize_candidate(stage, action, candidate, expected)
+            decision['candidate'] = candidate
+        self.evidence.setdefault('businessAuthorization', []).append({'sessionId': chat['sessionId'], **decision, 'at': time.monotonic()})
+        return decision
+
+    def scope_message(self, decision):
+        scope = {
+            'create_task': '本阶段只处理本次normal Task完整配置、创建及本节点委托材料；不创建Bot，不批准后续三指南正文或Bot保存。',
+            'align_requirements': '本阶段只整理并确认本次统一需求和目标材料；不创建Bot，不批准后续三指南正文或Bot保存。',
+            'design_and_create': '本阶段只可在完整已展示且符合本次要求的Bot候选获确认后，创建本次新Bot及本阶段交付；不修改Task.prompt或任何既有对象。',
+        }.get(decision.get('stage'), '只允许既有管理职责；不授权额外业务保存或未知正文。')
+        action = {'confirm-task': '本次Task完整候选及其新建', 'confirm-bot': '本次Bot完整候选及其新建',
+            'confirm-request': '本次已展示V2委托材料', 'confirm-target-materials': '本次已展示完整目标材料',
+            'confirm-requirements': '本次已展示统一需求'}.get(decision.get('action'), '未知动作')
+        reply = ('仅确认刚展示的' + action + '。') if decision['authorized'] else '此次没有批准新增保存或未知正文；请明确本阶段待确认的完整候选与动作范围。'
+        return reply + scope + '已给定CSV只读、不上传、不写原文件及Task.prompt全文约束不变。新材料只能在既有授权目录以新文件保存，不覆盖。' + self.environment_scope
+
     def business_form(self, chat, history):
         messages = self.messages(history)
         finished = {message.get('toolCallId') for message in messages if message.get('role') == 'toolResult'}
@@ -326,6 +438,15 @@ class PublishedV2Acceptance(NativeAcceptance):
         response_path = self.confirmations / 'forms' / (observed[0]['id'] + '.response.json')
         require(not response_path.exists(), 'Business form already answered before this explicit user input')
         form = BusinessForm(html)
+        decision = self.authorization(chat, '\n'.join('```json\n' + block + '\n```' for block in form.blocks))
+        if not decision['authorized']:
+            self.herdr('agent', 'send-keys', chat['paneId'], 'esc')
+            self.answered.add(call['id'])
+            returned = until('actual native form rejection return', lambda: json.loads(response_path.read_text(encoding='utf-8')) if response_path.is_file() else None, 20)
+            self.evidence.setdefault('businessFormRefusals', []).append({'call': call, 'nativeInvocation': observed[0],
+                'nativeReturn': returned, 'decision': decision, 'selectedAction': 'Esc; no authorization'})
+            self.pending_scope[chat['sessionId']] = self.scope_message(decision)
+            return True
         groups = []
         for field in form.fields:
             if field.get('type') == 'radio':
@@ -342,7 +463,8 @@ class PublishedV2Acceptance(NativeAcceptance):
         for group in groups:
             field = group[0]
             if field.get('type') == 'radio':
-                allowed = [index for index, option in enumerate(group) if any(word in option['label'] for word in ['确认', '同意', '按当前', '保持', '保留', '不优化', '不修改', '允许', '继续', 'Yes'])
+                allowed = [index for index, option in enumerate(group) if (any(word in option['label'] for word in ['确认', '同意', '按当前', '保持', '保留', '不优化', '不修改', '允许', '继续', 'Yes'])
+                    or re.match(r'^\s*是[：:、，]', option['label']))
                     and not any(word in option['label'] for word in ['不确认', '不同意', '暂不', '取消', '拒绝', '修改后', '需要修改'])]
                 require(len(allowed) == 1, ('Business form lacks one independently authorized choice', group))
                 chosen = allowed[0]
@@ -393,7 +515,7 @@ class PublishedV2Acceptance(NativeAcceptance):
                         text = self.target_name
                     else:
                         require(any(word in question for word in ['确认', '授权', '意见', 'confirm', 'approval']), ('Business form requests a fact not supplied by the user', field))
-                        text = '确认上述本阶段完整候选，授权在隔离服务新建本次Task和Bot及指定目录新材料；保留CSV只读、不上传、不写文件和给定Task.prompt全文，其他配置及Skill文档不修改。'
+                        text = self.scope_message(decision)
                     self.herdr('pane', 'send-text', chat['paneId'], text)
                 record['choices'].append({'name': field.get('name'), 'value': text, 'selectedScreen': self.screen(chat)})
             self.herdr('agent', 'send-keys', chat['paneId'], 'tab')
@@ -428,15 +550,20 @@ class PublishedV2Acceptance(NativeAcceptance):
         require(message.get('stopReason') not in ['error', 'aborted'], ('Actual model turn failed; no retry', last))
         if message.get('role') != 'assistant' or message.get('stopReason') != 'stop' or last['id'] in self.answered:
             return
-        # Approval follows an actually displayed complete business candidate,
-        # not an initial blanket approval of unknown text.
-        text = json.dumps(message.get('content'), ensure_ascii=False)
-        if not re.search(r'是否|请(?:你|用户)?确认|等待(?:你|用户)?确认|待[^。\n]{0,20}确认|请[^。\n]{0,30}授权|需要[^。\n]{0,30}授权|请提供', text):
+        if chat['sessionId'] in self.pending_scope:
+            self.answered.add(last['id'])
+            self.send(chat, self.pending_scope.pop(chat['sessionId']), 'business-scope-refusal-and-clarification')
+            return
+        # A question is not evidence of a complete candidate. Only structured
+        # content actually displayed by this assistant can receive authorization.
+        text = '\n'.join(part.get('text', '') for part in message.get('content', []) if isinstance(part, dict) and part.get('type') == 'text')
+        if not re.search(r'是否|请(?:你|用户)?确认|等待(?:你|用户)?确认|待[^。\n]{0,20}确认|(?:建议|尚未)[^。\n]{0,80}确认|请[^。\n]{0,30}授权|需要[^。\n]{0,30}授权|请提供', text):
             return
         require(any(word in text for word in ['CSV', '需求', '指南', 'prompt', '配置', '保存']), ('Unexpected business decision needs explicit criteria', text))
         self.answered.add(last['id'])
-        self.evidence.setdefault('businessCandidateConfirmations', []).append({'sessionId': chat['sessionId'], 'candidate': last, 'at': time.monotonic()})
-        self.send(chat, '确认你刚展示的本阶段完整候选及其保存授权，限定本次隔离服务的新Task和新Bot；CSV只读、不上传、不写文件，Task.prompt必须保持委托给定全文。允许本阶段在指定交付目录写新材料；其他对象、Skill和文档不许修改。未来未展示文本并未提前批准。请按本阶段既定职责继续。', 'actual-displayed-business-candidate-confirmed')
+        decision = self.authorization(chat, text)
+        self.evidence.setdefault('businessCandidateConfirmations', []).append({'sessionId': chat['sessionId'], 'candidate': last, 'decision': decision, 'at': time.monotonic()})
+        self.send(chat, self.scope_message(decision), 'actual-current-stage-candidate-authorized' if decision['authorized'] else 'business-scope-not-authorized')
 
     def drive(self, root_id):
         started = time.monotonic()
@@ -459,6 +586,8 @@ class PublishedV2Acceptance(NativeAcceptance):
                         continue
                     chat = execution.get('chat')
                     self.remember(chat)
+                    if chat:
+                        self.stages[chat['sessionId']] = node
                     if chat and state['status'] == 'running':
                         active.add(chat['sessionId'])
                     if chat and state['status'] == 'running' and not execution['autoApproved']:
@@ -606,10 +735,21 @@ class PublishedV2Acceptance(NativeAcceptance):
         delivery.mkdir()
         name = 'V2-CSV只读摘要-' + self.host
         self.target_name, self.delivery_directory = name, delivery
+        self.environment_scope = ('环境事实：只读文档与源码根为' + (self.root / 'repository').as_posix()
+            + '；只读Skill根为' + self.args.wayfinder.as_posix() + '及' + self.args.wayfinder_skills.as_posix()
+            + '。唯一可写业务材料目录为' + delivery.as_posix() + '，唯一可写临时目录为' + (self.root / 'temp').as_posix()
+            + '；禁止共享Temp、/tmp或其他目录中的发现式查找和写入，不读取其他Chat/Run或认证；不安装、刷新凭据或修改Skill/文档。'
+            + '当前服务由本次配置提供；不得因猜出的相对路径失败而扫描其他目录。')
+        self.evidence['filesystemAuthority'] = {'readOnlyRepository': (self.root / 'repository').as_posix(),
+            'readOnlySkills': [self.args.wayfinder.as_posix(), self.args.wayfinder_skills.as_posix()],
+            'writableMaterials': delivery.as_posix(), 'writableTemporary': (self.root / 'temp').as_posix(),
+            'temporaryEnvironment': {key: self.env[key] for key in ['TMP', 'TEMP', 'TMPDIR']},
+            'scope': 'Explicit owned configuration and business authorization; not an OS filesystem sandbox'}
         business = ('仅在本次隔离服务创建一个normal Task及绑定它的完整Bot，使用发布V2，不调用V1或运行目标。Task名称为' + name + '；agent=' + self.host + '，model=probe，thinking=default，skill=null，suite=null，chatName={chat.id}。Task.prompt必须逐字使用：' + PROMPT + '\n'
             'Bot名称为' + name + '，ID为v2-csv-' + self.host + '。三指南按现有职责设计；禁止优化或改写Task.prompt。'
             '授权只读本次文件、当前隔离配置和文档，通过当前服务新建上述Task/Bot；候选全文在各阶段展示后再确认，初始委托不批准未知正文。'
             '只在' + str(delivery) + '新建交付文件，UTF-8，不覆盖；正式交付遵循V2材料契约。原始CSV不写、不上传、不执行业务，不修改既有对象、Skill、共享文档或运行记录。')
+        business += '\n' + self.environment_scope
         launched = self.browser('launch', mapTitle='创建task-V2', manager=TASK_IDS[0], zone='v2/owned', business=business)
         root_id = launched['runId']
         runs = self.drive(root_id)

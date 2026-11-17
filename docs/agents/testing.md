@@ -190,6 +190,8 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 专项以发布 `create-task-v2.json` 及其真实两节点 `create-bot-v2.json` 独占副本运行，保留业务提示词、Skill、Suite、拓扑和专用 V2 authorization／confirmation 材料；只重定位物理 zone、契约地址和显式模型／宿主。两个宿主分别真实创建只读 CSV Task 与完整 Bot，三个人工职责观察原生完整问题、选中 Yes、真实 true 返回；子管理者 finish 后独立执行父层自动批准。原生历史、真实模型请求／返回身份、工具与透传 HTTP、命名材料字节、实际配置／revision、显式 complete／finish、独立 Run 身份及 V1 原定义未改证据均归档。批准、最新可交接报告及声明交付分别核对，不以批准替代完成条件。
 
+业务交互驱动按实际 node 身份限定权限：Task 阶段不能授权 Bot 保存，需求阶段不能提前批准三指南／最终保存，设计阶段仅批准真实展示且与本次目标一致的完整候选；没有结构化完整候选或动作不明时不授权，原生表单以真实 Esc 拒绝并保留返回。离线授权策略自测只证明驱动边界，不证明原生批准或模型业务成功。每个进程显式设置 TMP／TEMP／TMPDIR，业务消息明确独占材料／临时目录与只读文档／Skill 范围，禁止共享 Temp／`/tmp` 发现式查找和写入；这些是配置与授权约束，不是 OS 文件系统沙箱，观察到越界不能认证通过或事后扩权。
+
 `node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、最终冻结模式／批准来源／报告与独立 HTTP 读回交叉核对，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 51 秒单调窗口覆盖既有 20 秒确认＋30 秒 HTTP 预算及余量，不改变产品策略。
 
 入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `python scripts/accept-node-approval-v2.test.py` 的 CLI 安全通过不替代专项。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
