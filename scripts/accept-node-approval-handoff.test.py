@@ -107,6 +107,33 @@ class HandoffCLI(unittest.TestCase):
             self.assertFalse((root / 'evidence').exists())
 
 
+class HandoffInputPreflight(unittest.TestCase):
+    """Published-definition guard only, never P20/P30 business evidence."""
+
+    def definition(self):
+        return {'input_files': [{'id': 'order', 'required': True}],
+            'input_requirements': 'Quantity and unit price are known; discount may remain unknown.',
+            'nodes': {'work': {'input_rule': [{'id': 'order', 'type': 'run', 'input_id': 'order'}]}}}
+
+    def test_declared_order_binding_is_accepted(self):
+        from node_approval_handoff_acceptance import require_order_input
+        require_order_input(self.definition())
+
+    def test_missing_declaration_is_rejected_before_model_start(self):
+        from node_approval_handoff_acceptance import require_order_input
+        definition = self.definition()
+        del definition['input_files']
+        with self.assertRaisesRegex(AssertionError, 'declare required order'):
+            require_order_input(definition)
+
+    def test_consumer_cannot_bypass_declared_run_binding(self):
+        from node_approval_handoff_acceptance import require_order_input
+        definition = self.definition()
+        definition['nodes']['work']['input_rule'] = [{'id': 'order', 'type': 'file', 'path': 'order.json', 'zone_id': 'work'}]
+        with self.assertRaisesRegex(AssertionError, 'consume the declared Run order'):
+            require_order_input(definition)
+
+
 class ModelIdentityBoundary(unittest.TestCase):
     """Offline identity classification, not real-model business evidence."""
 

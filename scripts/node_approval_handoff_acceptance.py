@@ -34,6 +34,17 @@ def tool_name(call):
     return call.get('name', '').rsplit('.', 1)[-1]
 
 
+def require_order_input(definition):
+    """Fail before any model starts when the published fixture cannot bind order."""
+    declarations = definition.get('input_files', [])
+    require(len(declarations) == 1 and declarations[0].get('id') == 'order'
+        and declarations[0].get('required') is True, 'Handoff Map must declare required order input')
+    require(definition['nodes']['work']['input_rule'] == [{'id': 'order', 'type': 'run', 'input_id': 'order'}],
+        'Handoff work must consume the declared Run order input')
+    require(isinstance(definition.get('input_requirements'), str) and definition['input_requirements'].strip(),
+        'Handoff input preparation needs explicit business readiness requirements')
+
+
 class NodeApprovalHandoff(NativeAcceptance):
     def __init__(self, args):
         super().__init__(args)
@@ -166,18 +177,24 @@ class NodeApprovalHandoff(NativeAcceptance):
         for identity, task in [('quote-worker', worker), ('invoice-continuation', end_task)]:
             (self.root / 'bots' / (identity + '.json')).write_text(json.dumps({'id': identity, 'name': identity,
                 'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': task}), encoding='utf-8')
-        definition = {'title': 'Quote handoff to user', 'description': business, 'nodes': {
+        definition = {'title': 'Quote handoff to user', 'description': business,
+            'input_files': [{'id': 'order', 'required': True,
+                'description': '原始订单 JSON：数量和单价必需；discountPercent 可为 null，由报价节点识别缺项并与用户继续讨论。'}],
+            'input_requirements': '开始工作的条件是订单数量、单价及本地范围明确。折扣允许尚未确定；识别并说明缺失信息属于报价节点的工作，不是管理者输入准备的前置条件。最终报价仍须等待用户补充真实折扣，不得推测。',
+            'nodes': {
             'work': {'title': 'Prepare local quote', 'bot_id': 'quote-worker', 'input': business +
                 '收到折扣后，在本工作目录生成quote.json。JSON只含quantity、unitPriceCents、discountPercent、totalCents；'
                 '金额按分计算。交付的命名输出为quote。', 'zone': 'handoff/work', 'blocked_by': [],
-                'input_rule': [{'id': 'order', 'type': 'file', 'zone_id': 'handoff/work', 'path': 'order.json'}],
+                'input_rule': [{'id': 'order', 'type': 'run', 'input_id': 'order'}],
                 'output_rule': [{'id': 'quote'}], 'auto_approved': self.mode == 'auto', 'auto_close': False},
             'end': {'title': 'Continue invoice with user', 'bot_id': 'invoice-continuation', 'input': '开票抬头尚未提供，等待用户补充；请勿开票。',
                 'zone': 'handoff/end', 'blocked_by': ['work'], 'end_node': True, 'auto_approved': False, 'auto_close': False,
                 'input_rule': [{'id': 'quote', 'type': 'node', 'node_id': 'work', 'output_id': 'quote'}], 'output_rule': []}}}
         (self.root / 'maps/handoff.json').write_text(json.dumps(definition, ensure_ascii=False), encoding='utf-8')
         self.evidence['definition'] = self.http('/api/scheduler/maps/handoff.json')
-        started = self.http('/api/scheduler/maps/handoff.json/runs', {'managerTaskId': manager, 'zone': 'handoff/manager', 'userInput': business}, 201)
+        require_order_input(self.evidence['definition'])
+        started = self.http('/api/scheduler/maps/handoff.json/runs', {'managerTaskId': manager, 'zone': 'handoff/manager',
+            'userInput': business, 'fileInputs': [{'id': 'order', 'path': str(self.root / 'work-zone/order.json')}]}, 201)
         self.run_id = started['id']
 
         def issue_saved():
