@@ -139,6 +139,14 @@ class PublishedV2Acceptance(NativeAcceptance):
 
     def configure_model(self):
         super().configure_model()
+        # OMP reads its current YAML config before legacy settings.json; an
+        # existing YAML file prevents the Pi shell override being migrated.
+        if self.host == 'omp':
+            path = self.root / 'agent/config.yml'
+            path.write_text('shellPath: ' + json.dumps(str(self.args.shell_path)) + '\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
+        settings = self.root / 'agent' / ('config.yml' if self.host == 'omp' else 'settings.json')
+        self.evidence['nativeShellConfiguration'] = {'path': str(settings), 'text': settings.read_text(encoding='utf-8'),
+            'scope': 'Installed host public configuration, not an outer launcher shell override'}
         prepare_source_resources(self)
 
     def role_catalog(self, toolkit):
@@ -501,7 +509,11 @@ class PublishedV2Acceptance(NativeAcceptance):
             paths = {item['id']: item['path'] for report in reports for item in report.get('outputs', [])}
             require(set(paths) == {item['id'] for item in execution['outputRule']}, ('Missing declared actual delivery', node, paths))
             delivered[node] = {key: (path, self.material(path)) for key, path in paths.items()}
-            completes = [record for record in self.records('/api/workflow/manager/complete', manager) if decode(record, 'request').get('nodeId') == node]
+            # The intentional approval-without-report probe is a real 409,
+            # not a manager handoff. Keep it in the wire evidence, but count
+            # only successful commits for the exactly-once completion oracle.
+            completes = [record for record in self.records('/api/workflow/manager/complete', manager)
+                if decode(record, 'request').get('nodeId') == node and record.get('status') == 200]
             require(len(completes) == 1 and completes[0].get('status') == 200 and approvals[0]['ended'] < completes[0]['started'], ('No explicit successful native manager complete after approval', completes))
             report_calls = self.records('/api/workflow/node/report', session)
             ready = [record for record in report_calls if decode(record, 'request').get('canComplete') is True and record.get('status') == 200]
