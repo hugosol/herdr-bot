@@ -37,7 +37,7 @@ test('end-node edits round-trip and dispatch hands an open Chat to the user with
   await post(page, '/api/scheduler/bots/save', { id: 'end-worker', revision: null, content: JSON.stringify({ name: 'End worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })
   const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
-  const common = { bot_id: 'end-worker', input: 'Preserve business input', zone: 'end/zone', blocked_by: [] }
+  const common = { output_rule: [], bot_id: 'end-worker', input: 'Preserve business input', zone: 'end/zone', blocked_by: [] }
   fs.writeFileSync(path.join(maps, 'end-node.json'), JSON.stringify({ title: 'End node handoff', description: '', nodes: {
     A: { ...common, title: 'Other work' },
     Z: { ...common, title: 'User conversation', auto_approved: false, auto_close: true, input_rule: [{ id: 'business', type: 'file', zone_id: 'end/zone', path: 'business.txt' }] },

@@ -53,7 +53,7 @@ async function currentFixture() {
   // inputs; missing historical confirmation must remain non-dispatchable.
   run.inputsReady = true
   run.nodes = {
-    A: { ...node('completed'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
+    A: { ...node('completed'), execution: { autoApproved: true, approved: true, approvalSource: 'auto', agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
     B: { ...node('failed'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-B', taskId: 'deleted-task', zone: 'C:/failed-zone', chat: { ...chat, sessionId: 'failed-chat' } }, failure: { stage: 'execution', message: '缺少已核实的源文件' } },
     C: node('pending'), D: node('pending'),
     E: { ...node('running'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-E', taskId, zone: 'C:/report-zone', chat: { ...chat, sessionId: 'report-chat-offline' } } },
@@ -202,7 +202,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   run.nodes.E.execution.outputRule = [{ id: 'result' }, { id: 'notes' }]
   run.nodes.E.execution.inputs = [{ id: 'source', path: 'C:/frozen/source.txt' }]
   run.nodes.A.execution.outputRule = [{ id: 'foreign' }]
-  run.nodes.E.previousExecutions = [{ execution: { ...run.nodes.E.execution, id: 'old-E', inputRule: null, outputRule: null, inputs: null, autoApproved: false, autoClose: true }, failure: null }]
+  run.nodes.E.previousExecutions = [{ execution: { ...run.nodes.E.execution, id: 'old-E', inputRule: null, outputRule: null, inputs: null, autoApproved: false, approved: true, approvalSource: 'manual', autoClose: true }, failure: null }]
   fs.writeFileSync(runPath, JSON.stringify(run))
   const reports = [
     { ...report, id: 'first', at: 9000, canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/v1.txt' }, { id: 'notes', path: 'C:/outputs/notes.txt' }] },
@@ -223,6 +223,8 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   for (const excluded of ['C:/outputs/v1.txt', 'C:/outputs/old.txt', 'C:/outputs/leak.txt', 'C:/outputs/foreign.txt']) await expect(handoff).not.toContainText(excluded)
   const execution = page.getByRole('region', { name: '当前执行事实', exact: true })
   await expect(execution.locator('dt').filter({ hasText: /^autoApproved$/ }).locator('+ dd')).toHaveText('true')
+  await expect(execution.locator('dt').filter({ hasText: /^approved$/ }).locator('+ dd')).toHaveText('false · 尚未批准')
+  await expect(execution.locator('dt').filter({ hasText: /^approvalSource$/ }).locator('+ dd')).toHaveText('无')
   await expect(execution.locator('dt').filter({ hasText: /^autoClose$/ }).locator('+ dd')).toHaveText('false')
   await expect(execution).toContainText('C:/report-zone')
   await expect(execution).not.toContainText('test/definition-zone')
@@ -242,6 +244,11 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await page.getByRole('group', { name: '已保存旧执行事实' }).getByText(/旧执行历史/).click()
   const history = page.getByRole('group', { name: '已保存旧执行事实' })
   await expect(history).toContainText('C:/outputs/old.txt')
+  await expect(history.locator('dt').filter({ hasText: /^autoApproved$/ }).locator('+ dd')).toHaveText('false')
+  await expect(history.locator('dt').filter({ hasText: /^approved$/ }).locator('+ dd')).toHaveText('true · 已批准')
+  await expect(history.locator('dt').filter({ hasText: /^approvalSource$/ }).locator('+ dd')).toHaveText('manual · 人工批准')
+  const currentDefinition = page.getByRole('group', { name: '当前节点定义', exact: true })
+  await expect(currentDefinition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('false')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).toContainText('未知')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/frozen/source.txt')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/outputs/old.txt')

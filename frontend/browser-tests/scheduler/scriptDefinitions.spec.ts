@@ -152,7 +152,7 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
 
 // P30/P32 definition partition. A script node has no ordinary Task/manager
 // binding, consumes named materials rather than input, and cannot be configured
-// to await manual reporting or close a nonexistent Chat. A UI-only restriction
+// to await manual approval or close a nonexistent Chat. A UI-only restriction
 // is insufficient: submit each illegal policy through real HTTP and compare
 // the public definition plus original file bytes after every refusal.
 test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only policy through HTTP', async ({ page }, info) => {
@@ -180,6 +180,7 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const before = await (await page.request.get(`${server.baseURL}/api/scheduler/maps/script-page.json`)).json()
   expect(before.nodes.script).toEqual({ title: '文件业务', bot_id: 'script-page-only', input: '', input_rule: [], output_rule: [], auto_approved: true, auto_close: false, end_node: false, zone: 'test/script', blocked_by: [] })
+
   await page.reload()
   await page.getByTestId('tab-scheduler').click()
   await page.getByRole('button', { name: '独占脚本 Map', exact: true }).click()
@@ -190,6 +191,7 @@ test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only pol
   const edit = await (await page.request.post(`${server.baseURL}/api/scheduler/maps/script-page.json/nodes/edit`, { data: { id: 'script' } })).json()
   const rejections = []
   for (const patch of [{ auto_approved: false }, { auto_close: true }, { manager_task_id: 'forbidden-manager' }]) {
+
     const response = await page.request.post(`${server.baseURL}/api/scheduler/maps/script-page.json/nodes/save`, { data: { id: edit.id, revision: edit.revision, create: false, content: JSON.stringify({ ...edit.content, ...patch }) } })
     expect(response.status()).toBe(409)
     const rejected = await response.json()
@@ -228,7 +230,7 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
-  const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { evidence: '独占验收授权', scope: 'create_blank' } }
+  const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [] }
   const materials = Object.fromEntries(inputIds.map(id => [id, path.join(zonePath, `${id}.json`)]))
   if (capability === 'create-blank-bot.ts') {
     fs.writeFileSync(materials.request, JSON.stringify(request))
@@ -297,6 +299,7 @@ test('P32 existing script policy conflict retains original values until the user
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(bots, 'repair-script.json'), JSON.stringify({ id: 'repair-script', ...guides, script: 'create-blank-bot.ts' }))
   const node = { title: '修正策略', bot_id: 'repair-script', input: '', zone: 'test/script', blocked_by: [], auto_approved: false, auto_close: true, manager_task_id: 'old-manager' }
+
   const mapFile = path.join(maps, 'repair-script.json'), original = JSON.stringify({ title: '显式修正脚本策略', description: '', nodes: { script: node } })
   fs.writeFileSync(mapFile, original)
   await page.goto(`${server.baseURL}?layout=expanded`)
@@ -306,6 +309,7 @@ test('P32 existing script policy conflict retains original values until the user
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   const detail = page.getByRole('region', { name: 'node 详情', exact: true })
   await expect(detail.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('人工批准')
+
   await expect(detail.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('true')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('脚本')
@@ -313,11 +317,13 @@ test('P32 existing script policy conflict retains original values until the user
   await expect(detail.getByRole('combobox', { name: 'manager Task', exact: true })).toHaveCount(0)
   await evidence(page, info, 'script-conflicting-draft', await (await page.request.get(`${server.baseURL}/api/scheduler/maps/repair-script.json`)).json())
   await detail.getByRole('button', { name: '改为自动批准且不关闭会话', exact: true }).click()
+
   await detail.getByRole('button', { name: '移除 manager_task_id', exact: true }).click()
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
   await expect(page.getByRole('form', { name: 'node 编辑', exact: true })).toHaveCount(0)
   const saved = await (await page.request.get(`${server.baseURL}/api/scheduler/maps/repair-script.json`)).json()
   expect(saved.nodes.script).toEqual({ title: '修正策略', bot_id: 'repair-script', input: '', zone: 'test/script', blocked_by: [], auto_approved: true, auto_close: false, end_node: false, input_rule: [], output_rule: [] })
+
   expect(server.herdrCalls()).toEqual([])
   await evidence(page, info, 'script-explicitly-repaired', saved)
 })

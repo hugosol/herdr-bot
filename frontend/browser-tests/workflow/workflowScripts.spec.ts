@@ -36,7 +36,7 @@ async function setup(page: Page) {
   }
   const target = await post(page, '/api/tasks', { name: 'Unbound target', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', prompt: 'READ ONLY TARGET' })
   const targetId = target.tasks.find((task: { name: string }) => task.name === 'Unbound target').id
-  const request = { schema_version: 1, kind: 'request', target: { type: 'task', task_id: targetId }, bot: { id: 'page-product', name: 'Page product' }, requirements: 'Read only', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { scope: 'create_blank', evidence: 'Explicit isolated authorization' } }
+  const request = { schema_version: 1, kind: 'request', target: { type: 'task', task_id: targetId }, bot: { id: 'page-product', name: 'Page product' }, requirements: 'Read only', constraints: [], non_goals: [], resource_limits: [] }
   fs.writeFileSync(path.join(zone, 'request.json'), JSON.stringify(request))
   await post(page, '/api/scheduler/bots/save', { id: 'script', revision: null, content: JSON.stringify({ name: 'Script', when: '', plan_guide: '', node_guide: '', script: 'create-blank-bot.ts' }) })
   await post(page, '/api/scheduler/bots/save', { id: 'worker', revision: null, content: JSON.stringify({ name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })

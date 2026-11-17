@@ -467,15 +467,13 @@ def workflow(case, context):
     for node in definition['nodes'].values():
         node['zone'] = 'acceptance/create'
     write_json(case.root / 'maps/create-bot-wrapper.json', definition)
-    # Business requirements/authorization are real input files, not instructions
+    # Business requirements are real input files, not instructions
     # appended to native history or injected implementation of the manager.
     locator = dict(type=context['kind'], **context['target'])
     write_json(context['request'], {'schema_version': 1, 'kind': 'request', 'target': locator,
         'bot': {'id': context['id'], 'name': '隔离账单能力 ' + context['label']},
         'requirements': context['requirements'].split('本次交付格式：')[0] + '创建分支 v1。三编写者先展示所属 BEGIN_APPROVAL_字段/END_APPROVAL_字段 间完整正文，等待真实全文批准；优化者沿用有效确认；材料严格遵守 v1 Schema。', 'constraints': ['只读、不付款、不连外网、不执行目标'],
-        'non_goals': [], 'resource_limits': [],
-        'authorization': {'create_blank': True, 'write_materials': True, 'save_guides': False},
-        'confirmation': {'scope': 'create_blank', 'evidence': 'Explicit isolated user creation request ' + context['label']}})
+        'non_goals': [], 'resource_limits': []})
     optional = context['directory'] / 'reference.md'
     optional.write_text('扫描仅指读取本次用户明确提供的账单 CSV，不搜索硬盘、不连接外网、不付款。金额使用人民币分整数。', encoding='utf-8')
     files = [{'id': 'request', 'path': str(context['request'])}, {'id': 'materials', 'path': str(optional)}]
