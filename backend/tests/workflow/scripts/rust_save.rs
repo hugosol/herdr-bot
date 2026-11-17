@@ -276,7 +276,7 @@ async fn rust_save_map_target_keeps_complete_configuration_and_refuses_active_de
         let mut baseline = setup(&s).await;
         let map_file = if protected { "work.json" } else { "exact.target.json" };
         if !protected {
-            fs::write(s.config.scheduler.map_directory.join(map_file), json!({"title":"Literal target — unchanged","description":"Must retain all rules","group":"target-literal-group","input_requirements":"Required named audit source","input_files":[{"id":"audit","required":true,"description":"Literal input description"}],"nodes":{"audit":{"title":"Independent target node","bot_id":"worker","input":"Read only\nNo side effects.","input_rule":[{"id":"source","type":"run","input_id":"audit"}],"output_rule":[{"id":"review"}],"zone":"node","blocked_by":[],"report_policy":"manual","auto_close":true}}}).to_string()).unwrap();
+            fs::write(s.config.scheduler.map_directory.join(map_file), json!({"title":"Literal target — unchanged","description":"Must retain all rules","group":"target-literal-group","input_requirements":"Required named audit source","input_files":[{"id":"audit","required":true,"description":"Literal input description"}],"nodes":{"audit":{"title":"Independent target node","bot_id":"worker","input":"Read only\nNo side effects.","input_rule":[{"id":"source","type":"run","input_id":"audit"}],"output_rule":[{"id":"review"}],"zone":"node","blocked_by":[],"auto_approved":false,"auto_close":true}}}).to_string()).unwrap();
         }
         let response = get_over_tcp(s.server.addr(), &format!("/api/scheduler/maps/{map_file}")).await;
         assert_eq!(response.status, 200, "{}", response.body);

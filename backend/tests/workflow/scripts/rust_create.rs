@@ -301,7 +301,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
 async fn rust_create_map_target_preserves_complete_definition_and_named_run_source() {
     let s = Scenario::new().await;
     creator(&s).await;
-    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","input_requirements":"Read exact materials","input_files":[{"id":"source","required":true,"description":"Original source"}],"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","input_id":"source"}],"output_rule":[{"id":"result"}],"report_policy":"manual","auto_close":false,"zone":"node","blocked_by":[]}}});
+    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","input_requirements":"Read exact materials","input_files":[{"id":"source","required":true,"description":"Original source"}],"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","input_id":"source"}],"output_rule":[{"id":"result"}],"auto_approved":false,"auto_close":false,"zone":"node","blocked_by":[]}}});
     let target_path = s.config.scheduler.map_directory.join("exact.target.json");
     fs::write(&target_path, target.to_string()).unwrap();
     let original = fs::read(&target_path).unwrap();
@@ -541,7 +541,7 @@ async fn rust_create_enforces_automatic_policy_and_declared_delivery_ids() {
         let path = s.config.scheduler.map_directory.join("work.json");
         let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         match case {
-            "manual" => map["nodes"]["create"]["report_policy"] = json!("manual"),
+            "manual" => map["nodes"]["create"]["auto_approved"] = json!(false),
             "auto-close" => map["nodes"]["create"]["auto_close"] = json!(true),
             "manager-task" => map["nodes"]["create"]["manager_task_id"] = json!(s.manager_task),
             _ => { map["nodes"].as_object_mut().unwrap().remove("consume"); map["nodes"]["create"]["output_rule"] = json!([{"id":"wrong-id"}]); },

@@ -183,6 +183,7 @@ async fn migrated_workflow(fault: Option<&str>) {
             let handoff = json!({"schema_version":1,"kind":"handoff","stage":"guide","bot_id":"migration-result","target":locator,"field":field,"sources":sources,"confirmation":{"evidence":format!("Independent literal user confirmation of {field}: {text:?}; authorize this field save"),"text_sha256":digest,"full_text":true,"save_authorized":true,"semantics_preserved":true},"constraints":["Do not execute target"],"unverified":["Controlled drafts do not prove agent compliance"]});
             fs::write(&handoff_path, handoff.to_string()).unwrap();
             api(&s, "/api/workflow/node/report", json!({"sessionId":session,"body":"Literal fixture delivery, not agent compliance","canComplete":true,"outputs":[{"id":"text","path":text_path},{"id":"handoff","path":handoff_path}]}), 200).await;
+            approve_execution(&s, &session).await;
             complete(&s, &node).await;
             previous = Some(handoff);
         }

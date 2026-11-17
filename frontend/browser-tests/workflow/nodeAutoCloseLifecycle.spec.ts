@@ -58,7 +58,7 @@ async function setup(page: Page, a = false, b = true) {
   fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
   const mapRoot = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(mapRoot, { recursive: true })
-  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', zone: 'test/zone', blocked_by: [] }
+  const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', output_rule: [], zone: 'test/zone', blocked_by: [] }
   fs.writeFileSync(path.join(mapRoot, 'lifecycle.json'), JSON.stringify({ title: 'Lifecycle', description: 'Isolated auto-close lifecycle', nodes: { A: { ...node, auto_close: a }, B: { ...node, auto_close: b } } }))
   host(manager, zone)
   const started = await post(page, '/api/scheduler/maps/lifecycle.json/runs', { managerTaskId: ids.manager, zone: 'test/zone', userInput: 'LIFECYCLE-MANAGER-INPUT' }, 201)
@@ -70,6 +70,12 @@ async function dispatch(page: Page, nodeId: string, sessionId: string, zone: str
   const result = await post(page, '/api/workflow/manager/dispatch', { sessionId: manager, nodes: [nodeId] })
   expect(result.results[0].status).toBe('running')
   return result.snapshot.nodes[nodeId].execution
+}
+async function approve(page: Page, sessionId: string) {
+  const context = await post(page, '/api/workflow/node/context', { sessionId })
+  expect(context).toMatchObject({ autoApproved: true, approved: false, approvalSource: null })
+  const result = await post(page, '/api/workflow/node/approve', { sessionId, executionId: context.executionId, source: 'auto' })
+  expect(result).toMatchObject({ approved: true, approvalSource: 'auto', changed: true })
 }
 async function complete(page: Page, nodeId: string) {
   const result = await post(page, '/api/workflow/manager/complete', { sessionId: manager, nodeId, reason: 'Manager accepted the delivered work' })
@@ -96,7 +102,9 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
   expect(a.id).not.toBe(b.id)
   expect(a.chat.sessionId).toBe('lifecycle-new-A')
   expect(b.chat.sessionId).toBe('lifecycle-new-B')
+  await approve(page, 'lifecycle-new-A')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-A', body: 'A handoff ready with current close choice', canComplete: true })
+  await approve(page, 'lifecycle-new-B')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-B', body: 'B handoff ready with current close choice', canComplete: true })
   await complete(page, 'A')
   await expectClosed(a.chat.tabId, 1)
@@ -111,6 +119,7 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
 test('P18 completed execution is not closed again by reading refreshing or service restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-read-completed', zone)
+  await approve(page, 'lifecycle-read-completed')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-read-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const completed = await complete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
@@ -151,6 +160,7 @@ test('P18 completed execution is not closed again by reading refreshing or servi
 test('P18 loading completed facts without a close result never compensates after restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-interrupted-close', zone)
+  await approve(page, 'lifecycle-interrupted-close')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-interrupted-close', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const gate = path.join(path.dirname(server!.configPath), 'release-interrupted-close')
   server!.setHerdrBehavior({ tab_close_gate: { wait_for_file: gate, timeout_ms: 30000 } })
@@ -190,6 +200,7 @@ test('P18 loading completed facts without a close result never compensates after
 test('P19 completed Chat restoration opens a new Tab without recreating completion or closing it @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-resume-completed', zone)
+  await approve(page, 'lifecycle-resume-completed')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const completed = await complete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
@@ -210,7 +221,7 @@ test('P19 completed Chat restoration opens a new Tab without recreating completi
   expect(calls.filter(call => ['agent_prompt', 'agent_input'].includes(String(call.kind)))).toEqual([])
   const after = await readRun(page, runId)
   expect(after.run).toEqual(completed)
-  expect(after.run.nodes.A.execution).toEqual(execution)
+  expect(after.run.nodes.A.execution).toEqual({ ...execution, approved: true, approvalSource: 'auto' })
   expect(after.run.nodes.A.completion).toEqual(completed.nodes.A.completion)
   expect(after.run.nodes.A.previousExecutions).toEqual([])
   await page.goto(`${server!.baseURL}/#workflow/${runId}`)
@@ -249,9 +260,10 @@ for (const enabled of [true, false]) {
     expect(calls.filter(call => ['agent_prompt', 'agent_input', 'tab_close'].includes(String(call.kind)))).toEqual([])
     expect(await readRun(page, runId)).toEqual(before)
     expect(files.map(file => fs.readFileSync(path.join(root, file), 'utf8'))).toEqual(saved)
+    await approve(page, 'lifecycle-resume-unfinished')
     await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-unfinished', body: 'Original execution ready after Chat resume', canComplete: true })
     const completed = await complete(page, 'A')
-    expect(completed.nodes.A.execution).toEqual(execution)
+    expect(completed.nodes.A.execution).toEqual({ ...execution, approved: true, approvalSource: 'auto' })
     expect(completed.nodes.A.previousExecutions).toEqual([])
     if (enabled) await expectClosed(execution.chat.tabId, 1)
     await noMoreCloses(page, enabled ? [['tab', 'close', execution.chat.tabId]] : [])
@@ -278,9 +290,10 @@ for (const enabled of [true, false]) {
     expect(current.chat.sessionId).toBe('lifecycle-retry-new')
     expect(current.chat.tabId).not.toBe(old.chat.tabId)
     expect(result.snapshot.nodes.A.previousExecutions[0].execution).toEqual(old)
+    await approve(page, current.chat.sessionId)
     await post(page, '/api/workflow/node/report', { sessionId: current.chat.sessionId, body: 'Replacement execution ready; old report is not applicable', canComplete: true })
     const completed = await complete(page, 'A')
-    expect(completed.nodes.A.execution).toEqual(current)
+    expect(completed.nodes.A.execution).toEqual({ ...current, approved: true, approvalSource: 'auto' })
     expect((await readRun(page, runId)).run.nodes.A.previousExecutions[0].execution).toEqual(old)
     if (enabled) await expectClosed(current.chat.tabId, 1)
     await noMoreCloses(page, enabled ? [['tab', 'close', current.chat.tabId]] : [])
