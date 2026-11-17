@@ -1,6 +1,8 @@
 """Transparent acceptance traffic observation; no business decisions."""
+import errno
 import http.server
 import json
+import secrets
 import threading
 import time
 import traceback
@@ -79,7 +81,15 @@ class WireProxy:
                         json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
                     self.close_connection = True
 
-        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        # Only actual bind collisions reallocate before business requests exist.
+        for attempt in range(32):
+            try:
+                self.server = http.server.ThreadingHTTPServer(
+                    ('127.0.0.1', 49152 + secrets.randbelow(16384)), Handler)
+                break
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE or attempt == 31:
+                    raise
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = f'http://127.0.0.1:{self.server.server_port}'

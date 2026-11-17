@@ -174,7 +174,25 @@ python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT
 
 入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。CLI 安全回归 `python scripts/accept-node-approval-failures.test.py` 只验证缺依赖 fail-closed、绝对路径及旧证据保护，不是业务验收。
 
-### 节点报告共享保存／通知回归
+### 发布 V2 双宿主原生与页面专项（P34／P35 V2）
+
+从参与的 herdr-bot worktree 根运行：
+
+```sh
+python scripts/accept-node-approval-v2.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+```
+
+路径必须显式绝对，证据目录必须不存在。使用本 worktree 的独立绝对 `CARGO_TARGET_DIR/debug/herdr-bot.exe`，旁置本次 `herdr-paths`、`herdr-fixture` 与 `examples/safe_shutdown_shell.exe`；两仓 frozen-lock 依赖及 Bun 1.4.4。paths 除原生设施的 `herdr`、`omp_package`、`pi_package`、两宿主 `*_state_extension` 外，须显式声明原发布 Suite 的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp` 、包含 chrome.exe 的 `chrome`，以及已安装 Windows 原生 Bash 可执行文件 `native_shell`（也可显式 `--shell-path`）。不继承 PATH 中的 WSL bash：Linux loopback 及盘符语义不能替代本 Windows 服务／文件。模型启动前，由所选 Bash 实际读取独占探针文件并访问同一生产后端 `/api/tasks`；可执行文件存在本身不是环境相通证据。预检核实原始 grill-with-docs、grilling、domain-modeling 和 writing-for-agents 指针实际存在，不复制 Skill 兼容别名、不改其正文。Suite 与初始 Skill 不删除，MCP 使用已有隔离 runtime/cache/allowed-root 设施，不接用户 daemon。模型沿用 `provider/model/baseUrl/apiKeyEnv`，不发现凭据、不安装宿主、不回退受控成功、不重试业务决定。
+
+已明确授权只读 auth 文件时，使用既有 `scripts/accept-workflow-codex.py --scenario node-approval-v2 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先以另一个新证据目录加 `--smoke` 核对实际 `serverModel=gpt-6-luna`。这仅是该传输的授权模型边界，不是产品限制；不复制、刷新或修改认证。临时 worktree 的历史 baseline 依赖可按 toolkit 指引显式设置 `OMP_BASELINE_RECORD_ROOT`，不改 baseline 或锁文件。
+
+专项以发布 `create-task-v2.json` 及其真实两节点 `create-bot-v2.json` 独占副本运行，保留业务提示词、Skill、Suite、拓扑和专用 V2 authorization／confirmation 材料；只重定位物理 zone、契约地址和显式模型／宿主。两个宿主分别真实创建只读 CSV Task 与完整 Bot，三个人工职责观察原生完整问题、选中 Yes、真实 true 返回；子管理者 finish 后独立执行父层自动批准。原生历史、真实模型请求／返回身份、工具与透传 HTTP、命名材料字节、实际配置／revision、显式 complete／finish、独立 Run 身份及 V1 原定义未改证据均归档。批准、最新可交接报告及声明交付分别核对，不以批准替代完成条件。
+
+`node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、最终冻结模式／批准来源／报告与独立 HTTP 读回交叉核对，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 51 秒单调窗口覆盖既有 20 秒确认＋30 秒 HTTP 预算及余量，不改变产品策略。
+
+入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `python scripts/accept-node-approval-v2.test.py` 的 CLI 安全通过不替代专项。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
+
+## 节点报告共享保存／通知回归
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
 

@@ -22,7 +22,7 @@ MODEL = 'gpt-6-luna'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-v2'], required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi', 'omp', 'pi'], required=True)
     for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
@@ -32,15 +32,15 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
-    parser.add_argument('--native-only', action='store_true', help='Node approval failure matrix only; does not certify full ticket checks')
+    parser.add_argument('--native-only', action='store_true', help='Node approval failures/V2 native coverage only; does not certify full ticket checks')
     parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
-    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'] and args.hosts == 'declared':
+    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-v2'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
         parser.error('Single-host selection is only supported for the roles scenario')
-    if args.native_only and (args.scenario != 'node-approval-failures' or args.smoke):
-        parser.error('--native-only requires the node-approval-failures business scenario')
+    if args.native_only and (args.scenario not in ['node-approval-failures', 'node-approval-v2'] or args.smoke):
+        parser.error('--native-only requires the node-approval-failures or node-approval-v2 business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
     if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
@@ -135,9 +135,10 @@ def main():
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)
-                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures']:
+                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-v2']:
                         script = ('accept-node-approval-handoff.py' if args.scenario == 'node-approval-handoff'
                                   else 'accept-node-approval-failures.py' if args.scenario == 'node-approval-failures'
+                                  else 'accept-node-approval-v2.py' if args.scenario == 'node-approval-v2'
                                   else 'accept-chief-task.py' if args.scenario == 'chief-task'
                                   else 'accept-chief-' + args.scenario + '.py')
                         command = [sys.executable, str(REPO / 'scripts' / script),
@@ -156,7 +157,7 @@ def main():
                         command.append('--native-only')
                     if args.scenario == 'revise':
                         command.extend(['--cases', args.cases])
-                    for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff'] else
+                    for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff', 'node-approval-v2'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):
                         value = getattr(args, name)
                         if value and (args.scenario not in ['reports', 'recovery', 'authority'] or name == 'shell_path'):
