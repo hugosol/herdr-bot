@@ -26,7 +26,7 @@ async fn report(s: &Scenario, identity: &str, body: &str) -> Value {
 // loses report access. Use the real report/collect/complete HTTP interfaces.
 #[tokio::test]
 async fn late_old_reports_remain_history_without_controlling_new_execution() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let (started, old) = failed_execution(&s).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let first = report(&s, "retry-old", "OLD-1: partial output only").await;
@@ -63,6 +63,7 @@ async fn late_old_reports_remain_history_without_controlling_new_execution() {
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(s.herdr.calls(), calls);
     assert_eq!(action(&s, "status", json!({"sessionId":"retry-manager"}), 200).await["snapshot"], retry["snapshot"]);
+    approve_execution(&s, "retry-new").await;
     let completed = action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"Accept only NEW-2"}), 200).await;
     assert!(completed["pendingReports"].get("A").is_none());
     report(&s, "retry-old", "OLD-4: after handoff").await;
@@ -231,13 +232,15 @@ async fn paused_retry_requires_explicit_resume_and_human_confirmation() {
 // Retry cannot create another Chat or alter the first finish/old failure facts.
 #[tokio::test]
 async fn terminal_run_rejects_retry_without_new_chat_or_record_changes() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let (started, _) = failed_execution(&s).await;
+    approve_execution(&s, "retry-old").await;
     submit_report(&s, "retry-old", "Repaired result ready for manual handoff", true).await;
     action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"User supplied final result"}), 200).await;
     for (node, native) in [("B", "terminal-B"), ("C", "terminal-C")] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":native},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("retry-manager", &[node]).await;
+        approve_execution(&s, native).await;
         submit_report(&s, native, "Final output verified", true).await;
         action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":node,"reason":"Verified final output"}), 200).await;
     }
@@ -347,7 +350,9 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
-    assert_eq!(new["reportPolicy"], "auto");
+    assert_eq!(new["autoApproved"], true);
+    assert_eq!(new["approved"], false);
+    assert_eq!(new["approvalSource"], Value::Null);
     let launch = calls.iter().filter(|c| c["kind"] == "agent_start").nth(2).unwrap();
     assert_eq!(&launch["args"].as_array().unwrap()[..4], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!("high")]);
     let native = common::read_json_lines(&s.herdr.path().join("started.jsonl")).pop().unwrap();

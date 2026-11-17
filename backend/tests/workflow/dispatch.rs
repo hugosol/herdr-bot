@@ -27,6 +27,8 @@ mod roles;
 mod report_policy;
 #[path = "reports/approval.rs"]
 mod approval;
+#[path = "reports/approval_restart.rs"]
+mod approval_restart;
 #[path = "../scheduler/maps/map_deletion.rs"]
 mod map_deletion;
 #[path = "../scheduler/maps/map_title.rs"]

@@ -1,122 +1,76 @@
-//! Real HTTP and owned storage/host fixture; policy lookup is not backend approval state.
+//! S1: frozen approval mode, recovery and independent retry identity.
 use super::*;
 
-fn set_policy(s: &Scenario, id: &str, policy: Value) {
+fn set_mode(s: &Scenario, auto: bool) {
     let path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    map["nodes"][id]["report_policy"] = policy;
+    map["nodes"]["A"]["auto_approved"] = json!(auto);
     fs::write(path, map.to_string()).unwrap();
 }
-
 async fn action(s: &Scenario, name: &str, body: Value) -> Value {
     let response = post_json_over_tcp(s.server.addr(), &format!("/api/workflow/manager/{name}"), &body.to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     serde_json::from_str(&response.body).unwrap()
 }
-
-// Preserve the report_policy libtest module while locating the Map save contract with definitions.
+async fn context(s: &Scenario, identity: &str) -> Value {
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":identity}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    serde_json::from_str(&response.body).unwrap()
+}
+// Preserve the existing public definition selector, not its obsolete protocol.
 include!("../../scheduler/maps/report_policy.rs");
 
+// P3/P15/P38: dispatch freezes manual; changing the Map to auto cannot change
+// recovery. A retry inheriting either the old approval or report must fail the
+// literal new-context and pending-report checks below. All transitions are HTTP.
 #[tokio::test]
-async fn report_policy_is_fixed_per_execution_recovery_keeps_it_and_retry_reads_current_map() {
-    let s = Scenario::new().await;
-    // Run creation is not a policy snapshot; dispatch reads the current Map.
-    let started = s.start("policy-manager").await;
-    set_policy(&s, "A", json!("manual"));
+async fn approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map() {
+    let s = Scenario::without_output_contract().await;
+    s.start("policy-manager").await;
+    set_mode(&s, false);
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-old"},"native_cwd":s.data.path().join("node-zone")}));
-    let first = s.dispatch("policy-manager", &["A"]).await;
-    let old = first["snapshot"]["nodes"]["A"]["execution"].clone();
-    assert_eq!(old["reportPolicy"], "manual");
-    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
-    assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap()["nodes"]["A"]["execution"], old);
-    set_policy(&s, "A", json!("auto"));
-    // Expected red before the endpoint exists: 404 instead of the frozen manual
-    // context. Reading the live Map instead would incorrectly return auto.
-    let calls = s.herdr.calls();
-    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":"policy-old"}).to_string()).await;
-    assert_eq!(context.status, 200, "{}", context.body);
-    assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap(), json!({"runId":started["id"],"nodeId":"A","executionId":old["id"],"reportPolicy":"manual"}));
-    for input in [json!({"sessionId":"policy-manager"}), json!({"sessionId":"unknown"}), json!({"sessionId":""}), json!({}), json!({"sessionId":null}), json!({"sessionId":"policy-old","runId":started["id"]}), json!(["policy-old"])] {
-        let refused = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &input.to_string()).await;
-        assert!(matches!(refused.status, 400 | 403), "{} {}", refused.status, refused.body);
-        assert!(serde_json::from_str::<Value>(&refused.body).unwrap().get("reportPolicy").is_none());
-    }
-    for (route, body) in [("/api/workflow/node/context?sessionId=policy-old", r#"{"sessionId":"policy-old"}"#), ("/api/workflow/node/context", "{")] {
-        let refused = post_json_over_tcp(s.server.addr(), route, body).await;
-        assert_eq!(refused.status, 400, "{}", refused.body);
-    }
-    let untouched = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
-    assert_eq!(untouched["reports"], json!([]));
-    assert_eq!(s.herdr.calls(), calls);
+    let dispatched = s.dispatch("policy-manager", &["A"]).await;
+    let initial = dispatched["snapshot"]["nodes"]["A"]["execution"].clone();
+    assert_eq!(initial["autoApproved"], false);
+    assert_eq!(initial["approved"], false);
+    set_mode(&s, true);
+    assert_eq!(context(&s, "policy-old").await["autoApproved"], false);
+    approve_execution(&s, "policy-old").await;
+    let old = action(&s, "status", json!({"sessionId":"policy-manager"})).await["snapshot"]["nodes"]["A"]["execution"].clone();
+    assert_eq!(old["approved"], true);
+    assert_eq!(old["approvalSource"], "manual");
+    let old_report = submit_report(&s, "policy-old", "Original approved handoff", true).await;
     action(&s, "fail", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Repair original work"})).await;
     let calls = s.herdr.calls();
     let recovered = action(&s, "recover", json!({"sessionId":"policy-manager","nodeId":"A","confirmed":true,"reason":"Original Chat repaired"})).await;
     assert_eq!(recovered["snapshot"]["nodes"]["A"]["execution"], old);
     assert_eq!(s.herdr.calls(), calls);
-    // Manual is not a backend approval gate: report requires no approval token/state.
-    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report", &json!({"sessionId":"policy-old","body":"result.md; usable with documented limitations","canComplete":true}).to_string()).await;
-    assert_eq!(report.status, 200, "{}", report.body);
-    let status = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
-    assert_eq!(status["snapshot"]["nodes"]["A"]["status"], "running");
     action(&s, "fail", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Choose independent execution"})).await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-new"},"native_cwd":s.data.path().join("node-zone")}));
     let retried = action(&s, "retry", json!({"sessionId":"policy-manager","nodeId":"A","confirmed":true,"reason":"User checked old effects"})).await;
     let node = &retried["snapshot"]["nodes"]["A"];
-    assert_eq!(node["execution"]["reportPolicy"], "auto");
     assert_ne!(node["execution"]["id"], old["id"]);
+    assert_eq!(node["execution"]["autoApproved"], true);
+    assert_eq!(node["execution"]["approved"], false);
+    assert_eq!(node["execution"]["approvalSource"], Value::Null);
     assert_eq!(node["previousExecutions"][0]["execution"], old);
-    let before_lookup = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
-    let calls = s.herdr.calls();
-    for (session, execution, policy) in [("policy-old", &old["id"], "manual"), ("policy-new", &node["execution"]["id"], "auto")] {
-        let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":session}).to_string()).await;
-        assert_eq!(context.status, 200, "{}", context.body);
-        assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap(), json!({"runId":started["id"],"nodeId":"A","executionId":execution,"reportPolicy":policy}));
+    assert_eq!(retried["reports"], json!([old_report]));
+    assert!(retried["pendingReports"].get("A").is_none());
+    for (identity, auto, approved, source) in [("policy-old", false, true, json!("manual")), ("policy-new", true, false, Value::Null)] {
+        let c = context(&s, identity).await;
+        assert_eq!(c["autoApproved"], auto);
+        assert_eq!(c["approved"], approved);
+        assert_eq!(c["approvalSource"], source);
     }
-    let after_lookup = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
-    assert_eq!(after_lookup["reports"], before_lookup["reports"]);
-    assert_eq!(after_lookup["snapshot"], before_lookup["snapshot"]);
-    assert_eq!(s.herdr.calls(), calls);
-    // Policy is not approval state; the replacement still needs its own ready report.
-    submit_report(&s, "policy-new", "Replacement execution ready", true).await;
-    let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Verified handoff"})).await;
+    let denied = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"policy-manager","nodeId":"A","reason":"Old approval cannot authorize replacement"}).to_string()).await;
+    assert_eq!(denied.status, 409, "{}", denied.body);
+    assert_eq!(serde_json::from_str::<Value>(&denied.body).unwrap()["code"], "node-not-approved");
+    approve_execution(&s, "policy-new").await;
+    let denied = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"policy-manager","nodeId":"A","reason":"Old report cannot authorize replacement"}).to_string()).await;
+    assert_eq!(denied.status, 409, "{}", denied.body);
+    assert_eq!(serde_json::from_str::<Value>(&denied.body).unwrap()["code"], "report-not-completable");
+    submit_report(&s, "policy-new", "Independent replacement handoff", true).await;
+    let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Accept replacement only"})).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
-    set_policy(&s, "B", json!("manual"));
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-manual-complete"},"native_cwd":s.data.path().join("node-zone")}));
-    let manual = s.dispatch("policy-manager", &["B"]).await;
-    assert_eq!(manual["snapshot"]["nodes"]["B"]["execution"]["reportPolicy"], "manual");
-    submit_report(&s, "policy-manual-complete", "User permitted report; work ready", true).await;
-    let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"B","reason":"Manager verified handoff without approval state"})).await;
-    assert_eq!(completed["snapshot"]["nodes"]["B"]["status"], "completed");
-}
-
-#[tokio::test]
-async fn old_execution_records_default_to_auto_without_rewriting_or_reading_map_policy() {
-    let s = Scenario::new().await;
-    let started = s.start("policy-legacy-manager").await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-legacy-node"},"native_cwd":s.data.path().join("node-zone")}));
-    let dispatched = s.dispatch("policy-legacy-manager", &["A"]).await;
-    assert_eq!(dispatched["snapshot"]["nodes"]["A"]["execution"]["reportPolicy"], "auto");
-    let path = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap()).join("run.json");
-    let mut legacy: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    legacy["nodes"]["A"]["execution"].as_object_mut().unwrap().remove("reportPolicy");
-    fs::write(&path, legacy.to_string()).unwrap();
-    let original = fs::read(&path).unwrap();
-    set_policy(&s, "A", json!("manual"));
-    let status = action(&s, "status", json!({"sessionId":"policy-legacy-manager"})).await;
-    assert_eq!(status["snapshot"]["nodes"]["A"]["execution"]["reportPolicy"], "auto");
-    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":"policy-legacy-node"}).to_string()).await;
-    assert_eq!(context.status, 200, "{}", context.body);
-    assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap()["reportPolicy"], "auto");
-    assert_eq!(fs::read(&path).unwrap(), original);
-    legacy["nodes"]["A"]["execution"]["reportPolicy"] = json!("invalid");
-    fs::write(&path, legacy.to_string()).unwrap();
-    let invalid = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", started["id"].as_str().unwrap())).await;
-    assert_eq!(invalid.status, 500, "{}", invalid.body);
-    let detail: Value = serde_json::from_str(&invalid.body).unwrap();
-    assert_eq!(detail["code"], "run-read-failed");
-    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":"policy-legacy-node"}).to_string()).await;
-    assert_eq!(context.status, 500, "{}", context.body);
-    let error: Value = serde_json::from_str(&context.body).unwrap();
-    assert_eq!(error["code"], "run-read-failed");
-    assert!(error.get("reportPolicy").is_none());
+    println!("P3/P15/P38 initial={initial} old={old} retry={retried} completed={completed}");
 }
