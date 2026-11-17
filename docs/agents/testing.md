@@ -668,7 +668,7 @@ python scripts/accept-node-approval-report.py --herdr-bot-worktree "$HERDR_BOT_W
 
 入口顺序执行 frontend build、生产后端／fixture／paths／安全关机壳和既有透明 CLI recorder 构建、后端／前端／浏览器完整回归，以及 toolkit typecheck／canonical test／integration check 和 chief／node 具名 dock。配对回归仅使用本次安全关机壳；生产后端仅用于专项独占业务实例。昂贵原生检查须遵守 toolkit quiet-window 约定。
 
-专项复用既有原生安装、SessionManager、独占 Herdr、透传 UI observer 和外部 CLI recorder。两宿主真实 TUI 的 Yes 选中画面、确认原文、原生返回、公开 Run／报告、manager 原生输入、完整 HTTP 与外部调用分别留证。覆盖两模式无报告／无产物批准、批准前后四类自由报告、报告与批准正交、真实 Windows deny-delete 持久化故障、重复与实际重叠调用、chief 原生委派／报告确认。并发用例通过两个实际 native approve 到达透传 HTTP 门闩再共同放行，5 秒仍只有一个到达时保持失败，不能用串行重复补足。存储故障按独占记录内容定位，不固定临时文件名。
+专项复用既有原生安装、SessionManager、独占 Herdr、透传 UI observer 和外部 CLI recorder。两宿主真实 TUI 的 Yes 选中画面、确认原文、原生返回、公开 Run／报告、manager 原生输入、完整 HTTP 与外部调用分别留证。覆盖两模式无报告／无产物批准、批准前后四类自由报告、报告与批准正交、真实 Windows deny-delete 持久化故障、重复与实际重叠调用、chief 原生委派／报告确认。并发用例通过两个实际 native approve 到达透传 HTTP 门闩再共同放行，5 秒仍只有一个到达时保持失败，不能用串行重复补足。存储故障按独占记录内容定位，不固定临时文件名。并发到达与放行时间使用 `time.perf_counter()` 高分辨率单调时钟，避免 Windows 粗粒度时钟把先后事件记成同刻；第二宿主进程在原生历史的真实 cwd 启动并核对 switch 未取消。chief 使用交付的 connect-bot 扩展与独占后端配置真实登记，公开 current 达到 registered 后才请求委派，不伪造登记事件。
 
 无自动行为窗口用单调时钟观察 46 秒，超过 30 秒请求及 10 秒在线＋30 秒保留＋5 秒维护上界；不修改产品确认／超时／重试策略。每项 coverage 独立输出字面预期、原始证据和 verified 状态；部分宿主、任何检查／覆盖缺失或清理失败均非零，原始错误与清理错误分开保留。CLI 自测 `python scripts/accept-node-approval-report.test.py` 仅证明 fail-closed 与旧证据保护，不代替 S2。
 
