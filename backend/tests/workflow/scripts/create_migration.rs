@@ -1,7 +1,7 @@
 //! P22/P23/P27/P28: public shipped definitions, real HTTP Map executions and files.
 //! The controlled external host reads the real inputs; it does NOT prove an
 //! agent follows a prompt. Native shared-Task scenarios own that evidence.
-//! Independent oracle: abc / hello / empty with separately fixed SHA-256 values.
+//! Independent oracle: abc / hello / empty, without approval credentials.
 //! A stale Task binding, missing direct baseline, trim/swap, implicit addressing,
 //! eager complete or global replace-text migration must disagree here.
 use super::*;
@@ -50,7 +50,7 @@ async fn create_migration_runs_shipped_map_and_preserves_revision_and_history() 
 // node.input prose, the handoff provenance index or a nearby existing file.
 #[tokio::test]
 async fn create_migration_rejects_missing_and_malformed_explicit_materials() {
-    for fault in ["request-missing", "request-markdown", "handoff-markdown", "missing-binding"] {
+    for fault in ["request-missing", "request-markdown", "missing-binding"] {
         migrated_workflow(Some(fault)).await;
     }
 }
@@ -107,7 +107,12 @@ async fn migrated_workflow(fault: Option<&str>) {
     let old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
     let new_wrapper = source("meta-data/workflow-maps/create-bot-wrapper.json");
     for (id, node) in old_wrapper["nodes"].as_object().unwrap() {
-        for field in ["input_rule", "output_rule", "blocked_by"] { assert_eq!(new_wrapper["nodes"][id][field], node[field]); }
+        for field in ["input_rule", "output_rule", "blocked_by"] {
+            let expected = if id == "save_bot" && field == "input_rule" {
+                Value::Array(node[field].as_array().unwrap().iter().filter(|rule| !rule["id"].as_str().unwrap().ends_with("_handoff")).cloned().collect())
+            } else { node[field].clone() };
+            assert_eq!(new_wrapper["nodes"][id][field], expected);
+        }
         if id != "save_bot" { assert_eq!(new_wrapper["nodes"][id]["bot_id"], node["bot_id"]); }
     }
     let references: Vec<_> = fs::read_dir(root().join("meta-data/workflow-maps")).unwrap().filter_map(|p| {
@@ -192,7 +197,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     complete(&s, "create_blank").await;
     let locator = json!({"type":"task","task_id":target["id"]});
     let mut final_texts = serde_json::Map::new();
-    for (field, text, digest) in [("when","abc","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),("plan_guide","hello","2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"),("node_guide","","e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")] {
+    for (field, text) in [("when","abc"),("plan_guide","hello"),("node_guide","")] {
         let mut previous = None;
         for stage in ["write", "optimize"] {
             let node = format!("{stage}_{field}");
@@ -209,7 +214,7 @@ async fn migrated_workflow(fault: Option<&str>) {
             fs::write(&text_path, text).unwrap();
             let mut sources = vec![json!({"binding_id":"baseline","direction":"input","role":"baseline"}),json!({"binding_id":"text","direction":"output","role":"text"})];
             if stage == "optimize" { sources.extend([json!({"binding_id":"text","direction":"input","role":"text"}),json!({"binding_id":"handoff","direction":"input","role":"handoff"})]); }
-            let handoff = json!({"schema_version":1,"kind":"handoff","stage":"guide","bot_id":"migration-result","target":locator,"field":field,"sources":sources,"confirmation":{"evidence":format!("Independent literal user confirmation of {field}: {text:?}; authorize this field save"),"text_sha256":digest,"full_text":true,"save_authorized":true,"semantics_preserved":true},"constraints":["Do not execute target"],"unverified":["Controlled drafts do not prove agent compliance"]});
+            let handoff = json!({"schema_version":1,"kind":"handoff","stage":"guide","bot_id":"migration-result","target":locator,"field":field,"sources":sources,"constraints":["Do not execute target"],"unverified":["Controlled drafts do not prove agent compliance"]});
             fs::write(&handoff_path, handoff.to_string()).unwrap();
             api(&s, "/api/workflow/node/report", json!({"sessionId":session,"body":"Literal fixture delivery, not agent compliance","canComplete":true,"outputs":[{"id":"text","path":text_path},{"id":"handoff","path":handoff_path}]}), 200).await;
             approve_execution(&s, &session).await;
@@ -218,7 +223,6 @@ async fn migrated_workflow(fault: Option<&str>) {
         }
         final_texts.insert(field.into(), json!(text));
     }
-    if fault == Some("handoff-markdown") { fs::write(s.data.path().join("optimize_when.json"), "Approved. Read neighboring optimize_when.txt as the text.").unwrap(); }
     assert_eq!(s.dispatch("migration-manager", &["save_bot"]).await["results"][0]["status"], "running");
     let saved_report = reported(&s, &run, "save_bot").await;
     if fault.is_some() {
@@ -240,7 +244,8 @@ async fn migrated_workflow(fault: Option<&str>) {
     assert_eq!(saved_handoff["checks"], json!({"bot_read_back":true,"target_unchanged":true}));
     assert!(saved_handoff.get("bot").is_none());
     assert!(saved_handoff["target"].get("configuration").is_none());
-    assert_eq!(saved_handoff["sources"].as_array().unwrap().len(), 7);
+    assert_eq!(saved_handoff["sources"], json!([{"binding_id":"baseline","direction":"input","role":"baseline"},{"binding_id":"when_text","direction":"input","role":"text"},{"binding_id":"plan_guide_text","direction":"input","role":"text"},{"binding_id":"node_guide_text","direction":"input","role":"text"}]));
+    assert!(saved_handoff.get("confirmation_evidence").is_none());
     let mut expected = baseline["bot"].clone();
     expected.as_object_mut().unwrap().extend(final_texts);
     assert_eq!(saved["bot"], expected);

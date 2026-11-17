@@ -32,9 +32,9 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 ## 脚本空白 Bot 创建
 
-发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，原 Bot 身份、命名输入输出和修订 replace-text 保留。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
+发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，保留原 Bot 身份及修订 replace-text。V1 保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入，三份正文按命名原样写入字段；不消费指南 handoff 或批准凭据，不兼容旧七项输入。saved／handoff 输出身份不变。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
 真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 
