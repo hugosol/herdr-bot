@@ -53,6 +53,8 @@ def checks(args, record):
         HERDR_BOT_REPO=str(args.repo), HERDR_BOT_METADATA=str(args.repo / 'meta-data/task-options.toml'),
         HERDR_BOT_BINARY=str(args.backend.parent / 'examples/safe_shutdown_shell.exe'),
         WORKFLOW_PROMPT_EVIDENCE_DIR=str(args.evidence_dir / 'mechanical-docks'))
+    record['checkEnvironment'] = {key: environment.get(key) for key in ['CARGO_TARGET_DIR', 'HERDR_BOT_REPO',
+        'HERDR_BOT_METADATA', 'HERDR_BOT_BINARY', 'OMP_BASELINE_RECORD_ROOT']}
     commands = [(args.repo, ['npm', '--prefix', 'frontend', 'run', 'build']),
         (args.repo, ['cargo', 'build', '--manifest-path', 'backend/Cargo.toml', '--bin', 'herdr-bot', '--bin', 'herdr-fixture', '--bin', 'herdr-paths', '--example', 'safe_shutdown_shell']),
         (args.repo, ['node', 'scripts/test-backend.mjs']),
