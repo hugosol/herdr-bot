@@ -40,7 +40,7 @@
         }
       ],
       "blocked_by": [],
-      "report_policy": "manual",
+      "auto_approved": true,
       "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
@@ -67,7 +67,7 @@
       "blocked_by": [
         "w1"
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
@@ -94,7 +94,7 @@
       "blocked_by": [
         "w1"
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
@@ -121,7 +121,7 @@
       "blocked_by": [
         "w1"
       ],
-      "report_policy": "manual",
+      "auto_approved": false,
       "auto_close": false,
       "zone": "hugosol/herdr-bot"
     },
@@ -186,7 +186,7 @@
         "w3",
         "w4"
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": false,
       "zone": "hugosol/herdr-bot"
     }

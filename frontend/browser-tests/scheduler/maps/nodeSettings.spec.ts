@@ -46,8 +46,8 @@ test('P1 P3 P5 node settings are independent, radio-selected and explain Tab ter
   expect(before).toMatchObject(original)
   await edit(page, 'A', '旧节点')
   const autoClose = page.getByRole('checkbox', { name: 'auto_close', exact: true })
-  const auto = page.getByRole('radio', { name: 'auto', exact: true })
-  const manual = page.getByRole('radio', { name: 'manual', exact: true })
+  const auto = page.getByRole('radio', { name: '自动批准（true）', exact: true })
+  const manual = page.getByRole('radio', { name: '手动批准（false）', exact: true })
   await expect(auto).toBeChecked()
   await expect(manual).not.toBeChecked()
   await expect(autoClose).toHaveAccessibleDescription(/关闭 Tab.*终止.*终端.*进程/)
@@ -66,11 +66,11 @@ test('P1 P3 P5 node settings are independent, radio-selected and explain Tab ter
   await save(page)
   const after = await readMap(page)
   expect(after).toEqual({ ...before, nodes: { ...before.nodes,
-    A: { ...before.nodes.A, auto_close: true, report_policy: 'manual' },
-    B: { ...before.nodes.B, auto_close: false, report_policy: 'auto' },
+    A: { ...before.nodes.A, auto_close: true, auto_approved: false },
+    B: { ...before.nodes.B, auto_close: false, auto_approved: true },
   } })
   expect(fs.readFileSync(path.join(root, 'untouched.json'), 'utf8')).toBe(untouched)
-  for (const [id, title, closes, policy] of [['A', '旧节点', true, 'manual'], ['B', '另一个节点', false, 'auto']] as const) {
+  for (const [id, title, closes, policy] of [['A', '旧节点', true, '手动批准（false）'], ['B', '另一个节点', false, '自动批准（true）']] as const) {
     await edit(page, id, title)
     await expect(autoClose).toBeChecked({ checked: closes })
     await expect(page.getByRole('radio', { name: policy, exact: true })).toBeChecked()
@@ -86,7 +86,7 @@ test('P4 independent settings merge content and retain invalid raw drafts', asyn
   const json = page.getByLabel('node 内容 JSON', { exact: true })
   const zone = page.getByRole('textbox', { name: 'zone', exact: true })
   const closes = page.getByRole('checkbox', { name: 'auto_close', exact: true })
-  const manual = page.getByRole('radio', { name: 'manual', exact: true })
+  const manual = page.getByRole('radio', { name: '手动批准（false）', exact: true })
   await edit(page, 'A', '旧节点')
   const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', node_id: 'B', output_id: 'result' }], output_rule: [] }
   expect(JSON.parse(await json.inputValue())).toEqual({ title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [], output_rule: [] })
@@ -97,13 +97,13 @@ test('P4 independent settings merge content and retain invalid raw drafts', asyn
   await manual.check()
   await expect(json).toHaveValue(raw)
   await save(page)
-  const expected = { ...before, nodes: { ...before.nodes, A: { ...content, zone: 'another-unregistered-zone', auto_close: true, report_policy: 'manual' } } }
+  const expected = { ...before, nodes: { ...before.nodes, A: { ...content, zone: 'another-unregistered-zone', auto_close: true, auto_approved: false, end_node: false } } }
   expect(await readMap(page)).toEqual(expected)
   await edit(page, 'A', '旧节点')
   await expect(zone).toHaveValue('another-unregistered-zone')
   await expect(closes).toBeChecked()
   await expect(manual).toBeChecked()
-  for (const invalid of ['{ "input": ', '[true]', JSON.stringify({ ...content, zone: 'conflicting' }), JSON.stringify({ ...content, auto_close: false }), JSON.stringify({ ...content, report_policy: 'auto' }), JSON.stringify({ ...content, node_id: 'B' })]) {
+  for (const invalid of ['{ "input": ', '[true]', JSON.stringify({ ...content, zone: 'conflicting' }), JSON.stringify({ ...content, auto_close: false }), JSON.stringify({ ...content, auto_approved: true }), JSON.stringify({ ...content, node_id: 'B' })]) {
     await json.fill(invalid)
     await expect(closes).toBeEnabled()
     await closes.uncheck()
@@ -128,7 +128,8 @@ test('P4 independent settings merge content and retain invalid raw drafts', asyn
 // P1/P2 S2 validation: optional means absent or a real boolean, not coercion.
 // Wrong-type saves must leave the definition bytes unchanged; malformed reads
 // must fail rather than silently enabling/disabling a node. No internal doubles.
-test('P1 auto_close accepts only booleans through existing definition interfaces', async ({ page }) => {
+for (const field of ['auto_approved', 'auto_close'] as const) {
+test(`P1 ${field} accepts only booleans through existing definition interfaces`, async ({ page }) => {
   const root = await setup(page)
   const file = path.join(root, 'settings.json')
   const before = fs.readFileSync(file, 'utf8')
@@ -136,14 +137,14 @@ test('P1 auto_close accepts only booleans through existing definition interfaces
   const edited = await page.request.post(`${endpoint}/nodes/edit`, { data: { id: 'A' } })
   expect(edited.status()).toBe(200)
   const draft = await edited.json()
-  for (const value of [null, 'true', 'false', 0, 1, [], {}, { enabled: true }]) {
-    const response = await page.request.post(`${endpoint}/nodes/save`, { data: { id: 'A', content: JSON.stringify({ ...legacyNode, auto_close: value }), revision: draft.revision, create: false } })
+  for (const value of [null, 'true', 'false', 'auto', 'manual', 0, 1, [], {}, { enabled: true }]) {
+    const response = await page.request.post(`${endpoint}/nodes/save`, { data: { id: 'A', content: JSON.stringify({ ...legacyNode, [field]: value }), revision: draft.revision, create: false } })
     expect(response.status()).toBe(500)
     const error = await response.json()
     expect(error.code).toBe('node-invalid')
-    expect(error.message).toContain('auto_close')
+    expect(error.message).toContain(field)
     expect(fs.readFileSync(file, 'utf8')).toBe(before)
-    fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, A: { ...legacyNode, auto_close: value } } }))
+    fs.writeFileSync(file, JSON.stringify({ ...original, nodes: { ...original.nodes, A: { ...legacyNode, [field]: value } } }))
     const invalid = await page.request.get(endpoint)
     expect(invalid.status()).toBe(500)
     expect((await invalid.json()).code).toBe('map-read-failed')
@@ -151,14 +152,15 @@ test('P1 auto_close accepts only booleans through existing definition interfaces
   }
 })
 
+}
+
 // P6 uses S1 delivered page, S2 real workflow interfaces and S3 external Herdr
 // recorder. Only the host is controlled, not policy composition/dispatch/report/
-// complete. Manual sending requires toolkit-native payload confirmation, not a
-// browser approval gate or natural-language agreement (docs/workflow-runtime.md).
-// Violation: wrong prompt, new browser approval gate, or node completing itself.
-// Prompt delivery is evidence of instructions, never of model compliance or of
-// native confirmation; direct report HTTP below exercises persistence/authority.
-test('P6 saved report policies reach node dispatch without approval gates or changed manager authority', async ({ page }, info) => {
+// complete. Manual result approval requires native confirmation, not a browser
+// gate; report sending is independent and never grants approval.
+// Prompt delivery is instruction evidence, not model/native confirmation proof.
+// Direct approval HTTP below establishes only the backend completion prerequisite.
+test('P6 saved approval modes reach dispatch and reporting remains independent of result approval', async ({ page }, info) => {
   await setup(page)
   const zone = path.join(server!.cwd, 'bot-playground')
   fs.mkdirSync(zone)
@@ -172,7 +174,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   }
   const bots = path.join(server!.cwd, 'meta-data/bots')
   fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
-  for (const [id, title, policy] of [['A', '旧节点', 'auto'], ['B', '另一个节点', 'manual'], ['C', '无关节点', 'auto']] as const) {
+  for (const [id, title, policy] of [['A', '旧节点', '自动批准（true）'], ['B', '另一个节点', '手动批准（false）'], ['C', '无关节点', '自动批准（true）']] as const) {
     await edit(page, id, title)
     await (await openNodeJson(page)).fill(JSON.stringify({ title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: legacyNode.blocked_by }))
     await page.getByRole('textbox', { name: 'zone', exact: true }).fill('test/zone')
@@ -195,16 +197,15 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
     expect(prompt).toBeDefined()
     prompts[id] = String(prompt!.text)
   }
-  expect(prompts.A).toContain('report_policy: auto')
-  expect(prompts.A).toContain('Report handoff-ready results without waiting for user confirmation')
-  expect(prompts.B).toContain('report_policy: manual')
-  expect(prompts.B).toContain('Invoke report with the full intended payload to display it for explicit native user confirmation before sending')
-  expect(prompts.B).toContain('Natural-language agreement is not report authorization')
-  expect(prompts.B).toContain('Every report, including supplements, corrections and changed payloads, requires its own native confirmation')
-  expect(prompts.B).toContain('If confirmation is refused, times out or no confirmation UI is available, do not send and stop')
-  expect(prompts.B).toContain('wait for a renewed user request before invoking report again')
-  expect(prompts.B).toContain('Separate business approval requirements still apply')
-  for (const text of Object.values(prompts)) expect(text).toContain('the manager still decides complete')
+  expect(prompts.A).toContain('auto_approved: true')
+  expect(prompts.B).toContain('auto_approved: false')
+  for (const text of Object.values(prompts)) {
+    expect(text).toContain('Approval and reporting are independent')
+    expect(text).toContain('progress, problems and failures may be reported at any time without sending confirmation')
+    expect(text).toContain('Approval never completes work or notifies the manager')
+    expect(text).toContain('the manager must explicitly complete after a latest ready report and declared deliveries')
+    expect(text).toContain('manual mode requires explicit native Yes')
+  }
   for (const [node, body] of [['A', '自动结果 result-a.md'], ['B', '人工策略结果 result-b.md'], ['B', '补充 result-b-extra.md'], ['B', '更正 result-b-corrected.md']]) {
     const report = await post('/api/workflow/node/report', { sessionId: `settings-node-${node}`, body, canComplete: !body.includes('补充') })
     expect(report.status()).toBe(200)
@@ -217,6 +218,18 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect(running.snapshot.nodes.A.status).toBe('running')
   expect(running.snapshot.nodes.B.status).toBe('running')
   for (const nodeId of ['A', 'B']) {
+    const blocked = await post('/api/workflow/manager/complete', { sessionId: 'settings-manager', nodeId, reason: '报告不等于批准' })
+    expect(blocked.status()).toBe(409)
+    expect((await blocked.json()).code).toBe('node-not-approved')
+    const context = await post('/api/workflow/node/context', { sessionId: `settings-node-${nodeId}` })
+    expect(context.status()).toBe(200)
+    const execution = await context.json()
+    expect(execution.autoApproved).toBe(nodeId === 'A')
+    expect(execution.approved).toBe(false)
+    expect(execution.approvalSource).toBeNull()
+    const approval = await post('/api/workflow/node/approve', { sessionId: `settings-node-${nodeId}`, executionId: execution.executionId, source: nodeId === 'A' ? 'auto' : 'manual' })
+    expect(approval.status()).toBe(200)
+    expect(await approval.json()).toMatchObject({ approved: true, approvalSource: nodeId === 'A' ? 'auto' : 'manual' })
     const complete = await post('/api/workflow/manager/complete', { sessionId: 'settings-manager', nodeId, reason: '管理者核实结果' })
     expect(complete.status()).toBe(200)
     expect((await complete.json()).snapshot.nodes[nodeId].status).toBe('completed')
@@ -231,7 +244,7 @@ test('P6 saved report policies reach node dispatch without approval gates or cha
   expect(detail.run.nodes.B.status).toBe('completed')
   expect(detail.reports.every((report: { runId: string }) => report.runId === runId)).toBe(true)
   expect(detail.reports.map((report: { body: string }) => report.body)).toEqual(['自动结果 result-a.md', '人工策略结果 result-b.md', '补充 result-b-extra.md', '更正 result-b-corrected.md'])
-  fs.writeFileSync(info.outputPath('report-policy-dispatch.json'), JSON.stringify({ prompts, running, detail }, null, 2))
+  fs.writeFileSync(info.outputPath('approval-mode-dispatch.json'), JSON.stringify({ prompts, running, detail }, null, 2))
 })
 
 // Approved S1 delivered browser + S2 HTTP. P2's independent expectation is false
@@ -242,7 +255,7 @@ test('P2 new drafts and legacy nodes keep auto-close off when configuration is o
   await edit(page, 'A', '旧节点')
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
   await save(page)
-  expect((await readMap(page)).nodes.A.auto_close).toBe(false)
+  expect((await readMap(page)).nodes.A).toMatchObject({ auto_close: false, auto_approved: true })
   await edit(page, 'A', '旧节点')
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
   await page.getByRole('button', { name: '放弃编辑', exact: true }).click()
@@ -250,7 +263,7 @@ test('P2 new drafts and legacy nodes keep auto-close off when configuration is o
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
   await page.getByLabel('node_id', { exact: true }).fill('NEW')
   await save(page)
-  expect((await readMap(page)).nodes.NEW.auto_close).toBe(false)
+  expect((await readMap(page)).nodes.NEW).toMatchObject({ auto_close: false, auto_approved: true })
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(page.getByRole('checkbox', { name: 'auto_close', exact: true })).not.toBeChecked()
 })

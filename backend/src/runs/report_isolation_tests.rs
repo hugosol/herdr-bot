@@ -61,7 +61,6 @@ impl Fixture {
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
             "decoy":{"title":"Other node","bot_id":"worker","input":"Other scope","output_rule":[{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
-            "missing":{"title":"No inherited material","bot_id":"worker","input":"Read legacy","input_rule":[{"id":"legacy","type":"node","node_id":"create","output_id":"legacy"}],"zone":"isolation","blocked_by":["create"]},
             "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"isolation","blocked_by":["create"]}
         }}).to_string()).unwrap();
         let read = get_over_tcp(fixture.server.addr(), "/api/scheduler/maps/isolation.json").await;
@@ -142,7 +141,8 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     let late = f.submit(&run, &old, true, old_outputs.clone()).await;
     let status = f.action("isolation-manager", "status", json!({}), 200).await;
     assert!(status["pendingReports"].get("create").is_none());
-    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true is not current"}), 409).await["code"], "report-not-completable");
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old true is not current"}), 409).await["code"], "node-not-approved");
+    let current_success = f.submit(&run, &current, true, json!([])).await;
     let progress = f.submit(&run, &current, false, json!([])).await;
     let later = f.submit(&run, &old, true, old_outputs.clone()).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], progress["id"]);
@@ -154,15 +154,15 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Earlier current true was revoked"}), 409).await["code"], "report-not-completable");
     assert_eq!(f.detail(&run).await, before);
     drop(gate);
-    let done = f.count(&run, 7).await;
-    let automatic = &done["reports"][6];
+    let done = f.count(&run, 8).await;
+    let automatic = &done["reports"][7];
     assert_eq!(automatic["canComplete"], false);
     // This test owns the report-submission seam, independently of script result validation.
     let ready = f.submit(&run, &current, true, automatic["outputs"].clone()).await;
     assert_eq!(ready["executionId"], current["id"]);
     let last = f.submit(&run, &old, true, old_outputs).await;
     assert_eq!(f.action("isolation-manager", "collect", json!({}), 200).await["pendingReports"]["create"], ready["id"]);
-    f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Accept real current business result"}), 200).await;
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Old execution cannot fill current delivery"}), 409).await["code"], "output-missing");
     // Same ID from another node and another actual Run cannot fill legacy.
     for (manager, session) in [("isolation-manager", "decoy-same-run"), ("other-manager", "decoy-other-run")] {
         if manager == "other-manager" { f.start(manager).await; }
@@ -171,10 +171,12 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
         f.post("/api/workflow/node/report", json!({"sessionId":session,"body":"Decoy scope only","canComplete":true,"outputs":[{"id":"legacy","path":legacy}]}), 200).await;
     }
     let calls = f.herdr.calls();
-    let rejected = f.action("isolation-manager", "dispatch", json!({"nodes":["missing"]}), 200).await;
-    assert_eq!(rejected["results"][0]["status"], "failed");
-    assert_eq!(rejected["results"][0]["failure"]["stage"], "resolve");
+    assert_eq!(f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Other nodes and Runs cannot supply this delivery"}), 409).await["code"], "output-missing");
     assert_eq!(f.herdr.calls(), calls);
+    let current_legacy = f.data.path().join("current-only.json");
+    fs::write(&current_legacy, b"{\"scope\":\"CURRENT-719\"}").unwrap();
+    f.submit(&run, &current, true, json!([{"id":"legacy","path":current_legacy}])).await;
+    f.action("isolation-manager", "complete", json!({"nodeId":"create","reason":"Accept only current execution deliveries"}), 200).await;
     f.native("current-consumer");
     let consumed = f.action("isolation-manager", "dispatch", json!({"nodes":["consumer"]}), 200).await;
     assert_eq!(consumed["results"][0]["status"], "running");
@@ -183,7 +185,8 @@ async fn script_reports_isolate_late_old_true_latest_false_and_material_scope() 
     assert_eq!(actual.last().unwrap()["files"]["baseline"]["bot"]["id"], "created-1");
     assert_eq!(actual.last().unwrap()["files"]["handoff"]["bot_id"], "created-1");
     let all = f.detail(&run).await;
-    assert_eq!(&all["reports"].as_array().unwrap()[..9], &[first["reports"][0].clone(), late, progress, later, earlier_true, latest_false, automatic.clone(), ready.clone(), last]);
+    assert_eq!(&all["reports"].as_array().unwrap()[..10], &[first["reports"][0].clone(), late, current_success, progress, later, earlier_true, latest_false, automatic.clone(), ready.clone(), last]);
+    assert_eq!(fs::read(current_legacy).unwrap(), b"{\"scope\":\"CURRENT-719\"}");
     assert_eq!(fs::read(legacy).unwrap(), b"{\"scope\":\"OLD-413\"}");
     f.host_exited().await;
     println!("P19 actual Run={} old={} current={} orderedReports={} consumer={}", run["id"], old["id"], current["id"], all["reports"], json!(actual));

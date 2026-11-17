@@ -87,7 +87,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
   const problem = catalog?.problems?.find(item => item.bot_id === botId)
   const botProblem = catalog && botId ? problem ? `共享 Bot ${botId}：${problem.message}` : !bot ? `缺失共享 Bot：${botId}` : undefined : undefined
   const node = map.nodes[nodeId]
-  const settings = edit?.settings ?? { zone: node.zone ?? '', report_policy: node.report_policy ?? 'auto', auto_close: node.auto_close ?? false, end_node: node.end_node ?? false }
+  const settings = edit?.settings ?? { zone: node.zone ?? '', auto_approved: node.auto_approved ?? true, auto_close: node.auto_close ?? false, end_node: node.end_node ?? false }
   const endTask = managerLookup?.kind === 'ok' ? managerLookup.tasks.find(task => task.id === bot?.task_id) : undefined
   const endNodeProblem = !edit ? undefined
     : !bot || botProblem || bot.script != null || bot.map_file != null || !endTask || endTask.taskType !== 'normal' ? '结束节点需要已核实的普通 normal Task Bot'

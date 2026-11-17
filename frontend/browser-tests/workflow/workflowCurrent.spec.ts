@@ -53,10 +53,10 @@ async function currentFixture() {
   // inputs; missing historical confirmation must remain non-dispatchable.
   run.inputsReady = true
   run.nodes = {
-    A: { ...node('completed'), execution: { agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
-    B: { ...node('failed'), execution: { agent: 'omp', id: 'exec-B', taskId: 'deleted-task', zone: 'C:/failed-zone', chat: { ...chat, sessionId: 'failed-chat' } }, failure: { stage: 'execution', message: '缺少已核实的源文件' } },
+    A: { ...node('completed'), execution: { autoApproved: true, approved: true, approvalSource: 'auto', agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
+    B: { ...node('failed'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-B', taskId: 'deleted-task', zone: 'C:/failed-zone', chat: { ...chat, sessionId: 'failed-chat' } }, failure: { stage: 'execution', message: '缺少已核实的源文件' } },
     C: node('pending'), D: node('pending'),
-    E: { ...node('running'), execution: { agent: 'omp', id: 'exec-E', taskId, zone: 'C:/report-zone', chat: { ...chat, sessionId: 'report-chat-offline' } } },
+    E: { ...node('running'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-E', taskId, zone: 'C:/report-zone', chat: { ...chat, sessionId: 'report-chat-offline' } } },
   }
   fs.writeFileSync(runPath, JSON.stringify(run))
   const report = { id: 'report-current', type: 'report', at: 5000, runId: 'new-run', nodeId: 'E', executionId: 'exec-E', from: run.nodes.E.execution.chat, to: run.manager, body: '报告正文：结果在 result.txt，限制为只读' }
@@ -151,7 +151,7 @@ test('P51.01 P52.01 current Map graph and node details distinguish execution fac
 for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
   test(`P57.01 ${condition} current definition never fabricates a historical graph @time-contract`, async ({ page }, info) => {
     const { server, root, mapPath, definition, run, runPath, report } = await currentFixture()
-    run.nodes.E.previousExecutions = [{ execution: { agent: 'omp', id: 'old-exec-E', taskId: 'old-saved-task', zone: 'C:/old-zone', chat: { ...chat, sessionId: 'saved-old-chat' } }, failure: { stage: 'execution', message: '旧执行已保留的失败' } }]
+    run.nodes.E.previousExecutions = [{ execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'old-exec-E', taskId: 'old-saved-task', zone: 'C:/old-zone', chat: { ...chat, sessionId: 'saved-old-chat' } }, failure: { stage: 'execution', message: '旧执行已保留的失败' } }]
     fs.writeFileSync(runPath, JSON.stringify(run))
     fs.writeFileSync(path.join(root, 'new-run/messages.jsonl'), JSON.stringify({ ...report, id: 'report-old', executionId: 'old-exec-E', body: '旧执行报告正文仍可读取', from: run.nodes.E.previousExecutions[0].execution.chat, at: 4500 }) + '\n' + JSON.stringify(report) + '\n')
     const records = ['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8'))
@@ -193,7 +193,7 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
 test('handoff facts preserve frozen rules and resolved inputs while accumulating current execution outputs in append order', async ({ page }) => {
   const { server, root, report, run, runPath, mapPath, definition } = await currentFixture()
   const map = JSON.parse(JSON.stringify(definition))
-  map.nodes.E.report_policy = 'manual'
+  map.nodes.E.auto_approved = false
   map.nodes.E.auto_close = true
   map.nodes.E.input_rule = [{ id: 'changed-input', type: 'file', path: 'input.txt', zone_id: 'changed/map' }]
   map.nodes.E.output_rule = [{ id: 'changed-output' }]
@@ -202,7 +202,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   run.nodes.E.execution.outputRule = [{ id: 'result' }, { id: 'notes' }]
   run.nodes.E.execution.inputs = [{ id: 'source', path: 'C:/frozen/source.txt' }]
   run.nodes.A.execution.outputRule = [{ id: 'foreign' }]
-  run.nodes.E.previousExecutions = [{ execution: { ...run.nodes.E.execution, id: 'old-E', inputRule: null, outputRule: null, inputs: null, reportPolicy: 'manual', autoClose: true }, failure: null }]
+  run.nodes.E.previousExecutions = [{ execution: { ...run.nodes.E.execution, id: 'old-E', inputRule: null, outputRule: null, inputs: null, autoApproved: false, approved: true, approvalSource: 'manual', autoClose: true }, failure: null }]
   fs.writeFileSync(runPath, JSON.stringify(run))
   const reports = [
     { ...report, id: 'first', at: 9000, canComplete: true, outputs: [{ id: 'result', path: 'C:/outputs/v1.txt' }, { id: 'notes', path: 'C:/outputs/notes.txt' }] },
@@ -222,7 +222,9 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await expect(handoff).toContainText('C:/outputs/notes.txt')
   for (const excluded of ['C:/outputs/v1.txt', 'C:/outputs/old.txt', 'C:/outputs/leak.txt', 'C:/outputs/foreign.txt']) await expect(handoff).not.toContainText(excluded)
   const execution = page.getByRole('region', { name: '当前执行事实', exact: true })
-  await expect(execution.locator('dt').filter({ hasText: /^reportPolicy$/ }).locator('+ dd')).toHaveText('auto')
+  await expect(execution.locator('dt').filter({ hasText: /^autoApproved$/ }).locator('+ dd')).toHaveText('true')
+  await expect(execution.locator('dt').filter({ hasText: /^approved$/ }).locator('+ dd')).toHaveText('false')
+  await expect(execution.locator('dt').filter({ hasText: /^approvalSource$/ }).locator('+ dd')).toHaveText('null（未批准）')
   await expect(execution.locator('dt').filter({ hasText: /^autoClose$/ }).locator('+ dd')).toHaveText('false')
   await expect(execution).toContainText('C:/report-zone')
   await expect(execution).not.toContainText('test/definition-zone')
@@ -242,6 +244,11 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await page.getByRole('group', { name: '已保存旧执行事实' }).getByText(/旧执行历史/).click()
   const history = page.getByRole('group', { name: '已保存旧执行事实' })
   await expect(history).toContainText('C:/outputs/old.txt')
+  await expect(history.locator('dt').filter({ hasText: /^autoApproved$/ }).locator('+ dd')).toHaveText('false')
+  await expect(history.locator('dt').filter({ hasText: /^approved$/ }).locator('+ dd')).toHaveText('true')
+  await expect(history.locator('dt').filter({ hasText: /^approvalSource$/ }).locator('+ dd')).toHaveText('manual')
+  const currentDefinition = page.getByRole('group', { name: '当前节点定义', exact: true })
+  await expect(currentDefinition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('false')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).toContainText('未知')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/frozen/source.txt')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/outputs/old.txt')

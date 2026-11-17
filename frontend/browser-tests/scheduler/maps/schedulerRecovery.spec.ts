@@ -68,7 +68,7 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
     ['title', [], 'string'], ['description', false, 'string'], ['nodes', [], 'map'],
   ] as const) cases.push({ name: `type-map-${field}`, value: { ...valid, [field]: wrong }, expected: [field, diagnostic] })
   for (const [field, wrong, diagnostic] of [
-    ['title', 7, 'string'], ['bot_id', {}, 'string'], ['input', [], 'string'], ['zone', {}, 'string'], ['blocked_by', 'work', 'sequence'],
+    ['title', 7, 'string'], ['bot_id', {}, 'string'], ['input', [], 'string'], ['zone', {}, 'NodeZone'], ['blocked_by', 'work', 'sequence'],
   ] as const) cases.push({ name: `type-node-${field}`, value: { ...valid, nodes: { work: { ...valid.nodes.work, [field]: wrong } } }, expected: [`nodes.work.${field}`, diagnostic] })
   cases.push(
     { name: 'misspelled-blockedBy', value: { ...valid, nodes: { work: { title: '', bot_id: '', input: '', zone: '', blockedBy: [] } } }, expected: ['nodes.work', 'unknown field `blockedBy`'] },
