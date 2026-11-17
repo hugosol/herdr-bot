@@ -70,7 +70,7 @@ class ApprovalWire:
                 raw = self.rfile.read(int(self.headers.get('Content-Length', '0')))
                 with owner.lock:
                     record = {'index': len(owner.records), 'method': self.command, 'path': self.path,
-                        'request': raw.decode(), 'started': time.monotonic()}
+                        'request': raw.decode(), 'started': time.perf_counter()}
                     owner.records.append(record)
                     gate = owner.barrier if self.path == '/api/workflow/node/approve' else None
                     if gate:
@@ -80,7 +80,7 @@ class ApprovalWire:
                 try:
                     if gate:
                         require(gate.wait(5), 'Two native approval requests did not overlap within 5s; serial repetition is not concurrency')
-                        record['gateReleased'] = time.monotonic()
+                        record['gateReleased'] = time.perf_counter()
                     request = urllib.request.Request(upstream + self.path, data=raw if raw else None,
                         method=self.command, headers={key: value for key, value in self.headers.items()
                         if key.lower() not in ['host', 'connection', 'content-length', 'accept-encoding']})
@@ -100,7 +100,7 @@ class ApprovalWire:
                     record['error'] = traceback.format_exc()
                     self.send_error(502, 'Actual transport failed; original evidence retained')
                 finally:
-                    record['ended'] = time.monotonic()
+                    record['ended'] = time.perf_counter()
                     (directory / (str(record['index']) + '.json')).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -168,7 +168,7 @@ class NodeApprovalReportAcceptance(NativeAcceptance):
 
     def role_catalog(self, toolkit):
         catalog = super().role_catalog(toolkit)
-        for role in ['chief-chat', 'chief-report']:
+        for role in ['chief-chat', 'chief-report', 'connect-bot']:
             catalog += '\n[[extensions]]\nid = ' + json.dumps(self.host + '-' + role) + '\nlabel = ' + json.dumps(role)
             catalog += '\nagent = ' + json.dumps(self.host) + '\nkind = "fixed"\nentrypoint = ' + json.dumps(str(toolkit / 'entrypoints' / (self.host + '-auto') / (role + '.ts'))) + '\n'
         return catalog
@@ -203,6 +203,9 @@ class NodeApprovalReportAcceptance(NativeAcceptance):
 
     def prepare(self):
         super().prepare()
+        config = self.root / 'toolkit/extensions/connect-bot/config.yaml'
+        config.write_text('\n'.join('endpoint: ' + self.base if line.startswith('endpoint:') else line
+            for line in config.read_text(encoding='utf-8').splitlines()) + '\n', encoding='utf-8')
         self.backend_wire.close()
         self.backend_wire = ApprovalWire(self.base, self.root / 'approval-wire')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
@@ -528,6 +531,9 @@ class NodeApprovalReportAcceptance(NativeAcceptance):
         require(current and current.get('sessionId'), 'Actual chief did not acquire authority')
         chief = self.track({**chief, 'sessionId': current['sessionId']})
         self.settled(chief, label)
+        until('native connect-bot registers the actual chief', lambda: (current if current
+            and current.get('sessionId') == chief['sessionId'] and current.get('phase') == 'registered' else None)
+            if (current := self.http('/api/chief')['current']) else None, self.args.timeout)
         delegated_label = self.next_action([])
         params = {'botId': 'ticket10-worker', 'zoneId': 'ticket10/node', 'input': 'Mechanical chief boundary; no files. TICKET10:' + delegated_label, 'materials': []}
         self.invoke(chief, 'chief_delegate', params, manual=True)
