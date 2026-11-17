@@ -6,7 +6,7 @@
 
 原 `accept-*.py`、`test-real-*.py` 和 `check-*.py` 命令路径、参数及退出语义保持不变。入口不作为其他场景的共享库；已有 implementation 使用正常 Python import。
 
-- `scripts/acceptance/host/` 持有进程句柄与输出消费、独占环境与清理、来源检查、原生观察、透明流量记录、模型传输和证据归档。受控 provider 不代表真实模型验收。
+- `scripts/acceptance/host/` 持有进程句柄与输出消费、独占环境与清理、来源检查、原生观察、透明流量记录、模型传输和证据归档。受控 provider 不代表真实模型验收。透明观察服务与隔离业务后端均显式选择 49152–65535 的数值回环端口，避免 Windows 的 `port=0` 分配到该范围之外；仅启动前实际地址占用碰撞允许重新分配，后端启动失败及业务／模型请求不因此重放。
 - `scripts/acceptance/workflow/`、`scripts/acceptance/suites/`、`scripts/acceptance/native/` 及 `acceptance.suite_resources`／`acceptance.suite_lifecycle` 保留已被复用的场景 implementation。P22 默认模型、业务判据、覆盖清单和各场景的通过条件不移入通用设施。
 - 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归继续经过原命令路径，不替代真实模型／双宿主验收。
 - 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
