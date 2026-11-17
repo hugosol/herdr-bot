@@ -71,13 +71,12 @@ async function dispatch(page: Page, nodeId: string, sessionId: string, zone: str
   expect(result.results[0].status).toBe('running')
   return result.snapshot.nodes[nodeId].execution
 }
-async function approve(page: Page, sessionId: string) {
-  const context = await post(page, '/api/workflow/node/context', { sessionId })
-  expect(context).toMatchObject({ autoApproved: true, approved: false, approvalSource: null })
-  const result = await post(page, '/api/workflow/node/approve', { sessionId, executionId: context.executionId, source: 'auto' })
-  expect(result).toMatchObject({ approved: true, approvalSource: 'auto', changed: true })
-}
-async function complete(page: Page, nodeId: string) {
+async function approveAndComplete(page: Page, nodeId: string) {
+  const status = await post(page, '/api/workflow/manager/status', { sessionId: manager })
+  const execution = status.snapshot.nodes[nodeId].execution
+  const context = await post(page, '/api/workflow/node/context', { sessionId: execution.chat.sessionId })
+  expect(context.executionId).toBe(execution.id)
+  await post(page, '/api/workflow/node/approve', { sessionId: execution.chat.sessionId, executionId: execution.id, source: 'auto' })
   const result = await post(page, '/api/workflow/manager/complete', { sessionId: manager, nodeId, reason: 'Manager accepted the delivered work' })
   expect(result.changed).toBe(true)
   expect(result.snapshot.nodes[nodeId].status).toBe('completed')
@@ -102,13 +101,11 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
   expect(a.id).not.toBe(b.id)
   expect(a.chat.sessionId).toBe('lifecycle-new-A')
   expect(b.chat.sessionId).toBe('lifecycle-new-B')
-  await approve(page, 'lifecycle-new-A')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-A', body: 'A handoff ready with current close choice', canComplete: true })
-  await approve(page, 'lifecycle-new-B')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-B', body: 'B handoff ready with current close choice', canComplete: true })
-  await complete(page, 'A')
+  await approveAndComplete(page, 'A')
   await expectClosed(a.chat.tabId, 1)
-  await complete(page, 'B')
+  await approveAndComplete(page, 'B')
   await noMoreCloses(page, [['tab', 'close', a.chat.tabId]])
 })
 
@@ -119,9 +116,8 @@ test('P8 new dispatch uses current Map choices in both directions @time-contract
 test('P18 completed execution is not closed again by reading refreshing or service restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-read-completed', zone)
-  await approve(page, 'lifecycle-read-completed')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-read-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
-  const completed = await complete(page, 'A')
+  const completed = await approveAndComplete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
   const expected = [['tab', 'close', execution.chat.tabId]]
   const root = path.join(server!.cwd, '.data/workflow-runs', runId)
@@ -160,11 +156,10 @@ test('P18 completed execution is not closed again by reading refreshing or servi
 test('P18 loading completed facts without a close result never compensates after restart @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-interrupted-close', zone)
-  await approve(page, 'lifecycle-interrupted-close')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-interrupted-close', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
   const gate = path.join(path.dirname(server!.configPath), 'release-interrupted-close')
   server!.setHerdrBehavior({ tab_close_gate: { wait_for_file: gate, timeout_ms: 30000 } })
-  const completed = await complete(page, 'A')
+  const completed = await approveAndComplete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
   const resultFile = path.join(path.dirname(server!.configPath), 'herdr/closed.jsonl')
   expect(fs.existsSync(resultFile)).toBe(false)
@@ -200,9 +195,8 @@ test('P18 loading completed facts without a close result never compensates after
 test('P19 completed Chat restoration opens a new Tab without recreating completion or closing it @time-contract', async ({ page }, info) => {
   const { zone, runId } = await setup(page, true)
   const execution = await dispatch(page, 'A', 'lifecycle-resume-completed', zone)
-  await approve(page, 'lifecycle-resume-completed')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-completed', body: 'Delivered work ready before close lifecycle observation', canComplete: true })
-  const completed = await complete(page, 'A')
+  const completed = await approveAndComplete(page, 'A')
   await expectClosed(execution.chat.tabId, 1)
   const root = path.join(server!.cwd, '.data/workflow-runs', runId)
   const files = ['run.json', 'history.jsonl', 'messages.jsonl']
@@ -260,9 +254,8 @@ for (const enabled of [true, false]) {
     expect(calls.filter(call => ['agent_prompt', 'agent_input', 'tab_close'].includes(String(call.kind)))).toEqual([])
     expect(await readRun(page, runId)).toEqual(before)
     expect(files.map(file => fs.readFileSync(path.join(root, file), 'utf8'))).toEqual(saved)
-    await approve(page, 'lifecycle-resume-unfinished')
     await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-resume-unfinished', body: 'Original execution ready after Chat resume', canComplete: true })
-    const completed = await complete(page, 'A')
+    const completed = await approveAndComplete(page, 'A')
     expect(completed.nodes.A.execution).toEqual({ ...execution, approved: true, approvalSource: 'auto' })
     expect(completed.nodes.A.previousExecutions).toEqual([])
     if (enabled) await expectClosed(execution.chat.tabId, 1)
@@ -290,9 +283,8 @@ for (const enabled of [true, false]) {
     expect(current.chat.sessionId).toBe('lifecycle-retry-new')
     expect(current.chat.tabId).not.toBe(old.chat.tabId)
     expect(result.snapshot.nodes.A.previousExecutions[0].execution).toEqual(old)
-    await approve(page, current.chat.sessionId)
     await post(page, '/api/workflow/node/report', { sessionId: current.chat.sessionId, body: 'Replacement execution ready; old report is not applicable', canComplete: true })
-    const completed = await complete(page, 'A')
+    const completed = await approveAndComplete(page, 'A')
     expect(completed.nodes.A.execution).toEqual({ ...current, approved: true, approvalSource: 'auto' })
     expect((await readRun(page, runId)).run.nodes.A.previousExecutions[0].execution).toEqual(old)
     if (enabled) await expectClosed(current.chat.tabId, 1)

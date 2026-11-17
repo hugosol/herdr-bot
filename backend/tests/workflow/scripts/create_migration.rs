@@ -102,6 +102,7 @@ async fn migrated_workflow(fault: Option<&str>) {
         // archive; the creation migration must preserve its current preset.
         if original["id"] == "task-retro" { expected["model"] = json!("gpt-6-astra"); }
         assert_eq!(tasks["tasks"].as_array().unwrap().iter().find(|t| t["id"] == original["id"]), Some(&expected), "Unrelated Task changed");
+
     }
     let old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
     let new_wrapper = source("meta-data/workflow-maps/create-bot-wrapper.json");

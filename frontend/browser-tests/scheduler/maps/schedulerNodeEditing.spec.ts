@@ -44,7 +44,7 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
 }
 
 test('dynamic zone editor saves no preset and reloads all unrelated node fields', async ({ page }) => {
-  const configured = { ...audit, auto_approved: false, auto_close: true, end_node: false, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
+  const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
   const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
   const before = inventory(root)
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
