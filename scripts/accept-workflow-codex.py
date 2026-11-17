@@ -60,7 +60,7 @@ def main():
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
     parser.add_argument('--native-only', action='store_true', help='Node approval native matrix only; does not certify full ticket checks')
-    parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
+    parser.add_argument('--cases', default='all', help='Revision or node approval case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
     if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
@@ -70,10 +70,19 @@ def main():
         parser.error('--native-only requires a node-approval business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
-    if args.cases != 'all' and (args.scenario not in ['revise', 'node-approval-handoff'] or args.smoke):
-        parser.error('--cases is only supported for revision or node handoff business acceptance')
+    if args.cases != 'all' and (args.scenario not in ['revise', 'node-approval-handoff', 'node-approval-failures'] or args.smoke):
+        parser.error('--cases is only supported for revision or node approval business acceptance')
     if args.scenario == 'node-approval-handoff' and args.cases not in ['all', 'auto', 'manual']:
         parser.error('Node handoff --cases must be all, auto or manual')
+    if args.scenario == 'node-approval-failures':
+        from importlib.util import module_from_spec, spec_from_file_location
+        spec = spec_from_file_location('approval_failure_entry', REPO / 'scripts/accept-node-approval-failures.py')
+        entry = module_from_spec(spec)
+        spec.loader.exec_module(entry)
+        try:
+            selected = entry.selected_conditions(args.cases)
+        except argparse.ArgumentTypeError as error:
+            parser.error(str(error))
     if not 1 <= args.timeout <= 900:
         parser.error('--timeout must be 1..900')
     # Fail before creating any resources when a caller supplied missing inputs.
@@ -88,6 +97,11 @@ def main():
               'scope': 'Native Codex conversation and tool calling; business hosts execute the returned tools. Not direct Codex configuration inside those hosts.',
               'modelRequests': 0, 'started': time.time(), 'smoke': args.smoke,
               'caseSelection': args.cases, 'filtered': args.cases != 'all' or (args.scenario == 'node-approval-handoff' and args.hosts != 'omp,pi'), 'subsetPassed': False}
+    if args.scenario == 'node-approval-failures':
+        result['selectedCases'] = [host + '/' + case for host in args.hosts.split(',') for case in selected]
+        result['missingCases'] = [host + '/' + case for host in ['omp', 'pi'] for case in entry.CONDITIONS
+                                  if host + '/' + case not in result['selectedCases']]
+        result['filtered'] = bool(result['missingCases'])
     records = args.evidence_dir / 'codex-completions'
     records.mkdir()
 
@@ -182,6 +196,8 @@ def main():
                             '--paths-file', str(args.paths_file), '--model-config', str(config),
                             '--evidence-dir', str(args.evidence_dir / 'business'), '--pi-package', str(args.pi_package),
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
+                    if args.scenario == 'node-approval-failures':
+                        command += ['--cases', args.cases]
                     if args.native_only:
                         command.append('--native-only')
                     if args.scenario in ['revise', 'node-approval-handoff']:

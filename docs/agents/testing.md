@@ -178,11 +178,13 @@ python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT
 
 离线分支验证：显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，运行 `python scripts/workflow-codex-completion.test.py CodexContentDiagnostics`。该分区以字面 SDK 返回覆盖拒绝及成功分支，使用测试拥有的假凭据和仅拦截该 adapter models import 的 fixture，禁止 fetch；它不调用实际模型、不读取用户认证，也不替代原生验收或既有真实 SDK 受控传输回归。
 
+两入口可用 `--cases timeout` 或 `--cases unavailable`（也支持四个条件的逗号列表，默认 `all`）配合 `--hosts pi --native-only` 分别收集缺失场景。每次独立启动 wrapper 才创建独立 transport／配置／端口／新证据目录；失败决定在该次调用保持 terminal，不重发或重置。证据列出完整八项中的 `selectedCases`／`missingCases`；`selectedCasesPassed` 仅表示所选原生场景，部分场景或缺全仓检查仍 `passed=false`、退出非零，不认证整票。无效、空白或重复选择在创建证据与模型资源前拒绝。
+
 真实模型可经 `python scripts/accept-workflow-codex.py --scenario node-approval-failures --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"` 运行：只读显式授权认证文件，沿用原生 Codex adapter，逐请求记录实际 `serverModel=gpt-6-luna`，不复制或刷新凭据。可追加 `--native-only` 分离原生资源窗口；该诊断保持非零且不认证全仓检查，必须另外保存两仓完整检查结果。
 
-无 UI 使用受控 provider 制造机械故障：先确认原生 node 进程退出，再以同一真实 session 的安装宿主 print/JSON 模式执行实际 `approve`，保留 `hasUI=false`、原生结果、provider 请求及进程退出；真实后端执行、材料、之后新进程恢复和原生继续工作均不替换。其余 No／Esc／超时也可由显式机械 provider 选择工具，但原生确认结果从不受控。任何受控路径均不冒充真实模型选择或用不可用替代 UI 拒绝。每个场景清理原始错误与清理错误独立保留，确认所属进程退出后归档。
+无 UI 使用受控 provider 制造机械故障：先确认原生 node 进程退出，再以同一真实 session 的安装宿主 print/JSON 模式执行实际 `approve`，保留 `hasUI=false`、原生结果、provider 请求及进程退出；真实后端执行、材料、之后新进程恢复和原生继续工作均不替换。headless 期间只临时替换独占 models registry 中已选 provider 的 endpoint／fixture key，不把 session 切换到另一个机械 model。headless 进程退出后，在关闭机械 provider 前逐字节恢复原 registry（异常也恢复），再走正常公开恢复，因此继续工作实际使用原授权模型及 UI；该 headless 请求仍明确是受控机械证据，不能按其保留的 model ID 冒充真实模型调用。其余 No／Esc／超时也可由显式机械 provider 选择工具，但原生确认结果从不受控。任何受控路径均不冒充真实模型选择或用不可用替代 UI 拒绝。每个场景清理原始错误与清理错误独立保留，确认所属进程退出后归档。
 
-入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。CLI 安全回归 `python scripts/accept-node-approval-failures.test.py` 只验证缺依赖 fail-closed、绝对路径及旧证据保护，不是业务验收。
+入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。离线回归显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径后运行 `python scripts/accept-node-approval-failures.test.py`：验证 CLI fail-closed／部分覆盖／旧证据保护，以及真实安装 Pi 通过字面本地 provider 进行 headless→原 session 恢复后回到原 endpoint；不读取用户认证、不调用外部模型，不替代专项业务验收。
 
 ### 节点报告共享保存／通知回归
 
