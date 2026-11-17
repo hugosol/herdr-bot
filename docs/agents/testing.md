@@ -90,6 +90,12 @@
 
 这不证明模型遵从指引。P28 的共享三编写者创建 v1 消费／确认由更新的 `accept-workflow-nesting-create.py` 实际原生 workflow 场景覆盖，原非 v1 独立材料／通用替换与真实普通文件安全场景也保留；创建入口在独立／创建图／通用文件安全场景后，还实际组合调用修订入口既有 task-no-materials 业务场景，只有原格式三路消费与通用保存也成功才标 P28；可用 `accept-workflow-nesting-revise.py --cases task-no-materials`（或完整 all）独立复跑定位。两入口沿用本页授权模型、完整 Suite、独占依赖、动态回环、原生历史／HTTP／字节及进程退出要求；三编写者保持原宿主，脚本节点不虚构 Task、Chat 或模型 read。须实际执行对应场景；缺授权／依赖保留未验证，不转交 H1/H2，不以 CLI fail-closed 或定义相等补足行为证据。
 
+## 发布成果批准职责与 V1／V2 独立性（P17／P31／P34／P35／P38）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 保留原 V1 真实 Bun 创建／保存、严格材料拒绝、独立历史和通用替换者业务协议回归，并增加七张实际发布 Map 全部 26 个 node 的字面批准模式与公开完整读回、生产者旧凭据／报告发送确认清理。可读配置依据在 [发布职责清单](../create-bot-wrapper.md#发布成果批准职责清单p34)，不从旧报告开关机械映射。
+
+成功创建场景进一步独立发起实际两节点 V2 Run：独立目标与 v2 request（保留专用 authorization／confirmation），真实文件的 requirements／完整 target_materials 消费，普通节点报告后仍未批准且 complete 拒绝、显式人工来源批准后仍 running、管理者逐项 complete／finish，以及真实新 Bot 的公开完整读回和真实 revision／v2 saved／handoff 文件。前后完整比较 V1 Run 与 request 不变。只在隔离副本中重定位 zone、直接契约文件和外部宿主 Task 绑定，不替换 Map 拓扑或业务协议，不接触历史／正常服务。受控 Herdr 的材料读取与 HTTP 人工来源只证明 S1；不证明模型遵从或原生 Yes，也不认领 14、15。完成检查仍为本 worktree 独立绝对 CARGO_TARGET_DIR、当前页面及安全后端构建，分别执行完整后端、前端与浏览器入口。
+
 ## 后端并行与诊断
 
 `node scripts/test-backend.mjs` 不带参数即可并行。后端集成测试按领域放在 `backend/tests/` 子目录，由 `backend/Cargo.toml` 的 `[[test]]` 显式登记，`autotests = false`。新增独立 target 时登记唯一的 `name` 与 `path`；现有 target 内新增 case 文件时由该 target 的 module 声明纳入。目录移动不改变 target 名称、二进制执行粒度、默认 ignored 状态、example 编译检查或 doctest。
