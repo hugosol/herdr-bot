@@ -106,7 +106,17 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 通过公开 HTTP、真实独占 Run／定义和记录型 Herdr 验证派发未批准、两种模式的无报告／无产物批准、report-only／approve-only 正交、批准无外部通知或推进、已有报告未批准的 complete 拒绝，以及批准后无报告／最新 false／缺约定交付的独立拒绝。stdout 保留运行事实与真实外部调用；人工 HTTP 只证明后端提交，不冒充 OMP／Pi 原生 Yes。P1 选择器为 `report_policy::map_auto_approved_defaults_round_trips_and_rejects_invalid_saves_without_writing`（保留现有 module 名，不保留旧协议）；P30 沿用 `end_node::`，检查结束节点无伪批准且仍可显式 finish。
 
-报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立批准前提；不在 report 或 dispatch 夹具中静默补批准。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
+报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立普通节点批准前提；不在 report 或 dispatch 夹具中静默补批准。脚本仅在本次成功执行并通过结果／输出校验后记录自动批准，失败不补批准；后续不可交接报告不撤销既有批准，但仍阻止 complete。脚本报告隔离回归同时检查旧 execution、其他 node／Run 的交付不能补齐当前执行的约定输出；缺交付在 complete 处拒绝，当前执行实际登记后才可完成。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
+
+### 批准持久化、失败与执行隔离（S1）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
+
+`approval::approval_save_failure_preserves_original_error_and_cannot_authorize_complete` 用独占 Run 文件的 Windows deny-delete 句柄让真实原子替换失败；核对原生 OS 错误、HTTP 500、公开未批准及 ready 报告仍不能 complete。`repeated_and_concurrent_approval_has_one_fact_and_no_business_effects` 同时提交真实 HTTP，比较完整 Run／报告／外部调用；`approval_only_changes_the_callers_current_execution` 实际发起同 Task 独立 Chat、普通节点、另一 node／Run 及合法 retry，与根 manager／无关联身份对比。`material_changes_and_later_reports_keep_approval_without_bypassing_latest_report` 实际修改材料字节、追加 false／true 报告并验证独立完成门禁。
+
+`inflight_old_approval_does_not_block_run_or_approve_retry` 是 **S1 传输门闩**：真实服务器返回 `100 Continue` 后，保持旧批准请求最后一个字节未提交；释放前公开查询、报告、独立 B 分支派发／完成及 A fail/retry 全部返回。查询、报告、分支派发／完成各 2 秒预算，释放后旧提交 2 秒内以陈旧执行拒绝，stdout 记录单调时序及实际调用。它不声称测试原生 UI 或后端 handler 内等待；OMP／Pi 真实确认在途属于原生专项。
+
+重启场景在第一个真实后端进程中公开创建并批准 Run，kill 后 wait 确认退出、消费完 stdout，再启动不同 PID，经公开详情读回完整 execution、模式与来源；旧 manager／node 权限仍拒绝，外部调用无输入重放。每例独占定义、Run、zone、数值回环动态端口和受控 Herdr；真实后端子进程另隔离 HOME／APPDATA／XDG。原始失败与进程清理失败分别记录；确认退出后才清理。以上只证明 S1 机制，不替代原生批准、恢复或真实模型业务。完成检查仍分别执行本仓完整后端、前端和浏览器入口。
 
 ### 批准持久化、失败与执行隔离（S1）
 
@@ -260,7 +270,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
 - scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存／删除检查保留标题、说明、节点集合与公开读回／落盘一致性，不固定空 `input_requirements` 是否序列化；最后节点删除须单独断言节点集合为空。前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
 - Chat 预览应在重新选择同一 Task 时保留已生成身份；模型／思考级别失败夹具须使实际提交的单次选择失效，不能仅损坏已被合法覆盖的 Task 默认值。当前／历史 Chat 的切换同时保留可见状态与不同背景的浏览器断言。
-- 工作流状态浏览器夹具中的跨节点报告须同时使用所属节点的真实 execution ID 与 Chat 来源，不仅改 `nodeId`；否则违反报告归属校验，不能证明输出隔离。若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点报告策略回归分别核对自动报告与原生逐次确认，不恢复已移除的自然语言同意替代门禁。
+- 工作流状态浏览器夹具中的跨节点报告须同时使用所属节点的真实 execution ID 与 Chat 来源，不仅改 `nodeId`；否则违反报告归属校验，不能证明输出隔离。若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点成果批准回归分别核对自动／人工批准模式与执行批准事实；报告不再触发原生确认。需要普通节点合法 complete 的场景须显式经 node/context 与 node/approve 建立本次执行批准，不能在共享 dispatch／report 夹具中静默补批准。
 - 常驻但隐藏的 Run 列表不读取 Map 分组目录；仅在列表可见时刷新，保留筛选状态。全局前端回归中的关机／恢复用例同时约束默认 Chat 页不发出这类无关读取；应用品牌保留可访问标题语义。
 - controller 路径迁移除更新 import 外，也同步更新浏览器证据中的源码哈希清单（例如 `scriptDefinitions.spec.ts`）；前端请求入口位于 `src/controllers/*Controller.ts`，后端入口位于 `backend/src/controllers/*_controller.rs`，业务断言仍经原 HTTP／SSE seam 执行。源码哈希采集失败也必须执行后端清理；证据写入或附件失败也必须恢复隔离前的环境变量，原始采集错误不得吞掉。`crossSourceConcurrency.spec.ts` 的创建等待失败须保留最后创建状态、外部调用记录与后端诊断；定向重跑通过不等于已定位首次超时原因。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。

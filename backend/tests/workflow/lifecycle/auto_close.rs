@@ -41,7 +41,7 @@ async fn wait_closed(s: &Scenario, count: usize) {
 // violate the independent no-command / byte-preservation expectations.
 #[tokio::test]
 async fn auto_close_old_execution_defaults_false_without_read_compensation_or_history_rewrite() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("close-legacy-manager").await;
     node_host(&s, "close-legacy-A");
     s.dispatch("close-legacy-manager", &["A"]).await;
@@ -63,6 +63,7 @@ async fn auto_close_old_execution_defaults_false_without_read_compensation_or_hi
     assert_eq!(fs::read(root.join("run.json")).unwrap(), old_run);
     assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), old_history);
     assert_eq!(s.herdr.calls(), before_calls);
+    approve_execution(&s, "close-legacy-A").await;
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-legacy-manager","nodeId":"A","reason":"Legacy handoff accepted"}), 200).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
     assert!(fs::read(root.join("history.jsonl")).unwrap().starts_with(&old_history));
@@ -75,7 +76,7 @@ async fn auto_close_old_execution_defaults_false_without_read_compensation_or_hi
 // execution would disagree with the single exact argv observed after complete.
 #[tokio::test]
 async fn auto_close_targets_only_current_execution_once_among_other_tabs() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     set_auto_close(&s, "B", true).await;
     let started = s.start("close-target-manager").await;
@@ -94,6 +95,7 @@ async fn auto_close_targets_only_current_execution_once_among_other_tabs() {
         assert_ne!(decoy, &json!(tab));
     }
     assert_eq!(s.herdr.tabs().len(), 4, "all four distinct Tabs were really created");
+    approve_execution(&s, "close-target-current").await;
     submit_report(&s, "close-target-current", "Only current execution delivered", true).await;
     let before = s.herdr.calls().len();
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-target-manager","nodeId":"A","reason":"Current execution delivered"}), 200).await;
@@ -111,11 +113,12 @@ async fn auto_close_targets_only_current_execution_once_among_other_tabs() {
 // dependent C dispatch until release. A working session must not need stop/idle.
 #[tokio::test]
 async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream_dispatch() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     s.start("close-held-manager").await;
     node_host(&s, "close-held-B");
     s.dispatch("close-held-manager", &["B"]).await;
+    approve_execution(&s, "close-held-B").await;
     submit_report(&s, "close-held-B", "B ready for downstream", true).await;
     manager_action(&s, "complete", json!({"sessionId":"close-held-manager","nodeId":"B","reason":"B ready"}), 200).await;
     node_host(&s, "close-held-A");
@@ -125,6 +128,7 @@ async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream
         let response = post_json_over_tcp(s.server.addr(), "/api/sessions/events", &event.to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
     }
+    approve_execution(&s, "close-held-A").await;
     submit_report(&s, "close-held-A", "A ready while Chat works", true).await;
     let release = s.data.path().join("release-close");
     // Always unblock the owned child, even if an assertion fails.
@@ -167,10 +171,10 @@ async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream
 // P10: only manager completion is the trigger. Reports, stopped/waiting Chat
 // observations, pause/resume and execution failure cannot close independently.
 // Existing rules explicitly allow manual handoff from execution-stage failed,
-// even while paused, without report approval or an idle/exit precondition.
+// even while paused, with explicit result approval and no idle/exit precondition.
 #[tokio::test]
 async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_entries() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     s.start("close-eligibility-manager").await;
     let pending = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"A","reason":"Not dispatched"}), 409).await;
@@ -178,6 +182,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     node_host(&s, "close-eligibility-A");
     s.dispatch("close-eligibility-manager", &["A"]).await;
     manager_action(&s, "complete", json!({"sessionId":"close-eligibility-A","nodeId":"A","reason":"Node cannot accept own handoff"}), 403).await;
+    approve_execution(&s, "close-eligibility-A").await;
     let blank = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"A","reason":"  "}), 409).await;
     assert_eq!(blank["code"], "completion-reason-required");
     let unknown = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"unknown","reason":"No target"}), 409).await;
@@ -202,6 +207,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     manager_action(&s, "finish", json!({"sessionId":"close-eligibility-manager"}), 409).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert!(closes(&s).is_empty(), "none of the rejected or non-completion entries qualifies");
+    approve_execution(&s, "close-eligibility-A").await;
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":"A","reason":"User repaired outputs; manager accepts handoff"}), 200).await;
     assert_eq!(completed["snapshot"]["status"], "paused");
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
@@ -210,6 +216,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
     for node in ["B", "C"] {
         node_host(&s, &format!("close-eligibility-{node}"));
         s.dispatch("close-eligibility-manager", &[node]).await;
+        approve_execution(&s, &format!("close-eligibility-{node}")).await;
         submit_report(&s, &format!("close-eligibility-{node}"), "Handoff ready with auto-close disabled", true).await;
         manager_action(&s, "complete", json!({"sessionId":"close-eligibility-manager","nodeId":node,"reason":"False setting handoff"}), 200).await;
     }
@@ -224,7 +231,7 @@ async fn auto_close_preserves_manager_eligibility_and_ignores_non_completion_ent
 // initial submission failed. Auto-close must not weaken this existing rule.
 #[tokio::test]
 async fn auto_close_does_not_close_dispatch_failure_or_its_rejected_complete() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     s.start("close-dispatch-failure-manager").await;
     s.herdr.set_behavior(json!({"fail_prompt":true,"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"close-dispatch-failed"},"native_cwd":s.data.path().join("node-zone")}));
@@ -245,13 +252,14 @@ async fn auto_close_does_not_close_dispatch_failure_or_its_rejected_complete() {
 // open. Both directions observe actual command targets, not only stored flags.
 #[tokio::test]
 async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     s.start("close-map-manager").await;
     set_auto_close(&s, "B", true).await;
     node_host(&s, "close-map-A");
     let a = s.dispatch("close-map-manager", &["A"]).await;
     assert_eq!(a["results"][0]["status"], "running");
     set_auto_close(&s, "A", true).await;
+    approve_execution(&s, "close-map-A").await;
     submit_report(&s, "close-map-A", "A delivered without auto-close", true).await;
     manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"A","reason":"A delivered"}), 200).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -261,6 +269,7 @@ async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() 
     assert_eq!(b["results"][0]["status"], "running");
     let target = b["snapshot"]["nodes"]["B"]["execution"]["chat"]["tabId"].as_str().unwrap();
     set_auto_close(&s, "B", false).await;
+    approve_execution(&s, "close-map-B").await;
     submit_report(&s, "close-map-B", "B delivered with snapshotted auto-close", true).await;
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"B","reason":"B delivered"}), 200).await;
     assert_eq!(completed["snapshot"]["nodes"]["B"]["status"], "completed");
