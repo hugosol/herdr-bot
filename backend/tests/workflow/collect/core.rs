@@ -135,10 +135,11 @@ async fn collect_configured_expiry_and_tcp_disconnect_leave_facts_and_next_notif
 // action; treating state-change wakeups as reports returns the wrong reason.
 #[tokio::test]
 async fn collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immediate() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     s.start("manager-collect-state").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-collect-state-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-collect-state", &["A"]).await;
+    approve_execution(&s, "node-collect-state-A").await;
     submit_report(&s, "node-collect-state-A", "Handoff ready before waiting for state changes", true).await;
     let checked = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/collect", r#"{"sessionId":"manager-collect-state"}"#).await;
     assert_eq!(serde_json::from_str::<Value>(&checked.body).unwrap()["reason"], "notification");
@@ -166,6 +167,7 @@ async fn collect_wait_releases_on_pause_and_last_handoff_and_completed_is_immedi
     for node in ["B", "C"] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("node-collect-state-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-collect-state", &[node]).await;
+        approve_execution(&s, &format!("node-collect-state-{node}")).await;
         submit_report(&s, &format!("node-collect-state-{node}"), "Remaining handoff ready", true).await;
         assert_eq!(post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-collect-state","nodeId":node,"reason":"Accepted"}).to_string()).await.status, 200);
     }

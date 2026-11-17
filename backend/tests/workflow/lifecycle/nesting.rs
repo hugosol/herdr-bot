@@ -77,7 +77,7 @@ async fn dual_role_routes_report_to_parent_and_management_to_child_without_selec
     }
     let calls = s.herdr.calls();
     let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"dual-child"}), 200).await;
-    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"reportPolicy":"auto"}));
+    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"autoApproved":true,"approved":false,"approvalSource":null}));
     assert_eq!(s.herdr.calls(), calls);
     assert!(detail(&s, root["id"].as_str().unwrap()).await["reports"].as_array().unwrap().is_empty());
     let report = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"dual-child","body":"Progress, not complete","canComplete":false}), 200).await;
@@ -264,6 +264,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let path = s.data.path().join("produced.txt");
     fs::write(&path, "UPSTREAM-REAL-729").unwrap();
     role_request(&s, "/api/workflow/node/report", json!({"sessionId":"mapping-source","body":"Produced","canComplete":true,"outputs":[{"id":"upstream-result","path":path}]}), 200).await;
+    approve_execution(&s, "mapping-source").await;
     role_request(&s, "/api/workflow/manager/complete", json!({"sessionId":"mapping-root","nodeId":"source","reason":"Accept actual file"}), 200).await;
     native(&s, "omp", "mapping-child", "node-zone");
     let dispatched = s.dispatch("mapping-root", &["A"]).await;
