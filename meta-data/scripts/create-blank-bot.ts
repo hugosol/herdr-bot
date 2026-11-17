@@ -36,7 +36,6 @@ export default async function script(context: Context) {
     await work.material("handoff", {
       schema_version: 1, kind: "handoff", stage: "created", bot_id: id, target: specification.target,
       sources: files.map(file => ({ binding_id: file.id, direction: "input", role: file.id })),
-      confirmation_evidence: [specification.confirmation.evidence],
       checks: { bot_read_back: true, target_unchanged: true },
       unverified: ["仅创建定义；未执行目标业务，也未保存三指南。"],
     });
