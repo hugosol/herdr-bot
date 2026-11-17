@@ -130,7 +130,8 @@ def main():
                 with tempfile.TemporaryDirectory(prefix='workflow-codex-config-') as directory:
                     config = Path(directory) / 'model.json'
                     config.write_text(json.dumps({'provider': 'codex-completion-transport', 'model': MODEL,
-                        'baseUrl': transport.base, 'apiKeyEnv': 'WORKFLOW_CODEX_TRANSPORT_KEY'}), encoding='utf-8')
+                        'baseUrl': transport.base, 'apiKeyEnv': 'WORKFLOW_CODEX_TRANSPORT_KEY',
+                        'maxConcurrentRequests': 1}), encoding='utf-8')
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)

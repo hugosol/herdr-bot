@@ -72,7 +72,7 @@ def main():
         safe = args.backend.parent / 'examples/safe_shutdown_shell.exe'
         require(safe.is_file(), 'Build this worktree safe_shutdown_shell for paired shutdown regression')
         environment = dict(os.environ, CARGO_TARGET_DIR=str(target), HERDR_BOT_REPO=str(args.repo),
-            HERDR_BOT_BINARY=str(safe), HERDR_BOT_METADATA=str(args.repo / 'meta-data'),
+            HERDR_BOT_BINARY=str(safe), HERDR_BOT_METADATA=str(args.repo / 'meta-data/task-options.toml'),
             PI_NODE=args.node, PI_CLI=str(args.pi_package / 'dist/bundle/cli.js'),
             OMP_CLI=str(args.omp_package / 'dist/cli.js'))
         commands = [(args.repo, ['npm', '--prefix', 'frontend', 'run', 'build']),
@@ -99,8 +99,11 @@ def main():
         evidence['nativeSources'] = {name: source_identity(root, lock, args.evidence_dir)
             for name, root, lock in [('herdr-bot', args.repo, 'backend/Cargo.lock'), ('toolkit', args.toolkit, 'bun.lock')]}
         cases = [(host, condition) for host in args.hosts.split(',') for condition in CONDITIONS]
-        workers = min(len(cases), os.cpu_count() or 1)
+        capacity = config.get('maxConcurrentRequests', os.cpu_count() or 1)
+        require(type(capacity) is int and capacity > 0, 'Model transport capacity must be a positive integer')
+        workers = min(len(cases), os.cpu_count() or 1, capacity)
         evidence['nativeWorkers'] = workers
+        evidence['modelTransportCapacity'] = capacity
 
         def exercise(case):
             host, condition = case
