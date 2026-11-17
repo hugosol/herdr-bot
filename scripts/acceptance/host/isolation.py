@@ -1,6 +1,9 @@
 """Exclusive environment, production HTTP and owned host lifecycle facilities."""
+import errno
 import json
 import os
+import secrets
+import socket
 from pathlib import Path
 import re
 import shutil
@@ -120,7 +123,19 @@ class Acceptance:
 
     def start_backend(self, role_config):
         q = lambda value: json.dumps(str(value))
-        config = 'listen_addr = "127.0.0.1:0"\n'
+        # Windows may allocate port=0 below the dynamic range. Probe an owned
+        # numeric dynamic port before launch; a later startup collision fails
+        # normally and is never a replay of backend or model business work.
+        for attempt in range(32):
+            port = 49152 + secrets.randbelow(16384)
+            try:
+                with socket.socket() as reservation:
+                    reservation.bind(('127.0.0.1', port))
+                break
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE or attempt == 31:
+                    raise
+        config = f'listen_addr = "127.0.0.1:{port}"\n'
         config += f'static_directory = {q(self.args.repo / "backend/static")}\ndata_directory = {q(self.root / "data")}\n'
         config += '[mdns]\nenabled = false\n'
         for name in ['start', 'stop']:
