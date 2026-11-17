@@ -160,6 +160,8 @@ python scripts/accept-node-approval-v1.py --herdr-bot-worktree "$HERDR_BOT_WT" -
 
 入口依次保存本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations、受影响 node-report／nested-role docks 的原始日志。paired dock 使用本次安全关机壳与本 worktree 元数据，不以生产后端执行关机回归。每次独占 HOME／APPDATA／XDG、原生存储、Herdr、动态数值回环及进程，保留两仓源码／锁文件／产物／安装身份、真实业务判断与原始／清理错误；确认所属进程退出后才能清理。既有 20 秒原生确认＋30 秒 HTTP 预算后另作 51 秒单调观察，不修改产品超时或重试策略。缺依赖／授权、任一仓检查失败、单宿主、缺 coverage 或清理失败均非零且保持未验证，不回退受控模型、不重跑历史副作用、不改 V2 协议。原生资源窗口需与全仓检查分离时可显式追加 `--native-only`（直接入口及 Codex wrapper 均支持），只采集本次 native／页面证据，整票仍 `passed=false` 且非零，不替代两仓完整检查。`python scripts/accept-node-approval-v1.test.py` 仅验证 CLI fail-closed／旧证据保护／路径及授权边界，不是原生业务通过证据。
 
+V1 入口及 Codex wrapper 支持 `--cases v1|outer|revision|planning|investigation`，默认 `all` 仍执行完整分区。具名诊断保留全部 48 项 coverage，未执行项保持未验证，过滤调用始终非零，不认证整票。共享模型传输 terminal 故障遮挡尚未实际执行的其他场景时，每个获准补证场景使用单独调用、新证据根、独占 fixture 和独立 transport；不重放原失败请求或已有效的业务决定。真实 Ask 的答案来自明确调用方业务要求；缺偏好时保留问题，不把默认选中项当用户决定。
+
 ### 批准持久化、失败与执行隔离（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。

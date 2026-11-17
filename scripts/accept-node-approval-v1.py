@@ -88,10 +88,13 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--shell-path', type=absolute)
     parser.add_argument('--native-only', action='store_true', help='Collect native/page evidence only; never certifies the complete ticket')
+    parser.add_argument('--cases', choices=['all', 'v1', 'outer', 'revision', 'planning', 'investigation'], default='all',
+        help='One independent diagnostic case; partial selection never certifies the complete ticket')
     args = parser.parse_args()
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     record = {'passed': False, 'coverage': coverage(), 'commands': [], 'runs': [], 'cleanupErrors': [],
-        'selectedHosts': args.hosts.split(','), 'controlled': False}
+        'selectedHosts': args.hosts.split(','), 'controlled': False,
+        'caseSelection': args.cases, 'filtered': args.cases != 'all'}
     try:
         from acceptance.host.processes import require
         require(args.model_config.is_file(), 'Missing explicit authorized model configuration; no credential discovery')
@@ -110,7 +113,7 @@ def main():
         preflight(args, record)
         from node_approval_v1_acceptance import run_scenarios
         run_scenarios(args, record, RESPONSIBILITIES)
-        record['passed'] = checks_ok and not record['cleanupErrors'] and all(item['exit'] == 0 for item in record['runs']) and all(item['verified'] for item in record['coverage'].values())
+        record['passed'] = checks_ok and not record['filtered'] and not record['cleanupErrors'] and all(item['exit'] == 0 for item in record['runs']) and all(item['verified'] for item in record['coverage'].values())
     except BaseException:
         record['error'] = traceback.format_exc()
     record['entrypoint'] = {'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}

@@ -60,11 +60,27 @@ class PublishedV1CLI(unittest.TestCase):
                 '--scenario', 'node-approval-v1', '--hosts', 'omp,pi', '--backend', str(root / 'missing.exe'),
                 '--toolkit', str(root / 'toolkit'), '--paths-file', str(root / 'paths.toml'),
                 '--evidence-dir', str(root / 'evidence'), '--pi-package', str(root / 'pi'),
-                '--auth-file', str(root / 'explicit-only.json')], cwd=ROOT, capture_output=True,
+                '--auth-file', str(root / 'explicit-only.json'), '--cases', 'revision'], cwd=ROOT, capture_output=True,
                 text=True, encoding='utf-8', errors='replace', timeout=30)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Missing explicit dependency', result.stderr)
             self.assertFalse((root / 'evidence').exists())
+
+    def test_named_case_keeps_full_unverified_coverage_and_partial_status(self):
+        # Independent ticket oracle: a diagnostic selection must never erase the
+        # other named responsibilities or certify the complete ticket.
+        with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:
+            root = Path(directory)
+            result = self.invoke(root, cases='revision', hosts='omp')
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
+            self.assertEqual(report['caseSelection'], 'revision')
+            self.assertTrue(report['filtered'])
+            self.assertFalse(report['passed'])
+            self.assertEqual(len(report['coverage']), 48)
+            self.assertTrue(all(not item['verified'] for item in report['coverage'].values()))
+            self.assertEqual(report['commands'], [])
+            self.assertEqual(report['runs'], [])
 
     def test_existing_evidence_is_not_overwritten(self):
         with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:

@@ -60,7 +60,7 @@ def main():
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
     parser.add_argument('--native-only', action='store_true', help='Node approval failures/V1 native evidence only; does not certify full ticket checks')
-    parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
+    parser.add_argument('--cases', default='all', help='Revision or published V1 case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
     if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-v1'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
@@ -70,8 +70,10 @@ def main():
         parser.error('--native-only requires the node-approval-failures or node-approval-v1 business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
-    if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
-        parser.error('--cases is only supported for revision business acceptance')
+    if args.cases != 'all' and (args.scenario not in ['revise', 'node-approval-v1'] or args.smoke):
+        parser.error('--cases is only supported for revision or published V1 business acceptance')
+    if args.scenario == 'node-approval-v1' and args.cases not in ['all', 'v1', 'outer', 'revision', 'planning', 'investigation']:
+        parser.error('Unknown published V1 diagnostic case')
     if not 1 <= args.timeout <= 900:
         parser.error('--timeout must be 1..900')
     # Fail before creating any resources when a caller supplied missing inputs.
@@ -183,7 +185,7 @@ def main():
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
                     if args.native_only:
                         command.append('--native-only')
-                    if args.scenario == 'revise':
+                    if args.scenario in ['revise', 'node-approval-v1']:
                         command.extend(['--cases', args.cases])
                     for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff', 'node-approval-v1'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):

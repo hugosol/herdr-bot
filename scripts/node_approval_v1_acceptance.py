@@ -690,6 +690,8 @@ class PublishedV1Acceptance(OuterAcceptance):
                 '仅配置交付，不修改或执行目标。请真实查询完整目标，根据上述明确委托自行生产全新 v1 request 并绑定；'
                 'requirements 为“本地授权账单只读差异核对能力的配置交付”；constraints=["只读","不联网","不上传","不付款","不执行目标"]；'
                 'non_goals=[]；resource_limits=[]。不含人类批准凭据，也不索要下游脚本许可。'
+                '报告细节的明确业务偏好为no：不新增row-level布局、行号证据或额外证据收集步骤；'
+                '仅保留重复order_id与负amount_cents两类发现、UTF-8报告和order_id/amount_cents原值，不能丢弃原值。'
                 '三个指南的业务全文已在本次委托明确，表达优化必须保持这些已经确定的原样全文，不为优化而改写：'
                 + json.dumps(GUIDES, ensure_ascii=False) + '。仍由各节点原生成果批准机制履行本次成果职责。' + common)
         if filename == OUTER:
@@ -767,19 +769,26 @@ class PublishedV1Acceptance(OuterAcceptance):
 
     def exercise(self):
         self.case_inputs = {}
+        selection = {'v1': V1, 'outer': OUTER, 'revision': REVISION, 'planning': PLANNING, 'investigation': INVESTIGATION}
+        selected = set(selection.values()) if self.args.cases == 'all' else {selection[self.args.cases]}
+        self.evidence['caseSelection'] = self.args.cases
+        self.evidence['filtered'] = self.args.cases != 'all'
         try:
-            target = self.target_fixture()
-            try:
-                v1 = self.run_case(V1, self.business_input(V1, target))
-                self.verify_v1(v1, target)
-                self.evidence['coverage'].update({f'P31/S2/{self.host}': {'verified': True, 'evidence': 'v1Readback'},
-                    f'P35/S2/{self.host}': {'verified': True, 'evidence': 'v1Readback,verifiedRuns,nativeApprovals'}})
-            except BaseException:
-                self.evidence['originalErrors'].append({'map': V1, 'error': traceback.format_exc()})
+            if V1 in selected:
+                target = self.target_fixture()
+                try:
+                    v1 = self.run_case(V1, self.business_input(V1, target))
+                    self.verify_v1(v1, target)
+                    self.evidence['coverage'].update({f'P31/S2/{self.host}': {'verified': True, 'evidence': 'v1Readback'},
+                        f'P35/S2/{self.host}': {'verified': True, 'evidence': 'v1Readback,verifiedRuns,nativeApprovals'}})
+                except BaseException:
+                    self.evidence['originalErrors'].append({'map': V1, 'error': traceback.format_exc()})
             # The remaining distinct published duties execute once, retaining
             # every original worker host/Suite, not a sampled representative.
             if self.host == 'omp':
                 for filename in [OUTER, REVISION, PLANNING, INVESTIGATION]:
+                    if filename not in selected:
+                        continue
                     try:
                         files = []
                         if filename == REVISION:
