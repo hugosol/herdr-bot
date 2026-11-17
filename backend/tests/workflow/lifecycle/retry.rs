@@ -234,8 +234,8 @@ async fn paused_retry_requires_explicit_resume_and_human_confirmation() {
 async fn terminal_run_rejects_retry_without_new_chat_or_record_changes() {
     let s = Scenario::without_output_contract().await;
     let (started, _) = failed_execution(&s).await;
-    approve_execution(&s, "retry-old").await;
     submit_report(&s, "retry-old", "Repaired result ready for manual handoff", true).await;
+    approve_execution(&s, "retry-old").await;
     action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"User supplied final result"}), 200).await;
     for (node, native) in [("B", "terminal-B"), ("C", "terminal-C")] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":native},"native_cwd":s.data.path().join("node-zone")}));
