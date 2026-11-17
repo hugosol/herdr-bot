@@ -39,7 +39,31 @@ export async function nativeVisibilityBrowser() {
   const handleExited = Promise.withResolvers<void>()
   let confirmedExit = false
   let handleDiagnostics = ''
-  const watcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `$ErrorActionPreference = 'Stop'; $owned = [System.Diagnostics.Process]::GetProcessById(${child.pid}); try { $null = $owned.Handle; [Console]::Out.WriteLine('OWNED_READY'); $owned.WaitForExit(); [Console]::Out.WriteLine('OWNED_EXITED') } finally { $owned.Dispose() }`], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const watcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
+    $ErrorActionPreference = 'Stop'
+    $owned = [System.Diagnostics.Process]::GetProcessById(${child.pid})
+    try {
+      $null = $owned.Handle
+      [Console]::Out.WriteLine('OWNED_READY')
+      $owned.WaitForExit()
+      # Chrome's root can exit before its profile-owning utility processes.
+      # Keep real handles to this exclusive profile's remaining processes.
+      $remaining = @(Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:OWNED_CHROME_PROFILE) } | ForEach-Object {
+        $process = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
+        if ($process) { $null = $process.Handle; $process }
+      })
+      try {
+        $deadline = [DateTime]::UtcNow.AddMilliseconds(5000)
+        foreach ($process in $remaining) {
+          $budget = [Math]::Max(0, [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+          if (-not $process.WaitForExit($budget)) { throw "Owned profile process $($process.Id) did not exit" }
+        }
+      } finally {
+        foreach ($process in $remaining) { $process.Dispose() }
+      }
+      [Console]::Out.WriteLine('OWNED_EXITED')
+    } finally { $owned.Dispose() }
+  `], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, OWNED_CHROME_PROFILE: profile } })
   watcher.stdout.on('data', chunk => {
     handleDiagnostics += chunk.toString()
     if (handleDiagnostics.includes('OWNED_READY')) handleReady.resolve()
@@ -83,10 +107,10 @@ export async function nativeVisibilityBrowser() {
         throw new Error(`Owned Chrome process ${child.pid} did not exit (taskkill ${code}): ${terminationDiagnostics}; handle: ${handleDiagnostics}; Chrome: ${diagnostics}`)
       }
     }
-    // Either observer confirms the same owned process; do not leave the
-    // independent handle watcher alive when Node delivers exit first.
-    if (hasExited() && watcher.exitCode === null && watcher.signalCode === null) watcher.kill()
+    // The root exit event is not proof that Chrome released this profile.
+    // Let the independent handle observer finish checking utility processes.
     await handleExited.promise
+    if (!confirmedExit) throw new Error(`Owned Chrome profile processes did not exit: ${handleDiagnostics}`)
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     if (failure) throw failure
   }
