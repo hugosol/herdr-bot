@@ -111,6 +111,21 @@ def displayed_candidates(text):
     return result
 
 
+def cancelled_scope_ready(pending, history):
+    if not pending:
+        return False
+    messages = [entry['message'] for entry in history['branch'] if entry.get('type') == 'message']
+    if not messages:
+        return False
+    last = messages[-1]
+    if last.get('role') != 'assistant':
+        return False
+    terminal = last.get('stopReason') == 'stop' or (
+        last.get('stopReason') == 'aborted' and last.get('errorMessage') == 'Interrupted by user')
+    return terminal and any(message.get('role') == 'toolResult' and
+        message.get('toolCallId') == pending['toolCallId'] for message in messages)
+
+
 def tool_calls(history):
     return [part for entry in history['branch'] if entry.get('type') == 'message'
         and entry['message'].get('role') == 'assistant' for part in entry['message'].get('content', [])
@@ -213,11 +228,6 @@ class PublishedV2Acceptance(NativeAcceptance):
 
     def configure_model(self):
         super().configure_model()
-        # OMP reads its current YAML config before legacy settings.json; an
-        # existing YAML file prevents the Pi shell override being migrated.
-        if self.host == 'omp':
-            path = self.root / 'agent/config.yml'
-            path.write_text('shellPath: ' + json.dumps(str(self.args.shell_path)) + '\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
         settings = self.root / 'agent' / ('config.yml' if self.host == 'omp' else 'settings.json')
         self.evidence['nativeShellConfiguration'] = {'path': str(settings), 'text': settings.read_text(encoding='utf-8'),
             'scope': 'Installed host public configuration, not an outer launcher shell override'}
@@ -445,7 +455,7 @@ class PublishedV2Acceptance(NativeAcceptance):
             returned = until('actual native form rejection return', lambda: json.loads(response_path.read_text(encoding='utf-8')) if response_path.is_file() else None, 20)
             self.evidence.setdefault('businessFormRefusals', []).append({'call': call, 'nativeInvocation': observed[0],
                 'nativeReturn': returned, 'decision': decision, 'selectedAction': 'Esc; no authorization'})
-            self.pending_scope[chat['sessionId']] = self.scope_message(decision)
+            self.pending_scope[chat['sessionId']] = {'toolCallId': call['id'], 'message': self.scope_message(decision)}
             return True
         groups = []
         for field in form.fields:
@@ -547,12 +557,14 @@ class PublishedV2Acceptance(NativeAcceptance):
             return
         last = messages[-1]
         message = last['message']
+        pending = self.pending_scope.get(chat['sessionId'])
+        if cancelled_scope_ready(pending, history):
+            self.answered.add(last['id'])
+            self.pending_scope.pop(chat['sessionId'])
+            self.send(chat, pending['message'], 'business-scope-refusal-and-clarification')
+            return
         require(message.get('stopReason') not in ['error', 'aborted'], ('Actual model turn failed; no retry', last))
         if message.get('role') != 'assistant' or message.get('stopReason') != 'stop' or last['id'] in self.answered:
-            return
-        if chat['sessionId'] in self.pending_scope:
-            self.answered.add(last['id'])
-            self.send(chat, self.pending_scope.pop(chat['sessionId']), 'business-scope-refusal-and-clarification')
             return
         # A question is not evidence of a complete candidate. Only structured
         # content actually displayed by this assistant can receive authorization.

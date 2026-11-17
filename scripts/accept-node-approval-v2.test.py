@@ -5,6 +5,7 @@ P34/S2, P34/S3, P35/S2. A plausible violation is an empty/filtered matrix marked
 passed. These checks do not claim real-model, native Yes or browser acceptance.
 """
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -92,6 +93,46 @@ class PublishedV2CLI(unittest.TestCase):
             self.assertFalse((root / 'evidence').exists())
 
 
+class NativeConfiguration(unittest.TestCase):
+    def test_shared_parent_shell_is_effective_in_installed_omp_yaml_priority(self):
+        from argparse import Namespace
+        from unittest.mock import patch
+        from acceptance.host.native import NativeAcceptance
+        package = Path(os.environ['NODE_APPROVAL_HANDOFF_OMP_PACKAGE'])
+        # A real installed non-default shell distinguishes the override from
+        # automatic Git Bash resolution; no shell is installed or executed here.
+        selected = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        self.assertTrue(selected.is_file())
+        with tempfile.TemporaryDirectory(prefix='native-effective-shell-') as directory:
+            root = Path(directory)
+            agent = root / 'agent'
+            agent.mkdir()
+            config = root / 'model.json'
+            config.write_text(json.dumps({'provider': 'owned', 'model': 'mechanical',
+                'baseUrl': 'http://127.0.0.1:9', 'apiKeyEnv': 'OWNED_NATIVE_CONFIG_MARKER'}), encoding='utf-8')
+            fixture = NativeAcceptance.__new__(NativeAcceptance)
+            fixture.args = Namespace(model_config=config, shell_path=selected)
+            fixture.root, fixture.hosts, fixture.evidence, fixture.env = root, ['omp'], {}, {}
+            try:
+                with patch.dict(os.environ, OWNED_NATIVE_CONFIG_MARKER='non-secret-owned-marker'):
+                    NativeAcceptance.configure_model(fixture)
+                script = ('import {Settings} from ' + json.dumps((package / 'src/config/settings.ts').as_uri())
+                    + ';const s=await Settings.loadReadOnly({agentDir:' + json.dumps(str(agent))
+                    + ',cwd:' + json.dumps(str(root)) + '});const c=s.getShellConfig();'
+                    + 'console.log(JSON.stringify({shell:c.shell,args:c.args}));')
+                environment = dict(os.environ, HOME=str(root), USERPROFILE=str(root), OMP_CONFIG_DIR=str(agent),
+                    OMP_CODING_AGENT_DIR=str(agent), PI_CONFIG_FILES='', TMP=str(root), TEMP=str(root), TMPDIR=str(root))
+                process = subprocess.run(['bun', '--eval', script], cwd=root, env=environment,
+                    capture_output=True, text=True, encoding='utf-8', timeout=30)
+                self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+                effective = json.loads(process.stdout)
+                self.assertEqual(Path(effective['shell']).resolve(), selected.resolve())
+                self.assertIn('-Command', effective['args'])
+            finally:
+                if getattr(fixture, 'model_wire', None):
+                    fixture.model_wire.close()
+
+
 class BusinessAuthorization(unittest.TestCase):
     """Main-approved acceptance-helper seam, not native business coverage.
 
@@ -151,6 +192,21 @@ class BusinessAuthorization(unittest.TestCase):
         self.assertEqual(candidates, [('confirm-bot', self.bot())])
         self.assertFalse(self.policy('create_task', *candidates[0])['authorized'])
         self.assertTrue(self.policy('design_and_create', *candidates[0])['authorized'])
+
+    def test_scope_clarification_requires_its_actual_cancelled_call_boundary(self):
+        from node_approval_v2_acceptance import cancelled_scope_ready
+        pending = {'toolCallId': 'ask-owned', 'message': 'Only this stage is authorized.'}
+        history = {'branch': [
+            {'type': 'message', 'message': {'role': 'toolResult', 'toolCallId': 'ask-owned', 'isError': True,
+                'content': [{'type': 'text', 'text': 'Ask tool was cancelled by the user'}]}},
+            {'type': 'message', 'message': {'role': 'assistant', 'stopReason': 'aborted', 'errorMessage': 'Interrupted by user'}}]}
+        self.assertTrue(cancelled_scope_ready(pending, history))
+        self.assertFalse(cancelled_scope_ready(dict(pending, toolCallId='other-ask'), history))
+        self.assertFalse(cancelled_scope_ready(None, history))
+        history['branch'][-1]['message'] = {'role': 'assistant', 'stopReason': 'error', 'errorMessage': 'provider-error'}
+        self.assertFalse(cancelled_scope_ready(pending, history))
+        history['branch'][-1]['message'] = {'role': 'assistant', 'stopReason': 'aborted', 'errorMessage': 'Unknown interruption'}
+        self.assertFalse(cancelled_scope_ready(pending, history))
 
     def test_unstructured_prose_cannot_be_mistaken_for_a_displayed_configuration(self):
         from node_approval_v2_acceptance import displayed_candidates

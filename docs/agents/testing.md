@@ -194,7 +194,7 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 `node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、最终冻结模式／批准来源／报告与独立 HTTP 读回交叉核对，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 51 秒单调窗口覆盖既有 20 秒确认＋30 秒 HTTP 预算及余量，不改变产品策略。
 
-入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `python scripts/accept-node-approval-v2.test.py` 的 CLI 安全通过不替代专项。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
+入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" python scripts/accept-node-approval-v2.test.py` 的窄回归通过不替代专项；`OMP_PACKAGE` 显式指向已安装 OMP 包。该入口同时经共享父类配置和安装宿主 `Settings.loadReadOnly().getShellConfig()` 检查 YAML 优先级，并检查本次真实 Esc／匹配 Ask call 的一次权限澄清边界，不将其当作四节点业务完成。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
 
 ## 节点报告共享保存／通知回归
 
