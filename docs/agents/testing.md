@@ -108,6 +108,22 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立批准前提；不在 report 或 dispatch 夹具中静默补批准。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
 
+### 真实模型成果交接与结束节点（S2）
+
+从参与的 herdr-bot worktree 根运行：
+
+```sh
+python scripts/accept-node-approval-handoff.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+```
+
+参数必须是显式绝对路径，证据目录必须不存在；`--backend` 是本 worktree 生产 `herdr-bot.exe`，旁置同次构建的 `herdr-paths.exe`、`herdr-fixture.exe` 与 `examples/safe_shutdown_shell.exe`。使用独立绝对 `CARGO_TARGET_DIR`、两仓现有 frozen-lock 依赖及 Bun 1.4.4。paths 沿用共享原生验收设施的只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`。授权模型 JSON 使用 `provider/model/baseUrl/apiKeyEnv`，可选参数沿用共享模型传输设施；不限定模型产品，不发现用户认证、不安装宿主、不回退受控响应、不重试模型业务决策。缺授权保留四格未验证并非零退出。
+
+已明确授权某个只读 auth 文件时，可用既有 `python scripts/accept-workflow-codex.py --scenario node-approval-handoff --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`。先用同一命令加 `--smoke`、不同的新证据目录独立核对 `serverModel=gpt-6-luna`。该既有传输仅支持 canonical `gpt-6-luna`，这是传输／本次授权边界，不是产品模型限制；不复制、刷新或修改认证，不将凭据正文写入证据。业务阶段保留真实 SDK 原生调用决策与安装宿主执行；不声称两宿主直接使用 Codex wire。专项不把烟测通过当作业务四格通过。
+
+专项独占 OMP／Pi × auto／manual 四个环境，以真实模型自行决定成果交接。业务先缺折扣，观察真实问题报告在未批准时保存；用户只补充25%折扣，不指定工具或顺序。独立字面预期为7件、单价1200分、实付6300分，核对实际 `quote.json`、命名输出、原生 approve 先于正常 report、真实批准回执与公开来源。人工模式观察完整原生问题、可见选中 Yes、UI 实际 true 返回及公开 manual 事实；自动模式无确认，来源为 auto。原生结束 Chat 等待用户提供发票抬头，没有节点批准／报告职责；其他工作完成后，真实 manager 显式 finish，结束 Chat 仍 running、未批准且无报告。随后51秒单调观察覆盖现有20秒确认＋30秒HTTP预算及1秒余量，不改变产品策略。
+
+每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。
+
 ### 批准持久化、失败与执行隔离（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
