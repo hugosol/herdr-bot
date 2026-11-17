@@ -108,31 +108,47 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立普通节点批准前提；不在 report 或 dispatch 夹具中静默补批准。脚本仅在本次成功执行并通过结果／输出校验后记录自动批准，失败不补批准；后续不可交接报告不撤销既有批准，但仍阻止 complete。脚本报告隔离回归同时检查旧 execution、其他 node／Run 的交付不能补齐当前执行的约定输出；缺交付在 complete 处拒绝，当前执行实际登记后才可完成。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
 
-### 批准持久化、失败与执行隔离（S1）
-
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
-
-`approval::approval_save_failure_preserves_original_error_and_cannot_authorize_complete` 用独占 Run 文件的 Windows deny-delete 句柄让真实原子替换失败；核对原生 OS 错误、HTTP 500、公开未批准及 ready 报告仍不能 complete。`repeated_and_concurrent_approval_has_one_fact_and_no_business_effects` 同时提交真实 HTTP，比较完整 Run／报告／外部调用；`approval_only_changes_the_callers_current_execution` 实际发起同 Task 独立 Chat、普通节点、另一 node／Run 及合法 retry，与根 manager／无关联身份对比。`material_changes_and_later_reports_keep_approval_without_bypassing_latest_report` 实际修改材料字节、追加 false／true 报告并验证独立完成门禁。
-
-`inflight_old_approval_does_not_block_run_or_approve_retry` 是 **S1 传输门闩**：真实服务器返回 `100 Continue` 后，保持旧批准请求最后一个字节未提交；释放前公开查询、报告、独立 B 分支派发／完成及 A fail/retry 全部返回。查询、报告、分支派发／完成各 2 秒预算，释放后旧提交 2 秒内以陈旧执行拒绝，stdout 记录单调时序及实际调用。它不声称测试原生 UI 或后端 handler 内等待；OMP／Pi 真实确认在途属于原生专项。
-
-重启场景在第一个真实后端进程中公开创建并批准 Run，kill 后 wait 确认退出、消费完 stdout，再启动不同 PID，经公开详情读回完整 execution、模式与来源；旧 manager／node 权限仍拒绝，外部调用无输入重放。每例独占定义、Run、zone、数值回环动态端口和受控 Herdr；真实后端子进程另隔离 HOME／APPDATA／XDG。原始失败与进程清理失败分别记录；确认退出后才清理。以上只证明 S1 机制，不替代原生批准、恢复或真实模型业务。完成检查仍分别执行本仓完整后端、前端和浏览器入口。
-
-### 批准持久化、失败与执行隔离（S1）
-
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
-
-`approval::approval_save_failure_preserves_original_error_and_cannot_authorize_complete` 用独占 Run 文件的 Windows deny-delete 句柄让真实原子替换失败；核对原生 OS 错误、HTTP 500、公开未批准及 ready 报告仍不能 complete。`repeated_and_concurrent_approval_has_one_fact_and_no_business_effects` 同时提交真实 HTTP，比较完整 Run／报告／外部调用；`approval_only_changes_the_callers_current_execution` 实际发起同 Task 独立 Chat、普通节点、另一 node／Run 及合法 retry，与根 manager／无关联身份对比。`material_changes_and_later_reports_keep_approval_without_bypassing_latest_report` 实际修改材料字节、追加 false／true 报告并验证独立完成门禁。
-
-`inflight_old_approval_does_not_block_run_or_approve_retry` 是 **S1 传输门闩**：真实服务器返回 `100 Continue` 后，保持旧批准请求最后一个字节未提交；释放前公开查询、报告、独立 B 分支派发／完成及 A fail/retry 全部返回。查询、报告、分支派发／完成各 2 秒预算，释放后旧提交 2 秒内以陈旧执行拒绝，stdout 记录单调时序及实际调用。它不声称测试原生 UI 或后端 handler 内等待；OMP／Pi 真实确认在途属于原生专项。
-
-重启场景在第一个真实后端进程中公开创建并批准 Run，kill 后 wait 确认退出、消费完 stdout，再启动不同 PID，经公开详情读回完整 execution、模式与来源；旧 manager／node 权限仍拒绝，外部调用无输入重放。每例独占定义、Run、zone、数值回环动态端口和受控 Herdr；真实后端子进程另隔离 HOME／APPDATA／XDG。原始失败与进程清理失败分别记录；确认退出后才清理。以上只证明 S1 机制，不替代原生批准、恢复或真实模型业务。完成检查仍分别执行本仓完整后端、前端和浏览器入口。
-
 ### 嵌套父节点整体批准（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion:: -- --nocapture` 的 `parent_approval_requires_finished_child_and_independent_frozen_mode` 通过实际父子 Run、实际内部节点批准／报告／complete／finish 验证 P28／P29：两种父模式均冻结，子 finish 前拒绝整体批准，内部批准不批准父 execution，整体批准无通知／推进，父 manager 仍须显式 complete。该组保留最新报告、输出增量／缺交付、通知失败、结束节点及精确关闭回归；缺当前约定输出现在应在父 complete 处拒绝，不再允许先完成再消费缺交付。
 
 P10 嵌套归属选择器为 `nesting::dual_role_routes_report_to_parent_and_management_to_child_without_selectors`、`nesting::retired_child_session_cannot_select_the_replacement_execution`、`nesting::invalid_nested_links_and_source_mismatches_are_rejected_without_effects`，验证子管理、父批准／外报分离、旧 execution 不可改指 retry、缺失／错误／多重／跨 Run 关联拒绝。`nested_retry::` 保留真实新旧子 Run、报告与材料隔离。测试仅使用公开 HTTP／定义与独占文件、记录型外部 Herdr；人工 source 只证明 S1 后端规则，不证明 OMP／Pi 原生 Yes，后者由对应原生验收拥有。完成仍分别执行本页完整后端／前端／浏览器入口。
+
+### 成果批准 Map／Run 页面（S3）
+
+`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 的 `P1 P3 P5` 场景经真实打包页面保存并重开省略默认、显式自动与人工模式，独立 HTTP 读回定义。`P3 P36` 场景从真实公开发起／派发、Map 页面改模式、批准、fail／retry 到再次批准与报告／complete，分别检查当前定义、冻结模式、旧／新执行及 auto／manual 来源；HTTP 人工提交只证明页面显示保存来源，不冒充原生 Yes。每阶段保存截图、公开 Map／Run JSON 与外部调用前后记录；刷新与观察不产生业务调用。
+
+`scriptDefinitions.spec.ts` 保留脚本只能自动、冲突草稿拒绝后显式修正、保存冲突与草稿保护；`workflowScripts.spec.ts` 检查实际 Bun 文件业务在途／成功／失败的批准事实与报告；`endNode.spec.ts` 检查批准不适用、不伪造 approved 与无节点批准等待。既有报告、累计输出、执行历史、自动关闭和隔离回归保留有效职责，不再测试旧报告发送确认开关。浏览器后端的 HOME／APPDATA／XDG 与原生状态目录位于各例独占根，清理须等待所属进程退出。
+
+定向选择器为 `npm --prefix frontend run test:browser:build -- nodeSettings.spec.ts scriptDefinitions.spec.ts workflowScripts.spec.ts endNode.spec.ts --workers=1`。完成检查仍为完整后端、前端及浏览器三个入口；保留 Playwright test-results 证据。受控 Herdr 只证明外部协议与页面机制，没有原生模型业务或确认授权证明。
+
+### 批准持久化、失败与执行隔离（S1）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
+
+`approval::approval_save_failure_preserves_original_error_and_cannot_authorize_complete` 用独占 Run 文件的 Windows deny-delete 句柄让真实原子替换失败；核对原生 OS 错误、HTTP 500、公开未批准及 ready 报告仍不能 complete。`repeated_and_concurrent_approval_has_one_fact_and_no_business_effects` 同时提交真实 HTTP，比较完整 Run／报告／外部调用；`approval_only_changes_the_callers_current_execution` 实际发起同 Task 独立 Chat、普通节点、另一 node／Run 及合法 retry，与根 manager／无关联身份对比。`material_changes_and_later_reports_keep_approval_without_bypassing_latest_report` 实际修改材料字节、追加 false／true 报告并验证独立完成门禁。
+
+`inflight_old_approval_does_not_block_run_or_approve_retry` 是 **S1 传输门闩**：真实服务器返回 `100 Continue` 后，保持旧批准请求最后一个字节未提交；释放前公开查询、报告、独立 B 分支派发／完成及 A fail/retry 全部返回。查询、报告、分支派发／完成各 2 秒预算，释放后旧提交 2 秒内以陈旧执行拒绝，stdout 记录单调时序及实际调用。它不声称测试原生 UI 或后端 handler 内等待；OMP／Pi 真实确认在途属于原生专项。
+
+重启场景在第一个真实后端进程中公开创建并批准 Run，kill 后 wait 确认退出、消费完 stdout，再启动不同 PID，经公开详情读回完整 execution、模式与来源；旧 manager／node 权限仍拒绝，外部调用无输入重放。每例独占定义、Run、zone、数值回环动态端口和受控 Herdr；真实后端子进程另隔离 HOME／APPDATA／XDG。原始失败与进程清理失败分别记录；确认退出后才清理。以上只证明 S1 机制，不替代原生批准、恢复或真实模型业务。完成检查仍分别执行本仓完整后端、前端和浏览器入口。
+
+### 双宿主成果批准拒绝与继续工作（P5／P7／P8／P38）
+
+从参与的 herdr-bot worktree 根运行：
+
+```sh
+python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+```
+
+路径均为显式绝对路径，证据目录必须不存在。使用本 worktree 生产后端及旁置的 `herdr-paths`、`herdr-fixture`、`examples/safe_shutdown_shell.exe`，本次页面及独立绝对 `CARGO_TARGET_DIR`；两仓预装 frozen-lock 依赖和 Bun 1.4.4。paths 声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`，不能指向用户会话数据。本专项机械路径可显式提供非秘密模型 JSON `{"mode":"controlled-native-failures"}`：受控 provider 仅提供工具指令，真实安装宿主执行原生确认、文件写入及报告；不要求外部模型凭据，也不声称真实模型选择。若使用真实模型，JSON 沿用 `provider/model/baseUrl/apiKeyEnv` 格式，只从显式授权变量读取凭据，不发现或刷新认证，实际请求及返回身份须匹配声明模型。不安装宿主、不回退模型、不重试业务决定。
+
+`node_approval_failures_acceptance.py` 每个宿主／No、Esc、真实 20 秒超时、无 UI 各建独占定义、Run、原生 Chat、HOME／APPDATA／XDG、Herdr、数值回环服务与材料。实际原生确认透传观察固定成果问题、选中值、真实返回或异常；按键成功不是批准。非 Yes 后核对实际工具反馈、公开 `approved=false`／`running`，随后连续观察原生调用、确认请求、HTTP 和公开事实 61 秒：超过既有 20 秒确认＋30 秒请求以及 10 秒在线＋30 秒保留＋5 秒扫描上界，记录单调时钟、每次样本与实际持续时间，不修改产品预算。
+
+窗口结束后由新的显式用户输入要求原生宿主实际改写 `material.txt`、自由发送进度报告并从公开 Run 完整读回；此时仍未批准。再由另一条独立用户请求打开新确认并实际选择 Yes，核对批准成功、node 仍 running、报告不被改写。没有旧 report 发送审批预期，不把重新批准变成报告前提。
+
+无 UI 使用受控 provider 制造机械故障：先确认原生 node 进程退出，再以同一真实 session 的安装宿主 print/JSON 模式执行实际 `approve`，保留 `hasUI=false`、原生结果、provider 请求及进程退出；真实后端执行、材料、之后新进程恢复和原生继续工作均不替换。其余 No／Esc／超时也可由显式机械 provider 选择工具，但原生确认结果从不受控。任何受控路径均不冒充真实模型选择或用不可用替代 UI 拒绝。每个场景清理原始错误与清理错误独立保留，确认所属进程退出后归档。
+
+入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。CLI 安全回归 `python scripts/accept-node-approval-failures.test.py` 只验证缺依赖 fail-closed、绝对路径及旧证据保护，不是业务验收。
 
 ### 节点报告共享保存／通知回归
 

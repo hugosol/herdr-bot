@@ -234,7 +234,6 @@ async fn paused_retry_requires_explicit_resume_and_human_confirmation() {
 async fn terminal_run_rejects_retry_without_new_chat_or_record_changes() {
     let s = Scenario::without_output_contract().await;
     let (started, _) = failed_execution(&s).await;
-    approve_execution(&s, "retry-old").await;
     submit_report(&s, "retry-old", "Repaired result ready for manual handoff", true).await;
     approve_execution(&s, "retry-old").await;
     action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"User supplied final result"}), 200).await;

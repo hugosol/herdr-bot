@@ -73,13 +73,11 @@ async fn parent_pause_rejects_local_dispatch_retry_but_child_work_and_handoff_co
         let dispatched = s.dispatch("pause-child", &[node]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
         assert_eq!(dispatched["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
-        approve_execution(&s, identity).await;
         report(&s, identity, "Child work while parent paused").await;
         approve_execution(&s, identity).await;
         action(&s, "pause-child", "complete", json!({"nodeId":node,"reason":"Accepted"}), 200).await;
     }
     action(&s, "pause-child", "finish", json!({}), 200).await;
-    approve_execution(&s, "pause-child").await;
     report(&s, "pause-child", "Finished child while parent paused").await;
     let parent = detail(&s, &root["id"]).await;
     assert_eq!(parent["run"]["status"], "paused");
@@ -141,7 +139,6 @@ async fn descendant_host_failure_keeps_ancestors_and_independent_sessions_runnin
         assert_eq!(advanced["results"][0]["status"], "running");
         assert_eq!(advanced["snapshot"]["status"], "running");
         assert_eq!(advanced["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
-        approve_execution(&s, identity).await;
         report(&s, identity, "Independent branch delivered").await;
         approve_execution(&s, identity).await;
         action(&s, manager, "complete", json!({"nodeId":node,"reason":"Sibling independently accepted"}), 200).await;
@@ -181,7 +178,6 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
             native(&s, identity);
             let child_dispatch = tokio::time::timeout(Duration::from_secs(5), s.dispatch("concurrent-child", &[node])).await.expect("child dispatch must progress before parent input gate release");
             assert_eq!(child_dispatch["results"][0]["status"], "running");
-            approve_execution(&s, identity).await;
             if node == "sibling" {
                 report(&s, identity, "Sibling finished").await;
                 approve_execution(&s, identity).await;

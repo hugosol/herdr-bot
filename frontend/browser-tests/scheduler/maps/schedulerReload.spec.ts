@@ -137,7 +137,7 @@ test(`P26 @time-contract late ${scenario} responses cannot replace current graph
     await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
     await expect(capability.getByText('新能力说明', { exact: true })).toBeVisible()
     await page.getByTestId('tab-scheduler').click()
-    for (const stale of ['原计划', '原准备', '原核对', 'old-alpha', 'old-beta']) await expect(preview).not.toContainText(stale)
+    for (const stale of ['原计划', '原准备', '原核对', 'old-alpha', 'old-beta', '原能力标题']) await expect(preview).not.toContainText(stale)
   } finally {
     map.release()
     bot.release()
@@ -248,7 +248,7 @@ test('P25 explicit reload replaces dependencies parameters and every bot field w
   await graph.getByRole('button', { name: '新准备 A', exact: true }).click()
   await expect(details.getByTestId('node-input')).toContainText('new-alpha')
   await expect(details.getByRole('region', { name: 'blocked_by' }).getByRole('button')).toHaveAccessibleName('查看前置节点 新核对 B')
-  for (const stale of ['原计划', '原准备', '原核对', 'old-alpha', 'old-beta']) await expect(preview).not.toContainText(stale)
+  for (const stale of ['原计划', '原准备', '原核对', 'old-alpha', 'old-beta', '原能力标题']) await expect(preview).not.toContainText(stale)
   expect(fs.readFileSync(fixture.map, 'utf8')).toBe(newMapBytes)
   expect(fs.readFileSync(fixture.bot, 'utf8')).toBe(newBotBytes)
 

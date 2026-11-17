@@ -122,7 +122,7 @@
 }
 
 /* Clip only the decorative shape, never the button, its text, or its focus ring. */
-.scheduler .scheduler-node[data-auto-approved="false"] {
+.scheduler .scheduler-node[data-approval-mode="manual"] {
   position: relative;
   isolation: isolate;
   border-color: transparent;
@@ -163,7 +163,7 @@
   .scheduler .scheduler-graph-edge { stroke: CanvasText; }
   .scheduler .scheduler-graph-edge-related { stroke: Highlight; }
   .scheduler .scheduler-node[aria-pressed="true"] { border-color: Highlight; }
-  .scheduler .scheduler-node[data-auto-approved="false"] { border-color: transparent; background: transparent; }
+  .scheduler .scheduler-node[data-approval-mode="manual"] { border-color: transparent; background: transparent; }
   .scheduler .scheduler-node-shape polygon { fill: ButtonFace; stroke: ButtonText; }
   .scheduler .scheduler-node-related .scheduler-node-shape polygon,
   .scheduler .scheduler-node[aria-pressed="true"] .scheduler-node-shape polygon { fill: ButtonFace; stroke: Highlight; }
