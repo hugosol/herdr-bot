@@ -44,6 +44,58 @@ class FailureAcceptanceCLI(unittest.TestCase):
                     self.assertEqual(case['expected']['nodeStatus'], 'running')
                     self.assertEqual(case['expected']['automaticConfirmations'], 0)
 
+    def test_invalid_selection_cannot_launch_or_create_evidence(self):
+        for selection in ['', 'unknown', 'timeout,timeout', 'all,timeout']:
+            with self.subTest(selection=selection), tempfile.TemporaryDirectory(prefix='node-approval-cli-') as directory:
+                root = Path(directory)
+                result = self.invoke(root, cases=selection)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((root / 'evidence').exists())
+
+    def test_filtered_run_retains_exact_missing_cases_and_never_passes(self):
+        with tempfile.TemporaryDirectory(prefix='node-approval-cli-') as directory:
+            root = Path(directory)
+            result = self.invoke(root, hosts='pi', cases='timeout')
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
+            self.assertEqual(report['selectedCases'], ['pi/timeout'])
+            self.assertEqual(set(report['missingCases']), {'omp/no', 'omp/cancel', 'omp/timeout',
+                'omp/unavailable', 'pi/no', 'pi/cancel', 'pi/unavailable'})
+            self.assertFalse(report['passed'])
+            self.assertFalse(report['selectedCasesPassed'])
+
+    def test_successful_partial_coverage_or_failed_native_exit_cannot_certify_full_matrix(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('failure_entry', ENTRY)
+        entry = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(entry)
+        evidence = {'coverage': {host: {case: {'verified': True} for case in entry.CONDITIONS}
+            for host in ['omp', 'pi']}, 'nativeExits': {host + '/' + case: 0
+            for host in ['omp', 'pi'] for case in entry.CONDITIONS}}
+        self.assertTrue(entry.complete_coverage(evidence))
+        del evidence['nativeExits']['pi/unavailable']
+        self.assertFalse(entry.complete_coverage(evidence))
+        evidence['nativeExits']['pi/unavailable'] = 1
+        self.assertFalse(entry.complete_coverage(evidence))
+        evidence['nativeExits']['pi/unavailable'] = 0
+        evidence['coverage']['pi']['unavailable']['verified'] = False
+        self.assertFalse(entry.complete_coverage(evidence))
+
+    def test_wrapper_validates_cases_before_creating_transport(self):
+        with tempfile.TemporaryDirectory(prefix='node-approval-wrapper-cli-') as directory:
+            root = Path(directory)
+            base = [sys.executable, str(ROOT / 'scripts/accept-workflow-codex.py'),
+                '--scenario', 'node-approval-failures', '--hosts', 'pi', '--native-only']
+            for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
+                base += ['--' + name, str(root / name)]
+            for case in ['unknown', 'timeout,timeout', 'timeout', 'unavailable']:
+                result = subprocess.run(base + ['--cases', case], capture_output=True,
+                    text=True, encoding='utf-8', errors='replace', timeout=30)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('unique comma-separated' if case in ['unknown', 'timeout,timeout']
+                    else 'Missing explicit dependency', result.stderr)
+                self.assertFalse((root / 'evidence-dir').exists())
+
     def test_old_evidence_is_not_overwritten(self):
         with tempfile.TemporaryDirectory(prefix='node-approval-cli-') as directory:
             root = Path(directory)
@@ -114,6 +166,27 @@ class ModelIdentityBoundary(unittest.TestCase):
         self.assertEqual(evidence['nonCompletionTrafficCount'], 2)
         self.assertEqual(evidence['modelIdentities'], [
             {'request': 0, 'requested': 'gpt-6-luna', 'returned': ['gpt-6-luna']}])
+
+    def test_failed_native_completion_is_terminal_without_another_model_call(self):
+        from acceptance.host.completion_transport import NativeCompletionTransport
+        import urllib.error
+        import urllib.request
+        attempted = []
+
+        def failed(request):
+            attempted.append(request)
+            raise RuntimeError('owned literal failed completion')
+
+        with tempfile.TemporaryDirectory(prefix='approval-terminal-completion-') as directory:
+            with NativeCompletionTransport(failed, Path(directory)) as transport:
+                for _ in range(2):
+                    request = urllib.request.Request(transport.base + '/chat/completions',
+                        data=json.dumps({'model': 'gpt-6-luna', 'messages': [], 'stream': False}).encode(),
+                        headers={'Content-Type': 'application/json'})
+                    with self.assertRaises(urllib.error.HTTPError):
+                        urllib.request.urlopen(request, timeout=5)
+                self.assertTrue(transport.failed)
+                self.assertEqual(len(attempted), 1)
 
     def test_zero_actual_completions_still_fails_closed(self):
         with self.assertRaisesRegex(AssertionError, 'No actual authorized model request'):
