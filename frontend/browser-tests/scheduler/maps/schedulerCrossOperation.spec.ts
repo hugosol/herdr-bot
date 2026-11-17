@@ -299,7 +299,7 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await inert()
   const mapBeforeInvalidSave = fs.readFileSync(path.join(maps, 'quarter.JSON'), 'utf8')
-  const maliciousContent = Object.fromEntries(Object.entries(maliciousWork).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
+  const maliciousContent = Object.fromEntries(Object.entries(maliciousWork).filter(([key]) => !['zone', 'auto_approved', 'auto_close'].includes(key)))
   const raw = '  ' + JSON.stringify(maliciousContent, null, 3) + '\n'
   await (await openNodeJson(page)).fill(raw + '!')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()

@@ -59,8 +59,8 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
     let child_declared = fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap();
     assert_ne!(child_declared, child_before);
     let nodes = [
-        ("review", json!({"title":"Review orders","bot_id":"review-process","manager_task_id":s.manager_task,"input":"Review the named source in EUR; deliver only the review summary.","zone":"node","blocked_by":[],"input_rule":[{"id":"source","type":"file","zone_id":"node","path":"source.txt"}],"output_rule":[{"id":"review_result"}],"report_policy":"manual","auto_close":false})),
-        ("check", json!({"title":"Check summary","bot_id":"worker","input":"Check the named summary against the authorized EUR scope.","zone":"node","blocked_by":["review"],"input_rule":[{"id":"summary","type":"node","node_id":"review","output_id":"review_result"}],"output_rule":[{"id":"checked"}],"report_policy":"auto","auto_close":false})),
+        ("review", json!({"title":"Review orders","bot_id":"review-process","manager_task_id":s.manager_task,"input":"Review the named source in EUR; deliver only the review summary.","zone":"node","blocked_by":[],"input_rule":[{"id":"source","type":"file","zone_id":"node","path":"source.txt"}],"output_rule":[{"id":"review_result"}],"auto_approved":false,"auto_close":false})),
+        ("check", json!({"title":"Check summary","bot_id":"worker","input":"Check the named summary against the authorized EUR scope.","zone":"node","blocked_by":["review"],"input_rule":[{"id":"summary","type":"node","node_id":"review","output_id":"review_result"}],"output_rule":[{"id":"checked"}],"auto_approved":true,"auto_close":false})),
     ];
     for (id, node) in &nodes {
         let draft = get_over_tcp(s.server.addr(), "/api/scheduler/maps/planned.json/nodes/new").await;

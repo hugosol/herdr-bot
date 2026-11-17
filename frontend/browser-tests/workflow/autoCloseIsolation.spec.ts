@@ -30,7 +30,7 @@ async function scenario(page: Page) {
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
   fs.writeFileSync(path.join(maps, 'isolation.json'), JSON.stringify({ title: '关闭隔离验收', description: '', nodes: {
-    A: { title: '交接工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: [], auto_close: true },
+    A: { title: '交接工作', bot_id: 'worker', zone: 'test/zone', input: '', output_rule: [], blocked_by: [], auto_close: true },
     B: { title: '后续工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: ['A'] },
   } }))
   const native = (id: string) => ({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: id }, native_cwd: zone })
@@ -41,6 +41,10 @@ async function scenario(page: Page) {
   const dispatched = await post('/api/workflow/manager/dispatch', { sessionId: 'isolation-manager', nodes: ['A'] })
   expect(dispatched.results[0].status).toBe('running')
   const declaration = await post('/api/workflow/node/report', { sessionId: 'isolation-node-A', body: '隔离场景工作已可交接；关闭行为待验收', canComplete: true })
+  const approval = await post('/api/workflow/node/context', { sessionId: 'isolation-node-A' })
+  expect(approval).toMatchObject({ autoApproved: true, approved: false, approvalSource: null })
+  const approved = await post('/api/workflow/node/approve', { sessionId: 'isolation-node-A', executionId: approval.executionId, source: 'auto' })
+  expect(approved).toMatchObject({ approved: true, approvalSource: 'auto', changed: true })
   const root = path.join(host.cwd, '.data/workflow-runs', started.id)
   const readRun = () => JSON.parse(fs.readFileSync(path.join(root, 'run.json'), 'utf8'))
   const complete = () => post('/api/workflow/manager/complete', { sessionId: 'isolation-manager', nodeId: 'A', reason: '已核实交接结果' })

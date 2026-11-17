@@ -30,7 +30,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
         assert_eq!(node["bot_id"], bot);
         assert_eq!(node["input_rule"], json!([baseline.clone()]));
         assert_eq!(node["blocked_by"], json!(["w1"]));
-        assert_eq!(node["report_policy"], "manual");
+        assert_eq!(node["auto_approved"], false);
         assert_eq!(node["output_rule"], json!([{"id":"text"},{"id":"handoff"}]));
         for role in ["text","handoff"] {
             final_inputs.push(json!({"id":format!("{field}_{role}"),"type":"node","node_id":id,"output_id":role}));

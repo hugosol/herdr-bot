@@ -73,10 +73,12 @@ async fn parent_pause_rejects_local_dispatch_retry_but_child_work_and_handoff_co
         let dispatched = s.dispatch("pause-child", &[node]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
         assert_eq!(dispatched["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
+        approve_execution(&s, identity).await;
         report(&s, identity, "Child work while parent paused").await;
         action(&s, "pause-child", "complete", json!({"nodeId":node,"reason":"Accepted"}), 200).await;
     }
     action(&s, "pause-child", "finish", json!({}), 200).await;
+    approve_execution(&s, "pause-child").await;
     report(&s, "pause-child", "Finished child while parent paused").await;
     let parent = detail(&s, &root["id"]).await;
     assert_eq!(parent["run"]["status"], "paused");
@@ -137,6 +139,7 @@ async fn descendant_host_failure_keeps_ancestors_and_independent_sessions_runnin
         assert_eq!(advanced["results"][0]["status"], "running");
         assert_eq!(advanced["snapshot"]["status"], "running");
         assert_eq!(advanced["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
+        approve_execution(&s, identity).await;
         report(&s, identity, "Independent branch delivered").await;
         action(&s, manager, "complete", json!({"nodeId":node,"reason":"Sibling independently accepted"}), 200).await;
     }
@@ -175,6 +178,7 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
             native(&s, identity);
             let child_dispatch = tokio::time::timeout(Duration::from_secs(5), s.dispatch("concurrent-child", &[node])).await.expect("child dispatch must progress before parent input gate release");
             assert_eq!(child_dispatch["results"][0]["status"], "running");
+            approve_execution(&s, identity).await;
             if node == "sibling" {
                 report(&s, identity, "Sibling finished").await;
                 action(&s, "concurrent-child", "complete", json!({"nodeId":node,"reason":"Accepted"}), 200).await;
@@ -197,6 +201,7 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
         fs::write(&gates[0], "release").unwrap();
         assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|call| call["kind"] == "agent_prompt" && call["text"].as_str().is_some_and(|text| text.contains("OUTER-SLOW")))).await);
         assert_eq!(detail(&s, &root["id"]).await["reports"][0]["body"], "OUTER-SLOW");
+        approve_execution(&s, "concurrent-child").await;
         assert_eq!(action(&s, "concurrent-root", "complete", json!({"nodeId":"call","reason":"Explicit acceptance during slow notifications"}), 200).await["snapshot"]["nodes"]["call"]["status"], "completed");
         assert!(!tasks[1].is_finished() && !tasks[2].is_finished(), "both external notification gates must still be held");
         assert!(!gates[1].exists() && !gates[2].exists());

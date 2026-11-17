@@ -142,12 +142,13 @@ async fn created_dispatch_reconciliation_observes_original_host_identity_without
 // A later supplemental false report must not reopen the accepted work.
 #[tokio::test]
 async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_or_forwarding_reports() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-manual").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     for (node, identity) in [("A", "manual-A"), ("B", "manual-B")] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":identity},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-manual", &[node]).await;
+        approve_execution(&s, identity).await;
     }
     submit_report(&s, "manual-B", "B artifact ready", true).await;
     action(&s, "complete", json!({"sessionId":"manager-manual","nodeId":"B","reason":"B artifact ready"}), 200).await;
@@ -209,11 +210,12 @@ async fn manual_failed_execution_handoff_unlocks_dependency_without_fabricating_
 // reject every ticket-owned mutation before host observation or state writes.
 #[tokio::test]
 async fn terminal_run_rejects_failure_reconciliation_recovery_and_manual_handoff() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-terminal-repair").await;
     for node in ["A", "B", "C"] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":format!("terminal-{node}")},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("manager-terminal-repair", &[node]).await;
+        approve_execution(&s, &format!("terminal-{node}")).await;
         submit_report(&s, &format!("terminal-{node}"), "Verified handoff ready for terminal regression", true).await;
         action(&s, "complete", json!({"sessionId":"manager-terminal-repair","nodeId":node,"reason":"Verified handoff"}), 200).await;
     }
