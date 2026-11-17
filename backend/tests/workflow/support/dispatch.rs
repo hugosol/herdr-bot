@@ -10,6 +10,15 @@ async fn submit_report(s: &Scenario, identity: &str, body: &str, can_complete: b
     serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone()
 }
 
+// Explicit fixture action: never called by report/dispatch on a node's behalf.
+async fn approve_execution(s: &Scenario, identity: &str) {
+    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":identity}).to_string()).await;
+    assert_eq!(context.status, 200, "{}", context.body);
+    let context: Value = serde_json::from_str(&context.body).unwrap();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/approve", &json!({"sessionId":identity,"executionId":context["executionId"],"source":if context["autoApproved"] == true {"auto"} else {"manual"}}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+}
+
 struct Scenario {
     data: TempDir,
     herdr: HerdrFixture,
@@ -23,6 +32,16 @@ struct Scenario {
 impl Scenario {
     async fn new() -> Self {
         Self::with_collect_wait(5400).await
+    }
+    async fn without_output_contract() -> Self {
+        let scenario = Self::new().await;
+        let path = scenario.config.scheduler.map_directory.join("work.json");
+        let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for node in map["nodes"].as_object_mut().unwrap().values_mut() {
+            node["output_rule"] = json!([]);
+        }
+        fs::write(path, map.to_string()).unwrap();
+        scenario
     }
     async fn with_collect_wait(seconds: u64) -> Self {
         let data = TempDir::new("dispatch records");

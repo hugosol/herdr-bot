@@ -18,11 +18,12 @@ async fn report(s: &Scenario, identity: &str, ready: bool) -> Value {
 // ignores reports or searches backwards for any true. Keep HTTP, report save,
 // operation coordination and notifications real; compare bytes and host calls.
 #[tokio::test]
-async fn latest_current_report_alone_allows_first_completion_without_file_outputs() {
-    let s = Scenario::new().await;
+async fn approved_execution_requires_latest_current_report_for_first_completion_without_outputs() {
+    let s = Scenario::without_output_contract().await;
     let started = s.start("gate-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"gate-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("gate-manager", &["A"]).await;
+    approve_execution(&s, "gate-A").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let body = json!({"sessionId":"gate-manager","nodeId":"A","reason":"Manager accepts handoff"});
     for ready in [None, Some(false), Some(true), Some(false)] {
@@ -80,10 +81,11 @@ async fn latest_current_report_alone_allows_first_completion_without_file_output
 // all subsequent retry, reporting and completion still use public HTTP.
 #[tokio::test]
 async fn historical_missing_declaration_and_old_execution_true_never_authorize_current_work() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("history-gate-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"history-gate-old"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("history-gate-manager", &["A"]).await;
+    approve_execution(&s, "history-gate-old").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let mut historical = report(&s, "history-gate-old", true).await;
     historical.as_object_mut().unwrap().remove("canComplete");
@@ -97,6 +99,7 @@ async fn historical_missing_declaration_and_old_execution_true_never_authorize_c
     action(&s, "fail", json!({"sessionId":"history-gate-manager","nodeId":"A","reason":"Replace old execution"}), 200).await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"history-gate-new"},"native_cwd":s.data.path().join("node-zone")}));
     let retry = action(&s, "retry", json!({"sessionId":"history-gate-manager","nodeId":"A","confirmed":true,"reason":"Independent replacement authorized"}), 200).await;
+    approve_execution(&s, "history-gate-new").await;
     let denied = action(&s, "complete", body.clone(), 409).await;
     assert!(denied["message"].as_str().unwrap().contains("没有"));
     let current = report(&s, "history-gate-new", false).await;
@@ -104,7 +107,10 @@ async fn historical_missing_declaration_and_old_execution_true_never_authorize_c
     let before = ["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap());
     let calls = s.herdr.calls();
     let denied = action(&s, "complete", body.clone(), 409).await;
-    assert_eq!(denied["snapshot"], retry["snapshot"]);
+    let mut approved_snapshot = retry["snapshot"].clone();
+    approved_snapshot["nodes"]["A"]["execution"]["approved"] = json!(true);
+    approved_snapshot["nodes"]["A"]["execution"]["approvalSource"] = json!("auto");
+    assert_eq!(denied["snapshot"], approved_snapshot);
     assert!(denied["message"].as_str().unwrap().contains(current["id"].as_str().unwrap()));
     assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
     assert_eq!(s.herdr.calls(), calls);
@@ -123,7 +129,7 @@ impl Drop for Release {
 // Neither order is inferred from task scheduling, timestamp equality or sleep.
 #[tokio::test]
 async fn committed_report_and_completion_order_survives_overlapping_external_effects() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let map_path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
     map["nodes"]["A"]["auto_close"] = json!(true);
@@ -131,6 +137,7 @@ async fn committed_report_and_completion_order_survives_overlapping_external_eff
     let started = s.start("ordered-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"ordered-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("ordered-manager", &["A"]).await;
+    approve_execution(&s, "ordered-A").await;
     report(&s, "ordered-A", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let delivery_release = s.data.path().join("ordered-delivery-release");

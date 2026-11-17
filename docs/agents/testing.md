@@ -102,6 +102,12 @@
 
 Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。
 
+### 普通节点成果批准（S1）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 通过公开 HTTP、真实独占 Run／定义和记录型 Herdr 验证派发未批准、两种模式的无报告／无产物批准、report-only／approve-only 正交、批准无外部通知或推进、已有报告未批准的 complete 拒绝，以及批准后无报告／最新 false／缺约定交付的独立拒绝。stdout 保留运行事实与真实外部调用；人工 HTTP 只证明后端提交，不冒充 OMP／Pi 原生 Yes。P1 选择器为 `report_policy::map_auto_approved_defaults_round_trips_and_rejects_invalid_saves_without_writing`（保留现有 module 名，不保留旧协议）；P30 沿用 `end_node::`，检查结束节点无伪批准且仍可显式 finish。
+
+报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立批准前提；不在 report 或 dispatch 夹具中静默补批准。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
+
 ### 节点报告共享保存／通知回归
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。

@@ -44,6 +44,9 @@ pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, r
     if node.status != "running" && !(node.status == "failed" && node.failure.as_ref().is_some_and(|failure| failure.stage == "execution")) {
         return Decision::reject("node-not-completable", "仅 running 或人工处理后可交接的执行阶段 failed 可完成；pending 和派发失败不可直接完成。");
     }
+    if !node.execution.as_ref().is_some_and(|execution| execution.approved) {
+        return Decision::reject("node-not-approved", "当前 execution 尚未批准；报告不代替成果批准。");
+    }
     if reason.trim().is_empty() {
         return Decision::reject("completion-reason-required", "请说明可交接结果及限制；完成说明不可为空。");
     }
@@ -60,6 +63,13 @@ pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, r
             if report.can_complete == Some(false) { "false" } else { "缺失" }
         )),
         None => return Decision::reject("report-not-completable", "当前 execution 没有报告；须先提交 can_complete=true 的报告，再显式 complete。"),
+    }
+    let execution = node.execution.as_ref().ok_or("缺少当前 execution。")?;
+    let rules = execution.output_rule.as_ref().ok_or("缺少冻结输出规则。")?;
+    for rule in rules {
+        if !reports.iter().any(|report| report.node_id == node_id && report.execution_id == execution.id && report.outputs.iter().any(|file| file.id == rule.id)) {
+            return Decision::reject("output-missing", format!("当前 execution 尚未登记约定交付 {}。", rule.id));
+        }
     }
     let completion = Completion {
         id: crate::chats::new_creation_id(),

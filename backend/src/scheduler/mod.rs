@@ -2,7 +2,7 @@
 pub(crate) mod bots;
 pub(crate) mod maps;
 use bots::{Bot, read_bots};
-use maps::{InputRule, OutputRule, ReportPolicy, read_map, map_error};
+use maps::{InputRule, OutputRule, read_map, map_error};
 use crate::files::{FileAccess, FileStore};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::{Path, PathBuf}};
@@ -41,7 +41,7 @@ pub(crate) struct DispatchTarget {
     pub input: String,
     pub input_rule: Vec<InputRule>,
     pub output_rule: Vec<OutputRule>,
-    pub report_policy: ReportPolicy,
+    pub auto_approved: bool,
     pub auto_close: bool,
     pub end_node: bool,
     pub zone: String,
@@ -72,10 +72,10 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::
         return Err("end_node 必须等待所有其他节点 completed。".into());
     }
     if let Some(script) = &bot.script {
-        if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
-            return Err("脚本节点仅允许自动报告、无自动关闭且不指定 manager Task。".into());
+        if node.manager_task_id.is_some() || !node.auto_approved || node.auto_close {
+            return Err("脚本节点仅允许自动批准、无自动关闭且不指定 manager Task。".into());
         }
-        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: false, end_node: false, zone_id, zone, task: None, map: None, script: Some(script.clone()) });
+        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, auto_approved: node.auto_approved, auto_close: false, end_node: false, zone_id, zone, task: None, map: None, script: Some(script.clone()) });
     }
     let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
         (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
@@ -86,7 +86,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::
     if task.task_type != required_role {
         return Err("node 的执行 Task 类型与目标不一致".into());
     }
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, report_policy: node.report_policy, auto_close: node.auto_close && !node.end_node, end_node: node.end_node, zone_id, zone, task: Some(task), map: bot.map_file.clone(), script: None })
+    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, auto_approved: node.auto_approved, auto_close: node.auto_close && !node.end_node, end_node: node.end_node, zone_id, zone, task: Some(task), map: bot.map_file.clone(), script: None })
 }
 
 async fn dispatch_zone(state: &crate::AppState, run: &crate::runs::Run, declaration: &maps::NodeZone, selected_zone: Option<&str>) -> Result<(String, String), String> {

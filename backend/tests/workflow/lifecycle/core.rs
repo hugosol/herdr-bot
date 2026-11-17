@@ -5,7 +5,7 @@
 // no external calls during the bounded 150ms pause window.
 #[tokio::test]
 async fn pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_fact() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-pause").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-pause-A"},"native_cwd":s.data.path().join("node-zone")}));
@@ -47,6 +47,7 @@ async fn pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_f
     let report: Value = serde_json::from_str(&report.body).unwrap();
     assert_eq!(report["saved"], true);
     assert_eq!(report["notification"]["status"], "submitted");
+    approve_execution(&s, "node-pause-A").await;
     let calls_after_report = s.herdr.calls();
     assert_eq!(calls_after_report.len(), calls.len() + 1, "only the requested report notification is sent");
     let complete = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-pause","nodeId":"A","reason":"Accepted while Chat remains working"}).to_string()).await;
@@ -68,7 +69,7 @@ async fn pause_blocks_new_dispatch_but_preserves_active_chat_handoff_and_first_f
 // and unchanged external calls for 150ms before explicitly dispatching B.
 #[tokio::test]
 async fn resume_restores_only_eligibility_until_explicit_dispatch_and_preserves_first_fact() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-resume").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let body = json!({"sessionId":"manager-resume"}).to_string();
@@ -121,7 +122,7 @@ async fn resume_restores_only_eligibility_until_explicit_dispatch_and_preserves_
 // first finish facts/history and all host calls after terminal requests.
 #[tokio::test]
 async fn paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_are_rejected() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-paused-finish").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let body = json!({"sessionId":"manager-paused-finish"}).to_string();
@@ -137,6 +138,7 @@ async fn paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_a
             assert_eq!(paused.status, 200, "{}", paused.body);
         }
         submit_report(&s, &identity, "Ready while Chat continues working", true).await;
+        approve_execution(&s, &identity).await;
         let complete = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-paused-finish","nodeId":node,"reason":"Ready for handoff; Chat keeps working"}).to_string()).await;
         assert_eq!(complete.status, 200, "{}", complete.body);
         if node == "C" {
@@ -189,7 +191,7 @@ async fn paused_run_finishes_with_active_chat_and_terminal_eligibility_actions_a
 // role/validation outcomes, not derived from the runtime's response.
 #[tokio::test]
 async fn pause_resume_reject_non_manager_and_caller_supplied_ownership_without_effects() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-eligibility-owner").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-eligibility-owner"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-eligibility-owner", &["A"]).await;
@@ -223,7 +225,7 @@ async fn pause_resume_reject_non_manager_and_caller_supplied_ownership_without_e
 // explicit completion's first reason/history through the real HTTP boundary.
 #[tokio::test]
 async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_first_fact() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-complete").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let initial = fs::read(root.join("run.json")).unwrap();
@@ -238,6 +240,7 @@ async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_fir
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-complete-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("manager-complete", &["A"]).await;
     submit_report(&s, "node-complete-A", "Artifact ready; cleanup continues", true).await;
+    approve_execution(&s, "node-complete-A").await;
     let calls = s.herdr.calls();
     let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-complete","nodeId":"A","reason":"A artifact is ready; Chat still cleaning up"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
@@ -280,7 +283,7 @@ async fn explicit_complete_unlocks_only_satisfied_dependencies_and_preserves_fir
 // violation overwrites the first finish or permits complete in terminal state.
 #[tokio::test]
 async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-finish").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let unfinished = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &json!({"sessionId":"manager-finish"}).to_string()).await;
@@ -293,6 +296,7 @@ async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
         let dispatched = s.dispatch("manager-finish", &[node]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
         submit_report(&s, &format!("node-finish-{node}"), "Final handoff ready", true).await;
+        approve_execution(&s, &format!("node-finish-{node}")).await;
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-finish","nodeId":node,"reason":format!("{node} handoff ready while Chat active")}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let value: Value = serde_json::from_str(&response.body).unwrap();
@@ -348,7 +352,7 @@ async fn finish_requires_every_handoff_and_terminal_actions_preserve_success() {
 // report. Session events are real HTTP inputs, not evidence of native omp exit.
 #[tokio::test]
 async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("manager-lifecycle").await;
     let id = started["id"].as_str().unwrap();
     let root = s.config.scheduler.run_directory.join(id);
@@ -392,6 +396,7 @@ async fn reports_and_observed_chat_lifecycle_never_replace_explicit_handoff() {
             assert_eq!(s.dispatch("manager-lifecycle", &[node]).await["results"][0]["status"], "running");
             submit_report(&s, &format!("node-lifecycle-{node}"), "Handoff ready without waiting for Chat exit", true).await;
         }
+        approve_execution(&s, &format!("node-lifecycle-{node}")).await;
         let calls_before_complete = s.herdr.calls();
         let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":"manager-lifecycle","nodeId":node,"reason":"Handoff accepted; Chat may keep working"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);

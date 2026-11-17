@@ -45,6 +45,11 @@ impl CommandAction for NodeContext {
     const ACTION: &'static str = "节点上下文";
 }
 
+pub(crate) struct NodeApprove;
+impl CommandAction for NodeApprove {
+    const ACTION: &'static str = "节点成果批准";
+}
+
 pub(crate) struct NodeReport;
 impl CommandAction for NodeReport {
     const ACTION: &'static str = "节点报告";

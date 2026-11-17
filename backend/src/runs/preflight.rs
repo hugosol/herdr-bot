@@ -2,7 +2,7 @@
 use crate::files::FileAccess;
 use crate::scheduler::{DirectoryError, object_array, with_definitions};
 use crate::scheduler::bots::{BotCatalog, read_bots};
-use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ReportPolicy, ResolvedFile, read_map};
+use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ResolvedFile, read_map};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -122,8 +122,8 @@ fn check_map_calls(
                 if let Err(error) = super::scripts::validate_binding(state, bot.script.as_deref().expect("script binding")) {
                     issues.push(PreflightIssue::new("script-invalid", "bot", error));
                 }
-                if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
-                    issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+                if node.manager_task_id.is_some() || !node.auto_approved || node.auto_close {
+                    issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
                 }
             }
             Some(bot) => match (&bot.task_id, &bot.map_file) {

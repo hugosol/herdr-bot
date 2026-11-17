@@ -43,6 +43,14 @@ pub(crate) async fn node_context(
     runs::reports::node_context(state, input.value.0).await.map(RunResponse).map_err(HttpError)
 }
 
+pub(crate) async fn node_approve(
+    State(state): State<AppState>,
+    _: LocalRunSource,
+    input: CommandJson<crate::scheduler::JsonObject<runs::reports::ApproveRequest>, input::NodeApprove>,
+) -> RunHttpResult {
+    runs::reports::node_approve(state, input.value.0).await.map(RunResponse).map_err(HttpError)
+}
+
 pub(crate) async fn node_report(
     State(state): State<AppState>,
     _: LocalRunSource,

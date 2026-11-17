@@ -25,6 +25,8 @@ mod pi;
 mod roles;
 #[path = "reports/report_policy.rs"]
 mod report_policy;
+#[path = "reports/approval.rs"]
+mod approval;
 #[path = "../scheduler/maps/map_deletion.rs"]
 mod map_deletion;
 #[path = "../scheduler/maps/map_title.rs"]

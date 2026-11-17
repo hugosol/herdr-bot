@@ -164,7 +164,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             }
         };
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), report_policy: target.report_policy, auto_close: target.auto_close, end_node: target.end_node });
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), auto_approved: target.auto_approved, approved: false, approval_source: None, auto_close: target.auto_close, end_node: target.end_node });
         let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         if let Some(prepared) = prepared {
@@ -203,7 +203,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
                     ExecutionTarget::Script(script) => ExecutionTarget::Script(ScriptExecution { kind: ScriptKind::Typescript, script: script.script.clone(), lifecycle: Lifecycle::Running { started_at: scripts::now() } }),
                     ExecutionTarget::LegacyScript(_) => return None,
                 };
-                Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: target.as_ref().ok().map(|target| target.zone_id.clone()).or_else(|| previous.zone_id.clone()), zone: target.as_ref().map(|target| target.zone.clone()).unwrap_or_else(|_| previous.zone.clone()), input_rule: None, output_rule: None, inputs: None, report_policy: crate::scheduler::maps::node_report_policy(&state.map_directory, &run.map, id).unwrap_or_default(), auto_close: false, end_node: target.as_ref().map_or(previous.end_node, |target| target.end_node) })
+                Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: target.as_ref().ok().map(|target| target.zone_id.clone()).or_else(|| previous.zone_id.clone()), zone: target.as_ref().map(|target| target.zone.clone()).unwrap_or_else(|_| previous.zone.clone()), input_rule: None, output_rule: None, inputs: None, auto_approved: target.as_ref().map_or(previous.auto_approved, |target| target.auto_approved), approved: false, approval_source: None, auto_close: false, end_node: target.as_ref().map_or(previous.end_node, |target| target.end_node) })
             });
         }
         node.status = "failed".into();
@@ -425,8 +425,8 @@ async fn protocol(
                 paths[2].display(), materials.display(), run.user_input);
             for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
             writeln!(input, "[/Named file inputs]\n\n[Output rules]\n{}\n[/Output rules]", serde_json::to_string(&execution.output_rule).map_err(|e| e.to_string())?).unwrap();
-            write!(input, "\n[Report policy control]\n{}\n[/Report policy control]\n\n[Business input]\n{}",
-                target.report_policy.control_section(), prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
+            write!(input, "\n[Result approval control]\nauto_approved: {}\nApprove the current session result before the final handoff report. Approval and reporting are independent; progress, problems and failures may be reported at any time without sending confirmation. Approval never completes work or notifies the manager; the manager must explicitly complete after a latest ready report and declared deliveries. Use the native approval tool; manual mode requires explicit native Yes.\n[/Result approval control]\n\n[Business input]\n{}",
+                target.auto_approved, prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
             input
             }
         }

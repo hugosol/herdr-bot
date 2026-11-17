@@ -23,43 +23,6 @@ pub(crate) struct WorkflowMap {
     pub(crate) nodes: BTreeMap<String, JsonObject<MapNode>>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportPolicy {
-    #[default]
-    Auto,
-    Manual,
-}
-
-impl<'de> Deserialize<'de> for ReportPolicy {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct PolicyVisitor;
-        impl serde::de::Visitor<'_> for PolicyVisitor {
-            type Value = ReportPolicy;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("the string auto or manual")
-            }
-            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
-                match value {
-                    "auto" => Ok(ReportPolicy::Auto),
-                    "manual" => Ok(ReportPolicy::Manual),
-                    _ => Err(E::unknown_variant(value, &["auto", "manual"])),
-                }
-            }
-        }
-        deserializer.deserialize_str(PolicyVisitor)
-    }
-}
-
-impl ReportPolicy {
-    pub(crate) fn control_section(self) -> &'static str {
-        match self {
-            Self::Auto => "report_policy: auto\nReport handoff-ready results without waiting for user confirmation. Reporting does not complete the node; the manager still decides complete.",
-            Self::Manual => "report_policy: manual\nInvoke report with the full intended payload to display it for explicit native user confirmation before sending. Natural-language agreement is not report authorization. Every report, including supplements, corrections and changed payloads, requires its own native confirmation. If confirmation is refused, times out or no confirmation UI is available, do not send and stop; wait for a renewed user request before invoking report again. Reporting does not complete the node; the manager still decides complete. Separate business approval requirements still apply.",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InputRule {
@@ -106,6 +69,8 @@ impl NodeZone {
     }
 }
 
+pub(crate) fn default_auto_approved() -> bool { true }
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapNode {
@@ -118,8 +83,8 @@ pub(crate) struct MapNode {
     pub(crate) input_rule: Vec<InputRule>,
     #[serde(default, deserialize_with = "object_array")]
     pub(super) output_rule: Vec<OutputRule>,
-    #[serde(default)]
-    pub(crate) report_policy: ReportPolicy,
+    #[serde(default = "default_auto_approved")]
+    pub(crate) auto_approved: bool,
     #[serde(default)]
     pub(crate) auto_close: bool,
     #[serde(default)]
@@ -163,11 +128,6 @@ pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap
         map.nodes.get_mut(&id).expect("end node belongs to Map").0.blocked_by = dependencies;
     }
     Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
-}
-
-pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Result<ReportPolicy, String> {
-    let map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
-    map.nodes.get(id).map(|node| node.0.report_policy).ok_or_else(|| "node 不在当前 Map 中".into())
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -450,7 +410,7 @@ pub(crate) async fn new_node(state: crate::AppState, name: String) -> Result<ser
         parse_map(&original)?;
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
         let mut content = example["nodes"]["A"].take();
-        content["report_policy"] = serde_json::json!(ReportPolicy::default());
+        content["auto_approved"] = serde_json::json!(true);
         content["auto_close"] = serde_json::json!(false);
         content["end_node"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
@@ -494,10 +454,10 @@ pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeS
                 return Err(edit_error("end-node-target-invalid", "end_node 仅允许普通 Task Bot。"));
             }
         }
-        if node.0.manager_task_id.is_some() || node.0.report_policy != ReportPolicy::Auto || node.0.auto_close {
+        if node.0.manager_task_id.is_some() || !node.0.auto_approved || node.0.auto_close {
             let bots = read_bots(access, &state.bot_directory)?;
             if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.script.is_some()) {
-                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
             }
         }
         let check = || -> Result<(), DirectoryError> {
