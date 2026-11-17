@@ -61,6 +61,10 @@ mod execution;
 use execution::{ChatExecution, ExecutionTarget, Lifecycle, ScriptExecution, ScriptKind};
 pub(crate) mod scripts;
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalSource { Auto, Manual }
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeExecution {
@@ -76,8 +80,9 @@ pub struct NodeExecution {
     pub output_rule: Option<Vec<crate::scheduler::maps::OutputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
     pub inputs: Option<Vec<crate::scheduler::maps::ResolvedFile>>,
-    #[serde(default)]
-    pub report_policy: crate::scheduler::maps::ReportPolicy,
+    pub auto_approved: bool,
+    pub approved: bool,
+    pub approval_source: Option<ApprovalSource>,
     #[serde(default)]
     pub auto_close: bool,
     #[serde(default)]

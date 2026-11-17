@@ -9,7 +9,7 @@ async fn action(s: &Scenario, session: &str, name: &str, extra: Value, expected:
     serde_json::from_str(&response.body).unwrap()
 }
 fn end_map(s: &Scenario, other: bool) {
-    let mut nodes = json!({"end":{"title":"User conversation","bot_id":"worker","input":"END-BUSINESS-LITERAL","input_rule":[{"id":"brief","type":"file","zone_id":"node","path":"brief.txt"}],"zone":"node","blocked_by":[],"end_node":true,"auto_close":true,"report_policy":"manual"}});
+    let mut nodes = json!({"end":{"title":"User conversation","bot_id":"worker","input":"END-BUSINESS-LITERAL","input_rule":[{"id":"brief","type":"file","zone_id":"node","path":"brief.txt"}],"zone":"node","blocked_by":[],"end_node":true,"auto_close":true,"auto_approved":false}});
     if other { nodes["work"] = json!({"title":"Work","bot_id":"worker","input":"PREPARE","zone":"node","blocked_by":[]}); }
     fs::write(s.data.path().join("node-zone/brief.txt"), "BUSINESS-MATERIAL").unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"End map","description":"","nodes":nodes}).to_string()).unwrap();
@@ -40,6 +40,10 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     native(&s, "omp", "end-work");
     s.dispatch("end-manager", &["work"]).await;
     submit_report(&s, "end-work", "Prepared", true).await;
+    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", r#"{"sessionId":"end-work"}"#).await;
+    let context: Value = serde_json::from_str(&context.body).unwrap();
+    let approved = post_json_over_tcp(s.server.addr(), "/api/workflow/node/approve", &json!({"sessionId":"end-work","executionId":context["executionId"],"source":"auto"}).to_string()).await;
+    assert_eq!(approved.status, 200, "{}", approved.body);
     let completed = action(&s, "end-manager", "complete", json!({"nodeId":"work","reason":"Accepted work"}), 200).await;
     assert_eq!(completed["ready"], json!(["end"]));
     assert_eq!(completed["canFinish"], false);
@@ -50,6 +54,8 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     assert_eq!(dispatched["canFinish"], true);
     let execution = dispatched["snapshot"]["nodes"]["end"]["execution"].clone();
     assert_eq!(execution["endNode"], true);
+    assert_eq!(execution["approved"], false);
+    assert!(execution["approvalSource"].is_null());
     assert_eq!(execution["autoClose"], false);
     assert_eq!(execution["inputs"][0]["path"], json!(s.data.path().join("node-zone").join("brief.txt")));
     assert_no_node_role(&s, offset, "omp");
@@ -61,6 +67,8 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     assert_eq!(report.status, 403, "{}", report.body);
     let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", r#"{"sessionId":"end-chat"}"#).await;
     assert_eq!(context.status, 403, "{}", context.body);
+    let approval = post_json_over_tcp(s.server.addr(), "/api/workflow/node/approve", &json!({"sessionId":"end-chat","executionId":execution["id"],"source":"manual"}).to_string()).await;
+    assert_eq!(approval.status, 403, "{}", approval.body);
     action(&s, "end-manager", "complete", json!({"nodeId":"end","reason":"Not a workflow completion"}), 409).await;
     let finished = action(&s, "end-manager", "finish", json!({}), 200).await;
     assert_eq!(finished["snapshot"]["status"], "completed");
@@ -163,7 +171,7 @@ async fn end_node_public_edits_round_trip_and_reject_a_second_end_without_writin
     let mut draft: Value = serde_json::from_str(&response.body).unwrap();
     let mut content = draft["content"].clone();
     content["end_node"] = json!(true);
-    content["report_policy"] = json!("manual");
+    content["auto_approved"] = json!(false);
     content["auto_close"] = json!(true);
     draft["content"] = json!(content.to_string());
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &draft.to_string()).await;

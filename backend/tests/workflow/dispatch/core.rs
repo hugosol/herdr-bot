@@ -149,7 +149,8 @@ async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_
     let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
-    assert_eq!(saved["nodes"]["A"]["execution"]["reportPolicy"], "auto");
+    assert_eq!(saved["nodes"]["A"]["execution"]["autoApproved"], true);
+    assert_eq!(saved["nodes"]["A"]["execution"]["approved"], false);
     let start = calls.iter().filter(|c| c["kind"] == "agent_start").nth(1).unwrap();
     assert_eq!(&start["args"].as_array().unwrap()[..4], &[json!("--model"),json!("openai-codex/gpt-6.1-sol"),json!("--thinking"),json!("high")]);
     let tab = s.herdr.tabs().pop().unwrap();

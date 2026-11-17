@@ -147,7 +147,51 @@ pub(crate) async fn node_context(state: AppState, input: ContextRequest) -> RunR
     let Some(execution) = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id) else {
         return Err(error(FailureKind::Forbidden, "node-unassociated", "当前原生身份没有唯一的节点执行归属。"));
     };
-    Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})))
+    Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"autoApproved":execution.auto_approved,"approved":execution.approved,"approvalSource":execution.approval_source})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ApproveRequest {
+    pub(crate) session_id: String,
+    pub(crate) execution_id: String,
+    pub(crate) source: ApprovalSource,
+}
+
+// Native confirmation happens in the official host, never while holding a Run
+// permit. The execution ID comes from context, not a model-selected target.
+pub(crate) async fn node_approve(state: AppState, input: ApproveRequest) -> RunResult {
+    let (binding, node_id, execution_id) = node_run(&state, &input.session_id).await?;
+    if input.execution_id != execution_id {
+        return Err(error(FailureKind::Invalid, "approval-execution-mismatch", "确认所针对的执行与会话归属不一致。"));
+    }
+    let work = tokio::spawn(async move {
+        let lock = state.runs.operations.lock().await.entry(binding.id.clone()).or_default().clone();
+        let _operation = lock.lock().await;
+        let mut run = state.runs.read(&state, &binding.id).await
+            .map_err(|message| error(FailureKind::Failed, "run-read-failed", &message))?;
+        if !matches!(run.status.as_str(), "running" | "paused") {
+            return Err(error(FailureKind::Invalid, "run-terminal", "Run 已结束，不接受批准。"));
+        }
+        let node = run.nodes.get_mut(&node_id).ok_or_else(|| error(FailureKind::Forbidden, "node-unassociated", "节点关联已改变。"))?;
+        let execution = node.execution.as_mut().filter(|execution| execution.id == execution_id && execution.chat().is_some_and(|chat| chat.session_id == input.session_id))
+            .ok_or_else(|| error(FailureKind::Invalid, "approval-execution-stale", "该确认不属于当前执行；请重新取得上下文。"))?;
+        if execution.end_node || !matches!(node.status.as_str(), "running" | "failed") || node.failure.as_ref().is_some_and(|failure| failure.stage != "execution") {
+            return Err(error(FailureKind::Invalid, "node-not-approvable", "当前节点不能批准。"));
+        }
+        let expected = if execution.auto_approved { ApprovalSource::Auto } else { ApprovalSource::Manual };
+        if input.source != expected {
+            return Err(error(FailureKind::Invalid, "approval-source-mismatch", "批准来源必须与本次执行冻结的模式一致。"));
+        }
+        let changed = !execution.approved;
+        if changed {
+            execution.approved = true;
+            execution.approval_source = Some(input.source);
+            save_run(&state, &run).await.map_err(|message| error(FailureKind::Failed, "approval-save-failed", &message))?;
+        }
+        Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"autoApproved":expected == ApprovalSource::Auto,"approved":true,"approvalSource":input.source,"changed":changed})))
+    }).await;
+    work.map_err(|join| error(FailureKind::Failed, "approval-internal", &join.to_string()))?
 }
 
 pub(crate) async fn node_report(state: AppState, input: ReportRequest) -> RunResult {

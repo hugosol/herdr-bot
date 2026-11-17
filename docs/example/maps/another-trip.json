@@ -6,7 +6,7 @@
       "title": "广州出行天气",
       "bot_id": "destination-weather",
       "input": "城市：广州\n日期：2026-11-03",
-      "report_policy": "auto",
+      "auto_approved": true,
       "zone": "example/travel",
       "blocked_by": []
     }
