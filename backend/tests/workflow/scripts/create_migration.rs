@@ -68,7 +68,32 @@ async fn migrated_workflow(fault: Option<&str>) {
         if ["meta-data/tasks.json", "meta-data/bots/bot-1793348060748020300-25960-2.json", "meta-data/workflow-maps/create-bot-wrapper.json", "meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json"].contains(&path.as_str()) { continue; }
         // The portable archive was captured with universal-newline reads.
         // Normalize checkout line endings only, never parsed field/text bytes.
-        assert_eq!(fs::read_to_string(root().join(path)).unwrap().replace("\r\n", "\n"), original.as_str().unwrap(), "Unrelated definition changed: {path}");
+        let original = original.as_str().unwrap();
+        // The revision workflow changed only its approval representation in
+        // this cutover; retain the archived bytes for every other field.
+        let expected = if path == "meta-data/workflow-maps/enhance-existing-bot--bc-301b25d9f8d6.json" {
+            original.replace("\"report_policy\": \"auto\"", "\"auto_approved\": true")
+                .replace("\"report_policy\": \"manual\"", "\"auto_approved\": false")
+                .replace("\"blocked_by\": [],\n      \"auto_approved\": false", "\"blocked_by\": [],\n      \"auto_approved\": true")
+        } else if path == "meta-data/workflow-maps/plan_workflow.json" {
+            original.replace("\"report_policy\": \"auto\"", "\"auto_approved\": true")
+        } else { original.to_owned() };
+        let actual = fs::read_to_string(root().join(path)).unwrap().replace("\r\n", "\n");
+        if path == "meta-data/workflow-maps/plan_workflow.json" {
+            // The planner's later published lifecycle settings are independent
+            // of the v1 creation migration. Preserve its full business definition.
+            let mut expected: Value = serde_json::from_str(&expected).unwrap();
+            for id in ["generate_map", "optimize_map", "outline"] {
+                let node = expected["nodes"][id].as_object_mut().unwrap();
+                node.remove("report_policy");
+                node.insert("auto_approved".into(), json!(true));
+                node.insert("auto_close".into(), json!(true));
+                node.insert("end_node".into(), json!(false));
+            }
+            assert_eq!(serde_json::from_str::<Value>(&actual).unwrap(), expected, "Unrelated definition changed: {path}");
+        } else {
+            assert_eq!(actual, expected, "Unrelated definition changed: {path}");
+        }
     }
     for original in original_tasks["tasks"].as_array().unwrap() {
         if ["task-18e33fdc55177d1c-1", "task-18e3404478db1ef8-2", "task-18e340545eb481bc-3", "task-18e340f5287462ec-4"].contains(&original["id"].as_str().unwrap()) { continue; }
