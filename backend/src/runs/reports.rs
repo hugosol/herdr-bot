@@ -179,6 +179,13 @@ pub(crate) async fn node_approve(state: AppState, input: ApproveRequest) -> RunR
         if execution.end_node || !matches!(node.status.as_str(), "running" | "failed") || node.failure.as_ref().is_some_and(|failure| failure.stage != "execution") {
             return Err(error(FailureKind::Invalid, "node-not-approvable", "当前节点不能批准。"));
         }
+        if let Some(child_id) = execution.child_run_id() {
+            let child = state.runs.read(&state, child_id).await
+                .map_err(|message| error(FailureKind::Failed, "child-run-read-failed", &message))?;
+            if child.status != "completed" || child.finished.is_none() {
+                return Err(error(FailureKind::Invalid, "child-run-not-finished", "子 Run 必须显式 finish 后才能批准父节点整体成果。"));
+            }
+        }
         let expected = if execution.auto_approved { ApprovalSource::Auto } else { ApprovalSource::Manual };
         if input.source != expected {
             return Err(error(FailureKind::Invalid, "approval-source-mismatch", "批准来源必须与本次执行冻结的模式一致。"));

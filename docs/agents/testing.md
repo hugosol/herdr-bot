@@ -108,6 +108,12 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立批准前提；不在 report 或 dispatch 夹具中静默补批准。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
 
+### 嵌套父节点整体批准（S1）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion:: -- --nocapture` 的 `parent_approval_requires_finished_child_and_independent_frozen_mode` 通过实际父子 Run、实际内部节点批准／报告／complete／finish 验证 P28／P29：两种父模式均冻结，子 finish 前拒绝整体批准，内部批准不批准父 execution，整体批准无通知／推进，父 manager 仍须显式 complete。该组保留最新报告、输出增量／缺交付、通知失败、结束节点及精确关闭回归；缺当前约定输出现在应在父 complete 处拒绝，不再允许先完成再消费缺交付。
+
+P10 嵌套归属选择器为 `nesting::dual_role_routes_report_to_parent_and_management_to_child_without_selectors`、`nesting::retired_child_session_cannot_select_the_replacement_execution`、`nesting::invalid_nested_links_and_source_mismatches_are_rejected_without_effects`，验证子管理、父批准／外报分离、旧 execution 不可改指 retry、缺失／错误／多重／跨 Run 关联拒绝。`nested_retry::` 保留真实新旧子 Run、报告与材料隔离。测试仅使用公开 HTTP／定义与独占文件、记录型外部 Herdr；人工 source 只证明 S1 后端规则，不证明 OMP／Pi 原生 Yes，后者由对应原生验收拥有。完成仍分别执行本页完整后端／前端／浏览器入口。
+
 ### 节点报告共享保存／通知回归
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
