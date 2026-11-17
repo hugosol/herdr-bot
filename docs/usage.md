@@ -26,13 +26,15 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 两个发布业务脚本通过 host(operation,args) 复用宿主持久化：read_json({path})／parse_json({text}) 严格拒绝重复 JSON key，read_text({path}) 严格读取 UTF-8，target(唯一 Task／Map 定位) 读取完整目标，bot_read({id}) 返回 bot 与 revision，bot_save({id,content,revision}) 执行唯一绑定、活动定义保护和 revision 检查，material({id,document}) 安全新建并完整读回 JSON 材料。此处 content 不含顶层 id，revision 创建时为 null、修改时使用真实读回值。宿主操作失败会抛出带 code/message 的错误；它不是权限限制，也不是通用脚本的必经步骤。
 
-成功报告仍需 manager 显式 complete；失败不回滚、不自动重试。不要在脚本返回后继续后台写入，返回值应代表本次业务已结束。
+脚本 node 仅允许 `auto_approved:true`（省略时默认 true），不能配置人工批准；`auto_close` 只能 false，不能指定 manager Task。派发时本次 execution 的 `approved:false`、`approvalSource:null`；只有 Bun 正常退出、结果为合法 success 且全部输出校验通过后，才保存 `approved:true`、`approvalSource:"auto"` 并自动报告，不创建 Task／Chat／Session 或人工确认。失败保留真实部分效果和有效部分输出，不批准、不回滚、不自动重试。合法 fail／retry 保留旧执行，但新执行不继承旧批准或报告，须等待本次成功。
+
+批准与报告不自动完成节点、派发下游或结束 Run，仍需 manager 显式 complete。报告保存或通知失败不撤销真实业务效果及已保存的执行事实，也不自动重投。不要在脚本返回后继续后台写入，返回值应代表本次业务已结束。
 
 ## 脚本空白 Bot 创建
 
 发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，原 Bot 身份、命名输入输出和修订 replace-text 保留。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，报告策略只能 auto，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
 真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 

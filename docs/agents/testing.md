@@ -53,7 +53,7 @@
 - `target_round_trips`：固定目标互斥、未知能力拒绝及拒绝后原定义不变。
 - `dispatch_writes`／`map_target`：normal Task 与完整真实 Map 目标、新 Bot 三空指南、真实 revision／baseline、独立 handoff、报告归属；实际派发下游受控宿主进程读取两份命名 JSON，内容和完整公开对象交叉核对。
 - `returns_while`：真实 Windows oplock 暂挂业务目标读取，门闩仍持有时独立取得 HTTP dispatch 返回、running lifecycle、无报告和首次 complete 拒绝；改写 node.input／当前规则后仍用已冻结 inputs／inputRule／outputRule。
-- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、授权、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。
+- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、旧 authorization／confirmation 与改名 approved 拒绝、bot／target 字段归属、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。`dispatch_writes` 的独立新 request 不含批准凭据，真实 Bun 完成创建并比较完整 baseline／created handoff；handoff 也不含确认凭据。共享新 request／baseline／target 归属见共同业务材料契约，保存材料与发布节点各自独立迁移。
 - `write_readback_and_material_failures`／`refuses_binding`：真实文件阻塞合法 Bot 保存、两个实际文件门闩制造保存后目标读回失败、材料父目录阻塞／同名文件碰撞，以及真实运行 Map 的禁写；核对部分效果，不回滚或提交 true。
 - `report_provenance`／`enforces_automatic_policy`：报告来源／execution／Run 一致性，拒绝伪造来源、manual／关闭／manager Task 策略及未声明交付 ID。原 `report_outputs` 回归继续通过同一报告保存实现覆盖未声明／重复 ID、执行级更新与隔离。
 

@@ -129,7 +129,7 @@ impl Lifecycle {
         s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
         let mut nodes = serde_json::Map::new();
         for (node, bot) in [("create", "first-result"), ("later", "second-result")] {
-            let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"evidence":"User authorized this isolated blank Bot","scope":"create_blank"}});
+            let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[]});
             fs::write(s.root.path().join(format!("{node}-request.json")), request.to_string()).unwrap();
             nodes.insert(node.into(), json!({"title":node,"bot_id":"creator","zone":"node","input":"This is not script parameters","input_rule":[{"id":"request","type":"file","zone_id":"manager","path":format!("{node}-request.json")}],"output_rule":[{"id":"baseline"},{"id":"handoff"}],"blocked_by":[]}));
         }
