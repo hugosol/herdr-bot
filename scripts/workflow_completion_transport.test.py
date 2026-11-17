@@ -30,6 +30,8 @@ class TransportContract(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             server = CompletionTransport(external_completion, Path(directory))
+            self.assertGreaterEqual(server.server.server_port, 49152)
+            self.assertLessEqual(server.server.server_port, 65535)
             server.__enter__()
             def post():
                 request = urllib.request.Request(server.base + '/chat/completions',

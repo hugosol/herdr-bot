@@ -270,6 +270,10 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         observation.update(ended=time.monotonic(), actualSeconds=time.monotonic() - started)
 
     def model_identity(self):
+        # Native session titles and manager responses can still be in flight
+        # after the worker finishes. Observe completion, never retry a request.
+        until('owned model requests finish within the existing request budget',
+            lambda: all(record.get('ended') for record in self.model_wire.records), 30)
         records = self.model_wire.records
         require(records, 'No actual authorized model request')
         identities = []
