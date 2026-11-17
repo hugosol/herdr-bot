@@ -46,7 +46,7 @@
           "id": "target_materials"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": false,
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
@@ -84,7 +84,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": false,
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
