@@ -22,7 +22,7 @@ MODEL = 'gpt-6-luna'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-failures'], required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi', 'omp', 'pi'], required=True)
     for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
@@ -32,12 +32,17 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
+    parser.add_argument('--native-only', action='store_true', help='Node approval failure matrix only; does not certify full ticket checks')
     parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
-    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority'] and args.hosts == 'declared':
-        parser.error('Chief acceptance requires explicit omp,pi or a diagnostic single host')
+    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-failures'] and args.hosts == 'declared':
+        parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
         parser.error('Single-host selection is only supported for the roles scenario')
+    if args.native_only and (args.scenario != 'node-approval-failures' or args.smoke):
+        parser.error('--native-only requires the node-approval-failures business scenario')
+    if args.scenario == 'node-approval-failures' and args.timeout > 600:
+        parser.error('Node approval failure timeout must be 1..600')
     if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
         parser.error('--cases is only supported for revision business acceptance')
     if not 1 <= args.timeout <= 900:
@@ -129,8 +134,10 @@ def main():
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)
-                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority']:
-                        script = 'accept-chief-task.py' if args.scenario == 'chief-task' else 'accept-chief-' + args.scenario + '.py'
+                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-failures']:
+                        script = ('accept-node-approval-failures.py' if args.scenario == 'node-approval-failures'
+                                  else 'accept-chief-task.py' if args.scenario == 'chief-task'
+                                  else 'accept-chief-' + args.scenario + '.py')
                         command = [sys.executable, str(REPO / 'scripts' / script),
                             '--herdr-bot-worktree', str(REPO), '--toolkit-worktree', str(args.toolkit),
                             '--backend', str(args.backend), '--hosts', args.hosts,
@@ -143,6 +150,8 @@ def main():
                             '--paths-file', str(args.paths_file), '--model-config', str(config),
                             '--evidence-dir', str(args.evidence_dir / 'business'), '--pi-package', str(args.pi_package),
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
+                    if args.native_only:
+                        command.append('--native-only')
                     if args.scenario == 'revise':
                         command.extend(['--cases', args.cases])
                     for name in (['shell_path'] if args.scenario == 'chief-task' else
