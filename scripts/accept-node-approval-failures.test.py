@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,46 @@ class FailureAcceptanceCLI(unittest.TestCase):
             self.assertIn('authorized', report['error'].lower())
             self.assertEqual(report['nativeExits'], {})
             self.assertFalse(report['passed'])
+
+
+class ModelIdentityBoundary(unittest.TestCase):
+    """Offline wire literals, not native/model acceptance or response replay."""
+
+    def identity(self, records):
+        from node_approval_failures_acceptance import ApprovalFailuresAcceptance
+        run = ApprovalFailuresAcceptance.__new__(ApprovalFailuresAcceptance)
+        run.model_wire = SimpleNamespace(records=records)
+        run.expected_model = 'gpt-6-luna'
+        run.evidence = {}
+        run.model_identity()
+        return run.evidence
+
+    def completion(self, **changes):
+        record = {'index': 0, 'method': 'POST', 'path': '/chat/completions', 'ended': 1,
+                  'status': 200, 'request': json.dumps({'model': 'gpt-6-luna'}),
+                  'response': json.dumps({'model': 'gpt-6-luna'})}
+        record.update(changes)
+        return record
+
+    def test_unrelated_get_does_not_become_model_failure_or_pending_model_work(self):
+        evidence = self.identity([self.completion(),
+            {'index': 1, 'method': 'GET', 'path': '/?probe=1', 'status': 501},
+            {'index': 2, 'method': 'GET', 'path': '/models', 'status': 200}])
+        self.assertEqual(evidence['nonCompletionTrafficCount'], 2)
+        self.assertEqual(evidence['modelIdentities'], [
+            {'request': 0, 'requested': 'gpt-6-luna', 'returned': ['gpt-6-luna']}])
+
+    def test_zero_actual_completions_still_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, 'No actual authorized model request'):
+            self.identity([{'method': 'GET', 'path': '/chat/completions', 'status': 200,
+                            'ended': 1, 'response': json.dumps({'model': 'gpt-6-luna'})}])
+
+    def test_real_completion_failures_and_missing_identity_are_never_filtered(self):
+        for changes in [{'status': 501}, {'error': 'actual transport error'},
+                        {'response': '{}'}, {'response': json.dumps({'model': 'other-model'})},
+                        {'request': '{}'}]:
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                self.identity([self.completion(**changes)])
 
 
 if __name__ == '__main__':

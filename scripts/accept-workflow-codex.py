@@ -20,6 +20,33 @@ REPO = Path(__file__).resolve().parents[1]
 MODEL = 'gpt-6-luna'
 
 
+def safe_content_diagnostics(failed):
+    """Retain bounded structural facts, never SDK text, IDs or arbitrary keys."""
+    if not isinstance(failed, dict) or failed.get('error') != 'content-invalid':
+        return {}
+    constraint = failed.get('constraint')
+    if type(constraint) is not str or constraint not in {'sdk-content', 'decision-consistency', 'usage', 'delivery-cap', 'serialization'}:
+        return {}
+    diagnostic = {'constraint': constraint}
+    stop_reason = failed.get('stopReason')
+    if type(stop_reason) is str and stop_reason in {'stop', 'toolUse', 'length', 'error', 'aborted', 'other'}:
+        diagnostic['stopReason'] = stop_reason
+    for key in ['completed', 'contentArray', 'hasText', 'toolUseMatches']:
+        if type(failed.get(key)) is bool:
+            diagnostic[key] = failed[key]
+    for key in ['contentBlocks', 'invalidBlockCount', 'invalidTextCount', 'toolCalls', 'invalidToolIds',
+                'invalidToolNames', 'invalidArguments', 'argumentsErrorCount', 'partialJsonCount',
+                'namespaceCount', 'duplicateToolIds', 'usageInvalidMask']:
+        value = failed.get(key)
+        if type(value) is int and 0 <= value <= 2147483647:
+            diagnostic[key] = value
+    for key in ['outputTokens', 'deliveryCap']:
+        value = failed.get(key)
+        if type(value) in (int, float) and 0 <= value <= 9007199254740991:
+            diagnostic[key] = value
+    return diagnostic
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'], required=True)
@@ -32,19 +59,21 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
-    parser.add_argument('--native-only', action='store_true', help='Node approval failure matrix only; does not certify full ticket checks')
+    parser.add_argument('--native-only', action='store_true', help='Node approval native matrix only; does not certify full ticket checks')
     parser.add_argument('--cases', default='all', help='Revision case selection; a subset does not establish full acceptance')
     args = parser.parse_args()
     if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
         parser.error('Single-host selection is only supported for the roles scenario')
-    if args.native_only and (args.scenario != 'node-approval-failures' or args.smoke):
-        parser.error('--native-only requires the node-approval-failures business scenario')
+    if args.native_only and (args.scenario not in ['node-approval-failures', 'node-approval-handoff'] or args.smoke):
+        parser.error('--native-only requires a node-approval business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
-    if args.cases != 'all' and (args.scenario != 'revise' or args.smoke):
-        parser.error('--cases is only supported for revision business acceptance')
+    if args.cases != 'all' and (args.scenario not in ['revise', 'node-approval-handoff'] or args.smoke):
+        parser.error('--cases is only supported for revision or node handoff business acceptance')
+    if args.scenario == 'node-approval-handoff' and args.cases not in ['all', 'auto', 'manual']:
+        parser.error('Node handoff --cases must be all, auto or manual')
     if not 1 <= args.timeout <= 900:
         parser.error('--timeout must be 1..900')
     # Fail before creating any resources when a caller supplied missing inputs.
@@ -58,7 +87,7 @@ def main():
               'model': {'provider': 'openai-codex', 'id': MODEL, 'api': 'openai-codex-responses'},
               'scope': 'Native Codex conversation and tool calling; business hosts execute the returned tools. Not direct Codex configuration inside those hosts.',
               'modelRequests': 0, 'started': time.time(), 'smoke': args.smoke,
-              'caseSelection': args.cases, 'filtered': args.cases != 'all', 'subsetPassed': False}
+              'caseSelection': args.cases, 'filtered': args.cases != 'all' or (args.scenario == 'node-approval-handoff' and args.hosts != 'omp,pi'), 'subsetPassed': False}
     records = args.evidence_dir / 'codex-completions'
     records.mkdir()
 
@@ -88,6 +117,7 @@ def main():
             diagnostic = {'error': reason}
             try:
                 failed = json.loads(process.stdout)
+                diagnostic.update(safe_content_diagnostics(failed))
                 for key in ['httpStatus', 'requests']:
                     value = failed.get(key)
                     if type(value) is int and 0 <= value <= 999:
@@ -154,7 +184,7 @@ def main():
                             '--node', args.node, '--bun', args.bun, '--timeout', str(args.timeout)]
                     if args.native_only:
                         command.append('--native-only')
-                    if args.scenario == 'revise':
+                    if args.scenario in ['revise', 'node-approval-handoff']:
                         command.extend(['--cases', args.cases])
                     for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):

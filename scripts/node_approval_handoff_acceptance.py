@@ -13,6 +13,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import time
 
 from acceptance.host.native import NativeAcceptance
@@ -34,6 +35,54 @@ def tool_name(call):
     return call.get('name', '').rsplit('.', 1)[-1]
 
 
+def discount_input_boundary(history):
+    """Observe a completed reply or an unanswered native Ask, never invent one."""
+    if not history:
+        return None
+    messages = [entry['message'] for entry in history['branch'] if entry.get('type') == 'message']
+    assistants = [message for message in messages if message.get('role') == 'assistant']
+    if not assistants:
+        return None
+    last = assistants[-1]
+    require(last.get('stopReason') not in ['error', 'aborted'], ('Actual native turn failed; no retry', last))
+    ask_ids = {part.get('id') for message in assistants for part in message.get('content', [])
+        if isinstance(part, dict) and part.get('type') == 'toolCall' and tool_name(part) == 'ask'}
+    answered = {message.get('toolCallId') for message in messages if message.get('role') == 'toolResult'}
+    require(not ask_ids.intersection(answered), 'Native business Ask already answered or failed; never supply input twice')
+    if messages[-1] is last and last.get('stopReason') == 'stop':
+        return {'kind': 'reply', 'history': history}
+    pending = [part for part in last.get('content', []) if isinstance(part, dict)
+        and part.get('type') == 'toolCall' and tool_name(part) == 'ask' and part.get('id') not in answered]
+    require(len(pending) <= 1, 'Ambiguous native business forms; do not fill unknown fields')
+    if pending:
+        require(isinstance(pending[0].get('arguments', {}).get('html'), str), 'Native Ask has no HTML form to observe')
+        return {'kind': 'form', 'call': pending[0], 'history': history}
+    return None
+
+
+def require_discount_field(parsed):
+    fields = parsed.get('fields', [])
+    require(len(fields) == 1 and not parsed.get('hidden'), 'Business form must ask only the known discount')
+    field = fields[0]
+    question = ''.join(character for character in field.get('question', '').lower() if character.isalnum())
+    require(question in {'折扣', '折扣百分比', '折扣率', 'discount', 'discountpercent', 'discountpercentage', 'discountrate'},
+        ('Ambiguous business question; no answer supplied', field.get('question')))
+    require(field.get('kind') == 'text' and field.get('type') in ['number', 'text']
+        and not field.get('multiline') and isinstance(field.get('value'), str), 'Unsupported native discount control')
+    return field
+
+
+def require_order_input(definition):
+    """Fail before any model starts when the published fixture cannot bind order."""
+    declarations = definition.get('input_files', [])
+    require(len(declarations) == 1 and declarations[0].get('id') == 'order'
+        and declarations[0].get('required') is True, 'Handoff Map must declare required order input')
+    require(definition['nodes']['work']['input_rule'] == [{'id': 'order', 'type': 'run', 'input_id': 'order'}],
+        'Handoff work must consume the declared Run order input')
+    require(isinstance(definition.get('input_requirements'), str) and definition['input_requirements'].strip(),
+        'Handoff input preparation needs explicit business readiness requirements')
+
+
 class NodeApprovalHandoff(NativeAcceptance):
     def __init__(self, args):
         super().__init__(args)
@@ -53,9 +102,10 @@ class NodeApprovalHandoff(NativeAcceptance):
         self.evidence['clockReference'] = self.clock
 
     def start_backend(self, role_config):
-        observer = self.root / 'confirmation-observer.mjs'
-        source = self.args.repo / 'scripts/chief-ui-observer.mjs'
-        shutil.copy2(source, observer)
+        for name in ['chief-ui-observer.mjs', 'node-approval-observer.mjs']:
+            shutil.copy2(self.args.repo / 'scripts' / name, self.root / name)
+        observer = self.root / 'node-approval-observer.mjs'
+        source = self.args.repo / 'scripts/node-approval-observer.mjs'
         with (self.root / 'options.toml').open('a', encoding='utf-8') as stream:
             stream.write('\n[[extensions]]\nid = ' + json.dumps(self.host + '-handoff-observer')
                 + '\nlabel = "Native UI observation"\nagent = ' + json.dumps(self.host)
@@ -92,6 +142,81 @@ class NodeApprovalHandoff(NativeAcceptance):
             return history if last.get('stopReason') == 'stop' else None
         return until('actual native completed assistant turn', ready, self.args.timeout)
 
+    def discount_boundary(self, chat):
+        def observe():
+            boundary = discount_input_boundary(self.native(chat))
+            if not boundary or boundary['kind'] == 'reply':
+                return boundary
+            html = boundary['call']['arguments']['html']
+            requests = [json.loads(path.read_text(encoding='utf-8'))
+                for path in (self.confirmations / 'forms').glob('*.request.json')]
+            pending = [request for request in requests if request['sessionId'] == chat['sessionId'] and request['html'] == html]
+            require(not any((self.confirmations / 'forms' / (request['id'] + '.' + kind + '.json')).exists()
+                for request in pending for kind in ['response', 'error']), 'Native business form already returned; never resubmit')
+            require(len(pending) <= 1, 'Ambiguous native form requests; no business input supplied')
+            if not pending:
+                return None
+            screen = self.command([self.args.herdr, 'pane', 'read', chat['paneId'], '--source', 'visible', '--format', 'text'])
+            if 'ask' not in screen.lower() or 'cancel' not in screen.lower():
+                return None
+            boundary.update(invocation=pending[0], screen=screen)
+            return boundary
+        return until('actual native business reply or visible pending discount Ask', observe, self.args.timeout)
+
+    def supply_discount_form(self, chat, boundary):
+        # Use this installation's public HTML parser, not a second interpretation
+        # of model HTML. No host is launched and no model request is made here.
+        code = ('import {pathToFileURL} from "node:url"; import {realpathSync} from "node:fs";'
+            + 'const root=realpathSync(' + json.dumps(str(self.args.omp_package)) + ');'
+            + 'const parser=Bun.resolveSync("@oh-my-pi/pi-tui/html-form/parse",root);'
+            + 'const {parseHtmlForm}=await import(pathToFileURL(parser).href);'
+            + 'const {fieldQuestions}=await import(pathToFileURL(Bun.resolveSync("@oh-my-pi/pi-tui/html-form/data",root)).href);'
+            + 'const form=parseHtmlForm(await Bun.stdin.text()); const questions=fieldQuestions(form);'
+            + 'console.log(JSON.stringify({parser,hidden:[...form.hidden.keys()],fields:form.fields.map(field=>({...field,question:questions.get(field)}))}));')
+        parsed = json.loads(subprocess.run([self.args.bun, '--eval', code], input=boundary['call']['arguments']['html'],
+            cwd=self.root, env=self.env, capture_output=True, text=True, encoding='utf-8', check=True, timeout=30).stdout)
+        field = require_discount_field(parsed)
+        invocation = boundary['invocation']
+        require(invocation.get('hasUI') is True and invocation['sessionId'] == chat['sessionId'], 'Business form has no owned native UI')
+        form_root = self.confirmations / 'forms'
+        require(not any((form_root / (invocation['id'] + '.' + kind + '.json')).exists()
+            for kind in ['response', 'error']), 'Native business form already answered or failed; never resubmit')
+        current = self.detail(self.run_id)['run']['nodes']['work']['execution']
+        require(current['id'] == boundary['executionId'] and current['chat']['sessionId'] == chat['sessionId']
+            and current['autoApproved'] == (self.mode == 'auto') and current['approved'] is False,
+            'Business form does not belong to the current frozen unapproved execution')
+        observation = {'nativeCallId': boundary['call']['id'], 'invocation': boundary['invocation'],
+            'before': boundary['screen'], 'parsed': parsed,
+            'parserSha256': hashlib.sha256(Path(parsed['parser']).read_bytes()).hexdigest(),
+            'value': '25', 'method': 'owned native form keyboard input and Submit'}
+        self.evidence['businessDiscountForm'] = observation
+        # The only control starts focused. Clear its actual parsed initial value,
+        # enter the user's known discount, then move to the native Submit row.
+        self.herdr('agent', 'send-keys', chat['paneId'], 'home', *(['delete'] * len(field['value'])), '2', '5', 'tab')
+        def entered():
+            screen = self.command([self.args.herdr, 'pane', 'read', chat['paneId'], '--source', 'visible', '--format', 'text'])
+            return screen if '25' in screen and 'submit' in screen.lower() else None
+        observation['entered'] = until('visible native discount value and Submit', entered, self.args.timeout)
+        self.herdr('agent', 'send-keys', chat['paneId'], 'enter')
+        response = self.confirmations / 'forms' / (boundary['invocation']['id'] + '.response.json')
+        result = until('actual native form submitted result',
+            lambda: json.loads(response.read_text(encoding='utf-8')) if response.is_file() else None, self.args.timeout)
+        submitted = result.get('result')
+        expected_value = 25 if field['type'] == 'number' else '25'
+        require(isinstance(submitted, dict) and submitted.get('data') == {field['name']: expected_value}
+            and not submitted.get('timedOut'), ('Native form did not submit the actual known discount', result))
+        observation['nativeResult'] = result
+        def received():
+            history = self.native(chat)
+            matches = [entry['message'] for entry in history['branch'] if entry.get('type') == 'message'
+                and entry['message'].get('role') == 'toolResult'
+                and entry['message'].get('toolCallId') == boundary['call']['id']] if history else []
+            return matches[-1] if matches else None
+        tool_result = until('actual native Ask toolResult after Submit', received, self.args.timeout)
+        require(not tool_result.get('isError') and any(answer.get('name') == field['name'] and answer.get('answer') == '25'
+            for answer in tool_result.get('details', {}).get('answers', [])), ('Native Ask did not deliver the actual discount', tool_result))
+        observation['toolResult'] = tool_result
+
     def quote(self):
         path = self.root / 'work-zone/quote.json'
         require(path.is_file(), ('Missing real business material', str(path)))
@@ -127,9 +252,16 @@ class NodeApprovalHandoff(NativeAcceptance):
 
     def check_model_identity(self):
         configured = json.loads(self.args.model_config.read_text(encoding='utf-8'))['model']
-        require(self.model_wire.records, 'No actual model traffic')
+        def completion(record):
+            return record.get('method') == 'POST' and record.get('path') == '/chat/completions'
+        # Native title generation may still be finishing; observe, never resend.
+        until('owned model requests finish within the existing request budget',
+            lambda: all(record.get('ended') for record in self.model_wire.records if completion(record)), 30)
+        records = [record for record in self.model_wire.records if completion(record)]
+        self.evidence['nonCompletionTrafficCount'] = len(self.model_wire.records) - len(records)
+        require(records, 'No actual model completion traffic')
         identities = []
-        for record in self.model_wire.records:
+        for record in records:
             require(record.get('ended') and record.get('status') == 200 and not record.get('error'), ('Actual model request failed; no retry', record))
             request = decode(record, 'request')
             require(request.get('model') == configured, ('Requested model differs from authorization', request.get('model')))
@@ -137,7 +269,7 @@ class NodeApprovalHandoff(NativeAcceptance):
             packets = [json.loads(raw)] if raw.lstrip().startswith('{') else [json.loads(line[5:].strip()) for line in raw.splitlines()
                 if line.startswith('data:') and line[5:].strip() not in ['', '[DONE]']]
             actual = sorted({packet['model'] for packet in packets if packet.get('model')})
-            require(actual, ('No actual returned model identity', record['index']))
+            require(actual == [configured], ('Actual returned model identity differs from authorization', record['index'], actual))
             identities.append({'request': record['index'], 'requested': configured, 'returned': actual})
         self.evidence['modelIdentities'] = identities
 
@@ -159,35 +291,50 @@ class NodeApprovalHandoff(NativeAcceptance):
         for identity, task in [('quote-worker', worker), ('invoice-continuation', end_task)]:
             (self.root / 'bots' / (identity + '.json')).write_text(json.dumps({'id': identity, 'name': identity,
                 'when': '', 'plan_guide': '', 'node_guide': '', 'task_id': task}), encoding='utf-8')
-        definition = {'title': 'Quote handoff to user', 'description': business, 'nodes': {
+        definition = {'title': 'Quote handoff to user', 'description': business,
+            'input_files': [{'id': 'order', 'required': True,
+                'description': '原始订单 JSON：数量和单价必需；discountPercent 可为 null，由报价节点识别缺项并与用户继续讨论。'}],
+            'input_requirements': '开始工作的条件是订单数量、单价及本地范围明确。折扣允许尚未确定；识别并说明缺失信息属于报价节点的工作，不是管理者输入准备的前置条件。最终报价仍须等待用户补充真实折扣，不得推测。',
+            'nodes': {
             'work': {'title': 'Prepare local quote', 'bot_id': 'quote-worker', 'input': business +
                 '收到折扣后，在本工作目录生成quote.json。JSON只含quantity、unitPriceCents、discountPercent、totalCents；'
                 '金额按分计算。交付的命名输出为quote。', 'zone': 'handoff/work', 'blocked_by': [],
-                'input_rule': [{'id': 'order', 'type': 'file', 'zone_id': 'handoff/work', 'path': 'order.json'}],
+                'input_rule': [{'id': 'order', 'type': 'run', 'input_id': 'order'}],
                 'output_rule': [{'id': 'quote'}], 'auto_approved': self.mode == 'auto', 'auto_close': False},
             'end': {'title': 'Continue invoice with user', 'bot_id': 'invoice-continuation', 'input': '开票抬头尚未提供，等待用户补充；请勿开票。',
                 'zone': 'handoff/end', 'blocked_by': ['work'], 'end_node': True, 'auto_approved': False, 'auto_close': False,
                 'input_rule': [{'id': 'quote', 'type': 'node', 'node_id': 'work', 'output_id': 'quote'}], 'output_rule': []}}}
         (self.root / 'maps/handoff.json').write_text(json.dumps(definition, ensure_ascii=False), encoding='utf-8')
         self.evidence['definition'] = self.http('/api/scheduler/maps/handoff.json')
-        started = self.http('/api/scheduler/maps/handoff.json/runs', {'managerTaskId': manager, 'zone': 'handoff/manager', 'userInput': business}, 201)
+        require_order_input(self.evidence['definition'])
+        started = self.http('/api/scheduler/maps/handoff.json/runs', {'managerTaskId': manager, 'zone': 'handoff/manager',
+            'userInput': business, 'fileInputs': [{'id': 'order', 'path': str(self.root / 'work-zone/order.json')}]}, 201)
         self.run_id = started['id']
 
-        def issue_saved():
+        def worker_started():
             detail = self.detail(self.run_id)
             execution = detail['run']['nodes']['work'].get('execution')
-            issues = [report for report in detail['reports'] if execution and report['executionId'] == execution['id'] and report.get('canComplete') is False]
-            return (detail, execution, issues) if issues else None
-        blocked, execution, issues = until('actual saved missing-discount report before approval', issue_saved, self.args.timeout)
+            return (detail, execution) if execution and execution.get('chat') else None
+        started_detail, execution = until('actual dispatched native quote worker', worker_started, self.args.timeout)
         worker_chat = self.chat(execution['chat'])
-        manager_chat = self.chat(blocked['run']['manager'])
+        manager_chat = self.chat(started_detail['run']['manager'])
         self.observe_processes()
-        require(execution['approved'] is False and execution.get('approvalSource') is None, ('Progress must be allowed before approval', blocked))
+        boundary = self.discount_boundary(worker_chat)
+        before_input = self.detail(self.run_id)
+        current = before_input['run']['nodes']['work']['execution']
+        require(current['id'] == execution['id'] and current['chat']['sessionId'] == worker_chat['sessionId']
+            and current['approved'] is False and current.get('approvalSource') is None,
+            ('Business reply must target the same unapproved execution', before_input))
         require(not self.records('/api/workflow/node/approve', worker_chat['sessionId']), 'Model approved an incomplete quote')
+        issues = [report for report in before_input['reports'] if report['executionId'] == execution['id'] and report.get('canComplete') is False]
         require(all(report['body'].strip() for report in issues), issues)
-        initial_history = self.turn(worker_chat)
-        self.evidence['progressBeforeApproval'] = {'public': blocked, 'history': initial_history, 'at': time.monotonic()}
-        self.send(worker_chat, '本订单折扣为25%，即按原价的75%计价。现在所需报价信息已齐全；发票抬头仍未提供，开票留给用户后续办理。', 'business-missing-discount-supplied')
+        boundary['executionId'] = execution['id']
+        self.evidence['progressBeforeApproval'] = {'public': before_input, 'history': boundary['history'],
+            'reports': issues, 'observed': bool(issues), 'at': time.monotonic()}
+        if boundary['kind'] == 'form':
+            self.supply_discount_form(worker_chat, boundary)
+        else:
+            self.send(worker_chat, '本订单折扣为25%，即按原价的75%计价。现在所需报价信息已齐全；发票抬头仍未提供，开票留给用户后续办理。', 'business-missing-discount-supplied')
         if self.mode == 'manual':
             self.approve_native_yes(worker_chat)
 
@@ -276,6 +423,9 @@ class NodeApprovalHandoff(NativeAcceptance):
             'P20/approval-source': ['nativeYes' if self.mode == 'manual' else 'nativeConfirmations', 'final'],
             'P30/end-node-finish': ['histories', 'final', 'noAutomaticActionWindow'],
         }[key]} for key in ITEMS}
+        if not self.evidence['progressBeforeApproval']['observed']:
+            self.evidence['coverage']['P20/progress-before-approval'].update(verified=False,
+                reason='This model asked through a native form before reporting; no tool order was imposed. Progress-before-approval needs independent evidence from the contract ledger.')
         self.evidence['passed'] = True
 
     def cleanup_extra(self):
