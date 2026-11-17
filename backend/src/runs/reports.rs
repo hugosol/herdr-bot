@@ -273,6 +273,10 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
                 ReportOrigin::Chat(session) => (Some(execution.chat().filter(|chat| chat.session_id == session).ok_or("当前执行关联已改变。")?.clone()), None, false),
                 ReportOrigin::Script(lifecycle) => {
                     let ExecutionTarget::Script(script) = &mut execution.target else { return Err("脚本报告不能归属 Chat 执行。".into()); };
+                    if matches!(lifecycle, Lifecycle::Succeeded { .. }) {
+                        execution.approved = true;
+                        execution.approval_source = Some(ApprovalSource::Auto);
+                    }
                     script.lifecycle = lifecycle;
                     (None, Some(ScriptSource::Typescript { script: script.script.clone() }), true)
                 }
