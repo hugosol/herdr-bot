@@ -152,7 +152,7 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
 
 // P30/P32 definition partition. A script node has no ordinary Task/manager
 // binding, consumes named materials rather than input, and cannot be configured
-// to await manual reporting or close a nonexistent Chat. A UI-only restriction
+// to await manual approval or close a nonexistent Chat. A UI-only restriction
 // is insufficient: submit each illegal policy through real HTTP and compare
 // the public definition plus original file bytes after every refusal.
 test('P30 P32 scheduler saves empty-input script nodes and refuses Chat-only policy through HTTP', async ({ page }, info) => {
@@ -228,7 +228,7 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
-  const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [], authorization: { create_blank: true, write_materials: true, save_guides: false }, confirmation: { evidence: '独占验收授权', scope: 'create_blank' } }
+  const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [] }
   const materials = Object.fromEntries(inputIds.map(id => [id, path.join(zonePath, `${id}.json`)]))
   if (capability === 'create-blank-bot.ts') {
     fs.writeFileSync(materials.request, JSON.stringify(request))

@@ -16,7 +16,10 @@ async fn target_task(s: &Scenario) -> Value {
     tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Only read invoices").unwrap().clone()
 }
 fn business_request(target: Value) -> Value {
-    json!({"schema_version":1,"kind":"request","target":target,"bot":{"id":"invoice-review","name":"Invoice reviewer","group":"isolated"},"requirements":"只读审阅","constraints":["不执行目标"],"non_goals":["修复文件"],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"evidence":"User message 7 authorizes blank creation","scope":"create_blank"}})
+    // P31 S1 seam: public Map dispatch, actual Bun and files. Independent
+    // contract oracle: executable request has no human-approval credentials.
+    // A parser retaining the old required authorization must fail this scenario.
+    json!({"schema_version":1,"kind":"request","target":target,"bot":{"id":"invoice-review","name":"Invoice reviewer","group":"isolated"},"requirements":"只读审阅","constraints":["不执行目标"],"non_goals":["修复文件"],"resource_limits":[]})
 }
 async fn map_for_request(s: &Scenario, input: &str) {
     // Public file seam owns Map publication; public GET validates its real shape.
@@ -86,9 +89,7 @@ async fn rust_create_dispatch_writes_blank_bot_and_delivers_real_baseline_before
     let baseline: Value = serde_json::from_slice(&fs::read(output("baseline")).unwrap()).unwrap();
     let handoff: Value = serde_json::from_slice(&fs::read(output("handoff")).unwrap()).unwrap();
     assert_eq!(baseline, json!({"schema_version":1,"kind":"baseline","bot":expected,"revision":edit["revision"],"target":{"type":"task","task_id":target["id"],"configuration":target},"request":input}));
-    assert_eq!(handoff["stage"], "created");
-    assert!(handoff.get("bot").is_none() && handoff.get("revision").is_none());
-    assert_eq!(handoff["checks"], json!({"bot_read_back":true,"target_unchanged":true}));
+    assert_eq!(handoff, json!({"schema_version":1,"kind":"handoff","stage":"created","bot_id":"invoice-review","target":{"type":"task","task_id":target["id"]},"sources":[{"binding_id":"request","direction":"input","role":"request"}],"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":["仅创建定义；未执行目标业务，也未保存三指南。"]}));
     let status = request(&s, "/api/workflow/manager/status", json!({"sessionId":"rust-manager"}), 200).await;
     assert!(!status["ready"].as_array().unwrap().contains(&json!("consume")));
     assert!(s.herdr.calls()[calls.len()..].iter().all(|call| call["kind"] == "agent_prompt"), "only manager report notification is allowed");
@@ -340,7 +341,11 @@ async fn rust_create_map_target_preserves_complete_definition_and_named_run_sour
 // false success or a hidden write is caught by both report and full readback.
 #[tokio::test]
 async fn rust_create_rejects_bad_requests_without_business_writes_or_success_outputs() {
-    for case in ["invalid-json", "duplicate-key", "nested-duplicate", "missing-field", "unknown-field", "null-bot", "null-id", "unknown-version", "unauthorized", "script-target", "mixed-target", "missing-target", "unknown-task", "manager-task", "missing-map", "path-map", "identity-conflict", "binding-conflict", "ambiguous-catalog"] {
+    // P33: preserve shape/ownership checks independently from the removed
+    // credentials. An implementation accepting legacy credentials, moving
+    // target/configuration/guide fields into bot, or skipping real conflicts
+    // must be observable as an unexpected success or changed public object.
+    for case in ["invalid-json", "non-object", "duplicate-key", "nested-duplicate", "missing-field", "unknown-field", "nested-unknown", "null-bot", "null-id", "unknown-version", "wrong-kind", "empty-requirements", "bad-constraints", "empty-constraint", "bad-group", "bot-target", "bot-guide", "target-configuration", "legacy-authorization", "legacy-confirmation", "renamed-approval", "script-target", "mixed-target", "missing-target", "unknown-task", "manager-task", "missing-map", "path-map", "identity-conflict", "binding-conflict", "ambiguous-catalog"] {
         let s = Scenario::new().await;
         creator(&s).await;
         let target = target_task(&s).await;
@@ -351,7 +356,18 @@ async fn rust_create_rejects_bad_requests_without_business_writes_or_success_out
             "null-bot" => input["bot"] = Value::Null,
             "null-id" => input["bot"]["id"] = Value::Null,
             "unknown-version" => input["schema_version"] = json!(2),
-            "unauthorized" => input["authorization"]["create_blank"] = json!(false),
+            "wrong-kind" => input["kind"] = json!("baseline"),
+            "empty-requirements" => input["requirements"] = json!(""),
+            "bad-constraints" => input["constraints"] = json!("Do not infer an array"),
+            "empty-constraint" => input["constraints"] = json!([""]),
+            "bad-group" => input["bot"]["group"] = json!(" isolated "),
+            "nested-unknown" => input["bot"]["hidden_parameters"] = json!(true),
+            "bot-target" => input["bot"]["task_id"] = target["id"].clone(),
+            "bot-guide" => input["bot"]["when"] = json!("Not a blank Bot"),
+            "target-configuration" => input["target"]["configuration"] = target.clone(),
+            "legacy-authorization" => input["authorization"] = json!({"create_blank":true,"write_materials":true,"save_guides":true}),
+            "legacy-confirmation" => input["confirmation"] = json!({"scope":"create_blank","evidence":"Must not be consumed as a credential"}),
+            "renamed-approval" => input["approved"] = json!(true),
             "script-target" => input["target"] = json!({"type":"script","script":"create-blank-bot.ts"}),
             "mixed-target" => input["target"]["map_file"] = json!("work.json"),
             "missing-target" => { input["target"].as_object_mut().unwrap().remove("task_id"); },
@@ -368,8 +384,9 @@ async fn rust_create_rejects_bad_requests_without_business_writes_or_success_out
         }
         let raw = match case {
             "invalid-json" => "not a JSON document".into(),
+            "non-object" => "[]".into(),
             "duplicate-key" => format!("{{\"schema_version\":1,{}", &input.to_string()[1..]),
-            "nested-duplicate" => input.to_string().replace("\"scope\":\"create_blank\"", "\"scope\":\"create_blank\",\"scope\":\"create_blank\""),
+            "nested-duplicate" => input.to_string().replace("\"name\":\"Invoice reviewer\"", "\"name\":\"Invoice reviewer\",\"name\":\"Invoice reviewer\""),
             _ => input.to_string(),
         };
         fs::write(s.data.path().join("request.json"), &raw).unwrap();
@@ -389,7 +406,6 @@ async fn rust_create_rejects_bad_requests_without_business_writes_or_success_out
         let expected_code = match case {
             "duplicate-key" | "nested-duplicate" | "ambiguous-catalog" => "ambiguous-request",
             "missing-field" | "missing-target" => "missing-field",
-            "unauthorized" => "authorization-required",
             "identity-conflict" => "identity-conflict",
             "unknown-task" | "manager-task" | "missing-map" | "path-map" | "binding-conflict" => "target-conflict",
             _ => "invalid-format",
@@ -460,6 +476,11 @@ async fn rust_create_write_readback_and_material_failures_report_actual_effects(
         assert_eq!(lifecycle["failure"]["code"], match case { "write" => "write-failed", "readback" => "read-back-failed", _ => "material-write-failed" });
         assert_eq!(lifecycle["failure"]["effects"]["write"], if case == "write" { "failed" } else { "succeeded" });
         assert_eq!(lifecycle["failure"]["effects"]["readBack"], match case { "write" => "not_attempted", "readback" => "failed", _ => "succeeded" });
+        let original_error = lifecycle["failure"]["message"].as_str().unwrap();
+        assert!(!original_error.is_empty(), "real failure must preserve its original diagnostic");
+        let reported_failure: Value = serde_json::from_str(read["reports"][0]["body"].as_str().unwrap().split_once('\n').unwrap().1).unwrap();
+        assert_eq!(reported_failure, lifecycle["failure"], "report must retain the actual failure and effects");
+        println!("P33 create filesystem case={case} run={} report={} lifecycle={lifecycle}", run["id"], read["reports"][0]);
         let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"invoice-review"}"#).await;
         if case == "write" { assert_ne!(response.status, 200); } else {
             assert_eq!(response.status, 200, "{}", response.body);

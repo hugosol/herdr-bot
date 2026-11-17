@@ -10,7 +10,7 @@ manager 通过现有派发入口启动工作后立即返回，后端异步启动
 
 脚本复用 input_rule、output_rule 及命名文件绑定；上下文同时提供 node.input 原文，由脚本决定是否消费。最小结果为 `{status:"success"|"failure",outputs?:[{id,path}]}`：状态必填，没有输出时可省略 outputs；路径必须是本机绝对文件路径。正常退出不等于成功，Rust 还需验证结果形状、输出 ID 唯一且已声明，以及文件实际存在且可读；success 必须覆盖全部 output_rule。failure 可保留有效的部分输出，不回滚实际效果。通用脚本不强制 handoff、说明正文或 canComplete 字段；业务诊断可附带 failure。宿主从有效成功结果生成可交接报告，但仍须 manager 显式 complete。
 
-迁移的两个创建流程脚本继续只消费严格命名材料，不解释 node.input。它们保留原有请求、授权、目标、revision、正文摘要与完整读回检查，只有合法写入与必要材料交付成功才返回 success。这些业务约定不强加给其他用户脚本。
+迁移的两个创建流程脚本继续只消费严格命名材料，不解释 node.input。它们保留执行数据所需的严格请求、目标、revision、正文正确性与完整读回检查，只有合法写入与必要材料交付成功才返回 success。V1 空白创建 request 不再生产或消费 authorization／confirmation 等人类批准凭据；成果批准由通用执行层持有，不嵌入业务材料。保存端的材料与校验按其独立协议迁移，V2 专用材料不随 V1 改写。这些业务约定不强加给其他用户脚本。
 
 ## 两个发布脚本与迁移范围
 
