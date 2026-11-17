@@ -272,9 +272,12 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
     def model_identity(self):
         # Native session titles and manager responses can still be in flight
         # after the worker finishes. Observe completion, never retry a request.
+        def completion(record):
+            return record.get('method') == 'POST' and record.get('path') == '/chat/completions'
         until('owned model requests finish within the existing request budget',
-            lambda: all(record.get('ended') for record in self.model_wire.records), 30)
-        records = self.model_wire.records
+            lambda: all(record.get('ended') for record in self.model_wire.records if completion(record)), 30)
+        records = [record for record in self.model_wire.records if completion(record)]
+        self.evidence['nonCompletionTrafficCount'] = len(self.model_wire.records) - len(records)
         require(records, 'No actual authorized model request')
         identities = []
         for record in records:
