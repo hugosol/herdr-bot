@@ -13,7 +13,7 @@ const original = { title: '保留 Map 标题', description: '保留 Map 说明',
   C: { title: '保留的后继', bot_id: 'summary', input: JSON.stringify({ untouched: [{ count: 9 }, null] }), zone: 'unregistered-zone', blocked_by: ['B'] },
   D: { title: '保留的独立工作', bot_id: 'independent', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] as string[] },
 } }
-const nodeContent = (node: Record<string, unknown>) => Object.fromEntries(Object.entries({ input_rule: [], output_rule: [], ...node }).filter(([key]) => !['zone', 'report_policy', 'auto_close'].includes(key)))
+const nodeContent = (node: Record<string, unknown>) => Object.fromEntries(Object.entries({ input_rule: [], output_rule: [], ...node }).filter(([key]) => !['zone', 'auto_approved', 'auto_close', 'end_node'].includes(key)))
 const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]))
 async function setup(page: Page, source: unknown = original) {
   server = await startServer({ herdr: {}, separateCwd: true })
@@ -44,7 +44,7 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
 }
 
 test('dynamic zone editor saves no preset and reloads all unrelated node fields', async ({ page }) => {
-  const configured = { ...audit, report_policy: 'manual', auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
+  const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
   const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
   const before = inventory(root)
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()

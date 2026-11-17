@@ -62,6 +62,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       const shippedMap = JSON.parse(fs.readFileSync(path.join(root, 'meta-data/workflow-maps', file), 'utf8'))
       // Public Map serialization omits the optional empty input requirements.
       if (shippedMap.input_requirements === '') delete shippedMap.input_requirements
+      for (const node of Object.values(shippedMap.nodes) as Record<string, unknown>[]) node.end_node ??= false
       expect(actual).toEqual(shippedMap)
       const references = Object.values(actual.nodes).map(node => {
         if (!node || typeof node !== 'object' || !('bot_id' in node) || typeof node.bot_id !== 'string') throw new Error('Missing actual Map Bot reference')

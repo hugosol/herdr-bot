@@ -32,9 +32,9 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 ## 脚本空白 Bot 创建
 
-发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，原 Bot 身份、命名输入输出和修订 replace-text 保留。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
+发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，保留原 Bot 身份及修订 replace-text。V1 保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入，三份正文按命名原样写入字段；不消费指南 handoff 或批准凭据，不兼容旧七项输入。saved／handoff 输出身份不变。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
 真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 
@@ -69,7 +69,7 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 ## 界面外观
 
-全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的 `report_policy` 标识中，手动报告使用蓝色，自动报告使用琥珀色；`auto_close` 配色不受此互换影响。
+全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的成果批准模式标识中，人工模式使用蓝色，自动模式使用琥珀色；`auto_close` 配色不受此互换影响。
 
 Zone 的 Git 变更文件名保留状态色例外：新增绿（`#0c5423`）、编辑／重命名蓝（`#10468a`）、删除红（`#8f1526`），变更文件行使用 600 字重；选中后仍保留类别色。变更祖先目录仍为蓝色，冲突仍用原警告色。diff 新增／删除内容分别使用浅绿／浅红行底及对应深色文字，手机端的 `+`／`−` 标记随行着色；未变更正文不改色。这套高辨识配色仅作用于文件浏览器，不修改全站成功、运行、失败等状态色。
 
@@ -159,9 +159,13 @@ Bot 页面沿用公共导航样式，不覆盖外侧 Tab 的字号、选中标�
 
 Map 的空 `input_requirements` 与缺省值等价；节点编辑或删除不会为了空输入要求新增该字段，有内容时仍保留。输入声明编辑接口始终返回可编辑的输入要求文本。
 
-### 节点报告策略的显示
+### 成果批准配置与运行事实
 
-scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto` 为圆角矩形，`manual` 为四角切角矩形；图内不增加策略文字，选择节点后在详情查看 `report_policy: auto/manual`。Map JSON 的可选 `report_policy` 默认 `auto`。Run 中已有执行的节点使用该执行保存的策略，旧执行未保存策略时按 `auto` 显示；尚未派发的节点使用当前 Map 配置。编辑 Map 不会改变已有执行的策略。`manual` 调用 report 后在宿主原生确认界面展示完整待发送 payload，用户须明确批准该次 payload，自然语言同意不授权发送。拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无确认 UI 均不发送；等待用户重新请求，不自行重试。业务批准与管理者交接验收仍是独立要求，不增加后端审批状态或授权令牌。
+在 scheduler 选中 Map 的普通 node，修改“成果批准 · auto_approved”：省略时默认自动，显式自动为 `true`，人工为 `false`。保存后可重开核对；设置与内容 JSON 分开，保存冲突或无效 JSON 保留草稿，不静默覆盖。图中自动模式为圆角矩形、人工为切角矩形；形状表达模式，不表示已经批准。脚本只能自动批准，冲突草稿须显式修正；结束节点显示批准不适用，保留原配置以便取消结束节点后恢复。
+
+workflow 的“当前定义（非执行快照）”显示当前 Map 配置；“当前执行事实”显示本次派发冻结的 `autoApproved`、`approved` 与 `approvalSource`，旧执行历史分别显示各自保存的事实，不从当前 Map 补造。修改 Map 不改变在途执行；合法 retry 采用当前模式，新 execution 从未批准开始，不继承旧批准或报告。自动来源 `auto` 不是用户 Yes，人工来源 `manual` 表示人工批准；模式本身不等于批准。结束节点不显示伪批准或批准等待。
+
+人工模式由用户在节点 Chat 的宿主原生确认中明确 Yes；不是另设浏览器审批页面。报告发送不再要求确认，可随时报告进展、问题或失败。成果批准独立于报告和产物，不通知管理者、不自动完成节点或派发下游；manager 仍须核实最新报告的严格 canComplete:true 与约定交付后显式 complete。打开、轮询、刷新或查看历史均只读，不重派业务。不提供旧运行兼容或批量改写。
 
 节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
 
@@ -179,7 +183,7 @@ workflow 显示“已交给用户”，而非把结束节点伪标为 completed�
 
 业务在途、业务成功／失败结束、报告 `canComplete`、节点状态与下游依赖资格分别显示。自动报告的严格 `canComplete: true` 只表示可交接；manager 仍须显式 `complete`，此前节点仍为 `running`、依赖仍阻塞。失败保留原错误及可得实际效果，不回滚、不自动 retry。manager 核实后显式 fail／retry 产生新的 execution；旧报告与 outputs 只属于旧 execution，不授予新执行完成资格。
 
-当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不是等待启动 Chat 或 manual 报告确认。
+当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不表示等待启动 Chat；脚本没有人工批准等待。
 
 ### 完成后的 Tab 清理与诊断
 

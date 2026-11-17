@@ -1,7 +1,7 @@
 //! Ticket 17 enabling checks, not P39-P45 real-model acceptance (owned by 21).
 //! Approved seam: shipped Map/Bot via public definition save/read and preflight.
 //! Expected: eight nodes, one direct baseline for every consumer, three separate
-//! writer/optimizer pairs, one seven-material save. A missing baseline edge or
+//! writer/optimizer pairs, one four-material save. A missing baseline edge or
 //! Task-creating node must disagree with these independent literal expectations.
 use super::*;
 
@@ -30,7 +30,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
         let baseline = json!({"id":"baseline","type":"node","node_id":"create_blank","output_id":"baseline"});
         assert_eq!(definition["nodes"][&writer]["input_rule"], json!([baseline.clone()]));
         assert_eq!(definition["nodes"][&writer]["blocked_by"], json!(["create_blank"]));
-        assert_eq!(definition["nodes"][&writer]["report_policy"], "manual");
+        assert_eq!(definition["nodes"][&writer]["auto_approved"], false);
         assert_eq!(definition["nodes"][&optimizer]["input_rule"], json!([baseline,
             {"id":"text","type":"node","node_id":writer,"output_id":"text"},
             {"id":"handoff","type":"node","node_id":writer,"output_id":"handoff"}]));
@@ -38,9 +38,9 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
         for id in [&writer,&optimizer] { assert_eq!(definition["nodes"][id]["output_rule"], json!([{"id":"text"},{"id":"handoff"}])); }
     }
     let mut final_inputs = vec![json!({"id":"baseline","type":"node","node_id":"create_blank","output_id":"baseline"})];
-    for field in ["when","plan_guide","node_guide"] { for role in ["text","handoff"] {
-        final_inputs.push(json!({"id":format!("{field}_{role}"),"type":"node","node_id":format!("optimize_{field}"),"output_id":role}));
-    }}
+    for field in ["when","plan_guide","node_guide"] {
+        final_inputs.push(json!({"id":format!("{field}_text"),"type":"node","node_id":format!("optimize_{field}"),"output_id":"text"}));
+    }
     assert_eq!(definition["nodes"]["save_bot"]["input_rule"], json!(final_inputs));
     assert_eq!(definition["nodes"]["save_bot"]["output_rule"], json!([{"id":"saved"},{"id":"handoff"}]));
     // The wrapper's shipped binding and all shared Task identities are checked

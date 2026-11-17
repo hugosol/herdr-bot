@@ -77,7 +77,7 @@ async fn dual_role_routes_report_to_parent_and_management_to_child_without_selec
     }
     let calls = s.herdr.calls();
     let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"dual-child"}), 200).await;
-    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"reportPolicy":"auto"}));
+    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"autoApproved":true,"approved":false,"approvalSource":null}));
     assert_eq!(s.herdr.calls(), calls);
     assert!(detail(&s, root["id"].as_str().unwrap()).await["reports"].as_array().unwrap().is_empty());
     let report = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"dual-child","body":"Progress, not complete","canComplete":false}), 200).await;
@@ -118,6 +118,17 @@ async fn retired_child_session_cannot_select_the_replacement_execution() {
     let current = &retry["snapshot"]["nodes"]["A"]["execution"];
     assert_ne!(current["id"], old["id"]);
     assert_ne!(current["childRunId"], old["childRunId"]);
+    // P10: a retained child may report historical facts, but approval cannot
+    // retarget its replacement or mutate either the old child or execution.
+    let old_child = detail(&s, old["childRunId"].as_str().unwrap()).await;
+    let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"attempt-old"}), 200).await;
+    assert_eq!(context["executionId"], old["id"]);
+    let stale = role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"attempt-old","executionId":old["id"],"source":"auto"}), 400).await;
+    assert_eq!(stale["code"], "approval-execution-stale");
+    let forged = role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"attempt-old","executionId":current["id"],"source":"auto"}), 400).await;
+    assert_eq!(forged["code"], "approval-execution-mismatch");
+    assert_eq!(detail(&s, old["childRunId"].as_str().unwrap()).await, old_child);
+    assert_eq!(detail(&s, root["id"].as_str().unwrap()).await["run"]["nodes"]["A"]["execution"], *current);
     let latest = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"attempt-new","body":"NEW progress","canComplete":false}), 200).await;
     let late = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"attempt-old","body":"OLD late progress","canComplete":false}), 200).await;
     assert_eq!(late["report"]["executionId"], old["id"]);
@@ -172,12 +183,15 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
     let child_path = s.config.scheduler.run_directory.join(child_id).join("run.json");
     let parent: Value = serde_json::from_slice(&fs::read(&parent_path).unwrap()).unwrap();
     let child: Value = serde_json::from_slice(&fs::read(&child_path).unwrap()).unwrap();
-    for violation in ["missing-link","missing-manager","wrong-execution","same-run","duplicate-node","source-task","source-agent","duplicate-manager"] {
+    for violation in ["missing-link","missing-child","wrong-child","missing-manager","wrong-execution","cross-run","same-run","duplicate-node","source-task","source-agent","duplicate-manager"] {
         let mut p = parent.clone(); let mut c = child.clone();
         match violation {
             "missing-link" => { c.as_object_mut().unwrap().remove("parent"); },
+            "missing-child" => { p["nodes"]["A"]["execution"].as_object_mut().unwrap().remove("childRunId"); },
+            "wrong-child" => p["nodes"]["A"]["execution"]["childRunId"] = json!(root["id"]),
             "missing-manager" => c["manager"] = Value::Null,
             "wrong-execution" => c["parent"]["executionId"] = json!("foreign"),
+            "cross-run" => c["parent"]["runId"] = json!(child_id),
             "same-run" => { p["manager"] = p["nodes"]["A"]["execution"]["chat"].clone(); c["manager"] = Value::Null; },
             "duplicate-node" => p["nodes"]["B"] = p["nodes"]["A"].clone(),
             "source-task" => p["nodes"]["A"]["execution"]["taskId"] = json!("foreign-task"),
@@ -190,6 +204,8 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
         for route in ["status", "collect"] {
             role_request(&s, &format!("/api/workflow/manager/{route}"), json!({"sessionId":"auth-child"}), 403).await;
         }
+        role_request(&s, "/api/workflow/node/context", json!({"sessionId":"auth-child"}), 403).await;
+        role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"auth-child","executionId":parent["nodes"]["A"]["execution"]["id"],"source":"auto"}), 403).await;
         role_request(&s, "/api/workflow/node/report", json!({"sessionId":"auth-child","body":"not authorized","canComplete":false}), 403).await;
         assert_eq!(s.herdr.calls(), calls, "{violation}");
         assert_eq!(fs::read_to_string(&parent_path).unwrap(), p.to_string());
@@ -264,6 +280,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let path = s.data.path().join("produced.txt");
     fs::write(&path, "UPSTREAM-REAL-729").unwrap();
     role_request(&s, "/api/workflow/node/report", json!({"sessionId":"mapping-source","body":"Produced","canComplete":true,"outputs":[{"id":"upstream-result","path":path}]}), 200).await;
+    approve_execution(&s, "mapping-source").await;
     role_request(&s, "/api/workflow/manager/complete", json!({"sessionId":"mapping-root","nodeId":"source","reason":"Accept actual file"}), 200).await;
     native(&s, "omp", "mapping-child", "node-zone");
     let dispatched = s.dispatch("mapping-root", &["A"]).await;

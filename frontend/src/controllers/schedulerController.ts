@@ -84,7 +84,7 @@ export type MapNode = {
   output_rule?: OutputRule[]
   zone: NodeZone
   blocked_by: string[]
-  report_policy?: 'auto' | 'manual'
+  auto_approved?: boolean
   auto_close?: boolean
   end_node?: boolean
 }

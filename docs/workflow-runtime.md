@@ -4,7 +4,7 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。输入输出 ID 与创建流程材料保持不变；通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。V1 创建消费 request／可选 materials；V1 保存仅消费 baseline 与 when_text／plan_guide_text／node_guide_text，不消费三份指南 handoff 或人类批准凭据；各自输出 baseline 或 saved 及事实 handoff。完整协议见[共同业务材料](business-materials.md#创建分支-v1可校验表示与空白创建)。通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
 
 ### execution 与节点交接分别表达
 
@@ -120,7 +120,7 @@ Map node 的 `zone: {"type":"dynamic"}` 声明每次执行由 manager 选址，�
 
 Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager_task_id` 必须引用 manager Task；派发使用该 node 的 `zone` 和原始 `input` 创建独立子 Run。内部节点仍使用子 Map 各自的 zone，不展开或复制进父图。同一 Map 的每次调用、每次明确 retry 都有独立 Run 和 execution，不能按 Map 名或 node 名猜测归属。
 
-父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`report` 只定位关联的父 execution，包括保留的旧 execution。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
+父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`context`／`report` 只定位关联的父 execution，包括保留的旧 execution；`approve` 也只批准真实父 execution，但旧子 manager 不能批准 retry 后的新 execution，旧执行的批准请求按陈旧执行拒绝。批准请求的 executionId 只校验已取得上下文，不能选择其他归属。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
 
@@ -157,7 +157,9 @@ node scripts/test-backend.mjs
 
 子 manager 的 `report` 登记的是**父 execution 冻结的 `outputRule`** 中的输出 ID 与实际绝对文件地址，不从内部 node 的同名输出自动取值，也不新增 Map 输出声明。未知／同次重复 ID 拒绝整次报告；增量报告按同 execution 的追加顺序合并，同名更新，省略保留既有登记，未登记不补造路径。普通及 Map 型下游都通过父 node 的 `type=node` 输入规则解析这些地址；只用当前 execution，旧尝试即使曾交付也不能补齐新尝试的缺项。上游 completed 只满足依赖，所需输出未登记或文件不可读时派发仍在 `resolve` 阶段失败，不创建下游 Chat 或子 Run。
 
-子 manager 尚未显式 `finish` 时不能外报 `canComplete=true`（HTTP 400，`child-run-not-finished`）；`false` 进展报告仍可保存。读取关联子 Run 失败不当作已结束。`finish` 要求内部普通工作节点交接完成；指定结束节点只需成功派发，不等待其业务完成。它不要求父输出全部登记。完成资格、已登记材料及父层业务验收是三件不同的事：子 `finish` 和任何报告都不完成父节点，也不自动放行或派发下游；父 manager 须按当前 execution **最新有效报告严格 true** 显式 `complete`，后来的 false 不能回退较早 true。
+子 manager 尚未显式 `finish` 时不能外报 `canComplete=true`（HTTP 400，`child-run-not-finished`）；`false` 进展报告仍可保存。读取关联子 Run 失败不当作已结束。`finish` 要求内部普通工作节点交接完成；指定结束节点只需成功派发，不等待其业务完成。它不要求父输出全部登记。子 manager 也必须等到子 Run 显式 `finish` 后，才可通过 `node/approve` 独立批准父节点整体成果；提前批准返回 HTTP 400 `child-run-not-finished`。父 execution 的 `autoApproved` 在本次派发时冻结，不随当前 Map 改动：自动模式由子 manager 主动提交 `source=auto`，人工模式须经原生 Yes 后提交 `source=manual`（HTTP 本身不证明原生确认）。内部节点的批准、交接与子 Run 完成都不会批准父 execution。
+
+成果批准、报告、已登记材料及父层业务验收相互独立：子 `finish`、批准和任何报告都不完成父节点，也不自动放行或派发下游；父 manager 须核对当前 execution 已批准、**最新有效报告严格 true** 及全部冻结输出 ID 已登记后显式 `complete`，后来的 false 不能回退较早 true。报告发送不再要求独立发送审批，也不产生批准事实。
 
 报告保存与宿主通知分阶段反馈。即使真实通知失败，`saved=true` 的报告、完成的子 Run 与已有文件仍可由公开详情读回；不要为通知失败重报、重派、回滚或重新 finish。父节点首次合法 complete 后，才按该 execution 冻结的 `autoClose` 尝试一次精确关闭其关联子 manager Tab。子 finish 不关闭父执行的 Tab；重复 complete 不重复关闭，也不扫描或级联关闭内部 Tab。关闭失败不撤销已保存的父交接。
 

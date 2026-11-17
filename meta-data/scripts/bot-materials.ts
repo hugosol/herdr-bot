@@ -11,12 +11,6 @@ export interface Request {
   bot?: { id?: string; name?: string; group?: string };
   requirements: string; constraints: string[]; non_goals: string[]; resource_limits: string[];
 }
-export interface Guide {
-  schema_version: number; kind: string; stage: string; bot_id: string; target: Target; field: string;
-  sources: { binding_id: string; direction: string; role: string }[];
-  confirmation: { evidence: string; text_sha256: string; full_text: boolean; save_authorized: boolean; semantics_preserved: boolean };
-  constraints: string[]; unverified: string[];
-}
 export interface HostOperations {
   read_json: { args: { path: string }; result: unknown };
   parse_json: { args: { text: string }; result: unknown };
@@ -49,9 +43,6 @@ export function object(value: unknown, required: string[], optional: string[] = 
 }
 export function string(value: unknown): asserts value is string {
   if (typeof value !== "string") fail("validate", "invalid-format", "字段必须是字符串，不能为 null。");
-}
-export function boolean(value: unknown): asserts value is boolean {
-  if (typeof value !== "boolean") fail("validate", "invalid-format", "字段必须是布尔值。");
 }
 export function strings(value: unknown): asserts value is string[] {
   if (!Array.isArray(value)) fail("validate", "invalid-format", "字段必须是字符串数组。");
@@ -90,22 +81,6 @@ export function bot(input: unknown): Bot {
   const value = object(input, ["id", "name", "when", "plan_guide", "node_guide"], ["group", "task_id", "map_file", "script"]);
   Object.values(value).forEach(string);
   return value as unknown as Bot;
-}
-export function guide(input: unknown): Guide {
-  const value = object(input, ["schema_version", "kind", "stage", "bot_id", "target", "field", "sources", "confirmation", "constraints", "unverified"]);
-  version(value.schema_version);
-  for (const key of ["kind", "stage", "bot_id", "field"]) string(value[key]);
-  locator(value.target);
-  strings(value.constraints); strings(value.unverified);
-  if (!Array.isArray(value.sources)) fail("validate", "invalid-format", "sources 必须是数组。");
-  for (const item of value.sources as unknown[]) {
-    const source = object(item, ["binding_id", "direction", "role"]);
-    Object.values(source).forEach(string);
-  }
-  const confirmation = object(value.confirmation, ["evidence", "text_sha256", "full_text", "save_authorized", "semantics_preserved"]);
-  string(confirmation.evidence); string(confirmation.text_sha256);
-  for (const key of ["full_text", "save_authorized", "semantics_preserved"]) boolean(confirmation[key]);
-  return value as unknown as Guide;
 }
 export function rules(context: Context, required: string[]): void {
   if (!context.outputRule) fail("validate", "missing-field", "缺少冻结输出声明。");

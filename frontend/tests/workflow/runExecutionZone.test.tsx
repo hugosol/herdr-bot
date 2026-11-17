@@ -8,7 +8,7 @@ const current: CurrentDefinition = { map: { title: 'Dynamic map', description: '
 function runWith(execution: Execution | null): Run {
   return { id: 'run', map: 'map.json', createdAt: 1, managerTaskId: 'manager', zone: 'C:/manager', workspaceName: 'workspace', userInput: '', status: 'running', manager: null, nodes: { A: { status: execution ? 'running' : 'pending', execution, failure: null, completion: null, previousExecutions: [] } } }
 }
-const files = { id: 'execution', zoneId: 'team/selected', zone: 'C:/frozen-actual-directory', inputRule: [], outputRule: [], inputs: [] }
+const files = { autoApproved: true, approved: false, approvalSource: null, id: 'execution', zoneId: 'team/selected', zone: 'C:/frozen-actual-directory', inputRule: [], outputRule: [], inputs: [] }
 const executions: Execution[] = [
   { ...files, taskId: 'task', agent: 'omp', chat: null },
   { ...files, taskId: 'manager-task', agent: 'pi', chat: null, childRunId: 'child-run' },
@@ -40,13 +40,13 @@ describe('frozen execution zone display', () => {
 
   it('shows dispatched end-node handoff without a false completion or report obligation', () => {
     const chat = { sessionId: 'end-chat', workspaceId: 'workspace', tabId: 'tab', paneId: 'pane', agentName: 'worker' }
-    const run = runWith({ ...files, taskId: 'task', agent: 'omp', chat, endNode: true, reportPolicy: 'manual', autoClose: true })
+    const run = runWith({ ...files, taskId: 'task', agent: 'omp', chat, endNode: true, autoClose: true })
     run.status = 'completed'
     run.finished = { reason: 'handed-to-user' }
     render(<RunCurrentView run={run} reports={[]} current={current} managed />)
     const facts = within(screen.getByRole('region', { name: '当前执行事实' }))
     expect(facts.queryByText('autoClose')).not.toBeInTheDocument()
-    expect(facts.queryByText('reportPolicy')).not.toBeInTheDocument()
+    expect(facts.queryByText('approved')).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '当前执行交接事实' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '交接完成说明' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: '当前节点详情' })).toHaveTextContent('保存状态仍为 running；不是业务已完成')

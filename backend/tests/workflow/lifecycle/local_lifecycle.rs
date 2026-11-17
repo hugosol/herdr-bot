@@ -74,6 +74,7 @@ async fn parent_pause_rejects_local_dispatch_retry_but_child_work_and_handoff_co
         assert_eq!(dispatched["results"][0]["status"], "running");
         assert_eq!(dispatched["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
         report(&s, identity, "Child work while parent paused").await;
+        approve_execution(&s, identity).await;
         action(&s, "pause-child", "complete", json!({"nodeId":node,"reason":"Accepted"}), 200).await;
     }
     action(&s, "pause-child", "finish", json!({}), 200).await;
@@ -81,6 +82,7 @@ async fn parent_pause_rejects_local_dispatch_retry_but_child_work_and_handoff_co
     let parent = detail(&s, &root["id"]).await;
     assert_eq!(parent["run"]["status"], "paused");
     assert_eq!(parent["run"]["nodes"]["call"]["status"], "running");
+    approve_execution(&s, "pause-child").await;
     action(&s, "pause-root", "complete", json!({"nodeId":"call","reason":"Explicit parent acceptance"}), 200).await;
     let calls = s.herdr.calls();
     let resumed = action(&s, "pause-root", "resume", json!({}), 200).await;
@@ -138,6 +140,7 @@ async fn descendant_host_failure_keeps_ancestors_and_independent_sessions_runnin
         assert_eq!(advanced["snapshot"]["status"], "running");
         assert_eq!(advanced["snapshot"]["nodes"][node]["execution"]["chat"]["sessionId"], identity);
         report(&s, identity, "Independent branch delivered").await;
+        approve_execution(&s, identity).await;
         action(&s, manager, "complete", json!({"nodeId":node,"reason":"Sibling independently accepted"}), 200).await;
     }
     assert_eq!(detail(&s, &independent["id"]).await["run"]["nodes"]["branch"]["status"], "completed");
@@ -177,6 +180,7 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
             assert_eq!(child_dispatch["results"][0]["status"], "running");
             if node == "sibling" {
                 report(&s, identity, "Sibling finished").await;
+                approve_execution(&s, identity).await;
                 action(&s, "concurrent-child", "complete", json!({"nodeId":node,"reason":"Accepted"}), 200).await;
             }
         }
@@ -185,6 +189,7 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
         tasks.push(tokio::spawn(inner.response()));
         assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|call| call["kind"] == "agent_prompt" && call["text"].as_str().is_some_and(|text| text.contains("INNER-SLOW")))).await);
         assert_eq!(detail(&s, &child).await["reports"][1]["body"], "INNER-SLOW");
+        approve_execution(&s, "concurrent-inside").await;
         action(&s, "concurrent-child", "complete", json!({"nodeId":"inside","reason":"Saved report is sufficient despite blocked notification"}), 200).await;
         assert_eq!(action(&s, "concurrent-child", "finish", json!({}), 200).await["snapshot"]["status"], "completed");
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"concurrent-other"},"native_cwd":s.data.path().join("node-zone"),"prompt_gate":{"match":"OUTER-SLOW","wait_for_file":gates[2],"timeout_ms":30000}}));
@@ -197,6 +202,7 @@ async fn parent_child_handoff_and_independent_run_progress_across_slow_host_effe
         fs::write(&gates[0], "release").unwrap();
         assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().any(|call| call["kind"] == "agent_prompt" && call["text"].as_str().is_some_and(|text| text.contains("OUTER-SLOW")))).await);
         assert_eq!(detail(&s, &root["id"]).await["reports"][0]["body"], "OUTER-SLOW");
+        approve_execution(&s, "concurrent-child").await;
         assert_eq!(action(&s, "concurrent-root", "complete", json!({"nodeId":"call","reason":"Explicit acceptance during slow notifications"}), 200).await["snapshot"]["nodes"]["call"]["status"], "completed");
         assert!(!tasks[1].is_finished() && !tasks[2].is_finished(), "both external notification gates must still be held");
         assert!(!gates[1].exists() && !gates[2].exists());
