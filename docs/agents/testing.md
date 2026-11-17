@@ -168,6 +168,10 @@ python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT
 
 窗口结束后由新的显式用户输入要求原生宿主实际改写 `material.txt`、自由发送进度报告并从公开 Run 完整读回；此时仍未批准。再由另一条独立用户请求打开新确认并实际选择 Yes，核对批准成功、node 仍 running、报告不被改写。没有旧 report 发送审批预期，不把重新批准变成报告前提。
 
+`workflow-codex-completion.mjs` 的 `content-invalid` 保留原拒绝条件，另输出固定 `constraint`：`sdk-content`、`decision-consistency`、`usage`、`delivery-cap` 或 `serialization`。只附完成标志、白名单 stopReason、内容／工具形状的布尔或计数、合法的 outputTokens／deliveryCap；`usageInvalidMask` 的五个位依次对应 input、output、cacheRead、cacheWrite、totalTokens。wrapper 再按固定字段／枚举及数值范围过滤，不透传任意文本、参数、调用 ID、异常、headers 或凭据。一次请求、`maxRetries=0`、无 fallback 与原协议拒绝语义不变；成功结果不增加诊断字段。
+
+离线分支验证：显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，运行 `python scripts/workflow-codex-completion.test.py CodexContentDiagnostics`。该分区以字面 SDK 返回覆盖拒绝及成功分支，使用测试拥有的假凭据和仅拦截该 adapter models import 的 fixture，禁止 fetch；它不调用实际模型、不读取用户认证，也不替代原生验收或既有真实 SDK 受控传输回归。
+
 真实模型可经 `python scripts/accept-workflow-codex.py --scenario node-approval-failures --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"` 运行：只读显式授权认证文件，沿用原生 Codex adapter，逐请求记录实际 `serverModel=gpt-6-luna`，不复制或刷新凭据。可追加 `--native-only` 分离原生资源窗口；该诊断保持非零且不认证全仓检查，必须另外保存两仓完整检查结果。
 
 无 UI 使用受控 provider 制造机械故障：先确认原生 node 进程退出，再以同一真实 session 的安装宿主 print/JSON 模式执行实际 `approve`，保留 `hasUI=false`、原生结果、provider 请求及进程退出；真实后端执行、材料、之后新进程恢复和原生继续工作均不替换。其余 No／Esc／超时也可由显式机械 provider 选择工具，但原生确认结果从不受控。任何受控路径均不冒充真实模型选择或用不可用替代 UI 拒绝。每个场景清理原始错误与清理错误独立保留，确认所属进程退出后归档。

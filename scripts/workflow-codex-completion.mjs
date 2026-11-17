@@ -21,8 +21,10 @@ let finished = false;
 const diagnostics = {};
 function finish(value, status) {
   if (finished) return;
+  // A rejected serialization must still be able to emit its bounded error.
+  const encoded = JSON.stringify(value);
   finished = true;
-  process.stdout.write(`${JSON.stringify(value)}\n`, () => process.exit(status));
+  process.stdout.write(`${encoded}\n`, () => process.exit(status));
 }
 function reject(code) { finish({ error: code, ...diagnostics }, 1); }
 // Dependency diagnostics are not part of the protocol and may contain secrets.
@@ -276,26 +278,56 @@ try {
   if (observedModel !== requestedModel || result.model !== requestedModel ||
       result.provider !== 'openai-codex' || result.api !== 'openai-codex-responses') throw new Error();
   failure = 'content-invalid';
+  const rejectContent = constraint => {
+    // Failure-only structural facts: never expose text, IDs, arguments or errors.
+    const parts = Array.isArray(result.content) ? result.content : [];
+    const calls = parts.filter(part => part?.type === 'toolCall');
+    Object.assign(diagnostics, {
+      constraint, completed, contentArray: Array.isArray(result.content),
+      stopReason: ['stop', 'toolUse', 'length', 'error', 'aborted'].includes(result.stopReason)
+        ? result.stopReason : 'other',
+      contentBlocks: parts.length,
+      invalidBlockCount: parts.filter(part => !part || !['text', 'thinking', 'toolCall'].includes(part.type)).length,
+      invalidTextCount: parts.filter(part => part?.type === 'text' && typeof part.text !== 'string').length,
+      toolCalls: calls.length,
+      invalidToolIds: calls.filter(part => !callId(part.id)).length,
+      invalidToolNames: calls.filter(part => !nonempty(part.name)).length,
+      invalidArguments: calls.filter(part => !object(part.arguments)).length,
+      argumentsErrorCount: calls.filter(part => part.argumentsError !== undefined).length,
+      partialJsonCount: calls.filter(part => part.partialJson !== undefined).length,
+      namespaceCount: calls.filter(part => part.namespace !== undefined).length,
+      duplicateToolIds: calls.length - new Set(calls.map(part => part.id)).size,
+      hasText: parts.some(part => part?.type === 'text' && typeof part.text === 'string' && !!part.text.trim()),
+      toolUseMatches: (result.stopReason === 'toolUse') === (calls.length > 0),
+      usageInvalidMask: ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'].reduce((mask, key, index) =>
+        mask | ((!Number.isFinite(result.usage?.[key]) || result.usage[key] < 0) ? 1 << index : 0), 0),
+    });
+    for (const [key, value] of [['outputTokens', result.usage?.output], ['deliveryCap', request.max_completion_tokens]]) {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER) diagnostics[key] = value;
+    }
+    throw new Error();
+  };
   if (!completed || !['stop', 'toolUse'].includes(result.stopReason) || !Array.isArray(result.content) ||
       result.content.some(part => !part || !['text', 'thinking', 'toolCall'].includes(part.type) ||
         (part.type === 'text' && typeof part.text !== 'string') ||
         (part.type === 'toolCall' && (!callId(part.id) || !nonempty(part.name) ||
           !object(part.arguments) || part.argumentsError !== undefined || part.partialJson !== undefined ||
-          part.namespace !== undefined)))) throw new Error();
+          part.namespace !== undefined)))) rejectContent('sdk-content');
   const content = result.content.filter(part => part.type === 'text').map(part => part.text).join('');
   // These are SDK-native toolCall blocks, never JSON extracted from model text.
   const tool_calls = result.content.filter(part => part.type === 'toolCall')
     .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
   if ((result.stopReason === 'toolUse') !== (tool_calls.length > 0) ||
       new Set(tool_calls.map(call => call.id)).size !== tool_calls.length ||
-      (!content.trim() && tool_calls.length === 0)) throw new Error();
+      (!content.trim() && tool_calls.length === 0)) rejectContent('decision-consistency');
   const usage = {};
   for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens']) {
     const value = result.usage?.[key];
-    if (!Number.isFinite(value) || value < 0) throw new Error();
+    if (!Number.isFinite(value) || value < 0) rejectContent('usage');
     usage[key] = value;
   }
-  if (request.max_completion_tokens !== undefined && usage.output > request.max_completion_tokens) throw new Error();
+  if (request.max_completion_tokens !== undefined && usage.output > request.max_completion_tokens) rejectContent('delivery-cap');
+  diagnostics.constraint = 'serialization';
   finish({ provider: result.provider, model: result.model, serverModel: observedModel, api: result.api,
     content, tool_calls, usage, stopReason: result.stopReason,
     upstreamRequest, upstreamResponse: result,
