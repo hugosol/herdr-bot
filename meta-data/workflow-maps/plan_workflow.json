@@ -21,7 +21,7 @@
           "id": "map"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
@@ -55,7 +55,7 @@
           "id": "handoff"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",
@@ -73,7 +73,7 @@
           "id": "outline"
         }
       ],
-      "report_policy": "auto",
+      "auto_approved": true,
       "auto_close": true,
       "end_node": false,
       "zone": "hugosol/herdr-bot",

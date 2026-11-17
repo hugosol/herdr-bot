@@ -109,7 +109,9 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     assert_eq!(retry["snapshot"]["nodes"]["create"]["previousExecutions"][0]["execution"], old);
     assert_eq!(retry["snapshot"]["nodes"]["create"]["previousExecutions"][0]["failure"], marked["snapshot"]["nodes"]["create"]["failure"]);
     assert!(retry["pendingReports"].get("create").is_none());
-    assert_eq!(action(&s, "complete", json!({"reason":"No current report"}), 409).await["code"], "report-not-completable");
+    assert_eq!(action(&s, "complete", json!({"reason":"No current report"}), 409).await["code"], "node-not-approved");
+    assert_eq!(current["approved"], false);
+    assert!(current["approvalSource"].is_null());
     assert_eq!(detail(&s, &run).await["reports"], failed["reports"]);
     drop(gate);
     let done = reports(&s, &run, 2).await;

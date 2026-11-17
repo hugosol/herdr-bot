@@ -223,7 +223,6 @@ async fn wait_for_close(s: &Scenario) {
 async fn nested_saved_notification_failure_latest_report_and_exact_close_are_independent() {
     let s = Scenario::new().await;
     setup(&s).await;
-    input_resolution::output_contract(&s, "call", &[]);
     let root = s.start("notify-root").await;
     native(&s, "notify-child");
     let launched = s.dispatch("notify-root", &["call"]).await;
@@ -257,7 +256,9 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
     let denied = action(&s, "notify-root", "complete", json!({"nodeId":"call","reason":"Must consult newest report"}), 409).await;
     assert_eq!(denied["code"], "report-not-completable");
     assert_eq!(s.herdr.tabs(), tabs_before);
-    let newest = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Ready again","canComplete":true}), 200).await;
+    let delivery = s.data.path().join("notify-result.txt");
+    fs::write(&delivery, "Verified child result after notification failure").unwrap();
+    let newest = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Ready again","canComplete":true,"outputs":[{"id":"result","path":delivery},{"id":"missing","path":delivery}]}), 200).await;
     let accepted = action(&s, "notify-root", "complete", json!({"nodeId":"call","reason":"Explicit business acceptance"}), 200).await;
     assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");
     wait_for_close(&s).await;
@@ -284,7 +285,6 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
 async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report_and_acceptance() {
     let s = Scenario::new().await;
     setup(&s).await;
-    input_resolution::output_contract(&s, "call", &[]);
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner end","description":"","nodes":{"inside":{"title":"End conversation","bot_id":"worker","input":"USER HANDOFF","zone":"node","blocked_by":[],"end_node":true,"auto_close":true}}}).to_string()).unwrap();
     s.start("end-root").await;
     native(&s, "end-child");
@@ -299,7 +299,9 @@ async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report
     assert_eq!(finished["snapshot"]["nodes"]["inside"]["status"], "running");
     approve_execution(&s, "end-child").await;
     action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No report yet"}), 409).await;
-    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true}), 200).await;
+    let delivery = s.data.path().join("end-result.txt");
+    fs::write(&delivery, "Explicit child handoff to user").unwrap();
+    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true,"outputs":[{"id":"result","path":delivery},{"id":"missing","path":delivery}]}), 200).await;
     assert_eq!(report["report"]["nodeId"], "call");
     let accepted = action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"Accepted child handoff"}), 200).await;
     assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");
