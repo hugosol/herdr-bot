@@ -81,7 +81,7 @@ export function BotTargetSelect({ content, disabled, onChange }: Props) {
     {scriptBinding && <p>TypeScript 脚本：<code>{scriptBinding}</code></p>}
     <p>脚本绑定请在下方 JSON 中编辑 script，填写 scripts 目录内的相对 .ts 路径。</p>
     <p id="bot-task-binding-help">仅引用普通（normal）Task、Map 或TypeScript 脚本，不复制配置，三者互斥。可保持未绑定并保存；执行前必须绑定有效目标。选择与下方 JSON 中的 task_id / map_file / script 同步；Map 的 manager Task 由调用节点指定。</p>
-    {scriptBinding && <p>脚本仅在 Map 节点执行；接收 input 与命名文件材料，不创建 Chat，固定自动报告且无需关闭会话。</p>}
+    {scriptBinding && <p>脚本仅在 Map 节点执行；接收 input 与命名文件材料，不创建 Chat，固定自动批准且无需关闭会话。</p>}
     {['task_id', 'map_file', 'script'].filter(key => definition?.[key] != null).length > 1 && <p>task_id、map_file 与 script 互斥；冲突绑定不会保存或按优先级执行。</p>}
     {mapError && <p role="status">{mapError} 当前引用和 JSON 草稿未改变。</p>}
     {loading && <p role="status">正在读取 Task 列表…</p>}

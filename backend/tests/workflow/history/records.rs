@@ -191,7 +191,7 @@ async fn independent_records_read_current_facts_without_replaying_history() {
 // not append a fourth business record or consume report history.
 #[tokio::test]
 async fn operated_records_preserve_old_execution_recovery_completion_and_reports() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("records-manager").await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-old-A"},"native_cwd":s.data.path().join("node-zone")}));
@@ -213,6 +213,7 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     }
     let pending = action(&s, "status", json!({}), 200).await;
     assert_eq!(pending["pendingReports"], json!({"A":reports[0]["id"]}));
+    approve_execution(&s, "records-new-A").await;
     let completed = action(&s, "complete", json!({"nodeId":"A","reason":"User verified NEW results/A.md; old cleanup is not handed off"}), 200).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["previousExecutions"][0]["execution"], old);
     assert_eq!(completed["snapshot"]["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "Second failure: original output invalid");
@@ -254,10 +255,11 @@ async fn action(s: &Scenario, name: &str, extra: Value, status: u16) -> Value {
 // the next explicit legal call distinguish the violation. No storage mock.
 #[tokio::test]
 async fn current_write_failure_preserves_queries_disk_and_success_history() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    approve_execution(&s, "records-node-A").await;
     submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("run.json");
@@ -294,10 +296,11 @@ async fn current_write_failure_preserves_queries_disk_and_success_history() {
 // by status, disk, absent new history, repeated completion and a legal pause.
 #[tokio::test]
 async fn history_failure_reports_committed_completion_and_allows_next_action() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let started = s.start("records-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"records-node-A"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("records-manager", &["A"]).await;
+    approve_execution(&s, "records-node-A").await;
     submit_report(&s, "records-node-A", "Verified result ready before persistence fault", true).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let path = root.join("history.jsonl");

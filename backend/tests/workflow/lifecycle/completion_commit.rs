@@ -8,11 +8,12 @@ use super::*;
 #[tokio::test]
 async fn current_fact_save_failure_never_completes_or_closes() {
     use std::os::windows::fs::OpenOptionsExt;
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     let started = s.start("commit-failed-manager").await;
     node_host(&s, "commit-failed-A");
     s.dispatch("commit-failed-manager", &["A"]).await;
+    approve_execution(&s, "commit-failed-A").await;
     submit_report(&s, "commit-failed-A", "Verified handoff ready before commit or close contention", true).await;
     let id = started["id"].as_str().unwrap();
     let root = s.config.scheduler.run_directory.join(id);
@@ -44,11 +45,12 @@ async fn current_fact_save_failure_never_completes_or_closes() {
 #[tokio::test]
 async fn history_failure_keeps_completion_and_close_without_duplicate_eligibility() {
     use std::os::windows::fs::OpenOptionsExt;
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     let started = s.start("commit-history-manager").await;
     node_host(&s, "commit-history-A");
     let dispatched = s.dispatch("commit-history-manager", &["A"]).await;
+    approve_execution(&s, "commit-history-A").await;
     submit_report(&s, "commit-history-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let id = started["id"].as_str().unwrap();
@@ -94,11 +96,12 @@ impl Drop for ReleaseOnDrop {
 // replacing the first completion ID/reason/history, violates literal counts.
 #[tokio::test]
 async fn sequential_duplicates_preserve_first_fact_and_single_in_flight_close() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     let started = s.start("commit-sequential-manager").await;
     node_host(&s, "commit-sequential-A");
     let dispatched = s.dispatch("commit-sequential-manager", &["A"]).await;
+    approve_execution(&s, "commit-sequential-A").await;
     submit_report(&s, "commit-sequential-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
@@ -141,11 +144,12 @@ async fn sequential_duplicates_preserve_first_fact_and_single_in_flight_close() 
 // missing serialization would return early or commit/close more than once.
 #[tokio::test]
 async fn concurrent_duplicates_commit_one_fact_and_attempt_one_close() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     set_auto_close(&s, "A", true).await;
     let started = s.start("commit-concurrent-manager").await;
     node_host(&s, "commit-concurrent-A");
     let dispatched = s.dispatch("commit-concurrent-manager", &["A"]).await;
+    approve_execution(&s, "commit-concurrent-A").await;
     submit_report(&s, "commit-concurrent-A", "Verified handoff ready before commit or close contention", true).await;
     let tab = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"]["tabId"];
     let id = started["id"].as_str().unwrap();

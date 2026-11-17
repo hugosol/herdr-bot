@@ -30,7 +30,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
         let baseline = json!({"id":"baseline","type":"node","node_id":"create_blank","output_id":"baseline"});
         assert_eq!(definition["nodes"][&writer]["input_rule"], json!([baseline.clone()]));
         assert_eq!(definition["nodes"][&writer]["blocked_by"], json!(["create_blank"]));
-        assert_eq!(definition["nodes"][&writer]["report_policy"], "manual");
+        assert_eq!(definition["nodes"][&writer]["auto_approved"], false);
         assert_eq!(definition["nodes"][&optimizer]["input_rule"], json!([baseline,
             {"id":"text","type":"node","node_id":writer,"output_id":"text"},
             {"id":"handoff","type":"node","node_id":writer,"output_id":"handoff"}]));
