@@ -376,9 +376,12 @@ class PublishedV1Acceptance(OuterAcceptance):
                         candidates = [path for path in (self.root / 'zone').rglob('*') if path.is_file()
                             and path.read_bytes() == GUIDES[field].encode('utf-8')]
                         require(candidates, ('No actual full literal candidate before native Yes', field))
-                        for path in candidates:
-                            self.native_read(history, path)
-                        actual_outputs['independentLiteralCandidateFiles'] = [str(path) for path in candidates]
+                        # Approval is of the actual full literal bytes, not a
+                        # requirement that this actor re-read every unrelated
+                        # duplicate proposal file. Necessary consumer reads are
+                        # checked separately against this execution's bindings.
+                        actual_outputs['independentLiteralCandidateFiles'] = [
+                            {'path': str(path), 'bytes': self.file_bytes(path)} for path in candidates]
                     self.evidence.setdefault('beforeYesArtifacts', []).append({'key': key, 'history': history, 'outputs': actual_outputs})
                     require(not self.traffic('/api/workflow/node/approve', sid), 'Manual submission preceded actual Yes')
                     before = {'screen': screen, 'request': approval, 'public': detail, 'at': time.monotonic()}
@@ -480,7 +483,15 @@ class PublishedV1Acceptance(OuterAcceptance):
                     require(edited['revision'] == baseline['revision'] and edited['content'] == {key: value for key, value in baseline['bot'].items() if key != 'id'}
                         and all(edited['content'][field] == '' for field in FIELDS), ('Independent public creation readback differs from real baseline', edited, baseline))
                     self.evidence['blankReadbacks'][run_id] = edited
-            self.service_native(facts)
+            active = {run_id}
+            while True:
+                children = {execution['childRunId'] for item in facts if item['id'] in active
+                    for node in item['run']['nodes'].values() for execution in [node.get('execution')]
+                    if execution and execution.get('childRunId')}
+                if children <= active:
+                    break
+                active.update(children)
+            self.service_native([item for item in facts if item['id'] in active])
             stamp = json.dumps(current, ensure_ascii=False, sort_keys=True)
             if stamp != last:
                 self.evidence['publicFacts'].append({'at': time.monotonic(), 'detail': current})

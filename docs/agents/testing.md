@@ -156,7 +156,7 @@ python scripts/accept-node-approval-v1.py --herdr-bot-worktree "$HERDR_BOT_WT" -
 
 独占发布副本保留所有 node 的真实 Task、Suite、初始 Skill、宿主与业务职责，只重定位物理位置、传输及存储。两个 V1 Run 分别由 OMP／Pi 原生管理者协调，内部编写者／优化者仍使用原发布的混合宿主；不会将节点全改为管理者宿主。新 request 由真实模型生产，真实 Bun 创建与保存；保存只接收 baseline 和三份明确命名正文。完整 Bot／目标／新 revision、实际文件字节、原生确认真实返回及管理者显式 complete／finish 交叉核对，不能由成功文字或 Schema 代替。其余四张非 V2 发布 Map 的 14 项职责独立执行，加上 V1 八项，共 22 项分别具名 S2／S3；缺任何项都不能通过。Tibo 只读真实公开页面，临时目录调查仅指词典重定位的独占目录，不扫描用户 TEMP 或部署环境。
 
-页面专项 `node-approval-v1-browser.mjs` 读取上述真实定义与真实 Run，逐节点比较独立字面模式、当前配置、冻结模式和实际来源，并保留截图／公开 JSON；不新增通用控件保存用例、不通过 HTTP 代原生批准。原生 Yes 只能作用于本次 owned pane，必须看到选中项并核对原始 UI true 返回；原生 Ask 业务问题不能通过取消表单或强迫工具顺序规避。
+页面专项 `node-approval-v1-browser.mjs` 读取上述真实定义与真实 Run，逐节点比较独立字面模式、当前配置、冻结模式和实际来源，并保留截图／公开 JSON；不新增通用控件保存用例、不通过 HTTP 代原生批准。原生 Yes 只能作用于本次 owned pane，必须看到选中项并核对原始 UI true 返回；原生 Ask 业务问题不能通过取消表单或强迫工具顺序规避。业务输入只供给当前 Run 及其真实子 Run，不重新驱动同一验收环境中已失败的其他 Run。原生 Yes 前核对实际完整候选字节，不把目录中同字节的额外 proposal 文件都必须由该 actor 再次 read 当作批准前提；必要材料的完整消费仍按本 execution 的真实命名输入另行核对。
 
 入口依次保存本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations、受影响 node-report／nested-role docks 的原始日志。paired dock 使用本次安全关机壳与本 worktree 元数据，不以生产后端执行关机回归。每次独占 HOME／APPDATA／XDG、原生存储、Herdr、动态数值回环及进程，保留两仓源码／锁文件／产物／安装身份、真实业务判断与原始／清理错误；确认所属进程退出后才能清理。既有 20 秒原生确认＋30 秒 HTTP 预算后另作 51 秒单调观察，不修改产品超时或重试策略。缺依赖／授权、任一仓检查失败、单宿主、缺 coverage 或清理失败均非零且保持未验证，不回退受控模型、不重跑历史副作用、不改 V2 协议。原生资源窗口需与全仓检查分离时可显式追加 `--native-only`（直接入口及 Codex wrapper 均支持），只采集本次 native／页面证据，整票仍 `passed=false` 且非零，不替代两仓完整检查。`python scripts/accept-node-approval-v1.test.py` 仅验证 CLI fail-closed／旧证据保护／路径及授权边界，不是原生业务通过证据。
 
