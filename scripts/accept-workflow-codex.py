@@ -20,6 +20,33 @@ REPO = Path(__file__).resolve().parents[1]
 MODEL = 'gpt-6-luna'
 
 
+def safe_content_diagnostics(failed):
+    """Retain bounded structural facts, never SDK text, IDs or arbitrary keys."""
+    if not isinstance(failed, dict) or failed.get('error') != 'content-invalid':
+        return {}
+    constraint = failed.get('constraint')
+    if type(constraint) is not str or constraint not in {'sdk-content', 'decision-consistency', 'usage', 'delivery-cap', 'serialization'}:
+        return {}
+    diagnostic = {'constraint': constraint}
+    stop_reason = failed.get('stopReason')
+    if type(stop_reason) is str and stop_reason in {'stop', 'toolUse', 'length', 'error', 'aborted', 'other'}:
+        diagnostic['stopReason'] = stop_reason
+    for key in ['completed', 'contentArray', 'hasText', 'toolUseMatches']:
+        if type(failed.get(key)) is bool:
+            diagnostic[key] = failed[key]
+    for key in ['contentBlocks', 'invalidBlockCount', 'invalidTextCount', 'toolCalls', 'invalidToolIds',
+                'invalidToolNames', 'invalidArguments', 'argumentsErrorCount', 'partialJsonCount',
+                'namespaceCount', 'duplicateToolIds', 'usageInvalidMask']:
+        value = failed.get(key)
+        if type(value) is int and 0 <= value <= 2147483647:
+            diagnostic[key] = value
+    for key in ['outputTokens', 'deliveryCap']:
+        value = failed.get(key)
+        if type(value) in (int, float) and 0 <= value <= 9007199254740991:
+            diagnostic[key] = value
+    return diagnostic
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures'], required=True)
@@ -88,6 +115,7 @@ def main():
             diagnostic = {'error': reason}
             try:
                 failed = json.loads(process.stdout)
+                diagnostic.update(safe_content_diagnostics(failed))
                 for key in ['httpStatus', 'requests']:
                     value = failed.get(key)
                     if type(value) is int and 0 <= value <= 999:
