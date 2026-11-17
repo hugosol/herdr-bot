@@ -249,6 +249,42 @@ try {
       try {
         const response = await globalThis.fetch(url, { ...options, redirect: 'error' });
         diagnostics.httpStatus = response.status;
+        if (!response.ok) {
+          // Even error codes/parameters are provider-controlled text. Never
+          // retain arbitrary strings, response bodies, headers or request data.
+          const allow = (value, values) => values.includes(value) ? value : 'other';
+          let error;
+          try {
+            const raw = await response.clone().text();
+            if (raw.length <= 65536) error = JSON.parse(raw)?.error;
+          } catch { /* An opaque failure still stays failed. */ }
+          const message = typeof error?.message === 'string' ? error.message : '';
+          const reason = /No tool output found for function call/i.test(message) ? 'missing-tool-output'
+            : /No tool call found for function call output/i.test(message) ? 'orphan-tool-output'
+            : /Duplicate (?:item|.*id)/i.test(message) ? 'duplicate-item'
+            : /context (?:length|window)|maximum context/i.test(message) ? 'context-limit'
+            : /Invalid schema|function parameters/i.test(message) ? 'tool-schema'
+            : /encrypted content|encrypted_content/i.test(message) ? 'encrypted-content'
+            : 'other';
+          diagnostics.providerError = {
+            type: allow(error?.type, ['invalid_request_error', 'server_error', 'rate_limit_error']),
+            code: allow(error?.code, ['invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded']),
+            parameter: allow(error?.param, ['input', 'tools', 'instructions', 'model', 'previous_response_id']), reason,
+          };
+          const items = upstreamRequest?.input ?? [];
+          const calls = items.filter(item => item.type === 'function_call');
+          const outputs = items.filter(item => item.type === 'function_call_output');
+          const ids = calls.map(item => item.call_id);
+          diagnostics.requestShape = {
+            inputItems: items.length,
+            messageItems: items.filter(item => item.type === 'message').length,
+            toolDeclarations: (upstreamRequest?.tools ?? []).length + items.filter(item => item.type === 'additional_tools').reduce((sum, item) => sum + (item.tools?.length ?? 0), 0),
+            instructionLength: upstreamRequest?.instructions?.length ?? 0,
+            toolCalls: calls.length, toolResults: outputs.length,
+            toolBindingsMatch: ids.length === new Set(ids).size && outputs.length === calls.length &&
+              outputs.every(item => ids.includes(item.call_id)) && new Set(outputs.map(item => item.call_id)).size === outputs.length,
+          };
+        }
         return response;
       } catch (error) {
         const code = error?.cause?.code;

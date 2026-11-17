@@ -94,6 +94,22 @@ def main():
                         diagnostic[key] = value
                 if failed.get('network') in ['dns', 'connect', 'timeout', 'tls', 'other']:
                     diagnostic['network'] = failed['network']
+                provider_error = failed.get('providerError')
+                if isinstance(provider_error, dict):
+                    allowed_fields = {
+                        'type': ['invalid_request_error', 'server_error', 'rate_limit_error'],
+                        'code': ['invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded'],
+                        'parameter': ['input', 'tools', 'instructions', 'model', 'previous_response_id'],
+                        'reason': ['missing-tool-output', 'orphan-tool-output', 'duplicate-item', 'context-limit', 'tool-schema', 'encrypted-content'],
+                    }
+                    diagnostic['providerError'] = {key: provider_error.get(key) if provider_error.get(key) in allowed else 'other'
+                        for key, allowed in allowed_fields.items()}
+                shape = failed.get('requestShape')
+                if isinstance(shape, dict):
+                    diagnostic['requestShape'] = {key: value for key in ['inputItems', 'messageItems', 'toolDeclarations', 'instructionLength', 'toolCalls', 'toolResults']
+                        if type(value := shape.get(key)) is int and 0 <= value <= 10000000}
+                    if type(shape.get('toolBindingsMatch')) is bool:
+                        diagnostic['requestShape']['toolBindingsMatch'] = shape['toolBindingsMatch']
             except (ValueError, AttributeError):
                 pass
             (records / f'{index:04d}-error.json').write_text(json.dumps(diagnostic), encoding='utf-8')

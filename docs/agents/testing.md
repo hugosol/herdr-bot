@@ -186,6 +186,8 @@ python scripts/accept-node-approval-v2.py --herdr-bot-worktree "$HERDR_BOT_WT" -
 
 已明确授权只读 auth 文件时，使用既有 `scripts/accept-workflow-codex.py --scenario node-approval-v2 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先以另一个新证据目录加 `--smoke` 核对实际 `serverModel=gpt-6-luna`。这仅是该传输的授权模型边界，不是产品限制；不复制、刷新或修改认证。临时 worktree 的历史 baseline 依赖可按 toolkit 指引显式设置 `OMP_BASELINE_RECORD_ROOT`，不改 baseline 或锁文件。
 
+Codex 非成功响应仅记录固定错误类别和请求形状（数量、长度及工具调用／结果匹配布尔），不保存不可信错误正文、任意 code／param 或请求正文；分类不改变单次 POST、终止失败和禁止补发的语义。两个宿主可分别使用新独占 transport，避免一个终止失败掩盖另一宿主的独立诊断；单宿主结果不构成整票通过。
+
 专项以发布 `create-task-v2.json` 及其真实两节点 `create-bot-v2.json` 独占副本运行，保留业务提示词、Skill、Suite、拓扑和专用 V2 authorization／confirmation 材料；只重定位物理 zone、契约地址和显式模型／宿主。两个宿主分别真实创建只读 CSV Task 与完整 Bot，三个人工职责观察原生完整问题、选中 Yes、真实 true 返回；子管理者 finish 后独立执行父层自动批准。原生历史、真实模型请求／返回身份、工具与透传 HTTP、命名材料字节、实际配置／revision、显式 complete／finish、独立 Run 身份及 V1 原定义未改证据均归档。批准、最新可交接报告及声明交付分别核对，不以批准替代完成条件。
 
 `node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、最终冻结模式／批准来源／报告与独立 HTTP 读回交叉核对，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 51 秒单调窗口覆盖既有 20 秒确认＋30 秒 HTTP 预算及余量，不改变产品策略。

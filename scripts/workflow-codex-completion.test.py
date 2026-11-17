@@ -95,6 +95,45 @@ globalThis.fetch = async (url, options) => {
                 [('call_prior', 'REJECTED: finish required')])
             self.assertEqual(auth.read_bytes(), original)
 
+    def test_provider_rejection_has_fixed_diagnostics_without_secret_or_request_values(self):
+        # Oracle: literal SDK HTTP failure; a provider can put secrets even in
+        # nominal error codes/parameters. Only fixed categories and shape pass.
+        package = Path(os.environ['WORKFLOW_PI_PACKAGE'])
+        with tempfile.TemporaryDirectory(prefix='codex-error-shape-') as directory:
+            root = Path(directory)
+            auth = root / 'auth.json'
+            encoded = base64.urlsafe_b64encode(json.dumps({'https://api.openai.com/auth':
+                {'chatgpt_account_id': 'owned-account'}}).encode()).decode().rstrip('=')
+            original = json.dumps({'openai-codex': {'type': 'oauth', 'access': 'e30.' + encoded + '.test',
+                'refresh': 'SECRET-REFRESH', 'expires': time.time() * 1000 + 3600000}}).encode()
+            auth.write_bytes(original)
+            capture = root / 'attempts.txt'
+            preload = root / 'rejected-provider.mjs'
+            preload.write_text('import ' + json.dumps((package / 'dist/core/http-dispatcher.js').as_uri()) + ';\n'
+                + 'import {appendFileSync} from "node:fs";\n'
+                + 'globalThis.fetch = async () => { appendFileSync(' + json.dumps(str(capture)) + ', "POST\\n");'
+                + 'return new Response(JSON.stringify({error:{type:"SECRET-TYPE",code:"SECRET-CODE",'
+                + 'param:"SECRET-PARAM",message:"No tool output found for function call SECRET-CALL"}}),'
+                + '{status:400,headers:{"content-type":"application/json"}}); };', encoding='utf-8')
+            request = {'model': 'gpt-6-luna', 'messages': [{'role': 'user', 'content': 'SECRET-PROMPT'}]}
+            result = subprocess.run(['node', str(REPO / 'scripts/workflow-codex-completion.mjs'),
+                '--pi-package', str(package), '--auth-file', str(auth), '--model', 'gpt-6-luna', '--timeout', '10'],
+                input=json.dumps({'request': request}), text=True, encoding='utf-8', capture_output=True,
+                timeout=20, cwd=REPO, env=dict(os.environ, NODE_OPTIONS='--import=' + preload.as_uri()))
+            self.assertNotEqual(result.returncode, 0)
+            actual = json.loads(result.stdout)
+            self.assertEqual(actual['error'], 'provider-error')
+            self.assertEqual(actual['requests'], 1)
+            self.assertEqual(actual['httpStatus'], 400)
+            self.assertEqual(actual['providerError'], {'type': 'other', 'code': 'other', 'parameter': 'other',
+                'reason': 'missing-tool-output'})
+            self.assertEqual(actual['requestShape']['toolCalls'], 0)
+            self.assertEqual(actual['requestShape']['toolResults'], 0)
+            self.assertTrue(actual['requestShape']['toolBindingsMatch'])
+            self.assertEqual(capture.read_text(), 'POST\n')
+            self.assertNotIn('SECRET', result.stdout + result.stderr)
+            self.assertEqual(auth.read_bytes(), original)
+
     def test_expired_oauth_is_rejected_without_mutating_or_exposing_credentials(self):
         package = os.environ['WORKFLOW_PI_PACKAGE']
         with tempfile.TemporaryDirectory(prefix='codex-expired-auth-') as directory:
