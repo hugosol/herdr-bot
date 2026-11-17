@@ -56,7 +56,7 @@ export default async function script(context: Context) {
       }
       if (invalidSource || !handoff.sources.some(source => source.direction === "input" && source.role === "baseline") || !handoff.sources.some(source => source.direction === "output" && source.role === "text") || [...handoff.constraints, ...handoff.unverified].some(item => !item)) fail("validate", "invalid-format", "指南来源或限制格式无效；不沿来源索引寻址。");
       const digest = createHash("sha256").update(text, "utf8").digest("hex");
-      if (!confirmation.evidence || !confirmation.full_text || !confirmation.semantics_preserved || confirmation.text_sha256 !== digest || (!specification.authorization.save_guides && !confirmation.save_authorized)) fail("validate", "authorization-required", "确认必须覆盖本字段最终原样 bytes、保义及保存授权。");
+      if (!confirmation.evidence || !confirmation.full_text || !confirmation.semantics_preserved || confirmation.text_sha256 !== digest || !confirmation.save_authorized) fail("validate", "authorization-required", "确认必须覆盖本字段最终原样 bytes、保义及保存授权。");
       candidate[field] = text;
       evidence.push(confirmation.evidence);
       unverified.push(...handoff.unverified);

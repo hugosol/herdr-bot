@@ -102,6 +102,7 @@ async fn migrated_workflow(fault: Option<&str>) {
         // archive; the creation migration must preserve its current preset.
         if original["id"] == "task-retro" { expected["model"] = json!("gpt-6-astra"); }
         assert_eq!(tasks["tasks"].as_array().unwrap().iter().find(|t| t["id"] == original["id"]), Some(&expected), "Unrelated Task changed");
+
     }
     let old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
     let new_wrapper = source("meta-data/workflow-maps/create-bot-wrapper.json");
@@ -154,7 +155,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     fs::write(s.config.scheduler.map_directory.join("create-bot-wrapper.json"), definition.to_string()).unwrap();
     let target = api(&s, "/api/tasks", json!({"name":"Literal isolated target","taskType":"normal","agent":"pi","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":"Read only; no execution authorized."}), 200).await;
     let target = target["tasks"].as_array().unwrap().iter().find(|t| t["name"] == "Literal isolated target").unwrap().clone();
-    let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":target["id"]},"bot":{"id":"migration-result","name":"Literal migrated Bot"},"requirements":"Read only invoice differences","constraints":["Do not execute target"],"non_goals":[],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"scope":"create_blank","evidence":"Explicit isolated user request authorizes creation and material writing"}});
+    let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":target["id"]},"bot":{"id":"migration-result","name":"Literal migrated Bot"},"requirements":"Read only invoice differences","constraints":["Do not execute target"],"non_goals":[],"resource_limits":[]});
     let request_path = s.data.path().join("request.json");
     let mut delivered_request = request.clone();
     if fault == Some("request-missing") { delivered_request.as_object_mut().unwrap().remove("requirements"); }

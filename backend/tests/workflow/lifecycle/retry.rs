@@ -352,7 +352,7 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
     assert_eq!(new["autoApproved"], true);
     assert_eq!(new["approved"], false);
-    assert!(new["approvalSource"].is_null());
+    assert_eq!(new["approvalSource"], Value::Null);
     let launch = calls.iter().filter(|c| c["kind"] == "agent_start").nth(2).unwrap();
     assert_eq!(&launch["args"].as_array().unwrap()[..4], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!("high")]);
     let native = common::read_json_lines(&s.herdr.path().join("started.jsonl")).pop().unwrap();

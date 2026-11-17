@@ -74,7 +74,7 @@ impl Fixture {
     }
     fn native(&self, id: &str) { self.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":id},"native_cwd":self.data.path(),"consume_named_json":true})); }
     fn input(&self, index: usize) {
-        fs::write(self.data.path().join("request.json"), json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":self.targets[index]["id"]},"bot":{"id":format!("created-{index}"),"name":format!("Created {index}")},"requirements":"Read only","constraints":[],"non_goals":[],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"scope":"create_blank","evidence":"Explicit isolated creation authorization"}}).to_string()).unwrap();
+        fs::write(self.data.path().join("request.json"), json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":self.targets[index]["id"]},"bot":{"id":format!("created-{index}"),"name":format!("Created {index}")},"requirements":"Read only","constraints":[],"non_goals":[],"resource_limits":[]}).to_string()).unwrap();
     }
     async fn start(&self, manager: &str) -> Value {
         self.native(manager);
