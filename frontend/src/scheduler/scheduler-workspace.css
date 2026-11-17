@@ -61,7 +61,7 @@
 .scheduler-workspace .scheduler-graph-viewport { height: 300px; border: 0; border-radius: 0; background: var(--scheduler-ground); }
 .scheduler-workspace .scheduler-node { background: var(--scheduler-surface); border-color: var(--scheduler-line); }
 .scheduler-workspace .scheduler-node[aria-pressed="true"] { background: var(--nier-info-bg); border-color: var(--scheduler-accent); }
-.scheduler-workspace .scheduler-node[data-auto-approved="false"] { background: transparent; border-color: transparent; }
+.scheduler-workspace .scheduler-node[data-approval-mode="manual"] { background: transparent; border-color: transparent; }
 .scheduler-workspace .scheduler-reading { display: contents; }
 .scheduler-workspace .scheduler-outline { grid-column: 1; padding: 20px 16px; border: 0; }
 .scheduler-workspace .scheduler-section-heading h4 { font-size: 14px; }
@@ -90,9 +90,9 @@
 .scheduler-workspace .scheduler-setting-label { color: var(--nier-detail-label); font-size: 13px; }
 .scheduler-workspace .scheduler-state-mark { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 0; background: var(--scheduler-line); font-size: 14px; }
 .scheduler-workspace .scheduler-state-mark small { font: 12px/1.5 var(--nier-code-font); font-weight: 400; }
-.scheduler-workspace [data-auto-approved="true"] .scheduler-state-mark,
+.scheduler-workspace [data-policy="auto"] .scheduler-state-mark,
 .scheduler-workspace [data-auto-close="true"] .scheduler-state-mark { background: var(--nier-warning-bg); color: var(--scheduler-warning); }
-.scheduler-workspace [data-auto-approved="false"] .scheduler-state-mark { background: var(--nier-info-bg); color: var(--nier-info); }
+.scheduler-workspace [data-policy="manual"] .scheduler-state-mark { background: var(--nier-info-bg); color: var(--nier-info); }
 .scheduler-workspace .scheduler-zone-setting { grid-column: 1 / -1; }
 .scheduler-workspace .scheduler-node-relations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .scheduler-workspace .scheduler-node-relations > section { min-width: 0; }

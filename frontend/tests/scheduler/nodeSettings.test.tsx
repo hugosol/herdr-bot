@@ -9,15 +9,6 @@ function Editor() {
 }
 
 describe('node zone editor', () => {
-  it('switches approval mode using booleans without changing zone or auto-close', () => {
-    render(<Editor />)
-    expect(screen.getByRole('radio', { name: '手动批准（false）' })).toBeChecked()
-    fireEvent.click(screen.getByRole('radio', { name: '自动批准（true）' }))
-    expect(JSON.parse(screen.getByLabelText('settings payload').textContent!)).toEqual({ zone: 'team/preset', auto_approved: true, auto_close: true })
-    fireEvent.click(screen.getByRole('radio', { name: '手动批准（false）' }))
-    expect(JSON.parse(screen.getByLabelText('settings payload').textContent!)).toEqual({ zone: 'team/preset', auto_approved: false, auto_close: true })
-  })
-
   it('switches to a preset-free dynamic declaration and never restores a discarded fixed ID', () => {
     render(<Editor />)
     expect(screen.getByRole('radio', { name: '固定 zone' })).toBeChecked()
@@ -35,16 +26,16 @@ describe('node zone editor', () => {
     render(<Editor />)
     fireEvent.click(screen.getByRole('checkbox', { name: 'end_node' }))
     expect(screen.queryByRole('checkbox', { name: 'auto_close' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: '手动批准（false）' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'manual' })).not.toBeInTheDocument()
     expect(JSON.parse(screen.getByLabelText('settings payload').textContent!)).toEqual({ zone: 'team/preset', auto_approved: false, auto_close: true, end_node: true })
     fireEvent.click(screen.getByRole('checkbox', { name: 'end_node' }))
     expect(screen.getByRole('checkbox', { name: 'auto_close' })).toBeChecked()
-    expect(screen.getByRole('radio', { name: '手动批准（false）' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'manual' })).toBeChecked()
   })
 
   it('disables an ineligible end-node choice but allows explicitly removing an invalid saved flag', () => {
     const onChange = () => {}
-    const value = { zone: '', auto_approved: true, auto_close: false }
+    const value = { zone: '', auto_approved: true as const, auto_close: false }
     const view = render(<NodeSettings value={value} disabled={false} endNodeProblem="不允许脚本" onChange={onChange} />)
     expect(screen.getByRole('checkbox', { name: 'end_node' })).toBeDisabled()
     view.rerender(<NodeSettings value={{ ...value, end_node: true }} disabled={false} endNodeProblem="不允许脚本" onChange={onChange} />)

@@ -22,7 +22,7 @@ async fn read_run(s: &Scenario, id: &Value) -> Value {
 }
 async fn setup(s: &Scenario) {
     // Maps are files; Bot creation and node editing use their public API.
-    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"inside":{"title":"Internal work","bot_id":"worker","input":"INTERNAL","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
+    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"inside":{"title":"Internal work","bot_id":"worker","input":"INTERNAL","zone":"node","blocked_by":[],"output_rule":[]}}}).to_string()).unwrap();
     request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{}}).to_string()).unwrap();
     for (id, content) in [
@@ -33,6 +33,69 @@ async fn setup(s: &Scenario) {
         assert_eq!(response.status, 200, "{}", response.body);
         let draft: Value = serde_json::from_str(&response.body).unwrap();
         request(s, "/api/scheduler/maps/work.json/nodes/save", json!({"id":id,"content":content.to_string(),"revision":draft["revision"],"create":true}), 200).await;
+    }
+}
+
+// P28/P29, S1 HTTP seam: independently finishing real internal work must not
+// approve the parent. A plausible violation accepts parent approval before
+// child finish, or copies the child's approved fact into its parent execution.
+// Both frozen parent modes must reject early approval and still require their
+// own approval, ready report and explicit parent-manager completion.
+#[tokio::test]
+async fn parent_approval_requires_finished_child_and_independent_frozen_mode() {
+    for auto in [true, false] {
+        let s = Scenario::new().await;
+        setup(&s).await;
+        let path = s.config.scheduler.map_directory.join("work.json");
+        let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        map["nodes"]["call"]["auto_approved"] = json!(auto);
+        map["nodes"]["call"]["output_rule"] = json!([]);
+        map["nodes"]["consumer"]["input_rule"] = json!([]);
+        fs::write(&path, map.to_string()).unwrap();
+        let root = s.start("approval-root").await;
+        native(&s, "approval-child");
+        let launched = s.dispatch("approval-root", &["call"]).await;
+        let execution = launched["snapshot"]["nodes"]["call"]["execution"].clone();
+        let source = if auto { "auto" } else { "manual" };
+        let approval = json!({"sessionId":"approval-child","executionId":execution["id"],"source":source});
+        let context = request(&s, "/api/workflow/node/context", json!({"sessionId":"approval-child"}), 200).await;
+        assert_eq!(context, json!({"runId":root["id"],"nodeId":"call","executionId":execution["id"],"autoApproved":auto,"approved":false,"approvalSource":null}));
+        let calls = s.herdr.calls();
+        let rejected = request(&s, "/api/workflow/node/approve", approval.clone(), 400).await;
+        assert_eq!(rejected["code"], "child-run-not-finished");
+        assert_eq!(s.herdr.calls(), calls);
+        native(&s, "approval-inside");
+        s.dispatch("approval-child", &["inside"]).await;
+        approve_execution(&s, "approval-inside").await;
+        submit_report(&s, "approval-inside", "Internal work delivered", true).await;
+        action(&s, "approval-child", "complete", json!({"nodeId":"inside","reason":"Accept internal work"}), 200).await;
+        assert_eq!(request(&s, "/api/workflow/node/approve", approval.clone(), 400).await["code"], "child-run-not-finished");
+        action(&s, "approval-child", "finish", json!({}), 200).await;
+        let child_before = read_run(&s, &execution["childRunId"]).await;
+        assert_eq!(child_before["run"]["nodes"]["inside"]["execution"]["approved"], true);
+        assert_eq!(read_run(&s, &root["id"]).await["run"]["nodes"]["call"]["execution"]["approved"], false);
+        request(&s, "/api/workflow/node/report", json!({"sessionId":"approval-child","body":"Overall delivery","canComplete":true}), 200).await;
+        assert_eq!(action(&s, "approval-root", "complete", json!({"nodeId":"call","reason":"Internal approval cannot replace overall approval"}), 409).await["code"], "node-not-approved");
+        // Editing the live definition must not select a new parent mode.
+        map["nodes"]["call"]["auto_approved"] = json!(!auto);
+        fs::write(&path, map.to_string()).unwrap();
+        let mut wrong = approval.clone();
+        wrong["source"] = json!(if auto { "manual" } else { "auto" });
+        assert_eq!(request(&s, "/api/workflow/node/approve", wrong, 400).await["code"], "approval-source-mismatch");
+        let calls = s.herdr.calls();
+        let approved = request(&s, "/api/workflow/node/approve", approval, 200).await;
+        assert_eq!(approved["runId"], root["id"]);
+        assert_eq!(approved["executionId"], execution["id"]);
+        assert_eq!(approved["approvalSource"], source);
+        assert_eq!(s.herdr.calls(), calls);
+        assert_eq!(read_run(&s, &execution["childRunId"]).await, child_before);
+        let parent = read_run(&s, &root["id"]).await;
+        assert_eq!(parent["run"]["nodes"]["call"]["status"], "running");
+        assert_eq!(parent["run"]["nodes"]["consumer"]["status"], "pending");
+        let completed = action(&s, "approval-root", "complete", json!({"nodeId":"call","reason":"Accept overall delivery"}), 200).await;
+        assert_eq!(completed["snapshot"]["nodes"]["call"]["status"], "completed");
+        println!("P28/P29 S1 mode={source} parent={} execution={} child={} internalApproved=true parentInitiallyApproved=false overallApproved=true parentCompleted=true", root["id"], execution["id"], execution["childRunId"]);
+        wait_for_close(&s).await;
     }
 }
 
@@ -54,9 +117,8 @@ async fn nested_completion_requires_explicit_child_finish_before_ready_report() 
     assert_eq!(read_run(&s, &root["id"]).await["reports"], json!([]));
     let progress = request(&s, "/api/workflow/node/report", json!({"sessionId":"finish-child","body":"Progress only","canComplete":false}), 200).await;
     assert_eq!(progress["report"]["runId"], root["id"]);
-    approve_execution(&s, "finish-child").await;
     let rejected = action(&s, "finish-root", "complete", json!({"nodeId":"call","reason":"Progress is insufficient"}), 409).await;
-    assert_eq!(rejected["code"], "report-not-completable");
+    assert_eq!(rejected["code"], "node-not-approved");
     native(&s, "finish-inside");
     s.dispatch("finish-child", &["inside"]).await;
     // Chief ticket 01: the internal node still notifies its own manager,
@@ -167,9 +229,10 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     wait_for_close(&s).await;
 }
 
-// P19: a previous child delivered the required file; its replacement finishes
-// without outputs. Completion and dependent dispatch reject rather than inherit
-// that old file or invent an address. Finish never requires all output IDs.
+// A previous child delivered a required file; its replacement finishes
+// without outputs. Overall approval does not inherit old deliveries: parent
+// complete must reject the missing current output, leaving consumers blocked.
+// Child finish itself still never requires parent output IDs.
 #[tokio::test]
 async fn finished_child_without_current_output_cannot_reuse_previous_delivery() {
     let s = Scenario::new().await;
@@ -193,12 +256,11 @@ async fn finished_child_without_current_output_cannot_reuse_previous_delivery() 
     finish_child(&s, "missing-new-child", "missing-new-inside").await;
     request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-new-child","body":"Finished with explicit limitation","canComplete":true}), 200).await;
     approve_execution(&s, "missing-new-child").await;
-    let denied = action(&s, "missing-root", "complete", json!({"nodeId":"call","reason":"Old delivery cannot satisfy current execution"}), 409).await;
+    let denied = action(&s, "missing-root", "complete", json!({"nodeId":"call","reason":"Old delivery cannot fill current requirements"}), 409).await;
     assert_eq!(denied["code"], "output-missing");
     let calls = s.herdr.calls();
     let rejected = s.dispatch("missing-root", &["consumer","missing-map"]).await;
-    for (index, id) in ["consumer","missing-map"].iter().enumerate() {
-        assert_eq!(rejected["results"][index]["status"], "rejected");
+    for id in ["consumer","missing-map"] {
         assert_eq!(rejected["snapshot"]["nodes"][id]["status"], "pending");
         assert!(rejected["snapshot"]["nodes"][id]["execution"].is_null());
     }
@@ -228,13 +290,16 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
     let launched = s.dispatch("notify-root", &["call"]).await;
     let execution = launched["snapshot"]["nodes"]["call"]["execution"].clone();
     finish_child(&s, "notify-child", "notify-inside").await;
+    approve_execution(&s, "notify-child").await;
+    let output = s.data.path().join("notify-delivery.txt");
+    fs::write(&output, "OVERALL-DELIVERY-837").unwrap();
     let child_before = read_run(&s, &execution["childRunId"]).await;
     let tabs_before = s.herdr.tabs();
     assert_eq!(tabs_before.len(), 3);
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
     s.herdr.set_behavior(json!({"fail_prompt":true}));
     let offset = s.herdr.calls().len();
-    let saved = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Saved despite real host rejection","canComplete":true}), 200).await;
+    let saved = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Saved despite real host rejection","canComplete":true,"outputs":[{"id":"result","path":output},{"id":"missing","path":output}]}), 200).await;
     assert_eq!(saved["saved"], true);
     assert_eq!(saved["notification"]["status"], "failed");
     assert!(saved["notification"]["reason"].as_str().is_some_and(|reason| !reason.is_empty()));
@@ -252,13 +317,10 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
     assert_eq!(s.herdr.tabs(), tabs_before);
     s.herdr.set_behavior(json!({}));
     request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Acceptance withdrawn","canComplete":false}), 200).await;
-    approve_execution(&s, "notify-child").await;
     let denied = action(&s, "notify-root", "complete", json!({"nodeId":"call","reason":"Must consult newest report"}), 409).await;
     assert_eq!(denied["code"], "report-not-completable");
     assert_eq!(s.herdr.tabs(), tabs_before);
-    let delivery = s.data.path().join("notify-result.txt");
-    fs::write(&delivery, "Verified child result after notification failure").unwrap();
-    let newest = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Ready again","canComplete":true,"outputs":[{"id":"result","path":delivery},{"id":"missing","path":delivery}]}), 200).await;
+    let newest = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Ready again","canComplete":true}), 200).await;
     let accepted = action(&s, "notify-root", "complete", json!({"nodeId":"call","reason":"Explicit business acceptance"}), 200).await;
     assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");
     wait_for_close(&s).await;
@@ -297,11 +359,12 @@ async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report
     let finished = action(&s, "end-child", "finish", json!({}), 200).await;
     assert_eq!(finished["snapshot"]["finished"]["reason"], "handed-to-user");
     assert_eq!(finished["snapshot"]["nodes"]["inside"]["status"], "running");
+    assert_eq!(action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No overall approval yet"}), 409).await["code"], "node-not-approved");
     approve_execution(&s, "end-child").await;
-    action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No report yet"}), 409).await;
-    let delivery = s.data.path().join("end-result.txt");
-    fs::write(&delivery, "Explicit child handoff to user").unwrap();
-    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true,"outputs":[{"id":"result","path":delivery},{"id":"missing","path":delivery}]}), 200).await;
+    assert_eq!(action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No report yet"}), 409).await["code"], "report-not-completable");
+    let output = s.data.path().join("end-delivery.txt");
+    fs::write(&output, "END-HANDOFF-482").unwrap();
+    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true,"outputs":[{"id":"result","path":output},{"id":"missing","path":output}]}), 200).await;
     assert_eq!(report["report"]["nodeId"], "call");
     let accepted = action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"Accepted child handoff"}), 200).await;
     assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");

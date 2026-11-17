@@ -121,16 +121,15 @@ async fn interleaved_nested_reports_isolate_pending_completion_and_actual_consum
     native(&s, "p30-new");
     let retry = action(&s, "p30-root", "retry", json!({"nodeId":"A","confirmed":true,"reason":"Inspected old child and effects; replace independently"}), 200).await;
     let current = retry["snapshot"]["nodes"]["A"]["execution"].clone();
-    approve_execution(&s, "p30-new").await;
     let late = report(&s, "p30-old", true, old_outputs.clone()).await;
     let status = action(&s, "p30-root", "status", json!({}), 200).await;
     assert!(status["pendingReports"].get("A").is_none());
-    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Old true must not qualify"}), 409).await["code"], "report-not-completable");
+    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Old true must not qualify"}), 409).await["code"], "node-not-approved");
     let progress = report(&s, "p30-new", false, json!([])).await;
     let later = report(&s, "p30-old", true, old_outputs.clone()).await;
     let collect = action(&s, "p30-root", "collect", json!({}), 200).await;
     assert_eq!(collect["pendingReports"]["A"], progress["id"]);
-    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Current false overrides old true"}), 409).await["code"], "report-not-completable");
+    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Current false overrides old true"}), 409).await["code"], "node-not-approved");
     // Same node/output names in a different Run and in the current child may
     // not supply the parent's missing output.
     let other = s.start("p30-other-root").await;
@@ -138,20 +137,20 @@ async fn interleaved_nested_reports_isolate_pending_completion_and_actual_consum
     s.dispatch("p30-other-root", &["A"]).await;
     report(&s, "p30-other-child", false, json!([{"id":"missing","path":decoy}])).await;
     finish_child(&s, "p30-new", "p30-new-worker", json!([{"id":"result","path":decoy},{"id":"missing","path":decoy}])).await;
+    approve_execution(&s, "p30-new").await;
+    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Current false overrides old true after approval too"}), 409).await["code"], "report-not-completable");
     let ready = report(&s, "p30-new", true, json!([{"id":"result","path":new_file}])).await;
     let last = report(&s, "p30-old", true, old_outputs).await;
     let collect = action(&s, "p30-root", "collect", json!({}), 200).await;
     assert_eq!(collect["pendingReports"]["A"], ready["id"]);
-    let denied = action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Child and old outputs cannot satisfy parent"}), 409).await;
-    assert_eq!(denied["code"], "output-missing");
+    assert_eq!(action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Foreign and old outputs cannot fill current requirements"}), 409).await["code"], "output-missing");
     let calls = s.herdr.calls();
-    let blocked = s.dispatch("p30-root", &["missing"]).await;
-    assert_eq!(blocked["results"][0]["status"], "rejected");
-    assert_eq!(blocked["snapshot"]["nodes"]["missing"]["status"], "pending");
-    assert!(blocked["snapshot"]["nodes"]["missing"]["execution"].is_null());
+    let denied = s.dispatch("p30-root", &["missing"]).await;
+    assert_eq!(denied["snapshot"]["nodes"]["missing"]["status"], "pending");
+    assert!(denied["snapshot"]["nodes"]["missing"]["execution"].is_null());
     assert_eq!(s.herdr.calls(), calls);
-    let repaired = report(&s, "p30-new", true, json!([{"id":"missing","path":new_file}])).await;
-    action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Accept only current execution complete delivery"}), 200).await;
+    let supplied = report(&s, "p30-new", true, json!([{"id":"missing","path":new_file}])).await;
+    action(&s, "p30-root", "complete", json!({"nodeId":"A","reason":"Accept new execution with its own deliveries"}), 200).await;
     native(&s, "p30-consumer");
     let consumed = s.dispatch("p30-root", &["consumer"]).await;
     let inputs = &consumed["snapshot"]["nodes"]["consumer"]["execution"]["inputs"];
@@ -159,7 +158,7 @@ async fn interleaved_nested_reports_isolate_pending_completion_and_actual_consum
     let text = input_resolution::initial_input(&s);
     assert_eq!(input_resolution::named_input(&text), format!("material: {}\n", new_file.display()));
     assert_eq!(fs::read_to_string(inputs[0]["path"].as_str().unwrap()).unwrap(), "NEW-829");
-    let expected = vec![first, late, progress, later, ready, last, repaired];
+    let expected = vec![first, late, progress, later, ready, last, supplied];
     let reports = common::read_json_lines(&s.config.scheduler.run_directory.join(root["id"].as_str().unwrap()).join("messages.jsonl"));
     assert_eq!(reports, expected);
     for index in [0, 1, 3, 5] { assert_eq!(reports[index]["executionId"], old["id"]); }

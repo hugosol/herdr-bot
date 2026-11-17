@@ -53,8 +53,7 @@
 - `target_round_trips`：固定目标互斥、未知能力拒绝及拒绝后原定义不变。
 - `dispatch_writes`／`map_target`：normal Task 与完整真实 Map 目标、新 Bot 三空指南、真实 revision／baseline、独立 handoff、报告归属；实际派发下游受控宿主进程读取两份命名 JSON，内容和完整公开对象交叉核对。
 - `returns_while`：真实 Windows oplock 暂挂业务目标读取，门闩仍持有时独立取得 HTTP dispatch 返回、running lifecycle、无报告和首次 complete 拒绝；改写 node.input／当前规则后仍用已冻结 inputs／inputRule／outputRule。
-- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、旧 authorization／confirmation 与改名 approved 拒绝、bot／target 字段归属、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。`dispatch_writes` 的独立新 request 不含批准凭据，真实 Bun 完成创建并比较完整 baseline／created handoff；handoff 也不含确认凭据。共享新 request／baseline／target 归属见共同业务材料契约，保存材料与发布节点各自独立迁移。
-- `write_readback_and_material_failures`／`refuses_binding`：真实文件阻塞合法 Bot 保存、两个实际文件门闩制造保存后目标读回失败、材料父目录阻塞／同名文件碰撞，以及真实运行 Map 的禁写；核对部分效果，不回滚或提交 true。
+- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、旧 authorization／confirmation 与改名 approved 拒绝、bot／target 字段归属、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。`dispatch_writes` 的独立新 request 不含批准凭据，真实 Bun 完成创建并比较完整 baseline／created handoff；handoff 也不含确认凭据。共享新 request／baseline／target 归属见共同业务材料契约，保存材料与发布节点各自独立迁移。- `write_readback_and_material_failures`／`refuses_binding`：真实文件阻塞合法 Bot 保存、两个实际文件门闩制造保存后目标读回失败、材料父目录阻塞／同名文件碰撞，以及真实运行 Map 的禁写；核对部分效果，不回滚或提交 true。
 - `report_provenance`／`enforces_automatic_policy`：报告来源／execution／Run 一致性，拒绝伪造来源、manual／关闭／manager Task 策略及未声明交付 ID。原 `report_outputs` 回归继续通过同一报告保存实现覆盖未声明／重复 ID、执行级更新与隔离。
 
 每例独占临时定义、zone、Run、文件和数值回环服务；外部 Herdr 为记录型测试宿主，非真实 manager／模型。门闩进入预算 5 秒、业务在途派发返回预算 2 秒、自动报告观察预算 10 秒；结束前等待所属通知 CLI 退出再清理独占根。stdout 保留实际成功 Run／execution／report、baseline／revision、消费者读取对象和拒绝分类，完整入口日志归自身输出目录。通过不证明 S2 原生工具／S3 页面或 H1 人工验收；这些仍按各自分区交付。
@@ -107,6 +106,20 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 通过公开 HTTP、真实独占 Run／定义和记录型 Herdr 验证派发未批准、两种模式的无报告／无产物批准、report-only／approve-only 正交、批准无外部通知或推进、已有报告未批准的 complete 拒绝，以及批准后无报告／最新 false／缺约定交付的独立拒绝。stdout 保留运行事实与真实外部调用；人工 HTTP 只证明后端提交，不冒充 OMP／Pi 原生 Yes。P1 选择器为 `report_policy::map_auto_approved_defaults_round_trips_and_rejects_invalid_saves_without_writing`（保留现有 module 名，不保留旧协议）；P30 沿用 `end_node::`，检查结束节点无伪批准且仍可显式 finish。
 
 报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立普通节点批准前提；不在 report 或 dispatch 夹具中静默补批准。脚本仅在本次成功执行并通过结果／输出校验后记录自动批准，失败不补批准；后续不可交接报告不撤销既有批准，但仍阻止 complete。脚本报告隔离回归同时检查旧 execution、其他 node／Run 的交付不能补齐当前执行的约定输出；缺交付在 complete 处拒绝，当前执行实际登记后才可完成。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
+
+### 嵌套父节点整体批准（S1）
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion:: -- --nocapture` 的 `parent_approval_requires_finished_child_and_independent_frozen_mode` 通过实际父子 Run、实际内部节点批准／报告／complete／finish 验证 P28／P29：两种父模式均冻结，子 finish 前拒绝整体批准，内部批准不批准父 execution，整体批准无通知／推进，父 manager 仍须显式 complete。该组保留最新报告、输出增量／缺交付、通知失败、结束节点及精确关闭回归；缺当前约定输出现在应在父 complete 处拒绝，不再允许先完成再消费缺交付。
+
+P10 嵌套归属选择器为 `nesting::dual_role_routes_report_to_parent_and_management_to_child_without_selectors`、`nesting::retired_child_session_cannot_select_the_replacement_execution`、`nesting::invalid_nested_links_and_source_mismatches_are_rejected_without_effects`，验证子管理、父批准／外报分离、旧 execution 不可改指 retry、缺失／错误／多重／跨 Run 关联拒绝。`nested_retry::` 保留真实新旧子 Run、报告与材料隔离。测试仅使用公开 HTTP／定义与独占文件、记录型外部 Herdr；人工 source 只证明 S1 后端规则，不证明 OMP／Pi 原生 Yes，后者由对应原生验收拥有。完成仍分别执行本页完整后端／前端／浏览器入口。
+
+### 成果批准 Map／Run 页面（S3）
+
+`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 的 `P1 P3 P5` 场景经真实打包页面保存并重开省略默认、显式自动与人工模式，独立 HTTP 读回定义。`P3 P36` 场景从真实公开发起／派发、Map 页面改模式、批准、fail／retry 到再次批准与报告／complete，分别检查当前定义、冻结模式、旧／新执行及 auto／manual 来源；HTTP 人工提交只证明页面显示保存来源，不冒充原生 Yes。每阶段保存截图、公开 Map／Run JSON 与外部调用前后记录；刷新与观察不产生业务调用。
+
+`scriptDefinitions.spec.ts` 保留脚本只能自动、冲突草稿拒绝后显式修正、保存冲突与草稿保护；`workflowScripts.spec.ts` 检查实际 Bun 文件业务在途／成功／失败的批准事实与报告；`endNode.spec.ts` 检查批准不适用、不伪造 approved 与无节点批准等待。既有报告、累计输出、执行历史、自动关闭和隔离回归保留有效职责，不再测试旧报告发送确认开关。浏览器后端的 HOME／APPDATA／XDG 与原生状态目录位于各例独占根，清理须等待所属进程退出。
+
+定向选择器为 `npm --prefix frontend run test:browser:build -- nodeSettings.spec.ts scriptDefinitions.spec.ts workflowScripts.spec.ts endNode.spec.ts --workers=1`。完成检查仍为完整后端、前端及浏览器三个入口；保留 Playwright test-results 证据。受控 Herdr 只证明外部协议与页面机制，没有原生模型业务或确认授权证明。
 
 ### 批准持久化、失败与执行隔离（S1）
 

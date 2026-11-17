@@ -39,20 +39,6 @@ describe('Map input preparation contract', () => {
   })
 })
 
-describe('node approval schema boundary', () => {
-  it.each([true, false])('retains a strict boolean approval mode: %j', async auto_approved => {
-    responseWith({ auto_approved })
-    expect((await loadMap('map.json')).nodes.B.auto_approved).toBe(auto_approved)
-    expect((await saveNode('map.json', draft)).nodes.B.auto_approved).toBe(auto_approved)
-  })
-
-  it.each([null, 'true', 'false', 'auto', 'manual', 0, 1, [], {}])('rejects a non-boolean approval mode: %j', async auto_approved => {
-    responseWith({ auto_approved })
-    await expect(loadMap('map.json')).rejects.toThrow()
-    await expect(saveNode('map.json', draft)).rejects.toThrow()
-  })
-})
-
 describe('node zone schema boundary', () => {
   it.each(['team/work', { type: 'dynamic' }])('loads and confirms the exact zone representation: %j', async zone => {
     responseWith({ zone, auto_approved: false, auto_close: true })
