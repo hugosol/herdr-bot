@@ -60,23 +60,13 @@
         {"type": "object", "additionalProperties": false, "required": ["type", "map_file"], "properties": {"type": {"const": "map"}, "map_file": {"type": "string", "pattern": "^[^/\\\\]+\\.json$"}}}
       ]
     },
-    "authorization": {
-      "type": "object", "additionalProperties": false,
-      "required": ["create_blank", "write_materials", "save_guides"],
-      "properties": {"create_blank": {"const": true}, "write_materials": {"const": true}, "save_guides": {"type": "boolean"}}
-    },
-    "creation_confirmation": {
-      "type": "object", "additionalProperties": false, "required": ["evidence", "scope"],
-      "properties": {"evidence": {"$ref": "#/$defs/nonempty"}, "scope": {"const": "create_blank"}}
-    },
     "request": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "kind", "target", "requirements", "constraints", "non_goals", "resource_limits", "authorization", "confirmation"],
+      "required": ["schema_version", "kind", "target", "requirements", "constraints", "non_goals", "resource_limits"],
       "properties": {
         "schema_version": {"const": 1}, "kind": {"const": "request"}, "target": {"$ref": "#/$defs/create_target"},
         "bot": {"type": "object", "additionalProperties": false, "properties": {"id": {"$ref": "#/$defs/nonempty"}, "name": {"$ref": "#/$defs/nonempty"}, "group": {"type": "string", "pattern": "^\\S(?:[\\s\\S]*\\S)?$"}}},
-        "requirements": {"$ref": "#/$defs/nonempty"}, "constraints": {"$ref": "#/$defs/strings"}, "non_goals": {"$ref": "#/$defs/strings"}, "resource_limits": {"$ref": "#/$defs/strings"},
-        "authorization": {"$ref": "#/$defs/authorization"}, "confirmation": {"$ref": "#/$defs/creation_confirmation"}
+        "requirements": {"$ref": "#/$defs/nonempty"}, "constraints": {"$ref": "#/$defs/strings"}, "non_goals": {"$ref": "#/$defs/strings"}, "resource_limits": {"$ref": "#/$defs/strings"}
       }
     },
     "field": {"enum": ["when", "plan_guide", "node_guide"]},
@@ -99,7 +89,10 @@
     },
     "result_handoff": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "kind", "stage", "bot_id", "target", "sources", "confirmation_evidence", "checks", "unverified"],
+      "required": ["schema_version", "kind", "stage", "bot_id", "target", "sources", "checks", "unverified"],
+      "if": {"properties": {"stage": {"const": "saved"}}},
+      "then": {"required": ["confirmation_evidence"]},
+      "else": {"not": {"required": ["confirmation_evidence"]}},
       "properties": {
         "schema_version": {"const": 1}, "kind": {"const": "handoff"}, "stage": {"enum": ["created", "saved"]},
         "bot_id": {"$ref": "#/$defs/nonempty"}, "target": {"$ref": "#/$defs/create_target"}, "sources": {"$ref": "#/$defs/sources"},

@@ -19,12 +19,18 @@
 | bot | 可选对象，独立可选非空 `id`／`name`／合法 `group`；缺省 ID 为 `bot-`＋Task ID，或 `bot-map-`＋Map 文件名去最后 `.json`；缺省 name 为读取目标的 name／title，缺省无 group。ID 是身份不是路径，保存仍用服务生成文件名；冲突停止，不追加随机后缀、复用或覆盖 |
 | requirements | 必填非空字符串，本次已澄清需求；不是脚本可解释的自然语言程序 |
 | constraints／non_goals／resource_limits | 必填字符串数组，明确没有条目为 `[]`；只传递已决定约束，不做模型式意图推断 |
-| authorization | 必填 `{create_blank:true,write_materials:true,save_guides:boolean}`。分别表示本次空白创建、在本 Run 初始化材料位置安全新建材料、最终三字段保存的明确授权；不授权目录外写入、覆盖既有文件、修改目标或执行业务。save_guides=false 可先完成基线，后续须取得保存授权 |
-| confirmation | 必填 `{evidence:<非空出处及决定>,scope:"create_blank"}`；创建委托的证据，不是三字段全文确认、运行或报告发送批准 |
 | baseline | `$defs.baseline`；kind 为 `baseline`；必填 `bot`、`revision`、`target`、`request`。request 保存本次已核实完整 request，不另写第二份含糊需求 |
 | baseline.bot | 创建后公开完整读回的 Bot，包括 id、name、三指南、唯一 task_id／map_file、实际存在的 group；三个指南必须严格为 `""`，不绑定脚本，不复制目标配置进 Bot |
 | revision | 必填 `{file:string,original:string}`，逐字取自真实 `POST /api/scheduler/bots/edit` 的 revision，original 是含 id 的完整原始 JSON **字符串**；不是 counter、时间戳、hash 或自己重新序列化的 JSON |
 | baseline.target | 必填 `{type,task_id或map_file,configuration}`；与 request、bot 唯一绑定一致。configuration 是公开读取的完整 **对象**，不只给地址、名称、摘要或 `"见配置"` |
+
+V1 request 只包含表中七个必需字段及可选 bot；旧 `authorization` 整个对象、`confirmation`、`approved` 或其他批准凭据均不是业务输入，作为未知字段拒绝，不补 true、不改名、不兼容转换。成果批准只属于本次 execution 的运行事实，不写入 request／baseline／created handoff。此变更不改变 `contracts/create-bot-v2-materials.md` 的 V2 专用协议。
+
+字段归属：调用方生产 request，target 只定位既有对象，bot 只提供可选 id／name／group，不能夹带指南、目标绑定或 configuration。创建脚本经公开接口调查目标并唯一保存新 Bot；baseline.bot／revision／target.configuration 来自创建后的完整公开读回，baseline.request 原样保留已验证请求，不能用调用方配置代替服务事实。后续 V1 保存消费者读取同一 request／baseline／target，不恢复已删除的 request 凭据；材料生产者直接生成以下新协议，不先生成旧协议再转换：
+
+```json
+{"schema_version":1,"kind":"request","target":{"type":"task","task_id":"normal-1"},"bot":{"id":"review-bot","name":"审阅"},"requirements":"只读审阅","constraints":["不执行目标"],"non_goals":[],"resource_limits":[]}
+```
 
 Task configuration 为 GET task 的完整对象：id、name、chatName、agent、taskType（必须 normal）、model、thinking、skill（可 null）、prompt，以及实际存在的 group／suite；不使用创建请求扁平片段代替读回。Map configuration 为 GET Map 的完整定义：title、description、nodes，及实际存在的 group、input_requirements、input_files；所有 node 字段与规则完整保留，不删成空图或仅复制文件名。其字段类型见 Schema 的 task_configuration／map_configuration；引用对象调查、Map 环与预检仍用既有接口，不要求将全部传递闭包嵌进 baseline。
 
@@ -36,21 +42,21 @@ Task configuration 为 GET task 的完整对象：id、name、chatName、agent�
 
 隔离 HTTP／真实文件回归使用 `invoice-review`／`Invoice reviewer`：真实 normal Task 的完整读取对象和服务 edit.revision 与 baseline 逐项相等，三个指南均严格为空；实际派发的下游受控进程按命名地址读取 baseline 与 handoff，再独立核对完整配置／revision。另一例绑定真实 `exact.target.json`，保留其全部节点、输入输出规则、manual 策略及声明，产生默认 `bot-map-exact.target`，不执行目标 Map。
 
-拒绝实例包括根／嵌套重复 JSON key（`ambiguous-request`）、缺 requirements（`missing-field`）、不存在目标或已有目标绑定（`target-conflict`）、已有 `worker` 身份（`identity-conflict`）、缺创建授权（`authorization-required`）、真实活动 Run 使用中的 Map（`definition-in-use`）。独立完整目录／对象和原文件读回均保持不变，不生成成功材料。真实 Bot 目录写入失败为 write-failed；保存后目标读回失败仍保留 write=succeeded；材料目录不可写或已有同名产物为 material-write-failed，已创建 Bot 不回滚，也不能报告 true。回归实际命令与证据限制见[测试指引](agents/testing.md#rust-空白创建公开-http文件回归)。
+拒绝实例包括根／嵌套重复 JSON key（`ambiguous-request`）、缺 requirements（`missing-field`）、不存在目标或已有目标绑定（`target-conflict`）、已有 `worker` 身份（`identity-conflict`）、旧授权／确认字段、错误字段归属（`invalid-format`）、真实活动 Run 使用中的 Map（`definition-in-use`）。独立完整目录／对象和原文件读回均保持不变，不生成成功材料。真实 Bot 目录写入失败为 write-failed；保存后目标读回失败仍保留 write=succeeded；材料目录不可写或已有同名产物为 material-write-failed，已创建 Bot 不回滚，也不能报告 true。回归实际命令与证据限制见[测试指引](agents/testing.md#rust-空白创建公开-http文件回归)。
 
 ### 三路 text、必要 handoff 与 saved
 
 - 指南 handoff 使用 `$defs.guide_handoff`：必填 kind=`handoff`、stage=`guide`、bot_id、target（无 configuration 的唯一定位）、field（when／plan_guide／node_guide）、sources、confirmation、constraints、unverified。它不含正文、完整配置或 revision.original。
 - `sources` 是非空 `{binding_id,direction,role}` 数组；direction 是本次生产者的 input／output，role 是 request／materials／baseline／text／handoff，binding_id 是该生产者已声明的本地命名绑定 ID。同方向 ID 不重复。它只记来源／用途，消费者**不沿索引寻址**；原材料及当前最终 text 必须已由 input_rule 直接送达，嵌套传递仍由调用接口显式映射。编写者至少记 baseline 输入和最终 text 输出；优化者另记收到的 text／handoff，记录新的 text 输出。
 - `confirmation` 必填 evidence、text_sha256（64 位小写 hex，针对最终 text 的原样 UTF-8 bytes）、full_text=true、save_authorized（boolean）、semantics_preserved=true。evidence 记真实确认来源、范围和保义依据；hash 只绑定该次确认的**同一份最终正文**，不是业务效果证明或权限令牌。沿用有效确认时保义仍真实成立；语义变更必须先取得新的全文确认。仅全文已确认、未获保存权限的手稿可用 save_authorized=false 交付，但不能进入保存成功路径。
-- 最终保存使用当前既有命名输入：baseline，when_text／when_handoff，plan_guide_text／plan_guide_handoff，node_guide_text／node_guide_handoff。分别对应 Bot.when／plan_guide／node_guide；每个 handoff.field、bot_id、target 及最终 text digest 必须与所属分支及共同 baseline 一致。不得交换、重复、猜缺失来源或用 node.input 生成正文。三个 handoff 必须各自有有效全文确认；保存授权由 request.authorization.save_guides=true 或覆盖三字段的后续明确授权（各 handoff.save_authorized=true）提供，不能由 canComplete 或报告发送批准补足。
+- 最终保存使用当前既有命名输入：baseline，when_text／when_handoff，plan_guide_text／plan_guide_handoff，node_guide_text／node_guide_handoff。分别对应 Bot.when／plan_guide／node_guide；每个 handoff.field、bot_id、target 及最终 text digest 必须与所属分支及共同 baseline 一致。不得交换、重复、猜缺失来源或用 node.input 生成正文。三个 handoff 必须各自有有效全文确认；当前保存消费者的三个 handoff.save_authorized 必须各自成立，request 不含保存授权；后续保存材料协议独立迁移，不能为兼容旧保存方向 request 补授权字段。canComplete 或成果批准不替代业务数据正确性核对。
 - 保存时重读当前 Bot、revision 和完整目标，与同一 baseline 精确比较；保留所有非目标字段及唯一绑定。一次合法保存汇总三段原样 text，禁止分三次保存、自动合并或绕过运行禁写。写后完整读回 Bot、真实新 revision 与未变目标；三字段须逐字等于最终 text，非目标须逐项等于 baseline。
 - `saved` 使用 `$defs.saved`：kind=`saved`，必填完整 bot、真实新 revision、完整 target（含 configuration），**不是**仅 Bot ID、响应摘要或候选。输出 ID 仍是 saved。
-- 创建／最终保存另交 `$defs.result_handoff`：kind=`handoff`，stage=`created`／`saved`，bot_id、target、sources、confirmation_evidence（非空字符串数组）、checks（bot_read_back=true、target_unchanged=true）、unverified（字符串数组）均必填。创建 sources 记 request 及实际参考；保存 sources 记 baseline 和三组正文／handoff。输出 ID 仍是 handoff，不复制完整 Bot／Task／Map、baseline 或三段正文。失败和部分效果写入 execution.failure／报告，不伪造成功 checks 或成功材料。
+- 创建／最终保存另交 `$defs.result_handoff`：kind=`handoff`，stage=`created`／`saved`，bot_id、target、sources、checks（bot_read_back=true、target_unchanged=true）、unverified（字符串数组）均必填。created 阶段不含 confirmation_evidence 或其他凭据；saved 阶段当前仍保留非空字符串数组 confirmation_evidence，由保存材料协议迁移负责替换。创建 sources 记 request 及实际参考；保存 sources 记 baseline 和三组正文／handoff。输出 ID 仍是 handoff，不复制完整 Bot／Task／Map、baseline 或三段正文。失败和部分效果写入 execution.failure／报告，不伪造成功 checks 或成功材料。
 
 ### 合并保存的运行与部分生效边界
 
-`save-bot-guides.ts` 是用户可维护的 TS 业务脚本，不创建 Chat，也不调用通用替换者。材料在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/saved.json` 和 `handoff.json` 安全新建，使用与空白创建相同的文件协调、祖先／链接检查、create-only 发布和完整读回；仅实际可读文件登记到当前 execution 的 outputs。request 的保存授权或三个最终 handoff 的各字段保存授权必须明确成立，SHA-256 只绑定原样 bytes；不执行自然语言语义判断。
+`save-bot-guides.ts` 是用户可维护的 TS 业务脚本，不创建 Chat，也不调用通用替换者。材料在本 Run 的 `<manager zone>/.manager-zone/.workflow/<run ID>/<execution ID>/saved.json` 和 `handoff.json` 安全新建，使用与空白创建相同的文件协调、祖先／链接检查、create-only 发布和完整读回；仅实际可读文件登记到当前 execution 的 outputs。request 不提供保存授权；当前三个最终 handoff 的各字段保存授权仍由保存消费者校验，SHA-256 只绑定原样 bytes，不执行自然语言语义判断。保存端 handoff／确认门禁的移除属于独立保存协议切换，不由请求转换或默认值绕过。
 
 配置合法保存成功后，如果 saved 或 handoff 的新建／读回失败，报告 `canComplete=false`，保留 write／readBack 的实际结果、原错误和已成功的命名输出；不删除已保存配置、不覆盖碰撞材料，也不更新原 baseline。manager 修复文件故障后可在**另一个隔离真实 Run** 显式派发同一能力并直接提供原 baseline；由于真实 revision 已变化，仍报告 `revision-conflict`，即使当前三段正文完全相同也不认定成功。这是业务重跑冲突，不绕过同节点 fail/retry 的独立门禁。成功报告也只表示可交接，仍由 manager 经原工具 complete，再从显式 saved／handoff 输出 ID 安排下游。
 
