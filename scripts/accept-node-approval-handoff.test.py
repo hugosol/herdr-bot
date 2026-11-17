@@ -137,6 +137,17 @@ class ModelIdentityBoundary(unittest.TestCase):
         self.assertEqual(evidence['modelIdentities'], [
             {'request': 0, 'requested': 'gpt-6-luna', 'returned': ['gpt-6-luna']}])
 
+    def test_inflight_completion_is_observed_without_resending(self):
+        from threading import Timer
+        record = self.completion(ended=None)
+        completion = Timer(0.02, lambda: record.update(ended=1))
+        completion.start()
+        try:
+            evidence = self.identity([record])
+            self.assertEqual(len(evidence['modelIdentities']), 1)
+        finally:
+            completion.join()
+
     def test_zero_completions_fails_closed(self):
         with self.assertRaisesRegex(AssertionError, 'No actual model completion traffic'):
             self.identity([{'method': 'GET', 'path': '/chat/completions', 'ended': 1}])
