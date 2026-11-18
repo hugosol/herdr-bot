@@ -4,10 +4,11 @@
 
 Ticket 12 已实现、验证并合入两仓 dev，原票状态为 `closed`。以下旧交接仅保留当时历史，不再据此恢复或重派 ticket12；其他票与旧工作流状态未改写。
 
-- 最终证明：`C:/Users/hugos/AppData/Local/Temp/hyper-ticket-5s1ANw/.scratch/node-result-approval/evidence/lifecycle12-certified/evidence.json`，`passed=true`；八个场景、双宿主七项承诺齐全，10项检查成功，清理无错误。9项未变化的全局检查经来源校验复用，当前设施测试重新通过。
+- 最终结论（仅本地、不入 Git）：`evidence/ticket12-cleanup-9a1eeb44/certified-evidence.json`，`passed=true`；八个场景、双宿主七项承诺齐全，10项检查成功，清理无错误。9项未变化的全局检查经来源校验复用，当前设施测试重新通过。
 - herdr-bot dev：`9b24bb0fcc`（Git修复）、`3de9ddcf3e`（ticket12验收）。toolkit dev：`04f1fc2b2e`（成本测试同步）、`8ebd368626`（ticket12 caller／文档）。
 - 集成验证：15项生命周期离线回归、3项安装表单观察器回归、两种验收CLI边界、toolkit typecheck/authoring 均通过。通过LF临时工作区保留两侧意图，未提交无关换行变化。
-- 用户确认只验证工具契约、不要求模型自主编排。原始失败及超时未改绿；仅经用户授权单独重试网络超时分区。原两 worktree 与用户原有未提交元数据、全部原生证据继续保留。
+- 用户确认只验证工具契约、不要求模型自主编排。原始失败及超时未改绿；仅经用户授权单独重试网络超时分区。
+- 后续按用户明确要求直接清理、不压缩：两个原 worktree、专属 `approval12-target-5s1ANw` 构建目录、约7GB原始验收证据及确认归属的临时目录已删除，未提交这些证据到 Git。仅在本地忽略目录 `evidence/ticket12-cleanup-9a1eeb44/` 保留最终结论、原有未提交的 toolkit Pi 元数据和清理回执。旧 JSON 内的绝对路径是历史引用，不再代表仍可读取的原始证据；旧分支、共享依赖缓存、认证文件未删除。
 
 ## 历史交接（以下为当时的未完成状态）
 
