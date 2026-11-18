@@ -156,6 +156,28 @@ python scripts/accept-node-approval-handoff.py --herdr-bot-worktree "$HERDR_BOT_
 
 每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。
 
+### 发布 V1 与非 V2 节点职责专项（S2／S3）
+
+```sh
+python scripts/accept-node-approval-v1.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+```
+
+所有路径必须显式绝对，证据目录必须不存在。生产后端必须来自参与 worktree 的独立绝对 `CARGO_TARGET_DIR/debug`，不使用协调仓或旧产物。依赖按两仓既有 frozen lock 准备，Bun 1.4.4；paths 声明 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`、`wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`、`chrome`，可选 `native_shell`。只读原生扩展与安装目录，不读取其 settings、models、历史或认证。模型 JSON 沿用 `provider/model/baseUrl/apiKeyEnv`，仅消费明确授权变量，不限制产品模型。
+
+用户已经明确授权某个 auth 文件时，复用 `scripts/accept-workflow-codex.py --scenario node-approval-v1 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先用同入口 `--smoke` 和另一个新证据目录检查真实返回身份。该传输只支持 canonical `gpt-6-luna`，每个实际 `serverModel` 必须匹配；不复制、刷新或修改 auth，不把传输烟测当业务验收。HTTP 200 的 `error`／`response.failed` 终帧保留白名单错误类别和请求结构计数，不记录原文；无终帧的超时保留已观察到的帧数与 SDK 状态，不推断上游错误或重发请求。
+
+独占发布副本保留所有 node 的真实 Task、Suite、初始 Skill、宿主与业务职责，只重定位物理位置、传输及存储。两个 V1 Run 分别由 OMP／Pi 原生管理者协调，内部编写者／优化者仍使用原发布的混合宿主；不会将节点全改为管理者宿主。新 request 由真实模型生产，真实 Bun 创建与保存；保存只接收 baseline 和三份明确命名正文。完整 Bot／目标／新 revision、实际文件字节、原生确认真实返回及管理者显式 complete／finish 交叉核对，不能由成功文字或 Schema 代替。其余四张非 V2 发布 Map 也分别由 OMP、Pi 管理者独立执行。五张 Map 共十格；按管理者宿主分别记录 22 个发布节点的 S2 和 S3，加上两个宿主各自的 P31／P35，共 92 项。outer 中嵌套的 V1 子 Run 不能替代独立顶层 V1 格。Tibo 只读真实公开页面，临时目录调查仅指词典重定位的独占目录，不扫描用户 TEMP 或部署环境。两个调查节点没有命名输出约定，按各自保存的报告正文和真实来源验收；目录报告须给出项目绝对路径及 branch。静默观察保留所属 Session 的已接受 heartbeat 原始 wire 索引，不将其计为业务推进；其他写入仍拒绝，同时核对公开 Run、报告和待处理报告不变。
+
+页面专项 `node-approval-v1-browser.mjs` 读取上述真实定义与真实 Run，逐节点比较独立字面模式、当前配置、冻结模式和实际来源，并保留截图／公开 JSON；不新增通用控件保存用例、不通过 HTTP 代原生批准。打开当前节点编辑器会以 `POST .../nodes/edit` 读取草稿；只接受当前 Map／node 的纯 `{id}` 查询，不把保存或其他写请求豁免为观察。打包页与业务判据分开收证；页面清理缺 Chrome 退出确认时不得继续派发。原生 Yes 只能作用于本次 owned pane，必须看到选中项并核对原始 UI true 返回；原生 Ask 业务问题不能通过取消表单或强迫工具顺序规避。外层创建 Task 可核对原生表单控件之前展示的完整候选，选项与默认值不充当授权；比较原生表单返回的选项值与 Ask 工具返回的可读标签，不将二者按裸字符串对比。单请求容量下，由真实 manager 逐个派发 V1 就绪节点（含嵌套 V1），不改发布依赖或模型并发。业务输入只供给当前 Run 及其真实子 Run；任一实际节点已失败时，本格不能以 retry 补齐原执行的覆盖，立即保留该节点、报告和当前公开事实，不继续等待整格超时。仍 running 的节点不按失败处理。顶层 V1、外层创建、修订和规划场景在各格独占的 MCP runtime/cache 中先索引参与 worktree 并核对 ready 与源码根，再启动业务；不修改共享索引配置。透明代理保留 manager collect 的原有 91 分钟原生传输预算，不按普通请求的 330 秒截断已开始的响应。规划场景通过公开 HTTP 准备和读回两个职责不同的隔离 Bot／Task，只规划并验证 `inspect → summarize` 的 `findings` 绑定，不运行生成的 Map。原生 Yes 前核对实际完整候选字节，不把目录中同字节的额外 proposal 文件都必须由该 actor 再次 read 当作批准前提；必要材料的完整消费仍按本 execution 的真实命名输入另行核对。
+
+入口依次保存本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations、受影响 node-report／nested-role docks 的原始日志。paired dock 使用本次安全关机壳与本 worktree 元数据，不以生产后端执行关机回归。每次独占 HOME／APPDATA／XDG、原生存储、Herdr、动态数值回环及进程，保留两仓源码／锁文件／产物／安装身份、真实业务判断与原始／清理错误；确认所属进程退出后才能清理。既有 20 秒原生确认＋30 秒 HTTP 预算后另作 51 秒单调观察，不修改产品超时或重试策略。缺依赖／授权、任一仓检查失败、单宿主、缺 coverage 或清理失败均非零且保持未验证，不回退受控模型、不重跑历史副作用、不改 V2 协议。原生资源窗口需与全仓检查分离时可显式追加 `--native-only`（直接入口及 Codex wrapper 均支持），只采集本次 native／页面证据，整票仍 `passed=false` 且非零，不替代两仓完整检查。在本 worktree 运行 `python scripts/accept-node-approval-v1.test.py` 验证选择器、覆盖清单及 CLI 拒绝边界；`python scripts/node_approval_v1_matrix.test.py` 通过实际本地子进程验证并发限额、按格归属、共享失败止发和清理。`python scripts/node-approval-v1-behavior.test.py` 验证完成／拒绝与对应 execution 的真实 HTTP 形状、页面候选归属、业务输入和 Ask 引用边界。这些本地检查不认证原生业务。
+
+V1 入口及 Codex wrapper 支持 `--cases v1|outer|revision|planning|investigation`；例如 `--hosts pi --cases planning --native-only` 只选择 Pi 管理者的规划格。过滤调用保留全部 92 项，未选项不认证，整票仍非零。静态页和两仓检查只在父入口运行一次；每格独立进程、定义、后端、原生存储、模型流量和清理证据。汇总只认本次格子的宿主、case 和具名证据，不导入旧 ledger。Codex 矩阵的新证据目录放在两个 worktree 外或其 `.scratch/` 下，避免把在途证据误记成源码变更。
+
+默认 `--jobs 1`。确有两个上游并发请求容量时，直接入口使用 `--jobs 2` 并在模型配置显式设置 `maxConcurrentRequests: 2`；Codex wrapper 使用 `--jobs 2 --model-capacity 2`。每个活动格最多占用一个上游 completion 槽，查询与非模型操作不占用它；不从 CPU 数量推断模型容量。Codex 格有独立 terminal 状态，认证丢失共享；普通业务或单格 HTTP 400 不重试、不污染兄弟格。确认共享资源失效或清理不安全时停止派发新格，在途格保留各自的结果。CLI／并发的离线测试不启动真实模型，不能证明 92 项业务通过。
+
+传输离线验证：`python scripts/workflow_completion_transport.test.py` 使用回环 HTTP 检查在途请求、隔离故障和退出；`WORKFLOW_PI_PACKAGE="$PI_PACKAGE" python scripts/workflow-codex-completion.test.py` 使用测试自有凭据、安装 SDK 和截断在 fetch 的响应。HTTP 非成功时仅归档固定错误类别与转换后请求的结构计数；HTTP 200 后失败另记首帧、终止帧、事件计数和 SDK 结果。二者都不是业务交接；例如 manager 的 `409 output-missing` 应保留在该 execution 的业务证据里，不归为模型超时。
+
 ### 批准持久化、失败与执行隔离（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。

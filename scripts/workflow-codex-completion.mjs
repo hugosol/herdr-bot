@@ -26,7 +26,90 @@ function finish(value, status) {
   finished = true;
   process.stdout.write(`${encoded}\n`, () => process.exit(status));
 }
-function reject(code) { finish({ error: code, ...diagnostics }, 1); }
+const terminalFrames = new Set(['response.completed', 'response.done', 'response.incomplete', 'response.failed', 'error']);
+const deltaCounts = new Map([
+  ['response.output_text.delta', 'textDeltas'], ['response.refusal.delta', 'textDeltas'],
+  ['response.reasoning_text.delta', 'reasoningDeltas'], ['response.reasoning_summary_text.delta', 'reasoningDeltas'],
+  ['response.function_call_arguments.delta', 'toolArgumentDeltas'], ['response.custom_tool_call_input.delta', 'toolArgumentDeltas'],
+]);
+const knownFrames = new Set([...terminalFrames, ...deltaCounts.keys(),
+  'response.created', 'response.queued', 'response.in_progress', 'response.output_item.added',
+  'response.output_item.done', 'response.content_part.added', 'response.content_part.done',
+  'response.output_text.done', 'response.refusal.done', 'response.reasoning_summary_part.added',
+  'response.reasoning_summary_part.done', 'response.reasoning_summary_text.done', 'response.reasoning_text.done',
+  'response.function_call_arguments.done', 'response.custom_tool_call_input.done']);
+const streamSignals = { frameCount: 0, textDeltas: 0, reasoningDeltas: 0, toolArgumentDeltas: 0,
+  firstFrame: null, terminalFrame: null, sdkOutcome: 'pending' };
+function reject(code) {
+  if (diagnostics.httpStatus === 200) diagnostics.streamSignals = streamSignals;
+  finish({ error: code, ...diagnostics }, 1);
+}
+
+const ERROR_BODY_LIMIT = 65536;
+async function readProviderError(body) {
+  if (!body) return;
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0, raw = '', drained = false;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        drained = true;
+        return JSON.parse(raw + decoder.decode())?.error;
+      }
+      bytes += value.byteLength;
+      if (bytes > ERROR_BODY_LIMIT) return;
+      raw += decoder.decode(value, { stream: true });
+    }
+  } catch {
+    // An unreadable or unparseable response remains a provider error.
+  } finally {
+    if (!drained) void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+function safeProviderError(error) {
+  const allow = (value, values) => values.includes(value) ? value : 'other';
+  const message = typeof error?.message === 'string' ? error.message : '';
+  const reason = /No tool output found for function call/i.test(message) ? 'missing-tool-output'
+    : /No tool call found for function call output/i.test(message) ? 'orphan-tool-output'
+    : /Duplicate (?:item|.*id)/i.test(message) ? 'duplicate-item'
+    : /context (?:length|window)|maximum context/i.test(message) ? 'context-limit'
+    : /Invalid schema|function parameters/i.test(message) ? 'tool-schema'
+    : /encrypted content|encrypted_content/i.test(message) ? 'encrypted-content'
+    : 'other';
+  return {
+    type: allow(error?.type, ['invalid_request_error', 'server_error', 'rate_limit_error']),
+    code: allow(error?.code, ['invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded']),
+    parameter: allow(error?.param, ['input', 'tools', 'instructions', 'model', 'previous_response_id']), reason,
+  };
+}
+function safeRequestShape(body) {
+  const items = body?.input ?? [];
+  let messageItems = 0, toolDeclarations = body?.tools?.length ?? 0, toolCalls = 0, toolResults = 0;
+  const calls = new Set(), results = new Set();
+  for (const item of items) {
+    if (item.type === 'message' || (item.type === undefined &&
+        ['user', 'assistant', 'system', 'developer'].includes(item.role))) ++messageItems;
+    else if (item.type === 'additional_tools') toolDeclarations += item.tools?.length ?? 0;
+    else if (item.type === 'function_call') {
+      ++toolCalls;
+      if (typeof item.call_id === 'string') calls.add(item.call_id);
+    } else if (item.type === 'function_call_output') {
+      ++toolResults;
+      if (typeof item.call_id === 'string') results.add(item.call_id);
+    }
+  }
+  let toolBindingsMatch = toolCalls === toolResults && calls.size === toolCalls && results.size === toolResults;
+  if (toolBindingsMatch) {
+    for (const id of results) {
+      if (!calls.has(id)) { toolBindingsMatch = false; break; }
+    }
+  }
+  return { inputItems: items.length, messageItems, toolDeclarations, instructionLength: body?.instructions?.length ?? 0,
+    toolCalls, toolResults, toolBindingsMatch };
+}
 // Dependency diagnostics are not part of the protocol and may contain secrets.
 for (const key of ['log', 'info', 'warn', 'error', 'debug', 'trace', 'dir']) console[key] = () => {};
 process.on('uncaughtException', () => reject(failure));
@@ -248,46 +331,9 @@ try {
     fetch: async (url, options) => {
       diagnostics.requests = ++requests;
       if (requests !== 1) throw new Error();
+      let response;
       try {
-        const response = await globalThis.fetch(url, { ...options, redirect: 'error' });
-        diagnostics.httpStatus = response.status;
-        if (!response.ok) {
-          // Even error codes/parameters are provider-controlled text. Never
-          // retain arbitrary strings, response bodies, headers or request data.
-          const allow = (value, values) => values.includes(value) ? value : 'other';
-          let error;
-          try {
-            const raw = await response.clone().text();
-            if (raw.length <= 65536) error = JSON.parse(raw)?.error;
-          } catch { /* An opaque failure still stays failed. */ }
-          const message = typeof error?.message === 'string' ? error.message : '';
-          const reason = /No tool output found for function call/i.test(message) ? 'missing-tool-output'
-            : /No tool call found for function call output/i.test(message) ? 'orphan-tool-output'
-            : /Duplicate (?:item|.*id)/i.test(message) ? 'duplicate-item'
-            : /context (?:length|window)|maximum context/i.test(message) ? 'context-limit'
-            : /Invalid schema|function parameters/i.test(message) ? 'tool-schema'
-            : /encrypted content|encrypted_content/i.test(message) ? 'encrypted-content'
-            : 'other';
-          diagnostics.providerError = {
-            type: allow(error?.type, ['invalid_request_error', 'server_error', 'rate_limit_error']),
-            code: allow(error?.code, ['invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded']),
-            parameter: allow(error?.param, ['input', 'tools', 'instructions', 'model', 'previous_response_id']), reason,
-          };
-          const items = upstreamRequest?.input ?? [];
-          const calls = items.filter(item => item.type === 'function_call');
-          const outputs = items.filter(item => item.type === 'function_call_output');
-          const ids = calls.map(item => item.call_id);
-          diagnostics.requestShape = {
-            inputItems: items.length,
-            messageItems: items.filter(item => item.type === 'message').length,
-            toolDeclarations: (upstreamRequest?.tools ?? []).length + items.filter(item => item.type === 'additional_tools').reduce((sum, item) => sum + (item.tools?.length ?? 0), 0),
-            instructionLength: upstreamRequest?.instructions?.length ?? 0,
-            toolCalls: calls.length, toolResults: outputs.length,
-            toolBindingsMatch: ids.length === new Set(ids).size && outputs.length === calls.length &&
-              outputs.every(item => ids.includes(item.call_id)) && new Set(outputs.map(item => item.call_id)).size === outputs.length,
-          };
-        }
-        return response;
+        response = await globalThis.fetch(url, { ...options, redirect: 'error' });
       } catch (error) {
         const code = error?.cause?.code;
         diagnostics.network = ['ENOTFOUND', 'EAI_AGAIN'].includes(code) ? 'dns'
@@ -297,9 +343,30 @@ try {
           : 'other';
         throw error;
       }
+      diagnostics.httpStatus = response.status;
+      if (!response.ok) {
+        diagnostics.requestShape = safeRequestShape(upstreamRequest);
+        diagnostics.providerError = safeProviderError(await readProviderError(response.body));
+        // The SDK would otherwise read the rejection body with unbounded .text().
+        // Keep its failed result path, without delivering raw provider text.
+        throw new Error();
+      }
+      return response;
     },
     onProviderStreamEvent(event) {
       if (!event || typeof event !== 'object') return;
+      if (diagnostics.httpStatus === 200) {
+        const type = event.type;
+        if (streamSignals.frameCount === 0) streamSignals.firstFrame = knownFrames.has(type) ? type : 'other';
+        ++streamSignals.frameCount;
+        const delta = deltaCounts.get(type);
+        if (delta) ++streamSignals[delta];
+        if (terminalFrames.has(type)) streamSignals.terminalFrame = type;
+        if (type === 'error' || type === 'response.failed') {
+          diagnostics.providerError = safeProviderError(event.response?.error ?? event.error ?? event);
+          diagnostics.requestShape = safeRequestShape(upstreamRequest);
+        }
+      }
       const identity = event.response?.model;
       if (identity !== undefined) {
         if (identity !== requestedModel) { failure = 'model-identity'; throw new Error(); }
@@ -307,8 +374,13 @@ try {
       }
       if (event.type === 'response.completed' || event.type === 'response.done') completed = true;
     },
+  }).catch(error => {
+    streamSignals.sdkOutcome = 'threw';
+    throw error;
   });
-  if (result.stopReason === 'error' || result.stopReason === 'aborted') throw new Error();
+  const sdkFailed = result.stopReason === 'error' || result.stopReason === 'aborted';
+  streamSignals.sdkOutcome = sdkFailed ? result.stopReason : 'returned';
+  if (sdkFailed) throw new Error();
   failure = 'model-identity';
   // AssistantMessage.model is locally initialized by pi-ai, not server evidence.
   if (observedModel !== requestedModel || result.model !== requestedModel ||

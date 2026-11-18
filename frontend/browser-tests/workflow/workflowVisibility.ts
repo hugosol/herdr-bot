@@ -7,8 +7,8 @@ import { chromium, type Browser } from '@playwright/test'
 // Playwright's regular page installs an always-focused/visible emulation in its
 // own CDP session. Connect without those defaults to observe native lifecycle
 // events, while continuing to drive the delivered page through public APIs.
-export async function nativeVisibilityBrowser() {
-  const executable = [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
+export async function nativeVisibilityBrowser(installedExecutable?: string) {
+  const executable = installedExecutable ?? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
     .filter((root): root is string => !!root)
     .map(root => path.join(root, 'Google/Chrome/Application/chrome.exe'))
     .find(file => fs.existsSync(file))
@@ -120,7 +120,8 @@ export async function nativeVisibilityBrowser() {
     browser = await chromium.connectOverCDP(await endpoint.promise, { noDefaults: true })
     const context = browser.contexts()[0]
     const page = context.pages()[0] ?? await context.newPage()
-    return { page, context, cleanup }
+    return { page, context, cleanup, processId: child.pid, profile,
+      diagnostics: () => ({ confirmedExit, chrome: diagnostics, handles: handleDiagnostics }) }
   } catch (error) {
     try { await cleanup() } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Native visibility browser startup/cleanup failed.') }
     throw error
