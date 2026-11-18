@@ -173,21 +173,23 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         record['admission'] = json.loads(self.command([self.args.herdr, 'agent', 'prompt', chat['paneId'], content,
             '--wait', '--until', 'working', '--until', 'blocked', '--timeout', '10000'], seconds=15))['result']
 
-    def confirmation_requests(self):
+    def confirmation_requests(self, chat=None):
+        target = self.worker if chat is None else chat
         records = [json.loads(path.read_text(encoding='utf-8')) for path in self.confirmations.glob('*.request.json')]
-        return sorted((record for record in records if record.get('sessionId') == self.worker['sessionId']),
+        return sorted((record for record in records if record.get('sessionId') == target['sessionId']),
                       key=lambda record: record['at'])
 
-    def terminal(self):
-        return self.command([self.args.herdr, 'pane', 'read', self.worker['paneId'], '--source', 'visible', '--format', 'text'])
+    def terminal(self, chat=None):
+        target = self.worker if chat is None else chat
+        return self.command([self.args.herdr, 'pane', 'read', target['paneId'], '--source', 'visible', '--format', 'text'])
 
-    def pending(self, before):
+    def pending(self, before, chat=None):
         def probe():
-            records = self.confirmation_requests()
+            records = self.confirmation_requests(chat)
             require(len(records) <= before + 1, 'More than one native confirmation for one explicit user request')
             if len(records) != before + 1:
                 return None
-            screen = self.terminal()
+            screen = self.terminal(chat)
             if '成果批准' not in screen or 'Yes' not in screen or 'No' not in screen:
                 return None
             request = records[-1]
@@ -196,20 +198,21 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
             return {'request': request, 'screen': screen, 'at': time.monotonic()}
         return until('actual result approval UI and raw native request', probe, self.args.timeout)
 
-    def decide(self, pending, choice):
+    def decide(self, pending, choice, chat=None):
+        target = self.worker if chat is None else chat
         if choice in ['Yes', 'No']:
             def selected(screen):
                 return any(arrow + ' ' + choice in screen for arrow in ['→', '❯'])
             screen = pending['screen']
             if not selected(screen):
-                self.herdr('agent', 'send-keys', self.worker['paneId'], 'down' if choice == 'No' else 'up')
+                self.herdr('agent', 'send-keys', target['paneId'], 'down' if choice == 'No' else 'up')
                 screen = until('native selected value ' + choice,
-                    lambda: (value if selected(value := self.terminal()) else None), 5)
+                    lambda: (value if selected(value := self.terminal(target)) else None), 5)
             require(selected(screen), 'Key acknowledgement is not a native selection')
             pending['selectedScreen'] = screen
-            self.herdr('agent', 'send-keys', self.worker['paneId'], 'enter')
+            self.herdr('agent', 'send-keys', target['paneId'], 'enter')
         elif choice == 'cancel':
-            self.herdr('agent', 'send-keys', self.worker['paneId'], 'esc')
+            self.herdr('agent', 'send-keys', target['paneId'], 'esc')
         elif choice != 'timeout':
             raise AssertionError('Unknown native decision')
         pending['userDecision'] = {'choice': choice, 'at': time.monotonic()}
