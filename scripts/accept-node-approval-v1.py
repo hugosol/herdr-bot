@@ -13,6 +13,10 @@ import subprocess
 import sys
 import traceback
 
+from node_approval_v1_matrix import (CASE_MAPS, HOSTS, WORKER_REPORT, cell_keys, cell_passed,
+    cell_root, concurrency, dispatch_cells, run_cell_process, scoped_models, selected_cells,
+    source_fingerprint, write_json)
+
 REPO = Path(__file__).resolve().parents[1]
 # Independent responsibility oracle from the published P34 decision table, not
 # calculated from the implementation's auto_approved values.
@@ -36,15 +40,15 @@ def absolute(value):
 
 def coverage():
     items = {}
-    for host in ['omp', 'pi']:
+    for host in HOSTS:
         items['P31/S2/' + host] = {'verified': False, 'expected': 'Actual model produces fresh credential-free V1 request; real Bun consumes directly bound baseline and three texts.'}
         items['P35/S2/' + host] = {'verified': False, 'expected': 'Independent V1 Run creates and saves all fields, exact complete public readback/revision/files; native manager explicitly accepts and completes.'}
-    for filename, nodes in RESPONSIBILITIES.items():
-        for node, automatic in nodes.items():
-            for seam in ['S2', 'S3']:
-                items[f'P34/{seam}/{filename}/{node}'] = {'verified': False,
-                    'expected': {'autoApproved': automatic, 'approvalSource': 'auto' if automatic else 'manual',
-                        'observation': 'Actual native execution' if seam == 'S2' else 'Delivered page, complete public definition and frozen execution agree'}}
+        for filename, nodes in RESPONSIBILITIES.items():
+            for node, automatic in nodes.items():
+                for seam in ['S2', 'S3']:
+                    items[f'P34/{seam}/{host}/{filename}/{node}'] = {'verified': False,
+                        'expected': {'autoApproved': automatic, 'approvalSource': 'auto' if automatic else 'manual',
+                            'observation': 'Actual native execution' if seam == 'S2' else 'Delivered page, complete public definition and frozen execution agree'}}
     return items
 
 
@@ -78,6 +82,76 @@ def checks(args, record):
     return all(item.get('exit') == 0 for item in record['commands'])
 
 
+def worker(args):
+    from node_approval_v1_acceptance import run_scenarios
+
+    host, case = args.hosts, args.cases
+    keys = cell_keys(host, case, RESPONSIBILITIES)
+    record = {'managerHost': host, 'case': case, 'cellPassed': False, 'runs': [], 'cleanupErrors': [],
+              'sharedFailures': [], 'cleanupRisk': False,
+              'coverage': {key: item for key, item in coverage().items() if key in keys}}
+    try:
+        # Parent preflight owns validation; workers use only the resolved dependency paths.
+        preflight = json.loads((args.matrix_evidence_dir / 'matrix-preflight.json').read_text(encoding='utf-8'))
+        record['paths'] = preflight['paths']
+        record['host'] = preflight['hostVersions']
+        roots = record['paths']['roots']
+        args.herdr = Path(roots['herdr']) / 'herdr.exe'
+        args.pi_package = Path(roots['pi_package'])
+        args.omp_package = Path(roots['omp_package'])
+        run_scenarios(args, record, RESPONSIBILITIES)
+        record['cellPassed'] = cell_passed(record, keys)
+    except BaseException:
+        record['cleanupRisk'] = True
+        record['error'] = traceback.format_exc()
+    write_json(args.evidence_dir / WORKER_REPORT, record)
+    return 0 if record['cellPassed'] else 1
+
+
+def run_matrix(args, record, per_cell_models, source_fingerprints):
+    # The only bootstrap data workers need from once-per-invocation preflight.
+    write_json(args.evidence_dir / 'matrix-preflight.json', {'paths': record['paths'], 'hostVersions': record['host']})
+
+    def run_cell(host, case):
+        directory = cell_root(args.evidence_dir, host, case)
+        directory.mkdir(parents=True, exist_ok=False)
+        config = directory / 'model.json'
+        write_json(config, per_cell_models[host, case])
+        flags = {'herdr-bot-worktree': args.repo, 'toolkit-worktree': args.toolkit, 'backend': args.backend,
+                 'paths-file': args.paths_file, 'model-config': config, 'evidence-dir': directory / 'native',
+                 'hosts': host, 'cases': case, 'timeout': args.timeout, 'node': args.node, 'bun': args.bun,
+                 '_matrix-worker-root': args.evidence_dir}
+        if args.shell_path is not None:
+            flags['shell-path'] = args.shell_path
+        argv = [sys.executable, '-B', str(Path(__file__).resolve()),
+                *[part for key, value in flags.items() for part in (f'--{key}', str(value))]]
+        if args.native_only:
+            argv.append('--native-only')
+        env = dict(os.environ, GIT_OPTIONAL_LOCKS='0')
+        result = run_cell_process(host, case, directory, argv, cell_keys(host, case, RESPONSIBILITIES),
+                                  cwd=args.repo, env=env, source_fingerprints=source_fingerprints)
+        try:
+            config.unlink()
+        except OSError as error:
+            result.setdefault('cleanupErrors', []).append(f'Cell model configuration cleanup: {error}')
+            result.update(state='failed', haltReason='worker-cleanup-risk')
+            result.pop('coverage', None)
+        return result
+
+    record['cells'] = dispatch_cells(per_cell_models, record['matrix']['effectiveJobs'], run_cell)
+    for result in record['cells']:
+        record['runs'].extend(result.get('runs', []))
+        record['cleanupErrors'].extend(result.get('cleanupErrors', []))
+        record['sharedFailures'].extend(result.get('sharedFailures', []))
+        if result.get('nativeErrors'):
+            record.setdefault('nativeErrors', []).extend(result['nativeErrors'])
+        if result.get('haltReason'):
+            record.setdefault('matrixHalts', []).append({'host': result['host'], 'case': result['case'],
+                                                        'reason': result['haltReason']})
+        for key, item in result.pop('coverage', {}).items():
+            record['coverage'][key].update(item)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['herdr-bot-worktree', 'toolkit-worktree', 'backend', 'paths-file', 'model-config', 'evidence-dir']:
@@ -88,32 +162,64 @@ def main():
     parser.add_argument('--bun', default='bun')
     parser.add_argument('--shell-path', type=absolute)
     parser.add_argument('--native-only', action='store_true', help='Collect native/page evidence only; never certifies the complete ticket')
-    parser.add_argument('--cases', choices=['all', 'v1', 'outer', 'revision', 'planning', 'investigation'], default='all',
+    parser.add_argument('--cases', choices=('all', *CASE_MAPS), default='all',
         help='One independent diagnostic case; partial selection never certifies the complete ticket')
+    parser.add_argument('--jobs', type=int, choices=(1, 2), default=1,
+        help='Maximum parallel cells; an authorized model capacity must explicitly allow concurrency')
+    parser.add_argument('--_matrix-worker-root', dest='matrix_evidence_dir', type=absolute, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    args.repo, args.toolkit = args.herdr_bot_worktree, args.toolkit_worktree
+    if args.matrix_evidence_dir is not None:
+        if args.hosts not in HOSTS or args.cases not in CASE_MAPS:
+            parser.error('Matrix worker requires exactly one host and one named case')
+        directory = cell_root(args.matrix_evidence_dir, args.hosts, args.cases)
+        if args.evidence_dir != directory / 'native' or args.model_config != directory / 'model.json':
+            parser.error('Matrix worker requires its own cell paths')
+        if args.repo != REPO or Path.cwd().resolve() != REPO:
+            parser.error('Run from the explicitly supplied worktree')
+        args.evidence_dir.mkdir(exist_ok=False)
+        return worker(args)
+
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
+    cells = selected_cells(args.hosts, args.cases)
+    full_matrix = selected_cells('omp,pi', 'all')
     record = {'passed': False, 'coverage': coverage(), 'commands': [], 'runs': [], 'cleanupErrors': [],
-        'selectedHosts': args.hosts.split(','), 'controlled': False,
-        'caseSelection': args.cases, 'filtered': args.cases != 'all'}
+        'selectedHosts': args.hosts.split(','), 'controlled': False, 'sharedFailures': [],
+        'caseSelection': args.cases, 'filtered': cells != full_matrix, 'nativeOnly': args.native_only,
+        'matrix': concurrency({}, args.jobs, len(cells)),
+        'cells': [{'host': host, 'case': case, 'state': 'not-run'} for host, case in cells]}
     try:
         from acceptance.host.processes import require
         require(args.model_config.is_file(), 'Missing explicit authorized model configuration; no credential discovery')
         model = json.loads(args.model_config.read_text(encoding='utf-8'))
-        for key in ['provider', 'model', 'baseUrl', 'apiKeyEnv']:
-            require(isinstance(model.get(key), str) and model[key], 'Authorized model configuration requires ' + key)
+        require(isinstance(model, dict), 'Authorized model configuration must be an object')
+        for key in ['provider', 'model', 'apiKeyEnv']:
+            require(isinstance(model.get(key), str) and model[key].strip(), 'Authorized model configuration requires ' + key)
+        record['matrix'] = concurrency(model, args.jobs, len(cells))
+        per_cell_models = scoped_models(model, cells)
         require(os.environ.get(model['apiKeyEnv']), 'Missing explicitly authorized credential environment: ' + model['apiKeyEnv'])
-        args.repo, args.toolkit = args.herdr_bot_worktree, args.toolkit_worktree
         require(args.repo == REPO and Path.cwd().resolve() == REPO, 'Run from the explicitly supplied worktree')
         require(args.backend.name == 'herdr-bot.exe' and args.backend.parent.name == 'debug', 'Use this worktree production backend in an independent absolute Cargo target/debug directory')
         require(args.paths_file.is_file(), 'Missing explicit isolated paths configuration')
         record['authorizedModel'] = {key: model[key] for key in ['provider', 'model', 'apiKeyEnv']}
-        record['nativeOnly'] = args.native_only
-        checks_ok = checks(args, record) if not args.native_only else False
-        from acceptance.host.provenance import preflight
+        record['checksPassed'] = not args.native_only and checks(args, record)
+        require(args.native_only or record['checksPassed'], 'Worktree-wide checks failed; native cells were not launched')
+        from acceptance.host.provenance import preflight, source_identity
         preflight(args, record)
-        from node_approval_v1_acceptance import run_scenarios
-        run_scenarios(args, record, RESPONSIBILITIES)
-        record['passed'] = checks_ok and not record['filtered'] and not record['cleanupErrors'] and all(item['exit'] == 0 for item in record['runs']) and all(item['verified'] for item in record['coverage'].values())
+        sources = {'herdr-bot': (args.repo, 'backend/Cargo.lock'), 'toolkit': (args.toolkit, 'bun.lock')}
+        record['sourceBeforeMatrix'] = {name: source_identity(root, lock, args.evidence_dir)
+                                        for name, (root, lock) in sources.items()}
+        fingerprints = {name: source_fingerprint(identity) for name, identity in record['sourceBeforeMatrix'].items()}
+        record['matrix']['sourceFingerprints'] = fingerprints
+        run_matrix(args, record, per_cell_models, fingerprints)
+        record['sourceAfterMatrix'] = {name: source_identity(root, lock, args.evidence_dir)
+                                       for name, (root, lock) in sources.items()}
+        require(all(source_fingerprint(record['sourceAfterMatrix'][name]) == fingerprints[name]
+                    for name in sources), 'Source changed during matrix acceptance')
+        successes = [(item['host'], item['case']) for item in record['cells'] if item['state'] == 'passed']
+        record['passed'] = (record['checksPassed'] and not record['filtered'] and successes == full_matrix
+            and not record['cleanupErrors'] and not record['sharedFailures'] and not record.get('matrixHalts')
+            and all(item['verified'] is True for item in record['coverage'].values()))
     except BaseException:
         record['error'] = traceback.format_exc()
     record['entrypoint'] = {'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}

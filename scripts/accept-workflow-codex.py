@@ -12,12 +12,66 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
-from acceptance.host.completion_transport import NativeCompletionTransport
+from acceptance.host.completion_transport import ModelAuthorizationLost, business_transports
 
 REPO = Path(__file__).resolve().parents[1]
 MODEL = 'gpt-6-luna'
+
+
+def safe_transport_diagnostics(failed):
+    """Filter failure-only HTTP and stream evidence independently of the adapter."""
+    if not isinstance(failed, dict):
+        return {}
+    status = failed.get('httpStatus')
+    if type(status) is not int:
+        return {}
+
+    def counts(value, keys):
+        return {key: item for key in keys if type(item := value.get(key)) is int and 0 <= item <= 10_000_000}
+
+    diagnostic = {}
+    if 100 <= status <= 599 and not 200 <= status <= 299:
+        provider_error = failed.get('providerError')
+        if isinstance(provider_error, dict):
+            allowed_fields = {
+                'type': {'invalid_request_error', 'server_error', 'rate_limit_error'},
+                'code': {'invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded'},
+                'parameter': {'input', 'tools', 'instructions', 'model', 'previous_response_id'},
+                'reason': {'missing-tool-output', 'orphan-tool-output', 'duplicate-item',
+                           'context-limit', 'tool-schema', 'encrypted-content'},
+            }
+            diagnostic['providerError'] = {
+                key: item if type(item := provider_error.get(key)) is str and item in allowed else 'other'
+                for key, allowed in allowed_fields.items()}
+        shape = failed.get('requestShape')
+        if isinstance(shape, dict):
+            diagnostic['requestShape'] = counts(shape, ['inputItems', 'messageItems', 'toolDeclarations',
+                                                       'instructionLength', 'toolCalls', 'toolResults'])
+            if type(shape.get('toolBindingsMatch')) is bool:
+                diagnostic['requestShape']['toolBindingsMatch'] = shape['toolBindingsMatch']
+    stream = failed.get('streamSignals')
+    if status == 200 and isinstance(stream, dict):
+        facts = counts(stream, ['frameCount', 'textDeltas', 'reasoningDeltas', 'toolArgumentDeltas'])
+        terminal = {'response.completed', 'response.done', 'response.incomplete', 'response.failed', 'error'}
+        first = terminal | {'other', 'response.created', 'response.queued', 'response.in_progress',
+            'response.output_item.added', 'response.output_item.done', 'response.content_part.added',
+            'response.content_part.done', 'response.output_text.delta', 'response.output_text.done',
+            'response.refusal.delta', 'response.refusal.done', 'response.reasoning_summary_part.added',
+            'response.reasoning_summary_part.done', 'response.reasoning_summary_text.delta',
+            'response.reasoning_summary_text.done', 'response.reasoning_text.delta', 'response.reasoning_text.done',
+            'response.function_call_arguments.delta', 'response.function_call_arguments.done',
+            'response.custom_tool_call_input.delta', 'response.custom_tool_call_input.done'}
+        for key, allowed in [('firstFrame', first), ('terminalFrame', terminal)]:
+            if key in stream and (stream[key] is None or (type(stream[key]) is str and stream[key] in allowed)):
+                facts[key] = stream[key]
+        outcome = stream.get('sdkOutcome')
+        if type(outcome) is str and outcome in {'pending', 'returned', 'threw', 'error', 'aborted'}:
+            facts['sdkOutcome'] = outcome
+        diagnostic['streamSignals'] = facts
+    return diagnostic
 
 
 def safe_content_diagnostics(failed):
@@ -61,7 +115,12 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='One real model request only; no business host')
     parser.add_argument('--native-only', action='store_true', help='Node approval failures/V1 native evidence only; does not certify full ticket checks')
     parser.add_argument('--cases', default='all', help='Revision or published V1 case selection; a subset does not establish full acceptance')
+    parser.add_argument('--jobs', type=int, choices=(1, 2), default=1, help='Published V1: simultaneous independent cells')
+    parser.add_argument('--model-capacity', type=int, choices=(1, 2), default=1,
+                        help='Published V1: confirmed total simultaneous requests for this credential; default 1')
     args = parser.parse_args()
+    if (args.jobs, args.model_capacity) != (1, 1) and (args.scenario != 'node-approval-v1' or args.smoke):
+        parser.error('Cell concurrency options require the published V1 business scenario')
     if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-v1'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
@@ -81,6 +140,10 @@ def main():
                  args.toolkit / 'package.json']:
         if not path.is_file():
             parser.error('Missing explicit dependency: ' + str(path))
+    if args.scenario == 'node-approval-v1' and not args.smoke:
+        for source in (REPO, args.toolkit):
+            if args.evidence_dir.is_relative_to(source) and not args.evidence_dir.is_relative_to(source / '.scratch'):
+                parser.error('Place matrix evidence outside participating source trees or inside their .scratch directory')
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     adapter = REPO / 'scripts/workflow-codex-completion.mjs'
     result = {'passed': False, 'scenario': args.scenario, 'hosts': args.hosts,
@@ -91,9 +154,14 @@ def main():
     records = args.evidence_dir / 'codex-completions'
     records.mkdir()
 
-    def complete(request):
-        index = result['modelRequests']
-        result['modelRequests'] += 1
+    counter_lock = threading.Lock()
+
+    def complete(request, cell=''):
+        with counter_lock:
+            index = result['modelRequests']
+            result['modelRequests'] += 1
+        cell_records = records / cell
+        cell_records.mkdir(parents=True, exist_ok=True)
         command = [args.node, str(adapter), '--pi-package', str(args.pi_package),
                    '--auth-file', str(args.auth_file), '--model', MODEL, '--timeout', str(args.timeout)]
         # Prompts and credentials are never command-line arguments. The adapter's
@@ -118,6 +186,7 @@ def main():
             try:
                 failed = json.loads(process.stdout)
                 diagnostic.update(safe_content_diagnostics(failed))
+                diagnostic.update(safe_transport_diagnostics(failed))
                 for key in ['httpStatus', 'requests']:
                     value = failed.get(key)
                     if type(value) is int and 0 <= value <= 999:
@@ -126,7 +195,9 @@ def main():
                     diagnostic['network'] = failed['network']
             except (ValueError, AttributeError):
                 pass
-            (records / f'{index:04d}-error.json').write_text(json.dumps(diagnostic), encoding='utf-8')
+            (cell_records / f'{index:04d}-error.json').write_text(json.dumps(diagnostic), encoding='utf-8')
+            if cell and (reason in ('auth-missing', 'oauth-expired') or diagnostic.get('httpStatus') == 401):
+                raise ModelAuthorizationLost('Shared Codex credential rejected; no retry')
             raise RuntimeError('Native Codex completion failed: ' + reason + '; no retry')
         native = json.loads(process.stdout)
         if (native.get('provider'), native.get('model'), native.get('serverModel'), native.get('api')) != (
@@ -136,7 +207,7 @@ def main():
             raise RuntimeError('Native completion returned an invalid decision; no retry')
         if not native['content'].strip() and not native['tool_calls']:
             raise RuntimeError('Native completion returned no text or tool calls; no retry')
-        (records / f'{index:04d}.json').write_text(json.dumps(native, ensure_ascii=False, indent=2), encoding='utf-8')
+        (cell_records / f'{index:04d}.json').write_text(json.dumps(native, ensure_ascii=False, indent=2), encoding='utf-8')
         usage = native['usage']
         return {'content': native['content'], 'tool_calls': native['tool_calls'],
                 'usage': {'prompt_tokens': usage['input'] + usage['cacheRead'] + usage['cacheWrite'],
@@ -156,12 +227,19 @@ def main():
             result['response'] = decision['content']
             result['passed'] = result['response'].strip() == 'LUNA-ACCEPTANCE-READY' and not decision['tool_calls']
         else:
-            with NativeCompletionTransport(complete, args.evidence_dir / 'completion-wire') as transport:
+            cells = ['']
+            if args.scenario == 'node-approval-v1':
+                from node_approval_v1_matrix import selected_cells
+                cells = [f'{host}/{case}' for host, case in selected_cells(args.hosts, args.cases)]
+            with business_transports(complete, args.evidence_dir / 'completion-wire', cells, args.model_capacity) as transports:
                 with tempfile.TemporaryDirectory(prefix='workflow-codex-config-') as directory:
                     config = Path(directory) / 'model.json'
-                    config.write_text(json.dumps({'provider': 'codex-completion-transport', 'model': MODEL,
-                        'baseUrl': transport.base, 'apiKeyEnv': 'WORKFLOW_CODEX_TRANSPORT_KEY',
-                        'maxConcurrentRequests': 1}), encoding='utf-8')
+                    model = {'provider': 'codex-completion-transport', 'model': MODEL,
+                        'baseUrl': next(iter(transports.values())).base, 'apiKeyEnv': 'WORKFLOW_CODEX_TRANSPORT_KEY',
+                        'maxConcurrentRequests': args.model_capacity}
+                    if args.scenario == 'node-approval-v1':
+                        model['cellBaseUrls'] = {key: transport.base for key, transport in transports.items()}
+                    config.write_text(json.dumps(model), encoding='utf-8')
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)
@@ -187,6 +265,8 @@ def main():
                         command.append('--native-only')
                     if args.scenario in ['revise', 'node-approval-v1']:
                         command.extend(['--cases', args.cases])
+                    if args.scenario == 'node-approval-v1':
+                        command.extend(['--jobs', str(args.jobs)])
                     for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff', 'node-approval-v1'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):
                         value = getattr(args, name)
@@ -198,8 +278,11 @@ def main():
                          (args.evidence_dir / 'business-stderr.log').open('w', encoding='utf-8') as stderr:
                         process = subprocess.run(command, cwd=REPO, env=env, stdout=stdout, stderr=stderr)
                     result['businessExit'] = process.returncode
-            result['transportFailed'] = transport.failed
-            successful = result['businessExit'] == 0 and not transport.failed
+            if args.scenario == 'node-approval-v1':
+                result['transportByCell'] = {key: {'failed': endpoint.failed, 'requests': len(endpoint.records),
+                    'wire': str(endpoint.directory), 'receipts': str(records / key)} for key, endpoint in transports.items()}
+            result['transportFailed'] = any(endpoint.failed for endpoint in transports.values())
+            successful = result['businessExit'] == 0 and not result['transportFailed']
             result['subsetPassed'] = successful and result['filtered']
             result['passed'] = successful and not result['filtered']
     except Exception as error:

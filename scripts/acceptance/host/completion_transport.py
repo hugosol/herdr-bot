@@ -5,6 +5,7 @@ NativeCompletionTransport accepts completion(request) -> SDK-native decision.
 Neither chooses business actions or executes tools: the real host owns those
 and its history. Request serialization is not direct-host wire compliance.
 """
+from contextlib import ExitStack, contextmanager
 import errno
 import http.server
 import json
@@ -27,6 +28,10 @@ function name) and arguments (JSON object matching its schema). When calling
 tools the host will actually execute them and send their results next turn.
 Do not wrap JSON in Markdown. This instruction only defines serialization;
 it adds no business decisions. Actual native request follows:\n'''
+
+
+class ModelAuthorizationLost(RuntimeError):
+    """The explicitly configured provider rejected the shared credential."""
 
 
 class CompletionTransport:
@@ -107,10 +112,10 @@ class CompletionTransport:
                     self.send_header('Content-Length', str(len(encoded)))
                     self.end_headers()
                     self.wfile.write(encoded)
-                except BaseException:
+                except BaseException as error:
                     owner.failed = True
                     record['error'] = traceback.format_exc()
-                    self.send_error(502, 'Actual completion or transport failed; see raw evidence')
+                    self.send_error(401 if isinstance(error, ModelAuthorizationLost) else 502, 'Actual completion or transport failed; see raw evidence')
                 finally:
                     record['ended'] = time.monotonic()
                     (owner.directory / f"{record['index']:04d}.json").write_text(
@@ -150,3 +155,24 @@ class NativeCompletionTransport(CompletionTransport):
         decision = self.complete(request)
         record['nativeCompletion'] = decision
         return decision
+
+
+@contextmanager
+def business_transports(complete, directory, cells, capacity):
+    """A terminal decision failure belongs to one cell; credential and capacity are shared."""
+    slots = threading.BoundedSemaphore(capacity)
+    auth_lost = threading.Event()
+    with ExitStack() as owned:
+        endpoints = {}
+        for cell in cells:
+            def dispatch(request, key=cell):
+                with slots:
+                    if auth_lost.is_set():
+                        raise ModelAuthorizationLost('Shared model authorization is unavailable')
+                    try:
+                        return complete(request, key)
+                    except ModelAuthorizationLost:
+                        auth_lost.set()
+                        raise
+            endpoints[cell] = owned.enter_context(NativeCompletionTransport(dispatch, directory / cell))
+        yield endpoints

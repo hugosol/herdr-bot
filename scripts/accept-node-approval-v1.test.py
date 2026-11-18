@@ -46,9 +46,13 @@ class PublishedV1CLI(unittest.TestCase):
             self.assertFalse(report['passed'])
             self.assertIn('authorized', report['error'].lower())
             expected = {'P31/S2/' + host for host in ['omp', 'pi']} | {'P35/S2/' + host for host in ['omp', 'pi']}
-            expected |= {'P34/' + seam + '/' + filename + '/' + node for seam in ['S2', 'S3']
-                for filename, nodes in NODES.items() for node in nodes}
+            expected |= {'P34/' + seam + '/' + host + '/' + filename + '/' + node for seam in ['S2', 'S3']
+                for host in ['omp', 'pi'] for filename, nodes in NODES.items() for node in nodes}
             self.assertEqual(set(report['coverage']), expected)
+            self.assertEqual([(item['host'], item['case']) for item in report['cells']],
+                [(host, case) for host in ('omp', 'pi')
+                 for case in ('v1', 'outer', 'revision', 'planning', 'investigation')])
+            self.assertTrue(all(item['state'] == 'not-run' for item in report['cells']))
             self.assertTrue(all(not item['verified'] and item['expected'] for item in report['coverage'].values()))
             self.assertEqual(report['commands'], [])
             self.assertEqual(report['runs'], [])
@@ -77,10 +81,68 @@ class PublishedV1CLI(unittest.TestCase):
             self.assertEqual(report['caseSelection'], 'revision')
             self.assertTrue(report['filtered'])
             self.assertFalse(report['passed'])
-            self.assertEqual(len(report['coverage']), 48)
+            self.assertEqual(len(report['coverage']), 92)
+            self.assertEqual([(item['host'], item['case']) for item in report['cells']], [('omp', 'revision')])
+            self.assertEqual(report['cells'][0]['state'], 'not-run')
             self.assertTrue(all(not item['verified'] for item in report['coverage'].values()))
             self.assertEqual(report['commands'], [])
             self.assertEqual(report['runs'], [])
+
+    def test_jobs_outside_one_or_two_are_rejected_before_evidence(self):
+        with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:
+            root = Path(directory)
+            result = self.invoke(root, jobs='3')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('--jobs', result.stderr)
+            self.assertFalse((root / 'evidence').exists())
+
+    def test_worker_requires_exactly_one_manager_and_case(self):
+        with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:
+            root = Path(directory)
+            for hosts, cases in [('omp,pi', 'v1'), ('pi', 'all')]:
+                with self.subTest(hosts=hosts, cases=cases):
+                    result = self.invoke(root, **{'_matrix-worker-root': str(root / 'matrix'), 'hosts': hosts, 'cases': cases})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('exactly one host and one named case', result.stderr)
+                    self.assertFalse((root / 'evidence').exists())
+
+    def test_real_worker_reports_only_its_keys_without_running_global_checks(self):
+        with tempfile.TemporaryDirectory(prefix='published-v1-worker-') as directory:
+            root = Path(directory)
+            cell = root / 'cells/pi/investigation'
+            cell.mkdir(parents=True)
+            # Wrong Bun fails real scenario preflight before any native or model operation.
+            (root / 'matrix-preflight.json').write_text(json.dumps({'paths': {'roots': {
+                'herdr': str(root), 'pi_package': str(root), 'omp_package': str(root)}},
+                'hostVersions': {'bun': 'unavailable'}}), encoding='utf-8')
+            result = self.invoke(root, **{'_matrix-worker-root': str(root), 'hosts': 'pi',
+                'cases': 'investigation', 'model-config': str(cell / 'model.json'),
+                'evidence-dir': str(cell / 'native')})
+            self.assertEqual(result.returncode, 1)
+            report = json.loads((cell / 'native/worker.json').read_text(encoding='utf-8'))
+            self.assertEqual((report['managerHost'], report['case']), ('pi', 'investigation'))
+            self.assertFalse(report['cellPassed'])
+            self.assertIn('Bun 1.4.4', report['error'])
+            self.assertEqual(report['runs'], [])
+            self.assertEqual(set(report['coverage']), {f'P34/{seam}/pi/tibo-monitor-then-c-drive-inspection.json/{node}'
+                for seam in ('S2', 'S3') for node in ('tibo-monitor', 'c-drive-inspection')})
+            self.assertFalse((cell / 'native/evidence.json').exists())
+
+    def test_scoped_endpoint_does_not_fall_back_to_another_cell(self):
+        with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:
+            root = Path(directory)
+            url = 'http://127.0.0.1:49222'
+            (root / 'model.json').write_text(json.dumps({'provider': 'codex-completion-transport',
+                'model': 'gpt-6-luna', 'apiKeyEnv': 'WORKFLOW_CODEX_TRANSPORT_KEY', 'baseUrl': url,
+                'cellBaseUrls': {'omp/revision': url}, 'maxConcurrentRequests': 2}), encoding='utf-8')
+            result = self.invoke(root, cases='revision', hosts='pi', jobs='2')
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
+            self.assertIn('Missing exact scoped model endpoint for pi/revision', report['error'])
+            self.assertEqual(report['matrix'], {'requestedJobs': 2, 'modelCapacity': 2, 'effectiveJobs': 1})
+            self.assertEqual(report['commands'], [])
+            self.assertEqual(report['cells'], [{'host': 'pi', 'case': 'revision', 'state': 'not-run'}])
+            self.assertFalse((root / 'evidence/cells').exists())
 
     def test_existing_evidence_is_not_overwritten(self):
         with tempfile.TemporaryDirectory(prefix='published-v1-cli-') as directory:
