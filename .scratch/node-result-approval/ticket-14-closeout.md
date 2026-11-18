@@ -2,7 +2,7 @@
 
 **验收未完成，不关闭 Ticket 14。** 十格均有过独立运行；截至本次收尾，只有两格 `investigation` 完整通过。已实现单格入口、隔离夹具及证据采集；以下八格不是未写入口，而是运行失败或尚未复验。未运行两仓完整回归，不能把单格、历史记录或部分 S3 当成整票通过。
 
-原票：[14-published-v1-native-acceptance.md](implementation/14-published-v1-native-acceptance.md)。原始运行目录在 `C:/Users/hugos/AppData/Local/Temp/hyper-ticket-KirY7B/.scratch/node-result-approval/evidence/`，留在原 worktree，不进入 Git。每格先读 `<目录>/business/evidence.json` 的 `cells`，再读 `business/cells/<host>/<case>/native/<host>/evidence.json` 的 `originalErrors`、`publicFacts`、`coverage` 和 `cleanupErrors`；模型/代理问题对照 `completion-wire` 和格内的 `model-wire/index.json`。证据只绑定原运行的源码，不作为合入后复验。
+原票：[14-published-v1-native-acceptance.md](implementation/14-published-v1-native-acceptance.md)。原 worktree 中的原始证据不归档。下表目录名仅是历史运行标识，不是可用的证据路径。复跑须重新准备 `paths.toml` 并使用新证据目录；先读 `<目录>/business/evidence.json` 的 `cells`，再读 `business/cells/<host>/<case>/native/<host>/evidence.json` 的 `originalErrors`、`publicFacts`、`coverage` 和 `cleanupErrors`；模型或代理问题对照 `completion-wire` 和格内的 `model-wire/index.json`。
 
 | 宿主 / Case | 本次证据目录 | 已观察 / 下一步 |
 |---|---|---|
@@ -19,7 +19,7 @@
 
 ## 恢复顺序
 
-1. 有授权模型和独占依赖时，先查 `fp` 最终证据，再复验 Pi `planning`/`revision`，验证已修正的材料和批准边界；随后逐格验两宿主 `outer` 与 `v1`，补 OMP `planning`/`revision`。每次一个宿主、一个 case、一个新证据目录；不重放原失败请求或旧 Run 副作用。
+1. 有授权模型和独占依赖时，从复验 Pi `planning`/`revision` 开始，验证已修正的材料和批准边界；随后逐格验两宿主 `outer` 与 `v1`，补 OMP `planning`/`revision`。每次一个宿主、一个 case、一个新证据目录；不重放原失败请求或旧 Run 副作用。
 2. 区分三类失败：上游未给 HTTP 响应、HTTP 200 流无终帧、宿主在单槽排队时断连。单格内按真实 manager 逐个派发 V1 节点；不擅自增加模型容量，或修改产品超时/发布 Map/批准顺序。只看到节点报告或 UI 确认不等于保存和 `complete`/`finish`。
 3. 全部单格恢复后，再按[原票](implementation/14-published-v1-native-acceptance.md)运行双仓检查及完整 92 项覆盖；不拼接跨版本证据认证整票。
 
