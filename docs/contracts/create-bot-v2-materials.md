@@ -5,7 +5,7 @@
 ## 按角色读取
 
 - 准备或核实根输入时，管理者读取「通用格式与目标定位」和「request 与 materials」。
-- W1 消费输入及生成双材料前，读取上述两节和「target_materials」；bot_requirements 按关联 Task 的「交付双材料」生成。
+- W1 消费输入及生成双材料前，读取上述两节和「target_materials」；bot_requirements 按关联 Task 的「交付双材料」生成，尤其遵循其中权限与非目标的阶段标注规则，区分本阶段只读限制与后续创建权限。
 - W2 消费双材料及生成最终文件前，读取「通用格式与目标定位」「target_materials」「saved 与 handoff」；核实委托授权含义时另读「request 与 materials」。后续阶段的候选及保存批准不构成 W1 的完成门槛。
 
 ## 通用格式与目标定位
