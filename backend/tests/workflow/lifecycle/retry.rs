@@ -70,27 +70,27 @@ async fn late_old_reports_remain_history_without_controlling_new_execution() {
     assert!(action(&s, "status", json!({"sessionId":"retry-manager"}), 200).await["pendingReports"].get("A").is_none());
 }
 
-// P14.02/P41.01: a third Chat cannot reuse the first execution's native
-// identity just because the second execution is now current. The host remains
-// real; only its external identity response is controlled.
 #[tokio::test]
-async fn retry_rejects_reuse_of_any_retained_native_identity() {
+async fn startup_retry_ignores_unreadable_history_and_preserves_old_execution() {
     let s = Scenario::new().await;
     let (_, old) = failed_execution(&s).await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-second"},"native_cwd":s.data.path().join("node-zone")}));
-    let second = action(&s, "retry", retry_body(), 200).await;
-    action(&s, "fail", json!({"sessionId":"retry-manager","nodeId":"A","reason":"Second attempt also failed"}), 200).await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-old"},"native_cwd":s.data.path().join("node-zone")}));
     let result = action(&s, "retry", retry_body(), 200).await;
-    assert_eq!(result["result"]["status"], "failed");
-    assert_eq!(result["result"]["failure"]["stage"], "identity");
-    assert_eq!(result["result"]["effects"]["sessionId"], "retry-old");
-    assert_eq!(result["result"]["effects"]["inputAttempted"], false);
-    assert!(result["snapshot"]["nodes"]["A"]["execution"]["chat"].is_null());
+    assert_eq!(result["result"]["status"], "running", "{result}");
+    assert_eq!(result["result"]["effects"]["associationSaved"], true);
+    assert_eq!(result["result"]["effects"]["inputSubmitted"], true);
+    assert_eq!(result["snapshot"]["nodes"]["A"]["execution"]["chat"]["sessionId"], "retry-second");
     assert_eq!(result["snapshot"]["nodes"]["A"]["previousExecutions"][0]["execution"], old);
-    assert_eq!(result["snapshot"]["nodes"]["A"]["previousExecutions"][1]["execution"], second["snapshot"]["nodes"]["A"]["execution"]);
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 3);
-    assert_eq!(report(&s, "retry-old", "Original remains unambiguous").await["executionId"], old["id"]);
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 3);
+    let text = common::prompt_body(prompts[2]);
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 // P13.03/P45.03/P41.01: controlled identity/history/submit failure must retain a

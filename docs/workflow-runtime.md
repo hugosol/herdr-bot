@@ -235,6 +235,8 @@ python scripts/test-workflow-partial-startup.py `
 
 当前交付目录也将 auto `connect-bot` 作为无角色限定的固定扩展，manager 与 node 会一并加载并尝试面板登记；它不替代角色扩展的 Run 关联和协议，角色通信仍不依赖 connect-bot 是否连接。固定入口与适用角色统一在 Suite 页面只读查看，未选择 Suite 也加载。下文关闭 connect-bot 的专项验收用于证明角色通信的独立性，不代表当前默认禁止加载它。
 
+新启动的原生会话身份及其独立性由宿主保证。首次节点派发、合法 retry 和嵌套 Map 节点启动均不扫描历史 Run 排重；保留官方身份来源、类型、路径／文件头及 cwd 校验，保存当前执行关联后才提交 Task.prompt 与 node.input。无关历史 Run 不可解析不阻断该启动路径；不因此迁移旧记录、补批准字段或自动恢复失败执行。已有 Chat 恢复、派发核实及报告／批准等操作的身份归属校验保持不变。
+
 Herdr 确认 `agent start` 不代表已经发布原生身份。对刚启动的管理者或 node，后端在同一次 `identity` 阶段的 **30 秒总期限**内，仅当 `agent_session` 缺失或为 null 时，每隔 100 毫秒只读查询同一个 agent；身份出现后才校验并保存关联、提交初始化输入。命令失败、响应结构错误、身份不匹配或原生文件错误不会被当成“尚未就绪”反复查询。期限耗尽则报告 identity 失败并保留已发生的外部效果，不再次启动、不补发输入，也不自动接管旧失败 Run。
 
 新启动的 omp 可能已分配原生身份、但尚未创建会话文件。herdr-bot 仅在官方 `herdr:omp` 上报绝对原生路径、实际文件打开为 NotFound、文件名符合 omp 的时间戳与 UUID 约定且有实际进程 cwd 时，接受路径中的身份；文件存在时仍读取文件头，权限、损坏及非标准路径错误不降级。管理者、节点和节点 retry 均先保存身份关联与历史，再提交初始指示；不会为取得身份提前发送任务或创建原生文件。身份及历史中的预期文件路径不代表已经落盘或当前可恢复，信任边界见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。没有后台落盘轮询、自动修复或对旧失败 Run 的补关联。
@@ -348,7 +350,7 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 跨仓原生验收入口为 `python scripts/accept-workflow-nesting-recovery.py --backend <当前 worktree 后端绝对路径> --toolkit <toolkit worktree> --hosts omp,pi --paths-file <独占依赖声明> --model-config <专用授权模型声明> --evidence-dir <尚不存在的独占目录>`。实际安装版两宿主在明确失败／retry 后分别恢复旧与当前子 manager Chat，原生新 PID／相同 Session、来源 Task、parent execution／child、原始输入、实际文件及真实 run／collect／report 的后端结果共同证明身份与无重放；随后真正更换后端进程，恢复同两条 Chat 并观察原生角色拒绝。`--hosts declared` 保持业务声明的 OMP 父层／Pi 子层，不为 runner 改宿主。独立后端矩阵、配置或受控宿主成功都不能替代该专项；命令与证据目录存在不表示已通过。依赖、授权、隔离、清理和复跑边界见[测试指引](agents/testing.md#嵌套原生新进程恢复验收)。
 
-嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。
+嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。角色查找扫描 Run 记录，但只反序列化身份与角色关联字段；旧记录缺少成果批准字段不阻断任何 Chat 的恢复。JSON 无法解析或关联本身不可判定时仍拒绝恢复，不跳过记录、不推测角色。此读取方式仅用于 Chat 恢复，不迁移 Run，也不改变 workflow 操作的完整记录校验。
 
 后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
 
@@ -686,7 +688,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -
 
 - `retry_saves_new_identity_before_full_trigger_and_retains_original_facts`：P13.03/P14.02/P15.03/P41.01/P68.07，初始指示门前的新身份落盘、独立字面完整触发配置、实际夹具 cwd/Workspace 和预留产物保留。
 - `late_old_reports_remain_history_without_controlling_new_execution`：P27.02/P41.01/P68.07，旧新报告交错、collect 仅当前适用 ID、旧身份不能变更当前执行、显式交接。
-- `retry_rejects_reuse_of_any_retained_native_identity`：P14.02/P41.01，多轮 retry 拒绝复用最早身份，原报告归属仍唯一。
+- `startup_dispatch_ignores_unreadable_history_and_submits_full_input`、`startup_retry_ignores_unreadable_history_and_preserves_old_execution`、`startup_nested_dispatch_ignores_unreadable_history_and_binds_both_runs`：无关历史 Run 不可解析时，首次派发、合法 retry 与嵌套节点仍绑定宿主身份并提交输入；旧记录原样保留，retry 保留旧执行，嵌套父子关联一致。
 - `retry_startup_failures_keep_both_attempts_and_do_not_rollback`、`retry_association_failure_exposes_new_attempt_without_overwriting_old_snapshot`：P13.03/P45.03/P41.01，身份/指示/关联失败的实际启动效果及旧失败保留。
 - `paused_retry_requires_explicit_resume_and_human_confirmation`、`terminal_run_rejects_retry_without_new_chat_or_record_changes`、`uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled`、`unavailable_retry_targets_fail_without_fallback_or_reusing_old_execution`：P35.04/P36.03/P41.01/P14.02，拒绝路径与后续合法显式启动。
 

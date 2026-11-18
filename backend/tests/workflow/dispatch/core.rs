@@ -347,19 +347,30 @@ async fn missing_manager_workspace_never_falls_back_or_creates_a_tab() {
     assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(),1);
 }
 
-// A new Tab is insufficient: replaying the manager native identity must fail
-// without sending node instructions, even though the host created another pane.
+// Unrelated unreadable history must not block binding a newly started Chat
+// or delivering its complete fixed and business instructions.
 #[tokio::test]
-async fn new_tab_with_reused_native_identity_is_not_accepted_as_independent_chat() {
+async fn startup_dispatch_ignores_unreadable_history_and_submits_full_input() {
     let s = Scenario::new().await;
-    s.start("same-native").await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"same-native"}}));
-    let batch = s.dispatch("same-native", &["A"]).await;
-    assert_eq!(batch["results"][0]["status"],"failed");
-    assert_eq!(batch["results"][0]["failure"]["stage"],"identity");
-    assert_eq!(batch["results"][0]["effects"]["sessionId"],"same-native");
-    assert_eq!(s.herdr.tabs().len(),2);
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(),1);
+    let started = s.start("history-independent-manager").await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"history-independent-node"},"native_cwd":s.data.path().join("node-zone")}));
+    let batch = s.dispatch("history-independent-manager", &["A"]).await;
+    assert_eq!(batch["results"][0]["status"], "running", "{batch}");
+    assert_eq!(batch["results"][0]["effects"]["associationSaved"], true);
+    assert_eq!(batch["results"][0]["effects"]["inputSubmitted"], true);
+    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
+    let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "history-independent-node");
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 2);
+    let text = common::prompt_body(prompts[1]);
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 #[tokio::test]

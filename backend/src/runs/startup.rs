@@ -344,10 +344,7 @@ async fn protocol(
         state.herdr.started_session(&agent, task.agent.label(), deadline))
         .await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
     effects.session_id = Some(identity.session_id.clone());
-    if let Role::Node { target, committed, .. } = &role {
-        if state.runs.chat_role_with_current(state, &identity.session_id, &task.id, task.agent, Some(committed)).await?.is_some() {
-            return Err("宿主未返回独立的新原生 Chat 身份".into());
-        }
+    if let Role::Node { target, .. } = &role {
         if !crate::zones::same_path(&identity.cwd, &target.zone) {
             return Err(format!("原生 Chat cwd 与定义 zone 不一致：{}", identity.cwd));
         }

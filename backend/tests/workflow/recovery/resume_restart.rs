@@ -75,12 +75,47 @@ async fn dual_role_current_and_retired_chat_resume_preserves_all_facts_and_uses_
     }
 }
 
+// A retired execution saved before result approval must neither block a newer
+// Chat nor lose its own dual role when restored through the public endpoint.
+#[tokio::test]
+async fn legacy_execution_approval_schema_does_not_block_chat_resume() {
+    let s = Scenario::new().await;
+    nested(&s).await;
+    let root = s.start("legacy-root").await;
+    native(&s, "legacy-child");
+    s.dispatch("legacy-root", &["A"]).await;
+    action(&s, "fail", json!({"sessionId":"legacy-root","nodeId":"A","reason":"Confirmed original failure"})).await;
+    native(&s, "modern-child");
+    action(&s, "retry", json!({"sessionId":"legacy-root","nodeId":"A","confirmed":true,"reason":"Authorized independent retry"})).await;
+    let path = s.config.scheduler.run_directory.join(root["id"].as_str().unwrap()).join("run.json");
+    let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let legacy = saved["nodes"]["A"]["previousExecutions"][0]["execution"].as_object_mut().unwrap();
+    for field in ["autoApproved", "approved", "approvalSource"] { legacy.remove(field).unwrap(); }
+    legacy.insert("reportPolicy".into(), json!("auto"));
+    fs::write(&path, saved.to_string()).unwrap();
+    let before = facts(&s);
+    for session in ["modern-child", "legacy-child"] {
+        native(&s, session);
+        let offset = s.herdr.calls().len();
+        let result = request(&s, "/api/chats/resume", json!({"sessionId":session}), 200).await;
+        assert_eq!(result["outcome"], "restored", "{session}: {result}");
+        let calls = s.herdr.calls();
+        let start = calls[offset..].iter().find(|call| call["kind"] == "agent_start").unwrap();
+        let args = start["args"].as_array().unwrap();
+        assert!(args.windows(2).any(|pair| pair == [json!("--resume"), json!(session)]));
+        for role in ["manager", "node"] {
+            assert!(args.contains(&json!(s.data.path().join(format!("omp-{role}-chat.ts")))));
+        }
+    }
+    assert_eq!(facts(&s), before);
+}
+
 // P32: matching source Task alone must not authorize a dual role. A loader
 // falling back to manager on invalid links would launch a partial-role Chat.
 // Keep real persisted conflicts in path and observe rejection before startup.
 #[tokio::test]
 async fn dual_role_resume_rejects_broken_parent_duplicate_identity_and_wrong_source_without_starting() {
-    for fault in ["wrong-parent", "duplicate", "wrong-source"] {
+    for fault in ["wrong-parent", "duplicate", "wrong-source", "missing-manager", "invalid-json"] {
         let s = Scenario::new().await;
         nested(&s).await;
         let root = s.start("invalid-root").await;
@@ -101,6 +136,13 @@ async fn dual_role_resume_rejects_broken_parent_duplicate_identity_and_wrong_sou
                 child["id"] = json!("duplicate-child");
                 fs::write(duplicate.join("run.json"), child.to_string()).unwrap();
                 for name in ["history.jsonl", "messages.jsonl"] { fs::write(duplicate.join(name), b"").unwrap(); }
+            }
+            "missing-manager" => {
+                child.as_object_mut().unwrap().remove("manager").unwrap();
+                fs::write(&child_path, child.to_string()).unwrap();
+            }
+            "invalid-json" => {
+                fs::write(&child_path, format!("{}{{", child)).unwrap();
             }
             "wrong-source" => {
                 let path = s.config.scheduler.run_directory.join(root["id"].as_str().unwrap()).join("run.json");

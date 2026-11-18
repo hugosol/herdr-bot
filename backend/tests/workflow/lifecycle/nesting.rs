@@ -143,29 +143,30 @@ async fn retired_child_session_cannot_select_the_replacement_execution() {
     }
 }
 
-// P21: a different parent Run cannot reuse a child manager Chat. A same-Run
-// duplicate check alone misses this; observe the real external start, retained
-// child registration, identity-stage failure and no second initial prompt.
 #[tokio::test]
-async fn nested_dispatch_rejects_native_session_reuse_across_runs() {
+async fn startup_nested_dispatch_ignores_unreadable_history_and_binds_both_runs() {
     let s = Scenario::new().await;
-    nested(&s, &s.manager_task, "COLLISION");
-    s.start("collision-root-one").await;
-    native(&s, "omp", "unique-child", "node-zone");
-    let first = s.dispatch("collision-root-one", &["A"]).await;
-    let child = first["snapshot"]["nodes"]["A"]["execution"]["childRunId"].clone();
-    s.start("collision-root-two").await;
-    native(&s, "omp", "unique-child", "node-zone");
-    let offset = s.herdr.calls().len();
-    let rejected = s.dispatch("collision-root-two", &["A"]).await;
-    assert_eq!(rejected["results"][0]["status"], "failed");
-    assert_eq!(rejected["results"][0]["failure"]["stage"], "identity");
-    assert_eq!(rejected["results"][0]["effects"]["agentStarted"], true);
-    assert_eq!(rejected["results"][0]["effects"]["childRecordsInitialized"], true);
-    assert_eq!(rejected["results"][0]["effects"]["inputAttempted"], false);
-    assert!(rejected["snapshot"]["nodes"]["A"]["execution"]["chat"].is_null());
-    assert!(!s.herdr.calls()[offset..].iter().any(|call| call["kind"] == "agent_prompt"));
-    assert_eq!(role_request(&s, "/api/workflow/manager/status", json!({"sessionId":"unique-child"}), 200).await["snapshot"]["id"], child);
+    nested(&s, &s.manager_task, "NESTED-BUSINESS-INPUT");
+    s.start("history-independent-parent").await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
+    native(&s, "omp", "history-independent-child", "node-zone");
+    let result = s.dispatch("history-independent-parent", &["A"]).await;
+    assert_eq!(result["results"][0]["status"], "running", "{result}");
+    assert_eq!(result["results"][0]["effects"]["associationSaved"], true);
+    assert_eq!(result["results"][0]["effects"]["inputSubmitted"], true);
+    let execution = &result["snapshot"]["nodes"]["A"]["execution"];
+    assert_eq!(execution["chat"]["sessionId"], "history-independent-child");
+    let child = detail(&s, execution["childRunId"].as_str().unwrap()).await;
+    assert_eq!(child["run"]["manager"], execution["chat"]);
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 2);
+    let text = common::prompt_body(prompts[1]);
+    assert!(text.contains("NESTED-BUSINESS-INPUT"));
+    assert!(text.contains(execution["childRunId"].as_str().unwrap()));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 // P21: only the reciprocal execution link authorizes dual roles. Each mutation

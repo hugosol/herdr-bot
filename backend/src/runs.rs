@@ -131,6 +131,55 @@ pub struct Run {
     pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
+// Resume needs durable identity, not the business schema of each Run.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunChatAssociations {
+    id: String,
+    manager_task_id: String,
+    parent: Option<ParentExecution>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    manager: Option<ChatReference>,
+    nodes: BTreeMap<String, ChatNodeAssociations>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatNodeAssociations {
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    execution: Option<ChatExecutionAssociation>,
+    previous_executions: Vec<ChatExecutionFact>,
+}
+
+#[derive(Deserialize)]
+struct ChatExecutionFact {
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    execution: Option<ChatExecutionAssociation>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatExecutionAssociation {
+    id: String,
+    kind: Option<AssociationScriptKind>,
+    task_id: Option<String>,
+    agent: Option<crate::tasks::Agent>,
+    #[serde(default, deserialize_with = "present_chat")]
+    chat: Option<Option<ChatReference>>,
+    child_run_id: Option<String>,
+    #[serde(default)]
+    end_node: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AssociationScriptKind { Typescript, RustScript }
+
+// A missing Chat field is not the same as a recorded absence of native identity.
+fn present_chat<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<ChatReference>>, D::Error> {
+    Option::deserialize(deserializer).map(Some)
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Effects {
@@ -289,52 +338,74 @@ impl Runs {
     }
     /// Recover role from persisted execution identity, including retired attempts.
     pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
-        self.chat_role_with_current(state, session_id, task_id, agent, None).await
-    }
-
-    // A dispatch owns its current Run operation gate. Use that committed
-    // snapshot for identity checks; a concurrent storage failure must still be
-    // reported at association, with the actual newly started Chat preserved.
-    async fn chat_role_with_current(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent, current: Option<&Run>) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
         let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.to_string()),
         };
-        let mut managers = Vec::new();
-        let mut nodes = Vec::new();
+        const INVALID_LINK: &str = "原生 Chat 的持久执行关联不唯一或缺少合法父子关系。";
+        struct NodeMatch {
+            node_id: String,
+            execution_id: String,
+            child_run_id: Option<String>,
+            end_node: bool,
+            chat: ChatReference,
+        }
+        let mut manager_match = None;
+        let mut node_match = None;
         for entry in entries {
             if !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
             let id = entry.file_name().to_string_lossy().into_owned();
-            let run = match current.filter(|run| run.id == id) {
-                Some(run) => run.clone(),
-                None => self.read(state, &id).await?,
-            };
-            for (node_id, node) in &run.nodes {
-                for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
-                    if execution.task_id() != Some(task_id) || execution.agent() != Some(agent) {
-                        return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
+            let run: RunChatAssociations = self.read_record(state, &id).await?;
+            if run.id != id { return Err(format!("Run {id} 保存身份不一致：{}。", run.id)); }
+            let mut run_match = None;
+            for (node_id, node) in run.nodes {
+                let mut matched = None;
+                for execution in node.execution.into_iter().chain(node.previous_executions.into_iter().filter_map(|fact| fact.execution)) {
+                    match (execution.kind, execution.task_id, execution.agent, execution.chat) {
+                        (Some(_), None, None, None) if execution.child_run_id.is_none() => {},
+                        (None, Some(source), Some(host), Some(chat)) => {
+                            if let Some(chat) = chat.filter(|chat| chat.session_id == session_id) {
+                                if source != task_id || host != agent {
+                                    return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
+                                }
+                                if matched.is_some() || run_match.is_some() || node_match.is_some() { return Err(INVALID_LINK.into()); }
+                                matched = Some((execution.id, execution.child_run_id, execution.end_node, chat));
+                            }
+                        }
+                        _ => return Err(format!("Run {id} / node {node_id} / execution {} 的 Chat 关联无效。", execution.id)),
                     }
-                    nodes.push((run.clone(), node_id.clone(), execution.clone()));
+                }
+                if let Some((execution_id, child_run_id, end_node, chat)) = matched {
+                    run_match = Some(NodeMatch { node_id, execution_id, child_run_id, end_node, chat });
                 }
             }
-            if run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id) {
+            if let Some(matched) = run_match { node_match = Some((id, matched)); }
+            if let Some(chat) = run.manager.filter(|chat| chat.session_id == session_id) {
                 if run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
-                managers.push(run);
+                if manager_match.is_some() { return Err(INVALID_LINK.into()); }
+                manager_match = Some((run.id, run.parent, chat));
             }
         }
         use crate::tasks::catalog::ExecutionRole;
-        match (managers.as_slice(), nodes.as_slice()) {
-            ([], []) => Ok(None),
-            ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
-            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(if execution.end_node { ExecutionRole::Standalone } else { ExecutionRole::Node })),
-            ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
-            _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
+        match (manager_match, node_match) {
+            (None, None) => Ok(None),
+            (Some((_, None, _)), None) => Ok(Some(ExecutionRole::Manager)),
+            (None, Some((_, node))) if node.child_run_id.is_none() => Ok(Some(if node.end_node { ExecutionRole::Standalone } else { ExecutionRole::Node })),
+            (Some((child_id, Some(link), manager)), Some((parent_id, node)))
+                if child_id != parent_id && link.run_id == parent_id && link.node_id == node.node_id
+                    && link.execution_id == node.execution_id && node.child_run_id.as_deref() == Some(child_id.as_str())
+                    && manager == node.chat => Ok(Some(ExecutionRole::NestedManager)),
+            _ => Err(INVALID_LINK.into()),
         }
     }
 
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
+        self.read_record(state, id).await
+    }
+
+    async fn read_record<T: serde::de::DeserializeOwned + Send>(&self, state: &AppState, id: &str) -> Result<T, String> {
         let paths = Self::paths(state, id);
         let owned = state.clone();
         let id = id.to_owned();
