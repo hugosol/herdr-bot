@@ -78,7 +78,10 @@ class NativeAcceptance(Acceptance):
         agent = self.root / 'agent'
         if 'omp' in self.hosts:
             shutil.copy2(agent / 'models.json', agent / 'models.yml')
-            (agent / 'config.yml').write_text('autoResume: false\nstartup:\n  setupWizard: false\n  showSplash: false\n  checkUpdate: false\nmarketplace:\n  autoUpdate: off\n', encoding='utf-8')
+            config = 'autoResume: false\nstartup:\n  setupWizard: false\n  showSplash: false\n  checkUpdate: false\nmarketplace:\n  autoUpdate: off\n'
+            if self.args.shell_path:
+                config += 'shellPath: ' + json.dumps(str(self.args.shell_path.resolve())) + '\n'
+            (agent / 'config.yml').write_text(config, encoding='utf-8')
 
     def role_catalog(self, toolkit):
         catalog = 'skills = []\n' + ''.join(f'[[agents]]\nid = "{host}"\nlabel = "{host}"\n' for host in self.hosts)

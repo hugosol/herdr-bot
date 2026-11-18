@@ -11,6 +11,12 @@
 - 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归继续经过原命令路径，不替代真实模型／双宿主验收。
 - 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
 
+## 真实模型验收的范围
+
+- **验证原生工具时，优先用明确的用户指令触发单项操作。** 通过真实宿主观察工具调用、必要的原生确认和可核对的结果。若场景确实依赖前序步骤，按真实回执分步发出用户指令；脚本不替模型调用工具或伪造前置状态。模型自主编排不是这类工具验收的隐含通过条件。
+- **按测试层级分工。** 后端集成测试负责状态变化和持久化；原生验收负责工具、确认界面和后端结果是否接通。已有专项覆盖同一行为和边界时，复用该证据，不在其他脚本重复增设断言。只观察到界面确认时，不声称后端状态已保存。
+- **不把单工具通过当作端到端通过。** 如果票据明确要求实际材料传递、父子交接或最终页面，未走完的步骤保留为未验证；记录原因和已取得的证据，不因模型没有继续而擅自改写正式覆盖或通过条件。
+
 ## 测试归属
 
 保留后端集成测试、前端交互测试和真实浏览器验收三个运行层级，各层内部按业务所有者归组，而非按测试文件的历史前缀归组。Chat 历史归 `chats`，当前会话登记与观察归 `sessions`；Map／Bot 静态定义归 `scheduler`，Run 运行事实归 `workflow`；固定操作、关机与完成后关机监听归 `server`。真正跨入口的契约归 `app`，夹具自身行为归 `infrastructure`。
@@ -204,7 +210,29 @@ P11/P24 保持原生确认真实在途，各2秒预算内完成公开查询、�
 
 每个 coverage 保存独立预期、原生 UI／历史／工具返回、实际文件、HTTP／公开读回与进程退出，原始和清理失败分开。入口一次顺序执行本仓 build／完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations／node-report及nested-role具名 docks；paired dock 只用本次安全壳，生产后端仅用于隔离专项。toolkit baseline 通过显式 OMP_BASELINE_RECORD_ROOT 解析既有 oracle，不改 baseline 或锁文件；全仓测试 worker 由实际 CPU／可用内存按每原生文件2GiB预算决定，不将非canonical参数的执行冒称宿主 scope 晋级。单宿主、缺依赖／授权／coverage、任一检查或清理失败均非零。`python scripts/accept-node-approval-lifecycle.test.py` 的离线部分验证公开 CLI fail-closed／旧证据保护、显式 Chat 路由及原生 observer 协议。单独的 `CollectRegistrationFixture` 使用实际安装 Pi、隔离生产后端和本地机械 provider：先建立 running 内层节点，再保持真实 collect 在途，核对登记／目录观察返回后进度报告仍可保存并释放 collect。显式设置 `NODE_APPROVAL_LIFECYCLE_FIXTURE_TOOLKIT`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_BACKEND`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_PATHS`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_EVIDENCE`（两个参与 worktree 的现有产物／隔离依赖及不存在的新证据目录），运行 `python scripts/accept-node-approval-lifecycle.test.py CollectRegistrationFixture`；未提供依赖时该设施用例跳过，不能据此认证票据。默认专项检查会显式提供这些配置。该机械设施回归不声明真实模型判断或任何 P 分区通过，不能替代真实专项。
 
-### 节点报告共享保存／通知回归
+### 发布 V2 双宿主原生与页面专项（P34／P35 V2）
+
+从参与的 herdr-bot worktree 根运行：
+
+```sh
+python scripts/accept-node-approval-v2.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+```
+
+路径必须显式绝对，证据目录必须不存在。使用本 worktree 的独立绝对 `CARGO_TARGET_DIR/debug/herdr-bot.exe`，旁置本次 `herdr-paths`、`herdr-fixture` 与 `examples/safe_shutdown_shell.exe`；两仓 frozen-lock 依赖及 Bun 1.4.4。paths 除原生设施的 `herdr`、`omp_package`、`pi_package`、两宿主 `*_state_extension` 外，须显式声明原发布 Suite 的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp` 、包含 chrome.exe 的 `chrome`，以及已安装 Windows 原生 Bash 可执行文件 `native_shell`（也可显式 `--shell-path`）。不继承 PATH 中的 WSL bash：Linux loopback 及盘符语义不能替代本 Windows 服务／文件。模型启动前，由所选 Bash 实际读取独占探针文件并访问同一生产后端 `/api/tasks`；可执行文件存在本身不是环境相通证据。预检核实原始 grill-with-docs、grilling、domain-modeling 和 writing-for-agents 指针实际存在，不复制 Skill 兼容别名、不改其正文。Suite 与初始 Skill 不删除，MCP 使用已有隔离 runtime/cache/allowed-root 设施，不接用户 daemon。每宿主只需一次可在原生历史中关联调用与成功返回的只读 `list_projects`，空列表有效；不创建索引或扩大 allowed-root。Task 的 `thinking=default` 仍是合法的沿用 Agent 默认值，无须出现在显式级别列表。以原生 session_start 的 PID、已观测的安装宿主 CLI 进程及原生历史 ID 交叉验证宿主，`agentName` 不代表宿主类型。阻塞状态说明不触发业务确认。模型沿用 `provider/model/baseUrl/apiKeyEnv`，不发现凭据、不安装宿主、不回退受控成功、不重试业务决定。
+
+已明确授权只读 auth 文件时，使用既有 `scripts/accept-workflow-codex.py --scenario node-approval-v2 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先以另一个新证据目录加 `--smoke` 核对实际 `serverModel=gpt-6-luna`。这仅是该传输的授权模型边界，不是产品限制；不复制、刷新或修改认证。临时 worktree 的历史 baseline 依赖可按 toolkit 指引显式设置 `OMP_BASELINE_RECORD_ROOT`，不改 baseline 或锁文件。
+
+Codex 非成功响应仅记录固定错误类别和请求形状（数量、长度及工具调用／结果匹配布尔），不保存不可信错误正文、任意 code／param 或请求正文；分类不改变单次 POST、终止失败和禁止补发的语义。两个宿主可分别使用新独占 transport，避免一个终止失败掩盖另一宿主的独立诊断；单宿主结果不构成整票通过。
+
+专项以发布 `create-task-v2.json` 及其真实两节点 `create-bot-v2.json` 独占副本运行，保留业务提示词、Skill、Suite、拓扑和专用 V2 authorization／confirmation 材料；只重定位物理 zone、契约地址和显式模型／宿主。两个宿主分别真实创建只读 CSV Task 与完整 Bot，三个人工职责观察原生完整问题、选中 Yes、真实 true 返回；子管理者 finish 后独立执行父层自动批准。原生历史、真实模型请求／返回身份、工具与透传 HTTP、命名材料字节、实际配置／revision、显式 complete／finish、独立 Run 身份及 V1 原定义未改证据均归档。批准、最新可交接报告及声明交付分别核对。驱动不发送 `complete` 探针：首次交接取真实 manager 工具结果及 `changed=true` 的公开快照，用快照的有序报告和累计 outputs 验证门禁，不按响应结束时间排序。无报告／最新 false 的拒绝由原 S1 `completion_gate` 覆盖。以 Run、node、execution 和 session 关联原生 Yes、公开来源与父子 finish；自动节点查原始成果确认记录，不以驱动未按键推断无弹窗。
+
+业务交互驱动按实际 node 身份限定权限：Task 阶段不能授权 Bot 保存，需求阶段不能提前批准三指南／最终保存，设计阶段仅批准真实展示且与本次目标一致的完整候选；没有结构化完整候选或动作不明时不授权；Task 候选可用结构化块，或用单一字段表格配唯一的完整 prompt 块展示，仍按同一规则核对全部字段。不把创建 Task 和写入材料合并授权。先校验整张原生表单，再操作终端。不合规表单以真实 Esc 拒绝并保留返回。将实际授权的候选与 Task／Bot 保存、完整读回及 revision 关联；按发布 Map 的已知接线核对 V2 request、双材料及父层最终交付，按角色在执行动作前验证实际读取。隔离副本仅额外授权读取 Map 明确绑定的 V2 格式契约文件。离线授权策略自测只证明驱动边界，不证明原生批准或模型业务成功。每个进程显式设置 TMP／TEMP／TMPDIR，业务消息明确独占材料／临时目录与只读文档／Skill 范围；沿用现有规划验收的参与 worktree 只读仓库绑定，使 Task 文档根与 `run_instructions` 同根，不建立第二份仓库副本或路径别名。禁止共享 Temp／`/tmp` 发现式查找和写入；这些是配置与授权约束，不是 OS 文件系统沙箱，观察到越界不能认证通过或事后扩权。
+
+`node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、在选中节点的执行事实、适用报告及累计 outputs 区域对照独立 HTTP 的执行 ID、冻结模式、批准来源、报告 ID／正文和 output ID／地址，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 51 秒单调窗口覆盖既有 20 秒确认＋30 秒 HTTP 预算及余量，不改变产品策略。
+
+入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" python scripts/accept-node-approval-v2.test.py` 的窄回归通过不替代专项；`OMP_PACKAGE` 显式指向已安装 OMP 包。该入口同时经共享父类配置和安装宿主 `Settings.loadReadOnly().getShellConfig()` 检查 YAML 优先级，并检查本次真实 Esc／匹配 Ask call 的一次权限澄清边界，不将其当作四节点业务完成。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
+
+## 节点报告共享保存／通知回归
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
 
