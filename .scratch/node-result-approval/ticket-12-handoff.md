@@ -1,5 +1,16 @@
 # Ticket 12：原生批准生命周期验收交接
 
+## 完成更新（2026-11-18）
+
+Ticket 12 已实现、验证并合入两仓 dev，原票状态为 `closed`。以下旧交接仅保留当时历史，不再据此恢复或重派 ticket12；其他票与旧工作流状态未改写。
+
+- 最终证明：`C:/Users/hugos/AppData/Local/Temp/hyper-ticket-5s1ANw/.scratch/node-result-approval/evidence/lifecycle12-certified/evidence.json`，`passed=true`；八个场景、双宿主七项承诺齐全，10项检查成功，清理无错误。9项未变化的全局检查经来源校验复用，当前设施测试重新通过。
+- herdr-bot dev：`9b24bb0fcc`（Git修复）、`3de9ddcf3e`（ticket12验收）。toolkit dev：`04f1fc2b2e`（成本测试同步）、`8ebd368626`（ticket12 caller／文档）。
+- 集成验证：15项生命周期离线回归、3项安装表单观察器回归、两种验收CLI边界、toolkit typecheck/authoring 均通过。通过LF临时工作区保留两侧意图，未提交无关换行变化。
+- 用户确认只验证工具契约、不要求模型自主编排。原始失败及超时未改绿；仅经用户授权单独重试网络超时分区。原两 worktree 与用户原有未提交元数据、全部原生证据继续保留。
+
+## 历史交接（以下为当时的未完成状态）
+
 日期：2026-11-18。用户要求本轮收尾，后续会话继续。**未完成，不认证成功，不集成、不关闭，未成功执行 hyper_auto_coding finish（工具因三票未集成而拒绝结束）。** 停止新增测试、模型请求和修复；保留原分支、worktree、原始失败与交付证据。
 
 工作流最终已 collect：无 active／integrating，12为带未完成error的 `ready`，不是验收通过；总体 `finished=false`。见 `evidence/handoff-workflow-state.json`。下次获准继续时用原工作流 `status`／`dispatch` 恢复实现，不用 `retry_integration`，不重建票据。

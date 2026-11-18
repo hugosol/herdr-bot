@@ -10,18 +10,18 @@
 
 **Repositories:** herdr-bot, toolkit
 
-**Status:** ready-for-agent
+**Status:** closed
 
 ## Acceptance criteria
 
-- [ ] 两宿主比较合法普通 node、独立 Chat、根 manager、无关联身份、其他 Run／node／旧 execution 及合法嵌套双角色，公开核对无串用；模型不选择身份（P10）。
-- [ ] 保持真实人工确认在途，公开合法 fail/retry 创建新 execution，再真实返回旧 Yes；新执行未批准，无新执行报告、完成或派发副作用。原生记录与新旧身份共同证明竞态顺序（P11）。
-- [ ] 实际结束 node 宿主进程并确认退出，新进程合法恢复同一 Chat；另实际结束并重启后端，核对持久批准与原执行模式，历史／HTTP 证明未重放业务输入。不引入旧 Run 接管（P14）。
-- [ ] 修改 Map 模式后原生恢复原 execution，工具仍采用冻结模式；新合法 retry 使用当前定义。只认领原生模式消费分区，S1 和页面测试分别归 02、06（P3）。
-- [ ] 批准后真实修改成果并再次报告，公开批准保持；不要求摘要匹配、不承诺已派发下游自动消费修改（P16）。
-- [ ] 真实确认保持在途时公开查询、报告并推进无依赖合法分支，各操作在确认结束前有界完成；记录单调时序、进程和 HTTP，不先释放确认再声称不阻塞（P24）。
-- [ ] 真实父子 Run 完成子流程，子 manager 在自动／人工父模式分别提交整体批准，核对工具双角色、冻结模式及原生 Yes；父 manager 满足报告门禁后另行 complete。内部批准不能代替父批准（P28；P29 S1 测试归 03）。
-- [ ] 复用既有原生会话设施，不编辑 Run、不用伪身份或受控成功冒充恢复。保存原生身份、确认、实际文件、公开读回及退出证据。
+- [x] 两宿主比较合法普通 node、独立 Chat、根 manager、无关联身份、其他 Run／node／旧 execution 及合法嵌套双角色，公开核对无串用；模型不选择身份（P10）。
+- [x] 保持真实人工确认在途，公开合法 fail/retry 创建新 execution，再真实返回旧 Yes；新执行未批准，无新执行报告、完成或派发副作用。原生记录与新旧身份共同证明竞态顺序（P11）。
+- [x] 实际结束 node 宿主进程并确认退出，新进程合法恢复同一 Chat；另实际结束并重启后端，核对持久批准与原执行模式，历史／HTTP 证明未重放业务输入。不引入旧 Run 接管（P14）。
+- [x] 修改 Map 模式后原生恢复原 execution，工具仍采用冻结模式；新合法 retry 使用当前定义。只认领原生模式消费分区，S1 和页面测试分别归 02、06（P3）。
+- [x] 批准后真实修改成果并再次报告，公开批准保持；不要求摘要匹配、不承诺已派发下游自动消费修改（P16）。
+- [x] 真实确认保持在途时公开查询、报告并推进无依赖合法分支，各操作在确认结束前有界完成；记录单调时序、进程和 HTTP，不先释放确认再声称不阻塞（P24）。
+- [x] 真实父子 Run 完成子流程，子 manager 在自动／人工父模式分别提交整体批准，核对工具双角色、冻结模式及原生 Yes；父 manager 满足报告门禁后另行 complete。内部批准不能代替父批准（P28；P29 S1 测试归 03）。
+- [x] 复用既有原生会话设施，不编辑 Run、不用伪身份或受控成功冒充恢复。保存原生身份、确认、实际文件、公开读回及退出证据。
 
 ## Coverage ownership
 
@@ -53,3 +53,12 @@
 4. 专项必须逐项输出本票 coverage 的原始证据、独立预期和通过／未验证结果。任一仓检查失败、任一宿主或 coverage 缺失、实际模型／授权缺失或清理失败均不能标整票完成；退出非零，保留原始错误。受控机械故障明确标注，不混称真实模型业务。全局 suite、CLI fail-closed、单宿主成功或旧源码证据不替代本票专项。
 
 确认与无自动行为观察使用实际产品现有预算，记录配置与单调时钟窗口及理由，不改产品超时或重试策略。真实界面选择可自动驱动本票拥有的独占终端，但必须观察选中值、原生返回和公开事实，不能把按键写入成功当作 Yes。
+
+## Comments
+
+- 2026-11-18：用户确认专项单独验证工具，不要求验证模型自主编排调用。嵌套驱动可逐项发送明确用户请求，仍由真实模型调用安装宿主原生工具；不得以直接 HTTP 写入、受控模型返回或伪造 UI 替代。保留身份、冻结模式、原生 Yes、内部成果不替代整体批准、批准不隐式完成以及父 manager 独立 complete 的契约断言。原自主编排失败证据保留，不据此重试原失败决策或改写历史成功标记。
+- 2026-11-18：原 worktree `C:/Users/hugos/AppData/Local/Temp/hyper-ticket-5s1ANw` 的 `lifecycle12-combined-native-exact/evidence.json` 已合成完整八格，双宿主 P3/P10/P11/P14/P16/P24/P28 均 verified；原始源码 companion 以记录的 revision/diff 重建并核对字节 SHA256，未改写原始结果。证据均位于该 worktree `.scratch/node-result-approval/evidence/`。
+- 2026-11-18：`lifecycle12-final-acceptance/evidence.json` 的完整检查仍 passed=false。前后端构建、前端测试、浏览器测试、toolkit integrations、具名 node-report/nested-role docks、生命周期设施测试均通过。失败为后端 `zone_commit::configured_timeout_stops_git_and_its_children_then_releases_the_repository`（终止后仍 409 git-write-in-progress）、toolkit typecheck 缺少锁定的 TypeScript Windows 平台包、toolkit `model-cost-persistence.test.ts` 两个用例未等到预期 consumption 文档。toolkit 全量实际覆盖244个文件，1930 pass/2 fail，无漏跑文件；后端因失败未运行 doctest。随后以 `bun install --frozen-lockfile --force` 修复本地依赖安装，单独 `bun run typecheck` 已通过（93 files、8 declarations、0 diagnostics）。未重跑或忽略剩余三个失败测试，未修改 Git／成本业务实现，未将原失败 ledger 改绿；尚未提交合并 dev。
+- 2026-11-18：用户授权修复上述三个失败用例。Git 修复将 Windows Git 进程树在执行前纳入独占 Job Object，并在超时后确认活动进程数归零才释放写资格；原 commit 与 sync 超时回归通过，日志为 `lifecycle12-final-acceptance/check-git-timeout-repair.log`。与 OMP Git 工具更新按独立问题处理。成本持久化仅修复测试同步：已观察到两次请求数据完整但归属同一 Round，saveVersion=1；先核对第一轮精确持久化事实，再发送第二次请求，保留归档／估算／重启断言及原期限。该文件4/4及typecheck通过，未修改成本生产代码。修复后完整两仓检查及新后端产物的双宿主原生矩阵正在 `lifecycle12-repaired-full/` 运行，最终结果仍待收集。
+- 2026-11-18 完成：`lifecycle12-certified/evidence.json` 为 passed=true，八个原生场景齐全，OMP/Pi 的 P3/P10/P11/P14/P16/P24/P28 全部 verified，cleanupErrors=[]。10项仓库检查均成功：9项在产物／安装／路径／源码／命令选择核对后复用，当前生命周期设施测试重新执行成功。原 Pi network timeout 记录保留，用户授权的单独重试成功；未将原失败改绿。
+- 两仓已合入 dev：herdr-bot `9b24bb0fcc`（Git进程树修复）、`3de9ddcf3e`（生命周期验收）；toolkit `04f1fc2b2e`（成本持久化测试同步）、`8ebd368626`（真实原生身份故障caller及文档）。通过临时 LF 集成工作区消除提交工具的 CRLF 归属误判；保留 dev 的 handoff 支持并接入 lifecycle，两个原预检冲突的意图均保留。集成后15项生命周期离线回归、3项安装表单观察器回归、handoff/lifecycle CLI边界检查及 toolkit typecheck/authoring 均通过。原 worktree、未提交自动生成元数据和全部原始证据保留；旧工作流快照不再作为重派 ticket12 的依据，不代表其他票或旧工作流已 finish。
