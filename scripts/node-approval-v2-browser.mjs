@@ -100,20 +100,37 @@ try {
       const definition = await publicRead(page, '/api/scheduler/maps/' + detail.run.map)
       await page.goto(input.base + '/#workflow/' + detail.run.id)
       await page.getByRole('heading', { name: 'Run 详情', exact: true }).waitFor()
-      for (const [id, node] of Object.entries(detail.run.nodes)) {
+      for (const [id, node] of Object.entries(independent.run.nodes)) {
         await page.getByRole('group', { name: 'Map 依赖图', exact: true }).getByRole('button', { name: `${definition.nodes[id].title} ${id}`, exact: true }).click()
         const facts = page.getByRole('region', { name: '当前执行事实', exact: true })
-        const field = name => facts.locator('dt').filter({ hasText: new RegExp('^' + name + '$') }).locator('+ dd')
-        await expect(facts).toContainText(node.execution.id)
+const field = name => facts.locator('dt').filter({ hasText: new RegExp('^' + name + '$') }).locator('+ dd')
+        await expect(field('id')).toHaveText(node.execution.id)
         await expect(field('autoApproved')).toHaveText(String(node.execution.autoApproved))
         await expect(field('approved')).toHaveText('true · 已批准')
-        await expect(field('approvalSource')).toHaveText(node.execution.autoApproved ? 'auto · 自动批准（非用户 Yes）' : 'manual · 人工批准')
-        await expect(page.getByRole('region', { name: '当前执行交接事实', exact: true })).toContainText('最新 canComplete: true')
-        const reports = detail.reports.filter(report => report.executionId === node.execution.id)
-        for (const report of reports) {
-          await expect(page.locator('body')).toContainText(report.body)
+        await expect(field('approvalSource')).toHaveText(node.execution.approvalSource === 'auto' ? 'auto · 自动批准（非用户 Yes）' : 'manual · 人工批准')
+        const reports = independent.reports.filter(report => report.nodeId === id && report.executionId === node.execution.id)
+        const reportRegion = page.getByRole('region', { name: '当前执行适用报告', exact: true })
+        const articles = reportRegion.getByRole('article')
+        await expect(articles).toHaveCount(reports.length)
+        const readOutputs = region => region.locator(':scope > dl > div').evaluateAll(rows => rows.map(row => ({
+          id: row.querySelector('dt code').textContent, path: row.querySelector('dd code').textContent,
+        })))
+        for (const [index, report] of reports.entries()) {
+          const article = articles.nth(index)
+          await expect(article.locator('.workflow-report-meta > code')).toHaveText(report.id)
+          compare(await article.locator('pre').textContent(), report.body, 'Report body for ' + report.id)
+          const handoff = article.getByRole('region', { name: '报告交接声明', exact: true })
+          await expect(handoff.locator('p').first()).toHaveText('canComplete: ' + (report.canComplete ?? '缺失（历史报告未声明）'))
+          compare(await readOutputs(handoff), report.outputs ?? [], 'Report outputs for ' + report.id)
         }
-        evidence.observations.push({ run: detail.run.id, node: id, independent, rendered: await page.locator('body').innerText() })
+        const handoff = page.getByRole('region', { name: '当前执行交接事实', exact: true })
+        await expect(handoff.locator('p').first()).toHaveText('最新 canComplete: ' + reports.at(-1).canComplete)
+        const accumulated = new Map(reports.flatMap(report => (report.outputs ?? []).map(output => [output.id, output])))
+        const outputs = await readOutputs(handoff)
+        compare(outputs, [...accumulated.values()], 'Cumulative outputs for ' + node.execution.id)
+        evidence.observations.push({ run: independent.run.id, node: id, executionId: node.execution.id,
+          reports: reports.map(report => report.id), outputs, independent,
+          rendered: await page.getByRole('region', { name: '当前节点详情', exact: true }).innerText() })
         await page.screenshot({ path: input.evidence + '.' + detail.run.id + '.' + id + '.png', fullPage: true })
       }
     }

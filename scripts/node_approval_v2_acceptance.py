@@ -7,6 +7,7 @@ a forged native Yes, a report standing in for approval, or complete preceding
 its latest ready report/declared outputs. No model decision/result is supplied.
 """
 import copy
+from datetime import datetime
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -22,7 +23,7 @@ import urllib.parse
 from acceptance.host.native import NativeAcceptance
 from acceptance.host.processes import require, until
 from acceptance.host.wire import decode
-from workflow_create_acceptance import prepare_source_resources, read_evidence
+from workflow_create_acceptance import prepare_source_resources
 
 MODES = {'create-task-v2.json': {'create_task': False, 'create_bot_v2': True},
     'create-bot-v2.json': {'align_requirements': False, 'design_and_create': False}}
@@ -33,18 +34,130 @@ PROMPT = '仅在用户提供两份已授权读取的本地CSV文件时，逐行�
 ITEMS = ['P34/V2/S2', 'P34/V2/S3', 'P35/V2/S2']
 
 
+OUTPUT_IDS = {'create_task': {'request', 'handoff'}, 'create_bot_v2': {'saved', 'handoff'},
+    'align_requirements': {'bot_requirements', 'target_materials'}, 'design_and_create': {'saved', 'handoff'}}
+
+
+def report_paths(reports):
+    return {item['id']: item['path'] for report in reports for item in report.get('outputs', [])}
+
+
+def execution_reports(reports, node, execution_id):
+    return [report for report in reports if report['nodeId'] == node and report['executionId'] == execution_id]
+
+
+def committed_handoff(run, node, receipt, output_ids):
+    state = run['nodes'][node]
+    snapshot = receipt.get('snapshot', {})
+    require(receipt.get('changed') is True and snapshot.get('id') == run['id']
+        and snapshot.get('manager') == run['manager'] and snapshot.get('nodes', {}).get(node) == state
+        and state['status'] == 'completed' and state['execution']['approved'] is True
+        and state['completion']['actor'] == run['manager'], ('Not this manager’s first committed handoff', receipt))
+    reports = execution_reports(receipt['reports'], node, state['execution']['id'])
+    require(reports and reports[-1]['canComplete'] is True and set(report_paths(reports)) == output_ids,
+        ('First complete lacks current ready report or expected delivery', node, reports))
+    return reports
+
+
+def history_before(history, call_id):
+    for index, entry in enumerate(history['branch']):
+        message = entry.get('message', {})
+        if entry.get('type') == 'message' and message.get('role') == 'assistant' and (entry.get('id') == call_id or any(
+                part.get('id') == call_id for part in message.get('content', []) if isinstance(part, dict))):
+            return {**history, 'branch': history['branch'][:index]}
+    raise AssertionError(('Missing native action boundary', history['id'], call_id))
+
+
+def native_result(history, name, body, **arguments):
+    results = {entry['message'].get('toolCallId'): entry['message'] for entry in history['branch']
+        if entry.get('type') == 'message' and entry['message'].get('role') == 'toolResult'}
+    for call in tool_calls(history):
+        if call['name'].rsplit('.', 1)[-1] != name or not all(call.get('arguments', {}).get(key) == value for key, value in arguments.items()):
+            continue
+        result = results.get(call['id'], {})
+        if not result or result.get('isError'):
+            continue
+        if (result.get('details') or {}).get('body') == body:
+            return call['id']
+        for part in result.get('content', []):
+            if part.get('type') == 'text' and decode({'text': part.get('text', '')}, 'text') == body:
+                return call['id']
+    return None
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def material_json(text, required, optional=()):
+AUTHORIZATION = {'write_materials': True, 'create_bot': True, 'optimize_task_prompt': False}
+REQUEST_FIELDS = {'schema_version', 'kind', 'target', 'requirements', 'constraints', 'non_goals', 'resource_limits', 'authorization', 'confirmation'}
+TARGET_FIELDS = {'schema_version', 'kind', 'target', 'captured_at', 'references'}
+BOT_FIELDS = {'id', 'name', 'task_id', 'when', 'plan_guide', 'node_guide'}
+
+
+def string(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def strings(value):
+    return isinstance(value, list) and all(string(item) for item in value)
+
+
+def csv_scope(text):
+    # Independent business sample; do not require model-authored prose verbatim.
+    return string(text) and all(re.search(pattern, text, re.IGNORECASE) for pattern in (
+        r'CSV', r'两份|两个|2\s*(?:份|个)|\btwo\b', r'授权|authori[sz]', r'只读|只读取|read.only',
+        r'不(?:得|能)?上传|禁止上传|no upload|never upload',
+        r'不(?:得|能)?(?:写|修改)|禁止写|never (?:write|modify)', r'比较|对比|compare',
+        r'差异|不同|difference', r'缺(?:失|少|项)|missing', r'等待|wait'))
+
+
+def task_configuration(task):
+    return {**{key: value for key, value in task.items() if key not in ('id', 'group')}, 'suite': task.get('suite'),
+        **({'group': task['group']} if task.get('group') is not None else {})}
+
+
+def request_valid(value, task_id):
+    if not isinstance(value, dict) or not REQUEST_FIELDS <= value.keys() <= REQUEST_FIELDS | {'bot'}:
+        return False
+    authorization, confirmation = value['authorization'], value['confirmation']
+    bot = value.get('bot', {})
+    return (type(value['schema_version']) is int and value['schema_version'] == 2 and value['kind'] == 'request'
+        and string(task_id) and value['target'] == {'type': 'task', 'task_id': task_id}
+        and isinstance(authorization, dict) and authorization.keys() == AUTHORIZATION.keys()
+        and all(authorization[key] is flag for key, flag in AUTHORIZATION.items())
+        and isinstance(confirmation, dict) and confirmation.keys() == {'scope', 'evidence'}
+        and confirmation['scope'] == 'request' and string(confirmation['evidence'])
+        and string(value['requirements']) and all(strings(value[key]) for key in ('constraints', 'non_goals', 'resource_limits'))
+        and isinstance(bot, dict) and bot.keys() <= {'id', 'name', 'group'} and all(string(item) for item in bot.values()))
+
+
+def target_materials_valid(value, target):
+    if not isinstance(value, dict) or value.keys() != TARGET_FIELDS or not isinstance(target, dict):
+        return False
+    try:
+        captured = datetime.fromisoformat(value['captured_at'])
+    except (TypeError, ValueError):
+        return False
+    return (type(value['schema_version']) is int and value['schema_version'] == 2 and value['kind'] == 'target_materials'
+        and captured.utcoffset() is not None and value['references'] == []
+        and value['target'] == {'type': 'task', 'task_id': target['id'], 'configuration': target})
+
+
+def strict_json(text):
     def object_value(pairs):
         value = {}
         for key, item in pairs:
             require(key not in value, ('Duplicate V2 material field', key))
             value[key] = item
         return value
-    value = json.loads(text, object_pairs_hook=object_value)
+    def invalid_constant(value):
+        raise ValueError('Non-JSON numeric constant: ' + value)
+    return json.loads(text, object_pairs_hook=object_value, parse_constant=invalid_constant)
+
+
+def material_json(text, required, optional=()):
+    value = strict_json(text)
     require(isinstance(value, dict) and set(required) <= set(value) <= set(required) | set(optional), ('Missing or rewritten V2 protocol fields', value))
     return value
 
@@ -63,32 +176,31 @@ def authorize_candidate(stage, action, candidate, expected):
     decision['reason'] = 'candidate-mismatch'
     task = expected['task']
     if action == 'confirm-task':
-        valid = 'id' not in candidate and all(key in candidate and candidate[key] == value for key, value in task.items())
+        valid = (task.keys() <= candidate.keys() <= task.keys() | {'group'} and candidate.get('group') is None
+            and all(candidate[key] == value for key, value in task.items()))
     elif action == 'confirm-bot':
-        valid = (candidate.get('id') == expected['botId'] and candidate.get('name') == task['name']
-            and expected.get('taskId') and candidate.get('task_id') == expected['taskId']
-            and not any(key in candidate for key in ['map_file', 'script'])
-            and all(isinstance(candidate.get(key), str) and candidate[key].strip() for key in ['when', 'plan_guide', 'node_guide']))
+        guides = [candidate.get(key) for key in ('when', 'plan_guide', 'node_guide')]
+        valid = (BOT_FIELDS <= candidate.keys() <= BOT_FIELDS | {'group'} and candidate.get('group') is None
+            and candidate['id'] == expected['botId'] and candidate['name'] == task['name']
+            and string(expected['taskId']) and candidate['task_id'] == expected['taskId']
+            and all(string(guide) for guide in guides) and csv_scope('\n'.join(guides)))
     elif action == 'confirm-request':
-        valid = (candidate.get('schema_version') == 2 and candidate.get('kind') == 'request'
-            and expected.get('taskId') and candidate.get('target') == {'type': 'task', 'task_id': expected['taskId']}
-            and candidate.get('authorization') == {'write_materials': True, 'create_bot': True, 'optimize_task_prompt': False})
+        valid = request_valid(candidate, expected['taskId']) and csv_scope('\n'.join([candidate['requirements'],
+            *candidate['constraints'], *candidate['non_goals'], *candidate['resource_limits']]))
     elif action == 'confirm-target-materials':
-        target = candidate.get('target', {})
-        configuration = target.get('configuration', {})
-        valid = (candidate.get('schema_version') == 2 and candidate.get('kind') == 'target_materials'
-            and target.get('type') == 'task' and expected.get('taskId') and target.get('task_id') == expected['taskId']
-            and all(configuration.get(key) == value for key, value in task.items()))
+        valid = target_materials_valid(candidate, expected.get('target'))
     else:
-        text = candidate.get('requirements', '')
-        valid = isinstance(text, str) and all(fact in text for fact in expected['requiredFacts'])
+        valid = candidate.keys() == {'requirements'} and csv_scope(candidate['requirements'])
     decision.update(authorized=bool(valid), reason='authorized-current-candidate' if valid else 'candidate-mismatch')
     return decision
 
 
-def displayed_candidates(text):
+def displayed_candidates(text, *, form_blocks=()):
     """Only explicit structured blocks; prose is not a complete configuration."""
     blocks = re.findall(r'```([^\n`]*)\n(.*?)```', text, re.S)
+    for block in form_blocks:
+        fenced = re.fullmatch(r'```([^\n`]*)\n(.*?)```', block.strip(), re.S)
+        blocks.append(fenced.groups() if fenced else ('markdown' if re.match(r'\s*#{1,6}\s', block) else 'json', block))
     result = []
     for language, block in blocks:
         if language.strip().lower() in ['markdown', 'md']:
@@ -97,10 +209,12 @@ def displayed_candidates(text):
         if language.strip().lower() not in ['', 'json']:
             continue
         try:
-            value = json.loads(block)
-        except ValueError:
+            value = strict_json(block)
+        except (ValueError, AssertionError):
+            result.append(('unknown-action', None))
             continue
         if not isinstance(value, dict):
+            result.append(('unknown-action', None))
             continue
         if 'taskType' in value:
             result.append(('confirm-task', value))
@@ -108,6 +222,8 @@ def displayed_candidates(text):
             result.append(('confirm-bot', value))
         elif value.get('kind') in ['request', 'target_materials']:
             result.append(('confirm-request' if value['kind'] == 'request' else 'confirm-target-materials', value))
+        else:
+            result.append(('unknown-action', None))
     return result
 
 
@@ -138,23 +254,74 @@ class BusinessForm(HTMLParser):
         super().__init__()
         self.fields = []
         self.blocks = []
+        self.hidden = False
         self.pre = None
         self.label = None
         self.textarea = None
         self.select = None
         self.option = None
         self.labels = {}
+        self.table_stack = []
+        self.table_rows = []
+        self.table_count = 0
+        self.table_valid = True
         self.feed(source)
+        self.close()
+        task = self.table_task()
+        if task is not None:
+            self.blocks[:] = [json.dumps(task, ensure_ascii=False)]
         for field in self.fields:
             if not field['label'] and field.get('id') in self.labels:
                 field['label'] = self.labels[field['id']]
 
+    def table_task(self):
+        if not self.table_valid or self.table_count != 1 or self.table_stack or len(self.blocks) != 1:
+            return None
+        rows = self.table_rows
+        if not rows or rows[0] != ['字段', '候选值'] or any(len(row) != 2 for row in rows):
+            return None
+        fields = {'name': ('name',), 'chatName': ('chatName',), 'taskType': ('taskType',),
+            'agent': ('agent',), 'model': ('model',), 'thinking': ('thinking',), 'skill': ('skill',), 'suite': ('suite',),
+            'agent/model/thinking': ('agent', 'model', 'thinking'), 'model/thinking': ('model', 'thinking'),
+            'skill/suite': ('skill', 'suite')}
+        candidate = {}
+        for label, value in rows[1:]:
+            keys = fields.get(re.sub(r'\s+', '', label), ())
+            values = [part.strip() for part in value.split('/')] if len(keys) > 1 else [value]
+            if len(keys) != len(values) or any(key in candidate for key in keys):
+                return None
+            candidate.update((key, None if key in ('skill', 'suite') and item == 'null' else item)
+                for key, item in zip(keys, values))
+        if candidate.keys() != {'name', 'chatName', 'taskType', 'agent', 'model', 'thinking', 'skill', 'suite'}:
+            return None
+        return {**candidate, 'prompt': self.blocks[0]}
+
     def handle_starttag(self, tag, attributes):
         attributes = dict(attributes)
+        if (tag in ('template', 'script', 'style', 'noscript') or {'hidden', 'style'} & attributes.keys()
+                or (attributes.get('aria-hidden') or '').lower() == 'true'):
+            self.table_valid = False
+        if self.pre is not None:
+            self.table_valid = False
+        if tag == 'table':
+            self.table_count += 1
+            self.table_valid &= not self.table_stack and not self.blocks and self.pre is None
+            self.table_stack.append(tag)
+        elif self.table_stack:
+            parent = self.table_stack[-1]
+            allowed = {'table': ('thead', 'tbody', 'tr'), 'thead': ('tr',), 'tbody': ('tr',), 'tr': ('th', 'td')}
+            self.table_valid &= not attributes and tag in allowed.get(parent, ())
+            self.table_stack.append(tag)
+            if self.table_valid and tag == 'tr':
+                self.table_rows.append([])
+            if self.table_valid and tag in ('th', 'td'):
+                self.table_rows[-1].append('')
         if tag == 'pre':
             self.pre = ''
         if tag == 'label':
             self.label = {'text': '', 'fields': [], 'for': attributes.get('for')}
+        if tag == 'input' and attributes.get('type') == 'hidden':
+            self.hidden = True
         if tag == 'input' and attributes.get('type', 'text') not in ['hidden', 'submit', 'button']:
             field = {**attributes, 'tag': tag, 'label': attributes.get('aria-label', '')}
             self.fields.append(field)
@@ -175,6 +342,11 @@ class BusinessForm(HTMLParser):
             self.select['options'].append(self.option)
 
     def handle_data(self, data):
+        if self.table_valid and self.table_stack:
+            if self.table_stack[-1] in ('th', 'td'):
+                self.table_rows[-1][-1] += data
+            elif data.strip():
+                self.table_valid = False
         if self.pre is not None:
             self.pre += data
         if self.label is not None:
@@ -185,6 +357,13 @@ class BusinessForm(HTMLParser):
             self.option['label'] += data
 
     def handle_endtag(self, tag):
+        if self.table_stack:
+            if self.table_stack[-1] != tag:
+                self.table_valid = False
+            else:
+                self.table_stack.pop()
+                if self.table_valid and tag in ('th', 'td'):
+                    self.table_rows[-1][-1] = self.table_rows[-1][-1].strip()
         if tag == 'pre' and self.pre is not None:
             self.blocks.append(self.pre)
             self.pre = None
@@ -373,33 +552,20 @@ class PublishedV2Acceptance(NativeAcceptance):
             response = self.confirmations / (request['id'] + '.response.json')
             result = until('native confirmation true return', lambda: json.loads(response.read_text(encoding='utf-8')) if response.is_file() else None, 20)
             require(result.get('result') is True, ('Keystroke acknowledgement is not Yes', result))
-            self.yes[request['id']] = {'request': request, 'selectedScreen': screen, 'response': result, 'publicBefore': before}
+            self.yes[request['id']] = {'request': request, 'selectedScreen': screen, 'response': result, 'publicBefore': before, 'executionId': before['run']['nodes'][node]['execution']['id']}
             self.evidence['nativeYes'] = self.yes
-            if not self.evidence.get('approvedWithoutReadyReport'):
-                def approved():
-                    detail = self.detail(run)
-                    return detail if detail['run']['nodes'][node]['execution']['approved'] else None
-                actual = until('native Yes committed actual V2 approval', approved, 30)
-                execution = actual['run']['nodes'][node]['execution']
-                reports = [report for report in actual['reports'] if report['executionId'] == execution['id']]
-                require(actual['run']['nodes'][node]['status'] == 'running' and (not reports or reports[-1]['canComplete'] is not True), ('Required V2 approved-without-ready-report condition was not reached', actual))
-                refused = self.http('/api/workflow/manager/complete', {'sessionId': actual['run']['manager']['sessionId'], 'nodeId': node,
-                    'reason': 'V2 consumer probe: approval cannot replace this execution latest ready report'}, 409)
-                require(refused['code'] == 'report-not-completable', refused)
-                after = self.detail(run)
-                require(after['run']['nodes'][node]['status'] == 'running', 'Approval alone completed the published V2 node')
-                self.evidence['approvedWithoutReadyReport'] = {'before': actual, 'refusal': refused, 'after': after,
-                    'scope': 'Public HTTP consumer probe in the real V2 Run; not a fabricated native manager tool call', 'at': time.monotonic()}
 
-    def authorization(self, chat, text):
+
+    def authorization(self, chat, text, *, form_blocks=()):
         stage = self.stages.get(chat['sessionId'])
         expected_task = {'name': self.target_name, 'chatName': '{chat.id}', 'taskType': 'normal',
             'agent': self.host, 'model': 'probe', 'thinking': 'default', 'skill': None, 'suite': None, 'prompt': PROMPT}
         targets = [task for task in self.http('/api/tasks')['tasks']
-            if all(task.get(key) == value for key, value in expected_task.items())]
-        expected = {'task': expected_task, 'taskId': targets[0]['id'] if len(targets) == 1 else None,
-            'botId': 'v2-csv-' + self.host, 'requiredFacts': ['CSV', '只读', '不上传', '不写']}
-        candidates = displayed_candidates(text)
+            if task_configuration(task) == expected_task]
+        target = targets[0] if len(targets) == 1 else None
+        expected = {'task': expected_task, 'taskId': target['id'] if target else None, 'target': target,
+            'botId': 'v2-csv-' + self.host}
+        candidates = displayed_candidates(text, form_blocks=form_blocks)
         if len(candidates) != 1:
             decision = authorize_candidate(stage, 'unknown-action', None, expected)
             decision['reason'] = 'missing-or-ambiguous-displayed-candidate'
@@ -420,7 +586,67 @@ class PublishedV2Acceptance(NativeAcceptance):
             'confirm-request': '本次已展示V2委托材料', 'confirm-target-materials': '本次已展示完整目标材料',
             'confirm-requirements': '本次已展示统一需求'}.get(decision.get('action'), '未知动作')
         reply = ('仅确认刚展示的' + action + '。') if decision['authorized'] else '此次没有批准新增保存或未知正文；请明确本阶段待确认的完整候选与动作范围。'
+        if decision.get('stage') == 'create_task' and not decision['authorized']:
+            reply += '请每次仅展示一个待授权动作：创建Task时用一个JSON块展示完整配置和逐字prompt；不要把创建Task与写入材料合并确认。'
         return reply + scope + '已给定CSV只读、不上传、不写原文件及Task.prompt全文约束不变。新材料只能在既有授权目录以新文件保存，不覆盖。' + self.environment_scope
+
+    def form_plan(self, form, decision):
+        subjects = {'confirm-task': r'Task(?:完整)?(?:候选|配置)?', 'confirm-request': r'(?:V2)?(?:委托|request)(?:材料)?',
+            'confirm-requirements': r'(?:统一|Bot)?需求(?:候选)?', 'confirm-target-materials': r'(?:完整)?目标材料',
+            'confirm-bot': r'(?:Bot(?:完整)?(?:候选|配置)?|完整候选)'}
+        subject = subjects[decision['action']]
+        question_pattern = rf'(?:是否)?(?:确认|同意|授权)(?:保存|新建|创建|使用)?(?:本次|上述|当前)?{subject}[？?。]?'
+        def confirms(label):
+            return bool(re.fullmatch(question_pattern, re.sub(r'\s+', '', label), re.IGNORECASE))
+        def yes(label, question):
+            label = re.sub(r'^\s*(?:是|Yes)\s*[：:、，]\s*', '', label, flags=re.IGNORECASE)
+            return (confirms(label) or bool(re.fullmatch(r'(?:是|Yes|确认|同意)', label.strip(), re.IGNORECASE) and confirms(question))
+                or bool(decision['action'] == 'confirm-bot' and re.fullmatch(r'保存(?:本次|当前)?完整候选', label.strip()))
+                or bool(decision['action'] == 'confirm-task' and re.fullmatch(
+                    r'仅(?:创建|新建)并完整读回(?:本次|上述|当前)(?:唯一)?(?:新)?Task[。]?', re.sub(r'\s+', '', label), re.IGNORECASE)))
+        require(form.fields and not form.hidden, 'Native Ask has no observable controls or includes hidden fields')
+        groups = {}
+        for field in form.fields:
+            name = field.get('name')
+            require(string(name) and not any(key in field for key in ('disabled', 'readonly')), ('Unknown business control', field))
+            group = groups.setdefault(name, [])
+            require(not group or (group[-1].get('type') == field.get('type') == 'radio'
+                and list(groups)[-1] == name), ('Duplicate or interleaved native business control', field))
+            group.append(field)
+        facts = {'agent': (self.host, r'agent|宿主'), 'model': ('probe', r'model|模型'),
+            'thinking': ('default', r'thinking|思考(?:级别)?'), 'prompt': (PROMPT, r'(?:Task\.)?prompt'),
+            'name': (self.target_name, r'name|(?:Task|Bot)?名称'), 'bot_id': ('v2-csv-' + self.host, r'bot_id|BotID'),
+            'path': (str(self.delivery_directory), r'path|(?:材料|交付)目录')}
+        plan = []
+        confirmations = 0
+        for name, group in groups.items():
+            field = group[0]
+            kind = field.get('type') or ('textarea' if field['tag'] == 'textarea' else 'text')
+            question = field['label'] or name
+            fixed = facts.get(name)
+            if fixed:
+                require(re.fullmatch(fixed[1], re.sub(r'\s+', '', question), re.IGNORECASE), ('Ambiguous fact field', field))
+            else:
+                confirmations += 1
+            if kind in ('radio', 'select'):
+                options = group if kind == 'radio' else field['options']
+                choices = [index for index, option in enumerate(options) if (fixed and option.get('value') == fixed[0])
+                    or (not fixed and yes(option['label'], question))]
+                require(len(choices) == 1, ('No unique authorized business option', group))
+                chosen = choices[0]
+                default = next((i for i, option in enumerate(options) if 'selected' in option), 0)
+                option = options[chosen]
+                plan.append((name, kind, option.get('value', 'on' if kind == 'radio' else option['label']), option['label'], chosen, default, 'checked' in option))
+            elif kind == 'checkbox':
+                require(not fixed and confirms(question), ('Unknown checkbox decision', field))
+                plan.append((name, kind, True, question, 0, 0, 'checked' in field))
+            else:
+                require(kind in ('text', 'textarea') and (fixed or confirms(question)), ('Unrecognized business field', field))
+                value = fixed[0] if fixed else self.scope_message(decision)
+                require(field.get('value', '') in ('', value), ('Conflicting prefilled business field', field))
+                plan.append((name, kind, value, question, 0, 0, bool(field.get('value'))))
+        require(confirmations == 1, ('An Ask must present one unambiguous business confirmation', form.fields))
+        return plan
 
     def business_form(self, chat, history):
         messages = self.messages(history)
@@ -438,7 +664,8 @@ class PublishedV2Acceptance(NativeAcceptance):
         observed = []
         for path in (self.confirmations / 'forms').glob('*.request.json'):
             value = json.loads(path.read_text(encoding='utf-8'))
-            if value.get('sessionId') == chat['sessionId'] and value.get('html') == html:
+            if (value.get('sessionId') == chat['sessionId'] and value.get('html') == html
+                    and not path.with_name(value['id'] + '.response.json').exists()):
                 observed.append(value)
         if not observed:
             return True
@@ -446,8 +673,14 @@ class PublishedV2Acceptance(NativeAcceptance):
         response_path = self.confirmations / 'forms' / (observed[0]['id'] + '.response.json')
         require(not response_path.exists(), 'Business form already answered before this explicit user input')
         form = BusinessForm(html)
-        decision = self.authorization(chat, '\n'.join('```json\n' + block + '\n```' for block in form.blocks))
-        if not decision['authorized']:
+        decision = self.authorization(chat, '', form_blocks=form.blocks)
+        plan = None
+        if decision['authorized']:
+            try:
+                plan = self.form_plan(form, decision)
+            except AssertionError as error:
+                decision = {**decision, 'authorized': False, 'reason': str(error)}
+        if plan is None:
             self.herdr('agent', 'send-keys', chat['paneId'], 'esc')
             self.answered.add(call['id'])
             returned = until('actual native form rejection return', lambda: json.loads(response_path.read_text(encoding='utf-8')) if response_path.is_file() else None, 20)
@@ -455,80 +688,33 @@ class PublishedV2Acceptance(NativeAcceptance):
                 'nativeReturn': returned, 'decision': decision, 'selectedAction': 'Esc; no authorization'})
             self.pending_scope[chat['sessionId']] = {'toolCallId': call['id'], 'message': self.scope_message(decision)}
             return True
-        groups = []
-        for field in form.fields:
-            if field.get('type') == 'radio':
-                existing = next((group for group in groups if group[0].get('type') == 'radio' and group[0].get('name') == field.get('name')), None)
-                if existing is None:
-                    groups.append([field])
-                else:
-                    existing.append(field)
-            else:
-                groups.append([field])
-        require(groups, ('Native business Ask has no observable controls', call))
         record = {'sessionId': chat['sessionId'], 'call': call, 'beforeScreen': screen, 'choices': [], 'at': time.monotonic()}
         self.evidence.setdefault('businessForms', []).append(record)
-        for group in groups:
-            field = group[0]
-            if field.get('type') == 'radio':
-                allowed = [index for index, option in enumerate(group) if (any(word in option['label'] for word in ['确认', '同意', '按当前', '保持', '保留', '不优化', '不修改', '允许', '继续', 'Yes'])
-                    or re.match(r'^\s*是[：:、，]', option['label']))
-                    and not any(word in option['label'] for word in ['不确认', '不同意', '暂不', '取消', '拒绝', '修改后', '需要修改'])]
-                require(len(allowed) == 1, ('Business form lacks one independently authorized choice', group))
-                chosen = allowed[0]
-                # A newly presented native radio form focuses its first option.
-                # Every actual key is followed by observation, never replayed.
+        for name, kind, value, label, chosen, default, prefilled in plan:
+            if kind == 'radio':
                 for _ in range(chosen):
                     self.herdr('agent', 'send-keys', chat['paneId'], 'down')
-                    self.screen(chat)
-                self.herdr('agent', 'send-keys', chat['paneId'], 'space')
-                label = group[chosen]['label']
-                selected = until('native business radio value visible', lambda: value if label in (value := self.screen(chat)) and any(mark in value for mark in ['●', '◉', '[x]', '[✓]', '☑']) else None, 5)
-                record['choices'].append({'name': field.get('name'), 'value': group[chosen].get('value', 'on'), 'selectedScreen': selected})
-            elif field.get('type') == 'select':
-                options = field['options']
-                allowed = [index for index, option in enumerate(options) if option.get('value') in [self.host, 'probe', 'default'] or
-                    (any(word in option['label'] for word in ['确认', '同意', '保留', '保持', '不优化', '不修改']) and not any(word in option['label'] for word in ['不确认', '不同意', '修改后', '需要修改']))]
-                require(len(allowed) == 1, ('Dropdown has no unique authorized business value', field))
-                chosen = allowed[0]
-                current = next((index for index, option in enumerate(options) if 'selected' in option), 0)
-                for _ in range(abs(chosen - current)):
-                    self.herdr('agent', 'send-keys', chat['paneId'], 'right' if chosen > current else 'left')
-                    self.screen(chat)
-                selected = self.screen(chat)
-                require(options[chosen]['label'].strip() in selected, ('Selected dropdown value is not visible', selected, field))
-                record['choices'].append({'name': field['name'], 'value': options[chosen].get('value', options[chosen]['label']), 'selectedScreen': selected})
-            elif field.get('type') == 'checkbox':
-                require(any(word in field['label'] for word in ['确认', '同意', '授权']) and not any(word in field['label'] for word in ['不确认', '不同意', '修改既有']), ('Unknown checkbox decision', field))
-                if 'checked' not in field:
+                if not prefilled:
                     self.herdr('agent', 'send-keys', chat['paneId'], 'space')
-                record['choices'].append({'name': field.get('name'), 'value': True, 'selectedScreen': self.screen(chat)})
+                selected = until('native business radio value visible', lambda: text if label in (text := self.screen(chat))
+                    and any(mark in text for mark in ['●', '◉', '[x]', '[✓]', '☑']) else None, 5)
+            elif kind == 'select':
+                for _ in range(abs(chosen - default)):
+                    self.herdr('agent', 'send-keys', chat['paneId'], 'right' if chosen > default else 'left')
+                selected = self.screen(chat)
+                require(label.strip() in selected, ('Selected dropdown value is not visible', selected, label))
             else:
-                text = field.get('value', '')
-                if not text and 'required' in field:
-                    question = (field.get('name', '') + ' ' + field['label']).lower()
-                    if 'prompt' in question:
-                        text = PROMPT
-                    elif any(word in question for word in ['model', '模型']):
-                        text = 'probe'
-                    elif any(word in question for word in ['agent', '宿主']):
-                        text = self.host
-                    elif any(word in question for word in ['thinking', '思考']):
-                        text = 'default'
-                    elif any(word in question for word in ['目录', '位置', 'path']):
-                        text = str(self.delivery_directory)
-                    elif any(word in question for word in ['bot_id', 'bot id']):
-                        text = 'v2-csv-' + self.host
-                    elif any(word in question for word in ['name', '名称', '命名']):
-                        text = self.target_name
+                if not prefilled:
+                    if kind == 'checkbox':
+                        self.herdr('agent', 'send-keys', chat['paneId'], 'space')
                     else:
-                        require(any(word in question for word in ['确认', '授权', '意见', 'confirm', 'approval']), ('Business form requests a fact not supplied by the user', field))
-                        text = self.scope_message(decision)
-                    self.herdr('pane', 'send-text', chat['paneId'], text)
-                record['choices'].append({'name': field.get('name'), 'value': text, 'selectedScreen': self.screen(chat)})
+                        self.herdr('pane', 'send-text', chat['paneId'], value)
+                selected = self.screen(chat)
+            record['choices'].append({'name': name, 'value': value, 'selectedScreen': selected})
             self.herdr('agent', 'send-keys', chat['paneId'], 'tab')
         record['beforeSubmit'] = self.screen(chat)
         require('Submit' in record['beforeSubmit'], 'Native business form Submit not visible')
+        submitted_at = time.monotonic()
         self.herdr('agent', 'send-keys', chat['paneId'], 'enter')
         self.answered.add(call['id'])
         def returned():
@@ -539,10 +725,26 @@ class PublishedV2Acceptance(NativeAcceptance):
         raw_return = until('actual public native formDialog return', lambda: json.loads(response_path.read_text(encoding='utf-8')) if response_path.is_file() else None, 20)
         require(isinstance(raw_return.get('result', {}).get('data'), dict), ('Native form did not return submitted values', raw_return))
         data = raw_return['result']['data']
-        for choice in record['choices']:
-            require(data.get(choice['name']) == choice['value'], ('Native form returned a different business choice', choice, data))
+        answers = {choice['name']: choice['value'] for choice in record['choices']}
+        require(data == answers, ('Native form returned different business choices', answers, data))
+        normalized = (result.get('details') or {}).get('answers')
+        require(isinstance(normalized, list) and len(normalized) == len(plan)
+            and all(isinstance(item, dict) and string(item.get('name')) and 'answer' in item for item in normalized),
+            ('Missing native Ask tool answer evidence', result))
+        by_name = {item['name']: item['answer'] for item in normalized}
+        require(by_name.keys() == answers.keys(), ('Ask tool returned different fields', by_name))
+        for name, kind, value, label, *_ in plan:
+            accepted = (value, label) if kind in ('radio', 'select') else (value,)
+            if kind == 'checkbox':
+                accepted = (True, 'true', 'Yes', '是', label)
+            require(by_name[name] in accepted, ('Ask tool changed the authorized choice', name, by_name[name]))
         record.update(result=result, nativeInvocation=observed[0], nativeReturn=raw_return)
+        self.record_grant(chat, decision, call['id'], submitted_at)
         return True
+
+    def record_grant(self, chat, decision, boundary, at):
+        self.evidence.setdefault('businessGrants', []).append({**decision, 'sessionId': chat['sessionId'],
+            'boundary': boundary, 'at': at})
 
     def business_reply(self, chat):
         history = self.histories.get(chat['sessionId'])
@@ -567,13 +769,17 @@ class PublishedV2Acceptance(NativeAcceptance):
         # A question is not evidence of a complete candidate. Only structured
         # content actually displayed by this assistant can receive authorization.
         text = '\n'.join(part.get('text', '') for part in message.get('content', []) if isinstance(part, dict) and part.get('type') == 'text')
-        if not re.search(r'是否|请(?:你|用户)?确认|等待(?:你|用户)?确认|待[^。\n]{0,20}确认|(?:建议|尚未)[^。\n]{0,80}确认|请[^。\n]{0,30}授权|需要[^。\n]{0,30}授权|请提供', text):
+        if not re.search(r'(?:^|[。！？\n])\s*(?:[-*]\s*)?(?:\*\*)?(?:是否(?:同意|确认|允许|授权|可以)|(?:请|麻烦)(?:你|您|用户)?(?:确认|授权|提供|选择)|(?:你|您)是否)', text):
             return
-        require(any(word in text for word in ['CSV', '需求', '指南', 'prompt', '配置', '保存']), ('Unexpected business decision needs explicit criteria', text))
+        # Only the candidate policy may grant authority. An explicit but
+        # incomplete or unknown request receives a scoped refusal, not a grant.
         self.answered.add(last['id'])
         decision = self.authorization(chat, text)
         self.evidence.setdefault('businessCandidateConfirmations', []).append({'sessionId': chat['sessionId'], 'candidate': last, 'decision': decision, 'at': time.monotonic()})
+        at = time.monotonic()
         self.send(chat, self.scope_message(decision), 'actual-current-stage-candidate-authorized' if decision['authorized'] else 'business-scope-not-authorized')
+        if decision['authorized']:
+            self.record_grant(chat, decision, last['id'], at)
 
     def drive(self, root_id):
         started = time.monotonic()
@@ -603,10 +809,10 @@ class PublishedV2Acceptance(NativeAcceptance):
                     if chat and state['status'] == 'running' and not execution['autoApproved']:
                         self.native_yes(chat, detail['run']['id'], node)
                 final[detail['run']['id']] = detail
-            for identity in active:
-                self.business_reply(self.chats[identity])
             self.evidence['lastPublicRuns'] = final
             require(not any(node['status'] == 'failed' for detail in runs for node in detail['run']['nodes'].values()), ('Actual V2 node failed; preserve the manager decision, do not retry or wait for a success', runs))
+            for identity in active:
+                self.business_reply(self.chats[identity])
             if len(runs) == 2 and all(detail['run']['status'] == 'completed' for detail in runs):
                 return runs
             require(all(detail['run']['status'] not in ['failed', 'cancelled'] for detail in runs), ('Actual V2 run failed; no retry', runs))
@@ -615,57 +821,270 @@ class PublishedV2Acceptance(NativeAcceptance):
 
     def material(self, path):
         path = Path(path)
-        require(path.is_absolute() and path.resolve().is_relative_to(self.root.resolve()) and path.is_file(), ('Material escaped owned root or is missing', str(path)))
+        require(path.is_absolute() and path.is_relative_to(self.delivery_directory)
+            and path.resolve().is_relative_to(self.delivery_directory.resolve()) and path.is_file(),
+            ('Material escaped the authorized delivery directory or is missing', str(path)))
         current = self.root
         for part in path.relative_to(self.root).parts:
             current /= part
             require(not current.is_symlink() and not (current.stat().st_file_attributes & 0x400), ('Reparse material path', str(current)))
-        text = path.read_text(encoding='utf-8')
-        self.evidence.setdefault('materials', {})[str(path)] = {'text': text, 'sha256': digest(path)}
+        raw = path.read_bytes()
+        text = raw.decode('utf-8')
+        self.evidence.setdefault('materials', {})[str(path)] = {'text': text, 'sha256': hashlib.sha256(raw).hexdigest()}
         return text
 
-    def verify_run(self, detail, map_file):
-        require(set(detail['run']['nodes']) == set(MODES[map_file]), ('Replaced V2 topology', detail))
-        manager = detail['run']['manager']['sessionId']
-        manager_calls = tool_calls(self.histories[manager])
-        require(any(call['name'].rsplit('.', 1)[-1] == 'run' and call.get('arguments', {}).get('action') == 'finish' for call in manager_calls), 'No real native explicit manager finish')
+    def prove_read(self, history, path, sections=()):
+        expected = Path(path)
+        selected = not sections
+        remaining = set()
+        headings = set()
+        for line in expected.read_text(encoding='utf-8').splitlines():
+            if sections and line.startswith('## '):
+                selected = line[3:] in sections
+                if selected:
+                    headings.add(line[3:])
+            if selected and line.strip():
+                remaining.add(line)
+        require(remaining and headings == set(sections), ('Missing required V2 material or contract section', path, sections))
+        calls = []
+        cwd = Path(self.evidence['nativeHeaders'][history['id']]['cwd'])
+        results = {message.get('toolCallId'): message for message in self.messages(history) if message.get('role') == 'toolResult'}
+        for call in tool_calls(history):
+            result = results.get(call['id'])
+            if not result or result.get('isError'):
+                continue
+            args = call.get('arguments', {})
+            tool = call['name'].rsplit('.', 1)[-1]
+            if tool in ('read', 'read_file'):
+                value = args.get('path', args.get('file_path', ''))
+                if not isinstance(value, str):
+                    continue
+                actual = cwd / re.sub(r':\d+(?:-\d+)?$', '', value)
+                if actual != expected:
+                    continue
+            elif tool == 'bash':
+                command = args.get('command', '')
+                if not isinstance(command, str) or not re.search(r'\b(?:cat|Get-Content|type)\s', command, re.IGNORECASE):
+                    continue
+                path_pattern = r"""["'\s=]""" + re.escape(expected.as_posix()) + r"""(?=["'\s;|&]|$)"""
+                if not re.search(path_pattern, command.replace('\\', '/'), re.IGNORECASE):
+                    continue
+            else:
+                continue
+            text = '\n'.join(part.get('text', '') for part in result.get('content', []) if part.get('type') == 'text')
+            found = {line for line in remaining if line in text}
+            if found:
+                calls.append(call['id'])
+                remaining.difference_update(found)
+                if not remaining:
+                    self.evidence.setdefault('materialReads', []).append({'sessionId': history['id'], 'path': str(expected),
+                        'sections': list(sections), 'callIds': calls})
+                    return
+        raise AssertionError(('No successful material read before the V2 action', history['id'], str(expected), sections))
+
+    def matching_grant(self, run, node, action, matches, *, required=True):
+        session = run['nodes'][node]['execution']['chat']['sessionId']
+        grants = [grant for grant in self.evidence.get('businessGrants', [])
+            if grant['sessionId'] == session and grant['stage'] == node and grant['action'] == action]
+        matching = [grant for grant in grants if matches(grant['candidate'])]
+        require(matching or (not required and not grants), ('Final business effect does not match the displayed grant', node, action, grants))
+        return matching[-1] if matching else None
+
+    def verify_business(self, root, child, outer, inner):
+        request = material_json(outer['create_task']['request'][1], REQUEST_FIELDS, {'bot'})
+        locator = request.get('target')
+        target_id = locator.get('task_id') if isinstance(locator, dict) else None
+        require(request_valid(request, target_id), ('Invalid original V2 request', request))
+        require(csv_scope('\n'.join([request['requirements'], *request['constraints'], *request['non_goals'], *request['resource_limits']])),
+            ('V2 request lost the independent CSV business intent', request))
+        target_route = '/api/tasks/' + urllib.parse.quote(target_id, safe='')
+        target = self.http(target_route)['task']
+        bot_id = 'v2-csv-' + self.host
+        require(all(value == {'name': self.target_name, 'id': bot_id}.get(key) for key, value in request.get('bot', {}).items()),
+            ('Wrong named Bot in the V2 request', request))
+        files = [path for outputs in [outer['create_task'], *inner.values()] for path, _ in outputs.values()]
+        require(len(set(map(Path, files))) == len(files), ('Independent V2 outputs reused a file', files))
+        stage_handoff = outer['create_task']['handoff'][1]
+        requirements = inner['align_requirements']['bot_requirements'][1]
+        require(csv_scope(stage_handoff) and target_id in stage_handoff and self.target_name in stage_handoff
+            and re.search(r'授权|确认', stage_handoff) and re.search(r'未验证|未运行|未执行', stage_handoff),
+            ('Incomplete Task stage Markdown handoff', stage_handoff))
+        require(csv_scope(requirements) and target_id in requirements and re.search(r'授权|确认', requirements),
+            ('Incomplete aligned Markdown requirements', requirements))
+        captured = material_json(inner['align_requirements']['target_materials'][1], TARGET_FIELDS)
+        require(target_materials_valid(captured, target), ('V2 W1 did not capture this complete current Task', captured, target))
+        saved = material_json(inner['design_and_create']['saved'][1], ['schema_version', 'kind', 'bot', 'revision', 'target'])
+        handoff = material_json(inner['design_and_create']['handoff'][1], ['schema_version', 'kind', 'stage', 'bot_id',
+            'target', 'confirmation_evidence', 'sources', 'changes', 'checks', 'unverified'])
+        require(type(saved['schema_version']) is type(handoff['schema_version']) is int
+            and saved['schema_version'] == handoff['schema_version'] == 2 and saved['kind'] == 'saved'
+            and handoff['kind'] == 'handoff' and handoff['stage'] == 'saved', ('Replaced V2 output protocol', saved, handoff))
+        bot = self.http('/api/scheduler/bots/edit', {'id': bot_id})
+        actual_bot = {**bot['content'], 'id': bot['id']}
+        require(saved['bot'] == actual_bot and saved['revision'] == bot['revision'] and saved['revision'] is not None
+            and saved['target'] == {**locator, 'configuration': target}, ('Saved material is not the complete current Bot and Task', saved, bot))
+        require(handoff['bot_id'] == bot_id and handoff['target'] == locator
+            and all(strings(handoff[key]) and handoff[key] for key in ('confirmation_evidence', 'changes', 'unverified')),
+            ('Invalid V2 final handoff identity or evidence', handoff))
+        expected = {('bot_requirements', 'input', 'requirements'), ('target_materials', 'input', 'target_materials'),
+            ('saved', 'output', 'saved'), ('handoff', 'output', 'handoff')}
+        sources = handoff['sources']
+        require(isinstance(sources, list) and len(sources) == len(expected)
+            and all(isinstance(item, dict) and item.keys() == {'binding_id', 'direction', 'role'}
+                and all(string(value) for value in item.values()) for item in sources)
+            and {(item['binding_id'], item['direction'], item['role']) for item in sources} == expected,
+            ('V2 final handoff must name the actual W2 input and output bindings', sources))
+        checks = {'bot_read_back': True, 'target_read_back': True, 'task_prompt_changed': False,
+            'non_target_unchanged': True, 'semantics_preserved': True}
+        require(isinstance(handoff['checks'], dict) and handoff['checks'].keys() == checks.keys()
+            and all(handoff['checks'][key] is value for key, value in checks.items()), ('Invalid V2 final checks', handoff))
+        for key in ('saved', 'handoff'):
+            require(outer['create_bot_v2'][key] == inner['design_and_create'][key], ('Parent did not relay the actual W2 file', key))
+        task_grant = self.matching_grant(root, 'create_task', 'confirm-task',
+            lambda candidate: task_configuration(candidate) == task_configuration(target))
+        bot_grant = self.matching_grant(child, 'design_and_create', 'confirm-bot',
+            lambda candidate: {key: value for key, value in candidate.items() if value is not None} ==
+                {key: value for key, value in actual_bot.items() if value is not None})
+        intent_grant = self.matching_grant(child, 'align_requirements', 'confirm-requirements', lambda candidate: csv_scope(candidate['requirements']))
+        self.matching_grant(root, 'create_task', 'confirm-request', lambda candidate: candidate == request, required=False)
+        self.matching_grant(child, 'align_requirements', 'confirm-target-materials', lambda candidate: candidate == captured, required=False)
+        require(target['id'] == target_id and target['prompt'] == PROMPT and target['agent'] == self.host,
+            ('Wrong V2 target configuration', target))
+        task_saves = [wire for wire in self.records('/api/tasks') if wire['method'] == 'POST' and wire.get('status') == 200]
+        bot_saves = [wire for wire in self.records('/api/scheduler/bots/save') if wire['method'] == 'POST' and wire.get('status') == 200]
+        require(len(task_saves) == 1 and task_grant['at'] <= task_saves[0]['started']
+            and task_configuration(decode(task_saves[0], 'request')) == task_configuration(target)
+            and target in decode(task_saves[0], 'response')['tasks'], ('No actual authorized Task creation', task_saves))
+        require(len(bot_saves) == 1 and bot_grant['at'] <= bot_saves[0]['started'], ('No actual authorized Bot creation', bot_saves))
+        bot_write = decode(bot_saves[0], 'request')
+        written_bot = strict_json(bot_write['content'])
+        require(bot_write['id'] == bot_id and bot_write.get('revision') is None and isinstance(written_bot, dict)
+            and 'id' not in written_bot and {**{key: value for key, value in written_bot.items() if value is not None}, 'id': bot_id} == actual_bot
+            and decode(bot_saves[0], 'response') == actual_bot, ('Bot save did not match full confirmed readback', bot_write))
+        require(not any(wire['method'] == 'PUT' and wire.get('status') == 200 and wire['path'].startswith('/api/tasks/')
+            for wire in self.backend_wire.records), 'The V2 no-prompt-change case modified a Task')
+        require({item['id'] for item in self.http('/api/tasks')['tasks']} == {*TASK_IDS, target_id}, 'V2 created or removed an unrelated Task')
+        self.evidence['businessEffects'] = {'taskSave': task_saves[0], 'botSave': bot_saves[0]}
+        self.evidence['actualTarget'] = target
+        self.evidence['actualBot'] = bot
+        return {'align_requirements': intent_grant, 'design_and_create': bot_grant}
+
+    def verify_bindings(self, root, child, outer, inner, contract, grants):
+        request = outer['create_task']['request'][0]
+        require(root['fileInputs'] == [] and child['fileInputs'] == [{'id': 'request', 'path': request}],
+            ('Wrong Run input binding or unexpected optional materials', root['fileInputs'], child['fileInputs']))
+        bindings = {'create_task': {'material_contract': str(contract)}, 'create_bot_v2': {'request': request},
+            'align_requirements': {'material_contract': str(contract), 'request': request},
+            'design_and_create': {'material_contract': str(contract),
+                **{key: pair[0] for key, pair in inner['align_requirements'].items()}}}
+        general = '通用格式与目标定位'
+        request_section = 'request 与 materials'
+        contract_sections = {'create_task': (general, request_section),
+            'align_requirements': (general, request_section, 'target_materials'),
+            'design_and_create': (general, 'target_materials', 'saved 与 handoff')}
+        for run, deliveries in ((root, outer), (child, inner)):
+            evidence = self.evidence['handoffs'][run['id']]
+            manager = self.histories[run['manager']['sessionId']]
+            for node, state in run['nodes'].items():
+                execution = state['execution']
+                items = execution['inputs']
+                require(isinstance(items, list) and len(items) == len(bindings[node])
+                    and {item['id']: Path(item['path']) for item in items} == {key: Path(path) for key, path in bindings[node].items()},
+                    ('Wrong frozen V2 input bindings', node, items, bindings[node]))
+                handoff = evidence['nodes'][node]
+                before_complete = history_before(manager, handoff['complete']['callId'])
+                for path, _ in deliveries[node].values():
+                    self.prove_read(before_complete, path)
+                if node != 'create_bot_v2':
+                    before_approval = history_before(self.histories[handoff['sessionId']], handoff['approval']['callId'])
+                    self.prove_read(before_approval, contract, contract_sections[node])
+                    before_candidate = (history_before(self.histories[handoff['sessionId']], grants[node]['boundary'])
+                        if node in grants else before_approval)
+                    for key, path in bindings[node].items():
+                        if key != 'material_contract':
+                            self.prove_read(before_candidate, path)
+        child_manager = self.histories[child['manager']['sessionId']]
+        dispatch = next((call['id'] for call in tool_calls(child_manager) if call['name'].rsplit('.', 1)[-1] == 'run'
+            and call.get('arguments', {}).get('action') == 'dispatch' and 'align_requirements' in call['arguments'].get('nodes', [])), None)
+        require(dispatch, 'Child manager did not natively dispatch alignment')
+        before_dispatch = history_before(child_manager, dispatch)
+        self.prove_read(before_dispatch, contract, (general, request_section))
+        self.prove_read(before_dispatch, request)
+        self.evidence['materialBindings'] = bindings
+
+    def committed_records(self, action, manager):
+        return [(record, body) for record in self.records('/api/workflow/manager/' + action, manager)
+            if record.get('status') == 200 and (body := decode(record, 'response')) and body.get('changed') is True]
+
+    def verify_run(self, detail, map_file, confirmations):
+        run = detail['run']
+        require(run['map'] == map_file and set(run['nodes']) == set(MODES[map_file]), ('Replaced V2 topology', detail))
+        manager = run['manager']['sessionId']
+        finishes = self.committed_records('finish', manager)
+        require(len(finishes) == 1 and run['status'] == 'completed' and run['finished']['actor'] == run['manager']
+            and finishes[0][1]['snapshot'] == run, ('No explicit finish of this Run', finishes))
+        def seen_finish():
+            history = self.native(run['manager'])
+            if history:
+                self.histories[manager] = history
+                return native_result(history, 'run', finishes[0][1], action='finish')
+        finish_call = until('native manager finish result', seen_finish, 10)
+        evidence = {'finish': {'callId': finish_call, 'wire': finishes[0][0]}, 'nodes': {}}
+        self.evidence.setdefault('handoffs', {})[run['id']] = evidence
         delivered = {}
         for node, automatic in MODES[map_file].items():
-            state = detail['run']['nodes'][node]
+            state = run['nodes'][node]
             execution = state['execution']
-            require(state['status'] == 'completed' and execution['approved'] is True and execution['autoApproved'] is automatic and execution['approvalSource'] == ('auto' if automatic else 'manual'), ('Approval responsibility/source mismatch', state))
+            execution_id = execution['id']
+            source = 'auto' if automatic else 'manual'
+            require(state['status'] == 'completed' and execution['approved'] is True and execution['autoApproved'] is automatic
+                and execution['approvalSource'] == source, ('Approval responsibility/source mismatch', state))
             session = execution['chat']['sessionId']
             approvals = self.records('/api/workflow/node/approve', session)
-            require(len(approvals) == 1 and approvals[0].get('status') == 200 and decode(approvals[0], 'request')['source'] == ('auto' if automatic else 'manual'), approvals)
-            native = tool_calls(self.histories[session])
-            require(any(call['name'].rsplit('.', 1)[-1] == 'approve' for call in native), ('No actual native executor approval', session))
-            require(any(call['name'].rsplit('.', 1)[-1] == 'report' and call.get('arguments', {}).get('can_complete') is True for call in native), ('No actual native normal handoff report', session))
-            require(any(call['name'].rsplit('.', 1)[-1] == 'run' and call.get('arguments', {}).get('action') == 'complete' and call.get('arguments', {}).get('nodeId') == node for call in manager_calls), ('HTTP complete did not come from native manager tool', node))
-            ui = [value for value in self.yes.values() if value['request']['sessionId'] == session]
-            require(len(ui) == (0 if automatic else 1), ('Manual Yes mixed with automatic executor judgment', node, ui))
-            reports = [report for report in detail['reports'] if report['executionId'] == execution['id']]
-            require(reports and reports[-1]['canComplete'] is True, ('Approval cannot replace latest ready report', node, reports))
-            paths = {item['id']: item['path'] for report in reports for item in report.get('outputs', [])}
-            require(set(paths) == {item['id'] for item in execution['outputRule']}, ('Missing declared actual delivery', node, paths))
+            require(len(approvals) == 1 and approvals[0].get('status') == 200
+                and decode(approvals[0], 'request') == {'sessionId': session, 'executionId': execution_id, 'source': source}, approvals)
+            approval = decode(approvals[0], 'response')
+            require(approval == {'runId': run['id'], 'nodeId': node, 'executionId': execution_id, 'autoApproved': automatic,
+                'approved': True, 'approvalSource': source, 'changed': True}, ('Wrong native approval receipt', approval))
+            approval_call = native_result(self.histories[session], 'approve', approval)
+            require(approval_call, ('Approval receipt missing in native executor history', session))
+            raw = [item for item in confirmations if item['sessionId'] == session and item.get('title') == '成果批准']
+            ui = [self.yes[item['id']] for item in raw if item['id'] in self.yes]
+            require(len(raw) == len(ui) == (0 if automatic else 1) and (automatic or
+                (ui[0]['executionId'] == execution_id and ui[0]['publicBefore']['run']['id'] == run['id'])),
+                ('Wrong native confirmation for this execution', node, raw, ui))
+            completes = [(wire, receipt) for wire, receipt in self.committed_records('complete', manager)
+                if decode(wire, 'request').get('nodeId') == node]
+            require(len(completes) == 1, ('Expected exactly one native complete commit', node, completes))
+            complete_wire, receipt = completes[0]
+            reports = committed_handoff(run, node, receipt, OUTPUT_IDS[node])
+            complete_call = native_result(self.histories[manager], 'run', receipt, action='complete', nodeId=node,
+                reason=state['completion']['reason'])
+            require(complete_call and native_result(history_before(self.histories[manager], finish_call),
+                'run', receipt, action='complete', nodeId=node),
+                ('Missing native complete result before manager finish', node))
+            ready = reports[-1]
+            require(ready['from'] == execution['chat'] and ready['to'] == run['manager'], ('Wrong report actors', ready))
+            def saved_receipt():
+                return next((record for record in self.records('/api/workflow/node/report', session)
+                    if record.get('status') == 200 and (body := decode(record, 'response'))
+                    and body.get('saved') is True and body.get('report') == ready), None)
+            reporting = until('saved native report receipt', saved_receipt, 30)
+            report_call = next((call['id'] for call in tool_calls(self.histories[session])
+                if call['name'].rsplit('.', 1)[-1] == 'report' and call.get('arguments', {}).get('can_complete') is True
+                and call['arguments'].get('body') == ready['body']
+                and call['arguments'].get('outputs', []) == ready.get('outputs', [])), None)
+            require(report_call and native_result(history_before(self.histories[session], report_call), 'approve', approval),
+                ('No native approval result before the saved handoff report', ready))
+            paths = report_paths(reports)
+            final_reports = execution_reports(detail['reports'], node, execution_id)
+            require(final_reports[:len(reports)] == reports and final_reports[-1]['canComplete'] is True
+                and report_paths(final_reports) == paths, ('Final handoff differs from the committed one', node, final_reports))
+            require({item['id'] for item in execution['outputRule']} == OUTPUT_IDS[node], ('Wrong frozen output contract', node))
             delivered[node] = {key: (path, self.material(path)) for key, path in paths.items()}
-            # The intentional approval-without-report probe is a real 409,
-            # not a manager handoff. Keep it in the wire evidence, but count
-            # only successful commits for the exactly-once completion oracle.
-            completes = [record for record in self.records('/api/workflow/manager/complete', manager)
-                if decode(record, 'request').get('nodeId') == node and record.get('status') == 200]
-            require(len(completes) == 1 and completes[0].get('status') == 200 and approvals[0]['ended'] < completes[0]['started'], ('No explicit successful native manager complete after approval', completes))
-            report_calls = self.records('/api/workflow/node/report', session)
-            ready = [record for record in report_calls if decode(record, 'request').get('canComplete') is True and record.get('status') == 200]
-            require(ready and ready[-1]['ended'] < completes[0]['started'], ('Manager complete preceded latest ready report', ready, completes))
-            prior_reports = [record for record in report_calls if record.get('ended', float('inf')) < completes[0]['started'] and record.get('status') == 200]
-            require(prior_reports and decode(prior_reports[-1], 'request').get('canComplete') is True, ('An earlier ready report hid a latest non-ready report', prior_reports))
-            require(approvals[0]['ended'] < ready[0]['started'], ('Normal handoff report preceded actual result approval', approvals, ready))
-            if automatic:
-                child_id = execution['childRunId']
-                require(self.records('/api/workflow/manager/finish', session)[0]['ended'] < approvals[0]['started'], ('Parent approved before real child finish', child_id))
-            else:
-                for input_item in execution.get('inputs', []):
-                    read_evidence(self, self.histories[session], Path(input_item['path']))
+            evidence['nodes'][node] = {'executionId': execution_id, 'sessionId': session, 'confirmations': raw,
+                'approval': {'callId': approval_call, 'wire': approvals[0]}, 'report': {'callId': report_call, 'wire': reporting},
+                'complete': {'callId': complete_call, 'wire': complete_wire}, 'reportIds': [report['id'] for report in reports]}
         return delivered
 
     def check_model_identity(self, verify=True):
@@ -699,6 +1118,65 @@ class PublishedV2Acceptance(NativeAcceptance):
         if verify:
             require(not errors, ('Model identity/transport verification failed; raw evidence retained, no retry', errors))
         return not errors
+
+    def verify_session_hosts(self, chats):
+        identities = {chat['sessionId'] for chat in chats}
+        require(len(chats) == len(identities) == 5, ('Mixed V2 manager/worker sessions', chats))
+        entry = Path(self.evidence['installedHosts'][self.host]['entry']).resolve()
+        hosts = {process['ProcessId']: process for process in self.evidence['nativeProcesses']
+            if any(Path(argument).resolve() == entry for argument in process['argv']
+                if argument.lower().endswith(('.js', '.ts')))}
+        bindings = {}
+        with (self.confirmations / 'native-events.jsonl').open(encoding='utf-8') as stream:
+            for line in stream:
+                event = json.loads(line)
+                session = event.get('sessionId')
+                if event.get('type') != 'session_start' or session not in identities:
+                    continue
+                pid = event.get('pid')
+                require(event.get('hasUI') is True and pid in hosts
+                    and event == bindings.setdefault(session, event), ('Unverified native V2 host session', event))
+        require(set(bindings) == identities and all(self.histories.get(session, {}).get('id') == session for session in identities),
+            ('Missing native V2 session identity', sorted(identities - bindings.keys())))
+        self.evidence['nativeSessionHosts'] = {session: {'host': self.host, 'entry': str(entry),
+            'sessionStart': event, 'process': hosts[event['pid']]} for session, event in bindings.items()}
+
+    def verify_mcp_call(self):
+        def projects(value):
+            if not isinstance(value, dict) or value.get('isError') or 'error' in value:
+                return None
+            if isinstance(value.get('projects'), list):
+                return value
+            return projects(value.get('structuredContent'))
+
+        for identity, history in self.histories.items():
+            calls = {call['id']: call for call in tool_calls(history)}
+            for result in self.messages(history):
+                if result.get('role') != 'toolResult' or result.get('isError'):
+                    continue
+                call = calls.get(result.get('toolCallId'), {})
+                name = call.get('name', '').replace('-', '_').lower()
+                code = call.get('arguments', {}).get('code', '')
+                direct = 'codebase_memory_mcp' in name and name.endswith('list_projects')
+                wrapped = name.rsplit('.', 1)[-1] == 'codemode' and isinstance(code, str) and re.search(
+                    r'\btools\.mcp__codebase_memory_mcp__list_projects\s*\(', code)
+                if not direct and not wrapped:
+                    continue
+                values = [result.get('details')]
+                for part in result.get('content', []):
+                    if isinstance(part, dict) and part.get('type') == 'text':
+                        for line in part.get('text', '').splitlines():
+                            try:
+                                values.append(json.loads(line))
+                            except ValueError:
+                                continue
+                for value in values:
+                    payload = projects(value)
+                    if payload is not None:
+                        self.evidence['nativeMcpCall'] = {'sessionId': identity, 'call': call,
+                            'result': result, 'projects': payload['projects']}
+                        return
+        raise AssertionError('No successful native codebase-memory-mcp list_projects call; an empty list is valid')
 
     def check_guidance(self):
         records = [record for record in self.model_wire.records if record['method'] == 'POST' and record['path'].split('?', 1)[0].endswith('/chat/completions')]
@@ -747,18 +1225,25 @@ class PublishedV2Acceptance(NativeAcceptance):
         self.target_name, self.delivery_directory = name, delivery
         self.environment_scope = ('环境事实：只读文档与源码根为' + self.args.repo.as_posix()
             + '；只读Skill根为' + self.args.wayfinder.as_posix() + '及' + self.args.wayfinder_skills.as_posix()
-            + '。唯一可写业务材料目录为' + delivery.as_posix() + '，唯一可写临时目录为' + (self.root / 'temp').as_posix()
+            + '；另外只读本次 Map 显式绑定的格式契约文件 ' + (contract / 'create-bot-v2-materials.md').as_posix()
+            + '（不授权读取所在目录的其他文件）。唯一可写业务材料目录为' + delivery.as_posix() + '，唯一可写临时目录为' + (self.root / 'temp').as_posix()
             + '；禁止共享Temp、/tmp或其他目录中的发现式查找和写入，不读取其他Chat/Run或认证；不安装、刷新凭据或修改Skill/文档。'
-            + '当前服务由本次配置提供；不得因猜出的相对路径失败而扫描其他目录。')
+            + '当前服务由本次配置提供；不得因猜出的相对路径失败而扫描其他目录。'
+            + '新建Task的thinking=default是合法的“沿用Agent默认值”；GET /api/tasks的thinking列表只列显式级别，即使只显示off也不要改参数。'
+            + '本Run只需一次真实只读MCP调用证明连通：调用codebase-memory-mcp的list_projects，正常返回空列表也有效。'
+            + '若经codemode调用，请直接输出工具原始JSON结果（不要复述或重组）。不需要建索引，不调用index_repository，不扩大allowed-root。'
+            + '若当前是manager，请把上述环境事实传给create_task执行者。')
         self.evidence['filesystemAuthority'] = {'readOnlyRepository': self.args.repo.as_posix(),
             'readOnlySkills': [self.args.wayfinder.as_posix(), self.args.wayfinder_skills.as_posix()],
-            'writableMaterials': delivery.as_posix(), 'writableTemporary': (self.root / 'temp').as_posix(),
+            'readOnlyMaterialContract': (contract / 'create-bot-v2-materials.md').as_posix(), 'writableMaterials': delivery.as_posix(), 'writableTemporary': (self.root / 'temp').as_posix(),
             'temporaryEnvironment': {key: self.env[key] for key in ['TMP', 'TEMP', 'TMPDIR']},
             'scope': 'Explicit owned configuration and business authorization; not an OS filesystem sandbox'}
         business = ('仅在本次隔离服务创建一个normal Task及绑定它的完整Bot，使用发布V2，不调用V1或运行目标。Task名称为' + name + '；agent=' + self.host + '，model=probe，thinking=default，skill=null，suite=null，chatName={chat.id}。Task.prompt必须逐字使用：' + PROMPT + '\n'
             'Bot名称为' + name + '，ID为v2-csv-' + self.host + '。三指南按现有职责设计；禁止优化或改写Task.prompt。'
             '授权只读本次文件、当前隔离配置和文档，通过当前服务新建上述Task/Bot；候选全文在各阶段展示后再确认，初始委托不批准未知正文。'
-            '只在' + str(delivery) + '新建交付文件，UTF-8，不覆盖；正式交付遵循V2材料契约。原始CSV不写、不上传、不执行业务，不修改既有对象、Skill、共享文档或运行记录。')
+            '只在' + str(delivery) + '新建交付文件，UTF-8，不覆盖；正式交付遵循V2材料契约。原始CSV不写、不上传、不执行业务，不修改既有对象、Skill、共享文档或运行记录。'
+            '请把以下要求传给create_task：用单独一个Ask或文本问题确认创建Task；展示单个完整配置JSON（含逐字prompt）或完整字段表和独立prompt。'
+            '不要把创建Task与多项建议合并成一个“是”。建好并读回Task后，仍由create_task用真实Task ID准备、写入并读回本节点的request和handoff，按契约报告两项输出；不能把这两份材料交给Bot阶段生成。')
         business += '\n' + self.environment_scope
         launched = self.browser('launch', mapTitle='创建task-V2', manager=TASK_IDS[0], zone='v2/owned', business=business)
         root_id = launched['runId']
@@ -769,36 +1254,34 @@ class PublishedV2Acceptance(NativeAcceptance):
                 self.histories[identity] = history
         self.evidence['histories'] = self.histories
         root, child = runs
-        outer = self.verify_run(root, 'create-task-v2.json')
-        inner = self.verify_run(child, 'create-bot-v2.json')
-        request = material_json(outer['create_task']['request'][1], ['schema_version', 'kind', 'target', 'requirements', 'constraints', 'non_goals', 'resource_limits', 'authorization', 'confirmation'], ['bot'])
-        require(request['schema_version'] == 2 and request['kind'] == 'request' and request['authorization'] == {'write_materials': True, 'create_bot': True, 'optimize_task_prompt': False} and request['confirmation']['scope'] == 'request' and request['confirmation']['evidence'], ('V2 request was rewritten or authorization confused with result approval', request))
-        require(type(request['schema_version']) is int and all(type(value) is bool for value in request['authorization'].values())
-            and isinstance(request['requirements'], str) and request['requirements'].strip()
-            and all(isinstance(request[key], list) and all(isinstance(value, str) for value in request[key]) for key in ['constraints', 'non_goals', 'resource_limits'])
-            and set(request['confirmation']) == {'scope', 'evidence'} and isinstance(request['confirmation']['evidence'], str), ('Malformed original V2 request protocol', request))
-        require(set(request['target']) == {'type', 'task_id'} and request['target']['type'] == 'task', ('Rewritten V2 target locator', request['target']))
-        target = self.http('/api/tasks/' + urllib.parse.quote(request['target']['task_id'], safe=''))['task']
-        require(target['name'] == name and target['prompt'] == PROMPT and target['agent'] == self.host, ('Wrong actual V2 target or unauthorized prompt change', target))
-        captured = material_json(inner['align_requirements']['target_materials'][1], ['schema_version', 'kind', 'target', 'captured_at', 'references'])
-        require(captured['schema_version'] == 2 and captured['kind'] == 'target_materials' and captured['target']['configuration'] == target, captured)
-        saved = material_json(inner['design_and_create']['saved'][1], ['schema_version', 'kind', 'bot', 'revision', 'target'])
-        handoff = material_json(inner['design_and_create']['handoff'][1], ['schema_version', 'kind', 'stage', 'bot_id', 'target', 'confirmation_evidence', 'sources', 'changes', 'checks', 'unverified'])
-        require(saved['schema_version'] == handoff['schema_version'] == 2 and saved['kind'] == 'saved' and handoff['kind'] == 'handoff' and handoff['stage'] == 'saved', ('Replaced V2 output protocol', saved, handoff))
-        bot = self.http('/api/scheduler/bots/edit', {'id': 'v2-csv-' + self.host})
-        actual_bot = {**bot['content'], 'id': bot['id']}
-        require(saved['bot'] == actual_bot and saved['revision'] == bot['revision'] and saved['target']['configuration'] == target, ('Delivered saved is not actual complete readback', saved, bot))
-        require(handoff['bot_id'] == actual_bot['id'] and handoff['target'] == request['target'] and handoff['confirmation_evidence'] and handoff['unverified'], handoff)
-        require(handoff['checks'] == {'bot_read_back': True, 'target_read_back': True, 'task_prompt_changed': False, 'non_target_unchanged': True, 'semantics_preserved': True}, handoff)
-        require(all(actual_bot.get(field, '').strip() for field in ['when', 'plan_guide', 'node_guide']) and actual_bot['task_id'] == target['id'], actual_bot)
-        for key in ['saved', 'handoff']:
-            require(outer['create_bot_v2'][key] == inner['design_and_create'][key], ('Parent borrowed/replaced child actual delivery', key))
-        require(root['run']['id'] != child['run']['id'] and child['run']['parent']['runId'] == root['run']['id'], ('V2 Run identities collapsed', runs))
+        parent_run, child_run = root['run'], child['run']
+        parent_execution = parent_run['nodes']['create_bot_v2']['execution']
+        require(parent_run.get('parent') is None and parent_run['id'] == root_id and root_id != child_run['id']
+            and parent_execution['childRunId'] == child_run['id'] and parent_execution['chat'] == child_run['manager']
+            and child_run['parent'] == {'runId': root_id, 'nodeId': 'create_bot_v2', 'executionId': parent_execution['id']},
+            ('Wrong V2 parent / child association', parent_run, child_run))
+        chats = [parent_run['manager'], child_run['manager'], parent_run['nodes']['create_task']['execution']['chat'],
+            *(state['execution']['chat'] for state in child_run['nodes'].values())]
+        self.verify_session_hosts(chats)
+        self.verify_mcp_call()
+        confirmations = [json.loads(path.read_text(encoding='utf-8')) for path in self.confirmations.glob('*.request.json')]
+        inner = self.verify_run(child, 'create-bot-v2.json', confirmations)
+        outer = self.verify_run(root, 'create-task-v2.json', confirmations)
+        child_finish = self.evidence['handoffs'][child_run['id']]['finish']
+        parent_approval = self.evidence['handoffs'][root_id]['nodes']['create_bot_v2']['approval']
+        child_history = self.histories[child_run['manager']['sessionId']]
+        require(native_result(history_before(child_history, parent_approval['callId']), 'run',
+            decode(child_finish['wire'], 'response'), action='finish') == child_finish['callId'],
+            'Child manager did not explicitly finish before approving the parent execution')
         self.evidence['finalRuns'] = runs
-        self.evidence['actualTarget'] = target
-        self.evidence['actualBot'] = bot
+        grants = self.verify_business(parent_run, child_run, outer, inner)
+        self.verify_bindings(parent_run, child_run, outer, inner, contract / 'create-bot-v2-materials.md', grants)
         protected_after = {name: digest(self.root / name) if (self.root / name).is_file() else None for name in protected}
         require(protected_after == protected, ('V2 modified an owned existing V1/V2 definition', protected, protected_after))
+        definitions_after = {str(path.relative_to(self.root)) for directory in ['maps', 'bots']
+            for path in (self.root / directory).glob('*.json')}
+        require(definitions_after == {*protected, str(Path('bots') / self.evidence['actualBot']['revision']['file'])},
+            ('V2 produced an unrelated Bot or Map definition', definitions_after))
         for key, expected in self.deployed.items():
             require(self.http('/api/tasks/' + key)['task'] == expected, ('V2 changed an existing published Task', key))
         self.evidence['ownedDefinitionReadback'] = protected_after
@@ -817,9 +1300,9 @@ class PublishedV2Acceptance(NativeAcceptance):
         self.check_model_identity()
         self.check_guidance()
         self.evidence['coverage'] = {key: {'verified': True, 'evidenceKeys': {
-            'P34/V2/S2': ['definitions', 'nativeYes', 'histories', 'finalRuns'],
+            'P34/V2/S2': ['definitions', 'nativeYes', 'histories', 'finalRuns', 'handoffs'],
             'P34/V2/S3': ['browser', 'definitions', 'finalRuns'],
-            'P35/V2/S2': ['materials', 'histories', 'modelIdentities', 'modelConsumedPublishedPrompts', 'actualTarget', 'actualBot', 'finalRuns', 'approvedWithoutReadyReport', 'v1Preservation', 'ownedDefinitionReadback', 'quietWindow'],
+            'P35/V2/S2': ['materials', 'materialReads', 'materialBindings', 'businessGrants', 'businessEffects', 'histories', 'nativeSessionHosts', 'nativeMcpCall', 'modelIdentities', 'modelConsumedPublishedPrompts', 'actualTarget', 'actualBot', 'finalRuns', 'handoffs', 'v1Preservation', 'ownedDefinitionReadback', 'quietWindow'],
         }[key]} for key in ITEMS}
         self.evidence['passed'] = True
 

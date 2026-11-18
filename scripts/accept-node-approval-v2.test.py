@@ -145,13 +145,13 @@ class BusinessAuthorization(unittest.TestCase):
         expected = {'task': {'name': 'Owned CSV', 'chatName': '{chat.id}', 'taskType': 'normal',
             'agent': 'pi', 'model': 'probe', 'thinking': 'default', 'skill': None, 'suite': None,
             'prompt': 'Read only two explicitly authorized CSV files; never upload or write them.'},
-            'taskId': 'task-owned', 'botId': 'owned-csv', 'requiredFacts': ['CSV', '只读', '不上传', '不写']}
+            'taskId': 'task-owned', 'botId': 'owned-csv'}
         return authorize_candidate(stage, action, candidate, expected)
 
     def bot(self):
         return {'id': 'owned-csv', 'name': 'Owned CSV', 'task_id': 'task-owned',
             'when': '用户授权两份CSV时使用', 'plan_guide': '只读CSV，不上传，不写原文件',
-            'node_guide': '比较明确授权的两份文件，缺失则等待用户'}
+            'node_guide': '比较明确授权的两份文件并交付差异；缺失则等待用户'}
 
     def test_task_and_alignment_never_authorize_a_bot_save(self):
         for stage in ['create_task', 'align_requirements']:
@@ -168,6 +168,11 @@ class BusinessAuthorization(unittest.TestCase):
         del incomplete['node_guide']
         self.assertFalse(self.policy('design_and_create', 'confirm-bot', incomplete)['authorized'])
 
+    def test_nonempty_guides_cannot_authorize_an_unrelated_bot(self):
+        unrelated = dict(self.bot(), when='Always', plan_guide='Upload source files', node_guide='Write the result back')
+        self.assertFalse(self.policy('design_and_create', 'confirm-bot', unrelated)['authorized'])
+        self.assertFalse(self.policy('design_and_create', 'confirm-bot', dict(self.bot(), unrecognized=True))['authorized'])
+
     def test_task_confirmation_does_not_allow_prompt_rewriting_or_future_actions(self):
         task = {'name': 'Owned CSV', 'chatName': '{chat.id}', 'taskType': 'normal', 'agent': 'pi',
             'model': 'probe', 'thinking': 'default', 'skill': None, 'suite': None,
@@ -178,7 +183,7 @@ class BusinessAuthorization(unittest.TestCase):
         self.assertFalse(self.policy('unknown-stage', 'confirm-task', task)['authorized'])
 
     def test_alignment_confirms_only_its_displayed_business_requirements(self):
-        candidate = {'requirements': '# 本次要求\n两份CSV只读比较，不上传、不写原文件；缺失时等待用户。'}
+        candidate = {'requirements': '# 本次要求\n比较两份明确授权的 CSV；只读、不上传、不写原文件，交付差异；缺失时等待用户。'}
         self.assertTrue(self.policy('align_requirements', 'confirm-requirements', candidate)['authorized'])
         self.assertFalse(self.policy('create_task', 'confirm-requirements', candidate)['authorized'])
         self.assertFalse(self.policy('align_requirements', 'confirm-requirements', {'requirements': '请确认未来保存'})['authorized'])
@@ -192,6 +197,56 @@ class BusinessAuthorization(unittest.TestCase):
         self.assertEqual(candidates, [('confirm-bot', self.bot())])
         self.assertFalse(self.policy('create_task', *candidates[0])['authorized'])
         self.assertTrue(self.policy('design_and_create', *candidates[0])['authorized'])
+
+    def test_task_table_and_exact_prompt_can_authorize_only_task_creation(self):
+        from node_approval_v2_acceptance import BusinessForm, PublishedV2Acceptance, displayed_candidates
+        fixture = PublishedV2Acceptance.__new__(PublishedV2Acceptance)
+        fixture.host, fixture.target_name, fixture.delivery_directory = 'pi', 'Owned CSV', ROOT
+        prompt = 'Read only two explicitly authorized CSV files; never upload or write them.'
+        html = f'''<form><table><tr><th>字段</th><th>候选值</th></tr>
+<tr><td>name</td><td>Owned CSV</td></tr><tr><td>chatName</td><td>{{chat.id}}</td></tr>
+<tr><td>taskType</td><td>normal</td></tr><tr><td>agent / model / thinking</td><td>pi / probe / default</td></tr>
+<tr><td>skill / suite</td><td>null / null</td></tr></table><p>完整 prompt：</p><pre>{prompt}</pre>
+<fieldset><legend>批准本次创建上述唯一新 Task？</legend>
+<label><input type="radio" name="approve" value="yes" checked> 是，仅创建并完整读回上述 Task</label>
+<label><input type="radio" name="approve" value="no"> 否，不创建</label></fieldset></form>'''
+
+        def planned(source):
+            form = BusinessForm(source)
+            candidates = displayed_candidates('', form_blocks=form.blocks)
+            if len(candidates) == 1:
+                decision = self.policy('create_task', *candidates[0])
+                if decision['authorized']:
+                    return [item[:3] for item in fixture.form_plan(form, decision)]
+            return None
+
+        self.assertEqual(planned(html), [('approve', 'radio', 'yes')])
+        for changed in [html.replace(prompt, 'Upload the CSV'),
+                        html.replace('<td>chatName</td>', '<td>name</td>'),
+                        html.replace('<table>', '<table hidden>'),
+                        html.replace('</form>', f'<pre>{prompt}</pre></form>')]:
+            with self.subTest(changed=changed):
+                self.assertIsNone(planned(changed))
+        with self.assertRaises(AssertionError):
+            planned(html.replace('完整读回上述 Task', '创建 Bot'))
+
+    def test_markdown_form_cannot_borrow_a_second_candidate_or_unknown_effect(self):
+        from html import escape
+        from node_approval_v2_acceptance import BusinessForm, PublishedV2Acceptance, displayed_candidates
+        fixture = PublishedV2Acceptance.__new__(PublishedV2Acceptance)
+        fixture.host, fixture.target_name, fixture.delivery_directory = 'pi', 'Owned CSV', ROOT
+        markdown = '# 本次要求\n比较两份明确授权的 CSV；只读、不上传、不写原文件，交付差异；缺失时等待用户。'
+        ask = '<pre>' + escape(markdown) + '</pre><label><input type="checkbox" name="confirm">确认统一需求</label>'
+        form = BusinessForm(ask)
+        [candidate] = displayed_candidates('', form_blocks=form.blocks)
+        decision = self.policy('align_requirements', *candidate)
+        self.assertTrue(decision['authorized'])
+        self.assertEqual([item[:3] for item in fixture.form_plan(form, decision)], [('confirm', 'checkbox', True)])
+        mixed = BusinessForm(ask + '<label><input type="checkbox" name="overwrite">允许覆盖已有 Bot</label>')
+        with self.assertRaises(AssertionError):
+            fixture.form_plan(mixed, decision)
+        invalid = BusinessForm(ask + '<pre>{"taskType":"normal","taskType":"manager"}</pre>')
+        self.assertEqual(displayed_candidates('', form_blocks=invalid.blocks)[-1], ('unknown-action', None))
 
     def test_scope_clarification_requires_its_actual_cancelled_call_boundary(self):
         from node_approval_v2_acceptance import cancelled_scope_ready
@@ -213,6 +268,24 @@ class BusinessAuthorization(unittest.TestCase):
         self.assertEqual(displayed_candidates('请确认创建完整 Bot；when plan_guide node_guide 全部完成。'), [])
         shown = displayed_candidates('完整候选：\n```json\n' + json.dumps(self.bot()) + '\n```')
         self.assertEqual(shown, [('confirm-bot', self.bot())])
+
+
+class HandoffEvidence(unittest.TestCase):
+    def test_first_commit_uses_its_own_saved_reports_not_http_response_order(self):
+        from node_approval_v2_acceptance import committed_handoff
+        actor = {'sessionId': 'manager'}
+        execution = {'id': 'execution-A', 'approved': True}
+        completion = {'id': 'complete-A', 'actor': actor, 'reason': 'accept A'}
+        run = {'id': 'run-A', 'manager': actor, 'nodes': {'A': {
+            'status': 'completed', 'execution': execution, 'completion': completion}}}
+        ready = {'id': 'ready-A', 'nodeId': 'A', 'executionId': 'execution-A',
+            'canComplete': True, 'outputs': [{'id': 'saved', 'path': 'owned-file'}]}
+        receipt = {'changed': True, 'snapshot': run, 'reports': [ready]}
+        self.assertEqual(committed_handoff(run, 'A', receipt, {'saved'}), [ready])
+        for invalid in [dict(receipt, changed=False), dict(receipt, reports=[dict(ready, executionId='old')]),
+                dict(receipt, reports=[ready, dict(ready, id='later-false', canComplete=False)])]:
+            with self.subTest(invalid=invalid), self.assertRaises(AssertionError):
+                committed_handoff(run, 'A', invalid, {'saved'})
 
 
 if __name__ == '__main__':
