@@ -62,7 +62,10 @@ class WireProxy:
                         method=self.command, headers={key: value for key, value in self.headers.items()
                         if key.lower() not in ['host', 'connection', 'content-length', 'accept-encoding']})
                     try:
-                        response = urllib.request.urlopen(request, timeout=330)
+                        # Manager collect may wait for the backend's 90-minute default.
+                        # The observer must not truncate its body before the native caller's budget.
+                        collect = self.command == 'POST' and self.path == '/api/workflow/manager/collect'
+                        response = urllib.request.urlopen(request, timeout=5460 if collect else 330)
                     except urllib.error.HTTPError as error:
                         response = error
                     with response:

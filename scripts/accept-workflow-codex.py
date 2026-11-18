@@ -33,7 +33,9 @@ def safe_transport_diagnostics(failed):
         return {key: item for key in keys if type(item := value.get(key)) is int and 0 <= item <= 10_000_000}
 
     diagnostic = {}
-    if 100 <= status <= 599 and not 200 <= status <= 299:
+    stream = failed.get('streamSignals')
+    stream_error = status == 200 and isinstance(stream, dict) and stream.get('terminalFrame') in ('error', 'response.failed')
+    if stream_error or (100 <= status <= 599 and not 200 <= status <= 299):
         provider_error = failed.get('providerError')
         if isinstance(provider_error, dict):
             allowed_fields = {
@@ -52,7 +54,6 @@ def safe_transport_diagnostics(failed):
                                                        'instructionLength', 'toolCalls', 'toolResults'])
             if type(shape.get('toolBindingsMatch')) is bool:
                 diagnostic['requestShape']['toolBindingsMatch'] = shape['toolBindingsMatch']
-    stream = failed.get('streamSignals')
     if status == 200 and isinstance(stream, dict):
         facts = counts(stream, ['frameCount', 'textDeltas', 'reasoningDeltas', 'toolArgumentDeltas'])
         terminal = {'response.completed', 'response.done', 'response.incomplete', 'response.failed', 'error'}
@@ -103,7 +104,7 @@ def safe_content_diagnostics(failed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1'], required=True)
+    parser.add_argument('--scenario', choices=['roles', 'revise', 'chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1', 'node-approval-v2'], required=True)
     parser.add_argument('--hosts', choices=['declared', 'omp,pi', 'omp', 'pi'], required=True)
     for name in ['backend', 'toolkit', 'paths-file', 'evidence-dir', 'pi-package', 'auth-file']:
         parser.add_argument('--' + name, type=lambda value: Path(value).resolve(), required=True)
@@ -121,11 +122,11 @@ def main():
     args = parser.parse_args()
     if (args.jobs, args.model_capacity) != (1, 1) and (args.scenario != 'node-approval-v1' or args.smoke):
         parser.error('Cell concurrency options require the published V1 business scenario')
-    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1'] and args.hosts == 'declared':
+    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1', 'node-approval-v2'] and args.hosts == 'declared':
         parser.error('Native acceptance requires explicit omp,pi or a diagnostic single host')
     if args.scenario == 'revise' and args.hosts in ['omp', 'pi']:
         parser.error('Single-host selection is only supported for the roles scenario')
-    if args.native_only and (args.scenario not in ['node-approval-failures', 'node-approval-handoff', 'node-approval-lifecycle', 'node-approval-v1'] or args.smoke):
+    if args.native_only and (args.scenario not in ['node-approval-failures', 'node-approval-handoff', 'node-approval-lifecycle', 'node-approval-v1', 'node-approval-v2'] or args.smoke):
         parser.error('--native-only requires a node-approval business scenario')
     if args.scenario == 'node-approval-failures' and args.timeout > 600:
         parser.error('Node approval failure timeout must be 1..600')
@@ -260,10 +261,11 @@ def main():
                     # This is a loopback transport marker, not an OAuth/API credential.
                     env = dict(os.environ, WORKFLOW_CODEX_TRANSPORT_KEY='isolated-loopback-transport')
                     env['CARGO_TARGET_DIR'] = str(args.backend.parent.parent)
-                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1']:
+                    if args.scenario in ['chief-task', 'reports', 'recovery', 'authority', 'node-approval-handoff', 'node-approval-failures', 'node-approval-lifecycle', 'node-approval-v1', 'node-approval-v2']:
                         script = ('accept-node-approval-handoff.py' if args.scenario == 'node-approval-handoff'
                                   else 'accept-node-approval-failures.py' if args.scenario == 'node-approval-failures'
                                   else 'accept-node-approval-v1.py' if args.scenario == 'node-approval-v1'
+                                  else 'accept-node-approval-v2.py' if args.scenario == 'node-approval-v2'
                                   else 'accept-node-approval-lifecycle.py' if args.scenario == 'node-approval-lifecycle'
                                   else 'accept-chief-task.py' if args.scenario == 'chief-task'
                                   else 'accept-chief-' + args.scenario + '.py')
@@ -287,7 +289,7 @@ def main():
                         command.extend(['--cases', args.cases])
                     if args.scenario == 'node-approval-v1':
                         command.extend(['--jobs', str(args.jobs)])
-                    for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff', 'node-approval-lifecycle', 'node-approval-v1'] else
+                    for name in (['shell_path'] if args.scenario in ['chief-task', 'node-approval-handoff', 'node-approval-lifecycle', 'node-approval-v1', 'node-approval-v2'] else
                                  ['herdr', 'omp_package', 'pi_state_extension', 'omp_state_extension', 'shell_path']):
                         value = getattr(args, name)
                         if value and (args.scenario not in ['reports', 'recovery', 'authority'] or name == 'shell_path'):

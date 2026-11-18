@@ -70,7 +70,13 @@ async function observe(page, item, key) {
     await page.getByRole('button', { name: '修改 node', exact: true }).click();
     const form = page.getByRole('form', { name: 'node 编辑', exact: true });
     await expect(form).toBeVisible();
-    await expect(form.getByRole('radio', { name: item.autoApproved ? 'auto' : 'manual', exact: true })).toBeChecked();
+    const script = item.map === 'create-bot-wrapper.json' && ['create_blank', 'save_bot'].includes(item.node);
+    if (script) {
+      await expect(form.getByText('脚本节点固定自动批准', { exact: false })).toBeVisible();
+      await expect(form.getByRole('radio', { name: /^(auto|manual)$/ })).toHaveCount(0);
+    } else {
+      await expect(form.getByRole('radio', { name: item.autoApproved ? 'auto' : 'manual', exact: true })).toBeChecked();
+    }
     const definitionText = await form.innerText();
     await page.screenshot({ path: `${input.output}/${key.replaceAll('/', '-')}-definition.png`, fullPage: true });
     await page.getByRole('button', { name: '放弃编辑', exact: true }).click();

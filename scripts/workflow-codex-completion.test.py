@@ -220,17 +220,25 @@ globalThis.fetch = async (_url, options) => {
                 'firstFrame': 'response.created', 'terminalFrame': None, 'sdkOutcome': 'pending'}})
 
     def test_http_200_sdk_error_keeps_terminal_and_unknown_first_frame_without_text(self):
-        output, attempts = self.run_provider_fixture('''
+        for terminal in ['response.failed', 'error']:
+            with self.subTest(terminal=terminal):
+                output, attempts = self.run_provider_fixture('''
+  const error = {type:'invalid_request_error', code:'SECRET-CODE', param:'input',
+    message:'No tool output found for function call call_SECRET'};
+  const terminal = TERMINAL === 'error' ? {...error, type:'error'} :
+    {type:'response.failed', response:{model:'gpt-6-luna', id:'SECRET-RESPONSE', error}};
   return new Response(sse([
-    {type:'SECRET-FUTURE-FRAME', payload:'SECRET-PAYLOAD'},
-    {type:'response.failed', response:{model:'gpt-6-luna', id:'SECRET-RESPONSE',
-      error:{code:'SECRET-CODE', message:'SECRET-ERROR'}}},
+    {type:'SECRET-FUTURE-FRAME', payload:'SECRET-PAYLOAD'}, terminal,
   ]), {status:200, headers:{'content-type':'text/event-stream'}});
-''')
-        self.assertEqual(attempts, ['POST error'])
-        self.assertEqual(output, {'error': 'provider-error', 'requests': 1, 'httpStatus': 200,
-            'streamSignals': {'frameCount': 2, 'textDeltas': 0, 'reasoningDeltas': 0, 'toolArgumentDeltas': 0,
-                'firstFrame': 'other', 'terminalFrame': 'response.failed', 'sdkOutcome': 'error'}})
+'''.replace('TERMINAL', json.dumps(terminal)))
+                self.assertEqual(attempts, ['POST error'])
+                self.assertEqual((output['error'], output['httpStatus']), ('provider-error', 200))
+                self.assertEqual(output['streamSignals'], {'frameCount': 2, 'textDeltas': 0, 'reasoningDeltas': 0,
+                    'toolArgumentDeltas': 0, 'firstFrame': 'other', 'terminalFrame': terminal, 'sdkOutcome': 'error'})
+                self.assertEqual(output['providerError'], {'type': 'other' if terminal == 'error' else 'invalid_request_error',
+                    'code': 'other', 'parameter': 'input', 'reason': 'missing-tool-output'})
+                self.assertEqual(output['requestShape']['toolResults'], 1)
+                self.assertTrue(output['requestShape']['toolBindingsMatch'])
 
     def test_wrapper_preserves_only_bounded_transport_facts(self):
         spec = importlib.util.spec_from_file_location('codex_wrapper', REPO / 'scripts/accept-workflow-codex.py')
@@ -252,8 +260,15 @@ globalThis.fetch = async (_url, options) => {
                 'sdkOutcome': 'pending', 'exception': 'SECRET'}}),
             {'streamSignals': {'frameCount': 5, 'terminalFrame': None, 'sdkOutcome': 'pending'}})
         signals = {'frameCount': 2, 'firstFrame': 'other', 'terminalFrame': 'response.failed', 'sdkOutcome': 'error'}
-        self.assertEqual(safe({'httpStatus': 200, 'streamSignals': {**signals, 'toolIds': ['SECRET']}}),
-                         {'streamSignals': signals})
+        error = {'type': 'SECRET', 'code': 'invalid_value', 'param': 'SECRET', 'parameter': 'input',
+                 'reason': 'tool-schema', 'message': 'SECRET'}
+        self.assertEqual(safe({'httpStatus': 200, 'streamSignals': {**signals, 'toolIds': ['SECRET']},
+                               'providerError': error, 'requestShape': {'toolCalls': 1, 'ids': ['SECRET']}}),
+                         {'streamSignals': signals, 'providerError': {'type': 'other', 'code': 'invalid_value',
+                              'parameter': 'input', 'reason': 'tool-schema'}, 'requestShape': {'toolCalls': 1}})
+        incomplete = {**signals, 'terminalFrame': None}
+        self.assertEqual(safe({'httpStatus': 200, 'streamSignals': incomplete, 'providerError': error}),
+                         {'streamSignals': incomplete})
         self.assertEqual(safe({'httpStatus': True, 'requests': [], 'network': 'SECRET'}), {})
 
 

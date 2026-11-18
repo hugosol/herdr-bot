@@ -362,6 +362,10 @@ try {
         const delta = deltaCounts.get(type);
         if (delta) ++streamSignals[delta];
         if (terminalFrames.has(type)) streamSignals.terminalFrame = type;
+        if (type === 'error' || type === 'response.failed') {
+          diagnostics.providerError = safeProviderError(event.response?.error ?? event.error ?? event);
+          diagnostics.requestShape = safeRequestShape(upstreamRequest);
+        }
       }
       const identity = event.response?.model;
       if (identity !== undefined) {
