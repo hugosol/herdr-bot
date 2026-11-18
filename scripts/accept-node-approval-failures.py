@@ -30,6 +30,19 @@ def absolute(value):
     return path.resolve()
 
 
+def selected_conditions(value):
+    selected = value.split(',') if value != 'all' else list(CONDITIONS)
+    if not selected or len(set(selected)) != len(selected) or any(case not in CONDITIONS for case in selected):
+        raise argparse.ArgumentTypeError('Expected all or unique comma-separated cases: ' + ','.join(CONDITIONS))
+    return selected
+
+
+def complete_coverage(evidence):
+    return all(evidence['coverage'][host][condition]['verified']
+               and evidence['nativeExits'].get(host + '/' + condition) == 0
+               for host in ['omp', 'pi'] for condition in CONDITIONS)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['herdr-bot-worktree', 'toolkit-worktree', 'backend', 'paths-file', 'model-config', 'evidence-dir']:
@@ -41,11 +54,17 @@ def main():
     parser.add_argument('--shell-path', type=absolute)
     parser.add_argument('--native-only', action='store_true',
                         help='Diagnostic native matrix only; never certifies complete ticket checks')
+    parser.add_argument('--cases', type=selected_conditions, default=list(CONDITIONS),
+                        help='all or comma-separated no,cancel,timeout,unavailable; partial coverage never certifies the ticket')
     args = parser.parse_args()
+    cases = [(host, condition) for host in args.hosts.split(',') for condition in args.cases]
     args.evidence_dir.mkdir(parents=True, exist_ok=False)
     evidence = {'passed': False, 'selectedHosts': args.hosts.split(','), 'nativeExits': {},
         'coverage': {host: {condition: {'verified': False, 'promises': PROMISES, 'expected': EXPECTED}
             for condition in CONDITIONS} for host in ['omp', 'pi']}, 'checks': [], 'cleanupErrors': [], 'diagnosticNativeOnly': args.native_only}
+    evidence.update(selectedCases=[host + '/' + condition for host, condition in cases],
+        missingCases=[host + '/' + condition for host in ['omp', 'pi'] for condition in CONDITIONS
+                      if (host, condition) not in cases], selectedCasesPassed=False)
     try:
         from acceptance.host.processes import require
         require(args.backend.is_file(), 'Missing current worktree backend: ' + str(args.backend))
@@ -98,7 +117,6 @@ def main():
         from node_approval_failures_acceptance import ApprovalFailuresAcceptance
         evidence['nativeSources'] = {name: source_identity(root, lock, args.evidence_dir)
             for name, root, lock in [('herdr-bot', args.repo, 'backend/Cargo.lock'), ('toolkit', args.toolkit, 'bun.lock')]}
-        cases = [(host, condition) for host in args.hosts.split(',') for condition in CONDITIONS]
         capacity = config.get('maxConcurrentRequests', os.cpu_count() or 1)
         require(type(capacity) is int and capacity > 0, 'Model transport capacity must be a positive integer')
         workers = min(len(cases), os.cpu_count() or 1, capacity)
@@ -126,9 +144,11 @@ def main():
         require(all(evidence['sourcesAfter'][name]['fileSha256'] == evidence['nativeSources'][name]['fileSha256']
                     for name in ['herdr-bot', 'toolkit']), 'Source changed during native acceptance; evidence is not final')
         # New acceptance entry/module files are included even before first commit.
-        evidence['passed'] = all(case['verified'] for host in evidence['coverage'].values() for case in host.values()) \
+        evidence['selectedCasesPassed'] = all(evidence['coverage'][host][condition]['verified']
+            and evidence['nativeExits'].get(host + '/' + condition) == 0 for host, condition in cases) \
+            and not evidence['cleanupErrors']
+        evidence['passed'] = complete_coverage(evidence) \
             and all(check['exit'] == 0 for check in evidence['checks']) and len(evidence['checks']) == len(commands) \
-            and len(evidence['nativeExits']) == 8 and all(code == 0 for code in evidence['nativeExits'].values()) \
             and not evidence['cleanupErrors']
     except BaseException:
         evidence['error'] = traceback.format_exc()

@@ -215,6 +215,55 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
     }
 }
 
+// Ticket 13 fixture regression: an order file is not a declared Run input
+// merely because the business text or a node's file rule mentions it.
+#[tokio::test]
+async fn handoff_order_requires_a_declared_map_input_before_manager_preparation() {
+    let (data, herdr, _config, server, zone, ids) = fixture().await;
+    let order = data.path().join("order.json");
+    fs::write(&order, br#"{"quantity":7,"unitPriceCents":1200,"discountPercent":null}"#).unwrap();
+    let started = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+        &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Discuss this order; discount is still unknown."}).to_string()).await;
+    assert_eq!(started.status, 201, "{}", started.body);
+    let first: Value = serde_json::from_str(&started.body).unwrap();
+    let bindings = json!([{"id":"order","path":order}]);
+    let rejected = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs",
+        &json!({"sessionId":"manager-native-04","fileInputs":bindings,"confirmed":true,"reason":"Quantity and unit price are known; the worker will discuss the missing discount."}).to_string()).await;
+    assert_eq!(rejected.status, 409, "{}", rejected.body);
+    let rejection: Value = serde_json::from_str(&rejected.body).unwrap();
+    assert_eq!(rejection["code"], "run-inputs-invalid");
+    assert!(rejection["message"].as_str().unwrap().contains("order"), "{rejection}");
+    let unchanged = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", first["id"].as_str().unwrap())).await;
+    let unchanged: Value = serde_json::from_str(&unchanged.body).unwrap();
+    assert_eq!(unchanged["run"]["inputsReady"], false);
+    assert_eq!(unchanged["run"]["fileInputs"], json!([]));
+
+    let declarations = json!([{"id":"order","required":true,"description":"Original order; discount may be null for discussion."}]);
+    let draft = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs").await;
+    let draft: Value = serde_json::from_str(&draft.body).unwrap();
+    let saved = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs",
+        &json!({"input_files":declarations,"input_requirements":"Quantity and unit price must be known. Missing discount is the worker's discussion responsibility, not a prerequisite to start.","revision":draft["revision"]}).to_string()).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let published = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
+    let published: Value = serde_json::from_str(&published.body).unwrap();
+    assert_eq!(published["input_files"], declarations);
+    herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"handoff-input-manager"},"native_cwd":data.path()}));
+    let corrected = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
+        &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Discuss this order; discount is still unknown.","fileInputs":bindings}).to_string()).await;
+    assert_eq!(corrected.status, 201, "{}", corrected.body);
+    let corrected: Value = serde_json::from_str(&corrected.body).unwrap();
+    let prepared = post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs",
+        &json!({"sessionId":"handoff-input-manager","fileInputs":bindings,"confirmed":true,"reason":"Read the literal order: quantity and price are known; discount remains null for worker discussion."}).to_string()).await;
+    assert_eq!(prepared.status, 200, "{}", prepared.body);
+    let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", corrected["id"].as_str().unwrap())).await;
+    let detail: Value = serde_json::from_str(&detail.body).unwrap();
+    assert_eq!(detail["run"]["inputsReady"], true);
+    assert_eq!(detail["run"]["fileInputs"], bindings);
+    assert!(detail["run"]["nodes"]["A"]["execution"].is_null());
+    assert_eq!(fs::read(&order).unwrap(), br#"{"quantity":7,"unitPriceCents":1200,"discountPercent":null}"#);
+    println!("handoff fixture public HTTP: undeclared order -> 409; declared order -> prepared without discount, dispatch or model");
+}
+
 // S2, nesting P11: duplicate and undeclared IDs must be rejected by
 // both public entries before any external effect or Run allocation. Business
 // text containing an ID/path must not fill a missing binding.

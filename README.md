@@ -30,6 +30,8 @@ backend\target\release\herdr-bot.exe --config herdr-bot.toml
 
 首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。样例保留旧机器已知路径，不代表新机器上存在这些目录。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、Herdr Workspace，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
 
+Task 选项目录内置 `GPT-6.2-Sol` 和 `GPT-6.2-Astra`，在 omp 和 pi 中均使用 `openai-codex`。两端都可选 `low`、`medium`、`high`、`xhigh`、`max`，pi 额外提供 `minimal`（映射为 `low`）。两端均可保留 `default`，不显式指定思考级别；已有 Task 和默认模型不变。
+
 ### 本机根目录与解析规则
 
 `herdr-bot.toml` 顶层 `paths_file = "paths.local.toml"` 指定本机根文件；该位置相对服务配置所在目录。根文件的 `[roots]` 可以使用独立绝对目录，也可以引用其他根，例如 `data = '${roots.project}/.data'`。外部项目不必在同一磁盘或父目录，改动一个根即可改变所有引用位置。

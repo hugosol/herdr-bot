@@ -1060,7 +1060,7 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     write_hook(
         &root,
         "pre-commit",
-        "#!/bin/sh\necho 'hook started' >&2\n( sleep 30; echo child-alive > child-marker.txt ) &\nwait\n",
+        "#!/bin/sh\necho 'hook started' >&2\n( echo started > .git/timeout-child-started; sleep 30; echo child-alive > child-marker.txt ) &\nwait\n",
     );
 
     let registry = dir.path().join("zones.json");
@@ -1084,13 +1084,11 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
         let request = request.clone();
         async move { post_json_over_tcp(addr, "/api/zones/commit", &request).await }
     });
-    // 等待 commit 真正开始；此时仓库资格被持有。
+    // 等待钩子的后台子任务实际启动；仅观察暂存不足以证明超时到达钩子。
+    let child_started = root.join(".git").join("timeout-child-started");
     assert!(
-        wait_until(Duration::from_secs(10), || {
-            root.join(".git").join("index.lock").exists()
-                || git_stdout(&root, &["diff", "--cached", "--name-only"]).contains("file.txt")
-        })
-        .await
+        wait_until(Duration::from_secs(10), || child_started.exists()).await,
+        "pre-commit 后台子任务没有启动"
     );
     let overlapping = submit_commit(&server, &root, "overlap during timeout", &token).await;
     assert_eq!(
@@ -1111,6 +1109,10 @@ async fn configured_timeout_stops_git_and_its_children_then_releases_the_reposit
     assert!(
         message.contains("5 秒执行上限") && message.contains("本功能配置"),
         "页面必须标明本功能超时，而不是伪造 Git 退出消息：{message}"
+    );
+    assert!(
+        message.contains("已停止本次执行"),
+        "必须确认钩子的进程树已终止：{message}"
     );
 
     assert_eq!(head_oid(&root), head_before, "超时不能创建提交");

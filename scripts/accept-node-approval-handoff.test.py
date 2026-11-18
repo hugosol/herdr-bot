@@ -20,14 +20,14 @@ ITEMS = {'P20/order', 'P20/progress-before-approval', 'P20/approval-source', 'P3
 
 
 class HandoffCLI(unittest.TestCase):
-    def invoke(self, root, **overrides):
+    def invoke(self, root, flags=(), **overrides):
         values = {'herdr-bot-worktree': str(ROOT), 'toolkit-worktree': str(TOOLKIT),
                   'backend': str(root / 'missing/herdr-bot.exe'), 'hosts': 'omp,pi',
                   'paths-file': str(root / 'paths.toml'), 'model-config': str(root / 'model.json'),
                   'evidence-dir': str(root / 'evidence')}
         values.update(overrides)
         return subprocess.run([sys.executable, str(ENTRY), *[part for key, value in values.items()
-            for part in ['--' + key, value]]], cwd=ROOT, capture_output=True,
+            for part in ['--' + key, value]], *flags], cwd=ROOT, capture_output=True,
             text=True, encoding='utf-8', errors='replace', timeout=30)
 
     def test_missing_authorization_preserves_all_four_unverified_cells(self):
@@ -38,12 +38,26 @@ class HandoffCLI(unittest.TestCase):
             report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
             self.assertFalse(report['passed'])
             self.assertIn('authorized', report['error'].lower())
+            self.assertEqual(report['selectedModes'], ['auto', 'manual'])
+            self.assertFalse(report['filtered'])
             self.assertEqual(set(report['coverage']), {'omp', 'pi'})
             for host in ['omp', 'pi']:
                 self.assertEqual(set(report['coverage'][host]), {'auto', 'manual'})
                 for mode in ['auto', 'manual']:
                     self.assertEqual(set(report['coverage'][host][mode]), ITEMS)
                     self.assertTrue(all(not item['verified'] for item in report['coverage'][host][mode].values()))
+            self.assertEqual(report['commands'], [])
+
+    def test_native_only_keeps_missing_authorization_unverified(self):
+        with tempfile.TemporaryDirectory(prefix='handoff-native-cli-') as directory:
+            root = Path(directory)
+            result = self.invoke(root, flags=['--native-only', '--cases', 'auto'])
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads((root / 'evidence/evidence.json').read_text(encoding='utf-8'))
+            self.assertTrue(report['diagnosticNativeOnly'])
+            self.assertTrue(report['filtered'])
+            self.assertEqual(report['selectedModes'], ['auto'])
+            self.assertFalse(report['passed'])
             self.assertEqual(report['commands'], [])
 
     def test_existing_evidence_is_never_overwritten(self):
@@ -87,7 +101,7 @@ class HandoffCLI(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='handoff-transport-cli-') as directory:
             root = Path(directory)
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/accept-workflow-codex.py'),
-                '--scenario', 'node-approval-handoff', '--hosts', 'omp,pi',
+                '--scenario', 'node-approval-handoff', '--hosts', 'omp', '--cases', 'auto', '--native-only',
                 '--backend', str(root / 'absent.exe'), '--toolkit', str(TOOLKIT),
                 '--paths-file', str(root / 'paths.toml'), '--evidence-dir', str(root / 'evidence'),
                 '--pi-package', str(root / 'pi'), '--auth-file', str(root / 'explicit-only.json')],
@@ -95,6 +109,125 @@ class HandoffCLI(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Missing explicit dependency', result.stderr)
             self.assertFalse((root / 'evidence').exists())
+
+
+class NativeBusinessBoundary(unittest.TestCase):
+    """Offline control-flow boundaries, not native/model acceptance."""
+
+    def ask(self, **changes):
+        value = {'id': 'native-ask-731', 'type': 'toolCall', 'name': 'ask',
+            'arguments': {'html': '<form><label>折扣百分比<input type="number" name="discountPercent"></label></form>'}}
+        value.update(changes)
+        return value
+
+    def history(self, content, stop='toolUse', after=()):
+        return {'branch': [{'type': 'message', 'message': {'role': 'assistant', 'stopReason': stop, 'content': content}},
+            *[{'type': 'message', 'message': message} for message in after]]}
+
+    def test_pending_native_ask_is_a_business_boundary_without_assistant_stop(self):
+        from node_approval_handoff_acceptance import discount_input_boundary
+        self.assertEqual(discount_input_boundary(self.history([self.ask()]))['kind'], 'form')
+        self.assertEqual(discount_input_boundary(self.history([{'type': 'text', 'text': 'Discount is missing.'}], 'stop'))['kind'], 'reply')
+
+    def test_answered_or_ambiguous_forms_are_never_resubmitted(self):
+        from node_approval_handoff_acceptance import discount_input_boundary
+        with self.assertRaisesRegex(AssertionError, 'already answered or failed'):
+            discount_input_boundary(self.history([self.ask()], after=[
+                {'role': 'toolResult', 'toolCallId': 'native-ask-731', 'content': []}]))
+        with self.assertRaisesRegex(AssertionError, 'Ambiguous native business forms'):
+            discount_input_boundary(self.history([self.ask(), self.ask(id='another-native-ask')]))
+        with self.assertRaisesRegex(AssertionError, 'Actual native turn failed'):
+            discount_input_boundary(self.history([], 'error'))
+
+    def test_only_the_single_known_discount_control_can_receive_25(self):
+        from node_approval_handoff_acceptance import require_discount_field
+        field = {'kind': 'text', 'type': 'number', 'name': 'discountPercent', 'question': '折扣百分比',
+            'multiline': False, 'value': ''}
+        self.assertEqual(require_discount_field({'fields': [field], 'hidden': []}), field)
+        for parsed in [{'fields': [field, field]}, {'fields': [dict(field, question='数量')]},
+                       {'fields': [dict(field, type='password')]}, {'fields': [field], 'hidden': ['unrelated']}]:
+            with self.subTest(parsed=parsed), self.assertRaises(AssertionError):
+                require_discount_field(parsed)
+
+
+class HandoffInputPreflight(unittest.TestCase):
+    """Published-definition guard only, never P20/P30 business evidence."""
+
+    def definition(self):
+        return {'input_files': [{'id': 'order', 'required': True}],
+            'input_requirements': 'Quantity and unit price are known; discount may remain unknown.',
+            'nodes': {'work': {'input_rule': [{'id': 'order', 'type': 'run', 'input_id': 'order'}]}}}
+
+    def test_declared_order_binding_is_accepted(self):
+        from node_approval_handoff_acceptance import require_order_input
+        require_order_input(self.definition())
+
+    def test_missing_declaration_is_rejected_before_model_start(self):
+        from node_approval_handoff_acceptance import require_order_input
+        definition = self.definition()
+        del definition['input_files']
+        with self.assertRaisesRegex(AssertionError, 'declare required order'):
+            require_order_input(definition)
+
+    def test_consumer_cannot_bypass_declared_run_binding(self):
+        from node_approval_handoff_acceptance import require_order_input
+        definition = self.definition()
+        definition['nodes']['work']['input_rule'] = [{'id': 'order', 'type': 'file', 'path': 'order.json', 'zone_id': 'work'}]
+        with self.assertRaisesRegex(AssertionError, 'consume the declared Run order'):
+            require_order_input(definition)
+
+
+class ModelIdentityBoundary(unittest.TestCase):
+    """Offline identity classification, not real-model business evidence."""
+
+    def identity(self, records):
+        from types import SimpleNamespace
+        from node_approval_handoff_acceptance import NodeApprovalHandoff
+        with tempfile.TemporaryDirectory(prefix='handoff-identity-') as directory:
+            config = Path(directory) / 'model.json'
+            config.write_text(json.dumps({'model': 'gpt-6-luna'}), encoding='utf-8')
+            run = NodeApprovalHandoff.__new__(NodeApprovalHandoff)
+            run.args = SimpleNamespace(model_config=config)
+            run.model_wire = SimpleNamespace(records=records)
+            run.evidence = {}
+            run.check_model_identity()
+            return run.evidence
+
+    def completion(self, **changes):
+        record = {'index': 0, 'method': 'POST', 'path': '/chat/completions', 'ended': 1,
+                  'status': 200, 'request': json.dumps({'model': 'gpt-6-luna'}),
+                  'response': json.dumps({'model': 'gpt-6-luna'})}
+        record.update(changes)
+        return record
+
+    def test_unrelated_get_is_not_a_completion_or_pending_model_work(self):
+        evidence = self.identity([self.completion(),
+            {'index': 1, 'method': 'GET', 'path': '/?probe=1', 'status': 501}])
+        self.assertEqual(evidence['nonCompletionTrafficCount'], 1)
+        self.assertEqual(evidence['modelIdentities'], [
+            {'request': 0, 'requested': 'gpt-6-luna', 'returned': ['gpt-6-luna']}])
+
+    def test_inflight_completion_is_observed_without_resending(self):
+        from threading import Timer
+        record = self.completion(ended=None)
+        completion = Timer(0.02, lambda: record.update(ended=1))
+        completion.start()
+        try:
+            evidence = self.identity([record])
+            self.assertEqual(len(evidence['modelIdentities']), 1)
+        finally:
+            completion.join()
+
+    def test_zero_completions_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, 'No actual model completion traffic'):
+            self.identity([{'method': 'GET', 'path': '/chat/completions', 'ended': 1}])
+
+    def test_actual_completion_failures_or_wrong_identity_are_not_filtered(self):
+        for changes in [{'status': 501}, {'error': 'actual transport error'},
+                        {'response': '{}'}, {'response': json.dumps({'model': 'other-model'})},
+                        {'request': '{}'}]:
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                self.identity([self.completion(**changes)])
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ then the installed host edits bytes and reports before a distinct user approval.
 An explicit controlled provider may select tools, never confirmation results;
 that path proves native mechanics, not real model business selection.
 """
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -172,21 +173,23 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         record['admission'] = json.loads(self.command([self.args.herdr, 'agent', 'prompt', chat['paneId'], content,
             '--wait', '--until', 'working', '--until', 'blocked', '--timeout', '10000'], seconds=15))['result']
 
-    def confirmation_requests(self):
+    def confirmation_requests(self, chat=None):
+        target = self.worker if chat is None else chat
         records = [json.loads(path.read_text(encoding='utf-8')) for path in self.confirmations.glob('*.request.json')]
-        return sorted((record for record in records if record.get('sessionId') == self.worker['sessionId']),
+        return sorted((record for record in records if record.get('sessionId') == target['sessionId']),
                       key=lambda record: record['at'])
 
-    def terminal(self):
-        return self.command([self.args.herdr, 'pane', 'read', self.worker['paneId'], '--source', 'visible', '--format', 'text'])
+    def terminal(self, chat=None):
+        target = self.worker if chat is None else chat
+        return self.command([self.args.herdr, 'pane', 'read', target['paneId'], '--source', 'visible', '--format', 'text'])
 
-    def pending(self, before):
+    def pending(self, before, chat=None):
         def probe():
-            records = self.confirmation_requests()
+            records = self.confirmation_requests(chat)
             require(len(records) <= before + 1, 'More than one native confirmation for one explicit user request')
             if len(records) != before + 1:
                 return None
-            screen = self.terminal()
+            screen = self.terminal(chat)
             if '成果批准' not in screen or 'Yes' not in screen or 'No' not in screen:
                 return None
             request = records[-1]
@@ -195,20 +198,21 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
             return {'request': request, 'screen': screen, 'at': time.monotonic()}
         return until('actual result approval UI and raw native request', probe, self.args.timeout)
 
-    def decide(self, pending, choice):
+    def decide(self, pending, choice, chat=None):
+        target = self.worker if chat is None else chat
         if choice in ['Yes', 'No']:
             def selected(screen):
                 return any(arrow + ' ' + choice in screen for arrow in ['→', '❯'])
             screen = pending['screen']
             if not selected(screen):
-                self.herdr('agent', 'send-keys', self.worker['paneId'], 'down' if choice == 'No' else 'up')
+                self.herdr('agent', 'send-keys', target['paneId'], 'down' if choice == 'No' else 'up')
                 screen = until('native selected value ' + choice,
-                    lambda: (value if selected(value := self.terminal()) else None), 5)
+                    lambda: (value if selected(value := self.terminal(target)) else None), 5)
             require(selected(screen), 'Key acknowledgement is not a native selection')
             pending['selectedScreen'] = screen
-            self.herdr('agent', 'send-keys', self.worker['paneId'], 'enter')
+            self.herdr('agent', 'send-keys', target['paneId'], 'enter')
         elif choice == 'cancel':
-            self.herdr('agent', 'send-keys', self.worker['paneId'], 'esc')
+            self.herdr('agent', 'send-keys', target['paneId'], 'esc')
         elif choice != 'timeout':
             raise AssertionError('Unknown native decision')
         pending['userDecision'] = {'choice': choice, 'at': time.monotonic()}
@@ -272,9 +276,12 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
     def model_identity(self):
         # Native session titles and manager responses can still be in flight
         # after the worker finishes. Observe completion, never retry a request.
+        def completion(record):
+            return record.get('method') == 'POST' and record.get('path') == '/chat/completions'
         until('owned model requests finish within the existing request budget',
-            lambda: all(record.get('ended') for record in self.model_wire.records), 30)
-        records = self.model_wire.records
+            lambda: all(record.get('ended') for record in self.model_wire.records if completion(record)), 30)
+        records = [record for record in self.model_wire.records if completion(record)]
+        self.evidence['nonCompletionTrafficCount'] = len(self.model_wire.records) - len(records)
         require(records, 'No actual authorized model request')
         identities = []
         for record in records:
@@ -302,6 +309,29 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
                 until('owned node native process exits before headless resume', lambda: not handle.alive(), 20)
                 self.evidence.setdefault('preResumeExitConfirmations', []).append({'pid': pid, 'exited': True})
 
+    @contextmanager
+    def no_ui_model(self, base):
+        # Keep the session's selected model identity. Only this stopped worker's
+        # headless process consumes the temporary mechanical endpoint; restoring
+        # the exact registry bytes lets native resume use the authorized provider.
+        originals = {}
+        try:
+            provider, _ = self.provider_model.split('/', 1)
+            for name in ['models.json', 'models.yml']:
+                path = self.root / 'agent' / name
+                if not path.exists():
+                    continue
+                originals[path] = path.read_bytes()
+                config = json.loads(originals[path])
+                selected = config['providers'][provider]
+                selected.update(baseUrl=base, apiKey='owned-no-ui-fixture')
+                path.write_text(json.dumps(config), encoding='utf-8')
+            require(originals, 'Missing owned native model registry')
+            yield
+        finally:
+            for path, content in originals.items():
+                path.write_bytes(content)
+
     def unavailable(self, start):
         # Keep the genuine node Session/execution; switch only its owned process
         # to the installed host's print/JSON mode. Never replace confirm().
@@ -322,31 +352,23 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
                 decision = {'content': '', 'tool_calls': [{'name': 'approve', 'arguments': {}}]}
             decision['usage'] = {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2}
             return json.dumps(decision)
-        with CompletionTransport(completion, self.root / 'mechanical-provider') as provider:
+        with CompletionTransport(completion, self.root / 'mechanical-provider') as provider, self.no_ui_model(provider.base):
             require(49152 <= provider.server.server_port <= 65535, 'Mechanical provider must bind dynamic numeric loopback')
-            for name in ['models.json', 'models.yml']:
-                path = self.root / 'agent' / name
-                if not path.exists():
-                    continue
-                config = json.loads(path.read_text(encoding='utf-8'))
-                config['providers']['failure-mechanical'] = {'baseUrl': provider.base, 'api': 'openai-completions',
-                    'apiKey': 'owned-no-ui-fixture', 'models': [{'id': 'no-ui', 'name': 'Controlled mechanical failure',
-                    'input': ['text'], 'contextWindow': 128000, 'maxTokens': 1024,
-                    'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}]}
-                path.write_text(json.dumps(config), encoding='utf-8')
             cli = Path(self.evidence['installedHosts'][self.host]['entry'])
             argv = [self.args.bun if self.host == 'omp' else self.args.node, str(cli), '--mode', 'json', '--print',
                 '--no-extensions', *(['--no-mcp'] if self.host == 'pi' else
                 ['--no-lsp', '--no-pty', '--no-skills', '--no-rules', '--no-context-files', '--no-title', '--thinking', 'off']),
                 '-e', str(self.root / f'toolkit/entrypoints/{self.host}-auto/node-chat.ts'),
-                '-e', str(self.root / 'node-approval-observer.mjs'), '--model', 'failure-mechanical/no-ui',
+                '-e', str(self.root / 'node-approval-observer.mjs'), '--model', self.provider_model,
                 '--session', str(session), 'User explicitly requests approve once in no-UI mode; do not retry.']
             self.evidence.setdefault('userInputs', []).append({'kind': 'explicit-controlled-no-ui-request',
                 'at': time.monotonic(), 'sessionId': self.worker['sessionId'], 'argv': argv})
             process = Process(argv, self.root / 'zone-worker', self.env, self.root, 'headless-native')
             self.processes.append(process)
-            exit_code = process.child.wait(timeout=self.args.timeout)
-            process.stop()
+            try:
+                exit_code = process.child.wait(timeout=self.args.timeout)
+            finally:
+                process.stop()
             self.evidence['noUI'] = {'scope': 'Controlled provider only for mechanical no-UI fault; not real model tool selection',
                 'argv': argv, 'pid': process.child.pid, 'exit': exit_code, 'exited': process.child.poll() is not None,
                 'providerRequests': provider.records, 'stdout': str(self.root / 'headless-native-stdout.log'),
