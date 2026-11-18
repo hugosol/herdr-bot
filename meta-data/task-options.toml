@@ -14,6 +14,16 @@ id = 'default'
 label = 'Default Model'
 # default 不允许 provider_model/thinking 覆盖。
 [[models]]
+id = 'gpt-6.2-sol'
+label = 'GPT-6.2-Sol'
+provider_model = 'openai-codex/gpt-6.2-sol'
+thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
+[[models]]
+id = 'gpt-6.2-astra'
+label = 'GPT-6.2-Astra'
+provider_model = 'openai-codex/gpt-6.2-astra'
+thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
+[[models]]
 id = 'gpt-6.1-sol'
 label = 'GPT-6.1-Sol'
 provider_model = 'openai-codex/gpt-6.1-sol'
