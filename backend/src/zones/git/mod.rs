@@ -17,6 +17,8 @@ pub mod commit;
 pub(crate) mod operations;
 pub(crate) mod status_cache;
 pub mod sync;
+#[cfg(windows)]
+mod windows_job;
 
 use std::collections::HashSet;
 use std::fs;
@@ -33,9 +35,6 @@ use serde::Serialize;
 use crate::zones::browse;
 use crate::zones::git::sync::{SyncFacts, SyncState};
 use crate::zones::{self, RegisteredZone};
-
-/// 超时后等待子进程确认结束的宽限；超过它仍未确认终止时，调用方必须保留仓库资格。
-const TERMINATION_CONFIRMATION: Duration = Duration::from_secs(5);
 
 /// 等待子进程输出读取线程的宽限；派生进程可能仍持有管道。
 const OUTPUT_DRAIN: Duration = Duration::from_secs(2);
@@ -152,6 +151,8 @@ pub enum GitError {
     GitUnavailable(String),
     /// Git 命令失败；保留 Git 返回的诊断，不伪装成干净状态。
     Failed(String),
+    /// Git 启动失败，且未能确认已创建的进程树终止。
+    TerminationUnconfirmed(String),
     /// Git 命令超过本功能配置的执行时限；`confirmed` 表示是否已确认命令及其派生进程结束。
     ///
     /// 这是本功能取消的命令，不是 Git 自己给出的退出结果；`output` 保留取消前已有的输出。
@@ -168,7 +169,7 @@ impl GitError {
         match self {
             Self::ZoneUnavailable(_) => "zone-unavailable",
             Self::GitUnavailable(_) => "git-unavailable",
-            Self::Failed(_) => "git-command-failed",
+            Self::Failed(_) | Self::TerminationUnconfirmed(_) => "git-command-failed",
             Self::TimedOut { .. } => "git-timeout",
         }
     }
@@ -178,6 +179,9 @@ impl GitError {
             Self::ZoneUnavailable(reason) => reason.clone(),
             Self::GitUnavailable(reason) => reason.clone(),
             Self::Failed(reason) => reason.clone(),
+            Self::TerminationUnconfirmed(reason) => format!(
+                "{reason}；终止尚未确认，在该仓库上的后续写操作不会被允许重叠执行。"
+            ),
             Self::TimedOut {
                 command,
                 timeout,
@@ -202,14 +206,15 @@ impl GitError {
         }
     }
 
-    /// 命令超时且尚未确认其派生进程已停止；调用方必须保持仓库资格。
+    /// 尚未确认 Git 进程树已停止；调用方必须保持仓库资格。
     pub fn termination_unconfirmed(&self) -> bool {
         matches!(
             self,
-            Self::TimedOut {
-                confirmed: false,
-                ..
-            }
+            Self::TerminationUnconfirmed(_)
+                | Self::TimedOut {
+                    confirmed: false,
+                    ..
+                }
         )
     }
 }
@@ -852,30 +857,25 @@ pub(crate) fn blocked_reason(
     Ok((!reasons.is_empty()).then(|| reasons.join("；")))
 }
 
-/// 运行一条 Git 命令，并保证它不会无限期占用仓库。
+/// 运行一条具有配置执行时限的 Git 命令。
 ///
-/// 输出由独立线程持续读取，避免子进程写满管道后阻塞。达到时限时结束整棵进程树：
-/// 先 `taskkill /T /F`，再等待直接子进程确认退出。只有当直接子进程结束、且输出线程都已结束时，
-/// 才把这次终止视为已确认；否则返回 `confirmed: false`，调用方必须保持仓库资格。
+/// 输出由独立线程持续读取。Windows 上在 Git 启动前将它加入独占 Job；超时后终止该 Job，
+/// 只有确认其活动进程数为零才释放仓库资格。输出管道只用于收集诊断，不用于确认终止。
 pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<Output, GitError> {
     let command = format!("git {}", args.join(" "));
-    let mut child = Command::new("git")
-        .arg("--no-optional-locks")
+    let mut git = Command::new("git");
+    git.arg("--no-optional-locks")
         .arg("-C")
         .arg(root)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                GitError::GitUnavailable("找不到 git 命令，无法读取 zone 的 Git 状态。".to_string())
-            } else {
-                GitError::Failed(format!("无法运行 git：{error}"))
-            }
-        })?;
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    let (mut child, job) = windows_job::GitJob::spawn(&mut git)?;
+    #[cfg(not(windows))]
+    let mut child = git.spawn().map_err(spawn_error)?;
 
     let stdout = child.stdout.take().expect("stdout 已设为管道");
     let stderr = child.stderr.take().expect("stderr 已设为管道");
@@ -889,7 +889,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
     });
 
     let deadline = Instant::now() + timeout;
-    let timed_out = loop {
+    loop {
         match child.try_wait() {
             Ok(Some(status)) => {
                 let stdout = stdout_receiver
@@ -907,7 +907,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
             Ok(None) => {
                 let now = Instant::now();
                 if now >= deadline {
-                    break true;
+                    break;
                 }
                 let remaining = deadline.saturating_duration_since(now);
                 thread::sleep(remaining.min(Duration::from_millis(20)));
@@ -916,27 +916,18 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
                 return Err(GitError::Failed(format!("无法等待 git 结束：{error}")));
             }
         }
-    };
-    debug_assert!(timed_out);
-
-    let mut confirmed = terminate_tree(child.id());
-    let confirmation_deadline = Instant::now() + TERMINATION_CONFIRMATION;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < confirmation_deadline => {
-                thread::sleep(Duration::from_millis(20));
-            }
-            Ok(None) => {
-                confirmed = false;
-                break;
-            }
-            Err(_) => {
-                confirmed = false;
-                break;
-            }
-        }
     }
+
+    #[cfg(windows)]
+    let confirmed = job.terminate_and_confirm();
+    #[cfg(not(windows))]
+    let confirmed = {
+        // Killing just Git cannot prove that its descendants stopped.
+        if child.kill().is_ok() {
+            let _ = child.wait();
+        }
+        false
+    };
 
     let stdout = stdout_receiver
         .recv_timeout(OUTPUT_DRAIN)
@@ -944,9 +935,6 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
     let stderr = stderr_receiver
         .recv_timeout(OUTPUT_DRAIN)
         .unwrap_or_default();
-    if stdout_receiver.try_recv().is_ok() || stderr_receiver.try_recv().is_ok() {
-        confirmed = false;
-    }
     let output = output_text(&stdout, &stderr);
     Err(GitError::TimedOut {
         command,
@@ -956,16 +944,12 @@ pub(crate) fn run_git(root: &Path, args: &[&str], timeout: Duration) -> Result<O
     })
 }
 
-/// 结束 Git 进程及其派生进程；返回是否成功发出了整棵进程树的终止请求。
-fn terminate_tree(pid: u32) -> bool {
-    Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+fn spawn_error(error: io::Error) -> GitError {
+    if error.kind() == io::ErrorKind::NotFound {
+        GitError::GitUnavailable("找不到 git 命令，无法读取 zone 的 Git 状态。".to_string())
+    } else {
+        GitError::Failed(format!("无法运行 git：{error}"))
+    }
 }
 
 fn read_all(mut reader: impl Read) -> Vec<u8> {

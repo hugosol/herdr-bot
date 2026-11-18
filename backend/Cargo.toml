@@ -28,11 +28,12 @@ tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-threa
 toml = "0.9"
 tower-http = { version = "0.6", features = ["fs"] }
 
-# 关机动作是 Windows 专用的：Win32 绑定只在目标平台引入，非 Windows 目标不解析也不链接它。
+# Win32 关机与 Git 进程树绑定只在 Windows 目标引入。
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_System_JobObjects",
     "Win32_System_Shutdown",
     "Win32_System_Threading",
 ] }
