@@ -9,7 +9,7 @@ use std::{fs, io::{BufRead, BufReader}, net::SocketAddr, path::Path, process::{C
 
 struct Panel { child: Child, addr: SocketAddr, root:std::path::PathBuf, log_reader:Option<std::thread::JoinHandle<()>> }
 impl Panel {
-    fn start(root: &Path) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture) -> Self {
         static NEXT_LOG:std::sync::atomic::AtomicU64=std::sync::atomic::AtomicU64::new(0);
         let log_id=NEXT_LOG.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
         let stderr=root.join(format!("stderr-{log_id}.log"));
@@ -36,6 +36,7 @@ impl Panel {
             }
         }));
         panel.addr = rx.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|error| panic!("{error}: {}",fs::read_to_string(&stderr).unwrap()));
+        fs::write(herdr.path().join("launch_endpoint.txt"), panel.addr.to_string()).unwrap();
         eprintln!("S2 backend started pid={} address={} logs={}",panel.child.id(),panel.addr,root.display());
         panel
     }
@@ -129,7 +130,7 @@ async fn finished(panel: &Panel, id: &str) -> Value {
 #[tokio::test(flavor="multi_thread",worker_threads=4)]
 async fn p32_real_restart_serializes_live_registration_and_resume_before_external_completion() {
     let root = TempDir::new("chief P32"); let herdr = HerdrFixture::new("chief P32 CLI");
-    configure(root.path(),&herdr); let mut panel = Panel::start(root.path());
+    configure(root.path(),&herdr); let mut panel = Panel::start(root.path(), &herdr);
     let (zone_a,task_a) = setup(&panel,root.path(),"alpha").await;
     let (zone_b,task_b) = setup(&panel,root.path(),"beta").await;
     for (id,zone,task) in [("native-a",&zone_a,&task_a),("native-b",&zone_b,&task_b)] {
@@ -147,7 +148,7 @@ async fn p32_real_restart_serializes_live_registration_and_resume_before_externa
         }
     }
     panel.stop();
-    let mut panel = Panel::start(root.path());
+    let mut panel = Panel::start(root.path(), &herdr);
     assert_eq!(current(&panel).await,Value::Null,"registrations are transient across restart");
     let gate = root.path().join("release-navigation");
     let agents = json!([{"agent":"pi","name":"live-a","workspace_id":"w-target","tab_id":"a","pane_id":"a:0","agent_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"native-a"}},
@@ -182,7 +183,7 @@ async fn p32_real_restart_serializes_live_registration_and_resume_before_externa
     let denied = post_json_over_tcp(addr,"/api/chief/qualify",&json!({"sessionId":"native-b"}).to_string()).await;
     assert_eq!(denied.status,409,"{}",denied.body);
     panel.stop();
-    let mut panel = Panel::start(root.path());
+    let mut panel = Panel::start(root.path(), &herdr);
     let old = post_json_over_tcp(panel.addr,"/api/sessions/events",&json!({"sessionId":"native-b","kind":"register","data":{"cwd":root.path(),"agentType":"pi"}}).to_string()).await;
     assert_eq!(old.status,409,"backend restart must not restore a superseded identity: {}",old.body);
     post(&panel,"/api/sessions/events",json!({"sessionId":"native-a","kind":"register","data":{"cwd":root.path(),"agentType":"pi"}})).await;
@@ -225,7 +226,7 @@ async fn p32_real_restart_serializes_live_registration_and_resume_before_externa
 #[tokio::test]
 async fn p33_definite_start_failure_frees_slot_but_uncertain_external_start_survives_restart() {
     let root = TempDir::new("chief P33"); let herdr = HerdrFixture::new("chief P33 CLI");
-    configure(root.path(),&herdr); let mut panel = Panel::start(root.path());
+    configure(root.path(),&herdr); let mut panel = Panel::start(root.path(), &herdr);
     let (zone,task) = setup(&panel,root.path(),"first").await;
     herdr.set_behavior(json!({"fail_agent_start":true}));
     let created = value(launch(&panel,&zone,&task).await);
@@ -239,7 +240,7 @@ async fn p33_definite_start_failure_frees_slot_but_uncertain_external_start_surv
     let uncertain = current(&panel).await;
     assert_eq!(uncertain["phase"],"uncertain");
     let starts = herdr.calls().iter().filter(|call|call["kind"]=="agent_start").count();
-    panel.stop(); let panel = Panel::start(root.path());
+    panel.stop(); let panel = Panel::start(root.path(), &herdr);
     assert_eq!(current(&panel).await,uncertain);
     let rejected = launch(&panel,&zone,&task).await;
     assert_eq!(rejected.status,409,"{}",rejected.body);

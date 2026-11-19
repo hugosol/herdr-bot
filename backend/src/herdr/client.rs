@@ -76,7 +76,7 @@ pub struct CreatedTab {
 }
 
 /// Herdr 控制失败：每个类别都说明失败发生在哪个控制步骤，不把未知说成确定。
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HerdrError {
     /// CLI 未能生成进程，确认该次命令没有外部效果。
     NotStarted(String),
@@ -602,6 +602,23 @@ pub(crate) struct LaunchTarget {
     control: LaunchControl,
 }
 
+pub(super) enum LaunchVerificationError {
+    Unproven(HerdrError),
+    OfficialIdentity(HerdrError),
+}
+
+impl From<HerdrError> for LaunchVerificationError {
+    fn from(error: HerdrError) -> Self { Self::Unproven(error) }
+}
+
+impl From<LaunchVerificationError> for HerdrError {
+    fn from(error: LaunchVerificationError) -> Self {
+        match error {
+            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error) => error,
+        }
+    }
+}
+
 impl LaunchTarget {
     pub(crate) fn app_coordinates(&self) -> Option<(&str, &str)> {
         match &self.control {
@@ -625,14 +642,14 @@ impl LaunchTarget {
         }
     }
 
-    pub(super) async fn verify(&self, herdr: &HerdrClient, kind: &str, cwd: &str, pid: u32, id: &str, file: Option<&str>) -> Result<super::NativeSession, HerdrError> {
+    pub(super) async fn verify(&self, herdr: &HerdrClient, kind: &str, cwd: &str, pid: u32, id: &str, file: Option<&str>) -> Result<super::NativeSession, LaunchVerificationError> {
         let valid_cwd = |path: &str| crate::zones::same_path(path, cwd);
         match (&self.control, &herdr.host) {
             (LaunchControl::Tui { alias }, Host::Tui(_)) => {
                 let observation = herdr.run("agent get", &["agent".into(), "get".into(), alias.clone()], QUERY_TIMEOUT).await?;
                 let agent = observation.pointer("/result/agent").ok_or_else(|| native_error("missing launched agent"))?;
                 if NavigationTarget::from_agent(agent)? != self.location || nonempty(agent.get("agent")) != Some(kind) {
-                    return Err(native_error("TUI launch has another target or agent"));
+                    return Err(native_error("TUI launch has another target or agent").into());
                 }
                 let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
                 let pane = process.pointer("/result/process_info").ok_or_else(|| native_error("missing pane process information"))?;
@@ -642,14 +659,20 @@ impl LaunchTarget {
                             && nonempty(p.get("cwd")).or_else(|| nonempty(agent.get("foreground_cwd"))).is_some_and(valid_cwd)
                     }))
                 {
-                    return Err(native_error("reported owner is not the current TUI pane process"));
+                    return Err(native_error("reported owner is not the current TUI pane process").into());
                 }
                 if agent.get("agent_session").is_some_and(|value| !value.is_null()) {
-                    let official = super::identity::native_from_agent(agent, kind, tokio::time::Instant::now() + QUERY_TIMEOUT, true, true).await?;
-                    if official.session_id != id || !valid_cwd(&official.cwd)
+                    // The pane/process is independently matched. A bad official
+                    // reference is a host failure, not just an unusable report.
+                    let official = super::identity::native_from_agent(agent, kind, tokio::time::Instant::now() + QUERY_TIMEOUT, true, true)
+                        .await.map_err(LaunchVerificationError::OfficialIdentity)?;
+                    if !valid_cwd(&official.cwd) {
+                        return Err(LaunchVerificationError::OfficialIdentity(native_error("official TUI identity cwd conflicts with launch directory")));
+                    }
+                    if official.session_id != id
                         || matches!((official.session_file.as_deref(), file), (Some(a), Some(b)) if !crate::zones::same_path(a,b))
                     {
-                        return Err(native_error("official TUI identity conflicts with launch report"));
+                        return Err(native_error("official TUI identity conflicts with launch report").into());
                     }
                     if official.session_file.is_some() || file.is_none() { return Ok(official); }
                 }
@@ -665,16 +688,16 @@ impl LaunchTarget {
                     || !has_argument(launch_id) || !has_argument(target_id)
                     || !nonempty(record.get("cwd")).is_some_and(valid_cwd)
                 {
-                    return Err(native_error("core terminal no longer runs this launch program"));
+                    return Err(native_error("core terminal no longer runs this launch program").into());
                 }
                 let root_pid = root_pid.ok_or_else(|| native_error("core terminal is missing its live process"))?;
                 if root_pid != pid && !tokio::task::spawn_blocking(move || super::launch::process_is_descendant(root_pid, pid)).await.unwrap_or(false) {
-                    return Err(native_error("reported owner is not the current App terminal process"));
+                    return Err(native_error("reported owner is not the current App terminal process").into());
                 }
             }
-            _ => return Err(native_error("launch target host changed")),
+            _ => return Err(native_error("launch target host changed").into()),
         }
-        super::launch::reported_native_session(kind, cwd, id, file).await
+        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(Into::into)
     }
 }
 

@@ -6,7 +6,7 @@ use std::{collections::HashMap, path::Path, sync::{Arc, Mutex}, time::Duration};
 use serde::Deserialize;
 use tokio::sync::watch;
 
-use super::{HerdrClient, HerdrError, NativeSession, client::LaunchTarget, identity::native_error};
+use super::{HerdrClient, HerdrError, NativeSession, client::{LaunchTarget, LaunchVerificationError}, identity::native_error};
 
 pub(crate) const LAUNCH_ID_ENV: &str = "HERDR_BOT_LAUNCH_ID";
 pub(crate) const TARGET_ID_ENV: &str = "HERDR_BOT_LAUNCH_TARGET_ID";
@@ -41,6 +41,7 @@ struct State {
     identity: bool,
     early_ready: Option<Owner>,
     ready: bool,
+    official_failure: Option<HerdrError>,
     ended: Vec<(u32, String)>,
     retained: bool,
     closed: bool,
@@ -123,22 +124,28 @@ impl Launches {
             .await.map_err(|_| ())?.map_err(|_| ())?.target.clone().ok_or(())?;
         {
             let state = state.borrow();
-            if state.closed || owner.ended(&state) || state.owner.as_ref().is_some_and(|other| other != &owner) {
-                return Err(());
-            }
+            if state.rejects(&owner) { return Err(()); }
             if matches!(phase, Phase::Identity) && state.identity || matches!(phase, Phase::Ready) && state.ready {
                 return Ok(());
             }
         }
-        target.verify(herdr, pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref())
-            .await.map_err(|error| {
-                eprintln!("launch evidence rejected: {}", error.message());
-            })?;
+        if let Err(error) = target.verify(herdr, pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await {
+            match error {
+                LaunchVerificationError::Unproven(error) => eprintln!("launch evidence rejected: {}", error.message()),
+                LaunchVerificationError::OfficialIdentity(error) => {
+                    eprintln!("launch evidence rejected: {}", error.message());
+                    pending.state.send_if_modified(|state| {
+                        if state.rejects(&owner) { return false; }
+                        state.official_failure = Some(error);
+                        true
+                    });
+                }
+            }
+            return Err(());
+        }
         let mut accepted = false;
         pending.state.send_if_modified(|state| {
-            if state.closed || owner.ended(state) || state.owner.as_ref().is_some_and(|other| other != &owner) {
-                return false;
-            }
+            if state.rejects(&owner) { return false; }
             accepted = true;
             match phase {
                 Phase::Identity => {
@@ -158,6 +165,13 @@ impl Launches {
             }
         });
         accepted.then_some(()).ok_or(())
+    }
+}
+
+impl State {
+    fn rejects(&self, owner: &Owner) -> bool {
+        self.closed || self.official_failure.is_some() || owner.ended(self)
+            || self.owner.as_ref().is_some_and(|active| active != owner)
     }
 }
 
@@ -194,9 +208,10 @@ impl Launch {
         let mut receiver = self.pending.state.subscribe();
         let (owner, target) = {
             let state = tokio::time::timeout(READY_TIMEOUT, receiver.wait_for(|state| {
-                state.owner.as_ref().is_some_and(|owner| owner.ended(state) || state.identity && (!require_ready || state.ready))
+                state.official_failure.is_some() || state.owner.as_ref().is_some_and(|owner| owner.ended(state) || state.identity && (!require_ready || state.ready))
             })).await.map_err(|_| HerdrError::Timeout("framework ready"))?
                 .map_err(|_| native_error("launch evidence no longer available"))?;
+            if let Some(error) = &state.official_failure { return Err(error.clone()); }
             let owner = state.owner.as_ref().unwrap();
             if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
             (owner.clone(), state.target.clone().unwrap())
@@ -211,7 +226,9 @@ impl Launch {
 
     async fn verify(&self, herdr: &HerdrClient, target: &LaunchTarget, owner: &Owner) -> Result<NativeSession, HerdrError> {
         let identity = target.verify(herdr, self.pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await?;
-        if owner.ended(&self.pending.state.borrow()) { return Err(native_error("launch owner ended before input")); }
+        let state = self.pending.state.borrow();
+        if let Some(error) = &state.official_failure { return Err(error.clone()); }
+        if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
         Ok(identity)
     }
 }
