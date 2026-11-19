@@ -174,7 +174,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const restored = await resume(page, scope, 'real-dispatch-node')
   expect(restored.body.outcome).toBe('restored')
   await expect(scope.getByRole('status')).toContainText('已确认恢复同一 OMP 原生对话')
-  await expect(scope.getByRole('status')).toContainText('未提交输入或重新应用 Task 预设')
+  await expect(scope.getByRole('status')).toContainText('未重放发起配置或提交输入')
   const observationStart = Date.now()
   await page.waitForTimeout(350)
   const managedObservationMs = Date.now() - observationStart
