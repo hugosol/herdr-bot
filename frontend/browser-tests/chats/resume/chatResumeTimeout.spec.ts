@@ -6,10 +6,9 @@ import { startServer, type E2EServer } from '../../support/support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-// Approved S1/S2/S3. Withhold only the external native reference: the shipped
-// page, TCP operation, CLI creation/polling and execution qualification stay real.
-// P17-P19/P22: a ready shell is NOT confirmed history. Observe its retained
-// external target, visible uncertainty and a fresh user lookup after it appears.
+// S1 / B1 (P34/P35/P52): withhold only the native reference. The real page
+// must describe the observed focus without claiming native identity. A generic
+// network error, success claim or extra agent launch would fail this scenario.
 for (const kind of ['pi', 'omp']) {
   test(`${kind} startup timeout identifies retained target and a user retry locates it without another launch`, { tag: '@time-contract' }, async ({ page }) => {
     server = await startServer({ herdr: {} })
@@ -33,18 +32,19 @@ for (const kind of ['pi', 'omp']) {
     })
     expect(duplicate.status).toBe(409)
     const reply = await response
-    expect(reply.status()).toBe(502)
+    expect(reply.status()).toBe(200)
     const result = await reply.json()
     expect(result.outcome).toBe('unconfirmed')
+    expect(result.stage).toBe('focused')
+    expect(result.progress).toEqual({ tabCreated: true, startSubmitted: true, conversationConfirmed: false, focused: true })
     // P15/P20 existing-path ownership: selected Workspace fallback remains
     // visible when native loading is unconfirmed, not replaced by success.
     expect(result.degradations).toEqual(expect.arrayContaining([
       expect.objectContaining({ element: 'workspace', reason: expect.stringContaining('缺少原 Workspace'), strategy: expect.stringContaining('w-target') }),
     ]))
-    await expect(row.getByRole('alert')).toContainText('缺少原 Workspace')
-    await expect(row.getByRole('alert')).toContainText('默认 Workspace')
-    await expect(row.getByRole('alert')).toContainText('启动结果未确认')
-    await expect(row.getByRole('alert')).toContainText('不能据此判断未启动')
+    const feedback = row.getByRole('status')
+    for (const text of ['缺少原 Workspace', '默认 Workspace', '缺少来源 Task', '原生默认扩展发现', '默认资源范围可能变化', '已请求恢复并定位', '原生身份未确认']) await expect(feedback).toContainText(text)
+    await expect(feedback).not.toContainText('已确认恢复同一')
     await expect(row.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled()
     const directory = path.join(path.dirname(server.configPath), 'herdr')
     const started = JSON.parse(fs.readFileSync(path.join(directory, 'started.jsonl'), 'utf8').trim())
@@ -54,7 +54,8 @@ for (const kind of ['pi', 'omp']) {
     expect(result.target).toEqual({ workspaceId: started.workspace_id, tabId: started.tab_id, paneId: started.pane_id })
     expect(result.agentName).toBe(started.name)
     expect(server.herdrTabs()).toHaveLength(1)
-    expect(server.herdrCalls().filter((c) => c.kind === 'agent_focus')).toHaveLength(0)
+    expect(server.herdrCalls().filter((c) => c.kind === 'agent_focus')).toHaveLength(1)
+    expect(JSON.parse(fs.readFileSync(path.join(directory, 'focused.json'), 'utf8'))).toBe(started.pane_id)
     await page.screenshot({ path: test.info().outputPath(`${kind}-startup-unconfirmed.png`), fullPage: true })
 
     // New lookup failure must not conceal uncertainty with a replacement launch.
