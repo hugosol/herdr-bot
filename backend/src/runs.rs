@@ -366,7 +366,7 @@ impl Runs {
         ]
     }
     /// Recover role from persisted execution identity, including retired attempts.
-    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
+    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: Option<&str>, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
         let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
@@ -396,7 +396,7 @@ impl Runs {
                         (Some(_), None, None, None) if execution.child_run_id.is_none() => {},
                         (None, Some(source), Some(host), Some(chat)) => {
                             if let Some(chat) = chat.filter(|chat| chat.session_id == session_id) {
-                                if source != task_id || host != agent {
+                                if task_id.is_some_and(|id| id != source) || host != agent {
                                     return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
                                 }
                                 if matched.is_some() || run_match.is_some() || node_match.is_some() { return Err(INVALID_LINK.into()); }
@@ -412,7 +412,7 @@ impl Runs {
             }
             if let Some(matched) = run_match { node_match = Some((id, matched)); }
             if let Some(chat) = run.manager.filter(|chat| chat.session_id == session_id) {
-                if run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
+                if task_id.is_some_and(|id| id != run.manager_task_id) { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
                 if manager_match.is_some() { return Err(INVALID_LINK.into()); }
                 manager_match = Some((run.id, run.parent, chat));
             }

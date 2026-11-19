@@ -43,6 +43,10 @@
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
 
+### Run Chat 角色恢复（P42／S1）
+
+用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start --test chief_delegation p42 -- --nocapture`。场景从公开发起／派发／委派产生真实关联，使用公开 Resume 与独立 Run／node／委派 HTTP 读回核对原身份、角色和数量，检查所选 TUI 或 App/core 的 argv 及终端输入记录。覆盖 OMP／Pi 的原角色、同 Task 普通 Chat、结束节点、子管理者双角色，以及配置错误或缺来源时的默认发现及未显式装配提示。另运行 `app_delegated_map_binds_manager_before_approved_input`，验证 App 的直接 Map 委派恢复仍保持原 Run／委派及管理者角色。既有 `roles::`、`end_node::` 和 `resume_restart::` 继续覆盖 TUI 的普通节点／结束节点、旧执行与错误归属。这些检查不认证实际安装宿主加载扩展、模型行为或跨端 Run 接管。
+
 ### 原生提醒专项（P47／P48）
 
 控制边界：`cargo test --manifest-path backend/Cargo.toml --test chat_creation native_reminders` 和同目标的 `app_launch_uses_task_environment_and_selected_terminal_without_tui_files`。由公开 Chat HTTP 发起 OMP／Pi。TUI 独立核对 Pane 与加载的一份官方状态扩展；App 在 TUI 集成文件缺失时核对原生 agent argv 与所选 Space／Pane／core 终端。两端取完整控制 CLI 记录，确认 connect-bot 的 `working → awaiting-input → awaiting-input` 已在公开会话流可见，却未增加另一条宿主命令。控制记录不证明真实状态或播放。

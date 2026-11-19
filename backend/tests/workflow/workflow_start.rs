@@ -4,6 +4,8 @@
 //! P13 even if its final response happens to contain a session ID.
 #[path = "../common/mod.rs"]
 mod common;
+#[path = "recovery/app_roles.rs"]
+mod app_roles;
 use common::{HerdrFixture, TempDir, TestServer, get_over_tcp, post_json_over_tcp};
 use serde_json::{Value, json};
 use std::fs;
@@ -422,6 +424,18 @@ async fn app_delegated_map_binds_manager_before_approved_input() {
     let sender = run_reply(get_over_tcp(addr, "/api/chief/delegations?sessionId=delegated-manager").await, 200);
     assert_eq!(sender["delegations"][0]["runId"], run_id);
     assert_eq!(sender["delegations"][0]["creation"]["inputSubmitted"], true);
+
+    // P42: Resume the exact approved Map delegation; it is still only a
+    // manager launch, not an independent delegated or ordinary node Chat.
+    let runs_before = run_reply(get_over_tcp(addr, "/api/workflow/runs").await, 200);
+    assert_eq!(runs_before["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(runs_before["runs"][0]["run"]["manager"]["sessionId"], "delegated-manager");
+    let native = cwd.join("delegated-manager.jsonl");
+    app_roles::app_role_event(&server, &tab, "delegated-manager", &native, "launch_ended").await;
+    app_roles::restore_app_role(&server, &herdr, 3, "delegated-manager", &native, &["manager-chat"]).await;
+    assert_eq!(run_reply(get_over_tcp(addr, "/api/workflow/runs").await, 200), runs_before);
+    assert_eq!(run_reply(get_over_tcp(addr, "/api/chief/delegations?sessionId=delegated-manager").await, 200), sender);
+    assert_eq!(herdr.calls().into_iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>(), sends);
 }
 
 async fn prepare_run(server: &TestServer, session: &str) {
