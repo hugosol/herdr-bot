@@ -19,6 +19,8 @@
 
 后台持续读取普通 stdout 与 stderr，过滤 stdout 中的宿主协议，按接收顺序合并；独立管道不能保证原始跨管道写入顺序。尾部最多五个逻辑行，每行最多 512 字节，未换行片段也可见；处理跨块 UTF-8、CRLF 和终端控制序列。该预览不是完整日志、交付 outputs、报告或交接完成依据。静默不表示脚本停止，持续日志也不保证业务有进展。
 
+GitHub 克隆脚本即使在非交互管道中也启用 `git clone --progress`，执行时将 Git 的 stdout 和 stderr 都转发到 Bun 的 stderr，不占用 stdout 宿主协议。回车进度与 CRLF 均按换行显示，保留跨块 UTF-8；四个仓库核实命令不转发。失败详情仍使用两个管道各自原样捕获的 64 KiB 尾部，不受显示换行转换影响。
+
 读取不消费 collect 通知、不改变节点状态，也不持有执行所有权。断开 collect 或日志请求不取消脚本；retry 使用新的 execution 并移除旧尾部，Run finish／删除释放尾部。尾部仅在后端内存保留，不在重启后恢复；原有失败报告的日志诊断规则不变。原生 collect 的日志展示需要配套 toolkit 接入。manager 应直接调用 collect，不经 eval／codemode 包装；Pi 的 collect 使用 model-only 暴露，在 Suite only 模式下仍可直接调用。toolkit 在 collect 等待期间每次成功采样后间隔 500ms 再读取尾部，同一工具输出区按节点分区，显示执行状态、距最后输出时间及至多五行日志，过长行按可用宽度截断。OMP ANSI／TSP 与 Pi 使用各自原生结果渲染入口，不使用 widget。
 
 实时更新只含 UI details，最终结果保留最后快照及原有 collect 业务正文；新增日志预览不进入模型可见 content。取消等待或日志读取失败时冻结快照、标注停止观测、不自动重连，不将旧“运行中”状态冒充实时观察，也不取消后台脚本。再次 collect 重新读取当前 execution 的尾部；原有失败报告携带诊断的行为不因 UI 隔离而改变。

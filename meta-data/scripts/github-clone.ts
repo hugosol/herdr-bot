@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { lstat, mkdir, realpath } from "node:fs/promises";
-import type { Stats } from "node:fs";
+import { writeSync, type Stats } from "node:fs";
 import { isAbsolute, join, parse, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 type FileBinding = { id: string; path: string };
 type Context = {
@@ -55,8 +56,33 @@ function tail(previous: Buffer, chunk: Buffer): Buffer {
   return Buffer.concat([previous.subarray(Math.max(0, previous.length + chunk.length - LOG_BYTES)), chunk]);
 }
 
+function progressOutput() {
+  const decoder = new StringDecoder("utf8");
+  let afterCR = false;
+  let unavailable = false;
+  return (data?: Buffer) => {
+    if (unavailable) return;
+    const text = data ? decoder.write(data) : decoder.end();
+    if (!text) return;
+    const start = afterCR && text[0] === "\n" ? 1 : 0;
+    afterCR = text.endsWith("\r");
+    const bytes = Buffer.from(text.slice(start).replace(/\r\n?/g, "\n"));
+    // The Bun runner explicitly exits after the result; don't leave queued log writes.
+    try {
+      for (let offset = 0; offset < bytes.length;) {
+        const written = writeSync(2, bytes, offset, bytes.length - offset);
+        if (written === 0) { unavailable = true; break; }
+        offset += written;
+      }
+    } catch {
+      // Loss of the diagnostic sink cannot change Git's exit result or captured tails.
+      unavailable = true;
+    }
+  };
+}
+
 // The Git process must finish before publishing a result; timeout kills its Windows process tree.
-async function gitCommand(executable: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, deadline: number) {
+async function gitCommand(executable: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, deadline: number, streamProgress = false) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) reject("clone-timeout", "本次操作已超过 10 分钟。");
   const { promise, resolve: accept, reject: fail } = Promise.withResolvers<string>();
@@ -64,8 +90,10 @@ async function gitCommand(executable: string, args: string[], cwd: string, env: 
   let timedOut = false;
   let terminationError: string | undefined;
   const child = spawn(executable, args, { cwd, env, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-  child.stdout.on("data", (data: Buffer) => { stdout = tail(stdout, data); });
-  child.stderr.on("data", (data: Buffer) => { stderr = tail(stderr, data); });
+  const logStdout = streamProgress ? progressOutput() : undefined;
+  const logStderr = streamProgress ? progressOutput() : undefined;
+  child.stdout.on("data", (data: Buffer) => { stdout = tail(stdout, data); logStdout?.(data); });
+  child.stderr.on("data", (data: Buffer) => { stderr = tail(stderr, data); logStderr?.(data); });
   const timer = setTimeout(() => {
     timedOut = true;
     if (child.pid) {
@@ -78,9 +106,11 @@ async function gitCommand(executable: string, args: string[], cwd: string, env: 
       }
     }
   }, remaining);
-  child.on("error", error => { clearTimeout(timer); fail(error); });
+  child.on("error", error => { clearTimeout(timer); logStdout?.(); logStderr?.(); fail(error); });
   child.on("close", (exitCode, signal) => {
     clearTimeout(timer);
+    logStdout?.();
+    logStderr?.();
     const details = { exit_code: exitCode, signal, stdout_tail: stdout.toString("utf8"), stderr_tail: stderr.toString("utf8"), termination_error: terminationError };
     if (timedOut) fail(new CloneError("clone-timeout", "本次操作超过 10 分钟，已尝试终止进程树；不清理残留。", details));
     else if (exitCode !== 0) fail(new CloneError("git-failed", `Git 失败（退出码 ${exitCode}）。`, details));
@@ -146,7 +176,7 @@ export default async function githubClone(context: Context) {
     effects.clone = "attempted";
     const deadline = Date.now() + TIMEOUT_MS;
     const config = ["-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never", "-c", "protocol.ssh.allow=always"];
-    await gitCommand(git, [...config, "clone", "--depth=1", "--no-recurse-submodules", "--template=", "--", identity.ssh_url, target], parent_directory, env, deadline);
+    await gitCommand(git, [...config, "clone", "--progress", "--depth=1", "--no-recurse-submodules", "--template=", "--", identity.ssh_url, target], parent_directory, env, deadline, true);
     effects.clone = "succeeded";
     stage = "verify";
     effects.verification = "attempted";

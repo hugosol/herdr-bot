@@ -44,7 +44,13 @@
 
 后端新增 `POST /api/workflow/manager/script-output`，以当前 manager 身份读取有界快照；toolkit 在 collect 在途时每次成功请求后间隔 500ms 采样，失败停止。普通 stdout/stderr 在后端持续捕获，协议消息过滤，五行尾部每行最多 512 字节。
 
+`github-clone.ts` 将克隆子进程的 stdout/stderr 实时转发到脚本 stderr，并用 `--progress` 启用非 TTY 进度。仅转发副本将 Git 的回车刷新转换成换行，原始诊断尾部保持不变；校验命令继续只捕获结果，不显示为日志。不改后端采集或报告协议。`bun test scripts/github-clone.test.ts` 已通过（1 个用例、19 项断言），覆盖隔离子进程的在途输出、协议 stdout、校验静默与失败诊断，无外部网络请求。
+
 宿主内建 codemode／eval 包装器不会自动把嵌套扩展更新转给外层工具区。因此 collect 明确作为顶层原生工具调用；Pi 使用公开的 `model-only` exposure，在 Suite only 下保持直接可调用且不供嵌套调用。不改变 Suite mode，不增加 widget，不修改宿主。详情见 [运行说明](../workflow-runtime.md#脚本日志尾部读取)。
+
+OMP 扩展层现为 Collect 提供在途动画和静态结束／错误提示；ANSI 定时显示更新随工具结束、异常或取消清理，不依赖日志是否持续产生。ANSI／TSP 隐藏最终原始 JSON，保留最后日志；模型收到的结构化正文与后端逻辑不变，Pi 显示不变。管理者扩展在完整的 `Workflow report` 输入开头添加一次 `📋`，保留原始普通消息及正文，不拦截重发。用户已确认前缀同时进入历史和模型上下文，且不修改 OMP 源码。
+
+本次显示验证：定向三文件首轮 13 passed／1 failed；失败为报告测试误将宿主注入的职责指示当成报告正文，并使用了目标 TS lib 不支持的 `.at`。改为按实际 provider 文本分块核对报告后，该用例单独通过，验证历史正文、模型输入、单次请求、重复前缀及不完整报告边界。`bun run typecheck` 与 `bun run check:integrations --extension workflow-chat` 通过。PTY 中调用实际注册的 renderer，观察到连续不同动画帧、静态结束／错误状态、保留中文日志且无 JSON；临时烟测文件已删除。这是 renderer 可视证据及隔离原生会话协议验证，不是生产管理者完整 TUI 截图，也不是全仓通过声明。
 
 本次执行的检查：
 
