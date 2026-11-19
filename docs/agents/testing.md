@@ -84,7 +84,7 @@ python scripts/accept-paired-close-reminders.py `
   --close-cases all --reminder-cases all --evidence-dir $Evidence
 ```
 
-- 入口保存两仓 frozen 安装、页面与本后端／安全关机壳构建、三个 herdr-bot 回归入口、toolkit 四个入口及 `session-ready`／`binding-lifecycle`／`native-node-report`／`node-report-contract` docks 的原始日志。配对 dock 的 `HERDR_BOT_BINARY` 指向同一独占目标目录中的 `safe_shutdown_shell.exe`。失败继续留档，不用无关的绿项补齐；可按上述各入口的实际日志区分构建、测试和清理失败。
+- 入口保存两仓 frozen 安装、页面与本后端／安全关机壳构建、三个 herdr-bot 回归入口、toolkit 四个入口及 `session-ready`／`binding-lifecycle`／`activity-facts`／`round-facts`／`native-node-report`／`node-report-contract` docks 的原始日志。配对 dock 的 `HERDR_BOT_BINARY` 指向同一独占目标目录中的 `safe_shutdown_shell.exe`。失败继续留档，不用无关的绿项补齐；可按上述各入口的实际日志区分构建、测试和清理失败。
 - 关闭用真实 Pi 创建经理／节点，由公开审批、报告、节点完成触发。透明记录器只转发已安装 CLI 的请求和原始回执。对照额外 Tab 和另一容器的存活终端、最后一个 Tab 消失及其容器实际移除；App 在前置负对照中验证未确认请求不产生效果，实际完成必须只发送 `tab.close` 且 `confirmed: true`。TUI worktree group 独占创建，父 Workspace 与关联 checkout 的唯一真实 group 必须可见，拒绝扩大时没有发出 close。另核对终端和 SDK agent 进程的真实退出，不把布局或成功回执误作 PID 退出。
 - 提醒按 OMP／Pi × TUI／App × 自定义／捆绑／关闭运行，每格在实际 `working` 时切换焦点，再让同一真实轮次完成；后台完成观察一次 done，前台完成观察抑制。真实待审批 UI 可见且保持时观察一次 request，选择原生 No 后单独留档。公开会话状态、Pane/terminal 原生观察、CLI 请求、输入／释放时间、两种音效原文及哈希、WAV 和波形匹配时间分别保存；波形匹配不是用户的听音结论。
 - `--close-cases app-pi-last-tab --reminder-cases none --native-only` 或 `--close-cases none --reminder-cases app-omp-custom --native-only` 用于已有本 worktree 构建产物的定向诊断；所有未运行格仍在 `summary.json`，定向诊断始终不返回全量通过。运行会保留未确认退出或证据归档失败的独占环境，供定位；不操作用户会话。`automatedPassed` 只代表自动范围，唯一人工项 `P48Listening` 始终待确认：用每格时间线与 WAV 核对两端实际可听和触发场景，仅由用户确认，不能提前计为通过。

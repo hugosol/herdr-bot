@@ -19,6 +19,7 @@ CLOSE = [('tui', 'pi', 'extra-tab'), ('app', 'pi', 'extra-tab'),
 REMINDERS = [(host, agent, mode) for host in ('tui', 'app') for agent in ('omp', 'pi')
              for mode in ('custom', 'default', 'disabled')]
 DOCKS = ['tests/harness-dock/session-ready.test.ts', 'tests/harness-dock/binding-lifecycle.test.ts',
+         'tests/harness-dock/activity-facts.test.ts', 'tests/harness-dock/round-facts.test.ts',
          'tests/harness-dock/native-node-report.test.ts', 'tests/harness-dock/node-report-contract.test.ts']
 
 
