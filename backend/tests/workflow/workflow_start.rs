@@ -424,6 +424,120 @@ async fn app_delegated_map_binds_manager_before_approved_input() {
     assert_eq!(sender["delegations"][0]["creation"]["inputSubmitted"], true);
 }
 
+// S1 (P43–P45): the public manager completion, controlled App/core CLI
+// and its independent receipt/layout/process records. A Space-wide close
+// would affect the manager on the first pass; without App confirmation the
+// same exact Tab request would be refused when it is the last one.
+#[tokio::test]
+async fn precise_auto_close_app_targets_tab_and_confirms_only_tab_scope() {
+    use std::time::Duration;
+    for (last_tab, rejection) in [
+        (false, None),
+        (true, None),
+        (false, Some(("change_app_core", "run-chat-lookup-failed", "core 实例已改变"))),
+        (false, Some(("fail_app_tab_close", "herdr-command-failed", "controlled App close refused"))),
+    ] {
+        let (data, herdr, config, server, zone, ids) = fixture_with_host("omp", true).await;
+        let cwd = data.path().join("alpha");
+        fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"","nodes":{
+            "A":{"title":"A","bot_id":"worker","input":"Approved close target","zone":zone,"blocked_by":[],"auto_close":true}
+        }}).to_string()).unwrap();
+        let start = start_fixture_run(&server, ids[0].clone(), zone);
+        let manager = app_launch(&server, &herdr, 1, "omp", "close-app-manager", &cwd).await;
+        let started = run_reply(start.await.unwrap(), 201);
+        prepare_run(&server, "close-app-manager").await;
+        let dispatch = dispatch_app_node(&server, "close-app-manager", "A");
+        let node = app_launch(&server, &herdr, 2, "omp", "close-app-worker", &cwd).await;
+        let dispatched = run_reply(dispatch.await.unwrap(), 200);
+        assert_eq!(dispatched["results"][0]["status"], "running");
+        let execution = &dispatched["snapshot"]["nodes"]["A"]["execution"];
+        assert_eq!(execution["chat"]["tabId"], node["tab"]);
+        assert_eq!(execution["chat"]["paneId"], node["pane"]);
+        assert_eq!(node["space"], manager["space"]);
+        run_reply(post_json_over_tcp(server.addr(), "/api/workflow/node/approve", &json!({
+            "sessionId":"close-app-worker","executionId":execution["id"],"source":"auto"
+        }).to_string()).await, 200);
+        run_reply(post_json_over_tcp(server.addr(), "/api/workflow/node/report", r#"{"sessionId":"close-app-worker","body":"Ready for acceptance","canComplete":true}"#).await, 200);
+        if last_tab {
+            // An independent layout change before completion; no Run or Chat
+            // record is edited. The target is now the Space's only Tab.
+            fs::write(herdr.path().join("app-removed-tabs.jsonl"), format!("{}\n", json!({"tab":manager["tab"],"space":manager["space"],"spaceRemoved":false}))).unwrap();
+        }
+        fs::write(herdr.path().join("app-unrelated-terminal"), "").unwrap();
+        let observe = |args: &[&str]| {
+            let output = std::process::Command::new(herdr.executable()).args(args).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            serde_json::from_slice::<Value>(&output.stdout).unwrap()
+        };
+        let state_of = |terminal: &Value| observe(&["get", terminal.as_str().unwrap(), "--json"])["state"].clone();
+        let records = |name: &str| common::read_json_lines(&herdr.path().join(name));
+        let before = herdr.calls().len();
+        let before_invocations = records("invocations.jsonl").len();
+        let mutations = || records("invocations.jsonl").into_iter().skip(before_invocations)
+            .filter(|row| !matches!(row["argv"][0].as_str(), Some("ls" | "get" | "server"))).count();
+        let close_call = json!({"kind":"app_tab_close","request":{"id":node["tab"],"confirmed":true},"terminal":node["terminal"]});
+        let read_run = format!("/api/workflow/runs/{}", started["id"].as_str().unwrap());
+        let complete_request = r#"{"sessionId":"close-app-manager","nodeId":"A","reason":"Only this worker was accepted"}"#;
+        if let Some((behavior, _, _)) = rejection {
+            herdr.set_behavior(json!({(behavior): true}));
+        }
+        let complete = run_reply(post_json_over_tcp(server.addr(), "/api/workflow/manager/complete", complete_request).await, 200);
+        assert_eq!(complete["snapshot"]["nodes"]["A"]["status"], "completed");
+        if let Some((behavior, code, reason)) = rejection {
+            let detail = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let detail = run_reply(get_over_tcp(server.addr(), &read_run).await, 200);
+                    if detail["run"]["nodes"]["A"]["autoCloseFailure"].is_object() { break detail; }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            }).await.expect("public Run must expose the App close failure");
+            let saved = &detail["run"]["nodes"]["A"];
+            assert_eq!(saved["status"], "completed");
+            assert_eq!(saved["completion"], complete["snapshot"]["nodes"]["A"]["completion"]);
+            assert_eq!(saved["autoCloseFailure"]["code"], code);
+            assert!(saved["autoCloseFailure"]["message"].as_str().unwrap().contains(reason), "{saved}");
+            assert!(records("app-close-receipts.jsonl").is_empty());
+            assert!(records("app-removed-tabs.jsonl").is_empty());
+            assert_eq!(state_of(&node["terminal"]), "live");
+            let duplicate = run_reply(post_json_over_tcp(server.addr(), "/api/workflow/manager/complete", complete_request).await, 200);
+            assert_eq!(duplicate["changed"], false);
+            assert_eq!(duplicate["snapshot"]["nodes"]["A"], *saved);
+            let calls = herdr.calls();
+            if behavior == "change_app_core" {
+                assert_eq!(calls.len(), before, "short terminal addresses cannot authorize another core");
+                assert_eq!(mutations(), 0);
+            } else {
+                assert_eq!(&calls[before..], [close_call], "a refusal must not trigger another command");
+                assert_eq!(mutations(), 1);
+            }
+            continue;
+        }
+        assert!(common::wait_until(Duration::from_secs(3), || !records("app-close-receipts.jsonl").is_empty()).await,
+            "no App close receipt: {:?}", &herdr.calls()[before..]);
+        let receipts = records("app-close-receipts.jsonl");
+        assert_eq!(receipts, [json!({"tab":node["tab"],"terminal":node["terminal"]})]);
+        let layout = observe(&["ls"]);
+        let space = layout["spaces"].as_array().unwrap().iter().find(|space| space["id"] == node["space"]);
+        if last_tab {
+            assert!(space.is_none(), "the now-empty Space may close");
+        } else {
+            assert_eq!(space.unwrap()["tabs"].as_array().unwrap().iter().map(|t| &t["id"]).collect::<Vec<_>>(), [&manager["tab"]]);
+        }
+        assert_eq!(state_of(&node["terminal"]), "live", "the receipt and layout loss are not a terminal exit");
+        fs::write(herdr.path().join("app-release-terminal-exit"), "").unwrap();
+        assert_eq!(state_of(&node["terminal"]), "dead");
+        assert_eq!(state_of(&manager["terminal"]), "live");
+        assert_eq!(state_of(&json!("t-unrelated")), "live");
+        let calls = herdr.calls();
+        assert_eq!(&calls[before..], [close_call]);
+        assert_eq!(mutations(), 1, "no separate space-close, park, settle, or fallback command");
+        let detail = run_reply(get_over_tcp(server.addr(), &read_run).await, 200);
+        assert_eq!(detail["run"]["nodes"]["A"], complete["snapshot"]["nodes"]["A"]);
+        assert_eq!(detail["run"]["nodes"]["A"]["execution"]["approved"], true);
+        assert_eq!(detail["run"]["nodes"]["A"]["execution"]["id"], execution["id"]);
+    }
+}
+
 async fn prepare_run(server: &TestServer, session: &str) {
     run_reply(post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({
         "sessionId":session,"fileInputs":[],"confirmed":true,"reason":"Verified Run fixture inputs"
