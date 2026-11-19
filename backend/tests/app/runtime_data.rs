@@ -39,7 +39,7 @@ fn command(root: &Path) -> Command {
 }
 
 impl Panel {
-    fn start(root: &Path) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture) -> Self {
         let mut child = command(root).spawn().expect("start real application");
         let log = Arc::new(Mutex::new(Vec::new()));
         for source in [
@@ -68,7 +68,9 @@ impl Panel {
                     .parse()
                     .ok()
             }) {
-                return Self { child, addr };
+                let panel = Self { child, addr };
+                fs::write(herdr.path().join("launch_endpoint.txt"), addr.to_string()).unwrap();
+                return panel;
             }
             if let Some(status) = child.try_wait().unwrap() {
                 panic!("application exited {status}: {text}");
@@ -228,7 +230,7 @@ async fn relocated_runtime_data_keeps_legacy_sources_beside_the_configuration() 
     fs::create_dir_all(root.path().join(".data")).unwrap();
     fs::write(root.path().join(".data/tasks.json"), b"{\"tasks\":[]}\n").unwrap();
     fs::write(root.path().join("zones.json"), b"{\"zones\":[]}\n").unwrap();
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
     assert!(root.path().join("separate runtime/.runtime-layout-v1").is_file());
     assert!(root.path().join("separate runtime/.definition-layout-v1-tasks").is_file());
@@ -271,7 +273,7 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         let zone = root.path().join("zone");
         fs::create_dir(&zone).unwrap();
         assert!(!root.path().join(".data").exists());
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         body(
             post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await,
         );
@@ -301,7 +303,7 @@ async fn default_and_delivered_creations_leave_old_native_tree_unchanged() {
         assert_eq!(native_snapshot(&native), before, "P25: old main and sidecars unchanged");
         drop(panel);
         for _ in 0..2 {
-            let restarted = Panel::start(root.path());
+            let restarted = Panel::start(root.path(), &herdr);
             assert_eq!(
                 body(get_over_tcp(restarted.addr, "/api/tasks").await)["tasks"],
                 json!([task.clone()])
@@ -330,7 +332,7 @@ async fn default_and_explicit_task_locations_survive_two_restarts_without_legacy
             .unwrap()
             .join("bot-sessions/new-session/context.jsonl");
         let saved = {
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             assert_eq!(
                 body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"],
                 json!([])
@@ -350,7 +352,7 @@ async fn default_and_explicit_task_locations_survive_two_restarts_without_legacy
         .unwrap();
         fs::write(root.path().join("zones.json"), "invalid old zone source").unwrap();
         for _ in 0..2 {
-            let restarted = Panel::start(root.path());
+            let restarted = Panel::start(root.path(), &herdr);
             assert_eq!(
                 body(get_over_tcp(restarted.addr, "/api/tasks").await)["tasks"],
                 json!([saved.clone()])
@@ -373,7 +375,7 @@ async fn default_and_explicit_task_locations_survive_two_restarts_without_legacy
         }
         fs::remove_file(&storage).unwrap();
         fs::remove_file(root.path().join(".data/zones.json")).unwrap();
-        let restarted = Panel::start(root.path());
+        let restarted = Panel::start(root.path(), &herdr);
         assert_eq!(
             body(get_over_tcp(restarted.addr, "/api/tasks").await)["tasks"],
             json!([])
@@ -415,7 +417,7 @@ async fn runtime_directory_and_write_failures_are_not_reported_as_success() {
 
     let root = TempDir::new("runtime blocked writes");
     configure(root.path(), &herdr, None);
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     let zone = root.path().join("zone");
     fs::create_dir(&zone).unwrap();
     body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await);
@@ -548,7 +550,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
     let release = root.path().join("release-agent-start");
     herdr
         .set_behavior(json!({"agent_start_gate": {"wait_for_file": release, "timeout_ms": 30000}}));
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     body(post_json_over_tcp(panel.addr, "/api/zones", &json!({"id": zone, "path": zone}).to_string()).await);
     let saved = save(&panel).await;
     body(
@@ -627,7 +629,7 @@ async fn real_restart_does_not_restore_registry_shutdown_intent_or_inflight_crea
     drop(panel);
     fs::write(release, "release external fixture").unwrap();
     let calls = herdr.calls().len();
-    let restarted = Panel::start(root.path());
+    let restarted = Panel::start(root.path(), &herdr);
     let current = snapshot(&restarted).await;
     // Accepted registration metadata persists independently of transient runtime state.
     let history = body(get_over_tcp(restarted.addr, "/api/sessions/history").await);
@@ -703,7 +705,7 @@ async fn existing_zone_target_wins_without_merging_or_stopping_startup() {
         serde_json::to_string(&new_zone).unwrap()
     );
     fs::write(root.path().join(".data/zones.json"), &target).unwrap();
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     assert_eq!(
         body(get_over_tcp(panel.addr, "/api/zones").await)["zones"],
         json!([{"id":"target-zone","path": new_zone}])
@@ -741,7 +743,7 @@ async fn cutover_preserves_old_native_main_and_sidecars_while_moving_zone_regist
     fs::write(old_native.join("old.records/tool.bin"), b"\0old-record\xff").unwrap();
     let old_before = native_snapshot(&old_native);
 
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     assert!(old_native.is_dir(), "P25: first startup must preserve old native files");
     assert_eq!(native_snapshot(&old_native), old_before);
     let zones = body(get_over_tcp(panel.addr, "/api/zones").await);
@@ -808,7 +810,7 @@ fn definition_migration_rejects_wrong_types_before_any_cutover_and_allows_retry(
         assert_no_definition_markers(root.path());
         if invalid.is_dir() { fs::remove_dir(&invalid).unwrap(); }
         else { assert_eq!(fs::read(&invalid).unwrap(), b"not a directory"); fs::remove_file(&invalid).unwrap(); }
-        let _panel = Panel::start(root.path());
+        let _panel = Panel::start(root.path(), &herdr);
     }
 }
 
@@ -843,7 +845,7 @@ fn definition_migration_rejects_nested_directory_links_without_reading_external_
     fs::remove_dir(&link).unwrap();
     #[cfg(unix)]
     fs::remove_file(&link).unwrap();
-    let _panel = Panel::start(root.path());
+    let _panel = Panel::start(root.path(), &herdr);
 }
 
 fn assert_no_definition_markers(root: &Path) {
@@ -858,7 +860,7 @@ async fn definition_migration_preserves_bytes_and_never_reimports_retained_backu
     let herdr = HerdrFixture::new("definition cutover calls");
     configure(root.path(), &herdr, Some(".data/tasks.json"));
     let task = {
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         save(&panel).await
     };
     // Custom Task storage did not consume its later default migration.
@@ -875,7 +877,7 @@ async fn definition_migration_preserves_bytes_and_never_reimports_retained_backu
     }
     configure(root.path(), &herdr, None);
     {
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([task.clone()]));
         assert_eq!(fs::read(root.path().join("meta-data/tasks.json")).unwrap(), task_bytes);
         for directory in ["bots", "workflow-maps"] {
@@ -887,7 +889,7 @@ async fn definition_migration_preserves_bytes_and_never_reimports_retained_backu
     fs::remove_dir_all(root.path().join("meta-data/workflow-maps")).unwrap();
     fs::remove_file(root.path().join("meta-data/tasks.json")).unwrap();
     for _ in 0..2 {
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
         assert_eq!(fs::read(root.path().join("meta-data/bots/nested/backup.bin")).unwrap(), b"edited target");
         assert!(!root.path().join("meta-data/workflow-maps/nested/backup.bin").exists());
@@ -927,7 +929,7 @@ async fn definition_conflicts_preflight_every_item_and_can_be_retried_after_reso
         } else {
             fs::remove_dir(root.path().join(format!("meta-data/{conflict}/extra-empty"))).unwrap();
         }
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
         assert_eq!(fs::read(root.path().join("meta-data/tasks.json")).unwrap(), b"{\"tasks\":[]}\n");
         for directory in ["bots", "workflow-maps"] {
@@ -950,7 +952,7 @@ async fn custom_definition_targets_remain_authoritative_until_individually_chang
     fs::write(root.path().join(".data/bots/backup.bin"), b"legacy bot").unwrap();
     fs::write(root.path().join(".data/workflow-maps/backup.bin"), b"legacy map").unwrap();
     let task = {
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let task = save(&panel).await;
         assert_no_definition_markers(root.path());
         assert!(!root.path().join("private/bots/backup.bin").exists());
@@ -960,7 +962,7 @@ async fn custom_definition_targets_remain_authoritative_until_individually_chang
     // Only Task switches now. Bot/Map remain custom and eligible for a later switch.
     fs::write(&config, fs::read_to_string(&config).unwrap().replace("private/tasks.json", "meta-data/tasks.json")).unwrap();
     {
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         assert_eq!(body(get_over_tcp(panel.addr, "/api/tasks").await)["tasks"], json!([]));
         assert!(root.path().join(".data/.definition-layout-v1-tasks").is_file());
         assert!(!root.path().join(".data/.definition-layout-v1-bots").exists());
@@ -969,7 +971,7 @@ async fn custom_definition_targets_remain_authoritative_until_individually_chang
     let custom: Value = serde_json::from_slice(&fs::read(root.path().join("private/tasks.json")).unwrap()).unwrap();
     assert_eq!(custom["tasks"], json!([task]));
     configure(root.path(), &herdr, None);
-    let _panel = Panel::start(root.path());
+    let _panel = Panel::start(root.path(), &herdr);
     assert_eq!(fs::read(root.path().join("meta-data/bots/backup.bin")).unwrap(), b"legacy bot");
     assert_eq!(fs::read(root.path().join("meta-data/workflow-maps/backup.bin")).unwrap(), b"legacy map");
 }

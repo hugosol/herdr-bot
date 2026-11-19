@@ -13,8 +13,9 @@ import { fetchZones, type ZoneRegistration } from '../controllers/zoneController
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 
-const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
+const STAGE_LABELS = {
   starting: '正在启动',
+  initializing: '正在初始化输入',
   submitting: '正在提交初始指示',
 }
 
@@ -421,11 +422,9 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
           </p>
         )}
 
-        {running && creation !== null && (
+        {creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed' && (
           <p className="chat-stage" data-testid="chat-create-stage" role="status">
-            {creation.stage === 'starting'
-              ? STAGE_LABELS.starting
-              : STAGE_LABELS.submitting}
+            {STAGE_LABELS[creation.stage]}
           </p>
         )}
 

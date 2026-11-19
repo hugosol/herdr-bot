@@ -79,6 +79,11 @@ impl TestServer {
                     fs::read_to_string(stderr).unwrap()
                 )
             });
+        fs::write(
+            config.herdr.executable.with_file_name("launch_endpoint.txt"),
+            server.addr.to_string(),
+        )
+        .unwrap();
         eprintln!(
             "delegation S2 backend pid={} addr={} logs={}",
             server.child.id(),

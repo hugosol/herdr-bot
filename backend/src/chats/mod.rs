@@ -170,6 +170,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         Ok(args) => args,
         Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
     };
+    preset.env.select_host(&state.herdr);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(Error::Internal(
             "extension-entrypoint-invalid",
@@ -193,6 +194,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         };
         run_creation(
             herdr,
+            Arc::clone(&state.launches),
             history,
             prompts,
             Arc::clone(&job),
@@ -243,8 +245,10 @@ pub const CHAT_ID_LEN: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
-    /// 正在查找 Workspace、新建 Tab 并等待 agent 就绪。
+    /// 正在查找容器并启动目标。
     Starting,
+    /// 已获得目标位置，等待本次会话完成输入初始化。
+    Initializing,
     /// 目标 agent 已就绪，正在提交初始指示。
     Submitting,
     /// 就绪与提交都已确认。
@@ -480,11 +484,11 @@ pub fn agent_launch_args(
 
 /// 执行一次已接受的创建；调用方已经固定了 Task 与 zone 的当时取值。
 ///
-/// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
-/// 有初始指示时须等 `agent prompt` 被确认后才进入成功；无指示时就绪即成功，保留未提交事实。
-/// 不等待模型轮次、Skill 执行或 connect-bot 接入。
+/// 两种宿主都要求本次目标与原生会话的 ready 上报；仅宿主的启动回执不能授权输入。
+/// 成功不等待模型轮次、Skill 执行或独立的 connect-bot 登记。
 pub(crate) async fn run_creation(
     herdr: Arc<HerdrClient>,
+    launches: Arc<herdr::launch::Launches>,
     history: Arc<crate::chats::history::History>,
     prompts: crate::prompts::PromptDictionary,
     job: Arc<Mutex<ChatCreationView>>,
@@ -530,8 +534,12 @@ pub(crate) async fn run_creation(
 
     let zone = mapping.directory.as_deref().expect("Chat launch always specifies an execution directory");
     let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, Some(zone), &name).await {
-        Ok(created) => created,
+    let agent_name = new_agent_name();
+    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
+    let kind = task.agent.label();
+    let launch = launches.begin(kind, Some(zone));
+    let target = match herdr.launch_tab(&workspace.id, Some(zone), &name, &agent_name, kind, &args, &launch).await {
+        Ok(target) => target,
         Err(error) => {
             fail(&job, FailureStage::Tab, &error, authority).await;
             return;
@@ -539,44 +547,25 @@ pub(crate) async fn run_creation(
     };
     {
         let mut view = job.lock().await;
-        view.tab_id = Some(created.tab_id);
-        view.pane_id = Some(created.pane_id);
+        view.tab_id = Some(target.location.tab_id.clone());
+        view.pane_id = Some(target.location.pane_id.clone());
+        if !herdr.is_app() { view.agent_name = Some(agent_name); }
     }
-
-    let agent_name = new_agent_name();
-    {
-        let mut view = job.lock().await;
-        view.agent_name = Some(agent_name.clone());
-    }
-    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
-    let kind = task.agent.label();
-    let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
-    if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
+    if let Err(error) = target.start_agent(&herdr, kind, &args).await {
         fail(&job, FailureStage::Start, &error, authority).await;
         return;
     }
+    job.lock().await.stage = Stage::Initializing;
+    let identity = match launch.ready(&herdr).await {
+        Ok(identity) => identity,
+        Err(error) => {
+            fail(&job, FailureStage::Start, &error, authority).await;
+            return;
+        }
+    };
 
     if chief.is_some() || delegation.is_some() {
         let creation_id = job.lock().await.id.clone();
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-        let identity = loop {
-            let identity = async {
-                if delegation.is_some() { herdr.started_session_with_live_cwd(&agent_name,kind,deadline).await }
-                else { herdr.started_session(&agent_name,kind,deadline).await }
-            };
-            match tokio::time::timeout_at(deadline,identity).await {
-                Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
-                Ok(Err(error)) if delegation.is_some() => {
-                    fail(&job,FailureStage::Submit,&error,authority).await;
-                    return;
-                }
-                _ if tokio::time::Instant::now() >= deadline => {
-                    fail(&job,FailureStage::Submit,&HerdrError::Timeout(if delegation.is_some() {"delegated Chat native identity"} else {"chief native identity"}),authority).await;
-                    return;
-                }
-                _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
-            }
-        };
         let saved = history.record_zone(&identity.session_id,&name,kind,&identity.cwd,identity.session_file.as_deref(),Some(&workspace.id),&task.id,identity.startup_identity_path.as_deref()).await;
         let bound = if let Some((chief,sessions)) = &chief {
             let _membership = chief.membership.lock().await;
@@ -627,66 +616,32 @@ pub(crate) async fn run_creation(
     // An empty trigger starts an interactive Chat without inventing a user
     // turn. Herdr rejects empty prompts; readiness already confirms startup.
     if !text.is_empty() {
-        if let Err(error) = herdr.prompt(&agent_name, text).await {
+        if let Err(error) = launch.current(&herdr, &target).await {
+            fail(&job, FailureStage::Start, &error, authority).await;
+            return;
+        }
+        if let Err(error) = target.submit(&herdr, text).await {
             fail(&job, FailureStage::Submit, &error, authority).await;
             return;
         }
     }
 
+    if herdr.is_app() { launch.retain_app_target(); }
     let creation_id = {
         let mut view = job.lock().await;
         view.input_submitted = !text.is_empty();
         view.stage = Stage::Succeeded;
         view.id.clone()
     };
-    // The page and the creation result do not own this task. Never hold a creation,
-    // current-registration or history lock while waiting for external identity.
+    // History persistence remains independent of the ordinary creation result.
     if chief.is_none() && delegation.is_none() {
         tokio::spawn(async move {
-            collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, task.id).await;
+            if let Err(error) = history.record_zone(
+                &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &task.id, identity.startup_identity_path.as_deref(),
+            ).await {
+                eprintln!("warning: zone-history creation={creation_id} kind={kind} session={} save-failed: {error}", identity.session_id);
+            }
         });
-    }
-}
-
-async fn collect_native_history(
-    herdr: Arc<HerdrClient>,
-    history: Arc<crate::chats::history::History>,
-    creation_id: String,
-    agent_name: String,
-    kind: &'static str,
-    name: String,
-    original_workspace_id: String,
-    source_task_id: String,
-) {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-    let mut last_reason = String::from("native identity unavailable");
-    let identity = loop {
-        match tokio::time::timeout_at(deadline, herdr.started_session(&agent_name, kind, deadline)).await {
-            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
-            Ok(Ok(_)) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
-                return;
-            }
-            Ok(Err(error)) => {
-                // A reader noticing the shared deadline must not overwrite the
-                // useful underlying cause (for example an unavailable header).
-                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
-            }
-            Err(_) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-                return;
-            }
-        }
-        if tokio::time::timeout_at(deadline, tokio::time::sleep(std::time::Duration::from_millis(100))).await.is_err() {
-            eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-            return;
-        }
-    };
-    // Exactly one persistence attempt after identity; no background write retries.
-    if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_task_id, identity.startup_identity_path.as_deref(),
-    ).await {
-        eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
 }
 

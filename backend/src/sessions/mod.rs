@@ -463,6 +463,9 @@ impl SessionsState {
                 self.hub.publish(Observation::SessionRemove { session_id });
                 Some(Applied::Accepted)
             }
+            SessionEvent::LaunchIdentity { .. } | SessionEvent::LaunchReady { .. } | SessionEvent::LaunchEnded { .. } => {
+                unreachable!("launch reports are handled separately from session registration")
+            }
         }
     }
 }
@@ -542,6 +545,12 @@ pub(crate) enum SessionEvent {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
+    #[serde(rename = "launch_identity")]
+    LaunchIdentity { #[serde(rename = "sessionId")] session_id: String, data: crate::herdr::launch::Report },
+    #[serde(rename = "launch_ready")]
+    LaunchReady { #[serde(rename = "sessionId")] session_id: String, data: crate::herdr::launch::Report },
+    #[serde(rename = "launch_ended")]
+    LaunchEnded { #[serde(rename = "sessionId")] session_id: String, data: crate::herdr::launch::Report },
 }
 
 /// `register` 的请求字段。
@@ -636,6 +645,7 @@ pub(crate) enum SessionEventAccepted {
 pub(crate) enum SessionEventError {
     Forbidden,
     UnknownSession,
+    LaunchMismatch,
     Chief(crate::chief::Error),
 }
 
@@ -646,6 +656,19 @@ pub(crate) fn authorize_source(ip: IpAddr) -> Result<(), SessionEventError> {
 
 /// Accept registration, membership, history and lifecycle changes under the original membership lock.
 pub(crate) async fn accept_event(state: &AppState, event: SessionEvent) -> Result<SessionEventAccepted, SessionEventError> {
+    use crate::herdr::launch::Phase;
+    let (session_id, report, phase) = match event {
+        SessionEvent::LaunchIdentity { session_id, data } => (session_id, data, Phase::Identity),
+        SessionEvent::LaunchReady { session_id, data } => (session_id, data, Phase::Ready),
+        SessionEvent::LaunchEnded { session_id, data } => (session_id, data, Phase::Ended),
+        event => return accept_membership_event(state, event).await,
+    };
+    state.launches.accept(&state.herdr, session_id, report, phase).await
+        .map_err(|_| SessionEventError::LaunchMismatch)?;
+    Ok(SessionEventAccepted::Accepted(EventAccepted { outcome: ACCEPTED }))
+}
+
+async fn accept_membership_event(state: &AppState, event: SessionEvent) -> Result<SessionEventAccepted, SessionEventError> {
     let _membership = state.chief.membership.lock().await;
     match &event {
         SessionEvent::Register { session_id, .. } => {

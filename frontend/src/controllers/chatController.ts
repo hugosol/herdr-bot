@@ -8,7 +8,7 @@
 
 import type { TaskModel, TaskThinking } from './taskController'
 
-export type ChatCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
+export type ChatCreationStage = 'starting' | 'initializing' | 'submitting' | 'succeeded' | 'failed'
 export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'
 
 export type ChatPreview = {
@@ -76,7 +76,7 @@ function isPreview(value: unknown): value is ChatPreview {
   )
 }
 
-const STAGES: ChatCreationStage[] = ['starting', 'submitting', 'succeeded', 'failed']
+const STAGES: ChatCreationStage[] = ['starting', 'initializing', 'submitting', 'succeeded', 'failed']
 const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start', 'submit']
 
 function isCreation(value: unknown): value is ChatCreation {

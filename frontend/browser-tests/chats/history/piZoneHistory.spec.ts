@@ -1,9 +1,9 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { startServer, type E2EServer } from '../../support/support'
-import { zoneRowFor } from '../../support/ui'
+import { beginZoneChat, currentSnapshot, keepControlSessionOnline, launchReporter, readCreation } from './zoneHistoryLaunch'
 
 // Parallel cases run in separate worker processes; each keeps its own server and cleanup hooks.
 test.describe.configure({ mode: 'parallel' })
@@ -24,43 +24,37 @@ async function post(endpoint: string, body: unknown) {
   return response.json()
 }
 async function history() { return fetch(`${server!.baseURL}/api/sessions/history`).then(r => r.json()) }
-async function prepare(behavior: Record<string, unknown>) {
+async function prepare(behavior: Record<string, unknown>, monitor = false) {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-zone-history-'))
-  server = await startServer({ herdr: { behavior } })
+  server = await startServer({ safeShutdown: monitor, herdr: { behavior: { ...behavior, manual_launch_events: true } } })
+  if (monitor) await keepControlSessionOnline(server)
   const zones = await post('/api/zones', { id: 'test/zone', path: root })
-  const saved = await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '' })
-  return { zone: zones.zones[0].id as string, task: saved.tasks.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
+  await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '' })
+  return zones.zones[0] as { id: string; path: string }
 }
-async function createInPage(page: Page, zone: string) {
-  await page.goto(server!.baseURL)
-  await page.getByTestId('tab-files').click()
-  await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
-  const dialog = page.getByTestId('chat-creation-dialog')
-  await dialog.locator('#chat-workspace-target').selectOption('default')
-  await dialog.getByTestId('chat-input').fill('/settings')
-  await dialog.getByTestId('chat-create-submit').click()
-  await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
-  return dialog
-}
+function nativeId(value: string) { return { source: 'herdr:pi', agent: 'pi', kind: 'id', value } }
+function nativePath(value: string) { return { source: 'herdr:pi', agent: 'pi', kind: 'path', value } }
 
-// S1/S2/S4, P01/P05/P17/P26: success while exact identity is unresolved;
-// close the page, release identity, observe both independent views afterward.
-// The adapter controls Herdr only; browser, HTTP, persistence and SSE are real.
+// S1/S2/S4, P01/P05/P17/P26: the page closes while the launch still lacks
+// its exact identity and ready. Completion and history remain backend-owned.
 test('Pi without connect survives page close and history is independent of current registration', async ({ page, browser }, testInfo) => {
-  const { zone } = await prepare({})
-  const release = path.join(root!, 'release')
-  server!.setHerdrBehavior({ native_session_gate: { wait_for_file: release, timeout_ms: 60_000 } })
+  const sessionId = 'pi-browser-exact-id'
+  const zone = await prepare({ native_session: nativeId(sessionId) })
   const historyRequests: string[] = []
   page.on('request', r => { if (r.url().includes('/api/sessions/history')) historyRequests.push(r.url()) })
-  const dialog = await createInPage(page, zone)
-  await expect.poll(() => server!.herdrCalls().some(c => c.kind === 'agent_get')).toBe(true)
+  const { dialog, id } = await beginZoneChat(page, server!, zone.id)
+  const report = launchReporter(server!, 'pi', zone.path, sessionId)
   await expect(dialog).not.toContainText(/历史|收录/)
   expect(historyRequests).toEqual([])
   expect((await history()).sessions).toEqual([])
   await page.close()
-  server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'id', value: 'pi-browser-exact-id' }, native_cwd: 'C:/browser/native' })
-  fs.writeFileSync(release, 'release')
-  await expect.poll(async () => (await history()).sessions.map((r: {sessionId:string}) => r.sessionId)).toEqual(['pi-browser-exact-id'])
+  await report('launch_identity')
+  expect(await readCreation(server!, id)).toMatchObject({ stage: 'initializing', inputSubmitted: false })
+  expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(0)
+  await report('launch_ready')
+  await expect.poll(() => readCreation(server!, id)).toMatchObject({ stage: 'succeeded', inputSubmitted: true })
+  await expect.poll(async () => (await history()).sessions).toMatchObject([{ sessionId, cwd: zone.path }])
+  expect((await currentSnapshot(server!)).sessions).toEqual([])
   const reopened = await browser.newPage()
   try {
     await reopened.goto(server!.baseURL)
@@ -68,12 +62,12 @@ test('Pi without connect survives page close and history is independent of curre
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
     await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
     await reopened.screenshot({ path: testInfo.outputPath('pi-history-without-connect.png'), fullPage: true })
-    await post('/api/sessions/events', { sessionId: 'pi-browser-exact-id', kind: 'register', data: { cwd: 'C:/browser/native', sessionName: 'Connect display name', agentType: 'pi' } })
+    await post('/api/sessions/events', { sessionId, kind: 'register', data: { cwd: zone.path, sessionName: 'Connect display name', agentType: 'pi' } })
     await reopened.getByRole('button', { name: '查看当前会话' }).click()
     await expect(reopened.getByTestId('session-board')).toContainText('Connect display name')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
     await expect(reopened.getByRole('row').filter({ hasText: 'Pi Browser Chat' })).toBeVisible()
-    await post('/api/sessions/events', { sessionId: 'pi-browser-exact-id', kind: 'unregister' })
+    await post('/api/sessions/events', { sessionId, kind: 'unregister' })
     await reopened.getByRole('button', { name: '查看当前会话' }).click()
     await expect(reopened.getByTestId('session-board')).not.toContainText('Connect display name')
     await reopened.getByRole('button', { name: '查看历史会话' }).click()
@@ -82,52 +76,96 @@ test('Pi without connect survives page close and history is independent of curre
   } finally { await reopened.close() }
 })
 
+// P19/P22/P30: startup failures belong to the accepted creation, not history.
+for (const failure of ['missing-identity', 'unreadable-header'] as const) {
+  test(`Pi ${failure} fails initialization without prompt, late retry or shutdown changes`, { tag: '@time-contract' }, async ({ page }, info) => {
+    const sessionId = 'pi-exact-but-too-late'
+    const missing = failure === 'missing-identity'
+    const zone = await prepare({ native_session: nativeId(sessionId) }, true)
+    const file = path.join(root!, 'unavailable-native.jsonl')
+    const control = 'pi-control'
+    const { id, dialog } = await beginZoneChat(page, server!, zone.id)
+    const report = launchReporter(server!, 'pi', zone.path, sessionId, missing ? undefined : file)
+    await post('/api/sessions/events', { sessionId: control, kind: 'register', data: { cwd: zone.path, agentType: 'pi' } })
+    await post('/api/sessions/events', { sessionId: control, kind: 'state', data: { value: 'working' } })
+    await post('/api/shutdown/monitor', { sessionId: control, selected: true })
+    const before = await currentSnapshot(server!)
+    expect(before.shutdown).toMatchObject({ phase: 'none', monitoredSessionIds: [control] })
+    const saved = await history()
+    expect(saved.sessions).toMatchObject([{ sessionId: control }])
 
-// P19/P22/P30: collect warnings from the delivered executable, not a mocked
-// logging function. Restored storage/identity without a new event stays absent.
-for (const failure of ['missing-identity', 'unreadable-header', 'save-failed'] as const) {
-  test(`Pi ${failure} is correlated in server diagnostics only and ends without retry`, { tag: '@time-contract' }, async ({ page }, testInfo) => {
-    const { zone } = await prepare({})
-    const native = path.join(root!, 'unavailable-native.jsonl')
-    const historyFile = path.join(path.dirname(server!.storageFile), 'session-history.json')
-    let restoreHistory: (() => void) | undefined
-    let reads = 0
-    try {
-      if (failure === 'save-failed') {
-        // Start with readable empty history, then deny actual destination publication.
-        fs.writeFileSync(historyFile, '[]')
-        const protectedPath = process.platform === 'win32' ? historyFile : path.dirname(historyFile)
-        const originalMode = fs.statSync(protectedPath).mode
-        fs.chmodSync(protectedPath, process.platform === 'win32' ? 0o444 : 0o555)
-        restoreHistory = () => fs.chmodSync(protectedPath, originalMode)
-        server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'id', value: 'pi-browser-save-failure' }, native_cwd: 'C:/failure' })
-      } else if (failure === 'unreadable-header') {
-        server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'path', value: native } })
-      }
-      const dialog = await createInPage(page, zone)
-      const agent = (server!.herdrCalls().find(c => c.kind === 'agent_start')!.name) as string
-      await expect.poll(() => server!.diagnostics(), { timeout: 35_000 }).toContain(failure === 'save-failed' ? 'save-failed' : 'identity-timeout')
-      const logs = server!.diagnostics()
-      expect(logs).toContain(`agent=${agent}`)
-      expect(logs).toMatch(/creation=bc-[0-9a-f]+/)
-      if (failure === 'unreadable-header') expect(logs).toContain('native header unavailable')
-      await expect(dialog.getByTestId('chat-create-success')).toBeVisible()
-      await expect(dialog).not.toContainText(/历史|收录|超时|保存失败/)
-      await testInfo.attach('delivered-server-diagnostics', { body: logs, contentType: 'text/plain' })
-      console.log(`PI-DIAGNOSTICS ${failure}: ${logs.split('\n').filter(l => l.includes('zone-history')).join('\n')}`)
-      reads = server!.herdrCalls().filter(c => c.kind === 'agent_get').length
-      if (failure === 'save-failed') {
-        const response = await fetch(`${server!.baseURL}/api/sessions/history`)
-        expect(response.status).toBe(200)
-        expect((await response.json()).sessions).toEqual([])
-        expect(fs.readFileSync(historyFile, 'utf8')).toBe('[]')
-      }
-    } finally { restoreHistory?.() }
-    fs.writeFileSync(native, '{"type":"session","id":"pi-after-failure","cwd":"C:/too-late"}\n')
-    server!.setHerdrBehavior({ native_session: { source: 'herdr:pi', agent: 'pi', kind: 'path', value: native } })
+    if (missing) {
+      // An out-of-order ready report cannot authorize input without identity.
+      await report('launch_ready')
+      await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
+    } else {
+      server!.setHerdrBehavior({ native_session: nativePath(file) })
+      await report('launch_identity', 409)
+    }
+    const failed = dialog.getByTestId('chat-create-failure')
+    await expect(failed).toContainText('创建失败（启动 agent）', { timeout: missing ? 35_000 : 10_000 })
+    await expect(failed).toContainText('初始指示尚未提交；不会自动重发')
+    await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
+    await expect(dialog).not.toContainText(/历史|收录|保存失败/)
+    const terminal = await readCreation(server!, id)
+    expect(terminal).toMatchObject({ id, stage: 'failed', inputSubmitted: false, failure: {
+      stage: 'start',
+      code: missing ? 'herdr-timeout' : 'herdr-unexpected-response',
+      message: expect.stringContaining(missing ? 'framework ready' : 'native header unavailable'),
+    } })
+
+    const reads = server!.herdrCalls().filter(c => c.kind === 'agent_get').length
+    if (!missing) fs.writeFileSync(file, JSON.stringify({ type: 'session', id: sessionId, cwd: zone.path }) + '\n')
+    await report('launch_identity', 409)
+    await report('launch_ready', 409)
     await page.waitForTimeout(600)
-    expect((await history()).sessions).toEqual([])
     expect(server!.herdrCalls().filter(c => c.kind === 'agent_get')).toHaveLength(reads)
-    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt' || c.kind === 'tab_close')).toHaveLength(0)
+    expect(await readCreation(server!, id)).toEqual(terminal)
+    expect(await history()).toEqual(saved)
+    const after = await currentSnapshot(server!)
+    expect(after.sessions).toEqual(before.sessions)
+    expect(after.shutdown).toMatchObject({ phase: 'none', monitoredSessionIds: [control] })
+    await info.attach('terminal-creation', { body: JSON.stringify(terminal), contentType: 'application/json' })
+    await info.attach('delivered-server-diagnostics', { body: server!.diagnostics(), contentType: 'text/plain' })
   })
 }
+
+// The disk fault must reach the real writer but never affect the accepted prompt.
+test('Pi save-failed is correlated in server diagnostics only and ends without retry', { tag: '@time-contract' }, async ({ page }, info) => {
+  const sessionId = 'pi-browser-save-failure'
+  const zone = await prepare({ native_session: nativeId(sessionId) })
+  const { id, dialog } = await beginZoneChat(page, server!, zone.id)
+  const report = launchReporter(server!, 'pi', zone.path, sessionId)
+  await report('launch_identity')
+  const before = await currentSnapshot(server!)
+  const historyFile = path.join(path.dirname(server!.storageFile), 'session-history.json')
+  // Keep empty history readable while denying publication at its destination.
+  fs.writeFileSync(historyFile, '[]')
+  const protectedPath = process.platform === 'win32' ? historyFile : path.dirname(historyFile)
+  const originalMode = fs.statSync(protectedPath).mode
+  fs.chmodSync(protectedPath, process.platform === 'win32' ? 0o444 : 0o555)
+  const warning = `zone-history creation=${id} kind=pi session=${sessionId} save-failed:`
+  try {
+    expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(0)
+    await report('launch_ready')
+    await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
+    await expect(dialog).not.toContainText(/历史|收录|超时|保存失败|save-failed/)
+    await expect.poll(() => server!.diagnostics()).toContain(warning)
+    const response = await fetch(`${server!.baseURL}/api/sessions/history`)
+    expect(response.status).toBe(200)
+    expect((await response.json()).sessions).toEqual([])
+    expect(fs.readFileSync(historyFile, 'utf8')).toBe('[]')
+  } finally { fs.chmodSync(protectedPath, originalMode) }
+  const reads = server!.herdrCalls().filter(c => c.kind === 'agent_get').length
+  await page.waitForTimeout(600)
+  expect((await history()).sessions).toEqual([])
+  expect(fs.readFileSync(historyFile, 'utf8')).toBe('[]')
+  expect(server!.herdrCalls().filter(c => c.kind === 'agent_get')).toHaveLength(reads)
+  expect(server!.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(1)
+  const after = await currentSnapshot(server!)
+  expect(after.sessions).toEqual(before.sessions)
+  expect(after.shutdown).toMatchObject({ phase: 'none', monitoredSessionIds: [] })
+  expect(server!.diagnostics().split(warning)).toHaveLength(2)
+  await info.attach('delivered-server-diagnostics', { body: server!.diagnostics(), contentType: 'text/plain' })
+})

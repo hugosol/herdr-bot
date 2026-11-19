@@ -39,6 +39,10 @@
 
 先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
+### Task 发起与初始输入（S1）
+
+用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
+
 ### 运行前提
 
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
@@ -116,7 +120,7 @@
 - 构建失败不启动测试；二进制全部成功才执行 doctest。首个失败或交互终端正常 Ctrl+C 后停止派发，等待在途目标结束，整体返回非零。
 - 各目标日志与 `summary.json` 保留在入口打印的目录中。区分失败、取消、未派发和 doctest 未执行；部分完成不是完整通过。强杀进程或关闭终端不保证清理。
 
-Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。Pi 延迟原生 header 的临界预算回归使用真实时钟，在创建开始后第 29 秒发布 header，保留生产 30 秒身份预算；不在真实 `agent_get` 进程在途时暂停 Tokio，避免虚拟时钟自动推进造成夹具自身超时。
+Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。OMP／Pi 的临界场景在公开状态进入初始化后使用真实时钟，第 29 秒发布原生 header 和匹配的启动事件，核对事件前没有初始输入。缺失、无效或过期的启动证据阻止输入；写入历史失败仍不会撤销已提交的输入。
 
 ### 普通节点成果批准（S1）
 
@@ -405,7 +409,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - controller 路径迁移除更新 import 外，也同步更新浏览器证据中的源码哈希清单（例如 `scriptDefinitions.spec.ts`）；前端请求入口位于 `src/controllers/*Controller.ts`，后端入口位于 `backend/src/controllers/*_controller.rs`，业务断言仍经原 HTTP／SSE seam 执行。源码哈希采集失败也必须执行后端清理；证据写入或附件失败也必须恢复隔离前的环境变量，原始采集错误不得吞掉。`crossSourceConcurrency.spec.ts` 的创建等待失败须保留最后创建状态、外部调用记录与后端诊断；定向重跑通过不等于已定位首次超时原因。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。
 - `@time-contract` 标记真实预算、确认超时、迟到结果及无自主刷新／重试／重放的观察窗口，不按文件名或断言 timeout 分类。新增真实时间承诺时同步审查标签。
-- OMP 历史身份超时验收检查创建关联、agent 类型及 `identity-timeout` 类别，并验证创建成功、页面不泄露内部诊断、身份恢复后不重读／补写历史及初始化仅提交一次；诊断原因的自然语言措辞不作为契约。
+- OMP／Pi 历史验收核对缺失启动证据的超时和无效官方身份的明确失败；页面不宣称输入已提交，迟到上报不触发读取、提交或补写历史。已提交后的历史保存失败仍只记录关联的服务端诊断，不改变创建结果。
 - Chat 的纯临时输入场景（空固定 prompt、无 Skill、无词典引用）应独立核对完整投递文本与输入逐字相等，不假定末尾空段或无条件追加 agent 指引。
 
 ## 修改测试或夹具
