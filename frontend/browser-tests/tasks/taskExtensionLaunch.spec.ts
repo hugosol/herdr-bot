@@ -180,7 +180,7 @@ for (const entry of ['omp-model-cost']) {
         await expect(page.getByTestId('chat-request-error')).toContainText(file)
         expect(server!.herdrCalls()).toEqual([])
         expect(server!.herdrTabs()).toEqual([])
-        expect(fs.readdirSync(path.join(root, 'herdr')).sort()).toEqual(['behavior.json', 'herdr-fixture.exe', 'workspaces.json'])
+        expect(fs.readdirSync(path.join(root, 'herdr')).sort()).toEqual(['behavior.json', 'herdr-fixture.exe', 'launch_endpoint.txt', 'workspaces.json'])
         expect(fs.existsSync(path.join(root, 'extension-executed'))).toBe(false)
         await expect(page.getByTestId('chat-result')).toHaveCount(0)
       } finally { await unlock?.() }
@@ -221,7 +221,7 @@ for (const fault of ['metadata-missing', 'metadata-unreadable', 'metadata-syntax
       await expect(page.getByTestId('chat-request-error')).toContainText('未创建 Herdr Tab、未启动 agent、未提交输入')
       expect(server!.herdrCalls()).toEqual([])
       expect(server!.herdrTabs()).toEqual([])
-      expect(fs.readdirSync(path.join(root, 'herdr')).sort()).toEqual(['behavior.json', 'herdr-fixture.exe', 'workspaces.json'])
+      expect(fs.readdirSync(path.join(root, 'herdr')).sort()).toEqual(['behavior.json', 'herdr-fixture.exe', 'launch_endpoint.txt', 'workspaces.json'])
       await expect(page.getByTestId('chat-result')).toHaveCount(0)
     } finally { await unlock?.() }
   })

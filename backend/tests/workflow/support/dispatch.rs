@@ -74,6 +74,7 @@ impl Scenario {
         common::install_bot_scripts(&config.scheduler.bot_directory);
         let app = herdr_bot::app(&config);
         let server = TestServer::start_app(app.clone()).await;
+        fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();
         for (id, path) in [("manager", data.path()), ("node", node_zone.as_path())] {

@@ -458,6 +458,25 @@ pub async fn post_operation(
     )
 }
 
+/// Release a fixture launch using its actual terminal correlation and an
+/// independently specified native session. This does not register the session.
+pub async fn report_ready(server: &TestServer, herdr: &HerdrFixture, agent: &str, cwd: &str, id: &str, file: Option<&Path>) {
+    for kind in ["launch_identity", "launch_ready"] {
+        let response = report_launch(server, herdr, agent, cwd, id, file, kind).await;
+        assert_eq!(response.status, 200, "{kind}: {}", response.body);
+    }
+}
+
+pub async fn report_launch(server: &TestServer, herdr: &HerdrFixture, agent: &str, cwd: &str, id: &str, file: Option<&Path>, kind: &str) -> HttpResponse {
+    let records = std::fs::read_to_string(herdr.path().join("tab-launches.jsonl")).unwrap();
+    let launch: serde_json::Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
+    let body = serde_json::json!({"kind":kind,"sessionId":id,"data":{
+        "launchId":launch["launch"],"targetId":launch["target"],"agentType":agent,
+        "cwd":cwd,"pid":43127,"sessionFile":file,
+    }}).to_string();
+    post_json_over_tcp(server.addr(), "/api/sessions/events", &body).await
+}
+
 /// 经 HTTP interface 请求“启动”操作。
 pub async fn post_start(app: axum::Router) -> (axum::http::StatusCode, serde_json::Value) {
     post_operation(app, "start").await

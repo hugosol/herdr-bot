@@ -23,12 +23,13 @@ async function post(endpoint: string, body: unknown) {
   expect(response.ok, await response.clone().text()).toBe(true)
   return response.json()
 }
-async function prepare(behavior: Record<string, unknown>) {
+async function preparePendingQuery() {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-zone-history-'))
-  server = await startServer({ herdr: { behavior } })
+  const gate = path.join(root, 'never-release')
+  server = await startServer({ herdr: { behavior: { native_session_gate: { wait_for_file: gate, timeout_ms: 60_000 } } } })
   const zones = await post('/api/zones', { id: 'test/zone', path: root })
-  const saved = await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '' })
-  return { zone: zones.zones[0].id as string, task: saved.tasks.find((t: {name:string}) => t.name === 'Pi history browser').id as string }
+  await post('/api/tasks', { name: 'Pi history browser', chatName: 'Pi Browser Chat', agent: 'pi', model: 'default', thinking: 'default', skill: null, prompt: '' })
+  return zones.zones[0].id as string
 }
 async function createInPage(page: Page, zone: string) {
   await page.goto(server!.baseURL)
@@ -38,7 +39,6 @@ async function createInPage(page: Page, zone: string) {
   await dialog.locator('#chat-workspace-target').selectOption('default')
   await dialog.getByTestId('chat-input').fill('/settings')
   await dialog.getByTestId('chat-create-submit').click()
-  await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
   return dialog
 }
 
@@ -69,11 +69,14 @@ test('isolated browser server removes its temporary data when initialization rej
 // A pending external query owns a Windows executable handle. Stopping only
 // the backend parent leaves that child alive and makes cleanup fail with EPERM.
 test('isolated browser server cleanup also stops its pending Herdr query child', async ({ page }) => {
-  const { zone } = await prepare({})
-  server!.setHerdrBehavior({ native_session_gate: { wait_for_file: path.join(root!, 'never-release'), timeout_ms: 60_000 } })
-  await createInPage(page, zone)
-  await expect.poll(() => server!.herdrCalls().some(c => c.kind === 'agent_get')).toBe(true)
+  const zone = await preparePendingQuery()
+  const dialog = await createInPage(page, zone)
   const owned = server!
+  // The native report makes the backend verify the launch with agent get.
+  // Leave that child blocked: creation cannot succeed until verification.
+  await expect.poll(() => owned.herdrCalls().some(c => c.kind === 'agent_get' && typeof c.pid === 'number')).toBe(true)
+  expect(owned.herdrCalls().filter(c => c.kind === 'agent_prompt')).toHaveLength(0)
+  await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
   // Keep afterEach ownership if cleanup fails; never kill a recycled record PID.
   await owned.cleanup()
   server = null
