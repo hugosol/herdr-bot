@@ -81,7 +81,9 @@ async fn published_approval_responsibilities_round_trip_every_shipped_node() {
         ("create-bot-task-workflow--bc-61ce48b80a4c.json", vec![("w1",false),("w2",true),("wrap_bot",true),("optimize_bot",false)]),
         ("create-bot-v2.json", vec![("align_requirements",false),("design_and_create",false)]),
         ("create-task-v2.json", vec![("create_task",false),("create_bot_v2",true)]),
+        ("create-task-script-type.json", vec![("create_script",false),("create_bot_v2",true)]),
         ("enhance-existing-bot--bc-301b25d9f8d6.json", vec![("w1",true),("w2",false),("w3",false),("w4",false),("w5",true)]),
+        ("github-repository-exploration.json", vec![("W1",true),("W2",true),("W3",true)]),
         ("plan_workflow.json", vec![("outline",false),("generate_map",true),("optimize_map",false)]),
         ("tibo-monitor-then-c-drive-inspection.json", vec![("tibo-monitor",true),("c-drive-inspection",true)]),
     ];
@@ -99,6 +101,9 @@ async fn published_approval_responsibilities_round_trip_every_shipped_node() {
             assert!(node.get("report_policy").is_none(), "{file}/{id}: retired report switch");
             assert_eq!(node["auto_approved"], automatic, "{file}/{id}: shipped responsibility");
             assert_eq!(read["nodes"][id]["auto_approved"], automatic, "{file}/{id}: public readback");
+            let end_node = file == "github-repository-exploration.json" && id == "W3";
+            assert_eq!(node["end_node"].as_bool().unwrap_or(false), end_node, "{file}/{id}: shipped end-node responsibility");
+            assert_eq!(read["nodes"][id]["end_node"], end_node, "{file}/{id}: public end-node readback");
             assert_eq!(read["nodes"][id]["input_rule"], node["input_rule"]);
             assert_eq!(read["nodes"][id]["output_rule"], node["output_rule"]);
             println!("P34 {file}/{id} auto_approved={automatic} public={}", read["nodes"][id]);
@@ -152,6 +157,27 @@ async fn migrated_workflow(fault: Option<&str>) {
         // Normalize checkout line endings only, never parsed field/text bytes.
         let original = original.as_str().unwrap();
         let actual = fs::read_to_string(root().join(path)).unwrap().replace("\r\n", "\n");
+        if path == "meta-data/task-options.toml" {
+            // The original migration archive predates these independently shipped
+            // model options. Keep the archive intact and account for only that delta.
+            let expected = original.replacen(
+                "[[models]]\nid = 'gpt-6.1-sol'",
+                concat!(
+                    "[[models]]\nid = 'gpt-6.2-sol'\nlabel = 'GPT-6.2-Sol'\n",
+                    "provider_model = 'openai-codex/gpt-6.2-sol'\n",
+                    "thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], ",
+                    "pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }\n",
+                    "[[models]]\nid = 'gpt-6.2-astra'\nlabel = 'GPT-6.2-Astra'\n",
+                    "provider_model = 'openai-codex/gpt-6.2-astra'\n",
+                    "thinking = { omp = ['low', 'medium', 'high', 'xhigh', 'max'], ",
+                    "pi = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }\n",
+                    "[[models]]\nid = 'gpt-6.1-sol'",
+                ),
+                1,
+            );
+            assert_eq!(actual, expected, "Unrelated definition changed: {path}");
+            continue;
+        }
         if !path.ends_with(".json") { assert_eq!(actual, original, "Unrelated definition changed: {path}"); continue; }
         let mut expected: Value = serde_json::from_str(original).unwrap();
         let mut current: Value = serde_json::from_str(&actual).unwrap();

@@ -18,7 +18,7 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 
 ## 发布成果批准职责清单（P34）
 
-`auto_approved` 只决定本次普通节点成果由谁批准，不控制报告发送，也不代替业务讨论、保存权限、报告、产物或管理者显式 complete。下表逐项依据实际成果职责决定，未从旧报告开关或 `write_materials` 推导。脚本只能自动；结束节点不适用，本批七张发布 Map 均无结束节点。人工表示须在节点 Chat 原生确认当前成果；S1 HTTP 人工提交不证明该原生确认，双宿主与配置页面消费分别由 14、15 验收。
+`auto_approved` 只决定本次普通节点成果由谁批准，不控制报告发送，也不代替业务讨论、保存权限、报告、产物或管理者显式 complete。下表逐项依据实际成果职责决定，未从旧报告开关或 `write_materials` 推导。脚本只能自动；结束节点不适用，即使配置保留 `auto_approved: true` 也不产生批准事实。人工表示须在节点 Chat 原生确认当前成果；S1 HTTP 人工提交不证明该原生确认，双宿主与配置页面消费分别由 14、15 验收。
 
 | 发布 Map | node | 本节点成果与用户把关职责 | auto_approved 与理由 |
 | --- | --- | --- | --- |
@@ -38,6 +38,11 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 | 创建bot-V2 | design_and_create | 分层完整候选、保存及读回 | false；用户确认最终文案、共享影响与创建成果 |
 | 创建task-V2 | create_task | 新 Task 及独立 V2 委托 | false；用户确认 Task 全文、配置与本阶段成果 |
 | 创建task-V2 | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
+| 创建task-script type | create_script | 确认、验证并正式保存 Script 与独立 V2 委托 | false；用户把关脚本成果与当次授权 |
+| 创建task-script type | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
+| GitHub 仓库拉取与探索 | W1 | 为已授权目标执行固定浅克隆并记录实际仓库 | true；固定脚本，无新增成果决策 |
+| GitHub 仓库拉取与探索 | W2 | 登记实际仓库的 zone | true；固定脚本，交付明确 zone 绑定 |
+| GitHub 仓库拉取与探索 | W3 | 把只读探索 Chat 交给用户继续 | 不适用；结束节点，定义保留 true |
 | 独立修订既有 Bot 三指南 | w1 | 只读核实与共同基线 | true；无本节点新增业务定稿 |
 | 独立修订既有 Bot 三指南 | w2 | when 修订定稿 | false；用户确认本字段完整修订成果 |
 | 独立修订既有 Bot 三指南 | w3 | plan_guide 修订定稿 | false；用户确认工作安排变化 |
@@ -51,7 +56,7 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 
 V1 八节点与 V2 两节点保留独立入口、真实定义、命名输入和 Run，互不调用替代；V2 的 `authorization`／`confirmation` 是其专用业务协议，不是通用 `approved`，本次不改写该协议。V1 request 仅含目标、需求、约束与可选命名；保存仅绑定 baseline 与三份 text。不会为历史 Run 增加适配、不改历史或旧产物、不自动部署或重跑。
 
-S1 证据选择器：`published_approval_responsibilities_round_trip_every_shipped_node` 逐项完整读回七张定义；`create_migration_runs_shipped_map_and_preserves_revision_and_history` 运行 V1 真实 Bun 创建／保存闭环并组合独立 V2 普通节点的批准、报告、显式完成及真实配置读回。受控宿主只记录材料消费，不证明模型遵从指引或原生批准。
+S1 证据选择器：`published_approval_responsibilities_round_trip_every_shipped_node` 逐项完整读回当前九张定义；`create_migration_runs_shipped_map_and_preserves_revision_and_history` 运行 V1 真实 Bun 创建／保存闭环并组合独立 V2 普通节点的批准、报告、显式完成及真实配置读回。受控宿主只记录材料消费，不证明模型遵从指引或原生批准。
 
 ## 执行与授权
 
