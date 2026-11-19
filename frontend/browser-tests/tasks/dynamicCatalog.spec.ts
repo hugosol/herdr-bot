@@ -68,7 +68,12 @@ thinking = { omp = ['low', 'high'], pi = ['off'] }
   expect(Object.keys(persisted).sort()).toEqual(['agent', 'chatName', 'id', 'model', 'name', 'prompt', 'skill', 'taskType', 'thinking'])
 
   // Saving rechecks current capabilities independently from the options previously displayed.
-  fs.writeFileSync(current.metadataFile, original.replace("omp = ['low', 'medium', 'high', 'xhigh', 'max']", "omp = ['low']"))
+  const restricted = original.replace(
+    /(^id = 'gpt-6\.1-sol'\r?\n(?:(?!\[\[)[^\r\n]*\r?\n)*?^thinking = \{ )omp = \[[^\]\r\n]*\]/m,
+    "$1omp = ['low']",
+  )
+  expect(restricted).not.toBe(original)
+  fs.writeFileSync(current.metadataFile, restricted)
   const rejected = await post('/api/tasks', literal)
   expect(rejected.status).toBe(400)
   const accepted = await post('/api/tasks', { ...literal, thinking: 'low', skill: null, prompt: '' })
