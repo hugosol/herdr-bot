@@ -34,7 +34,7 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 | 创建task（V1 外层） | w2 | 已确认 Task.prompt 保义优化及 v1 request | true；保持其他配置，交付执行必需数据 |
 | 创建task（V1 外层） | wrap_bot | 完整子 Run 成果向父层交接 | true；子节点各自把关，子 finish 后独立批准整体交接 |
 | 创建task（V1 外层） | optimize_bot | Task.prompt 与 Bot 三指南联合最终候选 | false；共享影响与完整最终成果需用户把关 |
-| 创建bot-V2 | align_requirements | 统一意图与双材料 | false；用户确认本阶段需求成果，不提前批准 W2 |
+| 创建bot-V2 | align_requirements | 目标 Bot 未来使用的已确认业务信息清单与双材料；按业务主题收齐有效结论，W2 再分配三指南；本次创建约束独立记录 | false；用户确认本阶段需求成果，不提前批准 W2 |
 | 创建bot-V2 | design_and_create | 分层完整候选、保存及读回 | false；用户确认最终文案、共享影响与创建成果 |
 | 创建task-V2 | create_task | 新 Task 及独立 V2 委托 | false；用户确认 Task 全文、配置与本阶段成果 |
 | 创建task-V2 | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
