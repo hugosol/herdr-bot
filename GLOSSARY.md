@@ -233,7 +233,7 @@ _Avoid_: 用户输入, 文件正文, 全局文件实体, Map 文件输入声明
 _Avoid_: 子 Map 定义, 父 Map 内节点副本, 单独 Task 类型
 
 **Run 名称**:
-用户为某次 Run 维护的人类可读标识；它不是 Run 的唯一身份，也不是 Map、Workspace 或 Chat 的名称，不参与运行逻辑。
+某次 Run 的人类可读标识，默认依据发起时的 Map 名称与祖先流程路径生成，可由用户另行维护；它不是 Run 的唯一身份，不参与运行逻辑，也不等同于关联 Chat 或 Workspace 的名称。
 _Avoid_: Run ID, Map 标题, Workspace 名称, Chat 名称
 
 **成果批准模式（auto_approved）**:

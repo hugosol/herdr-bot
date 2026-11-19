@@ -35,6 +35,8 @@ pub(crate) struct RunPreflightRequest {
 pub(crate) struct RunPreflight {
     pub workspace_name: String,
     #[serde(skip)]
+    pub naming: super::RunNaming,
+    #[serde(skip)]
     pub node_ids: Vec<String>,
     #[serde(skip)]
     pub zone_bindings: BTreeMap<String, String>,
@@ -269,5 +271,9 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
             zone_bindings.insert(id.to_owned(), path);
         }
     }
-    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect(), zone_bindings })
+    let naming = super::RunNaming {
+        map_path: vec![map.title],
+        node_titles: map.nodes.iter().map(|(id, node)| (id.clone(), node.0.title.clone())).collect(),
+    };
+    Ok(RunPreflight { workspace_name, naming, node_ids: map.nodes.into_keys().collect(), zone_bindings })
 }

@@ -27,6 +27,97 @@ async fn role_request(s: &Scenario, route: &str, body: Value, status: u16) -> Va
     serde_json::from_str(&response.body).unwrap()
 }
 
+async fn edit_titles_and_rename_run(s: &Scenario, map: &str, node: &str, run_id: &str) {
+    let endpoint = format!("/api/scheduler/maps/{map}");
+    let title_route = format!("{endpoint}/title");
+    let draft = get_over_tcp(s.server.addr(), &title_route).await;
+    assert_eq!(draft.status, 200, "{}", draft.body);
+    let draft: Value = serde_json::from_str(&draft.body).unwrap();
+    let saved = role_request(s, &title_route, json!({
+        "title":"Edited Map", "revision":draft["revision"]
+    }), 200).await;
+    assert_eq!(saved["title"], "Edited Map");
+
+    let draft = role_request(s, &format!("{endpoint}/nodes/edit"), json!({"id":node}), 200).await;
+    let mut content = draft["content"].clone();
+    content["title"] = json!("Edited Node");
+    let saved = role_request(s, &format!("{endpoint}/nodes/save"), json!({
+        "id":node, "content":content.to_string(), "revision":draft["revision"], "create":false
+    }), 200).await;
+    assert_eq!(saved["nodes"][node]["title"], "Edited Node");
+
+    let renamed = common::request_json_over_tcp(
+        s.server.addr(), "PATCH", &format!("/api/workflow/runs/{run_id}"),
+        Some(r#"{"name":"Renamed Run"}"#),
+    ).await;
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    assert_eq!(serde_json::from_str::<Value>(&renamed.body).unwrap()["run"]["name"], "Renamed Run");
+}
+
+async fn dispatch_for_naming(s: &Scenario, manager_session: &str, node: &str, chat_session: &str) -> Value {
+    native(s, "omp", chat_session, "");
+    let result = s.dispatch(manager_session, &[node]).await;
+    assert_eq!(result["results"][0]["status"], "running", "{result}");
+    result["snapshot"]["nodes"][node]["execution"].clone()
+}
+
+// A launch that derives names from live definitions or the editable Run name
+// would leak those edits into Chats created after the owning Run started.
+#[tokio::test]
+async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
+    let s = Scenario::new().await;
+    for (bot, map) in [("build", "build.json"), ("release", "release.json")] {
+        fs::write(s.config.scheduler.bot_directory.join(format!("{bot}.json")), json!({
+            "id":bot, "name":bot, "when":"", "plan_guide":"", "node_guide":"", "map_file":map
+        }).to_string()).unwrap();
+    }
+    let maps = &s.config.scheduler.map_directory;
+    fs::write(maps.join("work.json"), json!({"title":"Design", "description":"", "nodes":{
+        "inspect":{"title":"Inspect inputs", "bot_id":"worker", "input":"Inspect", "zone":"manager", "blocked_by":[]},
+        "call":{"title":"Call build", "bot_id":"build", "manager_task_id":s.manager_task, "input":"Build", "zone":"manager", "blocked_by":[]}
+    }}).to_string()).unwrap();
+    fs::write(maps.join("build.json"), json!({"title":"Build", "description":"", "nodes":{
+        "compile":{"title":"Compile source", "bot_id":"worker", "input":"Compile", "zone":"manager", "blocked_by":[]},
+        "call":{"title":"Call release", "bot_id":"release", "manager_task_id":s.manager_task, "input":"Release", "zone":"manager", "blocked_by":[]}
+    }}).to_string()).unwrap();
+    fs::write(maps.join("release.json"), json!({"title":"Release", "description":"", "nodes":{
+        "handoff":{"title":"Review release", "bot_id":"worker", "input":"Review", "zone":"manager", "blocked_by":[], "end_node":true}
+    }}).to_string()).unwrap();
+
+    let root = s.start("naming-root").await;
+    assert_eq!(root["run"]["name"], "[M]Design");
+    edit_titles_and_rename_run(&s, "work.json", "inspect", root["id"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-root", "inspect", "naming-inspect").await;
+    let child = dispatch_for_naming(&s, "naming-root", "call", "naming-child").await;
+    edit_titles_and_rename_run(&s, "build.json", "compile", child["childRunId"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-child", "compile", "naming-compile").await;
+    let grand = dispatch_for_naming(&s, "naming-child", "call", "naming-grand").await;
+    edit_titles_and_rename_run(&s, "release.json", "handoff", grand["childRunId"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-grand", "handoff", "naming-handoff").await;
+
+    let calls = s.herdr.calls();
+    let tab_names: Vec<_> = calls.iter().filter(|call| call["kind"] == "tab_create")
+        .map(|call| call["label"].as_str().unwrap()).collect();
+    let history = get_over_tcp(s.server.addr(), "/api/sessions/history").await;
+    assert_eq!(history.status, 200, "{}", history.body);
+    let history: Value = serde_json::from_str(&history.body).unwrap();
+    let sessions = history["sessions"].as_array().unwrap();
+    let expected = [
+        ("naming-root", "[M]Design"),
+        ("naming-inspect", "Inspect inputs-Design"),
+        ("naming-child", "[S]Build-Design"),
+        ("naming-compile", "Compile source-Design/Build"),
+        ("naming-grand", "[S]Release-Design/Build"),
+        ("naming-handoff", "Review release-Design/Build/Release"),
+    ];
+    assert_eq!(tab_names, expected.map(|(_, name)| name));
+    for (id, name) in expected {
+        let session = sessions.iter().find(|row| row["sessionId"] == id)
+            .unwrap_or_else(|| panic!("missing {id} from Chat history: {history}"));
+        assert_eq!(session["sessionName"], name, "Chat history for {id}");
+    }
+}
+
 #[tokio::test]
 async fn dynamic_zone_selects_only_nested_manager_and_preserves_internal_fixed_zones() {
     let s = Scenario::new().await;

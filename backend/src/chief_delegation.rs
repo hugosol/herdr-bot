@@ -258,13 +258,6 @@ async fn resolve(
             path,
         });
     }
-    let name = chats::render_chat_name(&task.chat_name, &cwd, &task, chat_id);
-    if name.trim().is_empty() || name.contains(['\n', '\r']) {
-        return Err(rejected(
-            "chat-name-required",
-            "Task 的命名规则必须生成有效单行名称。",
-        ));
-    }
     let run = if let Some(file) = &map_file {
         let input = crate::runs::preflight::RunPreflightRequest {
             manager_task_id: task.id.clone(), zone: request.zone_id.clone(), user_input: request.input.clone(),
@@ -277,6 +270,11 @@ async fn resolve(
         }
         Some(crate::runs::root_run(file.clone(), input, checked, &task, id.to_owned()))
     } else { None };
+    let name = run.as_ref().and_then(|run| run.name.clone())
+        .unwrap_or_else(|| chats::render_chat_name(&task.chat_name, &cwd, &task, chat_id));
+    if name.trim().is_empty() || name.contains(['\n', '\r']) {
+        return Err(rejected("chat-name-required", "命名规则必须生成有效单行名称。"));
+    }
     let mut material_contents = Vec::new();
     let map = if let Some(file) = &map_file {
         let closure = crate::scheduler::delegation_map_definition(state, file, &request.zone_id).map_err(Error::Definition)?;

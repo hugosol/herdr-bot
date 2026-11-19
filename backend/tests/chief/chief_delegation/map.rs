@@ -24,6 +24,13 @@ async fn map_sender_is_saved_before_input_and_internal_node_keeps_workflow_gates
     let submitted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl")).len();
     fs::write(&release, "release owned Map prompt").unwrap();
     let started = body(started.await.unwrap(), 201);
+    assert_eq!(preview["facts"]["name"], "[M]Review flow");
+    assert_eq!(started["run"]["name"], "[M]Review flow");
+    let calls = f.herdr.calls();
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "tab_create").last().unwrap()["label"], "[M]Review flow");
+    let history = body(get_over_tcp(addr, "/api/sessions/history").await, 200);
+    let manager_history = history["sessions"].as_array().unwrap().iter().find(|row| row["sessionId"] == "flow-manager").unwrap();
+    assert_eq!(manager_history["sessionName"], "[M]Review flow");
     let observed = body(observed.expect("Map prompt gate must be reached"), 200);
     assert_eq!(observed["delegations"][0]["runId"], started["id"]);
     assert_eq!(observed["delegations"][0]["sessionId"], "flow-manager");

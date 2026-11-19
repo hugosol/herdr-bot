@@ -12,7 +12,7 @@ pub struct NodeIdentity { id: String }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WorkflowMap {
-    pub(super) title: String,
+    pub(crate) title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) group: Option<String>,
     pub(super) description: String,
@@ -74,7 +74,7 @@ pub(crate) fn default_auto_approved() -> bool { true }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapNode {
-    pub(super) title: String,
+    pub(crate) title: String,
     pub(crate) bot_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) manager_task_id: Option<String>,

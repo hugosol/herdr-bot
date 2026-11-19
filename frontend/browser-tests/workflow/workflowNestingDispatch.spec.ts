@@ -70,7 +70,12 @@ test('nested dispatch launches node-local manager and exposes success and requir
   await expect(facts).not.toContainText('动态 zone 尚未指定')
   await page.reload()
   await page.getByTestId('tab-workflow').click()
-  await page.getByRole('region', { name: 'Run 列表', exact: true }).getByRole('row').filter({ hasText: rootId }).getByRole('link').click()
+  const runList = page.getByRole('region', { name: 'Run 列表', exact: true })
+  await expect(runList.getByRole('link').filter({ hasText: '[M]Outer dispatch map' })).toBeVisible()
+  await expect(runList.getByRole('link').filter({ hasText: '[S]Inner dispatch map-Outer dispatch map' })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('workflow-titles.png') })
+  await runList.getByRole('row').filter({ hasText: rootId }).getByRole('link').click()
+  await expect(page.getByRole('heading', { name: '[M]Outer dispatch map', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '当前执行事实', exact: true })).toContainText('child-zone')
   await expect(page.getByRole('region', { name: '当前执行事实', exact: true })).toContainText(childZone)
   inner.input_files[0].required = true

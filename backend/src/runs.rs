@@ -109,6 +109,8 @@ pub struct Finished {
 pub struct Run {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming: Option<RunNaming>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub map: String,
     pub created_at: u64,
@@ -131,6 +133,30 @@ pub struct Run {
     pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
+/// Display-only launch snapshot, independent of mutable Run names and definitions.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunNaming {
+    pub map_path: Vec<String>,
+    pub node_titles: BTreeMap<String, String>,
+}
+
+impl RunNaming {
+    fn manager_title(&self) -> String {
+        let (current, ancestors) = self.map_path.split_last().expect("new Run has a Map title");
+        if ancestors.is_empty() {
+            format!("[M]{current}")
+        } else {
+            format!("[S]{current}-{}", ancestors.join("/"))
+        }
+    }
+
+    fn node_title(&self, id: &str, current_title: &str) -> String {
+        let title = self.node_titles.get(id).map(String::as_str).unwrap_or(current_title);
+        format!("{title}-{}", self.map_path.join("/"))
+    }
+}
+
 // Resume needs durable identity, not the business schema of each Run.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -605,7 +631,8 @@ pub(crate) fn root_run(
 ) -> Run {
     Run {
         id: id.clone(),
-        name: None,
+        name: Some(checked.naming.manager_title()),
+        naming: Some(checked.naming),
         map,
         created_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)

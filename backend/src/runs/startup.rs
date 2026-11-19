@@ -243,8 +243,16 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     // but release both gates before any Herdr call or association wait.
     let _references = state.runs.history_references.lock().await;
     let checked = crate::runs::preflight::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
+    // Legacy trees retain their original naming behavior; do not invent ancestry.
+    let naming = parent.naming.as_ref().map(|parent_naming| {
+        let mut naming = checked.naming;
+        let mut path = parent_naming.map_path.clone();
+        path.append(&mut naming.map_path);
+        naming.map_path = path;
+        naming
+    });
     let child = Run {
-        id: crate::chats::new_creation_id(), name: None, map: map.to_owned(),
+        id: crate::chats::new_creation_id(), name: naming.as_ref().map(RunNaming::manager_title), naming, map: map.to_owned(),
         created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
         manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(),
         parent: Some(ParentExecution { run_id: parent.id.clone(), node_id: node_id.to_owned(), execution_id: execution.id.clone() }),
@@ -324,7 +332,12 @@ async fn protocol(
     effects.workspace_id = Some(workspace.id.clone());
     let zone = directory.as_deref().expect("Run launch always specifies an execution directory");
     crate::zones::browse::checked_root(zone).map_err(|e| e.message())?;
-    let name = delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id()));
+    let naming = child.as_deref().unwrap_or(run).naming.as_ref();
+    let name = match (naming, &role) {
+        (Some(naming), Role::Node { id, target, .. }) if child.is_none() => naming.node_title(id, &target.title),
+        (Some(naming), _) => naming.manager_title(),
+        (None, _) => delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id())),
+    };
     *stage = "tab";
     let tab = state.herdr.create_tab(&workspace.id, Some(zone), &name).await.map_err(|e| e.message())?;
     drop(directory);

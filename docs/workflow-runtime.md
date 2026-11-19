@@ -62,6 +62,12 @@ P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障�
 
 意外执行异常用当前阶段的 `execution-failed`，保留可得效果；不新增重试／恢复机制。业务错误在已派发 execution 的不可完成报告和失败事实中表达，不能伪装派发未发生。派发前定义错误仍按既有 HTTP 拒绝面，不把本表错误码当新增路由。报告保存失败仍 `report-save-failed`／`saved:false`，保存后通知失败仍保留报告和 outputs，不自动重投业务。`execution-failure-effects` 字面例明确 Bot 已写入而 saved 文件失败；原 baseline 重跑须仍因 revision 冲突拒绝，禁止回滚、刷新基线或按正文相同认定成功。
 
+## 流程标题
+
+新 Run 在发起时冻结当前 Map 名称、从根到直接父级的名称路径和当前 Map 的 node 名称。根 Run 默认名称与管理者 Chat 名为 `[M]A`；嵌套为 `[S]B-A`、`[S]C-A/B`。普通及结束节点 Chat 使用 `节点名称-A/B/C`，脚本节点不创建 Chat。chief 委派的 Map 使用相同规则，独立 Chat 仍使用 Task 命名规则。
+
+每个 Chat 的 Herdr Tab 与历史会话列表保存相同完整名称，不按固定字数裁短；显示空间不足时由各界面处理截断。名称仅供展示，不通过 `-` 或 `/` 解析身份。Map/node 后续改名不追溯改变该 Run 的命名来源；手动 Run 重命名仍可用，但不联动已有或后续 Chat 名称。旧 Run 缺少命名快照时保持原命名行为，不批量改写历史记录。
+
 ## 公开接口与持久字段参考
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
@@ -90,7 +96,7 @@ approve 与 context 均只接受同机来源及真实执行关联；结束节点
 
 | 对象 | 序列化字段及意义 |
 | --- | --- |
-| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；`inputsReady` 表示管理者是否已确认输入就绪（新 Run 为 false；历史记录缺字段也按 false 读取，不视为已验证）；独立 `fileInputs: [{id,path}]` 保存本次调用方或管理者准备的文件地址（省略可选项不生成条目，无输入为 `[]`，旧记录缺字段按空数组读取而不重写文件）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
+| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；可选 `naming`（新 Run 的展示名称快照：`mapPath` 为根到当前 Map 的名称数组，`nodeTitles` 为 node ID → 发起时名称；旧记录缺席不补造）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；`inputsReady` 表示管理者是否已确认输入就绪（新 Run 为 false；历史记录缺字段也按 false 读取，不视为已验证）；独立 `fileInputs: [{id,path}]` 保存本次调用方或管理者准备的文件地址（省略可选项不生成条目，无输入为 `[]`，旧记录缺字段按空数组读取而不重写文件）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
 | Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
 | execution | `id`、来源 `taskId`、实际宿主 `agent`、实际执行目录 `zone`、可选 `zoneId`（新执行冻结的 zone 身份，历史缺席不补造）、`autoApproved`（冻结布尔模式）、`approved`（批准事实）、`approvalSource`（null、`auto` 或 `manual`）、`autoClose`（布尔）、`endNode`（布尔，旧记录省略为 false）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。报告、关闭与结束节点选择在 dispatch/retry 解析当前 Map 时固定；批准字段不对旧 Run 补默认值，不升级或批量改写历史；旧 Run 不保证可继续或呈现。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
