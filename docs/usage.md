@@ -205,6 +205,12 @@ App 模式下，`HERDR_APP_HOME` 指向所选窗口，App 实际连接的 core �
 
 `workspace_name` 是默认容器名称的唯一来源：TUI 匹配 Workspace label，App 匹配 Space name。按字面精确匹配，零个或多个都报错，不任取一个或新建容器。它不是 zone 路径，也不是原生 Chat 身份。
 
+### 原生 agent 提醒
+
+TUI 的 Task 固定扩展向对应 Pane 报告 agent 状态；App 的 OMP／Pi 将原生 OSC 7501 写入所选 App Tab 的 core 终端，不加载 TUI 状态扩展。App 需要支持 OSC 7501 的 agent 与 core；OMP 保持 `terminal.programStatus` 启用（默认），Pi 默认与终端协商（不要设置 `PI_PROGRAM_STATUS=0`）。
+
+声音只由当前宿主决定。TUI 使用自己的 `[ui.sound]`，App 使用自己的 `settings.json` 中的 `sounds`；两端各自处理自定义声音和焦点抑制。herdr-bot 不播放声音；初始化 ready、connect-bot 会话状态和报告投递不是播音指令。复现和取证步骤见[原生提醒专项](agents/testing.md#原生提醒专项p47p48)。
+
 ### server 固定操作
 
 在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本。`[operations.start]`／`[operations.stop]` 可作为两端共享的固定绑定；如果两端需要不同脚本，另外成对声明 `[operations.app.start]`／`[operations.app.stop]`（两段均指定 `script` 与 `working_directory`），仅 App 模式使用该对绑定。
