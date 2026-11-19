@@ -6,6 +6,33 @@ import { startServer, type E2EServer } from '../support/support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
+test('P51: App fixed scripts return script receipts even with no App running', async ({ page }) => {
+  server = await startServer({ safeShutdown: true })
+  await server.stop()
+  const directory = path.dirname(server.configPath)
+  const originalConfig = fs.readFileSync(server.configPath, 'utf8')
+  for (const operation of ['start', 'stop']) {
+    fs.writeFileSync(path.join(directory, `app-${operation}.bat`), `@echo off\r\n>>app-calls.txt echo ${operation}\r\nexit /b 0\r\n`)
+  }
+  fs.writeFileSync(server.configPath, originalConfig.replace('[herdr]', "[herdr]\nbackend = 'app'") + `
+[operations.app.start]
+script = 'app-start.bat'
+working_directory = '.'
+[operations.app.stop]
+script = 'app-stop.bat'
+working_directory = '.'
+`)
+  await server.restart()
+  await page.goto(server.baseURL)
+  await page.getByTestId('server-button').click()
+  await expect(page.getByTestId('server-page')).toContainText('不表示后台程序已经启动、已经就绪或已经彻底停止')
+  await page.getByTestId('start-button').click()
+  await expect(page.getByTestId('operation-result')).toHaveText('启动脚本调用已结束：脚本执行完成（退出码 0）。')
+  await page.getByTestId('stop-button').click()
+  await expect(page.getByTestId('operation-result')).toHaveText('停止脚本调用已结束：脚本执行完成（退出码 0）。')
+  expect(fs.readFileSync(path.join(directory, 'app-calls.txt'), 'utf8').trim().split(/\r?\n/)).toEqual(['start', 'stop'])
+})
+
 // S1/P3: real HTTP + existing record-only scripts exercise the real operation
 // lock. A fabricated success, lost result, or queued busy request disagrees
 // with the prewritten exit codes and external invocation record below.

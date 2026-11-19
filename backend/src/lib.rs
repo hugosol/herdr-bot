@@ -70,7 +70,7 @@ use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 
 pub use config::{
-    TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
+    TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrBackend, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
@@ -219,15 +219,10 @@ pub fn app_with_state(
     let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
     let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
     sessions.attach_chief(Arc::clone(&chief));
+    let (start, stop) = config.operations.selected(config.herdr.backend);
     let state = AppState {
-        start_operation: ScriptOperation::new(
-            config.operations.start.script.clone(),
-            config.operations.start.working_directory.clone(),
-        ),
-        stop_operation: ScriptOperation::new(
-            config.operations.stop.script.clone(),
-            config.operations.stop.working_directory.clone(),
-        ),
+        start_operation: ScriptOperation::new(start.script.clone(), start.working_directory.clone()),
+        stop_operation: ScriptOperation::new(stop.script.clone(), stop.working_directory.clone()),
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
         native_session_directories: ["${roots.pi_agent}/sessions", "${roots.omp_agent}/sessions"]

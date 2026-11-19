@@ -5,6 +5,7 @@
 //! creating or navigating them. Business authority and persistence stay with
 //! the calling modules.
 
+mod app;
 mod client;
 mod identity;
 pub(crate) mod placement;

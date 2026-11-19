@@ -16,7 +16,9 @@ use std::time::Duration;
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::config::HerdrConfig;
+use crate::config::{HerdrBackend, HerdrConfig};
+
+use super::app::AppHost;
 
 use super::identity::{
     candidate_native_id, native_error, native_header_or_pending, read_native_id,
@@ -43,6 +45,27 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub struct Workspace {
     pub id: String,
     pub label: String,
+}
+
+/// Owned wire rows, with each adapter identifying its two placement fields.
+pub(super) struct WorkspaceInventory {
+    pub records: Vec<Value>,
+    pub command: &'static str,
+    pub id_key: &'static str,
+    pub name_key: &'static str,
+}
+
+impl WorkspaceInventory {
+    fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.records.iter().filter_map(|entry| Some((
+            nonempty(entry.get(self.id_key))?,
+            nonempty(entry.get(self.name_key))?,
+        )))
+    }
+
+    fn error(&self, detail: &str) -> HerdrError {
+        HerdrError::UnexpectedResponse { command: self.command, detail: detail.into() }
+    }
 }
 
 /// 新建 Tab 后由 Herdr 返回的对象标识；两个标识都取自响应，不按名称或序号猜测。
@@ -120,17 +143,26 @@ impl HerdrError {
     }
 }
 
-/// 生产用的 Herdr 控制 adapter。
+#[derive(Debug, Clone)]
+enum Host {
+    Tui(PathBuf),
+    App(AppHost),
+}
+
+/// 生产用的 Herdr 控制；运行期间只持有所选宿主的可执行路径。
 #[derive(Debug, Clone)]
 pub struct HerdrClient {
-    executable: PathBuf,
+    host: Host,
     workspace_name: String,
 }
 
 impl HerdrClient {
     pub fn new(config: &HerdrConfig) -> Self {
         Self {
-            executable: config.executable.clone(),
+            host: match config.backend {
+                HerdrBackend::Tui => Host::Tui(config.executable.clone()),
+                HerdrBackend::App => Host::App(AppHost::new(config.app_executable.clone(), config.core_executable.clone())),
+            },
             workspace_name: config.workspace_name.clone(),
         }
     }
@@ -142,85 +174,60 @@ impl HerdrClient {
 
     /// 按本次目标名称精确查找唯一 Workspace；焦点与顺序都不参与选择。
     pub async fn workspace(&self, name: &str) -> Result<Workspace, HerdrError> {
-        let value = self
-            .run(
-                "workspace list",
-                &["workspace".into(), "list".into()],
-                QUERY_TIMEOUT,
-            )
-            .await?;
-        let entries = value
-            .pointer("/result/workspaces")
-            .and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse {
-                command: "workspace list",
-                detail: "响应缺少 result.workspaces 数组".to_string(),
-            })?;
-
-        let mut matches = Vec::new();
-        for entry in entries {
-            let label = entry.get("label").and_then(Value::as_str);
-            let id = entry.get("workspace_id").and_then(Value::as_str);
-            if let (Some(label), Some(id)) = (label, id)
-                && label == name
-            {
-                matches.push(Workspace {
-                    id: id.to_string(),
-                    label: label.to_string(),
-                });
-            }
+        let inventory = self.workspace_inventory().await?;
+        let mut matches = inventory.entries().filter(|(_, label)| *label == name);
+        let (id, label) = matches.next().ok_or_else(|| HerdrError::WorkspaceNotFound { name: name.into() })?;
+        let count = matches.count() + 1;
+        if count != 1 {
+            return Err(HerdrError::WorkspaceAmbiguous { name: name.into(), matches: count });
         }
-
-        match matches.len() {
-            0 => Err(HerdrError::WorkspaceNotFound {
-                name: name.to_string(),
-            }),
-            1 => Ok(matches.remove(0)),
-            count => Err(HerdrError::WorkspaceAmbiguous {
-                name: name.to_string(),
-                matches: count,
-            }),
-        }
+        Ok(Workspace { id: id.into(), label: label.into() })
     }
 
     /// Display-only inventory; callers must retain saved IDs when labels are unavailable.
     pub(crate) async fn workspace_labels(&self) -> Result<Vec<Workspace>, HerdrError> {
-        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
-        Ok(entries.iter().filter_map(|entry| Some(Workspace {
-            id: nonempty(entry.get("workspace_id"))?.to_owned(),
-            label: nonempty(entry.get("label"))?.to_owned(),
-        })).collect())
+        let inventory = self.workspace_inventory().await?;
+        Ok(inventory.entries().map(|(id, label)| Workspace { id: id.into(), label: label.into() }).collect())
     }
 
-    /// Strict ID lookup: only a complete successful inventory can prove absence.
-    /// Recovery fallback policy belongs to the caller, not the CLI adapter.
+    /// Only a successful inventory with valid IDs can prove the original ID is absent.
     pub(crate) async fn workspace_by_id(&self, id: &str) -> Result<Option<Workspace>, HerdrError> {
-            let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-            let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-                .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
-            let mut original = None;
-            for entry in entries {
-                let entry_id = nonempty(entry.get("workspace_id"))
-                    .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "Workspace 缺少 ID，无法确认原位置是否已删除".into() })?;
-                if entry_id == id {
-                    let label = nonempty(entry.get("label"))
-                        .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace 缺少 label".into() })?;
-                    if original.is_some() { return Err(HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace ID 重复".into() }); }
-                    original = Some(Workspace { id: id.to_owned(), label: label.to_owned() });
+        let inventory = self.workspace_inventory().await?;
+        let mut original = None;
+        for entry in &inventory.records {
+            let entry_id = nonempty(entry.get(inventory.id_key))
+                .ok_or_else(|| inventory.error("容器缺少 ID，无法确认原位置是否已删除"))?;
+            if entry_id == id {
+                let label = nonempty(entry.get(inventory.name_key))
+                    .ok_or_else(|| inventory.error("原容器缺少名称"))?;
+                if original.replace(label).is_some() {
+                    return Err(inventory.error("原容器 ID 重复"));
                 }
             }
-            Ok(original)
+        }
+        Ok(original.map(|label| Workspace { id: id.into(), label: label.into() }))
+    }
+
+    async fn workspace_inventory(&self) -> Result<WorkspaceInventory, HerdrError> {
+        if let Host::App(app) = &self.host {
+            return app.inventory().await;
+        }
+        let mut value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let Some(Value::Array(records)) = value.pointer_mut("/result/workspaces").map(Value::take) else {
+            return Err(HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() });
+        };
+        Ok(WorkspaceInventory { records, command: "workspace list", id_key: "workspace_id", name_key: "label" })
     }
 
     /// Only exact checkout metadata proves ownership; labels and path basenames do not.
     pub(crate) async fn main_worktree_for(&self, cwd: &str, timeout: Duration) -> Result<Option<String>, HerdrError> {
-        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
+        if matches!(self.host, Host::App(_)) {
+            // App does not expose the exact checkout ownership evidence needed here.
+            return Ok(None);
+        }
+        let inventory = self.workspace_inventory().await?;
         let mut roots = Vec::new();
-        for entry in entries {
+        for entry in &inventory.records {
             let Some(checkout) = nonempty(entry.pointer("/worktree/checkout_path")) else { continue; };
             if !crate::zones::same_path(&crate::zones::display_path(Path::new(checkout)), &crate::zones::display_path(Path::new(cwd))) { continue; }
             let Some(key) = nonempty(entry.pointer("/worktree/repo_key")) else { continue; };
@@ -253,6 +260,9 @@ impl HerdrClient {
         cwd: Option<&str>,
         label: &str,
     ) -> Result<CreatedTab, HerdrError> {
+        if let Host::App(app) = &self.host {
+            return app.create_tab(workspace_id, cwd, label).await;
+        }
         let mut args = vec!["tab".into(), "create".into(), "--workspace".into(), workspace_id.into()];
         if let Some(cwd) = cwd { args.extend(["--cwd".into(), cwd.into()]); }
         args.extend(["--label".into(), label.into(), "--no-focus".into()]);
@@ -405,7 +415,24 @@ impl HerdrClient {
         args: &[String],
         timeout: Duration,
     ) -> Result<Value, HerdrError> {
-        let mut command = Command::new(&self.executable);
+        let Host::Tui(executable) = &self.host else {
+            return Err(HerdrError::CommandFailed {
+                command: command_name,
+                message: "此操作需要 TUI 控制协议；不会回退到 TUI。".into(),
+            });
+        };
+        run_cli(executable, command_name, args, timeout).await
+    }
+}
+
+/// Run one selected executable and decode its JSON response without a shell.
+pub(super) async fn run_cli(
+    executable: &Path,
+    command_name: &'static str,
+    args: &[impl AsRef<std::ffi::OsStr>],
+    timeout: Duration,
+) -> Result<Value, HerdrError> {
+        let mut command = Command::new(executable);
         command
             .args(args)
             .stdin(Stdio::null())
@@ -418,7 +445,7 @@ impl HerdrClient {
         let child = command.spawn().map_err(|error| {
             HerdrError::NotStarted(format!(
                 "无法启动 {}（{}）：{error}",
-                self.executable.display(),
+                executable.display(),
                 command_name
             ))
         })?;
@@ -436,10 +463,15 @@ impl HerdrClient {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() {
-            if let Some(error) = serde_json::from_str::<Value>(stderr.trim()).ok()
-                .and_then(|value| value.get("error").map(|error| response_error(command_name, error)))
-            {
-                return Err(error);
+            for stream in [stderr.trim(), stdout.trim()] {
+                if let Ok(value) = serde_json::from_str::<Value>(stream) {
+                    if let Some(error) = value.get("error") {
+                        return Err(response_error(command_name, error));
+                    }
+                    if value.get("code").is_some() {
+                        return Err(response_error(command_name, &value));
+                    }
+                }
             }
             let detail = stderr.trim().to_string();
             let detail = if detail.is_empty() {
@@ -468,7 +500,6 @@ impl HerdrClient {
             return Err(response_error(command_name, error));
         }
         Ok(value)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -497,7 +528,7 @@ fn response_error(command: &'static str, error: &Value) -> HerdrError {
         return HerdrError::Timeout(command);
     }
     let code = error.get("code").and_then(Value::as_str);
-    let message = error.get("message").and_then(Value::as_str);
+    let message = error.as_str().or_else(|| error.get("message").and_then(Value::as_str));
     HerdrError::CommandFailed {
         command,
         // The human message need not mention confirmation_required (or any

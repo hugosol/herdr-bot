@@ -399,6 +399,7 @@ pub fn config_with_countdown(
         operations: herdr_bot::Operations {
             start: binding(),
             stop: binding(),
+            app: None,
         },
         mdns: herdr_bot::MdnsConfig::default(),
         shutdown: herdr_bot::ShutdownConfig {

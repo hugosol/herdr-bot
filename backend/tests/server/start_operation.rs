@@ -58,6 +58,7 @@ fn config(start_script: &Path, working_directory: &Path) -> herdr_bot::Config {
         operations: herdr_bot::Operations {
             start: binding(),
             stop: binding(),
+            app: None,
         },
         mdns: herdr_bot::MdnsConfig::default(),
         shutdown: herdr_bot::ShutdownConfig::default(),
