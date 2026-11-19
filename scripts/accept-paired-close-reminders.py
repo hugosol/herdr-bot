@@ -101,6 +101,7 @@ def repository_checks(args, evidence):
     env.update(CARGO_TARGET_DIR=str(args.target), HERDR_BOT_REPO=str(args.repo),
         HERDR_BOT_BINARY=str(args.safe), HERDR_BOT_METADATA=str(args.repo / 'meta-data/task-options.toml'),
         OMP_BASELINE_RECORD_ROOT=str(args.toolkit_baseline_root), PI_NODE=str(args.node),
+        HARNESS_ACCEPTANCE_EVIDENCE_DIR=str(args.evidence_dir / 'toolkit-harness-evidence'),
         PI_CLI=str(args.pi_package / 'dist/bundle/cli.js'), OMP_CLI=str(args.omp_package / 'dist/cli.js'))
     npm, cargo = [shutil.which(name) or name for name in ('npm', 'cargo')]
     steps = [
