@@ -406,6 +406,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
             herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":file},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
             let id = accept_creation(&panel, zone, source_a).await;
             assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
+            assert!(!herdr.calls().iter().any(|call| call["kind"] == "agent_prompt"));
             let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
             let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
                 let barrier = barrier.clone();

@@ -43,23 +43,28 @@ async function task(agent: string, name: string) {
   const saved = await post('/api/tasks', { name, chatName: name, agent, model: 'default', thinking: 'default', skill: null, prompt: '' })
   return saved.tasks.find((item: { name: string }) => item.name === name).id as string
 }
-async function acceptCreation(zone: string, taskId: string): Promise<string> {
+async function startCreation(zone: string, taskId: string): Promise<string> {
   const preview = await post('/api/chats/preview', { zone, taskId })
   const accepted = await post('/api/chats', { zone, taskId, chatId: preview.chatId, input: '/settings' })
   return accepted.id
 }
-async function finishCreation(id: string) {
+async function waitForCreation(id: string, stage: 'submitting' | 'succeeded') {
   const started = Date.now()
   let lastCreation: unknown
   try {
     await expect.poll(async () => {
       const response = await fetch(`${server!.baseURL}/api/chats/${id}`)
+      expect(response.status).toBe(200)
       const creation = await response.json()
       lastCreation = creation
-      return creation.stage
-    }).toBe('succeeded')
+      return {
+        stage: creation.stage,
+        inputSubmitted: creation.inputSubmitted,
+        promptReached: server!.herdrCalls().some(c => c.kind === 'agent_prompt' && c.target === creation.agentName),
+      }
+    }).toEqual({ stage, inputSubmitted: stage === 'succeeded', promptReached: true })
   } catch (error) {
-    await evidence(test.info(), `chat-creation-${id}`, {
+    await evidence(test.info(), `chat-creation-${id}-${stage}`, {
       elapsedMs: Date.now() - started, creation: lastCreation,
       calls: server!.herdrCalls(), diagnostics: server!.diagnostics(),
     })
@@ -156,7 +161,7 @@ for (const agent of ['pi', 'omp'] as const) {
       const zone = zones.zones[0].id as string
       const original = await task(agent, 'Durable zone before failure')
       const rejected = await task(agent, 'Zone name that never saved')
-      await finishCreation(await acceptCreation(zone, original))
+      await waitForCreation(await startCreation(zone, original), 'succeeded')
       await expect.poll(async () => (await history()).sessions[0]?.sessionName).toBe('Durable zone before failure')
       await register(id, { cwd: 'C:/current-original', agentType: agent, sessionName: 'Current original literal' })
       await post('/api/sessions/events', { sessionId: id, kind: 'state', data: { value: 'working' } })
@@ -167,10 +172,12 @@ for (const agent of ['pi', 'omp'] as const) {
       expect(before.shutdown.monitoredSessionIds).toEqual(intent === 'monitoring' ? [id] : [])
       const saved = await history()
       const gate = path.join(root, 'failure-release')
-      server.setHerdrBehavior({ ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } })
-      const offset = server.herdrCalls().length
-      const pending = await acceptCreation(zone, rejected)
-      await expect.poll(() => server!.herdrCalls().slice(offset).some(c => c.kind === 'agent_get')).toBe(true)
+      // Let native launch verification finish, but hold host acceptance of
+      // the prompt so the independent zone write cannot run before the fault.
+      server.setHerdrBehavior({ ...behavior, prompt_gate: { wait_for_file: gate, timeout_ms: 40000 } })
+      const creationId = await startCreation(zone, rejected)
+      await waitForCreation(creationId, 'submitting')
+      expect(await history()).toEqual(saved)
       const historyFile = path.join(path.dirname(server.configPath), 'session-history.json')
       const historyBytes = fs.readFileSync(historyFile)
       // Keep prior history readable while denying publication at its destination.
@@ -188,10 +195,10 @@ for (const agent of ['pi', 'omp'] as const) {
         }
         if (order === 'connect-zone') await failedConnect()
         fs.writeFileSync(gate, 'ready')
-        await finishCreation(pending)
-        await expect.poll(() => server!.diagnostics()).toContain(`session=${id}`)
-        warning = server.diagnostics().split('\n').find(line => line.includes(`session=${id}`) && line.includes('save-failed'))!
-        expect(warning).toContain('creation=')
+        await waitForCreation(creationId, 'succeeded')
+        const failure = `creation=${creationId} kind=${agent} session=${id} save-failed`
+        await expect.poll(() => server!.diagnostics()).toContain(failure)
+        warning = server.diagnostics().split('\n').find(line => line.includes(failure))!
         if (order === 'zone-connect') await failedConnect()
         current = await currentSnapshot()
         expect(current.sessions).toHaveLength(1)
@@ -245,47 +252,50 @@ for (const agent of ['pi', 'omp'] as const) {
       const id = `${agent}-a4878910-1be8-4d12-bccc-000000000001`
       const other = `${agent}-a4878910-1be8-4d12-bccc-000000000002`
       const crossAgent = `other-a4878910-1be8-4d12-bccc-000000000003`
-      const gate = path.join(root, 'identity-ready')
+      const gate = path.join(root, 'prompt-accepted')
       const behavior = { native_session: { source: `herdr:${agent}`, agent, kind: 'id', value: id } }
-      server = await startServer({ herdr: { behavior: { ...behavior, native_session_gate: { wait_for_file: gate, timeout_ms: 40000 } } } })
+      server = await startServer({ herdr: { behavior: { ...behavior, prompt_gate: { wait_for_file: gate, timeout_ms: 40000 } } } })
       const zones = await post('/api/zones', { id: 'test/zone', path: root })
       const zone = zones.zones[0].id as string
       const first = await task(agent, 'Zone original literal')
       const renamed = await task(agent, 'Zone renamed literal')
-      const connect = () => register(id, { cwd: 'C:/same-project', sessionName: 'Connect original literal', agentType: agent })
+      const connect = () => register(id, { cwd: root, sessionName: 'Connect original literal', agentType: agent })
       if (order === 'connect-zone') await connect()
-      const pending = await acceptCreation(zone, first)
-      await expect.poll(() => server!.herdrCalls().some(c => c.kind === 'agent_get')).toBe(true)
+      const creationId = await startCreation(zone, first)
+      await waitForCreation(creationId, 'submitting')
+      expect((await history()).sessions.map((row: { sessionName: string }) => row.sessionName))
+        .toEqual(order === 'connect-zone' ? ['Connect original literal'] : [])
       if (order === 'simultaneous') {
-        // Two independent clients are in flight across a released external gate.
-        // Neither arrival order is prescribed; zone priority is order-independent.
+        // Start the independent connect request before releasing prompt
+        // acceptance, which lets the backend's zone-history producer proceed.
+        // Neither write order is prescribed; zone priority is order-independent.
         const arrival = connect()
         fs.writeFileSync(gate, 'ready')
         await arrival
       } else {
         fs.writeFileSync(gate, 'ready')
       }
-      await finishCreation(pending)
+      await waitForCreation(creationId, 'succeeded')
       await expect.poll(async () => (await history()).sessions[0]?.sessionName).toBe('Zone original literal')
       if (order === 'zone-connect') await connect()
-      await register(id, { cwd: 'C:/same-project', sessionName: 'Connect later literal', agentType: agent })
+      await register(id, { cwd: root, sessionName: 'Connect later literal', agentType: agent })
       const firstRecordedAt = (await history()).sessions[0].firstRecordedAt
       expect(firstRecordedAt).toEqual(expect.any(Number))
-      await register(other, { cwd: 'C:/same-project', sessionName: 'Connect-only initial literal', agentType: agent })
-      await register(crossAgent, { cwd: 'C:/same-project', sessionName: 'Connect latest literal', agentType: agent === 'pi' ? 'omp' : 'pi' })
-      await register(other, { cwd: 'C:/same-project', sessionName: 'Connect latest literal', agentType: agent })
+      await register(other, { cwd: root, sessionName: 'Connect-only initial literal', agentType: agent })
+      await register(crossAgent, { cwd: root, sessionName: 'Connect latest literal', agentType: agent === 'pi' ? 'omp' : 'pi' })
+      await register(other, { cwd: root, sessionName: 'Connect latest literal', agentType: agent })
       server.setHerdrBehavior(behavior)
-      await finishCreation(await acceptCreation(zone, renamed))
+      await waitForCreation(await startCreation(zone, renamed), 'succeeded')
       await expect.poll(async () => (await history()).sessions.find((r: { sessionId: string }) => r.sessionId === id)?.sessionName).toBe('Zone renamed literal')
-      await register(id, { cwd: 'C:/same-project', sessionName: 'Connect must never win', agentType: agent })
-      await register(id, { cwd: 'C:/same-project' })
-      await register(other, { cwd: 'C:/same-project', sessionName: '   ', agentType: '' })
+      await register(id, { cwd: root, sessionName: 'Connect must never win', agentType: agent })
+      await register(id, { cwd: root })
+      await register(other, { cwd: root, sessionName: '   ', agentType: '' })
       const saved = await history()
       expect(saved.total).toBe(3)
       expect([...saved.sessions].sort((a, b) => a.sessionId.localeCompare(b.sessionId))).toEqual([
-        { sessionId: id, sessionName: 'Zone renamed literal', agentType: agent, cwd: 'C:/same-project', originalWorkspaceId: 'w-target', originalWorkspaceName: 'bot-playground', firstRecordedAt },
-        { sessionId: other, sessionName: 'Connect latest literal', agentType: agent, cwd: 'C:/same-project', firstRecordedAt: expect.any(Number) },
-        { sessionId: crossAgent, sessionName: 'Connect latest literal', agentType: agent === 'pi' ? 'omp' : 'pi', cwd: 'C:/same-project', firstRecordedAt: expect.any(Number) },
+        { sessionId: id, sessionName: 'Zone renamed literal', agentType: agent, cwd: root, originalWorkspaceId: 'w-target', originalWorkspaceName: 'bot-playground', firstRecordedAt },
+        { sessionId: other, sessionName: 'Connect latest literal', agentType: agent, cwd: root, firstRecordedAt: expect.any(Number) },
+        { sessionId: crossAgent, sessionName: 'Connect latest literal', agentType: agent === 'pi' ? 'omp' : 'pi', cwd: root, firstRecordedAt: expect.any(Number) },
       ].sort((a, b) => a.sessionId.localeCompare(b.sessionId)))
       await displayedNames(page, ['Zone renamed literal', 'Connect latest literal', 'Connect latest literal'])
       await page.screenshot({ path: info.outputPath('cross-source-final-names.png'), fullPage: true })
