@@ -51,6 +51,9 @@ mod app_transport;
 
 use serde_json::{Value, json};
 
+#[path = "herdr-fixture/chat_app.rs"]
+mod chat_app;
+
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
@@ -58,6 +61,10 @@ fn main() {
     // Include unsupported commands: a test must see attempted confirmation or
     // other bypasses even when this controlled host does not implement them.
     record("invocations.jsonl", json!({"argv":args}));
+    if chat_app::selected() {
+        chat_app::dispatch(&args);
+        return;
+    }
     match args.first().map(String::as_str) {
         Some("workspace") if args.get(1).map(String::as_str) == Some("list") => {
             workspace_list(&args)
@@ -70,6 +77,7 @@ fn main() {
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("list") => agent_list(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("focus") => agent_focus(&args),
+        Some("pane") if args.get(1).map(String::as_str) == Some("process-info") => pane_process_info(&args),
         _ => usage(&args),
     }
 }
@@ -237,6 +245,12 @@ fn tab_create(args: &[String]) {
     let suffix = unique_suffix();
     let tab_id = format!("{workspace}:t{suffix}");
     let pane_id = format!("{workspace}:p{suffix}");
+    if let (Some(launch), Some(target)) = (
+        args.iter().find_map(|arg| arg.strip_prefix("HERDR_BOT_LAUNCH_ID=")),
+        args.iter().find_map(|arg| arg.strip_prefix("HERDR_BOT_LAUNCH_TARGET_ID=")),
+    ) {
+        record("tab-launches.jsonl", json!({"pane":pane_id,"launch":launch,"target":target}));
+    }
     record(
         "tabs.jsonl",
         json!({
@@ -313,12 +327,13 @@ fn agent_start(args: &[String]) {
         env::set_current_dir(cwd).unwrap();
         started["actual_cwd"] = json!(env::current_dir().unwrap());
     }
-    record("started.jsonl", started);
+    record("started.jsonl", started.clone());
     // Herdr 0.9.5 returns this structured stderr envelope when its own
     // readiness deadline expires, even though the CLI process itself exited.
     if flag(&behavior, "timeout_agent_start") {
         fail("timeout", "timed out waiting for agent startup");
     }
+    report_launch(&behavior, &started);
     output(json!({
         "id": "cli:agent:start",
         "result": {
@@ -385,12 +400,55 @@ fn agent_get(args: &[String]) {
     let pending = behavior.get("native_session_pending_reads").and_then(Value::as_u64)
         .is_some_and(|limit| read_records("calls.jsonl").iter()
             .filter(|call| call["kind"] == "agent_get" && call["target"] == target).count() as u64 <= limit);
-    output(json!({"result":{"agent":{
-        "name":target,
-        "agent_session":if pending { Value::Null } else { behavior.get("native_session").cloned().unwrap_or(Value::Null) },
-        "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
-        "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
-    }}}));
+    let mut agent = started.unwrap_or_else(|| json!({"name": target}));
+    agent["agent_session"] = if pending { Value::Null } else { behavior["native_session"].clone() };
+    if let Some(cwd) = behavior.get("native_cwd") { agent["cwd"] = cwd.clone(); }
+    agent["foreground_cwd"] = behavior.get("foreground_cwd").cloned().unwrap_or_else(|| agent["cwd"].clone());
+    output(json!({"result":{"agent":agent}}));
+}
+
+fn report_launch(settings: &Value, agent: &Value) {
+    if flag(settings, "manual_launch_events") { return; }
+    let Ok(endpoint) = fs::read_to_string(data_dir().join("launch_endpoint.txt")) else { return; };
+    let Ok(peer) = endpoint.trim().parse::<std::net::SocketAddr>() else { return; };
+    if !peer.ip().is_loopback() { return; }
+    let pane = agent["pane_id"].as_str().unwrap();
+    let Some(matched) = read_records("tab-launches.jsonl").into_iter().find(|row| row["pane"] == pane) else { return; };
+    let launch = &matched["launch"];
+    let target = &matched["target"];
+    let reference = &settings["native_session"];
+    let configured = reference["value"].as_str();
+    let file = configured.filter(|_| reference["kind"] == "path");
+    let id = file.and_then(|file| fs::read_to_string(file).ok())
+        .and_then(|text| text.lines().take(2).find_map(|line| {
+            let row: Value = serde_json::from_str(line).ok()?;
+            (row["type"] == "session").then(|| row["id"].as_str().map(str::to_owned)).flatten()
+        }))
+        .or_else(|| file.and_then(|file| std::path::Path::new(file).file_stem()?.to_str()?.rsplit_once('_').map(|(_, id)| id.to_owned())))
+        .or_else(|| configured.filter(|_| file.is_none()).map(str::to_owned))
+        .unwrap_or_else(|| format!("fixture-session-{pane}"));
+    let data = json!({"launchId":launch,"targetId":target,"agentType":agent["agent"],"cwd":agent["cwd"],
+        "pid":settings["launch_pid"].as_u64().unwrap_or(43127),"sessionFile":file});
+    for kind in ["launch_identity", "launch_ready"] {
+        let body = json!({"kind":kind,"sessionId":id,"data":data}).to_string();
+        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(&peer, Duration::from_secs(2)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
+            let _ = write!(stream,"POST /api/sessions/events HTTP/1.1\r\nHost: {peer}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+            let mut result = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stream, &mut result);
+        }
+    }
+}
+
+fn pane_process_info(args: &[String]) {
+    let pane = args.get(2).map(String::as_str).unwrap_or_default();
+    let started = read_records("started.jsonl").into_iter().find(|agent| agent["pane_id"] == pane);
+    let processes = started.map_or_else(Vec::new, |agent| {
+        let behavior = behavior();
+        let pid = behavior["launch_pid"].as_u64().unwrap_or(43127);
+        vec![json!({"pid":pid,"name":agent["agent"],"cwd":agent["cwd"]})]
+    });
+    output(json!({"result":{"process_info":{"pane_id":pane,"foreground_processes":processes}}}));
 }
 
 fn agent_prompt(args: &[String]) {

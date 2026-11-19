@@ -258,6 +258,47 @@ impl HerdrClient {
         Ok(if roots.len() == 1 { roots.pop() } else { None })
     }
 
+    pub(crate) fn is_app(&self) -> bool { matches!(self.host, Host::App(_)) }
+
+    /// App creates the tab and its program together. TUI creates an owned
+    /// pane first and passes the same launch correlation through its env.
+    pub(crate) async fn launch_tab(
+        &self, workspace: &str, cwd: Option<&str>, label: &str, alias: &str,
+        kind: &str, args: &[String], launch: &super::launch::Launch,
+    ) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
+        let (launch_id, target_id) = launch.correlation();
+        let (tab, control) = match &self.host {
+            Host::Tui(_) => {
+                let env = [format!("{}={launch_id}", super::launch::LAUNCH_ID_ENV), format!("{}={target_id}", super::launch::TARGET_ID_ENV)];
+                let tab = self.create_tui_tab(workspace, cwd, label, &env).await?;
+                (tab, LaunchControl::Tui { alias: alias.into() })
+            }
+            Host::App(app) => {
+                let mut argv = Vec::with_capacity(7 + args.len());
+                argv.extend(["bun", "-e", APP_AGENT, "--", launch_id, target_id, kind].map(str::to_owned));
+                argv.extend_from_slice(args);
+                let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
+                (tab, LaunchControl::App { terminal, correlation: Some((launch_id.into(), target_id.into())) })
+            }
+        };
+        let target = std::sync::Arc::new(LaunchTarget {
+            location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
+            control,
+        });
+        launch.bind_target(target.clone());
+        Ok(target)
+    }
+
+    pub(crate) async fn launch_unreported_app(&self, workspace: &str, cwd: Option<&str>, label: &str, kind: &str, args: &[String]) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
+        let Host::App(app) = &self.host else { return Err(native_error("launch requires selected App host")); };
+        let argv = std::iter::once(kind.to_owned()).chain(args.iter().cloned()).collect::<Vec<_>>();
+        let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
+        Ok(std::sync::Arc::new(LaunchTarget {
+            location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
+            control: LaunchControl::App { terminal, correlation: None },
+        }))
+    }
+
     /// 在指定 Workspace 中新建 Tab；未指定 cwd 时由 Herdr 选择目录。
     ///
     /// 不使用当前焦点 Workspace；`--no-focus` 避免创建动作改变用户在 Herdr 中的焦点。
@@ -270,9 +311,14 @@ impl HerdrClient {
         if let Host::App(app) = &self.host {
             return app.create_tab(workspace_id, cwd, label).await;
         }
+        self.create_tui_tab(workspace_id, cwd, label, &[]).await
+    }
+
+    async fn create_tui_tab(&self, workspace_id: &str, cwd: Option<&str>, label: &str, env: &[String]) -> Result<CreatedTab, HerdrError> {
         let mut args = vec!["tab".into(), "create".into(), "--workspace".into(), workspace_id.into()];
         if let Some(cwd) = cwd { args.extend(["--cwd".into(), cwd.into()]); }
         args.extend(["--label".into(), label.into(), "--no-focus".into()]);
+        for value in env { args.extend(["--env".into(), value.clone()]); }
         let value = self
             .run(
                 "tab create",
@@ -533,6 +579,102 @@ impl NavigationTarget {
         let field = |name| nonempty(agent.get(name)).map(str::to_owned)
             .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
         Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
+    }
+}
+
+// App has a structured argv but no per-Tab env setting. This fixed program
+// sets only the correlation values for the agent; all Task args stay argv data.
+const APP_AGENT: &str = concat!(
+    "const [launchId, targetId, agent, ...args] = process.argv.slice(1); ",
+    "const child = Bun.spawn([agent, ...args], {env: {...process.env, HERDR_BOT_LAUNCH_ID: launchId, HERDR_BOT_LAUNCH_TARGET_ID: targetId}, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit'}); ",
+    "process.exit(await child.exited);",
+);
+
+#[derive(Debug)]
+enum LaunchControl {
+    Tui { alias: String },
+    App { terminal: super::app::AppTerminal, correlation: Option<(String, String)> },
+}
+
+#[derive(Debug)]
+pub(crate) struct LaunchTarget {
+    pub(crate) location: NavigationTarget,
+    control: LaunchControl,
+}
+
+impl LaunchTarget {
+    pub(crate) fn app_coordinates(&self) -> Option<(&str, &str)> {
+        match &self.control {
+            LaunchControl::App { terminal, .. } => Some(terminal.coordinates()),
+            LaunchControl::Tui { .. } => None,
+        }
+    }
+
+    pub(crate) async fn start_agent(&self, herdr: &HerdrClient, kind: &str, args: &[String]) -> Result<(), HerdrError> {
+        if let LaunchControl::Tui { alias } = &self.control {
+            herdr.start_agent(alias, kind, &self.location.pane_id, args).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn submit(&self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
+        match (&self.control, &herdr.host) {
+            (LaunchControl::Tui { alias }, Host::Tui(_)) => herdr.prompt(alias, text).await,
+            (LaunchControl::App { terminal, .. }, Host::App(app)) => app.submit(terminal, text).await,
+            _ => Err(native_error("launch target host changed")),
+        }
+    }
+
+    pub(super) async fn verify(&self, herdr: &HerdrClient, kind: &str, cwd: &str, pid: u32, id: &str, file: Option<&str>) -> Result<super::NativeSession, HerdrError> {
+        let valid_cwd = |path: &str| crate::zones::same_path(path, cwd);
+        match (&self.control, &herdr.host) {
+            (LaunchControl::Tui { alias }, Host::Tui(_)) => {
+                let observation = herdr.run("agent get", &["agent".into(), "get".into(), alias.clone()], QUERY_TIMEOUT).await?;
+                let agent = observation.pointer("/result/agent").ok_or_else(|| native_error("missing launched agent"))?;
+                if NavigationTarget::from_agent(agent)? != self.location || nonempty(agent.get("agent")) != Some(kind) {
+                    return Err(native_error("TUI launch has another target or agent"));
+                }
+                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
+                let pane = process.pointer("/result/process_info").ok_or_else(|| native_error("missing pane process information"))?;
+                if nonempty(pane.get("pane_id")) != Some(self.location.pane_id.as_str())
+                    || !pane.get("foreground_processes").and_then(Value::as_array).is_some_and(|processes| processes.iter().any(|p| {
+                        p.get("pid").and_then(Value::as_u64) == Some(u64::from(pid))
+                            && nonempty(p.get("cwd")).or_else(|| nonempty(agent.get("foreground_cwd"))).is_some_and(valid_cwd)
+                    }))
+                {
+                    return Err(native_error("reported owner is not the current TUI pane process"));
+                }
+                if agent.get("agent_session").is_some_and(|value| !value.is_null()) {
+                    let official = super::identity::native_from_agent(agent, kind, tokio::time::Instant::now() + QUERY_TIMEOUT, true, true).await?;
+                    if official.session_id != id || !valid_cwd(&official.cwd)
+                        || matches!((official.session_file.as_deref(), file), (Some(a), Some(b)) if !crate::zones::same_path(a,b))
+                    {
+                        return Err(native_error("official TUI identity conflicts with launch report"));
+                    }
+                    if official.session_file.is_some() || file.is_none() { return Ok(official); }
+                }
+            }
+            (LaunchControl::App { terminal, correlation: Some((launch_id, target_id)) }, Host::App(app)) => {
+                let record = app.observe_launch(&self.location, terminal).await?;
+                let actual_argv = record.get("argv").and_then(Value::as_array);
+                let root_pid = record.get("pid").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
+                let has_argument = |value: &str| actual_argv.is_some_and(|argv| argv.iter().filter_map(Value::as_str).any(|arg| {
+                    arg == value || arg.split([' ', '\'', '"']).any(|part| part == value)
+                }));
+                if nonempty(record.get("state")) != Some("live")
+                    || !has_argument(launch_id) || !has_argument(target_id)
+                    || !nonempty(record.get("cwd")).is_some_and(valid_cwd)
+                {
+                    return Err(native_error("core terminal no longer runs this launch program"));
+                }
+                let root_pid = root_pid.ok_or_else(|| native_error("core terminal is missing its live process"))?;
+                if root_pid != pid && !tokio::task::spawn_blocking(move || super::launch::process_is_descendant(root_pid, pid)).await.unwrap_or(false) {
+                    return Err(native_error("reported owner is not the current App terminal process"));
+                }
+            }
+            _ => return Err(native_error("launch target host changed")),
+        }
+        super::launch::reported_native_session(kind, cwd, id, file).await
     }
 }
 
