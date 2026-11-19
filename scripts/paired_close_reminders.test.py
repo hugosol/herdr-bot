@@ -33,15 +33,19 @@ class CompletionEvidence(unittest.TestCase):
 
 
 class SoundEvidence(unittest.TestCase):
+    def test_unmatched_signal_does_not_certify_silence(self):
+        with self.assertRaisesRegex(AssertionError, 'unexpected signal'):
+            check_sound(None, [], peak=0.04)
+
     # A single transition must not be counted as evidence for two audio onsets.
     # Missing recording is a distinct error even for a silence control.
     def test_duplicate_or_missing_observation_cannot_pass(self):
         with self.assertRaisesRegex(AssertionError, 'playback'):
-            check_sound('done', ['done', 'done'])
+            check_sound('done', ['done', 'done'], peak=0.04)
         with self.assertRaisesRegex(AssertionError, 'unavailable'):
-            check_sound(None, None)
-        check_sound('done', ['done'])
-        check_sound(None, [])
+            check_sound(None, None, peak=None)
+        check_sound('done', ['done'], peak=0.04)
+        check_sound(None, [], peak=0.0001)
 
 
 class EvidenceDirectory(unittest.TestCase):

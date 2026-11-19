@@ -11,11 +11,17 @@ import wave
 from .host.processes import require, until
 
 
-def launch_tui_client(executable, session, title, root, environment):
-    code = ('import ctypes, subprocess, sys; '
-        'ctypes.windll.kernel32.SetConsoleTitleW(sys.argv[3]); '
-        'sys.exit(subprocess.call([sys.argv[1], "session", "attach", sys.argv[2]]))')
-    return subprocess.Popen([sys.executable, '-c', code, str(executable), session, title],
+def launch_tui_client(executable, session, title, root, environment, attach):
+    code = '''import ctypes, os, subprocess, sys, time
+ctypes.windll.kernel32.SetConsoleTitleW(sys.argv[3])
+deadline = time.monotonic() + 25
+while not os.path.isfile(sys.argv[4]):
+    if time.monotonic() >= deadline:
+        sys.exit("owned window was not acquired")
+    time.sleep(.05)
+sys.exit(subprocess.call([sys.argv[1], "session", "attach", sys.argv[2]]))
+'''
+    return subprocess.Popen([sys.executable, '-c', code, str(executable), session, title, str(attach)],
         cwd=root, env=environment, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
@@ -167,5 +173,5 @@ def identify_audio(ffmpeg, wav, references, origin):
                 'rms': math.sqrt(energy[offset] / n)})
             radius = int(n * 0.85)
             score[max(0, offset-radius):offset+radius+1] = 0
-    return sorted(matches, key=lambda match: match['monotonic'])
+    return sorted(matches, key=lambda match: match['monotonic']), float(np.max(np.abs(captured), initial=0.))
 

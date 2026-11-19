@@ -26,6 +26,7 @@ from .host.wire import WireProxy
 from .paired_reminder_observation import Loopback, foreground_window, identify_audio, launch_tui_client
 
 CLOSE_CASES = ('extra-tab', 'last-tab', 'group-refused')
+PLAYBACK_WINDOW_SECONDS = 4.0
 APPROVAL_QUESTION = '当前会话的成果是否已达到预期，可以交接并推进后续流程？'
 
 
@@ -41,9 +42,12 @@ def check_close(before, after, space, tab, target_exited, others_alive, refused)
     require(target_exited != refused, 'target process exit does not match close disposition')
 
 
-def check_sound(expected, observed):
-    require(observed is not None, 'playback observation unavailable')
+def check_sound(expected, observed, peak):
+    require(observed is not None and peak is not None, 'playback observation unavailable')
     require(observed == ([] if expected is None else [expected]), ('unexpected playback', expected, observed))
+    if expected is None:
+        # -50 dBFS allows the loopback noise floor, not unmatched sound.
+        require(peak <= 10 ** (-50 / 20), ('unexpected signal in silence control', peak))
 
 
 def save(path, value):
@@ -651,13 +655,15 @@ class Scenario(Acceptance):
                 self.await_status(chat, ('blocked',))
                 # Sample the real pending state across multiple native polls;
                 # completing/declining is intentionally outside this window.
-                for _ in range(3):
-                    time.sleep(0.7)
+                for _ in range(5):
+                    time.sleep(PLAYBACK_WINDOW_SECONDS / 5)
                     self.await_status(chat, ('blocked',))
             else:
                 states = ('done',) if phase == 'background-done' else ('idle',)
                 self.await_status(chat, states)
-                time.sleep(2.2)
+                # The Windows player may start after the native status is visible;
+                # keep recording through the full bundled resource, not its prefix.
+                time.sleep(PLAYBACK_WINDOW_SECONDS)
             tab, status = self.focused_tab()
             require(tab == (self.sentinel if phase == 'background-done' else chat['tabId']), status)
             self.note('phase-sampling-ended', phase=phase, activeTab=tab)
@@ -665,11 +671,11 @@ class Scenario(Acceptance):
         sound = 'request' if phase == 'blocked' else 'done'
         source = 'bundled' if self.case == 'default' else 'custom'
         expected = None if self.case == 'disabled' or phase == 'foreground-done' else f'{source}-{sound}'
-        audio.update(expected=expected, matches=None)
+        audio.update(expected=expected, matches=None, peak=None)
         self.evidence.setdefault('audio', {})[phase] = audio
         if not capture.error:
             try:
-                audio['matches'] = identify_audio(self.args.sound['ffmpeg'], wav, references, capture.origin)
+                audio['matches'], audio['peak'] = identify_audio(self.args.sound['ffmpeg'], wav, references, capture.origin)
             except Exception:
                 audio['error'] = traceback.format_exc()
         if phase == 'blocked':
@@ -685,18 +691,25 @@ class Scenario(Acceptance):
             # Early sound is not evidence for this transition. Keep its timestamp
             # even when a later sound also appears.
             require(all(sample['monotonic'] >= started - 0.12 for sample in observations), ('playback before provider release', observations))
-        return expected, None if observations is None else [sample['sound'] for sample in observations]
+        return expected, None if observations is None else [sample['sound'] for sample in observations], audio['peak']
 
     def exercise_reminders(self):
         require(self.args.sound, 'isolated custom and bundled sound references are required')
         if self.host == 'tui':
             self.console_title = 'HB15 ' + uuid.uuid4().hex
-            self.console_client = launch_tui_client(self.args.herdr, self.env['HERDR_SESSION'], self.console_title, self.root, self.env)
+            attach = self.root / 'tui-attach'
+            self.console_client = launch_tui_client(self.args.herdr, self.env['HERDR_SESSION'], self.console_title,
+                self.root, self.env, attach)
             self.tui_window = foreground_window(title=self.console_title)
             self.note('owned-tui-window', desktopWindow=self.tui_window)
+            attach.touch(exist_ok=False)
         run, manager, chat = self.dispatch(auto=False)
         self.history(manager, 'HB15-ACK')
         self.history(chat, 'HB15-ACK')
+        if self.host == 'tui':
+            # An unrelated initial manager completion can start its own delayed
+            # audio. Establish native settlement before the measured rounds.
+            self.await_status(manager, ('idle', 'done'))
         records, handles = self.members(self.space, chat['tabId'], self.layout(), chat['paneId'])
         require(handles and all(handle.alive() for handle in handles), records)
         self.evidence['reminderTarget'] = records
@@ -706,6 +719,8 @@ class Scenario(Acceptance):
             self.start([self.args.core, 'events', '--terminal', self.terminal, '--json'], 'core-events')
         self.focus(chat['tabId'])
         self.await_status(chat, ('idle',))
+        if self.host == 'tui':
+            time.sleep(PLAYBACK_WINDOW_SECONDS)
         self.evidence['reminderControl'] = before[self.space][self.sentinel]
         checks = []
         start = len(self.wire.records)
@@ -722,10 +737,10 @@ class Scenario(Acceptance):
         require(detail['status'] == 'running' and detail['execution']['approved'] is False, detail)
         control = self.layout()[self.space][self.sentinel]
         require(control == self.evidence['reminderControl'], ('unrelated control mutated', control))
-        for phase, expected, observed in checks:
-            self.note('playback-comparison', phase=phase, expected=expected, observed=observed)
-        for phase, expected, observed in checks:
-            check_sound(expected, observed)
+        for phase, expected, observed, peak in checks:
+            self.note('playback-comparison', phase=phase, expected=expected, observed=observed, peak=peak)
+        for phase, expected, observed, peak in checks:
+            check_sound(expected, observed, peak)
 
     def cleanup(self):
         def operation(action):
