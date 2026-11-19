@@ -6,7 +6,14 @@ pub(super) fn content(result: &str) -> Value {
 pub(super) async fn delegated(f: &Fixture) -> Value {
     let preview = f.preview().await;
     let accepted = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 202);
-    assert_eq!(terminal(&f.server, accepted["id"].as_str().unwrap()).await["stage"], "succeeded");
+    let id = accepted["id"].as_str().unwrap();
+    if f.is_app() {
+        let tab = f.app_tab(id).await;
+        f.app_event(&tab, "worker-a", "launch_identity").await;
+        f.app_event(&tab, "worker-a", "launch_ready").await;
+    }
+    let finished = terminal(&f.server, id).await;
+    assert_eq!(finished["stage"], "succeeded", "{finished}");
     accepted
 }
 pub(super) fn prompts(f: &Fixture) -> usize {
@@ -191,33 +198,137 @@ async fn p21_real_save_failure_neither_notifies_nor_claims_success() {
 // to the original delegator or interpreting that as a failed save must fail.
 #[tokio::test]
 async fn report_targets_current_chief_and_preserves_saved_fact_when_acknowledgement_is_uncertain() {
-    let f = Fixture::new().await;
-    delegated(&f).await;
+    for agent in ["omp", "pi"] {
+        let f = Fixture::with_host(false, agent).await;
+        delegated(&f).await;
+        let replacement = replace_chief(&f).await;
+        let starts = common::read_json_lines(&f.herdr.path().join("started.jsonl"));
+        let mut original = starts[0].clone();
+        let mut current = starts.last().unwrap().clone();
+        for (row, id) in [(&mut original, "chief-a"), (&mut current, "chief-b")] {
+            row["agent_session"] = json!({"source":format!("herdr:{agent}"),"agent":agent,"kind":"path","value":f.root.path().join(format!("{id}.jsonl"))});
+        }
+        let target = current["pane_id"].clone();
+        assert_eq!(target, replacement["paneId"]);
+        assert_ne!(target, original["pane_id"]);
+        f.herdr.set_behavior(json!({"agents":[original,current],"invalid_prompt_response":true}));
+        let before = prompts(&f);
+        let result = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":content("success")})).await;
+        assert_eq!(result["saved"], true);
+        assert_eq!(result["notification"]["status"], "uncertain");
+        let accepted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
+        assert_eq!(accepted.last().unwrap()["target"], target);
+        assert_eq!(prompts(&f), before + 1);
+        assert_eq!(body(get_over_tcp(f.server.addr(), &format!("/api/chief/reports/{}", result["report"]["id"].as_str().unwrap())).await, 200), result["report"]);
+        println!("current-chief TUI/{agent} uncertain input outcome={result}");
+    }
+}
+
+// S1/P38: public chief and report HTTP plus the selected App/core boundary.
+// The original and current chief share a title and the original terminal stays
+// live; routing by original delegator, title, or TUI inventory cannot pass.
+#[tokio::test]
+async fn app_report_reaches_the_current_chief_not_the_same_title_delegator() {
+    for agent in ["omp", "pi"] {
+        let f = Fixture::with_host(true, agent).await;
+        let delegation = delegated(&f).await;
+        let current = replace_chief(&f).await;
+        let tabs = common::read_json_lines(&f.herdr.path().join("app-tabs.jsonl"));
+        assert_eq!(tabs.len(), 3);
+        assert_eq!(tabs[0]["options"]["name"], tabs[2]["options"]["name"]);
+        assert_eq!(current["paneId"], tabs[2]["pane"]);
+        assert_ne!(tabs[0]["terminal"], tabs[2]["terminal"]);
+        let before = f.herdr.calls().len();
+        let expected = content("success");
+        let result = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":expected})).await;
+        assert_eq!(result["saved"], true, "{agent}: {result}");
+        assert_eq!(result["notification"]["status"], "submitted", "{agent}: {result}");
+        let report = &result["report"];
+        assert_eq!(report["from"], "worker-a");
+        assert_eq!(report["delegationId"], delegation["id"]);
+        assert_eq!(report["body"], expected);
+        let calls = f.herdr.calls();
+        let sends = calls[before..].iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>();
+        assert_eq!(sends.len(), 1);
+        assert_eq!(sends[0]["terminal"], tabs[2]["terminal"]);
+        assert!(sends[0]["text"].as_str().unwrap().contains(report["id"].as_str().unwrap()));
+        assert_eq!(body(get_over_tcp(f.server.addr(), &format!("/api/chief/reports/{}", report["id"].as_str().unwrap())).await, 200), *report);
+    }
+}
+
+// S1/P40/P52: core explicitly rejects exactly one report send. Observe the
+// immutable fact while the CLI is waiting, then keep observing past both an
+// initial-input retry delay and the complete session maintenance budget.
+#[tokio::test]
+async fn app_failed_notification_keeps_one_report_without_redispatch_or_replay() {
+    async fn observe(agent: &str) {
+        let f = Fixture::with_host(true, agent).await;
+        let delegation = delegated(&f).await;
+        replace_chief(&f).await;
+        let tabs_file = f.herdr.path().join("app-tabs.jsonl");
+        let tabs = common::read_json_lines(&tabs_file);
+        let before = f.herdr.calls();
+        let release = f.root.path().join("release-core-notification");
+        f.herdr.set_behavior(json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+        let addr = f.server.addr();
+        let expected = content("failure");
+        let input = json!({"sessionId":"worker-a","body":expected}).to_string();
+        let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/chief/reports", &input).await });
+        let before_delivery = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if f.herdr.calls().len() > before.len() {
+                    return get_over_tcp(addr, "/api/chief/reports?sessionId=worker-a").await;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await;
+        let in_flight = !request.is_finished();
+        fs::write(release, "release owned core notification").unwrap();
+        let response = body(request.await.unwrap(), 200);
+        assert!(in_flight, "public readback must finish while notification is blocked");
+        assert_eq!(response["saved"], true);
+        assert_eq!(response["notification"]["status"], "failed", "{agent}: {response}");
+        assert!(response["notification"]["reason"].as_str().unwrap().contains("core_send_rejected"));
+        let report = &response["report"];
+        assert_eq!(report["body"], expected);
+        assert_eq!(report["delegationId"], delegation["id"]);
+        assert_eq!(body(before_delivery.expect("core reached the external gate"), 200)["reports"], json!([report]));
+        let calls = f.herdr.calls();
+        assert_eq!(calls.len(), before.len() + 1);
+        let send = &calls[before.len()];
+        assert_eq!(send["kind"], "core_send");
+        assert_eq!(send["terminal"], tabs[2]["terminal"]);
+        let report_id = report["id"].as_str().unwrap();
+        assert!(send["text"].as_str().unwrap().contains(report_id));
+        let route = format!("/api/chief/reports/{report_id}");
+        let read_as_current = post(&f.server, &format!("{route}/view"), json!({"sessionId":"chief-b"})).await;
+        assert_eq!(read_as_current["report"], *report);
+        assert_eq!(read_as_current["received"], false);
+        let started = tokio::time::Instant::now();
+        let mut samples = 0;
+        loop {
+            assert_eq!(body(get_over_tcp(addr, &route).await, 200), *report);
+            assert_eq!(f.herdr.calls(), calls, "no extra initial input or report notification");
+            assert_eq!(common::read_json_lines(&tabs_file), tabs, "no delegated Chat or Run creation replay");
+            samples += 1;
+            if started.elapsed() >= Duration::from_secs(46) { break; }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!([report]));
+        println!("P40/P52 App/{agent} report={report_id} attempts=1 observationMs={} samples={samples}", started.elapsed().as_millis());
+    }
+    tokio::join!(observe("omp"), observe("pi"));
+}
+
+async fn replace_chief(f: &Fixture) -> Value {
+    let chief = body(get_over_tcp(f.server.addr(), "/api/chief").await, 200);
+    assert_eq!(chief["current"]["sessionId"], "chief-a");
     post(&f.server, "/api/sessions/events", json!({"sessionId":"chief-a","kind":"unregister"})).await;
     let tasks = body(get_over_tcp(f.server.addr(), "/api/tasks").await, 200);
     let task = tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "entry").unwrap();
-    f.identity("chief-b");
-    let preview = post(&f.server, "/api/chats/preview", json!({"zone":"work-zone","taskId":task["id"]})).await;
-    let started = body(post_json_over_tcp(f.server.addr(), "/api/chats", &json!({"zone":"work-zone","taskId":task["id"],"chatId":preview["chatId"]}).to_string()).await, 202);
-    assert_eq!(terminal(&f.server, started["id"].as_str().unwrap()).await["stage"], "succeeded");
-    post(&f.server, "/api/sessions/events", json!({"sessionId":"chief-b","kind":"register","data":{"cwd":f.root.path().join("work"),"agentType":"pi"}})).await;
-    let starts = common::read_json_lines(&f.herdr.path().join("started.jsonl"));
-    let mut original = starts[0].clone();
-    let mut current = starts.last().unwrap().clone();
-    for (agent, id) in [(&mut original, "chief-a"), (&mut current, "chief-b")] {
-        agent["agent"] = json!("pi");
-        agent["agent_session"] = json!({"source":"herdr:pi","agent":"pi","kind":"path","value":f.root.path().join(format!("{id}.jsonl"))});
-    }
-    let target = current["pane_id"].clone();
-    assert_ne!(target, original["pane_id"]);
-    f.herdr.set_behavior(json!({"agents":[original,current],"invalid_prompt_response":true}));
-    let before = prompts(&f);
-    let result = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":content("success")})).await;
-    assert_eq!(result["saved"], true);
-    assert_eq!(result["notification"]["status"], "uncertain");
-    let accepted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
-    assert_eq!(accepted.last().unwrap()["target"], target);
-    assert_eq!(prompts(&f), before + 1);
-    assert_eq!(body(get_over_tcp(f.server.addr(), &format!("/api/chief/reports/{}", result["report"]["id"].as_str().unwrap())).await, 200), result["report"]);
-    println!("current-chief uncertain input outcome={result}");
+    let creation = f.start_chief("chief-b", task).await;
+    let chief = body(get_over_tcp(f.server.addr(), "/api/chief").await, 200);
+    assert_eq!(chief["current"]["sessionId"], "chief-b");
+    assert_eq!(chief["current"]["phase"], "registered");
+    creation
 }

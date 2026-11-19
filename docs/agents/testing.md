@@ -45,6 +45,10 @@
 
 初始输入重试（P20、P24–P28、P50、P52）由 `chat_creation` 的 `initial_input_retry::` 及 `a_timed_out_submission` 通过真实 HTTP 和受控宿主验证：拒绝回执门闩后的 4.999／5.000 秒、重复／乱序 ready、同目标唯一重试、退出／换会话／换进程取消，以及未知结果下的独立终端写入记录。`chatCreation.spec.ts` 对照页面等待、拒绝、未知和刷新时的实际创建／输入次数；真实原生模态与终端另验。
 
+### Chief 委派与报告（S1）
+
+先构建本 worktree 的页面，用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture`。公开 chief／Chat／历史／报告 HTTP 配合独占 TUI、App/core 记录确认委派授权、发起目标和外部输入；业务输入门闩期间读回已有原生身份的历史与委派关联。更换当前 chief 后保留原 Tab，从真实通知目标及报告读回确认路由。记录型宿主拒绝通知时，保留原报告，并在至少 46 秒窗口核对没有额外输入、重投或复发派；这不代表真实安装宿主业务链路已验收。
+
 ### 运行前提
 
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。

@@ -96,11 +96,19 @@ async fn read(panel: &Panel, path: &str) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 async fn create(panel: &Panel, zone: &str, task_id: &str) -> Value {
+    let id = accept_creation(panel, zone, task_id).await;
+    finish_creation(panel, &id).await
+}
+async fn accept_creation(panel: &Panel, zone: &str, task_id: &str) -> String {
     let preview = post(panel,"/api/chats/preview",json!({"zone":zone,"taskId":task_id})).await;
     let created = post(panel,"/api/chats",json!({"zone":zone,"taskId":task_id,"chatId":preview["chatId"],"input":"USER INPUT"})).await;
+    created["id"].as_str().unwrap().to_owned()
+}
+async fn finish_creation(panel: &Panel, id: &str) -> Value {
+    let path = format!("/api/chats/{id}");
     tokio::time::timeout(Duration::from_secs(10),async {
         loop {
-            let done = read(panel,&format!("/api/chats/{}",created["id"].as_str().unwrap())).await;
+            let done = read(panel, &path).await;
             assert_ne!(done["stage"],"failed","{done}");
             if done["stage"] == "succeeded" { return done; }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -396,24 +404,24 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         } else {
             let release = root.path().join("release-native");
             herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":file},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
-            let (done, ()) = tokio::join!(create(&panel,zone,source_a), async {
-                assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
-                assert!(!herdr.calls().iter().any(|call| call["kind"] == "agent_prompt"));
-                let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
-                let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
-                    let barrier = barrier.clone();
-                    let addr = panel.addr;
-                    let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b});
-                    tokio::spawn(async move {
-                        barrier.wait().await;
-                        let reply = post_json_over_tcp(addr,"/api/sessions/events",&json!({"sessionId":id,"kind":"register","data":data}).to_string()).await;
-                        assert_eq!(reply.status,200,"{}",reply.body);
-                    })
-                });
-                barrier.wait().await;
-                fs::write(&release,b"release").unwrap();
-                for write in writes { write.await.unwrap(); }
+            let id = accept_creation(&panel, zone, source_a).await;
+            assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
+            assert!(!herdr.calls().iter().any(|call| call["kind"] == "agent_prompt"));
+            let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
+            let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
+                let barrier = barrier.clone();
+                let addr = panel.addr;
+                let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b});
+                tokio::spawn(async move {
+                    barrier.wait().await;
+                    let reply = post_json_over_tcp(addr,"/api/sessions/events",&json!({"sessionId":id,"kind":"register","data":data}).to_string()).await;
+                    assert_eq!(reply.status,200,"{}",reply.body);
+                })
             });
+            barrier.wait().await;
+            fs::write(&release,b"release").unwrap();
+            for write in writes { write.await.unwrap(); }
+            let done = finish_creation(&panel, &id).await;
             let row = collected(&panel,target,&done["name"]).await;
             first_time = row["firstRecordedAt"].clone();
             memo(&panel,target,"first memo\n保留").await;

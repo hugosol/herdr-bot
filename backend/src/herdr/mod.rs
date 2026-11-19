@@ -12,5 +12,6 @@ pub(crate) mod launch;
 pub(crate) mod placement;
 
 pub use client::{CreatedTab, HerdrClient, HerdrError, NavigationTarget, Workspace};
+pub(crate) use client::LaunchTarget;
 pub use identity::NativeSession;
 pub(crate) use identity::read_native_id;
