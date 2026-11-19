@@ -303,6 +303,6 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
         let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to});
-        Ok(SavedReport { target: Ok(report.to.agent_name.clone()), report, text, diagnostic })
+        Ok(SavedReport { target: Ok(crate::report_delivery::NotificationTarget::Tui(report.to.agent_name.clone())), report, text, diagnostic })
     }).await
 }

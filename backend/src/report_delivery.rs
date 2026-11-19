@@ -3,15 +3,29 @@
 //! The save future uses the existing `files` authority and returns only after
 //! releasing its file/business guards. No external effect runs before it succeeds.
 //! An accepted submission outlives its HTTP caller, but creates no retry or queue.
-use crate::herdr::HerdrClient;
+use crate::herdr::{HerdrClient, HerdrError, LaunchTarget};
 use serde::Serialize;
 use std::{future::Future, io::Write, sync::Arc};
+
+pub(crate) enum NotificationTarget {
+    Tui(String),
+    App(Arc<LaunchTarget>),
+}
+
+impl NotificationTarget {
+    async fn submit(self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
+        match self {
+            Self::Tui(target) => herdr.prompt(&target, text).await,
+            Self::App(target) => target.submit(herdr, text).await,
+        }
+    }
+}
 
 /// A saved fact plus the single notification chosen by its report path.
 /// `diagnostic` contains only body-free identity fields and the event name.
 pub(crate) struct SavedReport<T> {
     pub report: T,
-    pub target: Result<String, Notification>,
+    pub target: Result<NotificationTarget, Notification>,
     pub text: String,
     pub diagnostic: serde_json::Value,
 }
@@ -53,12 +67,11 @@ pub(crate) async fn save_and_notify<T: Send + 'static>(
     tokio::spawn(async move {
         let SavedReport { report, target, text, mut diagnostic } = save.await?;
         let (notification, diagnostic_reason) = match target {
-            Ok(target) => match herdr.prompt(&target, &text).await {
+            Ok(target) => match target.submit(&herdr, &text).await {
                 Ok(()) => (Notification { status: "submitted", reason: "Herdr 已确认输入提交；不代表可靠接收、已呈现或已阅读。".into() }, "input-submission-confirmed"),
                 // Host details may echo the input. Only the typed category
                 // belongs in diagnostics; the caller receives the full failure.
                 Err(error) => {
-                    use crate::herdr::HerdrError;
                     let status = match &error {
                         HerdrError::NotStarted(_) | HerdrError::CommandFailed { .. } => "failed",
                         _ => "uncertain",
