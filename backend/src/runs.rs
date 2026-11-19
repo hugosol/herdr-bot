@@ -141,6 +141,15 @@ pub struct Run {
     pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
+impl Run {
+    fn session_claimed_by_other_execution(&self, session_id: &str, execution_id: &str) -> bool {
+        self.manager.as_ref().is_some_and(|chat| chat.session_id == session_id)
+            || self.nodes.values().any(|node| node.executions().any(|other| {
+                other.id != execution_id && other.chat().is_some_and(|chat| chat.session_id == session_id)
+            }))
+    }
+}
+
 /// Display-only launch snapshot, independent of mutable Run names and definitions.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
