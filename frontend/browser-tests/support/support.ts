@@ -386,6 +386,9 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
           continue
         }
         await waitForTasks(`http://${localHost}:${running.port}`)
+        if (herdrExecutable !== undefined) {
+          fs.writeFileSync(path.join(herdrDirectory, 'launch_endpoint.txt'), `${localHost}:${running.port}`, 'utf8')
+        }
         return
       }
     }

@@ -19,6 +19,16 @@ pub(super) struct AppHost {
     core: PathBuf,
 }
 
+#[derive(Debug)]
+pub(super) struct AppTerminal {
+    core_id: String,
+    address: String,
+}
+
+impl AppTerminal {
+    pub(super) fn coordinates(&self) -> (&str, &str) { (&self.core_id, &self.address) }
+}
+
 impl AppHost {
     pub(super) fn new(executable: PathBuf, core: PathBuf) -> Self {
         Self { executable, core }
@@ -30,7 +40,7 @@ impl AppHost {
         })
     }
 
-    async fn spaces(&self) -> Result<Vec<Value>, HerdrError> {
+    pub(super) async fn spaces(&self) -> Result<Vec<Value>, HerdrError> {
         let mut value = run_cli(&self.executable, LIST, &["ls"], QUERY_TIMEOUT).await?;
         match value.get_mut("spaces").map(Value::take) {
             Some(Value::Array(spaces)) => Ok(spaces),
@@ -41,6 +51,12 @@ impl AppHost {
     pub(super) async fn create_tab(
         &self, space_id: &str, cwd: Option<&str>, name: &str,
     ) -> Result<CreatedTab, HerdrError> {
+        self.create(space_id, cwd, name, None).await.map(|(tab, _)| tab)
+    }
+
+    pub(super) async fn create(
+        &self, space_id: &str, cwd: Option<&str>, name: &str, argv: Option<&[String]>,
+    ) -> Result<(CreatedTab, AppTerminal), HerdrError> {
         let spaces = self.spaces().await?;
         let space = find_id(&spaces, space_id).ok_or_else(|| denied("所选 App Space 不再存在或 ID 不唯一"))?;
         if !space["machine"].is_null() {
@@ -50,9 +66,8 @@ impl AppHost {
         // On Windows status queries an existing core without starting one, unlike
         // `hc get`. Do not let a missing core turn into an implicit startup.
         let status = run_cli(&self.core, CORE_STATUS, &["server", "status", "--json"], QUERY_TIMEOUT).await?;
-        if nonempty(status.pointer("/core/id")).is_none() {
-            return Err(unexpected(CORE_STATUS, "响应缺少 core 身份"));
-        }
+        let core_id = nonempty(status.pointer("/core/id"))
+            .ok_or_else(|| unexpected(CORE_STATUS, "响应缺少 core 身份"))?;
 
         // Check existing evidence before mutation. A mod-only Space has no
         // terminal to witness, so its first Tab must be verified after creation.
@@ -67,6 +82,7 @@ impl AppHost {
         }
 
         let mut args = json!({ "space": space_id, "name": name, "focus": false });
+        if let Some(argv) = argv { args["argv"] = json!(argv); }
         if let Some(cwd) = cwd {
             args["folder"] = cwd.into();
         }
@@ -91,10 +107,39 @@ impl AppHost {
             .ok_or_else(|| unexpected(CREATE_TAB, "未在新 Tab 中确认唯一的终端 Pane"))?;
         self.verify_terminal(space_id, tab_id, terminal).await
             .map_err(|error| unexpected(CREATE_TAB, &error.message()))?;
-        Ok(CreatedTab { tab_id: tab_id.into(), pane_id: pane_id.into() })
+        Ok((CreatedTab { tab_id: tab_id.into(), pane_id: pane_id.into() }, AppTerminal {
+            core_id: core_id.into(), address: terminal.into(),
+        }))
     }
 
-    async fn verify_terminal(&self, space: &str, tab: &str, terminal: &str) -> Result<(), HerdrError> {
+    pub(super) async fn observe_launch(&self, location: &super::NavigationTarget, target: &AppTerminal) -> Result<Value, HerdrError> {
+        let spaces = self.spaces().await?;
+        let space = find_id(&spaces, &location.workspace_id).ok_or_else(|| denied("启动 Space 已不存在"))?;
+        let tab = find_id(array(space, "tabs", LIST)?, &location.tab_id).ok_or_else(|| denied("启动 Tab 已不存在"))?;
+        let mut panes = array(tab, "terminals", LIST)?.iter().filter(|pane| {
+            nonempty(pane.get("pane")) == Some(location.pane_id.as_str())
+                && nonempty(pane.get("terminal")) == Some(target.address.as_str())
+        });
+        if panes.next().is_none() || panes.next().is_some() { return Err(denied("启动 Pane 与终端的关联已改变")); }
+        let status = run_cli(&self.core, CORE_STATUS, &["server", "status", "--json"], QUERY_TIMEOUT).await?;
+        if nonempty(status.pointer("/core/id")) != Some(target.core_id.as_str()) {
+            return Err(unexpected(CORE_STATUS, "启动所用的 core 实例已改变"));
+        }
+        self.verify_terminal(&location.workspace_id, &location.tab_id, &target.address).await
+    }
+
+    pub(super) async fn submit(&self, target: &AppTerminal, text: &str) -> Result<(), HerdrError> {
+        const SEND: &str = "hc send";
+        let result = run_cli(&self.core, SEND, &["send", "--json", &target.address, "--", text], Duration::from_secs(75)).await?;
+        if result.get("turn").and_then(Value::as_u64).is_none()
+            || !matches!(result.get("started"), Some(Value::Bool(true) | Value::Null))
+        {
+            return Err(unexpected(SEND, "未能确认初始指示的提交结果"));
+        }
+        Ok(())
+    }
+
+    pub(super) async fn verify_terminal(&self, space: &str, tab: &str, terminal: &str) -> Result<Value, HerdrError> {
         let record = run_cli(&self.core, CORE_GET, &["get", terminal, "--json"], QUERY_TIMEOUT).await?;
         if nonempty(record.get("address")) != Some(terminal)
             || nonempty(record.pointer("/labels/herdr.space")) != Some(space)
@@ -102,7 +147,7 @@ impl AppHost {
         {
             return Err(unexpected(CORE_GET, "App/core 实例不一致：终端不属于 App 返回的 Space 与 Tab"));
         }
-        Ok(())
+        Ok(record)
     }
 }
 

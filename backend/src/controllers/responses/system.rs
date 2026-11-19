@@ -9,6 +9,7 @@ impl IntoResponse for HttpError<SessionEventError> {
         match self.0 {
             SessionEventError::Forbidden => rejected(StatusCode::FORBIDDEN, "forbidden", "会话事件写入只接受本机来源：局域网设备不能伪造或刷面板。"),
             SessionEventError::UnknownSession => rejected(StatusCode::NOT_FOUND, "unknown-session", "该会话尚未注册：非 register 事件不能为未知会话建行。"),
+            SessionEventError::LaunchMismatch => rejected(StatusCode::CONFLICT, "launch-mismatch", "上报不属于当前启动的目标和原生会话。"),
             SessionEventError::Chief(error) => HttpError(error).into_response(),
         }
     }

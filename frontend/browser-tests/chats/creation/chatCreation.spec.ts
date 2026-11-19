@@ -98,7 +98,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   server = await startServer({
     herdr: {
       workspaces: [{ workspace_id: 'w-target', label: 'alpha' }, { workspace_id: 'w-beta', label: 'beta' }],
-      behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
+      behavior: { manual_launch_events: true, agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
     },
   })
   const zones = await prepareZones(server.baseURL)
@@ -131,12 +131,18 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   await dialog.getByTestId('chat-input').fill('普通任务：检查登录逻辑')
   await dialog.getByTestId('chat-create-submit').click()
 
-  // 启动阶段是稳定的界面状态；受控 agent 尚未就绪时绝无初始输入。
-  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
+  // S1/P50: a Tab and agent-start request do not authorize input. The page
+  // must show the backend-owned initialization phase, not infer submission.
   await waitForHerdrCall(page, 'agent_start')
+  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
   expect(callsOfKind('agent_prompt')).toHaveLength(0)
-  await page.waitForTimeout(300)
+  const argv = callsOfKind('tab_create')[0].argv as string[]
+  const env = (key: string) => argv.find(arg => arg.startsWith(`${key}=`))?.slice(key.length + 1)
+  const data = { launchId: env('HERDR_BOT_LAUNCH_ID'), targetId: env('HERDR_BOT_LAUNCH_TARGET_ID'), agentType: 'omp', cwd: zones.normalPath, pid: 43127 }
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_identity', sessionId: 'browser-owned-native', data })
+  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
   expect(callsOfKind('agent_prompt')).toHaveLength(0)
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_ready', sessionId: 'browser-owned-native', data })
 
   // 就绪之后才进入提交阶段；提交响应未确认之前没有成功。
   await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {

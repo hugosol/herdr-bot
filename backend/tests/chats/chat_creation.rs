@@ -917,6 +917,183 @@ async fn invalid_launch_overrides_are_rejected_before_side_effects_without_savin
     }
 }
 
+// S1/P6/P7/P22/P49: a forced default would put the current launch in the
+// wrong native container; opening a TUI-only file would prevent App launch.
+// Compare actual App/core launch and send records, not only the HTTP reply.
+#[tokio::test(flavor = "multi_thread")]
+async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_files() {
+    let host = HerdrFixture::new("app task terminal fixture");
+    fs::write(host.path().join("chat-app-mode"), "").unwrap();
+    let storage = TempDir::new("app task launch storage");
+    let mut config = config_with(&host, &storage);
+    config.herdr.backend = herdr_bot::config::HerdrBackend::App;
+    config.herdr.app_executable = host.executable().into();
+    config.herdr.core_executable = host.executable().into();
+    let mut catalog: toml::Value = toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
+    for entry in catalog["extensions"].as_array_mut().unwrap() {
+        if matches!(entry["id"].as_str(), Some("omp-herdr-agent-state" | "pi-herdr-agent-state")) {
+            entry["entrypoint"] = toml::Value::String("not-installed-tui-state.ts".into());
+        }
+    }
+    config.tasks.metadata_file = storage.path().join("task-options.toml");
+    fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
+    config.suites.definition_file = storage.path().join("suites.json");
+    for entry in ["omp-test-suite.ts", "pi-test-suite.ts"] { fs::write(storage.path().join(entry), "// owned resource").unwrap(); }
+    fs::write(&config.suites.definition_file, json!({"suites":[{"id":"paired","name":"Paired","agents":["omp","pi"],
+        "extensions":{"omp":["omp-test-suite.ts"],"pi":["pi-test-suite.ts"]},"pi":{"codemode":"on"}}]}).to_string()).unwrap();
+    let server = TestServer::start(&config).await;
+    let dir = storage.path().join("alpha");
+    fs::create_dir(&dir).unwrap();
+    let zone = register(&server, &dir).await;
+    for (index, (agent, thinking, placement, space)) in [
+        ("omp", "high", "current", "space-current"), ("pi", "xhigh", "default", "space-default"),
+    ].into_iter().enumerate() {
+        let task = save_task(&server, json!({"name":format!("App {agent}"),"chatName":"{task.name}","agent":agent,
+            "model":"gpt-6.1-sol","thinking":thinking,"suite":"paired","skill":"teach","prompt":"Literal {unknown}"})).await;
+        let task_id = task["id"].as_str().unwrap();
+        let preview = serde_json::from_str(&preview(&server, &zone, task_id).await.body).unwrap();
+        let mut request = create_body(&zone, task_id, &preview, "User body\nsecond line");
+        request["workspaceTarget"] = placement.into();
+        let accepted = create(&server, request).await;
+        assert_eq!(accepted.status, 202, "{}", accepted.body);
+        let accepted: Value = serde_json::from_str(&accepted.body).unwrap();
+        let id = accepted["id"].as_str().unwrap();
+        let at_init = wait_stage(&server, id, "initializing").await;
+        let tabs = common::read_json_lines(&host.path().join("app-tabs.jsonl"));
+        assert_eq!(tabs.len(), index + 1);
+        let tab = &tabs[index];
+        assert_eq!(tab["space"], space);
+        assert_eq!(tab["options"]["folder"], json!(dir));
+        assert!(tab["options"].get("task").is_none());
+        assert_eq!(at_init["tabId"], tab["tab"]);
+        assert_eq!(at_init["paneId"], tab["pane"]);
+        let argv = tab["options"]["argv"].as_array().unwrap();
+        assert_eq!(argv[6], agent);
+        assert_eq!(&argv[7..11], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!(thinking)]);
+        let paths = argv.iter().filter_map(Value::as_str).filter_map(|s| Path::new(s).file_name()?.to_str()).collect::<Vec<_>>();
+        assert!(paths.contains(&format!("{agent}-test-suite.ts").as_str()), "{paths:?}");
+        assert!(paths.contains(&format!("{agent}-connect-bot.ts").as_str()), "{paths:?}");
+        assert!(paths.contains(&format!("{agent}-model-cost.ts").as_str()), "{paths:?}");
+        assert!(!paths.iter().any(|name| name.contains("herdr-agent-state") || name.contains("not-installed")));
+        let data = json!({"launchId":argv[4],"targetId":argv[5],"agentType":agent,"cwd":dir,"pid":43127});
+        let report = |kind: &str| json!({"kind":kind,"sessionId":format!("app-native-{agent}"),"data":data}).to_string();
+        if agent == "omp" {
+            for kind in ["launch_ready", "launch_ready"] {
+                assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report(kind)).await.status, 200);
+            }
+            assert_eq!(calls_of_kind(&host, "core_send").len(), index);
+        } else {
+            let stale = json!({"kind":"launch_ready","sessionId":"previous-pi-session","data":data}).to_string();
+            assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &stale).await.status, 200);
+        }
+        assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report("launch_identity")).await.status, 200);
+        if agent == "pi" {
+            assert_eq!(creation(&server, id).await, at_init);
+            assert_eq!(calls_of_kind(&host, "core_send").len(), index);
+            assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report("launch_ready")).await.status, 200);
+        }
+        assert_eq!(wait_stage(&server, id, "succeeded").await["inputSubmitted"], true);
+        assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report("launch_ready")).await.status, 200);
+        let sent = calls_of_kind(&host, "core_send");
+        assert_eq!(sent.len(), index + 1);
+        assert_eq!(sent[index]["terminal"], tab["terminal"]);
+        assert_eq!(sent[index]["text"], "/skill:teach Literal {unknown}\n\nUser body\nsecond line");
+        assert!(calls_of_kind(&host, "agent_prompt").is_empty());
+    }
+}
+
+// S1: public Chat HTTP, production session events, and recorded terminal input.
+// P19–P22/P50: even a successful TUI start cannot authorize input. A different
+// target token signaled before the legitimate owner must not unlock this Chat.
+#[tokio::test(flavor = "multi_thread")]
+async fn initial_input_requires_the_current_launch_ready_and_is_sent_once() {
+    let herdr = HerdrFixture::new("associated task launch");
+    let storage = TempDir::new("associated task storage");
+    herdr.set_behavior(json!({"manual_launch_events":true}));
+    struct NoPowerOff;
+    impl herdr_bot::PowerOff for NoPowerOff {
+        fn power_off(&self) -> Result<(), herdr_bot::PowerOffFailure> { panic!("launch must not authorize power-off") }
+    }
+    let clock = std::sync::Arc::new(herdr_bot::clock::ManualClock::new());
+    let sessions = std::sync::Arc::new(herdr_bot::sessions::SessionsState::with_policy_and_clock(
+        herdr_bot::sessions::SessionPolicy::from_seconds(1, 30), clock.clone()));
+    let app = herdr_bot::app_with_sessions(&config_with(&herdr, &storage), std::sync::Arc::new(NoPowerOff), sessions);
+    let server = TestServer::start_app(app.clone()).await;
+    let (zone, task) = prepare_zone_and_task(&server, &storage).await;
+    let id = accept_creation(&server, &zone, &task, "/model literal-command").await;
+    assert!(wait_until(Duration::from_secs(5), || herdr.path().join("started.jsonl").is_file()).await);
+    let invocations = fs::read_to_string(herdr.path().join("invocations.jsonl")).unwrap();
+    let export_value = |key: &str| {
+        invocations.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .flat_map(|call| call["argv"].as_array().cloned().unwrap_or_default())
+            .find_map(|arg| arg.as_str()?.strip_prefix(key).map(str::to_owned))
+            .unwrap_or_else(|| panic!("new terminal did not receive {key}: {invocations}"))
+    };
+    let launch = export_value("HERDR_BOT_LAUNCH_ID=");
+    let target = export_value("HERDR_BOT_LAUNCH_TARGET_ID=");
+    let cwd = storage.path().join("alpha");
+    let session = "native-associated-omp";
+    herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":session}, "foreground_cwd":cwd,"launch_pid":43127}));
+    let report = |session: &str, kind: &str, launch: &str, target: &str| json!({
+        "sessionId":session,"kind":kind,"data":{"launchId":launch,"targetId":target,"agentType":"omp","cwd":cwd,"pid":43127}
+    });
+    for wrong in [report(session,"launch_ready",&launch,"wrong-target"), report(session,"launch_ready","old-launch",&target), report("another-native-chat","launch_ready",&launch,&target)] {
+        let rejected = post_json_over_tcp(server.addr(), "/api/sessions/events", &wrong.to_string()).await;
+        assert_eq!(rejected.status, 409, "{}", rejected.body);
+    }
+    let mut replaced = report(session, "launch_identity", &launch, &target);
+    replaced["data"]["pid"] = json!(43128);
+    assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &replaced.to_string()).await.status, 409);
+
+    // A correct payload from a non-local peer is rejected before any launch
+    // mutation; a local identity alone must still leave the job initializing.
+    use tower::ServiceExt;
+    let remote = app.layer(axum::extract::connect_info::MockConnectInfo("203.0.113.7:40000".parse::<std::net::SocketAddr>().unwrap()));
+    let remote_response = remote.oneshot(axum::http::Request::post("/api/sessions/events")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(report(session, "launch_ready", &launch, &target).to_string())).unwrap()).await.unwrap();
+    assert_eq!(remote_response.status(), 403);
+
+    let event = |id: &str, kind: &str, data: Value| json!({"sessionId":id,"kind":kind,"data":data});
+    for row in [session, "independent-local-session"] {
+        assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &event(row,"register",json!({"cwd":cwd})).to_string()).await.status, 200);
+    }
+    assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &event(session,"state",json!({"value":"working"})).to_string()).await.status, 200);
+    assert_eq!(post_json_over_tcp(server.addr(), "/api/shutdown/monitor", &json!({"sessionId":session,"selected":true}).to_string()).await.status, 200);
+    for (row, state) in [(session, "idle"), ("independent-local-session", "awaiting-input")] {
+        assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &event(row,"state",json!({"value":state})).to_string()).await.status, 200);
+    }
+    clock.advance(Duration::from_secs(2));
+    let snapshot = || async {
+        let mut stream = SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+        let mut snapshot = stream.next_frame_within(Duration::from_secs(2)).await.unwrap().json();
+        snapshot["shutdown"].as_object_mut().unwrap().remove("serverTime");
+        snapshot
+    };
+    let before = snapshot().await;
+    let idle = before["sessions"].as_array().unwrap().iter().find(|row| row["sessionId"] == session).unwrap();
+    assert_eq!(idle["state"], "idle");
+    assert_eq!(idle["online"], false);
+    assert_eq!(before["shutdown"]["phase"], "none");
+    assert_eq!(before["shutdown"]["monitoredSessionIds"], json!([session]));
+    assert_eq!(creation(&server, &id).await["stage"], "initializing");
+    let identity = report(session,"launch_identity",&launch,&target).to_string();
+    assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &identity).await.status, 200);
+    assert_eq!(creation(&server, &id).await["stage"], "initializing");
+    assert!(calls_of_kind(&herdr, "agent_prompt").is_empty());
+    for kind in ["launch_ready", "launch_identity", "launch_ready"] {
+        let response = post_json_over_tcp(server.addr(), "/api/sessions/events", &report(session,kind,&launch,&target).to_string()).await;
+        assert!(matches!(response.status, 200 | 409), "{}", response.body);
+    }
+    let result = wait_stage(&server, &id, "succeeded").await;
+    assert_eq!(result["inputSubmitted"], true);
+    assert_eq!(snapshot().await, before);
+    for _ in 0..2 { assert_eq!(creation(&server, &id).await, result); }
+    let calls = calls_of_kind(&herdr, "agent_prompt");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(common::prompt_body(&calls[0]), "/model literal-command");
+}
+
 /// P27 / P32 / P33 / P34：启动被延迟时不提交；就绪后才进入提交阶段；提交确认后立即成功。
 #[tokio::test(flavor = "multi_thread")]
 async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn() {

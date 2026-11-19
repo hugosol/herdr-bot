@@ -449,6 +449,7 @@ pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outc
         };
         chats::run_creation(
             Arc::clone(&state.herdr),
+            Arc::clone(&state.launches),
             Arc::clone(&state.history),
             state.prompts.clone(),
             Arc::clone(&job),

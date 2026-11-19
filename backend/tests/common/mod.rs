@@ -476,7 +476,12 @@ pub struct TestServer {
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
     pub async fn start(config: &herdr_bot::Config) -> Self {
-        Self::start_app(herdr_bot::app(config)).await
+        let server = Self::start_app(herdr_bot::app(config)).await;
+        let executable = &config.herdr.executable;
+        if executable.file_stem().and_then(|stem| stem.to_str()) == Some("herdr-fixture") {
+            std::fs::write(executable.with_file_name("launch_endpoint.txt"), server.addr.to_string()).unwrap();
+        }
+        server
     }
 
     /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。

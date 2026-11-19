@@ -92,6 +92,8 @@ async fn lan_source_manages_tasks_and_creates_chats_but_cannot_write_session_eve
 
     let sessions = Arc::new(SessionsState::new());
     let app = herdr_bot::app_with_sessions(&config, Arc::new(NeverPowerOff), sessions);
+    let local = common::TestServer::start_app(app.clone()).await;
+    fs::write(herdr.path().join("launch_endpoint.txt"), local.addr().to_string()).unwrap();
     let lan = from_source(&app, LAN_SOURCE);
 
     // Task 读取与新增对局域网来源开放：这是与 connect-bot 会话写入不同的产品能力。

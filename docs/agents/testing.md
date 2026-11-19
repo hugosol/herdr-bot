@@ -39,6 +39,10 @@
 
 先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
+### Task 发起与初始输入（S1）
+
+用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
+
 ### 运行前提
 
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
