@@ -582,8 +582,9 @@ impl NavigationTarget {
     }
 }
 
-// App has a structured argv but no per-Tab env setting. This fixed program
-// sets only the correlation values for the agent; all Task args stay argv data.
+// App has a structured argv but no per-Tab env setting. Set only the launch
+// correlation; keep the agent on the core PTY for native input and OSC 7501.
+// All Task args stay argv data.
 const APP_AGENT: &str = concat!(
     "const [launchId, targetId, agent, ...args] = process.argv.slice(1); ",
     "const child = Bun.spawn([agent, ...args], {env: {...process.env, HERDR_BOT_LAUNCH_ID: launchId, HERDR_BOT_LAUNCH_TARGET_ID: targetId}, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit'}); ",
