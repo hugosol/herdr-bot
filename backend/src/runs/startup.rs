@@ -322,7 +322,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
         workspace_name: parent.workspace_name.clone(), user_input: target.input.clone(), file_inputs: input.file_inputs,
         inputs_ready: false, manager: None, status: "running".into(), finished: None,
-        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, previous_executions: Vec::new() })).collect(),
+        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
     };
     *stage = "child-register";
     *parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id_mut() = Some(child.id.clone());

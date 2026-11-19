@@ -215,7 +215,27 @@ fn tab_close(args: &[String]) {
         output(json!({"error":{"code":"confirmation_required","message":"closing this tab would close a worktree group"}}));
         return;
     }
-    record("closed.jsonl", json!({"target":target}));
+    let mut receipt = json!({"target":target});
+    let layout_path = data_dir().join("workspaces.json");
+    if let Ok(raw) = fs::read_to_string(&layout_path) {
+        let mut layout: Vec<Value> = serde_json::from_str(&raw).unwrap();
+        for (index, workspace) in layout.iter_mut().enumerate() {
+            let Some(tabs) = workspace.get_mut("tabs").and_then(Value::as_array_mut) else { continue; };
+            let Some(tab) = tabs.iter().position(|tab| tab["tab_id"] == target.as_str()) else { continue; };
+            receipt["terminal"] = tabs.remove(tab)["terminal"].take();
+            if tabs.is_empty() {
+                let removed = layout.remove(index);
+                if removed.pointer("/worktree/is_linked_worktree").and_then(Value::as_bool) == Some(false)
+                    && let Some(group) = removed.pointer("/worktree/repo_key").and_then(Value::as_str)
+                {
+                    layout.retain(|row| row.pointer("/worktree/repo_key").and_then(Value::as_str) != Some(group));
+                }
+            }
+            fs::write(&layout_path, json!(layout).to_string()).unwrap();
+            break;
+        }
+    }
+    record("closed.jsonl", receipt);
     output(json!({"result":{"type":"ok"}}));
 }
 

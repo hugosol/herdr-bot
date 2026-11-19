@@ -101,8 +101,8 @@ type CleanupScenario = {
   tab: string
 }
 
-async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: CompletionResult, externalClose: 'attempted' | 'not-started' = 'attempted') {
-  expect(s.invocations().slice(s.invocationsBefore.length)).toEqual(externalClose === 'attempted' ? [['tab', 'close', s.tab]] : [])
+async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: CompletionResult, externalClose: 'attempted' | 'not-started' = 'attempted', failure?: { code: string; reason: string }) {
+  expect(s.invocations().slice(s.invocationsBefore.length)).toEqual(externalClose === 'attempted' ? [['workspace', 'list'], ['tab', 'close', s.tab]] : [])
   expect(result.changed).toBe(true)
   expect(result.snapshot.nodes.A.status).toBe('completed')
   const completion = result.snapshot.nodes.A.completion
@@ -110,31 +110,44 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
   expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'fileInputs', 'inputsReady', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'name', 'naming', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
-  // Independent expected delta: completion is the only new durable fact. Exact
-  // equality rejects result fields even if they have innocuous or unknown names.
-  expect(s.readRun()).toEqual({ ...s.before, nodes: { ...s.before.nodes, A: { ...s.before.nodes.A, status: 'completed', completion } } })
+  // No successful cleanup field; a failure is separate from completion.
+  const expected = { ...s.before, nodes: { ...s.before.nodes, A: { ...s.before.nodes.A, status: 'completed', completion,
+    ...(failure && { autoCloseFailure: { code: failure.code, message: expect.stringContaining(failure.reason) } }),
+  } } }
+  const readDetail = async () => (await page.request.get(`${s.host.baseURL}/api/workflow/runs/${s.runId}`)).json()
+  await expect.poll(async () => (await readDetail()).run).toEqual(expected)
+  expect(s.readRun()).toEqual(expected)
   const history = fs.readFileSync(path.join(s.root, 'history.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
   const event = history.find(entry => entry.action === 'complete')
   expect(event).toEqual({ id: completion.id, at: completion.at, actor: completion.actor, action: 'complete', nodeId: 'A', before: 'running', after: 'completed', reason: completion.reason, execution: s.before.nodes.A.execution })
   expect(history).toEqual([...s.historyBefore, event])
   expect(fs.readdirSync(s.root).sort()).toEqual(s.filesBefore)
   expect(fs.readFileSync(path.join(s.root, 'messages.jsonl'), 'utf8')).toBe(s.messagesBefore)
-  const detail = await (await page.request.get(`${s.host.baseURL}/api/workflow/runs/${s.runId}`)).json()
-  expect(detail.run).toEqual(result.snapshot)
+  const detail = await readDetail()
+  expect(detail.run).toEqual(expected)
   expect(detail.reports).toEqual([s.declaration])
   expect(Object.keys(detail).sort()).toEqual(['id', 'run', 'managed', 'startupError', 'readError', 'reports', 'pendingReports'].sort())
   expect(Object.keys(result).sort()).toEqual(['blocked', 'canFinish', 'changed', 'historyError', 'pendingReports', 'ready', 'reports', 'snapshot'].sort())
   // One bounded negative-observation window, not a claim about infinite time.
   await page.waitForTimeout(750)
   expect(s.dialogs).toEqual([])
-  expect((await s.workflowOutput.jsonValue()).join('\n')).not.toMatch(/自动关闭[：:\s]*(成功|失败)|auto[-_ ]?close[=:\s]*(succeeded|failed)|confirmation_required|controlled-close-failure|herdr-unavailable/i)
-  await page.goto(`${s.host.baseURL}/#workflow/${s.runId}`)
+  expect((await s.workflowOutput.jsonValue()).join('\n')).not.toMatch(/自动关闭[：:\s]*成功|auto[-_ ]?close[=:\s]*succeeded/i)
+  await page.reload()
+  await page.getByRole('tab', { name: 'workflow' }).click()
+  await page.getByRole('link').filter({ hasText: s.runId }).click()
   const navigation = page.getByRole('navigation', { name: '已保存节点状态' })
   await expect(navigation.locator('[data-node-id="A"]')).toHaveAttribute('data-node-state', 'completed')
   await navigation.locator('[data-node-id="A"]').click()
-  await expect(page.getByRole('region', { name: '当前节点详情' })).toContainText('已核实交接结果')
-  await expect(page.getByRole('alert')).toHaveCount(0)
-  await expect(page.locator('body')).not.toContainText(/自动关闭[：:\s]*(成功|失败)|auto[-_ ]?close[=:\s]*(succeeded|failed)|confirmation_required|controlled-close-failure|herdr-unavailable/i)
+  const nodeDetails = page.getByRole('region', { name: '当前节点详情' })
+  await expect(nodeDetails).toContainText('已核实交接结果')
+  if (failure) {
+    await expect(nodeDetails.getByRole('alert')).toContainText('自动关闭失败')
+    await expect(nodeDetails.getByRole('alert')).toContainText(failure.reason)
+    await expect(nodeDetails.getByRole('alert')).toContainText('节点完成事实未撤销')
+  } else {
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.locator('body')).not.toContainText(/自动关闭[：:\s]*(成功|失败)|auto[-_ ]?close[=:\s]*(succeeded|failed)/i)
+  }
   s.host.setHerdrBehavior(s.native('isolation-node-B'))
   const downstream = await s.post('/api/workflow/manager/dispatch', { sessionId: 'isolation-manager', nodes: ['B'] })
   expect(downstream.results[0].status).toBe('running')
@@ -167,30 +180,45 @@ test('P20 P21 successful cleanup is contextual backend output, not a workflow re
   fs.writeFileSync(info.outputPath('success-evidence.json'), JSON.stringify({ logs: s.logs(), calls: s.host.herdrCalls(), result, run: s.readRun() }, null, 2))
 })
 
-// P17/P20/P21: a rejected external close must not roll back completion, block
-// downstream dispatch, retry, or create a UI/durable cleanup result. A host
-// adapter that ignores this failure would log success and fail this observation.
-test('P17 P20 P21 rejected close leaves completion and downstream business intact @time-contract', async ({ page }, info) => {
+// P46 / S1: the delivered workflow page must show a definite host failure
+// alongside the saved completion. A logs-only implementation leaves the
+// public Run readback and refreshed page unable to distinguish this failure.
+test('P46 rejected close is visible without undoing completion or retrying @time-contract', async ({ page }, info) => {
   const s = await scenario(page)
   s.host.setHerdrBehavior({ fail_tab_close: true })
   const result = await s.complete()
   await expect.poll(() => s.logs().filter(line => /failed/.test(line) && line.includes('controlled-close-failure')).length).toBe(1)
+  await expect.poll(async () => {
+    const detail = await (await page.request.get(`${s.host.baseURL}/api/workflow/runs/${s.runId}`)).json()
+    return detail.run.nodes.A.autoCloseFailure?.message
+  }).toContain('controlled-close-failure')
+  await page.getByRole('button', { name: '刷新 Run' }).click()
+  const nodeDetails = page.getByRole('region', { name: '当前节点详情' })
+  await expect(nodeDetails.getByRole('alert')).toContainText('自动关闭失败')
+  await expect(nodeDetails.getByRole('alert')).toContainText('controlled-close-failure')
+  await expect(nodeDetails).toContainText('已核实交接结果')
   expect(s.logs().every(s.context)).toBe(true)
   expect(s.logs().filter(line => /attempt/.test(line))).toHaveLength(1)
   expect(s.logs().some(line => /succeeded|success/i.test(line))).toBe(false)
   expect(s.closeCalls()).toEqual([expect.objectContaining({ target: s.tab, argv: ['tab', 'close', s.tab] })])
-  await observeUnchangedBusiness(page, s, result)
+  await observeUnchangedBusiness(page, s, result, 'attempted', { code: 'herdr-command-failed', reason: 'controlled-close-failure' })
   await page.waitForTimeout(750)
   expect(s.closeCalls()).toHaveLength(1)
   expect(s.logs().filter(line => /attempt/.test(line))).toHaveLength(1)
   fs.writeFileSync(info.outputPath('command-failure-evidence.json'), JSON.stringify({ logs: s.logs(), calls: s.host.herdrCalls(), result, run: s.readRun() }, null, 2))
 })
 
-// P17/P20 source: Herdr's structured confirmation_required error (tabs.rs)
-// has a human message without the code. Violation: discarding that category,
-// retrying with force/confirmation, or adding a project confirmation workflow.
-test('P17 P20 extra confirmation remains a diagnosed failure without bypass or new UI @time-contract', async ({ page }, info) => {
+// P45/P46: TUI refuses the exact last Tab when its consequences would reach
+// a worktree group. No automatic force/confirmation or retry is authorized.
+test('P45 P46 worktree group refusal preserves unrelated work and shows feedback @time-contract', async ({ page }, info) => {
   const s = await scenario(page)
+  const workspacesFile = path.join(path.dirname(s.host.configPath), 'herdr/workspaces.json')
+  const targetWorkspace = s.tab.slice(0, s.tab.lastIndexOf(':'))
+  const workspaces = [
+    { workspace_id: targetWorkspace, label: 'bot-playground', tabs: [{ tab_id: s.tab, terminal: 'selected-worker' }] },
+    { workspace_id: 'w-retained-group-member', label: 'unrelated', tabs: [{ tab_id: 'other-tab', terminal: 'unrelated-live-terminal' }] },
+  ]
+  fs.writeFileSync(workspacesFile, JSON.stringify(workspaces))
   s.host.setHerdrBehavior({ tab_close_confirmation_required: true })
   const callsBefore = s.host.herdrCalls()
   const result = await s.complete()
@@ -199,8 +227,12 @@ test('P17 P20 extra confirmation remains a diagnosed failure without bypass or n
   expect(s.logs().every(s.context)).toBe(true)
   expect(s.logs().filter(line => /attempt/.test(line))).toHaveLength(1)
   expect(s.logs().some(line => /succeeded|success/i.test(line))).toBe(false)
-  expect(s.host.herdrCalls().slice(callsBefore.length)).toEqual([expect.objectContaining({ kind: 'tab_close', target: s.tab, argv: ['tab', 'close', s.tab] })])
-  await observeUnchangedBusiness(page, s, result)
+  expect(s.host.herdrCalls().slice(callsBefore.length)).toEqual([
+    expect.objectContaining({ kind: 'workspace_list', argv: ['workspace', 'list'] }),
+    expect.objectContaining({ kind: 'tab_close', target: s.tab, argv: ['tab', 'close', s.tab] }),
+  ])
+  expect(JSON.parse(fs.readFileSync(workspacesFile, 'utf8'))).toEqual(workspaces)
+  await observeUnchangedBusiness(page, s, result, 'attempted', { code: 'herdr-command-failed', reason: 'closing this tab would close a worktree group' })
   await expect(page.getByRole('button', { name: /确认关闭|强制关闭|confirm.*clos|force.*clos/i })).toHaveCount(0)
   await page.waitForTimeout(750)
   expect(s.closeCalls()).toHaveLength(1)
@@ -227,7 +259,7 @@ test('P17 P20 unavailable executable attempts once without starting a close comm
     fs.renameSync(parked, executable)
     // Restoring availability must not retry cleanup; it does allow the manager
     // to dispatch genuinely new downstream business in this same Run.
-    await observeUnchangedBusiness(page, s, result, 'not-started')
+    await observeUnchangedBusiness(page, s, result, 'not-started', { code: 'herdr-unavailable', reason: '无法启动' })
     await page.waitForTimeout(750)
     expect(s.closeCalls()).toHaveLength(0)
     expect(s.logs().filter(line => /attempt/.test(line))).toHaveLength(1)

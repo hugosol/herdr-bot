@@ -7,18 +7,43 @@ pub(super) fn dispatch(args: &[String]) {
     const CURRENT: &str = "space-current";
     const DEFAULT: &str = "space-default";
     let tabs = || read_records("app-tabs.jsonl");
+    let removed = || read_records("app-removed-tabs.jsonl");
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["ls"] => {
             let tabs = tabs();
-            let space = |id: &str, name: &str| {
-                let selected = tabs.iter().filter(|t| t["space"] == id)
+            let removed = removed();
+            let spaces = [(CURRENT, "alpha"), (DEFAULT, "bot-playground")].into_iter().filter_map(|(id, name)| {
+                let selected = tabs.iter().filter(|t| t["space"] == id && !removed.iter().any(|closed| closed["tab"] == t["tab"]))
                     .map(|t| json!({"id":t["tab"],"terminals":[{"pane":t["pane"],"terminal":t["terminal"]}]}))
                     .collect::<Vec<_>>();
-                json!({"id":id,"name":name,"tabs":selected})
-            };
-            output(json!({"spaces":[space(CURRENT,"alpha"),space(DEFAULT,"bot-playground")]}));
+                (!selected.is_empty() || !removed.iter().any(|row| row["space"] == id && row["spaceRemoved"] == true))
+                    .then(|| json!({"id":id,"name":name,"tabs":selected}))
+            }).collect::<Vec<_>>();
+            output(json!({"spaces":spaces}));
         }
-        ["server", "status", "--json"] => output(json!({"core":{"id":"fixture-core"}})),
+        ["do", "tab.close", raw] => {
+            let request: Value = serde_json::from_str(raw).unwrap();
+            let removed = removed();
+            let mut tabs = tabs();
+            tabs.retain(|tab| !removed.iter().any(|row| row["tab"] == tab["tab"]));
+            let Some(tab) = tabs.iter().find(|t| t["tab"] == request["id"]) else { fail("missing_tab", "no such App Tab") };
+            record("calls.jsonl", json!({"kind":"app_tab_close","request":request,"terminal":tab["terminal"]}));
+            if flag(&behavior(), "fail_app_tab_close") {
+                output(json!({"error":"controlled App close refused"}));
+                return;
+            }
+            let last = tabs.iter().filter(|t| t["space"] == tab["space"]).count() == 1;
+            if last && request["confirmed"] != true {
+                fail("confirmation_required", "space.close ends its terminals: pass confirmed: true");
+            }
+            record("app-removed-tabs.jsonl", json!({"tab":tab["tab"],"space":tab["space"],"spaceRemoved":last}));
+            record("app-close-receipts.jsonl", json!({"tab":tab["tab"],"terminal":tab["terminal"]}));
+            output(json!({"ok":true}));
+        }
+        ["server", "status", "--json"] => {
+            let id = if flag(&behavior(), "change_app_core") { "other-core" } else { "fixture-core" };
+            output(json!({"core":{"id":id}}));
+        }
         ["do", "pane.focus", raw] => {
             let request: Value = serde_json::from_str(raw).unwrap();
             let tab = tabs().into_iter().find(|t| t["pane"] == request["pane"]).unwrap();
@@ -39,9 +64,19 @@ pub(super) fn dispatch(args: &[String]) {
             output(tab);
         }
         ["get", terminal, "--json"] => {
+            if *terminal == "t-unrelated" && data_dir().join("app-unrelated-terminal").is_file() {
+                output(json!({"address":terminal,"state":"live","pid":43128}));
+                return;
+            }
             let tab = tabs().into_iter().find(|t| t["terminal"] == *terminal).unwrap();
-            output(json!({"address":terminal,"labels":{"herdr.space":tab["space"],"herdr.tab":tab["tab"]},
-                "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live","pid":43127}));
+            let exiting = data_dir().join("app-release-terminal-exit").is_file()
+                && read_records("app-close-receipts.jsonl").iter().any(|receipt| receipt["terminal"] == *terminal);
+            if exiting {
+                output(json!({"address":terminal,"state":"dead","reason":"killed"}));
+            } else {
+                output(json!({"address":terminal,"labels":{"herdr.space":tab["space"],"herdr.tab":tab["tab"]},
+                    "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live","pid":43127}));
+            }
         }
         ["send", "--json", terminal, "--", text] => {
             assert!(tabs().iter().any(|t| t["terminal"] == *terminal));

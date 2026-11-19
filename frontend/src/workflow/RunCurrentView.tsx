@@ -130,6 +130,7 @@ export function RunCurrentView({ run, reports, current, managed }: { run: Run; r
             </section>
             {node.completion && <section aria-label="交接完成说明" className="workflow-journal-entry workflow-completion"><span className="workflow-journal-dot" aria-hidden="true" /><h3>完成说明</h3><dl><dt>id</dt><dd><code>{node.completion.id}</code></dd><dt>reason</dt><dd>{node.completion.reason}</dd><dt>at</dt><dd><FactTime at={node.completion.at} /></dd></dl></section>}
           </div>
+          {node.autoCloseFailure && <p className="workflow-alert" role="alert">自动关闭失败：{node.autoCloseFailure.message} 节点完成事实未撤销。</p>}
           {node.failure && <section aria-label="节点失败" className="workflow-failure"><h3>失败原因 · stage: {node.failure.stage}</h3><p>message: {node.failure.message}</p>{node.failure.effects && <dl>{Object.entries(node.failure.effects).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '未知')}</dd></div>)}</dl>}</section>}
           <details className="workflow-node-definition" key={`definition-${nodeId}`} aria-label="当前节点定义"><summary>当前定义（非执行快照）</summary>
             {definition ? <>

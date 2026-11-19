@@ -37,7 +37,14 @@ pub struct NodeState {
     pub execution: Option<NodeExecution>,
     pub failure: Option<StartupFailure>,
     pub completion: Option<Completion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auto_close_failure: Option<AutoCloseFailure>,
     pub previous_executions: Vec<ExecutionFact>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct AutoCloseFailure {
+    code: String,
+    message: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -742,6 +749,7 @@ pub(crate) fn root_run(
                         execution: None,
                         failure: None,
                         completion: None,
+                        auto_close_failure: None,
                         previous_executions: Vec::new(),
                     },
                 )

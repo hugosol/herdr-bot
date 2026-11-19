@@ -44,6 +44,7 @@ export type NodeState = {
   status: string
   execution: Execution | null
   failure: Failure | null
+  autoCloseFailure?: { code: string; message: string }
   completion: { id: string; at: number; actor: ChatReference; reason: string } | null
   previousExecutions: { execution: Execution | null; failure: Failure | null }[]
 }
