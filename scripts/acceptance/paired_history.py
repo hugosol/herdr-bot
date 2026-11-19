@@ -749,19 +749,31 @@ generated_directory = {q(self.root / 'generated')}
                 shutil.copy2(file, self.root / 'native-after.jsonl')
 
     def prepare_git_placement(self, main):
-        self.herdr('worktree', 'open', '--path', str(self.origin), '--label', 'owned Git checkout', '--no-focus')
+        def open_checkout(root, label):
+            opened = self.herdr('worktree', 'open', '--cwd', str(root), '--path', str(self.origin),
+                                '--label', label, '--no-focus')
+            require(not opened['already_open'], ('Host reused a checkout instead of exposing distinct evidence', opened))
+            # Windows shells hold their current directory open. Move only the
+            # newly created fixture shell, not a Chat, before deleting the checkout.
+            pane = opened['root_pane']['pane_id']
+            self.command([self.args.herdr, 'pane', 'run', pane, f'cd /d "{root}" && echo PAIRED-GIT-CWD-RELEASED'])
+            self.command([self.args.herdr, 'pane', 'wait-output', pane, '--regex',
+                          r'(?m)^PAIRED-GIT-CWD-RELEASED\s*$', '--timeout', '5000'])
+        open_checkout(main, 'owned Git checkout')
         if self.scenario == 'git-ambiguous':
             shutil.rmtree(self.origin)
             other = self.git_root('git-other', self.origin)
-            self.herdr('worktree', 'open', '--path', str(self.origin), '--label', 'another Git checkout', '--no-focus')
+            open_checkout(other, 'another Git checkout')
         else:
             other = None
         workspaces = self.herdr('workspace', 'list')['workspaces']
         exact = [w['worktree']['repo_key'] for w in workspaces if w.get('worktree') and
                  same_path(w['worktree']['checkout_path'], self.origin)]
-        known = {Path(x).resolve() for x in exact}
         expected = {main / '.git'} | ({other / '.git'} if other else set())
-        require(known == expected, ('Installed TUI must demonstrate exact Git metadata, not matching names', workspaces, expected))
+        # Herdr publishes a Windows device prefix for repo_key. samefile still
+        # requires the actual identical directory, not just a basename or alias.
+        require(len(exact) == len(expected) and all(any(Path(raw).samefile(repo) for raw in exact) for repo in expected),
+                ('Installed TUI must demonstrate exact Git metadata, not matching names', workspaces, expected))
         self.evidence['git'] = {str(p): self.git(p, 'worktree', 'list', '--porcelain') for p in expected}
         shutil.rmtree(self.origin)
         require(not self.origin.exists(), 'historical checkout still exists')
