@@ -40,6 +40,11 @@ impl CommandAction for Collect {
     const ACTION: &'static str = "收取报告";
 }
 
+pub(crate) struct ScriptOutput;
+impl CommandAction for ScriptOutput {
+    const ACTION: &'static str = "读取脚本输出";
+}
+
 pub(crate) struct NodeContext;
 impl CommandAction for NodeContext {
     const ACTION: &'static str = "节点上下文";

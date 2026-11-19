@@ -35,6 +35,14 @@ pub(crate) async fn manager_collect(
     }
 }
 
+pub(crate) async fn manager_script_output(
+    State(state): State<AppState>,
+    _: LocalRunSource,
+    input: CommandJson<runs::StatusRequest, input::ScriptOutput>,
+) -> Result<Json<runs::script_output::ScriptOutputSnapshot>, HttpError<runs::RunError>> {
+    runs::script_output::manager_script_output(state, input.value).await.map(Json).map_err(HttpError)
+}
+
 pub(crate) async fn node_context(
     State(state): State<AppState>,
     _: LocalRunSource,

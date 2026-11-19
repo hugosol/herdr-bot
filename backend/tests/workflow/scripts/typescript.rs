@@ -1,6 +1,138 @@
 //! Public Map dispatch and actual Bun files: no built-in capability registration.
 use super::*;
 
+#[tokio::test]
+async fn typescript_collect_observes_live_output_without_consuming_or_owning_execution() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const MANAGER: &str = "typescript-output-manager";
+    const LOGS: &str = "/api/workflow/manager/script-output";
+    const COLLECT: &str = "/api/workflow/manager/collect";
+    let s = Scenario::new().await;
+    bind(&s, r#"import {join} from 'node:path';
+export default async function(context) {
+    const gate = async (name) => {
+        const deadline = Date.now() + 15000;
+        while (!(await Bun.file(join(context.zone, name)).exists()) && !(await Bun.file(join(context.zone, 'release-all')).exists())) {
+            if (Date.now() >= deadline) throw Error('fixture gate expired: ' + name);
+            await Bun.sleep(10);
+        }
+    };
+    const stdout = data => new Promise((resolve, reject) => process.stdout.write(data, error => error ? reject(error) : resolve()));
+    await stdout('gone\r\none\r\ntwo\nthree\nfour\n\x1b[31mpartial\x1b[0m\x07 ');
+    await stdout(Buffer.from([0xe7, 0x95]));
+    await gate('next');
+    await stdout(Buffer.from([0x8c]));
+    await stdout(' end\r\n' + 'X'.repeat(2048) + '\nstdout-inflight');
+    const host = await context.host('parse_json', {text:'{"privateProtocol":"not a log"}'});
+    if (host.privateProtocol !== 'not a log') throw Error('host call did not complete');
+    console.log('console visible');
+    process.stderr.write('stderr-inflight');
+    await gate('finish');
+    await new Promise((resolve, reject) => process.stderr.write(' continued\r\n', error => error ? reject(error) : resolve()));
+    return {status:'success'};
+}"#, json!([])).await;
+    let zone = s.data.path().join("node-zone");
+    struct Release(std::path::PathBuf);
+    impl Drop for Release { fn drop(&mut self) { let _ = fs::write(&self.0, "release owned Bun"); } }
+    let _release = Release(zone.join("release-all"));
+    let run = s.start(MANAGER).await;
+    let other = s.start("different-output-manager").await;
+    let dispatch = s.dispatch(MANAGER, &["custom"]).await;
+    let id = &dispatch["snapshot"]["nodes"]["custom"]["execution"]["id"];
+    let identity = json!({"sessionId": MANAGER}).to_string();
+    let snapshot = async |await_line: &str| {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let response = post_json_over_tcp(s.server.addr(), LOGS, &identity).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+            let output: Value = serde_json::from_str(&response.body).unwrap();
+            if output["nodes"][0]["lines"].as_array().is_some_and(|lines| lines.iter().any(|line| line == await_line)) {
+                break output;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "did not observe {await_line:?}: {output}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    let first = snapshot("partial ").await;
+    assert_eq!(first["runId"], run["id"]);
+    let node = &first["nodes"][0];
+    assert_eq!(node["nodeId"], "custom");
+    assert_eq!(node["nodeName"], "Run user code");
+    assert_eq!(node["executionId"], *id);
+    assert_eq!(node["status"], "running");
+    assert_eq!(node["lines"], json!(["one", "two", "three", "four", "partial "]));
+    assert!(node["lastOutputAt"].as_u64().unwrap() <= first["observedAt"].as_u64().unwrap());
+    let denied = post_json_over_tcp(s.server.addr(), LOGS, r#"{"sessionId":"unassociated"}"#).await;
+    assert_eq!(denied.status, 403, "{}", denied.body);
+    let selector = post_json_over_tcp(s.server.addr(), LOGS, &json!({"sessionId":MANAGER,"runId":other["id"]}).to_string()).await;
+    assert_eq!(selector.status, 400, "{}", selector.body);
+    let other_output = post_json_over_tcp(s.server.addr(), LOGS, r#"{"sessionId":"different-output-manager"}"#).await;
+    assert_eq!(other_output.status, 200, "{}", other_output.body);
+    let other_output: Value = serde_json::from_str(&other_output.body).unwrap();
+    assert_eq!(other_output["runId"], other["id"]);
+    assert_eq!(other_output["nodes"], json!([]));
+
+    // Wait for the real collect response headers before dropping its TCP caller.
+    let mut caller = tokio::net::TcpStream::connect(s.server.addr()).await.unwrap();
+    caller.write_all(format!("POST {COLLECT} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{identity}", s.server.addr(), identity.len()).as_bytes()).await.unwrap();
+    let mut headers = Vec::new();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !headers.ends_with(b"\r\n\r\n") { headers.push(caller.read_u8().await.unwrap()); }
+    }).await.unwrap();
+    assert!(headers.starts_with(b"HTTP/1.1 200"));
+    fs::write(zone.join("next"), "release next chunk").unwrap();
+    let live = snapshot("stderr-inflight").await;
+    let lines = live["nodes"][0]["lines"].as_array().unwrap();
+    assert_eq!(live["nodes"][0]["status"], "running");
+    assert_eq!(lines.len(), 5);
+    assert_eq!(lines[0], "partial 界 end");
+    let long = lines[1].as_str().unwrap();
+    assert!(long.starts_with("XXXX") && long.len() <= 512, "unbounded or missing line: {long}");
+    assert_eq!(lines[2..], [json!("stdout-inflight"), json!("console visible"), json!("stderr-inflight")]);
+    drop(caller);
+    fs::write(zone.join("finish"), "release first execution").unwrap();
+    let done = ended(&s, &run).await;
+    assert_eq!(done["run"]["nodes"]["custom"]["execution"]["lifecycle"]["status"], "succeeded");
+    let retained = snapshot("stderr-inflight continued").await;
+    assert_eq!(retained["nodes"][0]["status"], "succeeded");
+    assert_eq!(retained["nodes"][0]["lines"][2], "stdout-inflight");
+    let collected = post_json_over_tcp(s.server.addr(), COLLECT, &identity).await;
+    assert_eq!(collected.status, 200, "{}", collected.body);
+    let collected: Value = serde_json::from_str(&collected.body).unwrap();
+    assert_eq!(collected["reason"], "notification");
+    assert!(!collected.to_string().contains("stderr-inflight"));
+
+    let path = s.config.scheduler.bot_directory.parent().unwrap().join("scripts/user/custom.ts");
+    fs::write(path, r#"export default async ({zone}) => {
+        process.stdout.write('retry only');
+        const deadline = Date.now() + 15000;
+        while (!(await Bun.file(zone + '/retry-finish').exists()) && !(await Bun.file(zone + '/release-all').exists())) {
+            if (Date.now() >= deadline) throw Error('fixture retry gate expired');
+            await Bun.sleep(10);
+        }
+        return {status:'success'};
+    };"#).unwrap();
+    let fail = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/fail", &json!({"sessionId":MANAGER,"nodeId":"custom","reason":"Inspect and repeat"}).to_string()).await;
+    assert_eq!(fail.status, 200, "{}", fail.body);
+    let retry = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/retry", &json!({"sessionId":MANAGER,"nodeId":"custom","reason":"Old effects inspected","confirmed":true}).to_string()).await;
+    assert_eq!(retry.status, 200, "{}", retry.body);
+    let current = snapshot("retry only").await;
+    assert_eq!(current["nodes"].as_array().unwrap().len(), 1);
+    assert_ne!(current["nodes"][0]["executionId"], *id);
+    assert_eq!(current["nodes"][0]["status"], "running");
+    assert_eq!(current["nodes"][0]["lines"], json!(["retry only"]));
+    fs::write(zone.join("retry-finish"), "release retry").unwrap();
+    ended_count(&s, &run, 2).await;
+    let complete = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/complete", &json!({"sessionId":MANAGER,"nodeId":"custom","reason":"Read actual result"}).to_string()).await;
+    assert_eq!(complete.status, 200, "{}", complete.body);
+    let finish = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/finish", &identity).await;
+    assert_eq!(finish.status, 200, "{}", finish.body);
+    let gone = post_json_over_tcp(s.server.addr(), LOGS, &identity).await;
+    assert_eq!(gone.status, 200, "{}", gone.body);
+    assert_eq!(serde_json::from_str::<Value>(&gone.body).unwrap()["nodes"], json!([]));
+}
+
 // P15: keep an approved execution and its real output, then hold a new Bun
 // execution before success. Inheriting either approval or old outputs would
 // incorrectly allow complete while this execution is still at the file gate.
@@ -230,7 +362,7 @@ async fn typescript_status_and_actual_declared_files_control_success() {
         ("unknown-result-field", "return {status:'success',invented:true}", false, false),
         ("invalid-file-shape", "return {status:'success',outputs:[{id:'result'}]}", true, false),
         ("unreadable", "return {status:'success',outputs:[{id:'result',path:context.zone+'/locked.txt'}]}", true, false),
-        ("exception", "throw new Error('user failure')", false, false),
+        ("exception", "console.error('failure stderr'); throw new Error('user failure')", false, false),
         ("missing-binding", "return {status:'success'}", true, false),
         ("missing-file", "return {status:'success',outputs:[{id:'result',path:context.zone+'/absent.txt'}]}", true, false),
         ("directory", "return {status:'success',outputs:[{id:'result',path:context.zone}]}", true, false),
@@ -259,6 +391,16 @@ async fn typescript_status_and_actual_declared_files_control_success() {
         assert_eq!(result["reports"][0]["canComplete"], success, "{name}: {result}");
         assert_eq!(fs::read_to_string(s.data.path().join("node-zone/actual.txt")).unwrap(), "real partial effect", "failure must not roll back: {name}");
         println!("P26 case={name} run={} execution={} report={}", run["id"], node["execution"], result["reports"][0]);
+        if name == "exception" {
+            let failure = &node["execution"]["lifecycle"]["failure"];
+            assert_eq!(failure["code"], "script-process-failed");
+            assert!(failure["logs"].as_str().unwrap().contains("failure stderr\n"));
+            let response = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/script-output", r#"{"sessionId":"typescript-manager"}"#).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+            let snapshot: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(snapshot["nodes"][0]["status"], "failed");
+            assert!(snapshot["nodes"][0]["lastOutputAt"].is_u64());
+        }
         if name == "partial" {
             let outputs = result["reports"][0]["outputs"].as_array().unwrap();
             assert_eq!(outputs[0]["id"], "result");

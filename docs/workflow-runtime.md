@@ -13,6 +13,16 @@
 - 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
 - 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
 
+### 脚本日志尾部读取
+
+`POST /api/workflow/manager/script-output` 接受且仅接受 `{"sessionId":"公共 Session 提供的当前管理者身份"}`，复用 manager → 当前 Run 的归属校验，不接受调用者指定 Run／node／execution。返回 `{runId,observedAt,nodes}`；时间为 Unix 毫秒，每项为 `{nodeId,nodeName,executionId,status,lines,lastOutputAt}`，status 为脚本的 running／succeeded／failed，尚无输出时 lastOutputAt 为 null。只列当前 Run 同层的当前 TypeScript execution，不递归子 Map，不包含旧 execution。
+
+后台持续读取普通 stdout 与 stderr，过滤 stdout 中的宿主协议，按接收顺序合并；独立管道不能保证原始跨管道写入顺序。尾部最多五个逻辑行，每行最多 512 字节，未换行片段也可见；处理跨块 UTF-8、CRLF 和终端控制序列。该预览不是完整日志、交付 outputs、报告或交接完成依据。静默不表示脚本停止，持续日志也不保证业务有进展。
+
+读取不消费 collect 通知、不改变节点状态，也不持有执行所有权。断开 collect 或日志请求不取消脚本；retry 使用新的 execution 并移除旧尾部，Run finish／删除释放尾部。尾部仅在后端内存保留，不在重启后恢复；原有失败报告的日志诊断规则不变。原生 collect 的日志展示需要配套 toolkit 接入。manager 应直接调用 collect，不经 eval／codemode 包装；Pi 的 collect 使用 model-only 暴露，在 Suite only 模式下仍可直接调用。toolkit 在 collect 等待期间每次成功采样后间隔 500ms 再读取尾部，同一工具输出区按节点分区，显示执行状态、距最后输出时间及至多五行日志，过长行按可用宽度截断。OMP ANSI／TSP 与 Pi 使用各自原生结果渲染入口，不使用 widget。
+
+实时更新只含 UI details，最终结果保留最后快照及原有 collect 业务正文；新增日志预览不进入模型可见 content。取消等待或日志读取失败时冻结快照、标注停止观测、不自动重连，不将旧“运行中”状态冒充实时观察，也不取消后台脚本。再次 collect 重新读取当前 execution 的尾部；原有失败报告携带诊断的行为不因 UI 隔离而改变。
+
 ### 脚本在途工作、断连与暂停
 
 派发被后端接受并保存 execution 后，业务由后端持有，不依赖派发 HTTP 连接继续存活。调用方断连不能撤销它；不要为取得结果再次 dispatch。通过原 Run 详情独立读取原 execution 的 lifecycle、报告与真实材料。脚本的文件读写不长期占用 Run 操作资格：业务仍在途时，同 Run 的合法 status 与 pause 可以完成；这不改变完整派发批次本身的串行规则。

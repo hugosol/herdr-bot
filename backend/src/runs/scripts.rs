@@ -1,7 +1,8 @@
 //! Accepted script work owns its lifetime, independently of the HTTP caller.
 use super::*;
 use serde_json::{Value, json};
-use std::{io::{Read, Write}, path::{Path, Component}, process::{Command, Stdio}};
+use super::script_output::{Pipe, Tail};
+use std::{io::{Read, Write}, path::{Path, Component}, process::{Command, Stdio}, sync::{Mutex as SyncMutex, Weak}};
 
 pub(super) fn now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
 
@@ -48,27 +49,49 @@ fn retain_log(log: &mut Vec<u8>, bytes: &[u8]) {
     }
 }
 
-// Only ordinary stdout is bounded. Trusted protocol payloads can contain full
-// business documents and must not acquire a separate transport size limit.
-fn records(mut reader: impl Read, mut visit: impl FnMut(&[u8], bool) -> Result<(), String>) -> Result<(), String> {
+// A reserved frame can follow an unterminated progress line. Neither the
+// frame nor its terminating LF belongs to that ordinary stdout line.
+// Only ordinary logs are bounded; the protocol carries whole business documents.
+fn records(mut reader: impl Read, mut log: impl FnMut(&[u8]), mut record: impl FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
     let mut buffer = [0; 8192];
-    let mut line = Vec::new();
-    let mut protocol = None;
+    let mut payload = Vec::new();
+    let mut matched = 0;
     loop {
         let count = reader.read(&mut buffer).map_err(|error| error.to_string())?;
-        if count == 0 { if !line.is_empty() { visit(&line, protocol.unwrap_or(false))?; } return Ok(()); }
-        for chunk in buffer[..count].split_inclusive(|byte| *byte == b'\n') {
-            let newline = chunk.last() == Some(&b'\n');
-            let mut bytes = if newline { &chunk[..chunk.len() - 1] } else { chunk };
-            if protocol.is_none() {
-                let prefix_count = (PREFIX.len() - line.len()).min(bytes.len());
-                line.extend_from_slice(&bytes[..prefix_count]);
-                bytes = &bytes[prefix_count..];
-                if line.len() == PREFIX.len() { protocol = Some(line.as_slice() == PREFIX); }
+        if count == 0 {
+            if matched == PREFIX.len() { record(&payload)?; }
+            else if matched != 0 { log(&PREFIX[..matched]); }
+            return Ok(());
+        }
+        let mut bytes = &buffer[..count];
+        while !bytes.is_empty() {
+            if matched == PREFIX.len() {
+                if let Some(end) = bytes.iter().position(|byte| *byte == b'\n') {
+                    payload.extend_from_slice(&bytes[..end]);
+                    record(&payload)?;
+                    payload.clear();
+                    matched = 0;
+                    bytes = &bytes[end + 1..];
+                } else {
+                    payload.extend_from_slice(bytes);
+                    break;
+                }
+            } else if matched != 0 {
+                if bytes[0] == PREFIX[matched] {
+                    matched += 1;
+                    bytes = &bytes[1..];
+                } else {
+                    log(&PREFIX[..matched]);
+                    matched = 0;
+                }
+            } else if let Some(start) = bytes.iter().position(|byte| *byte == PREFIX[0]) {
+                if start != 0 { log(&bytes[..start]); }
+                matched = 1;
+                bytes = &bytes[start + 1..];
+            } else {
+                log(bytes);
+                break;
             }
-            if protocol == Some(true) { line.extend_from_slice(bytes); }
-            else { retain_log(&mut line, bytes); }
-            if newline { visit(&line, protocol.unwrap_or(false))?; line.clear(); protocol = None; }
         }
     }
 }
@@ -79,7 +102,7 @@ impl Drop for ReapOnDrop {
     fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
 }
 
-fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: PreparedScript, input: String, runtime: tokio::runtime::Handle) -> Outcome {
+fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: PreparedScript, input: String, runtime: tokio::runtime::Handle, live: Weak<SyncMutex<Tail>>) -> Outcome {
     let mut outputs = Vec::new();
     let mut logs = Vec::new();
     let mut result = None;
@@ -90,20 +113,31 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
         let mut stdin = child.0.stdin.take().expect("piped stdin");
         let stdout = child.0.stdout.take().expect("piped stdout");
         let mut stderr = child.0.stderr.take().expect("piped stderr");
+        let stderr_live = live.clone();
         let stderr_thread = std::thread::spawn(move || {
-            let mut log = Vec::new(); let mut bytes = [0;8192];
-            loop { match stderr.read(&mut bytes) { Ok(0) | Err(_) => break, Ok(count) => retain_log(&mut log, &bytes[..count]) } }
+            let mut log = Vec::new();
+            let mut bytes = [0; 8192];
+            while let Ok(count) = stderr.read(&mut bytes) {
+                if count == 0 { break; }
+                if let Some(tail) = stderr_live.upgrade() { tail.lock().unwrap().append(Pipe::Stderr, &bytes[..count]); }
+                retain_log(&mut log, &bytes[..count]);
+            }
+            if let Some(tail) = stderr_live.upgrade() { tail.lock().unwrap().end_pipe(Pipe::Stderr); }
             log
         });
         let (sender, receiver) = std::sync::mpsc::sync_channel(16);
         let stdout_thread = std::thread::spawn(move || {
             let mut log = Vec::new();
-            let read = records(stdout, |line, protocol| {
-                if !protocol { retain_log(&mut log, line); retain_log(&mut log, b"\n"); return Ok(()); }
-                let message: Value = serde_json::from_slice(&line[PREFIX.len()..]).map_err(|error| error.to_string())?;
+            let read = records(stdout, |bytes| {
+                if let Some(tail) = live.upgrade() { tail.lock().unwrap().append(Pipe::Stdout, bytes); }
+                retain_log(&mut log, bytes);
+            }, |payload| {
+                let message: Value = serde_json::from_slice(payload).map_err(|error| error.to_string())?;
                 sender.send(Ok(message)).map_err(|_| "协议接收端已关闭".to_string())
             });
+            if let Some(tail) = live.upgrade() { tail.lock().unwrap().end_pipe(Pipe::Stdout); }
             if let Err(error) = read { let _ = sender.send(Err(error)); }
+            else if log.last().is_some_and(|byte| *byte != b'\n') { retain_log(&mut log, b"\n"); }
             log
         });
         let request = json!({"script":prepared.path,"source":prepared.source,"context":{"runId":run.id,"executionId":execution.id,"zone":execution.zone,"input":input,"inputs":execution.inputs.as_deref().unwrap_or_default(),"outputRule":execution.output_rule.as_deref().unwrap_or_default(),"outputDirectory":Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id).join(&execution.id)}});
@@ -185,18 +219,25 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
     Outcome { failure, outputs }
 }
 
-pub(super) fn launch(state: AppState, run: Run, node_id: String, prepared: PreparedScript, input: String) {
+pub(super) async fn launch(state: AppState, run: Run, node_id: String, prepared: PreparedScript, input: String) {
     let execution = run.nodes[&node_id].execution.as_ref().expect("saved script execution").clone();
     let script = execution.script().expect("only TS targets launch");
     let started_at = match script.lifecycle { Lifecycle::Running { started_at } => started_at, _ => unreachable!("new script must be running") };
     let binding = script.script.clone();
+    let live = {
+        let deleted = state.runs.deleted.lock().await;
+        if deleted.contains(&run.id) { Weak::new() }
+        else { state.runs.script_output.start(&run.id, &node_id, &execution.id) }
+    };
     tokio::spawn(async move {
         let runtime = tokio::runtime::Handle::current();
         let owned = state.clone();
         let run_id = run.id.clone();
         let execution_id = execution.id.clone();
-        let outcome = tokio::task::spawn_blocking(move || execute(&owned, &run, &execution, prepared, input, runtime)).await;
+        let executing = live.clone();
+        let outcome = tokio::task::spawn_blocking(move || execute(&owned, &run, &execution, prepared, input, runtime, executing)).await;
         let Outcome { failure, outputs } = outcome.unwrap_or_else(|error| Outcome { failure: Some(diagnostic("execution-failed", error)), outputs: Vec::new() });
+        if let Some(tail) = live.upgrade() { tail.lock().unwrap().end(failure.is_none()); }
         let ended_at = now().max(started_at);
         let (lifecycle, body, can_complete) = match failure {
             Some(failure) => {

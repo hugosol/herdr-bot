@@ -231,7 +231,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             candidate.nodes.get_mut(id).unwrap().status = "running".into();
             save_run(state, &candidate).await?;
             *run = candidate.clone();
-            scripts::launch(state.clone(), candidate.clone(), id.to_owned(), prepared, target.input.clone());
+            scripts::launch(state.clone(), candidate.clone(), id.to_owned(), prepared, target.input.clone()).await;
             return Ok(());
         }
         let task = target.task.as_ref().ok_or("缺少 Chat 执行 Task")?;

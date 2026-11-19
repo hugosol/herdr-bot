@@ -19,6 +19,7 @@ pub(crate) mod completion;
 mod operation;
 pub(crate) mod preparation;
 pub(crate) mod collect;
+pub(crate) mod script_output;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -246,6 +247,7 @@ pub struct Runs {
     active: Mutex<BTreeMap<String, Option<StartupFailure>>>,
     operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
+    script_output: script_output::Store,
     map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     registered_maps: Mutex<BTreeMap<String, String>>,
     // Serializes reference publication with history scans/removal, never host effects.
@@ -340,6 +342,7 @@ impl Runs {
                 }
                 // This scope also excludes launch initialization and late saves.
                 owned.runs.deleted.lock().await.insert(id.clone());
+                owned.runs.script_output.remove(&id);
                 match access.remove_dir_all(&directory) {
                     Ok(()) => {},
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
@@ -899,6 +902,7 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
         owned.runs.ensure_retained(&run.id).await?;
         access.replace(&paths[0], &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        owned.runs.script_output.retain_current(&run);
         owned.runs.changed(&run.id, false).await;
         Ok(())
     })).await.map_err(|e| e.to_string())?

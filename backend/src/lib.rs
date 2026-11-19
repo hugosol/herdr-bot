@@ -309,6 +309,7 @@ pub fn app_with_state(
         .route("/api/workflow/manager/status", post(controllers::runs_controller::manager_status))
         .route("/api/workflow/manager/prepare_inputs", post(controllers::runs_controller::manager_prepare_inputs))
         .route("/api/workflow/manager/collect", post(controllers::runs_controller::manager_collect))
+        .route("/api/workflow/manager/script-output", post(controllers::runs_controller::manager_script_output))
         .route("/api/workflow/manager/dispatch", post(controllers::runs_controller::manager_dispatch))
         .route("/api/workflow/manager/complete", post(controllers::runs_controller::manager_complete))
         .route("/api/workflow/manager/fail", post(controllers::runs_controller::manager_fail))
