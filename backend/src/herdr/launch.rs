@@ -84,11 +84,22 @@ impl Launches {
     }
 
     pub(crate) async fn app_target(&self, herdr: &HerdrClient, kind: &str, session_id: &str) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
+        self.app_targets(herdr, kind, session_id, None).await
+    }
+
+    pub(crate) async fn app_target_at(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: &super::NavigationTarget) -> Result<Option<Arc<LaunchTarget>>, HerdrError> {
+        let mut matches = self.app_targets(herdr, kind, session_id, Some(location)).await?;
+        if matches.len() > 1 { return Err(native_error("multiple live App owners for the saved Run Chat")); }
+        Ok(matches.pop())
+    }
+
+    async fn app_targets(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: Option<&super::NavigationTarget>) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
         let candidates = self.0.lock().unwrap().values().filter_map(|pending| {
             let state = pending.state.borrow();
             let owner = state.owner.as_ref()?;
             let target = state.target.as_ref()?;
             (pending.kind == kind && state.retained && !state.closed && owner.session_id == session_id
+                && location.is_none_or(|location| target.location == *location)
                 && target.app_coordinates().is_some()).then(|| (pending.clone(), owner.clone(), target.clone()))
         }).collect::<Vec<_>>();
         let mut found = Vec::with_capacity(candidates.len());

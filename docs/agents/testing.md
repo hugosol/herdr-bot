@@ -68,7 +68,7 @@
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
 - 浏览器验收需要本机 Chrome。源码更新后使用 `test:browser:build`，由它先构建前后端和安全关机壳再执行验收；仅调试已构建产物时使用 `npm --prefix frontend run test:browser`。
 - 不同源码副本使用独立 `CARGO_TARGET_DIR`；测试程序会内嵌源码路径。性能比较顺序运行，避免多轮检查争抢同一资源。
-- 原生可见性浏览器清理通过独占 Chrome 的 Node `exit` 事件或独立 Windows 进程句柄确认根进程退出；删除独占 profile 前，句柄观察进程还须确认携带该 profile 路径的残留 Chrome utility 进程退出，不能在根进程先退出时提前终止观察。`taskkill` 返回码或输出不能代替退出确认。
+- 原生可见性浏览器清理分别确认根进程和独占 profile 的进程退出。Node `exit` 事件或独立 Windows 句柄可确认根进程退出；随后观察进程须在独立时限内确认携带该 profile 路径的残留 Chrome utility 进程退出，才允许删除 profile。`taskkill` 返回码或输出不能代替退出确认。
 
 ## 动态 TypeScript 脚本验证
 

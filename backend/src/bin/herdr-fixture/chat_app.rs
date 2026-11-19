@@ -19,6 +19,17 @@ pub(super) fn dispatch(args: &[String]) {
             output(json!({"spaces":[space(CURRENT,"alpha"),space(DEFAULT,"bot-playground")]}));
         }
         ["server", "status", "--json"] => output(json!({"core":{"id":"fixture-core"}})),
+        ["do", "pane.focus", raw] => {
+            let request: Value = serde_json::from_str(raw).unwrap();
+            let tab = tabs().into_iter().find(|t| t["pane"] == request["pane"]).unwrap();
+            std::fs::write(data_dir().join("app-focused.json"), tab.to_string()).unwrap();
+            output(json!({"ok":true}));
+        }
+        ["status"] => {
+            let tab: Value = serde_json::from_slice(&std::fs::read(data_dir().join("app-focused.json")).unwrap()).unwrap();
+            let pane = if super::flag(&super::behavior(), "unconfirmed_focus") { json!("wrong-pane") } else { tab["pane"].clone() };
+            output(json!({"space":tab["space"],"tab":tab["tab"],"focused_pane":pane}));
+        }
         ["do", "tab.new", raw] => {
             let launch: Value = serde_json::from_str(raw).unwrap();
             let n = tabs().len() + 1;
@@ -34,9 +45,19 @@ pub(super) fn dispatch(args: &[String]) {
         }
         ["send", "--json", terminal, "--", text] => {
             assert!(tabs().iter().any(|t| t["terminal"] == *terminal));
-            record("calls.jsonl", json!({"kind":"core_send","terminal":terminal,"text":text}));
+            let mut call = json!({"kind":"core_send","terminal":terminal,"text":text});
+            if let Ok(raw) = std::fs::read(data_dir().join("observe-app-send.json")) {
+                let files: Vec<std::path::PathBuf> = serde_json::from_slice(&raw).unwrap();
+                call["observedFiles"] = json!(files.iter().map(|file| {
+                    std::fs::read_to_string(file).ok()
+                }).collect::<Vec<_>>());
+            }
+            record("calls.jsonl", call);
             let behavior = behavior();
             wait_at_gate(&behavior, "prompt_gate", text);
+            if flag(&behavior, "fail_app_send") {
+                fail("blocked", "controlled App refused the input before sending");
+            }
             if flag(&behavior, "fail_prompt") {
                 fail("core_send_rejected", "controlled core rejected the input");
             }

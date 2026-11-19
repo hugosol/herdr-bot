@@ -95,7 +95,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
           <section aria-label="Run 文件输入"><h3>fileInputs</h3>
             {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未保存文件输入绑定；是否就绪请查看输入准备状态。没有默认地址或自动发现。</p>}
           </section>
-          <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} /> : <p>尚无已保存管理者 Chat 关联。</p>}
+          <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} runId={run.id} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>
       </>}
     </>}

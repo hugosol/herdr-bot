@@ -105,6 +105,11 @@ impl CommandAction for Dispatch {
     const ACTION: &'static str = "派发节点";
 }
 
+pub(crate) struct Locate;
+impl CommandAction for Locate {
+    const ACTION: &'static str = "定位 Run Chat";
+}
+
 pub(crate) struct Rename;
 impl CommandAction for Rename {
     const ACTION: &'static str = "重命名 Run";

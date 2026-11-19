@@ -186,7 +186,7 @@ Map 可为一个 node 设置 `end_node: true`（省略为 `false`）。该节点
 
 在 scheduler 选择 Map，点击“+ 发起 Run”。发起表单提供 **manager 类型的管理者 Task（omp 或 pi）**、已登记的管理者 zone、只读 Workspace、可空的 Markdown“本次要求”及按当前 Map 声明填写的独立文件绑定。Workspace 由管理者 zone 末级目录名推导，不能临时指定当前／默认 Workspace。没有运行名称，不允许临时覆盖 node 的 Bot、Task、zone 或 input。
 
-“校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录、启动真实管理者并在原生身份关联保存成功后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
+“校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录，并在配置选择的 TUI Workspace 或 App Space 启动真实管理者。后端先核实本次终端的原生身份和输入就绪，再保存 Run、必要的委派关联及 Chat 历史，最后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
 
 预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
@@ -203,6 +203,12 @@ HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求接受 `mana
 两类目标、节点 manager 配置、循环和引用保护的可重复入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch bot_targets`、`npm --prefix frontend run test:browser:build -- workflowBotTargets.spec.ts --workers=1`。后端用真实临时定义、Windows 独占读锁与目录 junction 核对无启动／无删除；页面检查真实表单、HTTP 持久读回、重载、取消和引用拒绝。多层正例只证明公开预检接受，不替代真实嵌套执行与原生角色消费验收。运行前使用本 worktree 独立 `CARGO_TARGET_DIR` 并先构建静态页面；完整回归入口见[测试指引](agents/testing.md)。
 
 可重复契约检查：`npm --prefix frontend run test:browser:build -- runPreflight.spec.ts --workers=1`。真实隔离页面及 HTTP 检查空图、缺失绑定、角色／agent、真实目录注销／重登记／搬迁／替换及原配置修正；结果目录保留页面截图与响应、文件核对、外部 Herdr 记录。外部调用缺席只承诺每个测试从服务启动至最终完成请求的有界窗口（90 秒用例上限），不声称无限期不存在；记录型 Herdr 只证明拒绝路径无启动调用，不证明原生宿主或模型执行质量。P8 的有效节点实际 cwd、P9 的有效 Run/Chat 关联由实际运行链路另行验收。
+
+### 定位已关联的 Run Chat
+
+在 workflow 详情，管理者及有 Chat 的当前／旧执行提供 **定位**。它只聚焦所选宿主中同时匹配保存坐标与原生身份的目标；目标缺失、身份改变或聚焦未确认时明确反馈，不切换到同名终端、不启动新 Chat，也不保证 Windows 窗口置前。**Resume** 仍是独立的历史 Chat 操作，不迁移或接管旧 Run。HTTP 对应 `POST /api/workflow/runs/{id}/locate`，主体 `{}` 选择管理者，`{"executionId":"..."}` 选择该 Run 的指定执行。
+
+节点报告先持久化，再向本 Run 的管理者尝试一次终端通知。通知失败不撤销报告；从 Run 详情可读回，不因刷新、首条输入失败或通知失败而重投报告或重放派发。
 
 ## 目录与定义管理
 

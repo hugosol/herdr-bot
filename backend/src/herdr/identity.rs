@@ -1,7 +1,6 @@
 //! Native session identity acquisition and exact-file metadata reading.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use serde_json::Value;
 
@@ -25,14 +24,11 @@ impl HerdrClient {
     /// One read-only identity attempt. The caller owns the overall acquisition
     /// deadline; this method never scans directories or invokes agent commands.
     pub async fn native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
-        self.read_native_session(target, kind, deadline, false, false).await
-    }
-
-    /// Only a just-started agent waits for an absent agent_session until the
-    /// caller's deadline, or uses OMP's allocated-but-unwritten path as identity
-    /// evidence. Recovery/reconciliation must not inherit either rule.
-    pub async fn started_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant) -> Result<NativeSession, HerdrError> {
-        self.read_native_session(target, kind, deadline, false, true).await
+        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+        let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
+        if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
+        let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
+        native_from_agent(agent, kind, deadline, false, false).await
     }
 
     /// An exact process with no native reference is distinct from a bad
@@ -50,26 +46,6 @@ impl HerdrClient {
         }
         let cwd = nonempty(agent.get("foreground_cwd")).or_else(|| nonempty(agent.get("cwd")));
         Ok(RestoreEvidence::Unidentified(cwd.map(str::to_owned)))
-    }
-
-    async fn read_native_session(&self, target: &str, kind: &str, deadline: tokio::time::Instant, require_live_cwd: bool, newly_started: bool) -> Result<NativeSession, HerdrError> {
-        let value = loop {
-            if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
-            let value = self.run("agent get", &["agent".into(), "get".into(), target.into()], QUERY_TIMEOUT).await?;
-            if tokio::time::Instant::now() >= deadline { return Err(native_error("native identity acquisition deadline expired")); }
-            let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
-            // agent start can complete before Herdr publishes agent_session.
-            // Only a just-started agent may wait for this absent read-only fact;
-            // malformed identities and command failures are never retried here.
-            if newly_started && agent.is_object()
-                && agent.get("agent_session").is_none_or(Value::is_null) {
-                tokio::time::sleep_until(deadline.min(tokio::time::Instant::now() + Duration::from_millis(100))).await;
-                continue;
-            }
-            break value;
-        };
-        let agent = value.pointer("/result/agent").ok_or_else(|| native_error("missing result.agent"))?;
-        native_from_agent(agent, kind, deadline, require_live_cwd, newly_started).await
     }
 }
 

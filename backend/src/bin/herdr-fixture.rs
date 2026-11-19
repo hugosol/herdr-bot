@@ -418,7 +418,9 @@ fn report_launch(settings: &Value, agent: &Value) {
     let target = &matched["target"];
     let reference = &settings["native_session"];
     let configured = reference["value"].as_str();
-    let file = configured.filter(|_| reference["kind"] == "path");
+    // An invalid official reference must be rejected by the host observation,
+    // not prevented from reaching it by a malformed synthetic event envelope.
+    let file = configured.filter(|path| reference["kind"] == "path" && std::path::Path::new(path).is_absolute());
     let id = file.and_then(|file| fs::read_to_string(file).ok())
         .and_then(|text| text.lines().take(2).find_map(|line| {
             let row: Value = serde_json::from_str(line).ok()?;
