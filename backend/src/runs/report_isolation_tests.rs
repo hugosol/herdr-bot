@@ -47,6 +47,7 @@ impl Fixture {
         herdr.set_workspaces(json!([{"workspace_id":"isolation-workspace","label":data.path().file_name().unwrap().to_str().unwrap()}]));
         let (app, state) = crate::app_with_state(&config, Arc::new(crate::SystemPowerOff), Arc::new(crate::sessions::SessionsState::with_policy(config.sessions.policy())));
         let server = TestServer::start_app(app).await;
+        fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let mut fixture = Self { data, herdr, config, server, state, manager: Value::Null, targets: Vec::new() };
         fixture.post("/api/zones", json!({"id":"isolation","path":fixture.data.path()}), 200).await;
         let mut tasks = Vec::new();
