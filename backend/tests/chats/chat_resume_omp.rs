@@ -87,6 +87,43 @@ async fn omp_wrong_native_source_fails_without_creating_a_target() {
     assert!(herdr.tabs().is_empty());
 }
 
+// S1 (P30/P52): even a live ID match must not conceal a conflicting or
+// unreadable saved native header. Corrupt history storage is a separate hard
+// failure and must not reach the host at all.
+#[tokio::test]
+async fn selected_history_errors_cannot_be_hidden_by_a_live_native_id_match() {
+    for fault in ["conflicting-header", "bad-header", "history-storage"] {
+        let root = TempDir::new("Selected resume identity failure");
+        let herdr = HerdrFixture::new("selected identity failure");
+        let file = native_file(&root);
+        let config = setup(&root, &herdr, Some(&file));
+        herdr.set_behavior(json!({"agents":[{
+            "agent":"omp","workspace_id":"w-target","tab_id":"live-tab","pane_id":"live-pane",
+            "agent_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"omp-old-3b9f-exact"}
+        }]}));
+        match fault {
+            "conflicting-header" => std::fs::write(&file, format!("{}\n", json!({"type":"session","id":"different-native","cwd":root.path()}))).unwrap(),
+            "bad-header" => std::fs::write(&file, "{ malformed\n").unwrap(),
+            _ => std::fs::write(&config.sessions.history_file, "{ malformed history").unwrap(),
+        }
+        let before = std::fs::read(&config.sessions.history_file).unwrap();
+        let reply = resume(&config).await;
+        let result: Value = serde_json::from_str(&reply.body).unwrap();
+        if fault == "history-storage" {
+            assert_eq!(reply.status, 500, "{result}");
+            assert_eq!(result["code"], "history-unreadable");
+            assert!(herdr.calls().is_empty());
+        } else {
+            assert_eq!(reply.status, 502, "{fault}: {result}");
+            assert_eq!(result["outcome"], "failed");
+            assert_eq!(result["stage"], "session");
+            if fault == "conflicting-header" { assert_eq!(result["code"], "native-session-mismatch"); }
+            assert!(herdr.calls().iter().all(|call| call["kind"] == "agent_list"));
+        }
+        assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), before);
+    }
+}
+
 // P6/P11/P12/P22: readiness alone must not report success. Blank-process timeout
 // is covered as unconfirmed in chat_resume_timeout.rs. Wrong identity/cwd,
 // failed start or unconfirmed focus stays a visible failure;
@@ -97,6 +134,7 @@ async fn omp_requires_same_native_identity_actual_cwd_and_confirmed_focus() {
         (json!({"fail_tab_create":true}),"tab","tab_create"),
         (json!({"fail_agent_start":true}),"start","agent_start"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"wrong-omp-chat"}}),"confirm","agent_get"),
+        (json!({"native_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":"omp-old-3b9f-exact"}}),"confirm","agent_get"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"omp-old-3b9f-exact"},"fail_agent_focus":true}),"focus","agent_focus"),
         (json!({"native_session":{"agent":"omp","source":"herdr:omp","kind":"id","value":"omp-old-3b9f-exact"},"unconfirmed_focus":true}),"focus","agent_focus"),
     ] {
@@ -283,14 +321,15 @@ async fn omp_startup_path_cannot_confirm_a_new_restore_process_without_native_fi
     }));
     let before = std::fs::read(&config.sessions.history_file).unwrap();
     let reply = resume_session(&config, STARTUP_UUID).await;
-    assert_eq!(reply.status, 502, "{}", reply.body);
+    assert_eq!(reply.status, 200, "{}", reply.body);
     let body: Value = serde_json::from_str(&reply.body).unwrap();
     assert_eq!(body["outcome"], "unconfirmed");
-    assert_eq!(body["stage"], "confirm");
+    assert_eq!(body["stage"], "focused");
     assert_eq!(body["progress"]["conversationConfirmed"], false);
     let calls = herdr.calls();
     assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_start").count(), 1);
-    assert!(!calls.iter().any(|call| call["kind"] == "agent_focus" || call["kind"] == "agent_prompt"));
+    assert_eq!(calls.iter().filter(|call| call["kind"] == "agent_focus").count(), 1);
+    assert!(!calls.iter().any(|call| call["kind"] == "agent_prompt" || call["kind"] == "agent_input"));
     assert!(!file.exists());
     assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), before);
 }

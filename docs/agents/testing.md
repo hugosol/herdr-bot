@@ -43,6 +43,22 @@
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
 
+### 原生提醒专项（P47／P48）
+
+控制边界：`cargo test --manifest-path backend/Cargo.toml --test chat_creation native_reminders` 和同目标的 `app_launch_uses_task_environment_and_selected_terminal_without_tui_files`。由公开 Chat HTTP 发起 OMP／Pi。TUI 独立核对 Pane 与加载的一份官方状态扩展；App 在 TUI 集成文件缺失时核对原生 agent argv 与所选 Space／Pane／core 终端。两端取完整控制 CLI 记录，确认 connect-bot 的 `working → awaiting-input → awaiting-input` 已在公开会话流可见，却未增加另一条宿主命令。控制记录不证明真实状态或播放。
+
+**真实触发与配置。** 每轮使用独占的 Windows 交互桌面环境、HOME／APPDATA／XDG、agent 配置和会话目录、短路径的 `HERDR_CONFIG_PATH`／`HERDR_APP_HOME`、唯一 `HERDR_SESSION`／`HC_SESSION`。只连本轮宿主与 owned backend；每次只运行所选宿主。TUI 要连接一个可实际取得焦点的 TUI 客户端，不能只启动 headless server；App 要有连接到所选 core 的实际窗口，不能用 `hc` 代替窗口。保留已装 agent、宿主和 core 的版本，TUI 固定扩展按安装的官方入口接入；App 不用 TUI 扩展，OMP `terminal.programStatus` 启用，Pi 保持自动协商。
+
+- **TUI：** 写入独占配置的 `[ui.sound]`：`enabled = true`，设置两个可区分的本地 MP3 `done_path`、`request_path`（相对配置文件目录或绝对路径）。确认未设 `HERDR_DISABLE_SOUND`，且没有适用的 `[ui.sound.agents]` 关闭项。默认资源对照移除两个路径和通用 `path`；关闭对照只改 `enabled = false`。
+- **App：** 在独占 `settings.json` 合并 `"sounds": {"enabled":true,"done":"done.mp3","blocked":"request.mp3"}`（文件相对 `HERDR_APP_HOME`，也可用绝对路径）。确认未设 `HERDR_APP_NO_SOUND`。默认资源对照移除 `done`／`blocked`；关闭对照只改 `enabled`。
+- **完成轮次：** 通过产品的 zone → Task 发起 Chat，在初始指示或后续原生输入提交带唯一标记的纯文本请求，例如 `仅回复 REMINDER-<本轮标记>`。用本机受控 provider 收到请求后暂缓响应，先核对目标已 `working` 并切到所需焦点，再放行正常响应。每次用新轮次，分别在目标 Tab 可见且宿主窗口有焦点、目标 Tab 不可见时完成。首次初始化和已停驻的旧状态均不算触发。
+- **需要处理：** 为 owned Run 配置一个 `auto_approved=false` 的普通 node，经真实管理者派发到所选宿主。在 node Chat 正常发起一次成果批准（受控 provider 可固定返回该原生工具调用）。确认完整原生选择框仍显示且所选目标确实进入 `blocked`；在目标可见且宿主有焦点时也应走 request／blocked 音效。保持框打开跨越多次采样，同一状态不应重复响；用原生 **No** 解开，单独记下之后可能发生的完成转换。不要直接调用 `pane report-agent`、写入 OSC、模拟批准或暂停状态处理来制造提醒。
+- **对照：** 两端后台完成各预期一次 done，正在查看时完成不播；实际需要处理的转换各预期一次 request／blocked，保持原状态不再播；关闭声音后重复这些真实转换，状态仍应到达但不得播音。报告投递及 ready 本身不是提示音；若投递使接收 agent 实际开始一轮，单独归因于该轮的原生状态。不要用设置试听或显式 `notification show` 充当任何格子的状态输入。
+
+**时序与取证。** 每格保留选择的配置与声音文件哈希，记录含 UTC 与单调时间的输入提交、焦点变化、真实 provider 进出、原生状态转换、提醒 UI、播放迹象及进程退出。TUI 以 `herdr pane get <Pane>`／`herdr agent get <Pane>` 和 `herdr api snapshot` 保存 Pane、状态与焦点，可在所选实例公开 socket／命名管道订阅 `pane.agent_status_changed`（Windows 无 `herdr api subscribe` CLI）。App 保存 `herdr-app ls`、`herdr-app status`、必要时 `herdr-app shot`，用布局中的 Terminal 地址关联 `hc get <地址> --json` 和 `hc events --terminal <地址> --json`；核对 core 实例身份、`herdr.space`／`herdr.tab` 标签与所选 Pane，不以短地址或成功回执独立作证。保留一个未触发的其他 Pane／终端作为归属对照。
+
+可用的 Windows 证据：保留本轮宿主日志和播放器错误；若有进程／文件访问跟踪，将已识别的宿主 PID（或其原生音频子进程）与打开所选 MP3 的时间关联，区分一次播放和宿主自己的资源回退。App Windows 音频可在进程内播放，找不到外部播放器不是静音证据。可用 Windows 音频端点的 WASAPI loopback 采集带时间基准的 WAV，记录设备、采样方式、其他音源与起止时间；不要让录制界面抢走被测焦点。缺设备、访问跟踪或录音时分别保留缺项；打开文件、Toast、截图或静音观测均不等同于可听。实际宿主自动取证按配对验收执行；两端音色与可听性仅在最终听音环节由用户确认，不预先判通过。
+
 ### Chief 委派与报告（S1）
 
 先构建本 worktree 的页面，用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture`。公开 chief／Chat／历史／报告 HTTP 配合独占 TUI、App/core 记录确认委派授权、发起目标和外部输入；业务输入门闩期间读回已有原生身份的历史与委派关联。更换当前 chief 后保留原 Tab，从真实通知目标及报告读回确认路由。记录型宿主拒绝通知时，保留原报告，并在至少 46 秒窗口核对没有额外输入、重投或复发派；这不代表真实安装宿主业务链路已验收。
