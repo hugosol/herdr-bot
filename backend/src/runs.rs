@@ -553,6 +553,75 @@ pub(crate) async fn get_run(state: AppState, id: String) -> RunResult {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LocateRequest {
+    execution_id: Option<String>,
+}
+
+impl ChatReference {
+    fn location(&self) -> crate::herdr::NavigationTarget {
+        crate::herdr::NavigationTarget {
+            workspace_id: self.workspace_id.clone(), tab_id: self.tab_id.clone(), pane_id: self.pane_id.clone(),
+        }
+    }
+
+    async fn saved_history(&self, state: &AppState) -> Result<crate::chats::history::HistorySelection, crate::chats::Error> {
+        use crate::chats::Error;
+        state.history.selection(&self.session_id).await
+            .map_err(|error| Error::Internal("history-unreadable", error.to_string()))?
+            .ok_or_else(|| Error::NotFound("run-chat-not-found", "找不到关联 Chat 的原生历史。".into()))
+    }
+
+    async fn app_target(&self, state: &AppState, location: &crate::herdr::NavigationTarget) -> Result<std::sync::Arc<crate::herdr::LaunchTarget>, crate::chats::Error> {
+        let selected = self.saved_history(state).await?;
+        let kind = run_agent(&selected)?;
+        let native = state.herdr.selected_native_id(kind, &selected).await.map_err(run_chat_lookup_failure)?;
+        state.launches.app_target_at(&state.herdr, kind, &native, location).await
+            .map_err(run_chat_lookup_failure)?.ok_or_else(run_chat_not_live)
+    }
+}
+
+fn run_agent(selected: &crate::chats::history::HistorySelection) -> Result<&str, crate::chats::Error> {
+    selected.agent_type.as_deref().filter(|kind| matches!(*kind, "omp" | "pi"))
+        .ok_or_else(|| crate::chats::Error::Invalid("unsupported-agent", "无法确定目标 Chat 的 agent 类型。".into()))
+}
+
+fn run_chat_lookup_failure(error: crate::herdr::HerdrError) -> crate::chats::Error {
+    crate::chats::Error::Internal("run-chat-lookup-failed", error.message())
+}
+
+fn run_chat_not_live() -> crate::chats::Error {
+    crate::chats::Error::NotFound("run-chat-not-found", "所选 Run／执行关联的宿主目标不在运行或已变化；未使用其他目标。".into())
+}
+
+pub(crate) async fn locate_chat(state: AppState, id: &str, input: LocateRequest) -> Result<serde_json::Value, crate::chats::Error> {
+    use crate::chats::Error;
+    let run = state.runs.read(&state, id).await.map_err(|message| Error::Internal("run-read-failed", message))?;
+    let chat = match input.execution_id {
+        None => run.manager.as_ref(),
+        Some(id) => {
+            let mut executions = run.nodes.values().flat_map(NodeState::executions).filter(|execution| execution.id == id);
+            let execution = executions.next();
+            if executions.next().is_some() {
+                return Err(Error::Conflict("run-chat-ambiguous", "同一执行 ID 有多个保存关联；尚未定位。".into()));
+            }
+            execution.and_then(NodeExecution::chat)
+        }
+    }.ok_or_else(|| Error::NotFound("run-chat-not-found", "没有所选 Run／执行的 Chat 关联；尚未定位。".into()))?;
+    let location = chat.location();
+    if state.herdr.is_app() {
+        let target = chat.app_target(&state, &location).await?;
+        state.herdr.focus_app_target(&target).await.map(drop)
+    } else {
+        let selected = chat.saved_history(&state).await?;
+        let targets = state.herdr.matching_targets(run_agent(&selected)?, &selected).await.map_err(run_chat_lookup_failure)?;
+        if !targets.contains(&location) { return Err(run_chat_not_live()); }
+        state.herdr.focus_target(&location).await
+    }.map_err(|error| Error::Internal("run-chat-focus-failed", error.message()))?;
+    Ok(serde_json::json!({"outcome":"located","target":location,"message":"已聚焦所选宿主内的 Run Chat；不保证 Windows 窗口置前。"}))
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenameRequest {
     pub(crate) name: String,
@@ -610,6 +679,7 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
         Err(e) => return Err(RunError::Task(e)),
     };
     preset.env.suite_args = suite_args;
+    preset.env.select_host(&state.herdr);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(error(
             FailureKind::Failed,

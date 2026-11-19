@@ -303,6 +303,15 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
         let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to});
-        Ok(SavedReport { target: Ok(report.to.agent_name.clone()), report, text, diagnostic })
+        // Resolve the exact manager only after committing the report. A failed
+        // lookup or failed send never changes or schedules the saved report.
+        use crate::report_delivery::{Notification, NotificationTarget};
+        let target = if state.herdr.is_app() {
+            report.to.app_target(&state, &report.to.location()).await.map(NotificationTarget::App)
+                .map_err(|error| Notification::not_attempted(format!("未确认已保存报告的 App 管理者目标：{error:?}")))
+        } else {
+            Ok(NotificationTarget::Tui(report.to.agent_name.clone()))
+        };
+        Ok(SavedReport { report, target, text, diagnostic })
     }).await
 }

@@ -67,6 +67,17 @@ export async function loadRun(id: string): Promise<RunDetail> {
   return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}`)
 }
 
+export async function locateRunChat(id: string, executionId?: string): Promise<string> {
+  const response = await fetch(`/api/workflow/runs/${encodeURIComponent(id)}/locate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ executionId }),
+  })
+  const value = await response.json()
+  if (!response.ok || value?.outcome !== 'located' || typeof value.message !== 'string') {
+    throw new Error(typeof value?.message === 'string' ? value.message : '无法确认所选 Run Chat 已聚焦。')
+  }
+  return value.message
+}
+
 export async function renameRun(id: string, name: string): Promise<RunDetail> {
   const response = await fetch(`/api/workflow/runs/${encodeURIComponent(id)}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),

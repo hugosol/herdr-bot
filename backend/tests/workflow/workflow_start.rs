@@ -20,14 +20,25 @@ async fn fixture() -> (
 }
 
 async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Config, TestServer, String, Vec<String>) {
+    fixture_with_host(agent, false).await
+}
+
+async fn fixture_with_host(agent: &str, app: bool) -> (TempDir, HerdrFixture, herdr_bot::Config, TestServer, String, Vec<String>) {
     let data = TempDir::new("workflow start records");
     let herdr = HerdrFixture::new("workflow manager external");
+    let zone_path = if app {
+        let dir = data.path().join("alpha");
+        fs::create_dir(&dir).unwrap();
+        fs::write(herdr.path().join("chat-app-mode"), "").unwrap();
+        dir
+    } else { data.path().to_owned() };
     let fixtures = common::repo_fixtures_dir();
     let mut config = common::config(
         &fixtures.join("operations/success.bat"),
         &fixtures.join("operations"),
     );
     config.tasks.storage_file = data.path().join("tasks.json");
+    config.sessions.history_file = data.path().join("chat-history.json");
     config.prompts_file = data.path().join("prompts.local.toml");
     let mut catalog: toml::Value =
         toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
@@ -55,6 +66,11 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     )
     .unwrap();
     config.herdr.executable = herdr.executable().to_path_buf();
+    if app {
+        config.herdr.backend = herdr_bot::config::HerdrBackend::App;
+        config.herdr.app_executable = herdr.executable().into();
+        config.herdr.core_executable = herdr.executable().into();
+    }
     herdr.set_workspaces(json!([{"workspace_id":"w-manager", "label":data.path().file_name().unwrap().to_str().unwrap()}]));
     herdr.set_behavior(json!({"native_session":{"source":"herdr:omp", "agent":"omp", "kind":"id", "value":"manager-native-04"}, "native_cwd":data.path()}));
     fs::create_dir_all(&config.scheduler.map_directory).unwrap();
@@ -63,7 +79,7 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     let response = post_json_over_tcp(
         server.addr(),
         "/api/zones",
-        &json!({"id":"manager","path":data.path()}).to_string(),
+        &json!({"id":"manager","path":zone_path}).to_string(),
     )
     .await;
     assert_eq!(response.status, 200, "{}", response.body);
@@ -91,6 +107,370 @@ async fn fixture_for_agent(agent: &str) -> (TempDir, HerdrFixture, herdr_bot::Co
     fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":ids[1]}).to_string()).unwrap();
     fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-BODY-NOT-INJECTED","nodes":{"A":{"title":"A","bot_id":"worker","input":"NODE-INPUT-NOT-INJECTED","zone":zone,"blocked_by":[]}}}).to_string()).unwrap();
     (data, herdr, config, server, zone, ids)
+}
+
+// S1: public Run/start and session-event HTTP; actual native header, public
+// Run/detail, durable Chat history, and receive-side command at the external
+// App/core boundary. A legacy TUI-only launch or a launch that sends from the
+// create reply/identity event would fail before the first business turn.
+#[tokio::test]
+async fn app_root_run_waits_for_native_readiness_and_persists_before_business_input() {
+    let (data, herdr, config, server, zone, ids) = fixture_with_host("omp", true).await;
+    let cwd = data.path().join("alpha");
+    let native_file = cwd.join("root-session.jsonl");
+    fs::write(&native_file, format!("{}\n", json!({"type":"session","id":"app-root-omp","cwd":cwd}))).unwrap();
+    let addr = server.addr();
+    let manager = ids[0].clone();
+    let start = tokio::spawn(async move {
+        post_json_over_tcp(addr, "/api/scheduler/maps/work.json/runs",
+            &json!({"managerTaskId":manager,"zone":zone,"userInput":"Root business before any other turn"}).to_string()).await
+    });
+    let tab = app_tab(&herdr, 1).await;
+    assert_eq!(tab["space"], "space-current");
+    assert_eq!(tab["options"]["folder"], json!(cwd));
+    let argv = tab["options"]["argv"].as_array().expect("App must start the actual agent in its new tab");
+    assert_eq!(argv[6], "omp");
+    assert!(!argv.iter().any(|arg| arg.as_str().is_some_and(|arg| arg.contains("Root business"))));
+    let event = |kind| json!({"kind":kind,"sessionId":"app-root-omp","data":{
+        "launchId":argv[4],"targetId":argv[5],"agentType":"omp","cwd":cwd,"pid":43127,"sessionFile":native_file,
+    }}).to_string();
+    let root = fs::read_dir(&config.scheduler.run_directory).unwrap().next().unwrap().unwrap().path();
+    let run_id = root.file_name().unwrap().to_str().unwrap();
+    let detail = format!("/api/workflow/runs/{run_id}");
+    fs::write(herdr.path().join("observe-app-send.json"),
+        json!([root.join("run.json"), config.sessions.history_file]).to_string()).unwrap();
+    let initial: Value = serde_json::from_str(&get_over_tcp(addr, &detail).await.body).unwrap();
+    assert!(initial["run"]["manager"].is_null());
+    let send = || herdr.calls().into_iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>();
+    let identity = post_json_over_tcp(addr, "/api/sessions/events", &event("launch_identity")).await;
+    assert_eq!(identity.status, 200, "{}", identity.body);
+    assert!(!start.is_finished());
+    assert!(send().is_empty());
+    let ready = post_json_over_tcp(addr, "/api/sessions/events", &event("launch_ready")).await;
+    assert_eq!(ready.status, 200, "{}", ready.body);
+    let started = start.await.unwrap();
+    assert_eq!(started.status, 201, "{}", started.body);
+    let saved: Value = serde_json::from_str(&get_over_tcp(addr, &detail).await.body).unwrap();
+    let manager = &saved["run"]["manager"];
+    assert_eq!(manager["sessionId"], "app-root-omp");
+    assert_eq!(manager["tabId"], tab["tab"]);
+    assert_eq!(manager["paneId"], tab["pane"]);
+    let history: Value = serde_json::from_slice(&fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    let row = history.as_array().unwrap().iter().find(|row| row["sessionId"] == "app-root-omp").unwrap();
+    assert_eq!(row["sourceTaskId"], ids[0]);
+    assert_eq!(row["sessionFile"], json!(native_file));
+    assert_eq!(row["originalWorkspaceId"], "space-current");
+    let sent = send();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0]["terminal"], tab["terminal"]);
+    let observed_run: Value = serde_json::from_str(sent[0]["observedFiles"][0].as_str().unwrap()).unwrap();
+    assert_eq!(observed_run["manager"], *manager);
+    let observed_history: Value = serde_json::from_str(sent[0]["observedFiles"][1].as_str().unwrap()).unwrap();
+    assert_eq!(observed_history, history);
+    assert!(sent[0]["text"].as_str().unwrap().ends_with("Root business before any other turn"));
+}
+
+// S1: exact saved Run target, not just a successful App focus reply. Unknown
+// execution IDs must not focus the manager or create another terminal.
+#[tokio::test]
+async fn app_run_locate_checks_the_saved_target_and_actual_pane_focus() {
+    let (data, herdr, _, server, zone, ids) = fixture_with_host("pi", true).await;
+    let pending = start_fixture_run(&server, ids[0].clone(), zone);
+    let tab = app_launch(&server, &herdr, 1, "pi", "app-locate-manager", &data.path().join("alpha")).await;
+    let run = run_reply(pending.await.unwrap(), 201);
+    let route = format!("/api/workflow/runs/{}/locate", run["id"].as_str().unwrap());
+    let wrong = run_reply(post_json_over_tcp(server.addr(), &route, r#"{"executionId":"unknown-execution"}"#).await, 404);
+    assert_eq!(wrong["code"], "run-chat-not-found");
+    assert!(!herdr.path().join("app-focused.json").exists());
+    let located = run_reply(post_json_over_tcp(server.addr(), &route, "{}").await, 200);
+    assert_eq!(located["outcome"], "located");
+    assert_eq!(located["target"]["paneId"], tab["pane"]);
+    assert_eq!(fs::read_to_string(herdr.path().join("app-focused.json")).unwrap(), tab.to_string());
+    herdr.set_behavior(json!({"unconfirmed_focus":true}));
+    let failed = run_reply(post_json_over_tcp(server.addr(), &route, "{}").await, 500);
+    assert_eq!(failed["code"], "run-chat-focus-failed");
+    assert_eq!(common::read_json_lines(&herdr.path().join("app-tabs.jsonl")).len(), 1);
+}
+
+#[tokio::test]
+async fn tui_run_locate_does_not_focus_a_same_identity_decoy() {
+    let (data, herdr, _, server, zone, ids) = fixture().await;
+    let pending = run_reply(start_fixture_run(&server, ids[0].clone(), zone).await.unwrap(), 201);
+    let tab = common::read_json_lines(&herdr.path().join("started.jsonl")).pop().unwrap();
+    let mut live = tab.clone();
+    live["agent_session"] = json!({"source":"herdr:omp","agent":"omp","kind":"id","value":"manager-native-04"});
+    let mut decoy = live.clone();
+    decoy["workspace_id"] = json!("a-decoy-workspace");
+    decoy["tab_id"] = json!("a-decoy-tab");
+    decoy["pane_id"] = json!("a-decoy-pane");
+    herdr.set_behavior(json!({"agents":[decoy, live],"native_cwd":data.path()}));
+    let url = format!("/api/workflow/runs/{}/locate", pending["id"].as_str().unwrap());
+    let located = run_reply(post_json_over_tcp(server.addr(), &url, "{}").await, 200);
+    assert_eq!(located["target"]["paneId"], tab["pane_id"]);
+    let focused = herdr.path().join("focused.json");
+    assert_eq!(fs::read_to_string(&focused).unwrap(), tab["pane_id"].to_string());
+    fs::remove_file(&focused).unwrap();
+    herdr.set_behavior(json!({"agents":[decoy]}));
+    let wrong = run_reply(post_json_over_tcp(server.addr(), &url, "{}").await, 404);
+    assert_eq!(wrong["code"], "run-chat-not-found");
+    assert!(!focused.exists(), "an exact identity in a different Pane was not authorized");
+    assert_eq!(herdr.tabs().len(), 1);
+}
+
+// S1/P40/P52: a real saved report survives an explicit external send failure.
+// Counting the initial submits plus the rejected manager-terminal notification
+// distinguishes one delivery from no attempt as well as from automatic replay.
+#[tokio::test]
+async fn app_run_report_failure_preserves_public_readback_without_replaying() {
+    use std::time::{Duration, Instant};
+    let (data, herdr, config, server, zone, ids) = fixture_with_host("omp", true).await;
+    let cwd = data.path().join("alpha");
+    let pending = start_fixture_run(&server, ids[0].clone(), zone);
+    let manager_tab = app_launch(&server, &herdr, 1, "omp", "report-manager", &cwd).await;
+    let started = run_reply(pending.await.unwrap(), 201);
+    prepare_run(&server, "report-manager").await;
+    let run_id = started["id"].as_str().unwrap();
+    let root = config.scheduler.run_directory.join(run_id);
+    fs::write(herdr.path().join("observe-app-send.json"),
+        json!([root.join("run.json"), config.sessions.history_file, root.join("messages.jsonl")]).to_string()).unwrap();
+    let dispatch = dispatch_app_node(&server, "report-manager", "A");
+    let node_tab = app_launch(&server, &herdr, 2, "omp", "report-worker", &cwd).await;
+    let dispatched = run_reply(dispatch.await.unwrap(), 200);
+    assert_eq!(dispatched["results"][0]["status"], "running");
+    let sends = || herdr.calls().into_iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>();
+    let startup = sends();
+    assert_eq!(startup.len(), 2);
+    assert_eq!(startup[1]["terminal"], node_tab["terminal"]);
+    assert!(startup[1]["text"].as_str().unwrap().contains("NODE-INPUT-NOT-INJECTED"));
+    let observed_run: Value = serde_json::from_str(startup[1]["observedFiles"][0].as_str().unwrap()).unwrap();
+    let execution = &observed_run["nodes"]["A"]["execution"];
+    assert_eq!(execution["chat"]["sessionId"], "report-worker");
+    assert_eq!(execution["chat"]["paneId"], node_tab["pane"]);
+    let observed_history: Value = serde_json::from_str(startup[1]["observedFiles"][1].as_str().unwrap()).unwrap();
+    assert!(observed_history.as_array().unwrap().iter().any(|row| row["sessionId"] == "report-worker" && row["sourceTaskId"] == ids[1]));
+    let node_argv = node_tab["options"]["argv"].as_array().unwrap();
+    assert!(node_argv.iter().any(|arg| arg.as_str().is_some_and(|value| value.ends_with("omp-node-chat.ts"))));
+
+    herdr.set_behavior(json!({"fail_app_send":true}));
+    let report = run_reply(post_json_over_tcp(server.addr(), "/api/workflow/node/report", &json!({
+        "sessionId":"report-worker","body":"Saved despite refusing delivery","canComplete":false
+    }).to_string()).await, 200);
+    assert_eq!(report["saved"], true);
+    assert_eq!(report["notification"]["status"], "failed");
+    assert_eq!(report["report"]["executionId"], execution["id"]);
+    assert_eq!(report["report"]["to"]["sessionId"], "report-manager");
+    let attempted = sends();
+    assert_eq!(attempted.len(), 3);
+    assert_eq!(attempted[2]["terminal"], manager_tab["terminal"]);
+    assert!(attempted[2]["text"].as_str().unwrap().ends_with("Saved despite refusing delivery"));
+    let persisted_at_attempt = attempted[2]["observedFiles"][2].as_str().unwrap().lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap()).collect::<Vec<_>>();
+    assert_eq!(persisted_at_attempt, vec![report["report"].clone()]);
+    let started = Instant::now();
+    loop {
+        let detail = run_reply(get_over_tcp(server.addr(), &format!("/api/workflow/runs/{run_id}")).await, 200);
+        assert_eq!(detail["reports"], json!([report["report"]]));
+        assert_eq!(detail["run"]["nodes"]["A"]["execution"], *execution);
+        assert_eq!(sends(), attempted);
+        assert_eq!(common::read_json_lines(&herdr.path().join("app-tabs.jsonl")).len(), 2);
+        if started.elapsed() > Duration::from_secs(6) { break; }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+}
+
+// S1/P23/P39/P41: the child manager has a dual role at one actual Pane;
+// the end Chat is a separate user handoff, not a reporting node. Observe the
+// complete parent/child link at the initial terminal interaction, not only in
+// dispatch results, and use the saved execution identity for the focus action.
+#[tokio::test]
+async fn app_nested_manager_and_end_chat_keep_separate_run_roles() {
+    let (data, herdr, config, server, zone, ids) = fixture_with_host("pi", true).await;
+    let cwd = data.path().join("alpha");
+    fs::write(config.scheduler.bot_directory.join("nested.json"), json!({
+        "id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"
+    }).to_string()).unwrap();
+    fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"Root","description":"","nodes":{
+        "N":{"title":"Nested","bot_id":"nested","manager_task_id":ids[0],"input":"Nested business input","zone":zone,"blocked_by":[]}
+    }}).to_string()).unwrap();
+    fs::write(config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{
+        "E":{"title":"Handoff","bot_id":"worker","input":"User takes it from here","zone":zone,"blocked_by":[],"end_node":true}
+    }}).to_string()).unwrap();
+    let pending = start_fixture_run(&server, ids[0].clone(), zone);
+    app_launch(&server, &herdr, 1, "pi", "parent-manager", &cwd).await;
+    let started = run_reply(pending.await.unwrap(), 201);
+    let parent_id = started["id"].as_str().unwrap();
+    prepare_run(&server, "parent-manager").await;
+
+    let nested = dispatch_app_node(&server, "parent-manager", "N");
+    let parent_file = config.scheduler.run_directory.join(parent_id).join("run.json");
+    app_tab(&herdr, 2).await;
+    let begun: Value = serde_json::from_slice(&fs::read(&parent_file).unwrap()).unwrap();
+    let child_id = begun["nodes"]["N"]["execution"]["childRunId"].as_str().unwrap();
+    let child_file = config.scheduler.run_directory.join(child_id).join("run.json");
+    let observations = herdr.path().join("observe-app-send.json");
+    fs::write(&observations, json!([parent_file, child_file, config.sessions.history_file]).to_string()).unwrap();
+    let tab = app_launch(&server, &herdr, 2, "pi", "nested-manager", &cwd).await;
+    let nested = run_reply(nested.await.unwrap(), 200);
+    assert_eq!(nested["results"][0]["status"], "running");
+    let sends = || herdr.calls().into_iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>();
+    let sent = sends();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[1]["terminal"], tab["terminal"]);
+    assert!(sent[1]["text"].as_str().unwrap().contains("[Child Run manager context]"));
+    assert!(sent[1]["text"].as_str().unwrap().contains("Nested business input"));
+    let observed = |index: usize| serde_json::from_str::<Value>(sent[1]["observedFiles"][index].as_str().unwrap()).unwrap();
+    let parent = observed(0);
+    let execution = &parent["nodes"]["N"]["execution"];
+    let child = observed(1);
+    assert_eq!(child["parent"], json!({"runId":parent_id,"nodeId":"N","executionId":execution["id"]}));
+    assert_eq!(child["manager"], execution["chat"]);
+    assert_eq!(child["manager"]["sessionId"], "nested-manager");
+    assert_eq!(child["manager"]["paneId"], tab["pane"]);
+    assert!(observed(2).as_array().unwrap().iter().any(|row| row["sessionId"] == "nested-manager" && row["sourceTaskId"] == ids[0]));
+    let extensions = |tab: &Value| tab["options"]["argv"].as_array().unwrap().iter().filter_map(Value::as_str)
+        .filter_map(|argument| std::path::Path::new(argument).file_name()?.to_str().map(str::to_owned)).collect::<Vec<_>>();
+    for extension in ["pi-manager-chat.ts", "pi-node-chat.ts"] { assert!(extensions(&tab).iter().any(|name| name == extension)); }
+    let role = run_reply(post_json_over_tcp(server.addr(), "/api/workflow/node/context", r#"{"sessionId":"nested-manager"}"#).await, 200);
+    assert_eq!(role["runId"], parent_id);
+    assert_eq!(role["executionId"], execution["id"]);
+    prepare_run(&server, "nested-manager").await;
+
+    let end = dispatch_app_node(&server, "nested-manager", "E");
+    let end_tab = app_launch(&server, &herdr, 3, "pi", "user-end-chat", &cwd).await;
+    let ended = run_reply(end.await.unwrap(), 200);
+    let end_execution = &ended["snapshot"]["nodes"]["E"]["execution"];
+    assert_eq!(end_execution["endNode"], true);
+    assert_eq!(end_execution["approved"], false);
+    assert_eq!(end_execution["chat"]["sessionId"], "user-end-chat");
+    assert!(extensions(&end_tab).iter().all(|name| !matches!(name.as_str(), "pi-manager-chat.ts" | "pi-node-chat.ts")));
+    let sent = sends();
+    assert_eq!(sent.len(), 3);
+    let input = sent[2]["text"].as_str().unwrap();
+    assert!(input.contains("User takes it from here") && !input.contains("[Result approval control]"));
+    let before_end: Value = serde_json::from_str(sent[2]["observedFiles"][1].as_str().unwrap()).unwrap();
+    assert_eq!(&before_end["nodes"]["E"]["execution"], end_execution);
+    run_reply(post_json_over_tcp(server.addr(), "/api/workflow/node/report",
+        r#"{"sessionId":"user-end-chat","body":"Not a reporting node","canComplete":true}"#).await, 403);
+    let finished = run_reply(post_json_over_tcp(server.addr(), "/api/workflow/manager/finish",
+        r#"{"sessionId":"nested-manager"}"#).await, 200);
+    assert_eq!(finished["snapshot"]["finished"]["reason"], "handed-to-user");
+    assert_eq!(finished["snapshot"]["nodes"]["E"]["status"], "running");
+    let located = run_reply(post_json_over_tcp(server.addr(), &format!("/api/workflow/runs/{child_id}/locate"),
+        &json!({"executionId":end_execution["id"]}).to_string()).await, 200);
+    assert_eq!(located["target"]["paneId"], end_tab["pane"]);
+    assert_eq!(fs::read_to_string(herdr.path().join("app-focused.json")).unwrap(), end_tab.to_string());
+    assert_eq!(sends(), sent);
+}
+
+// S1/P23/P39: real chief preview/confirmation chooses a Run, not an
+// independent Task Chat. At terminal receipt the delegation must already grant
+// the same native manager the authority represented by the saved Run/history.
+#[tokio::test]
+async fn app_delegated_map_binds_manager_before_approved_input() {
+    let (data, herdr, config, server, zone, ids) = fixture_with_host("omp", true).await;
+    let addr = server.addr();
+    let cwd = data.path().join("alpha");
+    let chief = run_reply(post_json_over_tcp(addr, "/api/tasks", &json!({
+        "name":"Delegation entry","taskType":"chief","agent":"omp","chatName":"Chief {chat.id}",
+        "model":"default","thinking":"default","skill":null,"prompt":"Clarify only"
+    }).to_string()).await, 200);
+    let chief_id = &chief["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Delegation entry").unwrap()["id"];
+    let preview = run_reply(post_json_over_tcp(addr, "/api/chats/preview",
+        &json!({"zone":zone,"taskId":chief_id}).to_string()).await, 200);
+    let accepted = run_reply(post_json_over_tcp(addr, "/api/chats",
+        &json!({"zone":zone,"taskId":chief_id,"chatId":preview["chatId"]}).to_string()).await, 202);
+    app_launch(&server, &herdr, 1, "omp", "delegating-chief", &cwd).await;
+    run_reply(post_json_over_tcp(addr, "/api/sessions/events", &json!({"sessionId":"delegating-chief","kind":"register",
+        "data":{"cwd":cwd,"agentType":"omp"}}).to_string()).await, 200);
+    let stage_url = format!("/api/chats/{}", accepted["id"].as_str().unwrap());
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let stage = run_reply(get_over_tcp(addr, &stage_url).await, 200);
+            if stage["stage"] == "succeeded" { break; }
+            assert_ne!(stage["stage"], "failed", "{stage}");
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    }).await.unwrap();
+    fs::write(config.scheduler.bot_directory.join("flow.json"), json!({
+        "id":"flow","name":"Delegated workflow","when":"Use the workflow","plan_guide":"Explicit input","node_guide":"Explicit client",
+        "map_file":"work.json"
+    }).to_string()).unwrap();
+    let preview = run_reply(post_json_over_tcp(addr, "/api/chief/delegations/preview", &json!({
+        "sessionId":"delegating-chief","botId":"flow","managerTaskId":ids[0],"zoneId":zone,
+        "input":"Approved delegated business input only","materials":[]
+    }).to_string()).await, 200);
+    let run_id = preview["previewId"].as_str().unwrap();
+    let body = json!({"sessionId":"delegating-chief","previewId":run_id}).to_string();
+    let run_file = config.scheduler.run_directory.join(run_id).join("run.json");
+    fs::write(herdr.path().join("observe-app-send.json"), json!([
+        run_file, config.sessions.history_file, config.sessions.history_file.with_extension("delegations.json")
+    ]).to_string()).unwrap();
+    let commit = tokio::spawn(async move { post_json_over_tcp(addr, "/api/chief/delegations", &body).await });
+    let tab = app_launch(&server, &herdr, 2, "omp", "delegated-manager", &cwd).await;
+    let started = run_reply(commit.await.unwrap(), 201);
+    assert_eq!(started["id"], run_id);
+    let sends = herdr.calls().into_iter().filter(|call| call["kind"] == "core_send").collect::<Vec<_>>();
+    assert_eq!(sends.len(), 2);
+    assert_eq!(sends[1]["terminal"], tab["terminal"]);
+    assert_eq!(sends[1]["text"], preview["facts"]["prompt"]);
+    assert!(sends[1]["text"].as_str().unwrap().contains("Approved delegated business input only"));
+    let observed = |index: usize| serde_json::from_str::<Value>(sends[1]["observedFiles"][index].as_str().unwrap()).unwrap();
+    assert_eq!(observed(0)["manager"], started["run"]["manager"]);
+    assert_eq!(observed(0)["manager"]["sessionId"], "delegated-manager");
+    assert!(observed(2).as_array().unwrap().iter().any(|record| record["runId"] == run_id && record["sessionId"] == "delegated-manager"));
+    assert!(observed(1).as_array().unwrap().iter().any(|row| row["sessionId"] == "delegated-manager" && row["sourceTaskId"] == ids[0]));
+    let sender = run_reply(get_over_tcp(addr, "/api/chief/delegations?sessionId=delegated-manager").await, 200);
+    assert_eq!(sender["delegations"][0]["runId"], run_id);
+    assert_eq!(sender["delegations"][0]["creation"]["inputSubmitted"], true);
+}
+
+async fn prepare_run(server: &TestServer, session: &str) {
+    run_reply(post_json_over_tcp(server.addr(), "/api/workflow/manager/prepare_inputs", &json!({
+        "sessionId":session,"fileInputs":[],"confirmed":true,"reason":"Verified Run fixture inputs"
+    }).to_string()).await, 200);
+}
+
+fn dispatch_app_node(server: &TestServer, manager: &str, node: &str) -> tokio::task::JoinHandle<common::HttpResponse> {
+    let addr = server.addr();
+    let body = json!({"sessionId":manager,"nodes":[node]}).to_string();
+    tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/manager/dispatch", &body).await })
+}
+
+fn start_fixture_run(server: &TestServer, manager: String, zone: String) -> tokio::task::JoinHandle<common::HttpResponse> {
+    let addr = server.addr();
+    tokio::spawn(async move {
+        post_json_over_tcp(addr, "/api/scheduler/maps/work.json/runs",
+            &json!({"managerTaskId":manager,"zone":zone,"userInput":"App Run requirement"}).to_string()).await
+    })
+}
+
+async fn app_tab(herdr: &HerdrFixture, n: usize) -> Value {
+    let log = herdr.path().join("app-tabs.jsonl");
+    let mut found = None;
+    assert!(common::wait_until(std::time::Duration::from_secs(5), || {
+        found = fs::read_to_string(&log).ok().and_then(|text| serde_json::from_str(text.lines().nth(n - 1)?).ok());
+        found.is_some()
+    }).await, "App did not create tab {n}");
+    found.unwrap()
+}
+
+async fn app_launch(server: &TestServer, herdr: &HerdrFixture, n: usize, agent: &str, session: &str, cwd: &std::path::Path) -> Value {
+    let tab = app_tab(herdr, n).await;
+    let argv = tab["options"]["argv"].as_array().unwrap();
+    assert_eq!(argv[6], agent);
+    let file = cwd.join(format!("{session}.jsonl"));
+    fs::write(&file, format!("{}\n", json!({"type":"session","id":session,"cwd":cwd}))).unwrap();
+    for kind in ["launch_identity", "launch_ready"] {
+        run_reply(post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({"kind":kind,"sessionId":session,"data":{
+            "launchId":argv[4],"targetId":argv[5],"agentType":agent,"cwd":cwd,"pid":43127,"sessionFile":file,
+        }}).to_string()).await, 200);
+    }
+    tab
+}
+
+fn run_reply(response: common::HttpResponse, status: u16) -> Value {
+    assert_eq!(response.status, status, "{}", response.body);
+    serde_json::from_str(&response.body).unwrap()
 }
 
 // Chief P3 / S2: normal remains the node target, manager the Run target.
@@ -683,7 +1063,7 @@ async fn manager_waits_for_late_native_identity_without_restarting_or_replaying_
 #[tokio::test]
 async fn manager_identity_wait_expires_without_restarting_or_submitting_input() {
     let (_data, herdr, _config, server, zone, ids) = fixture().await;
-    herdr.set_behavior(json!({"native_session":null}));
+    herdr.set_behavior(json!({"native_session":null,"manual_launch_events":true}));
     let started = std::time::Instant::now();
     let response = tokio::time::timeout(std::time::Duration::from_secs(40),
         post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
