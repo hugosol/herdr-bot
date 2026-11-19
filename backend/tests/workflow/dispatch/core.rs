@@ -264,9 +264,10 @@ async fn association_write_failure_exposes_native_chat_without_submitting_or_cla
     let original = fs::read(&path).unwrap();
     let release = s.data.path().join("identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-association-failed"},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_dispatch = s.herdr.calls().len();
     let addr = s.server.addr();
     let request = tokio::spawn(async move { post_json_over_tcp(addr,"/api/workflow/manager/dispatch",&json!({"sessionId":"manager-association","nodes":["A"]}).to_string()).await });
-    common::wait_until(Duration::from_secs(5),|| s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count() == 2).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == "agent_get")).await);
     assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(),1);
     fs::remove_file(&path).unwrap();
     fs::create_dir(&path).unwrap();
@@ -294,12 +295,13 @@ async fn node_history_failure_retains_saved_identity_without_initial_prompt() {
     let started = s.start("manager-history").await;
     let release = s.data.path().join("history-identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-history-failed"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_dispatch = s.herdr.calls().len();
     let request = common::OpenJsonRequest::submit(
         s.server.addr(), "/api/workflow/manager/dispatch",
         &json!({"sessionId":"manager-history","nodes":["A"]}).to_string(),
     ).await;
     assert!(common::wait_until(Duration::from_secs(5), || {
-        s.herdr.calls().iter().filter(|call| call["kind"] == "agent_get").count() == 2
+        s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == "agent_get")
     }).await);
     let original_history = fs::read(&s.config.sessions.history_file).unwrap();
     fs::remove_file(&s.config.sessions.history_file).unwrap();

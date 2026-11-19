@@ -12,7 +12,7 @@ struct Backend {
     reader: Option<std::thread::JoinHandle<()>>,
 }
 impl Backend {
-    fn start(root: &Path, generation: u32) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture, generation: u32) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
         command.args(["--config", "panel.toml"]).current_dir(root)
             .stdin(Stdio::null()).stdout(Stdio::piped())
@@ -41,6 +41,7 @@ impl Backend {
         backend.addr = rx.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|error| {
             panic!("backend readiness {error}: {}", fs::read_to_string(root.join(format!("stderr-{generation}.log"))).unwrap())
         });
+        fs::write(herdr.path().join("launch_endpoint.txt"), backend.addr.to_string()).unwrap();
         println!("script lifecycle backend generation={generation} pid={} addr={} root={}", backend.child.id(), backend.addr, root.display());
         backend
     }
@@ -113,7 +114,7 @@ impl Lifecycle {
         fs::write(root.path().join("options.toml"), "skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-manager-chat'\nlabel = 'Manager role'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = 'fixed.ts'\n").unwrap();
         herdr.set_workspaces(json!([{"workspace_id":"w-lifecycle","label":root.path().file_name().unwrap().to_str().unwrap()}]));
         herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"script-lifecycle-manager"},"native_cwd":root.path()}));
-        let backend = Backend::start(root.path(), 1);
+        let backend = Backend::start(root.path(), &herdr, 1);
         let mut s = Self { backend, root: std::mem::ManuallyDrop::new(root), herdr: std::mem::ManuallyDrop::new(herdr), clock: Instant::now(), target: Value::Null, run_id: String::new(), outputs: Default::default() };
         // Real static delivery from this worktree, not an HTML placeholder.
         assert_eq!(get_over_tcp(s.backend.addr, "/").await.status, 200);
@@ -366,7 +367,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
         Ok(value) => value,
         Err(error) => std::panic::resume_unwind(error),
     };
-    s.backend = Backend::start(s.root.path(), 2);
+    s.backend = Backend::start(s.root.path(), &s.herdr, 2);
     assert_ne!(s.backend.child.id(), old_pid, "new process, not reconstructed AppState");
     let after = s.detail().await;
     s.mark(&format!("after actual restart detail={after}"));
