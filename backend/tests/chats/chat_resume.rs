@@ -319,6 +319,46 @@ async fn unavailable_cwd_restores_exact_native_identity_in_configured_default_wo
     }
 }
 
+// S1/P15: a live registration after fallback must report the new process cwd
+// without replacing the independently saved Task launch directory.
+#[tokio::test]
+async fn fallback_registration_keeps_the_original_task_history_directory() {
+    let root = TempDir::new("resume fallback registration");
+    let herdr = HerdrFixture::new("resume fallback registration");
+    let config = config(&root, &herdr);
+    let old = root.path().join("missing historical checkout");
+    let actual = root.path().join("native default directory");
+    std::fs::create_dir(&actual).unwrap();
+    let file = root.path().join("native.jsonl");
+    let native = format!("{}\n", json!({"type":"session","id":"resume-existing","cwd":old}));
+    std::fs::write(&file, &native).unwrap();
+    let record = json!([{"sessionId":"resume-existing","sessionName":"Original Task Chat","nameFromZone":true,
+        "agentType":"omp","cwd":old,"sessionFile":file,"sourceTaskId":"missing-task",
+        "originalWorkspaceId":"original-app","firstRecordedAt":123}]);
+    std::fs::write(&config.sessions.history_file, record.to_string()).unwrap();
+    herdr.set_workspaces(json!([{"workspace_id":"w-default","label":"bot-playground"}]));
+    herdr.set_behavior(json!({"default_cwd":actual,
+        "native_session":{"agent":"omp","source":"herdr:omp","kind":"path","value":file}}));
+    let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+    let before = common::get_over_tcp(server.addr(), "/api/sessions/history").await;
+    let response = resume(&server, "resume-existing").await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let restored: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(restored["outcome"], "restored");
+    assert!(common::same_path(Path::new(restored["actualCwd"].as_str().unwrap()), &actual));
+    let accepted = post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({
+        "sessionId":"resume-existing","kind":"register","data":{"cwd":actual,"agentType":"omp"}
+    }).to_string()).await;
+    assert_eq!(accepted.status, 200, "{}", accepted.body);
+    let mut feed = common::sse::SseConnection::open(server.addr(), "/api/sessions/events", &[]).await;
+    let snapshot: Value = feed.next_event("snapshot").await.json();
+    assert_eq!(snapshot["sessions"][0]["cwd"], json!(actual));
+    assert_eq!(common::get_over_tcp(server.addr(), "/api/sessions/history").await.body, before.body);
+    let saved: Value = serde_json::from_slice(&std::fs::read(&config.sessions.history_file).unwrap()).unwrap();
+    assert_eq!(saved, record);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), native);
+}
+
 // S1 (P8/P10–P13/P15/P41): the scripted App/core expose the selected layout,
 // launch directory and actual focus independently of the HTTP response.
 // These terminal observations cannot prove that the requested Pi ID loaded.
