@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 
 use super::client::{CreatedTab, HerdrError, QUERY_TIMEOUT, WorkspaceInventory, nonempty, run_cli};
 
+#[path = "app_navigation.rs"]
+mod navigation;
+
 const LIST: &str = "herdr-app ls";
 const CREATE_TAB: &str = "herdr-app tab.new";
 const CORE_STATUS: &str = "hc server status";

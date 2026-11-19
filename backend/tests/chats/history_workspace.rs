@@ -73,6 +73,7 @@ async fn normal_launch_and_connect_keep_literal_identity_set_and_original_locati
     let mut config = config(&root, &herdr);
     config.herdr.workspace_name = "other".into();
     let server = start(&config).await;
+    std::fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
     let zones = post(&server, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap();
     let tasks = post(&server, "/api/tasks", json!({"name":"Same name","chatName":"Same name","agent":"pi","model":"default","thinking":"default","prompt":""})).await;
@@ -173,25 +174,39 @@ async fn locating_elsewhere_keeps_original_location_and_native_content() {
 // Observe the actual external command boundary: no fallback query, Tab or start.
 #[tokio::test]
 async fn original_workspace_query_failure_never_falls_back_or_starts() {
-    for malformed in [false, true] {
+    for (fault, code) in [
+        ("command", "herdr-command-failed"),
+        ("missing-id", "herdr-unexpected-response"),
+        ("missing-name", "herdr-unexpected-response"),
+    ] {
         let root = TempDir::new("original workspace query failure");
         let herdr = HerdrFixture::new("original-query-failure");
         let config = config(&root, &herdr);
         let server = start(&config).await;
         register(&server, &root, "native-full-001", Some("w-original")).await;
-        if malformed {
-            herdr.set_workspaces(json!([{"label":"unknown ID"}]));
-        } else {
-            herdr.set_behavior(json!({"fail_workspace_list":true}));
+        native(&herdr, &root, "native-full-001");
+        let mut rows = vec![json!({"workspace_id":"w-target","label":"bot-playground"})];
+        match fault {
+            "command" => herdr.set_behavior(json!({"fail_workspace_list":true})),
+            "missing-id" => rows.push(json!({"label":"unknown ID"})),
+            "missing-name" => rows.push(json!({"workspace_id":"unrelated"})),
+            _ => unreachable!(),
         }
+        herdr.set_workspaces(json!(rows));
+        let before = get(&server, "/api/sessions/history").await;
+        let bytes = std::fs::read(&config.sessions.history_file).unwrap();
+        let before_resume = herdr.calls().len();
         let reply = post_json_over_tcp(server.addr(), "/api/chats/resume", r#"{"sessionId":"native-full-001"}"#).await;
-        assert_eq!(reply.status, 502, "{}", reply.body);
+        assert_eq!(reply.status, 502, "{fault}: {}", reply.body);
         let result: Value = serde_json::from_str(&reply.body).unwrap();
         assert_eq!(result["outcome"], "failed");
         assert_eq!(result["stage"], "workspace");
-        assert_eq!(herdr.calls().iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["agent_list", "workspace_list"]);
+        assert_eq!(result["code"], code);
+        assert_eq!(herdr.calls()[before_resume..].iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["agent_list", "workspace_list"]);
         assert!(herdr.tabs().is_empty());
-        assert_eq!(get(&server, "/api/sessions/history").await["sessions"][0]["originalWorkspaceId"], "w-original");
+        assert_eq!(before["sessions"][0]["originalWorkspaceId"], "w-original");
+        assert_eq!(get(&server, "/api/sessions/history").await, before);
+        assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), bytes);
     }
 }
 
@@ -209,12 +224,15 @@ async fn deleted_original_falls_back_without_overwriting_history_even_after_rest
         {"workspace_id":"w-replacement","label":"Former original","focused":true}
     ]));
     native(&herdr, &root, "native-full-001");
+    let before = get(&server, "/api/sessions/history").await;
+    let bytes = std::fs::read(&config.sessions.history_file).unwrap();
     let result = post(&server, "/api/chats/resume", json!({"sessionId":"native-full-001"})).await;
     assert_eq!(result["outcome"], "restored");
     assert_eq!(result["fallback"], true);
-    assert!(result["message"].as_str().unwrap().contains("原 Workspace 已删除"));
+    assert!(result["message"].as_str().unwrap().contains("当前宿主未找到原 Workspace"));
     assert_eq!(herdr.tabs()[0]["workspace"], "w-target");
-    assert_eq!(get(&server, "/api/sessions/history").await["sessions"][0]["originalWorkspaceId"], "w-deleted");
+    assert_eq!(get(&server, "/api/sessions/history").await, before);
+    assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), bytes);
     drop(server);
     let server = start(&config).await;
     assert_eq!(get(&server, "/api/sessions/history").await["sessions"][0]["originalWorkspaceId"], "w-deleted");
@@ -241,9 +259,12 @@ async fn connect_history_preserves_original_workspace_across_restart_and_resumes
         {"workspace_id":"w-same-label","label":"other"}
     ]));
     native(&herdr, &root, "native-full-001");
+    let before = get(&server, "/api/sessions/history").await;
+    let bytes = std::fs::read(&config.sessions.history_file).unwrap();
     let result = post(&server, "/api/chats/resume", json!({"sessionId":"native-full-001"})).await;
     assert_eq!(result["outcome"], "restored");
     assert_eq!(result["fallback"], false);
     assert_eq!(herdr.tabs()[0]["workspace"], "w-other");
-    assert_eq!(get(&server, "/api/sessions/history").await["sessions"][0]["originalWorkspaceId"], "w-other");
+    assert_eq!(get(&server, "/api/sessions/history").await, before);
+    assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), bytes);
 }
