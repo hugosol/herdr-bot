@@ -1,0 +1,8 @@
+{
+  "id": "github-clone",
+  "name": "GitHub克隆",
+  "when": "需要将 GitHub 仓库通过 SSH 浅克隆到已有父目录的直接子目录，并取得可供后续处理的仓库核实材料时使用。",
+  "plan_guide": "输入：命名 JSON 文件 clone_request，提供 GitHub 仓库地址和已存在、可写的 Windows 绝对父目录。\n\n输出：命名 JSON 文件 cloned_repository，包含 owner、repo、repository_id、ssh_url、parent_directory、repository_directory、head_commit 和 checks，供下游直接消费真实仓库身份与绝对路径。成功要求 Git 成功、实际路径和 origin 匹配、HEAD 为有效 commit、仓库为浅仓库，且结果材料已安全保存并完整读回；空仓库或最终非浅仓库不能通过验收。\n\n调用前须落实 Windows 后端、已有 Bun／Git／SSH、SSH 认证、GitHub host trust、网络与仓库访问权限，以及目录和材料写入权限。用户须事先确定仓库、父目录及网络和写入副作用授权；执行期间没有 Chat 或交互审批，也不提供独立对话执行器。\n\n只克隆默认分支，depth=1；不创建父目录，不递归子模块、下载 LFS 实体或额外引用，不安装、构建或运行仓库代码。目标占用即停止，不复用、覆盖或自动改名；认证失败不回退 HTTPS，不修改凭据或信任配置。\n\n克隆和 Git 核实共用 10 分钟期限，超时仅尝试终止进程树。失败保留原因和可知部分效果，可能留下目录或完整仓库；不自动重试、清理或回滚，后续处理须另行决定。本能力不登记 zone、不启动探索 Chat，也不完成后续探索业务。",
+  "node_guide": "准备唯一输入 clone_request：UTF-8 JSON 对象，仅含字符串 github_url 和 parent_directory，拒绝重复键。调用方可在本次获准的材料目录生成文件，无需用户手写。\n\ngithub_url 使用以下一种形状，可带末尾 .git：\n- https://github.com/owner/repo\n- git@github.com:owner/repo\n- ssh://git@github.com/owner/repo\n\n提供无查询、片段或额外子路径的确切仓库地址；仓库身份须满足脚本的字符、长度及 Windows 安全名称限制。parent_directory 指定实际存在、安全可写的 Windows 绝对目录；目标为该真实父目录下去掉 .git 后缀的 repo 直接子目录，须无任何占用。父目录不由执行 zone 推断，也不要求与 zone 相同。\n\n派发前确认本次仓库访问、网络、目标目录新建及结果材料写入授权，补齐资源和权限缺项。探索方向、额外交付和不同验收需求另行安排；脚本不从 node.input 或用户聊天补充、覆盖参数，也不接受附加业务字段。\n\n以 input_rule 显式接入 clone_request，使本次执行恰有这一个绝对文件地址输入；output_rule 恰声明 cloned_repository。选择真实可用的执行 zone，设置 auto_approved=true、auto_close=false，不设置 manager_task_id；前置依赖使用 blocked_by。node.input 可为空，不用它替代文件绑定或修改脚本行为。\n\n下游通过命名输出取得结果材料，不从报告文字猜路径；管理者核对成功结果及材料后显式 complete，再安排后续工作。失败时先核实原错误、部分效果和残留，再决定修复、重跑或清理，不将再次调用作为绕过目标占用检查的方式。",
+  "script": "github-clone.ts"
+}
