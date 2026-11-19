@@ -251,6 +251,8 @@ pub enum Stage {
     Initializing,
     /// 目标 agent 已就绪，正在提交初始指示。
     Submitting,
+    /// 宿主确认未写入，正在等待唯一一次重试。
+    Retrying,
     /// 就绪与提交都已确认。
     Succeeded,
     /// 任一步失败或超时；已取得的现场标识仍保留在结果里。
@@ -282,6 +284,14 @@ pub struct Failure {
     pub message: String,
 }
 
+/// Distinguish a proved non-submission from an unconfirmed external effect.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnconfirmedInput {
+    NotSubmitted,
+    Unknown,
+}
+
 /// 公开的创建状态；也是创建被接受时的回执与页面轮询读取的同一形状。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -306,6 +316,10 @@ pub struct ChatCreationView {
     pub agent_name: Option<String>,
     /// 只有初始指示提交被确认后才为 true；失败时不把未知说成已提交。
     pub input_submitted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_outcome: Option<UnconfirmedInput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_reason: Option<String>,
     /// 失败阶段与说明；成功时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
@@ -323,6 +337,8 @@ impl ChatCreationView {
             pane_id: None,
             agent_name: None,
             input_submitted: false,
+            input_outcome: None,
+            retry_reason: None,
             failure: None,
         }
     }
@@ -585,6 +601,7 @@ pub(crate) async fn run_creation(
                 if let Err(error) = chief.creation_failed(&creation_id,false) { eprintln!("chief binding failure persistence failed: {error:?}"); }
             }
             view.stage=Stage::Failed;
+            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
             view.failure=Some(Failure { stage:FailureStage::Submit,code:if delegation.is_some() {"delegation-binding-failed"} else {"chief-binding-failed"}.into(),message:format!("身份保存或绑定失败：history={saved:?}, authority={bound:?}, delegation={delegated:?}；agent 已启动，未提交初始输入，保留现场。") });
             return;
         }
@@ -605,6 +622,7 @@ pub(crate) async fn run_creation(
                 if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
             }
             view.stage = Stage::Failed;
+            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
             view.failure = Some(Failure {
                 stage: FailureStage::Submit,
                 code: "prompt-dictionary-invalid".into(),
@@ -616,13 +634,38 @@ pub(crate) async fn run_creation(
     // An empty trigger starts an interactive Chat without inventing a user
     // turn. Herdr rejects empty prompts; readiness already confirms startup.
     if !text.is_empty() {
-        if let Err(error) = launch.current(&herdr, &target).await {
-            fail(&job, FailureStage::Start, &error, authority).await;
-            return;
-        }
-        if let Err(error) = target.submit(&herdr, text).await {
-            fail(&job, FailureStage::Submit, &error, authority).await;
-            return;
+        use herdr::launch::{InitialInputError, InitialInputProgress};
+        let progress = |event: InitialInputProgress<'_>| {
+            let retry_reason = match event {
+                InitialInputProgress::WaitingToRetry(error) => Some(error.message()),
+                InitialInputProgress::RetrySubmitting => None,
+            };
+            let job = job.as_ref();
+            async move {
+                let mut view = job.lock().await;
+                view.stage = if retry_reason.is_some() { Stage::Retrying } else { Stage::Submitting };
+                view.input_outcome = retry_reason.as_ref().map(|_| UnconfirmedInput::NotSubmitted);
+                view.retry_reason = retry_reason;
+            }
+        };
+        match launch.submit_initial(&herdr, &target, text, progress).await {
+            Ok(()) => {}
+            Err(InitialInputError::BeforeSend(error)) => {
+                fail(&job, FailureStage::Start, &error, authority).await;
+                return;
+            }
+            Err(InitialInputError::Send(error)) => {
+                fail(&job, FailureStage::Submit, &error, authority).await;
+                return;
+            }
+            Err(InitialInputError::RetryCancelled { blocked, reason }) => {
+                record_failure(&job, authority, false, Some(UnconfirmedInput::NotSubmitted), Failure {
+                    stage: FailureStage::Submit,
+                    code: "initial-input-retry-cancelled".into(),
+                    message: format!("{} 初始指示未提交；原启动目标不再有效或无法确认，已取消重试。{}", blocked.message(), reason.message()),
+                }).await;
+                return;
+            }
         }
     }
 
@@ -647,31 +690,43 @@ pub(crate) async fn run_creation(
 
 /// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。
 async fn fail(job: &Arc<Mutex<ChatCreationView>>, stage: FailureStage, error: &HerdrError, chief: Option<&crate::chief::Authority>) {
+    let definite = matches!(stage,FailureStage::Workspace)
+        || (matches!(stage,FailureStage::Tab | FailureStage::Start)
+            && matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)));
+    let outcome = (stage == FailureStage::Submit).then(|| match error {
+        HerdrError::InputBlocked { .. } | HerdrError::NotStarted(_) => UnconfirmedInput::NotSubmitted,
+        _ => UnconfirmedInput::Unknown,
+    });
+    record_failure(job, chief, definite, outcome, Failure {
+        stage,
+        code: error.code().to_string(),
+        message: stage_message(stage, error, outcome),
+    }).await;
+}
+
+async fn record_failure(
+    job: &Mutex<ChatCreationView>, chief: Option<&crate::chief::Authority>, definite: bool,
+    outcome: Option<UnconfirmedInput>, failure: Failure,
+) {
     let mut view = job.lock().await;
     if let Some(chief) = chief {
-        let definite = matches!(stage,FailureStage::Workspace)
-            || (matches!(stage,FailureStage::Tab | FailureStage::Start)
-                && matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)));
-        if let Err(error) = chief.creation_failed(&view.id,definite) {
+        if let Err(error) = chief.creation_failed(&view.id, definite) {
             eprintln!("chief failure persistence failed: {error:?}");
         }
     }
-    if view.stage.is_terminal() {
-        return;
+    if !view.stage.is_terminal() {
+        view.stage = Stage::Failed;
+        view.failure = Some(failure);
+        view.input_outcome = outcome;
+        view.retry_reason = None;
     }
-    view.stage = Stage::Failed;
-    view.failure = Some(Failure {
-        stage,
-        code: error.code().to_string(),
-        message: stage_message(stage, error),
-    });
 }
 
 /// 在 Herdr 的原始说明之外补上现场状态；不把未知的提交结果说成确定。
 ///
 /// 同一阶段里，“明确被拒绝”和“超时/响应不可理解”是两种不同事实：前者可以说提交失败，
 /// 后者只能说明结果未确认，不能把它表述成确定未发送。已经取得的对象标识不会被撤销。
-fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
+fn stage_message(stage: FailureStage, error: &HerdrError, input: Option<UnconfirmedInput>) -> String {
     let base = error.message();
     let outcome_unknown = matches!(
         error,
@@ -689,11 +744,11 @@ fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
         FailureStage::Start => {
             format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
         }
-        FailureStage::Submit if outcome_unknown => format!(
+        FailureStage::Submit if matches!(input, Some(UnconfirmedInput::Unknown)) => format!(
             "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
         ),
         FailureStage::Submit => {
-            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
+            format!("{base} agent 已就绪；初始指示未提交，不会自动重发。Tab、Pane 与 agent 已保留。")
         }
     }
 }

@@ -1,6 +1,6 @@
 //! Public App/core CLI stand-in for the launch matrix. The test owns both
 //! surfaces; only the actual Rust backend interprets their output.
-use super::{data_dir, output, record, read_records, usage};
+use super::{behavior, data_dir, output, record, read_records, usage};
 use serde_json::{Value, json};
 
 pub(super) fn dispatch(args: &[String]) {
@@ -30,12 +30,19 @@ pub(super) fn dispatch(args: &[String]) {
         ["get", terminal, "--json"] => {
             let tab = tabs().into_iter().find(|t| t["terminal"] == *terminal).unwrap();
             output(json!({"address":terminal,"labels":{"herdr.space":tab["space"],"herdr.tab":tab["tab"]},
-                "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live","pid":43127}));
+                "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live",
+                "pid":behavior()["launch_pid"].as_u64().unwrap_or(43127)}));
         }
         ["send", "--json", terminal, "--", text] => {
             assert!(tabs().iter().any(|t| t["terminal"] == *terminal));
             record("calls.jsonl", json!({"kind":"core_send","terminal":terminal,"text":text}));
-            output(json!({"turn":0,"started":true,"status":"idle"}));
+            let behavior = behavior();
+            if behavior["block_prompt"] == true {
+                eprintln!("{}", json!({"error":{"kind":"blocked","message":"controlled core modal"}}));
+                std::process::exit(9);
+            }
+            record("submitted.jsonl", json!({"terminal":terminal,"text":text}));
+            output(json!({"turn":0,"started":behavior["started"].as_bool().unwrap_or(true),"status":"idle"}));
         }
         _ => usage(args),
     }

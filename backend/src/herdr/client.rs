@@ -93,6 +93,8 @@ pub enum HerdrError {
         command: &'static str,
         message: String,
     },
+    /// The input operation explicitly rejected a blocked target before writing.
+    InputBlocked { command: &'static str, message: String },
     /// Herdr 成功退出但响应缺少本 adapter 需要的对象标识。
     UnexpectedResponse {
         command: &'static str,
@@ -109,6 +111,7 @@ impl HerdrError {
             Self::WorkspaceNotFound { .. } => "workspace-not-found",
             Self::WorkspaceAmbiguous { .. } => "workspace-ambiguous",
             Self::CommandFailed { .. } => "herdr-command-failed",
+            Self::InputBlocked { .. } => "herdr-input-blocked",
             Self::UnexpectedResponse { .. } => "herdr-unexpected-response",
         }
     }
@@ -133,7 +136,7 @@ impl HerdrError {
                     "名称恰好为 “{name}” 的 Herdr Workspace 有 {matches} 个；不能任取一个，本次没有继续创建。"
                 )
             }
-            Self::CommandFailed { command, message } => {
+            Self::CommandFailed { command, message } | Self::InputBlocked { command, message } => {
                 format!("Herdr 的 {command} 失败：{message}")
             }
             Self::UnexpectedResponse { command, detail } => {
@@ -388,13 +391,10 @@ impl HerdrClient {
     ///
     /// 不使用 `--wait`：创建成功只要求提交被确认，不等待模型完成一轮任务。超时或错误都不重试。
     pub async fn prompt(&self, target: &str, text: &str) -> Result<(), HerdrError> {
-        let value = self
-            .run(
-                "agent prompt",
-                &["agent".into(), "prompt".into(), target.into(), text.into()],
-                PROMPT_TIMEOUT,
-            )
-            .await?;
+        let value = self.prompt_once(target, text).await.map_err(|error| match error {
+            HerdrError::InputBlocked { command, message } => HerdrError::CommandFailed { command, message },
+            error => error,
+        })?;
         value
             .pointer("/result/agent")
             .ok_or_else(|| HerdrError::UnexpectedResponse {
@@ -402,6 +402,14 @@ impl HerdrClient {
                 detail: "响应缺少 result.agent".to_string(),
             })?;
         Ok(())
+    }
+
+    async fn prompt_once(&self, target: &str, text: &str) -> Result<Value, HerdrError> {
+        self.run(
+            "agent prompt",
+            &["agent".into(), "prompt".into(), target.into(), text.into()],
+            PROMPT_TIMEOUT,
+        ).await
     }
 
     /// Verify the selected historical identity without querying either host.
@@ -636,7 +644,18 @@ impl LaunchTarget {
 
     pub(crate) async fn submit(&self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
         match (&self.control, &herdr.host) {
-            (LaunchControl::Tui { alias }, Host::Tui(_)) => herdr.prompt(alias, text).await,
+            (LaunchControl::Tui { alias }, Host::Tui(_)) => {
+                let value = herdr.prompt_once(alias, text).await?;
+                if value.pointer("/result/type").and_then(Value::as_str) != Some("agent_prompted")
+                    || value.pointer("/result/agent/name").and_then(Value::as_str) != Some(alias)
+                {
+                    return Err(HerdrError::UnexpectedResponse {
+                        command: "agent prompt",
+                        detail: "响应没有确认 result.agent 对应本次启动目标".into(),
+                    });
+                }
+                Ok(())
+            }
             (LaunchControl::App { terminal, .. }, Host::App(app)) => app.submit(terminal, text).await,
             _ => Err(native_error("launch target host changed")),
         }
@@ -712,15 +731,19 @@ fn response_error(command: &'static str, error: &Value) -> HerdrError {
         return HerdrError::Timeout(command);
     }
     let code = error.get("code").and_then(Value::as_str);
-    let message = error.as_str().or_else(|| error.get("message").and_then(Value::as_str));
-    HerdrError::CommandFailed {
-        command,
-        // The human message need not mention confirmation_required (or any
-        // other machine category). Keep both so backend diagnostics stay true.
-        message: match (code, message) {
-            (Some(code), Some(message)) => format!("{code}: {message}"),
-            (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
-            (None, None) => "Herdr returned an error response".to_owned(),
-        },
+    let kind = error.get("kind").and_then(Value::as_str);
+    let detail = error.as_str().or_else(|| error.get("message").and_then(Value::as_str));
+    let message = match (code.or(kind), detail) {
+        (Some(category), Some(detail)) => format!("{category}: {detail}"),
+        (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
+        (None, None) => "Herdr returned an error response".to_owned(),
+    };
+    // Only these documented host errors guarantee a pre-write block. In
+    // particular, agent_prompt_failed can follow partial terminal input.
+    match (command, code, kind) {
+        ("agent prompt", Some("agent_blocked"), None) | ("hc send", None, Some("blocked")) => {
+            HerdrError::InputBlocked { command, message }
+        }
+        _ => HerdrError::CommandFailed { command, message },
     }
 }

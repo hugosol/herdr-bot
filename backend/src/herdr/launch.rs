@@ -1,7 +1,7 @@
 //! A launch report is not a session registration. Only the owner of a new,
 //! independently observed terminal can authorize that terminal's first input.
 
-use std::{collections::HashMap, path::Path, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::HashMap, future::Future, path::Path, sync::{Arc, Mutex}, time::{Duration, Instant}};
 
 use serde::Deserialize;
 use tokio::sync::watch;
@@ -11,6 +11,19 @@ use super::{HerdrClient, HerdrError, NativeSession, client::{LaunchTarget, Launc
 pub(crate) const LAUNCH_ID_ENV: &str = "HERDR_BOT_LAUNCH_ID";
 pub(crate) const TARGET_ID_ENV: &str = "HERDR_BOT_LAUNCH_TARGET_ID";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
+const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+pub(crate) enum InitialInputProgress<'a> {
+    WaitingToRetry(&'a HerdrError),
+    RetrySubmitting,
+}
+
+#[derive(Debug)]
+pub(crate) enum InitialInputError {
+    BeforeSend(HerdrError),
+    RetryCancelled { blocked: HerdrError, reason: HerdrError },
+    Send(HerdrError),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,8 +47,17 @@ struct Owner {
     session_file: Option<String>,
 }
 
+#[derive(Default, PartialEq, Eq)]
+enum Retry {
+    #[default]
+    Inactive,
+    Waiting,
+    OwnerChanged,
+}
+
 #[derive(Default)]
 struct State {
+    retry: Retry,
     target: Option<Arc<LaunchTarget>>,
     owner: Option<Owner>,
     identity: bool,
@@ -54,8 +76,10 @@ struct Pending {
     state: watch::Sender<State>,
 }
 
-#[derive(Default)]
-pub(crate) struct Launches(Mutex<HashMap<String, Arc<Pending>>>);
+pub(crate) struct Launches {
+    pending: Mutex<HashMap<String, Arc<Pending>>>,
+    clock: Arc<dyn crate::clock::Clock>,
+}
 
 pub(crate) struct Launch {
     launches: Arc<Launches>,
@@ -64,18 +88,22 @@ pub(crate) struct Launch {
 }
 
 impl Launches {
+    pub(crate) fn new(clock: Arc<dyn crate::clock::Clock>) -> Self {
+        Self { pending: Mutex::new(HashMap::new()), clock }
+    }
+
     pub(crate) fn begin(self: &Arc<Self>, kind: &'static str, cwd: Option<&str>) -> Launch {
         let id = crate::chats::new_creation_id();
         let pending = Arc::new(Pending {
             target_id: crate::chats::new_creation_id(), kind, cwd: cwd.map(str::to_owned),
             state: watch::channel(State::default()).0,
         });
-        self.0.lock().unwrap().insert(id.clone(), Arc::clone(&pending));
+        self.pending.lock().unwrap().insert(id.clone(), Arc::clone(&pending));
         Launch { launches: Arc::clone(self), id, pending }
     }
 
     pub(crate) async fn app_target(&self, herdr: &HerdrClient, kind: &str, session_id: &str) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
-        let candidates = self.0.lock().unwrap().values().filter_map(|pending| {
+        let candidates = self.pending.lock().unwrap().values().filter_map(|pending| {
             let state = pending.state.borrow();
             let owner = state.owner.as_ref()?;
             let target = state.target.as_ref()?;
@@ -93,7 +121,7 @@ impl Launches {
     pub(crate) async fn accept(
         &self, herdr: &HerdrClient, session_id: String, report: Report, phase: Phase,
     ) -> Result<(), ()> {
-        let pending = self.0.lock().unwrap().get(&report.launch_id).cloned().ok_or(())?;
+        let pending = self.pending.lock().unwrap().get(&report.launch_id).cloned().ok_or(())?;
         if report.target_id != pending.target_id || report.agent_type != pending.kind || report.pid == 0
             || session_id.trim().is_empty() || !Path::new(&report.cwd).is_absolute()
             || pending.cwd.as_deref().is_some_and(|cwd| !crate::zones::same_path(&report.cwd, cwd))
@@ -116,7 +144,7 @@ impl Launches {
                 state.closed = remove;
                 true
             });
-            if remove { self.0.lock().unwrap().remove(&report.launch_id); }
+            if remove { self.pending.lock().unwrap().remove(&report.launch_id); }
             return accepted.then_some(()).ok_or(());
         }
         let mut state = pending.state.subscribe();
@@ -124,8 +152,9 @@ impl Launches {
             .await.map_err(|_| ())?.map_err(|_| ())?.target.clone().ok_or(())?;
         {
             let state = state.borrow();
-            if state.rejects(&owner) { return Err(()); }
-            if matches!(phase, Phase::Identity) && state.identity || matches!(phase, Phase::Ready) && state.ready {
+            if state.rejects(&owner) {
+                if !state.observes_replacement(&owner, phase) { return Err(()); }
+            } else if matches!(phase, Phase::Identity) && state.identity || matches!(phase, Phase::Ready) && state.ready {
                 return Ok(());
             }
         }
@@ -145,6 +174,10 @@ impl Launches {
         }
         let mut accepted = false;
         pending.state.send_if_modified(|state| {
+            if state.observes_replacement(&owner, phase) {
+                state.retry = Retry::OwnerChanged;
+                return true; // Notify the waiter without rebinding this launch.
+            }
             if state.rejects(&owner) { return false; }
             accepted = true;
             match phase {
@@ -170,8 +203,27 @@ impl Launches {
 
 impl State {
     fn rejects(&self, owner: &Owner) -> bool {
-        self.closed || self.official_failure.is_some() || owner.ended(self)
+        self.closed || self.retry == Retry::OwnerChanged || self.official_failure.is_some() || owner.ended(self)
             || self.owner.as_ref().is_some_and(|active| active != owner)
+    }
+
+    fn observes_replacement(&self, owner: &Owner, phase: Phase) -> bool {
+        self.retry == Retry::Waiting && matches!(phase, Phase::Identity)
+            && !self.closed && self.official_failure.is_none() && !owner.ended(self)
+            && self.owner.as_ref().is_some_and(|active| !active.same_session(owner) && !active.ended(self))
+    }
+
+    fn cannot_retry(&self) -> bool {
+        self.closed || self.retry == Retry::OwnerChanged || self.official_failure.is_some()
+            || self.owner.as_ref().is_none_or(|owner| owner.ended(self))
+    }
+
+    fn retry_invalidation(&self) -> HerdrError {
+        self.official_failure.clone().unwrap_or_else(|| native_error(if self.retry == Retry::OwnerChanged {
+            "launch owner changed before retry"
+        } else {
+            "launch owner ended before retry"
+        }))
     }
 }
 
@@ -199,7 +251,8 @@ impl Launch {
 
     pub(crate) fn retain_app_target(&self) {
         self.pending.state.send_if_modified(|state| {
-            let retain = state.owner.as_ref().is_some_and(|owner| !owner.ended(state));
+            let retain = state.retry != Retry::OwnerChanged
+                && state.owner.as_ref().is_some_and(|owner| !owner.ended(state));
             retain && !std::mem::replace(&mut state.retained, true)
         });
     }
@@ -219,6 +272,51 @@ impl Launch {
         self.verify(herdr, &target, &owner).await
     }
 
+    /// Submit to the verified launch; only a pre-write block permits another attempt.
+    pub(crate) async fn submit_initial<F: Future<Output = ()> + Send>(
+        &self, herdr: &HerdrClient, target: &LaunchTarget, text: &str,
+        mut progress: impl FnMut(InitialInputProgress<'_>) -> F,
+    ) -> Result<(), InitialInputError> {
+        self.current(herdr, target).await.map_err(InitialInputError::BeforeSend)?;
+        let blocked = match target.submit(herdr, text).await {
+            Err(blocked @ HerdrError::InputBlocked { .. }) => blocked,
+            result => return result.map_err(InitialInputError::Send),
+        };
+        let deadline = self.launches.clock.now() + INITIAL_RETRY_DELAY;
+        self.pending.state.send_modify(|state| state.retry = Retry::Waiting);
+        progress(InitialInputProgress::WaitingToRetry(&blocked)).await;
+        if let Err(reason) = self.wait_for_retry(deadline, herdr, target).await {
+            return Err(InitialInputError::RetryCancelled { blocked, reason });
+        }
+        progress(InitialInputProgress::RetrySubmitting).await;
+        {
+            let state = self.pending.state.borrow();
+            if state.cannot_retry() {
+                return Err(InitialInputError::RetryCancelled { blocked, reason: state.retry_invalidation() });
+            }
+        }
+        let result = target.submit(herdr, text).await;
+        self.pending.state.send_if_modified(|state| {
+            if state.retry != Retry::Waiting { return false; }
+            state.retry = Retry::Inactive;
+            true
+        });
+        result.map_err(InitialInputError::Send)
+    }
+
+    async fn wait_for_retry(&self, deadline: Instant, herdr: &HerdrClient, target: &LaunchTarget) -> Result<(), HerdrError> {
+        let mut state = self.pending.state.subscribe();
+        tokio::select! {
+            biased;
+            invalidated = state.wait_for(State::cannot_retry) => Err(match invalidated {
+                Ok(state) => state.retry_invalidation(),
+                Err(_) => native_error("launch evidence no longer available"),
+            }),
+            () = crate::clock::sleep_until(self.launches.clock.as_ref(), deadline) => Ok(()),
+        }?;
+        self.current(herdr, target).await
+    }
+
     pub(crate) async fn current(&self, herdr: &HerdrClient, target: &LaunchTarget) -> Result<(), HerdrError> {
         let owner = self.pending.state.borrow().owner.clone().ok_or_else(|| native_error("no launch owner"))?;
         self.verify(herdr, target, &owner).await.map(drop)
@@ -228,6 +326,7 @@ impl Launch {
         let identity = target.verify(herdr, self.pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await?;
         let state = self.pending.state.borrow();
         if let Some(error) = &state.official_failure { return Err(error.clone()); }
+        if state.retry == Retry::OwnerChanged { return Err(state.retry_invalidation()); }
         if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
         Ok(identity)
     }
@@ -240,7 +339,7 @@ impl Drop for Launch {
             state.closed = true;
             true
         });
-        if closed { self.launches.0.lock().unwrap().remove(&self.id); }
+        if closed { self.launches.pending.lock().unwrap().remove(&self.id); }
     }
 }
 
